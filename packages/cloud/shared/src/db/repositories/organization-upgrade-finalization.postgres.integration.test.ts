@@ -246,6 +246,122 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
       expect(resolved.environment.STRIPE_PRO_PRODUCT_ID).toBe(f.providerBinding.targetProductId);
       expect(resolved.contract?.planKey ?? null).toBe(purchased ? "plus_monthly" : null);
       expect(resolved.contract?.accountId ?? null).toBe(purchased ? "acct_original" : null);
+      // A historical invoice keeps its recorded Plus terms after the live source upgrades.
+      // This resolver must never use current Pro terms or the deployment's rotated prices.
+      const { findOriginalInvoiceCommercialTerms } = await import(
+        "./subscription-invoice-commercial-terms"
+      );
+      const { invoiceEventFixture } = await import(
+        "../../lib/services/test-support/subscription-invoice-event-fixture"
+      );
+      const { createSubscriptionInvoiceEventEvidence } = await import(
+        "../../lib/services/subscription-invoice-event-evidence"
+      );
+      const originalFixture = invoiceEventFixture();
+      const originalScope = {
+        ...originalFixture.scope,
+        organizationId: source.organization_id,
+        subscriptionId: source.id,
+        providerAccountId: "acct_original",
+        customerId: source.stripe_customer_id,
+        providerSubscriptionId: source.stripe_subscription_id,
+      };
+      Object.assign(originalFixture.invoice, {
+        customer: originalScope.customerId,
+        subscription: originalScope.providerSubscriptionId,
+        total: 3000,
+        subtotal: 3000,
+        ending_balance: 3000,
+      });
+      const originalLine = originalFixture.invoice.lines.data[0]!;
+      Object.assign(originalLine, {
+        subscription: source.stripe_subscription_id,
+        subscription_item: source.stripe_subscription_item_id,
+        amount: 3000,
+        price: {
+          id: f.providerBinding.sourcePriceId,
+          product: f.providerBinding.sourceProductId,
+        },
+        period: {
+          start: f.captured.source.current_period_start.getTime() / 1000,
+          end: f.captured.source.current_period_end.getTime() / 1000,
+        },
+      });
+      const original = () =>
+        createSubscriptionInvoiceEventEvidence(originalFixture.event, originalScope);
+      originalFixture.event.created = originalLine.period.start + 1;
+      originalFixture.invoice.status_transitions.paid_at = originalLine.period.start + 1;
+      if (purchased) {
+        const terms = await findOriginalInvoiceCommercialTerms(original(), 1);
+        expect(terms.planKey).toBe("plus_monthly");
+        expect(terms.baseAmountCents).toBe(3000);
+        expect(terms.allowanceAmountUsd).toBe("25.000000");
+        expect(terms.priceId).toBe(f.providerBinding.sourcePriceId);
+        expect(terms.subscriptionRevision).toBe(1);
+        expect(terms.periodEnd).toBe(originalLine.period.end);
+        expect(await findOriginalInvoiceCommercialTerms(original(), 1)).toEqual(terms);
+        for (const scopeChange of [
+          { providerAccountId: "acct_foreign" },
+          { organizationId: randomUUID() },
+          { subscriptionId: randomUUID() },
+        ]) {
+          const foreign = createSubscriptionInvoiceEventEvidence(originalFixture.event, {
+            ...originalScope,
+            ...scopeChange,
+          });
+          await expect(findOriginalInvoiceCommercialTerms(foreign, 1)).rejects.toMatchObject({
+            code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+          });
+        }
+        await expect(
+          findOriginalInvoiceCommercialTerms({ ...original(), digest: "f".repeat(64) }, 1),
+        ).rejects.toMatchObject({ code: "SUBSCRIPTION_INVOICE_EVENT_EVIDENCE_UNAVAILABLE" });
+        await expect(findOriginalInvoiceCommercialTerms(original(), 2)).rejects.toMatchObject({
+          code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+        });
+        // Even a correctly rehashed invoice cannot borrow another item, interval or price.
+        for (const change of [
+          { subscription_item: "si_foreign" },
+          { period: { ...originalLine.period, end: originalLine.period.end + 1 } },
+          { price: { ...originalLine.price, id: "price_rotated" } },
+          { amount: 2999 },
+        ]) {
+          const saved = structuredClone(originalLine);
+          Object.assign(originalLine, change);
+          await expect(findOriginalInvoiceCommercialTerms(original(), 1)).rejects.toMatchObject({
+            code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+          });
+          Object.assign(originalLine, saved);
+        }
+        const before = await state(f);
+        // The applied upgrade's actual immutable revision supports its own original price.
+        Object.assign(originalLine, {
+          amount: 10000,
+          price: {
+            id: f.providerBinding.targetPriceId,
+            product: f.providerBinding.targetProductId,
+          },
+        });
+        Object.assign(originalFixture.invoice, {
+          total: 10000,
+          subtotal: 10000,
+          ending_balance: 10000,
+        });
+        const upgradedTerms = await findOriginalInvoiceCommercialTerms(original(), 2);
+        expect(upgradedTerms.planKey).toBe("pro_monthly");
+        expect(upgradedTerms.allowanceAmountUsd).toBe("90.000000");
+        expect(await state(f)).toEqual(before);
+      } else {
+        await expect(findOriginalInvoiceCommercialTerms(original(), 1)).rejects.toMatchObject({
+          code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+        });
+      }
+      for (const revision of [0, 1.5, 9999])
+        await expect(
+          findOriginalInvoiceCommercialTerms(original(), revision),
+        ).rejects.toMatchObject({
+          code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+        });
       await expect(
         findSubscriptionRenewalBinding({ ...source, provider_object_digest: "f".repeat(64) }, {}),
       ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
@@ -343,6 +459,12 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
           const retained = await findSubscriptionRenewalBinding(renewed, {});
           expect(retained.contract?.planKey).toBe("plus_monthly");
           expect(retained.environment.STRIPE_PRO_MONTHLY_PRICE_ID).toBe("price_pro");
+          const historicalTerms = await findOriginalInvoiceCommercialTerms(original(), 2);
+          expect(historicalTerms.subscriptionRevision).toBe(2);
+          expect(historicalTerms.periodEnd).toBe(boundary);
+          await expect(findOriginalInvoiceCommercialTerms(original(), 3)).rejects.toMatchObject({
+            code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+          });
           expect(
             (
               await db.query(
@@ -351,6 +473,26 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
               )
             ).rows,
           ).toEqual([{ granted_amount: "90.000000" }]);
+          await authority.advance({
+            organizationId: renewed.organization_id,
+            subscriptionId: renewed.id,
+            expectedRevision: renewed.lifecycle_revision,
+            source: "webhook",
+            observation: "authoritative_provider_retrieval",
+            values: {
+              ...renewed,
+              status: "canceled",
+              canceled_at: new Date(),
+              ended_at: new Date(),
+              last_provider_event_id: `evt_${randomUUID().replaceAll("-", "")}`,
+              last_provider_event_created_at: new Date(),
+              provider_object_digest: "c".repeat(64),
+            },
+          });
+          const terminal = await authority.findById(renewed.organization_id, renewed.id);
+          expect(terminal?.status).toBe("canceled");
+          expect(await findOriginalInvoiceCommercialTerms(original(), 2)).toEqual(historicalTerms);
+          expect(await authority.findById(renewed.organization_id, renewed.id)).toEqual(terminal);
         } finally {
           for (const [key, value] of [
             ["STRIPE_SECRET_KEY", oldKey],
