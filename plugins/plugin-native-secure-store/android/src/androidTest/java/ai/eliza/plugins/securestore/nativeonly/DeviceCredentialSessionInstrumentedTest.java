@@ -24,11 +24,11 @@ public final class DeviceCredentialSessionInstrumentedTest {
       Host host = new Host(); long[] now = {100};
       try (DeviceCredentialSession session = new DeviceCredentialSession(host,110000,731,750,null,host,()->now[0])) {
         Runnable destination = () -> host.destinations++;
-        session.authenticate("Test", "Synthetic", destination); int old = host.code;
+        session.authenticate("Test", "Synthetic", destination); int old = host.code; assertTrue(session.challengePending());
         session.authenticate("Test", "Synthetic", destination); assertEquals(1,host.launches);
         session.onStop(); assertFalse(session.authenticated());
         assertTrue(session.onActivityResult(old,Activity.RESULT_OK)); assertEquals(1,host.destinations);
-        assertTrue(session.authenticated());
+        assertFalse(session.challengePending()); assertTrue(session.authenticated());
         now[0]+=110000; assertFalse(session.authenticated()); // Timer has not run.
         session.authenticate("Test", "Synthetic", destination); int next = host.code;
         assertTrue(next>old);
