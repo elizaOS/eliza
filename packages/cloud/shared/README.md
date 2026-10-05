@@ -214,3 +214,9 @@ Account management resolves pending-plan cancellation eligibility from the same
 immutable schedule proof as command admission in its primary read transaction.
 The scheduled target alone grants no control; actor/state gates and submission
 revalidation remain authoritative.
+
+New organization renewal grants retain a versioned original invoice/line/payment
+identity and settlement digests in the existing grant metadata, atomically with
+publication. Replay validates and preserves that first record; legacy grants are
+not backfilled from current provider objects. An unknown legacy merchant remains
+null. This identity record is not complete adjustment evidence or refund policy.
