@@ -1002,8 +1002,7 @@ export class RuntimeModelDispatch {
 				? AbortSignal.any([explicitSignal, contextSignal])
 				: (explicitSignal ?? contextSignal);
 		const throwIfAborted = () => {
-			explicitSignal?.throwIfAborted();
-			contextSignal?.throwIfAborted();
+			dispatchSignal?.throwIfAborted();
 		};
 		throwIfAborted();
 		const useModelStartedAt = Date.now();

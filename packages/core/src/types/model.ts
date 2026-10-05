@@ -628,10 +628,10 @@ export interface GenerateTextParams {
 	 * underlying transport (e.g. local llama backends forward to
 	 * `LlamaChatSession.prompt({ stopOnAbortSignal })` and the FFI decode
 	 * loop; HTTP-based providers pass it into `fetch`). The runtime
-	 * populates this from the current streaming context's `abortSignal`
-	 * when none was supplied by the caller, so an `AbortSignal` plumbed
-	 * through `messageService.handleMessage` reaches the model layer
-	 * automatically.
+	 * composes distinct caller and streaming-context signals so either owner
+	 * can cancel the request. Providers and runtime checks share that signal
+	 * and its first abort reason. A sole signal or a shared reference retains
+	 * its identity; caller parameters and controllers remain unchanged.
 	 */
 	signal?: AbortSignal;
 	/**
