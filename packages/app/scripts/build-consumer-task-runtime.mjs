@@ -15,7 +15,7 @@ const SOURCE_PATHS = [
   "plugins/plugin-browser/src",
   "plugins/plugin-google-workspace/src",
   "packages/ui/src/voice",
-  "packages/ui/src/components/interactive-task",
+  "packages/ui/src/components/chat/TaskChoice.tsx",
   "packages/os/browser/src",
 ];
 
