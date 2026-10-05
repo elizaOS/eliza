@@ -1,8 +1,6 @@
 /** Runs abortable asynchronous retries with configurable exponential backoff and jitter. */
 
-// ============================================================================
 // Sleep Utilities
-// ============================================================================
 
 /**
  * Sleep for a specified duration.
@@ -56,9 +54,7 @@ export async function sleepWithAbort(
 	});
 }
 
-// ============================================================================
 // Backoff Policy
-// ============================================================================
 
 /**
  * Configuration for exponential backoff.
@@ -87,9 +83,7 @@ export function computeBackoff(policy: BackoffPolicy, attempt: number): number {
 	return Math.min(policy.maxMs, Math.round(base + jitter));
 }
 
-// ============================================================================
 // Retry Configuration
-// ============================================================================
 
 /**
  * Basic retry configuration.
@@ -202,7 +196,7 @@ function applyJitter(delayMs: number, jitter: number): number {
  *
  * Supports two calling styles:
  * 1. Simple: `retryAsync(fn, attempts, initialDelayMs)`
- * 2. Full options: `retryAsync(fn, { attempts, minDelayMs, ... })`
+ * 2. Full options: `retryAsync(fn, { attempts, minDelayMs,... })`
  *
  * @example
  * ```ts
@@ -211,15 +205,15 @@ function applyJitter(delayMs: number, jitter: number): number {
  *
  * // Full options
  * const result = await retryAsync(
- *   () => fetch(url),
- *   {
- *     attempts: 5,
- *     minDelayMs: 500,
- *     maxDelayMs: 30000,
- *     jitter: 0.2,
- *     shouldRetry: (err) => isRetryable(err),
- *     onRetry: ({ attempt, delayMs }) => log(`Retry ${attempt} in ${delayMs}ms`)
- *   }
+ * () => fetch(url),
+ * {
+ * attempts: 5,
+ * minDelayMs: 500,
+ * maxDelayMs: 30000,
+ * jitter: 0.2,
+ * shouldRetry: (err) => isRetryable(err),
+ * onRetry: ({ attempt, delayMs }) => log(`Retry ${attempt} in ${delayMs}ms`)
+ * }
  * );
  * ```
  *

@@ -31,9 +31,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 	string,
 	SecretValidationPattern
 > = {
-	// ─────────────────────────────────────────────────────────────────────────────
 	// Model Provider API Keys
-	// ─────────────────────────────────────────────────────────────────────────────
 
 	OPENAI_API_KEY: {
 		pattern: /^sk-[a-zA-Z0-9-_]{20,}$/,
@@ -133,9 +131,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		example: "sk-…",
 	},
 
-	// ─────────────────────────────────────────────────────────────────────────────
 	// Channel/Platform Tokens
-	// ─────────────────────────────────────────────────────────────────────────────
 
 	DISCORD_BOT_TOKEN: {
 		pattern: /^[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}$/,
@@ -180,9 +176,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		example: "EAAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
 	},
 
-	// ─────────────────────────────────────────────────────────────────────────────
 	// Twitter/X Credentials
-	// ─────────────────────────────────────────────────────────────────────────────
 
 	TWITTER_USERNAME: {
 		pattern: /^[a-zA-Z0-9_]{1,15}$/,
@@ -214,9 +208,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		example: "JBSWY3DPEHPK3PXP",
 	},
 
-	// ─────────────────────────────────────────────────────────────────────────────
 	// Media/Voice Services
-	// ─────────────────────────────────────────────────────────────────────────────
 
 	ELEVENLABS_API_KEY: {
 		pattern: /^[a-f0-9]{32}$/,
@@ -233,9 +225,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		example: "21m00Tcm4TlvDq8ikWAM",
 	},
 
-	// ─────────────────────────────────────────────────────────────────────────────
 	// Infrastructure
-	// ─────────────────────────────────────────────────────────────────────────────
 
 	ENCRYPTION_SALT: {
 		pattern: /^[a-f0-9]{32,64}$/,

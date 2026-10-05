@@ -1,45 +1,9 @@
 import { isRuntimeAbortSignal } from "./runtime-abort-signal";
 /**
- * PII pseudonymization for the model-call boundary (#10469 / #7007).
- *
- * The secret-swap layer ({@link ./secret-swap}) masks *structured secrets*
- * (API keys, private keys, DB creds) behind opaque `__ELIZA_SECRET_…__`
- * placeholders that the model must never reason about and that are restored
- * only at the true execution boundary. That is the wrong shape for
- * *named-entity PII* — a person's name, an employer, a city, a street address.
- * For those the model genuinely needs to reason over a *coherent* value ("draft
- * an email to my manager Dana at Acme about the Rushmore contract") — but it
- * must never see the real one.
- *
- * The answer is **pseudonymization**: swap each real entity for a *realistic*
- * surrogate of the same type ("Dana Whitfield" → "Priya Okafor", "Acme" →
- * "Northwind Labs"), consistently within a session, then reverse the mapping on
- * the way back out. The provider sees a fluent, plausible prompt containing zero
- * real PII; the user sees their real contacts; the executed tool call carries the
- * real recipient.
- *
- * Guarantees this module is built to keep (exercised by the fuzz/red-team suites):
- * - **Deterministic + consistent.** The same original maps to the same surrogate
- *   everywhere in a session (a per-session random salt makes the mapping
- *   *unlinkable* across sessions so a provider cannot correlate turns).
- * - **Bijective + reversible.** Two different originals never share a surrogate,
- *   and every minted surrogate is collision-checked against the learned corpus
- *   and every other surrogate — so restore is exact. The only hard rule on the
- *   surrogate itself is that it is never the original's *own* value; a surrogate
- *   may coincidentally share a token with (or equal) some *other* real name — the
- *   mapping stays reversible and the provider still cannot attribute it.
- * - **No-leak.** After `substituteInValue`, no real value survives as a real
- *   reference: every standalone occurrence of a learned value is replaced. A real
- *   name may appear only as an incidental token *inside* a fabricated surrogate,
- *   which carries no attributable information.
- * - **Blacklist-aware.** Framework/brand identity ("elizaOS", "Eliza", provider
- *   names) and caller-supplied exempt values are never swapped.
- *
- * Detection is *not* done here — this module owns the surrogate vault and the
- * substitution/restoration. Callers feed it spans from an
- * {@link ./entity-recognizer | entity recognizer} (regex + an optional local NER
- * model) via {@link PseudonymSession.learnSpans}, or feed raw text plus a
- * recognizer via {@link PseudonymSession.learn}.
+ * Creates consistent, reversible entity surrogates within a randomly salted session.
+ * Collision checks keep distinct learned values bijective; exempt framework identities
+ * remain unchanged. Callers supply detected spans. Substitution hides learned references
+ * from model input, and restoration occurs at authorized output boundaries.
  */
 
 import { ElizaError } from "../errors";
@@ -148,9 +112,8 @@ export function parsePiiSwapList(value: unknown): string[] {
 		.filter(Boolean);
 }
 
-// ---------------------------------------------------------------------------
 // Surrogate pools — realistic, fictional values by entity class.
-// ---------------------------------------------------------------------------
+
 // Deliberately fictional and broad. Phone/email/address use reserved-for-fiction
 // ranges (555-01xx per NANP; example.com/.org/.net per RFC 2606) so a surrogate
 // can never resolve to a real person, number, or mailbox even if it leaks.
@@ -334,9 +297,7 @@ const STREET_TYPES: readonly string[] = [
 	"Way",
 ];
 
-// ---------------------------------------------------------------------------
 // Deterministic hashing (FNV-1a 32-bit) — reproducible surrogate selection.
-// ---------------------------------------------------------------------------
 
 function fnv1a(input: string): number {
 	let hash = 0x811c9dc5;
@@ -600,18 +561,18 @@ function escapeRegExp(input: string): string {
  * properties make substitution and restoration exact and mutually safe:
  *
  * 1. **Single pass, longest-first.** All keys go into one alternation ordered by
- *    length descending, so at any position the longest key wins and text a
- *    replacement *inserts* is never re-scanned. This is what lets a surrogate
- *    ("Mateo Delgado") safely contain a token that is itself another real value
- *    ("Mateo") without corrupting the round-trip.
+ * length descending, so at any position the longest key wins and text a
+ * replacement *inserts* is never re-scanned. This is what lets a surrogate
+ * ("Mateo Delgado") safely contain a token that is itself another real value
+ * ("Mateo") without corrupting the round-trip.
  * 2. **Word-boundary lookarounds.** A key only matches when it is not glued to an
- *    adjacent word character, so swapping "John" never mangles "Johnson". Named
- *    entities are always word-char-edged, so this is the correct semantics and
- *    cannot drop a real occurrence.
+ * adjacent word character, so swapping "John" never mangles "Johnson". Named
+ * entities are always word-char-edged, so this is the correct semantics and
+ * cannot drop a real occurrence.
  *
  * Returns `null` when there is nothing to replace.
  *
- * Exported for the corpus pseudonym map ({@link ./pii-pseudonym-map}), which
+ * Exported for the corpus pseudonym map ({@link./pii-pseudonym-map}), which
  * needs the exact same longest-first boundary-aware pass for its corpus-wide
  * alias substitution. Not part of the security barrel's public API.
  */
@@ -637,9 +598,9 @@ export function compileReplacer(
  * function of `(salt, kind, value, attempt)` so the mapping is deterministic and
  * reproducible; `attempt` is advanced by the caller on a collision.
  *
- * Exported for the corpus pseudonym map ({@link ./pii-pseudonym-map}), which
+ * Exported for the corpus pseudonym map ({@link./pii-pseudonym-map}), which
  * extends this per-session minting to a corpus-persistent map keyed by entity
- * cluster (#14805). Not part of the security barrel's public API.
+ * cluster. Not part of the security barrel's public API.
  */
 export function mintSurrogate(
 	salt: string,
@@ -737,7 +698,7 @@ export class PseudonymSession {
 	/**
 	 * Longest string in either namespace (a real value or its surrogate),
 	 * maintained as entries are minted/re-minted. The streaming guard
-	 * ({@link ./guarded-stream}) sizes its carry-over window from this so a value
+	 * ({@link./guarded-stream}) sizes its carry-over window from this so a value
 	 * or surrogate that spans a chunk boundary is never split across two emissions
 	 * (which would leak a value fragment on the safe side, or drop a restore on the
 	 * visible side). Surrogates can be longer than their value, so both count.
@@ -793,7 +754,7 @@ export class PseudonymSession {
 	learnSpans(sourceText: string, spans: readonly EntitySpan[]): void {
 		if (sourceText) this.corpusLower += `\n${sourceText.toLowerCase()}`;
 		// 1. Register every swappable incoming value into the value namespace first,
-		//    so both the re-mint check and any new mint below see the full set.
+		// so both the re-mint check and any new mint below see the full set.
 		const incoming: { value: string; kind: string }[] = [];
 		for (const span of spans) {
 			const value = span.value.trim();
@@ -803,7 +764,7 @@ export class PseudonymSession {
 				incoming.push({ value, kind: span.kind });
 		}
 		// 2. Re-mint any existing entry whose surrogate now equals a known value —
-		//    the cross-call collision. Snapshot first (remint mutates the maps).
+		// the cross-call collision. Snapshot first (remint mutates the maps).
 		for (const entry of [...this.valueToEntry.values()]) {
 			if (this.knownValuesLower.has(entry.surrogate.toLowerCase())) {
 				this.remintEntry(entry);

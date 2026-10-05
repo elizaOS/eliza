@@ -35,7 +35,7 @@ export type PermissionId =
 	| "local-network"
 	| "battery-optimization";
 
-/** Legacy narrow alias for older dashboard callers. New code should use PermissionId. */
+/** Dashboard permission subset. */
 export type SystemPermissionId =
 	| "accessibility"
 	| "screen-recording"
@@ -139,11 +139,7 @@ export interface PermissionState {
 	lastBlockedFeature?: { app: string; action: string; at: number };
 	canRequest: boolean;
 	platform: Platform;
-	/**
-	 * Legacy free-text reason field. Prefer `restrictedReason` for the
-	 * categorical reason a permission is unavailable. Kept for back-compat with
-	 * callers that surfaced human-readable strings inline.
-	 */
+	/** Free-text reason for display; restrictedReason carries the categorical restriction. */
 	reason?: string;
 }
 
@@ -185,13 +181,7 @@ export interface IPermissionsRegistry {
 	registerProber(prober: Prober): void;
 }
 
-/**
- * Full permission-state snapshot keyed by every canonical permission id.
- * Legacy callers that only render the original dashboard subset can safely
- * index the keys they know about; newer settings/chat surfaces use the full
- * map so LifeOps, Health, Screen Time, and Apple app permissions share one
- * contract.
- */
+/** Permission-state snapshot keyed by canonical permission ID. Consumers may select the subset they render. */
 export type AllPermissionsState = Record<PermissionId, PermissionState>;
 
 export interface PermissionManagerConfig {

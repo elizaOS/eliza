@@ -4,12 +4,12 @@
  * suggestion chips, live task cards, and sensitive (secret / OAuth) requests.
  *
  * These types are the single source of truth shared by every surface:
- *   - the runtime normalizes a reply's `Content.text` into `Content.interactions`
- *     (see `messaging/interactions`),
- *   - the dashboard renders them as inline widgets,
- *   - connectors (Telegram, Discord, …) render them as native components
- *     (inline keyboards, action rows, select menus) and route the user's answer
- *     back as an ordinary inbound message.
+ * - the runtime normalizes a reply's `Content.text` into `Content.interactions`
+ * (see `messaging/interactions`),
+ * - the dashboard renders them as inline widgets,
+ * - connectors (Telegram, Discord, …) render them as native components
+ * (inline keyboards, action rows, select menus) and route the user's answer
+ * back as an ordinary inbound message.
  *
  * The wire format is the bracket-marker text the dashboard already emits
  * (`[FORM]`, `[CHOICE:…]`, `[FOLLOWUPS]`, `[TASK:…]`) so existing agent output

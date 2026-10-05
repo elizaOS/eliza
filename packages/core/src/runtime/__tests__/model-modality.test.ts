@@ -10,7 +10,7 @@ import { ModelType } from "../../types/model.js";
 import {
 	modalityForModelType,
 	PII_SWAP_SKIP_MODEL_TYPES,
-} from "../model-dispatch/modality";
+} from "../model-modality";
 
 const ADDRESS = "221 Baker Street";
 

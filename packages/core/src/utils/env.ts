@@ -1,9 +1,5 @@
 /**
- * Environment variable normalization helpers.
- *
- * Consolidates the `normalizeSecret` / `normalizeEnvValue` pattern that was
- * independently implemented in cloud connection, steward bridge, and wallet
- * trade helpers.
+ * Environment-value normalization and explicit alias resolution.
  */
 
 /**
@@ -44,4 +40,19 @@ export function isEnvDisabled(value: string | undefined): boolean {
  */
 export function isExactTrueEnvFlag(value: string | undefined): boolean {
 	return value === "true";
+}
+
+/** Resolve an explicit alias table without mutating the supplied environment. */
+export function resolveEnvAlias(
+	key: string,
+	aliases: readonly (readonly [string, string])[] | undefined,
+	env: Record<string, string | undefined> | null,
+): string | undefined {
+	if (!env) return undefined;
+	if (env[key]?.trim()) return env[key];
+	for (const [left, right] of aliases ?? []) {
+		const partner = left === key ? right : right === key ? left : undefined;
+		if (partner !== undefined && env[partner]?.trim()) return env[partner];
+	}
+	return undefined;
 }

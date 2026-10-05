@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
 import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases";
 
 const packageRoot = fileURLToPath(new URL("./", import.meta.url));
@@ -225,6 +226,7 @@ export default defineConfig({
     ],
   },
   test: {
+    ...compoundVitestEvidence(),
     globals: false,
     setupFiles: ["./vitest.setup.ts"],
     // Write worker console output straight to stdout instead of shipping every

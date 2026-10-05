@@ -892,10 +892,10 @@ export function LoginProvider({
 /**
  * Access the elizaOS context. Must be used inside <LoginProvider>.
  */
-export function useLoginContext(): LoginContextValue {
+export function useLogin(): LoginContextValue {
   const ctx = useContext(LoginContext);
   if (!ctx) {
-    throw new Error("useLoginContext must be used within a <LoginProvider>");
+    throw new Error("useLogin must be used within a <LoginProvider>");
   }
   return ctx;
 }

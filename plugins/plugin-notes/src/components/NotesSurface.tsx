@@ -446,8 +446,6 @@ export interface NotesSurfaceProps {
   loading: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
-  /** Render the shared route header. Every caller must declare its chrome context. */
-  standalone: boolean;
 }
 
 export function NotesSurface({

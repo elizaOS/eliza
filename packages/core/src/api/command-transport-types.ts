@@ -1,19 +1,4 @@
-/**
- * Canonical wire contract for the universal slash-command catalog served by
- * `GET /api/commands`. This is the single declaration of the command transport
- * shape — the projection `serializeCommand` produces, the TUI autocomplete
- * consumes, the web composer renders, and the connector bridges forward.
- *
- * The domain vocabulary (`CommandScope`, `CommandCategory`, `CommandSurface`,
- * `CommandArgSource`, `ClientCommandAction`, `CommandTarget`) lives in
- * `@elizaos/core` alongside `CommandDefinition`; those types are re-exported
- * here so every wire consumer references one enum/union and cannot drift (the
- * TUI previously carried a hand-synced copy that lost `toggle-transcription`,
- * the `source` field, `views`, and the strong `category` union — #12411).
- *
- * Kept in the shared API layer so agent, UI, TUI, and command-service
- * implementations import one contract without depending on each other.
- */
+/** Wire contract for GET /api/commands. Domain command types remain separate from their serialized transport representation. */
 
 import type {
 	CommandArgSource,
@@ -70,7 +55,7 @@ export interface SerializedCommand {
 	target: CommandTarget;
 	icon?: string;
 	source: SerializedCommandSource;
-	/** View ids this command is scoped to (#8798); omitted when global. */
+	/** View ids this command is scoped to; omitted when global. */
 	views?: string[];
 }
 

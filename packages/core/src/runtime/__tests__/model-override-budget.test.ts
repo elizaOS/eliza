@@ -3,7 +3,7 @@ import type { IAgentRuntime } from "../../types/runtime.js";
 import {
 	RuntimeModelDispatch,
 	type RuntimeModelDispatchHost,
-} from "../model-dispatch/dispatcher.ts";
+} from "../model-dispatch.ts";
 import {
 	DEFAULT_CONTEXT_WINDOW_TOKENS,
 	DEFAULT_INPUT_RESERVE_TOKENS,

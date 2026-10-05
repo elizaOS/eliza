@@ -1,13 +1,4 @@
-/**
- * Structured error base for the fast-fail error policy (#12263 / parent #12182).
- *
- * `ElizaError` is the one shared error type new and rewritten throw sites use so
- * failures carry a machine-classifiable `code`, structured `context`, and a
- * preserved `cause` chain instead of a bare string. It is additive: existing
- * ad-hoc error classes (`CapabilityError`, `SecretsError`, …) are not
- * force-migrated and may extend it opportunistically. The runtime is throw-based
- * end to end — this is a plain `Error` subclass, not a `Result<T,E>` wrapper.
- */
+/** Structured errors carry a machine-readable code, contextual data, and the original cause. */
 
 /**
  * Severity hint for an {@link ElizaError}. `ephemeral` failures are expected to
@@ -33,12 +24,7 @@ export interface ElizaErrorOptions {
 	severity?: ElizaErrorSeverity;
 }
 
-/**
- * Process-wide brand shared by every bundled copy of this module. The package
- * root, the lean `./errors` subpath and other compiled entrypoints each inline
- * their own `ElizaError` class, so prototype identity alone would make an error
- * thrown through one entrypoint fail `instanceof` against another.
- */
+/** Process-wide branding preserves instanceof across separately bundled copies. */
 const ELIZA_ERROR_BRAND: unique symbol = Symbol.for("elizaos.core.ElizaError");
 
 /**

@@ -94,12 +94,12 @@ Renewal and missed-event recovery retain the original checkout account binding a
 paid organization upgrade. The current price/product come from the applied upgrade's
 immutable quote and complete subsequent source revision history, not rotated environment
 prices. Unsupported or missing lineage remains unavailable. The scheduled renewal path
-proves the retained original schedule and active target phase before atomically publishing
+proves the retained original schedule terms and compatible lifecycle before atomically publishing
 the paid lower plan and allowance. Later renewals retain its reviewed price through the
 paid target revision and original grant. Distinct deliveries of an already-funded invoice
 acknowledge immutable payment records without changing current source, entitlement or
 spendable balances. This path currently supports full-price captured payments; retained
-adjustments, delayed settlement, released schedules and public orchestration remain
+adjustments, delayed settlement and public orchestration remain
 required before product adoption.
 
 Failed owned target invoices now use the existing dunning lifecycle through webhook and
@@ -112,5 +112,34 @@ The original grace window cannot be reset by a later revision.
 Target terms survive a verified schedule release/completion through the retained original
 snapshot and explicitly checked lifecycle changes. Released targets can settle within their
 original invoice period. Historical grants expire atomically through the existing ledger;
-payment publication after that period still requires separate historical invoice and live
-compatibility proof and remains unavailable until that owner is implemented.
+historical target publication combines original captured invoice and separate live
+compatibility proof in the existing receipt transaction. It advances only the original
+paid interval, retains later dunning from the next unpaid boundary, and never grants
+current-period credit from an old payment. Chronological missed-invoice discovery,
+post-boundary original configuration recovery and terminal-source accounting remain open.
+
+Captured renewal payment proof is independently reusable for an exact retained invoice
+interval, price, owner and amount. It does not read or synthesize current subscription
+state. Current renewal publication still requires its live period/latest-invoice checks;
+historical publication must separately preserve ordered source authority and current dunning.
+
+Scheduled target observation separates compatible live state from original-period
+settlement. A released/completed schedule can have a later active, past-due or unpaid
+subscription without proving any invoice paid. Original settlement still requires its
+exact interval and latest invoice; historical callers must independently prove captured
+payment, preserve later debt and publish source/allowance in order.
+
+Adjacent ordinary historical renewals use independent live compatibility and captured
+payment proof after the scheduled target settles. Each transaction records only the
+next proven paid interval, expires its old allowance and retains later observed dunning.
+Cancellation commands keep their stricter captured-item/period authority. Ordinary
+renewals currently retain item identity; chronological invoice discovery and verified
+item-replacement history remain required for complete missed-period recovery.
+
+Missed-period recovery traverses complete authenticated subscription invoice pages
+within the claim's database-time creation boundary before selecting the unique invoice
+starting at the stored paid period end. It rejects ambiguity, overlap, incomplete
+history and unpaid gaps, then retrieves canonical payment/live objects again. Discovery
+precedes active/dunning routing; the existing leased transaction settles one adjacent
+period per attempt and subsequent scans continue history. Provider read failure never
+authorizes a partial match or a jump to the newest invoice.

@@ -160,12 +160,7 @@ export const MUTATING_EFFECT_CAPABILITY_TAGS: ReadonlySet<string> = new Set([
  */
 export const IDEMPOTENT_EFFECT_ACTION_TAG = "effect:idempotent";
 
-/**
- * Opt-in tag for actions whose visible mutation outcome must be bound to a
- * validated receipt. Capability tags still disable unsafe automatic retries
- * across the whole action catalog; this separate tag lets receipt enforcement
- * roll out without suppressing callbacks from actions not yet migrated.
- */
+/** Actions with this tag require validated effect receipts for visible mutation outcomes. Capability tags independently disable unsafe automatic retries. */
 export const EFFECT_RECEIPT_REQUIRED_ACTION_TAG = "effect:receipt-required";
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -563,7 +558,7 @@ export function tagsPermitAutomaticRetry(
 	);
 }
 
-/** True when an action has completed the receipt-contract migration. */
+/** Whether the action requires receipt-bound mutation outcomes. */
 export function tagsRequireEffectReceipts(
 	tags: readonly string[] | undefined,
 ): boolean {

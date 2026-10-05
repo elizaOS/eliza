@@ -4,16 +4,18 @@ import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 import type { proveOriginalConfiguredTarget } from "./organization-schedule-target-authority";
-import { observeScheduledTargetSubscription } from "./organization-schedule-target-observation";
-import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
-  validateCancellationCustomer,
-  validatePeriodEndCancellationObservation,
-} from "./stripe-period-end-cancellation";
+  observeScheduledTargetLiveSubscription,
+  observeScheduledTargetSubscription,
+} from "./organization-schedule-target-observation";
+import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { validateCancellationCustomer } from "./stripe-period-end-cancellation";
+import { observeOrdinaryRenewalLiveSubscription } from "./stripe-renewal-live-observation";
 import {
   resolveSubscriptionPlanDefinition,
   resolveSubscriptionProviderBinding,
 } from "./subscription-catalog";
+import { SUBSCRIPTION_PAYMENT_GRACE_MS } from "./subscription-payment-grace";
 
 const seconds = z.number().int().nonnegative().safe();
 const cents = z.number().int().positive().safe();
@@ -125,6 +127,79 @@ const chargeSchema = z.object({
   transfer: z.null().optional(),
   transfer_data: z.null(),
 });
+/** Proves only an exact full-price invoice and captured money. The caller must independently
+ * prove retained contract authority, current ownership/lifecycle, ordered publication and leases.
+ * An expired interval is valid payment evidence, never authority for current access. */
+export function validateCapturedRenewalPayment(input: {
+  invoice: unknown;
+  paymentIntent: unknown;
+  charge: unknown;
+  initialPayment?: boolean;
+  expected: {
+    subscriptionId: string;
+    customerId: string;
+    subscriptionItemId: string;
+    priceId: string;
+    productId: string;
+    livemode: boolean;
+    amountCents: number;
+    start: Date;
+    end: Date;
+  };
+}) {
+  const invoiceResult = (
+    input.initialPayment ? initialInvoiceSchema : renewalInvoiceSchema
+  ).safeParse(input.invoice);
+  const paymentResult = paymentSchema.safeParse(input.paymentIntent);
+  const chargeResult = chargeSchema.safeParse(input.charge);
+  if (!invoiceResult.success || !paymentResult.success || !chargeResult.success)
+    renewalUnavailable("unsupported_provider_shape_or_adjustment");
+  const invoice = invoiceResult.data,
+    payment = paymentResult.data,
+    charge = chargeResult.data;
+  const line = invoice.lines.data[0];
+  if (!line) renewalUnavailable("missing_recurring_line");
+  const expected = input.expected;
+  if (
+    !Number.isSafeInteger(expected.amountCents) ||
+    expected.amountCents <= 0 ||
+    !Number.isFinite(expected.start.getTime()) ||
+    !Number.isFinite(expected.end.getTime()) ||
+    expected.start >= expected.end ||
+    line.period.start * 1000 !== expected.start.getTime() ||
+    line.period.end * 1000 !== expected.end.getTime() ||
+    invoice.subscription !== expected.subscriptionId ||
+    invoice.customer !== expected.customerId ||
+    invoice.livemode !== expected.livemode ||
+    line.subscription !== expected.subscriptionId ||
+    line.subscription_item !== expected.subscriptionItemId ||
+    line.price.id !== expected.priceId ||
+    line.price.product !== expected.productId ||
+    [
+      invoice.amount_paid,
+      invoice.amount_due,
+      invoice.total,
+      invoice.subtotal,
+      line.amount,
+      payment.amount,
+      payment.amount_received,
+      charge.amount,
+      charge.amount_captured,
+    ].some((amount) => amount !== expected.amountCents) ||
+    payment.id !== invoice.payment_intent ||
+    payment.invoice !== invoice.id ||
+    payment.customer !== invoice.customer ||
+    payment.latest_charge !== invoice.charge ||
+    payment.livemode !== invoice.livemode ||
+    charge.id !== invoice.charge ||
+    charge.invoice !== invoice.id ||
+    charge.payment_intent !== payment.id ||
+    charge.customer !== invoice.customer ||
+    charge.livemode !== invoice.livemode
+  )
+    renewalUnavailable("payment_invoice_or_catalog_identity_mismatch");
+  return { invoice, line, payment, charge };
+}
 export interface PaidRenewalObjects {
   /** Current account retrieved alongside a persisted purchase contract; absent for legacy authority. */
   providerAccountId?: string;
@@ -150,11 +225,10 @@ export function validatePaidRenewal(
   const invoiceResult = (
     input.initialPayment ? initialInvoiceSchema : renewalInvoiceSchema
   ).safeParse(input.invoice);
-  const paymentResult = paymentSchema.safeParse(input.paymentIntent);
-  const chargeResult = chargeSchema.safeParse(input.charge);
   const subResult = z
     .object({
       latest_invoice: z.string(),
+      status: z.enum(["active", "past_due", "unpaid"]),
       trial_start: z.null(),
       trial_end: z.null(),
       cancel_at_period_end: z.literal(false),
@@ -162,16 +236,9 @@ export function validatePaidRenewal(
       canceled_at: seconds.nullable(),
     })
     .safeParse(input.subscription);
-  if (
-    !invoiceResult.success ||
-    !paymentResult.success ||
-    !chargeResult.success ||
-    !subResult.success
-  )
+  if (!invoiceResult.success || !subResult.success)
     renewalUnavailable("unsupported_provider_shape_or_adjustment");
-  const invoice = invoiceResult.data,
-    payment = paymentResult.data,
-    charge = chargeResult.data;
+  const invoice = invoiceResult.data;
   const line = invoice.lines.data[0];
   if (!line) renewalUnavailable("missing_recurring_line");
   const source = input.source;
@@ -210,6 +277,7 @@ export function validatePaidRenewal(
       );
   const start = new Date(line.period.start * 1000),
     end = new Date(line.period.end * 1000);
+  const historicalPeriod = !input.initialPayment && !input.replayPeriod && end <= input.databaseNow;
   // A renewal paid after failed attempts settles dunning: the stored period is
   // still the one that came due, so adjacency below is unchanged.
   const dunning = source.status !== "active";
@@ -228,7 +296,7 @@ export function validatePaidRenewal(
       (start.getTime() !== target.phase.start.getTime() ||
         end.getTime() !== target.phase.end.getTime())) ||
     start > input.databaseNow ||
-    end <= input.databaseNow ||
+    (!historicalPeriod && end <= input.databaseNow) ||
     (input.replayPeriod || input.initialPayment
       ? start.getTime() !== source.current_period_start.getTime() ||
         end.getTime() !== source.current_period_end.getTime()
@@ -245,8 +313,8 @@ export function validatePaidRenewal(
       environment: input.environment,
     });
   // This is structural validation of the new period; the old→new adjacency above remains authoritative.
-  const targetObservation = target
-    ? observeScheduledTargetSubscription({
+  const targetInput = target
+    ? {
         source,
         authority: target,
         organizationCustomerId: input.organizationCustomerId,
@@ -255,65 +323,80 @@ export function validatePaidRenewal(
         invoiceId: invoice.id,
         observedAt: input.databaseNow,
         retainedCanceledAt: source.canceled_at,
-      })
+      }
     : null;
-  const observed =
-    targetObservation ??
-    validatePeriodEndCancellationObservation({
-      source: {
-        ...source,
-        status: "active",
-        dunning_started_at: null,
-        grace_expires_at: null,
-        current_period_start: start,
-        current_period_end: end,
-      },
-      organizationCustomerId: input.organizationCustomerId,
-      environment: input.environment,
-      raw: input.subscription,
-      observedAt: input.databaseNow,
-      requireScheduled: false,
-      allowRetainedCanceledAt: source.canceled_at,
-    });
+  const ordinaryObservation = targetInput
+    ? null
+    : observeOrdinaryRenewalLiveSubscription({
+        source,
+        raw: input.subscription,
+        observedAt: input.databaseNow,
+        paidStart: start,
+        paidEnd: end,
+        historical: historicalPeriod,
+        binding,
+        amountCents: plan.amountCents,
+      });
+  const historicalObservation = historicalPeriod
+    ? targetInput
+      ? observeScheduledTargetLiveSubscription(targetInput, subResult.data.status)
+      : ordinaryObservation
+    : null;
+  const targetObservation = targetInput
+    ? (historicalObservation ?? observeScheduledTargetSubscription(targetInput))
+    : null;
+  const observed = targetObservation ?? ordinaryObservation;
+  if (!observed) renewalUnavailable("live_observation_missing");
   const subscriptionItemId =
-    targetObservation?.subscriptionItemId ?? source.stripe_subscription_item_id;
+    historicalObservation && target
+      ? line.subscription_item
+      : (targetObservation?.subscriptionItemId ?? source.stripe_subscription_item_id);
   if (
-    invoice.subscription !== source.stripe_subscription_id ||
-    invoice.customer !== source.stripe_customer_id ||
-    invoice.livemode !== binding.expectedLivemode ||
-    subResult.data.latest_invoice !== invoice.id ||
-    line.subscription !== source.stripe_subscription_id ||
-    line.subscription_item !== subscriptionItemId ||
-    line.price.id !== binding.priceId ||
-    line.price.product !== binding.productId ||
-    [
-      invoice.amount_paid,
-      invoice.amount_due,
-      invoice.total,
-      invoice.subtotal,
-      line.amount,
-      payment.amount,
-      payment.amount_received,
-      charge.amount,
-      charge.amount_captured,
-    ].some((amount) => amount !== plan.amountCents) ||
-    payment.id !== invoice.payment_intent ||
-    payment.invoice !== invoice.id ||
-    payment.customer !== invoice.customer ||
-    payment.latest_charge !== invoice.charge ||
-    payment.livemode !== invoice.livemode ||
-    charge.id !== invoice.charge ||
-    charge.invoice !== invoice.id ||
-    charge.payment_intent !== payment.id ||
-    charge.customer !== invoice.customer ||
-    charge.livemode !== invoice.livemode
+    historicalObservation
+      ? subResult.data.latest_invoice === invoice.id ||
+        !/^si_[A-Za-z0-9]+$/.test(line.subscription_item) ||
+        invoice.status_transitions.paid_at * 1000 > input.databaseNow.getTime()
+      : subResult.data.latest_invoice !== invoice.id
   )
     renewalUnavailable("payment_invoice_or_catalog_identity_mismatch");
+  if (!source.stripe_subscription_id || !source.stripe_customer_id || !subscriptionItemId)
+    renewalUnavailable("missing_payment_owner");
+  const { payment, charge } = validateCapturedRenewalPayment({
+    invoice: input.invoice,
+    paymentIntent: input.paymentIntent,
+    charge: input.charge,
+    initialPayment: input.initialPayment,
+    expected: {
+      subscriptionId: source.stripe_subscription_id,
+      customerId: source.stripe_customer_id,
+      subscriptionItemId,
+      priceId: binding.priceId,
+      productId: binding.productId,
+      livemode: binding.expectedLivemode,
+      amountCents: plan.amountCents,
+      start,
+      end,
+    },
+  });
+  const laterDunning = historicalObservation && historicalObservation.providerStatus !== "active";
+  const graceExpiresAt = laterDunning
+    ? new Date(end.getTime() + SUBSCRIPTION_PAYMENT_GRACE_MS)
+    : null;
+  const status: "active" | "grace" | "past_due" | "unpaid" = !laterDunning
+    ? "active"
+    : historicalObservation.providerStatus === "unpaid"
+      ? "unpaid"
+      : input.databaseNow < graceExpiresAt!
+        ? "grace"
+        : "past_due";
   return {
     invoiceId: invoice.id,
     planKey: plan.key,
     subscriptionItemId,
     scheduledTarget: target !== undefined,
+    status,
+    dunningStartedAt: laterDunning ? end : null,
+    graceExpiresAt,
     start,
     end,
     amount: plan.allowance.amountUsd,

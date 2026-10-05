@@ -1,10 +1,10 @@
 /** Immutable character transforms for secrets, plugins, and model-provider detection. */
 
+import type { Character } from "./types/agent.js";
 import {
 	MODEL_PROVIDER_SECRETS as _MODEL_PROVIDER_SECRETS,
 	CHANNEL_SECRETS,
-} from "./constants/secrets";
-import type { Character } from "./types/agent.js";
+} from "./validation/secret-catalog";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RE-EXPORTS FROM CONSTANTS
@@ -12,7 +12,7 @@ import type { Character } from "./types/agent.js";
 
 /**
  * Mapping of model provider names to their corresponding API key environment variables.
- * @see {@link ./constants/secrets} for the comprehensive list
+ * @see {@link./constants/secrets} for the comprehensive list
  */
 export const MODEL_PROVIDER_SECRETS = _MODEL_PROVIDER_SECRETS;
 

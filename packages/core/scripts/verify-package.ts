@@ -135,6 +135,17 @@ try {
 		`Packed kernel installed production closure (${visited.size} packages): ${[...dependencyNames].sort().join(", ")}`,
 	);
 
+	writeFileSync(
+		path.join(consumer, "browser.ts"),
+		'import * as protocol from "@elizaos/core/protocol"; Object.assign(globalThis, { protocol });\n',
+	);
+	run(
+		"bun",
+		["build", "browser.ts", "--target=browser", "--outfile=browser.js"],
+		consumer,
+	);
+	console.log("Packed protocol bundles for browsers without Node built-ins");
+
 	// The test host supplies storage; it must not enter the published kernel closure.
 	run(
 		"bun",

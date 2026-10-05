@@ -1,20 +1,4 @@
 /**
- * AOSP ElizaOS renderer detection. Re-exports the pure user-agent matcher from
- * `./aosp-user-agent` (the canonical, path-imported definition) and adds a
- * `navigator` probe, React-free so Node/Bun-reachable update-policy code can ask
- * "is this device an ElizaOS system image?" without importing the renderer's
- * platform barrel (Capacitor + bridge modules). `@elizaos/ui/platform`
- * re-exports these.
- */
-
-export {
-	isAospElizaUserAgent,
-	userAgentHasElizaOSMarker,
-} from "./aosp-user-agent.js";
-
-import { userAgentHasElizaOSMarker } from "./aosp-user-agent.js";
-
-/**
  * True when the current runtime is an ElizaOS AOSP system image, detected via
  * the renderer's `navigator.userAgent`. In non-browser runtimes (Node/Bun API
  * process) there is no `navigator`, so this is `false`.
@@ -24,3 +8,19 @@ export function isElizaOS(): boolean {
 	if (!nav) return false;
 	return userAgentHasElizaOSMarker(nav.userAgent ?? "");
 }
+
+/**
+ * Shared AOSP renderer detection.
+ *
+ * The Android framework appends the framework marker `ElizaOS/<tag>` only on
+ * Eliza-derived AOSP system images. White-label builds may append additional
+ * brand markers, but they still carry this base marker.
+ */
+export function userAgentHasElizaOSMarker(
+	userAgent: string | null | undefined,
+): boolean {
+	if (typeof userAgent !== "string" || userAgent.length === 0) return false;
+	return /\bElizaOS\/\S/.test(userAgent);
+}
+
+export const isAospElizaUserAgent = userAgentHasElizaOSMarker;
