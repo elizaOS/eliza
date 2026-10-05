@@ -83,6 +83,38 @@ try {
       assert.equal(initializeState.failedRecord, undefined);
       console.log(`${name}: concurrent initialization, stable tombstones, cancellation and quota failure pass`);
 
+      // Initialization must not invalidate an asynchronous edit that already owns the key.
+      const coordinated = await a.evaluate(async () => {
+        let release, started;
+        const ready = new Promise(resolve => { started = resolve; });
+        const editing = window.store.edit("initialize-during-edit", async () => {
+          started();
+          await new Promise(resolve => { release = resolve; });
+          return { raw: "edited", result: "committed" };
+        }).then(value => ({value}), error => ({error:error.name}));
+        await ready;
+        let initialized = false;
+        const creating = window.store.readOrCreate("initialize-during-edit", "legacy").then(value => { initialized = true; return value; });
+        await new Promise(resolve => setTimeout(resolve, 30));
+        const premature = initialized;
+        release();
+        return {premature, editing:await editing, initialized:await creating, saved:await window.store.read("initialize-during-edit")};
+      });
+      assert.equal(coordinated.premature, false);
+      assert.deepEqual(coordinated.editing, {value:"committed"});
+      assert.equal(coordinated.initialized.raw, "edited");
+      assert.deepEqual(coordinated.initialized, coordinated.saved);
+      console.log(`${name}: initialization preserves an in-flight asynchronous editor`);
+
+      const unlockedInitialization = await a.evaluate(async () => {
+        const locks = navigator.locks;
+        Object.defineProperty(navigator, "locks", {configurable:true, value:undefined});
+        try { return await Promise.all(Array.from({length:20}, (_, i) => window.store.readOrCreate("initialize-without-locks", String(i)))); }
+        finally { Object.defineProperty(navigator, "locks", {configurable:true, value:locks}); }
+      });
+      assert.equal(new Set(unlockedInitialization.map(row => row.revision)).size, 1);
+      assert.equal(new Set(unlockedInitialization.map(row => row.raw)).size, 1);
+
       // CAS works without the optional editor lock; two creators cannot both win.
       const create = page => page.evaluate(async () => {
         try { return { saved: await window.store.compareExchange("create", undefined, "original") }; }
