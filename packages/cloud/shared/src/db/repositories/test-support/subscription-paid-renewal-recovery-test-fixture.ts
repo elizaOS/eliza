@@ -392,10 +392,13 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
           data: { object: live },
         };
         await reconcileStripeScheduledCancellationLifecycle({
+          kind: "stripe.event",
+          receivedAt: Date.now(),
           eventId,
           eventType: event.type,
-          event,
-        } as Parameters<typeof reconcileStripeScheduledCancellationLifecycle>[0]);
+          // Production validates pinned Acacia wire data independently of the newer SDK type.
+          event: event as unknown as Stripe.Event,
+        });
         const revision = await sourceRevision(f.command.id);
         const { readOrganizationSubscriptionRenewalReview } = await import(
           "../../../lib/services/subscription-renewal-review"
