@@ -62,6 +62,12 @@ APK, signer, live overlay and restarted framework before reporting provisioning;
 runtime feature qualification remains separate. The bundled extractor validates
 archive membership even under Python optimization.
 
+WebView-based consumers of `runIsolatedAndroidUserTest` can set `requireWebView`
+to wait for provider and RELRO readiness after each secondary-user switch. The
+check saves its last observation in `user-verification.json`, has a one-minute
+deadline, and performs no provider writes or instrumentation retries. It does
+not replace provider-byte admission or runtime feature qualification.
+
 ## Android native plugin verification
 
 With the Android SDK, Java 21, workspace dependencies, and a running emulator:
