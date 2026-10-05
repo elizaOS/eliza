@@ -16,10 +16,7 @@
  */
 
 import path from "node:path";
-
-import { logger } from "@elizaos/core";
-
-import { resolveStateDir } from "../../config/paths.ts";
+import { logger, resolveStateDir } from "@elizaos/core";
 import { boundedWalk } from "./bounded-walk.ts";
 import { DiskStore } from "./disk-store.ts";
 import { type CacheKeyRejection, tryBuildCacheKey } from "./key.ts";

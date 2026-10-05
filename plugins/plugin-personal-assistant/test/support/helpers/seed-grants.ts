@@ -2,14 +2,17 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent";
 import {
   LIFEOPS_X_CAPABILITIES,
   type LifeOpsConnectorSide,
   type LifeOpsGoogleCapability,
   type LifeOpsXCapability,
 } from "@elizaos/contracts";
-import { getConnectorAccountManager, type IAgentRuntime } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  resolveOAuthDir,
+} from "@elizaos/core";
 import {
   googleCapabilitiesToScopes,
   normalizeGoogleCapabilities,

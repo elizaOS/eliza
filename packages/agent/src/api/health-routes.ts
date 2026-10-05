@@ -24,10 +24,9 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { hasTextGenerationHandler } from "@elizaos/plugin-assistant";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
-import type { ElizaConfig } from "../config/config.ts";
 import { createDevCloudConfigAuthorityView } from "../config/dev-cloud-env-authority.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";

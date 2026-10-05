@@ -24,9 +24,8 @@ import type {
   StreamEventEnvelope,
   UUID,
 } from "@elizaos/core";
-
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import type { CloudManager } from "@elizaos/plugin-elizacloud/host-routes";
-import type { ElizaConfig } from "../config/config.ts";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
@@ -84,8 +83,6 @@ export type ConnectorRouteHandler = (
   pathname: string,
   method: string,
 ) => Promise<boolean>;
-
-export type { TradePermissionMode } from "@elizaos/contracts";
 
 export interface PluginEntry {
   id: string;

@@ -38,14 +38,13 @@ import {
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  type ElizaConfig,
   type RouteHelpers,
   type RouteRequestMeta,
   resolveServiceRoutingInConfig,
 } from "@elizaos/host/protocol";
-
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
 import { isCerebrasMode, resolveOpenAIBaseURL } from "@elizaos/plugin-openai";
-import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
   resolveDevCloudEnvAuthority,

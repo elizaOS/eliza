@@ -26,20 +26,20 @@ import {
   MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
+  resolveStateDir,
   toWellFormedUnicode,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
 import { sendJsonError } from "@elizaos/host";
 import {
+  type ElizaConfig,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
 } from "@elizaos/host/protocol";
-import type { ElizaConfig } from "../config/config.ts";
-import { resolveStateDir } from "../config/paths.ts";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
