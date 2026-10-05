@@ -48,7 +48,12 @@ export function editTextControl(
   if (edit.kind === "backspace" && start === end)
     start -= Array.from(value.slice(0, start)).at(-1)?.length ?? 0;
   const next = value.slice(0, start) + text + value.slice(end);
-  if (field.maxLength >= 0 && next.length > field.maxLength) return false;
+  if (
+    edit.kind === "insert" &&
+    field.maxLength >= 0 &&
+    next.length > field.maxLength
+  )
+    return false;
   const prototype =
     field instanceof view.HTMLTextAreaElement
       ? view.HTMLTextAreaElement.prototype

@@ -123,6 +123,17 @@ test("maxLength rejects oversize edits without changing value, caret or dispatch
   assert.equal(field.value, "😀");
   assert.equal(field.selectionStart, 2);
 });
+test("backspace can repair an existing value longer than maxLength", () => {
+  const { Input } = realm(),
+    field = new Input("oversize");
+  field.maxLength = 3;
+  assert.equal(editTextControl(field, { kind: "backspace" }), true);
+  assert.equal(field.value, "oversiz");
+  assert.equal(field.selectionStart, 7);
+  assert.equal(field.events.length, 1);
+  assert.equal(editTextControl(field, { kind: "insert", text: "x" }), false);
+  assert.equal(field.value, "oversiz");
+});
 test("textarea newlines and email fallback preserve editable text when selection API is absent", () => {
   const { Input, Textarea } = realm(),
     area = new Textarea("a");
