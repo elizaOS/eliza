@@ -368,3 +368,31 @@ test("cross-origin clients can read the rendered speed acknowledgment", async ()
       .map((header) => header.trim()),
   ).toContain("x-eliza-tts-speed");
 });
+
+test("cross-origin clients can read the timed speech protocol acknowledgment", async () => {
+  const app = new Hono();
+  app.use("*", corsMiddleware);
+  app.route("/api/v1/voice/tts", route);
+  const origin = "https://cloud.eliza.app";
+  const response = await app.request(
+    "/api/v1/voice/tts",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: JSON.stringify({ ...base, withTimestamps: true }),
+    },
+    {},
+  );
+  await Promise.all(background);
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+  expect(response.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+  expect(response.headers.get("X-Eliza-TTS-Timing")).toBe("character-v1");
+  expect(
+    response.headers
+      .get("Access-Control-Expose-Headers")
+      ?.toLowerCase()
+      .split(",")
+      .map((header) => header.trim()),
+  ).toContain("x-eliza-tts-timing");
+});
