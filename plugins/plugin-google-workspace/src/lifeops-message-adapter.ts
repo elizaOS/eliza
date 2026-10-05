@@ -328,6 +328,19 @@ function newDraftRecipients(draft: DraftRequest): string[] {
   return identifiers;
 }
 
+/** Every requested Gmail account (`worldIds`), or the default account. */
+function requestedAccounts(worldIds: readonly string[] | undefined): string[] {
+  return worldIds?.length ? [...new Set(worldIds)] : [DEFAULT_GOOGLE_ACCOUNT_ID];
+}
+
+/** Merges per-account pages so the shared limit keeps the newest messages. */
+function newestFirst(refs: MessageRef[]): MessageRef[] {
+  return refs
+    .map((ref, index) => ({ ref, index }))
+    .sort((a, b) => b.ref.receivedAtMs - a.ref.receivedAtMs || a.index - b.index)
+    .map(({ ref }) => ref);
+}
+
 export class GoogleGmailAdapter extends BaseMessageAdapter {
   readonly source: MessageSource = "gmail";
 
@@ -361,29 +374,31 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     opts: ListOptions
   ): Promise<MessageRef[]> {
     const service = this.requireService(runtime);
-    const accountId = opts.worldIds?.[0] ?? DEFAULT_GOOGLE_ACCOUNT_ID;
-    // Channel and time filters must reach Gmail before maxResults applies, or
-    // the provider's newest page can hold no match while older ones exist.
-    const messages =
-      opts.channelIds?.length || opts.sinceMs !== undefined
-        ? await searchGmailChannels(
-            service,
-            {
+    const refs: MessageRef[] = [];
+    for (const accountId of requestedAccounts(opts.worldIds)) {
+      // Channel and time filters must reach Gmail before maxResults applies, or
+      // the provider's newest page can hold no match while older ones exist.
+      const messages =
+        opts.channelIds?.length || opts.sinceMs !== undefined
+          ? await searchGmailChannels(
+              service,
+              {
+                accountId,
+                query: listQuery(opts),
+                maxResults: opts.limit,
+                includeSpamTrash: Boolean(opts.channelIds?.length),
+              },
+              opts.channelIds
+            )
+          : await service.listGmailTriageMessages({
               accountId,
-              query: listQuery(opts),
               maxResults: opts.limit,
-              includeSpamTrash: Boolean(opts.channelIds?.length),
-            },
-            opts.channelIds
-          )
-        : await service.listGmailTriageMessages({
-            accountId,
-            maxResults: opts.limit,
-          });
-    return this.cacheAndFilter(
-      messages.map((message) => mapGmailMessage(String(runtime.agentId), accountId, message)),
-      opts
-    );
+            });
+      for (const message of messages) {
+        refs.push(mapGmailMessage(String(runtime.agentId), accountId, message));
+      }
+    }
+    return this.cacheAndFilter(newestFirst(refs), opts);
   }
 
   protected async getMessageImpl(runtime: IAgentRuntime, id: string): Promise<MessageRef | null> {
@@ -625,21 +640,23 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     filters: SearchMessagesFilters
   ): Promise<MessageRef[]> {
     const service = this.requireService(runtime);
-    const accountId = filters.worldIds?.[0] ?? DEFAULT_GOOGLE_ACCOUNT_ID;
-    const messages = await searchGmailChannels(
-      service,
-      {
-        accountId,
-        query: searchQuery(filters),
-        includeSpamTrash: true,
-        maxResults: filters.limit,
-      },
-      filters.channelIds
-    );
-    const refs = messages.map((message) =>
-      mapGmailMessage(String(runtime.agentId), accountId, message)
-    );
-    return this.cacheAndFilter(refs, {
+    const refs: MessageRef[] = [];
+    for (const accountId of requestedAccounts(filters.worldIds)) {
+      const messages = await searchGmailChannels(
+        service,
+        {
+          accountId,
+          query: searchQuery(filters),
+          includeSpamTrash: true,
+          maxResults: filters.limit,
+        },
+        filters.channelIds
+      );
+      for (const message of messages) {
+        refs.push(mapGmailMessage(String(runtime.agentId), accountId, message));
+      }
+    }
+    return this.cacheAndFilter(newestFirst(refs), {
       sinceMs: filters.sinceMs,
       limit: filters.limit,
       worldIds: filters.worldIds,
