@@ -239,3 +239,5 @@ consumer adapters, including static imports. The caller owns the temporary
 directory when staging, or supplies a compiler/JVM budget to the runner, which
 owns temporary-directory cleanup and propagates compilation/assertion failures.
 Staging rejects unknown fixtures, invalid packages and existing output files; it never rewrites production source.
+
+`RuntimeRequestDispatcher` shares bounded normal/urgent-control queues, serialized-body admission and destruction cleanup. Pause/cancel/abort work uses a separate single-worker lane. Defaults preserve four normal workers, sixteen queued normal requests and eight queued controls; hosts can configure queue bounds. Body limits count UTF-16 serialized JSON units; transport byte limits and route/authentication policy remain mandatory. Rejected work is never retried. `close()` interrupts active work and discards queued work. Portable contracts cover saturation, urgent progress, size boundaries and teardown.
