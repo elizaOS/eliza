@@ -431,6 +431,10 @@ jobs:
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.test.ts
           bun test --config=/dev/null --isolate \
+            packages/cloud/api/v1/subscriptions/upgrade/confirm/route.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/sdk/src/organization-upgrade.test.ts
+          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-invoice-search.test.ts

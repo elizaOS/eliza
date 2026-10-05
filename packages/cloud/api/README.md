@@ -72,3 +72,12 @@ Apply migrations `0511_organization_plan_change_quotes` and
 `0513_organization_upgrade_live_lease` before deployment.
 Saving a quote creates no charge, command or allowance grant. Upgrade confirmation
 and scheduled downgrade are separate lifecycle work and are not exposed here.
+
+`POST /api/v1/subscriptions/upgrade/confirm` accepts only `quoteId` and
+`idempotencyKey`. It revalidates the current manager and original review before
+one dispatch; retries retain the original command. `GET /api/v1/subscriptions/upgrade/:commandId`
+reads durable status without provider work. Both return no-store responses and
+require a current billing-manager session. `OUTCOME_UNKNOWN` can include pending
+payment and must not trigger a new intent. `failure: review_required` means an
+unstarted review ended; `invoice_void` requires definitive original void evidence.
+SCA/payment continuation and product adoption remain separate work.

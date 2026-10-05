@@ -469,6 +469,9 @@ async function count(organizationId: string) {
     await expect(
       execution.failOrganizationUpgradeBeforeDispatch(f.identity, old),
     ).rejects.toThrow();
+    const unchanged = await execution.finishOrganizationUpgradeAttempt(f.identity, old);
+    expect(unchanged.lease_token).toBe(fresh.command.lease_token);
+    expect(unchanged.execution_generation).toBe(fresh.command.execution_generation);
     await execution.markOrganizationUpgradeDispatch(f.identity, fresh);
   });
   test("manager revocation after claim prevents dispatch", async () => {
