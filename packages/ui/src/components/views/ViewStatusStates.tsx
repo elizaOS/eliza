@@ -48,7 +48,7 @@ export function ViewStatusFrame({
 }) {
   return (
     <div
-      className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6"
+      className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-4 sm:p-6"
       data-view-status={tone}
       data-view-id={diagnosticId}
     >

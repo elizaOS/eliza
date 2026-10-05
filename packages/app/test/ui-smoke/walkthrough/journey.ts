@@ -44,6 +44,7 @@ import {
   seedAppStorage,
   seedFirstRunCompleteBeforeLoad,
 } from "../helpers";
+import { injectFullCapabilityHost } from "../onboarding-to-home.shared";
 export type Lane = "mock" | "live";
 export const WALKTHROUGH_ACCOUNTS_RESPONSE = {
   providers: [],
@@ -368,44 +369,6 @@ async function installMutableFirstRun(page: Page): Promise<FirstRunControl> {
       complete = next;
     },
   };
-}
-async function injectFullCapabilityHost(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const secureStore = new Map<string, string>();
-    const win = window as unknown as Record<string, unknown>;
-    win.__ELIZA_APP_API_BASE__ = window.location.origin;
-    win.__electrobunWindowId = 1;
-    // The journey advertises desktop capability so local onboarding remains
-    // selectable. Mirror the minimum native host contract as well: production
-    // now validates the bridge before registering shortcuts and tray handlers.
-    win.__ELIZA_ELECTROBUN_RPC__ = {
-      request: {
-        desktopGetVersion: async () => ({ runtime: "walkthrough-test" }),
-        desktopRegisterShortcut: async () => ({ success: true }),
-        desktopSetTrayMenu: async () => undefined,
-        secureStoreGet: async ({ kind }: { kind: string }) =>
-          secureStore.has(kind)
-            ? { ok: true, value: secureStore.get(kind) }
-            : { ok: false, reason: "not_found" },
-        secureStoreSet: async ({
-          kind,
-          value,
-        }: {
-          kind: string;
-          value: string;
-        }) => {
-          secureStore.set(kind, value);
-          return { ok: true };
-        },
-        secureStoreDelete: async ({ kind }: { kind: string }) => ({
-          ok: true,
-          deleted: secureStore.delete(kind),
-        }),
-      },
-      onMessage: () => undefined,
-      offMessage: () => undefined,
-    };
-  });
 }
 export interface ConversationStore {
   /** Names of the conversations the mock has created, in order. */
