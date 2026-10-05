@@ -1,8 +1,6 @@
 /** Canonical secret names, accepted aliases, and model-provider mappings. */
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // CANONICAL SECRET KEYS
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * List of all canonical secret key names.
@@ -58,9 +56,7 @@ export const CANONICAL_SECRET_KEYS = [
  */
 export type CanonicalSecretKey = (typeof CANONICAL_SECRET_KEYS)[number];
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // SECRET KEY ALIASES
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /** Maps accepted secret-key aliases to canonical names. */
 export const SECRET_KEY_ALIASES: Record<string, string> = {
@@ -140,9 +136,7 @@ export const SECRET_KEY_ALIASES: Record<string, string> = {
 	WHATSAPP_API_TOKEN: "WHATSAPP_TOKEN",
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // MODEL PROVIDER SECRETS
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Comprehensive mapping of model provider names to their API key environment variables.
@@ -179,9 +173,7 @@ export const MODEL_PROVIDER_SECRETS: Record<string, string> = {
  */
 export const LOCAL_MODEL_PROVIDERS = ["ollama"] as const;
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // CHANNEL SECRETS
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Required secrets for each communication channel.
@@ -203,9 +195,7 @@ export const CHANNEL_OPTIONAL_SECRETS: Record<string, string[]> = {
 	twitter: ["TWITTER_EMAIL", "TWITTER_2FA_SECRET"],
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Resolve a secret key alias to its canonical name.

@@ -6,21 +6,17 @@ import {
 	CHANNEL_SECRETS,
 } from "./validation/secret-catalog";
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // RE-EXPORTS FROM CONSTANTS
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Mapping of model provider names to their corresponding API key environment variables.
- * @see {@link./constants/secrets} for the comprehensive list
+ * @see validation/secret-catalog.ts for the canonical keys
  */
 export const MODEL_PROVIDER_SECRETS = _MODEL_PROVIDER_SECRETS;
 
 export { CHANNEL_SECRETS };
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // SECRET MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Get a secret value from character.settings.secrets.
@@ -154,9 +150,7 @@ export function mergeCharacterSecrets(
 	};
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // PLUGIN MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Add a plugin to character.plugins. This is an immutable operation.
@@ -214,9 +208,7 @@ export function hasCharacterPlugin(
 	return character.plugins?.includes(pluginName) ?? false;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
 // MODEL PROVIDER DETECTION
-// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Detect which AI model provider is configured based on available API keys.
