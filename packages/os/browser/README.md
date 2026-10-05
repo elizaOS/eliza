@@ -53,9 +53,21 @@ Run `bun run --cwd packages/os test:browser` for protocol tests.
 Installed-browser and signed Android native-host verification are separate required
 integration checks; a built extension alone does not prove those paths work.
 
-Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
-test:browser:page` for real isolated-world DOM freshness tests. This uses a fresh
-test profile and local controlled page, not the installed native-message path.
+Run the isolated-world DOM freshness tests with a fresh profile and local
+controlled page. In Bash or Zsh, run:
+
+```sh
+ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os test:browser:page
+```
+
+In PowerShell, set the executable and run the test separately:
+
+```powershell
+$env:ELIZA_BROWSER_EXECUTABLE = 'C:\absolute\test\chromium.exe'
+bun run --cwd packages/os test:browser:page
+```
+
+These tests do not exercise the installed native-message path.
 
 
 Owned Chromium component builds can preserve the extension ID without the old
@@ -131,14 +143,34 @@ prevents dispatch. The brief tap marker represents dispatch, not verified succes
 normal readback still determines the outcome. Raw task-guide calls cannot request
 an action pointer. Cleanup uses the same acknowledged removal/recovery path.
 Product Pause/Close integration remains required before enabling it in a product.
-Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
-test:browser:guidance` for actual Chromium renderer tests. These do not establish
-native-host, Android or pre-action pointer integration.
+Run the actual Chromium renderer guidance tests. In Bash or Zsh, run:
 
-Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
-test:browser:task-guidance` for actual Chromium binding/removal checks. Socket
-framing is covered by the browser plugin tests; installed native transport and
-Android are separate acceptance gates.
+```sh
+ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os test:browser:guidance
+```
+
+In PowerShell, set the executable as above, then run:
+
+```powershell
+bun run --cwd packages/os test:browser:guidance
+```
+
+These do not establish native-host, Android or pre-action pointer integration.
+
+Run the actual Chromium binding/removal checks. In Bash or Zsh, run:
+
+```sh
+ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os test:browser:task-guidance
+```
+
+In PowerShell, with `ELIZA_BROWSER_EXECUTABLE` set as above, run:
+
+```powershell
+bun run --cwd packages/os test:browser:task-guidance
+```
+
+Socket framing is covered by the browser plugin tests; installed native
+transport and Android are separate acceptance gates.
 
 Task snapshots now attach `manualActivity` from a value-free extension journal.
 The isolated main-frame listener records a form-submit attempt following recent
