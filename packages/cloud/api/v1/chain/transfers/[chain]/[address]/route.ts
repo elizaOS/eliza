@@ -1,15 +1,15 @@
 // Handles v1 cloud API v1 chain transfers chain address route traffic with route-local auth expectations.
 
+import { isValidAddress } from "@elizaos/cloud-shared/lib/services/proxy/address-validation";
+import {
+  chainDataConfig,
+  chainDataHandler,
+} from "@elizaos/cloud-shared/lib/services/proxy/chain-data";
 import {
   applyCorsHeaders,
   handleCorsOptions,
 } from "@elizaos/cloud-shared/lib/services/proxy/cors";
-import { isValidAddress } from "@elizaos/cloud-shared/lib/services/proxy/services/address-validation";
-import {
-  chainDataConfig,
-  chainDataHandler,
-} from "@elizaos/cloud-shared/lib/services/proxy/services/chain-data";
-import { ALCHEMY_SLUGS } from "@elizaos/cloud-shared/lib/services/proxy/services/rpc";
+import { ALCHEMY_SLUGS } from "@elizaos/cloud-shared/lib/services/proxy/rpc";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";

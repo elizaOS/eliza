@@ -46,7 +46,7 @@ import {
 import {
   charactersService,
   type UserCharacter,
-} from "@elizaos/cloud-shared/lib/services/characters/characters";
+} from "@elizaos/cloud-shared/lib/services/characters";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";

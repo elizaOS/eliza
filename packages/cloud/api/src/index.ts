@@ -17,10 +17,6 @@ import {
 } from "@elizaos/cloud-shared/lib/auth/playwright-test-session";
 import { readStewardAccessCookieFromHeader } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
 import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
-import {
-  cloneRequestWithScheduledCronMetadata,
-  makeCronHandler,
-} from "@elizaos/cloud-shared/lib/cron/cloudflare-cron";
 import { getCookieValueFromHeader } from "@elizaos/cloud-shared/lib/http/cookie-header";
 import { nativeApplicationSelectionSurfaceError } from "@elizaos/cloud-shared/lib/http/native-application-selection";
 import {
@@ -40,6 +36,7 @@ import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
 import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
+import { cloneRequestWithScheduledCronMetadata, makeCronHandler } from "./cron";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import {
   isPersonalTelegramDeliveryEpoch1CompatEnabled,

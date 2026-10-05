@@ -8,7 +8,7 @@ import {
 } from "@elizaos/cloud-shared/db/repositories";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
-import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { usersService } from "@elizaos/cloud-shared/lib/services/users";
 import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";

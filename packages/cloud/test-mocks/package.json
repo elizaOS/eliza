@@ -33,8 +33,6 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@elizaos/cloud-sdk": "workspace:*",
-    "@elizaos/plugin-github": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
     "bun-types": "1.4.2"
   }

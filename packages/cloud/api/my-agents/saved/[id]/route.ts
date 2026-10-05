@@ -7,7 +7,7 @@
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";

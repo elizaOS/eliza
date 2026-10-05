@@ -76,11 +76,10 @@ import {
 import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
 import { STRIPE_API_VERSION } from "@elizaos/cloud-shared/lib/stripe-api-version";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { ZodError } from "zod";
-
-import type { StripeEventMessage } from "./types";
 
 const MAX_CREDITS = 10000;
 

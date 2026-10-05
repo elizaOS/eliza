@@ -14,8 +14,8 @@ import { logger } from "../../utils/logger";
 import { getOAuthVersion, incrementOAuthVersion } from "./cache-version";
 import { getAdapter, getAllAdapters } from "./connection-adapters";
 import { Errors } from "./errors";
+import { initiateOAuth2 } from "./oauth2";
 import { getProvider, isProviderConfigured, OAUTH_PROVIDERS } from "./provider-registry";
-import { initiateOAuth2 } from "./providers";
 import { tokenCache } from "./token-cache";
 import type {
   GetTokenByPlatformParams,

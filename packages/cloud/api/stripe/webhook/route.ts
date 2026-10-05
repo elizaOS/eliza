@@ -17,10 +17,10 @@ import type {
   AppContext,
   AppEnv,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import type { StripeEventMessage } from "@/api-queue/types";
 
 const STRIPE_QUEUE_KEY = "stripe-events";
 

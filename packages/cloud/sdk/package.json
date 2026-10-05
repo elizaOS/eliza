@@ -94,11 +94,13 @@
       "default": "./dist/account-billing-snapshot.js"
     },
     "./cloud-setup-session": {
+      "eliza-source": "./src/cloud-setup-session/index.ts",
       "types": "./dist/cloud-setup-session/index.d.ts",
       "import": "./dist/cloud-setup-session/index.js",
       "default": "./dist/cloud-setup-session/index.js"
     },
     "./cloud-setup-session/*": {
+      "eliza-source": "./src/cloud-setup-session/*.ts",
       "types": "./dist/cloud-setup-session/*.d.ts",
       "import": "./dist/cloud-setup-session/*.js",
       "default": "./dist/cloud-setup-session/*.js"
@@ -142,22 +144,22 @@
     },
     "./native-host": "./native-host/cloud-services.mjs",
     "./contracts": {
-      "eliza-source": "./src/contracts/index.ts",
-      "types": "./dist/contracts/index.d.ts",
-      "import": "./dist/contracts/index.js",
-      "default": "./dist/contracts/index.js"
+      "eliza-source": "./src/contracts.ts",
+      "types": "./dist/contracts.d.ts",
+      "import": "./dist/contracts.js",
+      "default": "./dist/contracts.js"
     },
     "./testing": {
-      "eliza-source": "./src/testing/index.ts",
-      "types": "./dist/testing/index.d.ts",
-      "import": "./dist/testing/index.js",
-      "default": "./dist/testing/index.js"
+      "eliza-source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
     },
     "./cloud-setup-session/mock-service": {
-      "eliza-source": "./src/testing/mock-cloud-setup-session.ts",
-      "types": "./dist/testing/mock-cloud-setup-session.d.ts",
-      "import": "./dist/testing/mock-cloud-setup-session.js",
-      "default": "./dist/testing/mock-cloud-setup-session.js"
+      "eliza-source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
     },
     "./native-speech-stream": {
       "eliza-source": "./src/native-speech-stream.ts",

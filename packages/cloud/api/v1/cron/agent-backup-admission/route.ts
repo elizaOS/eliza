@@ -8,14 +8,14 @@
  */
 
 import { verifyCronSecret } from "@elizaos/cloud-shared/lib/auth/cron";
-import {
-  getScheduledCronInvocationMetadata,
-  scheduledCronInvocationId,
-} from "@elizaos/cloud-shared/lib/cron/cloudflare-cron";
 import { runAgentBackupAdmissionCycle } from "@elizaos/cloud-shared/lib/services/agent-backup-admission-runtime";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
+import {
+  getScheduledCronInvocationMetadata,
+  scheduledCronInvocationId,
+} from "@/api-app/cron";
 
 export const AGENT_BACKUP_ADMISSION_CALLER_PATH =
   "/api/v1/cron/agent-backup-admission";

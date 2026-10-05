@@ -14,7 +14,7 @@ import {
 import {
   charactersService,
   type MeteredCharacterCreationReceipt,
-} from "@elizaos/cloud-shared/lib/services/characters/characters";
+} from "@elizaos/cloud-shared/lib/services/characters";
 import { isUniqueConstraintError } from "@elizaos/cloud-shared/lib/utils/db-errors";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";

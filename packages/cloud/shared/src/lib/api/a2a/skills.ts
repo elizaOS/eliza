@@ -38,7 +38,7 @@ import {
   listHostedBrowserSessions,
   navigateHostedBrowserSession,
 } from "../../services/browser-tools";
-import { charactersService } from "../../services/characters/characters";
+import { charactersService } from "../../services/characters";
 import { containersService } from "../../services/containers";
 import { conversationsService } from "../../services/conversations";
 import { type CreditReservation, InsufficientCreditsError } from "../../services/credits";
