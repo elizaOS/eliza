@@ -1070,3 +1070,114 @@ for (const target of ["baseline", "upgrade"])
       await assert.rejects(runIsolatedAndroidTest(f.options));
       assert.equal(f.commands().length, 0);
     });
+
+test("scenario phases retain exact instrumentation evidence and run cleanup after failure", async (t) => {
+  const f = fixture(t);
+  f.options.variants = f.options.variants.slice(0, 1);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      collectVariant: async ({ instrumentPhase }) => {
+        assert.equal(
+          (await instrumentPhase("restore", ["-e", "phase", "restore"]))
+            .totalTests,
+          1,
+        );
+        throw new Error("product PID check failed");
+      },
+      cleanupVariant: async ({ instrumentPhase }) => {
+        await instrumentPhase("cleanup", ["-e", "phase", "cleanup"]);
+      },
+    }),
+    /product PID check failed/,
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.deepEqual(
+    report.variants[0].phases.map((p) => [p.name, p.passed]),
+    [
+      ["restore", true],
+      ["cleanup", true],
+    ],
+  );
+  assert.equal(report.cleaned, true);
+  assert.equal(f.commands().filter((a) => a.includes("instrument")).length, 3);
+});
+
+for (const [name, args, message] of [
+  ["../escape", [], /match/],
+  ["override", ["-e", "class", "org.example.Other"], /selection/],
+  ["unsafe", ["-e", "phase", "a b"], /shell-safe/],
+])
+  test(`phase rejects ${name} before executing instrumentation`, async (t) => {
+    const f = fixture(t);
+    await assert.rejects(
+      runIsolatedAndroidTest({
+        ...f.options,
+        collectVariant: ({ instrumentPhase }) => instrumentPhase(name, args),
+      }),
+      message,
+    );
+    assert.equal(
+      f.commands().filter((a) => a.includes("instrument")).length,
+      1,
+    );
+    assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+  });
+
+test("phase refuses duplicate log names and calls after package cleanup", async (t) => {
+  const f = fixture(t);
+  f.options.variants = f.options.variants.slice(0, 1);
+  let phase;
+  await runIsolatedAndroidTest({
+    ...f.options,
+    collectVariant: async ({ instrumentPhase }) => {
+      phase = instrumentPhase;
+      await phase("restore");
+      await assert.rejects(phase("restore"), /Duplicate/);
+    },
+  });
+  await assert.rejects(phase("late"), /owned packages/);
+  assert.equal(f.commands().filter((a) => a.includes("instrument")).length, 2);
+});
+
+test("phase authenticates installed bytes again before invocation", async (t) => {
+  const f = fixture(t);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      collectVariant: async ({ instrumentPhase }) => {
+        const state = JSON.parse(fs.readFileSync(f.state));
+        fs.appendFileSync(state.files["org.example.consumer"], "changed");
+        await instrumentPhase("restore");
+      },
+    }),
+    /Installed APK changed/,
+  );
+  assert.equal(f.commands().filter((a) => a.includes("instrument")).length, 1);
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.variants[0].phases[0].passed, false);
+  assert.equal(report.cleanupDeferred, true);
+});
+
+test("cancelled campaign permits its bounded cleanup instrumentation phase", async (t) => {
+  const f = fixture(t);
+  const cancellation = new AbortController();
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      signal: cancellation.signal,
+      collectVariant: () => cancellation.abort(),
+      cleanupVariant: async ({ instrumentPhase }) => instrumentPhase("cleanup"),
+    }),
+    /abort/i,
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.variants[0].phases[0].passed, true);
+  assert.equal(report.cleaned, true);
+});
