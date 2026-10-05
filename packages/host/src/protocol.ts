@@ -221,6 +221,7 @@ export {
   isCloudInferenceSelectedInConfig,
   isCloudManagedConnection,
   isFirstRunConnectionComplete,
+  isLocalOnlyInferenceInConfig,
   isLocalProviderConnection,
   isRemoteProviderConnection,
   isSubscriptionProviderSelectionId,
