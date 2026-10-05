@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { AccessContext, IAgentRuntime, UUID } from "@elizaos/core";
+import type { AccessContext, IAgentRuntime } from "@elizaos/core";
 import { getHttpRuntime, type Route } from "@elizaos/host/protocol";
 
 import type { Hono } from "hono";
@@ -18,73 +18,24 @@ interface RuntimeHonoCache {
   app: Hono;
 }
 let cached: RuntimeHonoCache | null = null;
-const INTERNAL_AUTHORIZED_HEADER = "x-eliza-internal-authorized";
-const INTERNAL_TRUSTED_LOCAL_HEADER = "x-eliza-internal-trusted-local";
-const INTERNAL_IN_PROCESS_HEADER = "x-eliza-internal-in-process";
-// Carries the boundary-resolved AccessContext (JSON) from the Node listener
-// into the Hono app (#14781). Like the two headers above it is INTERNAL-ONLY:
-// tryHandleHonoRuntimeRoute always overwrites/deletes it before dispatch, so a
-// client-supplied value can never smuggle a principal in.
-const INTERNAL_ACCESS_CONTEXT_HEADER = "x-eliza-internal-access-context";
-const ROLE_NAMES = new Set(["OWNER", "ADMIN", "USER", "GUEST"]);
-/**
- * Parse the internal access-context header back into a typed AccessContext.
- * The value is producer-controlled (set by this module's own caller), but the
- * parse still validates every field so a malformed value yields NO principal
- * rather than a corrupt one.
- */
-// error-policy:J3 untrusted-input sanitizing — a malformed header resolves to
-// undefined (no principal / owner-boundary semantics are NOT granted: routes
-// only widen disclosure when a context is absent because the caller was
-// trunk-authorized, and that path never sets this header).
-function parseInternalAccessContext(
-  value: string | null,
-): AccessContext | undefined {
-  if (!value) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!parsed || typeof parsed !== "object") return undefined;
-    const record = parsed as Record<string, unknown>;
-    if (
-      typeof record.requesterEntityId !== "string" ||
-      record.requesterEntityId.length === 0
-    ) {
-      return undefined;
-    }
-    const role =
-      typeof record.role === "string" && ROLE_NAMES.has(record.role)
-        ? (record.role as AccessContext["role"])
-        : undefined;
-    return {
-      requesterEntityId: record.requesterEntityId as UUID,
-      ...(typeof record.worldId === "string"
-        ? { worldId: record.worldId as UUID }
-        : {}),
-      ...(role ? { role } : {}),
-      ...(typeof record.isOwner === "boolean"
-        ? { isOwner: record.isOwner }
-        : {}),
-      ...(typeof record.source === "string" ? { source: record.source } : {}),
-    };
-  } catch {
-    // error-policy:J3 untrusted-input sanitizing — a malformed header yields no
-    // principal (undefined), never a fabricated identity.
-    return undefined;
+const requestContexts = new WeakMap<
+  Request,
+  {
+    authorized: boolean;
+    inProcess: boolean;
+    trustedLocal: boolean;
+    accessContext?: AccessContext;
   }
-}
+>();
 function getHonoApp(runtime: IAgentRuntime): Hono {
   if (cached && cached.runtime.deref() === runtime) {
     return cached.app;
   }
   const app = buildHonoAppForRuntime(runtime, {
-    inProcess: (req) => req.headers.get(INTERNAL_IN_PROCESS_HEADER) === "1",
-    isAuthorized: (req) => req.headers.get(INTERNAL_AUTHORIZED_HEADER) === "1",
-    isTrustedLocal: (req) =>
-      req.headers.get(INTERNAL_TRUSTED_LOCAL_HEADER) === "1",
-    resolveAccessContext: (req) =>
-      parseInternalAccessContext(
-        req.headers.get(INTERNAL_ACCESS_CONTEXT_HEADER),
-      ),
+    inProcess: (req) => requestContexts.get(req)?.inProcess === true,
+    isAuthorized: (req) => requestContexts.get(req)?.authorized === true,
+    isTrustedLocal: (req) => requestContexts.get(req)?.trustedLocal === true,
+    resolveAccessContext: (req) => requestContexts.get(req)?.accessContext,
   });
   cached = { runtime: new WeakRef(runtime), app };
   return app;
@@ -307,29 +258,18 @@ export async function tryHandleHonoRuntimeRoute(options: {
   // handler, which re-matches against the same normalized path).
   url.pathname = pathname;
   const headers = nodeHeadersToWeb(req.headers);
-  // Always overwrite attacker-supplied values; only the native dispatcher marks the Node request.
-  headers.set(
-    INTERNAL_IN_PROCESS_HEADER,
-    isAuthenticatedInProcessRequest(req) ? "1" : "0",
-  );
-  headers.set(INTERNAL_AUTHORIZED_HEADER, options.isAuthorized() ? "1" : "0");
-  headers.set(
-    INTERNAL_TRUSTED_LOCAL_HEADER,
-    options.isTrustedLocal?.() ? "1" : "0",
-  );
-  // Always overwrite (or drop) the internal access-context header so an
-  // inbound client value can never survive into dispatch.
-  const accessContext = options.accessContext?.();
-  if (accessContext) {
-    headers.set(INTERNAL_ACCESS_CONTEXT_HEADER, JSON.stringify(accessContext));
-  } else {
-    headers.delete(INTERNAL_ACCESS_CONTEXT_HEADER);
-  }
   // Hono needs a Web Request. Avoid leaking the body to GET/HEAD.
   const request = new Request(url, {
     method: req.method ?? "GET",
     headers,
     body: bodyBytes ?? undefined,
+  });
+  const accessContext = options.accessContext?.();
+  requestContexts.set(request, {
+    authorized: options.isAuthorized(),
+    inProcess: isAuthenticatedInProcessRequest(req),
+    trustedLocal: options.isTrustedLocal?.() === true,
+    ...(accessContext ? { accessContext: structuredClone(accessContext) } : {}),
   });
   const response: Response = await app.fetch(request);
   res.statusCode = response.status;
