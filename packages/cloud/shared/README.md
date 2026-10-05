@@ -194,3 +194,8 @@ Resume requires a fresh schedule preview and preserves
 the current plan without restoring the discarded downgrade. Webhook and active-period
 cron observations validate the same retained schedule; provider and device qualification
 remain separate from controlled integration tests.
+
+Account management resolves pending-plan cancellation eligibility from the same
+immutable schedule proof as command admission in its primary read transaction.
+The scheduled target alone grants no control; actor/state gates and submission
+revalidation remain authoritative.

@@ -39,6 +39,7 @@ function buildCancellationControl(
   subscription: Extract<PrimaryOrganizationSubscription, { state: "current" }>["subscription"],
   observedAt: string,
   authority: SubscriptionCancellationReaderAuthority,
+  configuredCancellation: boolean,
 ): SubscriptionCancellationControlSnapshot {
   const blockers: SubscriptionCancellationBlockerCode[] = [];
   if (authority.authMethod !== "session") blockers.push("interactive_session_required");
@@ -50,7 +51,7 @@ function buildCancellationControl(
     subscription.status !== "active" ||
     subscription.current_period_end.getTime() <= Date.parse(observedAt) ||
     subscription.ended_at !== null ||
-    subscription.pending_plan_key !== null ||
+    (subscription.pending_plan_key !== null && !configuredCancellation) ||
     subscription.dunning_started_at !== null ||
     subscription.grace_expires_at !== null
   )
@@ -137,7 +138,12 @@ export function buildOrganizationSubscriptionSnapshot(
       graceExpiresAt: subscription.grace_expires_at?.toISOString() ?? null,
       dunningStartedAt: subscription.dunning_started_at?.toISOString() ?? null,
       cancellationNotice: buildCancellationNotice(primary, observedAt),
-      cancellationControl: buildCancellationControl(subscription, observedAt, authority),
+      cancellationControl: buildCancellationControl(
+        subscription,
+        observedAt,
+        authority,
+        primary.configuredCancellation,
+      ),
       fundingPolicy: {
         status: "available",
         source: "subscription-funding-operation-taxonomy",

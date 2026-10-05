@@ -199,7 +199,6 @@ export function projectSubscriptionManagement(
     (control.eligible &&
       (sub.state !== "active" ||
         periodEnd <= now ||
-        sub.pendingPlanKey !== null ||
         sub.dunningStartedAt !== null ||
         sub.graceExpiresAt !== null))
   )
