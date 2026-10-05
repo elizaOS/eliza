@@ -381,7 +381,7 @@ describe("durable SQLite agent adapter", () => {
     ).toContain(record.id);
   });
 
-  it("deletes an entity's components, sourced components and memberships with it", async () => {
+  it("deletes an entity's components, memberships, memories, relationships and logs with it", async () => {
     const adapter = await open();
     const worldId = id();
     const otherEntityId = id();
@@ -419,6 +419,34 @@ describe("durable SQLite agent adapter", () => {
       component(unrelated, otherEntityId, agentId),
     ]);
 
+    const deletedMemory = { ...memory("from the deleted contact") };
+    const keptMemory = {
+      ...memory("from the other contact"),
+      entityId: otherEntityId,
+    };
+    await adapter.ensureEmbeddingDimension(3);
+    await adapter.createMemories([
+      { memory: deletedMemory, tableName: "messages" },
+      { memory: keptMemory, tableName: "messages" },
+    ]);
+    await adapter.createRelationships([
+      { sourceEntityId: agentId, targetEntityId: entityId, tags: ["friend"] },
+      {
+        sourceEntityId: entityId,
+        targetEntityId: otherEntityId,
+        tags: ["peer"],
+      },
+      {
+        sourceEntityId: agentId,
+        targetEntityId: otherEntityId,
+        tags: ["kept"],
+      },
+    ]);
+    await adapter.createLogs([
+      { body: {}, entityId, roomId, type: "contact-log" },
+      { body: {}, entityId: otherEntityId, roomId, type: "contact-log" },
+    ]);
+
     await adapter.deleteEntities([entityId]);
 
     expect(await adapter.getEntitiesByIds([entityId])).toEqual([]);
@@ -431,6 +459,21 @@ describe("durable SQLite agent adapter", () => {
     expect(await adapter.getRoomsForParticipants([otherEntityId])).toEqual([
       roomId,
     ]);
+    expect(
+      (await adapter.getMemoriesByIds([deletedMemory.id, keptMemory.id])).map(
+        (row) => row.id,
+      ),
+    ).toEqual([keptMemory.id]);
+    expect(
+      (
+        await adapter.getRelationships({ entityIds: [agentId, otherEntityId] })
+      ).flatMap((row) => row.tags),
+    ).toEqual(["kept"]);
+    expect(
+      (await adapter.getLogs({ type: "contact-log" })).map(
+        (row) => row.entityId,
+      ),
+    ).toEqual([otherEntityId]);
   });
 
   it("rolls back domain records and runtime semantic state in one native transaction", async () => {
