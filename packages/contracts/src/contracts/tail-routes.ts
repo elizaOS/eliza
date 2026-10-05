@@ -1,25 +1,4 @@
-/**
- * Zod schemas for the remaining "tail" HTTP routes.
- *
- * Routes covered:
- *   POST /api/bug-report           (BugReportBody — large optional shape)
- *   PUT  /api/update/channel       { channel: 'stable'|'beta'|'nightly' }
- *
- * Routes intentionally NOT migrated in this batch:
- *   - avatar-routes.ts     (binary buffers via readRequestBodyBuffer)
- *   - config-routes.ts     (PUT /api/config — partial deep merge with
- *                            its own safeMerge / isBlockedObjectKey
- *                            protections; PUT body shape is the full
- *                            ElizaConfig)
- *   - travel-provider-relay-routes.ts, x-relay-routes.ts (proxy
- *                            passthroughs — body shape belongs to the
- *                            upstream provider, not this server)
- *   - registry-routes.ts   (POST /api/registry/refresh takes no body)
- *   - mobile-optional-routes.ts (POST /api/stream/settings already
- *                            uses validateStreamSettings exported from
- *                            plugin-streaming; migrating would require
- *                            re-deriving the StreamSettings shape here)
- */
+/** Request schemas for bug reports and release-channel selection. */
 
 import z from "zod";
 
