@@ -54,7 +54,7 @@ mock.module(
   () => ({
     moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
       next(),
-    RateLimitPresets: { STRICT: {} },
+    RateLimitPresets: { STRICT: {}, STANDARD: {} },
   }),
 );
 mock.module("@elizaos/cloud-shared/lib/services/auto-top-up", () => ({
@@ -108,6 +108,20 @@ mock.module(
       await reauthorize();
       effects.push(`portal:${input.organizationId}`);
       return { url: "https://billing.stripe.com/p/session/test" };
+    },
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/organization-downgrade-command",
+  () => ({
+    confirmOrganizationSubscriptionDowngrade: async (
+      input: { organizationId: string; actorId: string },
+      reauthorize: () => Promise<void>,
+    ) => {
+      await afterPriceRead?.();
+      await reauthorize();
+      effects.push(`downgrade:${input.organizationId}:${input.actorId}`);
+      return { commandId: "original", status: "OUTCOME_UNKNOWN" };
     },
   }),
 );
@@ -165,6 +179,10 @@ beforeAll(async () => {
   );
   route.route("/topup", (await import("../auto-top-up/trigger/route")).default);
   route.route(
+    "/downgrade",
+    (await import("../v1/subscriptions/downgrade/confirm/route")).default,
+  );
+  route.route(
     "/portal",
     (await import("../v1/subscriptions/portal/route")).default,
   );
@@ -198,7 +216,7 @@ function request(
   path: string,
   headers: Record<string, string> = {},
   tokenOrg = org,
-  body: Record<string, unknown> = { amount: 5 },
+  body?: Record<string, unknown>,
 ) {
   const token = createPlaywrightTestSessionToken(userId, tokenOrg, env);
   return route.request(
@@ -211,12 +229,17 @@ function request(
         "idempotency-key": randomUUID(),
         ...headers,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(
+        body ??
+          (path === "downgrade"
+            ? { quoteId: randomUUID(), idempotencyKey: randomUUID() }
+            : { amount: 5 }),
+      ),
     },
     env,
   );
 }
-for (const path of ["checkout", "topup", "portal"]) {
+for (const path of ["checkout", "topup", "portal", "downgrade"]) {
   for (const role of ["owner", "admin"])
     test(`${path}: current ${role} reaches its payment adapter`, async () => {
       cached.role = role;
@@ -227,7 +250,9 @@ for (const path of ["checkout", "topup", "portal"]) {
           ? "stripe"
           : path === "portal"
             ? `portal:${org}`
-            : "topup",
+            : path === "downgrade"
+              ? `downgrade:${org}:${userId}`
+              : "topup",
       );
     });
   for (const role of ["member", "guest"])
@@ -304,3 +329,13 @@ for (const amount of [1, 4.99, 1000.01, 5.001, 5.150000000000001]) {
     expect(effects).toEqual([]);
   });
 }
+
+test("downgrade: manager loss during confirmation is re-read from primary before an effect", async () => {
+  afterPriceRead = async () => {
+    await pg.query("UPDATE users SET role='member' WHERE id=$1", [userId]);
+  };
+  const response = await request("downgrade");
+  expect(response.status).toBe(403);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(effects).toEqual([]);
+});

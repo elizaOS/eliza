@@ -79,12 +79,12 @@ cancellation-preserving release only while configuration has never started. Read
 recovery uses original events and fresh state, never another release attempt. Proven cleanup
 atomically retires its command as FAILED while preserving paid source, projection and allowance;
 organization fencing cannot strand that original cleanup. Configured publication requires
-an active unfenced organization, original-period evidence and a live original lease.
+an active unfenced organization, original dispatch evidence and a live original lease.
 Command orchestration, public confirmation, renewal settlement and live provider qualification remain required before
 product adoption. Cleanup proof currently requires the original billing period and does
 not claim renewal-crossing recovery.
 
-The canonical migration journal includes 0520–0526 in order. Scheduling deployment
+The canonical migration journal includes 0520–0527 in order. Scheduling deployment
 must use the journal-driven migration runner; loading SQL directly in a test fixture
 alone does not establish deployment discovery. The scheduling ledger regression
 exercises the same canonical migration loader used by that runner.
@@ -115,8 +115,7 @@ original invoice period. Historical grants expire atomically through the existin
 historical target publication combines original captured invoice and separate live
 compatibility proof in the existing receipt transaction. It advances only the original
 paid interval, retains later dunning from the next unpaid boundary, and never grants
-current-period credit from an old payment. Chronological missed-invoice discovery,
-post-boundary original configuration recovery and terminal-source accounting remain open.
+current-period credit from an old payment. Chronological recovery preserves adjacent invoice order; terminal-source accounting remains open.
 
 Captured renewal payment proof is independently reusable for an exact retained invoice
 interval, price, owner and amount. It does not read or synthesize current subscription
@@ -149,3 +148,24 @@ rechecks owned failed-invoice, retained catalog/account and compatible past-due/
 live state under the organization lock, retaining the original paid period and pending
 plan without allowance. Later captured payment uses the existing chronological owner.
 Draft/void gaps and an active live subscription with old debt remain explicit uncertainty.
+
+Original configuration proof is separate from current-period publication. It reconstructs
+the request from authenticated creation and immutable retained terms, checks the original
+review/dispatch window, and requires a saved pre-boundary response or an authenticated
+pre-boundary event. Recovery time stays current; retained terms are not fabricated live
+observations. Late publication composes that original proof with fresh target lifecycle,
+owner/catalog/period compatibility and the original locked source/lease. It persists the
+original snapshot, never the later live schedule. Migration 0527 preserves the original
+dispatch window, every paid source field and entitlement deadline, and forbids allowance
+postings. Pending publication does not fund the target or revive an expired entitlement;
+chronological invoice reconciliation still owns payment and dunning. Recovery depends
+on available authenticated original evidence, not indefinite provider event retention.
+
+The private downgrade command coordinator now composes original quote admission,
+leased creation/configuration, authenticated original-event recovery and proven
+partial-create cleanup. A started effect is never dispatched again. Same-quote
+retries keep the original command even with another retry key; occupied leases
+return durable status. Session failure survives cleanup, and status reads perform
+no provider work. Authenticated confirmation/status routes and SDK methods now expose this coordinator.
+Native/product adoption, unattended recovery scheduling and retained-adjustment
+payment authority still need integration and qualification.

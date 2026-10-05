@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { configurationProofTestInput as proofInput } from "./organization-schedule-configuration-test-fixture";
-import { proveReviewedOrganizationScheduleConfiguration as prove } from "./organization-schedule-reviewed-configuration";
+import {
+  proveReviewedOrganizationScheduleConfiguration as prove,
+  proveOriginalReviewedOrganizationScheduleConfiguration as proveOriginal,
+} from "./organization-schedule-reviewed-configuration";
 
 function fixture() {
   const f = proofInput();
@@ -177,4 +180,24 @@ for (const [name, mutate] of [
     expect(() => prove(f)).toThrow(
       expect.objectContaining({ code: "SUBSCRIPTION_SCHEDULE_REVIEW_UNVERIFIED" }),
     );
+  });
+
+test("original reviewed terms remain provable after the boundary without authorizing current publication", () => {
+  const f = fixture(),
+    later = new Date(40 * 86400000);
+  f.originalCreate.observedAt = later;
+  f.originalConfiguration.observedAt = later;
+  const before = structuredClone(f.source),
+    result = proveOriginal(f);
+  expect(result.targetPlanKey).toBe("plus_monthly");
+  expect(result.configuredSnapshot).toEqual(f.rawCurrentSchedule);
+  expect(f.source).toEqual(before);
+  expect(() => prove(f)).toThrow();
+});
+for (const time of [99000, 140000, 200000])
+  test(`historical proof cannot move dispatch outside the original review: ${time}`, () => {
+    const f = fixture();
+    f.originalConfiguration.observedAt = new Date(40 * 86400000);
+    f.originalConfiguration.originalRequest.startedAt = new Date(time);
+    expect(() => proveOriginal(f)).toThrow();
   });

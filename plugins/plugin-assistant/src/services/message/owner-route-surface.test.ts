@@ -29,7 +29,7 @@ function surface(
       name: "action",
       description: "Operation",
       required: true,
-      schema: { type: "string", enum: ["create", "list"] },
+      schema: { type: "string", enum: ["create", "list", "update"] },
     },
   ];
   const owner: Action = {
@@ -107,6 +107,8 @@ describe("owner route survives fallback candidate seeding", () => {
       expect(names).toContain("OWNER_REMINDERS_CREATE");
       expect(names).not.toContain("TRIGGER");
       expect(names).not.toContain("TRIGGER_CREATE");
+      expect(names).not.toContain("TRIGGER_UPDATE");
+      expect(names).not.toContain("TRIGGER_LIST");
       expect(names).toContain("OTHER_WORK");
     },
   );
@@ -146,6 +148,36 @@ describe("owner route survives fallback candidate seeding", () => {
     expect(names).toContain("OWNER_REMINDERS_CREATE");
     expect(names).toContain("TRIGGER_CREATE");
   });
+  it.each(["TRIGGER_UPDATE", "UPDATE_TRIGGER"])(
+    "retains an explicitly selected sibling %s in an unsplit compound outcome",
+    async (candidate) => {
+      const args = surface();
+      args.message.content.text =
+        "Remind me here to stretch in two minutes and update my weather automation.";
+      args.candidateActions = ["OWNER_REMINDERS", candidate];
+      args.intents = [
+        "create the shoulder reminder and update the independent weather automation",
+      ];
+      const names = toolNames(await collectV5PlannerCandidateActions(args));
+      expect(names).toContain("OWNER_REMINDERS_CREATE");
+      expect(names).toContain("TRIGGER_UPDATE");
+    },
+  );
+
+  it("does not suppress an unrelated action with the fallback's prefix", async () => {
+    const args = surface();
+    args.runtime.actions.push({
+      name: "TRIGGER_AUDIT",
+      description: "Independent audit operation",
+      contexts: ["tasks"],
+      validate: async () => true,
+      handler: async () => ({ success: true }),
+    });
+    expect(toolNames(await collectV5PlannerCandidateActions(args))).toContain(
+      "TRIGGER_AUDIT",
+    );
+  });
+
   it("cannot use owner replacement to override actor gates", async () => {
     const args = surface();
     const names = toolNames(
