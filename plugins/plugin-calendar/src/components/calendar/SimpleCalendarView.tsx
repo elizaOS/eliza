@@ -571,9 +571,7 @@ export interface SimpleCalendarViewProps {
   standalone?: boolean;
 }
 
-export function SimpleCalendarView({
-  standalone = false,
-}: SimpleCalendarViewProps = {}) {
+export function SimpleCalendarView(_props: SimpleCalendarViewProps = {}) {
   const calendar = useCalendarWeek({ viewMode: "month" });
   useViewEvent(VIEW_EVENTS.VIEW_REFRESH, () => {
     void calendar.refresh();
@@ -856,7 +854,6 @@ export function SimpleCalendarView({
           .eliza-calendar-day { transition: none !important; }
         }
       `}</style>
-      {standalone ? null : null}
       <PagePanel.ContentArea data-testid="simple-calendar-scroll-region">
         <PagePanel.ContentRail
           width="wide"

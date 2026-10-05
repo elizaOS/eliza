@@ -380,7 +380,6 @@ export function KnowledgeDocumentsView(
 function KnowledgeDocumentsViewForAuthority({
   fileInputId,
   inModal,
-  standalone = false,
   onDocumentsChange,
   onSelectedDocumentIdChange,
   selectedDocumentId,
@@ -1395,7 +1394,6 @@ function KnowledgeDocumentsViewForAuthority({
       onDragOver={handleRootDragOver}
       onDrop={handleRootDrop}
     >
-      {standalone ? null : null}
       {hiddenFileInput}
       <div className="custom-scrollbar eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4 pt-4">
         <SettingsGroup
