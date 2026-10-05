@@ -19,6 +19,6 @@ require the corresponding QEMU binfmt handler. Output is under
 images require verified desktop artifacts and the control broker.
 
 `build.sh`, `make build`, and `just build` select the persistent mkosi image.
-The older live-build ISO is available explicitly through `make legacy-iso`. The
+The
 [installer package](installer/README.md) currently provides planning and execution
 contracts; its tests alone do not prove a deployable installer service.

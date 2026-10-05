@@ -1,5 +1,4 @@
 # WebKit patches
 
-Patches for the WebKit fork pinned in [bun-version.json](../bun-version.json).
-The [cross-build wrapper](../README.md) defaults to C-loop; the experimental JIT
-path refuses unresolved recipe placeholders.
+C-loop patches for the WebKit commit in [bun-version.json](../bun-version.json).
+Build and qualify them with the [cross-build wrapper](../README.md).

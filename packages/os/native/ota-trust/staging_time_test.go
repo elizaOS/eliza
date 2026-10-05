@@ -97,19 +97,17 @@ func TestSourceStagingRechecksAfterFinalIntegrity(t *testing.T) {
 	}
 }
 
-func TestSourceStagingMissingClockAndPointOverridesReject(t *testing.T) {
+func TestSourceStagingMissingClockRejects(t *testing.T) {
 	f := stageFixture(t)
 	source := stagingClock()
-	s := sourceStager(t, f, source)
-	if pair, err := f.run(s); err == nil || pair != nil {
-		t.Fatal("point override accepted")
-	}
 	source.set(1, 1, errors.New("time unavailable"))
 	if pair, err := stageWithSource(f, sourceStager(t, f, source)); err == nil || pair != nil {
 		t.Fatal("missing clock accepted")
 	}
-	if pair, err := stageWithSource(f, f.newStager(t)); err == nil || pair != nil {
-		t.Fatal("legacy stager silently supplied time")
+	s := f.newStager(t)
+	s.source = nil
+	if pair, err := stageWithSource(f, s); err == nil || pair != nil {
+		t.Fatal("missing source silently supplied time")
 	}
 	if _, err := NewPreparedStagerWithTimeSource(f.enrollment, nil); err == nil {
 		t.Fatal("nil source provisioned")

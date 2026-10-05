@@ -14,15 +14,15 @@ import {
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const confidentialManifestPath = path.join(
   repoRoot,
-  "scripts/__tests__/fixtures/confidential-manifest.json",
+  "release/confidential-2026-05-21/manifest.json",
 );
 const goldenFixturePath = path.join(
   repoRoot,
-  "scripts/__tests__/fixtures/tee-evidence.json",
+  "release/schema/tee-evidence.mock.json",
 );
 const tamperedFixturePath = path.join(
   repoRoot,
-  "scripts/__tests__/fixtures/tee-evidence-tampered.json",
+  "release/schema/tee-evidence.tampered.mock.json",
 );
 
 const { normalizeTeeEvidence } = await import(

@@ -120,7 +120,8 @@ type admissionDevice struct {
 type admissionPolicy struct {
 	Repository    string   `json:"repository"`
 	Hosts         []string `json:"artifactHosts"`
-	Now           int64    `json:"trustedNowMs"`
+	Lower         int64    `json:"trustedLowerMs"`
+	Upper         int64    `json:"trustedUpperMs"`
 	Sequence      int64    `json:"minimumSequence"`
 	Revision      int64    `json:"minimumRolloutRevision"`
 	SecurityFloor int64    `json:"securityFloor"`
@@ -136,21 +137,10 @@ type AdmissionResult struct {
 	RecoverySHA256   string
 }
 
-// EvaluateRelease applies native product policy AFTER TUF authentication. Only
-// supervisor-owned observations/provisioned policy may supply device/policy JSON.
-// It does not authenticate arbitrary bytes, verify downloaded APKs or authorize
-// PackageInstaller commit. Re-evaluate with current observations at commit time.
-func EvaluateRelease(descriptor, deviceJSON, policyJSON []byte) (*AdmissionResult, error) {
-	return evaluateRelease(descriptor, deviceJSON, policyJSON, nil)
-}
-
-// evaluateRelease retains the legacy exact-time contract when upper is nil.
-// Interval callers supply the lower bound in policy.Now and the upper separately.
-func evaluateRelease(descriptor, deviceJSON, policyJSON []byte, upper *int64) (*AdmissionResult, error) {
-	host, hostErr := requiredHostPolicy()
-	if hostErr != nil {
-		return nil, hostErr
-	}
+// EvaluateReleaseInterval applies policy after descriptor authentication. The
+// entire trusted interval must fit the rollout window. Device observations and
+// bounds must come from the supervisor; this does not authorize installation.
+func EvaluateReleaseInterval(descriptor, deviceJSON, policyJSON []byte) (*AdmissionResult, error) {
 	var d releaseDescriptor
 	var device admissionDevice
 	var policy admissionPolicy
@@ -162,18 +152,19 @@ func evaluateRelease(descriptor, deviceJSON, policyJSON []byte, upper *int64) (*
 			return nil, err
 		}
 	}
+	return evaluateRelease(d, device, policy)
+}
+
+func evaluateRelease(d releaseDescriptor, device admissionDevice, policy admissionPolicy) (*AdmissionResult, error) {
+	host, hostErr := requiredHostPolicy()
+	if hostErr != nil {
+		return nil, hostErr
+	}
 	if err := validateNativeRelease(d, policy.Hosts); err != nil {
 		return nil, err
 	}
-	if !matches(policy.Repository, repositoryPattern) || !bounded(policy.Now, 0, safeInteger) || !bounded(policy.Sequence, 1, safeInteger) || !bounded(policy.Revision, 1, safeInteger) || !bounded(policy.SecurityFloor, 1, safeInteger) {
-		return nil, errors.New("invalid native trust observations")
-	}
-	latest := policy.Now
-	if upper != nil {
-		latest = *upper
-		if !bounded(policy.Now, 1, safeInteger) || !bounded(latest, policy.Now, safeInteger) {
-			return nil, errors.New("invalid trusted time interval")
-		}
+	if err := validateAdmissionPolicy(policy); err != nil {
+		return nil, err
 	}
 	if err := validateAdmissionDevice(device); err != nil {
 		return nil, err
@@ -198,7 +189,7 @@ func evaluateRelease(descriptor, deviceJSON, policyJSON []byte, upper *int64) (*
 	}
 	starts, _ := releaseTime(d.Rollout.Starts)
 	expires, _ := releaseTime(d.Rollout.Expires)
-	if policy.Now < starts || latest >= expires {
+	if policy.Lower < starts || policy.Upper >= expires {
 		return deferFor("rollout-time")
 	}
 	if contains(d.Rollout.Revoked, d.Candidate.SHA256) || contains(d.Rollout.Revoked, d.Recovery.SHA256) {
@@ -464,4 +455,11 @@ func admissionShape(value any, typ reflect.Type) bool {
 		return ok
 	}
 	return false
+}
+
+func validateAdmissionPolicy(policy admissionPolicy) error {
+	if !matches(policy.Repository, repositoryPattern) || !bounded(policy.Lower, 1, safeInteger) || !bounded(policy.Upper, policy.Lower, safeInteger) || !bounded(policy.Sequence, 1, safeInteger) || !bounded(policy.Revision, 1, safeInteger) || !bounded(policy.SecurityFloor, 1, safeInteger) {
+		return errors.New("invalid native trust observations")
+	}
+	return nil
 }

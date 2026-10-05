@@ -1,0 +1,89 @@
+diff --git a/src/jsc/bindings/v8/V8CpuProfiler.cpp b/src/jsc/bindings/v8/V8CpuProfiler.cpp
+--- a/src/jsc/bindings/v8/V8CpuProfiler.cpp
++++ b/src/jsc/bindings/v8/V8CpuProfiler.cpp
+@@ -26,14 +26,18 @@
+ 
+ namespace shim {
+ 
++#if ENABLE(SAMPLING_PROFILER)
+ static int64_t nowMicroseconds()
+ {
+     return static_cast<int64_t>(
+         WTF::MonotonicTime::now().secondsSinceEpoch().microseconds());
+ }
+ 
++#endif
++
+ uint32_t CpuProfilerImpl::start(WTF::String&& title, bool recordSamples)
+ {
++#if ENABLE(SAMPLING_PROFILER)
+     uint32_t id = m_nextId++;
+     m_sessions.append(Session { id, WTF::move(title), nowMicroseconds(), recordSamples });
+ 
+@@ -48,6 +52,10 @@
+     }
+ 
+     return id;
++#else
++    // C-loop builds have no sampler and must not claim a profiling session.
++    return 0;
++#endif
+ }
+ 
+ const CpuProfilerImpl::Session* CpuProfilerImpl::sessionWithTitle(const WTF::String& title) const
+@@ -59,6 +67,7 @@
+     return nullptr;
+ }
+ 
++#if ENABLE(SAMPLING_PROFILER)
+ // Build the top-down call tree from JSC::SamplingProfiler stack traces. Mirrors
+ // the tree-building pass in BunCPUProfiler.cpp (which emits JSON), but targets
+ // the V8 CpuProfileNode/CpuProfile object model instead.
+@@ -275,8 +284,11 @@
+     profile.m_endTime = lastTimestamp > startTime ? lastTimestamp : nowMicroseconds();
+ }
+ 
++#endif
++
+ CpuProfileImpl* CpuProfilerImpl::stop(uint32_t id)
+ {
++#if ENABLE(SAMPLING_PROFILER)
+     size_t index = WTF::notFound;
+     for (size_t i = 0; i < m_sessions.size(); ++i) {
+         if (m_sessions[i].id == id) {
+@@ -304,6 +316,9 @@
+     }
+ 
+     return profile;
++#else
++    return nullptr;
++#endif
+ }
+ 
+ } // namespace shim
+@@ -466,6 +481,7 @@
+ void CpuProfiler::Dispose()
+ {
+     auto* impl = toImpl(this);
++#if ENABLE(SAMPLING_PROFILER)
+     if (!impl->m_sessions.isEmpty()) {
+         if (JSC::SamplingProfiler* sampler = impl->m_isolate->vm().samplingProfiler()) {
+             WTF::Locker locker { sampler->getLock() };
+@@ -473,6 +489,7 @@
+             sampler->clearData();
+         }
+     }
++#endif
+     delete impl;
+ }
+ 
+@@ -506,7 +523,8 @@
+     // microseconds. Refusing the overlap is worse: pprof ignores
+     // kAlreadyStarted, later calls Stop(0), gets nullptr, and dereferences it.
+     uint32_t id = impl->start(WTF::move(name), record_samples);
+-    return CpuProfilingResult { id, CpuProfilingStatus::kStarted };
++    // V8 exposes one failure status; zero is never a live profiler ID.
++    return CpuProfilingResult { id, id ? CpuProfilingStatus::kStarted : CpuProfilingStatus::kErrorTooManyProfilers };
+ }
+ 
+ CpuProfilingStatus CpuProfiler::StartProfiling(Local<String> title, CpuProfilingMode mode, bool record_samples, unsigned max_samples)

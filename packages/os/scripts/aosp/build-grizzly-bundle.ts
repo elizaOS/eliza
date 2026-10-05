@@ -993,7 +993,9 @@ function lockedManifestProjects(aospRoot, lock) {
     resolvedRelative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(resolvedRelative)
   ) {
-    fail("resolved AOSP manifest must be retained in the elizaOS/os checkout");
+    fail(
+      "resolved AOSP manifest must be retained in the elizaOS/eliza checkout",
+    );
   }
   const resolvedBytes = readStableFile(resolvedPath);
   if (
@@ -1557,7 +1559,7 @@ function sourceSnapshot({ aospRoot, outRoot, elizaRoot, lock, lockPath }) {
   assertLockedOverlays(aospRoot, lock);
   const { projects, sourceRoot } = aospProjectSnapshot(aospRoot, outRoot, lock);
   return {
-    osCommit: cleanGitCommit(repositoryRoot, "elizaOS/os"),
+    osCommit: cleanGitCommit(repositoryRoot, "elizaOS/eliza"),
     elizaCommit: cleanGitCommit(elizaRoot, "elizaOS/eliza"),
     lockSha256: sha256File(lockPath),
     manifestCommit: cleanGitCommit(
@@ -1775,7 +1777,7 @@ export function main(argv = process.argv.slice(2)) {
     lockRelativePath.startsWith(`..${path.sep}`) ||
     path.isAbsolute(lockRelativePath)
   ) {
-    fail("the grizzly lock must be a file in the clean elizaOS/os checkout");
+    fail("the grizzly lock must be a file in the clean elizaOS/eliza checkout");
   }
   const elizaRootValue = process.env.ELIZAOS_ELIZA_ROOT?.trim();
   if (!elizaRootValue) fail("ELIZAOS_ELIZA_ROOT is required");
@@ -1791,7 +1793,7 @@ export function main(argv = process.argv.slice(2)) {
   const outputParent = assertBundleOutputLocation({
     outputDir: args.outputDir,
     sourceRoots: [
-      [repositoryRoot, "elizaOS/os"],
+      [repositoryRoot, "elizaOS/eliza"],
       [elizaRoot, "elizaOS/eliza"],
       [args.aospRoot, "AOSP"],
     ],

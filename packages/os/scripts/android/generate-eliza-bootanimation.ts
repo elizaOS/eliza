@@ -30,7 +30,6 @@ import { parseArgs } from "node:util";
 import { resolveElizaSourceRoot } from "../eliza-source.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const osRepoRoot = path.resolve(here, "../..");
 const repoRoot = resolveElizaSourceRoot();
 const reqFromApp = createRequire(
   path.join(repoRoot, "packages/app/package.json"),
@@ -62,8 +61,8 @@ const BOOTANIM_DIR = args["out-dir"]
 const PART0 = path.join(BOOTANIM_DIR, "part0"); // one-shot intro: logo fades in
 const PART1 = path.join(BOOTANIM_DIR, "part1"); // idle loop until boot completes
 const rmRecursiveScript = path.resolve(
-  osRepoRoot,
-  "scripts/rm-path-recursive.ts",
+  repoRoot,
+  "packages/scripts/rm-path-recursive.ts",
 );
 
 // Device framebuffer geometry (matches desc.txt); the eliza_cf_*_phone

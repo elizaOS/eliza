@@ -129,10 +129,9 @@ runtime and direct model-provider configuration remain first-class paths.
 
 ### elizaOS distributions
 
-The standalone [`elizaOS/os`](https://github.com/elizaOS/os) repository owns
-bootable Linux and AOSP distributions, installers, release manifests, and OS
-toolchains. This monorepo retains the Eliza application shells and native
-runtime bridges used by desktop, iOS, Android, and device integrations.
+[`packages/os`](packages/os/README.md) owns bootable Linux and AOSP distributions,
+installers, release manifests, and OS toolchains. Application shells and native
+runtime bridges live in their owning app and plugin packages.
 
 ## Build an agent
 

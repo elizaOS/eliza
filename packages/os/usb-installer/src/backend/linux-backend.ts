@@ -9,11 +9,7 @@ import {
   NoPrivilegeEscalatorError,
   UnmountFailedError,
   WriteCancelledError,
-  WriteIncompleteError,
 } from "./errors";
-import { downloadFile } from "./image-download";
-import { sha256File } from "./image-file";
-import { withTemporaryImageDirectory } from "./image-workspace";
 import {
   type RawImageTarget,
   writeVerifiedRawImage,
@@ -338,23 +334,6 @@ function removableDriveFromLsblkDevice(
 }
 
 // Parse dd stderr progress lines: "1234567890 bytes (1.2 GB, 1.1 GiB) copied, ..."
-function parseDdBytesWritten(line: string): number | null {
-  const match = line.match(/(\d+)\s+bytes/);
-  if (match?.[1]) return Number(match[1]);
-  return null;
-}
-
-// For a multi-line buffer (entire dd stderr), grab the LAST "<n> bytes" count.
-// The single-line parser above only matches the first occurrence, which would
-// return a stale early-progress value when applied to the full transcript.
-function parseDdLastBytesWritten(buffer: string): number | null {
-  const matches = buffer.match(/(\d+)\s+bytes/g);
-  if (!matches || matches.length === 0) return null;
-  const last = matches[matches.length - 1];
-  const m = last?.match(/(\d+)/);
-  return m?.[1] ? Number(m[1]) : null;
-}
-
 export interface PrivilegeEscalator {
   command: string;
   argsPrefix: string[];
@@ -446,24 +425,12 @@ export interface LinuxBackendDeps {
     command: string,
     args: readonly string[],
   ) => Promise<ExecFileResult>;
-  /** Override `spawn` for the dd subprocess. Must return a ChildProcess-like with stderr emitter and on('close'|'error') support. */
+  /** Spawn the native writer and its streaming subprocesses. */
   spawn?: (
     command: string,
     args: readonly string[],
     options?: SpawnOptions,
   ) => ChildProcess;
-  /** Override the resolve-image step (download/access check). Default: real fs+http. */
-  resolveImage?: (
-    image: ElizaOsImage,
-    imagePath: string,
-    onProgress: (pct: number) => void,
-  ) => Promise<void>;
-  /** Override the checksum step. Default: sha256 of the file. */
-  verifyChecksum?: (image: ElizaOsImage, imagePath: string) => Promise<void>;
-  /** Heartbeat interval for dd stalls. Default 1000ms. */
-  heartbeatIntervalMs?: number;
-  /** Heartbeat stall threshold. Default 5000ms. */
-  heartbeatStallMs?: number;
   /** Override current root/live disk detection for tests. */
   currentSystemDiskNames?: () => Promise<Set<string>>;
   /** Override the canonical raw.zst streaming writer for boundary tests. */
@@ -815,8 +782,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     assertWritePlanAllowed(plan, { canonicalRawZstdSupported: true });
 
     const { image, drive } = plan;
-    const isCanonicalRawImage = image.format === "raw.zst";
-    if (isCanonicalRawImage && !this.deps.writeCanonicalRawImage) {
+    if (!this.deps.writeCanonicalRawImage) {
       const helper = this.deps.rawWriterPath ?? DEFAULT_RAW_WRITER;
       linuxRawWriterArguments(image, drive, helper);
       // Refuse a missing packaged helper before privilege prompts or unmounts.
@@ -840,8 +806,6 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
           ? spawn(command, [...args], spawnOptions)
           : spawn(command, [...args]));
     const findEscalatorFn = this.deps.findEscalator ?? findPrivilegeEscalator;
-    const heartbeatInterval = this.deps.heartbeatIntervalMs ?? 1_000;
-    const heartbeatStall = this.deps.heartbeatStallMs ?? 5_000;
 
     // Probe for a privilege escalator BEFORE any side effects (download,
     // checksum, umount). Failing late would leave the device in a partially
@@ -849,222 +813,95 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     const escalator = await findEscalatorFn();
     options.signal?.throwIfAborted();
 
-    await withTemporaryImageDirectory(async (directory) => {
-      const imagePath = path.join(directory, `${image.checksumSha256}.iso`);
-      if (!isCanonicalRawImage) {
-        // Legacy ISO path. Canonical raw.zst inputs are never materialized under
-        // an .iso name or passed to the unverified direct-dd path below.
-        onProgress("resolve-image", 0);
-        if (this.deps.resolveImage) {
-          await this.deps.resolveImage(image, imagePath, (pct) =>
-            onProgress("resolve-image", pct),
-          );
-        } else {
-          await downloadFile(
-            image.url,
-            imagePath,
-            image.sizeBytes,
-            (received, total) => {
-              const pct = total > 0 ? received / total : 0;
-              onProgress("resolve-image", pct);
-            },
-            options.signal,
-          );
-        }
-        onProgress("resolve-image", 1);
-
-        onProgress("checksum", 0);
-        if (this.deps.verifyChecksum) {
-          await this.deps.verifyChecksum(image, imagePath);
-        } else {
-          const actual = await sha256File(imagePath);
-          if (actual !== image.checksumSha256) {
-            throw new Error(
-              `Checksum mismatch: expected ${image.checksumSha256}, got ${actual}`,
-            );
-          }
-        }
-        onProgress("checksum", 1);
+    // Unmount all mounted partitions of the target disk. A busy/failed
+    // unmount must abort the write — dd into a mounted FS corrupts data.
+    options.signal?.throwIfAborted();
+    const { stdout: childStdout } = await execFileFn("lsblk", [
+      "--json",
+      "--output",
+      "NAME,PKNAME,TYPE,MOUNTPOINT",
+      drive.devicePath,
+    ]);
+    let mountedPartitions: string[];
+    try {
+      const childData = JSON.parse(childStdout);
+      const devices = childData?.blockdevices;
+      if (!Array.isArray(devices) || devices.length !== 1) {
+        throw new Error("Expected exactly one selected disk.");
       }
-
-      // Unmount all mounted partitions of the target disk. A busy/failed
-      // unmount must abort the write — dd into a mounted FS corrupts data.
-      options.signal?.throwIfAborted();
-      const { stdout: childStdout } = await execFileFn("lsblk", [
-        "--json",
-        "--output",
-        "NAME,PKNAME,TYPE,MOUNTPOINT",
-        drive.devicePath,
-      ]);
-      let mountedPartitions: string[];
-      try {
-        const childData = JSON.parse(childStdout);
-        const devices = childData?.blockdevices;
-        if (!Array.isArray(devices) || devices.length !== 1) {
-          throw new Error("Expected exactly one selected disk.");
-        }
-        const target = devices[0];
+      const target = devices[0];
+      if (
+        target?.name !== path.basename(drive.devicePath) ||
+        target.type !== "disk" ||
+        target.mountpoint !== null ||
+        (target.children !== undefined && !Array.isArray(target.children))
+      ) {
+        throw new Error("Selected disk identity or mount state is invalid.");
+      }
+      const seen = new Set<string>();
+      mountedPartitions = [];
+      for (const child of target.children ?? []) {
         if (
-          target?.name !== path.basename(drive.devicePath) ||
-          target.type !== "disk" ||
-          target.mountpoint !== null ||
-          (target.children !== undefined && !Array.isArray(target.children))
+          child?.type !== "part" ||
+          child.pkname !== target.name ||
+          typeof child.name !== "string" ||
+          !/^[A-Za-z0-9][A-Za-z0-9_.:+-]*$/.test(child.name) ||
+          child.name === target.name ||
+          seen.has(child.name) ||
+          (child.mountpoint !== null && typeof child.mountpoint !== "string") ||
+          (child.children !== undefined &&
+            (!Array.isArray(child.children) || child.children.length > 0))
         ) {
-          throw new Error("Selected disk identity or mount state is invalid.");
+          throw new Error("Invalid or stacked target partition inventory.");
         }
-        const seen = new Set<string>();
-        mountedPartitions = [];
-        for (const child of target.children ?? []) {
-          if (
-            child?.type !== "part" ||
-            child.pkname !== target.name ||
-            typeof child.name !== "string" ||
-            !/^[A-Za-z0-9][A-Za-z0-9_.:+-]*$/.test(child.name) ||
-            child.name === target.name ||
-            seen.has(child.name) ||
-            (child.mountpoint !== null &&
-              typeof child.mountpoint !== "string") ||
-            (child.children !== undefined &&
-              (!Array.isArray(child.children) || child.children.length > 0))
-          ) {
-            throw new Error("Invalid or stacked target partition inventory.");
-          }
-          if (
-            child.mountpoint !== null &&
-            SYSTEM_MOUNTPOINTS.has(child.mountpoint)
-          ) {
-            throw new Error("Selected disk contains a current system mount.");
-          }
-          seen.add(child.name);
-          if (child.mountpoint) mountedPartitions.push(`/dev/${child.name}`);
+        if (
+          child.mountpoint !== null &&
+          SYSTEM_MOUNTPOINTS.has(child.mountpoint)
+        ) {
+          throw new Error("Selected disk contains a current system mount.");
         }
-      } catch (error) {
-        throw new LsblkParseError(
-          childStdout,
-          error instanceof Error ? error : new Error(String(error)),
+        seen.add(child.name);
+        if (child.mountpoint) mountedPartitions.push(`/dev/${child.name}`);
+      }
+    } catch (error) {
+      throw new LsblkParseError(
+        childStdout,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+    for (const partPath of mountedPartitions) {
+      options.signal?.throwIfAborted();
+      try {
+        await execFileFn(escalator.command, [
+          ...escalator.argsPrefix,
+          "umount",
+          partPath,
+        ]);
+      } catch (err) {
+        const e = err as { stderr?: string; message?: string };
+        throw new UnmountFailedError(
+          partPath,
+          e.stderr?.trim() || e.message || "unknown error",
         );
       }
-      for (const partPath of mountedPartitions) {
-        options.signal?.throwIfAborted();
-        try {
-          await execFileFn(escalator.command, [
-            ...escalator.argsPrefix,
-            "umount",
-            partPath,
-          ]);
-        } catch (err) {
-          const e = err as { stderr?: string; message?: string };
-          throw new UnmountFailedError(
-            partPath,
-            e.stderr?.trim() || e.message || "unknown error",
-          );
-        }
-      }
+    }
 
-      options.signal?.throwIfAborted();
-      if (isCanonicalRawImage) {
-        const writer = this.deps.writeCanonicalRawImage;
-        if (writer) {
-          await writer(image, drive, onProgress, options);
-        } else {
-          await writeCanonicalRawImageToLinuxDevice(
-            image,
-            drive,
-            escalator,
-            spawnFn,
-            onProgress,
-            writeVerifiedRawImage,
-            options,
-            this.deps.rawWriterPath,
-          );
-        }
-        return;
-      }
-
-      // Step: write using a privilege escalator + dd with progress
-      onProgress("write", 0);
-      let finalBytesWritten = 0;
-      await new Promise<void>((resolve, reject) => {
-        const ddArgs = [
-          "dd",
-          `if=${imagePath}`,
-          `of=${drive.devicePath}`,
-          "bs=4M",
-          "status=progress",
-          "conv=fsync",
-        ];
-        const proc = spawnFn(escalator.command, [
-          ...escalator.argsPrefix,
-          ...ddArgs,
-        ]);
-
-        let lastProgress = 0;
-        let lastProgressAt = Date.now();
-        // Heartbeat: if dd output is buffered and no update arrives for >stall,
-        // re-emit the last known progress so the UI knows we are still alive.
-        const heartbeat = setInterval(() => {
-          if (Date.now() - lastProgressAt >= heartbeatStall) {
-            onProgress("write", lastProgress);
-            lastProgressAt = Date.now();
-          }
-        }, heartbeatInterval);
-
-        let stderrBuf = "";
-        let stderrAll = "";
-        let processError: Error | undefined;
-        proc.stderr?.on("data", (chunk: Buffer) => {
-          const text = chunk.toString();
-          stderrAll += text;
-          stderrBuf += text;
-          const segments = stderrBuf.split(/[\r\n]/);
-          stderrBuf = segments.pop() ?? "";
-          for (const seg of segments) {
-            const bytes = parseDdBytesWritten(seg);
-            if (bytes !== null) {
-              finalBytesWritten = bytes;
-              if (image.sizeBytes > 0) {
-                const pct = Math.min(bytes / image.sizeBytes, 0.99);
-                lastProgress = pct;
-                lastProgressAt = Date.now();
-                onProgress("write", pct);
-              }
-            }
-          }
-        });
-
-        proc.on("close", (code) => {
-          clearInterval(heartbeat);
-          // Final dd summary line lives in stderrBuf or stderrAll.
-          const tailBytes =
-            parseDdBytesWritten(stderrBuf) ??
-            parseDdLastBytesWritten(stderrAll);
-          if (tailBytes !== null) {
-            finalBytesWritten = tailBytes;
-          }
-          if (processError) {
-            reject(processError);
-          } else if (code === 0) {
-            resolve();
-          } else {
-            reject(new Error(`dd exited with code ${code ?? "?"}`));
-          }
-        });
-        proc.on("error", (err) => {
-          // Keep ownership until close confirms the child and stdio settled.
-          processError = err;
-        });
-      });
-
-      if (finalBytesWritten !== image.sizeBytes) {
-        throw new WriteIncompleteError(image.sizeBytes, finalBytesWritten);
-      }
-      onProgress("write", 1);
-
-      // Step: verify (sync)
-      onProgress("verify", 0);
-      await execFileFn("sync", []);
-      onProgress("verify", 1);
-    });
+    options.signal?.throwIfAborted();
+    const writer = this.deps.writeCanonicalRawImage;
+    if (writer) {
+      await writer(image, drive, onProgress, options);
+    } else {
+      await writeCanonicalRawImageToLinuxDevice(
+        image,
+        drive,
+        escalator,
+        spawnFn,
+        onProgress,
+        writeVerifiedRawImage,
+        options,
+        this.deps.rawWriterPath,
+      );
+    }
     onProgress("complete", 1);
   }
 }

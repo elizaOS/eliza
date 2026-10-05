@@ -146,7 +146,7 @@ func (r *repository) publishDistribution(t *testing.T, version int64, distributi
 	r.files[baseURL+"targets/stable/"+hex.EncodeToString(digest[:])+"."+distribution+".json"] = r.body
 }
 func fetch(dir string, r *repository, clock time.Time) ([]byte, error) {
-	return FetchDescriptor(dir, r.root, baseURL, "stable", "launcher", clock.UnixMilli(), r)
+	return FetchDescriptorInterval(dir, r.root, baseURL, "stable", "launcher", clock.UnixMilli(), clock.UnixMilli(), r)
 }
 func TestAuthenticatedTargetAndRestart(t *testing.T) {
 	r := fixture(t)
@@ -197,13 +197,13 @@ func TestExpiryAndRollback(t *testing.T) {
 }
 func TestChannelSeparationAndInputBounds(t *testing.T) {
 	r := fixture(t)
-	if _, err := FetchDescriptor(privateDir(t), r.root, baseURL, "beta", "launcher", now.UnixMilli(), r); err == nil {
+	if _, err := FetchDescriptorInterval(privateDir(t), r.root, baseURL, "beta", "launcher", now.UnixMilli(), now.UnixMilli(), r); err == nil {
 		t.Fatal("stable target used for beta")
 	}
-	if _, err := FetchDescriptor(privateDir(t), r.root, baseURL, "stable", "launcher", 0, r); err == nil {
+	if _, err := FetchDescriptorInterval(privateDir(t), r.root, baseURL, "stable", "launcher", 0, 0, r); err == nil {
 		t.Fatal("unknown time accepted")
 	}
-	if _, err := FetchDescriptor(privateDir(t), r.root, "http://updates.example.com/", "stable", "launcher", now.UnixMilli(), r); err == nil {
+	if _, err := FetchDescriptorInterval(privateDir(t), r.root, "http://updates.example.com/", "stable", "launcher", now.UnixMilli(), now.UnixMilli(), r); err == nil {
 		t.Fatal("HTTP accepted")
 	}
 }
