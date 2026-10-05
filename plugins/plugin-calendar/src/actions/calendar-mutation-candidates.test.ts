@@ -137,3 +137,36 @@ describe("resolveCalendarMutationCandidates with a planner-authored date", () =>
     expect(candidates.map((c) => c.id)).toEqual(["e2"]);
   });
 });
+
+describe("resolveCalendarMutationCandidates with all-day events", () => {
+  // All-day events carry their civil date in the date part of startAt (UTC
+  // midnight, as Google and ICS store them); the feed's zone must not shift it.
+  const allDay = (id: string, date: string, next: string, timezone: string) =>
+    ({
+      id,
+      title: "Field trip",
+      startAt: `${date}T00:00:00.000Z`,
+      endAt: `${next}T00:00:00.000Z`,
+      isAllDay: true,
+      timezone,
+    }) as unknown as LifeOpsCalendarEvent;
+
+  it.each(["America/New_York", "Asia/Tokyo"])(
+    "targets the all-day event on the stated date in a %s feed",
+    (timezone) => {
+      const first = allDay("trip-1", "2026-11-01", "2026-11-02", timezone);
+      const second = allDay("trip-2", "2026-11-02", "2026-11-03", timezone);
+      const query = "delete the field trip on November 1, 2026";
+
+      expect(
+        resolveCalendarMutationCandidates({
+          action: "delete",
+          events: [first, second],
+          titleHint: "field trip",
+          texts: [query],
+          timeZone: timezone,
+        }),
+      ).toEqual([first]);
+    },
+  );
+});
