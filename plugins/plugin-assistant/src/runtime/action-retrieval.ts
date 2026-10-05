@@ -822,7 +822,7 @@ export function preferredOperationNames(
   // "Set a reminder" names creation; setting an existing record's fields or
   // configuration does not. Unknown/ambiguous wording keeps full discovery.
   if (
-    /^\s*set\s+(?:(?:an?|new)\s+)?(?:(?:one[- ](?:shot|time)|new)\s+)?(?:reminder|alarm)s?(?=\s+(?:for|to|at|on|in|about|tomorrow|today|next|every)\b|[\s.!?]*$)/iu.test(
+    /^\s*set\s+(?:(?:an?|new)\s+)?(?:(?:one[- ](?:shot|time)|new|[\p{L}\p{N}-]+[- ](?:minute|hour|day|week)s?)\s+)?(?:reminder|alarm)s?(?=\s+(?:for|to|at|on|in|about|here|there|tomorrow|today|next|every)\b|[\s.!?]*$)/iu.test(
       query,
     )
   )
