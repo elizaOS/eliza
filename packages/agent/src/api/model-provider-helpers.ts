@@ -383,19 +383,44 @@ export async function fetchModelsREST(
         upstreamStatus: res.status,
       });
     }
-    const data = (await res.json()) as {
-      data?: Array<{
-        id: string;
-        name?: string;
-        type?: string;
-      }>;
-    };
-    return (data.data ?? [])
-      .map((m) => ({
-        id: m.id,
-        name: m.name ?? m.id,
-        category: m.type ? restTypeToCategory(m.type) : classifyModel(m.id),
-      }))
+    const data: unknown = await res.json();
+    if (
+      !data ||
+      typeof data !== "object" ||
+      !("data" in data) ||
+      !Array.isArray(data.data)
+    ) {
+      throw new ModelCatalogFetchError(providerId);
+    }
+    return data.data
+      .map((model: unknown) => {
+        if (
+          !model ||
+          typeof model !== "object" ||
+          !("id" in model) ||
+          typeof model.id !== "string" ||
+          !model.id.trim() ||
+          ("name" in model &&
+            model.name != null &&
+            typeof model.name !== "string") ||
+          ("type" in model &&
+            model.type != null &&
+            typeof model.type !== "string")
+        ) {
+          throw new ModelCatalogFetchError(providerId);
+        }
+        return {
+          id: model.id,
+          name:
+            "name" in model && typeof model.name === "string"
+              ? model.name
+              : model.id,
+          category:
+            "type" in model && typeof model.type === "string" && model.type
+              ? restTypeToCategory(model.type)
+              : classifyModel(model.id),
+        };
+      })
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
     const failure =

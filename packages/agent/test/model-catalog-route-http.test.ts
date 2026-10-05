@@ -22,6 +22,7 @@ let upstreamModels = [
   { id: "fixture-chat", name: "Fixture Chat", type: "chat" },
 ];
 let upstreamRequests: string[] = [];
+let malformedBody: unknown;
 let apiOrigin: string;
 
 beforeAll(async () => {
@@ -32,7 +33,11 @@ beforeAll(async () => {
     res.setHeader("content-type", "application/json");
     res.end(
       upstreamStatus === 200
-        ? JSON.stringify({ data: upstreamModels })
+        ? JSON.stringify(
+            malformedBody === undefined
+              ? { data: upstreamModels }
+              : malformedBody,
+          )
         : JSON.stringify({ error: "invalid_api_key" }),
     );
   });
@@ -153,4 +158,27 @@ it("keeps a successful empty provider catalog distinct from a failure", async ()
     models: [],
   });
   expect(upstreamRequests).toEqual(["/v1/models"]);
+});
+
+it.each([
+  {},
+  { data: null },
+  { data: [{ name: "missing id" }] },
+  { data: [{ id: 3 }] },
+  { data: [{ id: "model", name: 3 }] },
+])("rejects malformed successful catalog bodies: %j", async (body) => {
+  upstreamStatus = 200;
+  malformedBody = body;
+  try {
+    const response = await fetch(
+      `${apiOrigin}/api/models?provider=openai&refresh=true`,
+    );
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      code: "MODEL_CATALOG_FETCH_FAILED",
+      provider: "openai",
+    });
+  } finally {
+    malformedBody = undefined;
+  }
 });
