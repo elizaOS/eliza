@@ -1340,23 +1340,21 @@ function ViewLayoutSurface({
     </AppWorkspaceContent>
   );
 }
-/**
- * Fallback shown when a view/tab is unavailable. Chat is the always-present
- * ChatOverlay that floats over every view — views never embed an
- * inline ChatView — so an unavailable view falls back to the Launcher page
- * of the retained Home/Launcher surface, not a chat surface.
- */
-function ViewUnavailableFallback({
-  viewId,
-  pageLayout,
-}: {
-  viewId: string;
-  pageLayout?: PageLayoutManifest;
-}): ReactNode {
-  const { refresh } = useAvailableViews();
+/** A shell-owned recovery page remains usable even when the view is absent. */
+function ViewUnavailableFallback({ viewId }: { viewId: string }): ReactNode {
+  const { refresh, error } = useAvailableViews();
+  // The missing view cannot own its scroller. Keep recovery inside the shell's
+  // scroll boundary so the floating composer never covers its escape controls.
   return (
-    <AppWorkspaceContent pageLayout={pageLayout}>
-      <ViewUnavailableState viewId={viewId} onRetry={refresh} />
+    <AppWorkspaceContent
+      pageLayout={{
+        kind: "content",
+        width: "wide",
+        scroll: "shell",
+        gutter: "none",
+      }}
+    >
+      <ViewUnavailableState viewId={viewId} onRetry={refresh} error={error} />
     </AppWorkspaceContent>
   );
 }
@@ -1371,7 +1369,7 @@ function renderPhoneSurface(
       <Component />
     </AppWorkspaceContent>
   ) : (
-    <ViewUnavailableFallback viewId={viewId} pageLayout={pageLayout} />
+    <ViewUnavailableFallback viewId={viewId} />
   );
 }
 function renderAppsSurface(
@@ -1379,7 +1377,7 @@ function renderAppsSurface(
   pageLayout: PageLayoutManifest,
 ): ReactNode {
   if (!APPS_ENABLED) {
-    return <ViewUnavailableFallback viewId="apps" pageLayout={pageLayout} />;
+    return <ViewUnavailableFallback viewId="apps" />;
   }
   const appSlug = getAppSlugFromPath(navigationPath);
   if (!appSlug) {
@@ -1443,14 +1441,10 @@ function buildStaticTabRenderers(): Record<
     // Relationships is plugin-owned. Its app-shell registration claims the
     // route and supplies the page chrome; an absent plugin is an unavailable
     // feature rather than a host-side duplicate implementation.
-    relationships: ({ pageLayout }) => (
-      <ViewUnavailableFallback viewId="relationships" pageLayout={pageLayout} />
-    ),
+    relationships: () => <ViewUnavailableFallback viewId="relationships" />,
     // Knowledge is plugin-owned. If the document plugin is unavailable, the
     // registered-page resolver renders its explicit unavailable state.
-    documents: ({ pageLayout }) => (
-      <ViewUnavailableFallback viewId="documents" pageLayout={pageLayout} />
-    ),
+    documents: () => <ViewUnavailableFallback viewId="documents" />,
     experience: ({ characterNav, pageLayout }) => (
       <AppWorkspaceContent pageLayout={pageLayout} reserveChatClearance={false}>
         <LazyCharacterExperienceView pageChrome={characterNav} />
@@ -1502,15 +1496,9 @@ function buildStaticTabRenderers(): Record<
         pageLayout,
         "camera",
       ),
-    phone: ({ pageLayout }) => (
-      <ViewUnavailableFallback viewId="phone" pageLayout={pageLayout} />
-    ),
-    messages: ({ pageLayout }) => (
-      <ViewUnavailableFallback viewId="messages" pageLayout={pageLayout} />
-    ),
-    contacts: ({ pageLayout }) => (
-      <ViewUnavailableFallback viewId="contacts" pageLayout={pageLayout} />
-    ),
+    phone: () => <ViewUnavailableFallback viewId="phone" />,
+    messages: () => <ViewUnavailableFallback viewId="messages" />,
+    contacts: () => <ViewUnavailableFallback viewId="contacts" />,
     views: ({ navigationPath, pageLayout }) =>
       renderAppsSurface(navigationPath, pageLayout),
     apps: ({ navigationPath, pageLayout }) =>

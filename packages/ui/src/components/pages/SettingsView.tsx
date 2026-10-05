@@ -561,7 +561,7 @@ export function SettingsView({
           {/* Agent-surface anchors: the agent addresses every section by
             `section-<id>` regardless of which one is shown. */}
           <div className="hidden">
-            {visibleSections.map((section) => (
+            {availableSections.map((section) => (
               <SettingsSectionSurfaceAnchor
                 key={section.id}
                 section={section}
