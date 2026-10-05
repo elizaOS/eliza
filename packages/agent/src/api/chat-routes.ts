@@ -22,6 +22,7 @@ import {
   asObjectRecord as asRecord,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
+  type ChatImageAttachment,
   type Content,
   createMessageMemory,
   type EffectReceipt,
@@ -141,11 +142,9 @@ import {
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import { readUiLanguageHeader } from "./server-helpers-config.ts";
-import type { ChatImageAttachment } from "./server-types.ts";
+
 import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
-
-export type { ChatImageAttachment, LogEntry };
 
 const CHAT_APPEND_ONLY_STREAM_DIVERGENCE = "CHAT_APPEND_ONLY_STREAM_DIVERGENCE";
 type LocalInferenceChatApi = Pick<
@@ -629,7 +628,6 @@ function isAppendOnlyStreamDivergenceError(
     error.code === CHAT_APPEND_ONLY_STREAM_DIVERGENCE
   );
 }
-// LogEntry is canonical in @elizaos/core and re-exported above.
 type CallbackMergeMode = "append" | "replace";
 function resolveCallbackMergeMode(
   content: Content,

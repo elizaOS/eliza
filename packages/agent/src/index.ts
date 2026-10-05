@@ -165,16 +165,10 @@ export {
 export { routeAutonomyTextToUser } from "./api/server-helpers-swarm.ts";
 export { resolveWalletExportRejection } from "./api/server-helpers-wallet.ts";
 export type {
-  AgentAutomationMode,
   ChatAttachmentWithData,
   ConnectorRouteHandler,
-  ConversationAutomationType,
   ConversationMeta,
-  ConversationMetadata,
-  ConversationScope,
   PluginEntry,
-  PluginParamDef,
-  StreamEventType,
 } from "./api/server-types.ts";
 export { injectApiBaseIntoHtml } from "./api/static-file-server.ts";
 export * from "./api/subscription-routes.ts";
