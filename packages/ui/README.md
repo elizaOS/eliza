@@ -103,3 +103,20 @@ policy. Keyboard layouts, key mapping, visibility, focus and viewport handling
 remain product-owned. These helpers do not submit forms or advance workflows.
 
 `createValidatedJsonStorage` shares guarded JSON reads, writes and removal. Pass a storage resolver so getter failures are also caught. Hosts retain keys, schema validators, fallbacks and presentation of failed writes. Reads reject malformed or invalid data; writes reject unserializable values without replacing the prior record. No automatic retries or recovery side effects occur.
+
+`attachProgressiveSpeech` attaches the Cloud SDK's native speech source (or a
+compatible injected source) to an owned HTMLAudioElement. MP3 MediaSource appends
+are serialized; the host controls play, rate, volume and presentation through
+`onReady` and `onFrame`. `loaded` resolves only after explicit stream completion,
+returning a complete Blob and the original timing frames for memory-only replay.
+Call `dispose` on Stop, account change, unmount or completed playback cleanup.
+Browsers without MP3 MediaSource accumulate that same response, without another
+synthesis. Hosts must stop/discard failed sessions and must not invent timestamp
+offsets or infer word times from text length.
+
+`bun run test:progressive-speech-e2e` exercises actual Chromium MP3 decoding,
+playback before EOF, mid-stream disposal, whole-clip fallback and Blob replay.
+The committed fixture is a synthetic four-second 440 Hz tone, generated with
+`ffmpeg -f lavfi -i sine=frequency=440:sample_rate=44100:duration=4 -ac 1 -b:a 32k -write_xing 0 -map_metadata -1 synthetic-tone.mp3`.
+The test permits autoplay explicitly; it does not qualify autoplay policy,
+provider timing/voice quality, mobile WebView or physical speakers.

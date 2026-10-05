@@ -146,3 +146,13 @@ Never automatically restart an uncertain synthesis under a new request identity.
 Two active streams and 32 retained identities bound host resources; capacity
 rejection is explicit. Clients must stop playback on cancellation/account change
 and discard unfinished media; this transport alone does not implement playback.
+
+`@elizaos/cloud-sdk/native-speech-stream` is the browser-safe counterpart to the
+native session routes. Inject the host's authenticated JSON transport into
+`createNativeSpeechStream`, call `open`/`pull`, and retain the same instance when
+explicitly retrying a lost transport reply. Its request identity and cursor do not
+change on transport failure; malformed protocol data stops the session. Concurrent
+pulls share one delivery. A ten-minute client deadline prevents an expired host
+identity from accidentally starting a new synthesis. Pass an account/playback
+AbortSignal, or call `cancel` on Stop. Never persist the instance or media. The
+client exposes separate original/normalized timing without synthesizing offsets.
