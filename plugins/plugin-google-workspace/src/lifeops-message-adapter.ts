@@ -35,6 +35,7 @@ import {
   type ReadMessageResult,
   type SearchMessagesFilters,
 } from "@elizaos/plugin-assistant";
+import { sortGmailMessages } from "./gmail.js";
 import {
   buildGmailContentPublication,
   gmailContentHeadId,
@@ -171,7 +172,52 @@ function searchQuery(filters: SearchMessagesFilters): string {
   for (const tag of filters.tags ?? []) {
     tokens.push(`label:${tag}`);
   }
+  pushSinceToken(tokens, filters.sinceMs);
   return tokens.join(" ");
+}
+
+function listQuery(opts: ListOptions): string {
+  const tokens = ["in:inbox"];
+  pushSinceToken(tokens, opts.sinceMs);
+  return tokens.join(" ");
+}
+
+/**
+ * Gmail's labelIds filter matches messages carrying all listed labels, so a
+ * message in any requested channel needs one bounded query per label. The
+ * union keeps the newest maxResults, as a single provider query would.
+ */
+async function searchGmailChannels(
+  service: GoogleGmailAdapterService,
+  params: {
+    accountId: string;
+    query: string;
+    includeSpamTrash?: boolean;
+    maxResults?: number;
+  },
+  channelIds: readonly string[] | undefined
+): Promise<GoogleGmailMessageSummary[]> {
+  if (!channelIds?.length) {
+    return service.searchGmailMessages(params);
+  }
+  const byId = new Map<string, GoogleGmailMessageSummary>();
+  for (const labelId of new Set(channelIds)) {
+    for (const message of await service.searchGmailMessages({ ...params, labelIds: [labelId] })) {
+      byId.set(message.externalId, message);
+    }
+  }
+  const newest = [...byId.values()]
+    .sort((left, right) => asReceivedAtMs(right.receivedAt) - asReceivedAtMs(left.receivedAt))
+    .slice(0, params.maxResults ?? byId.size);
+  return sortGmailMessages(newest);
+}
+
+// Gmail's `after:` accepts epoch seconds. Flooring keeps every message at or
+// after sinceMs; cacheAndFilter still applies the exact millisecond bound.
+function pushSinceToken(tokens: string[], sinceMs: number | undefined): void {
+  if (sinceMs !== undefined) {
+    tokens.push(`after:${Math.floor(sinceMs / 1000)}`);
+  }
 }
 
 function toGmailOperation(op: ManageOperation): {
@@ -298,10 +344,19 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
   ): Promise<MessageRef[]> {
     const service = this.requireService(runtime);
     const accountId = opts.worldIds?.[0] ?? DEFAULT_GOOGLE_ACCOUNT_ID;
-    const messages = await service.listGmailTriageMessages({
-      accountId,
-      maxResults: opts.limit,
-    });
+    // Channel and time filters must reach Gmail before maxResults applies, or
+    // the provider's newest page can hold no match while older ones exist.
+    const messages =
+      opts.channelIds?.length || opts.sinceMs !== undefined
+        ? await searchGmailChannels(
+            service,
+            { accountId, query: listQuery(opts), maxResults: opts.limit },
+            opts.channelIds
+          )
+        : await service.listGmailTriageMessages({
+            accountId,
+            maxResults: opts.limit,
+          });
     return this.cacheAndFilter(
       messages.map((message) => mapGmailMessage(String(runtime.agentId), accountId, message)),
       opts
@@ -548,12 +603,16 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
   ): Promise<MessageRef[]> {
     const service = this.requireService(runtime);
     const accountId = filters.worldIds?.[0] ?? DEFAULT_GOOGLE_ACCOUNT_ID;
-    const messages = await service.searchGmailMessages({
-      accountId,
-      query: searchQuery(filters),
-      includeSpamTrash: true,
-      maxResults: filters.limit,
-    });
+    const messages = await searchGmailChannels(
+      service,
+      {
+        accountId,
+        query: searchQuery(filters),
+        includeSpamTrash: true,
+        maxResults: filters.limit,
+      },
+      filters.channelIds
+    );
     const refs = messages.map((message) =>
       mapGmailMessage(String(runtime.agentId), accountId, message)
     );
@@ -736,7 +795,8 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       if (worlds && (!message.worldId || !worlds.has(message.worldId))) {
         continue;
       }
-      if (channels && (!message.channelId || !channels.has(message.channelId))) {
+      // A Gmail message is in every label it carries, not only its first.
+      if (channels && !(message.tags ?? []).some((label) => channels.has(label))) {
         continue;
       }
       this.messageCache.set(message.id, message);
