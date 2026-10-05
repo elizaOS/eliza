@@ -1144,10 +1144,14 @@ async function buildRecentConversationContext(
   message: Memory,
 ): Promise<string> {
   try {
+    // Rendered as a transcript, so read oldest-first; adapters default to
+    // newest-first.
     const recentMessages = await runtime.getMemories({
       roomId: message.roomId,
       unique: true,
       tableName: "messages",
+      orderBy: "createdAt",
+      orderDirection: "asc",
     });
     return recentMessages
       .filter(
