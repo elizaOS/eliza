@@ -211,6 +211,8 @@ describe("GoogleGmailAdapter", () => {
       limit: 2,
     });
     expect(inbox.map((message) => message.externalId)).toEqual(["inbox_2", "inbox_1"]);
+    // The channel is the mailbox, not the first (state) label.
+    expect(inbox.map((message) => message.channelId)).toEqual(["INBOX", "INBOX"]);
 
     const either = await adapter.listMessages(runtime, {
       channelIds: ["Label_7", "INBOX"],
@@ -221,6 +223,7 @@ describe("GoogleGmailAdapter", () => {
       "inbox_1",
       "inbox_2",
     ]);
+    expect(either.find((message) => message.externalId === "custom")?.channelId).toBe("Label_7");
 
     const trash = await adapter.listMessages(runtime, { channelIds: ["TRASH"], limit: 1 });
     expect(trash.map((message) => message.externalId)).toEqual(["trash"]);

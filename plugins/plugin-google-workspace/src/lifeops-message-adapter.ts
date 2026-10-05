@@ -122,6 +122,19 @@ function gmailReplyReferences(referencesHeader: string | null, messageIdHeader: 
   return `${referencesHeader} ${messageIdHeader}`;
 }
 
+// Mailbox labels in display priority. Gmail returns labelIds unordered and
+// mixes in state labels (UNREAD, IMPORTANT, STARRED, CATEGORY_*), so the first
+// label is not the message's channel.
+const GMAIL_MAILBOX_LABELS = ["INBOX", "SENT", "DRAFT", "SPAM", "TRASH"];
+
+function gmailChannelId(labels: readonly string[]): string | undefined {
+  return (
+    GMAIL_MAILBOX_LABELS.find((label) => labels.includes(label)) ??
+    labels.find((label) => label.startsWith("Label_")) ??
+    labels[0]
+  );
+}
+
 function mapGmailMessage(
   agentId: string,
   accountId: string,
@@ -145,7 +158,7 @@ function mapGmailMessage(
     hasAttachments: Boolean(message.metadata.hasAttachments),
     isRead: !message.isUnread,
     worldId: accountId,
-    channelId: message.labels[0],
+    channelId: gmailChannelId(message.labels),
     tags: [...message.labels],
     metadata: {
       ...message.metadata,
