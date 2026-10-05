@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { EventEmitter, once } from "node:events";
 import {
+  chmod,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -20,6 +22,7 @@ import {
   preparePrivateRuntimeFiles,
   preparePrivateRuntimeProfile,
   readPrivateRuntimeEnvironment,
+  readPrivateRuntimeJson,
   runtimeEnvironment,
   startPrivateRuntimeProcess,
   writePrivateRuntimeJson,
@@ -148,6 +151,42 @@ test("persistent profile preserves runtime-written configuration and its exact b
   assert.deepEqual(restored.config, JSON.parse(updated));
   assert.equal(await readFile(options.configPath, "utf8"), updated);
   assert.equal((await stat(options.configPath)).mode & 0o777, 0o600);
+});
+
+test("a failed token factory does not poison later private profile preparation", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-launch-token-failure-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const options = {
+    tokenPath: join(root, "token"),
+    configPath: join(root, "config.json"),
+    launchConfigPath: join(root, "launch.json"),
+    initialConfig: {},
+    selectConfig: (existing) => existing,
+  };
+  const failure = new Error("controlled token factory failure");
+  await assert.rejects(
+    preparePrivateRuntimeFiles({
+      ...options,
+      createToken: () => {
+        throw failure;
+      },
+    }),
+    (error) => error === failure,
+  );
+  await assert.rejects(stat(options.tokenPath), { code: "ENOENT" });
+  for (const invalid of ["", "  ", "line\nbreak", undefined]) {
+    await assert.rejects(
+      preparePrivateRuntimeFiles({ ...options, createToken: () => invalid }),
+      { code: "INVALID_RUNTIME_TOKEN" },
+    );
+    await assert.rejects(stat(options.tokenPath), { code: "ENOENT" });
+  }
+  const restored = await preparePrivateRuntimeFiles({
+    ...options,
+    createToken: () => "fixture-token",
+  });
+  assert.equal(restored.token, "fixture-token");
+  assert.equal((await stat(options.tokenPath)).mode & 0o777, 0o600);
 });
 
 test("private launch rejects malformed settings, links and empty authority without spawning", async (t) => {
@@ -564,4 +603,106 @@ test("allowlisted renderer preflight is answered before bearer authentication", 
   } finally {
     await close(gateway);
   }
+});
+
+test("read-only private JSON enforces real file owner, mode, symlink and byte boundaries", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-json-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, "config.json");
+  const value = { message: "é", enabled: true };
+  const text = JSON.stringify(value);
+  const maxBytes = Buffer.byteLength(text);
+  await writeFile(file, text, { mode: 0o600 });
+  assert.deepEqual(await readPrivateRuntimeJson(file, { maxBytes }), value);
+  await assert.rejects(
+    readPrivateRuntimeJson(file, { maxBytes: maxBytes - 1 }),
+    { code: "INVALID_PRIVATE_FILE" },
+  );
+  await assert.rejects(
+    readPrivateRuntimeJson(file, { maxBytes, ownerUid: process.getuid() + 1 }),
+    { code: "INVALID_PRIVATE_FILE" },
+  );
+  await chmod(file, 0o640);
+  await assert.rejects(readPrivateRuntimeJson(file, { maxBytes }), {
+    code: "INVALID_PRIVATE_FILE",
+  });
+  assert.equal((await stat(file)).mode & 0o777, 0o640);
+  await chmod(file, 0o600);
+  const link = join(root, "link");
+  await symlink(file, link);
+  await assert.rejects(readPrivateRuntimeJson(link, { maxBytes }));
+  const directory = join(root, "directory");
+  await mkdir(directory, { mode: 0o700 });
+  await assert.rejects(readPrivateRuntimeJson(directory, { maxBytes }), {
+    code: "INVALID_PRIVATE_FILE",
+  });
+  await assert.rejects(
+    readPrivateRuntimeJson(join(root, "missing"), { maxBytes }),
+    { code: "ENOENT" },
+  );
+  assert.equal(await readFile(file, "utf8"), text);
+  const large = { value: "é".repeat(40000) };
+  const largeText = JSON.stringify(large);
+  await writeFile(file, largeText);
+  await chmod(file, 0o400);
+  assert.deepEqual(
+    await readPrivateRuntimeJson(file, {
+      maxBytes: Buffer.byteLength(largeText),
+    }),
+    large,
+  );
+  assert.equal((await stat(file)).mode & 0o777, 0o400);
+});
+
+test("private JSON rejects invalid policy and parse errors without creating or repairing files", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-json-policy-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, "invalid.json");
+  await writeFile(file, "{", { mode: 0o600 });
+  for (const options of [
+    {},
+    { maxBytes: 0 },
+    { maxBytes: 1.5 },
+    { maxBytes: Infinity },
+    { maxBytes: 2147483648 },
+    { maxBytes: 10, ownerUid: -1 },
+  ]) {
+    await assert.rejects(readPrivateRuntimeJson(file, options), {
+      code: "INVALID_PRIVATE_FILE_POLICY",
+    });
+  }
+  await assert.rejects(readPrivateRuntimeJson("relative", { maxBytes: 10 }), {
+    code: "INVALID_PRIVATE_FILE_POLICY",
+  });
+  await assert.rejects(
+    readPrivateRuntimeJson(file, { maxBytes: 10 }),
+    SyntaxError,
+  );
+  await writeFile(file, "null");
+  assert.equal(await readPrivateRuntimeJson(file, { maxBytes: 4 }), null);
+  assert.equal((await stat(file)).mode & 0o777, 0o600);
+});
+
+test("private JSON rejects a real FIFO without blocking on a writer", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-json-fifo-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, "fifo");
+  execFileSync("mkfifo", ["-m", "600", file]);
+  const moduleUrl = new URL("./private-runtime-launch.mjs", import.meta.url)
+    .href;
+  execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+    const { readPrivateRuntimeJson } = await import(process.argv[1]);
+    try { await readPrivateRuntimeJson(process.argv[2], {maxBytes: 32}); process.exitCode = 1; }
+    catch (error) { if (error.code !== "INVALID_PRIVATE_FILE") throw error; }
+  `,
+      moduleUrl,
+      file,
+    ],
+    { timeout: 5000 },
+  );
 });

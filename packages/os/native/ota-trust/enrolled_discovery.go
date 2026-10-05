@@ -12,19 +12,15 @@ import (
 // repository, metadata base, or a different installed signer/cohort identity.
 // This API does not establish those live observations or authorize installation.
 type EnrolledDiscovery struct {
-	session    *DiscoverySession
+	session    *discoverySession
 	directory  string
 	identity   string
 	enrollment *Enrollment
 	config     enrollmentConfig
 }
 
-func NewEnrolledDiscovery(directory string) (*EnrolledDiscovery, error) {
-	return newEnrolledDiscovery(directory, func(hosts string) (discoveryTransport, error) { return NewHTTPTransport(hosts) })
-}
-
 // NewEnrolledDiscoveryWithTimeSource binds TLS, TUF, scheduling and admission to
-// one native source. Use RunWithTimeSource; no caller-supplied point overrides it.
+// one native source. Time is refreshed during each discovery stage.
 func NewEnrolledDiscoveryWithTimeSource(directory string, source TrustedTimeSource) (*EnrolledDiscovery, error) {
 	if _, err := readTimeBounds(source); err != nil {
 		return nil, err
@@ -54,7 +50,7 @@ func newEnrolledDiscovery(directory string, transport func(string) (discoveryTra
 	if err != nil {
 		return nil, err
 	}
-	return &EnrolledDiscovery{session: &DiscoverySession{transport: network}, directory: directory, identity: identity, enrollment: enrollment, config: config}, nil
+	return &EnrolledDiscovery{session: &discoverySession{transport: network}, directory: directory, identity: identity, enrollment: enrollment, config: config}, nil
 }
 func (d *EnrolledDiscovery) Close() { d.session.Close() }
 func (d *EnrolledDiscovery) unchanged() error {
@@ -72,35 +68,16 @@ func (d *EnrolledDiscovery) unchanged() error {
 	return nil
 }
 
-// Run authenticates through TUF, ratchets persisted admission and retains the
-// exact candidate/recovery authorization. Schedule/admission/cache directories
-// remain supervisor-owned. The caller must recheck generation and safety before
-// downloading/committing. Close cancels network I/O without a renderer callback.
-func (d *EnrolledDiscovery) Run(scheduleDirectory, trustDirectory, admissionDirectory, authorizationDirectory string, deviceJSON []byte, trustedUnixMillis, securityFloor, generation int64) (*DiscoveryResult, error) {
-	if d.session.source != nil {
-		d.Close()
-		return nil, errors.New("use RunWithTimeSource for source-bound discovery")
-	}
-	return d.run(scheduleDirectory, trustDirectory, admissionDirectory, authorizationDirectory, deviceJSON, trustedUnixMillis, securityFloor, generation)
-}
-
 // RunWithTimeSource accepts no wall-clock/point-time override. Source failure
 // returns no descriptor and leaves any acquired schedule claim for recovery.
 func (d *EnrolledDiscovery) RunWithTimeSource(scheduleDirectory, trustDirectory, admissionDirectory, authorizationDirectory string, deviceJSON []byte, securityFloor, generation int64) (*DiscoveryResult, error) {
-	if d.session.source == nil {
-		d.Close()
-		return nil, errors.New("qualified discovery source not configured")
-	}
 	bounds, err := readTimeBounds(d.session.source)
 	if err != nil {
 		d.Close()
 		return nil, err
 	}
-	return d.run(scheduleDirectory, trustDirectory, admissionDirectory, authorizationDirectory, deviceJSON, bounds.LowerMillis, securityFloor, generation)
-}
-func (d *EnrolledDiscovery) run(scheduleDirectory, trustDirectory, admissionDirectory, authorizationDirectory string, deviceJSON []byte, trustedUnixMillis, securityFloor, generation int64) (*DiscoveryResult, error) {
 	defer d.Close()
-	if !validScheduleTime(trustedUnixMillis) || !bounded(securityFloor, 1, safeInteger) || generation < 0 {
+	if !bounded(securityFloor, 1, safeInteger) || generation < 0 {
 		return nil, errors.New("invalid qualified discovery observations")
 	}
 	if err := d.unchanged(); err != nil {
@@ -116,7 +93,7 @@ func (d *EnrolledDiscovery) run(scheduleDirectory, trustDirectory, admissionDire
 	if device.Distribution != d.config.Distribution || device.Signer != d.config.Signer || device.CohortID != d.enrollment.CohortID {
 		return nil, errors.New("device does not match enrollment")
 	}
-	policy, err := json.Marshal(admissionPolicy{Repository: d.config.Repository, Hosts: d.config.Hosts, Now: trustedUnixMillis, Sequence: 1, Revision: 1, SecurityFloor: securityFloor})
+	policy, err := json.Marshal(admissionPolicy{Repository: d.config.Repository, Hosts: d.config.Hosts, Lower: bounds.LowerMillis, Upper: bounds.UpperMillis, Sequence: 1, Revision: 1, SecurityFloor: securityFloor})
 	if err != nil {
 		return nil, err
 	}

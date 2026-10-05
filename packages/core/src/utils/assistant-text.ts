@@ -237,6 +237,30 @@ function normalizeInlineParagraph(input: string): string {
 	return output;
 }
 
+// Indentation and quote markers that open each line place a paragraph in its
+// list item or blockquote. Chat bubbles render this text with `white-space:
+// pre-wrap`, so normalize only the prose after them and keep them byte-for-byte.
+function normalizeContainedParagraph(source: string): string {
+	const lines = source.split(/(\r\n|\r|\n)/);
+	const prefixes: string[] = [];
+	for (let index = 0; index < lines.length; index += 2) {
+		const prefix = /^(?:[ \t]*>)*[ \t]*/.exec(lines[index])?.[0] ?? "";
+		prefixes.push(prefix);
+		lines[index] = lines[index].slice(prefix.length);
+	}
+	const prose = lines.join("");
+	const normalized = normalizeInlineParagraph(prose);
+	if (normalized === prose) return source;
+	const output = normalized.split(/(\r\n|\r|\n)/);
+	// Parenthesis cleanup can join lines. Later prefixes then have no line to
+	// return to, but the first line still opens the paragraph.
+	if (output.length !== lines.length) return prefixes[0] + normalized;
+	for (let index = 0; index < output.length; index += 2) {
+		output[index] = prefixes[index / 2] + output[index];
+	}
+	return output.join("");
+}
+
 function tryParseObject(input: string): Record<string, unknown> | null {
 	try {
 		const parsed = JSON.parse(input);
@@ -390,7 +414,7 @@ export function stripAssistantStageDirections(input: string): string {
 		// intervening block syntax rather than pairing backticks across blocks.
 		output += input.slice(offset, start);
 		const source = input.slice(start, end);
-		output += isCode ? source : normalizeInlineParagraph(source);
+		output += isCode ? source : normalizeContainedParagraph(source);
 		offset = end;
 	}
 	output += input.slice(offset);

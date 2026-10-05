@@ -1326,10 +1326,7 @@ export async function handleLocalInferenceRoutes(
 		sendJson(res, (await hubSnapshot()).hardware);
 		return true;
 	}
-	// The authoritative device-tier assessment (tier + recommendedMode +
-	// recommendedFit) — the same one the router's AUTO policy consumes. Mirrors
-	// the app compat route so mobile (which mounts this upstream variant)
-	// also gets the authoritative assessment instead of the coarse client estimate.
+	// The same authoritative assessment drives the router's AUTO policy.
 	if (method === "GET" && pathname === "/api/local-inference/device-tier") {
 		sendJson(res, {
 			tier: classifyDeviceTier(

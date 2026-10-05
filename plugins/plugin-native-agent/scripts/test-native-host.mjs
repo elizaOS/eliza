@@ -21,11 +21,15 @@ try {
   );
   const shared = [
     "runtime/RuntimeBundleStore",
+    "runtime/RuntimeAssets",
     "runtime/PrivateOAuthCallback",
     "runtime/NativeProcessSupervisor",
+    "runtime/NativeRuntimeSession",
     "runtime/NativeProcessLog",
     "runtime/RuntimePrivateFiles",
     "runtime/InstalledRuntimeLibraries",
+    "runtime/EmbeddedRuntimeLaunch",
+    "runtime/EmbeddedRuntimeGroup",
     "runtime/RuntimeRequestDeadline",
     "runtime/RuntimeInstallationIdentity",
     "updater/UpdateJournal",
@@ -51,11 +55,15 @@ try {
   });
   for (const [group, name] of [
     ["runtime.test", "RuntimeBundleStoreTest"],
+    ["runtime.test", "RuntimeAssetsTest"],
     ["runtime.test", "PrivateOAuthCallbackTest"],
     ["runtime.test", "NativeProcessSupervisorTest"],
+    ["runtime.test", "NativeRuntimeSessionTest"],
     ["runtime.test", "NativeProcessLogTest"],
     ["runtime.test", "RuntimePrivateFilesTest"],
     ["runtime.test", "InstalledRuntimeLibrariesTest"],
+    ["runtime.test", "EmbeddedRuntimeLaunchTest"],
+    ["runtime.test", "EmbeddedRuntimeGroupTest"],
     ["runtime.test", "RuntimeRequestDeadlineTest"],
     ["updater", "UpdateJournalTest"],
     ["updater", "ProbationWindowTest"],

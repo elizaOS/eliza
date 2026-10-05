@@ -7,6 +7,7 @@ import path from "node:path";
 import { domainToASCII } from "node:url";
 import { promisify } from "node:util";
 import type { HandlerOptions } from "@elizaos/core";
+import { getDomain } from "tldts";
 import type { PermissionState, PermissionStatus } from "./permissions.ts";
 
 const BLOCK_START_MARKER = "# >>> eliza-selfcontrol >>>";
@@ -1011,45 +1012,12 @@ export function normalizeWebsiteTargets(
   return [...deduped];
 }
 
-/**
- * Second-level labels that country-code TLDs commonly register under
- * (`bbc.co.uk`, `abc.net.au`, `asahi.co.jp`, `globo.com.br`). A three-label
- * host shaped `<name>.<label>.<cc>` is a registrable domain, not a subdomain.
- */
-const COUNTRY_CODE_SECOND_LEVEL_LABELS = new Set([
-  "ac",
-  "co",
-  "com",
-  "edu",
-  "gob",
-  "gov",
-  "go",
-  "ne",
-  "net",
-  "or",
-  "org",
-]);
-
-function isRegistrableWebsite(target: string): boolean {
-  const labels = target.split(".");
-  if (labels.length === 2) return true;
-  return (
-    labels.length === 3 &&
-    labels[2].length === 2 &&
-    COUNTRY_CODE_SECOND_LEVEL_LABELS.has(labels[1])
-  );
-}
-
-/**
- * The registrable domain a requested host names, when it is that domain or
- * its `www.` host; `null` for any other subdomain.
- */
+/** Only a registrable domain or its www host expands to the site's pair. */
 function registrableWebsiteBase(target: string): string | null {
-  if (target.startsWith("www.")) {
-    const bare = target.slice("www.".length);
-    return isRegistrableWebsite(bare) ? bare : null;
-  }
-  return isRegistrableWebsite(target) ? target : null;
+  const domain = getDomain(target, { allowPrivateDomains: true });
+  return domain && (target === domain || target === `www.${domain}`)
+    ? domain
+    : null;
 }
 
 export function formatWebsiteList(websites: readonly string[]): string {

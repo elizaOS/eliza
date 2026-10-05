@@ -96,6 +96,7 @@ export function createIosHandler(
         }
       }
       if (pathname === "/ios/plan") {
+        delete current.plan;
         const input = {
           deviceUdid: text("deviceUdid"),
           appId: text("appId"),

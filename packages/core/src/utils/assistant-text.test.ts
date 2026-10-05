@@ -294,6 +294,27 @@ Hope that helps!`;
 		);
 	});
 
+	it("keeps list and quote nesting when a nested block loses a direction", () => {
+		// Chat bubbles render this text with `white-space: pre-wrap`, so a lost
+		// indent moves the item out of its parent on screen.
+		expect(
+			stripAssistantStageDirections(
+				"- Morning\n  - *stretches* yoga\n  - coffee",
+			),
+		).toBe("- Morning\n  - yoga\n  - coffee");
+		expect(
+			stripAssistantStageDirections(
+				"1. Plan\n   1. *nods* draft it\n      then ship",
+			),
+		).toBe("1. Plan\n   1. draft it\n      then ship");
+		expect(
+			stripAssistantStageDirections("- Step one\n\n  *smiles* More detail."),
+		).toBe("- Step one\n\n  More detail.");
+		expect(
+			stripAssistantStageDirections("- Tip\n  > *whispers* quoted\n  > advice"),
+		).toBe("- Tip\n  > quoted\n  > advice");
+	});
+
 	it("is null/undefined-safe (e.g. a 202 placeholder body with no text)", () => {
 		expect(
 			extractAssistantReplyText(undefined as unknown as string),

@@ -323,17 +323,3 @@ function resolvePackAssets(
     source,
   };
 }
-/**
- * Create a resolved content pack from a bundled pack definition.
- * Bundled packs live in apps/app/public/packs/<id>/.
- */
-export function loadBundledContentPack(
-  manifest: ContentPackManifest,
-  packsBaseUrl = "/packs",
-): ResolvedContentPack {
-  const baseUrl = `${packsBaseUrl}/${manifest.id}/`;
-  return resolveContentPackFromManifest(manifest, baseUrl, {
-    kind: "bundled",
-    id: manifest.id,
-  });
-}

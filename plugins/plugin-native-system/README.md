@@ -51,3 +51,10 @@ and intent resolution. Declare an `ACTION_MAIN`/`CATEGORY_LAUNCHER` package
 visibility query in the host manifest. Discovery excludes the host, disabled
 apps and unexported activities, and deduplicates packages. Intent resolution does
 not launch an activity; the host retains its user-intent and foreground policy.
+
+`SystemAppIntents` resolves the dialer and default messaging destinations and
+opens a gallery through a host-supplied launch callback. Only a missing gallery
+triggers the image-viewer fallback; permission denial never triggers another
+gallery destination. Results describe dispatch or failure, not user completion.
+Hosts retain foreground/user-intent policy and presentation. Instrumentation tests
+capture dispatch without opening apps, placing calls or sending messages.

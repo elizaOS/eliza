@@ -19,7 +19,7 @@ func localHTTPS(t *testing.T, handler http.HandlerFunc) (*HTTPTransport, *httpte
 	t.Helper()
 	server := httptest.NewTLSServer(handler)
 	t.Cleanup(server.Close)
-	transport, err := NewHTTPTransport("example.com,unrelated.test")
+	transport, err := newHTTPTransport("example.com,unrelated.test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestTLSCertificateAndHostnameValidation(t *testing.T) {
 	}
 }
 func TestDNSAnswersAreValidatedBeforeDirectDial(t *testing.T) {
-	transport, err := NewHTTPTransport("example.com")
+	transport, err := newHTTPTransport("example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestRetryHintBoundsAndURLPolicy(t *testing.T) {
 			t.Fatalf("retry %s=%v", value, got)
 		}
 	}
-	transport, err := NewHTTPTransport("example.com")
+	transport, err := newHTTPTransport("example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestUninitializedBindingFailsClosed(t *testing.T) {
 }
 
 func TestTransportHasWholeSessionDeadline(t *testing.T) {
-	transport, err := NewHTTPTransport("example.com")
+	transport, err := newHTTPTransport("example.com")
 	if err != nil {
 		t.Fatal(err)
 	}

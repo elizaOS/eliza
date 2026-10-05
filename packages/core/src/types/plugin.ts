@@ -284,11 +284,6 @@ export type {
 	ViewHeaderPolicy,
 } from "./surface-manifest.js";
 
-import type {
-	AppShellBackgroundPolicy,
-	ViewHeaderPolicy,
-} from "./surface-manifest.js";
-
 /**
  * How the app shell frames a view's top bar (#13586).
  *
@@ -323,40 +318,17 @@ export interface PluginAppNavTab {
 	tabAffinity?: string;
 	/** Sort priority within the nav (lower = first). Default 100. */
 	order?: number;
-	/**
-	 * If true, this tab is only visible when Developer Mode is enabled
-	 * in Settings. Defaults to false. Equivalent to `viewKind: "developer"`.
-	 */
-	developerOnly?: boolean;
-	/**
-	 * Four-tier visibility category. When set it supersedes `developerOnly`:
-	 * `system`/`release` are always shown, `developer`/`preview` follow their
-	 * Settings toggles. Omit to fall back to `developerOnly` → `release`.
-	 */
+
+	/** Four-tier visibility category; absent values default to release. */
 	viewKind?: ViewKind;
 	/**
 	 * Optional named group the tab belongs to (used by the shell to render
 	 * grouped tab strips, e.g. workbench/dev/wallet groupings).
 	 */
 	group?: string;
-	/**
-	 * Declared surface contract for this tab (#13452) — mirrors
-	 * `ViewDeclaration.surface`. Preferred over the standalone `backgroundPolicy`
-	 * / `headerPolicy` below, which remain the legacy fallback.
-	 */
+	/** Declared surface policies and capability grants. */
 	surface?: SurfaceManifest;
-	/**
-	 * Screen background policy for this tab. Defaults to `"opaque"`. Superseded
-	 * by `surface.background` when a manifest is declared.
-	 */
-	backgroundPolicy?: AppShellBackgroundPolicy;
-	/**
-	 * Top-bar framing policy (#13586). Defaults to `"normal"`, which the shell
-	 * enforces with the shared `ViewHeader`. Set `fullscreen`/`modal`/`immersive`
-	 * for surfaces that own their own chrome. Superseded by `surface.header` when
-	 * a manifest is declared.
-	 */
-	headerPolicy?: ViewHeaderPolicy;
+
 	/**
 	 * Optional package export specifier the shell will dynamically import
 	 * when the tab is activated, e.g. "@elizaos/plugin-wallet/ui#InventoryView".
@@ -398,15 +370,8 @@ export interface PluginWidgetDeclaration {
 	defaultEnabled?: boolean;
 	/** For nav-page slot: which header TabGroup to join. */
 	navGroup?: string;
-	/**
-	 * If true, this widget is only visible when Developer Mode is enabled
-	 * in Settings. Defaults to false. Equivalent to `viewKind: "developer"`.
-	 */
-	developerOnly?: boolean;
-	/**
-	 * Four-tier visibility category. Supersedes `developerOnly` when set.
-	 * See {@link ViewKind}.
-	 */
+
+	/** Four-tier visibility category; absent values default to release. */
 	viewKind?: ViewKind;
 	/**
 	 * Optional package export specifier the shell will dynamically import
@@ -713,28 +678,9 @@ export interface ViewDeclaration {
 	anticipatoryIntent?: string;
 	/** Relative path from the plugin's package root to its hero image. */
 	heroImagePath?: string;
-	/**
-	 * Declared surface contract — background/header/isolation/lifecycle policy and
-	 * the capability grants the shell allows this view to exercise (#13452). The
-	 * single source of truth the shell derives every surface decision from; the
-	 * standalone `backgroundPolicy` / `headerPolicy` below are the legacy fallback
-	 * used only when the matching manifest field is absent. `surface.background:
-	 * "shared"` only paints the wallpaper when `surface.capabilities` also grants
-	 * `wallpaper` — a view can never opt into the shared wallpaper by accident.
-	 */
+	/** Declared surface policies and capability grants. */
 	surface?: SurfaceManifest;
-	/**
-	 * Screen background policy for this view. Defaults to `"opaque"`. Superseded
-	 * by `surface.background` when a manifest is declared.
-	 */
-	backgroundPolicy?: AppShellBackgroundPolicy;
-	/**
-	 * Top-bar framing policy (#13586). Defaults to `"normal"`, which the shell
-	 * enforces with the shared `ViewHeader`. Set `fullscreen`/`modal`/`immersive`
-	 * for surfaces that own their own chrome (browser workbench, launcher, etc.).
-	 * Superseded by `surface.header` when a manifest is declared.
-	 */
-	headerPolicy?: ViewHeaderPolicy;
+
 	/**
 	 * Platforms this view supports. Omit to support all platforms.
 	 * Dynamic plugin install is disabled on restricted store builds (ios, android).
@@ -749,19 +695,8 @@ export interface ViewDeclaration {
 	 * false.
 	 */
 	nativeOs?: boolean;
-	/**
-	 * Hidden unless developer mode is enabled. Default false. Equivalent to
-	 * `viewKind: "developer"`.
-	 */
-	developerOnly?: boolean;
-	/**
-	 * Four-tier visibility category for this view. Supersedes `developerOnly`
-	 * when set:
-	 *  - `system`    — always shown (core shell views).
-	 *  - `release`   — always shown (public, production-ready). The default.
-	 *  - `developer` — shown when Developer views are enabled (dev builds on).
-	 *  - `preview`   — shown when Preview views are enabled (off by default).
-	 */
+
+	/** Four-tier visibility category; absent values default to release. */
 	viewKind?: ViewKind;
 	/**
 	 * Named export the shell mounts from the loaded bundle module.
@@ -839,17 +774,8 @@ export interface PluginApp {
 	session?: PluginAppSession;
 	bridgeExport?: string;
 	uiExtension?: PluginAppUiExtension;
-	/**
-	 * If true, the app is a developer-tooling surface (logs, trajectory
-	 * viewer, etc.) and is hidden from the main UI unless Developer Mode is
-	 * enabled in Settings. Defaults to false. Equivalent to
-	 * `viewKind: "developer"`.
-	 */
-	developerOnly?: boolean;
-	/**
-	 * Four-tier visibility category for this app. Supersedes `developerOnly`
-	 * when set. See {@link ViewKind}.
-	 */
+
+	/** Four-tier visibility category; absent values default to release. */
 	viewKind?: ViewKind;
 	/**
 	 * Controls whether the app appears in the user-facing app store/catalog.

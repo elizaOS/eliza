@@ -44,7 +44,7 @@ import {
 } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { getBootConfig } from "../../config/boot-config";
+import { getBootConfig } from "../../config/boot-config-store";
 import { logger } from "../../logger.ts";
 import { isLoopbackStagingStewardDevelopment } from "../../state/loopback-steward-development";
 import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";

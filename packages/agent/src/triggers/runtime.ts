@@ -30,6 +30,7 @@ import type {
 import {
   ElizaError,
   inspectSendHandlerResult,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   registerRuntimeManagedInternalActor,
   ServiceType,
@@ -531,7 +532,17 @@ async function dispatchPrompt(
       deliveryCallback = async (content) => {
         const disposition = inspectSendHandlerResult(
           await runtime.sendMessageToTarget(
-            { source: connectorSource, roomId: originRoomId },
+            {
+              source: connectorSource,
+              roomId: originRoomId,
+              // Simple response persistence runs alongside this callback. The
+              // dashboard transport delivers the same identity, not a new row.
+              ...(connectorSource === MESSAGE_SOURCE_CLIENT_CHAT &&
+              content.simple === true &&
+              content.responseId
+                ? { responseMemoryId: content.responseId }
+                : {}),
+            },
             { ...content, agentVoiced: true },
           ),
         );

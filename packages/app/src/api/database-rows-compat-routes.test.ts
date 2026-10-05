@@ -46,6 +46,49 @@ beforeEach(() => {
 });
 
 describe("database row count boundary", () => {
+  it("keeps table introspection within the runtime that owns the database", async () => {
+    const firstRuntime = {} as NonNullable<CompatRuntimeState["current"]>;
+    const secondRuntime = {} as NonNullable<CompatRuntimeState["current"]>;
+    const queries: Array<{ runtime: unknown; sql: string }> = [];
+    executeRawSql.mockReset();
+    executeRawSql.mockImplementation(async (runtime, sql: string) => {
+      queries.push({ runtime, sql });
+      if (sql.includes("information_schema.columns")) {
+        return {
+          rows: [{ column_name: runtime === firstRuntime ? "title" : "name" }],
+        };
+      }
+      return sql.includes("count(*)") ? { rows: [{ total: 0 }] } : { rows: [] };
+    });
+    const req = {
+      method: "GET",
+      url: "/api/database/tables/runtime_owned_items/rows?schema=public&search=query",
+    } as http.IncomingMessage;
+    for (const runtime of [firstRuntime, secondRuntime, secondRuntime]) {
+      await handleDatabaseRowsCompatRoute(req, response(), {
+        ...state,
+        current: runtime,
+      });
+    }
+    for (const runtime of [firstRuntime, secondRuntime]) {
+      expect(
+        queries.filter(
+          (query) =>
+            query.runtime === runtime &&
+            query.sql.includes("information_schema.columns"),
+        ),
+      ).toHaveLength(1);
+    }
+    const secondRuntimeReads = queries.filter(
+      (query) => query.runtime === secondRuntime && query.sql.includes("ILIKE"),
+    );
+    expect(secondRuntimeReads).toHaveLength(4);
+    for (const { sql } of secondRuntimeReads) {
+      expect(sql).toContain('"name"');
+      expect(sql).not.toContain('"title"');
+    }
+  });
+
   it.each([
     null,
     undefined,

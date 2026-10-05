@@ -1,13 +1,12 @@
 /** Explicit view-facing APIs. Host bootstrap and realm ownership are not available to view bundles. */
 export { useAgentElement } from "../../agent-surface/useAgentElement.js";
+export { client, ElizaClient } from "../../api/client";
 export {
   ApiError,
-  client,
-  ElizaClient,
   isApiError,
   isCloudAgentGoneError,
   isRateLimitedError,
-} from "../../api/client.js";
+} from "../../api/client-types-core";
 export { fetchWithCsrf } from "../../api/csrf-client.js";
 export { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "../../brand/index.js";
 export {

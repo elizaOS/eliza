@@ -24,7 +24,7 @@ export const IOS_LOCAL_AGENT_IPC_BASE = MOBILE_LOCAL_AGENT_IPC_BASE;
 export const MOBILE_LOCAL_AGENT_SERVER_ID = "local:mobile";
 export const MOBILE_LOCAL_AGENT_LABEL = "On-device agent";
 export const MOBILE_LOCAL_AGENT_PORT = String(DEFAULT_DESKTOP_API_PORT);
-export const ANDROID_LOCAL_AGENT_API_BASE = MOBILE_LOCAL_AGENT_API_BASE;
+
 export const ANDROID_LOCAL_AGENT_IPC_BASE = MOBILE_LOCAL_AGENT_IPC_BASE;
 export const ANDROID_LOCAL_AGENT_SERVER_ID = "local:android";
 export const ANDROID_LOCAL_AGENT_LABEL = MOBILE_LOCAL_AGENT_LABEL;
@@ -138,8 +138,7 @@ export type MobileRuntimeMode =
   | "remote-mac"
   | "cloud"
   | "cloud-hybrid"
-  | "local"
-  | "tunnel-to-mobile";
+  | "local";
 export function normalizeMobileRuntimeMode(
   value: string | null | undefined,
 ): MobileRuntimeMode | null {
@@ -149,7 +148,6 @@ export function normalizeMobileRuntimeMode(
     case "cloud":
     case "cloud-hybrid":
     case "local":
-    case "tunnel-to-mobile":
       return normalized;
     default:
       return null;
@@ -193,7 +191,7 @@ export function isElizaCloudRuntimeLocked(): boolean {
  * device control). Both persist the on-device active-server record and both
  * expect the native service to bring the agent up on cold launch. The restore
  * path therefore keeps their record and waits out the ~30s native boot rather
- * than re-onboarding; `cloud`, `remote-mac`, and `tunnel-to-mobile` never run a
+ * than re-onboarding; `cloud` and `remote-mac` never run a
  * bundled agent. Single source of that truth for
  * `reconcileMobileRestoredActiveServer` and the existing-install probe gate.
  */

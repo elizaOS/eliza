@@ -13,12 +13,9 @@ import {
 import {
   getWindowNavigationPath,
   isRouteRootPath,
-  resolveLegacyBuiltinRoute,
-  shouldUseHashNavigation,
   type Tab,
   tabFromPath,
 } from "../navigation";
-import { shellHistory } from "../surface-realm-channel";
 import type { AppState } from "./types";
 
 function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
@@ -61,15 +58,6 @@ export function useNavigationPathSync({
 
     const reconcileNavigationPath = () => {
       const navPath = getWindowNavigationPath();
-      const legacyRoute = resolveLegacyBuiltinRoute(navPath);
-      if (legacyRoute) {
-        const nextUrl = shouldUseHashNavigation()
-          ? `${window.location.pathname}${window.location.search}#${legacyRoute.canonicalPath}`
-          : `${legacyRoute.canonicalPath}${window.location.search}${window.location.hash}`;
-        shellHistory.replaceState(window.history.state, "", nextUrl);
-        window.dispatchEvent(new PopStateEvent("popstate"));
-        return;
-      }
       if (isRouteRootPath(navPath)) return;
       const routeTab = tabFromPath(navPath);
       if (routeTab && routeTab !== tab) {

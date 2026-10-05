@@ -18,7 +18,7 @@ import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
-import { useBranding } from "../../config/branding";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import {
   loadContinuousChatMode,

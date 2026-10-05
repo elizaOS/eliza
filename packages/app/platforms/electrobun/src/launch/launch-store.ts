@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop launch store ts behavior for app shell integration. */
 import type { JsonValue } from "@elizaos/core";
 import { createUnknownDatabaseSnapshot } from "../database";
 import type {

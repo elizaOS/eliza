@@ -140,8 +140,8 @@
   "hardwareKeyRemap": {
     "status": "explicitly-unsupported-no-dedicated-key",
     "mechanism": "framework-role-routing",
-    "applicableTargets": ["tegu", "grizzly", "Cuttlefish"],
-    "notes": "Pixel 9a, Pixel 11 Pro, and Cuttlefish do not expose a dedicated branded assistant scancode that needs a vendor .kl remap. elizaOS therefore does not claim support for such a key on these targets. The supported physical gesture is Pixel long-press-power through ROLE_ASSISTANT; the automated lane separately injects KEYCODE_ASSIST to verify framework routing. A future product with a dedicated key must add and physically prove its exact scan-code .kl mapping before that product is exposed."
+    "applicableTargets": ["grizzly", "Cuttlefish"],
+    "notes": "Pixel 11 Pro and Cuttlefish do not expose a dedicated branded assistant scancode that needs a vendor .kl remap. elizaOS therefore does not claim support for such a key on these targets. The supported physical gesture is Pixel long-press-power through ROLE_ASSISTANT; the automated lane separately injects KEYCODE_ASSIST to verify framework routing. A future product with a dedicated key must add and physically prove its exact scan-code .kl mapping before that product is exposed."
   },
   "packageName": "ai.elizaos.app",
   "playStorePolicy": {

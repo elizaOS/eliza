@@ -137,7 +137,6 @@ export function resolveChatViewRouting(
         capabilities: ["search-documents", "add-documents", "modify-character"],
       };
     case "automations":
-    case "triggers":
       return {
         view: "automations",
         primaryContext: "automation",

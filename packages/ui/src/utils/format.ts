@@ -164,23 +164,6 @@ export function formatTime(
 }
 
 /**
- * Format timestamp / date as locale date only (`toLocaleDateString`).
- */
-export function formatShortDate(
-  value: number | string | Date | null | undefined,
-  options: DateFormatOptions = {},
-): string {
-  const { fallback = "—", locale } = options;
-  const parsed = parseDisplayDate(value);
-  if (!parsed) return fallback;
-  return parsed.toLocaleDateString(locale, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-/**
  * Format an elapsed duration in milliseconds into a compact human string.
  */
 export function formatDurationMs(

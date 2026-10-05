@@ -732,3 +732,52 @@ export interface VerifyResult {
   /** Size read from the filesystem. */
   currentBytes: number | null;
 }
+
+/** JSON response shapes for the backend local-inference API. No runtime implementations. */
+export interface DeviceCapabilities {
+  platform: "ios" | "android" | "web" | "electrobun" | "desktop";
+  deviceModel: string;
+  machineId?: string;
+  osVersion?: string;
+  isSimulator?: boolean;
+  totalRamGb: number;
+  availableRamGb?: number | null;
+  freeStorageGb?: number | null;
+  cpuCores: number;
+  gpu: {
+    backend: "metal" | "vulkan" | "gpu-delegate" | "cuda";
+    available: boolean;
+    totalVramGb?: number;
+  } | null;
+  gpuSupported?: boolean;
+  lowPowerMode?: boolean;
+  thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
+  mtpSupported?: boolean;
+  mtpReason?: string;
+}
+
+export interface DeviceSummary {
+  deviceId: string;
+  capabilities: DeviceCapabilities;
+  loadedPath: string | null;
+  connectedSince: string;
+  score: number;
+  activeRequests: number;
+}
+
+export interface DeviceBridgeStatus {
+  /** True if any device is currently connected. */
+  connected: boolean;
+  devices: DeviceSummary[];
+  /** Device id of the current best-score device, or null when none. */
+  primaryDeviceId: string | null;
+  /** Total generates/loads/unloads queued (either in-flight or awaiting a device). */
+  pendingRequests: number;
+}
+
+export interface LocalInferenceRegistration {
+  modelType: string;
+  provider: string;
+  priority: number;
+  registeredAt: string;
+}

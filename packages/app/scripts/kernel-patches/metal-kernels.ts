@@ -4,7 +4,7 @@
 // What this module does:
 //
 //   1. Copies the required and optimization standalone Metal shaders from
-//      packages/inference/metal/ into the fork's tree at
+//      plugins/plugin-local-inference/native/metal/ into the fork's tree at
 //      ggml/src/ggml-metal/eliza-shipped/<kernel>.metal. The standalones are
 //      self-contained TUs (only #include <metal_stdlib>; their own structs,
 //      constants, kernel symbols), so they compile as independent .air files.
@@ -41,17 +41,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // packages/app/scripts/kernel-patches/  →  plugin-local-inference/native/metal/
-// Older workstreams staged these under packages/inference/metal; the current
-// native plugin owns the verified standalone shader sources.
-const LEGACY_STANDALONE_METAL_DIR = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "inference",
-  "metal",
-);
-const PLUGIN_STANDALONE_METAL_DIR = path.resolve(
+const STANDALONE_METAL_DIR = path.resolve(
   __dirname,
   "..",
   "..",
@@ -62,22 +52,9 @@ const PLUGIN_STANDALONE_METAL_DIR = path.resolve(
   "native",
   "metal",
 );
-const STANDALONE_METAL_DIR = fs.existsSync(LEGACY_STANDALONE_METAL_DIR)
-  ? LEGACY_STANDALONE_METAL_DIR
-  : PLUGIN_STANDALONE_METAL_DIR;
 
-// Reference C kernels (TCQ codebook source) — same restructure drift: older
-// workstreams kept these under packages/inference/reference; the native plugin
-// now owns them.
-const LEGACY_STANDALONE_REFERENCE_DIR = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "inference",
-  "reference",
-);
-const PLUGIN_STANDALONE_REFERENCE_DIR = path.resolve(
+// Reference C kernels supply the TCQ codebook.
+const STANDALONE_REFERENCE_DIR = path.resolve(
   __dirname,
   "..",
   "..",
@@ -88,15 +65,10 @@ const PLUGIN_STANDALONE_REFERENCE_DIR = path.resolve(
   "native",
   "reference",
 );
-export const STANDALONE_REFERENCE_DIR = fs.existsSync(
-  LEGACY_STANDALONE_REFERENCE_DIR,
-)
-  ? LEGACY_STANDALONE_REFERENCE_DIR
-  : PLUGIN_STANDALONE_REFERENCE_DIR;
 
 // Map: standalone-shader-filename → in-fork relative path (under cacheDir).
 // Each standalone is copied verbatim — its content is not edited. Per agent
-// contract, verified shader math lives under packages/inference/metal/ and the
+// contract, verified shader math lives under plugins/plugin-local-inference/native/metal/ and the
 // fork copy is a generated shipping copy.
 //
 // Apple M4 Max verification on 2026-05-11:
@@ -226,7 +198,7 @@ function copyStandalonesIntoFork(cacheDir, { dryRun }) {
       // from the build script's verified standalone, not a hand-edited
       // in-fork draft.
       const stamped =
-        `// ${SENTINEL} — copied verbatim from packages/inference/metal/${name}\n` +
+        `// ${SENTINEL} — copied verbatim from plugins/plugin-local-inference/native/metal/${name}\n` +
         `// at build time by build-llama-cpp-mtp.ts. Do not edit in place;\n` +
         `// edit the standalone source and rerun the build.\n` +
         text;

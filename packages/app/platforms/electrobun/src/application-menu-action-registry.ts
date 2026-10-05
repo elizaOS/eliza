@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop application menu action registry ts behavior for app shell integration. */
 type ApplicationMenuActionHandler = (
 	action: string | undefined,
 ) => Promise<void>;

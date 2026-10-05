@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import {
   loadPinnedEd25519PublicKey,
   publicKeyFingerprint,
-} from "@elizaos/os-usb-installer/trust";
+} from "@elizaos/os/trust";
 import { type FactoryBootLayout, factoryBootPayloadPaths } from "./boot-config";
 import { verifyFactoryManifest } from "./factory-manifest";
 

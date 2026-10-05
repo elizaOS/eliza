@@ -24,10 +24,6 @@ export function statusDotColor(status: string): string {
   return STATUS_DOT_COLORS[status] ?? "bg-muted";
 }
 
-export function statusBadgeColor(status: string): string {
-  return STATUS_BADGE_COLORS[status] ?? "bg-bg-muted text-muted border-border";
-}
-
 /** Format a date into a human-readable relative time string. */
 export function formatRelative(date: Date | string | null): string {
   if (!date) return "Never";

@@ -131,6 +131,45 @@ describe("iOS installation attempt", () => {
     expect(await execution.text()).toContain('"done":true');
     expect((await post("execute", { attemptToken })).status).toBe(409);
   });
+  it.each(["invalid-input", "backend-failure"])(
+    "invalidates the prior plan when replacement fails: %s",
+    async (failure) => {
+      const { backend } = fixture();
+      const execute = vi.spyOn(backend, "executeInstallPlan");
+      const handler = createIosHandler(backend, {});
+      const post = (route: string, body: object) =>
+        handler(
+          new Request(`http://localhost/ios/${route}`, {
+            method: "POST",
+            body: JSON.stringify(body),
+          }),
+          `/ios/${route}`,
+        );
+      const { attemptToken } = await (
+        await post("authenticate", {
+          appleId: input.appleId,
+          password: "fixture",
+        })
+      ).json();
+      expect((await post("plan", { ...input, attemptToken })).status).toBe(200);
+      if (failure === "backend-failure")
+        vi.spyOn(backend, "createInstallPlan").mockRejectedValueOnce(
+          new Error("unavailable"),
+        );
+      expect(
+        (
+          await post(
+            "plan",
+            failure === "invalid-input"
+              ? { attemptToken }
+              : { ...input, attemptToken },
+          )
+        ).status,
+      ).toBe(400);
+      expect((await post("execute", { attemptToken })).status).toBe(400);
+      expect(execute).not.toHaveBeenCalled();
+    },
+  );
   it("never emits done after a backend emits failure and returns", async () => {
     const { backend } = fixture();
     vi.spyOn(backend, "executeInstallPlan").mockImplementation(

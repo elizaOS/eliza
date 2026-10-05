@@ -13,6 +13,7 @@
  * `fetchStatus` / `releaseBlock` so they stay offline.
  */
 
+import { ElizaError } from "@elizaos/core/protocol";
 import { client } from "@elizaos/ui";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -184,9 +185,22 @@ export function FocusView({
     requestPending.current = true;
     setRequest({ phase: "pending" });
     try {
-      const response = await client.sendChatRest(
+      const authority = client.getAuthorityRevision();
+      const assertCurrentAgent = () => {
+        if (client.getAuthorityRevision() !== authority) {
+          throw new ElizaError(
+            "The active agent changed. Request a focus session again.",
+            { code: "FOCUS_AGENT_CHANGED" },
+          );
+        }
+      };
+      const { conversation } = await client.createConversation("Focus session");
+      assertCurrentAgent();
+      const response = await client.sendConversationMessage(
+        conversation.id,
         "Start a focus session for me.",
       );
+      assertCurrentAgent();
       if (!response.text.trim()) {
         setRequest({
           phase: "error",

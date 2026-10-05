@@ -51,3 +51,7 @@ its `world.endpoints` when constructing SDK clients. Cleanup verifies unmatched
 requests and unused faults, stops the runtime and mock servers, and releases the
 lease. `runSyntheticScenario` from `@elizaos/testing/scenario-runner` also runs the scenario executor and returns the
 report with complete before/after state and API requests. See [synthetic-world](synthetic-world/README.md) for the control protocol.
+
+Vitest live-provider suites import `describeLive` and `buildLiveHarness` from
+`@elizaos/testing/live`. Install the selected provider peer; this entry owns
+real-runtime startup and teardown and remains separate from Bun test fixtures.

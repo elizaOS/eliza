@@ -50,7 +50,6 @@
     "src/platform",
     "src/runtime",
     "src/utils",
-    "src/desktop-shell.ts",
     "src/cli",
     "src/browser.ts",
     "src/styles",

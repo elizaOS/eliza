@@ -197,7 +197,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   },
   {
     name: "rolodex",
-    path: "/rolodex",
+    path: "/apps/relationships",
     // Rolodex is a legacy path of Relationships (`rolodex: { aliasOf:
     // "relationships" }` in builtin-route-descriptors.ts): the retained deep
     // link must land on the canonical Relationships route, not on an

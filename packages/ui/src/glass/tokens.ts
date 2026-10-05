@@ -1,10 +1,5 @@
 /**
- * Canonical glass-surface tokens: the single vocabulary every glassmorphic
- * chrome element draws from. Before this module the shell had ten divergent
- * surface recipes (four blur strengths, five translucent fills, three border
- * idioms — see the fragmentation inventory in
- * `docs/ongoing-development/liquid-glass-unification.md`); a surface
- * now picks a VARIANT here instead of hand-rolling backdrop-filter values.
+ * Shared glass-surface variants for shell chrome.
  *
  * The optical layers themselves (rim ring, sheen, edge shadow, Chromium edge
  * refraction) live in `../components/shell/liquid-glass.tsx` and are

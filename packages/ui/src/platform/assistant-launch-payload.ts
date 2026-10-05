@@ -93,24 +93,6 @@ export function claimAssistantLaunchPayloadFromHash(
   return payload;
 }
 
-export async function consumeAssistantLaunchPayloadFromHash(
-  hash: string,
-  options: AssistantLaunchPayloadConsumeOptions,
-): Promise<AssistantLaunchPayload | null> {
-  const payload = claimAssistantLaunchPayloadFromHash(hash, options);
-  if (!payload) return null;
-
-  try {
-    await options.sendText(payload.text, {
-      metadata: buildAssistantLaunchMetadata(payload),
-    });
-  } catch (error) {
-    options.onSendFailure?.(payload, error);
-  }
-
-  return payload;
-}
-
 export function clearAssistantLaunchPayloadFromHash(): void {
   if (typeof window === "undefined") return;
 
@@ -130,8 +112,4 @@ export function clearAssistantLaunchPayloadFromHash(): void {
     "",
     `${window.location.href.split("#")[0]}${nextHash}`,
   );
-}
-
-export function __resetAssistantLaunchPayloadClaimsForTests(): void {
-  claimedAssistantLaunchIds.clear();
 }

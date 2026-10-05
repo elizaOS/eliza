@@ -78,7 +78,7 @@
     "audit:story-coverage": "node scripts/stories-coverage.ts",
     "audit:dead-code": "knip --config knip.json --include files,dependencies,unlisted,unresolved --max-issues 0",
     "audit:public-api": "node scripts/audit-public-api.ts",
-    "build:dist:unlocked": "bun run clean && node ../scripts/ensure-tsc-nested-output-dir.ts packages/ui && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.ts packages/ui && node ../scripts/copy-package-assets.ts packages/ui src/styles src/cloud-ui/index.css src/voice/worklets src/components/views/view-icons src/login/LICENSE assets && node ../scripts/prepare-package-dist.ts packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/ui && node ../scripts/verify-package-runtime-exports.ts packages/ui && node ../scripts/copy-package-assets.ts packages/ui src/brand/brand.css src/brand-classic/brand.css",
+    "build:dist:unlocked": "bun run clean && node ../scripts/ensure-tsc-nested-output-dir.ts packages/ui && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.ts packages/ui && node ../scripts/copy-package-assets.ts packages/ui src/styles src/cloud-ui/index.css src/voice/worklets src/voice/microphone-samples.worklet.mjs src/components/views/view-icons src/login/LICENSE assets && node ../scripts/prepare-package-dist.ts packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/ui && node ../scripts/verify-package-runtime-exports.ts packages/ui && node ../scripts/copy-package-assets.ts packages/ui src/brand/brand.css src/brand-classic/brand.css",
     "generate:view-icons": "node scripts/bake-view-icons.ts",
     "test:orchestrator-accounts-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-orchestrator-accounts-e2e.mjs",
     "test:wallet-widget-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-wallet-widget-e2e.mjs",
@@ -97,12 +97,6 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
-    "./api/task-lifecycle": {
-      "eliza-source": "./src/api/task-lifecycle.ts",
-      "types": "./dist/api/task-lifecycle.d.ts",
-      "import": "./dist/api/task-lifecycle.js",
-      "default": "./dist/api/task-lifecycle.js"
-    },
     "./styles": "./dist/styles.js",
     "./styles/*.css": "./dist/styles/*.css",
     "./cloud-ui/index.css": "./dist/cloud-ui/index.css",
@@ -111,7 +105,12 @@
     "./brand/brand.css": "./dist/brand/brand.css",
     "./brand.css": "./dist/brand/brand.css",
     "./brand-classic.css": "./dist/brand-classic/brand.css",
-    "./assets/*": "./dist/assets/*"
+    "./assets/*": "./dist/assets/*",
+    "./voice/microphone-samples.worklet.mjs": {
+      "eliza-source": "./src/voice/microphone-samples.worklet.mjs",
+      "import": "./dist/voice/microphone-samples.worklet.mjs",
+      "default": "./dist/voice/microphone-samples.worklet.mjs"
+    }
   },
   "peerDependencies": {
     "@capacitor/app": "^8.0.0",

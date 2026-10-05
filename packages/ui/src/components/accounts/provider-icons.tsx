@@ -165,6 +165,3 @@ export function ProviderMark({ providerId, ...rest }: ProviderMarkProps) {
   const Mark = PROVIDER_MARKS[providerId] ?? AnthropicMark;
   return <Mark {...rest} />;
 }
-export function hasProviderMark(providerId: LinkedAccountProviderId): boolean {
-  return providerId in PROVIDER_MARKS;
-}

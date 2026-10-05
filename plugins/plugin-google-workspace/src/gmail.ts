@@ -981,6 +981,24 @@ function mapGmailHistoryChange(history: gmail_v1.Schema$History): GoogleGmailHis
   };
 }
 
+function receivedAtFromGmailMessage(
+  message: gmail_v1.Schema$Message,
+  dateHeader: string | undefined
+): string | undefined {
+  // Mailbox time is `internalDate` (epoch ms). The sender Date header is
+  // untrusted; an unparsable value used to throw and abort inbox search.
+  const fromInternal = message.internalDate ? Number(message.internalDate) : Number.NaN;
+  const internalDate = new Date(fromInternal);
+  if (Number.isFinite(internalDate.getTime())) {
+    return internalDate.toISOString();
+  }
+  if (!dateHeader) {
+    return undefined;
+  }
+  const parsed = Date.parse(dateHeader);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
+}
+
 function mapMessage(message: gmail_v1.Schema$Message, includeBody: boolean): GoogleMessageSummary {
   const headers = message.payload?.headers ?? [];
   const dateHeader = headerValue(headers, "Date");
@@ -1000,7 +1018,7 @@ function mapMessage(message: gmail_v1.Schema$Message, includeBody: boolean): Goo
     to: parseEmailAddresses(headerValue(headers, "To")),
     cc: parseEmailAddresses(headerValue(headers, "Cc")),
     snippet: message.snippet ?? undefined,
-    receivedAt: dateHeader ? new Date(dateHeader).toISOString() : undefined,
+    receivedAt: receivedAtFromGmailMessage(message, dateHeader),
     labelIds: message.labelIds ?? undefined,
     headers: headerMap,
     ...body,

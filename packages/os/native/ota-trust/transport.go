@@ -37,7 +37,7 @@ type HTTPTransport struct {
 
 var hostnamePattern = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$`)
 
-func NewHTTPTransport(approvedHosts string) (*HTTPTransport, error) {
+func newHTTPTransport(approvedHosts string) (*HTTPTransport, error) {
 	hosts := map[string]bool{}
 	for _, host := range strings.Split(approvedHosts, ",") {
 		if !hostnamePattern.MatchString(host) || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".localhost") {

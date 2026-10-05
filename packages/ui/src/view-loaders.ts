@@ -41,7 +41,20 @@ export const loadSecretsManagerSection = () =>
   import("./components/settings/SecretsManagerSection.js");
 export const loadRemoteControlCloudDefault = () =>
   import("./api/remote-control-cloud-default.js");
-export const loadVoice = () => import("./voice/index.js");
+export async function loadVoiceBootstrap() {
+  const [aec, diarization, jni, desktopWake] = await Promise.all([
+    import("./voice/aec-loop-harness.js"),
+    import("./voice/audio-frame-diarization-harness.js"),
+    import("./voice/jni-voice-harness.js"),
+    import("./voice/fused-wake-desktop-bridge.js"),
+  ]);
+  return {
+    installAecLoopHarness: aec.installAecLoopHarness,
+    installDiarizationPumpHarness: diarization.installDiarizationPumpHarness,
+    installJniVoiceHarness: jni.installJniVoiceHarness,
+    registerDesktopFusedWake: desktopWake.registerDesktopFusedWake,
+  };
+}
 export const loadWebAppsStudio = () =>
   import("./cloud/applications/WebAppsStudio.js");
 export const loadNativeAppsStudio = () =>

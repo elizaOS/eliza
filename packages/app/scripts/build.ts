@@ -140,7 +140,7 @@ async function main() {
 
   await run(
     process.execPath,
-    [path.join(__dirname, "plugin-build.ts")],
+    [path.join(__dirname, "build-native-plugins.ts")],
     appDir,
   );
 

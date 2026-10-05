@@ -16,7 +16,7 @@ export function registerRelationshipsApp(): void {
     label: "Relationships",
     icon: "Users",
     path: "/relationships",
-    pathPatterns: ["/apps/relationships", "/character/relationships"],
+    pathPatterns: ["/apps/relationships"],
     tabAffinity: "relationships",
     order: 930,
     // Relationships is a user-facing Character section. Launcher curation keeps

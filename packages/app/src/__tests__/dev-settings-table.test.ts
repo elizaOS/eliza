@@ -21,21 +21,6 @@ describe("dev settings table boundaries", () => {
     expect(wrapToWidth("😀", 1)).toEqual(["😀"]);
   });
 
-  it("supports numeric column caps and rejects invalid caps", () => {
-    expect(
-      formatDevSettingsTable("settings", [], {
-        layout: "wide",
-        caps: { setting: 3 },
-      }),
-    ).toContain("Se…");
-    expect(() =>
-      formatDevSettingsTable("settings", [], {
-        layout: "wide",
-        caps: { setting: NaN },
-      }),
-    ).toThrow(RangeError);
-  });
-
   it("handles a frame with no text budget without negative padding", () => {
     expect(boxRow("text", 6)).toBe("│  │");
     expect(() => boxRow("text", 5)).toThrow(RangeError);

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-computeruse",
   "version": "2.0.3-beta.7",
-  "description": "Desktop automation plugin \u2014 screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
+  "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -88,7 +88,10 @@
   },
   "license": "Apache-2.0",
   "elizaos": {
-    "appRegister": "register",
+    "appRegister": {
+      "subpath": "register",
+      "export": "registerApp"
+    },
     "app": {
       "displayName": "Computer Use",
       "category": "system"

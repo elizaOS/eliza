@@ -502,6 +502,7 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
             reason: "remote_auth_required",
             access: {
               mode: "remote",
+              role: "GUEST",
               passwordConfigured: false,
               ownerConfigured: true,
             },

@@ -40,7 +40,7 @@ afterEach(cleanup);
 beforeEach(() => sendWsMessage.mockClear());
 
 const { ShellViewAgentSurface } = await import("./ShellViewAgentSurface");
-const { AgentButton } = await import("../../agent-surface");
+const { AgentButton } = await import("../../agent-surface/components");
 const { dispatchViewInteract } = await import("./view-interact-registry");
 
 describe("ShellViewAgentSurface", () => {
@@ -156,7 +156,7 @@ describe("ShellViewAgentSurface", () => {
   );
   it("makes a wrapped shell page controllable via the interact dispatch", async () => {
     const { ShellViewAgentSurface } = await import("./ShellViewAgentSurface");
-    const { AgentButton } = await import("../../agent-surface");
+    const { AgentButton } = await import("../../agent-surface/components");
     const { dispatchViewInteract } = await import("./view-interact-registry");
 
     const onClick = vi.fn();

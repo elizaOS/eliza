@@ -1,3 +1,4 @@
+import type { ChatTurnUsage } from "./types";
 /**
  * Chat callbacks, one of the domain hooks AppContext composes.
  *
@@ -30,16 +31,15 @@ import {
 
 import {
   isConversationRecord,
-  isReservedLegacyChatTitle,
   normalizeConversationList,
 } from "./chat-conversation-guards";
 import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
-import { appendGreetingOnce } from "./greeting-dedupe";
 import {
   filterRenderableConversationMessages,
-  loadActiveConversationId,
   shouldKeepConversationMessage,
-} from "./internal";
+} from "./conversation-message-filter";
+import { appendGreetingOnce } from "./greeting-dedupe";
+import { loadActiveConversationId } from "./persistence";
 import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
 import {
   type AppState,
@@ -557,13 +557,7 @@ export interface UseChatCallbacksDeps {
   setChatFirstTokenReceived: (v: boolean) => void;
   /** Set/clear the live server-reported phase of the in-flight turn (#8813). */
   setServerTurnStatus: (status: ChatTurnStatus | null) => void;
-  setChatLastUsage: (v: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    model: string | undefined;
-    updatedAt: number;
-  }) => void;
+  setChatLastUsage: (v: ChatTurnUsage) => void;
   setChatPendingImages: (v: ImageAttachment[]) => void;
   setConversations: (
     v: Conversation[] | ((prev: Conversation[]) => Conversation[]),
@@ -1315,10 +1309,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         const { conversation: rawConversation, greeting: inlineGreeting } =
           await client.createConversation(title, {
             lang: uiLanguage,
-            // Stamp an explicit scope so the legacy page-chat TITLE heuristic
-            // (isMainChatConversation) can never hide this conversation — a
-            // scope-less chat renamed/auto-titled to "wallet"/"settings"/…
-            // used to vanish from every list.
             metadata: { scope: "general" },
           });
         if (!isConversationRecord(rawConversation)) {
@@ -1903,16 +1893,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       const trimmed = title.trim();
       if (!trimmed) {
         setActionNotice("Conversation title cannot be empty.", "error", 2800);
-        return;
-      }
-      if (isReservedLegacyChatTitle(trimmed)) {
-        // A scope-less conversation with this exact title is classified as a
-        // legacy page chat and hidden from every list — apparent data loss.
-        setActionNotice(
-          `"${trimmed}" is a reserved name. Pick a different title.`,
-          "error",
-          3600,
-        );
         return;
       }
       try {

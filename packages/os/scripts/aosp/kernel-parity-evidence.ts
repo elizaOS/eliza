@@ -20,7 +20,7 @@ export function snapshotSource(root, expectedCommit) {
     execFileSync("git", ["-C", root, ...args], { encoding: "utf8" });
   const commit = git("rev-parse", "HEAD").trim();
   if (commit !== expectedCommit || !/^[a-f0-9]{40}$/.test(commit)) {
-    throw new Error("Kernel source does not match the OS source lock.");
+    throw new Error("Kernel source does not match the OS checkout.");
   }
   if (
     git(
@@ -137,14 +137,18 @@ function main() {
       "usage: kernel-parity-evidence.ts begin|finish SOURCE OUT [EVIDENCE]",
     );
   }
-  const lock = JSON.parse(
-    readFileSync(
-      new URL("../../release/eliza-source.lock.json", import.meta.url),
-      "utf8",
-    ),
-  );
+  const expectedCommit = execFileSync(
+    "git",
+    [
+      "-C",
+      fileURLToPath(new URL("../../../..", import.meta.url)),
+      "rev-parse",
+      "HEAD",
+    ],
+    { encoding: "utf8" },
+  ).trim();
   const current = {
-    ...snapshotSource(resolve(sourceRoot), lock.commit),
+    ...snapshotSource(resolve(sourceRoot), expectedCommit),
     runnerSha256: sha256(
       readFileSync(
         new URL("cuttlefish-native-inference-smoke.sh", import.meta.url),

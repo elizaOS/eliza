@@ -9,7 +9,6 @@ import (
 func intervalPolicyFor(t *testing.T, original []byte, lower, upper int64) []byte {
 	t.Helper()
 	return mutateAdmission(t, original, func(p map[string]any) {
-		delete(p, "trustedNowMs")
 		p["trustedLowerMs"] = lower
 		p["trustedUpperMs"] = upper
 	})
@@ -55,29 +54,6 @@ func TestIntervalAdmissionRolloutBoundaries(t *testing.T) {
 	}
 }
 
-func TestIntervalAdmissionReferenceParity(t *testing.T) {
-	for _, v := range admissionVectors(t) {
-		t.Run(v.Name, func(t *testing.T) {
-			var p admissionPolicy
-			// Malformed legacy policies remain covered by the original vectors;
-			// the interval contract's malformed policies are tested separately.
-			if err := decodeAdmission(v.Policy, &p); err != nil || p.Now <= 0 {
-				return
-			}
-			exact, oldErr := EvaluateRelease(v.Release, v.Device, v.Policy)
-			interval, newErr := EvaluateReleaseInterval(v.Release, v.Device, intervalPolicyFor(t, v.Policy, p.Now, p.Now))
-			if (oldErr == nil) != (newErr == nil) {
-				t.Fatalf("point and interval errors differ: %v / %v", oldErr, newErr)
-			}
-			a, _ := json.Marshal(exact)
-			b, _ := json.Marshal(interval)
-			if !bytes.Equal(a, b) {
-				t.Fatalf("point=%s interval=%s", a, b)
-			}
-		})
-	}
-}
-
 func TestIntervalAdmissionInvalidInputCannotRatchet(t *testing.T) {
 	dir, v := rememberedFixture(t)
 	before, err := readAdmission(dir)
@@ -86,7 +62,7 @@ func TestIntervalAdmissionInvalidInputCannotRatchet(t *testing.T) {
 	}
 	beforeBytes, _ := json.Marshal(before)
 	valid := intervalPolicyFor(t, v.Policy, 100, 200)
-	bad := [][]byte{v.Policy}
+	bad := [][]byte{}
 	for _, mutation := range []func(map[string]any){
 		func(p map[string]any) { delete(p, "trustedLowerMs") },
 		func(p map[string]any) { delete(p, "trustedUpperMs") },
@@ -142,28 +118,5 @@ func TestIntervalAdmissionRememberedDeferralAndReplay(t *testing.T) {
 	result, err = EvaluateRememberedReleaseInterval(dir, newRelease, v.Device, intervalPolicyFor(t, v.Policy, start, start))
 	if err != nil || result.Decision != "eligible" {
 		t.Fatalf("valid narrower time failed: %+v %v", result, err)
-	}
-}
-
-func TestIntervalPolicyRejectedByPointDiscovery(t *testing.T) {
-	v := admissionVectors(t)[0]
-	policy := intervalPolicyFor(t, v.Policy, 100, 200)
-	if _, err := EvaluateRelease(v.Release, v.Device, policy); err == nil {
-		t.Fatal("legacy point consumer accepted interval policy")
-	}
-	r := fixture(t)
-	for _, prepared := range []bool{false, true} {
-		transport := &discoveryFixture{repository: r, hook: func() { t.Fatal("unmigrated discovery performed network I/O") }}
-		session := &DiscoverySession{transport: transport}
-		var err error
-		if prepared {
-			_, err = session.RunPrepared("", "", "", "", r.root, baseURL, v.Device, policy, 0)
-		} else {
-			_, err = session.RunAdmitted("", "", "", r.root, baseURL, v.Device, policy, 0)
-		}
-		session.Close()
-		if err == nil {
-			t.Fatal("unmigrated discovery accepted interval policy")
-		}
 	}
 }

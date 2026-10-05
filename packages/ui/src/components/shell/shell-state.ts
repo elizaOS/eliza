@@ -131,20 +131,7 @@ export function filterRenderableShellMessages(
       (m.role === "assistant" && phase === "responding"),
   );
 }
-/**
- * Pure transcript-windowing decision (#9141 gap 4 seam): the renderable turns,
- * capped to the newest `max` to bound DOM nodes. Pure + DOM-free so the cap +
- * exceptions are unit-testable and any future virtualizer can reuse the same
- * predicate.
- */
-export function selectVisibleShellMessages(
-  messages: readonly ShellMessage[],
-  phase: ShellPhase,
-  max: number = MAX_RENDERED_SHELL_MESSAGES,
-): ShellMessage[] {
-  const kept = filterRenderableShellMessages(messages, phase);
-  return max > 0 && kept.length > max ? kept.slice(-max) : [...kept];
-}
+
 /**
  * Decide the render window's response to a scroll-to-top for the infinite
  * upward scroll (#13532/#14329). Two moves, reveal-before-fetch:

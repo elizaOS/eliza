@@ -92,7 +92,7 @@ test("promotion shell refuses a same-count substitution before publishing", asyn
   const workflow = parse(
     await readFile(
       new URL(
-        "../../.github/workflows/elizaos-os-full-release.yml",
+        "../../../../.github/workflows/elizaos-os-full-release.yml",
         import.meta.url,
       ),
       "utf8",

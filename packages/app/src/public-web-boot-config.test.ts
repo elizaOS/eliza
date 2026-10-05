@@ -25,17 +25,6 @@ vi.mock("@elizaos/ui", async (importOriginal) => ({
   },
 }));
 
-vi.mock("./ios-runtime", () => ({
-  resolveIosRuntimeConfig: (
-    env: Record<string, string | boolean | undefined>,
-  ) => ({
-    cloudApiBase:
-      typeof env.VITE_ELIZA_CLOUD_BASE === "string"
-        ? env.VITE_ELIZA_CLOUD_BASE.replace(/\/+$/, "")
-        : "https://eliza.app",
-  }),
-}));
-
 import { seedPublicWebBootConfig } from "./public-web-boot-config.js";
 
 describe("seedPublicWebBootConfig", () => {

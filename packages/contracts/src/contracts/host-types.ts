@@ -17,8 +17,7 @@
 export type ExistingElizaInstallSource =
   | "config-path-env"
   | "state-dir-env"
-  | "default-state-dir"
-  | "legacy-dot-state-dir";
+  | "default-state-dir";
 
 export interface ExistingElizaInstallInfo {
   detected: boolean;

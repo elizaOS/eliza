@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { createLocalAgentBackup } from "@elizaos/agent/services/agent-backup";
 import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
-import { AuthStore } from "@elizaos/app/services/auth-store";
+import { AuthStore } from "@elizaos/app/auth";
 import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { Plugin } from "@elizaos/core";
 import {

@@ -40,13 +40,7 @@ const eventSourceMock = vi.hoisted(() => ({
 // snapshot reports an authenticated session. Mutable so tests can flip it.
 const authMock = vi.hoisted(() => ({ authenticated: true }));
 const mobileRuntimeModeMock = vi.hoisted(() => ({
-  value: null as
-    | "remote-mac"
-    | "cloud"
-    | "cloud-hybrid"
-    | "local"
-    | "tunnel-to-mobile"
-    | null,
+  value: null as "remote-mac" | "cloud" | "cloud-hybrid" | "local" | null,
 }));
 vi.mock("../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
@@ -147,7 +141,7 @@ describe("useHomeModelStatus", () => {
       expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
     },
   );
-  it.each(["remote-mac", "tunnel-to-mobile"] as const)(
+  it.each(["remote-mac"] as const)(
     "does not poll phone-local inference for %s placement on a local Mac server",
     async (mobileRuntimeMode) => {
       mobileRuntimeModeMock.value = mobileRuntimeMode;

@@ -442,5 +442,3 @@ export function useLifecycleState(cloudOnly?: boolean): LifecycleStateHook {
     agentStatusRef,
   };
 }
-
-export type { LifecycleAction_ as LifecycleDispatchAction };

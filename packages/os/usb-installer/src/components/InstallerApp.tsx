@@ -1,6 +1,7 @@
 // Renders the USB installer workflow and destructive-write safeguards.
-import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/ui";
+import { EXTERNAL_URLS } from "@elizaos/host/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
+import logo from "../assets/logo.svg";
 import type {
   ElizaOsImage,
   InstallerStepId,
@@ -420,11 +421,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
       {/* Header                                                              */}
       <section className="header-band">
         <div>
-          <img
-            className="brand-logo"
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.osLockupBlack}`}
-            alt="elizaOS"
-          />
+          <img className="brand-logo" src={logo} alt="elizaOS" />
           <p className="eyebrow">elizaOS media tool</p>
           <h1>USB installer</h1>
         </div>
@@ -1076,11 +1073,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
 
       {/* Footer                                                              */}
       <section className="footer-band">
-        <img
-          className="brand-logo"
-          src={`${BRAND_PATHS.logos}/${LOGO_FILES.osLockupBlack}`}
-          alt="elizaOS"
-        />
+        <img className="brand-logo" src={logo} alt="elizaOS" />
         <a
           className="cta-link"
           href={EXTERNAL_URLS.docs}

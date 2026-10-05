@@ -30,7 +30,7 @@ registerAppShellPage({
   icon: "Layers",
   path: "/orchestrator",
   viewKind: "developer",
-  developerOnly: true,
+
   surface: agentSurface,
   loader: () =>
     import("./OrchestratorView.js").then((module) => ({
@@ -45,7 +45,7 @@ registerAppShellPage({
   icon: "TerminalSquare",
   path: "/cockpit",
   viewKind: "developer",
-  developerOnly: true,
+
   surface: agentSurface,
   loader: () =>
     import("./CockpitRoute.js").then((module) => ({

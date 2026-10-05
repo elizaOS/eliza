@@ -56,7 +56,6 @@ export function normalizeCaptureRequests(value: unknown): CaptureRequest[] {
   });
 }
 let started = false;
-let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let consecutiveFailures = 0;
 let pollGeneration = 0;
 let activePollController: AbortController | null = null;
@@ -172,7 +171,7 @@ async function poll(signal: AbortSignal): Promise<void> {
  * No-op on web/desktop and on repeat calls.
  */
 function scheduleNextPoll(delayMs: number, generation: number): void {
-  pollTimer = setTimeout(() => {
+  setTimeout(() => {
     const controller = new AbortController();
     activePollController = controller;
     void poll(controller.signal).finally(() => {
@@ -192,18 +191,4 @@ export function initScreenCaptureBridge(): void {
   consecutiveFailures = 0;
   pollGeneration += 1;
   scheduleNextPoll(POLL_INTERVAL_MS, pollGeneration);
-}
-/** Test-only reset hook. */
-export function __resetScreenCaptureBridgeForTests(): void {
-  pollGeneration += 1;
-  activePollController?.abort(
-    new DOMException("Screen-capture poll stopped", "AbortError"),
-  );
-  activePollController = null;
-  if (pollTimer) {
-    clearTimeout(pollTimer);
-    pollTimer = null;
-  }
-  started = false;
-  consecutiveFailures = 0;
 }

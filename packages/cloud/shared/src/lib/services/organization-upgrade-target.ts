@@ -21,8 +21,12 @@ function reject(reason: string): never {
     context: { reason },
   });
 }
+export type OrganizationUpgradeSource = Omit<
+  BillingSubscription,
+  "created_at" | "updated_at" | "last_provider_event_id" | "last_provider_event_created_at"
+>;
 export function observeAppliedOrganizationUpgrade(input: {
-  source: BillingSubscription;
+  source: OrganizationUpgradeSource;
   review: OrganizationUpgradeReview;
   binding: OrganizationUpgradeProviderBinding;
   raw: unknown;

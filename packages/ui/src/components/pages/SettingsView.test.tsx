@@ -225,7 +225,6 @@ vi.mock("../settings/settings-sections", async () => {
     },
     SETTINGS_GROUP_LABEL: groupLabels,
     SETTINGS_GROUP_ORDER: groupOrder,
-    SETTINGS_SECTIONS: sections,
     backFromConnectorDetail,
     getAllSettingsSections: () => sections,
     // Group the stub sections the way the real helper does (bucket by group,

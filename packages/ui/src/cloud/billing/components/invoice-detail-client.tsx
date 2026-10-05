@@ -11,7 +11,7 @@ import { toast } from "../../../bridge/toast";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { CornerBrackets } from "../../../components/ui/corner-brackets";
-import { isSafeNavigationUrl } from "../../lib/navigation-url";
+import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { InvoiceDto } from "../types";
 

@@ -32,21 +32,23 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "../../../bridge/toast";
+import { Button } from "../../../components/ui/button";
 import {
-  Button,
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  Input,
-  Label,
+} from "../../../components/ui/dialog";
+import { Input } from "../../../components/ui/input";
+import { Label } from "../../../components/ui/label";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Textarea,
-} from "../primitives";
+} from "../../../components/ui/select";
+import { Textarea } from "../../../components/ui/textarea";
 
 interface PromoteAppDialogProps {
   open: boolean;

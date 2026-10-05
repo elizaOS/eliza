@@ -6,12 +6,7 @@
  * registry is unavailable; transport and payload failures remain visible errors.
  */
 
-import type {
-  AppShellBackgroundPolicy,
-  SurfaceManifest,
-  ViewHeaderPolicy,
-  ViewKind,
-} from "@elizaos/core";
+import type { SurfaceManifest, ViewKind } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core/protocol";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
@@ -79,26 +74,9 @@ export interface ViewRegistryEntry {
   hasHeroImage?: boolean;
   /** Whether the view is currently loadable. */
   available: boolean;
-  /**
-   * Declared surface contract for this view (#13452), forwarded from the owning
-   * `ViewDeclaration.surface` by `GET /api/views`. The shell derives the screen
-   * background from it (`surface.background` gated by the `wallpaper` grant), and
-   * DynamicViewLoader derives the plugin view's capability grants from it. The
-   * standalone `backgroundPolicy` / `headerPolicy` below are the legacy fallback.
-   */
+  /** Declared surface policies and capability grants. */
   surface?: SurfaceManifest;
-  /**
-   * Screen background policy for this view. Defaults to `"opaque"`. Superseded
-   * by `surface.background` when a manifest is declared.
-   */
-  backgroundPolicy?: AppShellBackgroundPolicy;
-  /**
-   * Top-bar framing policy (#13586). Defaults to `"normal"`; the shell enforces
-   * the shared `ViewHeader` on every `normal` view. `fullscreen`/`modal`/
-   * `immersive` opt a view out of the uniform top bar. Superseded by
-   * `surface.header` when a manifest is declared.
-   */
-  headerPolicy?: ViewHeaderPolicy;
+
   /** The plugin that provides this view. */
   pluginName: string;
   /** Freeform tags used for search and filtering. */
@@ -107,16 +85,8 @@ export interface ViewRegistryEntry {
   order?: number;
   /** Optional named group shared with app-shell page registrations. */
   group?: string;
-  /**
-   * When true, the view only appears when Developer Mode is enabled.
-   * Equivalent to `viewKind: "developer"`.
-   */
-  developerOnly?: boolean;
-  /**
-   * Four-tier visibility category. Supersedes `developerOnly` when set:
-   * `system`/`release` always show; `developer`/`preview` follow Settings
-   * toggles. See `ViewKind` in `@elizaos/core`.
-   */
+
+  /** Four-tier visibility category; absent values default to release. */
   viewKind?: ViewKind;
   /** When false, the view is hidden from the manager grid (internal views). */
   visibleInManager?: boolean;
@@ -233,7 +203,6 @@ function isViewRegistryEntry(value: unknown): value is ViewRegistryEntry {
     isOptionalBoolean(value.metadataOnly) &&
     isOptionalString(value.group) &&
     isOptionalBoolean(value.hasHeroImage) &&
-    isOptionalBoolean(value.developerOnly) &&
     isOptionalBoolean(value.visibleInManager) &&
     isOptionalBoolean(value.pinnable) &&
     isOptionalBoolean(value.builtin) &&
@@ -252,14 +221,6 @@ function isViewRegistryEntry(value: unknown): value is ViewRegistryEntry {
             typeof capability.id === "string" &&
             typeof capability.description === "string",
         ))) &&
-    (value.backgroundPolicy === undefined ||
-      value.backgroundPolicy === "opaque" ||
-      value.backgroundPolicy === "shared") &&
-    (value.headerPolicy === undefined ||
-      value.headerPolicy === "normal" ||
-      value.headerPolicy === "fullscreen" ||
-      value.headerPolicy === "modal" ||
-      value.headerPolicy === "immersive") &&
     (value.viewKind === undefined ||
       value.viewKind === "system" ||
       value.viewKind === "release" ||
@@ -435,7 +396,6 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   character: "Bot",
   "character-select": "Users",
   automations: "Clock3",
-  triggers: "Clock3",
   inventory: "Wallet",
   documents: "FileText",
   files: "FolderClosed",
@@ -447,7 +407,6 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   experience: "GraduationCap",
   "character-skills": "Sparkles",
   memories: "BrainCircuit",
-  rolodex: "UsersRound",
   runtime: "Terminal",
   database: "Database",
   desktop: "Monitor",
@@ -474,7 +433,6 @@ const BUILTIN_TAB_ORDER: Partial<Record<BuiltinTab, number>> =
       "memories",
       "relationships",
       "automations",
-      "triggers",
       "plugins",
       "skills",
       "trajectories",
@@ -523,13 +481,11 @@ function appShellPageToViewEntry(
     path: page.path,
     available: true,
     pluginName: page.pluginId,
-    developerOnly: page.developerOnly,
+
     viewKind: page.viewKind,
     order: page.order,
     group: page.group,
     surface: page.surface,
-    backgroundPolicy: page.backgroundPolicy,
-    headerPolicy: page.headerPolicy,
     visibleInManager: true,
     builtin: false,
   };

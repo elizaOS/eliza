@@ -1,4 +1,4 @@
-# Persistent GNOME disk images; legacy live-build is available as legacy-iso.
+# Persistent GNOME disk images.
 
 ARCH    ?= amd64
 PROFILE ?= default
@@ -14,7 +14,7 @@ RISCV64_ICU_DATA ?=
 RISCV64_RUNTIME ?= bun
 RISCV64_AGENT_RUNTIME_REPORT ?=
 RISCV64_AGENT_RUNTIME_TRANSCRIPT ?=
-REMOVE_PATH_RECURSIVE ?= node ../../scripts/rm-path-recursive.ts
+REMOVE_PATH_RECURSIVE ?= node ../../../scripts/rm-path-recursive.ts
 DEBIAN_SNAPSHOT_LOCK := $(HERE)/debian-snapshot.lock.json
 DEBIAN_SNAPSHOT_SERIAL := $(shell python3 -c 'import json; print(json.load(open("$(DEBIAN_SNAPSHOT_LOCK)"))["serial"])')
 DEBIAN_BASE_IMAGE := $(shell python3 -c 'import json; print(json.load(open("$(DEBIAN_SNAPSHOT_LOCK)"))["baseImage"])')
@@ -22,32 +22,26 @@ DEBIAN_BASE_IMAGE := $(shell python3 -c 'import json; print(json.load(open("$(DE
 SUPPORTED_ARCHES := amd64 arm64 riscv64
 SUPPORTED_PROFILES := default gui secure secure-gui
 
-.PHONY: help build legacy-iso builder stage-agent-artifacts riscv64-agent-runtime-smoke release-check-strict release-check check-arch check-profile clean lint legacy-lint mkosi-build mkosi-summary mkosi-lint mkosi-clean
+.PHONY: help build builder stage-agent-artifacts riscv64-agent-runtime-smoke check-arch check-profile clean lint mkosi-build mkosi-summary mkosi-lint mkosi-clean
 
 help:
 	@echo "elizaOS Linux build targets:"
 	@echo "  make build [ARCH=amd64|arm64|riscv64] [PROFILE=default|gui|secure|secure-gui]"
-	@echo "  make legacy-iso        # older live-build ISO pipeline"
 	@echo "  make stage-agent-artifacts ARCH=<arch> [BUN_SOURCE=<path>|BUN_RISCV64_ZIP=<path>|RISCV64_RUNTIME=node]"
 	@echo "  make riscv64-agent-runtime-smoke"
-	@echo "  make release-check        # legacy ISO manifest"
-	@echo "  make release-check-strict # legacy ISO manifest"
 	@echo "  ----- mkosi (canonical persistent GNOME disk image) -----"
 	@echo "  make mkosi-build  [ARCH=...] [PROFILE=...]"
 	@echo "  make mkosi-summary [ARCH=...] [PROFILE=...]   # dry-run resolver"
 	@echo "  make mkosi-lint                              # static config lint"
 	@echo "  make mkosi-clean                             # remove out/mkosi"
 	@echo "  make lint               # mkosi configuration checks"
-	@echo "  make clean              # remove out/ and live-build state"
+	@echo "  make clean              # remove out/"
 	@echo
 	@echo "ARCH: $(SUPPORTED_ARCHES)"
 	@echo "PROFILE: $(SUPPORTED_PROFILES)"
 	@echo "default/gui=GNOME, secure/secure-gui=GNOME with hardening"
 
 build: mkosi-build
-
-legacy-iso: check-arch
-	ELIZAOS_ARCH="$(ARCH)" ELIZAOS_PROFILE="$(PROFILE)" ./build-live-iso.sh
 
 stage-agent-artifacts: check-arch
 ifeq ($(ARCH),riscv64)
@@ -63,22 +57,10 @@ endif
 riscv64-agent-runtime-smoke:
 	RISCV64_AGENT_RUNTIME_REPORT="$(RISCV64_AGENT_RUNTIME_REPORT)" RISCV64_AGENT_RUNTIME_TRANSCRIPT="$(RISCV64_AGENT_RUNTIME_TRANSCRIPT)" ../../scripts/linux/check-riscv64-agent-runtime-artifact.sh "$(HERE)/artifacts/riscv64"
 
-release-check:
-	python3 ../../scripts/linux/check_release_manifest.py
-
-release-check-strict:
-	python3 ../../scripts/linux/check_release_manifest.py --strict
-
 lint: mkosi-lint
 
-legacy-lint:
-	../../scripts/linux/static-smoke.sh
-	python3 -m py_compile ../../scripts/linux/check-multiarch-boot-contract.py
-	python3 ../../scripts/linux/test_check_multiarch_boot_contract.py
-	python3 ../../scripts/linux/test_riscv64_agent_staging.py
-
 clean:
-	$(REMOVE_PATH_RECURSIVE) "$(OUT)" cache chroot binary*.iso config/binary config/bootstrap config/chroot config/source
+	$(REMOVE_PATH_RECURSIVE) "$(OUT)"
 
 check-arch:
 	$(if $(and $(filter 1,$(words $(ARCH))),$(filter $(SUPPORTED_ARCHES),$(ARCH))),@:, $(error Unsupported ARCH; use amd64, arm64, or riscv64))
@@ -99,7 +81,7 @@ builder: check-arch check-profile
 # mkosi.postinst can consume the sibling control-plane packaging without
 # duplicating it into the image definition.
 #
-# ARCH maps from live-build naming to mkosi's debian-arch naming:
+# Architecture selectors map to mkosi architecture names:
 #   amd64   -> x86-64
 #   arm64   -> arm64
 #   riscv64 -> riscv64
