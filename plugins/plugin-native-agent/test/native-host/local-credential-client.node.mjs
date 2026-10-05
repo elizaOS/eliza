@@ -130,7 +130,9 @@ test("host deadline covers a stalled response body without replay", async (t) =>
   });
   await assert.rejects(
     client(port, {
-      timeoutMs: 100,
+      // Allow loopback setup under parallel JVM compilation so this exercises
+      // an admitted, stalled response body rather than a pre-dispatch timeout.
+      timeoutMs: 5000,
       unavailableMessage: "Host storage unavailable",
     }).read(),
     (error) =>

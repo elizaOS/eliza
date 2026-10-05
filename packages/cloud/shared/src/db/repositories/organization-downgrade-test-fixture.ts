@@ -1,7 +1,13 @@
 /** Reusable real-database lower-plan review fixture. */
+
 import type { OrganizationDowngradeReview } from "../../lib/services/organization-downgrade-review";
+import { captureOrganizationScheduleQuoteTerms } from "../../lib/services/organization-schedule-quote-terms";
+import {
+  completeScheduleSubscriptionTestObservation,
+  scheduleCustomerTestObservation,
+} from "../../lib/services/organization-schedule-test-fixture";
 import { seedCancellationTestAccount } from "./subscription-cancellation-test-fixture";
-export async function seedOrganizationDowngradeTestAccount(
+export async function buildOrganizationDowngradeTestAccount(
   query: (text: string, values: unknown[]) => Promise<unknown>,
   validityMs = 60000,
 ) {
@@ -34,19 +40,33 @@ export async function seedOrganizationDowngradeTestAccount(
     observedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + validityMs).toISOString(),
   };
+  const retainedTerms = captureOrganizationScheduleQuoteTerms({
+    rawSubscription: completeScheduleSubscriptionTestObservation(f.provider),
+    rawCustomer: scheduleCustomerTestObservation(f.source.stripe_customer_id),
+    observedAt: now,
+  });
+  const providerBinding = {
+    sourcePriceId: "price_pro",
+    targetPriceId: "price_plus",
+    sourceProductId: "prod_pro",
+    targetProductId: "prod_plus",
+    livemode: false,
+    apiVersion: "2024-11-20.acacia" as const,
+  };
+  return { ...f, captured, review, retainedTerms, providerBinding };
+}
+export async function seedOrganizationDowngradeTestAccount(
+  query: (text: string, values: unknown[]) => Promise<unknown>,
+  validityMs = 60000,
+) {
+  const f = await buildOrganizationDowngradeTestAccount(query, validityMs);
   const { saveOrganizationDowngradeQuote } = await import("./organization-downgrade-quotes");
   const quote = await saveOrganizationDowngradeQuote({
     identity: f.input,
-    captured,
-    review,
-    providerBinding: {
-      sourcePriceId: "price_pro",
-      targetPriceId: "price_plus",
-      sourceProductId: "prod_pro",
-      targetProductId: "prod_plus",
-      livemode: false,
-      apiVersion: "2024-11-20.acacia",
-    },
+    captured: f.captured,
+    review: f.review,
+    retainedTerms: f.retainedTerms,
+    providerBinding: f.providerBinding,
   });
   return { ...f, quote };
 }

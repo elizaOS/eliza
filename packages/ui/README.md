@@ -86,3 +86,12 @@ state/captions, live rate changes and object URL/player cleanup. Inject synthesi
 and state observers, call `stop()` on cancellation/teardown, and supply product
 copy and consent gestures in the host. These encoded-audio and device-speech paths
 do not replace the realtime PCM voice-session player or acquire a microphone.
+
+`RecordedTranscriptionController` owns bounded MediaRecorder utterances, stream
+cleanup, preview/final ordering and stale authorization/acquisition/transcription
+responses. Supply authorization, shared capture/encoding adapters, a transcription
+transport and selected bounds. `finish()` requests a final transcript; `cancel()`
+releases resources without publishing late words. It never sends a chat message.
+`DraftTranscriptGuard` distinguishes a recording's own preview updates from later
+user edits and returns final conflicts for host review; hosts choose append/replace
+policy and explicit review/send gestures.

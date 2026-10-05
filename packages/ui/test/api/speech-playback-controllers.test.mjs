@@ -240,3 +240,24 @@ test("invalid payload, play rejection and constructor failure release resources 
     assert.equal(c.pending, false);
   }
 });
+
+test("settlement observer owns errors and suppresses cancelled operations", async () => {
+  const d = deferred(),
+    f = playback(() => d.promise),
+    results = [];
+  const pending = f.controller.speak("Old", (e) => results.push(e));
+  f.controller.stop();
+  d.reject(Error("old"));
+  await pending;
+  assert.deepEqual(results, []);
+  const bad = playback(async () => null);
+  await bad.controller.speak("Bad", (e) => results.push(e));
+  assert.equal(results[0].code, "invalid-audio");
+  const good = playback();
+  const success = good.controller.speak("Good", (e) => results.push(e));
+  await tick();
+  good.players[0].onended();
+  await success;
+  assert.equal(results.at(-1), null);
+  assert.equal(good.controller.pending, false);
+});
