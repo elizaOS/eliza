@@ -35,6 +35,8 @@ export function validateBillSourceLinks(value: unknown): BillSourceReference[] {
       !source ||
       typeof source.messageId !== "string" ||
       !/^[A-Za-z0-9_-]{1,256}$/.test(source.messageId) ||
+      (source.kind !== undefined && typeof source.kind !== "string") ||
+      (source.partId !== undefined && typeof source.partId !== "string") ||
       ((source.url !== undefined || source.threadId !== undefined) &&
         !gmailSourceLink(source.url, source.threadId))
     )
@@ -118,10 +120,12 @@ export function readBillSourceOffer(
     )
       throw new BillClientResponseError("Unsupported source address");
     if (
-      f.servicePeriod &&
-      ![f.servicePeriod.startsOn, f.servicePeriod.endsOn].every(
-        (x) => typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x),
-      )
+      f.servicePeriod !== undefined &&
+      (!f.servicePeriod ||
+        typeof f.servicePeriod !== "object" ||
+        ![f.servicePeriod.startsOn, f.servicePeriod.endsOn].every(
+          (x) => typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x),
+        ))
     )
       throw new BillClientResponseError("Unsupported source period");
   }
@@ -203,8 +207,10 @@ export function readBillDecision(
       throw new BillClientResponseError("Unbound bill choice");
   }
   if (
-    decision.guidance &&
-    (typeof decision.guidance.instruction !== "string" ||
+    decision.guidance !== undefined &&
+    (!decision.guidance ||
+      typeof decision.guidance !== "object" ||
+      typeof decision.guidance.instruction !== "string" ||
       !decision.guidance.instruction.trim() ||
       decision.guidance.instruction.length > 600 ||
       typeof decision.guidance.available !== "boolean")

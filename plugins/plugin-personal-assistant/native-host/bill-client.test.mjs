@@ -118,6 +118,8 @@ test("response admission preserves detached metadata and validates shared money,
     (v) => (v.decision.review.currencyDigits = 0),
     (v) => (v.decision.review.totalMinor = Number.MAX_SAFE_INTEGER + 1),
     (v) => (v.decision.kind = "pay"),
+    (v) => (v.decision.guidance = false),
+    (v) => (v.decision.guidance = null),
     (v) =>
       (v.decision.billSources = [
         { ...source(), url: "https://evil.example/" },
@@ -132,6 +134,10 @@ test("response admission preserves detached metadata and validates shared money,
     (v) => (v.candidates[0].facts.origin = "http://biller.example"),
     (v) => (v.candidates[0].sources = [{ messageId: "../x" }]),
     (v) => (v.reason = "choose-for-user"),
+    (v) => (v.candidates[0].facts.servicePeriod = false),
+    (v) => (v.candidates[0].facts.servicePeriod = null),
+    (v) => (v.candidates[0].sources[0].kind = false),
+    (v) => (v.candidates[0].sources[0].partId = {}),
   ]) {
     const v = offer();
     mutate(v);
