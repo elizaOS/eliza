@@ -8,6 +8,7 @@ import type {
   OrganizationSubscriptionSnapshot,
   SubscriptionCancellationNoticeSnapshot,
 } from "../../types/account-billing-snapshot";
+import { SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION } from "./subscription-funding-policy";
 
 export function buildOrganizationSubscriptionSnapshot(
   primary: PrimaryOrganizationSubscription,
@@ -76,6 +77,16 @@ export function buildOrganizationSubscriptionSnapshot(
       graceExpiresAt: subscription.grace_expires_at?.toISOString() ?? null,
       dunningStartedAt: subscription.dunning_started_at?.toISOString() ?? null,
       cancellationNotice: buildCancellationNotice(primary, observedAt),
+      fundingPolicy: {
+        status: "available",
+        source: "subscription-funding-operation-taxonomy",
+        observedAt,
+        value: {
+          schemaVersion: 1,
+          operationClasses: { ...SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION },
+          requiresRequestEligibility: true,
+        },
+      },
       allowance,
     },
   };

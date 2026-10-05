@@ -715,6 +715,11 @@ export default function StewardLoginSection() {
   const [completingCallback, setCompletingCallback] = useState<boolean>(() =>
     PLAYWRIGHT_TEST_AUTH_ENABLED ? false : hasStewardOAuthCallbackInUrl(),
   );
+  // Capture ownership before the callback effect removes the URL fragment.
+  // Neither passive recovery nor StrictMode's effect replay may replace this
+  // explicitly selected identity with a previously stored Cloud session.
+  const callbackOwnsSessionRef = useRef(completingCallback);
+  const callbackHandledRef = useRef(false);
   const [providersLoaded, setProvidersLoaded] = useState(
     () =>
       PLAYWRIGHT_TEST_AUTH_ENABLED ||
@@ -933,6 +938,8 @@ export default function StewardLoginSection() {
   }, [PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
+    if (callbackHandledRef.current) return;
+    callbackHandledRef.current = true;
     const code = consumeStewardCodeFromQuery();
     if (code) {
       // The OAuth `state` echo must exactly match the value stashed at
@@ -1046,7 +1053,7 @@ export default function StewardLoginSection() {
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
     if (searchParams.get("switchAccount") === "1") return;
-    if (searchParams.get("code")) {
+    if (callbackOwnsSessionRef.current || searchParams.get("code")) {
       setSessionRecoveryComplete(true);
       return;
     }

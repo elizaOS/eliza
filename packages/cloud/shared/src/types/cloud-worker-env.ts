@@ -75,6 +75,8 @@ export interface Bindings {
   ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
   /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
   ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
+  /** Server-owned registrations for independently branded native clients. */
+  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
