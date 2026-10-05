@@ -312,7 +312,7 @@ async function loadRemoteCodingRunnerModule(): Promise<RemoteCodingRunnerModule>
   )) as RemoteCodingRunnerModule;
 }
 
-import { default as rolesPlugin } from "./roles/src/index.ts";
+import { default as rolesPlugin } from "./roles.ts";
 
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);

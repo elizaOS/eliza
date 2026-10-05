@@ -1,33 +1,38 @@
-/**
- * Slots for task-coordinator (coding-agent) UI surfaces rendered by app.
- *
- * app deliberately does not import from @elizaos/plugin-agent-orchestrator —
- * that would create a package -> app-plugin dependency (coding-agent
- * components live under plugins/plugin-agent-orchestrator) and a circular edge
- * (task-coordinator already imports app for its hooks/types). Instead,
- * app plugins that want coding-agent surfaces call
- * `registerTaskCoordinatorSlots` with their component implementations at
- * boot time, and app renders them via the `*Slot` components below.
- *
- * Registration happens via a side-effect import in the root app entry (see
- * the task-coordinator slot-registration module).
- */
+import type { ComponentType } from "react";
+import type { CodingAgentSession } from "../api/client-types-cloud.js";
 
-import {
-  registeredTaskCoordinatorSlots,
-  type TaskCoordinatorCodingAgentControlChipProps,
-  type TaskCoordinatorCodingAgentSettingsSectionProps,
-  type TaskCoordinatorCodingAgentTasksPanelProps,
-  type TaskCoordinatorPtyConsoleBaseProps,
-} from "./task-coordinator-slots.helpers";
+export type TaskCoordinatorCodingAgentSettingsSectionProps = Record<
+  string,
+  never
+>;
 
-export type {
-  TaskCoordinatorCodingAgentControlChipProps,
-  TaskCoordinatorCodingAgentSettingsSectionProps,
-  TaskCoordinatorCodingAgentTasksPanelProps,
-  TaskCoordinatorPtyConsoleBaseProps,
-  TaskCoordinatorSlots,
-} from "./task-coordinator-slots.helpers";
+export interface TaskCoordinatorCodingAgentTasksPanelProps {
+  fullPage?: boolean;
+}
+
+export type TaskCoordinatorCodingAgentControlChipProps = Record<string, never>;
+
+export interface TaskCoordinatorPtyConsoleBaseProps {
+  activeSessionId: string;
+  sessions: CodingAgentSession[];
+  onClose: () => void;
+  variant: "drawer" | "side-panel" | "full";
+}
+
+export interface TaskCoordinatorSlots {
+  CodingAgentSettingsSection: ComponentType<TaskCoordinatorCodingAgentSettingsSectionProps>;
+  CodingAgentTasksPanel: ComponentType<TaskCoordinatorCodingAgentTasksPanelProps>;
+  CodingAgentControlChip: ComponentType<TaskCoordinatorCodingAgentControlChipProps>;
+  PtyConsoleBase: ComponentType<TaskCoordinatorPtyConsoleBaseProps>;
+}
+
+const registeredTaskCoordinatorSlots: Partial<TaskCoordinatorSlots> = {};
+
+export function registerTaskCoordinatorSlots(
+  components: Partial<TaskCoordinatorSlots>,
+): void {
+  Object.assign(registeredTaskCoordinatorSlots, components);
+}
 
 export function CodingAgentSettingsSection(
   props: TaskCoordinatorCodingAgentSettingsSectionProps,

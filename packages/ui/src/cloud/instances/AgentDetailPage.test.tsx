@@ -34,7 +34,7 @@ const agentState: {
   error: null,
 };
 
-vi.mock("./lib/data/eliza-agents", () => ({
+vi.mock("./lib/eliza-agents", () => ({
   useAgent: () => agentState,
 }));
 

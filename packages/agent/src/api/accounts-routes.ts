@@ -85,11 +85,11 @@ import {
 } from "@elizaos/host/protocol";
 
 import * as zod from "zod";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import {
   runSubscriptionCliNpm,
   subscriptionCliCommandAvailable,
-} from "../internal/subscription-cli-process.ts";
-import { getAgentHostBridge } from "../runtime/host-bridge.ts";
+} from "./subscription-cli-process.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 

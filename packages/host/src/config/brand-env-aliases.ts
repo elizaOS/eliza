@@ -24,10 +24,6 @@ export const BRAND_ENV_ALIAS_DEFINITIONS = [
     brandSuffix: "CLOUD_MANAGED_AGENTS_API_SEGMENT",
     elizaKey: "ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT",
   },
-  {
-    brandSuffix: "SKIP_LOCAL_PLUGIN_ROLES",
-    elizaKey: "ELIZA_SKIP_LOCAL_PLUGIN_ROLES",
-  },
   { brandSuffix: "SETTINGS_DEBUG", elizaKey: "ELIZA_SETTINGS_DEBUG" },
   {
     brandSuffix: "SETTINGS_DEBUG",

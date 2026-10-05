@@ -18,7 +18,7 @@ import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
-import { SkillSidebarItem } from "../composites/skills/skill-sidebar-item";
+import { SkillSidebarItem } from "../composites/skill-sidebar-item";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { ConfirmDelete } from "../ui/confirm-delete";

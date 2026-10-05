@@ -141,6 +141,46 @@ async function snapshot(org: string) {
       ).rows,
     ).toEqual([{ grants: 1 }]);
   }, 30000);
+  test("recorded invoice replay rejects foreign identity and preserves every funding row", async () => {
+    const f = await seedRenewalTestAccount((text, values) => setup.query(text, values));
+    await finalize(await prepare(f));
+    const input = {
+      ...(await prepare(f)),
+      expectedSubscriptionRevision: 3,
+      expectedProjectionRevision: 3,
+    };
+    const { finalizeRecordedPaidRenewal } = await import("./subscription-renewal-finalization");
+    const before = await snapshot(f.source.organization_id);
+    for (const invoice of [
+      { ...f.invoice, id: "in_foreign" },
+      { ...f.invoice, customer: "cus_foreign" },
+      { ...f.invoice, subscription: "sub_foreign" },
+      { ...f.invoice, livemode: true },
+      { ...f.invoice, billing_reason: "subscription_create" },
+    ]) {
+      await expect(finalizeRecordedPaidRenewal({ ...input, invoice })).rejects.toThrow();
+      expect(await snapshot(f.source.organization_id)).toEqual(before);
+    }
+    await expect(
+      finalizeRecordedPaidRenewal({ ...input, leaseToken: randomUUID() }),
+    ).rejects.toThrow();
+    expect(await snapshot(f.source.organization_id)).toEqual(before);
+    expect((await finalizeRecordedPaidRenewal(input))?.replayed).toBeTrue();
+    const after = await snapshot(f.source.organization_id);
+    for (const key of Object.keys(before).filter(
+      (key) => key !== "billing_subscription_event_receipts",
+    ))
+      expect(after[key]).toEqual(before[key]);
+  });
+  test("recorded-only lookup never publishes an invoice that has not been funded", async () => {
+    const f = await seedRenewalTestAccount((text, values) => setup.query(text, values));
+    const input = await prepare(f);
+    const { finalizeRecordedPaidRenewal } = await import("./subscription-renewal-finalization");
+    const before = await snapshot(f.source.organization_id);
+    expect(await finalizeRecordedPaidRenewal(input)).toBeNull();
+    expect(await snapshot(f.source.organization_id)).toEqual(before);
+    expect((await finalize(input)).replayed).toBeFalse();
+  });
   for (const scenario of ["lease", "deletion"] as const)
     test(`${scenario} changes while finalizer waits deny all writes`, async () => {
       const f = await seedRenewalTestAccount((text, values) => setup.query(text, values));

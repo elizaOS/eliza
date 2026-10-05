@@ -335,6 +335,24 @@ describe("SettingsView", () => {
     expect(screen.queryByTestId("settings-hub-group-cloud")).toBeNull();
   });
 
+  it("keeps a hidden but eligible deep-linked section addressable and current", () => {
+    appMock.value = makeContext({
+      startupCoordinator: { target: "cloud-managed" },
+    });
+    const { container } = render(
+      <SettingsView initialSection="managed-hidden" />,
+    );
+    expect(screen.queryByTestId("settings-hub-row-managed-hidden")).toBeNull();
+    expect(
+      container
+        .querySelector('[data-agent-id="section-managed-hidden"]')
+        ?.getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      container.querySelector('[data-agent-id="section-desktop-only"]'),
+    ).toBeNull();
+  });
+
   it("shows Cloud management for a managed Cloud runtime target", () => {
     appMock.value = makeContext({
       startupCoordinator: { target: "cloud-managed" },

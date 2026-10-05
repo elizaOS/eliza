@@ -1,5 +1,5 @@
 /** Reads an immutable purchased binding only through its completed checkout and subscription identity; historical subscriptions retain current catalog validation. */
-import { and, asc, desc, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
 import { renewalUnavailable } from "../../lib/services/stripe-paid-renewal-validation";
 import {
@@ -7,6 +7,7 @@ import {
   readCheckoutContract,
 } from "../../lib/services/subscription-checkout-contract";
 import { proveReviewedPaidPlanBinding } from "../../lib/services/subscription-reviewed-plan-binding";
+import { proveScheduledPaidPlanBinding } from "../../lib/services/subscription-scheduled-plan-binding";
 import type { Database, DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import {
@@ -14,6 +15,8 @@ import {
   billingSubscriptionRevisions,
 } from "../schemas/billing-subscriptions";
 import { organizationPlanChangeQuotes } from "../schemas/organization-plan-change-quotes";
+import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
+import { subscriptionAllowanceTransactions } from "../schemas/subscription-allowance-transactions";
 import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
 
 async function findPurchasedSubscriptionContract(
@@ -64,7 +67,7 @@ export async function findSubscriptionRenewalBinding(
       and(
         eq(billingSubscriptionCommands.organization_id, source.organization_id),
         eq(billingSubscriptionCommands.subscription_id, source.id),
-        eq(billingSubscriptionCommands.kind, "upgrade"),
+        inArray(billingSubscriptionCommands.kind, ["upgrade", "downgrade"]),
         eq(billingSubscriptionCommands.status, "APPLIED"),
         eq(billingSubscriptionCommands.target_plan_key, source.plan_key),
         isNull(billingSubscriptionCommands.app_id),
@@ -78,6 +81,7 @@ export async function findSubscriptionRenewalBinding(
   if (selected) {
     if (
       selected.expected_subscription_revision === null ||
+      selected.result_subscription_revision === null ||
       (candidates[1] &&
         candidates[1].result_subscription_revision === selected.result_subscription_revision)
     )
@@ -104,7 +108,48 @@ export async function findSubscriptionRenewalBinding(
         ),
       )
       .orderBy(asc(billingSubscriptionRevisions.revision));
-    const binding = proveReviewedPaidPlanBinding({ source, command: selected, quote, revisions });
+    let binding: ReturnType<typeof proveReviewedPaidPlanBinding>;
+    if (selected.kind === "downgrade") {
+      const paid = revisions.find(
+        (row) =>
+          row.revision > selected.result_subscription_revision! &&
+          row.plan_key === source.plan_key &&
+          row.pending_plan_key === null,
+      );
+      if (!paid) renewalUnavailable("scheduled_target_not_paid");
+      const funding = await database
+        .select({ period: subscriptionAllowancePeriods, grant: subscriptionAllowanceTransactions })
+        .from(subscriptionAllowancePeriods)
+        .innerJoin(
+          subscriptionAllowanceTransactions,
+          and(
+            eq(
+              subscriptionAllowanceTransactions.allowance_period_id,
+              subscriptionAllowancePeriods.id,
+            ),
+            eq(
+              subscriptionAllowanceTransactions.organization_id,
+              subscriptionAllowancePeriods.organization_id,
+            ),
+            eq(subscriptionAllowanceTransactions.kind, "grant"),
+          ),
+        )
+        .where(
+          and(
+            eq(subscriptionAllowancePeriods.organization_id, source.organization_id),
+            eq(subscriptionAllowancePeriods.subscription_id, source.id),
+            eq(subscriptionAllowancePeriods.subscription_revision, paid.revision),
+          ),
+        );
+      if (funding.length !== 1) renewalUnavailable("scheduled_target_paid_grant_missing");
+      binding = proveScheduledPaidPlanBinding({
+        source,
+        command: selected,
+        quote,
+        revisions,
+        ...funding[0]!,
+      });
+    } else binding = proveReviewedPaidPlanBinding({ source, command: selected, quote, revisions });
     return {
       contract,
       environment: {
