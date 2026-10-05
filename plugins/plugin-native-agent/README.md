@@ -251,3 +251,8 @@ configuration. Static adapters use the concrete service class so replacement and
 shutdown invalidate old requests without retargeting them. No start is triggered by
 status or health reads. Consumer instrumentation should exercise actual failure,
 restart, stop and health wiring separately from real configured-runtime acceptance.
+
+Hosts that capture an endpoint before request admission must use the snapshot-bound
+`NativeRuntimeSession.request(snapshot, ...)` overload. Capture the snapshot before
+selecting the endpoint; a lifecycle change then rejects transport admission instead
+of allowing a stale endpoint to inherit a newer running epoch.
