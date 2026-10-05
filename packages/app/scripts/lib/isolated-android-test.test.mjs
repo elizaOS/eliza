@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -48,11 +49,11 @@ if(args.includes('getenforce'))console.log(mode==='permissive'?'Permissive':'Enf
 if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;if(state.reads===2)state.packages.push('org.example.consumer');fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('packages'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
 if(args.includes('resolve-activity'))console.log(state.home);
-if(args[0]==='install'){const id=args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages=[...new Set([...state.packages,id])];(state.files??={})[id]=file+'.'+id+'.apk';fs.copyFileSync(args.at(-1),state.files[id]);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);console.log('Success');}
+if(args[0]==='install'){const id=args.at(-1).includes('companion.apk')?'org.example.companion':args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages=[...new Set([...state.packages,id])];(state.files??={})[id]=file+'.'+id+'.apk';fs.copyFileSync(args.at(-1),state.files[id]);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);console.log('Success');}
 if(args.slice(0,3).join(' ')==='shell pm path')console.log('package:/data/'+args.at(-1)+'.apk');
 if(args[0]==='pull'){const id=args[1].slice('/data/'.length,-4);fs.copyFileSync(state.files[id],args[2]);}
 
-if(args.includes('force-stop')&&((mode.endsWith('stop-failure-test')&&args.at(-1).endsWith('.test'))||(mode.endsWith('stop-failure-app')&&!args.at(-1).endsWith('.test'))))process.exit(1);
+if(args.includes('force-stop')&&((mode==='companion-stop-failure'&&args.at(-1)==='org.example.companion')||(mode.endsWith('stop-failure-test')&&args.at(-1).endsWith('.test'))||(mode.endsWith('stop-failure-app')&&!args.at(-1).endsWith('.test'))))process.exit(1);
 if(args[0]==='uninstall'){if(mode==='cleanup-failure')process.exit(1);state.packages=state.packages.filter(p=>p!==args[1]);fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('instrument')){
  if(mode==='hanging'){fs.writeFileSync(${JSON.stringify(path.join(root, "instrumentation-started"))},'started');setInterval(()=>{},1000);return;}
@@ -80,7 +81,7 @@ if(args.includes('instrument')){
     aapt,
     `#!/usr/bin/env node
 const args=process.argv.slice(2);const wrong=${JSON.stringify(mode === "wrong-apk")}||(${JSON.stringify(mode === "wrong-upgrade")}&&args[2].includes('candidate'));
-if(args[1]==='badging')console.log("package: name='"+(wrong?'org.unrelated.app':args[2].includes('test.apk')?'org.example.consumer.test':'org.example.consumer')+"'");
+if(args[1]==='badging')console.log("package: name='"+(wrong?'org.unrelated.app':args[2].includes('companion.apk')?'org.example.companion':args[2].includes('test.apk')?'org.example.consumer.test':'org.example.consumer')+"'");
 else console.log('E: manifest\\n  E: instrumentation\\n    A: android:name="androidx.test.runner.AndroidJUnitRunner"\\n    A: android:targetPackage="${mode === "wrong-target" ? "org.unrelated.app" : "org.example.consumer"}"');
 `.replaceAll("org.example.consumer", fixturePackage),
     { mode: 0o700 },
@@ -714,4 +715,126 @@ test("identical baseline and candidate are refused before device mutation", asyn
     /Upgrade must change/,
   );
   assert.deepEqual(f.commands(), []);
+});
+
+function withCompanion(f) {
+  const apk = path.join(f.root, "companion.apk");
+  fs.writeFileSync(apk, "pinned companion");
+  f.options.companionApks = [
+    {
+      apk,
+      packageName: "org.example.companion",
+      sha256: createHash("sha256").update(fs.readFileSync(apk)).digest("hex"),
+    },
+  ];
+  return f.options.companionApks[0];
+}
+test("pinned companion participates in every variant and exact cleanup", async (t) => {
+  const f = fixture(t);
+  const companion = withCompanion(f);
+  const report = await runIsolatedAndroidTest({
+    ...f.options,
+    prepareVariant: () =>
+      assert.ok(
+        JSON.parse(fs.readFileSync(f.state)).packages.includes(
+          companion.packageName,
+        ),
+      ),
+  });
+  assert.equal(report.cleaned, true);
+  assert.deepEqual(report.companions, [companion]);
+  assert.equal(
+    f.commands().filter((c) => c[0] === "install" && c.at(-1) === companion.apk)
+      .length,
+    2,
+  );
+  assert.equal(
+    f
+      .commands()
+      .filter((c) => c[0] === "uninstall" && c[1] === companion.packageName)
+      .length,
+    2,
+  );
+});
+for (const kind of ["pin", "identity", "duplicate", "existing"])
+  test(`companion ${kind} refuses before installation`, async (t) => {
+    const f = fixture(t),
+      companion = withCompanion(f);
+    if (kind === "pin") companion.sha256 = "0".repeat(64);
+    if (kind === "identity") companion.packageName = "org.unrelated.companion";
+    if (kind === "duplicate") f.options.companionApks.push({ ...companion });
+    if (kind === "existing") {
+      const state = JSON.parse(fs.readFileSync(f.state));
+      state.packages.push(companion.packageName);
+      fs.writeFileSync(f.state, JSON.stringify(state));
+    }
+    await assert.rejects(runIsolatedAndroidTest(f.options));
+    assert.ok(
+      !f.commands().some((c) => ["install", "uninstall"].includes(c[0])),
+    );
+  });
+test("changed installed companion retains all owned packages for recovery", async (t) => {
+  const f = fixture(t);
+  const companion = withCompanion(f);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      prepareVariant: () => {
+        const state = JSON.parse(fs.readFileSync(f.state));
+        fs.writeFileSync(state.files[companion.packageName], "changed");
+      },
+    }),
+    /Installed APK changed/,
+  );
+  assert.ok(!f.commands().some((c) => c[0] === "uninstall"));
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.cleanupDeferred, true);
+  assert.equal(report.cleaned, false);
+});
+test("companion failure cleanup covers its process before uninstalling the set", async (t) => {
+  const f = fixture(t);
+  const companion = withCompanion(f);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      prepareVariant: () => {
+        throw Error("fixture failed");
+      },
+    }),
+    /fixture failed/,
+  );
+  const commands = f.commands(),
+    stops = commands
+      .filter((c) => c.includes("force-stop"))
+      .map((c) => c.at(-1));
+  assert.ok(stops.includes(companion.packageName));
+  assert.equal(stops.length, 3);
+  const firstUninstall = commands.findIndex((c) => c[0] === "uninstall");
+  assert.ok(
+    commands.slice(firstUninstall).every((c) => !c.includes("force-stop")),
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+});
+
+test("uncertain companion termination prevents uninstall of every owned package", async (t) => {
+  const f = fixture(t, "companion-stop-failure");
+  withCompanion(f);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      prepareVariant: () => {
+        throw Error("fixture failed");
+      },
+    }),
+    /fixture failed/,
+  );
+  assert.ok(!f.commands().some((c) => c[0] === "uninstall"));
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.cleanupDeferred, true);
+  assert.equal(report.cleaned, false);
+  assert.equal(JSON.parse(fs.readFileSync(f.state)).packages.length, 3);
 });
