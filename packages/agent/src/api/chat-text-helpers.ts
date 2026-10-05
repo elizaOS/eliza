@@ -1,13 +1,5 @@
-/**
- * Chat text normalization helpers.
- *
- * Shared between server.ts and chat-routes.ts. Re-exports stage-direction
- * stripping from core and provides no-response detection helpers.
- */
-
+/** Detect empty or suppressed assistant text for client delivery. */
 import { stripAssistantStageDirections } from "@elizaos/core";
-
-export { stripAssistantStageDirections };
 
 export function isNoResponsePlaceholder(text: string): boolean {
   const trimmed = text.trim();

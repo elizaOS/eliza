@@ -30,7 +30,7 @@ import {
 } from "@elizaos/core";
 
 import { roleAction } from "@elizaos/plugin-assistant";
-import { rolesProvider } from "./provider.ts";
+import { rolesProvider } from "../providers/roles.ts";
 
 const BOOTSTRAP_RETRY_TIMERS_KEY = Symbol.for(
   "@elizaos/runtime.roles.bootstrapRetries",
@@ -41,35 +41,6 @@ const CONNECTOR_ADMINS_SETTING_KEY = "ELIZA_ROLES_CONNECTOR_ADMINS_JSON";
 type RuntimeWithBootstrapRetries = IAgentRuntime & {
   [BOOTSTRAP_RETRY_TIMERS_KEY]?: Map<string, ReturnType<typeof setTimeout>>;
 };
-
-export type {
-  ConnectorAdminWhitelist,
-  RoleCheckResult,
-  RoleGrantSource,
-  RoleName,
-  RolesConfig,
-  RolesWorldMetadata,
-} from "@elizaos/core";
-export {
-  canModifyRole,
-  checkSenderPrivateAccess,
-  checkSenderRole,
-  getConfiguredOwnerEntityIds,
-  getConnectorAdminWhitelist,
-  getEntityRole,
-  hasConfiguredCanonicalOwner,
-  matchEntityToConnectorAdminWhitelist,
-  normalizeRole,
-  ROLE_RANK,
-  resolveCanonicalOwnerId,
-  resolveCanonicalOwnerIdForMessage,
-  resolveEntityRole,
-  resolveWorldForMessage,
-  setConnectorAdminWhitelist,
-  setEntityRole,
-} from "@elizaos/core";
-export { rolesProvider } from "./provider.ts";
-export { roleAction };
 
 function systemRoleMessage(actorEntityId: string, roomId: UUID): Memory {
   return {

@@ -698,11 +698,6 @@ function getCoreWalletApi(): Promise<typeof import("./wallet.ts")> {
   return coreWalletApiPromise;
 }
 
-export {
-  isClientVisibleNoResponse,
-  isNoResponsePlaceholder,
-  stripAssistantStageDirections,
-} from "./chat-text-helpers.ts";
 // Re-export for downstream consumers (e.g. @elizaos/app)
 export {
   AGENT_EVENT_ALLOWED_STREAMS,

@@ -21,7 +21,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 
-import { hasAdminAccess } from "../../../security/access.ts";
+import { hasAdminAccess } from "../security/access.ts";
 
 export const rolesProvider: Provider = {
   name: "roles",
