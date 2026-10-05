@@ -97,6 +97,13 @@ export {
   getDefaultRemoteControlCloudConnection,
 } from "./api/remote-control-cloud-default.js";
 export {
+  createRuntimeJsonClient,
+  type RuntimeJsonBridge,
+  type RuntimeJsonResponse,
+  RuntimeRequestError,
+  type RuntimeStatus,
+} from "./api/runtime-json-client.js";
+export {
   type AgentRequestTransport,
   awaitBridgeRequest,
   bodyToString,
