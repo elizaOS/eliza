@@ -35,3 +35,10 @@ quote and retains one command across retry keys. Downgrade admission is internal
 it does not dispatch a provider effect or publish a scheduled plan. Expiry can
 retire only provably unstarted intents without a live lease; uncertain effects
 remain pending until the original outcome is reconciled.
+
+Schedule execution uses ordered `organization_schedule_effects` records (migration
+0521) under the original command lease. Each exact request has its own provider
+key; configuration requires the original observed create receipt. An observation
+can retain evidence after manager revocation but cannot authorize another write.
+The journal does not perform provider calls or publish a pending plan; receipt
+provenance must be verified by the provider response/event observer before storage.
