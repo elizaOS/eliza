@@ -239,3 +239,11 @@ and replacement captures cannot rewrite the original grant. Its output binds the
 subsequent observation to the original evidence digests. The caller must load the
 original paid source revision and separately authenticate, revalidate and persist
 the observation; no correction policy or allowance publication is implied.
+
+Migration 0528 adds append-only, predecessor-checked observations anchored to the
+existing renewal grant and allowance period. The private repository reloads the
+original paid revision, reads providers outside locks, then rechecks organization
+fences and the journal head before append. A stable request UUID replays the first
+saved result without provider reads. This records evidence only: callers still
+own authentication, orchestration and explicit correction policy; no allowance
+posting or public adjustment endpoint is enabled.
