@@ -1,5 +1,3 @@
-/** Verifies account rendering and sign-out acknowledgement, failure and retry with a deterministic authentication context. */
-
 // @vitest-environment jsdom
 import {
   cleanup,
@@ -11,35 +9,25 @@ import {
 import * as React from "react";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, test } from "vitest";
+import { createLoginAuthContext } from "../../test/login-auth-context.js";
 
 afterEach(cleanup);
 
 const { LoginUserButton } = await import("./LoginUserButton.js");
 const { LoginAuthContext } = await import("./provider.js");
 
-function ctx(overrides: Record<string, unknown>): any {
-  return {
-    isAuthenticated: true,
-    isLoading: false,
-    user: null,
-    session: null,
-    providers: null,
-    isProvidersLoading: false,
-    signOut: () => {},
-    getToken: () => null,
-    activeTenantId: null,
-    tenants: null,
-    isTenantsLoading: false,
-    switchTenant: async () => false,
-    ...overrides,
-  };
+function ctx(overrides: Parameters<typeof createLoginAuthContext>[0] = {}) {
+  return createLoginAuthContext({ isAuthenticated: true, ...overrides });
 }
 
-function render(value: unknown, props: Record<string, unknown> = {}) {
+function render(
+  value: ReturnType<typeof createLoginAuthContext>,
+  props: Record<string, unknown> = {},
+) {
   return renderToString(
     React.createElement(
       LoginAuthContext.Provider,
-      { value: value as React.ContextType<typeof LoginAuthContext> },
+      { value: value },
       React.createElement(LoginUserButton, props),
     ),
   );
@@ -113,7 +101,13 @@ describe("<LoginUserButton /> branch coverage", () => {
     const html = render(
       ctx({
         user: null,
-        session: { userId: "u9", email: "bob@example.com", address: "0xdead" },
+        session: {
+          token: "test-token",
+          tenantId: "test-tenant",
+          userId: "u9",
+          email: "bob@example.com",
+          address: "0xdead",
+        },
       }),
     );
     expect(html).toContain("bob@example.com");

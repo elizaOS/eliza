@@ -1,41 +1,21 @@
-/**
- * <PasskeyEnrollmentPrompt /> initial-render coverage.
- *
- * The prompt's visibility is decided inside a `useEffect` that reads
- * `window.sessionStorage`. SSR does not flush effects (and there is no DOM),
- * so `visible` stays false and the component renders nothing on first render
- * for every context shape. We assert that null-render contract and the
- * rules-of-hooks invariant (the component reads ctx + runs three useState +
- * one useEffect unconditionally before the early return). The enroll /
- * dismiss interaction is effect + DOM driven and lives in the browser e2e
- * suite.
- */
-
 import * as React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, test } from "vitest";
+import { createLoginAuthContext as ctx } from "../../test/login-auth-context.js";
 
 const { PasskeyEnrollmentPrompt } = await import(
   "./PasskeyEnrollmentPrompt.js"
 );
 const { LoginAuthContext } = await import("./provider.js");
 
-function ctx(overrides: Record<string, unknown> = {}): any {
-  return {
-    isAuthenticated: false,
-    isLoading: false,
-    user: null,
-    session: null,
-    addPasskey: async () => ({}),
-    ...overrides,
-  };
-}
-
-function render(value: unknown, props: Record<string, unknown> = {}) {
+function render(
+  value: ReturnType<typeof ctx>,
+  props: Record<string, unknown> = {},
+) {
   return renderToString(
     React.createElement(
       LoginAuthContext.Provider,
-      { value: value as React.ContextType<typeof LoginAuthContext> },
+      { value: value },
       React.createElement(PasskeyEnrollmentPrompt, props),
     ),
   );

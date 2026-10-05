@@ -147,7 +147,7 @@ try {
         entry.name.text,
       );
   }
-  const consumerSource = `import { ${values.join(", ")}${types.length ? ", " + types.map((name) => `type ${name}`).join(", ") : ""} } from "@elizaos/ui";\nexport const values = { ${values.join(", ")} };\nexport type { ${types.join(", ")} };\n`;
+  const consumerSource = `import { ${values.join(", ")}${types.length ? `, ${types.map((name) => `type ${name}`).join(", ")}` : ""} } from "@elizaos/ui";\nexport const values = { ${values.join(", ")} };\nexport type { ${types.join(", ")} };\n`;
   await writeFile(path.join(consumer, "consumer.ts"), consumerSource);
   await writeFile(
     path.join(consumer, "tsconfig.json"),
@@ -262,7 +262,7 @@ try {
   );
   await writeFile(
     path.join(output, "report.json"),
-    JSON.stringify(
+    `${JSON.stringify(
       {
         package: manifest.name,
         files: files.length,
@@ -273,7 +273,7 @@ try {
       },
       null,
       2,
-    ) + "\n",
+    )}\n`,
   );
   console.log(
     `Packed UI API verified: ${values.length} values, ${types.length} types, ${files.length} files.`,

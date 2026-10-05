@@ -1,37 +1,19 @@
-/**
- * <LoginEmailCallback /> initial-render coverage.
- *
- * The component's verification logic lives entirely in a `useEffect` that
- * reads `window.location.search` and calls `verifyEmailCallback`. The test
- * runner has no DOM and SSR does not flush effects, so we cover the
- * deterministic initial render (step === "loading") plus the rules-of-hooks
- * invariant across auth-context shapes. The success / error / retry branches
- * are effect + DOM driven and are exercised by the browser e2e suite.
- */
-
 import * as React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, test } from "vitest";
+import { createLoginAuthContext as ctx } from "../../test/login-auth-context.js";
 
 const { LoginEmailCallback } = await import("./LoginEmailCallback.js");
 const { LoginAuthContext } = await import("./provider.js");
 
-function ctx(overrides: Record<string, unknown> = {}): any {
-  return {
-    isAuthenticated: false,
-    isLoading: false,
-    user: null,
-    session: null,
-    verifyEmailCallback: async () => ({}),
-    ...overrides,
-  };
-}
-
-function render(value: unknown, props: Record<string, unknown> = {}) {
+function render(
+  value: ReturnType<typeof ctx>,
+  props: Record<string, unknown> = {},
+) {
   return renderToString(
     React.createElement(
       LoginAuthContext.Provider,
-      { value: value as React.ContextType<typeof LoginAuthContext> },
+      { value: value },
       React.createElement(LoginEmailCallback, props),
     ),
   );
