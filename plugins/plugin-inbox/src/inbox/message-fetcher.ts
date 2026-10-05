@@ -897,10 +897,12 @@ function metadataRecord(value: unknown): Record<string, unknown> {
 
 function metadataForRoom(room: Room | undefined): Record<string, unknown> {
   if (!room) return {};
+  const metadata = metadataRecord(room.metadata);
   return {
-    // Connectors store the platform channel on Room.channelId, not metadata.
-    channelId: room.channelId,
-    ...metadataRecord(room.metadata),
+    ...metadata,
+    // Connectors store the platform channel on Room.channelId, which wins over
+    // any metadata copy; metadata.channelId only fills in when it is absent.
+    channelId: room.channelId ?? metadata.channelId,
     roomId: room.id,
     roomName: room.name,
     serverId: room.serverId,

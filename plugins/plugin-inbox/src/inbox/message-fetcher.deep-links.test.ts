@@ -26,7 +26,8 @@ describe("fetchChatMessages deep links", () => {
         type: ChannelType.GROUP,
         channelId: "1000000000000000020",
         serverId: "1000000000000000010",
-        metadata: { accountId: "default" },
+        // A stale metadata copy must not override the stored channel.
+        metadata: { accountId: "default", channelId: "stale-channel" },
       },
       {
         id: SLACK_ROOM,
