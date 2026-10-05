@@ -980,7 +980,32 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
           objects.invoice.id,
           readOnlyProvider as unknown as import("stripe").default,
         );
-        expect((await finalizePaidRenewal({ ...input, ...fetched })).replayed).toBeFalse();
+        if (liveStatus === "past_due") {
+          stripeMock = {
+            ...readOnlyProvider,
+            invoices: {
+              ...readOnlyProvider.invoices,
+              list: async () => ({
+                object: "list",
+                has_more: false,
+                data: [{ ...objects.invoice, created: boundary }],
+              }),
+            },
+          };
+          await db.query(
+            `INSERT INTO subscription_reconciliation_scans (organization_id, subscription_id, next_due_at)
+            SELECT organization_id,id,clock_timestamp()+interval '1 hour' FROM billing_subscriptions WHERE id<>$1
+            ON CONFLICT (organization_id,subscription_id) DO UPDATE SET next_due_at=EXCLUDED.next_due_at`,
+            [source.id],
+          );
+          const { recoverMissedSubscriptionEvents } = await import(
+            "../../lib/services/subscription-reconciliation"
+          );
+          const recovered = await recoverMissedSubscriptionEvents();
+          expect(recovered.status).toBe("ok");
+          expect(recovered.attempts).toHaveLength(1);
+          expect(recovered.attempts[0]?.disposition).toBe("applied");
+        } else expect((await finalizePaidRenewal({ ...input, ...fetched })).replayed).toBeFalse();
         const after = await state(f);
         expect(after.source.status).toBe(liveStatus);
         expect(after.source.plan_key).toBe("plus_monthly");
@@ -999,7 +1024,15 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
         expect(period.state).toBe("expired");
         expect(Number(period.available_amount)).toBe(0);
         expect(Number(period.expired_amount)).toBe(25);
-        expect((await finalizePaidRenewal(input)).replayed).toBeTrue();
+        expect(
+          (
+            await finalizePaidRenewal({
+              ...input,
+              expectedSubscriptionRevision: Number(after.source.lifecycle_revision),
+              expectedProjectionRevision: Number(after.projection.projection_revision),
+            })
+          ).replayed,
+        ).toBeTrue();
         expect(await state(f)).toEqual(after);
         const paid = await authority.findById(source.organization_id, source.id);
         if (!paid) throw new Error("Historical paid source missing");
@@ -1078,7 +1111,52 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
           }),
         ).rejects.toThrow();
         expect(await state(f)).toEqual(beforeNext);
-        expect((await finalizePaidRenewal(nextInput)).replayed).toBeFalse();
+        let historyPages = 0;
+        const listedNext = { ...nextObjects.invoice, created: target.end_date };
+        const listedLater = {
+          ...listedNext,
+          id: "in_third",
+          created: nextEnd,
+          lines: {
+            ...listedNext.lines,
+            data: listedNext.lines.data.map((line) => ({
+              ...line,
+              period: { start: nextEnd, end: nextEnd + 30 * 86400 },
+            })),
+          },
+        };
+        stripeMock = {
+          ...readOnlyProvider,
+          subscriptions: { retrieve: async () => nextInput.subscription },
+          paymentIntents: { retrieve: async () => nextObjects.paymentIntent },
+          charges: { retrieve: async () => nextObjects.charge },
+          invoices: {
+            list: async (request: { starting_after?: string }) => {
+              historyPages++;
+              return request.starting_after
+                ? { object: "list", has_more: false, data: [listedNext] }
+                : { object: "list", has_more: true, data: [listedLater] };
+            },
+            retrieve: async (id: string) => {
+              expect(id).toBe(nextObjects.invoice.id);
+              return nextObjects.invoice;
+            },
+          },
+        };
+        await db.query(
+          `INSERT INTO subscription_reconciliation_scans (organization_id, subscription_id, next_due_at)
+          SELECT organization_id,id,clock_timestamp()+interval '1 hour' FROM billing_subscriptions WHERE id<>$1
+          ON CONFLICT (organization_id,subscription_id) DO UPDATE SET next_due_at=EXCLUDED.next_due_at`,
+          [paid.id],
+        );
+        const { recoverMissedSubscriptionEvents } = await import(
+          "../../lib/services/subscription-reconciliation"
+        );
+        const recovered = await recoverMissedSubscriptionEvents();
+        expect(recovered.status).toBe("ok");
+        expect(recovered.attempts).toHaveLength(1);
+        expect(recovered.attempts[0]?.disposition).toBe("applied");
+        expect(historyPages).toBe(2);
         const afterNext = await state(f);
         expect(afterNext.source.status).toBe(liveStatus);
         expect(afterNext.source.current_period_start.getTime()).toBe(target.end_date * 1000);
@@ -1094,7 +1172,15 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
         ).rows[0];
         expect(nextPeriod.state).toBe("expired");
         expect(Number(nextPeriod.available_amount)).toBe(0);
-        expect((await finalizePaidRenewal(nextInput)).replayed).toBeTrue();
+        expect(
+          (
+            await finalizePaidRenewal({
+              ...nextInput,
+              expectedSubscriptionRevision: Number(afterNext.source.lifecycle_revision),
+              expectedProjectionRevision: Number(afterNext.projection.projection_revision),
+            })
+          ).replayed,
+        ).toBeTrue();
         expect(await state(f)).toEqual(afterNext);
         const current = await authority.findById(paid.organization_id, paid.id);
         if (!current) throw new Error("Adjacent historical source missing");

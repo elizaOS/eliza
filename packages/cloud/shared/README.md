@@ -135,3 +135,11 @@ next proven paid interval, expires its old allowance and retains later observed 
 Cancellation commands keep their stricter captured-item/period authority. Ordinary
 renewals currently retain item identity; chronological invoice discovery and verified
 item-replacement history remain required for complete missed-period recovery.
+
+Missed-period recovery traverses complete authenticated subscription invoice pages
+within the claim's database-time creation boundary before selecting the unique invoice
+starting at the stored paid period end. It rejects ambiguity, overlap, incomplete
+history and unpaid gaps, then retrieves canonical payment/live objects again. Discovery
+precedes active/dunning routing; the existing leased transaction settles one adjacent
+period per attempt and subsequent scans continue history. Provider read failure never
+authorizes a partial match or a jump to the newest invoice.
