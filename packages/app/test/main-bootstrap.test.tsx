@@ -142,7 +142,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
         "markStartup",
         "measureStartup",
         "setupPlatformStyles",
-        "applyBuildTimeIosConnection",
+        "applyBuildTimeMobileConnection",
         "applyLaunchConnectionFromUrl",
         "injectWaifuChatAccessToken",
         "injectPopoutApiBase",
