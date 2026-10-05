@@ -13,7 +13,7 @@
   },
   {
     "path": "whisper-LICENSE",
-    "url": "https://raw.githubusercontent.com/openai/whisper/main/LICENSE",
+    "url": "https://raw.githubusercontent.com/openai/whisper/31243bad24cc746f07d4c8bfdd2d974872cb1803/LICENSE",
     "bytes": 1063,
     "sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d"
   },
