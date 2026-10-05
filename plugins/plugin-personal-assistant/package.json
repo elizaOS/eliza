@@ -167,6 +167,8 @@
   "files": [
     "dist",
     "native-host/*.mjs",
+    "native-host/bill-client.ts",
+    "native-host/*.d.mts",
     "!native-host/*.test.mjs"
   ]
 }
