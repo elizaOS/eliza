@@ -81,6 +81,33 @@ describe("handleTranscription in-process audio", () => {
     }
   );
 
+  it("posts exactly the viewed bytes of a nonzero-offset Uint8Array", async () => {
+    // A byte-holding caller may hand over a view into a larger decode buffer.
+    // Only the viewed bytes may reach Cloud STT; surrounding backing bytes
+    // must not leak into the upload (and no mimeType is passed, so header
+    // auto-detection also runs on the derived bytes).
+    const backing = new Uint8Array(7 + WAV_BYTES.byteLength + 5);
+    backing.set([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06], 0);
+    backing.set(WAV_BYTES, 7);
+    backing.set([0xf0, 0xf1, 0xf2, 0xf3, 0xf4], 7 + WAV_BYTES.byteLength);
+    const offsetView = new Uint8Array(
+      backing.buffer,
+      7,
+      WAV_BYTES.byteLength
+    );
+    expect(offsetView.byteOffset).toBeGreaterThan(0);
+
+    const text = await handleTranscription(runtime(), {
+      audioUrl: "",
+      audio: offsetView,
+    });
+
+    expect(text).toBe("hello world");
+    expect(state.uploaded).toHaveLength(1);
+    expect(state.uploaded[0]).toEqual(WAV_BYTES);
+    expect(state.fetchCalls).toBe(0);
+  });
+
   it("rejects an empty audioUrl with no audio instead of fetching it", async () => {
     await expect(
       handleTranscription(runtime(), { audioUrl: "" })
