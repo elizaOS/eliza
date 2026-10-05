@@ -75,9 +75,11 @@ export function createConsumerSourceResolver({
         }
         if (!target) throw new Error(`No permitted source export ${args.path}`);
         const resolved = path.resolve(pkg.dir, target);
+        // Only a `dist` segment inside the package is compiled output; the
+        // checkout itself may live under a directory named `dist`.
         if (
           !inside(resolved, pkg.dir) ||
-          resolved.split(path.sep).includes("dist")
+          path.relative(pkg.dir, resolved).split(path.sep).includes("dist")
         ) {
           throw new Error(`Source-only resolver rejected ${args.path}`);
         }
