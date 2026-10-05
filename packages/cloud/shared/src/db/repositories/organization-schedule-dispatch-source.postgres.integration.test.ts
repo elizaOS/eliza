@@ -243,7 +243,9 @@ function configuration(
         ])
       ).rows[0].pending_plan_key,
     ).toBeNull();
-  });
+    // This test intentionally waits out a real ten-second quote; it must not
+    // inherit Bun's five-second default when CI runs with --config=/dev/null.
+  }, 30000);
   test("a ready configuration cannot dispatch after original release has been staged", async () => {
     const f = await claimed();
     await repo.markOrganizationScheduleEffectDispatch(f.identity, f.claim, f.effect.id);
