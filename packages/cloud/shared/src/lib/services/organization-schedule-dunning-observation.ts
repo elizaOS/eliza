@@ -1,6 +1,9 @@
 /** Failed target invoices establish dunning only; captured payment remains separate renewal authority. */
 import { z } from "zod";
-import { observeScheduledTargetSubscription } from "./organization-schedule-target-observation";
+import {
+  observeScheduledTargetLiveSubscription,
+  observeScheduledTargetSubscription,
+} from "./organization-schedule-target-observation";
 import { renewalUnavailable } from "./stripe-paid-renewal-validation";
 
 export interface ScheduledDunningObjects {
@@ -10,7 +13,7 @@ export interface ScheduledDunningObjects {
   invoice: unknown;
 }
 const seconds = z.number().int().nonnegative().safe();
-const failedInvoice = z.object({
+export const failedRenewalInvoiceSchema = z.object({
   id: z.string().regex(/^in_[A-Za-z0-9]+$/),
   object: z.literal("invoice"),
   subscription: z.string(),
@@ -53,7 +56,7 @@ export function validateScheduledDunningObjects(
   > & { objects: ScheduledDunningObjects },
 ) {
   const { source, authority, objects } = input;
-  const invoice = failedInvoice.safeParse(objects.invoice);
+  const invoice = failedRenewalInvoiceSchema.safeParse(objects.invoice);
   const status = z
     .object({ status: z.enum(["past_due", "unpaid"]) })
     .safeParse(objects.subscription);
@@ -61,7 +64,11 @@ export function validateScheduledDunningObjects(
     renewalUnavailable("scheduled_dunning_objects_unverified");
   const value = invoice.data,
     line = value.lines.data[0]!;
-  const observation = observeScheduledTargetSubscription(
+  const historical = authority.phase.end <= input.observedAt;
+  const observe = historical
+    ? observeScheduledTargetLiveSubscription
+    : observeScheduledTargetSubscription;
+  const observation = observe(
     {
       ...input,
       rawSubscription: objects.subscription,
@@ -76,7 +83,9 @@ export function validateScheduledDunningObjects(
     value.livemode !== authority.binding.livemode ||
     value.amount_remaining > value.amount_due ||
     line.subscription !== source.stripe_subscription_id ||
-    line.subscription_item !== observation.subscriptionItemId ||
+    (historical
+      ? !/^si_[A-Za-z0-9]+$/.test(line.subscription_item) || value.id === observation.invoiceId
+      : line.subscription_item !== observation.subscriptionItemId) ||
     line.price.id !== authority.binding.targetPriceId ||
     line.price.product !== authority.binding.targetProductId ||
     line.period.start * 1000 !== authority.phase.start.getTime() ||

@@ -70,7 +70,7 @@ test("an early match cannot hide a conflicting later page", async () => {
   await expect(find(f.input)).rejects.toThrow();
   expect(f.requests).toHaveLength(2);
 });
-for (const status of ["open", "draft", "void", "uncollectible"])
+for (const status of ["draft", "void"])
   test(`does not skip a ${status} adjacent invoice`, async () => {
     const f = fixture([
       {
@@ -174,3 +174,17 @@ test("a provider failure after an early match never releases partial authority",
   await expect(find(f.input)).rejects.toThrow("provider read deadline");
   expect(calls).toBe(2);
 });
+
+for (const status of ["open", "uncollectible"])
+  test(`returns ${status} as lifecycle-only authority without skipping it`, async () => {
+    const f = fixture([
+      {
+        object: "list",
+        has_more: false,
+        data: [invoice("in_new", 300, 400), invoice("in_next", 200, 300, status)],
+      },
+    ]);
+    const next = await find(f.input);
+    expect(next.invoiceId).toBe("in_next");
+    expect(next.paid).toBeFalse();
+  });
