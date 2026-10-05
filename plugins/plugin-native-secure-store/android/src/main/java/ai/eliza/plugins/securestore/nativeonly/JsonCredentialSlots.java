@@ -111,7 +111,7 @@ public final class JsonCredentialSlots {
    cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,Arrays.copyOfRange(stored,2,14)));
    cipher.updateAAD(slot.getBytes(StandardCharsets.US_ASCII));
    byte[] plain=cipher.doFinal(stored,14,stored.length-14);
-   try{String value=new String(plain,StandardCharsets.UTF_8);parseJson(value);return value;}
+   try{if(plain.length>limit)throw new IllegalArgumentException("Credential slot exceeds byte limit");String value=new String(plain,StandardCharsets.UTF_8);parseJson(value);return value;}
    finally{Arrays.fill(plain,(byte)0);}
   }
  }

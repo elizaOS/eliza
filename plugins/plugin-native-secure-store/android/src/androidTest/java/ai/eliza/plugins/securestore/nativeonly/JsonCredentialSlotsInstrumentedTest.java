@@ -70,6 +70,13 @@ public final class JsonCredentialSlotsInstrumentedTest {
    JsonCredentialSlots alternate=new JsonCredentialSlots(f.root,f.alias,slot->slot.equals("larger")?2048:1024);
    String larger="\""+new String(new char[1500]).replace('\0','b')+"\"";alternate.write("larger",larger);assertEquals(larger,alternate.read("larger"));
    try{store.read("larger");fail("Read limit ignored");}catch(IllegalArgumentException expected){}
+   // Ciphertext framing allowance must not increase the plaintext byte limit.
+   for(int bytes:new int[]{1025,1058}){
+    String nearLimit="\""+new String(new char[bytes-2]).replace('\0','c')+"\"";
+    alternate.write("larger",nearLimit);assertEquals(nearLimit,alternate.read("larger"));
+    try{store.read("larger");fail("Near-boundary read limit ignored");}catch(IllegalArgumentException expected){}
+    assertEquals(nearLimit,alternate.read("larger"));
+   }
    try{store.slotFile("../escape");fail("Unsafe filename accepted");}catch(IllegalArgumentException expected){}
   }
  }
