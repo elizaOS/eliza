@@ -56,8 +56,15 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     );
     for (const statement of reconciliationMigration.split("--> statement-breakpoint"))
       if (statement.trim()) await db.query(statement);
+    // Test-only logical time spans a real calendar month without rewriting retained evidence.
+    // Production and the other PostgreSQL suites keep their unmodified database clock.
+    await db.query(`CREATE TABLE fixture_clock (offset_seconds double precision NOT NULL);
+      INSERT INTO fixture_clock VALUES (0);
+      CREATE FUNCTION ${schema}.clock_timestamp() RETURNS timestamptz LANGUAGE sql VOLATILE AS
+      'SELECT pg_catalog.clock_timestamp() + offset_seconds * interval ''1 second'' FROM ${schema}.fixture_clock'`);
+    await db.query(`SET search_path TO ${schema},pg_catalog,public`);
     const target = new URL(url!);
-    target.searchParams.set("options", `-c search_path=${schema},public`);
+    target.searchParams.set("options", `-c search_path=${schema},pg_catalog,public`);
     process.env.DATABASE_URL = target.toString();
     process.env.TEST_DATABASE_URL = target.toString();
     process.env.ENVIRONMENT = "local";
@@ -829,6 +836,181 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     expect((await (await publication())(f.identity, f.claim)).command.status).toBe("APPLIED");
     expect(provider.updates()).toBe(1);
   });
+  for (const liveStatus of ["active", "past_due", "unpaid", "grace"] as const)
+    test(`historical target payment preserves later ${liveStatus} with a controlled database clock`, async () => {
+      const boundary = Math.floor(Date.now() / 1000) + 5;
+      const f = await configured(true, true, {
+        start: new Date((boundary - 120) * 1000),
+        end: new Date(boundary * 1000),
+      });
+      await f.finalize(f.input);
+      const before = await state(f);
+      const { subscriptionAuthorityRepository: authority } = await import(
+        "./subscription-authority"
+      );
+      const source = await authority.findById(f.identity.organizationId, f.captured.source.id);
+      if (!source) throw new Error("Pending source missing");
+      const target = f.input.rawCurrentSchedule.phases[1]!;
+      if (typeof target.end_date !== "number") throw new Error("Finite target end required");
+      const { SUBSCRIPTION_PAYMENT_GRACE_MS } = await import(
+        "../../lib/services/subscription-payment-grace"
+      );
+      const logicalNow =
+        target.end_date + (liveStatus === "grace" ? 0 : SUBSCRIPTION_PAYMENT_GRACE_MS / 1000) + 10;
+      await db.query("UPDATE fixture_clock SET offset_seconds=$1", [
+        logicalNow - Date.now() / 1000,
+      ]);
+      try {
+        const clock = (
+          await db.query(
+            "SELECT clock_timestamp() AS logical, pg_catalog.clock_timestamp() AS real",
+          )
+        ).rows[0];
+        expect(clock.logical.getTime()).toBeGreaterThan(clock.real.getTime() + 20 * 86400000);
+        const provider = structuredClone(f.provider),
+          item = provider.items.data[0]!;
+        item.id = `si_history${f.identity.commandId.replaceAll("-", "")}`;
+        Object.assign(item.price, { id: "price_plus", product: "prod_plus", unit_amount: 3000 });
+        const { renewalPaidObjects } = await import("./subscription-renewal-test-fixture");
+        const objects = renewalPaidObjects(
+          { ...source, plan_key: "plus_monthly", stripe_subscription_item_id: item.id },
+          provider,
+          { start: boundary, end: target.end_date },
+        );
+        objects.invoice.status_transitions.paid_at = Math.floor(logicalNow);
+        const subscription = {
+          ...objects.subscription,
+          status: liveStatus === "grace" ? "past_due" : liveStatus,
+          schedule: null,
+          current_period_start: target.end_date,
+          current_period_end: target.end_date + 30 * 86400,
+          latest_invoice: "in_later",
+        };
+        const scheduledSchedule = {
+          ...structuredClone(f.input.rawCurrentSchedule),
+          status: "completed",
+          current_phase: null,
+          completed_at: target.end_date,
+          released_at: null,
+          released_subscription: null,
+        };
+        const { subscriptionBillingOperationsRepository: operations } = await import(
+          "./subscription-billing-operations"
+        );
+        const providerEventId = `evt_history${f.identity.commandId.replaceAll("-", "")}`,
+          eventCreatedAt = new Date(logicalNow * 1000),
+          leaseToken = randomUUID();
+        const receipt = await operations.recordEvent({
+          organizationId: source.organization_id,
+          subscriptionId: source.id,
+          providerEventId,
+          eventType: "invoice.paid",
+          providerObjectType: "invoice",
+          providerObjectId: objects.invoice.id,
+          livemode: false,
+          eventCreatedAt,
+          payloadDigest: "e".repeat(64),
+          now: eventCreatedAt,
+        });
+        expect(
+          await operations.claimEvent({
+            organizationId: source.organization_id,
+            receiptId: receipt.value.id,
+            leaseToken,
+            leaseDurationMs: 60000,
+          }),
+        ).toBeTruthy();
+        const input = {
+          ...objects,
+          subscription,
+          scheduledSchedule,
+          organizationId: source.organization_id,
+          subscriptionId: source.id,
+          invoiceId: objects.invoice.id,
+          receiptId: receipt.value.id,
+          leaseToken,
+          expectedSubscriptionRevision: source.lifecycle_revision,
+          expectedProjectionRevision: source.lifecycle_revision,
+          providerEventId,
+          eventCreatedAt,
+        };
+        const { finalizePaidRenewal } = await import("./subscription-renewal-finalization");
+        const beforePayment = await state(f);
+        await expect(
+          finalizePaidRenewal({
+            ...input,
+            paymentIntent: { ...objects.paymentIntent, amount_received: 1 },
+          }),
+        ).rejects.toThrow();
+        expect(await state(f)).toEqual(beforePayment);
+        for (const invalid of [
+          { ...input, expectedSubscriptionRevision: source.lifecycle_revision + 1 },
+          { ...input, subscription: { ...subscription, latest_invoice: objects.invoice.id } },
+          { ...input, invoice: { ...objects.invoice, customer: "cus_foreign" } },
+          { ...input, subscription: { ...subscription, cancel_at_period_end: true } },
+        ]) {
+          await expect(finalizePaidRenewal(invalid)).rejects.toThrow();
+          expect(await state(f)).toEqual(beforePayment);
+        }
+        await db.query(`CREATE FUNCTION reject_historical_expiry_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='expire' THEN RAISE EXCEPTION 'historical expiry failure'; END IF; RETURN NEW; END $$;
+          CREATE TRIGGER reject_historical_expiry_fixture BEFORE INSERT ON subscription_allowance_transactions FOR EACH ROW EXECUTE FUNCTION reject_historical_expiry_fixture()`);
+        try {
+          await expect(finalizePaidRenewal(input)).rejects.toThrow();
+          expect(await state(f)).toEqual(beforePayment);
+        } finally {
+          await db.query(
+            "DROP TRIGGER reject_historical_expiry_fixture ON subscription_allowance_transactions; DROP FUNCTION reject_historical_expiry_fixture()",
+          );
+        }
+        const { retrievePaidRenewalObjects } = await import(
+          "../../lib/services/stripe-paid-renewal-objects"
+        );
+        const readOnlyProvider = {
+          invoices: { retrieve: async () => objects.invoice },
+          subscriptions: { retrieve: async () => subscription },
+          customers: { retrieve: async () => objects.customer },
+          paymentIntents: { retrieve: async () => objects.paymentIntent },
+          charges: { retrieve: async () => objects.charge },
+          prices: { retrieve: async () => objects.price },
+          products: { retrieve: async () => objects.product },
+          subscriptionSchedules: { retrieve: async () => scheduledSchedule },
+        };
+        const fetched = await retrievePaidRenewalObjects(
+          source,
+          objects.invoice.id,
+          readOnlyProvider as unknown as import("stripe").default,
+        );
+        expect((await finalizePaidRenewal({ ...input, ...fetched })).replayed).toBeFalse();
+        const after = await state(f);
+        expect(after.source.status).toBe(liveStatus);
+        expect(after.source.plan_key).toBe("plus_monthly");
+        expect(after.source.pending_plan_key).toBeNull();
+        expect(after.source.current_period_end.getTime()).toBe(target.end_date * 1000);
+        expect(after.source.dunning_started_at?.getTime() ?? null).toBe(
+          liveStatus === "active" ? null : target.end_date * 1000,
+        );
+        expect(after.command).toEqual(before.command);
+        const period = (
+          await db.query(
+            "SELECT * FROM subscription_allowance_periods WHERE stripe_invoice_id=$1",
+            [objects.invoice.id],
+          )
+        ).rows[0];
+        expect(period.state).toBe("expired");
+        expect(Number(period.available_amount)).toBe(0);
+        expect(Number(period.expired_amount)).toBe(25);
+        expect((await finalizePaidRenewal(input)).replayed).toBeTrue();
+        expect(await state(f)).toEqual(after);
+        const paid = await authority.findById(source.organization_id, source.id);
+        if (!paid) throw new Error("Historical paid source missing");
+        const { assertScheduledPaidBinding } = await import(
+          "./test-support/subscription-scheduled-binding"
+        );
+        await assertScheduledPaidBinding(paid, f.identity.commandId);
+      } finally {
+        await db.query("UPDATE fixture_clock SET offset_seconds=0");
+      }
+    }, 30000);
   // The real database clock must cross the five-second renewal boundary
   // before publication, rollback and replay assertions can execute.
   for (const dunning of ["none", "webhook", "cron", "released"] as const)

@@ -112,8 +112,11 @@ The original grace window cannot be reset by a later revision.
 Target terms survive a verified schedule release/completion through the retained original
 snapshot and explicitly checked lifecycle changes. Released targets can settle within their
 original invoice period. Historical grants expire atomically through the existing ledger;
-payment publication after that period still requires separate historical invoice and live
-compatibility proof and remains unavailable until that owner is implemented.
+historical target publication combines original captured invoice and separate live
+compatibility proof in the existing receipt transaction. It advances only the original
+paid interval, retains later dunning from the next unpaid boundary, and never grants
+current-period credit from an old payment. Chronological missed-invoice discovery,
+post-boundary original configuration recovery and terminal-source accounting remain open.
 
 Captured renewal payment proof is independently reusable for an exact retained invoice
 interval, price, owner and amount. It does not read or synthesize current subscription
