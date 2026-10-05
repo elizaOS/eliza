@@ -42,6 +42,7 @@
 		"@elizaos/voice": "workspace:*"
 	},
 	"devDependencies": {
+		"vite": "^8.3.0",
 		"@biomejs/biome": "2.5.14",
 		"@types/bun": "1.4.2",
 		"rcedit": "5.0.2",

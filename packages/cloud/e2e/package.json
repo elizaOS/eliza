@@ -27,6 +27,7 @@
     "@elizaos/ui": "workspace:*"
   },
   "devDependencies": {
+    "vite": "^8.3.0",
     "drizzle-orm": "0.45.3",
     "@playwright/test": "^1.63.0",
     "bun-types": "1.4.2",

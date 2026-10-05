@@ -96,6 +96,34 @@ describe("classifyDestructiveCommand — fires", () => {
         .destructive,
     ).toBe(true);
   });
+  it("rsync --delete onto a destination", () => {
+    const verdict = classifyDestructiveCommand(
+      "rsync -a --delete dist/ publish/",
+    );
+    expect(verdict.destructive).toBe(true);
+    expect(verdict.reason).toBe("bulk rsync delete");
+    expect(verdict.targets).toEqual(["publish/"]);
+  });
+  it("rsync --del alias and --delete-* variants fire like --delete", () => {
+    expect(
+      classifyDestructiveCommand("rsync -a --del dist/ publish/").destructive,
+    ).toBe(true);
+    expect(
+      classifyDestructiveCommand("rsync -a --delete-after dist/ publish/")
+        .destructive,
+    ).toBe(true);
+    expect(
+      classifyDestructiveCommand("rsync -a --delete-excluded dist/ publish/")
+        .destructive,
+    ).toBe(true);
+  });
+  it("dynamic rsync expression fails to confirmation", () => {
+    expect(
+      classifyDestructiveCommand(
+        "rsync -a $(printf %s -- --delete) dist/ publish/",
+      ).destructive,
+    ).toBe(true);
+  });
   it("dd onto a raw device", () => {
     const v = classifyDestructiveCommand("dd if=/dev/zero of=/dev/sda bs=1M");
     expect(v.destructive).toBe(true);
@@ -422,6 +450,10 @@ describe("classifyDestructiveCommand — must NOT fire", () => {
     ["find . -name '*.ts' -print"],
     ["dd if=/dev/urandom of=./random.bin count=1"],
     ["mkdir -p new/dir"],
+    ["rsync -a dist/ publish/"],
+    ["rsync -a --exclude dele dist/ publish/"],
+    ["rsync -a --dele dist/ publish/"],
+    ["rsync -a -delete dist/ publish/"],
   ])("%s", (command) => {
     expect(classifyDestructiveCommand(command).destructive).toBe(false);
   });

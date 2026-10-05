@@ -405,6 +405,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rcedit": "5.0.2",
         "typescript": "^6.0.3",
+        "vite": "^8.3.0",
         "vitest": "^5.0.2",
       },
     },
@@ -506,6 +507,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsx": "^4.21.0",
         "typescript": "^6.0.3",
+        "vite": "^8.3.0",
         "vitest": "^5.0.2",
       },
     },
@@ -826,6 +828,7 @@
         "bun-types": "1.4.2",
         "drizzle-orm": "0.45.3",
         "typescript": "^5.5.0",
+        "vite": "^8.3.0",
       },
     },
     "packages/cloud/infra": {
@@ -1116,6 +1119,7 @@
       "devDependencies": {
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.4.2",
+        "vite": "^8.3.0",
       },
     },
     "packages/contracts": {
@@ -1140,7 +1144,6 @@
         "file-type": "^22.0.0",
         "json5": "^2.2.3",
         "markdown-it": "^14.1.0",
-        "uuid": "^14.0.0",
         "yaml": "^2.8.2",
         "zod": "^4.6.5",
       },
@@ -1152,6 +1155,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "@vitest/coverage-v8": "^5.0.2",
         "dotenv": "^17.2.3",
+        "tsx": "^4.21.0",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },
@@ -1306,6 +1310,7 @@
         "bun-types": "1.4.2",
         "drizzle-kit": "^0.31.10",
         "drizzle-orm": "0.45.3",
+        "vite": "^8.3.0",
         "vitest": "^5.0.2",
       },
       "peerDependencies": {

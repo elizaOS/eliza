@@ -62,11 +62,10 @@ export * from "./database/document-list-query";
 export * from "./database/world-metadata-cas";
 export * from "./discord-dm-policy.js";
 export * from "./embedding-vector-space";
-export * from "./env-utils";
 export * from "./error-classification.js";
 export * from "./errors";
 export * from "./events.js";
-export type { ValidationKeywordLocale } from "./i18n/keyword-matching-core.js";
+export type { ValidationKeywordLocale } from "./i18n/keywords.js";
 export * from "./i18n/language.js";
 export * from "./i18n/recurrence-markers.js";
 export * from "./inference-trace.js";
@@ -139,6 +138,7 @@ export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
 export * from "./name-tokens";
 export * from "./network/ssrf.js";
+export * from "./prompt-optimization.js";
 export * from "./recent-messages-state";
 export * from "./retrieval.js";
 export type { RolesConfig } from "./roles.js";
@@ -155,7 +155,6 @@ export {
 	type ContextProviderEvent,
 	createContextObject,
 } from "./runtime/context-object.js";
-
 export * from "./runtime/context-registry";
 export {
 	buildStageChatMessages,
@@ -242,7 +241,6 @@ export * from "./security/basic-email";
 export * from "./security/bind-host.js";
 export * from "./security/entity-recognizer.js";
 export * from "./security/external-content.js";
-
 export {
 	AUTHORITY_KEYWORDS,
 	containsObfuscatedKeyword,
@@ -389,7 +387,6 @@ export * from "./types/channel-config.js";
 export * from "./types/chat-pre-handler.js";
 export * from "./types/coding.js";
 export * from "./types/commands.js";
-
 export * from "./types/components.js";
 export type {
 	ConnectorAccountAccessGate,
@@ -436,9 +433,6 @@ export * from "./types/plugin.js";
 export * from "./types/plugin-manifest";
 export * from "./types/plugin-store.js";
 export * from "./types/primitives.js";
-export * from "./types/prompt-optimization-hooks.js";
-export * from "./types/prompt-optimization-score-card.js";
-export * from "./types/prompt-optimization-trace.js";
 export * from "./types/prompts.js";
 export * from "./types/reminder-presentation";
 export * from "./types/runtime.js";

@@ -1508,6 +1508,39 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([]);
     expect(await recovery.claimOriginalInvoiceEvent(owner)).toBeNull();
   });
+  test("original invoice fences stay bound to their subscription when an organization has multiple sources", async () => {
+    const { f, owner, recovery, operations } = await retainUnfunded();
+    const otherId = randomUUID();
+    await database.query(
+      `INSERT INTO billing_subscriptions SELECT (jsonb_populate_record(NULL::billing_subscriptions,
+        to_jsonb(s) || jsonb_build_object('id',$2::text,'status','canceled',
+          'stripe_subscription_id',$3::text,'stripe_subscription_item_id',$4::text))).*
+        FROM billing_subscriptions s WHERE id=$1`,
+      [
+        f.source.id,
+        otherId,
+        `sub_${otherId.replaceAll("-", "")}`,
+        `si_${otherId.replaceAll("-", "")}`,
+      ],
+    );
+    for (const subscriptionId of [f.source.id, otherId])
+      await operations.createFence({
+        organizationId: owner.organizationId,
+        subscriptionId,
+        providerEventId: null,
+        providerEventCreatedAt: null,
+        providerObjectDigest: "f".repeat(64),
+        nextReconcileAt: null,
+        now: new Date(),
+      });
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([owner]);
+    await database.query(
+      "UPDATE subscription_billing_fences SET state='quarantined',fence_revision=fence_revision+1 WHERE subscription_id=$1",
+      [f.source.id],
+    );
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([]);
+    expect(await recovery.claimOriginalInvoiceEvent(owner)).toBeNull();
+  });
   test("original invoice discovery excludes terminal receipt outcomes", async () => {
     const { owner, recovery, operations } = await retainUnfunded();
     const claim = (await recovery.claimOriginalInvoiceEvent(owner))!;
