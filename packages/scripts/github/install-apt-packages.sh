@@ -36,7 +36,8 @@ if [ "${ELIZA_APT_UBUNTU_ONLY:-false}" = "true" ]; then
     echo "::error::Ubuntu repository configuration is missing: $ubuntu_sources" >&2
     exit 1
   fi
-  apt_sources=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o "Dir::Etc::sourceparts=-")
+  apt_sources=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o "Dir::Etc::sourceparts=-"
+    -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
 fi
 
 # Mirrors the drop-in written by .github/actions/setup-bun-workspace so lanes
