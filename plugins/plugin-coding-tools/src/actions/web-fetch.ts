@@ -12,8 +12,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { decodeHTML } from "entities";
 import { stripHtmlRawTextElements, toWellFormedUnicode } from "@elizaos/core";
+import { decodeHTML } from "entities";
 import {
   failureToActionResult,
   readStringParam,
@@ -47,7 +47,7 @@ function decodeHtmlEntity(entity: string): string {
       (code < 0xd800 || code > 0xdfff);
     return isUnicodeScalarValue ? String.fromCodePoint(code) : `&${entity};`;
   }
-  return decodeHTML(`&${entity};`);
+  return decodeHTML(`&${entity};`).replace(/\u00a0/g, " ");
 }
 
 function normalizeWhitespace(text: string): string {
