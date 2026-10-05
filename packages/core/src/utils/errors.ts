@@ -57,7 +57,7 @@ export function formatDiagnosticError(value: unknown): string {
 /** Extract an Error message or coerce a thrown value without masking the original failure. */
 export function formatError(error: unknown): string {
 	try {
-		return error instanceof Error ? error.message : String(error);
+		return String(error instanceof Error ? error.message : error);
 	} catch {
 		// error-policy:J7 error formatting must not mask the failure being
 		// reported; continue with a primitive-conversion-free representation.

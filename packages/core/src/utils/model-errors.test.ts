@@ -39,6 +39,7 @@ describe("model error diagnostics", () => {
 		);
 		const cases: Array<[unknown, string]> = [
 			[Object.create(null), "[object Object]"],
+			[Object.assign(new Error(), { message: 42 }), "42"],
 			[hostileMessage, "[object Error]"],
 			[hostileCoercion, "[object Object]"],
 			[hostileTag, "[unstringifiable error]"],
