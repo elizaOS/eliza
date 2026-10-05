@@ -1,4 +1,4 @@
-import type { NotesOperation } from "./notes-contract.ts";
+import { AsyncNotesStore } from "./notes-async-store.ts";
 import {
   type NoteRecord,
   NotesCommitUncertain,
@@ -96,16 +96,30 @@ const equal = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
 /** Device-local collection. Native CAS is authoritative; no plaintext persistence fallback.
  * The optimistic editor snapshot is never an agent target until pending commits settle. */
-export class SecureNotesStore {
-  private tail: Promise<void> = Promise.resolve();
-  private fault: unknown;
-  private activeOperation = false;
+export class SecureNotesStore extends AsyncNotesStore<Saved> {
   private constructor(
-    private config: SecureNotesConfig,
-    private vault: NotesVault,
-    private saved: Saved,
-    private inner: NotesStore,
-  ) {}
+    config: SecureNotesConfig,
+    vault: NotesVault,
+    saved: Saved,
+  ) {
+    super(
+      config,
+      {
+        read: () => vault.read<Saved>(config.secureSlot),
+        raw: (value) => value.currentRaw,
+        async compareExchange(expected, nextRaw) {
+          const next = { ...expected, currentRaw: nextRaw };
+          const result = await vault.compareExchange(
+            config.secureSlot,
+            expected,
+            next,
+          );
+          return result.status === "saved" ? next : null;
+        },
+      },
+      saved,
+    );
+  }
   static async open(
     config: SecureNotesConfig,
     vault: NotesVault,
@@ -159,7 +173,7 @@ export class SecureNotesStore {
       )
     )
       throw Error("Invalid encrypted Notes collection. No data changed.");
-    const inner = new NotesStore(config, memory(config, saved.currentRaw));
+    new NotesStore(config, memory(config, saved.currentRaw));
     // Originals remain verbatim inside the encrypted archive. Delete only exact migration sources.
     onStage("legacy-comparison");
     const sources: [[string, string | null], [string, string | null]] = [
@@ -214,108 +228,6 @@ export class SecureNotesStore {
         "Plaintext Notes cleanup did not complete. Reopen to retry cleanup.",
       );
     onStage("opened");
-    return new SecureNotesStore(config, vault, saved, inner);
-  }
-  get raw() {
-    return this.inner.raw;
-  }
-  get list() {
-    return this.inner.list;
-  }
-  get needsRecovery() {
-    return this.fault !== undefined;
-  }
-  private check() {
-    if (this.fault) throw this.fault;
-  }
-  async assertCurrent() {
-    // A read and a later local commit must observe the same saved generation.
-    // Queue consistency reads with writes; external changes still fault the editor.
-    const task = this.tail.then(async () => {
-      this.check();
-      const current = await this.vault.read<Saved>(this.config.secureSlot);
-      if (!equal(current, this.saved))
-        throw Error("Notes changed in another view. Reopen before editing.");
-    });
-    this.tail = task.catch((error) => {
-      this.fault = error;
-    });
-    return task;
-  }
-  private commit(nextRaw: string) {
-    const task = this.tail.then(async () => {
-      this.check();
-      const next = { ...this.saved, currentRaw: nextRaw };
-      let result;
-      try {
-        result = await this.vault.compareExchange(
-          this.config.secureSlot,
-          this.saved,
-          next,
-        );
-      } catch {
-        throw new NotesCommitUncertain(
-          "Notes commit outcome is unknown; do not repeat the edit.",
-        );
-      }
-      if (result.status !== "saved")
-        throw Error(
-          "Notes changed in another view. Unsaved text remains on this screen.",
-        );
-      let current;
-      try {
-        current = await this.vault.read<Saved>(this.config.secureSlot);
-      } catch {
-        throw new NotesCommitUncertain(
-          "Notes saved acknowledgement could not be verified. Do not repeat the edit.",
-        );
-      }
-      if (!equal(current, next))
-        throw new NotesCommitUncertain(
-          "Notes readback changed. Inspect saved data before another edit.",
-        );
-      this.saved = next;
-    });
-    this.tail = task.catch((error) => {
-      this.fault = error;
-    });
-    return task;
-  }
-  replace(list: NoteRecord[]) {
-    this.check();
-    if (this.activeOperation)
-      throw Error("Finish the approved Notes operation first.");
-    this.inner.replace(list);
-    return this.commit(this.inner.raw);
-  }
-  async target(id: string) {
-    await this.assertCurrent();
-    const raw = this.raw,
-      target = await this.inner.target(id);
-    await this.assertCurrent();
-    if (raw !== this.raw) throw Error("Selected note changed");
-    return target;
-  }
-  async execute(
-    op: NotesOperation,
-    id: string,
-    signal: AbortSignal,
-    authorized: () => void,
-  ) {
-    this.check();
-    if (this.activeOperation)
-      throw Error("Another Notes operation is in progress");
-    this.activeOperation = true;
-    try {
-      await this.assertCurrent();
-      signal.throwIfAborted();
-      authorized();
-      const before = this.raw;
-      const result = await this.inner.execute(op, id, signal, authorized);
-      if (this.raw !== before) await this.commit(this.raw);
-      return result;
-    } finally {
-      this.activeOperation = false;
-    }
+    return new SecureNotesStore(config, vault, saved);
   }
 }

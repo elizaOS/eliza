@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AsyncNotesStore } from "../src/client/notes-async-store.ts";
 import { SecureNotesStore } from "../src/client/notes-secure-store.ts";
 import { NotesCommitUncertain, NotesStore } from "../src/client/notes-store.ts";
 
@@ -264,4 +265,162 @@ test("a host update to other daily fields after an interrupted migration does no
     SecureNotesStore.open(config, vault, storage),
     /Legacy Notes changed during migration/,
   );
+});
+
+function documentFixture() {
+  const initial = new NotesStore(config, memory(), [note]);
+  let saved = { revision: 1, raw: initial.raw },
+    writes = 0;
+  const persistence = {
+    read: async () => structuredClone(saved),
+    raw: (value) => value.raw,
+    compareExchange: async (expected, raw, signal) => {
+      signal?.throwIfAborted();
+      if (JSON.stringify(saved) !== JSON.stringify(expected)) return null;
+      saved = { revision: saved.revision + 1, raw };
+      writes++;
+      return structuredClone(saved);
+    },
+  };
+  return {
+    persistence,
+    read: () => structuredClone(saved),
+    writes: () => writes,
+    revise: () => {
+      saved = { ...saved, revision: saved.revision + 1 };
+    },
+  };
+}
+test("asynchronous Notes fence competing editors without losing the committed snapshot", async () => {
+  const f = documentFixture(),
+    a = await AsyncNotesStore.load(config, f.persistence),
+    b = await AsyncNotesStore.load(config, f.persistence);
+  const results = await Promise.allSettled([
+    a.replace([{ ...note, body: "A" }]),
+    b.replace([{ ...note, body: "B" }]),
+  ]);
+  assert.equal(
+    results.filter((result) => result.status === "fulfilled").length,
+    1,
+  );
+  assert.equal(f.writes(), 1);
+  assert.equal(b.needsRecovery, true);
+  assert.equal(
+    b.list[0].body,
+    "B",
+    "uncommitted editor text remains recoverable",
+  );
+  const reopened = await AsyncNotesStore.load(config, f.persistence);
+  assert.equal(reopened.list[0].body, "A");
+  assert.deepEqual(await reopened.target(note.id), await a.target(note.id));
+});
+test("queued Notes saves settle before a target can authorize a read", async () => {
+  const f = documentFixture(),
+    store = await AsyncNotesStore.load(config, f.persistence);
+  const first = store.replace([{ ...note, body: "First" }]),
+    second = store.replace([{ ...note, body: "Second" }]);
+  const target = await store.target(note.id);
+  await Promise.all([first, second]);
+  assert.equal(f.writes(), 2);
+  const result = await store.execute(
+    { type: "notes_read_selected", target },
+    "read",
+    new AbortController().signal,
+    () => {},
+  );
+  assert.equal(result.fields.body, "Second");
+});
+test("Notes deletion retains exact operation tombstones and collection identity", async () => {
+  const f = documentFixture(),
+    store = await AsyncNotesStore.load(config, f.persistence),
+    target = await store.target(note.id);
+  const result = await store.execute(
+    { type: "notes_delete", target },
+    "delete-operation",
+    new AbortController().signal,
+    () => {},
+  );
+  const envelope = JSON.parse(f.read().raw);
+  assert.equal(result.sourceId, target.sourceId);
+  assert.equal(envelope.collectionId, target.sourceId);
+  assert.deepEqual(envelope.records, []);
+  assert.deepEqual(envelope.deleted, [
+    { id: note.id, revision: target.revision, operationId: "delete-operation" },
+  ]);
+});
+test("a lost CAS response faults Notes without replaying its committed edit", async () => {
+  const f = documentFixture(),
+    write = f.persistence.compareExchange;
+  f.persistence.compareExchange = async (...args) => {
+    await write(...args);
+    throw Error("Lost response");
+  };
+  const store = await AsyncNotesStore.load(config, f.persistence);
+  await assert.rejects(
+    store.replace([{ ...note, body: "Saved once" }]),
+    NotesCommitUncertain,
+  );
+  assert.equal(store.needsRecovery, true);
+  assert.throws(() => store.replace([note]), NotesCommitUncertain);
+  assert.equal(f.writes(), 1);
+  assert.equal(
+    (await AsyncNotesStore.load(config, f.persistence)).list[0].body,
+    "Saved once",
+  );
+});
+for (const mode of ["cancel", "retire"])
+  test(`Notes recheck ${mode} after preparing an edit and before CAS`, async () => {
+    const f = documentFixture(),
+      store = await AsyncNotesStore.load(config, f.persistence),
+      before = store.raw,
+      target = await store.target(note.id),
+      controller = new AbortController();
+    await assert.rejects(
+      store.execute(
+        {
+          type: "notes_update",
+          target,
+          fields: { title: "New", body: "Edited" },
+        },
+        "edit",
+        controller.signal,
+        () => {
+          if (store.raw !== before) {
+            if (mode === "cancel") controller.abort();
+            else throw Error("Owner retired");
+          }
+        },
+      ),
+    );
+    assert.equal(f.writes(), 0);
+    assert.equal(f.read().raw, before);
+    assert.equal(store.needsRecovery, true);
+  });
+test("unchanged bytes at another document revision still invalidate a Notes editor", async () => {
+  const f = documentFixture(),
+    store = await AsyncNotesStore.load(config, f.persistence);
+  f.revise();
+  await assert.rejects(store.assertCurrent(), /changed in another view/);
+  assert.throws(() => store.replace([note]), /changed in another view/);
+  assert.equal(f.writes(), 0);
+});
+test("a mismatched acknowledgement cannot claim the proposed Notes edit was saved", async () => {
+  const f = documentFixture();
+  f.persistence.compareExchange = async () => f.read();
+  const store = await AsyncNotesStore.load(config, f.persistence);
+  await assert.rejects(
+    store.replace([{ ...note, body: "Not saved" }]),
+    NotesCommitUncertain,
+  );
+  assert.equal(store.needsRecovery, true);
+  assert.equal(JSON.parse(f.read().raw).records[0].body, note.body);
+});
+test("loading a missing document does not invent Notes or migrate host data", async () => {
+  const f = documentFixture();
+  f.persistence.read = async () => null;
+  await assert.rejects(
+    AsyncNotesStore.load(config, f.persistence),
+    /Notes document is missing/,
+  );
+  assert.equal(f.writes(), 0);
 });

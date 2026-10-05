@@ -25,3 +25,10 @@ The separate `./client` entry provides device-local note contracts, persistence
 and encrypted compare-and-exchange migration. Hosts supply storage keys, the
 native vault and legacy storage; preserve installed namespaces when adopting it.
 These device clients do not replace Cloud tenant storage or grant account authority.
+
+`AsyncNotesStore` shares queued commits, stale-editor checks and exact operation
+results across host persistence adapters. Its JSON snapshots must include a revision
+and its injected compare-exchange must be atomic; browser hosts can use the shared
+browser document store. Hosts initialize/migrate the document and expose recovery
+before loading it. `SecureNotesStore` retains encrypted migration and delegates
+commits to this same engine. Rendering snapshots are not proof of a saved edit.
