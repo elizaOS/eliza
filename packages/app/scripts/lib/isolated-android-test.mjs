@@ -534,8 +534,6 @@ export async function runIsolatedAndroidTest({
       for (const item of companions)
         await install(item.apk, item.packageName, item.sha256);
       signal?.throwIfAborted();
-      await prepareVariant?.(context);
-      signal?.throwIfAborted();
       const instrument = async (args, label) => {
         for (const [name, expected] of owned)
           assert.equal(
@@ -592,6 +590,34 @@ export async function runIsolatedAndroidTest({
           );
         return instrumentation;
       };
+      const phaseNames = new Set();
+      context.instrumentPhase = async (name, args = []) => {
+        assert.match(name, /^[A-Za-z][A-Za-z0-9_-]*$/);
+        assert.ok(!phaseNames.has(name), "Duplicate instrumentation phase");
+        validateRunnerArgs(args);
+        const copiedArgs = [...args];
+        assert.ok(
+          record === report.variants.at(-1) &&
+            !record.passed &&
+            owned.has(packageName) &&
+            owned.has(testPackage),
+          "Instrumentation requires both owned packages in the active variant",
+        );
+        phaseNames.add(name);
+        const phase = { name, passed: false };
+        record.phases ??= [];
+        record.phases.push(phase);
+        try {
+          phase.instrumentation = await instrument(copiedArgs, `phase-${name}`);
+          phase.passed = true;
+          return phase.instrumentation;
+        } catch (error) {
+          phase.error = error.message;
+          throw error;
+        }
+      };
+      await prepareVariant?.(context);
+      signal?.throwIfAborted();
       record.instrumentation = await instrument(
         runnerArgs,
         variant.upgrade ? "baseline" : "",
@@ -621,6 +647,10 @@ export async function runIsolatedAndroidTest({
       await collectVariant?.(context);
       signal?.throwIfAborted();
       await restoreScenario();
+      assert.ok(
+        record.phases?.every((phase) => phase.passed) ?? true,
+        "Instrumentation phase failed",
+      );
       record.finalInstalledHashes = {};
       for (const name of owned.keys()) {
         const hash = await installedHash(name);
