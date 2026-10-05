@@ -339,3 +339,8 @@ release verdict. Missing application attributes remain null; hosts own component
 allowlists, expected package identity and release policy. `parseXmlTree` accepts
 a `decodeAttribute` option for callers such as Play-policy inspection that need
 normalized values instead of the default raw strings and hexadecimal integers.
+
+`android-fixture-reboot.mjs` resumes an existing secondary fixture user after a
+verified emulator reboot under the caller’s live device lease. It checks the
+changed kernel boot ID and unlocked user without launching the target app or
+instrumentation; callers retain external alarm observation and cleanup.
