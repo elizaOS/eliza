@@ -125,6 +125,79 @@ const chargeSchema = z.object({
   transfer: z.null().optional(),
   transfer_data: z.null(),
 });
+/** Proves only an exact full-price invoice and captured money. The caller must independently
+ * prove retained contract authority, current ownership/lifecycle, ordered publication and leases.
+ * An expired interval is valid payment evidence, never authority for current access. */
+export function validateCapturedRenewalPayment(input: {
+  invoice: unknown;
+  paymentIntent: unknown;
+  charge: unknown;
+  initialPayment?: boolean;
+  expected: {
+    subscriptionId: string;
+    customerId: string;
+    subscriptionItemId: string;
+    priceId: string;
+    productId: string;
+    livemode: boolean;
+    amountCents: number;
+    start: Date;
+    end: Date;
+  };
+}) {
+  const invoiceResult = (
+    input.initialPayment ? initialInvoiceSchema : renewalInvoiceSchema
+  ).safeParse(input.invoice);
+  const paymentResult = paymentSchema.safeParse(input.paymentIntent);
+  const chargeResult = chargeSchema.safeParse(input.charge);
+  if (!invoiceResult.success || !paymentResult.success || !chargeResult.success)
+    renewalUnavailable("unsupported_provider_shape_or_adjustment");
+  const invoice = invoiceResult.data,
+    payment = paymentResult.data,
+    charge = chargeResult.data;
+  const line = invoice.lines.data[0];
+  if (!line) renewalUnavailable("missing_recurring_line");
+  const expected = input.expected;
+  if (
+    !Number.isSafeInteger(expected.amountCents) ||
+    expected.amountCents <= 0 ||
+    !Number.isFinite(expected.start.getTime()) ||
+    !Number.isFinite(expected.end.getTime()) ||
+    expected.start >= expected.end ||
+    line.period.start * 1000 !== expected.start.getTime() ||
+    line.period.end * 1000 !== expected.end.getTime() ||
+    invoice.subscription !== expected.subscriptionId ||
+    invoice.customer !== expected.customerId ||
+    invoice.livemode !== expected.livemode ||
+    line.subscription !== expected.subscriptionId ||
+    line.subscription_item !== expected.subscriptionItemId ||
+    line.price.id !== expected.priceId ||
+    line.price.product !== expected.productId ||
+    [
+      invoice.amount_paid,
+      invoice.amount_due,
+      invoice.total,
+      invoice.subtotal,
+      line.amount,
+      payment.amount,
+      payment.amount_received,
+      charge.amount,
+      charge.amount_captured,
+    ].some((amount) => amount !== expected.amountCents) ||
+    payment.id !== invoice.payment_intent ||
+    payment.invoice !== invoice.id ||
+    payment.customer !== invoice.customer ||
+    payment.latest_charge !== invoice.charge ||
+    payment.livemode !== invoice.livemode ||
+    charge.id !== invoice.charge ||
+    charge.invoice !== invoice.id ||
+    charge.payment_intent !== payment.id ||
+    charge.customer !== invoice.customer ||
+    charge.livemode !== invoice.livemode
+  )
+    renewalUnavailable("payment_invoice_or_catalog_identity_mismatch");
+  return { invoice, line, payment, charge };
+}
 export interface PaidRenewalObjects {
   /** Current account retrieved alongside a persisted purchase contract; absent for legacy authority. */
   providerAccountId?: string;
@@ -150,8 +223,6 @@ export function validatePaidRenewal(
   const invoiceResult = (
     input.initialPayment ? initialInvoiceSchema : renewalInvoiceSchema
   ).safeParse(input.invoice);
-  const paymentResult = paymentSchema.safeParse(input.paymentIntent);
-  const chargeResult = chargeSchema.safeParse(input.charge);
   const subResult = z
     .object({
       latest_invoice: z.string(),
@@ -162,16 +233,9 @@ export function validatePaidRenewal(
       canceled_at: seconds.nullable(),
     })
     .safeParse(input.subscription);
-  if (
-    !invoiceResult.success ||
-    !paymentResult.success ||
-    !chargeResult.success ||
-    !subResult.success
-  )
+  if (!invoiceResult.success || !subResult.success)
     renewalUnavailable("unsupported_provider_shape_or_adjustment");
-  const invoice = invoiceResult.data,
-    payment = paymentResult.data,
-    charge = chargeResult.data;
+  const invoice = invoiceResult.data;
   const line = invoice.lines.data[0];
   if (!line) renewalUnavailable("missing_recurring_line");
   const source = input.source;
@@ -277,38 +341,27 @@ export function validatePaidRenewal(
     });
   const subscriptionItemId =
     targetObservation?.subscriptionItemId ?? source.stripe_subscription_item_id;
-  if (
-    invoice.subscription !== source.stripe_subscription_id ||
-    invoice.customer !== source.stripe_customer_id ||
-    invoice.livemode !== binding.expectedLivemode ||
-    subResult.data.latest_invoice !== invoice.id ||
-    line.subscription !== source.stripe_subscription_id ||
-    line.subscription_item !== subscriptionItemId ||
-    line.price.id !== binding.priceId ||
-    line.price.product !== binding.productId ||
-    [
-      invoice.amount_paid,
-      invoice.amount_due,
-      invoice.total,
-      invoice.subtotal,
-      line.amount,
-      payment.amount,
-      payment.amount_received,
-      charge.amount,
-      charge.amount_captured,
-    ].some((amount) => amount !== plan.amountCents) ||
-    payment.id !== invoice.payment_intent ||
-    payment.invoice !== invoice.id ||
-    payment.customer !== invoice.customer ||
-    payment.latest_charge !== invoice.charge ||
-    payment.livemode !== invoice.livemode ||
-    charge.id !== invoice.charge ||
-    charge.invoice !== invoice.id ||
-    charge.payment_intent !== payment.id ||
-    charge.customer !== invoice.customer ||
-    charge.livemode !== invoice.livemode
-  )
+  if (subResult.data.latest_invoice !== invoice.id)
     renewalUnavailable("payment_invoice_or_catalog_identity_mismatch");
+  if (!source.stripe_subscription_id || !source.stripe_customer_id || !subscriptionItemId)
+    renewalUnavailable("missing_payment_owner");
+  const { payment, charge } = validateCapturedRenewalPayment({
+    invoice: input.invoice,
+    paymentIntent: input.paymentIntent,
+    charge: input.charge,
+    initialPayment: input.initialPayment,
+    expected: {
+      subscriptionId: source.stripe_subscription_id,
+      customerId: source.stripe_customer_id,
+      subscriptionItemId,
+      priceId: binding.priceId,
+      productId: binding.productId,
+      livemode: binding.expectedLivemode,
+      amountCents: plan.amountCents,
+      start,
+      end,
+    },
+  });
   return {
     invoiceId: invoice.id,
     planKey: plan.key,

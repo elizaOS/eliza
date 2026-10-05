@@ -94,12 +94,12 @@ Renewal and missed-event recovery retain the original checkout account binding a
 paid organization upgrade. The current price/product come from the applied upgrade's
 immutable quote and complete subsequent source revision history, not rotated environment
 prices. Unsupported or missing lineage remains unavailable. The scheduled renewal path
-proves the retained original schedule and active target phase before atomically publishing
+proves the retained original schedule terms and compatible lifecycle before atomically publishing
 the paid lower plan and allowance. Later renewals retain its reviewed price through the
 paid target revision and original grant. Distinct deliveries of an already-funded invoice
 acknowledge immutable payment records without changing current source, entitlement or
 spendable balances. This path currently supports full-price captured payments; retained
-adjustments, delayed settlement, released schedules and public orchestration remain
+adjustments, delayed settlement and public orchestration remain
 required before product adoption.
 
 Failed owned target invoices now use the existing dunning lifecycle through webhook and
@@ -114,3 +114,8 @@ snapshot and explicitly checked lifecycle changes. Released targets can settle w
 original invoice period. Historical grants expire atomically through the existing ledger;
 payment publication after that period still requires separate historical invoice and live
 compatibility proof and remains unavailable until that owner is implemented.
+
+Captured renewal payment proof is independently reusable for an exact retained invoice
+interval, price, owner and amount. It does not read or synthesize current subscription
+state. Current renewal publication still requires its live period/latest-invoice checks;
+historical publication must separately preserve ordered source authority and current dunning.
