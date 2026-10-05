@@ -48,3 +48,9 @@ responses or request-attributed events. The journal reads original scope and fir
 dispatch time under lock and preserves the first receipt on exact replay. Attribution
 is not configured-phase validation: callers still must verify retained terms and
 current provider state before configuration, compensation or pending-plan publication.
+
+Downgrade review preflights pinned retained subscription billing terms before invoice
+preview. The observer normalizes existing discount/tax/payment references and includes
+financial overrides in its digest. Unsupported terms reject instead of being omitted.
+This review check alone does not bind a create effect: the dispatcher must reobserve,
+persist the original retained-term binding and validate phase/default preservation.
