@@ -10,6 +10,7 @@ import type { State } from "../types/state";
 import {
 	bindTaskExtractionContext,
 	readTaskExtractionContext,
+	readTaskExtractionRequestIntents,
 } from "./task-extraction-context";
 
 function fixture() {
@@ -376,4 +377,45 @@ it("invalidates changed provider notice before rendering and keeps all originals
 	);
 	provider.discoveryText = "Forged permission";
 	expect(readTaskExtractionContext(f.state, f.message)).toBeUndefined();
+});
+
+it("exposes current intent evidence only under all unchanged binding hashes", () => {
+	const f = fixture();
+	const event = {
+		id: "handler",
+		type: "message_handler",
+		source: "message-service",
+		metadata: {
+			processMessage: true,
+			plan: { intents: ["Create a reminder"] },
+		},
+	};
+	f.original.events.push(event);
+	f.projected.events.push(event);
+	bindTaskExtractionContext(f.state, f.message, f.original, f.projected);
+	expect(readTaskExtractionRequestIntents(f.state, f.message)).toEqual([
+		"Create a reminder",
+	]);
+	expect(
+		readTaskExtractionRequestIntents(
+			{ ...f.state, data: { ...f.state.data } },
+			f.message,
+		),
+	).toBeUndefined();
+	expect(
+		readTaskExtractionRequestIntents(f.state, {
+			...f.message,
+			entityId: "other",
+		}),
+	).toBeUndefined();
+	f.state.values.selectedActionConversation = "changed";
+	expect(readTaskExtractionRequestIntents(f.state, f.message)).toBeUndefined();
+	f.state.values.selectedActionConversation = "first";
+	event.metadata.plan.intents.push("Also snooze an older reminder");
+	expect(readTaskExtractionRequestIntents(f.state, f.message)).toBeUndefined();
+});
+it("does not register full-context or synthetic cloned intent authority", () => {
+	const f = fixture();
+	bindTaskExtractionContext(f.state, f.message, f.original, f.original);
+	expect(readTaskExtractionRequestIntents(f.state, f.message)).toBeUndefined();
 });

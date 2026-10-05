@@ -81,13 +81,10 @@ export function bindTaskExtractionContext(
 	}
 }
 
-/** Routing clones State.values but preserves State.data; copied JSON cannot
- * inherit this capability. Changed source/actor/request/state falls back to full. */
-export function readTaskExtractionContext(
+function readBinding(
 	state: State | undefined,
 	message: Memory | undefined,
-	expectedSystem?: string,
-): { text: string; originalText: string; system?: string } | undefined {
+): Binding | undefined {
 	if (!state?.data || !message) return undefined;
 	const binding = bindings().get(state.data);
 	if (!binding) return undefined;
@@ -99,6 +96,51 @@ export function readTaskExtractionContext(
 			binding.projectionHash !== hashStableJson(binding.projected)
 		)
 			return undefined;
+		return binding;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Current Stage-1 intent evidence from the same unmodified request capability.
+ * Missing, cloned or changed bindings grant no foreground ownership authority. */
+export function readTaskExtractionRequestIntents(
+	state: State | undefined,
+	message: Memory | undefined,
+): readonly string[] | undefined {
+	const binding = readBinding(state, message);
+	if (!binding) return undefined;
+	const events = binding.original.events.filter(
+		(event) =>
+			event.type === "message_handler" && event.source === "message-service",
+	);
+	if (events.length !== 1 || events[0].metadata?.processMessage !== true)
+		return undefined;
+	const plan = events[0].metadata?.plan;
+	if (!plan || typeof plan !== "object" || Array.isArray(plan))
+		return undefined;
+	const intents = plan.intents;
+	if (
+		!Array.isArray(intents) ||
+		!intents.length ||
+		!intents.every(
+			(intent) => typeof intent === "string" && intent.trim().length > 0,
+		)
+	)
+		return undefined;
+	return [...intents] as string[];
+}
+
+/** Routing clones State.values but preserves State.data; copied JSON cannot
+ * inherit this capability. Changed source/actor/request/state falls back to full. */
+export function readTaskExtractionContext(
+	state: State | undefined,
+	message: Memory | undefined,
+	expectedSystem?: string,
+): { text: string; originalText: string; system?: string } | undefined {
+	const binding = readBinding(state, message);
+	if (!binding) return undefined;
+	try {
 		// Keep the trusted canonical prefix on the model's system surface once,
 		// rather than flattening it into user context and adding it again at dispatch.
 		// Originals, style directions, other instructions, providers and receipts
