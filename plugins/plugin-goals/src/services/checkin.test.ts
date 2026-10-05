@@ -454,6 +454,54 @@ describe("GoalsCheckinService.syncGoalCheckins", () => {
     },
   );
 
+  it("revives the pending check-in when a once goal is moved away and back", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+    const dueA = "2026-10-05T15:00:00.000Z";
+    const dueB = "2026-10-12T15:00:00.000Z";
+    const onceGoal = (dueAt: string) =>
+      makeGoal({ cadence: { kind: "once", dueAt } });
+
+    const first = await service.syncGoalCheckins(onceGoal(dueA));
+    await service.syncGoalCheckins(onceGoal(dueB));
+    const back = await service.syncGoalCheckins(onceGoal(dueA));
+
+    expect(back.scheduled.map((task) => task.taskId)).toEqual([
+      first.scheduled[0].taskId,
+    ]);
+    const live = (await spine.runner.list({ kind: "checkin" })).filter(
+      (task) => task.state.status === "scheduled",
+    );
+    expect(live).toHaveLength(1);
+    expect(live[0].trigger).toEqual({ kind: "once", atIso: dueA });
+
+    spine.setNow(dueA);
+    const fired = await spine.runner.fire(live[0].taskId);
+    expect(fired.state.status).toBe("fired");
+    expect(spine.dispatched).toEqual([live[0].taskId]);
+  });
+
+  it("keeps an owner-dismissed once check-in off after the date moves away and back", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+    const dueA = "2026-10-05T15:00:00.000Z";
+    const onceGoal = (dueAt: string) =>
+      makeGoal({ cadence: { kind: "once", dueAt } });
+
+    const first = await service.syncGoalCheckins(onceGoal(dueA));
+    await spine.runner.apply(first.scheduled[0].taskId, "dismiss", {
+      reason: "owner said stop",
+    });
+    await service.syncGoalCheckins(onceGoal("2026-10-12T15:00:00.000Z"));
+    const back = await service.syncGoalCheckins(onceGoal(dueA));
+
+    expect(back.scheduled).toHaveLength(0);
+    const ownerDismissed = (await spine.runner.list({ kind: "checkin" })).find(
+      (task) => task.taskId === first.scheduled[0].taskId,
+    );
+    expect(ownerDismissed?.state.status).toBe("dismissed");
+  });
+
   it("moves a still-pending once check-in to the new instant", async () => {
     const spine = makeSpine();
     const service = makeService(spine);
