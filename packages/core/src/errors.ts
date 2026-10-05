@@ -1,5 +1,7 @@
 /** Structured errors carry a machine-readable code, contextual data, and the original cause. */
-import { formatError, readDiagnosticProperty } from "./utils/errors";
+// Extension-explicit so plain `node --test` lanes can resolve it and the emit
+// config's relative-extension rewrite applies (extensionless would survive emit).
+import { formatError, readDiagnosticProperty } from "./utils/errors.ts";
 
 /**
  * Severity hint for an {@link ElizaError}. `ephemeral` failures are expected to
