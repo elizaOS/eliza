@@ -1453,9 +1453,12 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   // app resolves branding while its entry module is evaluating.
   await page.addInitScript(() => {
     const host = window as typeof window & {
-      __ELIZA_APP_API_BASE__?: string;
+      __ELIZAOS_APP_BOOT_CONFIG__?: Record<string, unknown>;
     };
-    host.__ELIZA_APP_API_BASE__ = window.location.origin;
+    host.__ELIZAOS_APP_BOOT_CONFIG__ = {
+      ...host.__ELIZAOS_APP_BOOT_CONFIG__,
+      apiBase: window.location.origin,
+    };
   });
   let notesRevision = 4;
   // Schema 2 keeps the authored title/body separator in the body remainder.

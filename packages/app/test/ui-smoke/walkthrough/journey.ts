@@ -373,7 +373,6 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const secureStore = new Map<string, string>();
     const win = window as unknown as Record<string, unknown>;
-    win.__ELIZA_APP_API_BASE__ = window.location.origin;
     win.__electrobunWindowId = 1;
     // The journey advertises desktop capability so local onboarding remains
     // selectable. Mirror the minimum native host contract as well: production

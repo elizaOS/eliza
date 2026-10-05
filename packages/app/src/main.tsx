@@ -254,7 +254,6 @@ declare const __ELIZA_CHAT_UI_HARNESS__: boolean | undefined;
 declare global {
   interface Window {
     __ELIZA_APP_SHARE_QUEUE__?: ShareTargetPayload[];
-    __ELIZA_APP_API_BASE__?: string;
     __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
 }
