@@ -101,3 +101,5 @@ UTF-16 max-length admission and realm-owned native setter/input-event dispatch
 for controlled text fields. `isEditableTextControl` accepts the host's input-type
 policy. Keyboard layouts, key mapping, visibility, focus and viewport handling
 remain product-owned. These helpers do not submit forms or advance workflows.
+
+`createValidatedJsonStorage` shares guarded JSON reads, writes and removal. Pass a storage resolver so getter failures are also caught. Hosts retain keys, schema validators, fallbacks and presentation of failed writes. Reads reject malformed or invalid data; writes reject unserializable values without replacing the prior record. No automatic retries or recovery side effects occur.
