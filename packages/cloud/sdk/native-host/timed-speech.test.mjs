@@ -431,3 +431,46 @@ test("decoder accepts the documented audio bound without regexp stack exhaustion
   assert.equal(result[0].audioBase64.length, bytes.toString("base64").length);
   assert.equal(result[1].audioBytes, bytes.length);
 });
+
+test("a sustained conversation retains terminal replay without exhausting speech after 32 clips", async (t) => {
+  const { service, opens } = sessions(t);
+  let first;
+  for (let i = 0; i < 64; i++) {
+    const started = await service.start({
+      requestId: `conversation-clip-${i}`,
+      owner,
+      input,
+    });
+    if (!first) first = started;
+    for (let cursor = 0; cursor <= 2; cursor++) {
+      const result = await service.pull({
+        streamId: started.streamId,
+        owner,
+        cursor,
+      });
+      assert.equal(result.frame.type, cursor === 2 ? "done" : "audio");
+    }
+  }
+  assert.equal(opens(), 64);
+  const replay = await service.start({
+    requestId: "conversation-clip-0",
+    owner,
+    input,
+  });
+  assert.equal(replay.streamId, first.streamId);
+  assert.equal(replay.state, "done");
+  assert.equal(
+    (await service.pull({ streamId: first.streamId, owner, cursor: 2 })).frame
+      .type,
+    "done",
+  );
+  await assert.rejects(
+    service.pull({ streamId: first.streamId, owner, cursor: 0 }),
+    /cursor/,
+  );
+  assert.equal(
+    opens(),
+    64,
+    "old identity must not synthesize again to recover a lost reply",
+  );
+});

@@ -263,6 +263,9 @@ app.post("/", async (c) => {
         success: true,
         claimed: claimedCharacters,
         failed: failedClaims,
+        // The client must keep its anonymous session token while the session
+        // stays unconverted for a retry; it is the only way back to it.
+        sessionRetryable: convertibleSessionId !== null && sessionBackedFailure,
         message:
           claimedCharacters.length > 0
             ? `Successfully claimed ${claimedCharacters.length} character(s)`

@@ -173,7 +173,15 @@ function telegramStatusDegradations(args: {
   return degradations;
 }
 
-function memoryToTelegramMessageSearchResult(
+// Telegram ids arrive as strings or numbers: the bot stores sent replies with
+// the numeric `sentMessage.chat.id`.
+function telegramId(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+export function memoryToTelegramMessageSearchResult(
   memory: unknown,
 ): TelegramMessageSearchResult {
   const record = memory && typeof memory === "object" ? memory : {};
@@ -203,13 +211,12 @@ function memoryToTelegramMessageSearchResult(
   return {
     id,
     dialogId:
-      typeof telegram.chatId === "string"
-        ? telegram.chatId
-        : typeof metadata.chatId === "string"
-          ? metadata.chatId
-          : typeof metadata.channelId === "string"
-            ? metadata.channelId
-            : null,
+      telegramId(telegram.chatId) ??
+      (typeof metadata.chatId === "string"
+        ? metadata.chatId
+        : typeof metadata.channelId === "string"
+          ? metadata.channelId
+          : null),
     threadId:
       typeof telegram.threadId === "string"
         ? telegram.threadId
@@ -234,12 +241,13 @@ function memoryToTelegramMessageSearchResult(
         : typeof metadata.peerId === "string"
           ? metadata.peerId
           : null,
+    // The bot connector stamps the sender as telegram.userId / telegramUserId
+    // (telegramIdentityMetadata); senderId is kept for other writers.
     senderId:
-      typeof telegram.senderId === "string"
-        ? telegram.senderId
-        : typeof metadata.senderId === "string"
-          ? metadata.senderId
-          : null,
+      telegramId(telegram.senderId) ??
+      telegramId(metadata.senderId) ??
+      telegramId(telegram.userId) ??
+      telegramId(metadata.telegramUserId),
     content: typeof content.text === "string" ? content.text : "",
     timestamp,
     outgoing:

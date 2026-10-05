@@ -131,6 +131,7 @@ interface ClaimResponse {
   success: boolean;
   claimed: Array<{ id: string; name: string }>;
   failed?: Array<{ id: string; reason: string }>;
+  sessionRetryable?: boolean;
   message: string;
 }
 
@@ -162,6 +163,7 @@ describe("POST /api/my-agents/claim-affiliate-characters session conversion orde
       success: true,
       claimed: [],
       failed: [{ id: CHAR_A, reason: "temporary database failure" }],
+      sessionRetryable: true,
       message: "No characters were claimed",
     });
     expect(deps.events).toEqual([`claim:${CHAR_A}`]);
@@ -205,6 +207,7 @@ describe("POST /api/my-agents/claim-affiliate-characters session conversion orde
       `converted:${SESSION_ID}`,
     ]);
     expect(deps.conversionCalls).toBe(1);
+    expect(body.sessionRetryable).toBe(false);
   });
 
   test("a partial session-backed success keeps the session retryable", async () => {
@@ -228,6 +231,8 @@ describe("POST /api/my-agents/claim-affiliate-characters session conversion orde
     ]);
     expect(deps.events).toEqual([`claim:${CHAR_A}`, `claim:${CHAR_B}`]);
     expect(deps.conversionCalls).toBe(0);
+    // The client must keep the token, or the failed claim can never be retried.
+    expect(body.sessionRetryable).toBe(true);
   });
 
   test("a room-discovered failure does not block conversion of a fully successful session", async () => {
@@ -257,6 +262,7 @@ describe("POST /api/my-agents/claim-affiliate-characters session conversion orde
       `converted:${SESSION_ID}`,
     ]);
     expect(deps.conversionCalls).toBe(1);
+    expect(body.sessionRetryable).toBe(false);
   });
 
   test("an empty session converts without any claim attempt", async () => {

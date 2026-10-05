@@ -411,8 +411,14 @@ export async function fetchChatMessages(
     const channelType = chatType === "dm" ? "dm" : "group";
     const channelName = resolveChannelName(source, room?.name, senderName);
     const world = room?.worldId ? worldMap.get(room.worldId) : undefined;
+    // memory.id is a runtime UUID; connectors stamp the platform message id
+    // (Discord snowflake, Slack ts, Telegram message id) as messageIdFull.
+    const platformMessageId = metadataRecord(memory.metadata).messageIdFull;
     const deepLink = buildDeepLink(source, {
-      messageId: memoryId,
+      messageId:
+        typeof platformMessageId === "string" && platformMessageId.length > 0
+          ? platformMessageId
+          : undefined,
       roomMeta: metadataForRoom(room),
       worldMeta: metadataForWorld(world),
     });
@@ -892,6 +898,8 @@ function metadataRecord(value: unknown): Record<string, unknown> {
 function metadataForRoom(room: Room | undefined): Record<string, unknown> {
   if (!room) return {};
   return {
+    // Connectors store the platform channel on Room.channelId, not metadata.
+    channelId: room.channelId,
     ...metadataRecord(room.metadata),
     roomId: room.id,
     roomName: room.name,
