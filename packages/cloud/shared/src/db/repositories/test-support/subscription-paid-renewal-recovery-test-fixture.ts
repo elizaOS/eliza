@@ -112,6 +112,12 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     );
     for (const statement of invoiceEvidenceMigration.split("--> statement-breakpoint"))
       if (statement.trim()) await database.exec(statement);
+    const observationMigration = await readFile(
+      new URL("../../migrations/0531_subscription_invoice_observations.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of observationMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await database.exec(statement);
     service = await import("../../../lib/services/subscription-reconciliation");
   });
   beforeEach(async () => {
@@ -1423,6 +1429,279 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       operations,
     };
   }
+  async function prepareInvoiceObservation(beforeRead?: () => Promise<void>) {
+    const original = await retainUnfunded();
+    const { f, owner, recovery } = original;
+    const claim = (await recovery.claimOriginalInvoiceEvent(owner))!;
+    const posting = {
+      id: "cbtxn_original",
+      object: "customer_balance_transaction",
+      customer: f.customer.id,
+      invoice: f.invoice.id,
+      livemode: false,
+      currency: "usd",
+      type: "invoice_too_small",
+      amount: f.invoice.total,
+      ending_balance: f.invoice.total,
+      created: f.invoice.status_transitions.paid_at,
+      credit_note: null,
+    };
+    for (const limit of [100, 1])
+      objects.set(`/v1/customers/${f.customer.id}/balance_transactions?limit=${limit}`, {
+        object: "list",
+        has_more: false,
+        data: [posting],
+      });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Loopback address missing");
+    let first = true;
+    const stripe = new Stripe("sk_test_cloud_e2e", {
+      host: "127.0.0.1",
+      port: address.port,
+      protocol: "http",
+      maxNetworkRetries: 0,
+      httpClient: Stripe.createFetchHttpClient(
+        Object.assign(
+          async (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+            if (first) {
+              first = false;
+              await beforeRead?.();
+            }
+            return fetch(url, init);
+          },
+          { preconnect: fetch.preconnect },
+        ),
+      ),
+    });
+    const journal = await import("../subscription-invoice-observations");
+    const input = { ...owner, leaseToken: claim.leaseToken };
+    const rows = async () =>
+      (
+        await database.query(
+          "SELECT * FROM subscription_invoice_observations WHERE receipt_id=$1 ORDER BY version",
+          [owner.receiptId],
+        )
+      ).rows;
+    return { ...original, claim, input, stripe, journal, rows };
+  }
+  test("original invoice observations are immutable replayable versions without financial application", async () => {
+    const x = await prepareInvoiceObservation();
+    const first = await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
+    expect(first.replayed).toBe(false);
+    expect(first.observation.version).toBe(1);
+    expect(first.observation.previous_id).toBeNull();
+    const readCount = requests.length;
+    expect(
+      (await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe)).observation,
+    ).toEqual(first.observation);
+    expect(requests).toHaveLength(readCount);
+    expect(
+      (
+        await database.query(
+          "SELECT status,lease_token,processed_at,applied_subscription_revision FROM billing_subscription_event_receipts WHERE id=$1",
+          [x.owner.receiptId],
+        )
+      ).rows,
+    ).toEqual([
+      {
+        status: "received",
+        lease_token: null,
+        processed_at: null,
+        applied_subscription_revision: null,
+      },
+    ]);
+    expect(await x.recovery.listDueOriginalInvoiceEvents(5)).toEqual([]);
+    await database.query(
+      "UPDATE billing_subscription_event_receipts SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+      [x.owner.receiptId],
+    );
+    const next = (await x.recovery.claimOriginalInvoiceEvent(x.owner))!;
+    const replayDuringNewLease = await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
+    expect(replayDuringNewLease.observation.id).toBe(first.observation.id);
+    expect(
+      (
+        await database.query(
+          "SELECT status,lease_token FROM billing_subscription_event_receipts WHERE id=$1",
+          [x.owner.receiptId],
+        )
+      ).rows,
+    ).toEqual([{ status: "processing", lease_token: next.leaseToken }]);
+    const second = await x.journal.observeAndRecordOriginalInvoice(
+      { ...x.owner, leaseToken: next.leaseToken },
+      x.stripe,
+    );
+    expect(second.observation.version).toBe(2);
+    expect(second.observation.previous_id).toBe(first.observation.id);
+    expect(
+      (await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe)).observation.id,
+    ).toBe(first.observation.id);
+    expect(await x.rows()).toHaveLength(2);
+    for (const statement of [
+      "UPDATE subscription_invoice_observations SET version=version+10 WHERE receipt_id=$1",
+      "DELETE FROM subscription_invoice_observations WHERE receipt_id=$1",
+    ])
+      await expect(database.query(statement, [x.owner.receiptId])).rejects.toThrow();
+    expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+    expect(writes).toBe(0);
+  });
+  test("invoice observation database rejects original evidence substitution and a broken version chain", async () => {
+    const x = await prepareInvoiceObservation();
+    const first = await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
+    await database.query(
+      "UPDATE billing_subscription_event_receipts SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+      [x.owner.receiptId],
+    );
+    const next = (await x.recovery.claimOriginalInvoiceEvent(x.owner))!;
+    for (const [payload, version, previous] of [
+      [
+        { ...first.observation.observation, originalEvidenceDigest: "0".repeat(64) },
+        2,
+        first.observation.id,
+      ],
+      [first.observation.observation, 3, first.observation.id],
+      [first.observation.observation, 2, null],
+    ] as const)
+      await expect(
+        database.query(
+          "INSERT INTO subscription_invoice_observations(organization_id,receipt_id,request_id,version,previous_id,observation,observed_at) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp())",
+          [
+            x.owner.organizationId,
+            x.owner.receiptId,
+            next.leaseToken,
+            version,
+            previous,
+            JSON.stringify(payload),
+          ],
+        ),
+      ).rejects.toThrow();
+    expect(await x.rows()).toHaveLength(1);
+    expect(
+      (
+        await x.journal.observeAndRecordOriginalInvoice(
+          { ...x.owner, leaseToken: next.leaseToken },
+          x.stripe,
+        )
+      ).observation.version,
+    ).toBe(2);
+  });
+  test("same invoice observation lease has exactly one publication across concurrent readers", async () => {
+    const x = await prepareInvoiceObservation();
+    const results = await Promise.all([
+      x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe),
+      x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe),
+    ]);
+    expect(results.filter((r) => !r.replayed)).toHaveLength(1);
+    expect(results[0]!.observation.id).toBe(results[1]!.observation.id);
+    expect(await x.rows()).toHaveLength(1);
+  });
+  for (const scenario of [
+    "deletion",
+    "inactive",
+    "lease replacement",
+    "lease expiry",
+    "terminal receipt",
+    "source fence",
+  ] as const)
+    test(`original invoice publication rejects ${scenario} during provider reads`, async () => {
+      const x = await prepareInvoiceObservation(async () => {
+        if (scenario === "deletion")
+          await database.query(
+            "UPDATE organizations SET paid_work_fenced_at=clock_timestamp() WHERE id=$1",
+            [x.owner.organizationId],
+          );
+        if (scenario === "inactive")
+          await database.query("UPDATE organizations SET is_active=false WHERE id=$1", [
+            x.owner.organizationId,
+          ]);
+        if (scenario === "lease replacement")
+          await database.query(
+            "UPDATE billing_subscription_event_receipts SET lease_token=$2 WHERE id=$1",
+            [x.owner.receiptId, randomUUID()],
+          );
+        if (scenario === "lease expiry")
+          await database.query(
+            "UPDATE billing_subscription_event_receipts SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+            [x.owner.receiptId],
+          );
+        if (scenario === "terminal receipt")
+          await x.operations.failEvent({
+            ...x.input,
+            status: "quarantined",
+            errorCode: "controlled_observation_terminal",
+          });
+        if (scenario === "source fence") {
+          await x.operations.createFence({
+            organizationId: x.owner.organizationId,
+            subscriptionId: x.f.source.id,
+            providerEventId: null,
+            providerEventCreatedAt: null,
+            providerObjectDigest: "e".repeat(64),
+            nextReconcileAt: null,
+            now: new Date(),
+          });
+          await database.query(
+            "UPDATE subscription_billing_fences SET state='quarantined',fence_revision=fence_revision+1 WHERE subscription_id=$1",
+            [x.f.source.id],
+          );
+        }
+      });
+      await expect(
+        x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe),
+      ).rejects.toMatchObject({ code: "SUBSCRIPTION_INVOICE_OBSERVATION_UNAVAILABLE" });
+      expect(await x.rows()).toHaveLength(0);
+      expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+      expect(writes).toBe(0);
+    });
+  test("invoice observation preserves historical original identity after subscription cancellation and item replacement", async () => {
+    const x = await prepareInvoiceObservation();
+    await database.query(
+      "UPDATE billing_subscriptions SET status='canceled',stripe_subscription_item_id='si_journalreplaced' WHERE id=$1",
+      [x.f.source.id],
+    );
+    const result = await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
+    expect(result.observation.observation.invoice.lines.data[0]!.subscription_item).toBe(
+      x.f.invoice.lines.data[0]!.subscription_item,
+    );
+    expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+  });
+  test("invoice observation cannot publish under a foreign owner or unknown lease", async () => {
+    const x = await prepareInvoiceObservation();
+    const count = requests.length;
+    for (const input of [
+      { ...x.input, organizationId: randomUUID() },
+      { ...x.input, leaseToken: randomUUID() },
+    ])
+      await expect(
+        x.journal.observeAndRecordOriginalInvoice(input, x.stripe),
+      ).rejects.toMatchObject({ code: "SUBSCRIPTION_INVOICE_OBSERVATION_UNAVAILABLE" });
+    expect(requests).toHaveLength(count);
+    expect(await x.rows()).toHaveLength(0);
+  });
+  test("invoice observation insert and receipt release roll back together", async () => {
+    const x = await prepareInvoiceObservation();
+    await database.exec(`CREATE FUNCTION reject_invoice_observation_release() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.status='processing' AND NEW.status='received' THEN RAISE EXCEPTION 'controlled release failure'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER reject_invoice_observation_release BEFORE UPDATE ON billing_subscription_event_receipts FOR EACH ROW EXECUTE FUNCTION reject_invoice_observation_release();`);
+    try {
+      await expect(x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe)).rejects.toThrow();
+      expect(await x.rows()).toHaveLength(0);
+      expect(
+        (
+          await database.query(
+            "SELECT status,lease_token FROM billing_subscription_event_receipts WHERE id=$1",
+            [x.owner.receiptId],
+          )
+        ).rows,
+      ).toEqual([{ status: "processing", lease_token: x.input.leaseToken }]);
+    } finally {
+      await database.exec(
+        "DROP TRIGGER reject_invoice_observation_release ON billing_subscription_event_receipts; DROP FUNCTION reject_invoice_observation_release();",
+      );
+    }
+    expect((await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe)).replayed).toBe(
+      false,
+    );
+    expect(await x.rows()).toHaveLength(1);
+  });
   test("original invoice discovery includes terminal sources and replaced current items without a grant", async () => {
     const { f, owner, recovery } = await retainUnfunded();
     await database.query(
@@ -1572,6 +1851,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
   return {
     seed,
     retainUnfunded,
+    prepareInvoiceObservation,
     recover: () => service.recoverMissedSubscriptionEvents(),
     allowanceCount,
     sourceRevision,

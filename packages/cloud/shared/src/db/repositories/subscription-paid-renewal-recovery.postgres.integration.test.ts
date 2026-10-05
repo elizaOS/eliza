@@ -181,6 +181,66 @@ async function publicationSnapshot(organizationId: string) {
     }, 120_000);
   }
 
+  for (const scenario of ["deletion", "expired lease"] as const) {
+    test(`invoice observation publication rejects ${scenario} after an independent organization lock wait`, async () => {
+      const holder = await connection();
+      let ready!: () => void;
+      const locked = new Promise<void>((resolve) => {
+        ready = resolve;
+      });
+      const x = await contract.prepareInvoiceObservation(async () => {
+        await holder.query("BEGIN");
+        await holder.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [
+          x.owner.organizationId,
+        ]);
+        ready();
+      });
+      const pending = x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe).then(
+        (value) => ({ value }),
+        (error) => ({ error }),
+      );
+      try {
+        await Promise.race([
+          locked,
+          pending.then(() => {
+            throw new Error("Observation finished before controlled lock");
+          }),
+        ]);
+        await waitForOrganizationLock();
+        if (scenario === "deletion")
+          await holder.query(
+            "UPDATE organizations SET paid_work_fenced_at=clock_timestamp() WHERE id=$1",
+            [x.owner.organizationId],
+          );
+        else
+          await holder.query(
+            "UPDATE billing_subscription_event_receipts SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+            [x.owner.receiptId],
+          );
+        await holder.query("COMMIT");
+        const result = await pending;
+        expect("error" in result).toBe(true);
+        if ("error" in result)
+          expect(result.error).toMatchObject({
+            code: "SUBSCRIPTION_INVOICE_OBSERVATION_UNAVAILABLE",
+          });
+        expect(await x.rows()).toHaveLength(0);
+        expect(
+          (
+            await query(
+              "SELECT status,lease_token FROM billing_subscription_event_receipts WHERE id=$1",
+              [x.owner.receiptId],
+            )
+          ).rows,
+        ).toEqual([{ status: "processing", lease_token: x.input.leaseToken }]);
+      } finally {
+        await holder.query("ROLLBACK");
+        await holder.end();
+        await pending;
+      }
+    });
+  }
+
   test("attempt completion failure rolls back paid source, grant and entitlement together", async () => {
     const fixture = await contract.seed();
     const before = await publicationSnapshot(fixture.source.organization_id);

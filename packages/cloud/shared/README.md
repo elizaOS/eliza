@@ -275,3 +275,10 @@ sources without requiring a funded period or current item. Claims reuse the
 existing receipt lease/counter, primary database clock and capped retry delay;
 organization deletion and billing fences are rechecked after lock acquisition.
 The selector/claim boundary does not run provider reads or publish allowance.
+
+Migration 0531 retains versioned balance observations under the original invoice
+receipt. The private observer reads outside locks, then rechecks the organization,
+source fence and live receipt lease before atomic append and retry release. The
+claim token replays its first durable result without touching a newer lease.
+Observations never mark financial application complete or grant allowance; callers
+still own bounded maintenance invocation, collection/allocation proof and policy.
