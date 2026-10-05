@@ -133,50 +133,6 @@ import { userEmotionSignalProvider } from "./providers/userEmotionSignal.ts";
 import { worldProvider } from "./providers/world.ts";
 import { basicCapabilityRoutes } from "./routes.ts";
 
-// Re-export advanced capability modules
-export * from "../advanced-capabilities/actions/index.ts";
-// Re-export advanced capabilities
-export {
-  advancedActions,
-  advancedCapabilities,
-  advancedEvaluators,
-  advancedProviders,
-  advancedServices,
-} from "../advanced-capabilities/index.ts";
-export * from "../advanced-capabilities/providers/index.ts";
-// Re-export autonomy
-export * from "../autonomy/index.ts";
-// Re-export core capabilities (trust, secrets, plugin-manager)
-export {
-  coreCapabilities,
-  secretsCapability,
-  trustCapability,
-} from "../index.ts";
-// Direct leaf imports — see comment in
-// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
-// requires bypassing barrels here too.
-// Re-export action and provider modules
-export * from "./actions/index.ts";
-export * from "./evaluators/index.ts";
-export * from "./providers/index.ts";
-// Import advanced capabilities
-// Import for local use.
-//
-// Direct leaf imports — see comment in
-// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
-// requires bypassing barrels here too.
-export {
-  dedupeHygienicDialogueMessages,
-  isHygienicDialogueMessage,
-  recentMessagesProvider,
-} from "./providers/recentMessages.ts";
-
-// Re-export plugin-manager security helpers (used by other plugins like
-// plugin-app-control to gate owner/admin-only actions without taking a dep
-// on @elizaos/agent, which would create a layer cycle).
-// ============================================================================
-// Structured JSON response interfaces.
-// ============================================================================
 interface PostCreationJson {
   post?: string;
   thought?: string;
