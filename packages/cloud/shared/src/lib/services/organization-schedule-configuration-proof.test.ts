@@ -2,9 +2,13 @@ import { expect, test } from "bun:test";
 import {
   oneMonthlySchedulePhaseEnd,
   proveOrganizationScheduleConfiguration,
+  proveOriginalOrganizationScheduleConfiguration,
 } from "./organization-schedule-configuration-proof";
 import { configurationProofTestInput as proofInput } from "./organization-schedule-configuration-test-fixture";
-import { projectOriginalScheduleResponse } from "./organization-schedule-effect-origin";
+import {
+  projectAuthenticatedScheduleEvent,
+  projectOriginalScheduleResponse,
+} from "./organization-schedule-effect-origin";
 
 test("exact attributed configuration and unchanged current terms produce private proof", () => {
   const f = proofInput(),
@@ -87,4 +91,77 @@ test("an attributed durable request cannot substitute future retained payment se
     observedAt: f.originalConfiguration.observedAt,
   });
   expect(() => proveOrganizationScheduleConfiguration(f)).toThrow();
+});
+
+test("original response proof survives late recovery without changing the observation clock", () => {
+  const f = proofInput(),
+    late = new Date(40 * 86400000);
+  const input = {
+    originalCreate: { ...f.originalCreate, observedAt: late },
+    originalConfiguration: { ...f.originalConfiguration, observedAt: late },
+    originalTerms: f.originalTerms,
+  };
+  const before = structuredClone(input);
+  expect(proveOriginalOrganizationScheduleConfiguration(input).effectiveAt).toBe(200);
+  expect(input).toEqual(before);
+  expect(() => proveOrganizationScheduleConfiguration({ ...f, ...input })).toThrow();
+});
+function historicalEvent(created = 121) {
+  const f = proofInput(),
+    observedAt = new Date(40 * 86400000);
+  const raw = {
+    id: "evt_originalconfig",
+    object: "event",
+    type: "subscription_schedule.updated",
+    api_version: "2024-11-20.acacia",
+    created,
+    livemode: false,
+    request: { id: "req_configured", idempotency_key: "configure-key" },
+    data: { object: f.rawCurrentSchedule },
+  };
+  const originalReceipt = projectAuthenticatedScheduleEvent({
+    raw,
+    originalRequest: f.originalConfiguration.originalRequest,
+    observedAt,
+  });
+  return {
+    originalCreate: { ...f.originalCreate, observedAt },
+    originalTerms: f.originalTerms,
+    originalConfiguration: {
+      ...f.originalConfiguration,
+      originalReceipt,
+      evidence: { kind: "event" as const, raw },
+      observedAt,
+    },
+  };
+}
+test("an authenticated original event proves pre-boundary configuration even when first observed late", () => {
+  expect(proveOriginalOrganizationScheduleConfiguration(historicalEvent()).effectiveAt).toBe(200);
+});
+for (const created of [200, 201])
+  test(`event at or beyond the original boundary rejects: ${created}`, () => {
+    expect(() =>
+      proveOriginalOrganizationScheduleConfiguration(historicalEvent(created)),
+    ).toThrow();
+  });
+test("late response observation alone cannot invent pre-boundary effect timing", () => {
+  const f = proofInput(),
+    observedAt = new Date(400000);
+  const originalReceipt = projectOriginalScheduleResponse({
+    raw: f.originalConfiguration.evidence.raw,
+    originalRequest: f.originalConfiguration.originalRequest,
+    observedAt,
+  });
+  expect(() =>
+    proveOriginalOrganizationScheduleConfiguration({
+      originalCreate: { ...f.originalCreate, observedAt },
+      originalTerms: f.originalTerms,
+      originalConfiguration: { ...f.originalConfiguration, originalReceipt, observedAt },
+    }),
+  ).toThrow();
+});
+test("retained customer identity cannot be substituted during original reconstruction", () => {
+  const f = proofInput();
+  f.originalTerms.customer.customerId = "cus_foreign";
+  expect(() => proveOriginalOrganizationScheduleConfiguration(f)).toThrow();
 });
