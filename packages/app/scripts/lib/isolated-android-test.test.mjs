@@ -1181,3 +1181,26 @@ test("cancelled campaign permits its bounded cleanup instrumentation phase", asy
   assert.equal(report.variants[0].phases[0].passed, true);
   assert.equal(report.cleaned, true);
 });
+
+test("phase closes after deferred cleanup even when APKs remain installed", async (t) => {
+  const f = fixture(t, "stop-failure-test");
+  let phase;
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      collectVariant: ({ instrumentPhase }) => {
+        phase = instrumentPhase;
+        throw new Error("scenario failed");
+      },
+    }),
+    /scenario failed/,
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.cleanupDeferred, true);
+  assert.equal(JSON.parse(fs.readFileSync(f.state)).packages.length, 2);
+  const commands = f.commands().length;
+  await assert.rejects(phase("late"), /active variant/);
+  assert.equal(f.commands().length, commands);
+});
