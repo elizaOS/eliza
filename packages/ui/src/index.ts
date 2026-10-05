@@ -837,12 +837,12 @@ export type {
   WalletLoginProps,
 } from "./login/components/WalletLogin.js";
 export { useAuth } from "./login/hooks/useAuth.js";
-export { useLogin } from "./login/hooks/useLogin.js";
 export { useMfaStepUp } from "./login/hooks/useMfaStepUp.js";
 export { DiscordIcon, GoogleIcon } from "./login/icons/index.js";
 export {
   LoginProvider,
   type LoginProviderWithAuthProps,
+  useLogin,
 } from "./login/provider.js";
 export type {
   CreateDefaultWagmiConfigOptions,

@@ -444,10 +444,9 @@ export { LoginTenantPicker } from "../../login/components/LoginTenantPicker.js";
 export { LoginUserButton } from "../../login/components/LoginUserButton.js";
 export { PasskeyEnrollmentPrompt } from "../../login/components/PasskeyEnrollmentPrompt.js";
 export { useAuth } from "../../login/hooks/useAuth.js";
-export { useLogin } from "../../login/hooks/useLogin.js";
 export { useMfaStepUp } from "../../login/hooks/useMfaStepUp.js";
 export { DiscordIcon, GoogleIcon } from "../../login/icons/index.js";
-export { LoginProvider } from "../../login/provider.js";
+export { LoginProvider, useLogin } from "../../login/provider.js";
 export {
   createDefaultWagmiConfig,
   EVMWalletProvider,
