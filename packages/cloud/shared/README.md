@@ -188,7 +188,9 @@ locked retained authority at publication. Legacy subscriptions keep catalog vali
 configured pending-plan cancellation additionally reconstructs immutable downgrade evidence.
 It sends one idempotent schedule update preserving the paid phase, removes the future
 phase, and clears the pending plan only after canonical verification. Lost responses
-remain read-only recovery. Resume requires a fresh schedule preview and preserves
+remain read-only recovery. Cancellation/resume writes disable SDK network retries;
+the original command owns uncertainty for ordinary subscriptions and schedules.
+Resume requires a fresh schedule preview and preserves
 the current plan without restoring the discarded downgrade. Webhook and active-period
 cron observations validate the same retained schedule; provider and device qualification
 remain separate from controlled integration tests.

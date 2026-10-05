@@ -299,7 +299,7 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
       let writes = 0;
       const requests: unknown[] = [];
       const previews: unknown[] = [];
-      stripeMock = {
+      const provider = {
         invoices: {
           createPreview: async (params: unknown) => {
             previews.push(params);
@@ -376,97 +376,278 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
           },
         },
       };
-      const {
-        submitOrganizationSubscriptionCancellation: submit,
-        recoverOrganizationSubscriptionCancellations: recover,
-      } = await import("../../lib/services/subscription-cancellation");
-      const input = {
-        ...f.identity,
-        subscriptionId: before.source.id,
-        expectedSubscriptionRevision: Number(before.source.lifecycle_revision),
-        idempotencyKey: randomUUID(),
-      };
-      const result = await submit(input, async () => {});
-      expect(result.status).toBe(lostResponse ? "OUTCOME_UNKNOWN" : "APPLIED");
-      if (lostResponse) {
-        expect((await state(f)).source.pending_plan_key).toBe("plus_monthly");
-        const recovered = await recover(100);
-        expect(recovered.applied).toBeGreaterThanOrEqual(1);
-      }
-      const after = await state(f);
-      expect(writes).toBe(1);
-      expect(after.source.pending_plan_key).toBeNull();
-      expect(after.source.cancel_at_period_end).toBeTrue();
-      expect(after.source.plan_key).toBe(before.source.plan_key);
-      expect(after.source.current_period_end).toEqual(before.source.current_period_end);
-      expect(after.allowance).toEqual(before.allowance);
-      expect(after.periods).toEqual(before.periods);
-      expect((await submit(input, async () => {})).status).toBe("APPLIED");
-      expect(writes).toBe(1);
-      const { readCancellationUndoReviewSource } = await import("./subscription-cancellation");
-      const undo = await readCancellationUndoReviewSource({
-        ...input,
-        expectedSubscriptionRevision: Number(after.source.lifecycle_revision),
-      });
-      expect(undo.configuredCancellation?.originalPending).toBeFalse();
-      expect(undo.configuredCancellation?.scheduleId).toBe(schedule.id);
-      expect(requests).toHaveLength(1);
-      const { readOrganizationSubscriptionRenewalReview } = await import(
-        "../../lib/services/subscription-renewal-review"
+      const { startScheduleWireFixture } = await import(
+        "./test-support/subscription-schedule-wire-test-fixture"
       );
-      const {
-        submitReviewedOrganizationSubscriptionCancellationUndo,
-        submitOrganizationSubscriptionCancellationUndo,
-      } = await import("../../lib/services/subscription-cancellation");
-      const undoInput = {
-        ...input,
-        idempotencyKey: randomUUID(),
-        expectedSubscriptionRevision: Number(after.source.lifecycle_revision),
-      };
-      await expect(
-        submitOrganizationSubscriptionCancellationUndo(undoInput, async () => {}),
-      ).rejects.toThrow();
-      const review = await readOrganizationSubscriptionRenewalReview(undoInput, async () => {});
-      expect(review.baseAmountCents).toBe(10000);
-      expect(previews[0]).toMatchObject({
-        schedule: schedule.id,
-        preview_mode: "next",
-        schedule_details: { end_behavior: "release", proration_behavior: "none" },
+      const wire = await startScheduleWireFixture(async (request) => {
+        if (request.apiVersion !== "2024-11-20.acacia") throw Error("Wrong API contract");
+        if (request.method === "GET" && request.path === `/v1/customers/${subscription.customer}`)
+          return provider.customers.retrieve();
+        if (request.method === "GET" && request.path === `/v1/subscriptions/${subscription.id}`)
+          return provider.subscriptions.retrieve();
+        if (
+          request.method === "GET" &&
+          request.path === `/v1/subscription_schedules/${schedule.id}`
+        )
+          return provider.subscriptionSchedules.retrieve();
+        if (request.method === "POST" && request.path === "/v1/invoices/create_preview")
+          return provider.invoices.createPreview(Object.fromEntries(request.body));
+        if (
+          request.method === "POST" &&
+          request.path === `/v1/subscription_schedules/${schedule.id}`
+        )
+          return provider.subscriptionSchedules.update(
+            schedule.id,
+            { end_behavior: request.body.get("end_behavior")!, phases: [] },
+            { idempotencyKey: request.idempotencyKey! },
+          );
+        throw Error("Unexpected wire request");
       });
-      expect(previews[0]).not.toHaveProperty("subscription_details");
-      const resumed = await submitReviewedOrganizationSubscriptionCancellationUndo(
-        { ...undoInput, expectedRenewalTermsDigest: review.termsDigest },
+      stripeMock = wire.stripe;
+      try {
+        const {
+          submitOrganizationSubscriptionCancellation: submit,
+          recoverOrganizationSubscriptionCancellations: recover,
+        } = await import("../../lib/services/subscription-cancellation");
+        const input = {
+          ...f.identity,
+          subscriptionId: before.source.id,
+          expectedSubscriptionRevision: Number(before.source.lifecycle_revision),
+          idempotencyKey: randomUUID(),
+        };
+        const result = await submit(input, async () => {});
+        expect(result.status).toBe(lostResponse ? "OUTCOME_UNKNOWN" : "APPLIED");
+        if (lostResponse) {
+          expect((await state(f)).source.pending_plan_key).toBe("plus_monthly");
+          const recovered = await recover(100);
+          expect(recovered.applied).toBeGreaterThanOrEqual(1);
+        }
+        async function reconcileActiveSchedule(expected: "ok" | "degraded" = "ok") {
+          await db.query(
+            `INSERT INTO subscription_reconciliation_scans (organization_id,subscription_id,next_due_at)
+          SELECT organization_id,id,CASE WHEN id=$1 THEN clock_timestamp() ELSE clock_timestamp()+interval '1 hour' END FROM billing_subscriptions
+          ON CONFLICT (organization_id,subscription_id) DO UPDATE SET next_due_at=EXCLUDED.next_due_at`,
+            [before.source.id],
+          );
+          const snapshot = await state(f),
+            requestCount = wire.requests.length;
+          const { recoverMissedSubscriptionEvents } = await import(
+            "../../lib/services/subscription-reconciliation"
+          );
+          const result = await recoverMissedSubscriptionEvents();
+          expect(result.status).toBe(expected);
+          expect(result.attempts).toHaveLength(1);
+          expect(result.attempts[0]?.disposition).toBe(
+            expected === "ok" ? "no_change" : "unavailable",
+          );
+          expect(await state(f)).toEqual(snapshot);
+          expect(wire.requests.slice(requestCount).every((r) => r.method === "GET")).toBeTrue();
+        }
+        await reconcileActiveSchedule();
+        const after = await state(f);
+        expect(writes).toBe(1);
+        expect(after.source.pending_plan_key).toBeNull();
+        expect(after.source.cancel_at_period_end).toBeTrue();
+        expect(after.source.plan_key).toBe(before.source.plan_key);
+        expect(after.source.current_period_end).toEqual(before.source.current_period_end);
+        expect(after.allowance).toEqual(before.allowance);
+        expect(after.periods).toEqual(before.periods);
+        expect((await submit(input, async () => {})).status).toBe("APPLIED");
+        expect(writes).toBe(1);
+        const { readCancellationUndoReviewSource } = await import("./subscription-cancellation");
+        const undo = await readCancellationUndoReviewSource({
+          ...input,
+          expectedSubscriptionRevision: Number(after.source.lifecycle_revision),
+        });
+        expect(undo.configuredCancellation?.originalPending).toBeFalse();
+        expect(undo.configuredCancellation?.scheduleId).toBe(schedule.id);
+        expect(requests).toHaveLength(1);
+        const { readOrganizationSubscriptionRenewalReview } = await import(
+          "../../lib/services/subscription-renewal-review"
+        );
+        const {
+          submitReviewedOrganizationSubscriptionCancellationUndo,
+          submitOrganizationSubscriptionCancellationUndo,
+        } = await import("../../lib/services/subscription-cancellation");
+        const undoInput = {
+          ...input,
+          idempotencyKey: randomUUID(),
+          expectedSubscriptionRevision: Number(after.source.lifecycle_revision),
+        };
+        await expect(
+          submitOrganizationSubscriptionCancellationUndo(undoInput, async () => {}),
+        ).rejects.toThrow();
+        const review = await readOrganizationSubscriptionRenewalReview(undoInput, async () => {});
+        expect(review.baseAmountCents).toBe(10000);
+        expect(previews[0]).toMatchObject({
+          schedule: schedule.id,
+          preview_mode: "next",
+          "schedule_details[end_behavior]": "release",
+          "schedule_details[proration_behavior]": "none",
+        });
+        expect(previews[0]).not.toHaveProperty("subscription_details");
+        const resumed = await submitReviewedOrganizationSubscriptionCancellationUndo(
+          { ...undoInput, expectedRenewalTermsDigest: review.termsDigest },
+          async () => {},
+        );
+        expect(resumed.status).toBe(lostResponse ? "OUTCOME_UNKNOWN" : "APPLIED");
+        if (lostResponse) expect((await recover(100)).applied).toBeGreaterThanOrEqual(1);
+        const final = await state(f);
+        expect(final.source.cancel_at_period_end).toBeFalse();
+        expect(final.source.pending_plan_key).toBeNull();
+        expect(final.source.plan_key).toBe("pro_monthly");
+        expect(final.allowance).toEqual(before.allowance);
+        expect(writes).toBe(2);
+        expect(schedule.phases).toHaveLength(1);
+        const { reconcileStripeScheduledCancellationLifecycle } = await import(
+          "../../lib/services/stripe-scheduled-cancellation-lifecycle"
+        );
+        const event = {
+          id: `evt_${randomUUID().replaceAll("-", "")}`,
+          type: "customer.subscription.updated",
+          created: Math.floor(Date.now() / 1000),
+          livemode: false,
+          data: { object: subscription },
+        };
+        await reconcileStripeScheduledCancellationLifecycle({
+          kind: "stripe.event",
+          receivedAt: Date.now(),
+          eventId: event.id,
+          eventType: event.type,
+          event: event as unknown as import("stripe").default.Event,
+        });
+        expect((await state(f)).source.cancel_at_period_end).toBeFalse();
+        expect(writes).toBe(2);
+        await reconcileActiveSchedule();
+        const supportedSchedule = structuredClone(schedule);
+        schedule.phases[0]!.items[0]!.price = "price_outofband";
+        await reconcileActiveSchedule("degraded");
+        schedule = supportedSchedule;
+        const mutations = wire.requests.filter(
+          (r) => r.method === "POST" && r.path.startsWith("/v1/subscription_schedules/"),
+        );
+        expect(mutations).toHaveLength(2);
+        expect(mutations.map((r) => r.body.get("end_behavior"))).toEqual(["cancel", "release"]);
+        expect(new Set(mutations.map((r) => r.idempotencyKey)).size).toBe(2);
+        for (const request of mutations) {
+          expect(request.idempotencyKey).toMatch(/^organization-cancellation:/);
+          expect(request.body.get("proration_behavior")).toBe("none");
+          expect(request.body.get("phases[0][items][0][price]")).toBe("price_pro");
+          expect(request.body.get("phases[0][start_date]")).toBe(
+            String(subscription.current_period_start),
+          );
+          expect(request.body.get("phases[0][end_date]")).toBe(
+            String(subscription.current_period_end),
+          );
+          expect([...request.body.keys()].some((key) => key.startsWith("phases[1]"))).toBeFalse();
+        }
+        expect(
+          wire.requests.some((r) => r.method === "POST" && r.path.startsWith("/v1/subscriptions/")),
+        ).toBeFalse();
+        const current = await state(f);
+        const cancelAgain = await submit(
+          {
+            ...input,
+            expectedSubscriptionRevision: Number(current.source.lifecycle_revision),
+            idempotencyKey: randomUUID(),
+          },
+          async () => {},
+        );
+        expect(cancelAgain.status).toBe(lostResponse ? "OUTCOME_UNKNOWN" : "APPLIED");
+        if (lostResponse) expect((await recover(100)).applied).toBeGreaterThanOrEqual(1);
+        expect(writes).toBe(3);
+        Object.assign(subscription, {
+          status: "canceled",
+          schedule: null,
+          ended_at: subscription.current_period_end,
+          canceled_at: subscription.current_period_end,
+        });
+        await db.query("UPDATE fixture_clock SET offset_seconds=$1", [
+          subscription.current_period_end - Math.floor(Date.now() / 1000) + 1,
+        ]);
+        await db.query(
+          `INSERT INTO subscription_reconciliation_scans (organization_id,subscription_id,next_due_at)
+        SELECT organization_id,id,CASE WHEN id=$1 THEN clock_timestamp() ELSE clock_timestamp()+interval '1 hour' END FROM billing_subscriptions
+        ON CONFLICT (organization_id,subscription_id) DO UPDATE SET next_due_at=EXCLUDED.next_due_at`,
+          [before.source.id],
+        );
+        const { recoverMissedSubscriptionEvents } = await import(
+          "../../lib/services/subscription-reconciliation"
+        );
+        const terminal = await recoverMissedSubscriptionEvents();
+        expect(terminal.status).toBe("ok");
+        expect(terminal.attempts).toHaveLength(1);
+        expect(terminal.attempts[0]?.disposition).toBe("applied");
+        const ended = await state(f);
+        expect(ended.source.status).toBe("canceled");
+        expect(ended.source.pending_plan_key).toBeNull();
+        expect(ended.projection.plan_key).toBe("free");
+        expect(ended.allowance).toEqual(before.allowance);
+        expect(writes).toBe(3);
+        expect((await recoverMissedSubscriptionEvents()).attempts).toHaveLength(0);
+      } finally {
+        await db.query("UPDATE fixture_clock SET offset_seconds=0");
+        await wire.close();
+      }
+    });
+  test("ordinary cancellation disables SDK write retries and leaves recovery to its original command", async () => {
+    process.env.STRIPE_SECRET_KEY = ["sk", "test", "ordinarywire"].join("_");
+    process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
+    process.env.STRIPE_PLUS_PRODUCT_ID = "prod_plus";
+    const { seedCancellationTestAccount } = await import(
+      "./subscription-cancellation-test-fixture"
+    );
+    const f = await seedCancellationTestAccount((q, v) => db.query(q, v));
+    const { startScheduleWireFixture } = await import(
+      "./test-support/subscription-schedule-wire-test-fixture"
+    );
+    let raw = structuredClone(f.provider),
+      writes = 0;
+    const wire = await startScheduleWireFixture(async (request) => {
+      if (request.method === "GET" && request.path === `/v1/customers/${raw.customer}`)
+        return { id: raw.customer, object: "customer", livemode: false };
+      if (request.method === "GET" && request.path === `/v1/subscriptions/${raw.id}`) return raw;
+      if (request.method === "POST" && request.path === `/v1/subscriptions/${raw.id}`) {
+        writes++;
+        expect(request.body.get("cancel_at_period_end")).toBe("true");
+        Object.assign(raw, {
+          cancel_at_period_end: true,
+          cancel_at: raw.current_period_end,
+          canceled_at: Math.floor(Date.now() / 1000),
+        });
+        throw Error("Lost accepted cancellation response");
+      }
+      throw Error("Unexpected wire request");
+    });
+    stripeMock = wire.stripe;
+    try {
+      const service = await import("../../lib/services/subscription-cancellation");
+      const command = await service.submitOrganizationSubscriptionCancellation(
+        f.input,
         async () => {},
       );
-      expect(resumed.status).toBe(lostResponse ? "OUTCOME_UNKNOWN" : "APPLIED");
-      if (lostResponse) expect((await recover(100)).applied).toBeGreaterThanOrEqual(1);
-      const final = await state(f);
-      expect(final.source.cancel_at_period_end).toBeFalse();
-      expect(final.source.pending_plan_key).toBeNull();
-      expect(final.source.plan_key).toBe("pro_monthly");
-      expect(final.allowance).toEqual(before.allowance);
-      expect(writes).toBe(2);
-      expect(schedule.phases).toHaveLength(1);
-      const { reconcileStripeScheduledCancellationLifecycle } = await import(
-        "../../lib/services/stripe-scheduled-cancellation-lifecycle"
-      );
-      const event = {
-        id: `evt_${randomUUID().replaceAll("-", "")}`,
-        type: "customer.subscription.updated",
-        created: Math.floor(Date.now() / 1000),
-        livemode: false,
-        data: { object: subscription },
-      };
-      await reconcileStripeScheduledCancellationLifecycle({
-        kind: "stripe.event",
-        receivedAt: Date.now(),
-        eventId: event.id,
-        eventType: event.type,
-        event: event as unknown as import("stripe").default.Event,
-      });
-      expect((await state(f)).source.cancel_at_period_end).toBeFalse();
-      expect(writes).toBe(2);
-    });
+      expect(command.status).toBe("OUTCOME_UNKNOWN");
+      expect(writes).toBe(1);
+      expect(
+        (await service.recoverOrganizationSubscriptionCancellations(100)).applied,
+      ).toBeGreaterThanOrEqual(1);
+      expect(
+        (
+          await service.readOrganizationSubscriptionCancellation({
+            ...f.input,
+            commandId: command.commandId,
+          })
+        ).status,
+      ).toBe("APPLIED");
+      expect(writes).toBe(1);
+      const calls = wire.requests.filter((request) => request.method === "POST");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.idempotencyKey).toMatch(/^organization-cancellation:/);
+      expect(calls[0]!.apiVersion).toBe("2024-11-20.acacia");
+    } finally {
+      await wire.close();
+    }
+  });
   test("original snapshot cannot be removed or replaced after publication", async () => {
     const f = await configured();
     await f.finalize(f.input);
