@@ -1,7 +1,7 @@
 /** Immutable character transforms for secrets, plugins, and model-provider detection. */
 
+import { MODEL_PROVIDER_SECRETS } from "./security/secrets";
 import type { Character } from "./types/agent.js";
-import { MODEL_PROVIDER_SECRETS } from "./validation/secret-catalog";
 
 // SECRET MANAGEMENT
 

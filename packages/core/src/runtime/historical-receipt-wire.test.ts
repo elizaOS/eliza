@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import type { ContextObjectPromptSegment } from "../types/context-object";
+import type { ContextObjectPromptSegment } from "./context-object";
 import { compactHistoricalReceiptSegments } from "./historical-receipt-wire";
 
 function navigation(index: number): ContextObjectPromptSegment {

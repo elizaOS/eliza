@@ -1,7 +1,8 @@
 /** Resolves complete prompt text through an optional registered service without owning artifacts or task catalogs. */
 
 import { ElizaError } from "../errors.ts";
-import { toWellFormedUnicode } from "../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../utils/unicode.ts";
+
 export const OPTIMIZED_PROMPT_SERVICE = "optimized_prompt";
 
 /** Complete demonstration content supplied by the registered prompt service. */

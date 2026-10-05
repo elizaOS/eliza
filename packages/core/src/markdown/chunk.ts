@@ -1,11 +1,7 @@
 /** Splits Markdown text at fence, paragraph, and word-safe boundaries. */
 
 import { ElizaError } from "../errors.js";
-import {
-	findFenceSpanAt,
-	isSafeFenceBreak,
-	parseFenceSpans,
-} from "./fences.js";
+import { findFenceSpanAt, isSafeFenceBreak, parseFenceSpans } from "./code.js";
 
 /** Stable classification for invalid public Markdown chunk limits. */
 export const MARKDOWN_CHUNK_LIMIT_INVALID = "MARKDOWN_CHUNK_LIMIT_INVALID";

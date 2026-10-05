@@ -3,9 +3,10 @@
 import { ModelType } from "../types/model.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { createHash } from "../utils/crypto-compat.js";
+import { resolveSetting } from "../utils/environment.js";
 import { parseJSONObjectFromText } from "../utils/json5-model-output.js";
-import { resolveSetting } from "../utils/resolve-setting.js";
 import { trustedLocalMediaUrl } from "./local-store.js";
+
 export interface CachedImageDescription {
 	title: string;
 	description: string;

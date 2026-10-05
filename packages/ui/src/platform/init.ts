@@ -1,6 +1,7 @@
 /** Platform detection and initialization utilities. */
+
 import { Capacitor } from "@capacitor/core";
-import { userAgentHasElizaOSMarker } from "@elizaos/core/protocol";
+import { userAgentHasElizaOSMarker } from "@elizaos/host/protocol";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import {
@@ -9,7 +10,7 @@ import {
   shouldInstallStandaloneBottomReclaim,
 } from "./standalone-bottom-reclaim";
 
-export { userAgentHasElizaOSMarker } from "@elizaos/core/protocol";
+export { userAgentHasElizaOSMarker } from "@elizaos/host/protocol";
 
 // ── Platform detection ──────────────────────────────────────────────
 function detectPlatform(): {

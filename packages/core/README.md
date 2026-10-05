@@ -9,7 +9,8 @@ files directly. Implementation leaves are private; JSON catalog assets retain
 explicit data exports. Hosts compose database adapters, model providers and
 `@elizaos/plugin-assistant` explicitly.
 
-HTTP lifecycle, process guards, restart, application configuration and boot environment resolution live
+HTTP lifecycle, native platform detection and library policy, build variants,
+process guards, restart, application configuration and boot environment resolution live
 in `@elizaos/host`, with browser-safe configuration in `@elizaos/host/protocol`.
 Portable acoustic processing lives in `@elizaos/voice`.
 Cross-domain DTOs and validation live in `@elizaos/contracts`. Core imports none

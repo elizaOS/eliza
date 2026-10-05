@@ -1,13 +1,11 @@
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.ts";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.ts";
 import {
 	SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
 	isSensitiveLogKey,
 	redactTrailingArgs,
 	SENSITIVE_ASSIGNMENT_PATTERNS,
 } from "./log-redaction.js";
+
 /** Masks credential patterns and configured character secrets before logging or display. */
 
 /**
