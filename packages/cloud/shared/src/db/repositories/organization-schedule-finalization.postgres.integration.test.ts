@@ -230,6 +230,14 @@ async function claimed(validityMs = 60000) {
     const after = await state(f);
     expect(result.command.status).toBe("APPLIED");
     expect(result.replayed).toBeFalse();
+    const snapshot = result.command.organization_schedule_configuration_snapshot;
+    expect(snapshot).toEqual(JSON.parse(JSON.stringify(f.input.rawCurrentSchedule)));
+    const { settlementDigest } = await import("../../lib/services/settlement-digest");
+    expect(settlementDigest(snapshot)).toBe(
+      result.command.organization_schedule_configuration_evidence!.snapshotDigest,
+    );
+    expect(snapshot).not.toHaveProperty("lastResponse");
+    expect(after.command.organization_schedule_configuration_snapshot).toEqual(snapshot);
     expect(after.source.plan_key).toBe("pro_monthly");
     expect(after.source.pending_plan_key).toBe("plus_monthly");
     expect(Number(after.source.lifecycle_revision)).toBe(
@@ -254,6 +262,69 @@ async function claimed(validityMs = 60000) {
       ),
     ).rejects.toThrow("immutable");
   });
+  test("original snapshot cannot be removed or replaced after publication", async () => {
+    const f = await configured();
+    await f.finalize(f.input);
+    const before = await state(f);
+    for (const replacement of [
+      null,
+      {},
+      { ...f.input.rawCurrentSchedule, customer: "cus_other" },
+    ]) {
+      await expect(
+        db.query(
+          "UPDATE billing_subscription_commands SET organization_schedule_configuration_snapshot=$2::jsonb WHERE id=$1",
+          [f.identity.commandId, replacement === null ? null : JSON.stringify(replacement)],
+        ),
+      ).rejects.toThrow("immutable");
+      expect(await state(f)).toEqual(before);
+    }
+  });
+  test("snapshot cannot be attached before original configured publication", async () => {
+    const f = await configured();
+    const before = await state(f);
+    await expect(
+      db.query(
+        "UPDATE billing_subscription_commands SET organization_schedule_configuration_snapshot=$2::jsonb WHERE id=$1",
+        [f.identity.commandId, JSON.stringify(f.input.rawCurrentSchedule)],
+      ),
+    ).rejects.toThrow("requires original publication");
+    expect(await state(f)).toEqual(before);
+  });
+  for (const [name, expression, message] of [
+    ["missing", "NULL", "requires its original snapshot"],
+    [
+      "foreign customer",
+      "jsonb_set(NEW.organization_schedule_configuration_snapshot,'{customer}','\"cus_other\"')",
+      "requires original schedule scope",
+    ],
+    [
+      "foreign target",
+      "jsonb_set(NEW.organization_schedule_configuration_snapshot,'{phases,1,items,0,price}','\"price_other\"')",
+      "requires original schedule scope",
+    ],
+  ] as const)
+    test(`database rejects ${name} snapshot and rolls back pending publication`, async () => {
+      const f = await configured();
+      const before = await state(f);
+      await db.query(`CREATE FUNCTION corrupt_snapshot_fixture() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.organization_schedule_configuration_evidence IS NOT NULL THEN
+        NEW.organization_schedule_configuration_snapshot=${expression};
+      END IF; RETURN NEW; END; $$;
+      CREATE TRIGGER aaa_corrupt_snapshot_fixture BEFORE UPDATE ON billing_subscription_commands
+      FOR EACH ROW EXECUTE FUNCTION corrupt_snapshot_fixture()`);
+      try {
+        await expect(f.finalize(f.input)).rejects.toMatchObject({
+          cause: { code: "23514", message: expect.stringContaining(message) },
+        });
+        expect(await state(f)).toEqual(before);
+      } finally {
+        await db.query(
+          "DROP TRIGGER aaa_corrupt_snapshot_fixture ON billing_subscription_commands; DROP FUNCTION corrupt_snapshot_fixture()",
+        );
+      }
+      expect((await f.finalize(f.input)).command.status).toBe("APPLIED");
+    });
   test("changed provider configuration retains original uncertainty and paid state", async () => {
     const f = await configured();
     const before = await state(f);

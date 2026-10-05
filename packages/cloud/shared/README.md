@@ -69,6 +69,10 @@ settlement recomputes proof under the locked review and source authority, then a
 records a pending lower plan, source revision, entitlement projection and immutable command.
 The current paid plan and allowance are preserved; no target allowance is granted before renewal.
 The one-shot configure dispatcher now performs fresh reads and invokes this finalizer.
+Publication also retains the complete verified configuration snapshot on the immutable
+command (migration 0526), so later target proof need not depend on expired event history.
+Historical commands without that snapshot remain unavailable for target proof; fresh
+mutable provider state cannot be attached as original evidence.
 Read-only recovery uses original events for a lost response, retains the first receipt,
 and never repeats a provider update. Terminal results replay without provider access. Partial-create cleanup uses an independently journaled,
 cancellation-preserving release only while configuration has never started. Read-only
