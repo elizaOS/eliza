@@ -480,3 +480,251 @@ it.each([
     }
   },
 );
+
+// A reset clears first-run state but deliberately keeps wallet vault keys, and
+// the boot-time vault→env hydrate only runs after the API listener is live.
+// Every provisioning entry point must therefore reuse the stored wallet
+// instead of treating blank env vars as a missing wallet and overwriting it.
+it.each([
+  { entry: "first-run keys route" },
+  { entry: "first-run completion" },
+  { entry: "boot auto-provision" },
+] as const)(
+  "reuses vault-held wallet keys instead of overwriting them via $entry",
+  async ({ entry }) => {
+    const directory = await mkdtemp(join(tmpdir(), "wallet-vault-reuse-"));
+    const savedBridge = getAgentHostBridge();
+    const testVault = await createTestVault();
+    let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+    try {
+      const filename = join(directory, "eliza.json");
+      const token = randomUUID();
+      for (const [key, value] of Object.entries({
+        ELIZA_STATE_DIR: directory,
+        ELIZA_CONFIG_PATH: filename,
+        ELIZA_PERSIST_CONFIG_PATH: filename,
+        ELIZA_API_BIND_HOST: "127.0.0.1",
+        ELIZA_API_TOKEN: token,
+        ELIZA_REQUIRE_LOCAL_AUTH: "1",
+        ELIZA_WALLET_AUTO_PROVISION:
+          entry === "boot auto-provision" ? "1" : "0",
+      }))
+        vi.stubEnv(key, value);
+      for (const key of [
+        "ELIZA_WALLET_OS_STORE",
+        "ELIZAOS_CLOUD_API_KEY",
+        "STEWARD_API_URL",
+        "EVM_PRIVATE_KEY",
+        "SOLANA_PRIVATE_KEY",
+        "SOLANA_PUBLIC_KEY",
+        "WALLET_PUBLIC_KEY",
+      ])
+        vi.stubEnv(key, undefined);
+      // The prior install's funded wallet survived the reset in the vault.
+      const priorEvm = generateWalletForChain("evm");
+      const priorSolana = generateWalletForChain("solana");
+      await testVault.vault.set("EVM_PRIVATE_KEY", priorEvm.privateKey, {
+        sensitive: true,
+      });
+      await testVault.vault.set("SOLANA_PRIVATE_KEY", priorSolana.privateKey, {
+        sensitive: true,
+      });
+      setAgentHostBridge({
+        ...savedBridge,
+        sharedVault: () => testVault.vault,
+      });
+      await writeFile(
+        filename,
+        JSON.stringify({ env: { ELIZA_WALLET_OS_STORE: "1" } }),
+      );
+      server = await startApiServer({
+        port: 0,
+        hostConfig: loadElizaConfig(),
+        skipDeferredStartupWork: true,
+      });
+      if (entry !== "boot auto-provision") {
+        const response = await fetch(
+          `http://127.0.0.1:${server.port}${entry === "first-run completion" ? "/api/first-run" : "/api/wallet/keys"}`,
+          {
+            method: entry === "first-run completion" ? "POST" : "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            ...(entry === "first-run completion"
+              ? { body: JSON.stringify({ name: "Wallet fixture" }) }
+              : {}),
+          },
+        );
+        expect(response.status).toBe(200);
+        if (entry === "first-run keys route") {
+          const body = (await response.json()) as {
+            evmAddress: string;
+            solanaAddress: string;
+          };
+          // The re-onboarding user is shown the stored wallet's addresses.
+          expect(body.evmAddress).toBe(priorEvm.address);
+          expect(body.solanaAddress).toBe(priorSolana.address);
+        }
+      }
+      // Boolean assertions keep ephemeral private keys out of failure output.
+      expect(
+        (await testVault.vault.reveal("EVM_PRIVATE_KEY")) ===
+          priorEvm.privateKey,
+      ).toBe(true);
+      expect(
+        (await testVault.vault.reveal("SOLANA_PRIVATE_KEY")) ===
+          priorSolana.privateKey,
+      ).toBe(true);
+      expect(process.env.EVM_PRIVATE_KEY === priorEvm.privateKey).toBe(true);
+      expect(process.env.SOLANA_PRIVATE_KEY === priorSolana.privateKey).toBe(
+        true,
+      );
+      expect(process.env.SOLANA_PUBLIC_KEY === priorSolana.address).toBe(true);
+      expect(process.env.WALLET_PUBLIC_KEY === priorSolana.address).toBe(true);
+      const persisted = JSON.parse(await readFile(filename, "utf8"));
+      expect(persisted.env.EVM_PRIVATE_KEY).toBeUndefined();
+      expect(persisted.env.SOLANA_PRIVATE_KEY).toBeUndefined();
+    } finally {
+      setAgentHostBridge(savedBridge);
+      await server?.close();
+      await testVault.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+// Only the EVM key survived in the vault; the re-onboard must keep it and
+// still provision the genuinely missing Solana key.
+it("reuses the vault-held EVM key while provisioning the missing Solana key", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "wallet-vault-partial-"));
+  const savedBridge = getAgentHostBridge();
+  const testVault = await createTestVault();
+  let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+  try {
+    const filename = join(directory, "eliza.json");
+    const token = randomUUID();
+    for (const [key, value] of Object.entries({
+      ELIZA_STATE_DIR: directory,
+      ELIZA_CONFIG_PATH: filename,
+      ELIZA_PERSIST_CONFIG_PATH: filename,
+      ELIZA_API_BIND_HOST: "127.0.0.1",
+      ELIZA_API_TOKEN: token,
+      ELIZA_REQUIRE_LOCAL_AUTH: "1",
+      ELIZA_WALLET_AUTO_PROVISION: "0",
+    }))
+      vi.stubEnv(key, value);
+    for (const key of [
+      "ELIZA_WALLET_OS_STORE",
+      "ELIZAOS_CLOUD_API_KEY",
+      "STEWARD_API_URL",
+      "EVM_PRIVATE_KEY",
+      "SOLANA_PRIVATE_KEY",
+      "SOLANA_PUBLIC_KEY",
+      "WALLET_PUBLIC_KEY",
+    ])
+      vi.stubEnv(key, undefined);
+    const priorEvm = generateWalletForChain("evm");
+    await testVault.vault.set("EVM_PRIVATE_KEY", priorEvm.privateKey, {
+      sensitive: true,
+    });
+    setAgentHostBridge({ ...savedBridge, sharedVault: () => testVault.vault });
+    await writeFile(
+      filename,
+      JSON.stringify({ env: { ELIZA_WALLET_OS_STORE: "1" } }),
+    );
+    server = await startApiServer({
+      port: 0,
+      hostConfig: loadElizaConfig(),
+      skipDeferredStartupWork: true,
+    });
+    const response = await fetch(
+      `http://127.0.0.1:${server.port}/api/wallet/keys`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { evmAddress: string };
+    expect(body.evmAddress).toBe(priorEvm.address);
+    expect(
+      (await testVault.vault.reveal("EVM_PRIVATE_KEY")) === priorEvm.privateKey,
+    ).toBe(true);
+    expect(process.env.EVM_PRIVATE_KEY === priorEvm.privateKey).toBe(true);
+    expect(process.env.SOLANA_PRIVATE_KEY).toMatch(/^[1-9A-HJ-NP-Za-km-z]+$/);
+    expect(await testVault.vault.reveal("SOLANA_PRIVATE_KEY")).toBe(
+      process.env.SOLANA_PRIVATE_KEY,
+    );
+  } finally {
+    setAgentHostBridge(savedBridge);
+    await server?.close();
+    await testVault.dispose();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+// An unreadable vault must fail closed: provisioning over an unverifiable
+// vault could destroy a stored wallet, so no key may be generated.
+it("fails closed when the vault cannot be read before provisioning", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "wallet-vault-unreadable-"));
+  const savedBridge = getAgentHostBridge();
+  const testVault = await createTestVault();
+  let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+  try {
+    const filename = join(directory, "eliza.json");
+    const token = randomUUID();
+    for (const [key, value] of Object.entries({
+      ELIZA_STATE_DIR: directory,
+      ELIZA_CONFIG_PATH: filename,
+      ELIZA_PERSIST_CONFIG_PATH: filename,
+      ELIZA_API_BIND_HOST: "127.0.0.1",
+      ELIZA_API_TOKEN: token,
+      ELIZA_REQUIRE_LOCAL_AUTH: "1",
+      ELIZA_WALLET_AUTO_PROVISION: "0",
+    }))
+      vi.stubEnv(key, value);
+    for (const key of [
+      "ELIZA_WALLET_OS_STORE",
+      "ELIZAOS_CLOUD_API_KEY",
+      "STEWARD_API_URL",
+      "EVM_PRIVATE_KEY",
+      "SOLANA_PRIVATE_KEY",
+      "SOLANA_PUBLIC_KEY",
+      "WALLET_PUBLIC_KEY",
+    ])
+      vi.stubEnv(key, undefined);
+    const realVault = testVault.vault;
+    const vault = new Proxy(realVault, {
+      get(target, property) {
+        if (property === "has")
+          return async () => {
+            throw new Error("vault unavailable");
+          };
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    setAgentHostBridge({ ...savedBridge, sharedVault: () => vault });
+    await writeFile(
+      filename,
+      JSON.stringify({ env: { ELIZA_WALLET_OS_STORE: "1" } }),
+    );
+    server = await startApiServer({
+      port: 0,
+      hostConfig: loadElizaConfig(),
+      skipDeferredStartupWork: true,
+    });
+    const response = await fetch(
+      `http://127.0.0.1:${server.port}/api/wallet/keys`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(response.status).toBe(500);
+    expect(process.env.EVM_PRIVATE_KEY).toBeUndefined();
+    expect(process.env.SOLANA_PRIVATE_KEY).toBeUndefined();
+    expect(await realVault.has("EVM_PRIVATE_KEY")).toBe(false);
+    expect(await realVault.has("SOLANA_PRIVATE_KEY")).toBe(false);
+  } finally {
+    setAgentHostBridge(savedBridge);
+    await server?.close();
+    await testVault.dispose();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
