@@ -26,10 +26,6 @@ export interface DeriveCompactionContentManifestOptions {
 	lastUsedAt: string;
 	maxReferences?: number;
 	maxRangesPerReference?: number;
-	/** @deprecated Traversal is complete and no longer value-bounded. */
-	maxVisitedValues?: number;
-	/** @deprecated Traversal is complete and no longer depth-bounded. */
-	maxDepth?: number;
 }
 
 export interface DeriveCompactionContentManifestsOptions {

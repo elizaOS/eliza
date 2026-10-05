@@ -1,25 +1,6 @@
 /**
- * Per-trace token/cost roll-up across recorded trajectories (#13775 item 5).
- *
- * The orchestrator's existing `TaskUsageSummary` sums only the ACP terminal
- * `OrchestratorTaskUsage` frames — the spend the sub-agent's ACP surface
- * reported for the whole session. For an eliza-backend sub-agent those frames
- * are often absent or coarse: the ground-truth inner model prompts/responses
- * (and their per-call cost/tokens) live only in the child's own
- * {@link RecordedTrajectory} files, which #13775 item 2 now attaches to the
- * task as `trajectory` artifacts.
- *
- * This module folds those file-recorder metrics into one roll-up keyed by the
- * shared `traceId` (the correlation envelope minted at the root turn), so a
- * task can finally answer "how much did this whole logical run cost, parent +
- * every sub-agent" from a single number. It is deliberately a SEPARATE surface
- * from `TaskUsageSummary` — the two count different things (ACP-reported
- * session spend vs. file-recorded inner-call spend) and must not be conflated
- * into one double-summed total.
- *
- * Pure and I/O-free: callers read the trajectory JSON (from the artifact
- * `path`) and hand parsed objects in, so this stays unit-testable and reusable
- * off the orchestrator.
+ * Aggregates recorded token and cost evidence per trace. Missing evidence remains distinct
+ * from measured zero.
  */
 
 import type {
@@ -36,7 +17,7 @@ export interface TrajectoryUsageTotals {
 	/** Sum of per-trajectory reasoning tokens (thinking/chain-of-thought spend),
 	 * mirroring `cacheCreationTokens`. Reported separately from
 	 * `totalTokens` because reasoning tokens are billed independently and
-	 * must be attributable (#16394). */
+	 * must be attributable. */
 	reasoningTokens: number;
 	/** prompt + completion (cache tokens reported separately, mirroring the
 	 * orchestrator's `TaskUsageSummary.totalTokens` convention). */
@@ -46,10 +27,10 @@ export interface TrajectoryUsageTotals {
 	trajectoryCount: number;
 }
 
-/** Per-trace roll-up: one bucket per `traceId`, plus the grand total. A
- * trajectory with no `traceId` (pre-rollout, or a backend that self-records
- * without inheriting the envelope) is bucketed under the empty-string key so
- * its spend is never silently dropped from the grand total. */
+/**
+ * Per-trace buckets and grand totals. Records without traceId form their own trajectory
+ * bucket.
+ */
 export interface TrajectoryUsageRollup extends TrajectoryUsageTotals {
 	byTrace: Array<{ traceId: string } & TrajectoryUsageTotals>;
 }
@@ -109,8 +90,7 @@ export function rollUpTrajectoryUsage(
 		buckets.set(key, bucket);
 		addMetrics(grand, metrics);
 	}
-	// Stable order: named traces first (sorted), the unkeyed bucket last, so the
-	// UI renders deterministically and the pre-rollout residue is visually last.
+	// Sort named traces first and records without correlation last.
 	const byTrace = [...buckets.entries()]
 		.map(([traceId, totals]) => ({ traceId, ...totals }))
 		.sort((a, b) => {

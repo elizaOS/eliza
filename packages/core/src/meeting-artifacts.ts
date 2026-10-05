@@ -1,5 +1,5 @@
 /**
- * Canonical meeting artifacts (#12487).
+ * Canonical meeting artifacts.
  *
  * This is the durable meeting-record shape that can be produced by platform
  * bots, bot-free capture, local/system/mobile/room microphones, cloud-agent

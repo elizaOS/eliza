@@ -223,9 +223,7 @@ export function getDefaultRedactPatterns(
 		: [...DEFAULT_REDACT_PATTERNS];
 }
 
-// ============================================================================
 // Secrets-Based Redaction
-// ============================================================================
 
 /**
  * Escape special regex characters in a string.
@@ -394,9 +392,7 @@ export function redactObjectSecrets<T>(
 	return obj;
 }
 
-// ============================================================================
 // Log-Sink Redaction (applied to every log line, not opt-in per call)
-// ============================================================================
 
 /**
  * Redact every argument in a `logger.error(...args)` call before it reaches the

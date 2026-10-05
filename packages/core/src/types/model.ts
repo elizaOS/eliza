@@ -10,7 +10,7 @@ import type { ContentValue, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
 /**
- * Scheduling priority for a single-lane local inference request (#11914).
+ * Scheduling priority for a single-lane local inference request.
  * The gate honoring it lives in `utils/inference-priority-gate.ts`.
  */
 export type LocalInferencePriority = "interactive" | "background";
@@ -30,8 +30,8 @@ export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
  * @example
  * ```typescript
  * const runtime = new AgentRuntime({
- *   character: myCharacter,
- *   llmMode: LLMMode.SMALL, // All LLM calls will use TEXT_SMALL
+ * character: myCharacter,
+ * llmMode: LLMMode.SMALL, // All LLM calls will use TEXT_SMALL
  * });
  * ```
  */
@@ -159,10 +159,10 @@ export function isTextGenerationModelType(
  * Example character settings:
  * ```
  * settings: {
- *   DEFAULT_TEMPERATURE: 0.7,              // Applies to all models
- *   TEXT_SMALL_TEMPERATURE: 0.5,           // Overrides default for TEXT_SMALL
- *   TEXT_LARGE_MAX_TOKENS: 4096,           // Specific to TEXT_LARGE
- *   TEXT_NANO_TEMPERATURE: 0.3,            // Specific to TEXT_NANO
+ * DEFAULT_TEMPERATURE: 0.7, // Applies to all models
+ * TEXT_SMALL_TEMPERATURE: 0.5, // Overrides default for TEXT_SMALL
+ * TEXT_LARGE_MAX_TOKENS: 4096, // Specific to TEXT_LARGE
+ * TEXT_NANO_TEMPERATURE: 0.3, // Specific to TEXT_NANO
  * }
  * ```
  */
@@ -364,24 +364,24 @@ export interface ChatMessage {
 /**
  * Kind of a single span in a {@link ResponseSkeleton}.
  *
- * - `literal`     — fixed text injected verbatim into the output (a key name,
- *   a `": "` separator, a closing brace, or an enum collapsed to its single
- *   allowed value). The decode loop spends **zero** sampled tokens on a
- *   `literal` span — the engine splices the bytes in and continues.
- * - `enum`        — a key whose value must be one of {@link ResponseSkeletonSpan.enumValues}.
- *   With two-or-more values the engine constrains sampling to those tokens
- *   (and can shortcut as soon as a value is unambiguous); a single value is
- *   normally lowered to a `literal` by the producer.
- * - `number`      — a key whose value is a JSON number. Grammar pins the
- *   number-token shape; with per-span argmax sampling the engine picks the
- *   most-likely number rather than letting non-zero temperature occasionally
- *   tip the digit.
- * - `boolean`     — a key whose value is `true` or `false`. Grammar pins the
- *   alternation; argmax sampling makes the decision deterministic.
+ * - `literal` — fixed text injected verbatim into the output (a key name,
+ * a `": "` separator, a closing brace, or an enum collapsed to its single
+ * allowed value). The decode loop spends **zero** sampled tokens on a
+ * `literal` span — the engine splices the bytes in and continues.
+ * - `enum` — a key whose value must be one of {@link ResponseSkeletonSpan.enumValues}.
+ * With two-or-more values the engine constrains sampling to those tokens
+ * (and can shortcut as soon as a value is unambiguous); a single value is
+ * normally lowered to a `literal` by the producer.
+ * - `number` — a key whose value is a JSON number. Grammar pins the
+ * number-token shape; with per-span argmax sampling the engine picks the
+ * most-likely number rather than letting non-zero temperature occasionally
+ * tip the digit.
+ * - `boolean` — a key whose value is `true` or `false`. Grammar pins the
+ * alternation; argmax sampling makes the decision deterministic.
  * - `free-string` — a key whose value is a free-form JSON string the model
- *   samples normally (e.g. `replyText`, `thought`).
- * - `free-json`   — a key whose value is a free-form JSON sub-document the model
- *   samples normally (e.g. `extract`, an action `parameters` object).
+ * samples normally (e.g. `replyText`, `thought`).
+ * - `free-json` — a key whose value is a free-form JSON sub-document the model
+ * samples normally (e.g. `extract`, an action `parameters` object).
  */
 export type ResponseSkeletonSpanKind =
 	| "literal"
@@ -492,8 +492,8 @@ export interface SpanSamplerOverride {
  *
  * Producer: `@elizaos/core` `buildSpanSamplerPlan(skeleton)`.
  * Consumer: local-inference engine (W4) → llama-server fork extension
- *           `eliza_span_samplers` body field. Eliza Cloud fork extension
- *           `x-eliza-span-samplers` header.
+ * `eliza_span_samplers` body field. Eliza Cloud fork extension
+ * `x-eliza-span-samplers` header.
  */
 export interface SpanSamplerPlan {
 	/** Per-position overrides. Spans not listed keep the call-level sampler. */
@@ -532,12 +532,7 @@ export interface GenerateTextParams {
 		attempt: ModelAttemptContext,
 		params: GenerateTextParams,
 	) => Promise<void> | void;
-	/**
-	 * Legacy concatenated prompt string. v5 paths emit `messages` instead and
-	 * leave this field undefined. Adapters that haven't migrated to native chat
-	 * messages may still consume it. Callers that pass `messages` should leave
-	 * `prompt` unset.
-	 */
+	/** Concatenated prompt for text-only adapters. Callers using structured messages leave this unset. */
 	prompt?: string;
 	maxTokens?: number;
 	/**
@@ -570,7 +565,7 @@ export interface GenerateTextParams {
 	 */
 	voiceOutput?: "user-visible" | "internal";
 	/**
-	 * Scheduling priority on single-lane local inference backends (#11914).
+	 * Scheduling priority on single-lane local inference backends.
 	 * On-device text runs one decode at a time; `"background"` marks deferred
 	 * autonomous work (scheduled prompt tasks, prompt-batcher drains) so the
 	 * local lane can (a) dispatch waiting interactive turns first, (b) bound
@@ -701,8 +696,8 @@ export interface GenerateTextParams {
 	 *
 	 * Producer: `@elizaos/core` `buildSpanSamplerPlan` (W8).
 	 * Consumer: local-inference engine (W4) → llama-server fork
-	 *           `eliza_span_samplers` body field. Eliza Cloud llama-server fork
-	 *           via the `x-eliza-span-samplers` header.
+	 * `eliza_span_samplers` body field. Eliza Cloud llama-server fork
+	 * via the `x-eliza-span-samplers` header.
 	 */
 	spanSamplerPlan?: SpanSamplerPlan;
 }
@@ -768,14 +763,14 @@ export interface TextStreamChunk {
  * @example
  * ```typescript
  * const result = await runtime.useModel(ModelType.TEXT_LARGE, {
- *   prompt: "Hello",
- *   stream: true
+ * prompt: "Hello",
+ * stream: true
  * }) as TextStreamResult;
  *
  * let fullText = '';
  * for await (const chunk of result.textStream) {
- *   fullText += chunk;
- *   console.log('Received:', chunk);
+ * fullText += chunk;
+ * console.log('Received:', chunk);
  * }
  *
  * // After stream completes
@@ -832,7 +827,7 @@ export interface TextStreamResult {
  * @example
  * ```typescript
  * const result = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
- *   text: "hello", audioStream: true,
+ * text: "hello", audioStream: true,
  * }) as AudioStreamResult;
  * for await (const chunk of result.audioStream) sink.write(chunk);
  * const full = await result.bytes; // complete audio after the stream ends
@@ -1023,7 +1018,7 @@ export interface PiiScrubParams {
  * The kind of decision a {@link PiiScrubVerdict} carries for one span.
  * - `pii`: the span is sensitive and must be replaced with `replacement`.
  * - `safe`: the model positively judged the span non-sensitive (an explicit,
- *   auditable "I looked and it is clean" — NOT the absence of a verdict).
+ * auditable "I looked and it is clean" — NOT the absence of a verdict).
  */
 export type PiiScrubVerdictKind = "pii" | "safe";
 
@@ -1186,9 +1181,7 @@ export interface VideoProcessingParams {
 	voiceControl?: boolean;
 }
 
-// ============================================================================
 // Research Model Types (Deep Research)
-// ============================================================================
 
 /**
  * Research tool configuration for web search
@@ -1248,12 +1241,12 @@ export type ResearchTool =
  * @example
  * ```typescript
  * const result = await runtime.useModel(ModelType.RESEARCH, {
- *   input: "Research the economic impact of AI on global labor markets",
- *   tools: [
- *     { type: "web_search_preview" },
- *     { type: "code_interpreter", container: { type: "auto" } }
- *   ],
- *   background: true,
+ * input: "Research the economic impact of AI on global labor markets",
+ * tools: [
+ * { type: "web_search_preview" },
+ * { type: "code_interpreter", container: { type: "auto" } }
+ * ],
+ * background: true,
  * });
  * ```
  */

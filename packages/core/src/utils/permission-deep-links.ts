@@ -86,7 +86,7 @@ export interface OpenPermissionSettingsDeps {
 	/**
 	 * Optional opener. Injected for tests; defaults to `window.open` in the
 	 * browser/electron renderer. On Node-only contexts the caller must inject
-	 * something (e.g. `child_process.exec("open ...")`).
+	 * something (e.g. `child_process.exec("open...")`).
 	 */
 	open?: (url: string) => void | Promise<void>;
 	/** Override platform detection (tests). */

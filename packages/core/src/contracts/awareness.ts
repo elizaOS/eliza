@@ -1,18 +1,9 @@
 /**
- * Self-Awareness System v1 — shared contracts.
- *
- * @architecture Layered lazy-load + declarative AwarenessContributor
- * @see docs/plans/2026-03-01-self-awareness-design.md
+ * Shared awareness contributor and invalidation contracts.
  */
 import type { IAgentRuntime } from "../types/runtime.js";
 
 export const SELF_STATUS_SCHEMA_VERSION = 1;
-
-/** @deprecated Awareness summaries are no longer character-limited. */
-export const SUMMARY_CHAR_LIMIT = 80;
-
-/** @deprecated Awareness summaries are no longer character-limited. */
-export const SUMMARY_TOTAL_CHAR_LIMIT = 1200;
 
 /** Default cache TTL in ms (1 minute). */
 export const DEFAULT_CACHE_TTL_MS = 60_000;
@@ -31,17 +22,17 @@ export interface AwarenessContributor {
 	id: string;
 
 	/** Sort priority (lower = higher in output).
-	 *  10=runtime, 20=permissions, 30=wallet, 40=provider,
-	 *  50=pluginHealth, 60=connectors, 70=cloud, 80=features */
+	 * 10=runtime, 20=permissions, 30=wallet, 40=provider,
+	 * 50=pluginHealth, 60=connectors, 70=cloud, 80=features */
 	position: number;
 
 	/** Layer 1 summary — injected every LLM turn.
-	 *  MUST return plain text, never secrets/keys/tokens.
-	 *  Return "" if nothing should be shown. */
+	 * MUST return plain text, never secrets/keys/tokens.
+	 * Return "" if nothing should be shown. */
 	summary: (runtime: IAgentRuntime) => Promise<string>;
 
 	/** Layer 2 detail — called via RUNTIME action with op=self_status.
-	 *  "brief" ~= 200 tokens, "full" ~= 2000 tokens. */
+	 * "brief" ~= 200 tokens, "full" ~= 2000 tokens. */
 	detail?: (runtime: IAgentRuntime, level: "brief" | "full") => Promise<string>;
 
 	/** Cache TTL in ms. Default DEFAULT_CACHE_TTL_MS. */
@@ -51,6 +42,6 @@ export interface AwarenessContributor {
 	invalidateOn?: AwarenessInvalidationEvent[];
 
 	/** Only built-in contributors set trusted=true.
-	 *  Untrusted contributor output is sanitized before injection. */
+	 * Untrusted contributor output is sanitized before injection. */
 	trusted?: boolean;
 }

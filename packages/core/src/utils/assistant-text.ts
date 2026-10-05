@@ -343,7 +343,7 @@ function getSimpleReplyValue(value: Record<string, unknown>): string | null {
  * plain text. Local models can emit tool arguments as text when function-call
  * transport is unavailable, for example:
  *
- *   "RESPOND", "contexts": ["simple"], "replyText": "Hello"
+ * "RESPOND", "contexts": ["simple"], "replyText": "Hello"
  *
  * That string is valid object content once the first value is named
  * `shouldRespond`, so parse that shape without touching ordinary chat text.

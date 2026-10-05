@@ -2,11 +2,6 @@
 
 export * from "./access-context";
 export * from "./access-control/provenance-envelope";
-export {
-	hasAdminAccess,
-	hasOwnerAccess,
-	type SecurityDeps,
-} from "./access-control/role-access.ts";
 export * from "./actions";
 export {
 	bindTaskExtractionContext,
@@ -143,9 +138,15 @@ export * from "./media/fetch.js";
 export * from "./media/image-description-cache.js";
 export * from "./media/local-store.js";
 export * from "./media/mime.js";
-export * from "./media/mime-sniffer.js";
 export * from "./media/outbound.js";
-export * from "./messaging/interactions";
+export * from "./messaging/interaction-dashboard-markers";
+export * from "./messaging/interaction-host";
+export * from "./messaging/interaction-layout";
+export * from "./messaging/interaction-parse";
+export * from "./messaging/interaction-profile-catalog";
+export * from "./messaging/interaction-profiles";
+export * from "./messaging/interaction-serialize";
+export * from "./messaging/interaction-sessions";
 export * from "./messaging/manage-server-authorization";
 // Export network utilities (SSRF protection, secure fetch)
 export {
@@ -173,27 +174,28 @@ export {
 export {
 	_resetBuildVariantForTests,
 	BUILD_VARIANTS,
+	buildStoreVariantBlockedMessage,
 	DEFAULT_BUILD_VARIANT,
 	getBuildVariant,
 	getDirectDownloadUrl,
 	isDirectBuild,
+	isLocalCodeExecutionAllowed,
 	isStoreBuild,
 } from "./platform/build-variant.js";
 export {
 	nativeLibraryPolicyInternalsForTest,
 	resolveNativeLibraryCandidate,
 } from "./platform/native-library-policy.js";
-export {
-	buildStoreVariantBlockedMessage,
-	isLocalCodeExecutionAllowed,
-} from "./platform/sandbox-policy.js";
 export * from "./plugin";
 export * from "./protocol.js";
-// Export recent-errors provider (#12263)
-export * from "./providers/recent-errors";
 // Provisioning (migrations, agent/entity/room, embedding dimension) - node only
 export * from "./provisioning";
 export * from "./roles";
+export {
+	hasAdminAccess,
+	hasOwnerAccess,
+	type SecurityDeps,
+} from "./roles.ts";
 export * from "./runtime";
 export { actionGateRejection } from "./runtime/action-gate";
 export {
@@ -234,6 +236,8 @@ export {
 	providerReviewSources,
 	withProviderReviewSchema,
 } from "./runtime/provider-context.ts";
+// Export recent-errors provider
+export * from "./runtime/recent-errors-provider";
 export * from "./runtime/response-grammar";
 export * from "./runtime/room-handler-queue";
 export * from "./runtime/trace-correlation";
@@ -421,8 +425,8 @@ export {
 	type EnsureAgentVoiceOptions,
 	ensureAgentVoice,
 } from "./security/voice-gate.ts";
+export * from "./services/agent-event";
 export * from "./services/agent-event-bridge";
-export * from "./services/agentEvent";
 export * from "./services/approval";
 export * from "./services/channel-topics";
 export { EmbeddingGenerationService } from "./services/embedding.ts";
@@ -480,18 +484,16 @@ export {
 	writeJsonAtomic,
 	writeJsonAtomicSync,
 } from "./utils/atomic-json.ts";
-export { BatchProcessor } from "./utils/batch-queue/batch-processor.js";
 export {
+	BatchProcessor,
 	BatchQueue,
 	type BatchQueueOptions,
 	type DrainStats,
-} from "./utils/batch-queue/index.js";
-export {
 	PriorityQueue,
 	type PriorityQueueOptions,
 	type PriorityQueueStats,
 	type QueuePriority,
-} from "./utils/batch-queue/priority-queue.js";
+} from "./utils/batch-queue.js";
 export * from "./utils/buffer";
 // Unified two-phase confirmation helper for destructive actions.
 export {

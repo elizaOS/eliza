@@ -423,7 +423,7 @@ function bindAudience(
 		revalidateApiPrincipal,
 		sensitiveUsed: false,
 	});
-	// Enumerable symbol properties survive ordinary `{ ...message }` pipeline
+	// Enumerable symbol properties survive ordinary `{...message }` pipeline
 	// clones, while JSON and request-body parsing cannot name or serialize the
 	// module-private symbol.
 	Object.defineProperty(message, trustedDeliveryAudienceBinding, {

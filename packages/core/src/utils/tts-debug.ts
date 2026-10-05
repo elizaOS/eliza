@@ -8,12 +8,12 @@ import { logger } from "../logger.js";
  *
  * `ttsDebug` emits straight through the structured logger, so setting the env
  * flag is sufficient on every server host (bare agent server, app API,
- * packaged desktop) — no per-host wiring exists to forget (#16347). The
+ * packaged desktop) — no per-host wiring exists to forget. The
  * emission level is `info` normally, but escalates to match the logger's
  * active threshold (`warn`/`error`/`fatal`) when `LOG_LEVEL` is stricter:
  * the operator opted in explicitly, so the diagnostic must never be silently
  * dead under any `LOG_LEVEL` — a below-threshold sink is the exact defect
- * #16347 existed to kill (#16958).
+ * existed to kill.
  *
  * Server phases: `server:cloud-tts:*` (Eliza Cloud proxy, includes optional
  * `messageId`, `clipSegment`, `hearingFull` when the client sends
@@ -22,10 +22,10 @@ import { logger } from "../logger.js";
  *
  * Enable with:
  * - **Node / API:** `ELIZA_TTS_DEBUG=1` (or `true`, `yes`, `on`) — lines appear
- *   in the API terminal / `[api]` aggregator.
+ * in the API terminal / `[api]` aggregator.
  * - **Renderer (WebView / browser):** the renderer flavor lives in
- *   `packages/ui/src/utils/tts-debug.ts` and logs to the JavaScript console;
- *   the same env is mirrored via Vite `define` in `apps/app/vite.config.ts`.
+ * `packages/ui/src/utils/tts-debug.ts` and logs to the JavaScript console;
+ * the same env is mirrored via Vite `define` in `apps/app/vite.config.ts`.
  */
 import { toWellFormedUnicode, truncateWellFormed } from "./unicode.js";
 
@@ -75,7 +75,7 @@ export function ttsDebugTextPreview(
 // The logger drops entries below its LOG_LEVEL threshold, so an opted-in
 // diagnostic pinned at `info` is silently dead under LOG_LEVEL=warn/error.
 // Emit at the lowest level the active threshold still lets through: info by
-// default, escalating only as far as the configuration forces (#16958).
+// default, escalating only as far as the configuration forces.
 function ttsEmit(): (typeof logger)["info"] {
 	const configuredLevel =
 		(typeof process !== "undefined" ? process.env?.LOG_LEVEL : undefined) ??

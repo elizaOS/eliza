@@ -49,7 +49,7 @@ export async function resolveOwnerEntityId(
 			worldId = room.worldId;
 			const world = await runtime.getWorld(room.worldId);
 			const metadata = (world?.metadata ?? {}) as WorldMetadataShape;
-			// Legacy connector worlds may hold a platform id here (see roles.ts).
+			// Connector worlds may store a platform identifier rather than an entity UUID.
 			const candidateOwnerId = validateUuid(metadata.ownership?.ownerId);
 			if (candidateOwnerId) return candidateOwnerId;
 		}

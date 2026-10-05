@@ -43,7 +43,7 @@ vi.mock("@elizaos/core", async () => {
   );
 
   const { createSensitiveRequestDispatchRegistry } = await import(
-    "../../../packages/core/src/sensitive-requests/dispatch-registry.ts"
+    "../../../packages/core/src/sensitive-request-dispatch.ts"
   );
 
   const logger = {

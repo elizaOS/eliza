@@ -266,7 +266,7 @@ export const formatMessageSegments = ({
 			: null;
 		// A reaction message's `text` is a short stub that truncates the reacted-to
 		// content; surface the full original so the planner reads the complete
-		// statement and does not back-rationalize a truncated fragment (#9874).
+		// statement and does not back-rationalize a truncated fragment.
 		const reactedContextString =
 			typeof reactedMessageText === "string" && reactedMessageText.trim()
 				? `(reacted-to message in full: "${reactedMessageText.trim()}")`
@@ -387,13 +387,7 @@ export function parseToonKeyValue<T = Record<string, unknown>>(
 	return found ? (result as T) : null;
 }
 
-/**
- * Legacy structured-response parser.
- *
- * Prefer JSON structured output for new prompts. This compatibility helper keeps
- * older XML-based cloud prompts working while native tool-calling migration
- * finishes those surfaces.
- */
+/** Parses XML-style structured model responses. */
 export function parseKeyValueXml<T = Record<string, unknown>>(
 	// audit:allowlist - retained for cloud/ XML evaluators
 	text: string,
@@ -468,7 +462,7 @@ function isUtf8WithinByteBudget(value: string, maxBytes: number): boolean {
 }
 
 function findFirstXmlBlock(
-	// audit:allowlist - helper for parseKeyValueXml (legacy XML parser, retained for cloud/)
+	// audit:allowlist - helper for parsing XML-structured model output
 	input: string,
 ): { tag: string; content: string } | null {
 	let i = 0;
@@ -696,16 +690,6 @@ export async function splitChunks(
 	const chunks = await textSplitter.splitText(content);
 
 	return chunks;
-}
-
-/** @deprecated Prompt inputs are preserved; provider boundaries reject unsupported sizes. */
-export async function trimTokens(
-	prompt: string,
-	_maxTokens: number,
-	_runtime: IAgentRuntime,
-) {
-	if (!prompt) throw new Error("Trim tokens received a null prompt");
-	return prompt;
 }
 
 /**

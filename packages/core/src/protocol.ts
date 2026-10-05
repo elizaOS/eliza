@@ -53,7 +53,7 @@ export type {
 } from "./api/command-transport-types.js";
 export * from "./audio-redaction.js";
 export * from "./audio-redaction-verify.js";
-export * from "./awareness/registry.js";
+export * from "./awareness.js";
 export * from "./canonical-json.js";
 export * from "./capabilities/protocol.js";
 export * from "./capabilities/remote-runner.js";
@@ -73,26 +73,14 @@ export { default as shortIdPluginMap } from "./catalog/short-id-plugin-map.json"
 };
 export * from "./character";
 export * from "./character-language.js";
+export * from "./character-schema";
 export * from "./character-utils";
 export * from "./chat-upload-limits.js";
-export * from "./cli/parse-duration.js";
 export * from "./connector-account-catalog.js";
 export * from "./connectors/connector-config";
 export * from "./connectors/privacy";
+export * from "./connectors/target-sources";
 export * from "./connectors.ts";
-export {
-	CANONICAL_SECRET_KEYS,
-	type CanonicalSecretKey,
-	CHANNEL_OPTIONAL_SECRETS,
-	getAliasesForKey,
-	getAllSecretsForChannel,
-	getProviderForApiKey,
-	getRequiredSecretsForChannel,
-	isCanonicalSecretKey,
-	isSecretKeyAlias,
-	LOCAL_MODEL_PROVIDERS,
-	SECRET_KEY_ALIASES,
-} from "./constants/secrets";
 export * from "./contracts/apps.js";
 export * from "./contracts/awareness.js";
 export * from "./contracts/permissions.js";
@@ -138,8 +126,18 @@ export * from "./meeting-artifacts.js";
 export * from "./meetings.js";
 export * from "./memory";
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
-export * from "./messaging/interactions/dashboard-markers.js";
-export * from "./messaging/interactions/parse.js";
+export * from "./messaging/interaction-dashboard-markers.js";
+export {
+	findInteractionRegions,
+	hasInteractionBlocks,
+	type InteractionRegion,
+	MAX_FOLLOWUPS,
+	MAX_FORM_FIELDS,
+	MAX_TASK_TITLE_LEN,
+	type ParsedInteractions,
+	parseInteractionBlocks,
+	stripUnclaimedInteractionMarkup,
+} from "./messaging/interaction-parse.js";
 export type {
 	InteractiveTask,
 	TaskActionProposal,
@@ -174,21 +172,18 @@ export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
 export * from "./name-tokens";
 export * from "./network/ssrf.js";
-export * from "./platform/aosp-user-agent.js";
 export type { BuildVariant } from "./platform/build-variant.js";
-export { isElizaOS } from "./platform/eliza-os.js";
+export * from "./platform/eliza-os.js";
 export * from "./platform/is-native-server.js";
 export type {
 	NativeLibraryCandidate,
 	NativeLibraryPolicyOptions,
 } from "./platform/native-library-policy.js";
 export * from "./recent-messages-state";
-export * from "./retrieval/rerank.js";
-export * from "./retrieval/search.js";
+export * from "./retrieval.js";
 export type { RolesConfig } from "./roles.js";
 export * from "./runtime/action-wildcard-glob.ts";
 export * from "./runtime/candidate-action-backstop";
-export { isCanonicalModelCapabilityDisabled } from "./runtime/canonical-model-capabilities.ts";
 export * from "./runtime/content-access-manifest";
 export * from "./runtime/context-gates";
 export {
@@ -225,8 +220,6 @@ export {
 } from "./runtime/limits.ts";
 export * from "./runtime/locale-detection";
 export * from "./runtime/localized-examples-provider";
-export * from "./runtime/model-dispatch/modality.ts";
-export * from "./runtime/model-dispatch/model-name.ts";
 export {
 	buildModelInputBudget,
 	DEFAULT_CONTEXT_WINDOW_TOKENS,
@@ -236,6 +229,11 @@ export {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./runtime/model-input-budget.ts";
+export * from "./runtime/model-modality.ts";
+export {
+	isCanonicalModelCapabilityDisabled,
+	resolveProviderModelString,
+} from "./runtime/model-policy.js";
 export type {
 	EvaluatorEffects,
 	EvaluatorModelResult,
@@ -274,7 +272,6 @@ export {
 	sanitizeUserVisibleModelOutput,
 	type UserVisibleModelOutput,
 } from "./runtime/user-visible-model-output.ts";
-export * from "./schemas/character";
 export * from "./security/augmented-request.js";
 export * from "./security/basic-email";
 export * from "./security/bind-host.js";
@@ -310,8 +307,9 @@ export {
 	type ToolDiagnosticTextRedactor,
 } from "./security/tool-diagnostics.js";
 export { projectCompleteToolArgsForModel } from "./security/tool-diagnostics.ts";
+export * from "./security/untrusted-email-content.js";
+export * from "./sensitive-request-dispatch";
 export * from "./sensitive-request-policy";
-export * from "./sensitive-requests/dispatch-registry";
 export * from "./services";
 export {
 	OPTIMIZED_PROMPT_SERVICE,
@@ -358,21 +356,18 @@ export {
 	type TrajectorySummaryRecord,
 	type TrajectoryUsageTotalsRecord,
 } from "./services/trajectory-types.ts";
-export * from "./services/triggerScheduling";
+export * from "./services/trigger-scheduling";
 export * from "./sessions/provider.js";
 export * from "./sessions/session-key.js";
 export * from "./sessions/types.js";
 export * from "./speaker-name-inference.js";
 export * from "./spoken-text.js";
-export * from "./target-sources/registry";
-export * from "./text/model-output.js";
-export * from "./text/untrusted-email-content.js";
 export * from "./transcripts.js";
 export * from "./tunnel-service";
 export * from "./types/access-context.js";
 export * from "./types/action-failure.js";
 export * from "./types/agent.js";
-export * from "./types/agentEvent";
+export * from "./types/agent-event";
 export * from "./types/channel-config.js";
 export * from "./types/chat-pre-handler.js";
 export * from "./types/coding.js";
@@ -467,7 +462,6 @@ export * from "./types/system-notice.js";
 export * from "./types/task.js";
 export * from "./types/tee.js";
 export * from "./types/testing.js";
-export * from "./types/tools.js";
 export type {
 	ActionAttempt,
 	ARTTrajectory,
@@ -502,9 +496,12 @@ export {
 } from "./utils/action-results.ts";
 export { hasActionContext } from "./utils/action-validation.ts";
 export * from "./utils/assistant-text.js";
-export type { BatchItemOutcome } from "./utils/batch-queue/batch-processor.js";
-export * from "./utils/batch-queue/semaphore.js";
-export * from "./utils/batch-queue/task-drain.js";
+export type { BatchItemOutcome } from "./utils/batch-queue.js";
+export {
+	Semaphore,
+	TaskDrain,
+	type TaskDrainOptions,
+} from "./utils/batch-queue.js";
 export * from "./utils/boolean";
 export * from "./utils/channel-utils";
 export * from "./utils/character-message-examples.js";
@@ -535,8 +532,8 @@ export {
 	shortStringHash,
 	stableStringify,
 } from "./utils/deterministic.js";
+export * from "./utils/duration.js";
 export * from "./utils/env.js";
-export * from "./utils/env-alias.js";
 export * from "./utils/errors.js";
 export * from "./utils/example-names.js";
 export * from "./utils/exec-safety.js";
@@ -551,6 +548,7 @@ export { formatError } from "./utils/format-error";
 export * from "./utils/format-error.js";
 export * from "./utils/html-raw-text";
 export * from "./utils/inflection-term-keys";
+export * from "./utils/json5-model-output.js";
 export { getLogPrefix } from "./utils/log-prefix.js";
 export {
 	assertModelOutputComplete,
@@ -567,7 +565,6 @@ export {
 	PROVIDER_CONTEXT_OVERFLOW,
 } from "./utils/model-errors.ts";
 export * from "./utils/model-retry";
-export { tokenizeNameOccurrences } from "./utils/name-tokens.js";
 export * from "./utils/number-parsing.js";
 export * from "./utils/path-component.js";
 export {
@@ -586,7 +583,6 @@ export * from "./utils/serialise.js";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 export * from "./utils/string-boundaries.js";
-export { hashString as hashArtworkSeed } from "./utils/string-hash.js";
 export {
 	MAX_TEXT_NORMALIZE_EDGES,
 	TEXT_NORMALIZE_UNBOUNDED,
@@ -599,6 +595,19 @@ export * from "./utils/union-find.ts";
 export { uuidFromString, validateUuid } from "./utils/uuid.js";
 export * from "./utils/well-formed";
 export * from "./validation/keywords";
+export {
+	CANONICAL_SECRET_KEYS,
+	type CanonicalSecretKey,
+	CHANNEL_OPTIONAL_SECRETS,
+	getAliasesForKey,
+	getAllSecretsForChannel,
+	getProviderForApiKey,
+	getRequiredSecretsForChannel,
+	isCanonicalSecretKey,
+	isSecretKeyAlias,
+	LOCAL_MODEL_PROVIDERS,
+	SECRET_KEY_ALIASES,
+} from "./validation/secret-catalog";
 export * from "./validation/secrets";
 export * from "./views/host-external-contract.js";
 export * from "./views/shared-nav-targets.js";
@@ -625,4 +634,4 @@ export {
 	VIEW_KIND_META,
 	VIEW_KINDS,
 } from "./views/view-kind.js";
-export * from "./voice/voice-cancellation-token.js";
+export * from "./voice-cancellation-token.js";

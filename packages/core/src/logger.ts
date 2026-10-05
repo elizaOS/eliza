@@ -61,9 +61,7 @@ interface AdzeLogMethods {
 	verbose(...args: unknown[]): void;
 }
 
-// ============================================================================
 // Type Definitions
-// ============================================================================
 
 /**
  * Log function signature matching Pino's API for compatibility
@@ -171,9 +169,7 @@ interface InMemoryDestination {
 	setMaxLogs: (maxLogs: number) => void;
 }
 
-// ============================================================================
 // Utility Functions
-// ============================================================================
 
 /**
  * Log level priorities for filtering
@@ -301,9 +297,7 @@ function formatPrettyLog(
 	return `${srcPart}${message}${extrasPart}`;
 }
 
-// ============================================================================
 // Configuration
-// ============================================================================
 
 // Log level configuration
 const DEFAULT_LOG_LEVEL = "info";
@@ -331,13 +325,9 @@ const showTimestamps = parseBooleanFromText(
 
 const serverId = getEnvironmentVar("SERVER_ID") || `process-${process.pid}`;
 
-// ============================================================================
 // Sensitive-data redaction
-// ============================================================================
 
-// ============================================================================
 // File Log Output
-// ============================================================================
 
 /**
  * File logging - lazy-initialized on first write to avoid module-init timing issues.
@@ -349,7 +339,7 @@ let _fileLogState: "pending" | "active" | "disabled" = "pending";
 let _fileLogFd: number | null = null;
 // One-shot guard so a persistent file-write failure surfaces exactly once on
 // stderr instead of being swallowed forever by the catch in writeLogEntryToFile
-// (#16356: an invalid stripAnsi regex threw on every write and output.log
+// (: an invalid stripAnsi regex threw on every write and output.log
 // silently stayed empty for the sink's whole lifetime).
 let _fileLogWriteErrorWarned = false;
 let _promptLogFd: number | null = null;
@@ -481,7 +471,7 @@ function writeLogEntryToFile(entry: LogEntry): void {
 		const line = `${timestamp} [${levelStr.toUpperCase().padEnd(8)}] ${stripAnsi(entry.msg)}\n`;
 		fs.writeSync(fd, line);
 	} catch (error) {
-		// A persistent write failure (e.g. #16356's invalid regex, which threw on
+		// A persistent write failure (e.g. 's invalid regex, which threw on
 		// every call) must not stay invisible for the sink's whole lifetime — go
 		// straight to stderr once, bypassing the logger that is itself failing.
 		if (!_fileLogWriteErrorWarned) {
@@ -495,9 +485,7 @@ function writeLogEntryToFile(entry: LogEntry): void {
 	}
 }
 
-// ============================================================================
 // Prompt instrumentation (prompts.log)
-// ============================================================================
 
 export interface PromptLogMetadata {
 	agentName?: string;
@@ -592,9 +580,7 @@ export function logResponse(
 	return slug;
 }
 
-// ============================================================================
 // Chat instrumentation (chat.log)
-// ============================================================================
 
 export interface ChatInLogParams {
 	agentName: string;
@@ -686,9 +672,7 @@ export function logChatOut(params: ChatOutLogParams): string {
 	return part;
 }
 
-// ============================================================================
 // In-Memory Log Storage
-// ============================================================================
 
 /**
  * Creates an in-memory destination for storing recent logs
@@ -764,9 +748,7 @@ function createInMemoryDestination(initialMaxLogs = 100): InMemoryDestination {
 // Global in-memory destination
 const globalInMemoryDestination = createInMemoryDestination();
 
-// ============================================================================
 // Adze Configuration
-// ============================================================================
 
 // Configure Adze globally
 // Map elizaOS log levels to Adze log levels
@@ -871,9 +853,7 @@ setup({
 // Adze owns formatted output; createLogger().invoke owns the single in-memory
 // dispatch so listeners receive one entry with Pino-compatible levels.
 
-// ============================================================================
 // Logger Factory
-// ============================================================================
 
 /**
  * Creates a sealed Adze logger instance with namespaces and metadata
@@ -1226,14 +1206,11 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 	};
 }
 
-// ============================================================================
 // Exports
-// ============================================================================
 
 // Create default logger instance
 const logger = createLogger();
 
-// Backward compatibility alias
 export const elizaLogger = logger;
 
 // Export recent logs function

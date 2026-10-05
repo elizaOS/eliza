@@ -62,8 +62,8 @@ export interface RuntimeCapabilityServiceOptions {
  * ```ts
  * const svc = runtime.getService(CAPABILITY_ROUTER_SERVICE_TYPE);
  * if (svc) {
- *   const availability = await svc.availability();
- *   // capability dispatch via svc.fs / .pty / .git / .model / .plugin
+ * const availability = await svc.availability();
+ * // capability dispatch via svc.fs /.pty /.git /.model /.plugin
  * }
  * ```
  */

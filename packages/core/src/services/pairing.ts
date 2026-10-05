@@ -251,13 +251,7 @@ export class PairingService extends Service {
 		);
 	}
 
-	/**
-	 * List one bounded page of pending pairing requests, newest first.
-	 *
-	 * Existing {@link listPendingRequests} callers keep the legacy complete-array
-	 * contract. This page API is intended for operator surfaces and carries the
-	 * bounds into database adapters that support the extended batch query.
-	 */
+	/** Lists pending pairing requests newest first, carrying page bounds into supporting adapters. */
 	async listPendingRequestsPage(
 		channel: PairingChannel,
 		options: PairingPageOptions = {},

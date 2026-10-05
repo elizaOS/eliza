@@ -471,14 +471,8 @@ function renderPrefixTool(
 	rendered: RenderedContextObject,
 	tool: { name: string; description?: string; parameters?: unknown },
 ): void {
-	// Native tool definitions are sent on the wire via `tools: [...]` and the
-	// model sees them as first-class function specs. We deliberately do NOT
-	// also stamp a synthetic `tool: NAME\ndescription: ...` text segment into
-	// the system prompt — duplicating tool catalogs in text wastes prompt
-	// tokens and gives the model two representations of the same surface area
-	// to reconcile. Callers that need text-mode tool catalogs (legacy adapters
-	// without native tool support) should serialize from `rendered.tools`
-	// themselves at the boundary.
+	// Native tool definitions travel in tools, without a duplicate text catalog. Text-only
+	// adapters serialize rendered.tools at their boundary.
 	rendered.tools.push({
 		name: tool.name,
 		description: tool.description,
@@ -510,8 +504,8 @@ export function renderContextObject(
 	}
 	// Synthetic system segments use label="system" so segmentBlock emits the
 	// raw content without a redundant `<label>:\n` header — every content body
-	// below is already self-labeled (e.g. `selected_contexts: ...`,
-	// `contexts:\n- ...`). They change per turn (Stage-1 output), so they are
+	// below is already self-labeled (e.g. `selected_contexts:...`,
+	// `contexts:\n-...`). They change per turn (Stage-1 output), so they are
 	// dynamic: keeping them out of the system message leaves the planner and
 	// evaluator system prefix byte-stable across turns for provider prompt
 	// caches (live 2026-09-13: 6.6K of 19K system chars shared before).
