@@ -608,9 +608,10 @@ describe("during_window on DST transition days", () => {
     startUtcIso: string,
     hours: number,
     facts: OwnerFactsView,
+    windowKey = "morning",
   ): Promise<string[]> {
     let task = makeTask({
-      trigger: { kind: "during_window", windowKey: "morning" },
+      trigger: { kind: "during_window", windowKey },
     });
     const fires: string[] = [];
     const startMs = Date.parse(startUtcIso);
@@ -645,6 +646,23 @@ describe("during_window on DST transition days", () => {
       "2026-03-09T10:00:00.000Z", // 06:00 EDT next day
     ]);
     expect(new Set(fires.map((iso) => localDate(iso, NY))).size).toBe(2);
+  });
+
+  it("NY spring-forward: a night window fires once the night after the 23h day", async () => {
+    const facts: OwnerFactsView = {
+      timezone: NY,
+      morningWindow: { start: "06:00", end: "11:00" },
+      eveningWindow: { start: "18:00", end: "22:00" },
+    };
+    // Night is 22:00-06:00. From 22:00 EDT on Mar 8 (02:00Z Mar 9) through
+    // the next morning: its after-midnight half belongs to Mar 8's night.
+    const fires = await simulateWindow(
+      "2026-03-09T02:00:00.000Z",
+      10,
+      facts,
+      "night",
+    );
+    expect(fires).toEqual(["2026-03-09T02:00:00.000Z"]);
   });
 
   it("NY fall-back: a window overlapping the repeated hour fires exactly once", async () => {
