@@ -587,7 +587,14 @@ it("retries an unavailable semantic verdict without consuming it or later eviden
   });
 });
 
-it.each(["semantic_unavailable", "foreground_pending", "archived", "paused"])(
+it.each([
+  "semantic_unavailable",
+  "foreground_pending",
+  "archived",
+  "paused",
+  "archive_during_completed",
+  "archive_during_snoozed",
+])(
   "preserves due review ownership for %s through processReminders",
   async (mode) => {
     const isolated = await createLifeOpsTestRuntime({ withLLM: false });
@@ -678,7 +685,10 @@ it.each(["semantic_unavailable", "foreground_pending", "archived", "paused"])(
         roomId: ownerRoom,
         createdAt: Date.parse("2026-10-03T06:05:00.000Z"),
         content: {
-          text: "I finished the final reminder notification check.",
+          text:
+            mode === "archive_during_snoozed"
+              ? "Snooze the final reminder notification check for ten minutes."
+              : "I finished the final reminder notification check.",
           source: "client_chat",
           ...(mode === "foreground_pending"
             ? { channelType: ChannelType.DM, chatIdempotency: marker }
@@ -686,13 +696,13 @@ it.each(["semantic_unavailable", "foreground_pending", "archived", "paused"])(
         },
       } as Memory;
       await isolated.runtime.createMemory(reply, "messages");
-      const inactiveStatus =
+      let inactiveStatus =
         mode === "archived" || mode === "paused" ? mode : null;
       if (inactiveStatus)
         await local.updateDefinition(created.definition.id, {
           status: inactiveStatus,
         });
-      const beforeOccurrence = await local.repository.getOccurrence(
+      let beforeOccurrence = await local.repository.getOccurrence(
         isolated.runtime.agentId,
         occurrence.id,
       );
@@ -712,12 +722,58 @@ it.each(["semantic_unavailable", "foreground_pending", "archived", "paused"])(
         mode === "foreground_pending"
           ? await isolated.runtime.roomHandlerQueue.acquire(ownerRoom)
           : undefined;
-      const first = await local.processReminders({
+      const cancelDuringClassification = [
+        "archive_during_completed",
+        "archive_during_snoozed",
+      ].includes(mode);
+      let started: (() => void) | undefined;
+      let resume: (() => void) | undefined;
+      const classificationStarted = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const classificationHeld = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
+      if (cancelDuringClassification)
+        unavailable.mockImplementation(async () => {
+          started?.();
+          await classificationHeld;
+          return {
+            decision: "explicit_resolution" as const,
+            resolution:
+              mode === "archive_during_snoozed"
+                ? ("snoozed" as const)
+                : ("completed" as const),
+            snoozeRequest:
+              mode === "archive_during_snoozed" ? { minutes: 10 } : null,
+            confidence: 0.95,
+            reason: "held_semantic_resolution",
+          };
+        });
+      const processing = local.processReminders({
         now: "2026-10-03T06:08:00.000Z",
         scope: "definitions",
       });
+      if (cancelDuringClassification) {
+        await classificationStarted;
+        try {
+          await local.updateDefinition(created.definition.id, {
+            status: "archived",
+          });
+          inactiveStatus = "archived";
+          beforeOccurrence = await local.repository.getOccurrence(
+            isolated.runtime.agentId,
+            occurrence.id,
+          );
+        } finally {
+          resume?.();
+        }
+      }
+      const first = await processing;
       expect(first.attempts).toHaveLength(0);
-      if (mode === "foreground_pending" || inactiveStatus)
+      if (cancelDuringClassification)
+        expect(unavailable).toHaveBeenCalledTimes(1);
+      else if (mode === "foreground_pending" || inactiveStatus)
         expect(unavailable).not.toHaveBeenCalled();
       else expect(unavailable).toHaveBeenCalled();
       await lease?.release();
@@ -777,7 +833,9 @@ it.each(["semantic_unavailable", "foreground_pending", "archived", "paused"])(
           outcome: "blocked_policy",
           deliveryMetadata: { reason: "definition_inactive" },
         });
-        expect(unavailable).not.toHaveBeenCalled();
+        expect(unavailable).toHaveBeenCalledTimes(
+          cancelDuringClassification ? 1 : 0,
+        );
         expect(emit).not.toHaveBeenCalled();
         expect(network).not.toHaveBeenCalled();
         expect(

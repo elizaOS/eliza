@@ -3680,6 +3680,35 @@ export class RemindersDomain {
     classifierSource?: string | null;
     semanticReason?: string | null;
   }): Promise<void> {
+    if (args.ownerType === "occurrence") {
+      // Classification may have awaited a model while the owner cancelled.
+      // Revalidate current scoped policy before any acknowledgement or snooze.
+      const occurrence = await getCallerOccurrence(
+        this.ctx.repository,
+        this.ctx,
+        args.ownerId,
+      );
+      const plan = occurrence
+        ? null
+        : await this.ctx.repository.getReminderPlan(
+            this.ctx.agentId(),
+            args.attempt.planId,
+          );
+      const definitionId =
+        occurrence?.definitionId ??
+        (plan?.ownerType === "definition" ? plan.ownerId : null);
+      const definition = definitionId
+        ? await getCallerDefinition(this.ctx.repository, this.ctx, definitionId)
+        : null;
+      if (!definition) return;
+      if (definition.status !== "active") {
+        await this.closeInactiveDefinitionReview(
+          args.attempt,
+          definition.status,
+        );
+        return;
+      }
+    }
     if (args.resolution === "snoozed") {
       if (args.ownerType !== "occurrence" || !args.snoozeRequest) {
         await this.markReminderReviewObservedResponse({
