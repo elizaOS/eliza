@@ -119,7 +119,7 @@ export function registerSandboxProbeView(): void {
     label: "Sandbox Probe",
     icon: "shield",
     path: `/apps/${SANDBOX_PROBE_VIEW_ID}`,
-    developerOnly: true,
+    viewKind: "developer",
     surface: SANDBOX_PROBE_MANIFEST,
     Component: SandboxProbeView,
   });

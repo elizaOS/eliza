@@ -20,10 +20,7 @@ export interface LiveTranscriptState {
   /** Mutable ASR tail — replaced wholesale by every event/poll. */
   pending: TranscriptSegment[];
 }
-export const EMPTY_LIVE_TRANSCRIPT: LiveTranscriptState = {
-  confirmed: [],
-  pending: [],
-};
+
 /**
  * Apply one `meeting-transcript` ws event: append the confirmed segments the
  * pane hasn't seen yet (deduped by segment id, so replays/backlog are safe)

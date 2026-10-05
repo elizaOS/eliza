@@ -52,7 +52,7 @@ describe("UI Story Gate workflow", () => {
       if: CANCELLATION_AWARE_EXPRESSION,
       with: {
         name: `story-gate-shard-${MATRIX_SHARD_EXPRESSION}-of-4`,
-        path: "packages/ui/test/story-gate/output",
+        path: "test-results/ui-story-gate/output",
       },
     });
   });

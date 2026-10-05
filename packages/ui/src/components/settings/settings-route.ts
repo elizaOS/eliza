@@ -17,24 +17,9 @@ export type SettingsRoute =
 
 const CONNECTOR_DETAIL_HISTORY_KEY = "elizaSettingsConnectorDetail";
 
-const SETTINGS_HASH_ALIASES: Readonly<Record<string, string>> = {
-  general: "appearance",
-  cloud: "ai-model",
-  providers: "ai-model",
-  billing: "cloud-billing",
-  "api-keys": "cloud-api-keys",
-  shortcuts: "desktop-integration",
-  hotkeys: "desktop-integration",
-  keyboard: "desktop-integration",
-  // Legacy aliases that still appear in bookmarks / deep links.
-  twitter: "x",
-};
-
-/** Canonicalize a connector id segment (trim, lower-case, alias map). */
+/** Normalize a connector id segment. */
 export function normalizeConnectorRouteId(raw: string): string {
-  const trimmed = raw.trim().toLowerCase();
-  if (!trimmed) return trimmed;
-  return SETTINGS_HASH_ALIASES[trimmed] ?? trimmed;
+  return raw.trim().toLowerCase();
 }
 
 /**
@@ -47,10 +32,8 @@ export function parseSettingsHash(rawHash: string): SettingsRoute {
   if (!withoutHash) return { kind: "hub" };
 
   const segments = withoutHash.split("/").filter(Boolean);
-  const [rawHead, rawConnectorId] = segments;
-  if (!rawHead) return { kind: "hub" };
-
-  const head = SETTINGS_HASH_ALIASES[rawHead] ?? rawHead;
+  const [head, rawConnectorId] = segments;
+  if (!head) return { kind: "hub" };
 
   if (segments.length === 1) {
     return { kind: "section", sectionId: head };
@@ -78,7 +61,7 @@ export function readSettingsHashRoute(): SettingsRoute {
   return parseSettingsHash(window.location.hash);
 }
 
-/** Section id only — back-compat for callers that ignore connector detail. */
+/** Read the section containing the current settings route. */
 export function readSettingsHashSectionId(): string | null {
   const route = readSettingsHashRoute();
   if (route.kind === "hub") return null;

@@ -32,7 +32,6 @@ import { shouldDecorateHttpTelemetryStatus } from "@elizaos/cloud-shared/lib/obs
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
-  canonicalCloudPathForLegacyDashboard,
   canonicalElizaServiceHostname,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
@@ -770,10 +769,6 @@ export function redirectFrontendHost(
     );
   }
   const classified = classifyElizaHostname(hostname);
-  const canonicalDashboardPath = canonicalCloudPathForLegacyDashboard(
-    url.pathname,
-    url.search,
-  );
   let canonicalHostname: string | null = null;
   if (hostname === "www.eliza.app") {
     canonicalHostname = new URL(
@@ -784,9 +779,6 @@ export function redirectFrontendHost(
       ELIZA_DOMAIN_CONTRACTS[classified.environment ?? "production"];
     if (isFrontendAliasBackendPath(url)) {
       canonicalHostname = new URL(contract.cloudApiOrigin).hostname;
-    } else if (canonicalDashboardPath) {
-      canonicalHostname = new URL(contract.cloudAppOrigin).hostname;
-      url.pathname = canonicalDashboardPath;
     } else {
       canonicalHostname = classified.canonicalHostname;
     }
@@ -808,13 +800,6 @@ export function redirectFrontendHost(
     }
   }
   if (!canonicalHostname || canonicalHostname === hostname) return null;
-  if (
-    canonicalDashboardPath &&
-    (classified.role === "legacy-marketing" ||
-      classified.role === "legacy-cloud-app")
-  ) {
-    url.pathname = canonicalDashboardPath;
-  }
   const targetUrl = new URL(url);
   targetUrl.hostname = canonicalHostname;
   return Response.redirect(targetUrl.toString(), 308);

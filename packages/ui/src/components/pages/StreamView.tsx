@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { getBootConfig } from "../../config/boot-config";
+import { getBootConfig } from "../../config/boot-config-store";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useAppSelectorShallow } from "../../state/app-store";

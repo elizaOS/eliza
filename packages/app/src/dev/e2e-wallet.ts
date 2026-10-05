@@ -21,8 +21,8 @@
  * four, this module is a no-op and the lazy viem import never loads.
  */
 
+import { getBootConfig } from "@elizaos/ui";
 import { isStoreBuild } from "../../../ui/src/build-variant";
-import { getBootConfig } from "../../../ui/src/config/boot-config";
 import { logger } from "../../../ui/src/logger";
 import { isAndroid, isIOS } from "../../../ui/src/platform/init";
 import { getInjectedEthereumProvider } from "../../../ui/src/state/cloud-siwe-login";

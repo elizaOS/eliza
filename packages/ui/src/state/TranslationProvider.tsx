@@ -16,8 +16,11 @@ import {
 } from "react";
 import { client } from "../api/client";
 import { fetchSuggestedLanguage } from "../api/i18n-locale-client";
-import { appNameInterpolationVars, DEFAULT_BRANDING } from "../config/branding";
 import type { BrandingConfig } from "../config/branding-base";
+import {
+  appNameInterpolationVars,
+  DEFAULT_BRANDING,
+} from "../config/branding-base";
 import {
   createTranslator,
   ensureLanguageLoaded,

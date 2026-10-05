@@ -160,11 +160,3 @@ export function markPermissionsPrimed(): void {
     // benign degradation, not a failure worth surfacing.
   }
 }
-/** Clear the flag so the priming modal can be re-triggered (Settings entry). */
-export function resetPermissionPriming(): void {
-  try {
-    shellLocalStorage.removeItem(PERMISSION_PRIMING_STORAGE_KEY);
-  } catch {
-    // Same benign degradation as markPermissionsPrimed.
-  }
-}

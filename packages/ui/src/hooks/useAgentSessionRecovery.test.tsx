@@ -37,7 +37,7 @@ vi.mock("../api/client-cloud", () => ({
 vi.mock("../state/persistence", () => ({
   loadPersistedActiveServer: () => mockActiveServer(),
 }));
-vi.mock("../config/boot-config", () => ({
+vi.mock("../config/boot-config-store", () => ({
   getBootConfig: () => mockBootConfig(),
 }));
 vi.mock("../state/agent-session-recovery-runner", () => ({

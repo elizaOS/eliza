@@ -17,8 +17,10 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
-vi.mock("../../config/branding", () => ({
+vi.mock("../../config/branding-base", () => ({
   appNameInterpolationVars: () => ({}),
+}));
+vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({
     appName: "Eliza",
     orgName: "elizaOS",

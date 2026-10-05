@@ -97,18 +97,6 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
-    "./voice/pcm-wave": {
-      "eliza-source": "./src/voice/pcm-wave.ts",
-      "types": "./dist/voice/pcm-wave.d.ts",
-      "import": "./dist/voice/pcm-wave.js",
-      "default": "./dist/voice/pcm-wave.js"
-    },
-    "./api/task-lifecycle": {
-      "eliza-source": "./src/api/task-lifecycle.ts",
-      "types": "./dist/api/task-lifecycle.d.ts",
-      "import": "./dist/api/task-lifecycle.js",
-      "default": "./dist/api/task-lifecycle.js"
-    },
     "./styles": "./dist/styles.js",
     "./styles/*.css": "./dist/styles/*.css",
     "./cloud-ui/index.css": "./dist/cloud-ui/index.css",
@@ -118,12 +106,6 @@
     "./brand.css": "./dist/brand/brand.css",
     "./brand-classic.css": "./dist/brand-classic/brand.css",
     "./assets/*": "./dist/assets/*",
-    "./voice/microphone-capture": {
-      "eliza-source": "./src/voice/microphone-capture.ts",
-      "types": "./dist/voice/microphone-capture.d.ts",
-      "import": "./dist/voice/microphone-capture.js",
-      "default": "./dist/voice/microphone-capture.js"
-    },
     "./voice/microphone-samples.worklet.mjs": {
       "eliza-source": "./src/voice/microphone-samples.worklet.mjs",
       "import": "./dist/voice/microphone-samples.worklet.mjs",

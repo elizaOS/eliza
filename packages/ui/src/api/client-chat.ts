@@ -83,7 +83,6 @@ import type {
   WorkbenchVfsSnapshot,
 } from "./client-types-config";
 import type {
-  ApiError,
   ConnectionTestResult,
   ConversationMetadata,
   DatabaseConfigResponse,
@@ -296,37 +295,6 @@ function buildTrajectoryParams(
 // ---------------------------------------------------------------------------
 declare module "./client-base.js" {
   interface ElizaClient {
-    sendChatRest(
-      text: string,
-      channelType?: ConversationChannelType,
-    ): Promise<{
-      text: string;
-      agentName: string;
-      noResponseReason?: "ignored";
-      failureKind?: ChatFailureKind;
-      terminalFailure?: ChatTerminalFailure;
-      replyRecoveryAvailable?: boolean;
-      localInference?: LocalInferenceChatMetadata;
-      actionResults?: ChatActionResultSummary[];
-    }>;
-    sendChatMessage(text: string, channelType?: ConversationChannelType): void;
-    sendChatStream(
-      text: string,
-      onToken: (token: string, accumulatedText?: string) => void,
-      channelType?: ConversationChannelType,
-      signal?: AbortSignal,
-    ): Promise<{
-      text: string;
-      agentName: string;
-      completed: boolean;
-      noResponseReason?: "ignored";
-      usage?: ChatTokenUsage;
-      failureKind?: ChatFailureKind;
-      terminalFailure?: ChatTerminalFailure;
-      replyRecoveryAvailable?: boolean;
-      localInference?: LocalInferenceChatMetadata;
-      actionResults?: ChatActionResultSummary[];
-    }>;
     listConversations(options?: { signal?: AbortSignal }): Promise<{
       conversations: Conversation[];
     }>;
@@ -1021,113 +989,6 @@ declare module "./client-base.js" {
 // ---------------------------------------------------------------------------
 // Prototype augmentation
 // ---------------------------------------------------------------------------
-const LEGACY_CHAT_COMPAT_TITLE = "Quick Chat";
-const LEGACY_CHAT_CONVERSATION_STORAGE_PREFIX = "legacy_chat_conversation";
-function getLegacyChatConversationStorageKey(client: ElizaClient): string {
-  const base =
-    client.getBaseUrl() ||
-    (typeof window !== "undefined" ? window.location.origin : "same-origin");
-  return `${LEGACY_CHAT_CONVERSATION_STORAGE_PREFIX}:${encodeURIComponent(base)}`;
-}
-function readLegacyChatConversationId(client: ElizaClient): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const stored = window.sessionStorage.getItem(
-    getLegacyChatConversationStorageKey(client),
-  );
-  return stored?.trim() ? stored.trim() : null;
-}
-function writeLegacyChatConversationId(
-  client: ElizaClient,
-  conversationId: string | null,
-): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  const key = getLegacyChatConversationStorageKey(client);
-  if (conversationId?.trim()) {
-    window.sessionStorage.setItem(key, conversationId.trim());
-    return;
-  }
-  window.sessionStorage.removeItem(key);
-}
-async function ensureLegacyChatConversationId(
-  client: ElizaClient,
-): Promise<string> {
-  const cached = readLegacyChatConversationId(client);
-  if (cached) {
-    return cached;
-  }
-  const { conversation } = await client.createConversation(
-    LEGACY_CHAT_COMPAT_TITLE,
-  );
-  writeLegacyChatConversationId(client, conversation.id);
-  return conversation.id;
-}
-ElizaClient.prototype.sendChatRest = async function (
-  this: ElizaClient,
-  text,
-  channelType = "DM",
-) {
-  const sendToConversation = async (conversationId: string) =>
-    this.sendConversationMessage(conversationId, text, channelType, undefined);
-  const conversationId = await ensureLegacyChatConversationId(this);
-  try {
-    return await sendToConversation(conversationId);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.name === "ApiError" &&
-      (error as ApiError).status === 404
-    ) {
-      writeLegacyChatConversationId(this, null);
-      return sendToConversation(await ensureLegacyChatConversationId(this));
-    }
-    throw error;
-  }
-};
-ElizaClient.prototype.sendChatMessage = function (
-  this: ElizaClient,
-  text,
-  channelType = "DM",
-) {
-  void this.sendChatRest(text, channelType).catch(() => {
-    // View affordances use this as a fire-and-forget "ask Eliza" bridge; the
-    // chat surface owns visible delivery/error state for full composer sends.
-  });
-};
-ElizaClient.prototype.sendChatStream = async function (
-  this: ElizaClient,
-  text,
-  onToken,
-  channelType = "DM",
-  signal?,
-) {
-  const streamConversation = async (conversationId: string) =>
-    this.sendConversationMessageStream(
-      conversationId,
-      text,
-      onToken,
-      channelType,
-      signal,
-      undefined,
-    );
-  const conversationId = await ensureLegacyChatConversationId(this);
-  try {
-    return await streamConversation(conversationId);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.name === "ApiError" &&
-      (error as ApiError).status === 404
-    ) {
-      writeLegacyChatConversationId(this, null);
-      return streamConversation(await ensureLegacyChatConversationId(this));
-    }
-    throw error;
-  }
-};
 // A serverless / shared-runtime agent may omit `updatedAt` from conversation
 // objects (a never-updated conversation legitimately has updatedAt == createdAt).
 // The shared `isConversationRecord` guard requires the standard shape, so without

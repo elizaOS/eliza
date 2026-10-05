@@ -24,8 +24,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { currentElizaAppOrigin } from "../../../utils/cloud-agent-base";
 import { deriveAgentRow, ElizaAgentsTable } from "./eliza-agents-table";
 
-vi.mock("../lib/i18n", () => ({
-  useT: () => (_key: string, options?: { defaultValue?: string }) =>
+vi.mock("../../shell/CloudI18nProvider", () => ({
+  useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
     options?.defaultValue ?? _key,
 }));
 

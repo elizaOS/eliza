@@ -194,7 +194,7 @@ export function toAppInfo(
     uiExtension: meta?.uiExtension,
     viewer,
     session: meta?.session,
-    developerOnly: meta?.developerOnly,
+    viewKind: meta?.viewKind,
     visibleInAppStore: meta?.visibleInAppStore,
     mainTab: meta?.mainTab,
     catalogSection: meta?.catalogSection,

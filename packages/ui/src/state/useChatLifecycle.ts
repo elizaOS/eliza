@@ -36,15 +36,15 @@ import { alertDesktopMessage } from "../utils/desktop-dialogs";
 import { inferAgentRuntimeTarget } from "./agent-runtime-target";
 import { completeResetLocalStateAfterServerWipe as runCompleteResetLocalStateAfterServerWipe } from "./complete-reset-local-state-after-wipe";
 import { handleResetAppliedFromMainCore } from "./handle-reset-applied-from-main";
+import { parseAgentStatusFromMainMenuResetPayload } from "./parsers";
 import {
   clearAvatarIndex,
   clearPersistedActiveServer,
-  LIFECYCLE_MESSAGES,
   loadPersistedActiveServer,
-  parseAgentStatusFromMainMenuResetPayload,
-} from "./internal";
+} from "./persistence";
 import {
   type AppState,
+  LIFECYCLE_MESSAGES,
   type LifecycleAction,
   shouldAwaitAgentReadiness,
 } from "./types";

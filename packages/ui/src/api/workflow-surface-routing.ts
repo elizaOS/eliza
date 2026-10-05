@@ -158,8 +158,3 @@ export function workflowSurfaceBaseUrl(
     resolveWorkflowSurfaceTarget(activeBaseUrl)?.baseUrl ?? activeBaseUrl ?? ""
   );
 }
-
-/** Test-only: drop the memoized routed client between cases. */
-export function __resetWorkflowSurfaceRoutingForTest(): void {
-  cachedRoutedClient = null;
-}
