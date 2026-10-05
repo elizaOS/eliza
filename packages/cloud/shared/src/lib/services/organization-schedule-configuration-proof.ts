@@ -10,7 +10,7 @@ import {
   recoverOriginalScheduleSnapshot,
 } from "./organization-schedule-effect-origin";
 import {
-  mapOrganizationDowngradeSchedulePhases,
+  mapRetainedOrganizationSchedulePhases,
   organizationScheduleDefaultsObservationSchema,
   organizationSchedulePhaseObservationSchema,
 } from "./organization-schedule-phase-mapping";
@@ -57,12 +57,9 @@ function normalizeDiscounts(value: unknown) {
 function normalizeRates(value: unknown) {
   return value === undefined || value === null || value === "" ? [] : value;
 }
-export function proveOrganizationScheduleConfiguration(input: {
+export function proveOriginalOrganizationScheduleConfiguration(input: {
   originalCreate: Parameters<typeof recoverOriginalCreatedSchedule>[0];
   originalConfiguration: Parameters<typeof recoverOriginalScheduleSnapshot>[0];
-  rawCurrentSchedule: unknown;
-  rawSubscription: unknown;
-  rawCustomer: unknown;
   originalTerms: OrganizationScheduleQuoteTerms;
 }) {
   const original = recoverOriginalCreatedSchedule(input.originalCreate),
@@ -72,6 +69,19 @@ export function proveOrganizationScheduleConfiguration(input: {
   );
   if (!parsed.success || parsed.data.kind !== "schedule_configure") reject();
   const request = parsed.data;
+  // This is the original authenticated evidence time, not a backdated current observation.
+  const receipt = z
+    .object({ kind: z.enum(["response", "event"]), observedAt: z.string().datetime() })
+    .parse(input.originalConfiguration.originalReceipt);
+  const boundary = input.originalTerms.subscription.current_period_end;
+  const responseBeforeBoundary =
+    receipt.kind === "response" && Date.parse(receipt.observedAt) < boundary * 1000;
+  const eventBeforeBoundary =
+    input.originalConfiguration.evidence.kind === "event" &&
+    z
+      .object({ created: z.number().int().nonnegative().safe() })
+      .parse(input.originalConfiguration.evidence.raw).created < boundary;
+  if (!responseBeforeBoundary && !eventBeforeBoundary) reject();
   if (
     original.id !== configured.id ||
     request.scheduleId !== original.id ||
@@ -92,20 +102,13 @@ export function proveOrganizationScheduleConfiguration(input: {
     reject();
   // Reconstruct the permitted request from the original creation snapshot and quote.
   // A durable but structurally valid request must not substitute future retained terms.
-  const expectedRequest = mapOrganizationDowngradeSchedulePhases({
-    ...input.originalCreate,
-    observedAt: input.originalConfiguration.observedAt,
-    rawCurrentSchedule: original,
-    rawSubscription: input.rawSubscription,
-    rawCustomer: input.rawCustomer,
+  const expectedRequest = mapRetainedOrganizationSchedulePhases({
+    schedule: original,
     originalTerms: input.originalTerms,
+    mappingAt: input.originalConfiguration.originalRequest.startedAt,
     targetPriceId: request.params.phases[1].items[0]!.price,
   });
   same(request, expectedRequest);
-  const current = z.record(z.string(), z.unknown()).safeParse(input.rawCurrentSchedule);
-  if (!current.success) reject();
-  const { lastResponse: _transport, ...currentSnapshot } = current.data;
-  same(configured, currentSnapshot);
   const defaults = organizationScheduleDefaultsObservationSchema.parse(configured.default_settings);
   same(defaults, organizationScheduleDefaultsObservationSchema.parse(original.default_settings));
   const phases = z
@@ -188,6 +191,29 @@ export function proveOrganizationScheduleConfiguration(input: {
     same(normalizeDiscounts(a.discounts), normalizeDiscounts(e.discounts));
     same(a.billing_thresholds, e.billing_thresholds ? e.billing_thresholds : null);
   }
+  return {
+    configuredSnapshot: configured,
+    scheduleId: configured.id,
+    requestDigest: scheduleEffectRequestDigest(request),
+    snapshotDigest: settlementDigest(configured),
+    effectiveAt: request.params.phases[1].start_date,
+  };
+}
+
+/** Current-period wrapper. Original evidence remains separate from fresh live terms. */
+export function proveOrganizationScheduleConfiguration(
+  input: Parameters<typeof proveOriginalOrganizationScheduleConfiguration>[0] & {
+    rawCurrentSchedule: unknown;
+    rawSubscription: unknown;
+    rawCustomer: unknown;
+  },
+) {
+  const { configuredSnapshot: configured, ...proof } =
+    proveOriginalOrganizationScheduleConfiguration(input);
+  const current = z.record(z.string(), z.unknown()).safeParse(input.rawCurrentSchedule);
+  if (!current.success) reject();
+  const { lastResponse: _transport, ...currentSnapshot } = current.data;
+  same(configured, currentSnapshot);
   const subscription = z.record(z.string(), z.unknown()).safeParse(input.rawSubscription);
   if (
     !subscription.success ||
@@ -203,10 +229,5 @@ export function proveOrganizationScheduleConfiguration(input: {
     rawCustomer: input.rawCustomer,
     observedAt: input.originalConfiguration.observedAt,
   });
-  return {
-    scheduleId: configured.id,
-    requestDigest: scheduleEffectRequestDigest(request),
-    snapshotDigest: settlementDigest(configured),
-    effectiveAt: request.params.phases[1].start_date,
-  };
+  return proof;
 }

@@ -149,3 +149,10 @@ rechecks owned failed-invoice, retained catalog/account and compatible past-due/
 live state under the organization lock, retaining the original paid period and pending
 plan without allowance. Later captured payment uses the existing chronological owner.
 Draft/void gaps and an active live subscription with old debt remain explicit uncertainty.
+
+Original configuration proof is separate from current-period publication. It reconstructs
+the request from authenticated creation and immutable retained terms, checks the original
+review/dispatch window, and requires a saved pre-boundary response or an authenticated
+pre-boundary event. Recovery time stays current; retained terms are not fabricated live
+observations. Publication still requires its fresh current-period checks until late
+configuration reconciliation composes independent live compatibility and source authority.
