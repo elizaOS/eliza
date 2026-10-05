@@ -303,3 +303,12 @@ This is provenance evidence only: provider-shape qualification, fresh capture an
 original-invoice observations, durable attribution, source fencing and allowance
 policy remain required before financial publication. No maintenance lane calls
 this calculation yet.
+
+`observeOriginalInvoiceDebt` brackets two current reads of every traced original
+with repeated authenticated collecting-capture observations. Current projected
+collector and original invoice fields must still equal retained facts. It reuses
+the read-only absolute-deadline transport with four concurrent component readers,
+awaits outstanding readers on failure, and returns only a complete, consistent
+observation. Provider changes and private response errors reject. This helper is
+not yet wired to journal/maintenance and does not grant allowance; repeated reads
+are not an atomic provider snapshot.

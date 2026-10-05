@@ -28,6 +28,33 @@ function unavailable(reason: string): never {
     context: { reason },
   });
 }
+/** Projects a current provider invoice without changing the retained original's identity. */
+export function projectRetainedInvoiceState(raw: unknown, value: SubscriptionInvoiceEventEvidence) {
+  const original = bindSubscriptionInvoiceEventEvidence(value, value.scope);
+  const scope = original.scope,
+    initial = original.event.data.object;
+  const parsed = invoiceSchema.safeParse(raw);
+  if (!parsed.success) unavailable("unsupported_invoice_shape");
+  const current = parsed.data,
+    line = current.lines.data[0]!,
+    originalLine = initial.lines.data[0]!;
+  if (
+    current.id !== scope.invoiceId ||
+    current.customer !== scope.customerId ||
+    current.subscription !== scope.providerSubscriptionId ||
+    current.livemode !== scope.livemode ||
+    current.currency !== initial.currency ||
+    line.id !== originalLine.id ||
+    line.subscription !== originalLine.subscription ||
+    line.subscription_item !== originalLine.subscription_item ||
+    line.price.id !== originalLine.price.id ||
+    line.price.product !== originalLine.price.product ||
+    line.period.start !== originalLine.period.start ||
+    line.period.end !== originalLine.period.end
+  )
+    unavailable("original_invoice_identity_changed");
+  return current;
+}
 /** Caller supplies the original receipt's evidence and an authenticated read-only deadline client.
  * Provider consistency checks detect observed changes, not an atomic provider snapshot.
  * The caller must recheck receipt lease and organization fencing before durable publication. */
@@ -58,29 +85,10 @@ export async function observeRetainedInvoiceBalance(
       unavailable("merchant_mismatch");
   }
   async function invoice() {
-    const parsed = invoiceSchema.safeParse(
+    return projectRetainedInvoiceState(
       await read(() => stripe.invoices.retrieve(scope.invoiceId, {}, options)),
+      original,
     );
-    if (!parsed.success) unavailable("unsupported_invoice_shape");
-    const current = parsed.data,
-      line = current.lines.data[0]!,
-      originalLine = initial.lines.data[0]!;
-    if (
-      current.id !== scope.invoiceId ||
-      current.customer !== scope.customerId ||
-      current.subscription !== scope.providerSubscriptionId ||
-      current.livemode !== scope.livemode ||
-      current.currency !== initial.currency ||
-      line.id !== originalLine.id ||
-      line.subscription !== originalLine.subscription ||
-      line.subscription_item !== originalLine.subscription_item ||
-      line.price.id !== originalLine.price.id ||
-      line.price.product !== originalLine.price.product ||
-      line.period.start !== originalLine.period.start ||
-      line.period.end !== originalLine.period.end
-    )
-      unavailable("original_invoice_identity_changed");
-    return current;
   }
   async function snapshot() {
     await account();
