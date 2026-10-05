@@ -395,6 +395,7 @@ export async function runIsolatedAndroidTest({
     variants: [],
   };
   let admitted = false,
+    campaignFinished = false,
     previousHome,
     failure,
     activeContext,
@@ -597,7 +598,8 @@ export async function runIsolatedAndroidTest({
         validateRunnerArgs(args);
         const copiedArgs = [...args];
         assert.ok(
-          record === report.variants.at(-1) &&
+          !campaignFinished &&
+            record === report.variants.at(-1) &&
             !record.passed &&
             owned.has(packageName) &&
             owned.has(testPackage),
@@ -744,6 +746,8 @@ export async function runIsolatedAndroidTest({
           );
       }
     } finally {
+      // Revoke saved phase callbacks even when cleanup retains the installed APKs.
+      campaignFinished = true;
       if (!deviceLease) lease.release();
     }
   }
