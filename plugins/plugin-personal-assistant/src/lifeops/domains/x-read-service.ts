@@ -346,7 +346,9 @@ export class XReadDomain {
   }
 
   async readXInboundDms(opts: { limit?: number } = {}): Promise<LifeOpsXDm[]> {
-    await this.syncXDms(opts);
+    // The connector already reads available history before slicing. Retain all
+    // directions in the cache, then apply the limit to inbound messages only.
+    await this.syncXDms();
     return this.ctx.repository.listXDms(this.ctx.agentId(), {
       ...opts,
       inbound: true,

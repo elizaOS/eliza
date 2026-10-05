@@ -716,9 +716,13 @@ export async function fetchXDmMessages(
   const limit = opts.limit;
   let dms: LifeOpsXDm[];
   try {
-    const page = limit === undefined ? undefined : { limit };
-    await source.syncXDms(page);
-    dms = await source.getXDms({ ...page, inbound: true });
+    // Sync the complete available mixed-direction history before applying the
+    // inbound-only result limit; owner replies must not hide candidates.
+    await source.syncXDms();
+    dms = await source.getXDms({
+      ...(limit === undefined ? {} : { limit }),
+      inbound: true,
+    });
   } catch (error) {
     logger.warn(
       `[InboxMessageFetcher] x_dm sync/read failed: ${errorMessage(error)}`,
