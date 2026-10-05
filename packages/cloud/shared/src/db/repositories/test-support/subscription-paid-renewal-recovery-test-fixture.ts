@@ -263,6 +263,126 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     ).toBe(0);
   });
 
+  for (const scenario of ["partial", "full", "excess", "waived", "reversed", "changing"] as const) {
+    test(`canonical SDK recovery proves ${scenario} credit settlement without synthetic payments`, async () => {
+      const f = await seed();
+      const credit =
+        scenario === "partial"
+          ? 500
+          : scenario === "excess"
+            ? 4000
+            : scenario === "waived"
+              ? 0
+              : 3000;
+      const used = Math.min(credit, 3000),
+        total = scenario === "waived" ? 0 : 3000;
+      const due = total - used;
+      const discount = { amount: 3000, discount: "di_waived" };
+      objects.set(`/v1/invoices/${f.invoice.id}`, {
+        ...f.invoice,
+        starting_balance: -credit,
+        ending_balance: -credit + used,
+        total,
+        amount_due: due,
+        amount_paid: due,
+        payment_intent: due ? f.invoice.payment_intent : null,
+        charge: due ? f.invoice.charge : null,
+        ...(scenario === "waived"
+          ? {
+              discounts: [discount.discount],
+              total_discount_amounts: [discount],
+              lines: {
+                ...f.invoice.lines,
+                data: [{ ...f.invoice.lines.data[0]!, discount_amounts: [discount] }],
+              },
+            }
+          : {}),
+      });
+      objects.set(`/v1/payment_intents/${f.paymentIntent.id}`, {
+        ...f.paymentIntent,
+        amount: due,
+        amount_received: due,
+      });
+      objects.set(`/v1/charges/${f.charge.id}`, { ...f.charge, amount: due, amount_captured: due });
+      const applied = {
+        id: "cbtxn_applied",
+        object: "customer_balance_transaction",
+        customer: f.customer.id,
+        invoice: f.invoice.id,
+        livemode: false,
+        currency: "usd",
+        type: "applied_to_invoice",
+        amount: used,
+        ending_balance: -credit + used,
+        created: f.invoice.status_transitions.paid_at,
+        credit_note: null,
+      };
+      const data =
+        scenario === "reversed"
+          ? [
+              { ...applied, id: "cbtxn_reversal", type: "unapplied_from_invoice", amount: -used },
+              applied,
+            ]
+          : [applied];
+      objects.set(`/v1/customers/${f.customer.id}/balance_transactions?limit=100`, {
+        object: "list",
+        has_more: false,
+        data,
+      });
+      objects.set(`/v1/customers/${f.customer.id}/balance_transactions?limit=1`, {
+        object: "list",
+        has_more: data.length > 1,
+        data: [scenario === "changing" ? { ...applied, id: "cbtxn_new" } : data[0]],
+      });
+      const result = await service.recoverMissedSubscriptionEvents();
+      const denied = scenario === "reversed" || scenario === "changing";
+      expect(await allowanceCount(f.source.organization_id)).toBe(denied ? 0 : 1);
+      expect(result.attempts[0]?.disposition).toBe(denied ? "unavailable" : "applied");
+      expect(writes).toBe(0);
+      if (!due)
+        expect(
+          requests.some((path) => path.includes("/payment_intents/") || path.includes("/charges/")),
+        ).toBeFalse();
+      if (!denied) {
+        expect(
+          (
+            await database.query(
+              "SELECT granted_amount::text AS amount FROM subscription_allowance_periods WHERE organization_id=$1",
+              [f.source.organization_id],
+            )
+          ).rows,
+        ).toEqual([{ amount: "25.000000" }]);
+        const { reconcileStripePaidRenewal } = await import(
+          "../../../lib/services/stripe-paid-renewal"
+        );
+        const eventId = `evt_${randomUUID().replaceAll("-", "")}`;
+        const event = {
+          id: eventId,
+          type: "invoice.paid",
+          created: Math.floor(Date.now() / 1000),
+          livemode: false,
+          data: {
+            object: { id: f.invoice.id, object: "invoice", billing_reason: "subscription_cycle" },
+          },
+        };
+        await reconcileStripePaidRenewal({
+          eventId,
+          eventType: "invoice.paid",
+          event,
+        } as Parameters<typeof reconcileStripePaidRenewal>[0]);
+        expect(await allowanceCount(f.source.organization_id)).toBe(1);
+        expect(
+          (
+            await database.query(
+              "SELECT count(*)::int AS count FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+              [f.source.organization_id],
+            )
+          ).rows,
+        ).toEqual([{ count: 1 }]);
+      }
+    });
+  }
+
   for (const channel of ["cron", "webhook"] as const) {
     for (const invalid of [null, "legacy", "account", "credential_mode"] as const) {
       test(`rotated binding ${invalid ?? "preserves purchase"} through ${channel} paid renewal`, async () => {
