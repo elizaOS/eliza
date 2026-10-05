@@ -5,16 +5,12 @@ verifyPackedConsumer({
   packageRoot: resolve(import.meta.dirname, "../.."),
   fixtureDirectory: import.meta.dirname,
   requiredFiles: [
-    "dist/android.js",
-    "dist/android.d.ts",
-    "src/android.ts",
-    "android/src/main/java/ai/eliza/plugins/reminders/ReminderPlugin.java",
-  ],
-  sourcePrefixes: [
+    "dist/esm/android.js",
+    "dist/esm/android.d.ts",
+    "dist/plugin.cjs.js",
+    "dist/esm/index.js",
     "android/build.gradle",
-    "android/README.md",
-    "android/src/main",
   ],
+  sourcePrefixes: ["android"],
   dependencies: ["@capacitor/core"],
-  compiler: process.env.REMINDERS_TSC || undefined,
 });
