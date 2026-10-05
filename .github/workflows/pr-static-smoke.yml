@@ -473,6 +473,8 @@ jobs:
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/organization-schedule-effects.postgres.integration.test.ts \
             packages/cloud/shared/src/db/repositories/organization-schedule-dispatch-source.postgres.integration.test.ts \
+            packages/cloud/shared/src/db/repositories/organization-schedule-compensation-result.postgres.integration.test.ts \
+            packages/cloud/shared/src/db/repositories/organization-schedule-compensation-finalization.postgres.integration.test.ts \
             packages/cloud/shared/src/db/repositories/organization-schedule-quote-terms-legacy.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/organization-schedule-migration-ledger.test.ts \

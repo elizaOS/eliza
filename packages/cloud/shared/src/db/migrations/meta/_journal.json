@@ -3459,6 +3459,13 @@
       "when": 1796083200141,
       "tag": "0523_organization_schedule_compensation",
       "breakpoints": true
+    },
+    {
+      "idx": 494,
+      "version": "7",
+      "when": 1796083200142,
+      "tag": "0524_organization_schedule_compensation_result",
+      "breakpoints": true
     }
   ]
 }

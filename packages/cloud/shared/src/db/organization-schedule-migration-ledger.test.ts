@@ -8,12 +8,13 @@ test("canonical deployment ledger includes ordered downgrade quote, effect and r
     (m) => m.entry.tag === "0519_organization_upgrade_void_result",
   );
   expect(parent).toBeGreaterThanOrEqual(0);
-  const schedule = migrations.slice(parent + 1, parent + 5);
+  const schedule = migrations.slice(parent + 1, parent + 6);
   expect(schedule.map((m) => m.entry.tag)).toEqual([
     "0520_organization_downgrade_quotes",
     "0521_organization_schedule_effects",
     "0522_organization_schedule_quote_terms",
     "0523_organization_schedule_compensation",
+    "0524_organization_schedule_compensation_result",
   ]);
   for (const [index, migration] of schedule.entries()) {
     const previous = migrations[parent + index]!;
