@@ -1,8 +1,9 @@
 /** Exercises real wallet generation, validation, import and environment readback across the configuration-safe leaf and public wallet service; no cryptography or storage is mocked. */
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createTestVault, type TestVault } from "@elizaos/auth/testing";
 import { afterEach, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
 import {
@@ -17,6 +18,10 @@ import {
   syncSolanaPublicKeyEnv,
 } from "../src/api/wallet-keygen.ts";
 import { loadElizaConfig } from "../src/config/config.ts";
+import {
+  getAgentHostBridge,
+  setAgentHostBridge,
+} from "../src/runtime/host-bridge.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -125,3 +130,238 @@ it.each([
     }
   },
 );
+
+it.each([
+  { osStore: "1", vault: "ok", route: "generate", chain: "both", status: 200 },
+  { osStore: "1", vault: "ok", route: "import", chain: "evm", status: 200 },
+  { osStore: "1", vault: "none", route: "generate", chain: "evm", status: 500 },
+  { osStore: "1", vault: "none", route: "import", chain: "evm", status: 500 },
+  {
+    osStore: "1",
+    vault: "rejects-solana",
+    route: "generate",
+    chain: "both",
+    status: 500,
+  },
+  { osStore: "0", vault: "none", route: "generate", chain: "evm", status: 200 },
+] as const)(
+  "keeps local wallet keys restorable: $route $chain, ELIZA_WALLET_OS_STORE=$osStore, vault $vault",
+  async ({ osStore, vault, route, chain, status }) => {
+    const directory = await mkdtemp(join(tmpdir(), "wallet-key-store-http-"));
+    const savedBridge = getAgentHostBridge();
+    let testVault: TestVault | undefined;
+    let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+    try {
+      const filename = join(directory, "eliza.json");
+      const token = randomUUID();
+      for (const [key, value] of Object.entries({
+        ELIZA_STATE_DIR: directory,
+        ELIZA_CONFIG_PATH: filename,
+        ELIZA_PERSIST_CONFIG_PATH: filename,
+        ELIZA_API_BIND_HOST: "127.0.0.1",
+        ELIZA_API_TOKEN: token,
+        ELIZA_REQUIRE_LOCAL_AUTH: "1",
+        ELIZA_WALLET_AUTO_PROVISION: "0",
+      }))
+        vi.stubEnv(key, value);
+      for (const key of [
+        "ELIZA_WALLET_OS_STORE",
+        "ELIZAOS_CLOUD_API_KEY",
+        "STEWARD_API_URL",
+        "EVM_PRIVATE_KEY",
+        "SOLANA_PRIVATE_KEY",
+        "SOLANA_PUBLIC_KEY",
+        "WALLET_PUBLIC_KEY",
+      ])
+        vi.stubEnv(key, undefined);
+      const previousEvmKey = generateWalletForChain("evm").privateKey;
+      if (vault !== "none") {
+        testVault = await createTestVault();
+        const realVault = testVault.vault;
+        await realVault.set("EVM_PRIVATE_KEY", previousEvmKey, {
+          sensitive: true,
+        });
+        const sharedVault =
+          vault === "rejects-solana"
+            ? new Proxy(realVault, {
+                get(target, property) {
+                  if (property === "set") {
+                    return async (key: string, ...rest: unknown[]) => {
+                      if (key === "SOLANA_PRIVATE_KEY") {
+                        throw new Error("keychain denied");
+                      }
+                      return (
+                        target.set as (...args: unknown[]) => Promise<void>
+                      )(key, ...rest);
+                    };
+                  }
+                  const value = Reflect.get(target, property, target);
+                  return typeof value === "function"
+                    ? value.bind(target)
+                    : value;
+                },
+              })
+            : realVault;
+        setAgentHostBridge({ ...savedBridge, sharedVault: () => sharedVault });
+      }
+      await writeFile(
+        filename,
+        JSON.stringify({ env: { ELIZA_WALLET_OS_STORE: osStore } }),
+      );
+      server = await startApiServer({
+        port: 0,
+        hostConfig: loadElizaConfig(),
+        skipDeferredStartupWork: true,
+      });
+      const importedKey = generateWalletForChain("evm").privateKey;
+      const response = await fetch(
+        `http://127.0.0.1:${server.port}/api/wallet/${route}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            route === "import"
+              ? { chain, privateKey: importedKey }
+              : { chain, source: "local" },
+          ),
+        },
+      );
+      expect(response.status).toBe(status);
+      const persisted = JSON.parse(await readFile(filename, "utf8"));
+      if (status !== 200) {
+        expect(await response.json()).toMatchObject({
+          error: expect.stringContaining(
+            vault === "none" ? "WALLET_OS_STORE" : "keychain denied",
+          ),
+        });
+        expect(process.env.EVM_PRIVATE_KEY).toBeUndefined();
+        expect(process.env.SOLANA_PRIVATE_KEY).toBeUndefined();
+        expect(persisted.env.EVM_PRIVATE_KEY).toBeUndefined();
+        if (testVault) {
+          expect(await testVault.vault.reveal("EVM_PRIVATE_KEY")).toBe(
+            previousEvmKey,
+          );
+          expect(await testVault.vault.has("SOLANA_PRIVATE_KEY")).toBe(false);
+        }
+        return;
+      }
+      const activeKey = process.env.EVM_PRIVATE_KEY;
+      expect(activeKey).toMatch(/^0x[0-9a-fA-F]{64}$/);
+      if (route === "import") expect(activeKey).toBe(importedKey);
+      if (!testVault) {
+        expect(persisted.env.EVM_PRIVATE_KEY).toBe(activeKey);
+        return;
+      }
+      expect(persisted.env.EVM_PRIVATE_KEY).toBeUndefined();
+      expect(persisted.env.SOLANA_PRIVATE_KEY).toBeUndefined();
+      expect(await testVault.vault.reveal("EVM_PRIVATE_KEY")).toBe(activeKey);
+      if (chain === "both") {
+        expect(process.env.SOLANA_PRIVATE_KEY).toBeTruthy();
+        expect(await testVault.vault.reveal("SOLANA_PRIVATE_KEY")).toBe(
+          process.env.SOLANA_PRIVATE_KEY,
+        );
+      }
+    } finally {
+      setAgentHostBridge(savedBridge);
+      await server?.close();
+      await testVault?.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+// Concurrent HTTP requests share process wallet state and one host vault.
+it("a failed import cannot roll back a later successful import", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "wallet-concurrent-http-"));
+  const savedBridge = getAgentHostBridge();
+  const testVault = await createTestVault();
+  let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+  try {
+    const filename = join(directory, "eliza.json");
+    const token = randomUUID();
+    for (const [key, value] of Object.entries({
+      ELIZA_STATE_DIR: directory,
+      ELIZA_CONFIG_PATH: filename,
+      ELIZA_PERSIST_CONFIG_PATH: filename,
+      ELIZA_API_BIND_HOST: "127.0.0.1",
+      ELIZA_API_TOKEN: token,
+      ELIZA_REQUIRE_LOCAL_AUTH: "1",
+      ELIZA_WALLET_AUTO_PROVISION: "0",
+    }))
+      vi.stubEnv(key, value);
+    for (const key of [
+      "ELIZA_WALLET_OS_STORE",
+      "ELIZAOS_CLOUD_API_KEY",
+      "STEWARD_API_URL",
+      "EVM_PRIVATE_KEY",
+      "SOLANA_PRIVATE_KEY",
+      "SOLANA_PUBLIC_KEY",
+      "WALLET_PUBLIC_KEY",
+    ])
+      vi.stubEnv(key, undefined);
+    const firstKey = generateWalletForChain("evm").privateKey;
+    const secondKey = generateWalletForChain("evm").privateKey;
+    let entered!: () => void;
+    const firstEntered = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const realVault = testVault.vault;
+    const vault = new Proxy(realVault, {
+      get(target, property) {
+        if (property === "set")
+          return async (key: string, value: string, ...rest: unknown[]) => {
+            if (value === firstKey) {
+              entered();
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              throw new Error("first import denied");
+            }
+            return (target.set as (...args: unknown[]) => Promise<void>)(
+              key,
+              value,
+              ...rest,
+            );
+          };
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    setAgentHostBridge({ ...savedBridge, sharedVault: () => vault });
+    await writeFile(
+      filename,
+      JSON.stringify({ env: { ELIZA_WALLET_OS_STORE: "1" } }),
+    );
+    server = await startApiServer({
+      port: 0,
+      hostConfig: loadElizaConfig(),
+      skipDeferredStartupWork: true,
+    });
+    const request = (privateKey: string) =>
+      fetch(`http://127.0.0.1:${server!.port}/api/wallet/import`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ chain: "evm", privateKey }),
+      });
+    const first = request(firstKey);
+    await firstEntered;
+    const second = request(secondKey);
+    const responses = await Promise.all([first, second]);
+    expect(responses.map((response) => response.status)).toEqual([500, 200]);
+    // Boolean assertions keep ephemeral private keys out of failure output.
+    expect(process.env.EVM_PRIVATE_KEY === secondKey).toBe(true);
+    expect(await realVault.has("EVM_PRIVATE_KEY")).toBe(true);
+    expect((await realVault.reveal("EVM_PRIVATE_KEY")) === secondKey).toBe(
+      true,
+    );
+  } finally {
+    await server?.close();
+    setAgentHostBridge(savedBridge);
+    await testVault.dispose();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
