@@ -4,7 +4,7 @@ def production = new File(rootDir, '../../platforms/android/app/src/main/java/ai
 def generated = layout.buildDirectory.dir('generated/production-reminder-push')
 def stage = tasks.register('stageProductionReminderPush', Copy) {
     from production
-    include 'ElizaReminderMessagingService.java', 'SafePushNotificationsPlugin.java', 'DeepLinkBufferPlugin.java'
+    include 'ElizaReminderMessagingService.java', 'SafePushNotificationsPlugin.java', 'DeepLinkBufferPlugin.java', 'ReminderNotificationDismissReceiver.java'
     into generated
 }
 android {
