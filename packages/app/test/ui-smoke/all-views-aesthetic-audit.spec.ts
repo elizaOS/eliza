@@ -2322,6 +2322,11 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         // contract that later judges screenshot OCR.
         const viewRoot = semanticRootForView(page, view.slug);
         await viewRoot.waitFor({ state: "visible", timeout: 15_000 });
+        if (view.slug === "builtin-tasks") {
+          await expect(
+            page.getByTestId("task-coordinator-panel"),
+          ).toBeVisible();
+        }
         const ocrPolicy = resolveViewOcrPolicy(view.slug);
         const semanticExpectation =
           ocrPolicy.kind === "expectation"

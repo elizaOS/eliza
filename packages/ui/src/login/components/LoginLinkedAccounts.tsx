@@ -8,7 +8,7 @@ import { FormSelect, FormSelectItem } from "../../components/ui/form-select";
 import { Input } from "../../components/ui/input";
 import { truncateAddress } from "../format.js";
 import { useAuth } from "../hooks/useAuth.js";
-import { useLogin } from "../hooks/useLogin.js";
+import { useLogin } from "../provider.js";
 import type { LoginLinkedAccountsProps } from "../types.js";
 
 type PrimaryLoginMethod = {

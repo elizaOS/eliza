@@ -1,5 +1,5 @@
 /** Renderer entry: Notes views and broker calls without runtime actions or storage. */
-export { NotesView, type NotesViewProps } from "./components/NotesView.js";
+export { NotesView } from "./components/NotesView.js";
 export {
   fetchNotesState,
   interact,
