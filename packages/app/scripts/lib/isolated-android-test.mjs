@@ -1,4 +1,7 @@
-/** Explicit consumer APK acceptance. Never replaces an unowned installation. */
+/** Explicit consumer APK acceptance. Never replaces an unowned installation.
+ * Companion APKs require declared package identities and pinned SHA-256 values.
+ * They share the app/test admission, installed-byte checks and cleanup ownership.
+ */
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -46,6 +49,7 @@ export async function runIsolatedAndroidTest({
   commandTimeoutMs,
   cleanupTimeoutMs,
   variants,
+  companionApks = [],
   directory,
   evidence,
   runnerArgs = [],
@@ -148,6 +152,39 @@ export async function runIsolatedAndroidTest({
   validateRunnerArgs(upgradeRunnerArgs);
   runnerArgs = [...runnerArgs];
   upgradeRunnerArgs = [...upgradeRunnerArgs];
+  assert.ok(Array.isArray(companionApks), "Companion APK list required");
+  const companions = companionApks.map(({ apk, packageName, sha256: hash }) => {
+    assert.ok(path.isAbsolute(apk), "Absolute companion APK path required");
+    assert.match(packageName ?? "", packagePattern);
+    assert.match(
+      hash ?? "",
+      /^[a-f0-9]{64}$/,
+      "Pinned companion SHA-256 required",
+    );
+    assert.equal(sha256(apk), hash, "Companion APK differs from its pin");
+    return { apk, packageName, sha256: hash };
+  });
+  const packageNames = [
+    packageName,
+    testPackage,
+    ...companions.map((item) => item.packageName),
+  ];
+  assert.equal(
+    new Set(packageNames).size,
+    packageNames.length,
+    "Duplicate companion package identity",
+  );
+  for (const item of companions) {
+    const badging = await dumpAndroidArtifactBadgingAsync(aapt, item.apk, {
+      signal,
+      timeout: commandTimeoutMs,
+    });
+    assert.equal(
+      /package: name='([^']+)'/.exec(badging)?.[1],
+      item.packageName,
+      "Companion APK identity differs from declared package",
+    );
+  }
   const names = new Set();
   // Validate every artifact before the first install, including instrumentation's target.
   const records = [];
@@ -244,7 +281,7 @@ export async function runIsolatedAndroidTest({
     );
   const installed = async () =>
     (await packages()).some((line) =>
-      [packageName, testPackage].some((name) => line === `package:${name}`),
+      packageNames.some((name) => line === `package:${name}`),
     );
   // The canonical lease still reclaims dead PIDs. It must not expire under a live caller's work.
   const deviceKey = `android:${serial}`;
@@ -281,6 +318,7 @@ export async function runIsolatedAndroidTest({
     serial,
     packageName,
     testPackage,
+    companions,
     expectedAvdName,
     requiredAbi,
     androidUser,
@@ -380,6 +418,8 @@ export async function runIsolatedAndroidTest({
       );
       await install(variant.apk, packageName, record.appSha256);
       await install(variant.testApk, testPackage, record.testSha256);
+      for (const item of companions)
+        await install(item.apk, item.packageName, item.sha256);
       const context = {
         variant: variant.name,
         packageName,
@@ -484,8 +524,8 @@ export async function runIsolatedAndroidTest({
           expected,
           "Installed APK changed before cleanup",
         );
-      await run("uninstall", testPackage);
-      await run("uninstall", packageName);
+      for (const name of [...owned.keys()].reverse())
+        await run("uninstall", name);
       assert.ok(!(await installed()), "Variant package cleanup failed");
       owned.clear();
       assert.equal(await home(), previousHome, "Default HOME changed");
@@ -501,9 +541,7 @@ export async function runIsolatedAndroidTest({
         // Only identities absent from all users at admission are owned by this run.
         report.cleanupErrors = [];
         const remainingOwned = [];
-        for (const name of [testPackage, packageName].filter((name) =>
-          owned.has(name),
-        )) {
+        for (const name of [...owned.keys()].reverse()) {
           try {
             if ((await packages()).includes(`package:${name}`)) {
               assert.equal(
@@ -527,8 +565,8 @@ export async function runIsolatedAndroidTest({
             );
           }
         }
-        // Both processes must be stopped before either installed package is removed.
-        // A failed/uncertain stop preserves the pair for explicit fixture recovery.
+        // Every owned process must stop before any installed package is removed.
+        // A failed/uncertain stop preserves the set for explicit fixture recovery.
         report.cleanupDeferred = report.cleanupErrors.length > 0;
         if (!report.cleanupDeferred)
           for (const name of remainingOwned) {
