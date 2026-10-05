@@ -14,16 +14,23 @@ import {
   type OrganizationPlanChangeProviderBinding,
   organizationPlanChangeProviderBindingSchema,
 } from "../../lib/services/organization-plan-change-provider-binding";
+import {
+  type OrganizationScheduleQuoteTerms,
+  organizationScheduleQuoteTermsSchema,
+} from "../../lib/services/organization-schedule-quote-terms";
+import { observeOrganizationScheduleRetainedTerms } from "../../lib/services/organization-schedule-retained-terms";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import { proratedAllowanceIncrease } from "../../lib/services/subscription-allowance-proration";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
 import { writeTransaction } from "../helpers";
 import { organizationPlanChangeQuotes } from "../schemas/organization-plan-change-quotes";
+import { organizationScheduleQuoteTerms } from "../schemas/organization-schedule-quote-terms";
 import {
   lockOrganizationPlanChangeSource,
   type readOrganizationPlanChangeSource,
 } from "./organization-plan-change";
+import { readOriginalScheduleQuoteTerms } from "./organization-schedule-quote-terms";
 import type { OrganizationSubscriptionSourceInput } from "./organization-subscription-manager";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
@@ -40,12 +47,22 @@ export async function saveOrganizationPlanChangeQuote(input: {
   captured: CapturedSource;
   review: OrganizationUpgradeReview | OrganizationDowngradeReview;
   providerBinding: OrganizationPlanChangeProviderBinding;
+  retainedTerms?: OrganizationScheduleQuoteTerms;
 }) {
   const review =
     input.review.kind === "upgrade_estimate"
       ? organizationUpgradeReviewSchema.parse(input.review)
       : organizationDowngradeReviewSchema.parse(input.review);
   const providerBinding = organizationPlanChangeProviderBindingSchema.parse(input.providerBinding);
+  const retainedTerms =
+    review.kind === "downgrade_estimate"
+      ? organizationScheduleQuoteTermsSchema.parse(input.retainedTerms)
+      : null;
+  if (retainedTerms)
+    observeOrganizationScheduleRetainedTerms({
+      raw: retainedTerms.subscription,
+      observedAt: new Date(review.observedAt),
+    });
   return writeTransaction(async (tx) => {
     const current = await lockOrganizationPlanChangeSource(tx, input.identity);
     const now = await readPostLockDatabaseNow(tx);
@@ -88,6 +105,23 @@ export async function saveOrganizationPlanChangeQuote(input: {
       Date.parse(review.observedAt) > now.getTime()
     )
       conflict();
+    if (retainedTerms) {
+      const r = retainedTerms.subscription;
+      if (
+        r.id !== source.stripe_subscription_id ||
+        r.customer !== source.stripe_customer_id ||
+        r.livemode !== providerBinding.livemode ||
+        retainedTerms.customer.customerId !== r.customer ||
+        retainedTerms.customer.livemode !== r.livemode ||
+        r.items.data[0]!.id !== source.stripe_subscription_item_id ||
+        r.items.data[0]!.price.id !== providerBinding.sourcePriceId ||
+        r.items.data[0]!.price.product !== providerBinding.sourceProductId ||
+        r.items.data[0]!.price.unit_amount !== previous.amountCents ||
+        r.current_period_start * 1000 !== start ||
+        r.current_period_end * 1000 !== end
+      )
+        conflict();
+    }
     const [quote] = await tx
       .insert(organizationPlanChangeQuotes)
       .values({
@@ -106,6 +140,14 @@ export async function saveOrganizationPlanChangeQuote(input: {
       })
       .returning();
     if (!quote) conflict();
+    if (retainedTerms)
+      await tx.insert(organizationScheduleQuoteTerms).values({
+        quote_id: quote.id,
+        organization_id: quote.organization_id,
+        snapshot: retainedTerms,
+        snapshot_digest: settlementDigest(retainedTerms),
+        created_at: now,
+      });
     return { ...quote, review };
   });
 }
@@ -129,6 +171,11 @@ export async function readOrganizationPlanChangeQuote(
       );
     const now = await readPostLockDatabaseNow(tx);
     if (!quote) conflict();
+    if (
+      expectedKind === "downgrade_estimate" &&
+      !(await readOriginalScheduleQuoteTerms(tx, quote.id, identity.organizationId))
+    )
+      conflict();
     return assertCurrentOrganizationPlanChangeQuote(quote, current, now, expectedKind);
   });
 }

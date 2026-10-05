@@ -24,6 +24,7 @@ import { organizationScheduleEffects as effects } from "../schemas/organization-
 import { organizations } from "../schemas/organizations";
 import { billingSubscriptionCommands as commands } from "../schemas/subscription-billing-operations";
 import { lockOrganizationPlanChangeSource } from "./organization-plan-change";
+import { readOriginalScheduleQuoteTerms } from "./organization-schedule-quote-terms";
 import {
   lockOrganizationSubscriptionManager,
   type OrganizationSubscriptionIdentity,
@@ -77,6 +78,9 @@ async function lockOriginal(tx: DbTransaction, input: Identity, manager: boolean
       ),
     )
     .for("update");
+  const retained = stored
+    ? await readOriginalScheduleQuoteTerms(tx, stored.id, input.organizationId)
+    : null;
   if (
     !stored ||
     stored.subscription_id !== command.subscription_id ||
@@ -91,15 +95,17 @@ async function lockOriginal(tx: DbTransaction, input: Identity, manager: boolean
         reviewDigest: stored.review_digest,
         sourceDigest: stored.source_digest,
         providerBinding: stored.provider_binding,
+        retainedTermsDigest: retained?.snapshot_digest ?? null,
       })
   )
     reject("original_review_changed");
   const review = organizationDowngradeReviewSchema.parse(stored.review),
     binding = organizationPlanChangeProviderBindingSchema.parse(stored.provider_binding);
-  return { command, quote: { ...stored, review }, binding };
+  return { command, quote: { ...stored, review }, binding, retained };
 }
 type Locked = Awaited<ReturnType<typeof lockOriginal>>;
 async function currentSource(tx: DbTransaction, input: Identity, locked: Locked) {
+  if (!locked.retained) reject("original_retained_terms_required");
   const captured = await lockOrganizationPlanChangeSource(
     tx,
     {
@@ -214,7 +220,8 @@ export async function claimOrganizationSchedule(
         attempt_count: c.attempt_count + 1,
         lease_token: claim.leaseToken,
         lease_expires_at: new Date(now.getTime() + 60000),
-        provider_started_at: c.provider_started_at ?? now,
+        // Preserve database precision and original provenance on replacement claims.
+        ...(c.provider_started_at === null ? { provider_started_at: now } : {}),
         updated_at: now,
       })
       .where(eq(commands.id, c.id));

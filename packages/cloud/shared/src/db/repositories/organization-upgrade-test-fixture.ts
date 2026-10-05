@@ -7,6 +7,7 @@ import {
 export async function installOrganizationUpgradeTestSchema(
   execute: (query: string) => Promise<unknown>,
   includeProviderBinding = true,
+  includeRetainedTerms = true,
 ) {
   await installCancellationTestSchema(execute);
   for (const name of [
@@ -23,6 +24,7 @@ export async function installOrganizationUpgradeTestSchema(
           "0519_organization_upgrade_void_result",
           "0520_organization_downgrade_quotes",
           "0521_organization_schedule_effects",
+          ...(includeRetainedTerms ? ["0522_organization_schedule_quote_terms"] : []),
         ]
       : []),
   ]) {

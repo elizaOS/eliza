@@ -40,54 +40,55 @@ const sourceItem = organizationSubscriptionObservationSchema.shape.items.shape.d
   tax_rates: taxRates,
   metadata,
 });
-const sourceSchema = organizationSubscriptionObservationSchema.extend({
-  id: id("sub"),
-  customer: id("cus"),
-  application: z.null(),
-  currency: z.literal("usd"),
-  collection_method: z.literal("charge_automatically"),
-  days_until_due: z.null(),
-  automatic_tax: z.object({ enabled: z.boolean(), liability: self.nullable() }).strict(),
-  billing_cycle_anchor: seconds,
-  billing_cycle_anchor_config: z
-    .object({
-      day_of_month: z.number().int().min(1).max(31),
-      hour: z.number().int().min(0).max(23).nullable(),
-      minute: z.number().int().min(0).max(59).nullable(),
-      second: z.number().int().min(0).max(59).nullable(),
-      month: z.number().int().min(1).max(12).nullable(),
-    })
-    .strict()
-    .nullable(),
-  billing_thresholds: thresholds,
-  default_payment_method: reference("pm").nullable(),
-  // Legacy sources cannot be represented in the pinned phase update request.
-  default_source: z.null(),
-  default_tax_rates: taxRates,
-  description: z.string().nullable(),
-  discount: reference("di").nullable(),
-  discounts: discountRefs,
-  invoice_settings: z
-    .object({
-      account_tax_ids: z.array(reference("txi")).nullable(),
-      issuer: self,
-    })
-    .strict(),
-  metadata,
-  next_pending_invoice_item_invoice: z.null(),
-  pending_invoice_item_interval: z.null(),
-  pending_setup_intent: z.null(),
-  // Non-default mandates/payment options need dedicated schedule qualification.
-  payment_settings: z
-    .object({
-      payment_method_options: z.null(),
-      payment_method_types: z.null(),
-      save_default_payment_method: z.enum(["off", "on_subscription"]),
-    })
-    .strict()
-    .nullable(),
-  items: z.object({ has_more: z.literal(false), data: z.array(sourceItem).length(1) }),
-});
+export const organizationScheduleRetainedSubscriptionSchema =
+  organizationSubscriptionObservationSchema.extend({
+    id: id("sub"),
+    customer: id("cus"),
+    application: z.null(),
+    currency: z.literal("usd"),
+    collection_method: z.literal("charge_automatically"),
+    days_until_due: z.null(),
+    automatic_tax: z.object({ enabled: z.boolean(), liability: self.nullable() }).strict(),
+    billing_cycle_anchor: seconds,
+    billing_cycle_anchor_config: z
+      .object({
+        day_of_month: z.number().int().min(1).max(31),
+        hour: z.number().int().min(0).max(23).nullable(),
+        minute: z.number().int().min(0).max(59).nullable(),
+        second: z.number().int().min(0).max(59).nullable(),
+        month: z.number().int().min(1).max(12).nullable(),
+      })
+      .strict()
+      .nullable(),
+    billing_thresholds: thresholds,
+    default_payment_method: reference("pm").nullable(),
+    // Legacy sources cannot be represented in the pinned phase update request.
+    default_source: z.null(),
+    default_tax_rates: taxRates,
+    description: z.string().nullable(),
+    discount: reference("di").nullable(),
+    discounts: discountRefs,
+    invoice_settings: z
+      .object({
+        account_tax_ids: z.array(reference("txi")).nullable(),
+        issuer: self,
+      })
+      .strict(),
+    metadata,
+    next_pending_invoice_item_invoice: z.null(),
+    pending_invoice_item_interval: z.null(),
+    pending_setup_intent: z.null(),
+    // Non-default mandates/payment options need dedicated schedule qualification.
+    payment_settings: z
+      .object({
+        payment_method_options: z.null(),
+        payment_method_types: z.null(),
+        save_default_payment_method: z.enum(["off", "on_subscription"]),
+      })
+      .strict()
+      .nullable(),
+    items: z.object({ has_more: z.literal(false), data: z.array(sourceItem).length(1) }),
+  });
 function reject(reason: string): never {
   throw new ElizaError("Schedule requires complete supported retained billing terms", {
     code: "SUBSCRIPTION_PLAN_CHANGE_REOBSERVE",
@@ -102,7 +103,7 @@ export function observeOrganizationScheduleRetainedTerms(input: {
   raw: unknown;
   observedAt: Date;
 }) {
-  const parsed = sourceSchema.safeParse(input.raw);
+  const parsed = organizationScheduleRetainedSubscriptionSchema.safeParse(input.raw);
   if (!parsed.success) reject("unsupported_retained_settings");
   const source = parsed.data;
   const observed = input.observedAt.getTime();

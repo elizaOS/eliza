@@ -1,4 +1,5 @@
 /** Immutable original lower-plan intent; never shares an upgrade request identity. */
+import { z } from "zod";
 import {
   type OrganizationPlanChangeProviderBinding,
   organizationPlanChangeProviderBindingSchema,
@@ -11,10 +12,16 @@ export function organizationDowngradeIntentDigest(input: {
   reviewDigest: string;
   sourceDigest: string;
   providerBinding: OrganizationPlanChangeProviderBinding | null;
+  retainedTermsDigest?: string | null;
 }) {
-  const { providerBinding, ...identity } = input;
+  const { providerBinding, retainedTermsDigest, ...identity } = input;
+  if (retainedTermsDigest !== undefined && retainedTermsDigest !== null)
+    z.string()
+      .regex(/^[a-f0-9]{64}$/)
+      .parse(retainedTermsDigest);
   return settlementDigest({
-    version: 1,
+    version: retainedTermsDigest ? 2 : 1,
+    ...(retainedTermsDigest ? { retainedTermsDigest } : {}),
     kind: "organization_downgrade",
     ...identity,
     providerBinding: organizationPlanChangeProviderBindingSchema.parse(providerBinding),
