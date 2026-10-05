@@ -31,6 +31,7 @@ import { organizationScheduleEffects as effects } from "../schemas/organization-
 import { organizations } from "../schemas/organizations";
 import { billingSubscriptionCommands as commands } from "../schemas/subscription-billing-operations.ts";
 import { lockOrganizationPlanChangeSource } from "./organization-plan-change";
+import { resolveOrganizationScheduleIncidentsInTransaction } from "./organization-schedule-maintenance";
 import { readOriginalScheduleQuoteTerms } from "./organization-schedule-quote-terms";
 import {
   lockOrganizationSubscriptionManager,
@@ -193,6 +194,7 @@ export async function claimOrganizationSchedule(
           lease_expires_at: null,
         })
         .where(eq(commands.id, c.id));
+      await resolveOrganizationScheduleIncidentsInTransaction(tx, input);
       return null;
     }
     if (c.status === "PREPARED" && mode === "recovery") return null;
@@ -211,6 +213,7 @@ export async function claimOrganizationSchedule(
           lease_expires_at: null,
         })
         .where(eq(commands.id, c.id));
+      await resolveOrganizationScheduleIncidentsInTransaction(tx, input);
       return null;
     }
     const claim = {
@@ -483,6 +486,7 @@ export async function finishOrganizationScheduleAttempt(input: Identity, claim: 
           : {}),
       })
       .where(eq(commands.id, c.id));
+    if (expired) await resolveOrganizationScheduleIncidentsInTransaction(tx, input);
     return true;
   });
 }
@@ -786,6 +790,7 @@ export async function finalizeOrganizationScheduleCompensation(
       )
       .returning();
     if (!failed) reject("original_lease_lost_before_commit");
+    await resolveOrganizationScheduleIncidentsInTransaction(tx, input);
     return { command: failed, replayed: false };
   });
 }
@@ -1010,6 +1015,16 @@ export function readOrganizationScheduleRecoverySource(input: Identity, claim: C
         effect,
         existing.find((e) => e.id === effect.predecessor_id),
       );
-    return { effects: existing, apiVersion: locked.binding.apiVersion };
+    return {
+      effects: existing,
+      apiVersion: locked.binding.apiVersion,
+      reviewExpiresAt: locked.quote.expires_at,
+      observedAt: await readPostLockDatabaseNow(tx),
+    };
   });
+}
+
+/** Internal original-command read; system recovery does not borrow a user session. */
+export function readOrganizationScheduleRecoveryCommand(input: Identity) {
+  return writeTransaction(async (tx) => (await lockOriginal(tx, input, false)).command);
 }

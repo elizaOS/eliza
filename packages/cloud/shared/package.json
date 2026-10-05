@@ -662,7 +662,8 @@
     "./lib/services/subscription-renewal-review": "./src/lib/services/subscription-renewal-review.ts",
     "./lib/services/organization-upgrade-payment": "./src/lib/services/organization-upgrade-payment.ts",
     "./lib/services/organization-upgrade-command": "./src/lib/services/organization-upgrade-command.ts",
-    "./lib/services/organization-downgrade-command": "./src/lib/services/organization-downgrade-command.ts"
+    "./lib/services/organization-downgrade-command": "./src/lib/services/organization-downgrade-command.ts",
+    "./lib/services/organization-schedule-maintenance": "./src/lib/services/organization-schedule-maintenance.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",

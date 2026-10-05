@@ -1064,6 +1064,140 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
         read({ ...f.identity, organizationId: randomUUID() }, async () => {}),
       ).rejects.toThrow();
     });
+  test("unattended configuration recovery retains incidents, backs off and resolves atomically after manager loss", async () => {
+    const f = await configured(false);
+    const before = await state(f);
+    await repo.finishOrganizationScheduleAttempt(f.identity, f.claim);
+    await db.query(
+      "UPDATE billing_subscription_commands SET updated_at=clock_timestamp()+interval '1 day' WHERE status IN ('PREPARED','OUTCOME_UNKNOWN') AND id<>$1",
+      [f.identity.commandId],
+    );
+    const forceDue = async () => {
+      await db.query(
+        "UPDATE billing_subscription_commands SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+        [f.identity.commandId],
+      );
+      await db.query(
+        "UPDATE billing_subscription_incidents SET next_retry_at=clock_timestamp()-interval '1 second' WHERE command_id=$1",
+        [f.identity.commandId],
+      );
+    };
+    const { recoverOrganizationSchedules: run } = await import(
+      "../../lib/services/organization-schedule-maintenance"
+    );
+    const { listOrganizationScheduleRecovery: list } = await import(
+      "./organization-schedule-maintenance"
+    );
+    providerFor(f, []);
+    await forceDue();
+    await db.query("UPDATE users SET role='member' WHERE id=$1", [f.identity.actorId]);
+    expect((await run()).unavailable).toBe(1);
+    expect((await state(f)).source).toEqual(before.source);
+    const incidents = async () =>
+      (
+        await db.query(
+          "SELECT * FROM billing_subscription_incidents WHERE command_id=$1 ORDER BY created_at",
+          [f.identity.commandId],
+        )
+      ).rows;
+    expect(await incidents()).toHaveLength(1);
+    expect((await incidents())[0].context.owner).toBe("organization_schedule_recovery");
+    await db.query(
+      "UPDATE billing_subscription_commands SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+      [f.identity.commandId],
+    );
+    expect((await list(25)).some((c) => c.id === f.identity.commandId)).toBeFalse();
+    await forceDue();
+    expect((await run()).unavailable).toBe(1);
+    expect(await incidents()).toHaveLength(1);
+    expect(Number((await incidents())[0].occurrence_count)).toBe(2);
+    const foreignIncident = (
+      await db.query(
+        `INSERT INTO billing_subscription_incidents
+          (organization_id,subscription_id,command_id,kind,severity,fingerprint,context)
+         SELECT organization_id,subscription_id,id,'reconciliation','error',$2,
+           '{"owner":"independent_recovery"}'::jsonb
+         FROM billing_subscription_commands WHERE id=$1 RETURNING id`,
+        [f.identity.commandId, "f".repeat(64)],
+      )
+    ).rows[0].id;
+    providerFor(f, originalEvents(f));
+    await forceDue();
+    await db.query(`CREATE FUNCTION fail_schedule_incident_fixture() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.status='resolved' AND OLD.context->>'owner'='organization_schedule_recovery' THEN RAISE EXCEPTION 'fixture incident failure'; END IF; RETURN NEW; END; $$;
+      CREATE TRIGGER fail_schedule_incident_fixture BEFORE UPDATE ON billing_subscription_incidents FOR EACH ROW EXECUTE FUNCTION fail_schedule_incident_fixture()`);
+    try {
+      expect((await run()).unavailable).toBe(1);
+      expect((await state(f)).source).toEqual(before.source);
+      expect((await state(f)).command.status).toBe("OUTCOME_UNKNOWN");
+    } finally {
+      await db.query(
+        "DROP TRIGGER fail_schedule_incident_fixture ON billing_subscription_incidents; DROP FUNCTION fail_schedule_incident_fixture()",
+      );
+    }
+    await forceDue();
+    expect((await run()).applied).toBe(1);
+    const after = await state(f);
+    expect(after.source.pending_plan_key).toBe("plus_monthly");
+    expect(after.allowance).toEqual(before.allowance);
+    expect(after.periods).toEqual(before.periods);
+    const finalIncidents = await incidents();
+    expect(
+      finalIncidents
+        .filter((row) => row.id !== foreignIncident)
+        .every((row) => row.status === "resolved"),
+    ).toBeTrue();
+    expect(finalIncidents.find((row) => row.id === foreignIncident).status).toBe("open");
+    expect((await list(25)).some((c) => c.id === f.identity.commandId)).toBeFalse();
+  });
+  test("unattended recovery neither steals a live lease nor dispatches an expired prepared quote", async () => {
+    const active = await configured(false);
+    await db.query(
+      "UPDATE billing_subscription_commands SET updated_at=clock_timestamp()+interval '1 day' WHERE status IN ('PREPARED','OUTCOME_UNKNOWN') AND id<>$1",
+      [active.identity.commandId],
+    );
+    await db.query(
+      "UPDATE billing_subscription_commands SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+      [active.identity.commandId],
+    );
+    const { listOrganizationScheduleRecovery: list } = await import(
+      "./organization-schedule-maintenance"
+    );
+    expect((await list(25)).some((c) => c.id === active.identity.commandId)).toBeFalse();
+    const unstarted = await seed(1000);
+    await Bun.sleep(1100);
+    await db.query(
+      "UPDATE billing_subscription_commands SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+      [unstarted.identity.commandId],
+    );
+    stripeMock = new Proxy(
+      {},
+      {
+        get() {
+          throw Error("Expired quote must not use provider");
+        },
+      },
+    );
+    const { recoverOrganizationSchedules: run } = await import(
+      "../../lib/services/organization-schedule-maintenance"
+    );
+    expect((await run()).failed).toBe(1);
+    expect(
+      (
+        await db.query("SELECT status FROM billing_subscription_commands WHERE id=$1", [
+          unstarted.identity.commandId,
+        ])
+      ).rows[0].status,
+    ).toBe("SUPERSEDED");
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int AS n FROM organization_schedule_effects WHERE command_id=$1",
+          [unstarted.identity.commandId],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
   for (const liveStatus of ["active", "past_due", "unpaid", "grace"] as const)
     test(`historical target payment preserves later ${liveStatus} with a controlled database clock`, async () => {
       const boundary = Math.floor(Date.now() / 1000) + 5;

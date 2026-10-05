@@ -220,7 +220,7 @@ async function claimed(validityMs = 60000) {
     ).rejects.toMatchObject({ code: "SUBSCRIPTION_PLAN_CHANGE_CONFLICT" });
   });
 
-  test("read-only service recovery publishes the proven original cleanup without another provider write", async () => {
+  test("unattended recovery publishes original cleanup and resolves its incident after manager loss without another provider write", async () => {
     const f = await providerReleased();
     let writes = 0;
     const event = (type: string, raw: unknown, requestId: string, key: string) => ({
@@ -255,12 +255,26 @@ async function claimed(validityMs = 60000) {
         },
       },
     };
-    const { recoverOrganizationScheduleCompensation } = await import(
-      "../../lib/services/organization-schedule-compensation"
+    await repo.finishOrganizationScheduleAttempt(f.identity, f.claim);
+    const { recordOrganizationScheduleRecoveryOutcome } = await import(
+      "./organization-schedule-maintenance"
     );
-    const result = await recoverOrganizationScheduleCompensation(f.identity, f.claim);
-    expect(result.resolution.command.status).toBe("FAILED");
-    expect(result.resolution.replayed).toBe(false);
+    await recordOrganizationScheduleRecoveryOutcome({
+      ...f.identity,
+      issueCode: "SCHEDULE_RECOVERY_UNAVAILABLE",
+    });
+    await db.query("UPDATE users SET role='member' WHERE id=$1", [f.identity.actorId]);
+    const { reconcileOriginalOrganizationSchedule } = await import(
+      "../../lib/services/organization-schedule-maintenance"
+    );
+    expect(await reconcileOriginalOrganizationSchedule(f.identity)).toBe("FAILED");
+    expect(
+      (
+        await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+          f.identity.commandId,
+        ])
+      ).rows,
+    ).toEqual([{ status: "resolved" }]);
     expect(writes).toBe(0);
   });
   test("service event-history failure preserves uncertainty without a provider write", async () => {
