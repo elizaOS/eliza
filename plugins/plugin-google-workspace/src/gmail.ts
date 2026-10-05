@@ -239,6 +239,8 @@ export class GoogleGmailClient {
       selfEmail?: string | null;
       maxResults?: number;
       includeSpamTrash?: boolean;
+      /** Gmail label IDs; the provider returns messages carrying all of them. */
+      labelIds?: string[];
     }
   ): Promise<GoogleGmailMessageSummary[]> {
     const gmail = await this.clientFactory.gmail(
@@ -255,6 +257,7 @@ export class GoogleGmailClient {
       const response = await gmail.users.messages.list({
         userId: "me",
         q: params.query,
+        ...(params.labelIds?.length ? { labelIds: params.labelIds } : {}),
         includeSpamTrash: params.includeSpamTrash === true,
         maxResults:
           maxResults === undefined
