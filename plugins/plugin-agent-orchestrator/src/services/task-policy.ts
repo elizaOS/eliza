@@ -32,20 +32,26 @@ const DEFAULT_POLICY: TaskAgentPolicyConfig = {
   },
 };
 
+function normalizeConfiguredRole(value: unknown): RoleName {
+  return normalizeRole(typeof value === "string" ? value.trim() : undefined);
+}
+
 function normalizeConnectorPolicy(
   value: RoleName | ConnectorPolicy | undefined,
 ): ConnectorPolicy {
   if (!value) return {};
   if (typeof value === "string") {
-    const role = normalizeRole(value);
+    const role = normalizeConfiguredRole(value);
     return {
       create: role,
       interact: role,
     };
   }
   return {
-    ...(value.create ? { create: normalizeRole(value.create) } : {}),
-    ...(value.interact ? { interact: normalizeRole(value.interact) } : {}),
+    ...(value.create ? { create: normalizeConfiguredRole(value.create) } : {}),
+    ...(value.interact
+      ? { interact: normalizeConfiguredRole(value.interact) }
+      : {}),
   };
 }
 

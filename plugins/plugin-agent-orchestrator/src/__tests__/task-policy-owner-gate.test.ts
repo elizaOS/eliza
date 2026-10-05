@@ -44,6 +44,27 @@ function message(): Memory {
 }
 
 describe("task-agent role policy", () => {
+  it.each([" OWNER ", { create: " OWNER ", interact: " OWNER " }])(
+    "preserves normalized operator policy at the configuration boundary: %j",
+    async (policy) => {
+      runtime.character.settings = {
+        ...runtime.character.settings,
+        TASK_AGENT_ROLE_POLICY: JSON.stringify({
+          connectors: { discord: policy },
+        }),
+      };
+      for (const ability of ["create", "interact"] as const) {
+        const access = await requireTaskAgentAccess(
+          runtime,
+          message(),
+          ability,
+        );
+        expect(access.requiredRole).toBe("OWNER");
+        expect(access.allowed).toBe(false);
+      }
+    },
+  );
+
   it("denies access and reports failed role storage reads", async () => {
     const error = new Error("role storage unavailable");
     vi.spyOn(runtime, "getRoom").mockRejectedValueOnce(error);
