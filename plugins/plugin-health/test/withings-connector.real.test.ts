@@ -73,7 +73,15 @@ describe.skipIf(!LIVE)(
         expect(typeof s.value).toBe("number");
         expect(Number.isFinite(s.value)).toBe(true);
         expect(isoString(s.startAt)).toBe(true);
-        expect(s.localDate).toBe(s.startAt.slice(0, 10));
+        if (s.metric === "sleep_hours") {
+          const episode = payload.sleepEpisodes.find(
+            (ep) => s.sourceExternalId === `${ep.sourceExternalId}:sleep_hours`,
+          );
+          expect(episode).toBeTruthy();
+          expect(s.localDate).toBe(episode?.localDate);
+        } else {
+          expect(s.localDate).toBe(s.startAt.slice(0, 10));
+        }
       }
     }, 30_000);
   },
