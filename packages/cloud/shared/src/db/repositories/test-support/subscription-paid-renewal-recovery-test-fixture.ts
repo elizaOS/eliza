@@ -94,6 +94,12 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     );
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await database.exec(statement);
+    const journalMigration = await readFile(
+      new URL("../../migrations/0528_subscription_adjustment_observations.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of journalMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await database.exec(statement);
     service = await import("../../../lib/services/subscription-reconciliation");
   });
   beforeEach(async () => {
@@ -756,6 +762,124 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
           );
           expect(periods.rows.every((period) => period.granted_amount === "25.000000")).toBe(true);
           if (!rejected) expect(periods.rows[1]?.stripe_invoice_id).toBe(f.invoice.id);
+          if (invalid === null) {
+            const { observeAndRecordRenewalAdjustment } = await import(
+              "../subscription-adjustment-observations"
+            );
+            const grant = (
+              await database.query<{ id: string }>(
+                "SELECT t.id FROM subscription_allowance_transactions t JOIN subscription_allowance_periods p ON p.id=t.allowance_period_id WHERE t.organization_id=$1 AND p.stripe_invoice_id=$2 AND t.kind='grant'",
+                [f.orgId, f.invoice.id],
+              )
+            ).rows[0]!;
+            objects.set("/v1/account", { id: "acct_checkoutfixture", object: "account" });
+            objects.set(`/v1/credit_notes?invoice=${f.invoice.id}&limit=100`, {
+              object: "list",
+              has_more: false,
+              data: [],
+            });
+            const address = server.address();
+            if (!address || typeof address === "string") throw new Error("Loopback missing");
+            const stripe = new Stripe("sk_test_cloud_e2e", {
+              host: "127.0.0.1",
+              port: address.port,
+              protocol: "http",
+              maxNetworkRetries: 0,
+            });
+            const request = {
+              organizationId: f.orgId,
+              grantId: grant.id,
+              requestId: randomUUID(),
+              expectedPreviousId: null,
+            };
+            const fundingSnapshot = async () => ({
+              periods: (
+                await database.query(
+                  "SELECT * FROM subscription_allowance_periods WHERE organization_id=$1 ORDER BY id",
+                  [f.orgId],
+                )
+              ).rows,
+              transactions: (
+                await database.query(
+                  "SELECT * FROM subscription_allowance_transactions WHERE organization_id=$1 ORDER BY id",
+                  [f.orgId],
+                )
+              ).rows,
+            });
+            const fundingBefore = await fundingSnapshot();
+            const first = await observeAndRecordRenewalAdjustment(request, stripe);
+            expect(first.replayed).toBe(false);
+            expect(first.observation.version).toBe(1);
+            const readCount = requests.length;
+            expect((await observeAndRecordRenewalAdjustment(request, stripe)).replayed).toBe(true);
+            expect(requests.length).toBe(readCount);
+            await expect(
+              observeAndRecordRenewalAdjustment({ ...request, requestId: randomUUID() }, stripe),
+            ).rejects.toThrow();
+            const next = { ...request, expectedPreviousId: first.observation.id };
+            const attempts = await Promise.allSettled([
+              observeAndRecordRenewalAdjustment({ ...next, requestId: randomUUID() }, stripe),
+              observeAndRecordRenewalAdjustment({ ...next, requestId: randomUUID() }, stripe),
+            ]);
+            expect(attempts.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+            expect(
+              (
+                await database.query(
+                  "SELECT version FROM subscription_adjustment_observations WHERE grant_id=$1 ORDER BY version",
+                  [grant.id],
+                )
+              ).rows,
+            ).toEqual([{ version: 1 }, { version: 2 }]);
+            expect(await allowanceCount(f.orgId)).toBe(2);
+            expect(await sourceRevision(f.command.id)).toBe(2);
+            expect(await fundingSnapshot()).toEqual(fundingBefore);
+            expect(writes).toBe(0);
+            const head = (
+              await database.query<{ id: string }>(
+                "SELECT id FROM subscription_adjustment_observations WHERE grant_id=$1 ORDER BY version DESC LIMIT 1",
+                [grant.id],
+              )
+            ).rows[0]!;
+            let fenced = false;
+            const fencedStripe = new Stripe("sk_test_cloud_e2e", {
+              host: "127.0.0.1",
+              port: address.port,
+              protocol: "http",
+              maxNetworkRetries: 0,
+              httpClient: Stripe.createFetchHttpClient(
+                Object.assign(
+                  async (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+                    if (!fenced) {
+                      fenced = true;
+                      await database.query(
+                        "UPDATE organizations SET paid_work_fenced_at=clock_timestamp() WHERE id=$1",
+                        [f.orgId],
+                      );
+                    }
+                    return fetch(url, init);
+                  },
+                  { preconnect: fetch.preconnect },
+                ),
+              ),
+            });
+            await expect(
+              observeAndRecordRenewalAdjustment(
+                { ...request, requestId: randomUUID(), expectedPreviousId: head.id },
+                fencedStripe,
+              ),
+            ).rejects.toThrow();
+            expect(fenced).toBe(true);
+            expect(
+              (
+                await database.query(
+                  "SELECT count(*)::int AS count FROM subscription_adjustment_observations WHERE grant_id=$1",
+                  [grant.id],
+                )
+              ).rows,
+            ).toEqual([{ count: 2 }]);
+            expect(await fundingSnapshot()).toEqual(fundingBefore);
+            await expect(observeAndRecordRenewalAdjustment(request, stripe)).rejects.toThrow();
+          }
         } finally {
           process.env.STRIPE_SECRET_KEY = "sk_test_cloud_e2e";
           process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
