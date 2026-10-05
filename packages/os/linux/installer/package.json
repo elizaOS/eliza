@@ -26,6 +26,6 @@
     "vitest": "^5.0.2"
   },
   "dependencies": {
-    "@elizaos/os-usb-installer": "workspace:*"
+    "@elizaos/os": "workspace:*"
   }
 }

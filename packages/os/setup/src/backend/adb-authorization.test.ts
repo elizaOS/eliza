@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { AdbFlasherBackend } from "./adb-backend";
-import type { AndroidReleaseManifest, FlashPlan } from "./types";
+import * as signedRelease from "./signed-release";
+import type { FlashPlan } from "./types";
 
 vi.mock("../dependencies/host-tools", () => ({
   findHostTool: () => undefined,
@@ -31,6 +32,7 @@ const directories: string[] = [];
 afterEach(async () => {
   vi.useRealTimers();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
   await Promise.all(
     directories
       .splice(0)
@@ -43,47 +45,7 @@ async function fixture(): Promise<FlashPlan> {
     join(tmpdir(), "elizaos-setup-authorization-"),
   );
   directories.push(directory);
-  const manifest: AndroidReleaseManifest = {
-    schemaVersion: 1,
-    releaseId: "fixture",
-    generatedAt: "2026-09-25T00:00:00Z",
-    buildFingerprint: "elizaOS/eliza_tegu_phone/tegu:fixture",
-    supportedDevices: [
-      {
-        targetId: "pixel9a-tegu",
-        codename: "tegu",
-        tier: "candidate",
-        slots: ["a", "b"],
-        dynamicPartitions: true,
-        rollbackSupported: false,
-      },
-    ],
-    artifacts: [
-      {
-        partition: "boot",
-        filename: "boot.img",
-        sha256: "a".repeat(64),
-        sizeBytes: 7,
-        required: true,
-        fastbootMode: "bootloader",
-      },
-    ],
-    validation: {
-      bootTimeoutSeconds: 120,
-      properties: {},
-      expectedFingerprintPrefix: "elizaOS/eliza_tegu_phone/tegu:",
-      requiredValidationTokens: [
-        "pm path",
-        "cmd role holders",
-        "foreground",
-        "service",
-        "/api/health",
-        "logcat",
-        "selinux",
-      ],
-    },
-    rollback: { previousReleaseId: "previous", notes: "fixture only" },
-  };
+  const manifest = { schemaVersion: 1 };
   const manifestPath = join(directory, "manifest.json");
   await writeFile(manifestPath, JSON.stringify(manifest));
   await writeFile(join(directory, "boot.img"), "fixture");
@@ -91,7 +53,7 @@ async function fixture(): Promise<FlashPlan> {
     device: {
       serial: "fixture",
       model: "fixture",
-      codename: "tegu",
+      codename: "grizzly",
       state: "device",
       bootloaderUnlocked: false,
     },
@@ -100,13 +62,13 @@ async function fixture(): Promise<FlashPlan> {
       label: "fixture",
       version: "fixture",
       channel: "beta",
-      targetDevice: "tegu",
-      targetId: "pixel9a-tegu",
+      targetDevice: "grizzly",
+      targetId: "pixel11pro-grizzly",
       architecture: "arm64-v8a",
-      publishedAt: manifest.generatedAt,
+      publishedAt: "2026-09-25T00:00:00Z",
       manifestUrl: "",
       manifestPath,
-      manifest,
+      signedManifest: JSON.stringify(manifest),
       sizeBytes: 7,
     },
     steps: [
@@ -127,6 +89,27 @@ async function fixture(): Promise<FlashPlan> {
   };
 }
 
+function authenticateFixture() {
+  vi.spyOn(signedRelease, "describeSignedRelease").mockResolvedValue({
+    subjectSha256: "a".repeat(64),
+    issuedAt: "2026-09-25T00:00:00Z",
+    release: {
+      releaseId: "fixture",
+      version: "1",
+      channel: "beta",
+      operation: "os-install",
+      target: {
+        id: "pixel11pro-grizzly",
+        codename: "grizzly",
+        kind: "physical",
+        architecture: "arm64",
+      },
+      files: [{ filename: "boot.img", sha256: "a".repeat(64), sizeBytes: 7 }],
+      startingStates: [],
+    },
+  });
+}
+
 function deviceEffects() {
   return vi
     .mocked(spawnSync)
@@ -145,7 +128,7 @@ test("real signed validator rejects legacy artifacts before any reboot or unlock
   const progress = vi.fn();
   await expect(
     new AdbFlasherBackend().executeFlashPlan(plan, progress),
-  ).rejects.toThrow();
+  ).rejects.toThrow("installation requires a signed schemaVersion 2 contract");
   expect(
     vi
       .mocked(spawnSync)
@@ -153,18 +136,14 @@ test("real signed validator rejects legacy artifacts before any reboot or unlock
         ([command, args]) =>
           command === "node" &&
           Array.isArray(args) &&
-          args.includes("--dry-run"),
+          args.includes("--describe"),
       ),
   ).toBe(true);
   expect(deviceEffects()).toEqual([]);
-  expect(progress.mock.calls).toContainEqual([
-    "verify-artifacts",
-    "failed",
-    expect.any(String),
-  ]);
 });
 
 test("missing local artifacts fail before any reboot or unlock", async () => {
+  authenticateFixture();
   const plan = await fixture();
   await rm(join(plan.artifactDir as string, "boot.img"));
   await expect(
@@ -173,7 +152,8 @@ test("missing local artifacts fail before any reboot or unlock", async () => {
   expect(deviceEffects()).toEqual([]);
 });
 
-test("download-only plans stop before authorization and device effects", async () => {
+test("download-only plans authenticate before stopping without device effects", async () => {
+  authenticateFixture();
   const plan = await fixture();
   plan.request.stopAfter = "download-artifacts";
   const progress = vi.fn();
@@ -221,7 +201,7 @@ test("standalone unlock resumes in fastboot and verifies completion without ADB"
       result("fixture fastboot\n") as ReturnType<typeof spawnSync>,
     )
     .mockReturnValueOnce(
-      result("", "(bootloader) product: tegu\n") as ReturnType<
+      result("", "(bootloader) product: grizzly\n") as ReturnType<
         typeof spawnSync
       >,
     )
@@ -270,14 +250,14 @@ test("device discovery includes fastboot-only devices", async () => {
   vi.mocked(spawnSync)
     .mockReturnValueOnce(result("List of devices attached\n"))
     .mockReturnValueOnce(result("fixture fastboot\n"))
-    .mockReturnValueOnce(result("", "product: tegu\n"))
+    .mockReturnValueOnce(result("", "product: grizzly\n"))
     .mockReturnValueOnce(result("", "unlocked: no\n"));
   expect(await new AdbFlasherBackend().listConnectedDevices()).toEqual([
     {
       serial: "fixture",
       state: "bootloader",
       model: "Unknown",
-      codename: "tegu",
+      codename: "grizzly",
       bootloaderUnlocked: false,
     },
   ]);

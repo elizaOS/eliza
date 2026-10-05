@@ -17,7 +17,7 @@ func preparedFixture(t *testing.T) (string, string, string, admissionVector) {
 	r := fixture(t)
 	r.body = v.Release
 	r.publish(t, 1)
-	session := &DiscoverySession{transport: &discoveryFixture{repository: r}}
+	session := &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
 	result, err := session.RunPrepared(schedule, cache, state, directory, r.root, baseURL, v.Device, v.Policy, 0)
 	if err != nil || result.Status != "admitted" || !validHex(result.AuthorizationID) {
 		t.Fatalf("prepared result %+v %v", result, err)
@@ -93,7 +93,7 @@ func TestPreparedRecoveryHonorsLaterRevocations(t *testing.T) {
 				rollout["revision"] = 2
 				rollout["revokedSha256"] = []string{strings.Repeat(target, 64)}
 			})
-			if result, err := EvaluateRememberedRelease(state, newer, v.Device, v.Policy); err != nil || result.Reason != "revoked-artifact" {
+			if result, err := EvaluateRememberedReleaseInterval(state, newer, v.Device, v.Policy); err != nil || result.Reason != "revoked-artifact" {
 				t.Fatalf("%+v %v", result, err)
 			}
 			result, err := loadRecovery(dir, state, id)
@@ -115,7 +115,7 @@ func TestPreparedPersistenceFailureRetries(t *testing.T) {
 	r := fixture(t)
 	r.body = v.Release
 	r.publish(t, 1)
-	session := &DiscoverySession{transport: &discoveryFixture{repository: r}}
+	session := &discoverySession{source: &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}, transport: &discoveryFixture{repository: r}}
 	if result, err := session.RunPrepared(schedule, cache, state, directory, r.root, baseURL, v.Device, v.Policy, 0); err == nil || result != nil {
 		t.Fatal("unpersisted authorization exposed")
 	}

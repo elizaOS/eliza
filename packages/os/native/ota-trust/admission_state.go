@@ -51,16 +51,20 @@ func InitializeAdmissionState(directory, repository, distribution string) error 
 	})
 }
 
-// EvaluateRememberedRelease ratchets authenticated policy before returning any
+// EvaluateRememberedReleaseInterval ratchets authenticated policy before returning any
 // decision. The caller MUST authenticate descriptor bytes first. Floors are
 // channel-scoped; choosing Beta cannot rewrite Stable authority. The provisioned
 // installed/global security floor is also required in policyJSON. Quarantine and
 // installed security state remain supervisor-owned and cannot be reset here.
-func EvaluateRememberedRelease(directory string, descriptor, deviceJSON, policyJSON []byte) (*AdmissionResult, error) {
-	return evaluateRememberedRelease(directory, descriptor, deviceJSON, policyJSON, nil)
+func EvaluateRememberedReleaseInterval(directory string, descriptor, deviceJSON, policyJSON []byte) (*AdmissionResult, error) {
+	var policy admissionPolicy
+	if err := decodeAdmission(policyJSON, &policy); err != nil {
+		return nil, err
+	}
+	return evaluateRememberedRelease(directory, descriptor, deviceJSON, policy)
 }
 
-func evaluateRememberedRelease(directory string, descriptor, deviceJSON, policyJSON []byte, upper *int64) (result *AdmissionResult, err error) {
+func evaluateRememberedRelease(directory string, descriptor, deviceJSON []byte, policy admissionPolicy) (result *AdmissionResult, err error) {
 	err = lockedAdmission(directory, func() error {
 		state, e := readAdmission(directory)
 		if e != nil {
@@ -68,11 +72,10 @@ func evaluateRememberedRelease(directory string, descriptor, deviceJSON, policyJ
 		}
 		var d releaseDescriptor
 		var device admissionDevice
-		var policy admissionPolicy
 		for _, input := range []struct {
 			data  []byte
 			value any
-		}{{descriptor, &d}, {deviceJSON, &device}, {policyJSON, &policy}} {
+		}{{descriptor, &d}, {deviceJSON, &device}} {
 			if e = decodeAdmission(input.data, input.value); e != nil {
 				return e
 			}
@@ -80,20 +83,15 @@ func evaluateRememberedRelease(directory string, descriptor, deviceJSON, policyJ
 		if policy.Repository != state.Repository || device.Distribution != state.Distribution {
 			return errors.New("admission enrollment mismatch")
 		}
+		// Persisted floors must not hide invalid caller observations.
+		if _, e = evaluateRelease(d, device, policy); e != nil {
+			return e
+		}
 		floor := state.Lanes[device.Channel]
 		policy.Sequence = max(policy.Sequence, floor.Sequence)
 		policy.Revision = max(policy.Revision, floor.Revision)
 		policy.SecurityFloor = max(policy.SecurityFloor, floor.Security)
-		// Validate the caller's original observations first: persisted floors must
-		// never hide a missing, zero or invalid native observation.
-		if _, e = evaluateRelease(descriptor, deviceJSON, policyJSON, upper); e != nil {
-			return e
-		}
-		adjusted, e := json.Marshal(policy)
-		if e != nil {
-			return e
-		}
-		result, e = evaluateRelease(descriptor, deviceJSON, adjusted, upper)
+		result, e = evaluateRelease(d, device, policy)
 		if e != nil {
 			return e
 		}

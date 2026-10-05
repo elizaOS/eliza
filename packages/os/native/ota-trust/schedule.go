@@ -43,16 +43,17 @@ type discoveryEnvelope struct {
 	SHA256 string
 }
 
-// BeginDiscovery must receive qualified trusted time and the current durable
+// BeginDiscoveryInterval must receive qualified trusted time and the current durable
 // channel generation. Use its own private directory, separate from TUF cache.
-func BeginDiscovery(directory string, nowMillis, generation int64) (*CheckDecision, error) {
-	return beginScheduledWork(directory, nowMillis, nowMillis, generation, leaseMillis)
+// Due times use the lower bound; delays and leases start from the upper bound.
+func BeginDiscoveryInterval(directory string, lowerMillis, upperMillis, generation int64) (*CheckDecision, error) {
+	return beginScheduledWork(directory, lowerMillis, upperMillis, generation, leaseMillis)
 }
 
-// BeginStaging uses separate private schedule storage and a 35-minute lease,
+// BeginStagingInterval uses separate private schedule storage and a 35-minute lease,
 // covering the artifact downloader's 30-minute limit plus local verification.
-func BeginStaging(directory string, nowMillis, generation int64) (*CheckDecision, error) {
-	return beginScheduledWork(directory, nowMillis, nowMillis, generation, 35*60*1000)
+func BeginStagingInterval(directory string, lowerMillis, upperMillis, generation int64) (*CheckDecision, error) {
+	return beginScheduledWork(directory, lowerMillis, upperMillis, generation, 35*60*1000)
 }
 func beginScheduledWork(directory string, lowerMillis, upperMillis, generation, leaseDuration int64) (decision *CheckDecision, err error) {
 	if !validScheduleTime(lowerMillis) || !validScheduleTime(upperMillis) || upperMillis < lowerMillis || generation < 0 {
@@ -100,18 +101,18 @@ func beginScheduledWork(directory string, lowerMillis, upperMillis, generation, 
 	return decision, err
 }
 
-// FinishDiscovery records success/failure and server delay before the worker
+// FinishDiscoveryInterval records success/failure and server delay before the worker
 // finishes. Old callbacks cannot change a newer claim. Channel changes retain
 // global server/cooldown limits while discarding the old channel's schedule.
-func FinishDiscovery(directory, token string, nowMillis int64, success bool, retryAfterMillis int64) (*CheckDecision, error) {
-	return finishScheduledWork(directory, token, nowMillis, nowMillis, success, retryAfterMillis, false)
+func FinishDiscoveryInterval(directory, token string, lowerMillis, upperMillis int64, success bool, retryAfterMillis int64) (*CheckDecision, error) {
+	return finishScheduledWork(directory, token, lowerMillis, upperMillis, success, retryAfterMillis, false)
 }
 
-// FinishStaging persists retry/server delay but adds no six-hour delay after a
+// FinishStagingInterval persists retry/server delay but adds no six-hour delay after a
 // successful pair. Its separate directory prevents metadata success from hiding
 // a failed/interrupted artifact transfer.
-func FinishStaging(directory, token string, nowMillis int64, success bool, retryAfterMillis int64) (*CheckDecision, error) {
-	return finishScheduledWork(directory, token, nowMillis, nowMillis, success, retryAfterMillis, true)
+func FinishStagingInterval(directory, token string, lowerMillis, upperMillis int64, success bool, retryAfterMillis int64) (*CheckDecision, error) {
+	return finishScheduledWork(directory, token, lowerMillis, upperMillis, success, retryAfterMillis, true)
 }
 func finishScheduledWork(directory, token string, lowerMillis, upperMillis int64, success bool, retryAfterMillis int64, staging bool) (decision *CheckDecision, err error) {
 	if !validScheduleTime(lowerMillis) || !validScheduleTime(upperMillis) || upperMillis < lowerMillis || !validHex(token) || retryAfterMillis < 0 || retryAfterMillis > dayMillis {

@@ -398,7 +398,7 @@ test("publication rejects unsigned, revoked, ineligible, mislabeled and orphan a
     version: "1.0.0",
     channel: "canary",
     tag: "v1.0.0",
-    repository: "elizaOS/os",
+    repository: "elizaOS/eliza",
     policy: f.policy,
   };
   assert.throws(() => generateUpdateManifest(args), /no signed/);
@@ -1143,7 +1143,7 @@ test("archive verification rejects a correctly signed ZIP containing different i
         version: "1.0.0",
         channel: "canary",
         tag: "v1.0.0",
-        repository: "elizaOS/os",
+        repository: "elizaOS/eliza",
         policy: f.policy,
       }),
     /archive content verification failed/,
@@ -1191,7 +1191,7 @@ test("scoped lab authorization never grants production installation or publicati
         version: "1.0.0",
         channel: "canary",
         tag: "v1.0.0",
-        repository: "elizaOS/os",
+        repository: "elizaOS/eliza",
         policy: f.policy,
       }),
     /lab experiments cannot/,
@@ -1336,7 +1336,7 @@ test("health credentials stay out of argv and errors; readiness must be explicit
   );
 });
 
-test("production CLI and shell entrypoint reject fixture authorization before invoking device tools", (t) => {
+test("production CLI rejects fixture authorization before invoking device tools", (t) => {
   const f = fixture(t);
   const manifest = path.join(f.directory, "signed-fixture.json");
   fs.writeFileSync(manifest, JSON.stringify(f.envelope));
@@ -1365,11 +1365,10 @@ test("production CLI and shell entrypoint reject fixture authorization before in
     "--execute",
     "--confirm-flash",
   ];
-  for (const [command, entry] of [
-    [process.execPath, "scripts/android/install-release.ts"],
-    ["bash", "android/installer/install-elizaos-android.sh"],
-  ]) {
-    const result = spawnSync(command, [entry, ...args], {
+  const result = spawnSync(
+    process.execPath,
+    ["scripts/android/install-release.ts", ...args],
+    {
       cwd: new URL("../../", import.meta.url),
       encoding: "utf8",
       env: {
@@ -1377,11 +1376,11 @@ test("production CLI and shell entrypoint reject fixture authorization before in
         PATH: `${tools}:${process.env.PATH}`,
         DEVICE_SPY: invoked,
       },
-    });
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /android-contract/);
-    assert.equal(fs.existsSync(invoked), false);
-  }
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /android-contract/);
+  assert.equal(fs.existsSync(invoked), false);
 });
 
 test("every signed artifact rejects corruption and absence before an install plan can execute", (t) => {

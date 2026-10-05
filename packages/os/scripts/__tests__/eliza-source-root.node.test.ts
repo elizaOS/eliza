@@ -1,4 +1,4 @@
-/** Exercises checkout selection for embedded and standalone OS builders using real directories. */
+/** Exercises workspace and explicit checkout selection using real directories. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -56,11 +56,6 @@ test("embedded OS builders use the enclosing application checkout", (t) => {
     resolveElizaSourceRoot({ osRoot: path.join(root, "packages/os"), env: {} }),
     root,
   );
-});
-test("standalone builders use their staged source checkout", (t) => {
-  const osRoot = path.join(fixture(t), "standalone");
-  const expected = app(path.join(osRoot, ".eliza-source"));
-  assert.equal(resolveElizaSourceRoot({ osRoot, env: {} }), expected);
 });
 test("explicit checkout takes precedence and an invalid override never falls back", (t) => {
   const root = fixture(t);

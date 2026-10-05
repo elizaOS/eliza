@@ -6,8 +6,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 const modules = [
+  "../trust/index",
   "eliza-source",
-  "update-eliza-source-lock",
   "android/build-eliza-bootanimation",
   "aosp/verify-android-instrumentation-results",
   "aosp/verify-native-runtime",
@@ -39,15 +39,13 @@ const modules = [
   "check-confidential-policy",
   "check-confidential-profile",
   "check-dstack-pins",
-  "check-pr-agent-attribution",
   "generate-confidential-artifacts",
-  "read-eliza-source-lock",
   "tee-evidence-bridge",
   "tee-state-volume-mount",
   "verify-image-reproducibility",
 ];
 for (const name of modules) {
-  test(`${name} can be imported without invoking its CLI`, () => {
+  test(`${name} imports without side effects`, () => {
     const module = new URL(`../${name}.ts`, import.meta.url);
     const result = spawnSync(
       process.execPath,
@@ -66,7 +64,6 @@ for (const name of modules) {
 for (const [name, args, expected, diagnostic] of [
   ["check-confidential-policy", [], 1, "--manifest must identify"],
   ["check-dstack-pins", [], 1, "--manifest must identify"],
-  ["read-eliza-source-lock", ["--unsupported"], 1, "Unknown argument"],
   ["tee-state-volume-mount", [], 2, "real dm-crypt unseal is BLOCKED"],
 ]) {
   test(`${name} preserves refusal status through a symlink`, async (t) => {

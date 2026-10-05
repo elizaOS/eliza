@@ -16,7 +16,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileReleaseSequenceStore } from "@elizaos/os-usb-installer/trust";
+import { FileReleaseSequenceStore } from "@elizaos/os/trust";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DirectoryInstallationSourceSelector } from "./directory-source-selector";
 import {

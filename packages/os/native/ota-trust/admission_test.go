@@ -40,7 +40,7 @@ func admissionVectors(t *testing.T) []admissionVector {
 func TestNativeAdmissionReferenceParity(t *testing.T) {
 	for _, v := range admissionVectors(t) {
 		t.Run(v.Name, func(t *testing.T) {
-			result, err := EvaluateRelease(v.Release, v.Device, v.Policy)
+			result, err := EvaluateReleaseInterval(v.Release, v.Device, v.Policy)
 			if v.Expected.Error {
 				if err == nil || result != nil {
 					t.Fatal("invalid reference vector accepted")
@@ -64,12 +64,12 @@ func TestNativeAdmissionRejectsParserAmbiguity(t *testing.T) {
 		if bytes.Equal(data, v.Release) {
 			t.Fatal("mutation missed")
 		}
-		if result, err := EvaluateRelease(data, v.Device, v.Policy); err == nil || result != nil {
+		if result, err := EvaluateReleaseInterval(data, v.Device, v.Policy); err == nil || result != nil {
 			t.Fatal("ambiguous JSON accepted", replacement)
 		}
 	}
 	for _, data := range [][]byte{append(append([]byte{}, v.Release...), []byte(" {}")...), []byte(strings.Repeat(" ", int(maxBytes)+1)), {0xc3, 0x28}, bytes.Replace(v.Release, []byte(`"senior-care"`), []byte(`"\ud800"`), 1)} {
-		if _, err := EvaluateRelease(data, v.Device, v.Policy); err == nil {
+		if _, err := EvaluateReleaseInterval(data, v.Device, v.Policy); err == nil {
 			t.Fatal("bad encoding/bound accepted")
 		}
 	}

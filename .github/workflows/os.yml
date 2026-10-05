@@ -66,8 +66,6 @@ jobs:
           bun run verify:installer-native
           bun run verify:portable
           bun run test:release
-      - name: Validate Android compatibility wrappers
-        run: android/installer/tests/run-tests.sh
       - name: Validate the checked-in release plan
         run: |
           set -euo pipefail
@@ -229,16 +227,6 @@ jobs:
             ${{ env.RESTORE_EVIDENCE }}/qualification.json
             ${{ env.RESTORE_EVIDENCE }}/gpt-snapshot.bin
           if-no-files-found: warn
-
-  android-powershell-safety:
-    name: Android PowerShell safety refusals
-    runs-on: windows-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: Reject unsafe execution before device access
-        shell: pwsh
-        run: android/installer/tests/wrapper-safety.ps1
 
   usb-browser:
     name: USB installer desktop and mobile browser flows

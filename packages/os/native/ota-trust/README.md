@@ -13,7 +13,7 @@ runtimeInventoryHeader. Empty or invalid policy rejects product admission and
 runtime-artifact verification. There is no runtime setter. Keep the product's
 existing salt and inventory header when migrating deployed installations.
 
-Use Go 1.26.8. Run `go test -race ./...` and `go vet ./...` here. Tests include
+Use Go 1.27.1. Run `go test -race ./...` and `go vet ./...` here. Tests include
 historical downstream compatibility vectors; their product policy exists only
 in test code. The independent-host test rejects another product's release.
 These tests do not prove device-owner provisioning, installed update recovery,
