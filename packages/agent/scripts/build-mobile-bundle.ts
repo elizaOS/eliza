@@ -38,11 +38,6 @@ import {
 // under-reported MOBILE_CORE_PLUGINS).
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
-// agentRoot = repoRoot/packages/agent → two parents up is the repo root.
-// (Earlier versions assumed eliza's outer-repo layout where agent
-// lived at eliza/packages/agent/, requiring three `..`s. That hop is
-// the source of every "could not locate @electric-sql/pglite/dist" or
-// "agent-bundle.js not found" error in CI.)
 const repoRoot = path.resolve(agentRoot, "..", "..");
 const rmRecursiveScript = path.join(
   repoRoot,
@@ -1484,169 +1479,11 @@ if (!existsSync(bundlePath)) {
   );
   process.exit(1);
 }
-// Bun.build occasionally renames default-export bindings (e.g. `v4` from
-// uuid → `default10`) but loses the binding when the source module is
-// stubbed by `externalsAsStubs` or has a multi-entry-point exports map.
-// `apply*Override3` collisions come from the same path: a stubbed plugin
-// (e.g. `@elizaos/plugin-whatsapp`) leaves a numbered alias unbound.
-// Same root cause produces the `AutonomyService failed to start:
-// AutonomyService2 is not defined` warning at boot — the dedup'd alias
-// for the autonomy service class never gets bound when the consumer
-// `startAndRegisterAutonomyService2` runs before the second copy's init.
-//
-// The bundle still references these identifiers at runtime, so chat
-// completion crashes with "default10 is not defined". Prepend a polyfill
-// header that defines the few known offenders. Each one is either a uuid
-// generator (use the platform crypto), a no-op for stubbed plugins, or
-// (for AutonomyService2) an alias to the original class that DID get
-// bound by `init_service2`.
-//
-// The right long-term fix is to make Bun.build emit consistent bindings
-// for stubbed modules; until then, this prefix keeps the agent runnable.
-//
-// The polyfill is split into two phases:
-//   1. The header is prepended at the top of the bundle. These are
-//      `var X` declarations that get hoisted; consumers further down the
-//      bundle that read them before the underlying module's init runs
-//      see the polyfill value instead of `undefined`.
-//   2. The footer `if`-guard runs AFTER the bundle has finished loading
-//      (so the original module inits have run and `AutonomyService` etc.
-//      are populated). It reassigns the dedup'd alias to point at the
-//      now-bound original where one exists. No-op when the original
-//      isn't there either.
-let bundleSrc = await Bun.file(bundlePath).text();
-// Bun.build (1.4.2+) injects its `createRequire` ESM shim at the very top of
-// the output — ABOVE the entry's `#!/usr/bin/env node` — so the shebang lands
-// on ~line 4. A shebang anywhere but line 1 is a SyntaxError when Node loads
-// the file as an ES module (compileSourceTextModule), which crash-loops the
-// agent at boot. run-agent.sh always launches the bundle via an explicit
-// `node <bundle>` (never executed directly), so the shebang is dead weight —
-// strip the first shebang line outright. The downstream `startsWith("#!")`
-// branch then correctly takes the no-shebang path.
-const __shebangStripped = bundleSrc.replace(/^#![^\n]*\r?\n/m, "");
-if (__shebangStripped !== bundleSrc) {
-  console.log("[build-mobile] stripped embedded shebang (ESM-incompatible)");
-  bundleSrc = __shebangStripped;
-}
-function initSourceComment(src, initName, searchOffset) {
-  const initOffset = src.indexOf(`var ${initName} = __esm`, searchOffset);
-  if (initOffset === -1) return "(definition not found)";
-  const commentOffset = src.lastIndexOf("// ", initOffset);
-  if (commentOffset === -1) return "(source not found)";
-  const endOffset = src.indexOf("\n", commentOffset);
-  return src.slice(
-    commentOffset + 3,
-    endOffset === -1 ? initOffset : endOffset,
-  );
-}
-function reportInitElizaShape(src) {
-  const source = String(src);
-  const match =
-    /var init_eliza = __esm\((async )?\(\) => \{([\s\S]*?)\n\}\);/.exec(source);
-  if (!match) {
-    console.warn("[build-mobile] init_eliza initializer not found");
-    return;
-  }
-  const asyncInit = Boolean(match[1]);
-  console.log(
-    `[build-mobile] init_eliza initializer: ${asyncInit ? "async" : "sync"}`,
-  );
-  if (!asyncInit) return;
-  const body = match[2];
-  const seen = new Set();
-  for (const call of body.matchAll(
-    /\b(await\s+)?(init_[A-Za-z0-9_$]+)\(\);/g,
-  )) {
-    const initName = call[2];
-    if (seen.has(initName)) continue;
-    seen.add(initName);
-    const definitionOffset = source.indexOf(`var ${initName} = __esm`);
-    const definition = source.slice(definitionOffset, definitionOffset + 80);
-    const kind = definition.includes("__esm(async") ? "async" : "sync";
-    console.error(
-      `[build-mobile] init_eliza dependency ${kind}: ${initName} (${initSourceComment(source, initName, definitionOffset)})`,
-    );
-  }
-}
-reportInitElizaShape(bundleSrc);
-// `AutonomyService2` is the dedup'd consumer-side alias for the
-// autonomy Service class. The class itself (`class AutonomyService
-// extends Service { static async start(runtime) {...} }`) lives in a
-// lazy `init_service2()` body that doesn't run until something pulls
-// the autonomy module — but `startAndRegisterAutonomyService2` reads
-// `AutonomyService2` BEFORE that init runs. The bundle ships the alias
-// without a binding, so the runtime sees `AutonomyService2 is not
-// defined` at boot.
-//
-// Polyfill it as a no-op service class so `startAndRegisterAutonomyService2`
-// just returns null. Autonomy is opt-in, so a no-op class is safe.
-//
-// Generic phase: scan the bundle for identifiers that match known
-// rename patterns (`defaultN`, `applyXxxNN`) and ensure every called-but-
-// undeclared one gets a polyfill. UUID-shaped renames (most `defaultN`)
-// fall back to crypto.randomUUID. apply* renames fall back to no-ops.
-// Real declarations in the bundle shadow these polyfills via `var`
-// hoisting + same-name redeclaration semantics.
-function scanUndeclaredRenames(src) {
-  const declRegex =
-    /(?:\bvar\s+|\blet\s+|\bconst\s+|\bfunction\s+|\bclass\s+)([A-Za-z_$][\w$]*)/g;
-  const declared = new Set();
-  for (const m of src.matchAll(declRegex)) declared.add(m[1]);
-  const candidateRegex =
-    /\b(default\d+|apply[A-Za-z]+Override\d+|[A-Za-z]+Service\d+)\b/g;
-  const seen = new Set();
-  const undeclaredDefaults = new Set();
-  const undeclaredApplies = new Set();
-  const undeclaredServices = new Set();
-  for (const m of src.matchAll(candidateRegex)) {
-    const name = m[1];
-    if (seen.has(name)) continue;
-    seen.add(name);
-    if (declared.has(name)) continue;
-    if (name.startsWith("default")) undeclaredDefaults.add(name);
-    else if (name.startsWith("apply")) undeclaredApplies.add(name);
-    else undeclaredServices.add(name);
-  }
-  return { undeclaredDefaults, undeclaredApplies, undeclaredServices };
-}
-const renames = scanUndeclaredRenames(bundleSrc);
-const polyfillLines = [
-  "// auto-injected polyfills for Bun.build identifier-resolution gaps",
-];
-// Always-on: the few hand-curated overrides that need specific shapes.
-polyfillLines.push("var default10 = () => globalThis.crypto.randomUUID();");
-polyfillLines.push("var applyWhatsAppQrOverride3 = () => {};");
-polyfillLines.push(
-  "var AutonomyService2 = class AutonomyServicePolyfill {\n" +
-    "  static serviceType = 'AUTONOMY';\n" +
-    "  static async start(_runtime) { return null; }\n" +
-    "  async stop() {}\n" +
-    "};",
+// Entrypoint shebangs can appear below Bun's ESM shim; bundles are loaded explicitly.
+const bundleSrc = (await Bun.file(bundlePath).text()).replace(
+  /^#![^\n]*\r?\n/m,
+  "",
 );
-const SKIP_DEFAULTS = new Set(["default10"]);
-const SKIP_APPLIES = new Set(["applyWhatsAppQrOverride3"]);
-const SKIP_SERVICES = new Set(["AutonomyService2"]);
-for (const name of renames.undeclaredDefaults) {
-  if (SKIP_DEFAULTS.has(name)) continue;
-  polyfillLines.push(`var ${name} = () => globalThis.crypto.randomUUID();`);
-}
-for (const name of renames.undeclaredApplies) {
-  if (SKIP_APPLIES.has(name)) continue;
-  polyfillLines.push(`var ${name} = () => {};`);
-}
-for (const name of renames.undeclaredServices) {
-  if (SKIP_SERVICES.has(name)) continue;
-  polyfillLines.push(
-    `var ${name} = class ${name}Polyfill { static async start(_runtime) { return null; } async stop() {} };`,
-  );
-}
-console.log(
-  `[build-mobile] polyfill: ${renames.undeclaredDefaults.size} default*, ` +
-    `${renames.undeclaredApplies.size} apply*, ` +
-    `${renames.undeclaredServices.size} *Service* identifiers covered`,
-);
-const polyfillHeader = `${polyfillLines.join("\n")}\n`;
-const polyfillFooter = "";
 // ios-jsc: prepend the JSContext polyfill from
 // native/ios-bun-port/polyfill/dist/polyfill-prefix.js (built in parallel
 // by the polyfill agent). The prefix installs Bun + Node module shims
@@ -1713,25 +1550,7 @@ const iosJscBridgeCheck =
       "  throw new Error('[ios-jsc] __ELIZA_BRIDGE__ version mismatch: bundle requires v1, host provided ' + globalThis.__ELIZA_BRIDGE__.version);\n" +
       "}\n"
     : "";
-let prefixed;
-if (bundleSrc.startsWith("#!")) {
-  const nlIndex = bundleSrc.indexOf("\n");
-  prefixed =
-    bundleSrc.slice(0, nlIndex + 1) +
-    iosJscPolyfillSrc +
-    iosJscBridgeCheck +
-    polyfillHeader +
-    bundleSrc.slice(nlIndex + 1) +
-    polyfillFooter;
-} else {
-  prefixed =
-    iosJscPolyfillSrc +
-    iosJscBridgeCheck +
-    polyfillHeader +
-    bundleSrc +
-    polyfillFooter;
-}
-await Bun.write(bundlePath, prefixed);
+await Bun.write(bundlePath, iosJscPolyfillSrc + iosJscBridgeCheck + bundleSrc);
 const nativeNodeOutputs = (await readdir(outDir)).filter((file) =>
   file.endsWith(".node"),
 );
@@ -1747,7 +1566,7 @@ if (nativeNodeOutputs.length > 0) {
 }
 const bundleSize = (await stat(bundlePath)).size;
 console.log(
-  `[build-mobile] bundle size: ${(bundleSize / 1024 / 1024).toFixed(2)} MB (with polyfill prefix)`,
+  `[build-mobile] bundle size: ${(bundleSize / 1024 / 1024).toFixed(2)} MB`,
 );
 // Copy PGlite assets next to the bundle. The bundle's `import.meta.url` will
 // resolve to its location at runtime, and `new URL("./pglite.wasm", ...)`
