@@ -1191,11 +1191,9 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
-        "@fontsource/poppins": "^5.2.7",
         "@types/bun": "1.4.2",
         "@types/node": "25.6.2",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "turbo": "^2.11.5",
         "typescript": "^6.0.3",
         "vitest": "5.0.2",
       },

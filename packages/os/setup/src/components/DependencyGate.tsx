@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  DependencyCheckResult,
-  DependencyId,
-} from "../dependencies/types";
+import type { DependencyCheckResult, DependencyId } from "../backend/types";
 import { authorizedFetch, getServerUrl } from "../runtime/server-url";
 
 const SERVER = getServerUrl();

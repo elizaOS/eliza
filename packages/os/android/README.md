@@ -131,7 +131,7 @@ Stage an independently built HOME application without replacing the Eliza runtim
 or inheriting its privileged permission list:
 
 ```bash
-node packages/os/scripts/distro-android/stage-launcher-overlay.ts \
+node packages/os/scripts/android/stage-launcher-overlay.ts \
   --descriptor /absolute/launcher.json --apk /absolute/launcher.apk \
   --output /absolute/new-vendor-directory
 ```

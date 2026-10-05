@@ -51,5 +51,5 @@ fi
 cd "$usb_package"
 "$runtime_bun" test \
   "$usb_package/src/__tests__/packaged-app-handler.test.ts" \
-  "$usb_package/src/backend/__tests__/raw-image-pipeline.test.ts" \
+  "$usb_package/src/backend/raw-image-pipeline.test.ts" \
   "$usb_package/../trust/release-sequence-store.test.ts"

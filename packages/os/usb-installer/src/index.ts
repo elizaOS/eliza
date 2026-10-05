@@ -1,1 +1,1 @@
-export { InstallerApp } from "./components/InstallerApp";
+export { InstallerApp } from "./InstallerApp";

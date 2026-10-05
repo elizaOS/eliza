@@ -14,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 // Verifies canonical image-release bytes. On the isolated signing runner it
 // can publish those same held bytes into a fresh exclusive handoff tree.
-import { artifactSignaturePayload } from "../contracts/image-signature.ts";
+import { artifactSignaturePayload } from "../contracts/index.ts";
 import { validateAgainstSchema } from "./json-schema-lite.ts";
 import { parseArgs } from "./os-release-lib.ts";
 import { loadReleaseKeyPolicy } from "./release-key-policy.ts";

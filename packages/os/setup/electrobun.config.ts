@@ -48,8 +48,8 @@ export default {
       "../scripts/android/post-boot.ts": "scripts/android/post-boot.ts",
       "../scripts/android/runtime-health.ts":
         "scripts/android/runtime-health.ts",
-      "../scripts/aosp/lib/android-socket-fetch.ts":
-        "scripts/aosp/lib/android-socket-fetch.ts",
+      "../scripts/android/android-socket-fetch.ts":
+        "scripts/android/android-socket-fetch.ts",
     },
     mac: {
       codesign: Boolean(process.env.ELECTROBUN_DEVELOPER_ID),

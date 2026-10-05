@@ -17,7 +17,7 @@ bun run --cwd packages/os build                 # installer web frontends only
 bun run --cwd packages/os verify:portable       # checks without native installer qualification
 bun run --cwd packages/os verify                # Linux native and release checks
 bun run --cwd packages/os verify:linux          # Linux configuration checks
-make -C packages/os/linux/elizaos build ARCH=amd64 PROFILE=gui
+make -C packages/os/linux build ARCH=amd64 PROFILE=gui
 make -C packages/os/android bootstrap AOSP_ROOT=/path/to/aosp
 make -C packages/os/android build ARCH=x86_64 AOSP_ROOT=/path/to/aosp
 ```
@@ -74,7 +74,7 @@ CAS ports; the core has no default signer or publication destination. Run
 recovery contracts. These tests do not authorize or perform production publication.
 
 Downstream launcher hosts may use `createDevelopmentLauncherDescriptor` from
-`scripts/distro-android/stage-launcher-overlay.ts` only with explicit development
+`scripts/android/stage-launcher-overlay.ts` only with explicit development
 mode. It verifies one signer against a private APK copy and returns a hash-bound
 descriptor; it grants no production signer authority. `stageLauncher` rechecks
 the staged bytes, manifest and signer, and accepts an optional SDK environment.

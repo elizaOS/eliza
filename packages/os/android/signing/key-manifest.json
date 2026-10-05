@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "reviewedAt": "2026-10-02",
-  "description": "Signing keys for an elizaOS AOSP image and its release metadata. Generated offline by packages/os/scripts/aosp/generate-release-keys.ts (see android/signing/README.md). Products add their own application keys with a separate --manifest. Private keys never enter a repository; only reviewed public fingerprints are enrolled.",
+  "description": "Signing keys for an elizaOS AOSP image and its release metadata. Generated offline by packages/os/scripts/android/generate-release-keys.ts (see android/signing/README.md). Products add their own application keys with a separate --manifest. Private keys never enter a repository; only reviewed public fingerprints are enrolled.",
   "references": [
     "https://source.android.com/docs/core/ota/sign_builds",
     "https://android.googlesource.com/platform/external/avb/+/refs/heads/main/avbtool.py"

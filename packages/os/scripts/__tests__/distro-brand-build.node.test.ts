@@ -16,19 +16,19 @@ import { parse } from "yaml";
 import {
   BrandConfigurationError,
   loadBrandConfig,
-} from "../distro-android/brand-config.ts";
+} from "../android/brand-config.ts";
 import {
   AospCommandError,
   cuttlefishLaunchCommand,
   parseSubArgs,
   rebuildPrivilegedApk,
-} from "../distro-android/build-aosp.ts";
+} from "../android/build-aosp.ts";
 import { resolveElizaSourceRoot } from "../eliza-source.ts";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const original = JSON.parse(
   readFileSync(
-    new URL("../distro-android/brand.eliza.json", import.meta.url),
+    new URL("../android/brand.eliza.json", import.meta.url),
     "utf8",
   ),
 );

@@ -8,7 +8,7 @@ on:
         description: "Path to brand config JSON (relative to packages/os). Default: eliza."
         required: false
         type: string
-        default: "scripts/distro-android/brand.eliza.json"
+        default: "scripts/android/brand.eliza.json"
       vendor-source:
         description: "Override path to the vendor tree (relative to packages/os). Defaults to brand.vendorDir."
         required: false
@@ -44,7 +44,7 @@ on:
         description: "Path to brand config JSON (relative to packages/os)."
         required: false
         type: string
-        default: "scripts/distro-android/brand.eliza.json"
+        default: "scripts/android/brand.eliza.json"
       vendor-source:
         description: "Override path to the vendor tree."
         required: false
@@ -166,7 +166,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import { appendFileSync } from "node:fs";
-          import { loadBrandConfig } from "./scripts/distro-android/brand-config.ts";
+          import { loadBrandConfig } from "./scripts/android/brand-config.ts";
           const brand = loadBrandConfig(process.env.BRAND_CONFIG);
           const product = brand.productName;
           const target = product.includes("riscv64") ? "android-riscv64-cpu-fused" : product.includes("x86_64") ? "android-x86_64-cpu-fused" : null;
@@ -245,7 +245,7 @@ jobs:
             args+=(--target "$target")
           done
           mkdir -p "$CVD_REPORT_DIR"
-          node scripts/aosp/verify-native-runtime.ts \
+          node scripts/android/verify-native-runtime.ts \
             --asset-root "$ELIZAOS_ELIZA_ROOT"/packages/app/platforms/android/app/src/main/assets/agent \
             "${args[@]}" | tee "$CVD_REPORT_DIR"/native-runtime.json
 
@@ -267,14 +267,14 @@ jobs:
             export ELIZA_BUN_RISCV64_OPTIONAL=1
           fi
           node --input-type=module <<'NODE'
-          import { loadBrandConfig } from "./scripts/distro-android/brand-config.ts";
-          import { rebuildPrivilegedApk } from "./scripts/distro-android/build-aosp.ts";
+          import { loadBrandConfig } from "./scripts/android/brand-config.ts";
+          import { rebuildPrivilegedApk } from "./scripts/android/build-aosp.ts";
           rebuildPrivilegedApk(loadBrandConfig(process.env.BRAND_CONFIG));
           NODE
 
       - name: Static brand validation
         run: |
-          node scripts/distro-android/validate.ts \
+          node scripts/android/validate.ts \
             --brand-config "$BRAND_CONFIG"
 
       - name: Sync the immutable AOSP manifest revision
@@ -300,7 +300,7 @@ jobs:
 
       - name: Verify immutable Cuttlefish AOSP source lock
         run: |
-          node scripts/aosp/verify-source-lock.ts \
+          node scripts/android/verify-source-lock.ts \
             --profile cuttlefish \
             --aosp-root "$AOSP_ROOT" \
             --json
@@ -319,7 +319,7 @@ jobs:
           if [ "$CVD_LAUNCH" = "true" ]; then
             ARGS+=(--launch)
           fi
-          node scripts/distro-android/build-aosp.ts "${ARGS[@]}"
+          node scripts/android/build-aosp.ts "${ARGS[@]}"
 
       - name: Bind validation to the disposable Cuttlefish guest
         if: success() && inputs.launch == true
@@ -332,7 +332,7 @@ jobs:
           case "$device" in vsoc_x86_64|vsoc_x86_64_only) ;; *) echo "::error::Expected a disposable Cuttlefish guest"; exit 1 ;; esac
           test "$(adb -s "$serial" shell getprop ro.build.type | tr -d '\r')" = userdebug
           echo "ANDROID_SERIAL=$serial" >> "$GITHUB_ENV"
-          ANDROID_SERIAL="$serial" node scripts/distro-android/boot-validate.ts --brand-config "$BRAND_CONFIG"
+          ANDROID_SERIAL="$serial" node scripts/android/boot-validate.ts --brand-config "$BRAND_CONFIG"
 
       - name: Verify application-native kernels on Cuttlefish
         if: success() && inputs.launch == true
@@ -340,7 +340,7 @@ jobs:
           ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}
           ELIZA_CUTTLEFISH_OUT_DIR: ${{ env.CVD_REPORT_DIR }}/kernel-parity
           ELIZA_CUTTLEFISH_EVIDENCE_OUT: ${{ env.CVD_REPORT_DIR }}/android-x86_64-cpu.json
-        run: bash scripts/aosp/cuttlefish-native-inference-smoke.sh
+        run: bash scripts/android/cuttlefish-native-inference-smoke.sh
 
       - name: Prove full WAV to ASR to agent to TTS round trip
         if: success() && inputs.launch == true
@@ -472,7 +472,7 @@ jobs:
             cd "$ELIZAOS_ELIZA_ROOT"/packages/app/platforms/android
             ./gradlew :app:connectedDebugAndroidTest --stacktrace
             cd "${GITHUB_WORKSPACE}/packages/os"
-            node scripts/aosp/verify-android-instrumentation-results.ts \
+            node scripts/android/verify-android-instrumentation-results.ts \
               --results "$ELIZAOS_ELIZA_ROOT"/packages/app/platforms/android/app/build/outputs/androidTest-results/connected \
               --required-class ai.elizaos.app.ElizaAssistantSurfaceInstrumentedTest \
               --min-tests 6

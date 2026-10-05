@@ -10,7 +10,7 @@ import {
   stageLauncher,
   validateDescriptor,
   validateInspection,
-} from "../distro-android/stage-launcher-overlay.ts";
+} from "../android/stage-launcher-overlay.ts";
 
 test("development descriptor requires opt-in before reading files or invoking tools", () => {
   assert.throws(
