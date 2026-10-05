@@ -62,6 +62,8 @@ export function createRuntimeJsonClient(options: {
       throw new RangeError("Invalid runtime client budget");
   let generation = 0;
   let starting: { generation: number; promise: Promise<void> } | undefined;
+  let refreshing: { generation: number; promise: Promise<void> } | undefined;
+  let refreshFailure: { generation: number; error: unknown } | undefined;
   const current = (epoch: number) => {
     if (epoch !== generation) throw new Error(options.messages.changed);
   };
@@ -135,21 +137,63 @@ export function createRuntimeJsonClient(options: {
   };
   return {
     async refreshNativeAccount() {
+      // Revoking a bridge still invalidates work dispatched through the old account.
+      const epoch = ++generation;
+      refreshFailure = undefined;
       if (!options.nativePlatform()) return;
       const bridge = options.nativeBridge();
       if (!bridge) return;
-      const epoch = ++generation;
-      const status = await bridge.status();
-      current(epoch);
-      if (!status.available) return;
-      const restarted = await bridge.restart();
-      current(epoch);
-      await ensure(bridge, restarted, epoch);
+      const deadline = performance.now() + options.startupTimeoutMs;
+      let settled = false;
+      const check = () => {
+        current(epoch);
+        if (settled || performance.now() >= deadline)
+          throw new Error(options.messages.startup);
+      };
+      let timer: ReturnType<typeof setTimeout>;
+      const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(options.messages.startup)),
+          options.startupTimeoutMs,
+        );
+      });
+      const entry = {
+        generation: epoch,
+        promise: Promise.race([
+          expired,
+          Promise.resolve().then(async () => {
+            check();
+            const status = await bridge.status();
+            check();
+            if (!status.available) return;
+            const restarted = await bridge.restart();
+            check();
+            await ensure(bridge, restarted, epoch);
+            check();
+          }),
+        ])
+          .catch((error) => {
+            if (generation === epoch)
+              refreshFailure = { generation: epoch, error };
+            throw error;
+          })
+          .finally(() => {
+            settled = true;
+            clearTimeout(timer);
+            if (refreshing === entry) refreshing = undefined;
+          }),
+      };
+      refreshing = entry;
+      return entry.promise;
     },
     async request<T>(path: string, body?: unknown): Promise<T> {
       if (!path.startsWith("/") || path.startsWith("//"))
         throw new Error(options.messages.invalidPath);
       const epoch = generation;
+      // Do not dispatch under the new generation while the old runtime is restarting.
+      if (refreshing?.generation === epoch) await refreshing.promise;
+      current(epoch);
+      if (refreshFailure?.generation === epoch) throw refreshFailure.error;
       const method = body === undefined ? "GET" : "POST";
       if (options.nativePlatform()) {
         const bridge = options.nativeBridge();

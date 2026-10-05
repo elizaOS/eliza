@@ -47,7 +47,7 @@ export async function findOriginalUpgradeInvoiceEvent(input: {
   let match:
     | { raw: unknown; origin: ReturnType<typeof projectAuthenticatedUpgradeInvoiceOrigin> }
     | undefined;
-  for (let index = 0; index < 100; index++) {
+  for (;;) {
     const parsed = pageSchema.safeParse(
       await input.reader.list(
         {
@@ -92,5 +92,4 @@ export async function findOriginalUpgradeInvoiceEvent(input: {
       return match;
     }
   }
-  unavailable("event_search_limit_reached");
 }

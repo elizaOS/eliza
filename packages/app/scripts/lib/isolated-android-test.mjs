@@ -365,34 +365,41 @@ export async function runIsolatedAndroidTest({
       if (admitted) {
         // Only identities absent from all users at admission are owned by this run.
         report.cleanupErrors = [];
+        const remainingOwned = [];
         for (const name of [testPackage, packageName].filter((name) =>
           owned.has(name),
         )) {
           try {
-            const remaining = (await packages()).includes(`package:${name}`);
-            if (remaining) {
-              try {
-                await run(
-                  "shell",
-                  "am",
-                  "force-stop",
-                  "--user",
-                  String(androidUser),
-                  name,
-                );
-              } catch (error) {
-                report.cleanupErrors.push(
-                  `Could not stop ${name}: ${error.code ?? error.status ?? "command failed"}`,
-                );
-              }
-              await run("uninstall", name);
+            if ((await packages()).includes(`package:${name}`)) {
+              remainingOwned.push(name);
+              await run(
+                "shell",
+                "am",
+                "force-stop",
+                "--user",
+                String(androidUser),
+                name,
+              );
             }
           } catch (error) {
             report.cleanupErrors.push(
-              `Could not clean ${name}: ${error.code ?? error.status ?? "command failed"}`,
+              `Could not stop ${name}: ${error.code ?? error.status ?? "command failed"}`,
             );
           }
         }
+        // Both processes must be stopped before either installed package is removed.
+        // A failed/uncertain stop preserves the pair for explicit fixture recovery.
+        report.cleanupDeferred = report.cleanupErrors.length > 0;
+        if (!report.cleanupDeferred)
+          for (const name of remainingOwned) {
+            try {
+              await run("uninstall", name);
+            } catch (error) {
+              report.cleanupErrors.push(
+                `Could not clean ${name}: ${error.code ?? error.status ?? "command failed"}`,
+              );
+            }
+          }
         try {
           report.cleaned = !(await installed());
           report.homeUnchanged = (await home()) === previousHome;

@@ -40,7 +40,9 @@ export function observeOriginalUpgradeInvoiceState(input: {
     invoice.amount_paid === 0
   )
     return "awaiting_payment" as const;
-  // Void/uncollectible/draft/contradictory flags require broader target and event
+  if (invoice.status === "void" && !invoice.paid && invoice.amount_paid === 0)
+    return "void_candidate" as const;
+  // Uncollectible/draft/contradictory flags require broader target and event
   // reconciliation; none alone proves it is safe to admit another provider write.
   return "requires_reconciliation" as const;
 }

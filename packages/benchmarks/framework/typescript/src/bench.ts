@@ -343,6 +343,30 @@ const WORLD_ID = "00000000-0000-0000-0000-000000000004" as UUID;
 
 // ─── Runtime factory ────────────────────────────────────────────────────────
 
+// Keep service shutdown and database ownership on the runtime, including failures.
+async function closeBenchmarkRuntime(
+  runtime: AgentRuntime,
+  operationFailures: unknown[] = [],
+): Promise<void> {
+  const cleanupFailures: unknown[] = [];
+  try {
+    await runtime.stop();
+  } catch (error) {
+    cleanupFailures.push(error);
+  }
+  try {
+    await runtime.close();
+  } catch (error) {
+    cleanupFailures.push(error);
+  }
+  if (cleanupFailures.length) {
+    throw new AggregateError(
+      [...operationFailures, ...cleanupFailures],
+      "Benchmark runtime teardown failed",
+    );
+  }
+}
+
 async function createBenchmarkRuntime(
   character: Character,
   extraPlugins: Plugin[] = [],
@@ -419,7 +443,7 @@ async function createBenchmarkRuntime(
 
     await runtime.createRoomParticipants([USER_ENTITY_ID, AGENT_ID], ROOM_ID);
   } catch (error) {
-    await runtime.stop();
+    await closeBenchmarkRuntime(runtime, [error]);
     throw error;
   }
 
@@ -582,10 +606,16 @@ async function runStartupBenchmark(
         config,
         llmPlugins,
       );
-      const elapsed = timer.stop();
-      timings.push(elapsed);
-
-      await rt.stop();
+      const operationFailures: unknown[] = [];
+      try {
+        const elapsed = timer.stop();
+        timings.push(elapsed);
+      } catch (error) {
+        operationFailures.push(error);
+        throw error;
+      } finally {
+        await closeBenchmarkRuntime(rt, operationFailures);
+      }
     }
 
     const resources = memMonitor.stop();
@@ -633,6 +663,7 @@ async function runDbBenchmark(
         config,
         llmPlugins,
       );
+      const operationFailures: unknown[] = [];
       try {
         const adapter = runtime.adapter;
 
@@ -676,8 +707,11 @@ async function runDbBenchmark(
 
           timings.push(timer.stop());
         }
+      } catch (error) {
+        operationFailures.push(error);
+        throw error;
       } finally {
-        await runtime.stop();
+        await closeBenchmarkRuntime(runtime, operationFailures);
       }
     }
 
@@ -732,6 +766,7 @@ async function runMessageBenchmark(
         config,
         llmPlugins,
       );
+      const operationFailures: unknown[] = [];
       try {
         if (config.prePopulateHistory) {
           await prePopulateHistory(runtime, config.prePopulateHistory);
@@ -740,8 +775,11 @@ async function runMessageBenchmark(
           const msg = createMessage(messages[m].content, m);
           await processMessage(runtime, msg);
         }
+      } catch (error) {
+        operationFailures.push(error);
+        throw error;
       } finally {
-        await runtime.stop();
+        await closeBenchmarkRuntime(runtime, operationFailures);
       }
     }
 
@@ -759,6 +797,7 @@ async function runMessageBenchmark(
         config,
         llmPlugins,
       );
+      const operationFailures: unknown[] = [];
       try {
         if (config.prePopulateHistory) {
           await prePopulateHistory(runtime, config.prePopulateHistory);
@@ -794,8 +833,11 @@ async function runMessageBenchmark(
         }
 
         allTimings.push(iterTimer.stop());
+      } catch (error) {
+        operationFailures.push(error);
+        throw error;
       } finally {
-        await runtime.stop();
+        await closeBenchmarkRuntime(runtime, operationFailures);
       }
     }
 

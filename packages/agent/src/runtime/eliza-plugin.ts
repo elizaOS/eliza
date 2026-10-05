@@ -118,12 +118,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     name: "eliza",
     databaseBackends: ["postgres", "pglite", "sqlite"],
     description: "Eliza workspace context, session keys, and lifecycle actions",
-    // Runtime-owned app_lifeops tables. Registered here so the SQL plugin
-    // migrates the runtime data model whenever the agent runs.
-    schema: {
-      ...retainedPendantSchema,
-      ...knowledgeGraphSchema,
-    },
+    // Retired feature data remains part of the schema until an explicit retention migration.
+    schema: { ...retainedPendantSchema, ...knowledgeGraphSchema },
     services: [
       AgentEventService as ServiceClass,
       NotificationService as ServiceClass,

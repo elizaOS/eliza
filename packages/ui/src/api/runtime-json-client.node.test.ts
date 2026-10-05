@@ -175,9 +175,94 @@ test("late status after startup timeout cannot continue polling", async () => {
       release = resolve;
     });
   };
-  const client = setup(native, { startupTimeoutMs: 30, pollMs: 1 });
+  const client = setup(native, { startupTimeoutMs: 500, pollMs: 1 });
   await assert.rejects(client.request("/a"), /startup/);
   release({ available: true, state: "starting" });
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(statuses, 2);
+});
+
+test("removing a native bridge still fences an old account response", async () => {
+  const native = bridge();
+  let selected: RuntimeJsonBridge | null = native;
+  let release!: (value: { status: number; data: string }) => void;
+  let dispatched!: () => void;
+  const sent = new Promise<void>((resolve) => {
+    dispatched = resolve;
+  });
+  native.request = () => {
+    dispatched();
+    return new Promise((resolve) => {
+      release = resolve;
+    });
+  };
+  const client = setup(native, { nativeBridge: () => selected });
+  const response = client.request("/private");
+  const checked = assert.rejects(response, /changed/);
+  await sent;
+  selected = null;
+  await client.refreshNativeAccount();
+  release({ status: 200, data: "old account" });
+  await checked;
+});
+
+test("requests wait until the current account restart has completed", async () => {
+  const native = bridge();
+  let release!: (value: { available: boolean; state: string }) => void;
+  let restarting!: () => void;
+  const begun = new Promise<void>((resolve) => {
+    restarting = resolve;
+  });
+  native.restart = () => {
+    restarting();
+    return new Promise((resolve) => {
+      release = resolve;
+    });
+  };
+  let requests = 0;
+  native.request = async () => {
+    requests++;
+    return { status: 200, data: "current" };
+  };
+  const client = setup(native);
+  const refresh = client.refreshNativeAccount();
+  await begun;
+  const response = client.request("/private");
+  await new Promise((resolve) => setImmediate(resolve));
+  const premature = requests;
+  release(running);
+  await refresh;
+  assert.equal(await response, "current");
+  assert.equal(premature, 0);
+  assert.equal(requests, 1);
+});
+
+test("a stalled account restart releases waiting callers at the startup deadline", async () => {
+  const native = bridge();
+  native.restart = () => new Promise(() => {});
+  let requests = 0;
+  native.request = async () => {
+    requests++;
+    return { status: 200, data: null };
+  };
+  const client = setup(native, { startupTimeoutMs: 40 });
+  const refresh = client.refreshNativeAccount().then(
+    () => "resolved",
+    (error) => error.message,
+  );
+  const request = client.request("/private").then(
+    () => "resolved",
+    (error) => error.message,
+  );
+  const outcomes = await Promise.race([
+    Promise.all([refresh, request]),
+    new Promise((resolve) => setTimeout(() => resolve("still waiting"), 500)),
+  ]);
+  assert.deepEqual(outcomes, ["startup", "startup"]);
+  await assert.rejects(client.request("/private"), /startup/);
+  assert.equal(requests, 0);
+  native.restart = async () => running;
+  await client.refreshNativeAccount();
+  await client.request("/private");
+  assert.equal(requests, 1);
 });

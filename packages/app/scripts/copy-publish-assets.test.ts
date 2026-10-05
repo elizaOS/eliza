@@ -1,4 +1,4 @@
-/** Exercises installed build entrypoints and dependency closure in an assembled payload outside the checkout. */
+/** Guards the published-payload manifest closure and exercises installed build entrypoints in an assembled payload outside the checkout. */
 import { execFileSync } from "node:child_process";
 import {
   cpSync,
@@ -9,16 +9,58 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
-import { copyPublishAssets } from "./copy-publish-assets.ts";
+import {
+  copyPublishAssets,
+  PUBLISH_ASSET_PATHS,
+} from "./copy-publish-assets.ts";
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 const repositoryRoot = path.resolve(packageRoot, "../..");
+
+it("publishes the relative dependency closure of every shipped script module", () => {
+  // A shipped `scripts/**` module that imports a sibling source module must
+  // ship that sibling too; otherwise the installed package dies with
+  // ERR_MODULE_NOT_FOUND at module resolution before any code runs. Directory
+  // assets publish their whole subtree, so they satisfy their descendants.
+  const publishedDirectories = PUBLISH_ASSET_PATHS.filter((asset) => {
+    const absolute = path.join(packageRoot, asset);
+    return existsSync(absolute) && statSync(absolute).isDirectory();
+  });
+  const isPublished = (dependency) =>
+    PUBLISH_ASSET_PATHS.includes(dependency) ||
+    publishedDirectories.some((directory) =>
+      dependency.startsWith(`${directory}/`),
+    );
+  const missing = [];
+  for (const asset of PUBLISH_ASSET_PATHS) {
+    if (!asset.startsWith("scripts/") || !/\.[cm]?ts$/.test(asset)) continue;
+    const file = path.join(packageRoot, asset);
+    if (!existsSync(file)) continue;
+    for (const match of readFileSync(file, "utf8").matchAll(
+      /(?:from\s*|import\s*\()(["'])(\.[^"']+\.[cm]?ts)\1/g,
+    )) {
+      const dependency = path
+        .relative(packageRoot, path.resolve(path.dirname(file), match[2]))
+        .split(path.sep)
+        .join("/");
+      if (!dependency.startsWith("scripts/")) continue;
+      if (!isPublished(dependency)) {
+        missing.push(`${asset} imports ${match[2]} (${dependency})`);
+      }
+    }
+  }
+  expect(
+    missing,
+    "shipped script dependencies missing from PUBLISH_ASSET_PATHS",
+  ).toEqual([]);
+});
 
 it("ships consumer build tools without private repository test dependencies", async () => {
   const fixture = mkdtempSync(path.join(tmpdir(), "app-payload-"));

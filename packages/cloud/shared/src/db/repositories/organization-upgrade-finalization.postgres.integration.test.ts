@@ -342,6 +342,47 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
     expect(s.period.granted_amount).toBe("25.000000");
     expect(s.period.available_amount).toBe("25.000000");
   });
+  test("incident closure shares paid publication rollback and replay", async () => {
+    const f = await seed();
+    const {
+      recordOrganizationUpgradeRecoveryOutcome: record,
+      resolveAppliedUpgradeIncidentsInTransaction: resolve,
+    } = await import("./organization-upgrade-recovery-incidents");
+    const identity = { organizationId: f.input.organizationId, commandId: f.commandId };
+    await record({ ...identity, issueCode: "UPGRADE_RECOVERY_UNAVAILABLE" });
+    expect(await helpers.writeTransaction((tx) => resolve(tx, identity))).toBe(0);
+    const before = await state(f);
+    await db.query(
+      "CREATE FUNCTION reject_upgrade_incident_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='resolved' THEN RAISE EXCEPTION 'fixture incident resolution failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_upgrade_incident_fixture BEFORE UPDATE ON billing_subscription_incidents FOR EACH ROW EXECUTE FUNCTION reject_upgrade_incident_fixture();",
+    );
+    try {
+      await expect(service.finalizePaidOrganizationUpgrade(f.finalInput)).rejects.toThrow();
+      expect(await state(f)).toEqual(before);
+      expect(
+        (
+          await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+            f.commandId,
+          ])
+        ).rows,
+      ).toEqual([{ status: "open" }]);
+    } finally {
+      await db.query(
+        "DROP TRIGGER reject_upgrade_incident_fixture ON billing_subscription_incidents; DROP FUNCTION reject_upgrade_incident_fixture()",
+      );
+    }
+    await service.finalizePaidOrganizationUpgrade(f.finalInput);
+    expect(
+      (
+        await db.query("SELECT status FROM billing_subscription_incidents WHERE command_id=$1", [
+          f.commandId,
+        ])
+      ).rows,
+    ).toEqual([{ status: "resolved" }]);
+    const applied = await state(f);
+    expect((await service.finalizePaidOrganizationUpgrade(f.finalInput)).replayed).toBe(true);
+    expect(await state(f)).toEqual(applied);
+  });
+
   test("failure at command publication rolls back already staged source, journal and entitlement", async () => {
     const f = await seed();
     await db.query(
@@ -415,5 +456,102 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
         "DROP TRIGGER delay_paid_lease_fixture ON subscription_allowance_transactions; DROP FUNCTION delay_paid_lease_fixture(); DROP SEQUENCE paid_lease_probe",
       );
     }
+  }, 10000);
+  test("historical target and compatible later live period settle only the original expired allowance", async () => {
+    const second = Math.floor(Date.now() / 1000);
+    const f = await seed({
+      start: new Date((second - 86400) * 1000),
+      end: new Date((second + 5) * 1000),
+    });
+    const { recordOrganizationUpgradeHistoricalTarget: record } = await import(
+      "./organization-upgrade-historical-targets"
+    );
+    const eventId = `evt_history${f.commandId.replaceAll("-", "")}`;
+    await record({
+      ...f.finalInput,
+      raw: {
+        id: eventId,
+        object: "event",
+        type: "customer.subscription.pending_update_applied",
+        api_version: "2024-11-20.acacia",
+        created: f.review.prorationDate,
+        livemode: false,
+        data: {
+          object: { ...f.finalInput.rawSubscription, latest_invoice: f.finalInput.rawInvoice.id },
+        },
+      },
+    });
+    await Bun.sleep(Math.max(0, f.source.current_period_end.getTime() - Date.now() + 20));
+    const live = {
+      ...f.finalInput.rawSubscription,
+      current_period_start: second + 5,
+      current_period_end: second + 86405,
+    };
+    for (const invalid of [
+      { ...live, status: "canceled" },
+      { ...live, status: "past_due" },
+      { ...live, cancel_at_period_end: true },
+    ]) {
+      await expect(
+        service.finalizePaidOrganizationUpgrade({ ...f.finalInput, rawSubscription: invalid }),
+      ).rejects.toThrow();
+      expect((await state(f)).command.status).toBe("OUTCOME_UNKNOWN");
+    }
+    await service.finalizePaidOrganizationUpgrade({ ...f.finalInput, rawSubscription: live });
+    const result = await state(f);
+    expect(result.command.status).toBe("APPLIED");
+    expect(result.source.plan_key).toBe("pro_monthly");
+    expect(result.period.state).toBe("expired");
+    expect(result.period.available_amount).toBe("0.000000");
+    expect(result.adjustments).toHaveLength(1);
+    const proof = (
+      await db.query(
+        "SELECT organization_upgrade_settlement_evidence AS proof FROM billing_subscription_commands WHERE id=$1",
+        [f.commandId],
+      )
+    ).rows[0].proof;
+    expect(proof.kind).toBe("historical_target_with_live_compatibility");
+    expect(proof.eventId).toBe(eventId);
+    expect(proof.livePeriodStart).toBe(f.source.current_period_end.toISOString());
+    const deadline = (
+      await db.query(
+        "SELECT effective_until FROM organization_entitlements WHERE organization_id=$1 AND billing_scope_id IS NULL",
+        [f.input.organizationId],
+      )
+    ).rows[0].effective_until;
+    expect(deadline).toEqual(f.source.current_period_end);
+    expect(deadline.getTime()).toBeLessThan(Date.now());
+    await expect(
+      db.query(
+        "UPDATE billing_subscription_commands SET organization_upgrade_settlement_evidence=NULL WHERE id=$1",
+        [f.commandId],
+      ),
+    ).rejects.toThrow();
+    expect(
+      (await service.finalizePaidOrganizationUpgrade({ ...f.finalInput, rawSubscription: live }))
+        .replayed,
+    ).toBe(true);
+    expect((await state(f)).adjustments).toHaveLength(1);
+  }, 10000);
+  test("later live target alone cannot prove original period application", async () => {
+    const second = Math.floor(Date.now() / 1000);
+    const f = await seed({
+      start: new Date((second - 86400) * 1000),
+      end: new Date((second + 5) * 1000),
+    });
+    await Bun.sleep(Math.max(0, f.source.current_period_end.getTime() - Date.now() + 20));
+    await expect(
+      service.finalizePaidOrganizationUpgrade({
+        ...f.finalInput,
+        rawSubscription: {
+          ...f.finalInput.rawSubscription,
+          current_period_start: second + 5,
+          current_period_end: second + 86405,
+        },
+      }),
+    ).rejects.toThrow();
+    expect((await state(f)).command.status).toBe("OUTCOME_UNKNOWN");
+    expect((await state(f)).source.revision).toBe(1);
+    expect((await state(f)).adjustments).toHaveLength(0);
   }, 10000);
 });

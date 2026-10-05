@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { EventEmitter, once } from "node:events";
 import {
   chmod,
@@ -19,6 +20,7 @@ import { prepareRuntimeAccountState } from "./account-state.mjs";
 import { createLocalAgentGateway } from "./gateway.mjs";
 import {
   preparePrivateRuntimeFiles,
+  preparePrivateRuntimeProfile,
   readPrivateRuntimeEnvironment,
   readPrivateRuntimeJson,
   runtimeEnvironment,
@@ -101,6 +103,90 @@ test("private launch persists token, preserves user config and isolates actual c
   );
   assert.equal(signals.listenerCount("SIGTERM"), 0);
   assert.equal(signals.listenerCount("SIGINT"), 0);
+});
+
+test("host token format is selected only on creation and survives default reopen", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-launch-token-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let generated = 0;
+  const options = {
+    tokenPath: join(root, "token"),
+    configPath: join(root, "config.json"),
+    launchConfigPath: join(root, "launch.json"),
+    initialConfig: {},
+    selectConfig: (existing) => existing,
+  };
+  const createToken = () => {
+    generated++;
+    return randomBytes(32).toString("hex");
+  };
+  const first = await preparePrivateRuntimeFiles({ ...options, createToken });
+  assert.match(first.token, /^[a-f0-9]{64}$/);
+  assert.equal(
+    (await preparePrivateRuntimeFiles({ ...options, createToken })).token,
+    first.token,
+  );
+  assert.equal((await preparePrivateRuntimeFiles(options)).token, first.token);
+  assert.equal(generated, 1);
+  assert.equal((await stat(options.tokenPath)).mode & 0o777, 0o600);
+});
+
+test("persistent profile preserves runtime-written configuration and its exact bytes", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-runtime-profile-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const options = {
+    tokenPath: join(root, "token"),
+    configPath: join(root, "config.json"),
+    initialConfig: { provider: "default" },
+  };
+  const first = await preparePrivateRuntimeProfile(options);
+  assert.deepEqual(first.config, options.initialConfig);
+  const updated = ' { "provider": "runtime selection", "setting": true }\n';
+  await writeFile(options.configPath, updated);
+  const restored = await preparePrivateRuntimeProfile({
+    ...options,
+    initialConfig: { provider: "discarded" },
+  });
+  assert.equal(restored.token, first.token);
+  assert.deepEqual(restored.config, JSON.parse(updated));
+  assert.equal(await readFile(options.configPath, "utf8"), updated);
+  assert.equal((await stat(options.configPath)).mode & 0o777, 0o600);
+});
+
+test("a failed token factory does not poison later private profile preparation", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "private-launch-token-failure-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const options = {
+    tokenPath: join(root, "token"),
+    configPath: join(root, "config.json"),
+    launchConfigPath: join(root, "launch.json"),
+    initialConfig: {},
+    selectConfig: (existing) => existing,
+  };
+  const failure = new Error("controlled token factory failure");
+  await assert.rejects(
+    preparePrivateRuntimeFiles({
+      ...options,
+      createToken: () => {
+        throw failure;
+      },
+    }),
+    (error) => error === failure,
+  );
+  await assert.rejects(stat(options.tokenPath), { code: "ENOENT" });
+  for (const invalid of ["", "  ", "line\nbreak", undefined]) {
+    await assert.rejects(
+      preparePrivateRuntimeFiles({ ...options, createToken: () => invalid }),
+      { code: "INVALID_RUNTIME_TOKEN" },
+    );
+    await assert.rejects(stat(options.tokenPath), { code: "ENOENT" });
+  }
+  const restored = await preparePrivateRuntimeFiles({
+    ...options,
+    createToken: () => "fixture-token",
+  });
+  assert.equal(restored.token, "fixture-token");
+  assert.equal((await stat(options.tokenPath)).mode & 0o777, 0o600);
 });
 
 test("private launch rejects malformed settings, links and empty authority without spawning", async (t) => {
