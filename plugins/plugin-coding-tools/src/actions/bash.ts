@@ -323,6 +323,8 @@ function normalizeShellSubaction(
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
   switch (normalized) {
+    case "run":
+      return "run";
     case "clear":
     case "clear_history":
     case "history_clear":
@@ -1343,14 +1345,16 @@ export const shellAction: Action = {
     options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const explicitSubaction = readStringParam(options, "action");
+    const explicitSubaction = readParam(options, "action");
     // History operations mutate or disclose session state, so only the
     // validated structured action may select them. Message prose and path
     // names cannot override an explicit command.
     const subaction =
       explicitSubaction === undefined
         ? "run"
-        : normalizeShellSubaction(explicitSubaction);
+        : typeof explicitSubaction === "string"
+          ? normalizeShellSubaction(explicitSubaction)
+          : undefined;
     if (!subaction) {
       return failureToActionResult({
         reason: "invalid_param",
