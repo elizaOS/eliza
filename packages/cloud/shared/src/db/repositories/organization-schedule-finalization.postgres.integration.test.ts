@@ -1,10 +1,15 @@
 /** Real PostgreSQL cleanup authority; provider traffic is synthetic. */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
 import { Client } from "pg";
 import { seedOrganizationDowngradeTestAccount } from "./organization-downgrade-test-fixture";
 import { installOrganizationUpgradeTestSchema } from "./organization-upgrade-test-fixture";
 
+let stripeMock: unknown;
+mock.module(resolve(import.meta.dir, "../../lib/stripe.ts"), () => ({
+  requireStripe: () => stripeMock,
+}));
 const url = process.env.SUBSCRIPTION_AUTHORITY_POSTGRES_URL;
 const schema = `schedule_configured_finalizer_${randomUUID().replaceAll("-", "_")}`;
 let db: Client;
@@ -102,7 +107,7 @@ async function claimed(validityMs = 60000) {
       rawCustomer: scheduleCustomerTestObservation(f.source.stripe_customer_id),
     };
   }
-  async function configured() {
+  async function configured(recordReceipt = true, markDispatch = true) {
     const f = await providerCreated();
     const { mapOrganizationDowngradeSchedulePhases } = await import(
       "../../lib/services/organization-schedule-phase-mapping"
@@ -141,11 +146,9 @@ async function claimed(validityMs = 60000) {
       f.claim,
       request,
     );
-    const started = await repo.markOrganizationScheduleEffectDispatch(
-      f.identity,
-      f.claim,
-      prepared.id,
-    );
+    const started = markDispatch
+      ? await repo.markOrganizationScheduleEffectDispatch(f.identity, f.claim, prepared.id)
+      : prepared;
     const snapshot = {
       ...structuredClone(f.rawCreate),
       phases: request.params.phases.map((p, i) => ({
@@ -168,12 +171,13 @@ async function claimed(validityMs = 60000) {
         started.provider_idempotency_key,
       ),
     };
-    await repo.recordAuthenticatedOrganizationScheduleEvidence(
-      f.identity,
-      f.claim,
-      started.id,
-      configurationEvidence,
-    );
+    if (recordReceipt)
+      await repo.recordAuthenticatedOrganizationScheduleEvidence(
+        f.identity,
+        f.claim,
+        started.id,
+        configurationEvidence,
+      );
     const input = {
       ...f.identity,
       leaseToken: f.claim.leaseToken,
@@ -187,7 +191,7 @@ async function claimed(validityMs = 60000) {
     const { finalizeConfiguredOrganizationSchedule: finalize } = await import(
       "./organization-schedule-finalization"
     );
-    return { ...f, input, finalize };
+    return { ...f, input, finalize, configurationEffect: started };
   }
   async function state(f: Awaited<ReturnType<typeof configured>>) {
     const source = (
@@ -377,4 +381,365 @@ async function claimed(validityMs = 60000) {
         ).rows[0],
       ).toEqual({ status: "OUTCOME_UNKNOWN", evidence: null });
     }, 30000);
+  function providerFor(f: Awaited<ReturnType<typeof configured>>, events: unknown[]) {
+    const calls: string[] = [];
+    const noWrite = () => {
+      throw new Error("Unexpected provider mutation during recovery");
+    };
+    stripeMock = {
+      events: {
+        list: async () => {
+          calls.push("events");
+          return { object: "list", data: events, has_more: false };
+        },
+      },
+      customers: {
+        retrieve: async () => {
+          calls.push("customer");
+          return f.input.rawCustomer;
+        },
+      },
+      subscriptions: {
+        retrieve: async () => {
+          calls.push("subscription");
+          return f.input.rawSubscription;
+        },
+      },
+      subscriptionSchedules: {
+        retrieve: async () => {
+          calls.push("schedule");
+          return f.input.rawCurrentSchedule;
+        },
+        create: noWrite,
+        update: noWrite,
+        release: noWrite,
+      },
+    };
+    return calls;
+  }
+  function originalEvents(f: Awaited<ReturnType<typeof configured>>) {
+    return [
+      {
+        id: "evt_originalCreate",
+        type: "subscription_schedule.created",
+        raw: f.rawCreate,
+        key: f.createKey,
+        requestId: "req_create",
+        created: f.rawCreate.created,
+      },
+      {
+        id: "evt_originalConfigure",
+        type: "subscription_schedule.updated",
+        raw: f.input.rawCurrentSchedule,
+        key: f.configurationEffect.provider_idempotency_key,
+        requestId: "req_configured",
+        created: Math.floor(f.configurationEffect.started_at!.getTime() / 1000),
+      },
+    ].map((e) => ({
+      id: e.id,
+      object: "event",
+      type: e.type,
+      livemode: false,
+      api_version: "2024-11-20.acacia",
+      created: e.created,
+      request: { id: e.requestId, idempotency_key: e.key },
+      data: { object: structuredClone(e.raw) },
+    }));
+  }
+  async function publication() {
+    return (await import("../../lib/services/organization-schedule-publication"))
+      .observeAndFinalizeOrganizationScheduleConfiguration;
+  }
+  test("direct publication uses fresh provider reads and no additional financial write", async () => {
+    const f = await configured();
+    const calls = providerFor(f, []);
+    expect(
+      (
+        await (
+          await publication()
+        )(f.identity, f.claim, {
+          create: f.input.createEvidence,
+          configuration: f.input.configurationEvidence,
+        })
+      ).command.status,
+    ).toBe("APPLIED");
+    expect(calls).toEqual(["customer", "subscription", "schedule"]);
+    const after = await state(f);
+    expect(after.source.pending_plan_key).toBe("plus_monthly");
+    calls.length = 0;
+    expect((await (await publication())(f.identity, f.claim)).replayed).toBeTrue();
+    expect(calls).toEqual([]);
+  });
+  test("lost configure response recovers original events and stores one original receipt", async () => {
+    const f = await configured(false);
+    const calls = providerFor(f, originalEvents(f));
+    const before = await state(f);
+    await db.query("UPDATE users SET role='member' WHERE id=$1", [f.identity.actorId]);
+    expect((await (await publication())(f.identity, f.claim)).command.status).toBe("APPLIED");
+    expect(calls).toEqual(["events", "events", "customer", "subscription", "schedule"]);
+    const effect = (
+      await db.query("SELECT state,receipt FROM organization_schedule_effects WHERE id=$1", [
+        f.configurationEffect.id,
+      ])
+    ).rows[0];
+    expect(effect.state).toBe("observed");
+    expect(effect.receipt.kind).toBe("event");
+    const after = await state(f);
+    expect(after.allowance).toEqual(before.allowance);
+    expect(after.periods).toEqual(before.periods);
+  });
+  test("original response receipt survives supplemental configuration event recovery", async () => {
+    const f = await configured();
+    providerFor(f, originalEvents(f));
+    const before = (
+      await db.query(
+        "SELECT receipt,receipt_digest FROM organization_schedule_effects WHERE id=$1",
+        [f.configurationEffect.id],
+      )
+    ).rows;
+    expect((await (await publication())(f.identity, f.claim)).command.status).toBe("APPLIED");
+    expect(
+      (
+        await db.query(
+          "SELECT receipt,receipt_digest FROM organization_schedule_effects WHERE id=$1",
+          [f.configurationEffect.id],
+        )
+      ).rows,
+    ).toEqual(before);
+  });
+  test("missing event history never retires or replays uncertain configuration", async () => {
+    const f = await configured(false);
+    const calls = providerFor(f, []);
+    const before = await state(f);
+    await expect((await publication())(f.identity, f.claim)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_SCHEDULE_RECOVERY_UNAVAILABLE",
+    });
+    expect(calls).toEqual(["events"]);
+    expect(await state(f)).toEqual(before);
+    expect(
+      (
+        await db.query("SELECT state FROM organization_schedule_effects WHERE id=$1", [
+          f.configurationEffect.id,
+        ])
+      ).rows[0].state,
+    ).toBe("started");
+  });
+  test("later schedule drift retains recovered receipt but cannot publish a pending plan", async () => {
+    const f = await configured(false);
+    const events = originalEvents(f);
+    f.input.rawCurrentSchedule.phases[1]!.items[0]!.price = "price_foreign";
+    providerFor(f, events);
+    const before = await state(f);
+    await expect((await publication())(f.identity, f.claim)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_SCHEDULE_CONFIGURATION_UNVERIFIED",
+    });
+    expect(await state(f)).toEqual(before);
+    expect(
+      (
+        await db.query("SELECT state FROM organization_schedule_effects WHERE id=$1", [
+          f.configurationEffect.id,
+        ])
+      ).rows[0].state,
+    ).toBe("observed");
+  });
+  test("lease lost during fresh observation retains evidence without stale publication", async () => {
+    const f = await configured(false);
+    providerFor(f, originalEvents(f));
+    (stripeMock as { customers: unknown }).customers = {
+      retrieve: async () => {
+        await db.query(
+          "UPDATE billing_subscription_commands SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+          [f.identity.commandId],
+        );
+        return f.input.rawCustomer;
+      },
+    };
+    await expect((await publication())(f.identity, f.claim)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_PLAN_CHANGE_CONFLICT",
+    });
+    const after = await state(f);
+    expect(after.source.pending_plan_key).toBeNull();
+    expect(after.command.status).toBe("OUTCOME_UNKNOWN");
+    expect(
+      (
+        await db.query("SELECT state FROM organization_schedule_effects WHERE id=$1", [
+          f.configurationEffect.id,
+        ])
+      ).rows[0].state,
+    ).toBe("observed");
+  });
+  function recurringInvoice(f: Awaited<ReturnType<typeof configured>>) {
+    const start = Math.floor(f.source.current_period_end.getTime() / 1000);
+    return {
+      id: "upcoming_in_lower",
+      object: "invoice",
+      status: "draft",
+      livemode: false,
+      customer: f.source.stripe_customer_id,
+      subscription: f.source.stripe_subscription_id,
+      currency: "usd",
+      charge: null,
+      payment_intent: null,
+      paid: false,
+      paid_out_of_band: false,
+      amount_paid: 0,
+      amount_due: 3000,
+      amount_remaining: 0,
+      billing_reason: "subscription_cycle",
+      subtotal: 3000,
+      subtotal_excluding_tax: 3000,
+      total: 3000,
+      tax: 0,
+      total_discount_amounts: [],
+      total_tax_amounts: [],
+      starting_balance: 0,
+      period_start: start,
+      period_end: start + 30 * 86400,
+      hosted_invoice_url: null,
+      collection_method: "charge_automatically",
+      on_behalf_of: null,
+      transfer_data: null,
+      application_fee_amount: null,
+      automatic_tax: { enabled: false, status: null },
+      lines: {
+        has_more: false,
+        data: [
+          {
+            id: "il_lower",
+            type: "subscription",
+            subscription: f.source.stripe_subscription_id,
+            subscription_item: f.source.stripe_subscription_item_id,
+            price: { id: "price_plus" },
+            quantity: 1,
+            currency: "usd",
+            amount: 3000,
+            discount_amounts: [],
+            tax_amounts: [],
+            period: { start, end: start + 30 * 86400 },
+            proration: false,
+          },
+        ],
+      },
+    };
+  }
+  function dispatchProvider(f: Awaited<ReturnType<typeof configured>>, loseResponse = false) {
+    process.env.STRIPE_SECRET_KEY = ["sk", "test", "schedulepublication"].join("_");
+    process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
+    process.env.STRIPE_PLUS_PRODUCT_ID = "prod_plus";
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro";
+    process.env.STRIPE_PRO_PRODUCT_ID = "prod_pro";
+    let updated = false,
+      updates = 0;
+    const calls = providerFor(f, []);
+    const stripe = stripeMock as Record<string, unknown>;
+    stripe.prices = {
+      retrieve: async (id: string) => ({
+        id,
+        active: true,
+        currency: "usd",
+        currency_options: {},
+        unit_amount: id === "price_plus" ? 3000 : 10000,
+        type: "recurring",
+        billing_scheme: "per_unit",
+        transform_quantity: null,
+        recurring: {
+          interval: "month",
+          interval_count: 1,
+          trial_period_days: null,
+          usage_type: "licensed",
+        },
+        product: id === "price_plus" ? "prod_plus" : "prod_pro",
+        livemode: false,
+      }),
+    };
+    stripe.products = { retrieve: async (id: string) => ({ id, active: true, livemode: false }) };
+    stripe.invoices = {
+      createPreview: async (request: unknown) => {
+        expect(request).toEqual({
+          customer: f.source.stripe_customer_id,
+          schedule: f.rawCreate.id,
+          preview_mode: "recurring",
+          schedule_details:
+            f.configurationEffect.request_payload.kind === "schedule_configure"
+              ? f.configurationEffect.request_payload.params
+              : null,
+        });
+        return recurringInvoice(f);
+      },
+    };
+    stripe.subscriptionSchedules = {
+      retrieve: async () => (updated ? f.input.rawCurrentSchedule : f.rawCreate),
+      update: async (id: string, params: unknown, options: unknown) => {
+        updates++;
+        expect(id).toBe(f.rawCreate.id);
+        expect(options).toEqual({
+          apiVersion: "2024-11-20.acacia",
+          idempotencyKey: f.configurationEffect.provider_idempotency_key,
+          maxNetworkRetries: 0,
+        });
+        expect(params).toEqual(
+          f.configurationEffect.request_payload.kind === "schedule_configure"
+            ? f.configurationEffect.request_payload.params
+            : null,
+        );
+        updated = true;
+        if (loseResponse) throw new Error("lost original configure response");
+        return f.transport(
+          structuredClone(f.input.rawCurrentSchedule),
+          "req_configured",
+          f.configurationEffect.provider_idempotency_key,
+        );
+      },
+    };
+    return { calls, updates: () => updates, stripe };
+  }
+  test("one-shot dispatcher persists original receipt then atomically publishes through fresh reads", async () => {
+    const f = await configured(false, false);
+    const provider = dispatchProvider(f);
+    const before = await state(f);
+    const { dispatchOrganizationScheduleConfiguration } = await import(
+      "../../lib/services/organization-schedule-configuration"
+    );
+    const result = await dispatchOrganizationScheduleConfiguration(
+      f.identity,
+      f.claim,
+      f.configurationEffect.id,
+      async () => {},
+      f.input.createEvidence,
+    );
+    expect(result.resolution.command.status).toBe("APPLIED");
+    expect(provider.updates()).toBe(1);
+    const after = await state(f);
+    expect(after.source.plan_key).toBe("pro_monthly");
+    expect(after.source.pending_plan_key).toBe("plus_monthly");
+    expect(after.allowance).toEqual(before.allowance);
+  });
+  test("actual dispatch lost response reconciles original event without a second update", async () => {
+    const f = await configured(false, false);
+    const provider = dispatchProvider(f, true);
+    const { dispatchOrganizationScheduleConfiguration } = await import(
+      "../../lib/services/organization-schedule-configuration"
+    );
+    await expect(
+      dispatchOrganizationScheduleConfiguration(
+        f.identity,
+        f.claim,
+        f.configurationEffect.id,
+        async () => {},
+        f.input.createEvidence,
+      ),
+    ).rejects.toThrow("lost original configure response");
+    const effect = (
+      await db.query("SELECT * FROM organization_schedule_effects WHERE id=$1", [
+        f.configurationEffect.id,
+      ])
+    ).rows[0];
+    expect(effect.state).toBe("started");
+    f.configurationEffect = effect;
+    provider.stripe.events = {
+      list: async () => ({ object: "list", has_more: false, data: originalEvents(f) }),
+    };
+    expect((await (await publication())(f.identity, f.claim)).command.status).toBe("APPLIED");
+    expect(provider.updates()).toBe(1);
+  });
 });

@@ -1,4 +1,4 @@
-/** Internal phase preparation and one-shot update; configured-state publication is separate. */
+/** Internal phase preparation and one-shot update followed by original-state publication. */
 
 import { ElizaError } from "@elizaos/core";
 import type Stripe from "stripe";
@@ -16,6 +16,7 @@ import { assertOrganizationPlanChangeProviderBindingCurrent } from "./organizati
 import { scheduleEffectRequestDigest } from "./organization-schedule-effect-contract";
 import { findOriginalScheduleEvent } from "./organization-schedule-event-search";
 import { mapOrganizationDowngradeSchedulePhases } from "./organization-schedule-phase-mapping";
+import { observeAndFinalizeOrganizationScheduleConfiguration } from "./organization-schedule-publication";
 import { settlementDigest } from "./settlement-digest";
 import {
   adaptStripeSubscriptionCatalogProvider,
@@ -128,7 +129,7 @@ async function observeConfiguration(
   });
   if (settlementDigest(repeated) !== settlementDigest(review)) reject();
   current();
-  return request;
+  return { request, createEvidence: originalEvidence };
 }
 export async function prepareObservedOrganizationScheduleConfiguration(
   identity: Identity,
@@ -143,7 +144,7 @@ export async function prepareObservedOrganizationScheduleConfiguration(
     claim,
     createEffectId,
   );
-  const request = await observeConfiguration(captured, evidence);
+  const { request } = await observeConfiguration(captured, evidence);
   await revalidateSession();
   assertOrganizationPlanChangeProviderBindingCurrent(
     captured.providerBinding,
@@ -163,7 +164,7 @@ export async function dispatchOrganizationScheduleConfiguration(
   await revalidateSession();
   const captured = await readOrganizationScheduleDispatchSource(identity, claim, effectId);
   if (captured.effect.kind !== "schedule_configure") reject();
-  const request = await observeConfiguration(captured, evidence);
+  const { request, createEvidence } = await observeConfiguration(captured, evidence);
   if (scheduleEffectRequestDigest(request) !== captured.effect.request_digest) reject();
   await revalidateSession();
   assertOrganizationPlanChangeProviderBindingCurrent(
@@ -190,5 +191,10 @@ export async function dispatchOrganizationScheduleConfiguration(
     kind: "response",
     raw,
   });
-  return { effect, evidence: { kind: "response" as const, raw } };
+  const configuredEvidence = { kind: "response" as const, raw };
+  const resolution = await observeAndFinalizeOrganizationScheduleConfiguration(identity, claim, {
+    create: createEvidence,
+    configuration: configuredEvidence,
+  });
+  return { effect, evidence: configuredEvidence, resolution };
 }
