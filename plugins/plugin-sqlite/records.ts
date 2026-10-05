@@ -684,7 +684,25 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (entityIds.length === 0) return;
     const set = new Set(entityIds);
     // Cascade as plugin-sql does: its deleteEntity removes components the
-    // entity owns or sourced, and the participant FK drops its memberships.
+    // entity owns or sourced, and the entity FKs on participants, memories,
+    // relationships and logs are ON DELETE CASCADE.
+    const memories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (m) => set.has(m.entityId as UUID),
+    );
+    await this.deleteMemories(
+      memories
+        .map((memory) => memory.id)
+        .filter((id): id is UUID => id !== undefined),
+    );
+    await this.storage.deleteWhere<StoredRelationship>(
+      COLLECTIONS.RELATIONSHIPS,
+      (r) =>
+        set.has(r.sourceEntityId as UUID) || set.has(r.targetEntityId as UUID),
+    );
+    await this.storage.deleteWhere<Log>(COLLECTIONS.LOGS, (l) =>
+      set.has(l.entityId as UUID),
+    );
     await this.storage.deleteWhere<Component>(
       COLLECTIONS.COMPONENTS,
       (c) =>
