@@ -1,6 +1,6 @@
 /** Retrieves complete paid-renewal authority through a caller-owned Stripe client without initiating payments or inventing provider events. */
 import type Stripe from "stripe";
-import { findPurchasedSubscriptionContract } from "../../db/repositories/subscription-purchased-binding";
+import { findSubscriptionRenewalBinding } from "../../db/repositories/subscription-purchased-binding";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
@@ -9,10 +9,7 @@ import {
   resolveSubscriptionPlanDefinition,
   resolveSubscriptionProviderBinding,
 } from "./subscription-catalog";
-import {
-  assertCheckoutProviderAuthority,
-  checkoutContractEnvironment,
-} from "./subscription-checkout-contract";
+import { assertCheckoutProviderAuthority } from "./subscription-checkout-contract";
 export async function retrievePaidRenewalObjects(
   source: BillingSubscription,
   invoiceId: string,
@@ -22,15 +19,18 @@ export async function retrievePaidRenewalObjects(
   const invoice = await stripe.invoices.retrieve(invoiceId);
   const invoiceParsed = renewalInvoiceSchema.safeParse(invoice);
   if (!invoiceParsed.success) renewalUnavailable("unsupported_canonical_invoice");
-  const contract = await findPurchasedSubscriptionContract(source);
-  const environment = getCloudAwareEnv();
+  const configuredEnvironment = getCloudAwareEnv();
+  const { contract, environment } = await findSubscriptionRenewalBinding(
+    source,
+    configuredEnvironment,
+  );
   const providerAccountId = contract ? (await stripe.accounts.retrieve(null)).id : undefined;
   if (contract) {
     if (!providerAccountId) renewalUnavailable("purchased_binding_account_missing");
-    assertCheckoutProviderAuthority(contract, providerAccountId, environment);
+    assertCheckoutProviderAuthority(contract, providerAccountId, configuredEnvironment);
   }
   const binding = resolveSubscriptionProviderBinding(
-    contract ? checkoutContractEnvironment(contract, environment) : environment,
+    environment,
     source.plan_key,
     source.catalog_version,
   );

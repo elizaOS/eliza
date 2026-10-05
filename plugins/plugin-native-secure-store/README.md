@@ -68,6 +68,15 @@ request; call `refresh` on resume and close on destruction. `watch` may expire
 synchronously. Hosts retain masking/layout and selected display durations. Cancel
 on screen replacement or stop as appropriate; callbacks are not persisted.
 
+`PasswordAutofillOffer.create` constructs native Android authentication offers from
+verified browser structures. Supply the product browser-trust predicate, explicit
+picker Activity, URI scheme and RemoteViews factory; publish its nullable response
+once through the OS FillCallback. It invalidates prior requests, binds cancellation,
+uses immutable one-shot PendingIntents and revokes partially constructed offers on
+failure. Hosts retain localized save rejection and picker UI. Instrumentation covers
+real response parcelables with synthetic requests; it does not establish trusted
+Chromium or device credential acceptance.
+
 `JsonCredentialSlots` provides native-only JSON slot storage for hosts with the
 version/IV-length AES-GCM frame. Hosts supply a no-backup directory, Keystore
 alias and per-slot UTF-8 byte limits; renderer access policy remains with the

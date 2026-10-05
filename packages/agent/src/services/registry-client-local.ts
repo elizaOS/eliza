@@ -17,9 +17,9 @@ import {
   logger,
   packageNameToAppDisplayName,
   readJsonFile,
+  resolveStateDir,
 } from "@elizaos/core";
 
-import { resolveStateDir } from "../config/paths.ts";
 import {
   mergeAppMeta,
   resolveAppOverride,

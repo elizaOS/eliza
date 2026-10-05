@@ -11,7 +11,13 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
+import {
+  ElizaError,
+  getElizaNamespace,
+  logger,
+  resolveStateDir,
+  resolveUserPath,
+} from "@elizaos/core";
 import {
   type ElizaConfig,
   isElizaSettingsDebugEnabled,
@@ -40,15 +46,8 @@ import {
 import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.ts";
 import { resolveConfigIncludes } from "./includes.ts";
 import { normalizeModelMetadataInConfig } from "./model-metadata.ts";
-import {
-  getElizaNamespace,
-  resolveConfigPath,
-  resolveStateDir,
-  resolveUserPath,
-} from "./paths.ts";
+import { resolveConfigPath } from "./paths.ts";
 import { assertNoRetiredToolRestrictions } from "./retired-tool-policy.ts";
-
-export type { ElizaConfig } from "@elizaos/host/protocol";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

@@ -2049,6 +2049,30 @@ describe("ChatOverlay", () => {
     );
   });
 
+  it("shows the active view search prompt, routes its query, and restores chat on exit", () => {
+    const onQuery = vi.fn();
+    setViewChatBinding({ placeholder: "Search plugins…", onQuery });
+    render(<ChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message");
+    expect(input.getAttribute("placeholder")).toBe("Search plugins…");
+    fireEvent.change(input, { target: { value: "browser" } });
+    expect(onQuery).toHaveBeenLastCalledWith("browser");
+    act(() => setViewChatBinding(null));
+    expect(input.getAttribute("placeholder")).toBe("Hey Eliza…");
+  });
+
+  it("keeps local view search discoverable without a model provider", () => {
+    setViewChatBinding({ placeholder: "Search logs…", onQuery: vi.fn() });
+    render(
+      <ChatOverlay
+        controller={makeController({ noProviderConfigured: true })}
+      />,
+    );
+    expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
+      "Search logs…",
+    );
+  });
+
   it("clears the view search when sending the draft to the agent", () => {
     const onQuery = vi.fn();
     setViewChatBinding({ onQuery });

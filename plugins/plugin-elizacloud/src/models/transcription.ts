@@ -88,8 +88,6 @@ export async function handleTranscription(
     blob = new Blob([input] as never, { type: detectedMimeType });
   } else if (typeof input === "string") {
     blob = await fetchAudioFromUrl(input);
-  } else if (typeof input === "object" && input !== null && isCoreTranscriptionParams(input)) {
-    blob = await fetchAudioFromUrl(input.audioUrl, input.signal);
   } else if (
     typeof input === "object" &&
     input !== null &&
@@ -117,6 +115,10 @@ export async function handleTranscription(
       blob = params.audio as Blob;
     }
     extraParams = params;
+  } else if (typeof input === "object" && input !== null && isCoreTranscriptionParams(input)) {
+    // Checked after in-process bytes: core TranscriptionParams requires an
+    // audioUrl, so callers that hold the audio pass `audioUrl: ""` beside it.
+    blob = await fetchAudioFromUrl(input.audioUrl, input.signal);
   } else {
     throw new Error(
       "TRANSCRIPTION expects a Blob/File/Buffer, an http(s) audio URL string, { audioUrl }, or an object { audio: Blob/File/Buffer, mimeType?, language?, response_format?, timestampGranularities?, prompt?, temperature? }"

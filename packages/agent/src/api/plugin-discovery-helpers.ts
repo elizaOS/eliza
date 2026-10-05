@@ -9,7 +9,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.ts";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
 import {

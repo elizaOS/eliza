@@ -11,9 +11,9 @@ import {
   getLastFailedPluginNames,
   loadElizaConfig,
   resolveDefaultAgentWorkspaceDir,
-  resolveUserPath,
 } from "@elizaos/agent";
-import { formatError, logger } from "@elizaos/core";
+import { formatError, logger, resolveUserPath } from "@elizaos/core";
+
 import {
   createPgliteInitError,
   getPgliteErrorCode,

@@ -239,6 +239,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/voice/android-voice-bridge-gradle/gradle.properties",
   "scripts/voice/android-voice-bridge-gradle/settings.gradle",
   "scripts/voice/freeze-voice.ts",
+  "scripts/voice/lib/report-validation.ts",
   "scripts/voice/lib/voice-openwakeword-eval.ts",
   "scripts/voice/lib/voice-stage-b-eval.ts",
   "scripts/voice/stage-b-stt-bench.ts",

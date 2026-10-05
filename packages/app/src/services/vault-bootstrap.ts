@@ -19,7 +19,6 @@
  */
 
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
 import {
   formatVaultRef,
   isVaultRef,
@@ -29,7 +28,7 @@ import {
   type Vault,
   writeSensitiveValueIfAbsentVerified,
 } from "@elizaos/auth/vault";
-import { loadRegistry, logger } from "@elizaos/core";
+import { loadRegistry, logger, resolveStateDir } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/host/protocol";
 // `@elizaos/app` is the host layer ABOVE `@elizaos/agent`, so importing
 // agent here is the legal downward edge. Agent no longer imports app (the

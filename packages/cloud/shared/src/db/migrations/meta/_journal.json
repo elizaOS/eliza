@@ -3466,6 +3466,20 @@
       "when": 1796083200142,
       "tag": "0524_organization_schedule_compensation_result",
       "breakpoints": true
+    },
+    {
+      "idx": 495,
+      "version": "7",
+      "when": 1796083200143,
+      "tag": "0525_organization_schedule_configured_result",
+      "breakpoints": true
+    },
+    {
+      "idx": 496,
+      "version": "7",
+      "when": 1796083200144,
+      "tag": "0526_organization_schedule_configured_snapshot",
+      "breakpoints": true
     }
   ]
 }

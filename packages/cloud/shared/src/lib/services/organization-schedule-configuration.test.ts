@@ -166,6 +166,14 @@ mock.module(resolve(services, "../stripe.ts"), () => ({
     invoices: { createPreview: preview },
   }),
 }));
+const publish = mock(async (..._args: unknown[]) => {
+  calls.push("publish");
+  if (failure === "publish") throw Error("publication unavailable");
+  return { command: { status: "APPLIED" }, replayed: false };
+});
+mock.module(resolve(services, "organization-schedule-publication.ts"), () => ({
+  observeAndFinalizeOrganizationScheduleConfiguration: publish,
+}));
 const {
   prepareObservedOrganizationScheduleConfiguration,
   dispatchOrganizationScheduleConfiguration,
@@ -186,6 +194,7 @@ beforeEach(() => {
   stage.mockClear();
   record.mockClear();
   preview.mockClear();
+  publish.mockClear();
 });
 test("preparation requires fresh complete observations before staging immutable request", async () => {
   await prepareObservedOrganizationScheduleConfiguration(
@@ -239,6 +248,11 @@ test("dispatch reobserves then sends exact immutable Acacia request after marker
     [identity, claim, "configure", { kind: "response", raw: updated }],
   ]);
   expect(result.evidence.raw).toBe(updated);
+  expect(publish.mock.calls).toEqual([
+    [identity, claim, { create: evidence, configuration: { kind: "response", raw: updated } }],
+  ]);
+  expect(calls.indexOf("record")).toBeLessThan(calls.indexOf("publish"));
+  expect(result.resolution.command.status).toBe("APPLIED");
 });
 test("changed mapping or recurring estimate cannot reach provider update", async () => {
   for (const step of ["map", "review"]) {
@@ -268,4 +282,12 @@ test("unknown update retains one attempted write without replacement receipt", a
   await expect(dispatch()).rejects.toThrow("lost update response");
   expect(update).toHaveBeenCalledTimes(1);
   expect(record).not.toHaveBeenCalled();
+});
+
+test("publication failure preserves one configuration attempt and original receipt", async () => {
+  failure = "publish";
+  await expect(dispatch()).rejects.toThrow("publication unavailable");
+  expect(update).toHaveBeenCalledTimes(1);
+  expect(record).toHaveBeenCalledTimes(1);
+  expect(publish).toHaveBeenCalledTimes(1);
 });

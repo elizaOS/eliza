@@ -9,7 +9,7 @@
  * human-readable executionBlockedReason.
  */
 import type { AgentRuntime } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import {
   type EvmSigningCapability,
   type EvmSigningCapabilityKind,

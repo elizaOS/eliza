@@ -593,9 +593,11 @@ export async function ocrImageRegion(input, rectangle, opts = {}) {
   if (!engine.available)
     throw new Error(`OCR engine unavailable: ${engine.reason}`);
   const crop = await sharp(bytes).extract(rectangle).png().toBuffer();
+  // Controls can contain a label and subtitle; retain both lines and enlarge
+  // small text before block segmentation without replacing the captured pixels.
   const recognition = await recognizeWithEngine(
     engine,
-    crop,
+    await buildGrayscaleOcrInput(crop),
     opts.lang ?? "eng",
     opts.timeoutMs ?? 30_000,
     "control-region",
@@ -755,7 +757,7 @@ function runSystemTesseract(bin, input, lang, timeoutMs, mode) {
     const readsStdin = Buffer.isBuffer(input);
     const inputArg = readsStdin ? "stdin" : input;
     const pageSegMode =
-      mode === "control-region" ? "7" : mode.startsWith("sparse-") ? "11" : "3";
+      mode === "control-region" ? "6" : mode.startsWith("sparse-") ? "11" : "3";
     const child = spawn(
       bin,
       [inputArg, "stdout", "-l", lang, "--psm", pageSegMode, "tsv"],
@@ -876,7 +878,7 @@ async function getPackagedWorker(lang, timeoutMs, mode) {
     if (mode.startsWith("sparse-") || mode === "control-region") {
       const pageSegMode =
         mode === "control-region"
-          ? tesseract.PSM?.SINGLE_LINE
+          ? tesseract.PSM?.SINGLE_BLOCK
           : tesseract.PSM?.SPARSE_TEXT;
       if (!pageSegMode) {
         await worker.terminate();
