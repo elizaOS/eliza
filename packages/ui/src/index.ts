@@ -70,6 +70,13 @@ export type {
   StreamEventEnvelope,
 } from "./api/client-types-core.js";
 export {
+  type ConversationRoom,
+  type ConversationStopResult,
+  ConversationTurnController,
+  type ConversationTurnObserver,
+  type ConversationTurnTransport,
+} from "./api/conversation-turn-controller.js";
+export {
   ApiError,
   isApiError,
   isCloudAgentGoneError,

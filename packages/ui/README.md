@@ -69,3 +69,11 @@ until the host explicitly retries refresh; late status replies cannot restart po
 string, checking the selected currency exponent. `isIsoCalendarDate` and
 `isOrderedIsoDateRange` reject normalized invalid dates and reversed inclusive
 ranges. These browser-safe helpers leave locale, labels and domain policy to hosts.
+
+`ConversationTurnController` owns explicit single-flight creation/send, cached room
+identity, interruption and stale-reply fencing without importing the shell. Hosts
+supply transport, ownership-error classification, request metadata and synchronous
+reply/error/settled observers. Interrupted work never publishes or replays. A new
+send waits for an earlier room abort; failed aborts discard that room and report
+failure before an explicit retry can create another. `reset` invalidates ownership
+and teardown callbacks. A stop receipt does not prove an external action was undone.
