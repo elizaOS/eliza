@@ -79,7 +79,6 @@ import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { v4 } from "uuid";
 import { FileTrajectoryRetentionService } from "../../runtime/trajectory-retention.ts";
-import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { composePromptFromState } from "../../text/template-rendering.js";
@@ -109,7 +108,6 @@ import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
 import { noneAction } from "./actions/none.ts";
 import { replyAction } from "./actions/reply.ts";
-import { CHANNEL_TOPICS_ROUTES } from "./channel-topics-routes.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { imageDescriptionTemplate, postCreationTemplate } from "./prompts.js";
 import { actionStateProvider } from "./providers/actionState.ts";
@@ -133,6 +131,7 @@ import { runtimeModelContextProvider } from "./providers/runtimeModelContext.ts"
 import { uiContextProvider } from "./providers/uiContext.ts";
 import { userEmotionSignalProvider } from "./providers/userEmotionSignal.ts";
 import { worldProvider } from "./providers/world.ts";
+import { basicCapabilityRoutes } from "./routes.ts";
 
 // Re-export advanced capability modules
 export * from "../advanced-capabilities/actions/index.ts";
@@ -1409,7 +1408,7 @@ export function createAssistantBehavior(): Plugin {
     providers: [...basicProviders, ...advancedProviders],
     evaluators: [...basicEvaluators, ...advancedEvaluators],
     services: [...basicServices, ...advancedServices],
-    routes: [...TURN_CONTROL_ROUTES, ...CHANNEL_TOPICS_ROUTES],
+    routes: basicCapabilityRoutes,
     events,
   };
 }
