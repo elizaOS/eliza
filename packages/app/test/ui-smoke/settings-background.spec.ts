@@ -126,6 +126,14 @@ async function installSettingsBackgroundRoutes(
   page: Page,
   hubOverrides: Partial<ModelHubSnapshot> = {},
 ): Promise<void> {
+  // Model and voice controls belong to the local desktop host. Its bridge alone
+  // does not replace the production web bundle's cloud-only boot policy.
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__ELIZAOS_APP_BOOT_CONFIG__ =
+      {
+        apiBase: window.location.origin,
+      };
+  });
   await installDefaultAppRoutes(page);
   await page.route("**/api/cloud/credits", (route) =>
     fulfillJson(route, {
@@ -426,7 +434,7 @@ test.describe("Settings appearance and model controls", () => {
       await page.getByRole("option", { name: /Rachel/ }).click();
       await screenshot(page, `voice-selector-selected-${viewport.width}`);
       const preview = page.getByRole("button", {
-        name: "Preview Voice",
+        name: "Preview voice",
         exact: true,
       });
       await preview.click();
