@@ -1,20 +1,7 @@
 /** Immutable character transforms for secrets, plugins, and model-provider detection. */
 
 import type { Character } from "./types/agent.js";
-import {
-	MODEL_PROVIDER_SECRETS as _MODEL_PROVIDER_SECRETS,
-	CHANNEL_SECRETS,
-} from "./validation/secret-catalog";
-
-// RE-EXPORTS FROM CONSTANTS
-
-/**
- * Mapping of model provider names to their corresponding API key environment variables.
- * @see validation/secret-catalog.ts for the canonical keys
- */
-export const MODEL_PROVIDER_SECRETS = _MODEL_PROVIDER_SECRETS;
-
-export { CHANNEL_SECRETS };
+import { MODEL_PROVIDER_SECRETS } from "./validation/secret-catalog";
 
 // SECRET MANAGEMENT
 
