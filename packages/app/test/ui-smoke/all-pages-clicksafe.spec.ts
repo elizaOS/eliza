@@ -185,9 +185,17 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "browser",
     path: "/browser",
+    // Linux desktop hosts open Websites; web hosts open the tab workspace.
+    // Require the address control and its matching surface in either host.
     readyChecks: [
-      { selector: '[data-testid="browser-workspace-address-input"]' },
-      { selector: '[data-testid="browser-workspace-surface-panel"]' },
+      {
+        selector:
+          '[data-testid="browser-workspace-address-input"], section[aria-label="Browser"] input[aria-label="Website or search"]',
+      },
+      {
+        selector:
+          '[data-testid="browser-workspace-surface-panel"], section[aria-label="Browser"] button[type="submit"]:has-text("Go")',
+      },
     ],
     mode: "all",
     timeoutMs: 60_000,
