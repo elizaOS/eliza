@@ -24,12 +24,14 @@ const report = (name: string, skipped = false) =>
 test("each invocation gets a distinct report only in the owning package", () => {
   const dir = directory();
   const env = { ELIZA_TEST_EVIDENCE_DIR: dir, ELIZA_TEST_EVIDENCE_CWD: dir };
-  const first = compoundVitestEvidence(env, dir);
-  const second = compoundVitestEvidence(env, dir);
+  const first = compoundVitestEvidence({ ...env }, dir);
+  const second = compoundVitestEvidence({ ...env }, dir);
   expect(first.reporters).toEqual(["default", "junit"]);
   expect(first.outputFile?.junit).not.toBe(second.outputFile?.junit);
   expect(compoundVitestEvidence(env, join(dir, "fixture"))).toEqual({});
   expect(compoundVitestEvidence({}, dir)).toEqual({});
+  compoundVitestEvidence(env, dir);
+  expect(env).toEqual({});
 });
 
 test("reconciles every fragment and distinguishes missing from all-skipped evidence", () => {

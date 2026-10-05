@@ -15,6 +15,12 @@ export function compoundVitestEvidence(
     return {};
   if (!path.isAbsolute(directory))
     throw new Error("Compound test evidence directory must be absolute");
+  // Consume the handshake in this Vitest process before it starts workers.
+  // Tests may spawn intentionally failing runners in the same cwd; those
+  // descendants must not publish into the enclosing package's evidence.
+  // The parent shell retains its environment for the next actual suite.
+  delete env.ELIZA_TEST_EVIDENCE_DIR;
+  delete env.ELIZA_TEST_EVIDENCE_CWD;
   return {
     reporters: ["default", "junit"] as ["default", "junit"],
     outputFile: { junit: path.join(directory, `${randomUUID()}.xml`) },

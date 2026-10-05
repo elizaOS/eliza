@@ -696,7 +696,11 @@ for (const mode of ["pass", "skip", "fail"] as const) {
             join(fixture, `${name}.test.ts`),
             `
           import { test, expect } from 'vitest';
-          test${mode === "skip" ? ".skip" : ""}('${name}', () => expect(1).toBe(${mode === "fail" && name === "second" ? 2 : 1}));
+          test${mode === "skip" ? ".skip" : ""}('${name}', () => {
+            expect(process.env.ELIZA_TEST_EVIDENCE_DIR).toBeUndefined();
+            expect(process.env.ELIZA_TEST_EVIDENCE_CWD).toBeUndefined();
+            expect(1).toBe(${mode === "fail" && name === "second" ? 2 : 1});
+          });
         `,
           );
         }
