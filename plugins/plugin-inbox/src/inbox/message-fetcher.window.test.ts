@@ -85,6 +85,25 @@ describe("fetchChatMessages candidate window", () => {
     ]);
   });
 
+  it("has no page cap: fills the limit past ten pages of agent replies", async () => {
+    const stored = [
+      ...Array.from({ length: 66 }, (_, index) =>
+        memory(`agent-${index}`, 2_000 - index, `agent reply ${index}`, AGENT),
+      ),
+      memory("user-below-cap", 1_900, "reached on the eleventh page"),
+      memory("user-oldest", 1_800, "oldest ask"),
+    ];
+    const { runtime, reads } = runtimeFor(stored);
+
+    const messages = await fetchChatMessages(runtime, { limit: 2 });
+
+    expect(messages.map((message) => message.text)).toEqual([
+      "reached on the eleventh page",
+      "oldest ask",
+    ]);
+    expect(reads.length).toEqual(12);
+  });
+
   it("does not let a newer blank message consume the result limit", async () => {
     const stored = [
       memory("blank", 1_000, ""),

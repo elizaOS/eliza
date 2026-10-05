@@ -297,8 +297,9 @@ function sourceNotWiredStatus(
  * messages exist. Pages continue until that many candidates are in hand or
  * history ends. A repeated page (a store that ignores offset) stops the scan,
  * as does reaching rows older than the caller's `sinceMs` window: the store
- * returns rows newest-first, so no later page can produce a candidate. A page
- * cap bounds rooms dominated by non-candidate rows when no window is given.
+ * returns rows newest-first, so no later page can produce a candidate. No page
+ * count caps the scan: every non-final page advances the offset until history
+ * ends, so silently returning fewer candidates than requested cannot happen.
  */
 async function loadInboxCandidateMemories(
   runtime: IAgentRuntime,
@@ -308,12 +309,11 @@ async function loadInboxCandidateMemories(
   sinceMs: number,
 ): Promise<Memory[]> {
   const pageSize = limit * 3;
-  const maxPages = 10;
   const filtered: Memory[] = [];
   const seenMemoryIds = new Set<string>();
   let previousPageFingerprint: string | null = null;
   let offset = 0;
-  for (let pages = 0; filtered.length < limit && pages < maxPages; pages++) {
+  while (filtered.length < limit) {
     const page = await runtime.getMemoriesByRoomIds({
       roomIds: sourceRoomIds,
       tableName: "messages",
