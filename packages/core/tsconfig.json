@@ -17,7 +17,6 @@
 		"vitest.config.ts",
 		"node_modules",
 		"dist",
-		"src/**/__tests__/**",
 		"src/**/*.bench.ts",
 		"src/**/*.test.ts"
 	]

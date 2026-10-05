@@ -74,7 +74,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
     requires: ["POSTGRES_URL"],
   },
   {
-    file: "packages/core/src/__tests__/message-addressing-gate.live.test.ts",
+    file: "packages/core/test/message-addressing-gate.live.test.ts",
     optIn: "ELIZA_RUN_LIVE_TESTS",
     requires: ["CEREBRAS_API_KEY"],
   },

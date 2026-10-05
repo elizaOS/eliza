@@ -27,6 +27,32 @@ assert.equal(
 	failure,
 	"normalization preserves the canonical error and its metadata",
 );
+const { isElizaError, isTimeoutError } = await import("@elizaos/core/protocol");
+const hostile = new Proxy(
+	{},
+	{
+		get() {
+			throw new Error("untrusted getter");
+		},
+		getPrototypeOf() {
+			throw new Error("untrusted prototype");
+		},
+	},
+);
+const revoked = Proxy.revocable({}, {});
+revoked.revoke();
+const malformed = new Error("original");
+Object.defineProperty(malformed, "message", { value: 42 });
+for (const value of [hostile, revoked.proxy, malformed, Object.create(null)]) {
+	const normalized = toElizaError(value, "PACKED_UNKNOWN");
+	assert.equal(normalized.cause, value);
+	assert.equal(normalized.code, "PACKED_UNKNOWN");
+	assert.equal(typeof normalized.message, "string");
+	assert.equal(isElizaError(normalized), true);
+	assert.equal(isTimeoutError(value), false);
+}
+assert.equal(isTimeoutError({ name: "TimeoutError" }), true);
+assert.equal(isTimeoutError("request timed out"), true);
 // Exercise the public v2 replacement for host composition against real storage.
 writeFileSync(
 	"character.json",
@@ -150,7 +176,7 @@ try {
 		assert.equal(
 			dispatcher in eventProtocol,
 			false,
-			dispatcher + " belongs to the UI host",
+			`${dispatcher} belongs to the UI host`,
 		);
 	}
 	const navigation = publicApi.normalizeShellNavigateViewPayload({
@@ -173,8 +199,7 @@ try {
 	})();
 	assert.equal(publicApi.asObjectRecord(boundaryRecord), boundaryRecord);
 	assert.equal(publicApi.asRecord(boundaryRecord), null);
-	const exportPrompt =
-		"complete model request 🟠 ".repeat(12000) + "FINAL-REQUEST";
+	const exportPrompt = `${"complete model request 🟠 ".repeat(12000)}FINAL-REQUEST`;
 	const exportResponse = "complete response with final reference";
 	const exportRecord = {
 		trajectoryId: "packed-trajectory",
@@ -290,7 +315,7 @@ try {
 		assert.equal(
 			retired in publicApi,
 			false,
-			retired + " is retired from the v2 public API",
+			`${retired} is retired from the v2 public API`,
 		);
 	}
 	for (const mediaApi of [
@@ -302,7 +327,7 @@ try {
 		assert.equal(
 			typeof publicApi[mediaApi],
 			"function",
-			mediaApi + " is available from the public root",
+			`${mediaApi} is available from the public root`,
 		);
 	}
 	let mediaFetchCalled = false;
@@ -360,7 +385,7 @@ try {
 		assert.equal(
 			hostApi in publicApi,
 			false,
-			hostApi + " must be owned outside core",
+			`${hostApi} must be owned outside core`,
 		);
 	}
 	for (const subpath of [
@@ -401,7 +426,7 @@ try {
 		"media/mime",
 		"media/mime-sniffer",
 	]) {
-		await assert.rejects(import("@elizaos/core/" + subpath), {
+		await assert.rejects(import(`@elizaos/core/${subpath}`), {
 			code: "ERR_PACKAGE_PATH_NOT_EXPORTED",
 		});
 	}
