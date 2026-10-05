@@ -12,6 +12,7 @@ import {
   readDeviceLease,
 } from "./device-lease.ts";
 import { runIsolatedAndroidTest } from "./isolated-android-test.mjs";
+import { runIsolatedAndroidUserTest } from "./isolated-android-user-test.mjs";
 
 function fixture(t, mode = "") {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "isolated-android-"));
@@ -40,6 +41,10 @@ if(args.includes('get-current-user'))console.log(state.foreground||0);
 if(args.includes('create-user')){state.userExists=true;fs.writeFileSync(file,JSON.stringify(state));console.log('Success: created user id 10');}
 if(args.includes('switch-user')){state.foreground=Number(args.at(-1));fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('get-started-user-state'))console.log('RUNNING_UNLOCKED');
+if(args.includes('set-home-activity'))console.log('Success');
+if(args.includes('is-user-stopped'))console.log('true');
+if(args.slice(0,4).join(' ')==='shell pm list users')console.log('UserInfo{0:Owner:13}'+(state.userExists?' UserInfo{10:Fixture:10}':''));
+if(args.slice(0,4).join(' ')==='shell dumpsys activity activities')console.log('topResumedActivity=ActivityRecord u'+(state.foreground||0)+' org.stock.home/.Home');
 if(args.includes('remove-user')){state.userExists=false;fs.writeFileSync(file,JSON.stringify(state));console.log('Success');}
 
 if(args[0]==='emu')console.log('owned-test-fixture\\nOK');
@@ -48,7 +53,7 @@ if(args.includes('ro.product.cpu.abi'))console.log('x86_64');
 if(args.includes('getenforce'))console.log(mode==='permissive'?'Permissive':'Enforcing');
 if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;if(state.reads===2)state.packages.push('org.example.consumer');fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('packages'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
-if(args.includes('resolve-activity'))console.log(state.home);
+if(args.includes('resolve-activity'))console.log(args.includes('-p')?'org.stock.home/.Home':state.home);
 if(args[0]==='install'){const id=args.at(-1).includes('companion.apk')?'org.example.companion':args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages=[...new Set([...state.packages,id])];(state.files??={})[id]=file+'.'+id+'.apk';fs.copyFileSync(args.at(-1),state.files[id]);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);console.log('Success');}
 if(args.slice(0,3).join(' ')==='shell pm path')console.log('package:/data/'+args.at(-1)+'.apk');
 if(args[0]==='pull'){const id=args[1].slice('/data/'.length,-4);fs.copyFileSync(state.files[id],args[2]);}
@@ -1203,4 +1208,85 @@ test("phase closes after deferred cleanup even when APKs remain installed", asyn
   const commands = f.commands().length;
   await assert.rejects(phase("late"), /active variant/);
   assert.equal(f.commands().length, commands);
+});
+
+function userOptions(f) {
+  const { androidUser, ...options } = f.options;
+  return {
+    ...options,
+    homePackage: "org.stock.home",
+    userName: "owned-test",
+    commandTimeoutMs: 10000,
+    cleanupTimeoutMs: 10000,
+  };
+}
+
+test("composed user test holds one lease through package cleanup and owner restoration", async (t) => {
+  const f = fixture(t);
+  const report = await runIsolatedAndroidUserTest(userOptions(f));
+  assert.equal(report.passed, true);
+  assert.equal(report.userLifecycle.removed, true);
+  assert.equal(report.userLifecycle.ownerRestored, true);
+  assert.equal(report.androidUser, 10);
+  const calls = f.commands();
+  assert.ok(
+    calls
+      .filter((c) => c[0] === "install")
+      .every((c) => c[c.indexOf("--user") + 1] === "10"),
+  );
+  assert.ok(
+    calls.findIndex((c) => c.includes("remove-user")) >
+      calls.findLastIndex((c) => c[0] === "uninstall"),
+  );
+  assert.equal(
+    readDeviceLease(`android:${f.options.serial}`, {
+      stateDir: deviceLeaseStateDir(f.options.env),
+    }),
+    null,
+  );
+});
+
+for (const mode of ["partial", "cleanup-failure", "wrong-apk"])
+  test(`composed user test preserves failure and requires cleanup proof: ${mode}`, async (t) => {
+    const f = fixture(t, mode);
+    await assert.rejects(runIsolatedAndroidUserTest(userOptions(f)));
+    const report = JSON.parse(
+      fs.readFileSync(path.join(f.options.directory, "user-verification.json")),
+    );
+    assert.equal(report.passed, false);
+    assert.equal(report.userLifecycle.ownerRestored, true);
+    assert.equal(report.userLifecycle.removed, mode === "partial");
+    assert.equal(report.userLifecycle.cleanupDeferred, mode !== "partial");
+    assert.ok(report.error);
+  });
+
+test("composed user test rejects existing evidence and packages before creating a user", async (t) => {
+  const f = fixture(t, "existing");
+  await assert.rejects(
+    runIsolatedAndroidUserTest(userOptions(f)),
+    /Existing package/,
+  );
+  assert.ok(!f.commands().some((c) => c.includes("create-user")));
+  const before = f.commands().length;
+  await assert.rejects(runIsolatedAndroidUserTest(userOptions(f)), /EEXIST/);
+  assert.equal(f.commands().length, before);
+});
+
+test("composed user test cleans packages and restores owner after cancellation", async (t) => {
+  const f = fixture(t),
+    controller = new AbortController();
+  await assert.rejects(
+    runIsolatedAndroidUserTest({
+      ...userOptions(f),
+      signal: controller.signal,
+      prepareVariant: () => controller.abort(),
+    }),
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "user-verification.json")),
+  );
+  assert.equal(report.passed, false);
+  assert.equal(report.userLifecycle.removed, true);
+  assert.equal(report.userLifecycle.ownerRestored, true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
 });

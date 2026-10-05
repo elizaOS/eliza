@@ -248,6 +248,13 @@ must settle device work and return `{cleaned: true}` only after proving its pack
 cleanup; missing proof or a thrown scenario retains the user for explicit recovery.
 It does not provision providers, grant permissions or install product packages.
 
+`scripts/lib/isolated-android-user-test.mjs` composes both lifecycles under one
+lease. Supply the test options above, `homePackage`, `userName`, positive command
+and cleanup deadlines, and a new evidence directory; omit `androidUser` and
+`deviceLease`. It records `user-verification.json`, restores owner 0 after test
+failure, and removes the secondary user only with matching fresh package-cleanup
+evidence. Product hooks still own permissions and fixture assertions.
+
 For installed upgrades, each variant supplies baseline `apk`/`testApk` and an
 `upgrade: {apk, testApk}` candidate pair. Both pairs are admitted before device
 mutation. `runnerArgs` seeds the baseline; `upgradeRunnerArgs` verifies the
