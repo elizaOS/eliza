@@ -127,8 +127,13 @@ export async function findNextRenewalInvoice(input: {
     }
     if (!page.data.has_more) {
       if (!match) reject("adjacent_invoice_missing");
-      if (match.status !== "paid") reject("adjacent_invoice_unpaid");
-      return { invoiceId: match.invoiceId, periodEnd: match.periodEnd };
+      if (!["paid", "open", "uncollectible"].includes(match.status))
+        reject("adjacent_invoice_unpaid");
+      return {
+        invoiceId: match.invoiceId,
+        periodEnd: match.periodEnd,
+        paid: match.status === "paid",
+      };
     }
   }
 }
