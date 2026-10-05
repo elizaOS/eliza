@@ -940,6 +940,99 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
                 )
               ).rows,
             ).toEqual([{ failures: 1, delayed: true }]);
+            const { recoverRenewalAdjustmentObservations } = await import(
+              "../../../lib/services/renewal-adjustment-maintenance"
+            );
+            await database.query(
+              "UPDATE subscription_adjustment_scans SET next_due_at=clock_timestamp() WHERE grant_id=$1",
+              [grant.id],
+            );
+            const recovered = await recoverRenewalAdjustmentObservations();
+            expect(recovered.attempts).toContainEqual({
+              grantId: grant.id,
+              attemptId: expect.any(String),
+              disposition: "recorded",
+            });
+            // The original checkout grant lacks later-renewal evidence. It receives
+            // an explicit incident/backoff rather than a fabricated provider snapshot.
+            expect(recovered.attempts.some((a) => a.disposition === "original_unavailable")).toBe(
+              true,
+            );
+            const afterRecoveryReads = requests.length;
+            expect((await recoverRenewalAdjustmentObservations()).attempts).toEqual([]);
+            expect(requests.length).toBe(afterRecoveryReads);
+            expect(
+              (
+                await database.query(
+                  "SELECT context->>'grantId' AS grant FROM billing_subscription_incidents WHERE organization_id=$1 AND context->>'observedBy'='renewal_adjustment_maintenance'",
+                  [f.orgId],
+                )
+              ).rows.length,
+            ).toBe(1);
+            await database.query(
+              "UPDATE subscription_adjustment_scans SET next_due_at=clock_timestamp() WHERE grant_id=$1",
+              [grant.id],
+            );
+            objects.delete(`/v1/credit_notes?invoice=${f.invoice.id}&limit=100`);
+            const unavailable = await recoverRenewalAdjustmentObservations();
+            expect(unavailable.status).toBe("degraded");
+            expect(unavailable.attempts).toContainEqual({
+              grantId: grant.id,
+              attemptId: expect.any(String),
+              disposition: "unavailable",
+            });
+            expect(
+              (
+                await database.query(
+                  "SELECT disposition FROM subscription_adjustment_attempts WHERE grant_id=$1 ORDER BY generation DESC LIMIT 1",
+                  [grant.id],
+                )
+              ).rows,
+            ).toEqual([{ disposition: "failed" }]);
+            expect(
+              (
+                await database.query(
+                  "SELECT context->>'grantId' AS grant FROM billing_subscription_incidents WHERE organization_id=$1 AND context->>'reason'='observation_unavailable'",
+                  [f.orgId],
+                )
+              ).rows,
+            ).toEqual([{ grant: grant.id }]);
+            objects.set(`/v1/credit_notes?invoice=${f.invoice.id}&limit=100`, {
+              object: "list",
+              has_more: false,
+              data: [],
+            });
+            expect(await fundingSnapshot()).toEqual(fundingBefore);
+            expect(writes).toBe(0);
+            // Advance the actual lifecycle through the existing provider recovery,
+            // then prove historical-grant observation still runs for a terminal source.
+            objects.set(`/v1/subscriptions/${f.subscription.id}`, {
+              ...f.subscription,
+              status: "canceled",
+              canceled_at: Math.floor(Date.now() / 1000),
+              ended_at: Math.floor(Date.now() / 1000),
+            });
+            await makeDue(f.orgId);
+            await service.recoverMissedSubscriptionEvents();
+            expect(
+              (
+                await database.query(
+                  "SELECT status FROM billing_subscriptions WHERE organization_id=$1",
+                  [f.orgId],
+                )
+              ).rows,
+            ).toEqual([{ status: "canceled" }]);
+            const terminalFunding = await fundingSnapshot();
+            await database.query(
+              "UPDATE subscription_adjustment_scans SET next_due_at=clock_timestamp() WHERE grant_id=$1",
+              [grant.id],
+            );
+            expect((await recoverRenewalAdjustmentObservations()).attempts).toContainEqual({
+              grantId: grant.id,
+              attemptId: expect.any(String),
+              disposition: "recorded",
+            });
+            expect(await fundingSnapshot()).toEqual(terminalFunding);
             const head = (
               await database.query<{ id: string }>(
                 "SELECT id FROM subscription_adjustment_observations WHERE grant_id=$1 ORDER BY version DESC LIMIT 1",
@@ -982,8 +1075,8 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
                   [grant.id],
                 )
               ).rows,
-            ).toEqual([{ count: 4 }]);
-            expect(await fundingSnapshot()).toEqual(fundingBefore);
+            ).toEqual([{ count: 6 }]);
+            expect(await fundingSnapshot()).toEqual(terminalFunding);
             await expect(observeAndRecordRenewalAdjustment(request, stripe)).rejects.toThrow();
           }
         } finally {

@@ -9,6 +9,7 @@ import {
 } from "@elizaos/cloud-shared/lib/queue/redis-queue";
 import { recoverOrganizationSchedules } from "@elizaos/cloud-shared/lib/services/organization-schedule-maintenance";
 import { recoverOrganizationUpgrades } from "@elizaos/cloud-shared/lib/services/organization-upgrade-maintenance";
+import { recoverRenewalAdjustmentObservations } from "@elizaos/cloud-shared/lib/services/renewal-adjustment-maintenance";
 import { recoverOrganizationSubscriptionCancellations } from "@elizaos/cloud-shared/lib/services/subscription-cancellation";
 import { recoverStaleSubscriptionCheckouts } from "@elizaos/cloud-shared/lib/services/subscription-checkout";
 import { sweepSubscriptionNotices } from "@elizaos/cloud-shared/lib/services/subscription-notices";
@@ -81,6 +82,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       sweepSubscriptionNotices(),
       recoverMissedSubscriptionEvents(),
       recoverStaleSubscriptionCheckouts(10),
+      recoverRenewalAdjustmentObservations(),
     ]);
     const [
       queue,
@@ -90,6 +92,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       notices,
       recovery,
       checkouts,
+      adjustments,
     ] = lanes;
     if (
       queue.status !== "fulfilled" ||
@@ -98,7 +101,8 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       schedules.status !== "fulfilled" ||
       notices.status !== "fulfilled" ||
       recovery.status !== "fulfilled" ||
-      checkouts.status !== "fulfilled"
+      checkouts.status !== "fulfilled" ||
+      adjustments.status !== "fulfilled"
     ) {
       const names = [
         "queue",
@@ -108,6 +112,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
         "notices",
         "recovery",
         "checkouts",
+        "adjustments",
       ];
       const failures = lanes.flatMap((lane, index) =>
         lane.status === "rejected" ? [names[index]] : [],
@@ -150,6 +155,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       notices: notices.value,
       recovery: recovery.value,
       checkouts: checkouts.value,
+      adjustments: adjustments.value,
     });
   } catch (error) {
     // error-policy:J1 authenticated cron failures retain a structured retryable boundary.
