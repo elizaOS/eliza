@@ -57,3 +57,8 @@ The helper never enrolls participants or returns plaintext operator credentials.
 After validating the new key against retained data and backups, the operator
 must retire the private recovery files explicitly. Until then they retain old
 key material and block another rotation; rotation alone does not remove it.
+
+`@elizaos/host/native-host` supplies Wilson 95% binomial intervals and
+deterministic nearest-rank percentile bootstrap intervals for a mean. Hosts own
+sampling units, cohorts, confidence labels, resample/seed/work budgets and
+interpretation; these calculations do not certify independence or causal effects.

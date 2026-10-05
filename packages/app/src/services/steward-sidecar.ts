@@ -350,31 +350,6 @@ export class StewardSidecar {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    // Only the original product owns the historical unnamespaced database.
-    const home = process.env.HOME || process.env.USERPROFILE || "";
-    const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
-    const legacy = path.join(home, ".steward", "data");
-    const target = path.join(dir, "data");
-    if (
-      namespace === "eliza" &&
-      path.isAbsolute(home) &&
-      !this.config.databaseUrl &&
-      path.resolve(legacy) !== path.resolve(target) &&
-      fs.existsSync(legacy) &&
-      (!fs.existsSync(target) || fs.readdirSync(target).length === 0)
-    ) {
-      // Publish only a complete copy. A failed copy leaves the old database and
-      // target untouched, so retry cannot mistake partial data for current state.
-      const staging = fs.mkdtempSync(path.join(dir, ".steward-upgrade-"));
-      try {
-        const copy = path.join(staging, "data");
-        fs.cpSync(legacy, copy, { recursive: true, force: false });
-        if (fs.existsSync(target)) fs.rmdirSync(target); // Refuse a now nonempty target.
-        fs.renameSync(copy, target);
-      } finally {
-        fs.rmSync(staging, { recursive: true, force: true });
-      }
-    }
     for (const sub of ["data", "logs"]) {
       const subDir = path.join(dir, sub);
       if (!fs.existsSync(subDir)) {

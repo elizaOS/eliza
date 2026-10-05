@@ -288,15 +288,6 @@ function resolveDefaultDesktopStateDir(opts?: {
 	const env = opts?.env ?? process.env;
 	return joinPortable(resolveXdgStateHome(opts), resolveStateNamespace(env));
 }
-function resolveLegacyDotStateDir(opts?: {
-	env?: NodeJS.ProcessEnv;
-	homedir?: string;
-}): string {
-	return joinPortable(
-		opts?.homedir ?? os.homedir(),
-		`.${resolveStateNamespace(opts?.env ?? process.env)}`,
-	);
-}
 export function resolveDesktopChildStateDir(opts?: {
 	env?: NodeJS.ProcessEnv;
 	homedir?: string;
@@ -350,7 +341,6 @@ function buildExistingElizaInstallCandidates(opts?: {
 	const configPathFromEnv = normalizeEnvPath(env.ELIZA_CONFIG_PATH);
 	const stateDirFromEnv = resolveExplicitStateDir(env);
 	const defaultStateDir = resolveDefaultDesktopStateDir({ env, homedir });
-	const legacyStateDir = resolveLegacyDotStateDir({ env, homedir });
 	const candidates = [
 		configPathFromEnv
 			? {
@@ -371,13 +361,6 @@ function buildExistingElizaInstallCandidates(opts?: {
 			stateDir: defaultStateDir,
 			configPath: joinPortable(defaultStateDir, ELIZA_CONFIG_FILENAME),
 		},
-		legacyStateDir !== defaultStateDir
-			? {
-					source: "legacy-dot-state-dir" as const,
-					stateDir: legacyStateDir,
-					configPath: joinPortable(legacyStateDir, ELIZA_CONFIG_FILENAME),
-				}
-			: null,
 	].filter((candidate): candidate is NonNullable<typeof candidate> =>
 		Boolean(candidate),
 	);
