@@ -193,6 +193,55 @@ describe("personal service account-bound history", () => {
     expect(clients[0].disconnect).toHaveBeenCalled();
     expect(service.isConnected("me:personal")).toBe(false);
   });
+  it("attributes incoming private messages without from_id to the peer", async () => {
+    const { runtime, service, clients } = await harness();
+    await service.refreshAccount("me:personal");
+    const peer = new Api.PeerUser({ userId });
+    vi.spyOn(clients[0], "invoke").mockImplementation(
+      async (request) =>
+        new Api.messages.Messages({
+          messages: [
+            // Layer 119+: incoming private rows carry no from_id.
+            new Api.Message({
+              id: 3,
+              date: 1700000003,
+              peerId: peer,
+              message: "hi",
+            }),
+            new Api.Message({
+              id: 2,
+              date: 1700000002,
+              peerId: peer,
+              out: true,
+              message: "my reply",
+            }),
+            new Api.Message({
+              id: 1,
+              date: 1700000001,
+              peerId: peer,
+              fromId: peer,
+              message: "with from_id",
+            }),
+          ].filter(
+            (row) =>
+              !(request as Api.messages.GetHistory).offsetId ||
+              row.id < (request as Api.messages.GetHistory).offsetId,
+          ),
+          users: [],
+          chats: [],
+        }),
+    );
+
+    const [incoming, outgoing, explicit] = await service.fetchConnectorMessages(
+      { runtime, accountId: "me:personal", target },
+      { target },
+    );
+
+    expect(incoming.metadata).toMatchObject({ fromId: userId.toString() });
+    expect(incoming.entityId).toBe(explicit.entityId);
+    expect(outgoing.entityId).not.toBe(explicit.entityId);
+    await service.stop();
+  });
   it("refuses an unbound owner before history RPC", async () => {
     const { runtime, service, clients } = await harness(false);
     await service.refreshAccount("me:personal");
