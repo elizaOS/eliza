@@ -99,7 +99,8 @@ public final class DeviceCredentialSession implements AutoCloseable {
       if (!access.complete(ticket, result == Activity.RESULT_OK) || next == null) { lock(); return true; }
       ticket = 0;
       timer.watch(access::remainingMillis, this::lock);
-      next.run();
+      // Arming can expire synchronously; never enter the unlocked destination then.
+      if (authenticated()) next.run();
       return true;
     }
     return false;
