@@ -11,14 +11,13 @@ function reject(reason: string): never {
     context: { reason },
   });
 }
-export function observeScheduledTargetSubscription(
+export function observeScheduledTargetLiveSubscription(
   input: {
     source: Parameters<typeof proveOriginalConfiguredTarget>[0]["source"];
     authority: ReturnType<typeof proveOriginalConfiguredTarget>;
     organizationCustomerId: string | null;
     rawSubscription: unknown;
     rawCustomer: unknown;
-    invoiceId: string;
     observedAt: Date;
     retainedCanceledAt: Date | null;
   },
@@ -53,7 +52,6 @@ export function observeScheduledTargetSubscription(
   if (
     !Number.isFinite(now) ||
     phase.start.getTime() > now ||
-    phase.end.getTime() <= now ||
     authority.currentSubscriptionRevision !== source.lifecycle_revision ||
     authority.targetPlanKey !== source.pending_plan_key ||
     observed.id !== source.stripe_subscription_id ||
@@ -63,9 +61,13 @@ export function observeScheduledTargetSubscription(
     observed.livemode !== binding.livemode ||
     customer.data.livemode !== binding.livemode ||
     (source.provider_environment === "live") !== binding.livemode ||
-    observed.latest_invoice !== input.invoiceId ||
-    observed.current_period_start * 1000 !== phase.start.getTime() ||
-    observed.current_period_end * 1000 !== phase.end.getTime() ||
+    observed.current_period_start * 1000 > now ||
+    observed.current_period_end * 1000 <= now ||
+    observed.current_period_start >= observed.current_period_end ||
+    (phase.end.getTime() > now
+      ? observed.current_period_start * 1000 !== phase.start.getTime() ||
+        observed.current_period_end * 1000 !== phase.end.getTime()
+      : phase.state === "active" || observed.current_period_start * 1000 < phase.end.getTime()) ||
     observed.canceled_at !==
       (input.retainedCanceledAt === null ? null : input.retainedCanceledAt.getTime() / 1000) ||
     !/^si_[A-Za-z0-9]+$/.test(item.id) ||
@@ -75,11 +77,36 @@ export function observeScheduledTargetSubscription(
     item.price.unit_amount !== authority.targetAmountCents
   )
     reject("target_identity_period_or_catalog_changed");
-  // The invoice validator must bind its recurring line to this observed unique item.
-  // It need not equal the previous phase's item ID; continuity is not assumed.
+  // This proves live compatibility only. Neither active status nor latest_invoice
+  // proves payment for this or any earlier interval. Historical invoice item identity
+  // belongs to that authenticated invoice, not necessarily this live item.
   return {
+    providerStatus: observed.status,
+    periodStart: new Date(observed.current_period_start * 1000),
+    periodEnd: new Date(observed.current_period_end * 1000),
     subscriptionItemId: item.id,
     invoiceId: observed.latest_invoice,
     providerObjectDigest: settlementDigest(input.rawSubscription),
+  };
+}
+
+/** Original-period settlement requires both the original interval and its current invoice.
+ * Historical payment callers must separately prove their invoice and publish in order. */
+export function observeScheduledTargetSubscription(
+  input: Parameters<typeof observeScheduledTargetLiveSubscription>[0] & { invoiceId: string },
+  expectedStatus: "active" | "past_due" | "unpaid" = "active",
+) {
+  const observed = observeScheduledTargetLiveSubscription(input, expectedStatus);
+  if (
+    input.authority.phase.end.getTime() <= input.observedAt.getTime() ||
+    observed.periodStart.getTime() !== input.authority.phase.start.getTime() ||
+    observed.periodEnd.getTime() !== input.authority.phase.end.getTime() ||
+    observed.invoiceId !== input.invoiceId
+  )
+    reject("target_identity_period_or_catalog_changed");
+  return {
+    subscriptionItemId: observed.subscriptionItemId,
+    invoiceId: observed.invoiceId,
+    providerObjectDigest: observed.providerObjectDigest,
   };
 }
