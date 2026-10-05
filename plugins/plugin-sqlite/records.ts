@@ -2973,10 +2973,17 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     for (const id of roomIds) {
       await this.storage.delete(COLLECTIONS.ROOMS, id);
     }
-    // Cascade: drop participants and memories belonging to these rooms.
+    // Cascade as plugin-sql's room FKs do (participants, memories,
+    // components and logs are ON DELETE CASCADE on room_id).
     await this.storage.deleteWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => set.has(p.roomId as UUID),
+    );
+    await this.storage.deleteWhere<Component>(COLLECTIONS.COMPONENTS, (c) =>
+      set.has(c.roomId as UUID),
+    );
+    await this.storage.deleteWhere<Log>(COLLECTIONS.LOGS, (l) =>
+      set.has(l.roomId as UUID),
     );
     await this.deleteMemories(memoryIds);
   }

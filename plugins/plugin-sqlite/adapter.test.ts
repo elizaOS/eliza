@@ -498,6 +498,57 @@ describe("durable SQLite agent adapter", () => {
     ).toEqual([original.id]);
   });
 
+  it("deletes a room's components and logs with it", async () => {
+    const adapter = await open();
+    const worldId = id();
+    const otherRoomId = id();
+    await adapter.createAgents([{ id: agentId, name: "Conversation agent" }]);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["User"] }]);
+    await adapter.createWorlds([{ id: worldId, name: "Chats", agentId }]);
+    await adapter.createRooms([
+      { id: roomId, agentId, worldId, type: ChannelType.DM, source: "test" },
+      {
+        id: otherRoomId,
+        agentId,
+        worldId,
+        type: ChannelType.DM,
+        source: "test",
+      },
+    ]);
+    const component = (componentId: UUID, room: UUID) => ({
+      id: componentId,
+      entityId,
+      agentId,
+      roomId: room,
+      worldId,
+      sourceEntityId: agentId,
+      type: "room_state",
+      createdAt: 1,
+      data: {},
+    });
+    const deleted = id();
+    const kept = id();
+    await adapter.createComponents([
+      component(deleted, roomId),
+      component(kept, otherRoomId),
+    ]);
+    await adapter.createLogs([
+      { body: {}, entityId, roomId, type: "conversation-log" },
+      { body: {}, entityId, roomId: otherRoomId, type: "conversation-log" },
+    ]);
+
+    await adapter.deleteRooms([roomId]);
+
+    expect(
+      (await adapter.getComponentsByIds([deleted, kept])).map((row) => row.id),
+    ).toEqual([kept]);
+    expect(
+      (await adapter.getLogs({ type: "conversation-log" })).map(
+        (row) => row.roomId,
+      ),
+    ).toEqual([otherRoomId]);
+  });
+
   it("keeps outside reads behind an awaiting transaction and supports nested rollback", async () => {
     const adapter = await open();
     let entered!: () => void;
