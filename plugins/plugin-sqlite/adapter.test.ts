@@ -176,6 +176,39 @@ describe("durable SQLite agent adapter", () => {
     expect(remaining.map((row) => row.id)).toEqual([unrelatedId]);
   });
 
+  it("stores memories without a uniqueness flag as unique, like plugin-sql", async () => {
+    const adapter = await open();
+    const plain = (text: string) => ({ ...memory(text), embedding: undefined });
+    const created = plain("created");
+    const duplicate = plain("duplicate");
+    const published = plain("published");
+    await adapter.createMemories([
+      { memory: created, tableName: "messages" },
+      { memory: duplicate, tableName: "messages", unique: false },
+    ]);
+    await adapter.publishMessageContentSegments({
+      mode: "create",
+      parent: published,
+      segments: [],
+    });
+
+    const unique = await adapter.getMemories({
+      roomId,
+      unique: true,
+      tableName: "messages",
+    });
+    expect(unique.map((row) => row.id).sort()).toEqual(
+      [created.id, published.id].sort(),
+    );
+    expect(
+      await adapter.countMemories({
+        roomIds: [roomId],
+        unique: true,
+        tableName: "messages",
+      }),
+    ).toBe(2);
+  });
+
   it("pages tasks by creation time when the later id sorts first", async () => {
     const adapter = await open();
     const earlyId = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
