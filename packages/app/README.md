@@ -282,6 +282,16 @@ lease follows the caller environment and remains held for a live process, rather
 than expiring during long instrumentation. Product callbacks own controlled
 fixture provisioning; this runner does not authorize live integrations. Use `testOutputPath` for reports produced inside this checkout.
 
+For installed upgrades, each variant supplies baseline `apk`/`testApk` and an
+`upgrade: {apk, testApk}` candidate pair. Both pairs are admitted before device
+mutation. `runnerArgs` seeds the baseline; `upgradeRunnerArgs` verifies the
+candidate with the same strict class/method selection. `beforeUpgrade` runs after
+baseline instrumentation; `afterUpgrade` runs after replacing the app but before
+replacing the test APK, allowing product intent-preservation checks. Separate
+phase logs and hashes retain evidence. Installed APK bytes are verified after
+installation, before replacement and before removal. Changed installed code
+retains both packages for explicit recovery instead of deleting an unknown build.
+
 The isolated Android harness also accepts an explicit unique `testClasses` list
 instead of `testClass`, with the complete `expectedTests` count across that suite.
 For one exact method, supply `testMethod` with one class and `expectedTests: 1`;
