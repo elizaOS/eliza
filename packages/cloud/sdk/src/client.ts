@@ -147,6 +147,7 @@ import {
   type OrganizationSubscriptionUpgradeQuoteRequest,
   type OrganizationSubscriptionUpgradeQuoteResponse,
   type PairingTokenResponse,
+  type PendingOrganizationPlanChangeCommandsResponse,
   type PendingSubscriptionCommandsResponse,
   type PollGatewayRelayResponse,
   type RedemptionBalanceResponse,
@@ -710,6 +711,19 @@ export class ElizaCloudClient {
     const query = new URLSearchParams({ limit: String(input.limit) });
     if (input.cursor !== undefined) query.set("cursor", input.cursor);
     return this.v1.requestData("GET", `/subscriptions/commands?${query}`);
+  }
+
+  /** Rediscovers this manager's original pending plan changes without submitting or recovering them. */
+  listPendingOrganizationPlanChangeCommands(input: {
+    limit: number;
+    cursor?: string;
+  }): Promise<PendingOrganizationPlanChangeCommandsResponse> {
+    const query = new URLSearchParams({ limit: String(input.limit) });
+    if (input.cursor !== undefined) query.set("cursor", input.cursor);
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/plan-change/commands?${query}`,
+    );
   }
 
   getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {

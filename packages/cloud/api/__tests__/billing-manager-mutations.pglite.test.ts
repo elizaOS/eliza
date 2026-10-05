@@ -52,6 +52,7 @@ const env = {
 mock.module(
   "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
   () => ({
+    rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
     moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
       next(),
     RateLimitPresets: { STRICT: {}, STANDARD: {} },
@@ -108,6 +109,19 @@ mock.module(
       await reauthorize();
       effects.push(`portal:${input.organizationId}`);
       return { url: "https://billing.stripe.com/p/session/test" };
+    },
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/subscription-command-status",
+  () => ({
+    listPendingOrganizationPlanChangeCommands: async () => {
+      await afterPriceRead?.();
+      return {
+        observedAt: new Date().toISOString(),
+        items: [],
+        nextCursor: null,
+      };
     },
   }),
 );
@@ -178,6 +192,10 @@ beforeAll(async () => {
     (await import("../stripe/create-checkout-session/route")).default,
   );
   route.route("/topup", (await import("../auto-top-up/trigger/route")).default);
+  route.route(
+    "/plan-commands",
+    (await import("../v1/subscriptions/plan-change/commands/route")).default,
+  );
   route.route(
     "/downgrade",
     (await import("../v1/subscriptions/downgrade/confirm/route")).default,
@@ -337,5 +355,50 @@ test("downgrade: manager loss during confirmation is re-read from primary before
   const response = await request("downgrade");
   expect(response.status).toBe(403);
   expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(effects).toEqual([]);
+});
+
+function planRequest(headers: Record<string, string> = {}, tokenOrg = org) {
+  const token = createPlaywrightTestSessionToken(userId, tokenOrg, env);
+  return route.request(
+    "https://cloud.eliza.app/plan-commands?limit=5",
+    { headers: { cookie: `eliza-test-session=${token}`, ...headers } },
+    env,
+  );
+}
+for (const role of ["owner", "admin", "member", "guest"])
+  test(`plan discovery: primary ${role} authorization`, async () => {
+    cached.role = role;
+    await pg.query("UPDATE users SET role=$1 WHERE id=$2", [role, userId]);
+    const response = await planRequest();
+    expect(response.status).toBe(
+      role === "owner" || role === "admin" ? 200 : 403,
+    );
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(effects).toEqual([]);
+  });
+test("plan discovery: primary role loss after reading discards the result", async () => {
+  afterPriceRead = async () => {
+    await pg.query("UPDATE users SET role='member' WHERE id=$1", [userId]);
+  };
+  expect((await planRequest()).status).toBe(403);
+  expect(effects).toEqual([]);
+});
+test("plan discovery: stale owner and tenant transfer cannot borrow the cached identity", async () => {
+  await pg.query("UPDATE users SET role='member' WHERE id=$1", [userId]);
+  expect((await planRequest()).status).toBe(403);
+  await pg.query(
+    "UPDATE users SET role='owner',organization_id=$1 WHERE id=$2",
+    [otherOrg, userId],
+  );
+  expect((await planRequest()).status).toBe(403);
+});
+test("plan discovery: wrong-tenant cookie and explicit API keys cannot borrow a session", async () => {
+  expect((await planRequest({}, otherOrg)).status).toBe(401);
+  for (const header of [
+    { authorization: "Bearer eliza_general_key" },
+    { "x-api-key": "eliza_general_key" },
+  ] as Record<string, string>[])
+    expect((await planRequest(header)).status).toBe(401);
   expect(effects).toEqual([]);
 });

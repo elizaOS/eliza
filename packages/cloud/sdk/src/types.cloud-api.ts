@@ -827,3 +827,16 @@ export interface PendingSubscriptionCommandsDto {
 }
 export type PendingSubscriptionCommandsResponse =
   ApiSuccessEnvelope<PendingSubscriptionCommandsDto>;
+/** Original-actor plan-change discovery, separate from cancellation/resumption. */
+export interface PendingOrganizationPlanChangeCommandsDto {
+  observedAt: string;
+  items: Array<
+    Omit<PendingSubscriptionCommandsDto["items"][number], "kind"> & {
+      kind: "upgrade" | "downgrade";
+      targetPlanKey: string;
+    }
+  >;
+  nextCursor: string | null;
+}
+export type PendingOrganizationPlanChangeCommandsResponse =
+  ApiSuccessEnvelope<PendingOrganizationPlanChangeCommandsDto>;

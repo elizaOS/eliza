@@ -36,6 +36,17 @@ native configuration. Retain the existing S256 grant, inactive exchange, durable
 receipt acknowledgment, self-revocation and account recovery contracts. `cloud:user`
 is the existing broad user/organization capability, not a narrower permission claim.
 
+## Pending plan-change discovery
+
+`GET /api/v1/subscriptions/plan-change/commands?limit=...` rediscovers the current
+billing manager's own pending upgrade/downgrade commands. Use its opaque cursor
+for the next bounded page; it is bound to organization, actor and command family.
+Each page is a fresh primary read, not a frozen multi-request snapshot. Discovery
+does not claim a lease, contact the payment provider or resume an operation.
+The response includes original target, lease state and current-source relationship;
+read the corresponding command status or refresh the subscription before acting.
+Cancellation/resumption retain the separate `/subscriptions/commands` contract.
+
 ## Organization renewal review
 
 `GET /api/v1/subscriptions/cancel/undo/review` accepts `subscriptionId` and a
