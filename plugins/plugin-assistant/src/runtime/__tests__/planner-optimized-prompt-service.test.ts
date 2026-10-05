@@ -109,7 +109,7 @@ it("uses only the registered service and checks its baseline before a model requ
   expect(requests).toHaveLength(4);
 });
 
-it("states the batch-scope rule once for an optimized template that omits it and keeps the short pointer on every tool", async () => {
+it("preserves batch-scope policy and validation through request-local description references", async () => {
   const root = await mkdtemp(join(tmpdir(), "planner-batch-scope-backstop-"));
   roots.push(root);
   vi.stubEnv("ELIZA_STATE_DIR", root);
@@ -138,7 +138,10 @@ it("states the batch-scope rule once for an optimized template that omits it and
     messages?: Array<{ role?: string; content?: unknown }>;
     tools?: Array<{
       name: string;
-      parameters?: { properties?: Record<string, { description?: string }> };
+      parameters?: {
+        properties?: Record<string, { description?: string }>;
+        required?: string[];
+      };
     }>;
   }> = [];
   const runtime = {
@@ -187,14 +190,26 @@ it("states the batch-scope rule once for an optimized template that omits it and
   expect(
     instructions.split(`- Batch scope: ${plannerBatchScopeDescription}`),
   ).toHaveLength(2);
-  // Every exposed tool now carries the short pointer, never the full protocol.
+  // The first tool retains the complete pointer to the system policy. Repeated
+  // descriptions name that exact request-local tool and parameter instead.
   const tools = requests[0]?.tools ?? [];
   expect(tools.map(({ name }) => name)).toEqual(["SETTINGS", "REPLY"]);
+  const firstScope = tools[0]?.parameters?.properties?.[TURN_SCOPE_ARG];
+  const secondScope = tools[1]?.parameters?.properties?.[TURN_SCOPE_ARG];
+  expect(firstScope?.description).toBe(
+    "Follow the shared Batch scope instruction. Use the same scope on every call in this batch. Stripped before execution.",
+  );
+  expect(secondScope?.description).toBe(
+    'Use the identical full description of parameter "eliza_turn_scope" on tool SETTINGS.',
+  );
   for (const tool of tools) {
     const scope = tool.parameters?.properties?.[TURN_SCOPE_ARG];
-    expect(scope?.description).toContain(
-      "Follow the shared Batch scope instruction",
-    );
-    expect(scope?.description).not.toContain(plannerBatchScopeDescription);
+    const { description, ...validation } = scope ?? {};
+    expect(validation).toEqual({
+      type: "string",
+      enum: ["final", "more_work_pending"],
+    });
+    expect(tool.parameters?.required).toContain(TURN_SCOPE_ARG);
+    expect(description).not.toContain(plannerBatchScopeDescription);
   }
 });
