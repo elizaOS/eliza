@@ -185,9 +185,17 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "browser",
     path: "/browser",
+    // Linux desktop hosts open Websites; web hosts open the tab workspace.
+    // Require the address control and its matching surface in either host.
     readyChecks: [
-      { selector: '[data-testid="browser-workspace-address-input"]' },
-      { selector: '[data-testid="browser-workspace-surface-panel"]' },
+      {
+        selector:
+          '[data-testid="browser-workspace-address-input"], section[aria-label="Browser"] input[aria-label="Website or search"]',
+      },
+      {
+        selector:
+          '[data-testid="browser-workspace-surface-panel"], section[aria-label="Browser"] button[type="submit"]:has-text("Go")',
+      },
     ],
     mode: "all",
     timeoutMs: 60_000,
@@ -1036,6 +1044,23 @@ test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   }
 
   await clickSafeAllowlist(page, issues);
+});
+
+test("stale inventory link opens the canonical wallet without crashing", async ({
+  page,
+}) => {
+  const issues = installPageIssueGuards(page);
+  await openAppPath(page, "/apps/inventory");
+  const recovery = page.getByTestId("app-route-not-found");
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toContainText("/apps/inventory");
+  await recovery
+    .getByRole("button", { name: "Open Wallet", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/wallet(?:[?#]|$)/);
+  await expect(page.getByTestId("wallet-shell")).toBeVisible();
+  await expect(recovery).toHaveCount(0);
+  await expectNoPageIssues(issues, "stale inventory link recovery");
 });
 
 test("browser history returns from Wallet to the launcher without crashing", async ({
