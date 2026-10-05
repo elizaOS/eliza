@@ -10,7 +10,8 @@ import {
 test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
 
 test("settings surface walkthrough (PR evidence)", async ({ page }) => {
-  await seedAppStorage(page);
+  // Background and App Permissions are advanced sections.
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
   await openAppPath(page, "/settings");
   const shell = page.getByTestId("settings-shell");
