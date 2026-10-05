@@ -69,6 +69,85 @@ async function currentSource(
   if (source.pending_plan_key !== null) await readConfiguredCancellationAuthority(tx, source);
   return source;
 }
+/** Source checks that fail for good once the subscription moved past the command's revision. */
+const STALE_SOURCE_REASONS = new Set([
+  "current_subscription_unavailable",
+  "source_changed_or_unsupported",
+  "schedule_predecessor_changed",
+]);
+function isStaleSourceRejection(error: unknown): boolean {
+  if (!(error instanceof ElizaError)) return false;
+  const reason = (error.context as { reason?: unknown } | undefined)?.reason;
+  return typeof reason === "string" && STALE_SOURCE_REASONS.has(reason);
+}
+/**
+ * A PREPARED cancellation was never claimed, so it never crossed the dispatch
+ * fence. Once its subscription moved on it can never be claimed either; left
+ * PREPARED it would block every later cancel or undo for the organization.
+ */
+async function supersedeStalePreparedCancellation(
+  tx: DbTransaction,
+  organizationId: string,
+  commandId: string,
+  now: Date,
+) {
+  await tx
+    .update(billingSubscriptionCommands)
+    .set({
+      status: "SUPERSEDED",
+      error_code: "SUBSCRIPTION_CHANGED_BEFORE_DISPATCH",
+      state_revision: sql`${billingSubscriptionCommands.state_revision} + 1`,
+      completed_at: now,
+      updated_at: now,
+    })
+    .where(
+      and(
+        isNull(billingSubscriptionCommands.billing_scope_id),
+        isNull(billingSubscriptionCommands.app_id),
+        eq(billingSubscriptionCommands.organization_id, organizationId),
+        eq(billingSubscriptionCommands.id, commandId),
+        inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
+        eq(billingSubscriptionCommands.status, "PREPARED"),
+      ),
+    );
+}
+/**
+ * Live organization commands split into those that block a new schedule
+ * change and stale PREPARED cancellations pinned to an older subscription
+ * revision, which can never be claimed and must not block.
+ */
+async function liveScheduleCommands(
+  tx: DbTransaction,
+  organizationId: string,
+  source: import("../schemas/billing-subscriptions").BillingSubscription,
+) {
+  const live = await tx
+    .select({
+      id: billingSubscriptionCommands.id,
+      kind: billingSubscriptionCommands.kind,
+      status: billingSubscriptionCommands.status,
+      subscriptionId: billingSubscriptionCommands.subscription_id,
+      expectedRevision: billingSubscriptionCommands.expected_subscription_revision,
+    })
+    .from(billingSubscriptionCommands)
+    .where(
+      and(
+        isNull(billingSubscriptionCommands.billing_scope_id),
+        isNull(billingSubscriptionCommands.app_id),
+        eq(billingSubscriptionCommands.organization_id, organizationId),
+        inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
+      ),
+    );
+  const isStale = (command: (typeof live)[number]) =>
+    command.status === "PREPARED" &&
+    (command.kind === "cancel" || command.kind === "resume") &&
+    (command.subscriptionId !== source.id ||
+      command.expectedRevision !== source.lifecycle_revision);
+  return {
+    blocking: live.filter((command) => !isStale(command)),
+    stale: live.filter(isStale),
+  };
+}
 /** Captures eligible undo authority without admitting a command or sending a provider mutation. */
 export async function readCancellationUndoReviewSource(
   input: Omit<PrepareCancellationInput, "idempotencyKey">,
@@ -79,19 +158,9 @@ export async function readCancellationUndoReviewSource(
     const predecessor = await readLatestSubscriptionScheduleCommand(tx, source);
     if (!source.cancel_at_period_end || predecessor?.kind !== "cancel")
       reject("schedule_transition_unavailable");
-    const [live] = await tx
-      .select({ id: billingSubscriptionCommands.id })
-      .from(billingSubscriptionCommands)
-      .where(
-        and(
-          isNull(billingSubscriptionCommands.billing_scope_id),
-          isNull(billingSubscriptionCommands.app_id),
-          eq(billingSubscriptionCommands.organization_id, input.organizationId),
-          inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
-        ),
-      )
-      .limit(1);
-    if (live) reject("contradictory_command_pending");
+    // A stale PREPARED command cannot be claimed; the next prepare supersedes it.
+    const { blocking } = await liveScheduleCommands(tx, input.organizationId, source);
+    if (blocking.length) reject("contradictory_command_pending");
     const [projection] = await tx
       .select()
       .from(organizationEntitlements)
@@ -176,19 +245,10 @@ export async function prepareCancellation(
         : source.cancel_at_period_end || (predecessor !== null && predecessor.kind !== "resume")
     )
       reject("schedule_transition_unavailable");
-    const [live] = await tx
-      .select({ id: billingSubscriptionCommands.id })
-      .from(billingSubscriptionCommands)
-      .where(
-        and(
-          isNull(billingSubscriptionCommands.billing_scope_id),
-          isNull(billingSubscriptionCommands.app_id),
-          eq(billingSubscriptionCommands.organization_id, input.organizationId),
-          inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
-        ),
-      )
-      .limit(1);
-    if (live) reject("contradictory_command_pending");
+    const { blocking, stale } = await liveScheduleCommands(tx, input.organizationId, source);
+    if (blocking.length) reject("contradictory_command_pending");
+    for (const command of stale)
+      await supersedeStalePreparedCancellation(tx, input.organizationId, command.id, locked.now);
     if (input.renewalReview !== undefined) {
       const parsed = subscriptionRenewalReviewSchema.safeParse(input.renewalReview);
       if (!parsed.success) reject("renewal_review_invalid");
@@ -290,16 +350,24 @@ export async function claimCancellation(
     if (command.status !== "PREPARED" && command.status !== "OUTCOME_UNKNOWN") return null;
     const now = await readPostLockDatabaseNow(tx);
     if (command.lease_expires_at !== null && command.lease_expires_at > now) return null;
-    const source = await currentSource(
-      tx,
-      {
-        ...input,
-        subscriptionId: command.subscription_id,
-        expectedSubscriptionRevision: command.expected_subscription_revision,
-      },
-      locked,
-    );
-    await validatePredecessor(tx, source, command);
+    let source: Awaited<ReturnType<typeof currentSource>>;
+    try {
+      source = await currentSource(
+        tx,
+        {
+          ...input,
+          subscriptionId: command.subscription_id,
+          expectedSubscriptionRevision: command.expected_subscription_revision,
+        },
+        locked,
+      );
+      await validatePredecessor(tx, source, command);
+    } catch (error) {
+      if (command.status !== "PREPARED" || !isStaleSourceRejection(error)) throw error;
+      // Nothing was sent to the provider; settle it so the organization can retry.
+      await supersedeStalePreparedCancellation(tx, input.organizationId, command.id, now);
+      return null;
+    }
     const [projection] = await tx
       .select()
       .from(organizationEntitlements)
