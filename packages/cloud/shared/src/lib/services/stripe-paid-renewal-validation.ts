@@ -189,7 +189,7 @@ export function validatePaidRenewal(
     target &&
     (input.initialPayment ||
       input.replayPeriod ||
-      target.originalSubscriptionRevision !== source.lifecycle_revision ||
+      target.currentSubscriptionRevision !== source.lifecycle_revision ||
       target.targetPlanKey !== source.pending_plan_key)
   )
     renewalUnavailable("scheduled_target_source_changed");

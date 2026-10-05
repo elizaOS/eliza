@@ -126,6 +126,7 @@ export function proveOriginalConfiguredAuthority(input: {
   return {
     commandId: command.id,
     originalSubscriptionRevision: source.lifecycle_revision,
+    currentSubscriptionRevision: source.lifecycle_revision,
     targetPlanKey: target.key,
     targetAmountCents: target.amountCents,
     targetAllowanceUsd: target.allowance.amountUsd,

@@ -1,6 +1,7 @@
 /** Real PostgreSQL cleanup authority; provider traffic is synthetic. */
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Client } from "pg";
 import { seedOrganizationDowngradeTestAccount } from "./organization-downgrade-test-fixture";
@@ -9,6 +10,7 @@ import { installOrganizationUpgradeTestSchema } from "./organization-upgrade-tes
 let stripeMock: unknown;
 mock.module(resolve(import.meta.dir, "../../lib/stripe.ts"), () => ({
   requireStripe: () => stripeMock,
+  createStripeRecoveryClient: () => stripeMock,
 }));
 const url = process.env.SUBSCRIPTION_AUTHORITY_POSTGRES_URL;
 const schema = `schedule_configured_finalizer_${randomUUID().replaceAll("-", "_")}`;
@@ -48,6 +50,12 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     await db.query(`CREATE SCHEMA ${schema}`);
     await db.query(`SET search_path TO ${schema},public`);
     await installOrganizationUpgradeTestSchema((q) => db.query(q));
+    const reconciliationMigration = await readFile(
+      new URL("../migrations/0385_subscription_reconciliation.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of reconciliationMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await db.query(statement);
     const target = new URL(url!);
     target.searchParams.set("options", `-c search_path=${schema},public`);
     process.env.DATABASE_URL = target.toString();
@@ -822,206 +830,298 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     expect(provider.updates()).toBe(1);
   });
   // The real database clock must cross the five-second renewal boundary
-  // before the publication, rollback and replay assertions can execute.
-  test("paid first target atomically changes the plan and grants the lower allowance once", async () => {
-    const boundary = Math.floor(Date.now() / 1000) + 5;
-    const f = await configured(true, true, {
-      start: new Date((boundary - 120) * 1000),
-      end: new Date(boundary * 1000),
-    });
-    const { subscriptionAllowanceRepository: allowance } = await import("./subscription-allowance");
-    const { writeTransaction } = await import("../helpers");
-    await writeTransaction((tx) =>
-      allowance.grantRenewalInTransaction(tx, {
-        source: f.captured.source,
-        invoiceId: `in_base${f.identity.commandId.replaceAll("-", "")}`,
-        requestDigest: "a".repeat(64),
-        databaseNow: new Date(),
-      }),
-    );
-    await f.finalize(f.input);
-    const before = await state(f);
-    await Bun.sleep(Math.max(0, boundary * 1000 - Date.now() + 25));
-    const { subscriptionAuthorityRepository: authority } = await import("./subscription-authority");
-    const source = await authority.findById(f.identity.organizationId, f.captured.source.id);
-    if (!source) throw new Error("Pending source missing");
-    const { renewalPaidObjects } = await import("./subscription-renewal-test-fixture");
-    const provider = structuredClone(f.provider);
-    provider.items.data[0]!.id = "si_target";
-    Object.assign(provider.items.data[0]!.price, {
-      id: "price_plus",
-      product: "prod_plus",
-      unit_amount: 3000,
-    });
-    const snapshot = structuredClone(f.input.rawCurrentSchedule),
-      target = snapshot.phases[1]!;
-    if (typeof target.end_date !== "number") throw new Error("Target fixture needs a finite end");
-    snapshot.current_phase = { start_date: target.start_date, end_date: target.end_date };
-    const objects = renewalPaidObjects(
-      { ...source, plan_key: "plus_monthly", stripe_subscription_item_id: "si_target" },
-      provider,
-      { start: boundary, end: target.end_date },
-    );
-    objects.invoice.status_transitions.paid_at = boundary;
-    const subscription = { ...objects.subscription, schedule: snapshot.id };
-    const { subscriptionBillingOperationsRepository: operations } = await import(
-      "./subscription-billing-operations"
-    );
-    const providerEventId = `evt_${f.identity.commandId.replaceAll("-", "")}`,
-      eventCreatedAt = new Date(),
-      leaseToken = crypto.randomUUID();
-    const receipt = await operations.recordEvent({
-      organizationId: source.organization_id,
-      subscriptionId: source.id,
-      providerEventId,
-      eventType: "invoice.paid",
-      providerObjectType: "invoice",
-      providerObjectId: objects.invoice.id,
-      livemode: false,
-      eventCreatedAt,
-      payloadDigest: "b".repeat(64),
-      now: new Date(),
-    });
-    expect(
-      await operations.claimEvent({
-        organizationId: source.organization_id,
-        receiptId: receipt.value.id,
-        leaseToken,
-        leaseDurationMs: 60000,
-      }),
-    ).toBeTruthy();
-    const { finalizePaidRenewal } = await import("./subscription-renewal-finalization");
-    const input = {
-      ...objects,
-      subscription,
-      scheduledSchedule: snapshot,
-      organizationId: source.organization_id,
-      subscriptionId: source.id,
-      invoiceId: objects.invoice.id,
-      receiptId: receipt.value.id,
-      leaseToken,
-      expectedSubscriptionRevision: 2,
-      expectedProjectionRevision: 2,
-      providerEventId,
-      eventCreatedAt,
-    };
-    const beforePayment = await state(f);
-    for (const changed of [
-      { ...input, paymentIntent: { ...input.paymentIntent, amount_received: 0 } },
-      { ...input, scheduledSchedule: { ...snapshot, id: "sub_sched_foreign" } },
-      {
-        ...input,
-        invoice: {
-          ...input.invoice,
-          lines: {
-            ...input.invoice.lines,
-            data: input.invoice.lines.data.map((line) => ({
-              ...line,
-              subscription_item: "si_foreign",
-            })),
-          },
-        },
-      },
-    ]) {
-      await expect(finalizePaidRenewal(changed)).rejects.toThrow();
-      expect(await state(f)).toEqual(beforePayment);
-    }
-    await db.query(`CREATE FUNCTION reject_target_receipt_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='applied' THEN RAISE EXCEPTION 'target receipt fixture failure'; END IF; RETURN NEW; END $$;
-      CREATE TRIGGER reject_target_receipt_fixture BEFORE UPDATE ON billing_subscription_event_receipts FOR EACH ROW EXECUTE FUNCTION reject_target_receipt_fixture()`);
-    try {
-      await expect(finalizePaidRenewal(input)).rejects.toThrow();
-      expect(await state(f)).toEqual(beforePayment);
-    } finally {
-      await db.query(
-        "DROP TRIGGER reject_target_receipt_fixture ON billing_subscription_event_receipts; DROP FUNCTION reject_target_receipt_fixture()",
+  // before publication, rollback and replay assertions can execute.
+  for (const dunning of ["none", "webhook", "cron"] as const)
+    test(`paid first target atomically settles with dunning=${dunning}`, async () => {
+      const boundary = Math.floor(Date.now() / 1000) + 5;
+      const f = await configured(true, true, {
+        start: new Date((boundary - 120) * 1000),
+        end: new Date(boundary * 1000),
+      });
+      const { subscriptionAllowanceRepository: allowance } = await import(
+        "./subscription-allowance"
       );
-    }
-    expect((await finalizePaidRenewal(input)).replayed).toBeFalse();
-    expect((await finalizePaidRenewal(input)).replayed).toBeTrue();
-    const after = await state(f);
-    expect(after.source.plan_key).toBe("plus_monthly");
-    expect(after.source.pending_plan_key).toBeNull();
-    expect(after.source.stripe_subscription_item_id).toBe("si_target");
-    expect(after.projection.plan_key).toBe("plus_monthly");
-    expect(after.command).toEqual(before.command);
-    expect(
-      (
-        await db.query(
-          "SELECT granted_amount FROM subscription_allowance_periods WHERE stripe_invoice_id=$1",
-          [objects.invoice.id],
-        )
-      ).rows,
-    ).toEqual([{ granted_amount: "25.000000" }]);
-    const paidSource = await authority.findById(source.organization_id, source.id);
-    if (!paidSource) throw new Error("Paid source missing");
-    const { assertScheduledPaidBinding } = await import(
-      "./test-support/subscription-scheduled-binding"
-    );
-    await assertScheduledPaidBinding(paidSource, f.identity.commandId);
-    const { reconcileStripePaidRenewal } = await import("../../lib/services/stripe-paid-renewal");
-    let invoiceReads = 0;
-    stripeMock = {
-      invoices: {
-        retrieve: async () => {
-          invoiceReads++;
-          return objects.invoice;
-        },
-      },
-    };
-    const deliverAgain = async () => {
-      const eventId = `evt_${crypto.randomUUID().replaceAll("-", "")}`;
-      await reconcileStripePaidRenewal({
-        kind: "stripe.event",
-        eventId,
-        eventType: "invoice.paid",
-        receivedAt: Date.now(),
-        event: {
+      const { writeTransaction } = await import("../helpers");
+      await writeTransaction((tx) =>
+        allowance.grantRenewalInTransaction(tx, {
+          source: f.captured.source,
+          invoiceId: `in_base${f.identity.commandId.replaceAll("-", "")}`,
+          requestDigest: "a".repeat(64),
+          databaseNow: new Date(),
+        }),
+      );
+      await f.finalize(f.input);
+      const before = await state(f);
+      await Bun.sleep(Math.max(0, boundary * 1000 - Date.now() + 25));
+      const { subscriptionAuthorityRepository: authority } = await import(
+        "./subscription-authority"
+      );
+      let source = await authority.findById(f.identity.organizationId, f.captured.source.id);
+      if (!source) throw new Error("Pending source missing");
+      const { renewalPaidObjects } = await import("./subscription-renewal-test-fixture");
+      const provider = structuredClone(f.provider);
+      const targetItemId = `si_target${f.identity.commandId.replaceAll("-", "")}`;
+      provider.items.data[0]!.id = targetItemId;
+      Object.assign(provider.items.data[0]!.price, {
+        id: "price_plus",
+        product: "prod_plus",
+        unit_amount: 3000,
+      });
+      const snapshot = structuredClone(f.input.rawCurrentSchedule),
+        target = snapshot.phases[1]!;
+      if (typeof target.end_date !== "number") throw new Error("Target fixture needs a finite end");
+      snapshot.current_phase = { start_date: target.start_date, end_date: target.end_date };
+      const objects = renewalPaidObjects(
+        { ...source, plan_key: "plus_monthly", stripe_subscription_item_id: targetItemId },
+        provider,
+        { start: boundary, end: target.end_date },
+      );
+      objects.invoice.status_transitions.paid_at = boundary;
+      const subscription = { ...objects.subscription, schedule: snapshot.id };
+      if (dunning !== "none") {
+        const failed = {
+          ...objects.invoice,
+          status: "open",
+          paid: false,
+          amount_paid: 0,
+          amount_remaining: objects.invoice.amount_due,
+        };
+        let observedInvoice = failed;
+        stripeMock = {
+          subscriptions: { retrieve: async () => ({ ...subscription, status: "past_due" }) },
+          subscriptionSchedules: { retrieve: async () => snapshot },
+          customers: { retrieve: async () => objects.customer },
+          invoices: { retrieve: async () => observedInvoice },
+        };
+        const { reconcileStripeDunningLifecycle } = await import(
+          "../../lib/services/stripe-dunning-lifecycle"
+        );
+        const eventId = `evt_${crypto.randomUUID().replaceAll("-", "")}`;
+        const event = {
           id: eventId,
           object: "event",
-          type: "invoice.paid",
+          type: "invoice.payment_failed",
           created: Math.floor(Date.now() / 1000),
           livemode: false,
-          data: { object: objects.invoice },
+          data: { object: failed },
           api_version: "2024-11-20.acacia",
           pending_webhooks: 0,
           request: null,
-        } as unknown as import("stripe").default.Event,
+        } as unknown as import("stripe").default.Event;
+        const message = {
+          kind: "stripe.event" as const,
+          eventId,
+          eventType: event.type,
+          event,
+          receivedAt: Date.now(),
+        };
+        const beforeFailure = await state(f);
+        if (dunning === "webhook") {
+          observedInvoice = { ...failed, customer: "cus_foreign" };
+          await expect(
+            reconcileStripeDunningLifecycle(message, source.stripe_subscription_id),
+          ).rejects.toThrow();
+          expect(await state(f)).toEqual(beforeFailure);
+          observedInvoice = failed;
+          await db.query(`CREATE FUNCTION reject_dunning_receipt_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='applied' THEN RAISE EXCEPTION 'dunning receipt fixture failure'; END IF; RETURN NEW; END $$;
+            CREATE TRIGGER reject_dunning_receipt_fixture BEFORE UPDATE ON billing_subscription_event_receipts FOR EACH ROW EXECUTE FUNCTION reject_dunning_receipt_fixture()`);
+          try {
+            await expect(
+              reconcileStripeDunningLifecycle(message, source.stripe_subscription_id),
+            ).rejects.toThrow();
+            expect(await state(f)).toEqual(beforeFailure);
+          } finally {
+            await db.query(
+              "DROP TRIGGER reject_dunning_receipt_fixture ON billing_subscription_event_receipts; DROP FUNCTION reject_dunning_receipt_fixture()",
+            );
+          }
+          await reconcileStripeDunningLifecycle(message, source.stripe_subscription_id);
+          const completed = await state(f);
+          await reconcileStripeDunningLifecycle(message, source.stripe_subscription_id);
+          expect(await state(f)).toEqual(completed);
+        } else {
+          // Keep unrelated fixture accounts outside this bounded production cron scan.
+          await db.query(
+            `INSERT INTO subscription_reconciliation_scans (organization_id, subscription_id, next_due_at)
+            SELECT organization_id,id,clock_timestamp()+interval '1 hour' FROM billing_subscriptions WHERE id<>$1
+            ON CONFLICT (organization_id,subscription_id) DO UPDATE SET next_due_at=EXCLUDED.next_due_at`,
+            [source.id],
+          );
+          const { recoverMissedSubscriptionEvents } = await import(
+            "../../lib/services/subscription-reconciliation"
+          );
+          const recovered = await recoverMissedSubscriptionEvents();
+          expect(recovered.status).toBe("ok");
+          expect(recovered.attempts).toHaveLength(1);
+          expect(recovered.attempts[0]?.disposition).toBe("applied");
+        }
+        const afterFailure = await state(f);
+        expect(afterFailure.source.status).toBe("grace");
+        expect(afterFailure.source.plan_key).toBe("pro_monthly");
+        expect(afterFailure.source.pending_plan_key).toBe("plus_monthly");
+        expect(afterFailure.periods).toEqual(beforeFailure.periods);
+        expect(afterFailure.allowance).toEqual(beforeFailure.allowance);
+        source = await authority.findById(f.identity.organizationId, f.captured.source.id);
+        if (!source) throw new Error("Dunning source missing");
+      }
+      const { subscriptionBillingOperationsRepository: operations } = await import(
+        "./subscription-billing-operations"
+      );
+      const providerEventId = `evt_${f.identity.commandId.replaceAll("-", "")}`,
+        eventCreatedAt = new Date(),
+        leaseToken = crypto.randomUUID();
+      const receipt = await operations.recordEvent({
+        organizationId: source.organization_id,
+        subscriptionId: source.id,
+        providerEventId,
+        eventType: "invoice.paid",
+        providerObjectType: "invoice",
+        providerObjectId: objects.invoice.id,
+        livemode: false,
+        eventCreatedAt,
+        payloadDigest: "b".repeat(64),
+        now: new Date(),
       });
-      const row = await db.query(
-        "SELECT status, applied_subscription_revision FROM billing_subscription_event_receipts WHERE provider_event_id=$1",
-        [eventId],
+      expect(
+        await operations.claimEvent({
+          organizationId: source.organization_id,
+          receiptId: receipt.value.id,
+          leaseToken,
+          leaseDurationMs: 60000,
+        }),
+      ).toBeTruthy();
+      const { finalizePaidRenewal } = await import("./subscription-renewal-finalization");
+      const input = {
+        ...objects,
+        subscription,
+        scheduledSchedule: snapshot,
+        organizationId: source.organization_id,
+        subscriptionId: source.id,
+        invoiceId: objects.invoice.id,
+        receiptId: receipt.value.id,
+        leaseToken,
+        expectedSubscriptionRevision: source.lifecycle_revision,
+        expectedProjectionRevision: source.lifecycle_revision,
+        providerEventId,
+        eventCreatedAt,
+      };
+      const beforePayment = await state(f);
+      for (const changed of [
+        { ...input, paymentIntent: { ...input.paymentIntent, amount_received: 0 } },
+        { ...input, scheduledSchedule: { ...snapshot, id: "sub_sched_foreign" } },
+        {
+          ...input,
+          invoice: {
+            ...input.invoice,
+            lines: {
+              ...input.invoice.lines,
+              data: input.invoice.lines.data.map((line) => ({
+                ...line,
+                subscription_item: "si_foreign",
+              })),
+            },
+          },
+        },
+      ]) {
+        await expect(finalizePaidRenewal(changed)).rejects.toThrow();
+        expect(await state(f)).toEqual(beforePayment);
+      }
+      await db.query(`CREATE FUNCTION reject_target_receipt_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='applied' THEN RAISE EXCEPTION 'target receipt fixture failure'; END IF; RETURN NEW; END $$;
+      CREATE TRIGGER reject_target_receipt_fixture BEFORE UPDATE ON billing_subscription_event_receipts FOR EACH ROW EXECUTE FUNCTION reject_target_receipt_fixture()`);
+      try {
+        await expect(finalizePaidRenewal(input)).rejects.toThrow();
+        expect(await state(f)).toEqual(beforePayment);
+      } finally {
+        await db.query(
+          "DROP TRIGGER reject_target_receipt_fixture ON billing_subscription_event_receipts; DROP FUNCTION reject_target_receipt_fixture()",
+        );
+      }
+      expect((await finalizePaidRenewal(input)).replayed).toBeFalse();
+      expect((await finalizePaidRenewal(input)).replayed).toBeTrue();
+      const after = await state(f);
+      expect(after.source.plan_key).toBe("plus_monthly");
+      expect(after.source.pending_plan_key).toBeNull();
+      expect(after.source.stripe_subscription_item_id).toBe(targetItemId);
+      expect(after.projection.plan_key).toBe("plus_monthly");
+      expect(after.command).toEqual(before.command);
+      expect(
+        (
+          await db.query(
+            "SELECT granted_amount FROM subscription_allowance_periods WHERE stripe_invoice_id=$1",
+            [objects.invoice.id],
+          )
+        ).rows,
+      ).toEqual([{ granted_amount: "25.000000" }]);
+      const paidSource = await authority.findById(source.organization_id, source.id);
+      if (!paidSource) throw new Error("Paid source missing");
+      const { assertScheduledPaidBinding } = await import(
+        "./test-support/subscription-scheduled-binding"
       );
-      expect(row.rows[0]?.status).toBe("applied");
-      expect(Number(row.rows[0]?.applied_subscription_revision)).toBe(
-        paidSource.lifecycle_revision,
-      );
-    };
-    const beforeReplay = await state(f);
-    await deliverAgain();
-    expect(await state(f)).toEqual(beforeReplay);
-    // A later lifecycle revision must not make the already-paid invoice depend on current provider state.
-    const later = await authority.advance({
-      organizationId: paidSource.organization_id,
-      subscriptionId: paidSource.id,
-      expectedRevision: paidSource.lifecycle_revision,
-      source: "webhook",
-      observation: "authoritative_provider_retrieval",
-      values: {
-        ...paidSource,
-        cancel_at_period_end: true,
-        provider_object_digest: "d".repeat(64),
-        last_provider_event_id: `evt_${crypto.randomUUID().replaceAll("-", "")}`,
-        last_provider_event_created_at: new Date(),
-      },
-    });
-    const { findSubscriptionRenewalBinding } = await import("./subscription-purchased-binding");
-    expect(
-      (await findSubscriptionRenewalBinding(later.subscription, {})).environment
-        .STRIPE_PLUS_MONTHLY_PRICE_ID,
-    ).toBe("price_plus");
-    const beforeLaterReplay = await state(f);
-    await deliverAgain();
-    expect(await state(f)).toEqual(beforeLaterReplay);
-    expect(invoiceReads).toBe(2);
-  }, 30_000);
+      await assertScheduledPaidBinding(paidSource, f.identity.commandId);
+      const { reconcileStripePaidRenewal } = await import("../../lib/services/stripe-paid-renewal");
+      let invoiceReads = 0;
+      stripeMock = {
+        invoices: {
+          retrieve: async () => {
+            invoiceReads++;
+            return objects.invoice;
+          },
+        },
+      };
+      const deliverAgain = async () => {
+        const eventId = `evt_${crypto.randomUUID().replaceAll("-", "")}`;
+        await reconcileStripePaidRenewal({
+          kind: "stripe.event",
+          eventId,
+          eventType: "invoice.paid",
+          receivedAt: Date.now(),
+          event: {
+            id: eventId,
+            object: "event",
+            type: "invoice.paid",
+            created: Math.floor(Date.now() / 1000),
+            livemode: false,
+            data: { object: objects.invoice },
+            api_version: "2024-11-20.acacia",
+            pending_webhooks: 0,
+            request: null,
+          } as unknown as import("stripe").default.Event,
+        });
+        const row = await db.query(
+          "SELECT status, applied_subscription_revision FROM billing_subscription_event_receipts WHERE provider_event_id=$1",
+          [eventId],
+        );
+        expect(row.rows[0]?.status).toBe("applied");
+        expect(Number(row.rows[0]?.applied_subscription_revision)).toBe(
+          paidSource.lifecycle_revision,
+        );
+      };
+      const beforeReplay = await state(f);
+      await deliverAgain();
+      expect(await state(f)).toEqual(beforeReplay);
+      // A later lifecycle revision must not make the already-paid invoice depend on current provider state.
+      const later = await authority.advance({
+        organizationId: paidSource.organization_id,
+        subscriptionId: paidSource.id,
+        expectedRevision: paidSource.lifecycle_revision,
+        source: "webhook",
+        observation: "authoritative_provider_retrieval",
+        values: {
+          ...paidSource,
+          cancel_at_period_end: true,
+          provider_object_digest: "d".repeat(64),
+          last_provider_event_id: `evt_${crypto.randomUUID().replaceAll("-", "")}`,
+          last_provider_event_created_at: new Date(),
+        },
+      });
+      const { findSubscriptionRenewalBinding } = await import("./subscription-purchased-binding");
+      expect(
+        (await findSubscriptionRenewalBinding(later.subscription, {})).environment
+          .STRIPE_PLUS_MONTHLY_PRICE_ID,
+      ).toBe("price_plus");
+      const beforeLaterReplay = await state(f);
+      await deliverAgain();
+      expect(await state(f)).toEqual(beforeLaterReplay);
+      expect(invoiceReads).toBe(2);
+    }, 30_000);
 });

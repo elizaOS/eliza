@@ -11,20 +11,24 @@ function reject(reason: string): never {
     context: { reason },
   });
 }
-export function observeScheduledTargetSubscription(input: {
-  source: Parameters<typeof proveOriginalConfiguredTarget>[0]["source"];
-  authority: ReturnType<typeof proveOriginalConfiguredTarget>;
-  organizationCustomerId: string | null;
-  rawSubscription: unknown;
-  rawCustomer: unknown;
-  invoiceId: string;
-  observedAt: Date;
-  retainedCanceledAt: Date | null;
-}) {
+export function observeScheduledTargetSubscription(
+  input: {
+    source: Parameters<typeof proveOriginalConfiguredTarget>[0]["source"];
+    authority: ReturnType<typeof proveOriginalConfiguredTarget>;
+    organizationCustomerId: string | null;
+    rawSubscription: unknown;
+    rawCustomer: unknown;
+    invoiceId: string;
+    observedAt: Date;
+    retainedCanceledAt: Date | null;
+  },
+  expectedStatus: "active" | "past_due" | "unpaid" = "active",
+) {
   const { source, authority } = input,
     { binding, phase } = authority;
   const sub = organizationSubscriptionObservationSchema
     .extend({
+      status: z.literal(expectedStatus),
       schedule: z.literal(phase.scheduleId),
       latest_invoice: z.string().regex(/^in_[A-Za-z0-9]+$/),
       trial_start: z.null(),
@@ -50,7 +54,7 @@ export function observeScheduledTargetSubscription(input: {
     !Number.isFinite(now) ||
     phase.start.getTime() > now ||
     phase.end.getTime() <= now ||
-    authority.originalSubscriptionRevision !== source.lifecycle_revision ||
+    authority.currentSubscriptionRevision !== source.lifecycle_revision ||
     authority.targetPlanKey !== source.pending_plan_key ||
     observed.id !== source.stripe_subscription_id ||
     observed.customer !== source.stripe_customer_id ||

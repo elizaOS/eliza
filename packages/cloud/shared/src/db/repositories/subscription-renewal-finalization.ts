@@ -1,7 +1,6 @@
 /** Publishes verified paid renewal source, immutable allowance grant, entitlement generation and receipt in one organization-fenced transaction. */
 import { and, eq, isNull } from "drizzle-orm";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
-import { proveOriginalConfiguredTarget } from "../../lib/services/organization-schedule-target-authority";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
 import {
   type PaidRenewalObjects,
@@ -19,7 +18,10 @@ import {
 import { organizations } from "../schemas/organizations";
 import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
 import { billingSubscriptionEventReceipts } from "../schemas/subscription-billing-operations";
-import { readOriginalScheduledRenewalAuthority } from "./organization-schedule-renewal-authority";
+import {
+  proveScheduledRenewalTarget,
+  readOriginalScheduledRenewalAuthority,
+} from "./organization-schedule-renewal-authority";
 import { listUnsettledOrganizationUpgrades } from "./organization-upgrade-renewal-ordering";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAllowanceRepository } from "./subscription-allowance";
@@ -228,11 +230,7 @@ export async function publishPaidRenewalInTransaction(
   const scheduledContext = await readOriginalScheduledRenewalAuthority(source, tx);
   const now = await readPostLockDatabaseNow(tx);
   const scheduledTarget = scheduledContext
-    ? proveOriginalConfiguredTarget({
-        ...scheduledContext,
-        rawCurrentSchedule: input.scheduledSchedule,
-        observedAt: now,
-      })
+    ? proveScheduledRenewalTarget(scheduledContext, input.scheduledSchedule, now)
     : undefined;
   const verified = validatePaidRenewal({
     ...input,
