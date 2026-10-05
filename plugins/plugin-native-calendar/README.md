@@ -38,3 +38,8 @@ Android bridge/provider tests do not establish a host's upgrade or physical-devi
 acceptance. Preserve existing host storage identities and run migration tests.
 
 Android provider and bridge integration coverage: [independent consumer](test/android-consumer/README.md).
+
+After building, `bun run --cwd plugins/plugin-native-calendar test:android-package`
+packs the package and checks an external NodeNext consumer, reviewed-operation
+types, the CommonJS Apple export, unsupported-native rejection and exact tracked
+Android source bytes. This qualifies packaging, not native execution.

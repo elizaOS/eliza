@@ -8,7 +8,7 @@ import type {
 import { useCallback, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../hooks/useAuth.js";
-import { useLogin } from "../hooks/useLogin.js";
+import { useLogin } from "../provider.js";
 import type { WalletChains, WalletLoginClassOverrides } from "./WalletLogin.js";
 import { cx, WalletLogin } from "./WalletLogin.js";
 

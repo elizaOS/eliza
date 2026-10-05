@@ -7,12 +7,11 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core/protocol";
 import { writeJsonFileAtomic } from "./atomic-json-file.js";
-import { readWorkspaceFolderConfig } from "./workspace-folder-config.js";
 
 export interface ProjectRecord {
   id: string;
@@ -21,30 +20,15 @@ export interface ProjectRecord {
   localPath: string;
   repoUrl?: string;
   defaultBranch?: string;
-  /**
-   * elizaOS world this project's memory/knowledge is partitioned into, so a
-   * subagent working project B never sees project A's injected context (#13776
-   * design D3): a free partition in the existing memory schema, no column
-   * change. Derived per-agent via core's `projectWorldId(agentId, id)` — the
-   * single source of truth (#14171) — as `stringToUuid("project:<id>:<agentId>")`;
-   * Worlds are agent-scoped (`World.agentId`), so two agents on the same project
-   * get distinct worlds. Persisted so future project CRUD/UI can read it without
-   * re-deriving; the orchestrator task bind seam stamps the same core derivation
-   * onto each task.
-   */
+  /** Agent-scoped memory partition derived by core projectWorldId(agentId, id). */
   worldId?: string;
   /** macOS security-scoped bookmark for the picked folder, when present. */
   bookmark?: string | null;
-  /** The Eliza Cloud app this project owns, if any. Written back by the
-   * orchestrator broker on an `apps.create` success for a task bound to this
-   * project (#14119); read to update the existing app rather than duplicate it. */
+  /** Cloud deployment bound to this project. */
   cloudAppId?: string;
   createdAt: string;
   lastOpenedAt: string;
 }
-
-/** Compatibility prefix; derive world ids through per-agent `projectWorldId(agentId, id)`. */
-export const PROJECT_WORLD_ID_PREFIX = "project:";
 
 export interface ProjectRegistry {
   version: 1;
@@ -94,84 +78,128 @@ export function projectRegistryPath(
   return join(resolveStateDir(env), "projects.json");
 }
 
-/**
- * Read the registry, returning `null` only when absent. Invalid or unreadable state throws. When no
- * `projects.json` exists but a legacy `workspace-folder.json` does, synthesize a
- * single in-memory active project from it so callers migrating off the old
- * single-folder config keep working — WITHOUT writing the file (a write on read
- * would race the renderer and mint an id the renderer never chose).
- */
-export function readProjectRegistry(
-  env: NodeJS.ProcessEnv = process.env,
-): ProjectRegistry | null {
+function readStoredRegistry(env: NodeJS.ProcessEnv): unknown {
   const filePath = projectRegistryPath(env);
-  let raw: string | undefined;
+  let raw: string;
   try {
     raw = readFileSync(filePath, "utf8");
   } catch (cause) {
-    if (
-      !(cause instanceof Error && "code" in cause && cause.code === "ENOENT")
-    ) {
-      throw new ElizaError("Cannot read the project registry", {
-        code: "PROJECT_REGISTRY_READ_FAILED",
-        context: { filePath },
-        cause,
-      });
-    }
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw new ElizaError("Cannot read the project registry", {
+      code: "PROJECT_REGISTRY_READ_FAILED",
+      context: { filePath },
+      cause,
+    });
   }
-  if (raw !== undefined) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (cause) {
-      throw new ElizaError("Malformed project registry JSON", {
-        code: "PROJECT_REGISTRY_INVALID",
-        context: { filePath },
-        cause,
-      });
-    }
-    if (!isProjectRegistry(parsed)) {
-      throw new ElizaError("Invalid project registry", {
-        code: "PROJECT_REGISTRY_INVALID",
-        context: { filePath },
-      });
-    }
-    return parsed;
+  try {
+    return JSON.parse(raw);
+  } catch (cause) {
+    throw new ElizaError("Malformed project registry JSON", {
+      code: "PROJECT_REGISTRY_INVALID",
+      context: { filePath },
+      cause,
+    });
   }
-  return synthesizeFromLegacyWorkspaceFolder(env);
 }
 
-/**
- * Deterministic id for the project synthesized from the legacy
- * workspace-folder.json. The synthesized registry is re-minted on every read
- * (reads never write), so a random id would differ between reads: a task bound
- * during the migration window would persist a projectId that no later
- * `getProjectById` could ever resolve, silently disabling the bound-workdir
- * lock (#13776). Hashing the localPath keeps the id stable across reads, and
- * because `upsertProject` keys by localPath and preserves an existing id, the
- * first real write to projects.json persists this same id — so migration-window
- * task bindings survive the switch off the legacy config.
- */
-function legacyProjectId(localPath: string): string {
-  const digest = createHash("sha256").update(localPath).digest("hex");
-  return `legacy-${digest.slice(0, 16)}`;
+/** Read or migrate project state; invalid and unreadable files remain errors. */
+export function readProjectRegistry(
+  env: NodeJS.ProcessEnv = process.env,
+): ProjectRegistry | null {
+  const stored = readStoredRegistry(env);
+  if (stored === undefined) return importWorkspaceSelection(env);
+  if (!isProjectRegistry(stored))
+    throw new ElizaError("Invalid project registry", {
+      code: "PROJECT_REGISTRY_INVALID",
+      context: { filePath: projectRegistryPath(env) },
+    });
+  return stored;
 }
 
-function synthesizeFromLegacyWorkspaceFolder(
+function importWorkspaceSelection(
   env: NodeJS.ProcessEnv,
 ): ProjectRegistry | null {
-  const legacy = readWorkspaceFolderConfig(env);
-  if (!legacy?.path?.trim()) return null;
-  const now = legacy.updatedAt ?? new Date().toISOString();
-  const project: ProjectRecord = {
-    id: legacyProjectId(legacy.path),
-    name: basename(legacy.path),
-    localPath: legacy.path,
-    bookmark: legacy.bookmark,
-    createdAt: now,
-    lastOpenedAt: now,
+  const source = join(resolveStateDir(env), "workspace-folder.json");
+  let raw: string;
+  try {
+    raw = readFileSync(source, "utf8");
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new ElizaError("Cannot read workspace selection", {
+      code: "PROJECT_SELECTION_READ_FAILED",
+      context: { source },
+      cause,
+    });
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch (cause) {
+    throw new ElizaError("Malformed workspace selection JSON", {
+      code: "PROJECT_SELECTION_INVALID",
+      context: { source },
+      cause,
+    });
+  }
+  const selection = value as Record<string, unknown> | null;
+  if (
+    !selection ||
+    typeof selection !== "object" ||
+    Array.isArray(selection) ||
+    typeof selection.path !== "string" ||
+    !selection.path.trim() ||
+    (selection.bookmark !== null && typeof selection.bookmark !== "string") ||
+    typeof selection.updatedAt !== "string" ||
+    Object.keys(selection).some(
+      (key) => !["path", "bookmark", "updatedAt"].includes(key),
+    )
+  ) {
+    throw new ElizaError("Invalid workspace selection", {
+      code: "PROJECT_SELECTION_INVALID",
+      context: { source },
+    });
+  }
+  // Existing task bindings use this id; conversion must preserve it byte-for-byte.
+  const id = `legacy-${createHash("sha256").update(selection.path).digest("hex").slice(0, 16)}`;
+  const registry: ProjectRegistry = {
+    version: 1,
+    activeProjectId: id,
+    projects: [
+      {
+        id,
+        name: basename(selection.path),
+        localPath: selection.path,
+        bookmark: selection.bookmark,
+        createdAt: selection.updatedAt,
+        lastOpenedAt: selection.updatedAt,
+      },
+    ],
   };
-  return { version: 1, activeProjectId: project.id, projects: [project] };
+  try {
+    writeJsonFileAtomic(projectRegistryPath(env), registry, {
+      createOnly: true,
+    });
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "EEXIST")
+      return readProjectRegistry(env);
+    throw new ElizaError("Cannot import workspace selection", {
+      code: "PROJECT_SELECTION_WRITE_FAILED",
+      context: { source },
+      cause,
+    });
+  }
+  try {
+    unlinkSync(source);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new ElizaError("Cannot retire imported workspace selection", {
+        code: "PROJECT_SELECTION_CLEANUP_FAILED",
+        context: { source },
+        cause,
+      });
+    }
+  }
+  return registry;
 }
 
 function basename(p: string): string {
@@ -197,84 +225,49 @@ function canonicalizeLocalPath(localPath: string): string {
   }
 }
 
-/** Reject unreadable or invalid persisted state before any replacement write. */
-function readRegistryVersionOnDisk(env: NodeJS.ProcessEnv): number | null {
-  const filePath = projectRegistryPath(env);
-  let raw: string;
-  try {
-    raw = readFileSync(filePath, "utf8");
-  } catch (cause) {
-    // error-policy:J2 only an absent registry permits first-run creation.
-    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
-      return null;
-    throw new ElizaError("Cannot read the project registry before writing", {
-      code: "PROJECT_REGISTRY_READ_FAILED",
-      context: { filePath },
-      cause,
-    });
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (cause) {
-    // error-policy:J2 preserve corrupt state for operator recovery.
-    throw new ElizaError(
-      "Refusing to overwrite malformed project registry JSON",
-      {
-        code: "PROJECT_REGISTRY_INVALID",
-        context: { filePath },
-        cause,
-      },
-    );
-  }
-  if (
-    parsed !== null &&
-    typeof parsed === "object" &&
-    "version" in parsed &&
-    typeof parsed.version === "number" &&
-    parsed.version > 1
-  )
-    return parsed.version;
-  if (!isProjectRegistry(parsed)) {
-    throw new ElizaError("Refusing to overwrite an invalid project registry", {
-      code: "PROJECT_REGISTRY_INVALID",
-      context: { filePath },
-    });
-  }
-  return parsed.version;
-}
-
-/**
- * Atomic write: same tmp-file-then-rename pattern as workspace-folder-config.
- *
- * Cross-process read-modify-write of `projects.json` is unlocked — atomic rename
- * prevents torn writes, not interleaved updates from the agent runtime and the
- * desktop picker racing. This is the accepted precedent from
- * `workspace-folder-config.ts`: the registry is low-write (a folder pick, a task
- * bind) and last-writer-wins is tolerable for a per-user config.
- *
- * Refuses to overwrite a present, newer-schema file: when `projects.json`
- * carries a `version` greater than the one being written, the on-disk data
- * belongs to a build the current process cannot represent, so replacing it with
- * a downgraded `version: 1` snapshot would silently drop the user's projects.
- * Throwing surfaces the mismatch instead of clobbering forward-compat state.
- */
+/** Atomically replace valid state without downgrading newer schemas. */
 export function writeProjectRegistry(
   registry: ProjectRegistry,
   env: NodeJS.ProcessEnv = process.env,
 ): ProjectRegistry {
-  const onDiskVersion = readRegistryVersionOnDisk(env);
-  if (onDiskVersion !== null && onDiskVersion > registry.version) {
+  const stored = readStoredRegistry(env);
+  if (
+    stored !== null &&
+    typeof stored === "object" &&
+    "version" in stored &&
+    typeof stored.version === "number" &&
+    stored.version > registry.version
+  ) {
     throw new ElizaError(
       "Refusing to overwrite a newer project registry schema",
       {
         code: "PROJECT_REGISTRY_NEWER_SCHEMA",
-        context: { onDiskVersion, requestedVersion: registry.version },
+        context: {
+          onDiskVersion: stored.version,
+          requestedVersion: registry.version,
+        },
       },
     );
   }
+  if (
+    !isProjectRegistry(registry) ||
+    (stored !== undefined && !isProjectRegistry(stored))
+  ) {
+    throw new ElizaError("Refusing to write an invalid project registry", {
+      code: "PROJECT_REGISTRY_INVALID",
+      context: { filePath: projectRegistryPath(env) },
+    });
+  }
   const filePath = projectRegistryPath(env);
-  writeJsonFileAtomic(filePath, registry);
+  try {
+    writeJsonFileAtomic(filePath, registry);
+  } catch (cause) {
+    throw new ElizaError("Cannot write project registry", {
+      code: "PROJECT_REGISTRY_WRITE_FAILED",
+      context: { filePath },
+      cause,
+    });
+  }
   return registry;
 }
 
@@ -285,13 +278,13 @@ function emptyRegistry(): ProjectRegistry {
 /**
  * Insert or update a project keyed by `localPath` identity, persist, and return
  * the upserted record. An existing project's id/createdAt are preserved; the
- * caller's other fields overwrite. Does NOT change the active project — call
- * {@link setActiveProject} for that.
+ * supplied fields update the record. Set `activate` to select it atomically.
  */
 export function upsertProject(
   input: Omit<ProjectRecord, "id" | "createdAt" | "lastOpenedAt"> &
     Partial<Pick<ProjectRecord, "id" | "createdAt" | "lastOpenedAt">>,
   env: NodeJS.ProcessEnv = process.env,
+  options: { activate?: boolean } = {},
 ): ProjectRecord {
   const registry = readProjectRegistry(env) ?? emptyRegistry();
   const now = new Date().toISOString();
@@ -308,18 +301,26 @@ export function upsertProject(
     id: existing?.id ?? input.id ?? randomUUID(),
     name: input.name,
     localPath,
-    repoUrl: input.repoUrl,
-    defaultBranch: input.defaultBranch,
+    repoUrl: input.repoUrl ?? existing?.repoUrl,
+    defaultBranch: input.defaultBranch ?? existing?.defaultBranch,
     worldId: input.worldId ?? existing?.worldId,
-    bookmark: input.bookmark,
-    cloudAppId: input.cloudAppId,
+    bookmark:
+      input.bookmark === undefined ? existing?.bookmark : input.bookmark,
+    cloudAppId: input.cloudAppId ?? existing?.cloudAppId,
     createdAt: existing?.createdAt ?? input.createdAt ?? now,
     lastOpenedAt: input.lastOpenedAt ?? now,
   };
   const projects = existing
     ? registry.projects.map((p) => (p.id === existing.id ? record : p))
     : [...registry.projects, record];
-  writeProjectRegistry({ ...registry, projects }, env);
+  writeProjectRegistry(
+    {
+      ...registry,
+      projects,
+      activeProjectId: options.activate ? record.id : registry.activeProjectId,
+    },
+    env,
+  );
   return record;
 }
 
@@ -364,4 +365,64 @@ export function getProjectById(
 ): ProjectRecord | null {
   const registry = readProjectRegistry(env);
   return registry?.projects.find((p) => p.id === projectId) ?? null;
+}
+
+export function selectProjectFolder(
+  localPath: string,
+  bookmark: string | null,
+  env: NodeJS.ProcessEnv = process.env,
+): ProjectRecord {
+  if (!localPath.trim()) {
+    throw new ElizaError("Workspace path is required", {
+      code: "PROJECT_PATH_INVALID",
+    });
+  }
+  const registry = readProjectRegistry(env);
+  const bookmarked = bookmark
+    ? registry?.projects.find((p) => p.bookmark === bookmark)
+    : undefined;
+  const located = registry?.projects.find(
+    (p) =>
+      canonicalizeLocalPath(p.localPath) === canonicalizeLocalPath(localPath),
+  );
+  if (bookmarked && located && bookmarked.id !== located.id) {
+    throw new ElizaError(
+      "Restored workspace conflicts with an existing project",
+      {
+        code: "PROJECT_PATH_CONFLICT",
+      },
+    );
+  }
+  const existing = bookmarked ?? located;
+  return upsertProject(
+    {
+      id: existing?.id,
+      name: existing?.name ?? basename(localPath),
+      localPath,
+      bookmark,
+    },
+    env,
+    { activate: true },
+  );
+}
+
+export function revokeProjectBookmark(
+  bookmark: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const registry = readProjectRegistry(env);
+  if (!registry?.projects.some((p) => p.bookmark === bookmark)) return;
+  const revokedActive = registry.projects.some(
+    (p) => p.id === registry.activeProjectId && p.bookmark === bookmark,
+  );
+  writeProjectRegistry(
+    {
+      ...registry,
+      activeProjectId: revokedActive ? null : registry.activeProjectId,
+      projects: registry.projects.map((p) =>
+        p.bookmark === bookmark ? { ...p, bookmark: null } : p,
+      ),
+    },
+    env,
+  );
 }

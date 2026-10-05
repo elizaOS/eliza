@@ -7,6 +7,7 @@ import {
   drain,
   queueLength,
 } from "@elizaos/cloud-shared/lib/queue/redis-queue";
+import { recoverOrganizationSchedules } from "@elizaos/cloud-shared/lib/services/organization-schedule-maintenance";
 import { recoverOrganizationUpgrades } from "@elizaos/cloud-shared/lib/services/organization-upgrade-maintenance";
 import { recoverOrganizationSubscriptionCancellations } from "@elizaos/cloud-shared/lib/services/subscription-cancellation";
 import { recoverStaleSubscriptionCheckouts } from "@elizaos/cloud-shared/lib/services/subscription-checkout";
@@ -76,16 +77,25 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       })(),
       recoverOrganizationSubscriptionCancellations(5),
       recoverOrganizationUpgrades(5),
+      recoverOrganizationSchedules(5),
       sweepSubscriptionNotices(),
       recoverMissedSubscriptionEvents(),
       recoverStaleSubscriptionCheckouts(10),
     ]);
-    const [queue, cancellations, upgrades, notices, recovery, checkouts] =
-      lanes;
+    const [
+      queue,
+      cancellations,
+      upgrades,
+      schedules,
+      notices,
+      recovery,
+      checkouts,
+    ] = lanes;
     if (
       queue.status !== "fulfilled" ||
       cancellations.status !== "fulfilled" ||
       upgrades.status !== "fulfilled" ||
+      schedules.status !== "fulfilled" ||
       notices.status !== "fulfilled" ||
       recovery.status !== "fulfilled" ||
       checkouts.status !== "fulfilled"
@@ -94,6 +104,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
         "queue",
         "cancellations",
         "upgrades",
+        "schedules",
         "notices",
         "recovery",
         "checkouts",
@@ -135,6 +146,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       ...queue.value,
       cancellations: cancellations.value,
       upgrades: upgrades.value,
+      schedules: schedules.value,
       notices: notices.value,
       recovery: recovery.value,
       checkouts: checkouts.value,

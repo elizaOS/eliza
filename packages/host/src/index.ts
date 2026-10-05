@@ -53,17 +53,11 @@ export type {
 export {
   getActiveProject,
   getProjectById,
-  PROJECT_WORLD_ID_PREFIX,
   projectRegistryPath,
   readProjectRegistry,
+  revokeProjectBookmark,
+  selectProjectFolder,
   setActiveProject,
   upsertProject,
   writeProjectRegistry,
 } from "./utils/project-registry.js";
-export type { WorkspaceFolderConfig } from "./utils/workspace-folder-config.js";
-export {
-  clearWorkspaceFolderConfig,
-  readWorkspaceFolderConfig,
-  workspaceFolderConfigPath,
-  writeWorkspaceFolderConfig,
-} from "./utils/workspace-folder-config.js";

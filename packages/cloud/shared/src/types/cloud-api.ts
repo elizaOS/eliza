@@ -61,6 +61,7 @@ export type {
   OrganizationSubscriptionCancellationDto,
   OrganizationSubscriptionCancellationRequest,
   OrganizationSubscriptionCancellationResponse,
+  PendingOrganizationPlanChangeCommandsDto,
   PendingSubscriptionCommandsDto,
   PendingSubscriptionCommandsResponse,
   ProjectionsDataDto,

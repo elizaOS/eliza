@@ -24,7 +24,9 @@
     "native-host/document-image-describer.mjs",
     "native-host/managed-google-read-port.mjs",
     "native-host/errors.mjs",
-    "native-host/subscription-review.mjs"
+    "native-host/subscription-review.mjs",
+    "native-host/plan-change.mjs",
+    "native-host/timed-speech.mjs"
   ],
   "sideEffects": false,
   "scripts": {
@@ -156,6 +158,12 @@
       "types": "./dist/testing/mock-cloud-setup-session.d.ts",
       "import": "./dist/testing/mock-cloud-setup-session.js",
       "default": "./dist/testing/mock-cloud-setup-session.js"
+    },
+    "./native-speech-stream": {
+      "eliza-source": "./src/native-speech-stream.ts",
+      "types": "./dist/native-speech-stream.d.ts",
+      "import": "./dist/native-speech-stream.js",
+      "default": "./dist/native-speech-stream.js"
     }
   },
   "elizaos": {

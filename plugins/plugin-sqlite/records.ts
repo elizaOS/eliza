@@ -530,6 +530,19 @@ function storedTaskCreatedAt(task: Task): number {
   return Date.now();
 }
 
+function isMessageContentSegmentOf(
+  memory: StoredMemory,
+  messageIds: ReadonlySet<string>,
+): boolean {
+  const metadata = memory.metadata as Record<string, unknown> | undefined;
+  return (
+    storedMemoryTableName(memory) === "message_content_segments" &&
+    metadata?.type === "message-content-segment" &&
+    typeof metadata.messageId === "string" &&
+    messageIds.has(metadata.messageId)
+  );
+}
+
 export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   readonly messageContentSegmentCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -1829,6 +1842,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
               id: parentId,
               tableName: "messages",
               agentId: publicationAgentId,
+              unique: params.parent.unique ?? true,
               createdAt: params.parent.createdAt ?? now,
             }
           : {
@@ -2307,14 +2321,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   ): Promise<UUID[]> {
     return this.withMemoryMutationLock(async () => {
       const ids: UUID[] = [];
-      for (const { memory, tableName, unique = false } of memories) {
+      for (const { memory, tableName, unique } of memories) {
         const id = (memory.id ?? randomUUID()) as UUID;
         const stored: StoredMemory = {
           ...persistableMemory(memory),
           id,
           tableName,
           agentId: memory.agentId ?? this.agentId,
-          unique: unique || memory.unique,
+          // plugin-sql precedence: explicit flag, then the memory's own, then
+          // the column default `true` that `unique: true` reads select on.
+          unique: unique ?? memory.unique ?? true,
           createdAt: memory.createdAt ?? Date.now(),
           metadata: { ...(memory.metadata ?? {}) } as MemoryMetadata,
         };
@@ -2431,6 +2447,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
           const metadata = memory.metadata as
             | Record<string, unknown>
             | undefined;
+          // A segmented message keeps its text in segment rows; deleting the
+          // message must not leave that text behind (plugin-sql parity).
+          if (isMessageContentSegmentOf(memory, roots)) return true;
           const documentId = metadata?.documentId;
           if (
             typeof documentId !== "string" ||
@@ -2470,6 +2489,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       const ids = memories
         .map((m) => m.id)
         .filter((id): id is string => id !== undefined) as UUID[];
+      // Segment rows use their own table name, so a "messages" wipe must
+      // collect them through their parent message id.
+      const deleted = new Set<string>(ids);
+      const segments = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (m) =>
+          !deleted.has(m.id as string) && isMessageContentSegmentOf(m, deleted),
+      );
+      for (const segment of segments)
+        if (segment.id) ids.push(segment.id as UUID);
       for (const id of ids) {
         await this.storage.delete(COLLECTIONS.MEMORIES, id);
         await this.vectorIndex.remove(id);
@@ -3441,8 +3470,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     if (params.agentIds.length === 0) return [];
     const agentSet = new Set(params.agentIds);
     let tasks = await this.storage.getWhere<Task>(COLLECTIONS.TASKS, (t) => {
-      const taskAgentId = (t as Task & { agentId?: UUID }).agentId;
-      if (taskAgentId === undefined || !agentSet.has(taskAgentId)) return false;
+      // Rows stored without an agentId belong to this database, as in
+      // taskIsVisibleToOwner.
+      if (!agentSet.has(t.agentId ?? this.agentId)) return false;
       if (params.roomId && t.roomId !== params.roomId) return false;
       if (params.worldId && t.worldId !== params.worldId) return false;
       if (params.entityId && t.entityId !== params.entityId) return false;
@@ -3480,6 +3510,9 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       await this.storage.set(COLLECTIONS.TASKS, id, {
         ...task,
         id,
+        // plugin-sql stamps the adapter's agent on every task; callers such as
+        // CREATE_TRIGGER and approvals omit it and read back by agentIds.
+        agentId: task.agentId ?? this.agentId,
         createdAt: storedTaskCreatedAt(task),
       });
       ids.push(id);

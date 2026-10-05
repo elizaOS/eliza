@@ -125,6 +125,27 @@ export interface OrganizationSubscriptionDowngradeQuoteDto {
 export type OrganizationSubscriptionDowngradeQuoteResponse =
   ApiSuccessEnvelope<OrganizationSubscriptionDowngradeQuoteDto>;
 
+/** Pending schedule configuration is not a paid target-plan entitlement. */
+export interface OrganizationSubscriptionDowngradeCommandDto {
+  commandId: string;
+  subscriptionId: string;
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+  status: "PREPARED" | "OUTCOME_UNKNOWN" | "APPLIED" | "FAILED" | "SUPERSEDED";
+  expectedSubscriptionRevision: string;
+  resultSubscriptionRevision: string | null;
+  effect: {
+    kind: "schedule_create" | "schedule_configure" | "schedule_release";
+    state: "ready" | "started" | "observed";
+  } | null;
+  failure: "review_required" | "create_compensated" | null;
+}
+export interface OrganizationSubscriptionDowngradeConfirmRequest {
+  quoteId: string;
+  idempotencyKey: string;
+}
+export type OrganizationSubscriptionDowngradeCommandResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionDowngradeCommandDto>;
+
 /** Durable server-owned outcome; OUTCOME_UNKNOWN never authorizes a new payment or intent. */
 export interface OrganizationSubscriptionUpgradeCommandDto {
   commandId: string;
@@ -806,3 +827,16 @@ export interface PendingSubscriptionCommandsDto {
 }
 export type PendingSubscriptionCommandsResponse =
   ApiSuccessEnvelope<PendingSubscriptionCommandsDto>;
+/** Original-actor plan-change discovery, separate from cancellation/resumption. */
+export interface PendingOrganizationPlanChangeCommandsDto {
+  observedAt: string;
+  items: Array<
+    Omit<PendingSubscriptionCommandsDto["items"][number], "kind"> & {
+      kind: "upgrade" | "downgrade";
+      targetPlanKey: string;
+    }
+  >;
+  nextCursor: string | null;
+}
+export type PendingOrganizationPlanChangeCommandsResponse =
+  ApiSuccessEnvelope<PendingOrganizationPlanChangeCommandsDto>;

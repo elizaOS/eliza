@@ -94,34 +94,53 @@ export async function handleTranscription(
     "audio" in input &&
     input.audio != null
   ) {
+    // In-process audio wins over any audioUrl: core TranscriptionParams
+    // requires an audioUrl, so callers that already hold the media send
+    // `{ audioUrl: "", audio }` (audio redaction verification). Transcribe
+    // the bytes instead of fetching the (possibly empty) URL.
     const params = input as OpenAITranscriptionParams;
-    if (
-      !(params.audio instanceof Blob) &&
-      !(params.audio instanceof File) &&
-      !Buffer.isBuffer(params.audio)
+    const providedAudio: unknown = params.audio;
+    const rawBytes =
+      Buffer.isBuffer(providedAudio)
+        ? providedAudio
+        : providedAudio instanceof Uint8Array
+          ? Buffer.from(providedAudio)
+          : providedAudio instanceof ArrayBuffer
+            ? Buffer.from(new Uint8Array(providedAudio))
+            : null;
+    if (rawBytes !== null) {
+      const mimeType = params.mimeType ?? detectAudioMimeType(rawBytes);
+      logger.debug(
+        params.mimeType
+          ? `Using provided MIME type: ${mimeType}`
+          : `Auto-detected audio MIME type: ${mimeType}`
+      );
+      blob = new Blob([rawBytes] as never, { type: mimeType });
+    } else if (
+      providedAudio instanceof Blob ||
+      providedAudio instanceof File
     ) {
-      throw new Error("TRANSCRIPTION param 'audio' must be a Blob/File/Buffer.");
-    }
-    if (Buffer.isBuffer(params.audio)) {
-      let mimeType = params.mimeType;
-      if (!mimeType) {
-        mimeType = detectAudioMimeType(params.audio);
-        logger.debug(`Auto-detected audio MIME type: ${mimeType}`);
-      } else {
-        logger.debug(`Using provided MIME type: ${mimeType}`);
-      }
-      blob = new Blob([params.audio] as never, { type: mimeType });
+      blob = providedAudio;
     } else {
-      blob = params.audio as Blob;
+      throw new Error(
+        "TRANSCRIPTION param 'audio' must be a Blob/File/Buffer/Uint8Array/ArrayBuffer."
+      );
     }
     extraParams = params;
   } else if (typeof input === "object" && input !== null && isCoreTranscriptionParams(input)) {
-    // Checked after in-process bytes: core TranscriptionParams requires an
-    // audioUrl, so callers that hold the audio pass `audioUrl: ""` beside it.
+    // No in-process bytes accompanied the URL: only a remote fetch can serve
+    // the transcript. An empty audioUrl is a caller-shape error, not a
+    // fetchable resource — reject it instead of issuing a request that
+    // cannot succeed.
+    if (!input.audioUrl) {
+      throw new Error(
+        "TRANSCRIPTION requires audio bytes or a non-empty audioUrl; received an empty audioUrl with no audio."
+      );
+    }
     blob = await fetchAudioFromUrl(input.audioUrl, input.signal);
   } else {
     throw new Error(
-      "TRANSCRIPTION expects a Blob/File/Buffer, an http(s) audio URL string, { audioUrl }, or an object { audio: Blob/File/Buffer, mimeType?, language?, response_format?, timestampGranularities?, prompt?, temperature? }"
+      "TRANSCRIPTION expects a Blob/File/Buffer/Uint8Array/ArrayBuffer, an http(s) audio URL string, { audioUrl }, or an object { audio: Blob/File/Buffer/Uint8Array/ArrayBuffer, mimeType?, language?, response_format?, timestampGranularities?, prompt?, temperature? }"
     );
   }
 

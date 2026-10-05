@@ -22,6 +22,7 @@ import {
   asObjectRecord as asRecord,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
+  type ChatImageAttachment,
   type Content,
   createMessageMemory,
   type EffectReceipt,
@@ -73,6 +74,7 @@ import {
   withRoomDeliverySettlement,
 } from "@elizaos/core";
 import {
+  type ElizaConfig,
   isLinkedAccountProviderId,
   type ReadJsonBodyOptions,
   type RouteRequestContext,
@@ -82,7 +84,6 @@ import {
   persistInferenceTimingSummary,
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
-import type { ElizaConfig } from "../config/config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type CapturedModelUsage,
@@ -99,6 +100,10 @@ import {
   createChatIdempotencyStore,
 } from "../services/chat-idempotency-service.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
+import {
+  cloneWithoutBlockedObjectKeys,
+  hasBlockedObjectKeyDeep,
+} from "./blocked-object-keys.ts";
 import {
   maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
@@ -128,24 +133,21 @@ import {
   loadLocalInferenceRouteApi,
 } from "./local-inference-server-api.ts";
 import {
-  cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   getErrorMessage,
-  hasBlockedObjectKeyDeep,
   normalizeIncomingChatPrompt,
   resolveAppUserName,
   validateChatImages,
 } from "./server-helpers.ts";
+
 import {
   isAuthorized,
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import { readUiLanguageHeader } from "./server-helpers-config.ts";
-import type { ChatImageAttachment } from "./server-types.ts";
+
 import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
-
-export type { ChatImageAttachment, LogEntry };
 
 const CHAT_APPEND_ONLY_STREAM_DIVERGENCE = "CHAT_APPEND_ONLY_STREAM_DIVERGENCE";
 type LocalInferenceChatApi = Pick<
@@ -629,7 +631,6 @@ function isAppendOnlyStreamDivergenceError(
     error.code === CHAT_APPEND_ONLY_STREAM_DIVERGENCE
   );
 }
-// LogEntry is canonical in @elizaos/core and re-exported above.
 type CallbackMergeMode = "append" | "replace";
 function resolveCallbackMergeMode(
   content: Content,
@@ -1810,10 +1811,25 @@ async function hasRecentAssistantMemory(
         createdAt >= sinceMs - 2000
       );
     });
-  } catch {
-    return false;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — this read guards a live chat
+    // write; returning false here would persist a duplicate row and re-send a
+    // prior turn exactly when storage is unhealthy and retries are likely.
+    // Fail closed so the route boundary surfaces a retryable error instead.
+    throw new ElizaError("Failed to read recent assistant memory for dedupe", {
+      code: "ASSISTANT_DEDUPE_READ_FAILED",
+      cause: error,
+      context: { roomId },
+    });
   }
 }
+/**
+ * Reports whether the recent 12-message read contains a visible assistant
+ * reply at or after `sinceMs - 2000`. A failed storage read rejects with `ElizaError`
+ * (`ASSISTANT_MEMORY_READ_FAILED`) instead of resolving `false`: `false`
+ * means no matching reply in that read, and callers must not catch the
+ * rejection and substitute `false`.
+ */
 export async function hasRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1823,6 +1839,13 @@ export async function hasRecentVisibleAssistantMemorySince(
     await getRecentVisibleAssistantMemoryTextSince(runtime, roomId, sinceMs),
   );
 }
+/**
+ * Returns the newest visible assistant reply text at or after
+ * `sinceMs - slackMs` in the recent 12-message read, or `null` when that
+ * successful read contains no matching reply. A storage read
+ * failure rejects with `ElizaError` (`ASSISTANT_MEMORY_READ_FAILED`) rather
+ * than degrading to `null`, which would read as "no prior reply".
+ */
 export async function getRecentVisibleAssistantMemoryTextSince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1875,6 +1898,15 @@ export function compareAssistantTurnRecencyDescending(
     (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
   );
 }
+/**
+ * Reads the most recent visible (non-internal) assistant turn at or after
+ * `sinceMs - slackMs` among the recent 12 messages, newest first, as
+ * `{ id, text }`. Resolves `null` when that successful read has no match; a failed storage read rejects
+ * with `ElizaError` (`ASSISTANT_MEMORY_READ_FAILED`) wrapping the cause.
+ * Fail closed is the contract: a fabricated "no prior reply" would regenerate
+ * and re-send a previous turn's answer on rapid-fire retries. Reachable by
+ * external consumers through `@elizaos/agent/api/chat-routes`.
+ */
 export async function getRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1916,8 +1948,15 @@ export async function getRecentVisibleAssistantMemorySince(
     return persistedAssistantTurn?.id && text
       ? { id: persistedAssistantTurn.id as UUID, text }
       : null;
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — null means "no prior reply",
+    // so swallowing a storage failure here would regenerate and re-send a
+    // prior turn's answer on rapid-fire retries. Fail closed instead.
+    throw new ElizaError("Failed to read recent visible assistant memory", {
+      code: "ASSISTANT_MEMORY_READ_FAILED",
+      cause: error,
+      context: { roomId },
+    });
   }
 }
 export async function persistAssistantConversationMemory(

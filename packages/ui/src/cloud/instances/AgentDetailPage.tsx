@@ -21,7 +21,7 @@ import { useCloudT as useT } from "../shell/CloudI18nProvider";
 import { ElizaAgentActions } from "./components/agent-actions";
 import { ElizaConnectButton } from "./components/eliza-connect-button";
 import { getUserFacingAgentType } from "./lib/agent-type";
-import { useAgent } from "./lib/data/eliza-agents";
+import { useAgent } from "./lib/eliza-agents";
 
 export default function AgentDetailPage() {
   const t = useT();

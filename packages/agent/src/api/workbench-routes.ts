@@ -1,3 +1,4 @@
+import type { WorkbenchTodo } from "@elizaos/contracts";
 /**
  * Handler for the read-only Workbench overview surface. Delegates the VFS routes
  * to `handleWorkbenchVfsRoutes`, then serves `GET /api/workbench/overview` — an
@@ -9,10 +10,7 @@ import type { TriggerSummary } from "../triggers/types.ts";
 
 export type { WorkbenchRouteContext } from "./workbench-context.ts";
 
-import type {
-  WorkbenchRouteContext,
-  WorkbenchTodoView,
-} from "./workbench-context.ts";
+import type { WorkbenchRouteContext } from "./workbench-context.ts";
 import { handleWorkbenchVfsRoutes } from "./workbench-vfs-routes.ts";
 
 export async function handleWorkbenchRoutes(
@@ -26,7 +24,7 @@ export async function handleWorkbenchRoutes(
 
   if (method === "GET" && pathname === "/api/workbench/overview") {
     const triggers: TriggerSummary[] = [];
-    const todos: WorkbenchTodoView[] = [];
+    const todos: WorkbenchTodo[] = [];
     const summary = {
       totalTriggers: 0,
       activeTriggers: 0,
@@ -64,7 +62,7 @@ export async function handleWorkbenchRoutes(
     }
 
     if (todos.length > 1) {
-      const dedupedTodos = new Map<string, WorkbenchTodoView>();
+      const dedupedTodos = new Map<string, WorkbenchTodo>();
       for (const todo of todos) {
         dedupedTodos.set(todo.id, todo);
       }

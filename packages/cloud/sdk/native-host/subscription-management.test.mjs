@@ -81,7 +81,6 @@ test("management rejects stale, inconsistent and malformed server controls", () 
       (v.data.v2.subscription.value.currentPeriodEnd = new Date(
         now - 1,
       ).toISOString()),
-    (v) => (v.data.v2.subscription.value.pendingPlanKey = "pro_monthly"),
     (v) => (v.data.v2.subscription.value.state = "past_due"),
   ]) {
     const value = snapshot();
@@ -96,4 +95,35 @@ test("management rejects stale, inconsistent and malformed server controls", () 
   assert.equal(project(absent).status, "not_applicable");
   absent.data.v2.subscription = { status: "unavailable" };
   assert.throws(() => project(absent), /unavailable/);
+});
+
+test("pending plan is read-only presentation and cannot invent cancellation eligibility", () => {
+  const value = snapshot(),
+    sub = value.data.v2.subscription.value;
+  sub.pendingPlanKey = "pro_monthly";
+  sub.cancellationControl.eligible = false;
+  sub.cancellationControl.blockers = ["subscription_state_unsupported"];
+  const result = project(value);
+  assert.equal(result.subscription.pendingPlanKey, "pro_monthly");
+  assert.equal(result.subscription.planKey, "plus_monthly");
+  assert.equal(result.control.eligible, false);
+  assert.deepEqual(result.control.blockers, ["subscription_state_unsupported"]);
+  for (const invalid of [undefined, "unknown", "plus_monthly", 7]) {
+    sub.pendingPlanKey = invalid;
+    assert.throws(() => project(value), /unavailable/);
+  }
+  assert.equal(project(snapshot()).subscription.pendingPlanKey, null);
+});
+
+test("server-proven pending plan can offer cancellation without changing the current plan", () => {
+  const value = snapshot();
+  value.data.v2.subscription.value.pendingPlanKey = "pro_monthly";
+  const result = projectSubscriptionManagement(
+    value,
+    ["plus_monthly", "pro_monthly"],
+    now,
+  );
+  assert.equal(result.subscription.planKey, "plus_monthly");
+  assert.equal(result.subscription.pendingPlanKey, "pro_monthly");
+  assert.equal(result.control.eligible, true);
 });

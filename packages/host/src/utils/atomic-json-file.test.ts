@@ -140,3 +140,18 @@ it.skipIf(process.platform === "win32")(
     }
   },
 );
+
+it("publishes a create-only snapshot without replacing an existing writer", () => {
+  const directory = mkdtempSync(join(tmpdir(), "eliza-registry-create-"));
+  const file = join(directory, "registry.json");
+  try {
+    writeJsonFileAtomic(file, { owner: "first" }, { createOnly: true });
+    expect(() =>
+      writeJsonFileAtomic(file, { owner: "second" }, { createOnly: true }),
+    ).toThrow(expect.objectContaining({ code: "EEXIST" }));
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ owner: "first" });
+    expect(readdirSync(directory)).toEqual(["registry.json"]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

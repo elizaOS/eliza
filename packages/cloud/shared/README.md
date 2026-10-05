@@ -79,12 +79,144 @@ cancellation-preserving release only while configuration has never started. Read
 recovery uses original events and fresh state, never another release attempt. Proven cleanup
 atomically retires its command as FAILED while preserving paid source, projection and allowance;
 organization fencing cannot strand that original cleanup. Configured publication requires
-an active unfenced organization, original-period evidence and a live original lease.
+an active unfenced organization, original dispatch evidence and a live original lease.
 Command orchestration, public confirmation, renewal settlement and live provider qualification remain required before
 product adoption. Cleanup proof currently requires the original billing period and does
 not claim renewal-crossing recovery.
 
-The canonical migration journal includes 0520–0525 in order. Scheduling deployment
+The canonical migration journal includes 0520–0527 in order. Scheduling deployment
 must use the journal-driven migration runner; loading SQL directly in a test fixture
 alone does not establish deployment discovery. The scheduling ledger regression
 exercises the same canonical migration loader used by that runner.
+
+
+Renewal and missed-event recovery retain the original checkout account binding after a
+paid organization upgrade. The current price/product come from the applied upgrade's
+immutable quote and complete subsequent source revision history, not rotated environment
+prices. Unsupported or missing lineage remains unavailable. The scheduled renewal path
+proves the retained original schedule terms and compatible lifecycle before atomically publishing
+the paid lower plan and allowance. Later renewals retain its reviewed price through the
+paid target revision and original grant. Distinct deliveries of an already-funded invoice
+acknowledge immutable payment records without changing current source, entitlement or
+spendable balances. Positive captured renewals reconcile invoice/item discount allocations
+and inclusive/exclusive tax against the original catalog base and exact captured total.
+Adjustment attribution is included in immutable grant proof; unadjusted grant digests remain
+compatible. Renewals also support canonical invoice credit application, captured remainders,
+and fully discounted or credit-settled zero-due invoices without fabricated payments.
+Credit authority requires complete customer balance history with a stable reobserved head,
+matching invoice application and exact starting/ending balance arithmetic. Reversals,
+credit notes, deferred debit balances and ambiguous applications remain unavailable.
+Initial Checkout retains its separate positive-payment contract.
+
+The internal credit-note observer reads complete Acacia note/line pages twice and
+rechecks the retained merchant and invoice. It retains normalized financial fields
+and an observation digest, excluding private text and document URLs. Changed,
+foreign, incomplete or unsupported records fail explicitly. This read-only helper
+does not establish an atomic provider snapshot, reconcile refunds/balance entries,
+authorize allowance or relax the existing settlement guards; entitlement policy
+and transactional publication remain required before integration.
+
+The linked disposition observer additionally checks original capture, complete
+refund history, canonical refunds and merchant debits, and note-bound customer
+credit postings. Complete note observations bracket two linked-evidence reads.
+It rejects unverified/out-of-band or changed allocations; a historical customer
+credit posting is not the current available balance. This remains read-only and
+does not choose recurring-allowance policy or publish entitlement changes.
+
+Failed owned target invoices now use the existing dunning lifecycle through webhook and
+missed-event recovery. Publication rechecks original configured lineage, target schedule,
+subscription, customer and failed invoice under the organization lock. Dunning preserves
+the previous paid plan/period and pending target without granting allowance; subsequent
+captured payment proves the contiguous dunning history before settling the lower plan.
+The original grace window cannot be reset by a later revision.
+
+Target terms survive a verified schedule release/completion through the retained original
+snapshot and explicitly checked lifecycle changes. Released targets can settle within their
+original invoice period. Historical grants expire atomically through the existing ledger;
+historical target publication combines original captured invoice and separate live
+compatibility proof in the existing receipt transaction. It advances only the original
+paid interval, retains later dunning from the next unpaid boundary, and never grants
+current-period credit from an old payment. Chronological recovery preserves adjacent invoice order; terminal-source accounting remains open.
+
+Captured renewal payment proof is independently reusable for an exact retained invoice
+interval, price, owner and amount. It does not read or synthesize current subscription
+state. Current renewal publication still requires its live period/latest-invoice checks;
+historical publication must separately preserve ordered source authority and current dunning.
+
+Scheduled target observation separates compatible live state from original-period
+settlement. A released/completed schedule can have a later active, past-due or unpaid
+subscription without proving any invoice paid. Original settlement still requires its
+exact interval and latest invoice; historical callers must independently prove captured
+payment, preserve later debt and publish source/allowance in order.
+
+Adjacent ordinary historical renewals use independent live compatibility and captured
+payment proof after the scheduled target settles. Each transaction records only the
+next proven paid interval, expires its old allowance and retains later observed dunning.
+Cancellation commands keep their stricter captured-item/period authority. Ordinary
+renewals currently retain item identity; verified item-replacement history remains
+required before compatible replacements can enter missed-period recovery.
+
+Missed-period recovery traverses complete authenticated subscription invoice pages
+within the claim's database-time creation boundary before selecting the unique invoice
+starting at the stored paid period end. It rejects ambiguity, overlap, incomplete
+history and draft/void gaps, then retrieves canonical payment/live objects again. Discovery
+precedes active/dunning routing; the existing leased transaction settles one adjacent
+period per attempt and subsequent scans continue history. Provider read failure never
+authorizes a partial match or a jump to the newest invoice.
+
+An adjacent open/uncollectible historical invoice is lifecycle-only evidence. Recovery
+rechecks owned failed-invoice, retained catalog/account and compatible past-due/unpaid
+live state under the organization lock, retaining the original paid period and pending
+plan without allowance. Later captured payment uses the existing chronological owner.
+Draft/void gaps and an active live subscription with old debt remain explicit uncertainty.
+
+Original configuration proof is separate from current-period publication. It reconstructs
+the request from authenticated creation and immutable retained terms, checks the original
+review/dispatch window, and requires a saved pre-boundary response or an authenticated
+pre-boundary event. Recovery time stays current; retained terms are not fabricated live
+observations. Late publication composes that original proof with fresh target lifecycle,
+owner/catalog/period compatibility and the original locked source/lease. It persists the
+original snapshot, never the later live schedule. Migration 0527 preserves the original
+dispatch window, every paid source field and entitlement deadline, and forbids allowance
+postings. Pending publication does not fund the target or revive an expired entitlement;
+chronological invoice reconciliation still owns payment and dunning. Recovery depends
+on available authenticated original evidence, not indefinite provider event retention.
+
+The private downgrade command coordinator now composes original quote admission,
+leased creation/configuration, authenticated original-event recovery and proven
+partial-create cleanup. A started effect is never dispatched again. Same-quote
+retries keep the original command even with another retry key; occupied leases
+return durable status. Session failure survives cleanup, and status reads perform
+no provider work. Authenticated confirmation/status routes and SDK methods now expose this coordinator.
+The existing Stripe maintenance process recovers original schedules in bounded,
+leased batches. It observes started effects, expires unstarted intents, and can
+clean up a proven unconfigured creation after review expiry. It never creates or
+configures a schedule. Recovery retains scoped incidents with backoff and resolves
+them atomically with the original terminal command, without borrowing a manager
+session. Native/product adoption and retained-adjustment payment authority still
+need integration and qualification.
+
+Cancellation, reviewed resumption and cancellation-event reconciliation resolve the
+retained purchased/current paid-plan binding instead of newly configured catalog IDs.
+Purchased account identity is retrieved before provider work and checked again against
+locked retained authority at publication. Legacy subscriptions keep catalog validation;
+configured pending-plan cancellation additionally reconstructs immutable downgrade evidence.
+It sends one idempotent schedule update preserving the paid phase, removes the future
+phase, and clears the pending plan only after canonical verification. Lost responses
+remain read-only recovery. Cancellation/resume writes disable SDK network retries;
+the original command owns uncertainty for ordinary subscriptions and schedules.
+Resume requires a fresh schedule preview and preserves
+the current plan without restoring the discarded downgrade. Webhook and active-period
+cron observations validate the same retained schedule; provider and device qualification
+remain separate from controlled integration tests.
+
+Account management resolves pending-plan cancellation eligibility from the same
+immutable schedule proof as command admission in its primary read transaction.
+The scheduled target alone grants no control; actor/state gates and submission
+revalidation remain authoritative.
+
+New organization renewal grants retain a versioned original invoice/line/payment
+identity and settlement digests in the existing grant metadata, atomically with
+publication. Replay validates and preserves that first record; legacy grants are
+not backfilled from current provider objects. An unknown legacy merchant remains
+null. This identity record is not complete adjustment evidence or refund policy.

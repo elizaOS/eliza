@@ -5,7 +5,9 @@ import { dirname } from "node:path";
 import { createDocumentImageDescriber } from "./document-image-describer.mjs";
 import { NativeCloudServiceError } from "./errors.mjs";
 import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
+import { executePlanChange, validatePlanChangeInput } from "./plan-change.mjs";
 import { projectRenewalReview } from "./subscription-review.mjs";
+import { createSpeechStreamSessions } from "./timed-speech.mjs";
 
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
@@ -166,6 +168,11 @@ export function projectSubscriptionManagement(
     typeof sub.subscriptionId !== "string" ||
     !uuid.test(sub.subscriptionId) ||
     !planKeys.includes(sub.planKey) ||
+    !(
+      sub.pendingPlanKey === null ||
+      (planKeys.includes(sub.pendingPlanKey) &&
+        sub.pendingPlanKey !== sub.planKey)
+    ) ||
     ![
       "pending",
       "incomplete",
@@ -193,7 +200,6 @@ export function projectSubscriptionManagement(
     (control.eligible &&
       (sub.state !== "active" ||
         periodEnd <= now ||
-        sub.pendingPlanKey !== null ||
         sub.dunningStartedAt !== null ||
         sub.graceExpiresAt !== null))
   )
@@ -213,6 +219,7 @@ export function projectSubscriptionManagement(
       status: sub.state,
       periodEnd: sub.currentPeriodEnd,
       cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+      pendingPlanKey: sub.pendingPlanKey,
     },
     control: {
       action: control.action,
@@ -325,6 +332,12 @@ export function createCloudRoutes({
   const attempts = new Map(),
     checkoutKeys = new Map();
   let generation = 0;
+  let speechStreams;
+  function advanceGeneration() {
+    generation++;
+    speechStreams?.cancelAll();
+    return generation;
+  }
   const responseEpoch = new WeakMap();
   const nativeAuth = pendingCredentialStore
     ? createNativeCloudAuth({
@@ -337,7 +350,7 @@ export function createCloudRoutes({
         },
         clearActive: () => mutateCredential(() => store.clear()),
         beforeStart: async () => {
-          generation++;
+          advanceGeneration();
           attempts.clear();
           await mutateCredential(() => store.clear());
         },
@@ -383,7 +396,11 @@ export function createCloudRoutes({
             : {}),
       },
     );
-    current(epoch);
+    if (epoch !== generation) {
+      // A response arriving after account replacement must not retain its stream.
+      void response.body?.cancel().catch(() => {});
+      current(epoch);
+    }
     responseEpoch.set(response, epoch);
     return response;
   }
@@ -463,6 +480,97 @@ export function createCloudRoutes({
       return { state: "unavailable" };
     }
   }
+  function speechInput(input) {
+    if (
+      typeof input.text !== "string" ||
+      !input.text.trim() ||
+      input.text.length > 5000
+    )
+      throw fail(message("speechTextRequiredMaximum5000Characters"));
+    requireNonSensitiveText(input.text);
+    const rendering = {};
+    if (input.speed !== undefined) {
+      if (
+        typeof input.speed !== "number" ||
+        !Number.isFinite(input.speed) ||
+        input.speed < 0.7 ||
+        input.speed > 1.2
+      )
+        throw fail("Invalid speech speed");
+      rendering.speed = input.speed;
+    }
+    for (const field of ["previousText", "nextText"]) {
+      if (input[field] === undefined) continue;
+      if (typeof input[field] !== "string" || input[field].length > 5000)
+        throw fail("Invalid speech context");
+      requireNonSensitiveText(input[field]);
+      rendering[field] = input[field];
+    }
+    if (input.applyTextNormalization !== undefined) {
+      if (!["auto", "on", "off"].includes(input.applyTextNormalization))
+        throw fail("Invalid speech normalization");
+      rendering.applyTextNormalization = input.applyTextNormalization;
+    }
+    return {
+      text: input.text,
+      ...rendering,
+      ...(speechVoice
+        ? { voiceId: speechVoice.voiceId, modelId: speechVoice.modelId }
+        : {}),
+    };
+  }
+  const speechOwner = (epoch, key) =>
+    `${epoch}:${createHash("sha256").update(key).digest("hex")}`;
+  const checkSpeechOwner = async (owner) => {
+    await credentialWrites;
+    const epoch = generation,
+      key = await usableCredential();
+    current(epoch);
+    if (!key || owner !== speechOwner(epoch, key))
+      throw fail(message("accountSessionChanged"), 409);
+    return { epoch, key };
+  };
+  speechStreams = createSpeechStreamSessions({
+    assertOwner: checkSpeechOwner,
+    open: async (input, signal, owner) => {
+      const { epoch, key } = await checkSpeechOwner(owner);
+      const response = await request("/api/v1/voice/tts", {
+        method: "POST",
+        json: { ...input, withTimestamps: true },
+        key,
+        signal,
+        authorityGeneration: epoch,
+        headers: { Accept: "application/x-ndjson, audio/mpeg" },
+      });
+      if (!response.ok) await parse(response);
+      const mime = response.headers.get("content-type")?.split(";")[0];
+      if (
+        !(
+          (mime === "application/x-ndjson" &&
+            response.headers.get("x-eliza-tts-timing") === "character-v1") ||
+          (mime === "audio/mpeg" && !response.headers.has("x-eliza-tts-timing"))
+        )
+      ) {
+        await response.body?.cancel();
+        throw fail("Speech stream is unavailable", 502);
+      }
+      const speed = response.headers.get("x-eliza-tts-speed");
+      if (
+        input.speed !== undefined &&
+        speed !== null &&
+        (!/^(?:0\.[0-9]+|1(?:\.[0-9]+)?)$/.test(speed) ||
+          Number(speed) !== input.speed)
+      ) {
+        await response.body?.cancel();
+        throw fail("Invalid rendered speech speed", 502);
+      }
+      return {
+        response,
+        renderedSpeed:
+          input.speed !== undefined && speed !== null ? Number(speed) : null,
+      };
+    },
+  });
   const handleCloudRoute = async (req, res, url, { signal } = {}) => {
     if (
       !url.pathname.startsWith("/cloud/") &&
@@ -633,6 +741,39 @@ export function createCloudRoutes({
         )
           throw fail("Invalid billing management address", 502);
         send(res, 200, { url: destination.href });
+        return true;
+      }
+      const planChange = path.match(
+        /^\/cloud\/account\/plan-change\/(review|confirm|status|pending|payment)$/,
+      );
+      if (method === "POST" && planChange) {
+        allowedQuery(url, []);
+        const input = await body(req, 4096),
+          operation = planChange[1];
+        validatePlanChangeInput(operation, input, hostPolicy);
+        const authorityGeneration = generation;
+        const authority = await currentBillingAuthority(authorityGeneration);
+        if (!authority) {
+          send(res, 428, {
+            error: message("confirmItSYouBeforePaying"),
+            code: "billing_verification_required",
+          });
+          return true;
+        }
+        const result = await executePlanChange(operation, input, {
+          policy: hostPolicy,
+          request: async (target, options = {}) =>
+            parse(
+              await request(target, {
+                ...options,
+                key: authority.token,
+                authorityGeneration,
+                signal,
+              }),
+            ),
+        });
+        current(authorityGeneration);
+        send(res, 200, result);
         return true;
       }
       const lifecycle = path.match(
@@ -986,7 +1127,7 @@ export function createCloudRoutes({
       }
       if (method === "POST" && path === "/cloud/logout") {
         await body(req);
-        generation++;
+        advanceGeneration();
         attempts.clear();
         checkoutKeys.clear();
         if (nativeAuth) await nativeAuth.cancel({ disconnect: true });
@@ -1015,7 +1156,7 @@ export function createCloudRoutes({
         if (Object.keys(input).some((key) => !fields.includes(key)))
           throw fail(message("unexpectedSignInFields"));
         if (operation === "cancel") {
-          generation++;
+          advanceGeneration();
           attempts.clear();
           send(res, 200, await nativeAuth.cancel({ disconnect: true }));
           return true;
@@ -1025,7 +1166,7 @@ export function createCloudRoutes({
       }
       if (method === "POST" && path === "/cloud/login") {
         await body(req);
-        const epoch = ++generation;
+        const epoch = advanceGeneration();
         await nativeAuth?.cancel({ disconnect: true });
         attempts.clear();
         await mutateCredential(() => store.clear());
@@ -1138,24 +1279,55 @@ export function createCloudRoutes({
         });
         return true;
       }
+      const speechStreamRoute = path.match(
+        /^\/voice\/tts\/stream\/(start|pull|cancel)$/,
+      );
+      if (method === "POST" && speechStreamRoute) {
+        const input = await body(req),
+          owner = speechOwner(credentialEpoch, key);
+        const operation = speechStreamRoute[1];
+        const fields =
+          operation === "start"
+            ? [
+                "requestId",
+                "text",
+                "speed",
+                "previousText",
+                "nextText",
+                "applyTextNormalization",
+              ]
+            : operation === "pull"
+              ? ["streamId", "cursor"]
+              : ["streamId", "requestId"];
+        if (Object.keys(input).some((field) => !fields.includes(field)))
+          throw fail("Unexpected speech stream fields");
+        const result =
+          operation === "start"
+            ? await speechStreams.start({
+                requestId: input.requestId,
+                owner,
+                input: speechInput(input),
+              })
+            : operation === "pull"
+              ? await speechStreams.pull({
+                  streamId: input.streamId,
+                  cursor: input.cursor,
+                  owner,
+                })
+              : await speechStreams.cancel({
+                  streamId: input.streamId,
+                  requestId: input.requestId,
+                  owner,
+                });
+        await checkSpeechOwner(owner);
+        send(res, 200, result);
+        return true;
+      }
       if (method === "POST" && path === "/voice/tts") {
-        // Cloud accepts at most 5000 characters per request; the renderer sends sentence groups.
-        const input = await body(req);
-        if (
-          typeof input.text !== "string" ||
-          !input.text.trim() ||
-          input.text.length > 5000
-        )
-          throw fail(message("speechTextRequiredMaximum5000Characters"));
-        requireNonSensitiveText(input.text);
+        const input = speechInput(await body(req));
         const response = await request("/api/v1/voice/tts", {
           method: "POST",
-          json: {
-            text: input.text,
-            ...(speechVoice
-              ? { voiceId: speechVoice.voiceId, modelId: speechVoice.modelId }
-              : {}),
-          },
+          json: input,
           key,
           signal,
           authorityGeneration: credentialEpoch,
@@ -1165,6 +1337,20 @@ export function createCloudRoutes({
         const mimeType = response.headers.get("content-type") || "";
         if (!mimeType.startsWith("audio/"))
           throw fail(message("invalidSpeechAudio"), 502);
+        // Older Cloud deployments omit this acknowledgement. Clients retain
+        // local pace adjustment until the provider confirms the exact speed.
+        const speedHeader = response.headers.get("x-eliza-tts-speed");
+        let renderedSpeed = null;
+        if (input.speed !== undefined && speedHeader !== null) {
+          if (
+            !/^(?:0\.[0-9]+|1(?:\.[0-9]+)?)$/.test(speedHeader) ||
+            Number(speedHeader) !== input.speed
+          ) {
+            await response.body?.cancel();
+            throw fail("Invalid rendered speech speed", 502);
+          }
+          renderedSpeed = Number(speedHeader);
+        }
         // Evidence of which provider actually rendered the pinned voice.
         const provider = /^[a-z0-9-]{1,32}$/.test(
           response.headers.get("x-eliza-tts-provider") || "",
@@ -1185,6 +1371,7 @@ export function createCloudRoutes({
           audioBase64: Buffer.concat(chunks).toString("base64"),
           mimeType,
           provider,
+          renderedSpeed,
         });
         return true;
       }
@@ -1344,6 +1531,7 @@ export function createCloudRoutes({
     }
     return true;
   };
+  handleCloudRoute.closeSpeechStreams = () => speechStreams.close();
   handleCloudRoute.ready = ready;
   handleCloudRoute.accountAccess = accountAccess;
   handleCloudRoute.requirePaidAccess = async () => {

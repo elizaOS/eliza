@@ -193,37 +193,75 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 
 		const merged: MessageRef[] = [];
 		for (const channelId of channelIds) {
-			let memories: Memory[];
-			try {
-				memories = await service.fetchConnectorMessages(
-					{ runtime },
-					{ channelId, ...(limit === undefined ? {} : { limit }) },
-				);
-			} catch (error) {
-				// error-policy:J4 one unreadable channel (permissions, deletion)
-				// degrades to a partial sweep instead of killing the rest of the server
-				logger.debug(
-					`[DiscordTriageAdapter] channel ${channelId} fetch failed: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
-				);
-				continue;
-			}
-			for (const memory of memories) {
-				// The agent's own messages are not triage candidates.
-				if (memory.entityId === runtime.agentId) continue;
-				const ref = mapDiscordMemoryToRef(memory);
-				if (!ref) continue;
-				if (opts.sinceMs !== undefined && ref.receivedAtMs < opts.sinceMs) {
-					continue;
+			// The limit counts triage candidates, not raw messages: the agent's
+			// own replies are dropped below, so a window of `limit` raw messages
+			// could hold almost none. Page older until the channel yields `limit`
+			// candidates, runs out, or falls behind `sinceMs`.
+			let candidates = 0;
+			let before: string | undefined;
+			while (true) {
+				let memories: Memory[];
+				try {
+					memories = await service.fetchConnectorMessages(
+						{ runtime },
+						{
+							channelId,
+							...(limit === undefined ? {} : { limit }),
+							...(before ? { before } : {}),
+						},
+					);
+				} catch (error) {
+					// error-policy:J4 one unreadable channel (permissions, deletion)
+					// degrades to a partial sweep instead of killing the rest of the server
+					logger.debug(
+						`[DiscordTriageAdapter] channel ${channelId} fetch failed: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+					break;
+				}
+				let oldest: { id: bigint; createdAt: number } | undefined;
+				for (const memory of memories) {
+					const messageId = metaString(
+						(memory.metadata ?? {}) as Record<string, unknown>,
+						"discordMessageId",
+					);
+					if (messageId && /^\d+$/.test(messageId)) {
+						const id = BigInt(messageId);
+						// Only messages strictly older than the cursor belong to this page.
+						if (before !== undefined && id >= BigInt(before)) continue;
+						if (!oldest || id < oldest.id) {
+							oldest = { id, createdAt: Number(memory.createdAt ?? 0) };
+						}
+					}
+					// The agent's own messages are not triage candidates.
+					if (memory.entityId === runtime.agentId) continue;
+					const ref = mapDiscordMemoryToRef(memory);
+					if (!ref) continue;
+					if (opts.sinceMs !== undefined && ref.receivedAtMs < opts.sinceMs) {
+						continue;
+					}
+					if (
+						opts.worldIds &&
+						(!ref.worldId || !opts.worldIds.includes(ref.worldId))
+					) {
+						continue;
+					}
+					merged.push(ref);
+					candidates += 1;
 				}
 				if (
-					opts.worldIds &&
-					(!ref.worldId || !opts.worldIds.includes(ref.worldId))
+					limit === undefined ||
+					candidates >= limit ||
+					memories.length < limit ||
+					!oldest ||
+					// A page that does not move strictly older would repeat forever.
+					(before !== undefined && oldest.id >= BigInt(before)) ||
+					(opts.sinceMs !== undefined && oldest.createdAt < opts.sinceMs)
 				) {
-					continue;
+					break;
 				}
-				merged.push(ref);
+				before = oldest.id.toString();
 			}
 		}
 

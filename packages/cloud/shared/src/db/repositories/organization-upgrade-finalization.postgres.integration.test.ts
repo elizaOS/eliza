@@ -176,6 +176,192 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
       ]),
     ).rejects.toThrow();
   });
+  for (const purchased of [false, true])
+    test(`reviewed paid plan binding survives catalog rotation with purchased=${purchased}`, async () => {
+      const boundary = Math.floor(Date.now() / 1000) + 4;
+      const f = await seed(
+        purchased
+          ? { start: new Date((boundary - 120) * 1000), end: new Date(boundary * 1000) }
+          : undefined,
+      );
+      if (purchased) {
+        const { checkoutContractSchema, checkoutContractDigest } = await import(
+          "../../lib/services/subscription-checkout-contract"
+        );
+        const id = f.input.subscriptionId,
+          org = f.input.organizationId,
+          metadata = { app: "eliza-cloud", organization_id: org, command_id: id };
+        const payload = checkoutContractSchema.parse({
+          version: 1,
+          catalogVersion: "v1",
+          planKey: "plus_monthly",
+          accountId: "acct_original",
+          expectedLivemode: false,
+          priceId: f.providerBinding.sourcePriceId,
+          productId: f.providerBinding.sourceProductId,
+          presentation: "embedded",
+          params: {
+            mode: "subscription",
+            currency: "usd",
+            customer: f.captured.source.stripe_customer_id,
+            client_reference_id: id,
+            line_items: [{ price: f.providerBinding.sourcePriceId, quantity: 1 }],
+            payment_method_types: ["card"],
+            allow_promotion_codes: false,
+            automatic_tax: { enabled: false },
+            metadata,
+            subscription_data: { metadata },
+            ui_mode: "embedded",
+            redirect_on_completion: "never",
+            expires_at: 1800000000,
+          },
+        });
+        await db.query(
+          `INSERT INTO billing_subscription_commands(id,organization_id,requested_by_user_id,kind,target_plan_key,idempotency_key,provider_idempotency_key,request_digest,status,execution_generation,provider_started_at,provider_response_digest,completed_at,applied_at,result_subscription_id,checkout_contract)
+        VALUES($1,$2,$3,'checkout','plus_monthly',$4,$4,$5,'APPLIED',1,clock_timestamp(),$5,clock_timestamp(),clock_timestamp(),$1,$6::jsonb)`,
+          [
+            id,
+            org,
+            f.input.actorId,
+            randomUUID(),
+            "a".repeat(64),
+            JSON.stringify({ payload, digest: checkoutContractDigest(payload) }),
+          ],
+        );
+      }
+      const applied = await service.finalizePaidOrganizationUpgrade(f.finalInput);
+      const { subscriptionAuthorityRepository: authority } = await import(
+        "./subscription-authority"
+      );
+      const source = await authority.findById(f.input.organizationId, f.input.subscriptionId);
+      if (!source) throw new Error("Missing paid source");
+      const { findSubscriptionRenewalBinding } = await import("./subscription-purchased-binding");
+      const resolved = await findSubscriptionRenewalBinding(source, {
+        STRIPE_PRO_MONTHLY_PRICE_ID: "price_rotated",
+        STRIPE_PRO_PRODUCT_ID: "prod_rotated",
+      });
+      expect(resolved.environment.STRIPE_PRO_MONTHLY_PRICE_ID).toBe(
+        f.providerBinding.targetPriceId,
+      );
+      expect(resolved.environment.STRIPE_PRO_PRODUCT_ID).toBe(f.providerBinding.targetProductId);
+      expect(resolved.contract?.planKey ?? null).toBe(purchased ? "plus_monthly" : null);
+      expect(resolved.contract?.accountId ?? null).toBe(purchased ? "acct_original" : null);
+      await expect(
+        findSubscriptionRenewalBinding({ ...source, provider_object_digest: "f".repeat(64) }, {}),
+      ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
+      const { proveReviewedPaidPlanBinding } = await import(
+        "../../lib/services/subscription-reviewed-plan-binding"
+      );
+      const revisions = await authority.listRevisions(source.organization_id, source.id);
+      const proofInput = { source, command: applied.command, quote: f.quote, revisions };
+      expect(() =>
+        proveReviewedPaidPlanBinding({ ...proofInput, revisions: revisions.slice(1) }),
+      ).toThrow();
+      expect(() =>
+        proveReviewedPaidPlanBinding({
+          ...proofInput,
+          quote: { ...f.quote, organization_id: randomUUID() },
+        }),
+      ).toThrow();
+      expect(() =>
+        proveReviewedPaidPlanBinding({
+          ...proofInput,
+          revisions: revisions.map((r, i) => (i === 1 ? { ...r, plan_key: "plus_monthly" } : r)),
+        }),
+      ).toThrow();
+      if (purchased) {
+        await Bun.sleep(Math.max(0, boundary * 1000 - Date.now() + 25));
+        const { renewalPaidObjects } = await import("./subscription-renewal-test-fixture");
+        const objects = renewalPaidObjects(source, f.finalInput.rawSubscription, {
+          start: boundary,
+          end: boundary + 30 * 86400,
+        });
+        const { subscriptionBillingOperationsRepository: operations } = await import(
+          "./subscription-billing-operations"
+        );
+        const providerEventId = `evt_${randomUUID().replaceAll("-", "")}`,
+          eventCreatedAt = new Date(),
+          leaseToken = randomUUID();
+        const receipt = await operations.recordEvent({
+          organizationId: source.organization_id,
+          subscriptionId: source.id,
+          providerEventId,
+          eventType: "invoice.paid",
+          providerObjectType: "invoice",
+          providerObjectId: objects.invoice.id,
+          livemode: false,
+          eventCreatedAt,
+          payloadDigest: "b".repeat(64),
+          now: new Date(),
+        });
+        expect(
+          await operations.claimEvent({
+            organizationId: source.organization_id,
+            receiptId: receipt.value.id,
+            leaseToken,
+            leaseDurationMs: 60000,
+          }),
+        ).toBeTruthy();
+        const oldKey = process.env.STRIPE_SECRET_KEY,
+          oldPrice = process.env.STRIPE_PRO_MONTHLY_PRICE_ID,
+          oldProduct = process.env.STRIPE_PRO_PRODUCT_ID;
+        process.env.STRIPE_SECRET_KEY = ["sk", "test", "renewalbinding"].join("_");
+        process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_rotated";
+        process.env.STRIPE_PRO_PRODUCT_ID = "prod_rotated";
+        try {
+          const { finalizePaidRenewal } = await import("./subscription-renewal-finalization");
+          const input = {
+            ...objects,
+            organizationId: source.organization_id,
+            subscriptionId: source.id,
+            invoiceId: objects.invoice.id,
+            receiptId: receipt.value.id,
+            leaseToken,
+            expectedSubscriptionRevision: 2,
+            expectedProjectionRevision: 2,
+            providerEventId,
+            eventCreatedAt,
+            providerAccountId: "acct_original",
+          };
+          await expect(
+            finalizePaidRenewal({ ...input, providerAccountId: "acct_other" }),
+          ).rejects.toMatchObject({ code: "SUBSCRIPTION_CHECKOUT_UNAVAILABLE" });
+          expect(
+            (
+              await db.query(
+                "SELECT count(*)::int AS count FROM subscription_allowance_periods WHERE stripe_invoice_id=$1",
+                [objects.invoice.id],
+              )
+            ).rows,
+          ).toEqual([{ count: 0 }]);
+          expect((await finalizePaidRenewal(input)).replayed).toBeFalse();
+          expect((await finalizePaidRenewal(input)).replayed).toBeTrue();
+          const renewed = await authority.findById(source.organization_id, source.id);
+          if (!renewed) throw new Error("Renewed source missing");
+          expect(renewed.plan_key).toBe("pro_monthly");
+          expect(renewed.lifecycle_revision).toBe(3);
+          const retained = await findSubscriptionRenewalBinding(renewed, {});
+          expect(retained.contract?.planKey).toBe("plus_monthly");
+          expect(retained.environment.STRIPE_PRO_MONTHLY_PRICE_ID).toBe("price_pro");
+          expect(
+            (
+              await db.query(
+                "SELECT granted_amount FROM subscription_allowance_periods WHERE stripe_invoice_id=$1",
+                [objects.invoice.id],
+              )
+            ).rows,
+          ).toEqual([{ granted_amount: "90.000000" }]);
+        } finally {
+          for (const [key, value] of [
+            ["STRIPE_SECRET_KEY", oldKey],
+            ["STRIPE_PRO_MONTHLY_PRICE_ID", oldPrice],
+            ["STRIPE_PRO_PRODUCT_ID", oldProduct],
+          ] as const)
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+      }
+    });
   test("concurrent paid deliveries apply once and replay after consumption without replenishing", async () => {
     const f = await seed();
     const results = await Promise.all([

@@ -19,32 +19,31 @@ export { validateToolArgs } from "./actions/validate-tool-args.ts";
 export * from "./activity-plaintext.js";
 
 export * from "./agent-backup-limits.js";
-export type {
-	AgentAutomationMode,
-	AgentStartupDiagnostics,
-	ChatImageAttachment,
-	ColumnInfo,
-	ConnectionTestResult,
-	CreateTriggerRequest,
-	DatabaseStatus,
-	LogEntry as AgentLogEntry,
-	PluginParamDef,
-	QueryResult,
-	RuntimeOrderItem,
-	RuntimeServiceOrderItem,
-	SkillEntry,
-	StreamEventEnvelope,
-	StreamEventType as AgentStreamEventType,
-	TableInfo,
-	TriggerHealthSnapshot,
-	TriggerSummary,
-	TriggerTaskMetadata,
-	UpdateTriggerRequest,
-} from "./api/agent-api-types.js";
 export {
+	type AgentAutomationMode,
+	type AgentStartupDiagnostics,
+	type ChatImageAttachment,
+	type ColumnInfo,
+	type ConnectionTestResult,
+	type CreateTriggerRequest,
+	type DatabaseStatus,
 	DELTA_STREAM_PROTOCOL,
 	type DeltaStreamProtocol,
+	type LogEntry as AgentLogEntry,
+	type PluginParamDef,
+	type QueryResult,
+	type RuntimeOrderItem,
+	type RuntimeServiceOrderItem,
+	type SkillEntry,
+	type StreamEventEnvelope,
+	type StreamEventType as AgentStreamEventType,
+	type TableInfo,
+	type TriggerHealthSnapshot,
+	type TriggerSummary,
+	type TriggerTaskMetadata,
+	type UpdateTriggerRequest,
 } from "./api/agent-api-types.js";
+
 export type {
 	CommandsCatalogResponse,
 	SerializedCommand,
@@ -53,7 +52,7 @@ export type {
 } from "./api/command-transport-types.js";
 export * from "./audio-redaction.js";
 export * from "./audio-redaction-verify.js";
-export * from "./awareness/registry.js";
+export * from "./awareness.js";
 export * from "./canonical-json.js";
 export * from "./capabilities/protocol.js";
 export * from "./capabilities/remote-runner.js";
@@ -73,26 +72,14 @@ export { default as shortIdPluginMap } from "./catalog/short-id-plugin-map.json"
 };
 export * from "./character";
 export * from "./character-language.js";
+export * from "./character-schema";
 export * from "./character-utils";
 export * from "./chat-upload-limits.js";
-export * from "./cli/parse-duration.js";
 export * from "./connector-account-catalog.js";
 export * from "./connectors/connector-config";
 export * from "./connectors/privacy";
+export * from "./connectors/target-sources";
 export * from "./connectors.ts";
-export {
-	CANONICAL_SECRET_KEYS,
-	type CanonicalSecretKey,
-	CHANNEL_OPTIONAL_SECRETS,
-	getAliasesForKey,
-	getAllSecretsForChannel,
-	getProviderForApiKey,
-	getRequiredSecretsForChannel,
-	isCanonicalSecretKey,
-	isSecretKeyAlias,
-	LOCAL_MODEL_PROVIDERS,
-	SECRET_KEY_ALIASES,
-} from "./constants/secrets";
 export * from "./contracts/apps.js";
 export * from "./contracts/awareness.js";
 export * from "./contracts/permissions.js";
@@ -106,14 +93,7 @@ export * from "./embedding-vector-space";
 export * from "./env-utils";
 export * from "./error-classification.js";
 export * from "./errors";
-export {
-	ElizaError,
-	type ElizaErrorOptions,
-	type ElizaErrorSeverity,
-	isElizaError,
-	type ReportedError,
-	toElizaError,
-} from "./errors";
+
 export * from "./events.js";
 export type { ValidationKeywordLocale } from "./i18n/keyword-matching-core.js";
 export * from "./i18n/language.js";
@@ -138,57 +118,62 @@ export * from "./meeting-artifacts.js";
 export * from "./meetings.js";
 export * from "./memory";
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
-export * from "./messaging/interactions/dashboard-markers.js";
-export * from "./messaging/interactions/parse.js";
-export type {
-	InteractiveTask,
-	TaskActionProposal,
-	TaskContext,
-	TaskObservation,
-	TaskOperation,
-	TaskOwner,
-	TaskTransition,
-} from "./messaging/interactive-task.js";
+export * from "./messaging/interaction-dashboard-markers.js";
+export {
+	findInteractionRegions,
+	hasInteractionBlocks,
+	type InteractionRegion,
+	MAX_FOLLOWUPS,
+	MAX_FORM_FIELDS,
+	MAX_TASK_TITLE_LEN,
+	type ParsedInteractions,
+	parseInteractionBlocks,
+	stripUnclaimedInteractionMarkup,
+} from "./messaging/interaction-parse.js";
 export {
 	createInteractiveTask,
+	type InteractiveTask,
 	sameTaskOwner,
+	type TaskActionProposal,
+	type TaskContext,
+	type TaskObservation,
+	type TaskOperation,
+	type TaskOwner,
+	type TaskTransition,
 	transitionInteractiveTask,
 	validateInteractiveTask,
 } from "./messaging/interactive-task.js";
-export type {
-	TaskEvent,
-	TaskEventPage,
-	TaskEventReaderOptions,
-	TaskEventReaderState,
-	TaskOperationStatus,
-	TaskStatus as TaskEventStatus,
-} from "./messaging/task-events.js";
+
 export {
 	mergeTaskEventPage,
 	mergeTaskEvents,
+	type TaskEvent,
+	type TaskEventPage,
 	TaskEventReader,
+	type TaskEventReaderOptions,
+	type TaskEventReaderState,
+	type TaskOperationStatus,
+	type TaskStatus as TaskEventStatus,
 	validateTaskEvent,
 } from "./messaging/task-events.js";
+
 export * from "./messaging/task-widgets.js";
 export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
 export * from "./name-tokens";
 export * from "./network/ssrf.js";
-export * from "./platform/aosp-user-agent.js";
 export type { BuildVariant } from "./platform/build-variant.js";
-export { isElizaOS } from "./platform/eliza-os.js";
+export * from "./platform/eliza-os.js";
 export * from "./platform/is-native-server.js";
 export type {
 	NativeLibraryCandidate,
 	NativeLibraryPolicyOptions,
 } from "./platform/native-library-policy.js";
 export * from "./recent-messages-state";
-export * from "./retrieval/rerank.js";
-export * from "./retrieval/search.js";
+export * from "./retrieval.js";
 export type { RolesConfig } from "./roles.js";
 export * from "./runtime/action-wildcard-glob.ts";
 export * from "./runtime/candidate-action-backstop";
-export { isCanonicalModelCapabilityDisabled } from "./runtime/canonical-model-capabilities.ts";
 export * from "./runtime/content-access-manifest";
 export * from "./runtime/context-gates";
 export {
@@ -225,8 +210,6 @@ export {
 } from "./runtime/limits.ts";
 export * from "./runtime/locale-detection";
 export * from "./runtime/localized-examples-provider";
-export * from "./runtime/model-dispatch/modality.ts";
-export * from "./runtime/model-dispatch/model-name.ts";
 export {
 	buildModelInputBudget,
 	DEFAULT_CONTEXT_WINDOW_TOKENS,
@@ -236,6 +219,11 @@ export {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./runtime/model-input-budget.ts";
+export * from "./runtime/model-modality.ts";
+export {
+	isCanonicalModelCapabilityDisabled,
+	resolveProviderModelString,
+} from "./runtime/model-policy.js";
 export type {
 	EvaluatorEffects,
 	EvaluatorModelResult,
@@ -274,7 +262,6 @@ export {
 	sanitizeUserVisibleModelOutput,
 	type UserVisibleModelOutput,
 } from "./runtime/user-visible-model-output.ts";
-export * from "./schemas/character";
 export * from "./security/augmented-request.js";
 export * from "./security/basic-email";
 export * from "./security/bind-host.js";
@@ -301,6 +288,7 @@ export * from "./security/redact";
 export * from "./security/spawn-env-policy.js";
 export {
 	composeToolDiagnosticRedactor,
+	projectCompleteToolArgsForModel,
 	projectCompleteToolValueForModel,
 	projectModelCallDiagnosticValue,
 	projectProtectedModelCallValue,
@@ -309,9 +297,10 @@ export {
 	TOOL_DIAGNOSTIC_MASK,
 	type ToolDiagnosticTextRedactor,
 } from "./security/tool-diagnostics.js";
-export { projectCompleteToolArgsForModel } from "./security/tool-diagnostics.ts";
+
+export * from "./security/untrusted-email-content.js";
+export * from "./sensitive-request-dispatch";
 export * from "./sensitive-request-policy";
-export * from "./sensitive-requests/dispatch-registry";
 export * from "./services";
 export {
 	OPTIMIZED_PROMPT_SERVICE,
@@ -358,21 +347,18 @@ export {
 	type TrajectorySummaryRecord,
 	type TrajectoryUsageTotalsRecord,
 } from "./services/trajectory-types.ts";
-export * from "./services/triggerScheduling";
+export * from "./services/trigger-scheduling";
 export * from "./sessions/provider.js";
 export * from "./sessions/session-key.js";
 export * from "./sessions/types.js";
 export * from "./speaker-name-inference.js";
 export * from "./spoken-text.js";
-export * from "./target-sources/registry";
-export * from "./text/model-output.js";
-export * from "./text/untrusted-email-content.js";
 export * from "./transcripts.js";
 export * from "./tunnel-service";
 export * from "./types/access-context.js";
 export * from "./types/action-failure.js";
 export * from "./types/agent.js";
-export * from "./types/agentEvent";
+export * from "./types/agent-event";
 export * from "./types/channel-config.js";
 export * from "./types/chat-pre-handler.js";
 export * from "./types/coding.js";
@@ -428,72 +414,50 @@ export * from "./types/pipeline-hooks.js";
 export * from "./types/plugin.js";
 export * from "./types/plugin-manifest";
 export * from "./types/plugin-store.js";
-export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
-export type { JsonPrimitive } from "./types/primitives.js";
 export * from "./types/primitives.js";
+
 export * from "./types/prompt-optimization-hooks.js";
 export * from "./types/prompt-optimization-score-card.js";
 export * from "./types/prompt-optimization-trace.js";
 export * from "./types/prompts.js";
 export * from "./types/reminder-presentation";
-export type {
-	ConnectorAccountCapability,
-	ConnectorAccountRef,
-} from "./types/runtime.js";
 export * from "./types/runtime.js";
-export {
-	ConnectorAccountHealth,
-	ConnectorAccountPurpose,
-	ConnectorAccountRole,
-	ConnectorAuthMethod,
-} from "./types/runtime.js";
+
 export * from "./types/service.js";
 export * from "./types/service-interfaces.js";
 export * from "./types/settings.js";
 export * from "./types/state.js";
 export * from "./types/streaming.js";
-export type {
-	PageLayoutManifest,
-	ResolvedSurfaceManifest,
-	SurfaceCapability,
-	SurfaceIsolationLevel,
-	SurfaceLifecyclePolicy,
-	SurfaceManifest,
-	SurfaceManifestBearer,
-} from "./types/surface-manifest.js";
 export * from "./types/surface-manifest.js";
+
 export * from "./types/swarm-coordinator.js";
 export * from "./types/system-notice.js";
 export * from "./types/task.js";
 export * from "./types/tee.js";
 export * from "./types/testing.js";
-export * from "./types/tools.js";
-export type {
-	ActionAttempt,
-	ARTTrajectory,
-	ChatMessage as TrajectoryChatMessage,
-	ContextObjectTrajectoryExport,
-	ContextObjectTrajectoryVersion,
-	EnvironmentState,
-	LLMCall,
-	ProviderAccess,
-	RewardComponents,
-	RewardRequest,
-	RewardResponse,
-	TrainingBatch,
-	Trajectory,
-	TrajectoryGroup,
-	TrajectoryRecord,
-	TrajectoryStep,
+export {
+	type ActionAttempt,
+	type ARTTrajectory,
+	type ChatMessage as TrajectoryChatMessage,
+	CONTEXT_OBJECT_TRAJECTORY_VERSION,
+	type ContextObjectTrajectoryExport,
+	type ContextObjectTrajectoryVersion,
+	type EnvironmentState,
+	type LLMCall,
+	type ProviderAccess,
+	type RewardComponents,
+	type RewardRequest,
+	type RewardResponse,
+	type TrainingBatch,
+	type Trajectory,
+	type TrajectoryGroup,
+	type TrajectoryRecord,
+	type TrajectoryStep,
 } from "./types/trajectory-export.ts";
-export { CONTEXT_OBJECT_TRAJECTORY_VERSION } from "./types/trajectory-export.ts";
+
 export * from "./types/trigger.js";
-export type {
-	EnabledViewKinds,
-	ViewKind,
-	ViewKindBearer,
-} from "./types/view-kind";
 export * from "./types/view-kind.js";
+
 export * from "./types/workspace-delta.js";
 export {
 	collectActionResultSizeWarnings,
@@ -502,9 +466,7 @@ export {
 } from "./utils/action-results.ts";
 export { hasActionContext } from "./utils/action-validation.ts";
 export * from "./utils/assistant-text.js";
-export type { BatchItemOutcome } from "./utils/batch-queue/batch-processor.js";
-export * from "./utils/batch-queue/semaphore.js";
-export * from "./utils/batch-queue/task-drain.js";
+export type { BatchItemOutcome } from "./utils/batch-queue.js";
 export * from "./utils/boolean";
 export * from "./utils/channel-utils";
 export * from "./utils/character-message-examples.js";
@@ -524,19 +486,8 @@ export {
 } from "./utils/context-routing.ts";
 export * from "./utils/deadline.js";
 export * from "./utils/deterministic.js";
-export {
-	buildDeterministicSeed,
-	createDeterministicRandom,
-	deterministicPick,
-	deterministicSample,
-	deterministicShuffle,
-	getDeterministicNames,
-	hashStringToUint32,
-	shortStringHash,
-	stableStringify,
-} from "./utils/deterministic.js";
+export * from "./utils/duration.js";
 export * from "./utils/env.js";
-export * from "./utils/env-alias.js";
 export * from "./utils/errors.js";
 export * from "./utils/example-names.js";
 export * from "./utils/exec-safety.js";
@@ -547,27 +498,24 @@ export {
 export * from "./utils/extraction-evidence";
 export type { SymlinkType } from "./utils/filesystem.js";
 export * from "./utils/format-bytes.js";
-export { formatError } from "./utils/format-error";
 export * from "./utils/format-error.js";
 export * from "./utils/html-raw-text";
 export * from "./utils/inflection-term-keys";
+export * from "./utils/json5-model-output.js";
 export { getLogPrefix } from "./utils/log-prefix.js";
 export {
 	assertModelOutputComplete,
+	getErrorMessage,
 	isModelOutputLimitFinishReason,
 	isModelProviderError,
-	isProviderSchemaRejection,
-	modelProviderErrorDetail,
-} from "./utils/model-errors";
-export {
-	getErrorMessage,
 	isProviderContextOverflowError,
 	isProviderContextOverflowFailure,
+	isProviderSchemaRejection,
 	isTransientModelError,
+	modelProviderErrorDetail,
 	PROVIDER_CONTEXT_OVERFLOW,
-} from "./utils/model-errors.ts";
+} from "./utils/model-errors";
 export * from "./utils/model-retry";
-export { tokenizeNameOccurrences } from "./utils/name-tokens.js";
 export * from "./utils/number-parsing.js";
 export * from "./utils/path-component.js";
 export {
@@ -584,9 +532,12 @@ export { sleepWithAbort } from "./utils/retry";
 export * from "./utils/safe-diagnostic-error.js";
 export * from "./utils/serialise.js";
 export * from "./utils/streaming";
-export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 export * from "./utils/string-boundaries.js";
-export { hashString as hashArtworkSeed } from "./utils/string-hash.js";
+export {
+	Semaphore,
+	TaskDrain,
+	type TaskDrainOptions,
+} from "./utils/task-scheduling.js";
 export {
 	MAX_TEXT_NORMALIZE_EDGES,
 	TEXT_NORMALIZE_UNBOUNDED,
@@ -599,6 +550,19 @@ export * from "./utils/union-find.ts";
 export { uuidFromString, validateUuid } from "./utils/uuid.js";
 export * from "./utils/well-formed";
 export * from "./validation/keywords";
+export {
+	CANONICAL_SECRET_KEYS,
+	type CanonicalSecretKey,
+	CHANNEL_OPTIONAL_SECRETS,
+	getAliasesForKey,
+	getAllSecretsForChannel,
+	getProviderForApiKey,
+	getRequiredSecretsForChannel,
+	isCanonicalSecretKey,
+	isSecretKeyAlias,
+	LOCAL_MODEL_PROVIDERS,
+	SECRET_KEY_ALIASES,
+} from "./validation/secret-catalog";
 export * from "./validation/secrets";
 export * from "./views/host-external-contract.js";
 export * from "./views/shared-nav-targets.js";
@@ -625,4 +589,4 @@ export {
 	VIEW_KIND_META,
 	VIEW_KINDS,
 } from "./views/view-kind.js";
-export * from "./voice/voice-cancellation-token.js";
+export * from "./voice-cancellation-token.js";

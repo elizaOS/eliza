@@ -1,35 +1,4 @@
-/**
- * Rigid, deterministic, multilingual view-command matcher — the fast shortcut.
- *
- * Lives in @elizaos/core so BOTH the dedicated-runtime plugin
- * (plugin-app-control, which re-exports this module) and the container-free
- * SHARED-tier cloud runtime (packages/cloud shared-runtime turn) resolve
- * navigation intents from the SAME source — a Tier-0 shared agent boots zero
- * plugins, so it cannot reach plugin-app-control's VIEWS action and previously
- * answered "go to settings" with a hallucinated prose refusal (#F5-ACTIONS).
- *
- * This is the zero-model fast path for view switching: it recognises the
- * obvious, explicit navigation phrasings ("open settings", "go to the settings
- * view", "show me my calendar", "abre ajustes", "설정 열기", "打开设置",
- * "カレンダーを開いて", …) for every user-facing view, in every supported
- * language, in sub-millisecond time and with NO LLM call.
- *
- * It is consumed by:
- *   - the EARLY hook (navigate the instant a message arrives, before the reply),
- *   - the VIEWS action (deterministic target resolution),
- *   - the contextual evaluator's gate (defer rigid commands to the action),
- *   - the shared-runtime turn (emit a VIEWS navigation handoff for Tier-0 agents).
- *
- * Precision over recall: a noun alone never matches — there must be an explicit
- * nav signal (a navigation verb, a possessive, a "view/page/screen" word, or the
- * whole message being just the noun). Contextual/implicit intent ("fix the login
- * bug" → task-coordinator) is intentionally NOT handled here; that is the small-
- * model contextual evaluator's job.
- *
- * Languages: en, es, pt, fr, de, zh-CN, ja, ko, vi, tl (a superset of the
- * supported UI languages). Extend by adding nouns to VIEW_NOUNS and verbs/
- * possessives/view-words to the shared lists — the regexes recompile from data.
- */
+/** Deterministic multilingual matching for declared view commands. Hosts share the same navigation-intent rules. */
 import { DOCUMENTS_NAV_VOCABULARY } from "./shared-nav-targets.js";
 
 // Navigation verbs across languages (lower-cased; CJK has no case).

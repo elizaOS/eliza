@@ -85,10 +85,6 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json({ error: "Unauthorized" }, 403);
     }
 
-    if (payment.status === "expired") {
-      return c.json({ error: "Payment has expired" }, 400);
-    }
-
     const decodedBody = await decodeRequestJson(c.req);
     if (!decodedBody.ok) {
       // error-policy:J3 malformed JSON is invalid request input.
@@ -158,6 +154,12 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       ip: redact.ip(ip),
       reason: result.message,
     });
+
+    // An expired row still reaches provider verification above: OxaPay can
+    // report an invoice paid after the local expiry cron marked it expired.
+    if (payment.status === "expired") {
+      return c.json({ error: "Payment has expired" }, 400);
+    }
 
     return c.json(
       {

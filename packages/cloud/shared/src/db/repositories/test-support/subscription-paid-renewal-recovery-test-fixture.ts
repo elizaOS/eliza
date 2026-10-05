@@ -30,12 +30,34 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
   const objects = new Map<string, object>();
   const objectSequences = new Map<string, object[]>();
   const requests: string[] = [];
+  const mutations = new Map<string, (body: URLSearchParams) => object>();
   let writes = 0;
   let beforeChargeResponse: (() => Promise<void>) | null = null;
   const server = createServer((request, response) => {
     requests.push(`${request.method} ${request.url}`);
     if (request.method !== "GET") writes++;
     response.setHeader("Content-Type", "application/json");
+    const mutation = mutations.get(request.url ?? "");
+    if (request.method === "POST" && mutation) {
+      let body = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        try {
+          response.end(JSON.stringify(mutation(new URLSearchParams(body))));
+        } catch {
+          response.writeHead(400);
+          response.end(
+            JSON.stringify({
+              error: { message: "Controlled mutation did not match expected input" },
+            }),
+          );
+        }
+      });
+      return;
+    }
     const sequence = objectSequences.get(request.url ?? "");
     const value = sequence?.length ? sequence.shift() : objects.get(request.url ?? "");
     if (request.method !== "GET" || !value) {
@@ -77,6 +99,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
   beforeEach(async () => {
     await database.exec("UPDATE organizations SET is_active=false");
     objects.clear();
+    mutations.clear();
     objectSequences.clear();
     requests.length = 0;
     writes = 0;
@@ -242,6 +265,20 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     expect(await allowanceCount(f.source.organization_id)).toBe(1);
     expect(result.status).toBe("ok");
     expect(result.attempts[0]?.disposition).toBe("applied");
+    const retained = (
+      await database.query<{ metadata: Record<string, unknown> }>(
+        "SELECT metadata FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+        [f.source.organization_id],
+      )
+    ).rows[0]!.metadata.renewalInvoiceAuthority as Record<string, unknown>;
+    expect(retained.kind).toBe("renewal_invoice_authority");
+    expect(retained.invoiceId).toBe(f.invoice.id);
+    expect(retained.customerId).toBe(f.source.stripe_customer_id);
+    expect(retained.subscriptionId).toBe(f.source.id);
+    expect(retained.invoiceLineId).toBe(f.invoice.lines.data[0]!.id);
+    expect(retained.digest).toMatch(/^[a-f0-9]{64}$/);
+    expect(retained.grantDigest).toMatch(/^[a-f0-9]{64}$/);
+
     expect(writes).toBe(0);
     const revisions = (
       await database.query<{
@@ -262,6 +299,272 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       ).rows[0]!.count,
     ).toBe(0);
   });
+
+  for (const account of ["retained", "foreign"] as const) {
+    test(`cancellation and reviewed resume use ${account} purchase authority after catalog rotation`, async () => {
+      const f = await seedPurchasedCheckout();
+      const { finalizeSubscriptionCheckout } = await import(
+        "../subscription-checkout-finalization"
+      );
+      await finalizeSubscriptionCheckout(f);
+      await database.query("UPDATE organizations SET is_active=false WHERE id<>$1", [f.orgId]);
+      let live = {
+        ...f.subscription,
+        canceled_at: null as number | null,
+        cancel_at: null as number | null,
+      };
+      const path = `/v1/subscriptions/${live.id}`;
+      objects.set(path, live);
+      objects.set(`/v1/customers/${f.customer.id}`, f.customer);
+      objects.set("/v1/account", {
+        id: account === "retained" ? "acct_checkoutfixture" : "acct_foreign",
+      });
+      mutations.set(path, (body) => {
+        expect([...body.keys()]).toEqual(["cancel_at_period_end"]);
+        const canceled = body.get("cancel_at_period_end") === "true";
+        live = {
+          ...live,
+          cancel_at_period_end: canceled,
+          cancel_at: canceled ? live.current_period_end : null,
+          canceled_at: canceled ? Math.floor(Date.now() / 1000) : live.canceled_at,
+        };
+        objects.set(path, live);
+        return live;
+      });
+      mutations.set("/v1/invoices/create_preview", (body) => {
+        expect(body.get("subscription")).toBe(live.id);
+        expect(body.get("subscription_details[cancel_at_period_end]")).toBe("false");
+        return {
+          ...f.invoice,
+          id: "upcoming_in_retained",
+          status: "draft",
+          automatic_tax: { enabled: false, status: null },
+          lines: {
+            ...f.invoice.lines,
+            data: [
+              {
+                ...f.invoice.lines.data[0]!,
+                period: {
+                  start: live.current_period_end,
+                  end: live.current_period_end + 30 * 86400,
+                },
+              },
+            ],
+          },
+        };
+      });
+      const input = {
+        organizationId: f.orgId,
+        actorId: f.command.requested_by_user_id,
+        subscriptionId: f.command.id,
+        expectedSubscriptionRevision: 1,
+        idempotencyKey: randomUUID(),
+      };
+      const cancellation = await import("../../../lib/services/subscription-cancellation");
+      process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_rotated";
+      process.env.STRIPE_PLUS_PRODUCT_ID = "prod_rotated";
+      try {
+        if (account === "retained") {
+          const repository = await import("../subscription-cancellation");
+          const command = await repository.prepareCancellation(input);
+          const claim = await repository.claimCancellation({ ...input, commandId: command.id });
+          if (!claim) throw new Error("Cancellation fixture claim missing");
+          const scheduled = {
+            ...live,
+            cancel_at_period_end: true,
+            cancel_at: live.current_period_end,
+            canceled_at: Math.floor(Date.now() / 1000),
+          };
+          await expect(
+            repository.finalizeCancellation(input, claim, scheduled, "acct_foreign"),
+          ).rejects.toThrow();
+          await expect(repository.finalizeCancellation(input, claim, scheduled)).rejects.toThrow();
+          expect(await sourceRevision(f.command.id)).toBe(1);
+          await repository.releaseCancellation(input, claim);
+        }
+        const result = await cancellation.submitOrganizationSubscriptionCancellation(
+          input,
+          async () => {},
+        );
+        if (account === "foreign") {
+          expect(result.status).toBe("OUTCOME_UNKNOWN");
+          expect(writes).toBe(0);
+          expect(await sourceRevision(f.command.id)).toBe(1);
+          return;
+        }
+        expect(result.status).toBe("APPLIED");
+        expect(writes).toBe(1);
+        const { reconcileStripeScheduledCancellationLifecycle } = await import(
+          "../../../lib/services/stripe-scheduled-cancellation-lifecycle"
+        );
+        const eventId = `evt_${randomUUID().replaceAll("-", "")}`;
+        const event = {
+          id: eventId,
+          type: "customer.subscription.updated",
+          created: Math.floor(Date.now() / 1000),
+          livemode: false,
+          data: { object: live },
+        };
+        await reconcileStripeScheduledCancellationLifecycle({
+          kind: "stripe.event",
+          receivedAt: Date.now(),
+          eventId,
+          eventType: event.type,
+          // Production validates pinned Acacia wire data independently of the newer SDK type.
+          event: event as unknown as Stripe.Event,
+        });
+        const revision = await sourceRevision(f.command.id);
+        const { readOrganizationSubscriptionRenewalReview } = await import(
+          "../../../lib/services/subscription-renewal-review"
+        );
+        const resume = {
+          ...input,
+          expectedSubscriptionRevision: revision,
+          idempotencyKey: randomUUID(),
+        };
+        const review = await readOrganizationSubscriptionRenewalReview(resume, async () => {});
+        expect(review.planKey).toBe("plus_monthly");
+        const resultUndo =
+          await cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(
+            { ...resume, expectedRenewalTermsDigest: review.termsDigest },
+            async () => {},
+          );
+        expect(resultUndo.status).toBe("APPLIED");
+        expect(await allowanceCount(f.orgId)).toBe(1);
+        expect(
+          (
+            await database.query(
+              "SELECT cancel_at_period_end FROM billing_subscriptions WHERE id=$1",
+              [f.command.id],
+            )
+          ).rows,
+        ).toEqual([{ cancel_at_period_end: false }]);
+      } finally {
+        process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
+        process.env.STRIPE_PLUS_PRODUCT_ID = "prod_plus";
+      }
+    });
+  }
+
+  for (const scenario of ["partial", "full", "excess", "waived", "reversed", "changing"] as const) {
+    test(`canonical SDK recovery proves ${scenario} credit settlement without synthetic payments`, async () => {
+      const f = await seed();
+      const credit =
+        scenario === "partial"
+          ? 500
+          : scenario === "excess"
+            ? 4000
+            : scenario === "waived"
+              ? 0
+              : 3000;
+      const used = Math.min(credit, 3000),
+        total = scenario === "waived" ? 0 : 3000;
+      const due = total - used;
+      const discount = { amount: 3000, discount: "di_waived" };
+      objects.set(`/v1/invoices/${f.invoice.id}`, {
+        ...f.invoice,
+        starting_balance: -credit,
+        ending_balance: -credit + used,
+        total,
+        amount_due: due,
+        amount_paid: due,
+        payment_intent: due ? f.invoice.payment_intent : null,
+        charge: due ? f.invoice.charge : null,
+        ...(scenario === "waived"
+          ? {
+              discounts: [discount.discount],
+              total_discount_amounts: [discount],
+              lines: {
+                ...f.invoice.lines,
+                data: [{ ...f.invoice.lines.data[0]!, discount_amounts: [discount] }],
+              },
+            }
+          : {}),
+      });
+      objects.set(`/v1/payment_intents/${f.paymentIntent.id}`, {
+        ...f.paymentIntent,
+        amount: due,
+        amount_received: due,
+      });
+      objects.set(`/v1/charges/${f.charge.id}`, { ...f.charge, amount: due, amount_captured: due });
+      const applied = {
+        id: "cbtxn_applied",
+        object: "customer_balance_transaction",
+        customer: f.customer.id,
+        invoice: f.invoice.id,
+        livemode: false,
+        currency: "usd",
+        type: "applied_to_invoice",
+        amount: used,
+        ending_balance: -credit + used,
+        created: f.invoice.status_transitions.paid_at,
+        credit_note: null,
+      };
+      const data =
+        scenario === "reversed"
+          ? [
+              { ...applied, id: "cbtxn_reversal", type: "unapplied_from_invoice", amount: -used },
+              applied,
+            ]
+          : [applied];
+      objects.set(`/v1/customers/${f.customer.id}/balance_transactions?limit=100`, {
+        object: "list",
+        has_more: false,
+        data,
+      });
+      objects.set(`/v1/customers/${f.customer.id}/balance_transactions?limit=1`, {
+        object: "list",
+        has_more: data.length > 1,
+        data: [scenario === "changing" ? { ...applied, id: "cbtxn_new" } : data[0]],
+      });
+      const result = await service.recoverMissedSubscriptionEvents();
+      const denied = scenario === "reversed" || scenario === "changing";
+      expect(await allowanceCount(f.source.organization_id)).toBe(denied ? 0 : 1);
+      expect(result.attempts[0]?.disposition).toBe(denied ? "unavailable" : "applied");
+      expect(writes).toBe(0);
+      if (!due)
+        expect(
+          requests.some((path) => path.includes("/payment_intents/") || path.includes("/charges/")),
+        ).toBeFalse();
+      if (!denied) {
+        expect(
+          (
+            await database.query(
+              "SELECT granted_amount::text AS amount FROM subscription_allowance_periods WHERE organization_id=$1",
+              [f.source.organization_id],
+            )
+          ).rows,
+        ).toEqual([{ amount: "25.000000" }]);
+        const { reconcileStripePaidRenewal } = await import(
+          "../../../lib/services/stripe-paid-renewal"
+        );
+        const eventId = `evt_${randomUUID().replaceAll("-", "")}`;
+        const event = {
+          id: eventId,
+          type: "invoice.paid",
+          created: Math.floor(Date.now() / 1000),
+          livemode: false,
+          data: {
+            object: { id: f.invoice.id, object: "invoice", billing_reason: "subscription_cycle" },
+          },
+        };
+        await reconcileStripePaidRenewal({
+          eventId,
+          eventType: "invoice.paid",
+          event,
+        } as Parameters<typeof reconcileStripePaidRenewal>[0]);
+        expect(await allowanceCount(f.source.organization_id)).toBe(1);
+        expect(
+          (
+            await database.query(
+              "SELECT count(*)::int AS count FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+              [f.source.organization_id],
+            )
+          ).rows,
+        ).toEqual([{ count: 1 }]);
+      }
+    });
+  }
 
   for (const channel of ["cron", "webhook"] as const) {
     for (const invalid of [null, "legacy", "account", "credential_mode"] as const) {
@@ -499,9 +802,21 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     expect(writes).toBe(0);
   });
 
-  test("a later invoice-paid delivery reuses the recovered grant", async () => {
+  test("a later invoice-paid delivery preserves append-only original grant evidence", async () => {
     const f = await seed();
     expect((await service.recoverMissedSubscriptionEvents()).status).toBe("ok");
+    await expect(
+      database.query(
+        "UPDATE subscription_allowance_transactions SET metadata='{}'::jsonb WHERE organization_id=$1 AND kind='grant'",
+        [f.source.organization_id],
+      ),
+    ).rejects.toThrow();
+    const originalEvidence = (
+      await database.query<{ metadata: unknown }>(
+        "SELECT metadata FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+        [f.source.organization_id],
+      )
+    ).rows;
     const { reconcileStripePaidRenewal } = await import(
       "../../../lib/services/stripe-paid-renewal"
     );
@@ -534,6 +849,14 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
         )
       ).rows,
     ).toEqual([{ status: "applied", disposition: "paid_renewal_finalized" }]);
+    expect(
+      (
+        await database.query<{ metadata: unknown }>(
+          "SELECT metadata FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+          [f.source.organization_id],
+        )
+      ).rows,
+    ).toEqual(originalEvidence);
     expect(writes).toBe(0);
   });
 

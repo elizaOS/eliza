@@ -10,6 +10,7 @@ import type {
   OrganizationScheduleConfiguredIdentity,
   OrganizationScheduleConfiguredObservation,
 } from "./organization-schedule-effects";
+import { resolveOrganizationScheduleIncidentsInTransaction } from "./organization-schedule-maintenance";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
 
@@ -87,6 +88,7 @@ export async function finalizeConfiguredOrganizationSchedule(
       )
       .returning();
     if (!applied) reject();
+    await resolveOrganizationScheduleIncidentsInTransaction(tx, input);
     return { command: applied, replayed: false };
   });
 }

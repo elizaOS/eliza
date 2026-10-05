@@ -20,6 +20,10 @@ the secret/PII master switches and process execution policies; per-agent switch
 values take precedence. Model context, authorization evidence and effect receipts
 remain complete. Source restoration requires its original authorized binding.
 
+Pass-through model results honor cancellation when their lazy `text` promise is
+consumed, including after the provider body completes or while finish metadata
+is pending. Cancelled text rejects with the owning signal's original reason.
+
 `asRecord` accepts plain records; `asObjectRecord` also accepts class and built-in
 object instances. Both reject arrays and null. `hasPlainObjectTag` checks the
 object tag. Persisted canonical JSON bytes retain their existing meaning;

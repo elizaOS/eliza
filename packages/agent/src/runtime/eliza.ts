@@ -34,6 +34,8 @@ import {
   type Provider,
   type RuntimeStopOptions,
   requireConfirmedSendHandlerDelivery,
+  resolveStateDir,
+  resolveUserPath,
   stringToUuid,
   type TargetInfo,
   type UUID,
@@ -46,6 +48,7 @@ import {
 import {
   buildDefaultElizaCloudServiceRouting,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  type ElizaConfig,
   getFirstRunProviderOption,
   isElizaSettingsDebugEnabled,
   isMobilePlatform,
@@ -86,7 +89,6 @@ import {
 } from "../api/wallet.ts";
 import {
   configFileExists,
-  type ElizaConfig,
   loadEffectiveElizaConfig,
   loadElizaConfig,
 } from "../config/config.ts";
@@ -101,11 +103,7 @@ import {
   CONNECTOR_ENV_MAP,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
-import {
-  ensurePrivateDir,
-  resolveStateDir,
-  resolveUserPath,
-} from "../config/paths.ts";
+import { ensurePrivateDir } from "../config/paths.ts";
 import {
   assertNoRetiredCharacterToolRestrictions,
   assertNoRetiredToolRestrictions,
@@ -314,7 +312,7 @@ async function loadRemoteCodingRunnerModule(): Promise<RemoteCodingRunnerModule>
   )) as RemoteCodingRunnerModule;
 }
 
-import { default as rolesPlugin } from "./roles/src/index.ts";
+import { default as rolesPlugin } from "./roles.ts";
 
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
@@ -1473,11 +1471,6 @@ export function normalizeOpenAiCompatibleProviderConfig(
     "[eliza] Detected Groq routed through OPENAI_BASE_URL; normalizing runtime settings to use @elizaos/plugin-groq",
   );
   return true;
-}
-/** Redact username segments from filesystem paths to avoid leaking user info in logs. */
-function _redactUserSegments(filepath: string): string {
-  // Replace /Users/<name>/ or /home/<name>/ with /Users/<redacted>/ etc.
-  return filepath.replace(/\/(Users|home)\/[^/]+\//g, "/$1/<redacted>/");
 }
 type RuntimeAdapterWithClose = {
   close?: () => Promise<void> | void;
@@ -2729,7 +2722,6 @@ export function isRecoverablePgliteInitError(err: unknown): boolean {
   if (!haystack) return false;
   const hasAbort = haystack.includes("aborted(). build with -sassertions");
   const hasPglite = haystack.includes("pglite");
-  const _hasSqlite = haystack.includes("sqlite");
   const hasMigrationsSchema =
     haystack.includes("create schema if not exists migrations") ||
     haystack.includes("failed query: create schema if not exists migrations");

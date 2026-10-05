@@ -27,12 +27,7 @@ export function describeUserReference(
 	return nameShaped ? `"${trimmed}"` : safeFallback;
 }
 
-/**
- * Render a reference for logs and containment-sensitive machine data. A value
- * can fall back to a complete hardened external-content envelope, so this
- * legacy boundary remains deliberately bounded and must not be used where the
- * complete semantic value is required.
- */
+/** Renders a bounded reference for diagnostics and containment-sensitive machine data. Never use this where the complete semantic value is required. */
 export function userReferenceLogView(reference: string): string {
 	const safeRef = typeof reference === "string" ? reference : "";
 	const collapsed = toWellFormedUnicode(safeRef.replace(/\s+/g, " ").trim());

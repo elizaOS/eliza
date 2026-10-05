@@ -25,7 +25,7 @@ vi.doMock("../hooks/useAuth.js", () => ({
   }),
 }));
 
-vi.doMock("../hooks/useLogin.js", () => ({
+vi.doMock("../provider.js", () => ({
   useLogin: () => ({
     client: { provisionUserWallet },
     agentId: "agent_root",

@@ -111,7 +111,7 @@ export function recentConversationTextsFromState(
 
 	// Do NOT dedupe. Two distinct conversation turns with identical wording are
 	// still two turns — collapsing them drops an occurrence before model
-	// extractors build prompt context (#24858).
+	// extractors build prompt context.
 	return collected;
 }
 
@@ -119,8 +119,6 @@ export async function recentConversationTexts(args: {
 	runtime: IAgentRuntime;
 	message?: Memory;
 	state: State | undefined;
-	/** @deprecated Complete conversation context is always returned. */
-	limit?: number;
 }): Promise<string[]> {
 	const roomId =
 		typeof args.message?.roomId === "string" ? args.message.roomId : "";

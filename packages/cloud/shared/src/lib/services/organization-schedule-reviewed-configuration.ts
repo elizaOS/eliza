@@ -3,7 +3,10 @@ import { ElizaError } from "@elizaos/core";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 import { organizationDowngradeReviewSchema } from "./organization-downgrade-review";
 import { organizationPlanChangeProviderBindingSchema } from "./organization-plan-change-provider-binding";
-import { proveOrganizationScheduleConfiguration } from "./organization-schedule-configuration-proof";
+import {
+  proveOrganizationScheduleConfiguration,
+  proveOriginalOrganizationScheduleConfiguration,
+} from "./organization-schedule-configuration-proof";
 import { organizationScheduleEffectRequestSchema } from "./organization-schedule-effect-contract";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import { settlementDigest } from "./settlement-digest";
@@ -40,10 +43,10 @@ function reject(reason: string): never {
 }
 /** Call only with locked original review/binding/source and authenticated raw observations.
  * The configuration dispatch must have occurred inside the original quote validity window;
- * read-only reconciliation can finish after quote expiry, while the original period remains.
+ * historical evidence can be recovered later; current publication adds separate live checks.
  */
-export function proveReviewedOrganizationScheduleConfiguration(
-  input: Parameters<typeof proveOrganizationScheduleConfiguration>[0] & {
+export function proveOriginalReviewedOrganizationScheduleConfiguration(
+  input: Parameters<typeof proveOriginalOrganizationScheduleConfiguration>[0] & {
     source: Source;
     review: unknown;
     providerBinding: unknown;
@@ -74,8 +77,7 @@ export function proveReviewedOrganizationScheduleConfiguration(
     start === undefined ||
     end === undefined ||
     !Number.isSafeInteger(observed) ||
-    start > observed ||
-    observed >= end
+    start > observed
   )
     reject("original_active_period_required");
   if (
@@ -90,6 +92,8 @@ export function proveReviewedOrganizationScheduleConfiguration(
     reject("review_source_changed");
   if (
     !Number.isSafeInteger(dispatched) ||
+    dispatched < start ||
+    dispatched >= end ||
     dispatched < Date.parse(review.observedAt) ||
     dispatched >= Date.parse(review.expiresAt) ||
     dispatched > observed
@@ -119,7 +123,7 @@ export function proveReviewedOrganizationScheduleConfiguration(
     item.price.unit_amount !== previous.amountCents
   )
     reject("original_provider_binding_changed");
-  const proof = proveOrganizationScheduleConfiguration(input);
+  const proof = proveOriginalOrganizationScheduleConfiguration(input);
   if (proof.effectiveAt * 1000 !== end) reject("effective_boundary_changed");
   return {
     ...proof,
@@ -128,4 +132,24 @@ export function proveReviewedOrganizationScheduleConfiguration(
     reviewDigest: settlementDigest(review),
     providerBindingDigest: settlementDigest(binding),
   };
+}
+
+/** Current-period publication keeps its independent fresh live-state proof. */
+export function proveReviewedOrganizationScheduleConfiguration(
+  input: Parameters<typeof proveOrganizationScheduleConfiguration>[0] & {
+    source: Source;
+    review: unknown;
+    providerBinding: unknown;
+  },
+) {
+  const { configuredSnapshot: _originalSnapshot, ...original } =
+    proveOriginalReviewedOrganizationScheduleConfiguration(input);
+  if (
+    input.source.current_period_end === null ||
+    input.originalConfiguration.observedAt >= input.source.current_period_end
+  )
+    reject("original_active_period_required");
+  const current = proveOrganizationScheduleConfiguration(input);
+  if (current.snapshotDigest !== original.snapshotDigest) reject("original_snapshot_changed");
+  return original;
 }

@@ -802,6 +802,7 @@ export async function collectV5PlannerCandidateActions(args: {
     ]),
   );
   const selectedActions: Action[] = [];
+  const explicitActionNames = new Set<string>();
   const seen = new Set<string>();
   const timer = getInferenceTimer();
   type Gate = "connector-policy" | "validate";
@@ -1077,6 +1078,9 @@ export async function collectV5PlannerCandidateActions(args: {
       continue;
     }
     for (const action of resolved) {
+      // Preserve exact operations selected through aliases as well as names.
+      // The admission/execution gates below still determine their availability.
+      explicitActionNames.add(normalizeActionIdentifier(action.name));
       await appendIfAllowed(
         action,
         undefined,
@@ -1153,8 +1157,21 @@ export async function collectV5PlannerCandidateActions(args: {
       return requiredTags.every((tag) => tags.has(tag));
     });
     if (ownerAdmitted) {
-      for (const name of rule.replacesActionNames)
-        replacedActionNames.add(normalizeActionIdentifier(name));
+      for (const name of rule.replacesActionNames) {
+        const replaced = normalizeActionIdentifier(name);
+        replacedActionNames.add(replaced);
+        // A fallback parent can already have promoted children on this surface.
+        // Suppress only its registered siblings, not an explicitly named
+        // independent operation; unknown families retain exact-name behavior.
+        const parent = actionsByNormalizedName.get(replaced);
+        for (const child of parent?.subActions ?? []) {
+          const childName = normalizeActionIdentifier(
+            typeof child === "string" ? child : child.name,
+          );
+          if (!explicitActionNames.has(childName))
+            replacedActionNames.add(childName);
+        }
+      }
     }
   }
   return selectedActions.filter(

@@ -24,7 +24,7 @@ import { reportUserViewSwitch } from "../../chat/view-navigation-report";
 import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { getBootConfig } from "../../config/boot-config-store";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { ContentLayout } from "../../layouts/content-layout/content-layout";
+import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
 import { getWindowNavigationPath } from "../../navigation";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
@@ -561,7 +561,7 @@ export function SettingsView({
           {/* Agent-surface anchors: the agent addresses every section by
             `section-<id>` regardless of which one is shown. */}
           <div className="hidden">
-            {visibleSections.map((section) => (
+            {availableSections.map((section) => (
               <SettingsSectionSurfaceAnchor
                 key={section.id}
                 section={section}

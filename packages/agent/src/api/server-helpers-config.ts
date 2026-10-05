@@ -6,14 +6,17 @@ import path from "node:path";
 import { ElizaError, logger, normalizeCharacterLanguage } from "@elizaos/core";
 import { sendJsonError } from "@elizaos/host";
 import {
+  type ElizaConfig,
   FIRST_RUN_CLOUD_PROVIDER_OPTIONS,
   FIRST_RUN_PROVIDER_CATALOG,
   getDefaultStylePreset,
   getStylePresets,
 } from "@elizaos/host/protocol";
-
-import type { ElizaConfig } from "../config/config.ts";
 import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";
+import {
+  persistWalletPrivateKeys,
+  restoreWalletPrivateKeysFromVault,
+} from "./wallet-key-store.ts";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet-keygen.ts";
 
 // ---------------------------------------------------------------------------
@@ -430,7 +433,14 @@ export function getCloudProviderOptions(): Array<{
     description: provider.description,
   }));
 }
-export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
+export async function ensureWalletKeysInEnvAndConfig(
+  config: ElizaConfig,
+): Promise<boolean> {
+  // The vault is the durable wallet store in OS-store mode and its boot
+  // hydrate only runs after the listener is live; consult it before deciding
+  // anything is missing so a pre-hydration provisioning request reuses the
+  // stored wallet instead of overwriting it.
+  await restoreWalletPrivateKeysFromVault(config);
   const missingEvm =
     typeof process.env.EVM_PRIVATE_KEY !== "string" ||
     !process.env.EVM_PRIVATE_KEY.trim();
@@ -440,35 +450,38 @@ export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
   if (!missingEvm && !missingSolana) {
     return false;
   }
-  try {
-    const walletKeys = generateWalletKeys();
-    if (
-      !config.env ||
-      typeof config.env !== "object" ||
-      Array.isArray(config.env)
-    ) {
-      config.env = {};
-    }
-    const envConfig = config.env as Record<string, string>;
-    if (missingEvm) {
-      envConfig.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
-      process.env.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
-      logger.info(`[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`);
-    }
-    if (missingSolana) {
-      envConfig.SOLANA_PRIVATE_KEY = walletKeys.solanaPrivateKey;
-      setSolanaWalletEnv(walletKeys.solanaPrivateKey);
-      logger.info(
-        `[eliza-api] Generated Solana wallet: ${walletKeys.solanaAddress}`,
-      );
-    }
-    return true;
-  } catch (err) {
-    logger.warn(
-      `[eliza-api] Failed to generate wallet keys: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
+  const walletKeys = generateWalletKeys();
+  await persistWalletPrivateKeys(
+    config,
+    {
+      ...(missingEvm ? { EVM_PRIVATE_KEY: walletKeys.evmPrivateKey } : {}),
+      ...(missingSolana
+        ? { SOLANA_PRIVATE_KEY: walletKeys.solanaPrivateKey }
+        : {}),
+    },
+    "wallet-provision",
+  );
+  if (
+    !config.env ||
+    typeof config.env !== "object" ||
+    Array.isArray(config.env)
+  ) {
+    config.env = {};
   }
+  const envConfig = config.env as Record<string, string>;
+  if (missingEvm) {
+    envConfig.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
+    process.env.EVM_PRIVATE_KEY = walletKeys.evmPrivateKey;
+    logger.info(`[eliza-api] Generated EVM wallet: ${walletKeys.evmAddress}`);
+  }
+  if (missingSolana) {
+    envConfig.SOLANA_PRIVATE_KEY = walletKeys.solanaPrivateKey;
+    setSolanaWalletEnv(walletKeys.solanaPrivateKey);
+    logger.info(
+      `[eliza-api] Generated Solana wallet: ${walletKeys.solanaAddress}`,
+    );
+  }
+  return true;
 }
 // ---------------------------------------------------------------------------
 // State dir safety

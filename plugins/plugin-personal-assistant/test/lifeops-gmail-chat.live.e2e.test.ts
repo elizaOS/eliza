@@ -6,8 +6,13 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createElizaPlugin, resolveOAuthDir } from "@elizaos/agent";
-import { type AgentRuntime, getConnectorAccountManager } from "@elizaos/core";
+import { createElizaPlugin } from "@elizaos/agent";
+import {
+  type AgentRuntime,
+  getConnectorAccountManager,
+  resolveOAuthDir,
+} from "@elizaos/core";
+
 import {
   createConversation,
   postConversationMessage,

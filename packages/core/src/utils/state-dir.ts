@@ -2,9 +2,9 @@
  * Eliza state-dir resolution.
  *
  * Canonical precedence (highest first):
- *   1. `ELIZA_STATE_DIR`
- *   2. `$XDG_STATE_HOME/${ELIZA_NAMESPACE ?? "eliza"}`
- *   3. `<homedir>/.local/state/${ELIZA_NAMESPACE ?? "eliza"}`
+ * 1. `ELIZA_STATE_DIR`
+ * 2. `$XDG_STATE_HOME/${ELIZA_NAMESPACE ?? "eliza"}`
+ * 3. `<homedir>/.local/state/${ELIZA_NAMESPACE ?? "eliza"}`
  *
  * Every caller that touches persisted user state (skills, training,
  * optimized prompts, counters, credentials) must go through

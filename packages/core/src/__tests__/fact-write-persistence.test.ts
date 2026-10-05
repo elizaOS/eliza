@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";
 import { ChannelType } from "../types/primitives";
-import { stringToUuid } from "../utils";
+import { stringToUuid } from "../utils/string-to-uuid.js";
 import { createInitializedRuntime } from "./initialized-runtime";
 
 describe("fact persistence", () => {

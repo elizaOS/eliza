@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../character.ts";
 import { registerConnectorSourceMetadata } from "../connectors.ts";
 import type { AgentRuntime } from "../runtime.ts";
-import type { AgentEventPayload } from "../types/agentEvent.ts";
+import type { AgentEventPayload } from "../types/agent-event.ts";
 import type {
 	ActionEventPayload,
 	EvaluatorEventPayload,
@@ -19,6 +19,7 @@ import type {
 import { ChannelType } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { ServiceType } from "../types/service.ts";
+import { AgentEventService } from "./agent-event.ts";
 import {
 	bridgeActionCompletedToStreams,
 	bridgeActionStartedToStreams,
@@ -30,7 +31,6 @@ import {
 	bridgeRunStartedToStreams,
 	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
 } from "./agent-event-bridge.ts";
-import { AgentEventService } from "./agentEvent.ts";
 import { NotificationService } from "./notification.ts";
 
 const RUN_ID = "11111111-1111-1111-1111-111111111111";

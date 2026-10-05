@@ -12,6 +12,7 @@ import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth";
 import {
   type AgentRuntime,
   normalizeCharacterLanguage,
+  resolveUserPath,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -19,12 +20,9 @@ import {
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/host/protocol";
-
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import { resolveUserPath } from "../config/paths.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import { removeResetCredentialsFromVault } from "../runtime/operations/vault-bridge.ts";
-import type { AutonomousConfigLike } from "../types/config-like.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
 import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
@@ -39,7 +37,7 @@ type AgentStateStatus =
   | "restarting"
   | "error";
 
-function resolveDefaultAgentName(config: AutonomousConfigLike): string {
+function resolveDefaultAgentName(config: Record<string, unknown>): string {
   const ui = config.ui as
     | { assistant?: { name?: string }; language?: string }
     | undefined;
@@ -57,7 +55,7 @@ function resolveDefaultAgentName(config: AutonomousConfigLike): string {
 
 export interface AgentAdminRouteState {
   runtime: AgentRuntime | null;
-  config: AutonomousConfigLike;
+  config: Record<string, unknown>;
   agentState: AgentStateStatus;
   agentName: string;
   model: string | undefined;

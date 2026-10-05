@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { acquireDeviceLease } from "../../../../packages/app/scripts/lib/device-lease.ts";
 import { runIsolatedAndroidTest } from "../../../../packages/app/scripts/lib/isolated-android-test.mjs";
 import { testOutputPath } from "../../../../packages/scripts/lib/test-output.ts";
+import { removeFixtureUser, waitForUserUnlocked } from "./fixture-user.mjs";
 
 const options = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
@@ -143,13 +144,10 @@ try {
       receipt.ownedSecondaryUser = user;
       run("shell", "am", "start-user", "-w", String(user));
       run("shell", "am", "switch-user", String(user));
-      while (
-        run("shell", "am", "get-started-user-state", String(user)) !==
-        "RUNNING_UNLOCKED"
-      ) {
-        hostCancellation.signal.throwIfAborted();
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
+      await waitForUserUnlocked(run, user, {
+        timeoutMs: 60_000,
+        signal: hostCancellation.signal,
+      });
       const controller = new AbortController();
       const execute = () =>
         runIsolatedAndroidTest({
@@ -229,8 +227,9 @@ try {
           "Owned user retained: process termination needs fixture recovery";
       if (user && !deferred)
         try {
-          receipt.userRemoval = run("shell", "pm", "remove-user", String(user));
-          assert.match(receipt.userRemoval, /Success/);
+          receipt.userRemoval = await removeFixtureUser(run, user, {
+            timeoutMs: commandTimeoutMs,
+          });
         } catch (error) {
           cleanupErrors.push(error);
         }

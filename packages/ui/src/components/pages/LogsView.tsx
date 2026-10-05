@@ -21,7 +21,7 @@ import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
-import { ContentLayout } from "../../layouts/content-layout/content-layout";
+import { ContentLayout } from "../../layouts/content-layout";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatTime } from "../../utils/format";

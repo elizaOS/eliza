@@ -174,6 +174,44 @@ describe("relationships KnowledgeGraph backing — real PGLite", () => {
     expect(edges[0]?.evidence).toEqual(["first chat", "second chat"]);
   });
 
+  it("concurrent assertions and observations of one edge keep one edge with every evidence", async () => {
+    const relationships = service?.getRelationshipStore();
+    if (!relationships) throw new Error("RelationshipStore unavailable");
+    const edge = {
+      fromEntityId: `ent_${stringToUuid("relationships-concurrent-from")}`,
+      toEntityId: `ent_${stringToUuid("relationships-concurrent-to")}`,
+      type: "knows",
+    };
+    const evidence = ["a", "b", "c", "d", "e"].map((tag) => `chat ${tag}`);
+
+    await Promise.all(
+      evidence.map((item) =>
+        relationships.assertEdge({
+          ...edge,
+          evidence: [item],
+          confidence: 0.5,
+          source: "user_chat",
+        }),
+      ),
+    );
+    await Promise.all(
+      ["f", "g", "h"].map((tag) =>
+        relationships.observe({
+          ...edge,
+          evidence: [`chat ${tag}`],
+          confidence: 0.5,
+        }),
+      ),
+    );
+
+    const edges = await relationships.list(edge);
+    expect(edges).toHaveLength(1);
+    expect([...(edges[0]?.evidence ?? [])].sort()).toEqual(
+      [...evidence, "chat f", "chat g", "chat h"].sort(),
+    );
+    expect(edges[0]?.state.interactionCount).toBe(3);
+  });
+
   it("entity upsert → get / list / resolve round-trip against the live DB", async () => {
     const store = service?.getEntityStore();
     if (!store) throw new Error("EntityStore unavailable");

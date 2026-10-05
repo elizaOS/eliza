@@ -176,7 +176,7 @@ async function writeStewardSecret(
   const verified = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
   if (!verified.ok || verified.value.trim() !== trimmed) {
     throw new Error(
-      `secure store could not verify ${field}; plaintext credentials were retained for recovery`,
+      `secure store could not verify ${field}`,
     );
   }
 }

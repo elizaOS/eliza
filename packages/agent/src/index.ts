@@ -43,10 +43,16 @@ export * from "./api/agent-lifecycle-routes.ts";
 export * from "./api/agent-model.ts";
 export * from "./api/agent-transfer-routes.ts";
 export * from "./api/approval-routes.ts";
+export { issueArtifactShareViewerToken } from "./api/artifact-share-role-resolver.ts";
 export * from "./api/auth-routes.ts";
 export * from "./api/backup-v2-stream-response.ts";
+export * from "./api/blocked-object-keys.ts";
 export * from "./api/bug-report-routes.ts";
 export * from "./api/character-routes.ts";
+export {
+  isClientVisibleNoResponse,
+  isNoResponsePlaceholder,
+} from "./api/chat-text-helpers.ts";
 export {
   type CloudConfigLike,
   handleCloudBillingRoute,
@@ -114,14 +120,23 @@ export {
   matchPluginRoutePath,
   tryHandleRuntimePluginRoute,
 } from "./api/runtime-plugin-routes.ts";
-export { startApiServer } from "./api/server.ts";
 export {
-  cloneWithoutBlockedObjectKeys,
+  type ApiHostAdmission,
+  type ApiRequestMiddleware,
+  type ApiServerConfigurator,
+  type RuntimeRestartOptions,
+  startApiServer,
+  type WebSocketAuthorizer,
+} from "./api/server.ts";
+export {
   type DeletedConversationsStateFile,
   decodePathComponent,
+  findOwnPackageRoot,
   getAgentEventSvc,
+  getErrorMessage,
   hasPersistedFirstRunState,
   initializeOGCodeInState,
+  isUuidLike,
   persistConversationRoomTitle,
   persistDeletedConversationIdsToState,
   readDeletedConversationIdsFromState,
@@ -129,7 +144,6 @@ export {
   requireCoreManager,
   requirePluginManager,
 } from "./api/server-helpers.ts";
-
 export {
   ensureApiTokenForBindHost,
   extractAuthToken,
@@ -161,26 +175,21 @@ export {
 export { routeAutonomyTextToUser } from "./api/server-helpers-swarm.ts";
 export { resolveWalletExportRejection } from "./api/server-helpers-wallet.ts";
 export type {
-  AgentAutomationMode,
   ChatAttachmentWithData,
   ConnectorRouteHandler,
-  ConversationAutomationType,
   ConversationMeta,
-  ConversationMetadata,
-  ConversationScope,
   PluginEntry,
-  PluginParamDef,
-  StreamEventType,
-  TradePermissionMode,
+  ServerState,
+  ShareIngestItem,
 } from "./api/server-types.ts";
 export { injectApiBaseIntoHtml } from "./api/static-file-server.ts";
 export * from "./api/subscription-routes.ts";
 export * from "./api/terminal-run-limits.ts";
+export { isWaifuChatAuthorized } from "./api/waifu-chat-role-resolver.ts";
 export * from "./api/wallet.ts";
 export * from "./api/wallet-capability.ts";
 export * from "./api/wallet-evm-balance.ts";
 export * from "./api/wallet-rpc.ts";
-export * from "./api/workbench-helpers.ts";
 export * from "./api/workbench-vfs-routes.ts";
 export * from "./api/zip-utils.ts";
 export { runBenchmark } from "./cli/benchmark.ts";
@@ -199,6 +208,7 @@ export * from "./config/schema.ts";
 export * from "./config/telegram-custom-commands.ts";
 export { type LoadHooksOptions, loadHooks } from "./hooks/loader.ts";
 export { createHookEvent, triggerHook } from "./hooks/registry.ts";
+export { rolesProvider } from "./providers/roles.ts";
 export * from "./providers/workspace.ts";
 export * from "./runtime/advanced-capabilities-config.ts";
 export * from "./runtime/agent-event-service.ts";
@@ -349,8 +359,7 @@ export {
   RETENTION_BOUNDS_REQUIRED_SETTING,
   retentionBoundsRequired,
 } from "./runtime/retention-task.ts";
-export { default as rolesPlugin } from "./runtime/roles/src/index.ts";
-export { rolesProvider } from "./runtime/roles/src/provider.ts";
+export { default as rolesPlugin } from "./runtime/roles.ts";
 export {
   hydrateConfigEnvForBoot,
   isEnvKeyAllowedForForwarding,
@@ -781,8 +790,4 @@ export * from "./triggers/humanize.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";
 export * from "./triggers/types.ts";
-export type {
-  AutonomousConfigLike,
-  CloudProxyConfigLike,
-} from "./types/config-like.ts";
 export * from "./version-resolver.ts";

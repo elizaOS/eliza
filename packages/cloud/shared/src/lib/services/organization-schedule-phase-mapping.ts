@@ -3,6 +3,10 @@ import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import { assertOrganizationScheduleAttachedTermsCurrent } from "./organization-schedule-attached-terms";
 import { organizationScheduleEffectRequestSchema } from "./organization-schedule-effect-contract";
+import {
+  type OrganizationScheduleQuoteTerms,
+  organizationScheduleQuoteTermsSchema,
+} from "./organization-schedule-quote-terms";
 import { settlementDigest } from "./settlement-digest";
 
 const ref = (prefix: string) =>
@@ -133,6 +137,36 @@ export function mapOrganizationDowngradeSchedulePhases(
   },
 ) {
   const { schedule, terms } = assertOrganizationScheduleAttachedTermsCurrent(input);
+  return mapRetainedOrganizationSchedulePhases({
+    schedule,
+    originalTerms: terms,
+    mappingAt: input.observedAt,
+    targetPriceId: input.targetPriceId,
+  });
+}
+/** Deterministic request reconstruction from authenticated original creation and retained
+ * quote terms. This does not observe current provider state or authorize a write. */
+export function mapRetainedOrganizationSchedulePhases(input: {
+  schedule: ReturnType<typeof assertOrganizationScheduleAttachedTermsCurrent>["schedule"];
+  originalTerms: OrganizationScheduleQuoteTerms;
+  mappingAt: Date;
+  targetPriceId: string;
+}) {
+  const { schedule } = input,
+    terms = organizationScheduleQuoteTermsSchema.parse(input.originalTerms);
+  const at = input.mappingAt.getTime(),
+    original = terms.subscription;
+  if (
+    !Number.isFinite(at) ||
+    at < original.current_period_start * 1000 ||
+    at >= original.current_period_end * 1000 ||
+    schedule.subscription !== original.id ||
+    schedule.customer !== original.customer ||
+    schedule.livemode !== original.livemode ||
+    terms.customer.customerId !== original.customer ||
+    terms.customer.livemode !== original.livemode
+  )
+    reject();
   const parsedDefaults = organizationScheduleDefaultsObservationSchema.safeParse(
     schedule.default_settings,
   );
@@ -179,7 +213,7 @@ export function mapOrganizationDowngradeSchedulePhases(
   }
   if (
     p.trial_end !== null &&
-    (p.trial_end !== s.trial_end || p.trial_end > input.observedAt.getTime() / 1000)
+    (p.trial_end !== s.trial_end || p.trial_end > input.mappingAt.getTime() / 1000)
   )
     reject();
   const anchor = p.billing_cycle_anchor ?? d.billing_cycle_anchor;

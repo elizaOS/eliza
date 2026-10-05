@@ -8,7 +8,7 @@
 import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
 import type { FetchLike } from "../media/fetch";
-import type { ConnectorInteractionCapabilityProfile } from "../messaging/interactions/profiles";
+import type { ConnectorInteractionCapabilityProfile } from "../messaging/interaction-profiles";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -225,7 +225,7 @@ export interface ConnectorAccountRef {
 	accountId?: string;
 	purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
 	role?: ConnectorAccountRole;
-	/** Legacy display-name alias kept for connector registrations that have not migrated to label yet. */
+	/** Connector display name when label is absent. */
 	name?: string;
 	label?: string;
 	authMethod?: ConnectorAuthMethod;
@@ -734,18 +734,18 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * object and asks the runtime to materialise it) and for
 	 * user-installed third-party remote plugins shipped as a tarball.
 	 *
-	 * @param plugin   The Plugin object. Must have mode === "remote" and
-	 *                 a valid `remote` config block. Permission requests
-	 *                 in `plugin.remote.permissions` are *ceilings*; the
-	 *                 host narrows them against `runtime.grantedPermissions`
-	 *                 and inline-source defaults at install time.
-	 * @param options  `source` controls where the worker code comes from.
-	 *                 `lifetime` controls cleanup ("session" default for
-	 *                 agent-generated; "persistent" persists across boots).
-	 *                 `attestation` is required for third-party tarballs.
-	 * @returns        A handle to the installation; call `uninstall()` to
-	 *                 tear down (worker stops, plugin unregisters,
-	 *                 store dir cleans up if `lifetime: "session"`).
+	 * @param plugin The Plugin object. Must have mode === "remote" and
+	 * a valid `remote` config block. Permission requests
+	 * in `plugin.remote.permissions` are *ceilings*; the
+	 * host narrows them against `runtime.grantedPermissions`
+	 * and inline-source defaults at install time.
+	 * @param options `source` controls where the worker code comes from.
+	 * `lifetime` controls cleanup ("session" default for
+	 * agent-generated; "persistent" persists across boots).
+	 * `attestation` is required for third-party tarballs.
+	 * @returns A handle to the installation; call `uninstall()` to
+	 * tear down (worker stops, plugin unregisters,
+	 * store dir cleans up if `lifetime: "session"`).
 	 */
 	installRemotePlugin(
 		plugin: Plugin,
@@ -983,7 +983,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * observe `useModel`'s internal resolution (e.g. the messageHandler /
 	 * factsAndRelationships trajectory stage recorders) can record the REAL
 	 * provider that answered instead of fabricating a `"default"` literal
-	 * (#13623). Returns `undefined` — never a fabricated value — when unknown.
+	 *. Returns `undefined` — never a fabricated value — when unknown.
 	 */
 	getLastResolvedModelProvider?(
 		modelType: TextGenerationModelType | string,
@@ -1077,7 +1077,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * `"error"` stream when registered, and records it in the in-memory ring the
 	 * RECENT_ERRORS provider and the owner-escalation threshold read.
 	 *
-	 * This is the diagnostic boundary (#12263): it never throws. Its own
+	 * This is the diagnostic boundary: it never throws. Its own
 	 * failures — and failures inside `ERROR_REPORTED` handlers — are warn-only
 	 * and never re-enter `reportError`.
 	 */
@@ -1302,30 +1302,8 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		fragments: readonly import("../security/fragment-redaction").SecretFragment[],
 	): import("../security/fragment-redaction").SecretFragmentTaintProfile;
 
-	// ========================================================================
-	// Single-item convenience wrappers
-	//
-	// WHY these exist: IAgentRuntime extends IDatabaseAdapter, so it inherits
-	// all batch methods. But most call sites in plugins, event handlers, and
-	// actions naturally deal with one item at a time -- one message to store,
-	// one entity to look up, one task to create. Forcing every caller to
-	// wrap in arrays ([item]) and unwrap ([0]) adds noise without value.
-	//
-	// These wrappers keep the common single-item case clean. They are NOT
-	// deprecated -- they are the preferred API for single-item operations.
-	// Use batch methods (createMemories, getAgentsByIds, etc.) when you
-	// have multiple items or want to minimize round-trips.
-	//
-	// Implementation note: AgentRuntime implements these by delegating to
-	// the corresponding batch adapter method. For example:
-	//   getAgent(id) → (await this.adapter.getAgentsByIds([id]))[0] ?? null
-	//   createMemory(mem, table) → this.adapter.createMemories([{mem, table}])
-	//
-	// The createMemory() wrapper is special: it also performs secret
-	// redaction before delegating to the adapter. This is why runtime.ts
-	// preserves createMemory() calls internally instead of going directly
-	// to the adapter in security-sensitive paths.
-	// ========================================================================
+	// Single-item wrappers delegate to batch adapter methods. createMemory also redacts secrets;
+	// security-sensitive callers must retain that boundary.
 
 	getEntityById(entityId: UUID): Promise<Entity | null>;
 	getEntitiesForRoom(

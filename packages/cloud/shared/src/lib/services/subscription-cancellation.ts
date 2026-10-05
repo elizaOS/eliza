@@ -19,14 +19,18 @@ import {
   rotateCancellationRecovery,
 } from "../../db/repositories/subscription-cancellation";
 import type { BillingSubscriptionCommand } from "../../db/schemas/subscription-billing-operations";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
+import {
+  configuredCancellationRequest,
+  observeConfiguredCancellation,
+} from "./configured-schedule-cancellation";
 import {
   cancellationReobserve,
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
 } from "./stripe-period-end-cancellation";
+import { retrieveSubscriptionLifecycleBinding } from "./subscription-lifecycle-provider-binding";
 
 import {
   previewSubscriptionRenewalTerms,
@@ -82,26 +86,41 @@ async function executeClaim(
     if (renewalReview !== null && claim.canDispatch && revalidateSession === null)
       cancellationReobserve("reviewed_undo_requires_fresh_interactive_dispatch");
     const stripe = requireStripe();
+    const { environment, providerAccountId } = await retrieveSubscriptionLifecycleBinding(
+      claim.source,
+      stripe,
+    );
     async function verifyCustomer() {
       const raw = await stripe.customers.retrieve(claim.source.stripe_customer_id);
       validateCancellationCustomer({
         raw,
         source: claim.source,
         organizationCustomerId: claim.organizationCustomerId,
-        environment: getCloudAwareEnv(),
+        environment,
       });
     }
     await verifyCustomer();
     let raw = await stripe.subscriptions.retrieve(claim.source.stripe_subscription_id);
-    const initial = validatePeriodEndCancellationObservation({
-      source: claim.source,
-      organizationCustomerId: claim.organizationCustomerId,
-      environment: getCloudAwareEnv(),
-      raw,
-      observedAt: new Date(),
-      requireScheduled: false,
-      allowRetainedCanceledAt: claim.source.canceled_at,
-    });
+    let rawSchedule = claim.configuredCancellation
+      ? await stripe.subscriptionSchedules.retrieve(claim.configuredCancellation.scheduleId)
+      : undefined;
+    const initial = claim.configuredCancellation
+      ? observeConfiguredCancellation({
+          authority: claim.configuredCancellation,
+          source: claim.source,
+          rawSubscription: raw,
+          rawSchedule,
+          observedAt: new Date(),
+        })
+      : validatePeriodEndCancellationObservation({
+          source: claim.source,
+          organizationCustomerId: claim.organizationCustomerId,
+          environment,
+          raw,
+          observedAt: new Date(),
+          requireScheduled: false,
+          allowRetainedCanceledAt: claim.source.canceled_at,
+        });
     if (
       renewalReview !== null &&
       claim.canDispatch &&
@@ -109,6 +128,17 @@ async function executeClaim(
     )
       cancellationReobserve("reviewed_undo_requires_fresh_interactive_dispatch");
     if (initial.scheduled !== targetScheduled && claim.canDispatch && revalidateSession !== null) {
+      if (
+        claim.configuredCancellation &&
+        "mode" in initial &&
+        initial.mode !==
+          (claim.configuredCancellation.originalPending
+            ? "pending"
+            : claim.source.cancel_at_period_end
+              ? "cancelled"
+              : "resumed")
+      )
+        cancellationReobserve("configured_schedule_preflight_mismatch");
       if (
         initial.scheduled !== claim.source.cancel_at_period_end ||
         initial.canceledAt?.getTime() !== claim.source.canceled_at?.getTime()
@@ -129,11 +159,22 @@ async function executeClaim(
       await assertCancellationClaimCurrent(input, claim, true);
       // Stripe has no local lifecycle-revision CAS. A concurrent remote period/plan change
       // is detected by the final retrieval and prevents local publication, even after an accepted mutation.
-      await stripe.subscriptions.update(
-        claim.source.stripe_subscription_id,
-        { cancel_at_period_end: targetScheduled },
-        { idempotencyKey: claim.command.provider_idempotency_key },
-      );
+      // Durable command recovery owns uncertainty; the SDK must not retry a write behind its lease.
+      if (claim.configuredCancellation) {
+        await stripe.subscriptionSchedules.update(
+          claim.configuredCancellation.scheduleId,
+          configuredCancellationRequest(claim.configuredCancellation, targetScheduled),
+          { idempotencyKey: claim.command.provider_idempotency_key, maxNetworkRetries: 0 },
+        );
+        rawSchedule = await stripe.subscriptionSchedules.retrieve(
+          claim.configuredCancellation.scheduleId,
+        );
+      } else
+        await stripe.subscriptions.update(
+          claim.source.stripe_subscription_id,
+          { cancel_at_period_end: targetScheduled },
+          { idempotencyKey: claim.command.provider_idempotency_key, maxNetworkRetries: 0 },
+        );
       raw = await stripe.subscriptions.retrieve(claim.source.stripe_subscription_id);
     } else if (initial.scheduled !== targetScheduled) {
       await releaseCancellation(input, claim);
@@ -141,7 +182,7 @@ async function executeClaim(
     }
     await verifyCustomer();
     await verifySession();
-    return toDto(await finalizeCancellation(input, claim, raw));
+    return toDto(await finalizeCancellation(input, claim, raw, providerAccountId, rawSchedule));
   } catch (error) {
     // Only a still-ready lease can prove no provider dispatch began. Started attempts retain uncertainty.
     if (renewalReview !== null && (await failReviewedCancellationBeforeDispatch(input, claim))) {
@@ -196,7 +237,13 @@ export async function recoverOrganizationSubscriptionCancellations(limit: number
         command.kind === "resume" ? "resume" : "cancel",
       );
       if (!claim) {
-        result.pending++;
+        // A stale PREPARED command is superseded instead of claimed.
+        const current = await readCancellation(
+          { ...identity, commandId: command.id },
+          command.kind === "resume" ? "resume" : "cancel",
+        );
+        if (current.status === "SUPERSEDED") result.failed++;
+        else result.pending++;
         continue;
       }
       const dto = await executeClaim(identity, claim, null);

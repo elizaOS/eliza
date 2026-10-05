@@ -6,6 +6,10 @@
 import { ElizaError } from "@elizaos/core";
 import { and, asc, desc, eq, gt, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
+import {
+  bindRenewalInvoiceAuthority,
+  type RenewalInvoiceAuthority,
+} from "../../lib/services/renewal-invoice-authority";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
 import { logger } from "../../lib/utils/logger";
 import type { DbTransaction } from "../client";
@@ -218,12 +222,21 @@ export class SubscriptionAllowanceRepository {
       source: BillingSubscription;
       invoiceId: string;
       requestDigest: string;
+      invoiceAuthority?: RenewalInvoiceAuthority;
       databaseNow: Date;
     },
   ) {
     const { source } = input;
     assertOrganizationSubscription(source);
     requireDigest(input.requestDigest);
+    const invoiceAuthority = input.invoiceAuthority
+      ? bindRenewalInvoiceAuthority(
+          input.invoiceAuthority,
+          source,
+          input.invoiceId,
+          input.requestDigest,
+        )
+      : undefined;
     if (!source.current_period_start || !source.current_period_end)
       conflict("Renewal period is missing", { subscriptionId: source.id });
     const amount = resolveSubscriptionPlanDefinition(source.plan_key, source.catalog_version)
@@ -301,6 +314,19 @@ export class SubscriptionAllowanceRepository {
         conflict("Renewal grant replay differs from immutable invoice authority", {
           subscriptionId: source.id,
         });
+      // Preserve the first evidence; never backfill a historical grant from today's provider state.
+      if (invoiceAuthority && grant.metadata.renewalInvoiceAuthority !== undefined) {
+        const retained = bindRenewalInvoiceAuthority(
+          grant.metadata.renewalInvoiceAuthority as RenewalInvoiceAuthority,
+          source,
+          input.invoiceId,
+          input.requestDigest,
+        );
+        if (retained.digest !== invoiceAuthority.digest)
+          conflict("Renewal invoice evidence differs from original grant", {
+            subscriptionId: source.id,
+          });
+      }
       return { period: existing, replayed: true };
     }
     // The funding selector is organization-scoped: another source's future bucket must not overlap either.
@@ -388,9 +414,20 @@ export class SubscriptionAllowanceRepository {
       clawed_back_before: "0.000000",
       clawed_back_after: "0.000000",
       request_digest: input.requestDigest,
+      metadata: invoiceAuthority ? { renewalInvoiceAuthority: invoiceAuthority } : {},
       idempotency_key: `renewal:${source.provider_environment}:${input.invoiceId}`,
       occurred_at: input.databaseNow,
     });
+    // Historical invoice settlement must record funding without briefly publishing
+    // an open balance. Use the existing expiry journal in this same transaction.
+    if (period.expires_at <= (await readPostLockDatabaseNow(tx))) {
+      const retired = await this.retirePeriodInTransaction(tx, {
+        organizationId: source.organization_id,
+        periodId: period.id,
+        reason: "period_ended",
+      });
+      return { period: retired.period, replayed: false };
+    }
     return { period, replayed: false };
   }
 

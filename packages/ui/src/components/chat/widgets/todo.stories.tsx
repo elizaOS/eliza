@@ -2,12 +2,11 @@
  * Storybook states for the Todo chat widget across populated, empty, and
  * interaction-focused render states.
  */
+
+import type { WorkbenchTodo } from "@elizaos/contracts";
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { client } from "../../../api/client";
-import type {
-  WorkbenchOverview,
-  WorkbenchTodo,
-} from "../../../api/client-types-config";
+import type { WorkbenchOverview } from "../../../api/client-types-config";
 import { mockApp } from "../../../storybook/mock-providers.helpers";
 import { TODO_PLUGIN_WIDGETS } from "./todo";
 

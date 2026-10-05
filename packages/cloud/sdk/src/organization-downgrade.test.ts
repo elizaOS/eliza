@@ -67,3 +67,72 @@ test("downgrade review sends the authenticated catalog intent and preserves conf
     await server.stop(true);
   }
 });
+
+test("confirmation and status retain the original command over authenticated HTTP", async () => {
+  const seen: {
+    path: string;
+    method: string;
+    body: unknown;
+    auth: string | null;
+  }[] = [];
+  let denied = false;
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      seen.push({
+        path: new URL(request.url).pathname,
+        method: request.method,
+        body: request.method === "POST" ? await request.json() : null,
+        auth: request.headers.get("authorization"),
+      });
+      return denied
+        ? Response.json(
+            { code: "access_denied", error: "Current manager required" },
+            { status: 403 },
+          )
+        : Response.json({
+            success: true,
+            data: { commandId: "original", status: "OUTCOME_UNKNOWN" },
+          });
+    },
+  });
+  try {
+    const client = new ElizaCloudClient({
+      baseUrl: `http://127.0.0.1:${server.port}`,
+      bearerToken: "synthetic-session",
+    });
+    const input = {
+      quoteId: "original-quote",
+      idempotencyKey: "original-intent",
+    };
+    expect(
+      (await client.confirmOrganizationSubscriptionDowngrade(input)).data
+        .status,
+    ).toBe("OUTCOME_UNKNOWN");
+    expect(
+      (await client.readOrganizationSubscriptionDowngrade("original/id")).data
+        .commandId,
+    ).toBe("original");
+    expect(seen).toEqual([
+      {
+        path: "/api/v1/subscriptions/downgrade/confirm",
+        method: "POST",
+        body: input,
+        auth: "Bearer synthetic-session",
+      },
+      {
+        path: "/api/v1/subscriptions/downgrade/original%2Fid",
+        method: "GET",
+        body: null,
+        auth: "Bearer synthetic-session",
+      },
+    ]);
+    denied = true;
+    await expect(
+      client.readOrganizationSubscriptionDowngrade("original"),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  } finally {
+    await server.stop(true);
+  }
+});

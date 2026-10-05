@@ -5,30 +5,30 @@
  * action can run on a small or local model while planning uses a larger model.
  *
  * Design constraints (AGENTS.md):
- *   - No runtime type-branching mess: each `ActionModelClass` is a strategy
- *     entry in {@link ACTION_MODEL_STRATEGIES}. New classes are additions to
- *     that table, not new `if/else` branches.
- *   - Strong typing: no `any`, no unsafe casts at the call sites.
- *   - When `action.modelClass` is absent, the resolver
- *     returns `null` and the runtime falls through to its existing behavior.
+ * - No runtime type-branching mess: each `ActionModelClass` is a strategy
+ * entry in {@link ACTION_MODEL_STRATEGIES}. New classes are additions to
+ * that table, not new `if/else` branches.
+ * - Strong typing: no `any`, no unsafe casts at the call sites.
+ * - When `action.modelClass` is absent, the resolver
+ * returns `null` and the runtime falls through to its existing behavior.
  *
  * Fallback chain (ascending cost / capability):
- *   `LOCAL → TEXT_SMALL → TEXT_LARGE`
+ * `LOCAL → TEXT_SMALL → TEXT_LARGE`
  *
  * Failure semantics:
- *   - If the preferred model handler has a retryable provider failure, escalate
- *     and retry. The last step in the chain is terminal — its error is
- *     re-raised.
- *   - If the call returns a `confidence` field below the strategy's threshold,
- *     escalate one step up and retry. This is opt-in: returns without a
- *     `confidence` field are never re-evaluated.
+ * - If the preferred model handler has a retryable provider failure, escalate
+ * and retry. The last step in the chain is terminal — its error is
+ * re-raised.
+ * - If the call returns a `confidence` field below the strategy's threshold,
+ * escalate one step up and retry. This is opt-in: returns without a
+ * `confidence` field are never re-evaluated.
  */
 
-import { LOCAL_MODEL_PROVIDERS } from "../constants/secrets";
 import { isModelProviderFallbackError } from "../security/model-failure.ts";
 import type { ActionModelClass } from "../types/components";
 import type { ModelHandler, ModelRegistrationMetadata } from "../types/model";
 import { ModelType } from "../types/model";
+import { LOCAL_MODEL_PROVIDERS } from "../validation/secret-catalog";
 
 /**
  * Minimal capability view of a model registration, used by routing predicates.
@@ -85,23 +85,7 @@ export interface ActionModelRoutingStrategy {
 	readonly confidenceThreshold?: number;
 }
 
-/**
- * Name-only heuristic: does this provider *name* look like a local-inference
- * provider?
- *
- * @deprecated for classification decisions. Prefer {@link isLocalHandler},
- * which consumes the provider-declared `metadata.local` capability and only
- * falls back to this name heuristic for registrations that have not adopted the
- * flag yet. This function is retained as that explicitly-tested fallback (and
- * for the runtime streaming gate, which keys off the name for the
- * `eliza-router` special case). It is intentionally narrow.
- *
- * Sourced from {@link LOCAL_MODEL_PROVIDERS} (the single source of truth for
- * the canonical local providers list, also used by the secrets and pricing
- * layers) plus a substring pass for common local-OpenAI-compatible servers
- * (LM Studio, MLX, llama.cpp) so plugins registered under names like
- * `"lm-studio"` or `"mlx-lm"` still resolve when they omit the capability flag.
- */
+/** Name-based local-provider fallback for registrations without declared locality metadata. Prefer isLocalHandler for capability decisions. */
 export function isLocalProvider(provider: string): boolean {
 	const normalized = provider.toLowerCase();
 	if ((LOCAL_MODEL_PROVIDERS as readonly string[]).includes(normalized)) {
@@ -129,10 +113,10 @@ export function isLocalProvider(provider: string): boolean {
  * Predicate: is this registration a local-inference target?
  *
  * Capability-first classification. Precedence:
- *   1. If the provider declared `metadata.local` explicitly (`true`/`false`),
- *      that verdict wins — the owner metadata is authoritative.
- *   2. Otherwise fall back to the {@link isLocalProvider} name heuristic for
- *      providers that have not adopted the capability flag yet.
+ * 1. If the provider declared `metadata.local` explicitly (`true`/`false`),
+ * that verdict wins — the owner metadata is authoritative.
+ * 2. Otherwise fall back to the {@link isLocalProvider} name heuristic for
+ * providers that have not adopted the capability flag yet.
  *
  * This is the predicate the `LOCAL` routing strategy uses so a `LOCAL` request
  * never silently resolves to a cloud provider, and so providers can opt out of
@@ -151,7 +135,7 @@ export function isLocalHandler(candidate: ModelCapabilityView): boolean {
  * The strategy registry. Keyed by {@link ActionModelClass}.
  *
  * To add a new class, add it to the {@link ActionModelClass} union in
- * `types/components.ts` and add its entry here. Do not add `if (modelClass === ...)`
+ * `types/components.ts` and add its entry here. Do not add `if (modelClass ===...)`
  * branches at call sites — extend this table instead.
  */
 export const ACTION_MODEL_STRATEGIES: Readonly<
@@ -194,17 +178,7 @@ export const ROUTABLE_TEXT_MODEL_TYPES: ReadonlySet<string> = new Set([
 	ModelType.TEXT_COMPLETION,
 ]);
 
-/**
- * Look up the routing strategy for an action's `modelClass`.
- *
- * Returns `undefined` when:
- *   - `modelClass` is undefined (back-compat path).
- *   - `modelClass` is a string that is not a registered key (forward-compat —
- *     the runtime treats unknown classes as "no preference" rather than
- *     throwing, so a plugin with a newer `MEDIUM` action descriptor running
- *     against an older runtime degrades to default behavior instead of
- *     crashing).
- */
+/** Returns the registered model-routing strategy, or undefined when no class is declared or recognized. */
 export function getActionModelStrategy(
 	modelClass: ActionModelClass | undefined,
 ): ActionModelRoutingStrategy | undefined {
@@ -217,8 +191,8 @@ export function getActionModelStrategy(
 /**
  * Should the runtime re-route this `useModel` call based on the action's
  * `modelClass`? Reroute only when:
- *   - The action has a `modelClass`.
- *   - The requested model type is in {@link ROUTABLE_TEXT_MODEL_TYPES}.
+ * - The action has a `modelClass`.
+ * - The requested model type is in {@link ROUTABLE_TEXT_MODEL_TYPES}.
  *
  * Returns the strategy if rerouting applies; otherwise `undefined`.
  */

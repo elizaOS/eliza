@@ -206,9 +206,12 @@ export async function readGuardedFailedDeleteJobFacts(
     }
     if (isAgentDeleteJobData(job.data)) {
       facts.validDeleteJobDataCount++;
+      // The provisioning worker binds a delete job to its agent, organization
+      // and user; a payload naming another user is not this row's tenant.
       if (
         job.data.agentId === job.agent_id &&
-        job.data.organizationId === job.organization_id
+        job.data.organizationId === job.organization_id &&
+        job.data.userId === job.user_id
       ) {
         facts.tenantMetadataMatchCount++;
         // The canonical validator already checks complete actor/time provenance.

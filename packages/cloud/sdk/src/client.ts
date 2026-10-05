@@ -135,6 +135,8 @@ import {
   type OpenApiSpec,
   type OrganizationSubscriptionCancellationRequest,
   type OrganizationSubscriptionCancellationResponse,
+  type OrganizationSubscriptionDowngradeCommandResponse,
+  type OrganizationSubscriptionDowngradeConfirmRequest,
   type OrganizationSubscriptionDowngradeQuoteRequest,
   type OrganizationSubscriptionDowngradeQuoteResponse,
   type OrganizationSubscriptionRenewalReviewResponse,
@@ -145,6 +147,7 @@ import {
   type OrganizationSubscriptionUpgradeQuoteRequest,
   type OrganizationSubscriptionUpgradeQuoteResponse,
   type PairingTokenResponse,
+  type PendingOrganizationPlanChangeCommandsResponse,
   type PendingSubscriptionCommandsResponse,
   type PollGatewayRelayResponse,
   type RedemptionBalanceResponse,
@@ -617,6 +620,25 @@ export class ElizaCloudClient {
     });
   }
 
+  /** Confirms the original lower-plan quote; retries retain its original durable command. */
+  confirmOrganizationSubscriptionDowngrade(
+    input: OrganizationSubscriptionDowngradeConfirmRequest,
+  ): Promise<OrganizationSubscriptionDowngradeCommandResponse> {
+    return this.v1.requestData("POST", "/subscriptions/downgrade/confirm", {
+      json: input,
+    });
+  }
+
+  /** Reads configuration status only; APPLIED is pending-plan state, not payment. */
+  readOrganizationSubscriptionDowngrade(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionDowngradeCommandResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/downgrade/${encodeURIComponent(commandId)}`,
+    );
+  }
+
   /** Confirms the original reviewed quote; retries retain its original durable command. */
   confirmOrganizationSubscriptionUpgrade(
     input: OrganizationSubscriptionUpgradeConfirmRequest,
@@ -689,6 +711,19 @@ export class ElizaCloudClient {
     const query = new URLSearchParams({ limit: String(input.limit) });
     if (input.cursor !== undefined) query.set("cursor", input.cursor);
     return this.v1.requestData("GET", `/subscriptions/commands?${query}`);
+  }
+
+  /** Rediscovers this manager's original pending plan changes without submitting or recovering them. */
+  listPendingOrganizationPlanChangeCommands(input: {
+    limit: number;
+    cursor?: string;
+  }): Promise<PendingOrganizationPlanChangeCommandsResponse> {
+    const query = new URLSearchParams({ limit: String(input.limit) });
+    if (input.cursor !== undefined) query.set("cursor", input.cursor);
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/plan-change/commands?${query}`,
+    );
   }
 
   getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {

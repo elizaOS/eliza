@@ -45,7 +45,6 @@ import {
   useChatComposer,
   useRegisterViewChatBinding,
   useTranslation,
-  ViewHeader,
 } from "@elizaos/ui";
 
 import {
@@ -357,9 +356,6 @@ const KnowledgeListItem = memo(function KnowledgeListItem({
 interface KnowledgeDocumentsViewProps {
   fileInputId?: string;
   inModal?: boolean;
-  /** Own the top-level "Knowledge" header in list state (the canonical
-   *  `/character/documents` route). Off when embedded under other chrome. */
-  standalone?: boolean;
   onDocumentsChange?: (documents: DocumentRecord[]) => void;
   onSelectedDocumentIdChange?: (documentId: string | null) => void;
   selectedDocumentId?: string | null;
@@ -381,7 +377,6 @@ export function KnowledgeDocumentsView(
 function KnowledgeDocumentsViewForAuthority({
   fileInputId,
   inModal,
-  standalone = false,
   onDocumentsChange,
   onSelectedDocumentIdChange,
   selectedDocumentId,
@@ -1359,14 +1354,6 @@ function KnowledgeDocumentsViewForAuthority({
         className={`flex min-h-0 flex-1 flex-col ${inModal ? "min-h-0" : ""}`}
         data-testid="documents-view"
       >
-        <ViewHeader
-          title={t("knowledgehub.readerTitle", { defaultValue: "Knowledge" })}
-          onBack={() => setSelectedDocId(null)}
-          backLabel={t("knowledgehub.backToList", {
-            defaultValue: "Back to Knowledge",
-          })}
-          className="px-0"
-        />
         <div className="flex min-h-0 flex-1 flex-col">
           <DocumentViewer
             documentId={selectedDocId}
@@ -1404,12 +1391,6 @@ function KnowledgeDocumentsViewForAuthority({
       onDragOver={handleRootDragOver}
       onDrop={handleRootDrop}
     >
-      {standalone ? (
-        <ViewHeader
-          title={t("knowledgehub.title", { defaultValue: "Knowledge" })}
-          className="px-0"
-        />
-      ) : null}
       {hiddenFileInput}
       <div className="custom-scrollbar eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4 pt-4">
         <SettingsGroup

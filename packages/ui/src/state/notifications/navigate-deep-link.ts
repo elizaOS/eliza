@@ -89,8 +89,9 @@ export function navigateDeepLink(
     // This is how a notification "opens into the chat" with a ready action,
     // e.g. the onboarding calendar row prefilling a connect-my-calendar ask.
     if (viewId === "chat") {
-      const query = deepLink.includes("?")
-        ? deepLink.slice(deepLink.indexOf("?") + 1)
+      const withoutFragment = deepLink.split("#")[0] ?? deepLink;
+      const query = withoutFragment.includes("?")
+        ? withoutFragment.slice(withoutFragment.indexOf("?") + 1)
         : "";
       const prefill = new URLSearchParams(query).get("prefill")?.trim();
       const target = readNotificationChatTarget(data);

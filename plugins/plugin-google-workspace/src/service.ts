@@ -207,6 +207,7 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
       selfEmail?: string | null;
       maxResults?: number;
       includeSpamTrash?: boolean;
+      labelIds?: string[];
     }
   ): Promise<GoogleGmailMessageSummary[]> {
     return this.gmailClient.searchGmailMessages(params);

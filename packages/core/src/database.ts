@@ -138,12 +138,12 @@ export function compareTasksForQuery(left: Task, right: Task): number {
  *
  * WHY this exists as an abstract class (not just the IDatabaseAdapter interface):
  * - Provides a single place for JSDoc on every abstract method, so adapter
- *   authors get documentation in their IDE without reading the interface.
+ * authors get documentation in their IDE without reading the interface.
  * - Serves as the compile-time contract: if you extend this class and miss
- *   a method, TypeScript tells you immediately.
+ * a method, TypeScript tells you immediately.
  * - Contains no persistence logic. Concrete adapters (plugin-sql's Drizzle
- *   adapters, SQLiteDatabaseAdapter, etc.) own storage behavior; unsupported
- *   optional domains throw a clear adapter-level error.
+ * adapters, SQLiteDatabaseAdapter, etc.) own storage behavior; unsupported
+ * optional domains throw a clear adapter-level error.
  *
  * All CRUD methods are batch-first (arrays in, arrays out). See
  * IDatabaseAdapter in types/database.ts for the full design rationale.
@@ -422,7 +422,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
 	/**
 	 * Corpus-wide full-text + trigram message search across a set of rooms,
-	 * ranked in the store rather than after a recency-truncated window (#13534).
+	 * ranked in the store rather than after a recency-truncated window.
 	 */
 	abstract searchMessages(params: {
 		roomIds: UUID[];

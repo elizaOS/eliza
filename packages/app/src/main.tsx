@@ -810,6 +810,8 @@ function buildAppBootConfig(): AppBootConfig {
 // first visible shell (#9565). Deferred onto the idle path like
 // SIDE_EFFECT_APP_MODULE_LOADERS; on-demand render still triggers the cached
 // import if idle work has not run yet, so no surface can be missed.
+// The scheduler owns caching. These must be raw imports: a cached loader with
+// the same key would return its own pending promise and reject with a cycle.
 const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
   [
     {

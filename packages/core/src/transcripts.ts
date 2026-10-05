@@ -72,11 +72,7 @@ const TRANSCRIPT_SCOPES: ReadonlySet<string> = new Set<TranscriptScope>([
 	"agent-private",
 ]);
 
-/**
- * Normalize a scope value read from an untyped row/JSON boundary. Unknown,
- * missing, or corrupt values fail CLOSED to `"owner-private"` — a legacy row
- * that predates scope stamping must never widen visibility.
- */
+/** Normalizes disclosure scope. Missing or invalid scope defaults to owner-private. */
 export function normalizeTranscriptScope(scope: unknown): TranscriptScope {
 	return typeof scope === "string" && TRANSCRIPT_SCOPES.has(scope)
 		? (scope as TranscriptScope)
@@ -110,7 +106,7 @@ export interface Transcript {
 	metadata?: Record<string, unknown>;
 	/**
 	 * Present (true) only on a served DTO whose content is the PII-scrubbed
-	 * variant of the artifact, selected for a redacted-grant viewer (#14781).
+	 * variant of the artifact, selected for a redacted-grant viewer.
 	 * A redacted serve may include only the verified redacted variant's
 	 * `audioUrl`; it never inherits the original capability URL. Never stored —
 	 * stored records link variants via
@@ -233,7 +229,7 @@ export interface TranscriptSummary {
 	hasAudio: boolean;
 	/** Server-computed meeting fields; present only for `source: "meeting"`. */
 	meeting?: TranscriptSummaryMeetingMeta;
-	/** Present (true) when this row's preview is served from the redacted variant (#14781). */
+	/** Present (true) when this row's preview is served from the redacted variant. */
 	redacted?: true;
 }
 
@@ -635,11 +631,11 @@ export interface WordTimingValidation {
  * on — and that the fused ASR v12 (`eliza_inference_asr_transcribe_timed`) MUST
  * satisfy for its output to be playable:
  *
- *   - every word has non-empty text and finite `0 <= startMs <= endMs`,
- *   - spans are ordered and non-overlapping (each word starts no earlier than
- *     the previous word ends, within `toleranceMs`),
- *   - every span lies within `[0, audioDurationMs]` (the exact decoded audio
- *     length, `1000 * n_samples / sample_rate`).
+ * - every word has non-empty text and finite `0 <= startMs <= endMs`,
+ * - spans are ordered and non-overlapping (each word starts no earlier than
+ * the previous word ends, within `toleranceMs`),
+ * - every span lies within `[0, audioDurationMs]` (the exact decoded audio
+ * length, `1000 * n_samples / sample_rate`).
  *
  * Pass `audioDurationMs = 0` to skip the upper-bound check. `toleranceMs`
  * absorbs the integer rounding the native char-proportional timing applies at

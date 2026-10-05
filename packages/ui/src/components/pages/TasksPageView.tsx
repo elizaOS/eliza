@@ -26,7 +26,7 @@ import {
   FramedPageBody,
   FramedPageHeader,
   FramedPageNavigation,
-} from "../../layouts/framed-page/framed-page";
+} from "../../layouts/framed-page";
 import { getWindowNavigationPath } from "../../navigation";
 import { CodingAgentTasksPanel } from "../../slots/task-coordinator-slots.js";
 import { useAppSelector } from "../../state/app-store";
@@ -174,7 +174,7 @@ export function TasksPageView() {
   return (
     <ShellViewAgentSurface viewId="tasks">
       <FramedPage gutterOwner="framed-page" data-testid="tasks-view">
-        <FramedPageHeader title="Projects" />
+        <FramedPageHeader />
         <FramedPageNavigation className="flex items-center justify-between gap-2 pt-4 pb-2">
           {segmentControl}
           {segment === "apps" ? (

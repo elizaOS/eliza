@@ -82,4 +82,22 @@ describe("relationships merge route statuses", () => {
     );
     expect(service.proposeMerge).not.toHaveBeenCalled();
   });
+
+  it("rejects a case-variant self-link with a 400 before proposing a merge", async () => {
+    const upper = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA";
+    const { ctx, service } = routeCtx(
+      "POST",
+      `/api/relationships/people/${upper}/link`,
+      { targetEntityId: upper.toLowerCase() },
+    );
+
+    await expect(handleRelationshipsRoutes(ctx)).resolves.toBe(true);
+
+    expect(ctx.error).toHaveBeenCalledWith(
+      ctx.res,
+      "A person cannot be linked to themselves.",
+      400,
+    );
+    expect(service.proposeMerge).not.toHaveBeenCalled();
+  });
 });

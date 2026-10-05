@@ -5,11 +5,11 @@
  * with a runtime handle — an action, a scheduled-task dispatcher, a workflow
  * completion hook, an orchestrator event — calls `notify(...)`. The service:
  *
- *   1. stamps a canonical `AgentNotification`,
- *   2. persists it to a durable inbox (DB-backed runtime cache; survives
- *      restart), collapsing by `groupKey`,
- *   3. fans it out live on the agent event bus as `stream: "notification"`,
- *      which the server already forwards over WebSocket to every client.
+ * 1. stamps a canonical `AgentNotification`,
+ * 2. persists it to a durable inbox (DB-backed runtime cache; survives
+ * restart), collapsing by `groupKey`,
+ * 3. fans it out live on the agent event bus as `stream: "notification"`,
+ * which the server already forwards over WebSocket to every client.
  *
  * Clients (in-app center, toast, desktop OS, mobile native) render FROM the
  * one shape. The inbox is the source of truth for history + unread state; live

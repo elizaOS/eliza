@@ -301,3 +301,5 @@ export * from "./settings-debug.js";
 export * from "./utils/eliza-globals.js";
 export * from "./utils/env.js";
 export * from "./voice.js";
+
+export * from "./workbench.js";

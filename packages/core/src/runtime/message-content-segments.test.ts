@@ -223,7 +223,7 @@ describe("message content segments", () => {
 		expect(first.segments.map(({ id }) => id)).toEqual(
 			second.segments.map(({ id }) => id),
 		);
-		// Fixed pre-migration v5 identity: stored segment references must remain valid.
+		// Fixed persisted UUID identity; stored segment references must remain valid.
 		expect(first.segments[0]?.id).toBe("9c61621b-1b0c-5b0f-a5f1-257e6b0686b0");
 		expect(first.segments.length).toBeGreaterThan(1);
 		for (const segment of first.segments) {

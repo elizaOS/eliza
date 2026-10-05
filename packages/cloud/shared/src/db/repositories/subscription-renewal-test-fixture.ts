@@ -53,6 +53,7 @@ export function renewalPaidObjects(
     current_period_start: start,
     current_period_end: end,
     latest_invoice: invoiceId,
+    collection_method: "charge_automatically",
   };
   const price = { ...subscription.items.data[0]!.price, active: false, object: "price" };
   const customer = { id: source.stripe_customer_id, object: "customer", livemode: false };

@@ -6,10 +6,7 @@
  */
 
 import type { ReactNode } from "react";
-import {
-  FramedPage,
-  FramedPageBody,
-} from "../../layouts/framed-page/framed-page";
+import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { CharacterLearnedSkillsSection } from "./CharacterLearnedSkillsSection";
 

@@ -2,7 +2,6 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import { z } from "zod";
 import { organizationDowngradeIntentDigest } from "../../lib/services/organization-downgrade-intent";
 import { organizationDowngradeReviewSchema } from "../../lib/services/organization-downgrade-review";
 import { organizationPlanChangeProviderBindingSchema } from "../../lib/services/organization-plan-change-provider-binding";
@@ -17,8 +16,8 @@ import {
   projectAuthenticatedScheduleEvent,
   projectOriginalScheduleResponse,
 } from "../../lib/services/organization-schedule-effect-origin";
+import { proveOrganizationSchedulePublication } from "../../lib/services/organization-schedule-publication-proof";
 import { proveOrganizationScheduleRelease } from "../../lib/services/organization-schedule-release-proof";
-import { proveReviewedOrganizationScheduleConfiguration } from "../../lib/services/organization-schedule-reviewed-configuration";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
@@ -32,6 +31,7 @@ import { organizationScheduleEffects as effects } from "../schemas/organization-
 import { organizations } from "../schemas/organizations";
 import { billingSubscriptionCommands as commands } from "../schemas/subscription-billing-operations.ts";
 import { lockOrganizationPlanChangeSource } from "./organization-plan-change";
+import { resolveOrganizationScheduleIncidentsInTransaction } from "./organization-schedule-maintenance";
 import { readOriginalScheduleQuoteTerms } from "./organization-schedule-quote-terms";
 import {
   lockOrganizationSubscriptionManager,
@@ -194,6 +194,7 @@ export async function claimOrganizationSchedule(
           lease_expires_at: null,
         })
         .where(eq(commands.id, c.id));
+      await resolveOrganizationScheduleIncidentsInTransaction(tx, input);
       return null;
     }
     if (c.status === "PREPARED" && mode === "recovery") return null;
@@ -212,6 +213,7 @@ export async function claimOrganizationSchedule(
           lease_expires_at: null,
         })
         .where(eq(commands.id, c.id));
+      await resolveOrganizationScheduleIncidentsInTransaction(tx, input);
       return null;
     }
     const claim = {
@@ -484,6 +486,7 @@ export async function finishOrganizationScheduleAttempt(input: Identity, claim: 
           : {}),
       })
       .where(eq(commands.id, c.id));
+    if (expired) await resolveOrganizationScheduleIncidentsInTransaction(tx, input);
     return true;
   });
 }
@@ -787,6 +790,7 @@ export async function finalizeOrganizationScheduleCompensation(
       )
       .returning();
     if (!failed) reject("original_lease_lost_before_commit");
+    await resolveOrganizationScheduleIncidentsInTransaction(tx, input);
     return { command: failed, replayed: false };
   });
 }
@@ -910,8 +914,9 @@ export async function lockOrganizationScheduleConfiguredAuthority(
     livemode: effect.livemode,
     startedAt: effect.started_at!,
   });
-  const verified = proveReviewedOrganizationScheduleConfiguration({
+  const { configuredSnapshot, ...verified } = proveOrganizationSchedulePublication({
     source,
+    organizationCustomerId: org.customer,
     review: locked.quote.review,
     providerBinding: locked.binding,
     originalTerms: locked.retained.snapshot,
@@ -947,12 +952,7 @@ export async function lockOrganizationScheduleConfiguredAuthority(
     configurationReceiptDigest: configured.receipt_digest!,
     observedAt: now.toISOString(),
   };
-  // The full snapshot has just been authenticated and compared with the original
-  // configuration. Retain unknown wire fields; SDK transport metadata is not state.
-  const { lastResponse: _transport, ...wireSnapshot } = z
-    .record(z.string(), z.unknown())
-    .parse(input.rawCurrentSchedule);
-  const configuredSnapshot = structuredClone(wireSnapshot);
+  // Persist the authenticated original snapshot, never the later mutable live schedule.
   if (settlementDigest(configuredSnapshot) !== proof.snapshotDigest)
     reject("configured_snapshot_changed");
   return { source, projection, command: locked.command, proof, configuredSnapshot };
@@ -992,4 +992,39 @@ export async function readOrganizationSchedulePublicationSource(input: Identity,
       apiVersion: locked.binding.apiVersion,
     };
   });
+}
+
+/** Original actor/current manager status; no provider request and no dispatch authority. */
+export function readOrganizationScheduleCommand(input: Identity) {
+  return writeTransaction(async (tx) => {
+    const locked = await lockOriginal(tx, input, true);
+    const existing = await rows(tx, input);
+    return { command: locked.command, effects: existing };
+  });
+}
+
+/** Read-only original effect scope under its current lease, including after manager loss. */
+export function readOrganizationScheduleRecoverySource(input: Identity, claim: Claim) {
+  return writeTransaction(async (tx) => {
+    const locked = await lockOriginal(tx, input, false);
+    assertLease(input, locked, claim, await readPostLockDatabaseNow(tx));
+    const existing = await rows(tx, input);
+    for (const effect of existing)
+      scope(
+        locked,
+        effect,
+        existing.find((e) => e.id === effect.predecessor_id),
+      );
+    return {
+      effects: existing,
+      apiVersion: locked.binding.apiVersion,
+      reviewExpiresAt: locked.quote.expires_at,
+      observedAt: await readPostLockDatabaseNow(tx),
+    };
+  });
+}
+
+/** Internal original-command read; system recovery does not borrow a user session. */
+export function readOrganizationScheduleRecoveryCommand(input: Identity) {
+  return writeTransaction(async (tx) => (await lockOriginal(tx, input, false)).command);
 }

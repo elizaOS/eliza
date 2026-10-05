@@ -16,7 +16,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { FramedPage } from "../../layouts/framed-page/framed-page";
+import { FramedPage } from "../../layouts/framed-page";
 import {
   CharacterSectionNav,
   isCharacterSectionPath,
