@@ -24,7 +24,8 @@
     "native-host/document-image-describer.mjs",
     "native-host/managed-google-read-port.mjs",
     "native-host/errors.mjs",
-    "native-host/subscription-review.mjs"
+    "native-host/subscription-review.mjs",
+    "native-host/plan-change.mjs"
   ],
   "sideEffects": false,
   "scripts": {

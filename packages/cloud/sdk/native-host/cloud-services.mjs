@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 import { createDocumentImageDescriber } from "./document-image-describer.mjs";
 import { NativeCloudServiceError } from "./errors.mjs";
 import { createManagedGoogleReadPort } from "./managed-google-read-port.mjs";
+import { executePlanChange, validatePlanChangeInput } from "./plan-change.mjs";
 import { projectRenewalReview } from "./subscription-review.mjs";
 
 const fail = (message, status = 400) =>
@@ -633,6 +634,39 @@ export function createCloudRoutes({
         )
           throw fail("Invalid billing management address", 502);
         send(res, 200, { url: destination.href });
+        return true;
+      }
+      const planChange = path.match(
+        /^\/cloud\/account\/plan-change\/(review|confirm|status|pending|payment)$/,
+      );
+      if (method === "POST" && planChange) {
+        allowedQuery(url, []);
+        const input = await body(req, 4096),
+          operation = planChange[1];
+        validatePlanChangeInput(operation, input, hostPolicy);
+        const authorityGeneration = generation;
+        const authority = await currentBillingAuthority(authorityGeneration);
+        if (!authority) {
+          send(res, 428, {
+            error: message("confirmItSYouBeforePaying"),
+            code: "billing_verification_required",
+          });
+          return true;
+        }
+        const result = await executePlanChange(operation, input, {
+          policy: hostPolicy,
+          request: async (target, options = {}) =>
+            parse(
+              await request(target, {
+                ...options,
+                key: authority.token,
+                authorityGeneration,
+                signal,
+              }),
+            ),
+        });
+        current(authorityGeneration);
+        send(res, 200, result);
         return true;
       }
       const lifecycle = path.match(

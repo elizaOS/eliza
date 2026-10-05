@@ -38,6 +38,16 @@ This Node source entrypoint is separate from the browser-safe root SDK. Run `bun
 private-file tests with synthetic provider responses. Consumer tests cover
 product voice, privacy, account races and installed payload dependency closure.
 
+Native `POST /cloud/account/plan-change/{review,confirm,status,pending,payment}`
+uses that same private billing authority and account epoch. Review/confirmation
+select upgrade or downgrade; payment continuation is only for the original upgrade
+invoice. Host plan keys/currency constrain projection; the current review contract
+supports monthly plans. Confirmation keys derive from original quote and action,
+while status/discovery never dispatch confirmation. Pending pages retain lease and
+source state. Hosted invoice links are temporary private payment UI responses:
+do not persist, log or add them to agent/model context. Returning from payment
+requires fresh command/subscription observation, not a success-URL assumption.
+
 Service-only consumers set `hostPolicy.accountBilling: false` to exclude billing
 routes. Enrollment requires its factory when a pending credential store is supplied.
 Explicit `providerDefaultVoice: true` permits omitted voice IDs; `speechLanguage: null`
