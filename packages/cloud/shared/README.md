@@ -64,17 +64,20 @@ create/configure writes. Separate stable keys, original response/event recovery 
 full-history event traversal preserve unknown outcomes without replay. Phase mapping
 retains supported settings, and configuration previews the actual mapped schedule.
 Configured-state proof checks original attribution, current phases/defaults and unchanged
-subscription/customer terms. These internal helpers do not expose confirmation or publish
-pending-plan/allowance state. Partial-create cleanup uses an independently journaled,
+subscription/customer terms. These internal helpers do not expose public confirmation. Original configuration
+settlement recomputes proof under the locked review and source authority, then atomically
+records a pending lower plan, source revision, entitlement projection and immutable command.
+The current paid plan and allowance are preserved; no target allowance is granted before renewal. Partial-create cleanup uses an independently journaled,
 cancellation-preserving release only while configuration has never started. Read-only
 recovery uses original events and fresh state, never another release attempt. Proven cleanup
 atomically retires its command as FAILED while preserving paid source, projection and allowance;
-organization fencing cannot strand that original cleanup. Configured-state publication,
-renewal settlement and live provider qualification remain required before
+organization fencing cannot strand that original cleanup. Configured publication requires
+an active unfenced organization, original-period evidence and a live original lease.
+Public orchestration, renewal settlement and live provider qualification remain required before
 product adoption. Cleanup proof currently requires the original billing period and does
 not claim renewal-crossing recovery.
 
-The canonical migration journal includes 0520–0524 in order. Scheduling deployment
+The canonical migration journal includes 0520–0525 in order. Scheduling deployment
 must use the journal-driven migration runner; loading SQL directly in a test fixture
 alone does not establish deployment discovery. The scheduling ledger regression
 exercises the same canonical migration loader used by that runner.
