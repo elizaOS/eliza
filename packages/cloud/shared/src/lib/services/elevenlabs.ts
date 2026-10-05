@@ -12,6 +12,9 @@ import type { ElevenLabs } from "@elevenlabs/elevenlabs-js";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
+import { TtsSynthesisOptions } from "./tts-synthesis-options";
+
+export { hasTtsSynthesisOptions, TtsSynthesisOptions } from "./tts-synthesis-options";
 
 /**
  * Configuration for ElevenLabs service.
@@ -50,7 +53,7 @@ function envValue(env: ElevenLabsEnv | undefined, key: keyof ElevenLabsEnv): str
 /**
  * Options for text-to-speech conversion.
  */
-export interface TTSOptions {
+export interface TTSOptions extends TtsSynthesisOptions {
   text: string;
   voiceId?: string;
   modelId?: string;
@@ -154,6 +157,7 @@ export class ElevenLabsService {
    * Convert text to speech (streaming)
    */
   async textToSpeech(options: TTSOptions): Promise<ReadableStream<Uint8Array>> {
+    const rendering = TtsSynthesisOptions.parse(options);
     const voiceId = options.voiceId || this.config.voiceId || "EXAVITQu4vr4xnSDxMaL";
     const modelId = options.modelId || this.config.modelId || "eleven_flash_v2_5";
 
@@ -165,8 +169,16 @@ export class ElevenLabsService {
       text: options.text,
       modelId,
       outputFormat: options.outputFormat ?? this.config.outputFormat,
-      optimizeStreamingLatency: this.config.optimizeStreamingLatency,
+      // Legacy level 4 disables normalization. Explicit rendering policy wins.
+      optimizeStreamingLatency:
+        rendering.applyTextNormalization !== undefined
+          ? undefined
+          : this.config.optimizeStreamingLatency,
+      previousText: rendering.previousText,
+      nextText: rendering.nextText,
+      applyTextNormalization: rendering.applyTextNormalization,
       voiceSettings: {
+        speed: rendering.speed,
         stability: this.config.voiceStability,
         similarityBoost: this.config.voiceSimilarityBoost,
         style: this.config.voiceStyle,
