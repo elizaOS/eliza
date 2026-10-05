@@ -233,10 +233,6 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 }
 
 /**
- * Pure in-memory filter shared by adapters that lack native search and by
- * the cross-connector MESSAGE action when it merges results.
- */
-/**
  * Search for adapters without native search: list without the result limit,
  * filter, then apply the limit. Listing only `limit` newest messages first
  * would drop every older match and report the truncated page as complete.
@@ -257,6 +253,10 @@ export async function searchByListing(
     : matches.slice(0, filters.limit);
 }
 
+/**
+ * Pure in-memory filter shared by adapters that lack native search and by
+ * the cross-connector MESSAGE action when it merges results.
+ */
 export function filterInMemory(
   messages: MessageRef[],
   filters: SearchMessagesFilters,

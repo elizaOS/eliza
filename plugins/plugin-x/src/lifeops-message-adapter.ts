@@ -102,10 +102,12 @@ function memoryToMessageRef(memory: Memory): MessageRef {
   };
 }
 
-function normalizeListLimit(limit: number | undefined): number {
-  if (limit === undefined) return 25;
-  if (!Number.isFinite(limit)) return 25;
-  return Math.min(100, Math.max(1, Math.floor(limit)));
+function normalizeListLimit(limit: number | undefined): number | undefined {
+  if (limit === undefined) return undefined;
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    throw new Error("X triage limit must be a positive safe integer");
+  }
+  return limit;
 }
 
 function parseDraftId(draftId: string): {
