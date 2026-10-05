@@ -97,9 +97,6 @@ const DEFAULT_PAGE_LAYOUT_MANIFEST: PageLayoutManifest = Object.freeze({
  * Resolve a (possibly sparse) declaration into a {@link ResolvedSurfaceManifest}
  * with defaults applied and the wallpaper gate enforced.
  *
- * Precedence for each field: `surface.<field>` wins, then the legacy standalone
- * field (`backgroundPolicy` / `headerPolicy`), then the safe default.
- *
  * The one enforced invariant: `background: "shared"` requires the `wallpaper`
  * capability. A view that declares `shared` without the grant resolves to
  * `opaque` — the shell can never surface the wallpaper on a view that was not
@@ -113,8 +110,7 @@ export function resolveSurfaceManifest(
 	const surface = decl?.surface;
 	const capabilities = dedupeCapabilities(surface?.capabilities);
 
-	const declaredBackground =
-		surface?.background ?? decl?.backgroundPolicy ?? "opaque";
+	const declaredBackground = surface?.background ?? "opaque";
 	// Wallpaper gate: "shared" is only honoured with the explicit grant.
 	const background: AppShellBackgroundPolicy =
 		declaredBackground === "shared" && capabilities.has("wallpaper")
@@ -123,7 +119,7 @@ export function resolveSurfaceManifest(
 
 	return {
 		background,
-		header: surface?.header ?? decl?.headerPolicy ?? "normal",
+		header: surface?.header ?? "normal",
 		isolation: surface?.isolation ?? "in-process",
 		lifecycle: surface?.lifecycle ?? "ephemeral",
 		layout: surface?.layout

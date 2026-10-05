@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
-import { useT } from "../lib/i18n";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 
 export function DedicatedStartConfirmation({
   open,

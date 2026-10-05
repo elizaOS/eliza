@@ -137,12 +137,7 @@ export const parserWork = {
   fullParses: 0,
   incrementalParses: 0,
 };
-export function resetParserWork(): void {
-  parserWork.normalizedChars = 0;
-  parserWork.regionScanChars = 0;
-  parserWork.fullParses = 0;
-  parserWork.incrementalParses = 0;
-}
+
 /**
  * The display normalization WITHOUT the final trim. Split out from
  * {@link normalizeDisplayText} so the incremental streaming wrapper
@@ -632,32 +627,7 @@ export interface ConversationTranscriptMessage {
   role: "user" | "assistant";
   text: string;
 }
-/**
- * Render a conversation as a plain-text transcript for "copy conversation".
- * Each turn becomes a `Speaker: text` block (blank line between turns), using
- * the display name for the speaker (the agent name for assistant turns, "You"
- * for the user). Empty/whitespace-only turns are skipped. Pure + DOM-free so it
- * unit-tests without React and both chat surfaces share one definition.
- */
-export function conversationTranscriptText(
-  messages: ReadonlyArray<ConversationTranscriptMessage>,
-  options: {
-    agentName?: string;
-    userName?: string;
-  } = {},
-): string {
-  const agentName = options.agentName?.trim() || "Assistant";
-  const userName = options.userName?.trim() || "You";
-  return messages
-    .map((message) => {
-      const text = message.text.trim();
-      if (!text) return "";
-      const speaker = message.role === "assistant" ? agentName : userName;
-      return `${speaker}: ${text}`;
-    })
-    .filter((line) => line.length > 0)
-    .join("\n\n");
-}
+
 // ── InlinePluginConfig helpers ──────────────────────────────────────
 /** Normalize plugin ID: strip @scope/plugin- prefix so both "discord" and "@elizaos/plugin-discord" resolve. */
 export function normalizePluginId(id: string): string {

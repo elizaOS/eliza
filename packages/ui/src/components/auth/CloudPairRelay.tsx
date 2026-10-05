@@ -17,7 +17,7 @@ import {
   isElizaDedicatedAgentHostname,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { useEffect, useState } from "react";
-import { getBootConfig, setBootConfig } from "../../config/boot-config";
+import { getBootConfig, setBootConfig } from "../../config/boot-config-store";
 import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,

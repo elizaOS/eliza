@@ -11,5 +11,3 @@ export const VOICE_DEVICE_TIERS: readonly VoiceDeviceTier[] = [
   "OKAY",
   "POOR",
 ] as const;
-
-export const DEFAULT_VOICE_DEVICE_TIER: VoiceDeviceTier = "GOOD";

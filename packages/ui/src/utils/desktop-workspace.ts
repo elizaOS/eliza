@@ -26,7 +26,7 @@ export type DesktopWorkspaceSurface =
   | "chat"
   | "browser"
   | "release"
-  | "triggers"
+  | "automations"
   | "plugins"
   | "cloud";
 
@@ -49,9 +49,10 @@ export const DESKTOP_WORKSPACE_SURFACES: readonly DesktopWorkspaceSurfaceDef[] =
       description: "Open the detached release center window.",
     },
     {
-      id: "triggers",
-      label: "Triggers Window",
-      description: "Open scheduled trigger controls in a detached window.",
+      id: "automations",
+      label: "Automations Window",
+      description:
+        "Open workflows and scheduled automations in a detached window.",
     },
     {
       id: "plugins",

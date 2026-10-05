@@ -95,6 +95,11 @@ beforeAll(async () => {
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await client.exec(statement.replaceAll('"public".', ""));
   }
+  const historicalSettlement = await readFile(
+    new URL("../migrations/0518_organization_upgrade_historical_settlement.sql", import.meta.url),
+    "utf8",
+  );
+  await client.exec(historicalSettlement.split("--> statement-breakpoint")[0]!);
   await client.query(
     `INSERT INTO billing_merchants(id,organization_id,provider_account_key,livemode,enabled) VALUES ($1,$2,'platform',false,true)`,
     [merchant, org],

@@ -1,7 +1,7 @@
-import { loadVoice } from "@elizaos/ui";
+import { loadVoiceBootstrap } from "@elizaos/ui";
 import { cachedDynamicImport } from "./app-module-cache";
 /**
- * Single-flight loader for the lazy `@elizaos/ui/voice` chunk on the boot
+ * Single-flight loader for the lazy `voice-bootstrap` chunk on the boot
  * path. main() kicks the download off before the storage-bridge hydration
  * awaits so the chunk fetch overlaps the native Preferences round-trips
  * instead of serializing after them, then awaits the shared promise where the
@@ -13,17 +13,17 @@ import { cachedDynamicImport } from "./app-module-cache";
  * mounting the app — callers skip the voice wiring and boot on.
  */
 
-export type VoiceModule = Awaited<ReturnType<typeof loadVoice>>;
+export type VoiceModule = Awaited<ReturnType<typeof loadVoiceBootstrap>>;
 
 export function startVoiceModuleLoad(
-  importer: () => Promise<VoiceModule> = loadVoice,
+  importer: () => Promise<VoiceModule> = loadVoiceBootstrap,
 ): Promise<VoiceModule | null> {
-  return cachedDynamicImport("@elizaos/ui/voice", importer).catch(
+  return cachedDynamicImport("voice-bootstrap", importer).catch(
     (error: unknown) => {
       // error-policy:J4 designed degrade — the app mounts without the voice
       // harnesses / fused-wake bridge rather than white-screening on a chunk
       // load failure; the warn is the observable signal.
-      console.warn("[boot] @elizaos/ui/voice chunk unavailable", error);
+      console.warn("[boot] voice-bootstrap chunk unavailable", error);
       return null;
     },
   );

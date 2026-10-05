@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { ElizaClient } from "./client-base";
 import "./client-agent";
 

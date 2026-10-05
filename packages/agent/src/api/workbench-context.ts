@@ -43,13 +43,7 @@ export interface WorkbenchRouteContext {
     res: http.ServerResponse,
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
-  // Helpers from server.ts
   toWorkbenchTodo: (task: Task) => WorkbenchTodoView | null;
-  normalizeTags: (value: unknown, required?: string[]) => string[];
-  readTaskMetadata: (task: Task) => Record<string, unknown>;
-  readTaskCompleted: (task: Task) => boolean;
-  parseNullableNumber: (value: unknown) => number | null;
-  asObject: (value: unknown) => Record<string, unknown> | null;
   decodePathComponent: (
     raw: string,
     res: http.ServerResponse,

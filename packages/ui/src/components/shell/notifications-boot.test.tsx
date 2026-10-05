@@ -46,7 +46,7 @@ import { APP_RESUME_EVENT, dispatchOpenNotificationCenter } from "../../events";
 import {
   acknowledgeNotificationCenterOpenRequest,
   peekNotificationCenterOpenRequest,
-} from "./notification-center-open-request";
+} from "../../state/notifications/notification-center-open-request";
 import {
   NotificationsDataBoot,
   NotificationsShellBoot,

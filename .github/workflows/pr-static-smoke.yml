@@ -431,6 +431,10 @@ jobs:
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.test.ts
           bun test --config=/dev/null --isolate \
+            packages/cloud/api/v1/subscriptions/upgrade/confirm/route.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/sdk/src/organization-upgrade.test.ts
+          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-invoice-search.test.ts
@@ -442,6 +446,10 @@ jobs:
             packages/cloud/shared/src/lib/services/organization-upgrade-recovery.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-historical-target.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-later-period.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-target-search.pglite.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/api/__tests__/stripe-event.test.ts
           bun test --config=/dev/null --isolate \
@@ -458,6 +466,8 @@ jobs:
             packages/cloud/shared/src/lib/services/organization-upgrade-preview.pglite.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-invoice.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-payment-observation.pglite.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/organization-upgrade-binding-migration.pglite.test.ts
           bun test --config=/dev/null --isolate \

@@ -11,6 +11,7 @@ import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import { billingSubscriptionRevisions as revisions } from "../schemas/billing-subscriptions";
 import { organizationPlanChangeQuotes as quotes } from "../schemas/organization-plan-change-quotes";
+import { organizationUpgradeHistoricalTargets as targets } from "../schemas/organization-upgrade-historical-targets";
 import { organizationUpgradeInvoiceOrigins as origins } from "../schemas/organization-upgrade-invoice-origins";
 import { billingSubscriptionCommands as commands } from "../schemas/subscription-billing-operations";
 
@@ -41,7 +42,9 @@ export async function readOrganizationUpgradeRecoveryContext(
     !command ||
     command.kind !== "upgrade" ||
     command.merchant_key !== "platform" ||
-    (command.status !== "OUTCOME_UNKNOWN" && command.status !== "APPLIED") ||
+    (command.status !== "OUTCOME_UNKNOWN" &&
+      command.status !== "APPLIED" &&
+      !(command.status === "FAILED" && command.organization_upgrade_failure_evidence !== null)) ||
     command.organization_upgrade_dispatch_state !== "started" ||
     !command.subscription_id ||
     command.expected_subscription_revision === null
@@ -106,7 +109,17 @@ export async function readOrganizationUpgradeRecoveryContext(
         eq(origins.command_id, input.commandId),
       ),
     );
+  const [historicalTarget] = await reader
+    .select()
+    .from(targets)
+    .where(
+      and(
+        eq(targets.organization_id, input.organizationId),
+        eq(targets.command_id, input.commandId),
+      ),
+    );
   return {
+    historicalTarget: historicalTarget ?? null,
     command,
     historicalSource: source,
     quote,

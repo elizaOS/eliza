@@ -15,19 +15,13 @@ import {
 import { useViewEvent } from "../hooks/useViewEvent";
 import { UI_LANGUAGES } from "../i18n";
 import { useAppSelector } from "../state/app-store";
-import { ACCENT_PRESETS, type UiThemeMode } from "../state/ui-preferences";
+import { ACCENT_PRESETS } from "../state/ui-preferences";
 
 export type { AppearanceApplyPayload } from "@elizaos/core/protocol";
 export { APPEARANCE_APPLY_EVENT };
 
-const THEME_MODES = new Set<UiThemeMode>(["light", "dark", "system"]);
 const ACCENT_IDS = new Set(ACCENT_PRESETS.map((preset) => preset.id));
 const LANGUAGE_IDS = new Set<string>(UI_LANGUAGES);
-function readThemeMode(value: unknown): UiThemeMode | null {
-  return typeof value === "string" && THEME_MODES.has(value as UiThemeMode)
-    ? (value as UiThemeMode)
-    : null;
-}
 function readAccentId(value: unknown): string | null {
   return typeof value === "string" && ACCENT_IDS.has(value) ? value : null;
 }
@@ -37,7 +31,6 @@ function readLanguage(value: unknown): UiLanguage | null {
     : null;
 }
 export function useAppearanceApplyChannel(): void {
-  const setUiThemeMode = useAppSelector((state) => state.setUiThemeMode);
   const setUiAccent = useAppSelector((state) => state.setUiAccent);
   const setUiLanguage = useAppSelector((state) => state.setUiLanguage);
   const setHomeTimeWidgetHidden = useAppSelector(
@@ -45,8 +38,6 @@ export function useAppearanceApplyChannel(): void {
   );
   useViewEvent(APPEARANCE_APPLY_EVENT, (event) => {
     const payload = event.payload as AppearanceApplyPayload;
-    const themeMode = readThemeMode(payload.themeMode);
-    if (themeMode) setUiThemeMode(themeMode);
     const accentId = readAccentId(payload.accentId);
     if (accentId) setUiAccent(accentId);
     const language = readLanguage(payload.language);

@@ -45,7 +45,7 @@ test("paid flags produce only a candidate for full finalization", () => {
     }),
   ).toBe("paid_candidate");
 });
-for (const status of ["void", "uncollectible", "draft", null])
+for (const status of ["uncollectible", "draft", null])
   test(`${status} never implies terminal command failure`, () => {
     expect(observe({ ...identity, raw: { ...invoice(), status } })).toBe("requires_reconciliation");
   });
@@ -84,3 +84,7 @@ for (const raw of [{}, { ...invoice(), customer: "cus_other" }]) {
     expect(caught).toMatchObject({ code: "SUBSCRIPTION_UPGRADE_INVOICE_RECOVERY_UNAVAILABLE" });
   });
 }
+
+test("void is only a candidate requiring original source and payment proof", () => {
+  expect(observe({ ...identity, raw: { ...invoice(), status: "void" } })).toBe("void_candidate");
+});

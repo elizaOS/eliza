@@ -822,7 +822,7 @@ function TriggersLayout() {
   );
 
   return (
-    <ShellViewAgentSurface viewId="triggers">
+    <ShellViewAgentSurface viewId="automations">
       <PageLayout
         className="h-full"
         data-testid="trigger-shell"

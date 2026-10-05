@@ -1,3 +1,4 @@
+import type { DetachedSurface } from "../surface-windows";
 /**
  * Desktop Native Module for Electrobun
  *
@@ -387,14 +388,7 @@ export class DesktopManager {
 	private openSettingsCallback: ((tabHint?: string) => void) | null = null;
 	private openSurfaceWindowCallback:
 		| ((
-				surface:
-					| "chat"
-					| "browser"
-					| "release"
-					| "triggers"
-					| "plugins"
-					| "connectors"
-					| "cloud",
+				surface: DetachedSurface,
 				browse?: string,
 				alwaysOnTop?: boolean,
 		  ) => Promise<DesktopManagedWindowSnapshot> | DesktopManagedWindowSnapshot)
@@ -503,14 +497,7 @@ export class DesktopManager {
 	 */
 	setOpenSurfaceWindowCallback(
 		cb: (
-			surface:
-				| "chat"
-				| "browser"
-				| "release"
-				| "triggers"
-				| "plugins"
-				| "connectors"
-				| "cloud",
+			surface: DetachedSurface,
 			browse?: string,
 			alwaysOnTop?: boolean,
 		) => Promise<DesktopManagedWindowSnapshot> | DesktopManagedWindowSnapshot,
@@ -576,14 +563,7 @@ export class DesktopManager {
 	 * Open a detached surface window via the registered callback.
 	 */
 	openSurfaceWindow(
-		surface:
-			| "chat"
-			| "browser"
-			| "release"
-			| "triggers"
-			| "plugins"
-			| "connectors"
-			| "cloud",
+		surface: DetachedSurface,
 		browse?: string,
 		alwaysOnTop?: boolean,
 	): Promise<DesktopManagedWindowSnapshot | null> {

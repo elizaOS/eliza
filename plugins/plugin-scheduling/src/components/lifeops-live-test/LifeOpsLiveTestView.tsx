@@ -216,12 +216,6 @@ function navigateSettings(subview: string): void {
 }
 
 function connectModel(): void {
-  if (typeof window === "undefined") {
-    (client as { sendChatMessage?: (text: string) => void }).sendChatMessage?.(
-      "Connect a model provider.",
-    );
-    return;
-  }
   navigateSettings("ai-model");
 }
 

@@ -14,7 +14,7 @@ export function registerKnowledgeApp(): void {
     pluginId: "@elizaos/plugin-knowledge",
     label: "Knowledge",
     icon: "Files",
-    path: "/documents",
+    path: "/character/documents",
     pathPatterns: ["/character/documents"],
     tabAffinity: "documents",
     order: 120,

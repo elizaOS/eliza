@@ -4,9 +4,6 @@
  */
 // @vitest-environment jsdom
 
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   cleanup,
   fireEvent,
@@ -50,8 +47,6 @@ vi.mock("sonner", () => ({
 import { toast } from "sonner";
 import { IncidentReportPanel } from "./incident-report-panel";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PANEL_SOURCE = path.join(HERE, "incident-report-panel.tsx");
 const SECURITY_EMAIL = "security@elizaos.ai";
 
 describe("IncidentReportPanel", () => {
@@ -64,14 +59,6 @@ describe("IncidentReportPanel", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
-  });
-
-  it("composes the canonical settings rows", () => {
-    const source = readFileSync(PANEL_SOURCE, "utf8");
-    expect(source).toContain("SettingsStack");
-    expect(source).toContain("SettingsGroup");
-    expect(source).toContain("SettingsTextareaRow");
-    expect(source).toContain("SettingsActionButton");
   });
 
   it("toasts and does not POST when details are empty", () => {

@@ -19,7 +19,7 @@ import {
 } from "@elizaos/ui";
 /**
  * Renders the root of a detached desktop window — a single non-"main"
- * WindowShellRoute (browser, chat, plugins, triggers, or a settings section)
+ * WindowShellRoute (browser, chat, plugins, automations, or a settings section)
  * inside the shared app workspace chrome. Gates on app state first: startup
  * failure and pairing short-circuit before routed content; unfinished setup
  * blocks agent views while allowing Settings recovery. Heavy page views are
@@ -210,7 +210,7 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
           </DetachedLazyBoundary>
         </DetachedWorkspaceView>
       );
-    case "triggers":
+    case "automations":
       return (
         <DetachedWorkspaceView chatScope="page-automations">
           <DetachedLazyBoundary>

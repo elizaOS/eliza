@@ -65,7 +65,7 @@ export const InFlightExplained: Story = {
     await userEvent.click(
       canvas.getByRole("button", { name: "Existing method" }),
     );
-    await expect(canvas.getByRole("status")).toHaveTextContent(
+    await expect(await canvas.findByRole("status")).toHaveTextContent(
       "Your choice is being checked. Please wait for the result.",
     );
   },

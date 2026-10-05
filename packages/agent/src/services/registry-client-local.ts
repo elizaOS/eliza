@@ -52,7 +52,7 @@ interface LocalPackageAppMeta {
   uiExtension?: AppUiExtensionConfig;
   viewer?: RegistryAppViewerMeta;
   session?: RegistryAppSessionMeta;
-  developerOnly?: boolean;
+  viewKind?: import("@elizaos/core").ViewKind;
   visibleInAppStore?: boolean;
   /**
    * If true, this app declares itself as the default landing tab for the
@@ -267,7 +267,7 @@ function toLocalAppMeta(
     uiExtension: app?.uiExtension,
     viewer: app?.viewer ?? legacy?.viewer,
     session: app?.session ?? legacy?.session,
-    developerOnly: app?.developerOnly,
+    viewKind: app?.viewKind,
     visibleInAppStore: app?.visibleInAppStore,
     mainTab: app?.mainTab,
     catalogSection: app?.catalogSection,

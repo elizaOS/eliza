@@ -35,4 +35,22 @@ export async function installOrganizationBillingScopeTestColumns(
   );
   const column = upgradeDispatch.split("--> statement-breakpoint")[0]!;
   await execute(column.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"));
+  const historicalSettlement = await readFile(
+    new URL("../migrations/0518_organization_upgrade_historical_settlement.sql", import.meta.url),
+    "utf8",
+  );
+  await execute(
+    historicalSettlement
+      .split("--> statement-breakpoint")[0]!
+      .replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"),
+  );
+  const voidResult = await readFile(
+    new URL("../migrations/0519_organization_upgrade_void_result.sql", import.meta.url),
+    "utf8",
+  );
+  await execute(
+    voidResult
+      .split("--> statement-breakpoint")[0]!
+      .replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"),
+  );
 }

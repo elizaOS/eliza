@@ -1,8 +1,4 @@
-/**
- * Cloud-domain client DTOs: Cloud*, App*, Trajectory*, Registry*, Whitelist*,
- * Verification*, wallet display types, CodingAgent*, Pty*. One slice of the
- * ElizaClient type surface, re-exported through client-types.ts.
- */
+/** Cloud, billing, application, and coding-agent client DTOs. */
 
 import type {
   TrajectoryExportOptions as CoreTrajectoryExportOptions,
@@ -14,69 +10,7 @@ import type {
   TrajectoryExportFormat,
   TrajectorySemanticStageRecord,
 } from "@elizaos/core";
-import type {
-  AppLaunchDiagnostic,
-  AppLaunchDiagnosticSeverity,
-  AppLaunchResult,
-  AppRunActionResult,
-  AppRunAwaySummary,
-  AppRunCapabilityAvailability,
-  AppRunEvent,
-  AppRunEventKind,
-  AppRunEventSeverity,
-  AppRunHealth,
-  AppRunHealthDetails,
-  AppRunHealthFacet,
-  AppRunHealthState,
-  AppRunSummary,
-  AppRunViewerAttachment,
-  AppSessionActionResult,
-  AppSessionActivityItem,
-  AppSessionConfig,
-  AppSessionControlAction,
-  AppSessionFeature,
-  AppSessionJsonValue,
-  AppSessionMode,
-  AppSessionRecommendation,
-  AppSessionState,
-  AppStopResult,
-  AppUiExtensionConfig,
-  AppViewerAuthMessage,
-  AppViewerConfig,
-  RegistryAppInfo,
-} from "@elizaos/core/protocol";
 
-export type {
-  AppLaunchDiagnostic,
-  AppLaunchDiagnosticSeverity,
-  AppLaunchResult,
-  AppRunActionResult,
-  AppRunAwaySummary,
-  AppRunCapabilityAvailability,
-  AppRunEvent,
-  AppRunEventKind,
-  AppRunEventSeverity,
-  AppRunHealth,
-  AppRunHealthDetails,
-  AppRunHealthFacet,
-  AppRunHealthState,
-  AppRunSummary,
-  AppRunViewerAttachment,
-  AppSessionActionResult,
-  AppSessionActivityItem,
-  AppSessionConfig,
-  AppSessionControlAction,
-  AppSessionFeature,
-  AppSessionJsonValue,
-  AppSessionMode,
-  AppSessionRecommendation,
-  AppSessionState,
-  AppStopResult,
-  AppUiExtensionConfig,
-  AppViewerAuthMessage,
-  AppViewerConfig,
-  RegistryAppInfo,
-};
 // Cloud
 export interface CloudStatus {
   /** Older servers omit this field; omission must remain visibly unavailable. */

@@ -52,7 +52,7 @@ const appSchema = z
 					.optional(),
 			})
 			.optional(),
-		developerOnly: z.boolean().optional(),
+		viewKind: z.enum(["system", "release", "developer", "preview"]).optional(),
 		visibleInAppStore: z.boolean().optional(),
 		mainTab: z.boolean().optional(),
 		catalogSection: z.string().optional(),

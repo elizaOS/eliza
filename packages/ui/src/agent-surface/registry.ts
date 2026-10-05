@@ -463,14 +463,3 @@ export function retainViewRegistry(registry: ViewAgentRegistry): () => void {
     }
   };
 }
-
-export function removeViewRegistry(
-  viewId: string,
-  viewType: AgentViewType,
-  installationId?: string,
-): void {
-  const registryKey = key(viewId, viewType, installationId);
-  const registry = viewRegistries.get(registryKey);
-  viewRegistries.delete(registryKey);
-  if (registry) viewRegistryMountCounts.delete(registry);
-}

@@ -13,7 +13,7 @@ import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { useBranding } from "../../config/branding";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useBugReport } from "../../hooks/useBugReport.hooks";
 import { logger } from "../../logger.ts";
 import { useAppSelector } from "../../state/app-store";

@@ -21,6 +21,7 @@ import {
 import { organizations } from "../schemas/organizations";
 import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
 import { billingSubscriptionEventReceipts } from "../schemas/subscription-billing-operations";
+import { listUnsettledOrganizationUpgrades } from "./organization-upgrade-renewal-ordering";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAllowanceRepository } from "./subscription-allowance";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
@@ -204,6 +205,20 @@ export async function publishPaidRenewalInTransaction(
     });
     return { replayed: true, subscriptionRevision: existing.subscription_revision };
   }
+  // Command start and all publication owners hold the organization lock. A replay above
+  // does not advance authority; a new period must never strand an original paid upgrade.
+  if (
+    (
+      await listUnsettledOrganizationUpgrades(
+        {
+          organizationId: source.organization_id,
+          subscriptionId: source.id,
+        },
+        tx,
+      )
+    ).length > 0
+  )
+    renewalUnavailable("original_upgrade_unsettled");
   if (
     source.last_provider_event_created_at !== null &&
     input.provenance.kind === "webhook" &&

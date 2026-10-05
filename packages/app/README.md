@@ -274,14 +274,28 @@ instrumentation, removes its packages after each variant and checks unchanged HO
 There are no default command/instrumentation deadlines: callers may supply
 `commandTimeoutMs`, `instrumentationTimeoutMs`, `cleanupTimeoutMs` and an
 AbortSignal. ADB/AAPT work is cancellable; cleanup ignores the aborted operation
-signal, force-stops owned targets and uses its separate caller deadline. Callbacks
+signal, force-stops owned targets and uses its separate caller deadline. If either
+stop fails, it retains both packages and reports `cleanupDeferred`; recover the
+owned fixture explicitly before another run. Callbacks
 receive the signal and must cooperate with cancellation before returning. The
 lease follows the caller environment and remains held for a live process, rather
 than expiring during long instrumentation. Product callbacks own controlled
 fixture provisioning; this runner does not authorize live integrations. Use `testOutputPath` for reports produced inside this checkout.
 
+For installed upgrades, each variant supplies baseline `apk`/`testApk` and an
+`upgrade: {apk, testApk}` candidate pair. Both pairs are admitted before device
+mutation. `runnerArgs` seeds the baseline; `upgradeRunnerArgs` verifies the
+candidate with the same strict class/method selection. `beforeUpgrade` runs after
+baseline instrumentation; `afterUpgrade` runs after replacing the app but before
+replacing the test APK, allowing product intent-preservation checks. Separate
+phase logs and hashes retain evidence. Installed APK bytes are verified after
+installation, before replacement and before removal. Changed installed code
+retains both packages for explicit recovery instead of deleting an unknown build.
+
 The isolated Android harness also accepts an explicit unique `testClasses` list
 instead of `testClass`, with the complete `expectedTests` count across that suite.
+For one exact method, supply `testMethod` with one class and `expectedTests: 1`;
+the completed method identity must match before acceptance.
 It freezes the selection before asynchronous work, checks every requested class
 through the same strict instrumentation parser, and rejects missing or unexpected
 classes while retaining owned-installation cleanup. This supports product
@@ -292,3 +306,18 @@ and stage a pinned mobile runtime with byte provenance, supplying their own
 skills and gateway callback. Development checkout inspection lives in
 `scripts/lib/committed-source.mjs`; APK document integrity verification lives in
 `native-host/android-documents.mjs`.
+
+`development-probes.ts` provides dependency-light TCP and authenticated JSON
+readiness transports for development hosts. TCP success does not identify an
+owner; JSON probes reject redirects and bound the body read. Hosts retain
+identity, readiness predicates and process reuse policy.
+
+`createDevelopmentProcessScope` composes owned child registration and signal
+cleanup with the existing process-group drain. It never adopts or restarts a
+process. Hosts choose commands, environments, readiness and diagnostics; call
+`dispose` in finally. `waitForClose` remains valid after an early close event.
+
+`native-host/research-statistics.mjs` supplies Wilson 95% binomial intervals and
+deterministic nearest-rank percentile bootstrap intervals for a mean. Hosts own
+sampling units, cohorts, confidence labels, resample/seed/work budgets and
+interpretation; these calculations do not certify independence or causal effects.

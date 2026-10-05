@@ -65,10 +65,6 @@ export default defineConfig({
       // barrel) — resolve them for real so spatial views (Inbox, Focus)
       // screenshot their actual layout instead of a stub.
       {
-        find: /^@elizaos\/ui\/spatial$/,
-        replacement: path.join(elizaRoot, "packages/ui/src/spatial/index.ts"),
-      },
-      {
         find: /^@elizaos\/ui\/state$/,
         replacement: path.join(here, "stubs/elizaos-ui-state.ts"),
       },
