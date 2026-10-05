@@ -44,7 +44,8 @@
       "import": "./dist/email-classification/index.js",
       "default": "./dist/email-classification/index.js"
     },
-    "./native-host/*": "./native-host/*.mjs"
+    "./native-host/*": "./native-host/*.mjs",
+    "./native-host/bill-client": "./native-host/bill-client.ts"
   },
   "scripts": {
     "lint:default-packs": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
