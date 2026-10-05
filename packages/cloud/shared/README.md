@@ -52,5 +52,9 @@ current provider state before configuration, compensation or pending-plan public
 Downgrade review preflights pinned retained subscription billing terms before invoice
 preview. The observer normalizes existing discount/tax/payment references and includes
 financial overrides in its digest. Unsupported terms reject instead of being omitted.
-This review check alone does not bind a create effect: the dispatcher must reobserve,
-persist the original retained-term binding and validate phase/default preservation.
+Migration 0522 binds normalized subscription settings and customer inheritance to the
+original quote in the same transaction. New downgrade intent digests include that
+immutable binding; historical version-1 started effects retain read-only recovery.
+New admission/dispatch cannot use missing bindings or attach them after consumption.
+The dispatcher must still reobserve matching terms and validate phase/default
+preservation before provider writes and scheduled-state publication.

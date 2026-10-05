@@ -119,6 +119,7 @@ async function seed(validityMs = 60000) {
     const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
     const { saveOrganizationDowngradeQuote } = await import("./organization-downgrade-quotes");
     const second = await saveOrganizationDowngradeQuote({
+      retainedTerms: f.retainedTerms,
       identity: f.input,
       captured: await readOrganizationPlanChangeSource(f.input),
       review: f.quote.review,
@@ -227,4 +228,106 @@ async function seed(validityMs = 60000) {
     });
     expect((await prepare(input)).command.status).toBe("PREPARED");
   }, 20000);
+  test("original retained terms are tenant-bound and immutable after atomic quote save", async () => {
+    const f = await seed();
+    const row = (
+      await db.query("SELECT * FROM organization_schedule_quote_terms WHERE quote_id=$1", [
+        f.quote.id,
+      ])
+    ).rows[0];
+    expect(row.organization_id).toBe(f.input.organizationId);
+    expect(row.snapshot.subscription.id).toBe(f.source.stripe_subscription_id);
+    expect(row.snapshot.customer.customerId).toBe(f.source.stripe_customer_id);
+    expect(row.snapshot_digest).toMatch(/^[a-f0-9]{64}$/);
+    await expect(
+      db.query(
+        "UPDATE organization_schedule_quote_terms SET snapshot_digest=$2 WHERE quote_id=$1",
+        [f.quote.id, "b".repeat(64)],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      db.query("DELETE FROM organization_schedule_quote_terms WHERE quote_id=$1", [f.quote.id]),
+    ).rejects.toMatchObject({ code: "23514" });
+    const other = await seed();
+    await expect(
+      db.query(
+        "UPDATE organization_schedule_quote_terms SET organization_id=$2 WHERE quote_id=$1",
+        [f.quote.id, other.input.organizationId],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+  });
+  test("a failing retained-term insertion rolls back its quote", async () => {
+    const f = await seed();
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    const { saveOrganizationDowngradeQuote } = await import("./organization-downgrade-quotes");
+    const before = (
+      await db.query(
+        "SELECT count(*)::int n FROM organization_plan_change_quotes WHERE organization_id=$1",
+        [f.input.organizationId],
+      )
+    ).rows[0].n;
+    await db.query(
+      `CREATE FUNCTION reject_test_terms() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected binding failure' USING ERRCODE='23514'; END $$`,
+    );
+    await db.query(
+      "CREATE TRIGGER test_terms_failure BEFORE INSERT ON organization_schedule_quote_terms FOR EACH ROW EXECUTE FUNCTION reject_test_terms()",
+    );
+    try {
+      await expect(
+        saveOrganizationDowngradeQuote({
+          identity: f.input,
+          captured: await readOrganizationPlanChangeSource(f.input),
+          review: f.quote.review,
+          providerBinding: f.quote.provider_binding!,
+          retainedTerms: f.retainedTerms,
+        }),
+      ).rejects.toThrow();
+    } finally {
+      await db.query("DROP TRIGGER test_terms_failure ON organization_schedule_quote_terms");
+      await db.query("DROP FUNCTION reject_test_terms()");
+    }
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM organization_plan_change_quotes WHERE organization_id=$1",
+          [f.input.organizationId],
+        )
+      ).rows[0].n,
+    ).toBe(before);
+  });
+  test("fresh provider observations must match the original stored source and customer terms", async () => {
+    const f = await seed();
+    const { assertOrganizationScheduleQuoteTermsCurrent } = await import(
+      "../../lib/services/organization-schedule-quote-terms"
+    );
+    const { scheduleCustomerTestObservation } = await import(
+      "../../lib/services/organization-schedule-test-fixture"
+    );
+    const customer = scheduleCustomerTestObservation(f.source.stripe_customer_id);
+    const args = {
+      original: f.retainedTerms,
+      rawSubscription: f.retainedTerms.subscription,
+      rawCustomer: customer,
+      observedAt: new Date(f.review.observedAt),
+    };
+    expect(assertOrganizationScheduleQuoteTermsCurrent(args)).toEqual(f.retainedTerms);
+    expect(() =>
+      assertOrganizationScheduleQuoteTermsCurrent({
+        ...args,
+        rawCustomer: { ...customer, balance: -100 },
+      }),
+    ).toThrow();
+    expect(() =>
+      assertOrganizationScheduleQuoteTermsCurrent({
+        ...args,
+        rawSubscription: { ...f.retainedTerms.subscription, default_payment_method: "pm_changed" },
+      }),
+    ).toThrow();
+    const row = (
+      await db.query("SELECT snapshot FROM organization_schedule_quote_terms WHERE quote_id=$1", [
+        f.quote.id,
+      ])
+    ).rows[0];
+    expect(row.snapshot).toEqual(f.retainedTerms);
+  });
 });
