@@ -981,14 +981,22 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
           readOnlyProvider as unknown as import("stripe").default,
         );
         if (liveStatus === "past_due") {
+          let targetFailed = true;
+          const failedTarget = {
+            ...objects.invoice,
+            status: "open",
+            paid: false,
+            amount_paid: 0,
+            amount_remaining: objects.invoice.amount_due,
+          };
           stripeMock = {
             ...readOnlyProvider,
             invoices: {
-              ...readOnlyProvider.invoices,
+              retrieve: async () => (targetFailed ? failedTarget : objects.invoice),
               list: async () => ({
                 object: "list",
                 has_more: false,
-                data: [{ ...objects.invoice, created: boundary }],
+                data: [{ ...(targetFailed ? failedTarget : objects.invoice), created: boundary }],
               }),
             },
           };
@@ -1000,6 +1008,20 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
           );
           const { recoverMissedSubscriptionEvents } = await import(
             "../../lib/services/subscription-reconciliation"
+          );
+          const failed = await recoverMissedSubscriptionEvents();
+          expect(failed.status).toBe("ok");
+          const failedState = await state(f);
+          expect(failedState.source.plan_key).toBe("pro_monthly");
+          expect(failedState.source.pending_plan_key).toBe("plus_monthly");
+          expect(failedState.source.current_period_end.getTime()).toBe(boundary * 1000);
+          expect(failedState.source.dunning_started_at.getTime()).toBe(boundary * 1000);
+          expect(failedState.periods).toEqual(beforePayment.periods);
+          expect(failedState.allowance).toEqual(beforePayment.allowance);
+          targetFailed = false;
+          await db.query(
+            "UPDATE subscription_reconciliation_scans SET next_due_at=clock_timestamp() WHERE subscription_id=$1",
+            [source.id],
           );
           const recovered = await recoverMissedSubscriptionEvents();
           expect(recovered.status).toBe("ok");
@@ -1112,6 +1134,15 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
         ).rejects.toThrow();
         expect(await state(f)).toEqual(beforeNext);
         let historyPages = 0;
+        let ordinaryFailed = liveStatus !== "active";
+        let foreignFailedInvoice = liveStatus === "unpaid";
+        const failedOrdinary = {
+          ...nextObjects.invoice,
+          status: "open",
+          paid: false,
+          amount_paid: 0,
+          amount_remaining: nextObjects.invoice.amount_due,
+        };
         const listedNext = { ...nextObjects.invoice, created: target.end_date };
         const listedLater = {
           ...listedNext,
@@ -1134,12 +1165,26 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
             list: async (request: { starting_after?: string }) => {
               historyPages++;
               return request.starting_after
-                ? { object: "list", has_more: false, data: [listedNext] }
+                ? {
+                    object: "list",
+                    has_more: false,
+                    data: [
+                      {
+                        ...(ordinaryFailed ? failedOrdinary : listedNext),
+                        created: target.end_date,
+                      },
+                    ],
+                  }
                 : { object: "list", has_more: true, data: [listedLater] };
             },
             retrieve: async (id: string) => {
               expect(id).toBe(nextObjects.invoice.id);
-              return nextObjects.invoice;
+              return ordinaryFailed
+                ? {
+                    ...failedOrdinary,
+                    customer: foreignFailedInvoice ? "cus_foreign" : failedOrdinary.customer,
+                  }
+                : nextObjects.invoice;
             },
           },
         };
@@ -1152,6 +1197,30 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
         const { recoverMissedSubscriptionEvents } = await import(
           "../../lib/services/subscription-reconciliation"
         );
+        if (foreignFailedInvoice) {
+          expect((await recoverMissedSubscriptionEvents()).status).toBe("degraded");
+          expect(await state(f)).toEqual(beforeNext);
+          foreignFailedInvoice = false;
+          await db.query(
+            "UPDATE subscription_reconciliation_scans SET next_due_at=clock_timestamp() WHERE subscription_id=$1",
+            [paid.id],
+          );
+        }
+        if (ordinaryFailed) {
+          const failed = await recoverMissedSubscriptionEvents();
+          expect(failed.status).toBe("ok");
+          const failedState = await state(f);
+          expect(failedState.source.current_period_end.getTime()).toBe(target.end_date * 1000);
+          expect(failedState.source.dunning_started_at.getTime()).toBe(target.end_date * 1000);
+          expect(failedState.periods).toEqual(beforeNext.periods);
+          expect(failedState.allowance).toEqual(beforeNext.allowance);
+          ordinaryFailed = false;
+          historyPages = 0;
+          await db.query(
+            "UPDATE subscription_reconciliation_scans SET next_due_at=clock_timestamp() WHERE subscription_id=$1",
+            [paid.id],
+          );
+        }
         const recovered = await recoverMissedSubscriptionEvents();
         expect(recovered.status).toBe("ok");
         expect(recovered.attempts).toHaveLength(1);

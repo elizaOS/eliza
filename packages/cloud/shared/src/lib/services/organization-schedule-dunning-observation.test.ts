@@ -181,3 +181,82 @@ for (const [name, mutate] of mutations)
     mutate(f);
     expect(() => validate(f)).toThrow();
   });
+
+function historicalFixture() {
+  const f = fixture(),
+    original = originalTargetFixture(),
+    snapshot = reviewFixture().rawCurrentSchedule;
+  const end = f.authority.phase.end.getTime() / 1000;
+  const observedAt = new Date((end + 10) * 1000);
+  const schedule = {
+    ...snapshot,
+    status: "completed",
+    current_phase: null,
+    completed_at: end,
+    released_at: null,
+    released_subscription: null,
+  };
+  return {
+    ...f,
+    observedAt,
+    authority: proveOriginalConfiguredTarget({
+      ...original,
+      rawCurrentSchedule: schedule,
+      observedAt,
+    }),
+    objects: {
+      ...f.objects,
+      schedule,
+      subscription: {
+        ...f.objects.subscription,
+        schedule: null,
+        latest_invoice: "in_later",
+        current_period_start: end,
+        current_period_end: end + 2592000,
+      },
+    },
+  };
+}
+test("historical failed target preserves original invoice and paid source with separate later live state", () => {
+  const f = historicalFixture(),
+    before = structuredClone(f);
+  expect(validate(f)).toMatchObject({ providerStatus: "past_due", invoiceId: "in_target" });
+  expect(f).toEqual(before);
+});
+for (const [name, change] of [
+  [
+    "foreign customer",
+    (f: ReturnType<typeof historicalFixture>) => {
+      f.objects.invoice.customer = "cus_other";
+    },
+  ],
+  [
+    "different original interval",
+    (f: ReturnType<typeof historicalFixture>) => {
+      f.objects.invoice.lines.data[0]!.period.start++;
+    },
+  ],
+  [
+    "same invoice for later period",
+    (f: ReturnType<typeof historicalFixture>) => {
+      f.objects.subscription.latest_invoice = f.objects.invoice.id;
+    },
+  ],
+  [
+    "active live subscription",
+    (f: ReturnType<typeof historicalFixture>) => {
+      f.objects.subscription.status = "active";
+    },
+  ],
+  [
+    "paid original invoice",
+    (f: ReturnType<typeof historicalFixture>) => {
+      f.objects.invoice.paid = true;
+    },
+  ],
+] as const)
+  test(`historical dunning rejects ${name}`, () => {
+    const f = historicalFixture();
+    change(f);
+    expect(() => validate(f)).toThrow();
+  });

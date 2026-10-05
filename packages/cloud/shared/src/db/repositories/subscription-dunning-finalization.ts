@@ -12,10 +12,10 @@ import {
 } from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
 import { billingSubscriptionEventReceipts } from "../schemas/subscription-billing-operations";
-import { verifyScheduledDunningInTransaction } from "./organization-schedule-dunning-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import { subscriptionBillingOperationsRepository as operations } from "./subscription-billing-operations";
+import { verifyDunningObjectsInTransaction } from "./subscription-dunning-object-authority";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
 import type { ReconciliationIdentity } from "./subscription-reconciliation-lease";
 
@@ -33,10 +33,12 @@ export function dunningUnavailable(reason: string, context: Record<string, unkno
 }
 
 /** Provider observation validated against the captured source by the Stripe service layer. */
+import type { HistoricalDunningObjects } from "../../lib/services/stripe-renewal-dunning-observation";
 export interface DunningObservation {
   providerStatus: "past_due" | "unpaid";
   providerObjectDigest: string;
   scheduledObjects?: ScheduledDunningObjects;
+  historicalObjects?: HistoricalDunningObjects;
 }
 
 /**
@@ -194,7 +196,7 @@ export async function finalizeDunningEvent(input: FinalizeDunningEventInput) {
       receipt.event_created_at < source.last_provider_event_created_at
     )
       dunningUnavailable("out_of_order_event_requires_reconciliation");
-    const scheduled = await verifyScheduledDunningInTransaction(tx, source, input.observation);
+    const scheduled = await verifyDunningObjectsInTransaction(tx, source, input.observation);
     if (
       scheduled &&
       ((receipt.provider_object_type === "invoice" &&
@@ -257,7 +259,7 @@ export async function publishDunningReconciliationInTransaction(
     expectedProjectionRevision: number | null;
   },
 ): Promise<{ changed: false } | { changed: true; revision: number }> {
-  await verifyScheduledDunningInTransaction(tx, input.source, input.observation);
+  await verifyDunningObjectsInTransaction(tx, input.source, input.observation);
   const values = dunningLifecycleValues(
     input.source,
     input.observation,

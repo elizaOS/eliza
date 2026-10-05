@@ -93,11 +93,26 @@ export async function recoverMissedSubscriptionEvents() {
           })
         : null;
       const receipt = nextInvoice
-        ? await finalizeSubscriptionReconciliation(claim, {
-            kind: "paid_renewal",
-            invoiceId: nextInvoice.invoiceId,
-            objects: await retrievePaidRenewalObjects(claim.source, nextInvoice.invoiceId, stripe),
-          })
+        ? nextInvoice.paid
+          ? await finalizeSubscriptionReconciliation(claim, {
+              kind: "paid_renewal",
+              invoiceId: nextInvoice.invoiceId,
+              objects: await retrievePaidRenewalObjects(
+                claim.source,
+                nextInvoice.invoiceId,
+                stripe,
+              ),
+            })
+          : await finalizeSubscriptionReconciliation(claim, {
+              kind: "dunning",
+              observation: await retrieveStripeDunningObservation(
+                claim.source,
+                raw,
+                stripe,
+                customer,
+                { invoiceId: nextInvoice.invoiceId, observedAt: claim.observedAt },
+              ),
+            })
         : raw.status === "canceled" || raw.status === "incomplete_expired"
           ? await finalizeSubscriptionReconciliation(claim, {
               kind: "terminal",

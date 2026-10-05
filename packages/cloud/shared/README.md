@@ -133,13 +133,19 @@ Adjacent ordinary historical renewals use independent live compatibility and cap
 payment proof after the scheduled target settles. Each transaction records only the
 next proven paid interval, expires its old allowance and retains later observed dunning.
 Cancellation commands keep their stricter captured-item/period authority. Ordinary
-renewals currently retain item identity; chronological invoice discovery and verified
-item-replacement history remain required for complete missed-period recovery.
+renewals currently retain item identity; verified item-replacement history remains
+required before compatible replacements can enter missed-period recovery.
 
 Missed-period recovery traverses complete authenticated subscription invoice pages
 within the claim's database-time creation boundary before selecting the unique invoice
 starting at the stored paid period end. It rejects ambiguity, overlap, incomplete
-history and unpaid gaps, then retrieves canonical payment/live objects again. Discovery
+history and draft/void gaps, then retrieves canonical payment/live objects again. Discovery
 precedes active/dunning routing; the existing leased transaction settles one adjacent
 period per attempt and subsequent scans continue history. Provider read failure never
 authorizes a partial match or a jump to the newest invoice.
+
+An adjacent open/uncollectible historical invoice is lifecycle-only evidence. Recovery
+rechecks owned failed-invoice, retained catalog/account and compatible past-due/unpaid
+live state under the organization lock, retaining the original paid period and pending
+plan without allowance. Later captured payment uses the existing chronological owner.
+Draft/void gaps and an active live subscription with old debt remain explicit uncertainty.
