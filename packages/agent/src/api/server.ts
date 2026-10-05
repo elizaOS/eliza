@@ -2131,40 +2131,49 @@ async function handleRequestForViewClient(
     pathname === "/api/wallet/keys"
       ? (await getCoreWalletApi()).getWalletAddresses
       : null;
-  if (
-    await handleFirstRunRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      state,
-      json,
-      error,
-      readJsonBody,
-      isCloudProvisionedContainer,
-      hasPersistedFirstRunState,
-      ensureWalletKeysInEnvAndConfig,
-      getWalletAddresses: firstRunGetWalletAddresses
-        ? () => firstRunGetWalletAddresses(state.runtime?.agentId)
-        : () => ({
-            evmAddress: null,
-            solanaAddress: null,
-          }),
-      pickRandomNames,
-      getStylePresets,
-      getProviderOptions,
-      getCloudProviderOptions,
-      getModelOptions,
-      getInventoryProviderOptions,
-      resolveConfiguredCharacterLanguage,
-      normalizeCharacterLanguage,
-      readUiLanguageHeader,
-      applyFirstRunVoicePreset,
-      saveElizaConfig,
-    })
-  ) {
-    return;
+  const releaseFirstRunWalletKeys =
+    (method === "GET" && pathname === "/api/wallet/keys") ||
+    (method === "POST" && pathname === "/api/first-run")
+      ? await acquireWalletKeyMutation()
+      : undefined;
+  try {
+    if (
+      await handleFirstRunRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state,
+        json,
+        error,
+        readJsonBody,
+        isCloudProvisionedContainer,
+        hasPersistedFirstRunState,
+        ensureWalletKeysInEnvAndConfig,
+        getWalletAddresses: firstRunGetWalletAddresses
+          ? () => firstRunGetWalletAddresses(state.runtime?.agentId)
+          : () => ({
+              evmAddress: null,
+              solanaAddress: null,
+            }),
+        pickRandomNames,
+        getStylePresets,
+        getProviderOptions,
+        getCloudProviderOptions,
+        getModelOptions,
+        getInventoryProviderOptions,
+        resolveConfiguredCharacterLanguage,
+        normalizeCharacterLanguage,
+        readUiLanguageHeader,
+        applyFirstRunVoicePreset,
+        saveElizaConfig,
+      })
+    ) {
+      return;
+    }
+  } finally {
+    releaseFirstRunWalletKeys?.();
   }
   // POST /api/first-run is now handled by first-run-routes.ts above.
   if (
@@ -3579,6 +3588,7 @@ export async function startApiServer(opts?: {
     walletAutoProvisionRaw === "on" ||
     walletAutoProvisionRaw === "yes";
   if (walletAutoProvisionEnabled) {
+    const releaseWalletKeys = await acquireWalletKeyMutation();
     const walletEnvBefore = Object.fromEntries(
       [
         "EVM_PRIVATE_KEY",
@@ -3599,6 +3609,8 @@ export async function startApiServer(opts?: {
       logger.error(
         `[eliza-api] Failed to persist generated wallet keys: ${err instanceof Error ? err.message : err}`,
       );
+    } finally {
+      releaseWalletKeys();
     }
   }
   const blockOnStewardWalletCache =
