@@ -20,15 +20,6 @@
 
 import z from "zod";
 
-// Must stay in sync with the `ConversationScope` TS type in
-// `packages/agent/src/api/server-types.ts` and the runtime allowlist
-// `VALID_SCOPES` in `packages/agent/src/api/conversation-metadata.ts`.
-// Develop had a stale short enum here that rejected every `page-*` scope
-// the UI emits (BrowserWorkspaceView, CharacterHubView, etc.), surfacing
-// as "Invalid option: expected one of …" toasts.
-// Exported (alongside ConversationAutomationTypeSchema below) so the
-// schema-vs-type-drift contract test can assert membership equality
-// against the runtime VALID_SCOPES allowlist.
 export const ConversationScopeSchema = z.enum([
   "general",
   "automation-coordinator",
@@ -53,12 +44,6 @@ export const ConversationAutomationTypeSchema = z.enum([
   "workflow",
 ]);
 
-/**
- * Mirror of `ConversationMetadata` in agent/src/api/server-types.ts.
- * The server passes through `sanitizeConversationMetadata` which
- * strips empty / non-string fields, so the schema is permissive on
- * presence and strict on type.
- */
 export const ConversationMetadataSchema = z
   .object({
     scope: ConversationScopeSchema.optional(),

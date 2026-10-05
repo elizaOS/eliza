@@ -12,7 +12,9 @@ export default defineConfig({
     alias: buildWorkspaceSourceAliases(workspaceRepoRoot),
   },
   test: {
-    pool: "threads",
+    // Isolate PGlite/WASM teardown in separate processes. The thread pool can
+    // abort Node 24 in ThreadIsolation::UnregisterWasmAllocation on Linux.
+    pool: "forks",
     maxWorkers: 1,
     server: { deps: { inline: [/@elizaos\//] } },
     include: [

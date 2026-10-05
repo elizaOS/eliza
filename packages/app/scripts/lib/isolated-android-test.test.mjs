@@ -83,6 +83,7 @@ if(args.includes('instrument')){
 const args=process.argv.slice(2);const wrong=${JSON.stringify(mode === "wrong-apk")}||(${JSON.stringify(mode === "wrong-upgrade")}&&args[2].includes('candidate'));
 if(args[1]==='badging')console.log("package: name='"+(wrong?'org.unrelated.app':args[2].includes('companion.apk')?'org.example.companion':args[2].includes('test.apk')?'org.example.consumer.test':'org.example.consumer')+"'");
 else console.log('E: manifest\\n  E: instrumentation\\n    A: android:name="androidx.test.runner.AndroidJUnitRunner"\\n    A: android:targetPackage="${mode === "wrong-target" ? "org.unrelated.app" : "org.example.consumer"}"');
+if(args[1]!=='badging'&&${JSON.stringify(mode.startsWith("extra-runner"))})console.log('  E: instrumentation\\n    A: android:name="org.example.consumer.ProcessRunner"\\n    A: android:targetPackage="${mode === "extra-runner-wrong-target" ? "org.unrelated.app" : "org.example.consumer"}"');
 `.replaceAll("org.example.consumer", fixturePackage),
     { mode: 0o700 },
   );
@@ -958,4 +959,67 @@ test("packages appearing during scenario admission remain unowned", async (t) =>
   assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, [
     f.options.packageName,
   ]);
+});
+
+test("explicit additional runner is admitted without selecting it for execution", async (t) => {
+  const f = fixture(t, "extra-runner");
+  const report = await runIsolatedAndroidTest({
+    ...f.options,
+    additionalInstrumentationRunners: [
+      `${f.options.packageName}.ProcessRunner`,
+    ],
+  });
+  assert.equal(report.cleaned, true);
+  const calls = f.commands().filter((c) => c.includes("instrument"));
+  assert.equal(calls.length, 2);
+  assert.ok(
+    calls.every((c) =>
+      c.at(-1).endsWith("/androidx.test.runner.AndroidJUnitRunner"),
+    ),
+  );
+});
+for (const mode of ["extra-runner", "extra-runner-wrong-target"])
+  test(`${mode} requires exact declaration admission before installation`, async (t) => {
+    const f = fixture(t, mode);
+    await assert.rejects(
+      runIsolatedAndroidTest({
+        ...f.options,
+        ...(mode.endsWith("wrong-target")
+          ? {
+              additionalInstrumentationRunners: [
+                `${f.options.packageName}.ProcessRunner`,
+              ],
+            }
+          : {}),
+      }),
+    );
+    assert.ok(!f.commands().some((c) => c[0] === "install"));
+  });
+for (const extras of [
+  ["androidx.test.runner.AndroidJUnitRunner"],
+  ["invalid"],
+  "not-an-array",
+])
+  test(`invalid additional runner list ${JSON.stringify(extras)} is rejected`, async (t) => {
+    const f = fixture(t);
+    await assert.rejects(
+      runIsolatedAndroidTest({
+        ...f.options,
+        additionalInstrumentationRunners: extras,
+      }),
+    );
+    assert.equal(f.commands().length, 0);
+  });
+
+test("declared additional runner must actually appear in the APK", async (t) => {
+  const f = fixture(t);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      additionalInstrumentationRunners: [
+        `${f.options.packageName}.ProcessRunner`,
+      ],
+    }),
+  );
+  assert.ok(!f.commands().some((c) => c[0] === "install"));
 });

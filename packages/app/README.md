@@ -296,3 +296,9 @@ or publishes a release. Hosts select environment, distribution names and archive
 identity. Missing build outputs or failed verification prevent archive publication.
 Run `node --test scripts/mobile/android/build-consumer.test.mjs` for ordering, failure
 and stale-artifact isolation checks.
+
+Consumer `runIsolatedAndroidTest` campaigns admit exactly the selected runner by
+default. Hosts whose test APK declares other runners must list their class names
+in `additionalInstrumentationRunners`; every declaration must target the same
+application package, with no missing, duplicate, or undeclared runners. This
+changes APK admission only: instrumentation still executes the selected `runner`.
