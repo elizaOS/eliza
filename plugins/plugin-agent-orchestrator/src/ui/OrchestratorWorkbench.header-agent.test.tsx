@@ -5,13 +5,13 @@
  * The real agent registry drives the accounts toggle rendered by the header.
  */
 
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentSurfaceProvider,
   getViewRegistry,
   handleAgentSurfaceCapability,
-} from "../../../../packages/ui/src/agent-surface/index";
+} from "@elizaos/ui";
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkbenchHeader } from "./OrchestratorWorkbench";
 
 afterEach(cleanup);

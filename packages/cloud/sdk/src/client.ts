@@ -137,6 +137,9 @@ import {
   type OrganizationSubscriptionCancellationResponse,
   type OrganizationSubscriptionRenewalReviewResponse,
   type OrganizationSubscriptionReviewedUndoRequest,
+  type OrganizationSubscriptionUpgradeCommandResponse,
+  type OrganizationSubscriptionUpgradeConfirmRequest,
+  type OrganizationSubscriptionUpgradePaymentResponse,
   type OrganizationSubscriptionUpgradeQuoteRequest,
   type OrganizationSubscriptionUpgradeQuoteResponse,
   type PairingTokenResponse,
@@ -601,6 +604,34 @@ export class ElizaCloudClient {
     return this.v1.requestData("POST", "/subscriptions/upgrade/review", {
       json: input,
     });
+  }
+
+  /** Confirms the original reviewed quote; retries retain its original durable command. */
+  confirmOrganizationSubscriptionUpgrade(
+    input: OrganizationSubscriptionUpgradeConfirmRequest,
+  ): Promise<OrganizationSubscriptionUpgradeCommandResponse> {
+    return this.v1.requestData("POST", "/subscriptions/upgrade/confirm", {
+      json: input,
+    });
+  }
+  /** Reads durable status only; an unknown result never authorizes a new intent. */
+  readOrganizationSubscriptionUpgrade(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionUpgradeCommandResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/upgrade/${encodeURIComponent(commandId)}`,
+    );
+  }
+
+  /** Obtains a fresh private original-invoice payment URL; call again after return to reconcile. */
+  continueOrganizationSubscriptionUpgradePayment(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionUpgradePaymentResponse> {
+    return this.v1.requestData(
+      "POST",
+      `/subscriptions/upgrade/${encodeURIComponent(commandId)}/payment`,
+    );
   }
 
   /** Reads a short-lived next-renewal estimate for the current manager's scheduled cancellation. */

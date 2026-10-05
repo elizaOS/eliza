@@ -4,7 +4,7 @@ import { listOrganizationUpgradeRecovery } from "../../db/repositories/organizat
 import { recordOrganizationUpgradeRecoveryOutcome } from "../../db/repositories/organization-upgrade-recovery-incidents";
 import { reconcileOriginalOrganizationUpgrade } from "./organization-upgrade-recovery";
 export async function recoverOrganizationUpgrades(limit = 5) {
-  const result = { inspected: 0, applied: 0, pending: 0, unavailable: 0, deferred: 0 };
+  const result = { inspected: 0, applied: 0, failed: 0, pending: 0, unavailable: 0, deferred: 0 };
   const due = await listOrganizationUpgradeRecovery(limit);
   for (let index = 0; index < due.length; index++) {
     const command = due[index]!;
@@ -27,6 +27,9 @@ export async function recoverOrganizationUpgrades(limit = 5) {
     if (observed.status === "applied") {
       await recordOrganizationUpgradeRecoveryOutcome({ ...identity, issueCode: null });
       result.applied++;
+    } else if (observed.status === "failed") {
+      await recordOrganizationUpgradeRecoveryOutcome({ ...identity, issueCode: null });
+      result.failed++;
     } else {
       if (observed.reason === "requires_reconciliation")
         await recordOrganizationUpgradeRecoveryOutcome({

@@ -30,18 +30,20 @@ an in-flight or expired choice cannot be used, and hide options once the choice
 is no longer pending. `splitSpeechSegments`
 shares lossless caption/playback chunks without importing the voice runtime.
 
-The browser-safe `api/task-lifecycle` leaf projects authoritative task status and
+`TaskLifecycle` projects authoritative task status and
 reconciles start/pause/resume/cancel requests without optimistically reporting
 success. Hosts provide transport, localized failure messages and view updates.
 The durable runtime remains authoritative; this projection grants no task authority.
 
-The `voice/pcm-wave` leaf shares mono PCM16 WAV encoding for single buffers or
+`encodeMonoPcm16Wav` and `encodeMonoPcm16WavChunks` share mono PCM16 WAV encoding for single buffers or
 cumulative chunks without importing capture, desktop bridge or provider code.
 Hosts own recording lifecycle, sample-rate selection and playback/transcription.
 Nonfinite samples encode as silence; finite samples are clipped and rounded.
 
 `BrowserDocumentStore` stores opaque text with IndexedDB transaction receipts.
 Its compare-and-swap operation detects stale writes and retains reset tombstones;
+`readOrCreate` initializes absent bytes atomically while preserving existing receipts,
+including reset tombstones, across concurrent callers and tabs.
 `edit` serializes asynchronous, side-effect-free callbacks with Web Locks and never
 replays them. Cancellation prevents a late callback from committing. Hosts own
 storage namespaces, schema validation, legacy migration and recovery presentation.
@@ -49,8 +51,21 @@ This API does not maintain a localStorage mirror. Run
 `bun run --cwd packages/ui test:browser-document-store` for real cross-tab,
 cancellation and recovery checks in Chromium, Firefox and WebKit.
 
-`voice/microphone-capture` shares cumulative sample previews and speech-pause
+`startCumulativeMicrophoneCapture` and `observeMicrophonePause` share cumulative sample previews and speech-pause
 observation without owning microphone tracks, transcription or message submission.
 Hosts supply timing/energy policy and the URL of `voice/microphone-samples.worklet.mjs`
 (or a compatible mono worklet). Previews are single-flight and are not replayed;
 unsupported capture returns no observer so the host can retain final-recording UX.
+
+`createRuntimeJsonClient` shares JSON request handling and coalesced native
+startup for host-selected runtime bridges. Hosts supply URLs, native HTTP
+fallback, budgets and messages. Once native availability is established, failures
+never fall back or replay requests. Account refresh fences earlier responses;
+cancelling their publication does not undo native effects already dispatched.
+Requests wait for account refresh. A failed or timed-out refresh blocks requests
+until the host explicitly retries refresh; late status replies cannot restart polling.
+
+`formatMinorCurrency` formats safe integer minor units through an exact decimal
+string, checking the selected currency exponent. `isIsoCalendarDate` and
+`isOrderedIsoDateRange` reject normalized invalid dates and reversed inclusive
+ranges. These browser-safe helpers leave locale, labels and domain policy to hosts.

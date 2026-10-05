@@ -91,11 +91,11 @@ vi.mock("../../api/client-cloud", () => ({
   getCloudAuthToken: () => cloudAuthMock.token,
 }));
 
-vi.mock("../../config/boot-config", () => ({
+vi.mock("../../config/boot-config-store", () => ({
   getBootConfig: () => ({ cloudApiBase: "https://elizacloud.ai" }),
 }));
 
-vi.mock("../../config/branding", () => ({
+vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({ appName: "Eliza" }),
 }));
 

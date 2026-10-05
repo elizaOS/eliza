@@ -33,7 +33,7 @@ export async function handleGenericOAuthCallback(
 
   const baseUrl =
     getCloudAwareEnv().NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
-  const defaultRedirect = `${baseUrl}/cloud/settings?tab=connections`;
+  const defaultRedirect = `${baseUrl}/cloud/connectors`;
 
   // Get provider configuration
   const provider = getProvider(platformLower);
@@ -103,7 +103,7 @@ export async function handleGenericOAuthCallback(
       {
         value: result.redirectUrl,
         baseUrl,
-        fallbackPath: "/cloud/settings?tab=connections",
+        fallbackPath: "/cloud/connectors",
         allowedAbsoluteOrigins,
       },
     );

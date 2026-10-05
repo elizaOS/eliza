@@ -123,7 +123,7 @@ export async function reconcileOrganizationUpgradeInvoiceEvent(message: StripeEv
   const observed = await reconcileOriginalOrganizationUpgrade(original);
   if (observed.status === "applied")
     await recordOrganizationUpgradeRecoveryOutcome({ ...original, issueCode: null });
-  else if (observed.reason === "requires_reconciliation")
+  else if (observed.status === "pending" && observed.reason === "requires_reconciliation")
     await recordOrganizationUpgradeRecoveryOutcome({
       ...original,
       issueCode: "UPGRADE_INVOICE_REQUIRES_RECONCILIATION",

@@ -52,9 +52,7 @@ async function __hono_GET(
     return Response.json({ error: "Invalid target" }, { status: 400 });
   }
   const target = rawTarget === "agent" && agentId ? "agent" : "owner";
-  const dashboardUrl = `${baseUrl}/cloud/settings?tab=${
-    target === "agent" ? "agents" : "connections"
-  }`;
+  const dashboardUrl = `${baseUrl}/cloud/${target === "agent" ? "agents" : "connectors"}`;
 
   if (githubError) {
     if (postMessage || returnUrl) {

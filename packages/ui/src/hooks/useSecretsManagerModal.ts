@@ -65,22 +65,6 @@ export function dispatchSecretsManagerOpen(
   );
 }
 
-export function dispatchSecretsManagerClose(): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent<ToggleDetail>(EVENT_NAME, { detail: { action: "close" } }),
-  );
-}
-
-export function dispatchSecretsManagerToggle(tab?: VaultTab): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent<ToggleDetail>(EVENT_NAME, {
-      detail: tab ? { action: "toggle", tab } : { action: "toggle" },
-    }),
-  );
-}
-
 export interface SecretsManagerModalState {
   readonly isOpen: boolean;
   readonly initialTab: VaultTab | null;

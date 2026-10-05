@@ -11,7 +11,7 @@ import {
   DEFAULT_BOOT_CONFIG,
   getBootConfig,
   setBootConfig,
-} from "../../../config/boot-config";
+} from "../../../config/boot-config-store";
 import {
   CloudHostedAgentAuthNotice,
   CloudPairExchangeError,

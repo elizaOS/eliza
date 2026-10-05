@@ -301,7 +301,7 @@ export const schedulingPlugin: Plugin = {
       // Developer/QA validation surface, not a user destination: gate it behind
       // Developer Mode and keep it off the launcher grid, the view manager, and
       // desktop tabs. The route stays reachable for the live-test workflow.
-      developerOnly: true,
+      viewKind: "developer",
       visibleInManager: false,
       desktopTabEnabled: false,
     },

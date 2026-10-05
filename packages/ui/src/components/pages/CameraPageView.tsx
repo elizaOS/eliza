@@ -16,7 +16,8 @@ import {
 } from "@elizaos/capacitor-camera";
 import { AlertTriangle, Loader2, RotateCcw, SwitchCamera } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
+import { appNameInterpolationVars } from "../../config/branding-base";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { PermissionRecoveryCallout } from "../permissions/PermissionRecoveryCallout";
 import { Button } from "../ui/button";

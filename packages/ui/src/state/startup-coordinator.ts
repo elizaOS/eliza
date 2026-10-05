@@ -501,20 +501,6 @@ export function createElizaOSPolicy(): PlatformPolicy {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/** Map a restored runtime hint to a RuntimeTarget. */
-export function connectionModeToTarget(
-  runMode: string | undefined,
-): RuntimeTarget {
-  switch (runMode) {
-    case "cloud":
-      return "cloud-managed";
-    case "remote":
-      return "remote-backend";
-    default:
-      return "embedded-local";
-  }
-}
-
 /** True when the coordinator is in a phase where the UI should show loading. */
 export function isStartupLoading(state: StartupState): boolean {
   return (

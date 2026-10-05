@@ -138,17 +138,6 @@ export function buildConnectorSendAsMetadata(
   };
 }
 
-export function mergeConnectorSendAsMetadata(
-  metadata: Record<string, unknown> | undefined,
-  sendAsMetadata: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  if (!sendAsMetadata) return metadata;
-  return {
-    ...(metadata ?? {}),
-    ...sendAsMetadata,
-  };
-}
-
 export function connectorWriteConfirmationKey(
   context: ConnectorSendAsContext | null | undefined,
   account: ConnectorAccountRecord | null | undefined,

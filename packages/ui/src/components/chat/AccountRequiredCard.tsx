@@ -11,7 +11,7 @@
 import { CheckCircle2, RefreshCw, ShieldAlert, UserRound } from "lucide-react";
 import { useRef } from "react";
 import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
-import { useBranding } from "../../config/branding";
+import { useBranding } from "../../config/branding-react.hooks";
 import {
   type ConnectorReconnectPhase,
   useConnectorReconnect,

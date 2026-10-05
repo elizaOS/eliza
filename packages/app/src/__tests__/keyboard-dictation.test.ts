@@ -1,5 +1,5 @@
+import type { VoiceCaptureFactoryOptions } from "@elizaos/ui";
 import { afterEach, expect, it, vi } from "vitest";
-import type { VoiceCaptureFactoryOptions } from "../../../ui/src/voice/index";
 import {
   isKeyboardDictationSessionActive,
   type KeyboardDictationSession,
@@ -10,7 +10,6 @@ vi.mock("@elizaos/ui", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/ui")>()),
   getLiveActivityPlugin: () => ({}),
 }));
-vi.mock("../../../ui/src/voice/index", () => ({ createVoiceCapture: vi.fn() }));
 vi.mock("../../../ui/src/logger", () => ({ logger: { info: vi.fn() } }));
 
 let current: KeyboardDictationSession | undefined;

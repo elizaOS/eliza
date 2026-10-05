@@ -31,6 +31,9 @@ export interface TargetInfo {
 	accountId?: string;
 	roomId?: UUID;
 	entityId?: UUID;
+	/** Internal client_chat callback handoff: the message processor owns this
+	 * simple response's durable row. Not inferred from Content.responseId alone. */
+	responseMemoryId?: UUID;
 }
 
 /** One local bookkeeping failure after the provider accepted a message. */

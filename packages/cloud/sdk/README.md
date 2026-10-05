@@ -77,3 +77,14 @@ intent to the organization upgrade review endpoint. The returned quote separates
 due-now terms from a recurring estimate and expires after at most 60 seconds.
 It does not authorize or execute a charge; the internal provider identities and
 persistence digests are not part of the public DTO.
+
+Use `confirmOrganizationSubscriptionUpgrade` with the saved `quoteId` and a stable
+idempotency key, then `readOrganizationSubscriptionUpgrade` for durable status.
+Repeated confirmation reconciles the original effect; status reads never dispatch.
+An unknown outcome is pending, not permission to create another payment or quote.
+These methods require a current organization billing-manager session.
+
+`continueOrganizationSubscriptionUpgradePayment(commandId)` retrieves a fresh
+original-invoice continuation or reconciled command status. Treat its URL as
+private ephemeral payment UI data; never persist or log it. Call again after the
+provider UI returns and use the durable command result to determine completion.

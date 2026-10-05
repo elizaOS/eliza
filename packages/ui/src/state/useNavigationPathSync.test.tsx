@@ -17,7 +17,7 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 describe("useNavigationPathSync — app-shell registry reactivity", () => {
-  it("reconciles developer app navigation inside /dev", () => {
+  it("reconciles developer app hash navigation", () => {
     registerAppShellPage({
       id: "notes",
       pluginId: "test-notes",
@@ -36,6 +36,17 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
     expect(setTabRaw).toHaveBeenLastCalledWith("notes");
+  });
+  it.each([
+    "/character/documents",
+    "/index.html?appWindow=1#/character/documents",
+  ])("resolves the documents route %s without rewriting its URL", (path) => {
+    window.history.replaceState(null, "", path);
+    const originalUrl = window.location.href;
+    const setTabRaw = vi.fn();
+    renderHook(() => useNavigationPathSync({ tab: "views" as Tab, setTabRaw }));
+    expect(window.location.href).toBe(originalUrl);
+    expect(setTabRaw).toHaveBeenCalledWith("documents");
   });
   it("reconciles the active tab when a deep-linked app-shell page registers late", () => {
     window.history.replaceState(null, "", "/apps/custom-panel");

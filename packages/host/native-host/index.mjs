@@ -6,6 +6,7 @@ export * from "./errors.mjs";
 export * from "./research-capture-host.mjs";
 export * from "./research-configuration.mjs";
 export * from "./research-server.mjs";
+export * from "./research-statistics.mjs";
 export * from "./research-store.mjs";
 export * from "./sensitive-text.mjs";
 export * from "./task-runtime-gateway.mjs";

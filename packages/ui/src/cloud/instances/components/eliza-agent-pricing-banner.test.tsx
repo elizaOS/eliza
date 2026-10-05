@@ -5,8 +5,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ElizaAgentPricingBanner } from "./eliza-agent-pricing-banner";
 
-vi.mock("../lib/i18n", () => ({
-  useT: () => (_key: string, options?: Record<string, unknown>) => {
+vi.mock("../../shell/CloudI18nProvider", () => ({
+  useCloudT: () => (_key: string, options?: Record<string, unknown>) => {
     let text = String(options?.defaultValue ?? _key);
     for (const [name, value] of Object.entries(options ?? {})) {
       text = text.replaceAll(`{{${name}}}`, String(value));

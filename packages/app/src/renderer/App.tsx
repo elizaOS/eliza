@@ -135,7 +135,6 @@ import {
   resolveBuiltinBackgroundPolicy,
   resolveBuiltinRouteDescriptor,
   resolveBuiltinRoutedViewManifest,
-  resolveBuiltinTabId,
   resolveCloudHostedAgentUrl,
   routedShellMainClass,
   ShellControllerProvider,
@@ -454,7 +453,7 @@ function ViewSurfaceFrame({
 interface ResolvedDynamicPage extends SurfaceManifestBearer {
   id: string;
   pluginId: string;
-  developerOnly: boolean;
+
   viewKind?: ViewKind;
   registration?: AppShellPageRegistration;
   componentExport?: string;
@@ -482,10 +481,9 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
       return {
         id: registered.id,
         pluginId: registered.pluginId,
-        developerOnly: registered.developerOnly === true,
+
         viewKind: registered.viewKind,
-        backgroundPolicy: registered.backgroundPolicy,
-        headerPolicy: registered.headerPolicy,
+
         surface: registered.surface,
         registration: registered,
       };
@@ -501,11 +499,10 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
         return {
           id: navTab.id,
           pluginId: plugin.id,
-          developerOnly:
-            plugin.app?.developerOnly === true || navTab.developerOnly === true,
+
           // A nav tab's own kind wins; otherwise inherit the app's kind.
           viewKind: navTab.viewKind ?? plugin.app?.viewKind,
-          backgroundPolicy: navTab.backgroundPolicy,
+
           surface: navTab.surface,
           registration: reg,
           componentExport: navTab.componentExport,
@@ -650,21 +647,6 @@ function visibleDynamicPage(
         })),
   );
 }
-/**
- * Whether the active app-shell page wants to render edge-to-edge with no host
- * top-bar/chrome. Looks the active tab up in the runtime page registry and
- * reads its `fullBleed` flag — backward-compatible: pages that don't set it
- * keep the normal chrome.
- */
-function useTabIsFullBleed(tab: string): boolean {
-  const registryVersion = useAppShellPageRegistryVersion();
-  return useMemo(() => {
-    void registryVersion;
-    return listAppShellPages().some(
-      (entry) => entry.id === tab && entry.fullBleed === true,
-    );
-  }, [registryVersion, tab]);
-}
 function useCurrentNavigationPath(): string {
   const [navigationPath, setNavigationPath] = useState(() =>
     typeof window === "undefined" ? "/" : getWindowNavigationPath(),
@@ -686,9 +668,8 @@ function useCurrentNavigationPath(): string {
 /**
  * The resolved screen-background policy for a single view registration — the
  * ONE seam the shell derives every view's background from (#13452). Reads the
- * declared surface manifest first (`surface.background` gated by the `wallpaper`
- * grant), then the legacy standalone `backgroundPolicy`, then defaults to
- * opaque. A view that declares `shared` without the `wallpaper` grant resolves
+ * declared surface manifest (`surface.background` gated by the `wallpaper`
+ * grant), defaulting to opaque. A view that declares `shared` without the `wallpaper` grant resolves
  * to opaque — the wallpaper cannot be opted into by accident.
  */
 function viewRegistrationBackgroundPolicy(
@@ -1059,7 +1040,7 @@ function resolveActiveViewSurface({
     return {
       sourceKey: "builtin",
       manifest: builtinManifest,
-      viewId: tab === "tasks" ? "projects" : resolveBuiltinTabId(tab),
+      viewId: tab === "tasks" ? "projects" : tab,
       children: builtinSurfaceChildren(tab),
     };
   }
@@ -1073,7 +1054,7 @@ function resolveActiveViewSurface({
         }),
         layout: builtinDescriptor.layout,
       },
-      viewId: builtinDescriptor.canonicalId,
+      viewId: builtinDescriptor.id,
       children: builtinSurfaceChildren(tab),
     };
   }
@@ -1443,22 +1424,7 @@ interface StaticTabRenderContext {
   walletNav?: ReactNode;
   characterNav?: ReactNode;
 }
-/**
- * The single builtin static-tab render registry: canonical-id -> renderer.
- *
- * This replaces the former split between a `directViews` object literal and a
- * trailing `if (tab === "...")` chain (App.tsx audit item #34). Both were
- * hand-maintained tab enumerations sitting next to a SECOND enumeration in
- * `builtinRouteBackgroundPolicy`; a tab added to one and forgotten in another
- * was an unobservable drift bug. Now every builtin surface (simple or one that
- * needs runtime context / a custom wrapper) is ONE keyed entry, and alias tabs
- * (`triggers` -> `automations`) resolve through
- * the shared `builtin-tab-registry` so the router and the background resolver
- * read the same alias table.
- *
- * Built lazily per-call (not a module constant) because several renderers close
- * over per-render context (settings section, wallet nav, native-surface gate).
- */
+
 function buildStaticTabRenderers(): Record<
   string,
   (ctx: StaticTabRenderContext) => ReactNode
@@ -1624,7 +1590,7 @@ function renderStaticViewRouterTab({
   // same descriptor so the route cannot drift into a parallel layout table.
   const routeDescriptor = resolveBuiltinRouteDescriptor(tab);
   const render = routeDescriptor
-    ? buildStaticTabRenderers()[routeDescriptor.canonicalId]
+    ? buildStaticTabRenderers()[routeDescriptor.id]
     : undefined;
   if (render && routeDescriptor) {
     return render({
@@ -1676,8 +1642,7 @@ function renderViewRouterContent({
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;
   const characterFamilyPath = isCharacterSectionPath(navigationPath);
-  const characterRelationshipsTab =
-    resolveBuiltinTabId(tab) === "relationships";
+  const characterRelationshipsTab = tab === "relationships";
   const characterNav =
     characterFamilyPath || characterRelationshipsTab ? (
       <CharacterSectionNav
@@ -1689,11 +1654,11 @@ function renderViewRouterContent({
   // Native OS plugins own these surfaces; missing registrations render unavailable.
   if (
     nativeOsSurfaceEnabled &&
-    (NATIVE_OS_VIEW_IDS as readonly string[]).includes(resolveBuiltinTabId(tab))
+    (NATIVE_OS_VIEW_IDS as readonly string[]).includes(tab)
   ) {
     const nativeRegistration = listAppShellPages().find(
       (entry) =>
-        entry.tabAffinity === resolveBuiltinTabId(tab) &&
+        entry.tabAffinity === tab &&
         appShellPageMatchesPath(entry, navigationPath),
     );
     if (nativeRegistration) {
@@ -1992,7 +1957,7 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
  * per-view.
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
-  // Routes with `backgroundPolicy: "shared"` intentionally sit on the unified
+  // Routes with `surface.background: "shared"` intentionally sit on the unified
   // Home/Launcher background. Every other route is opaque; the shell root
   // also paints a full-window underlay so status/home-indicator safe areas do
   // not expose the shared background around app views.
@@ -2024,7 +1989,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
   );
 }
 /**
- * Edge-to-edge surface for pages that register `fullBleed` — no tab bar, no
+ * Edge-to-edge surface for pages with fullscreen or immersive surface headers — no tab bar, no
  * padding. The page owns its full window (e.g. the orchestrator).
  */
 function FullBleedShellContent(props: ShellContentProps): ReactNode {
@@ -2038,7 +2003,7 @@ function FullBleedShellContent(props: ShellContentProps): ReactNode {
 }
 /**
  * Picks the shell wrapper for the active tab. Only three surfaces are genuinely
- * distinct from a routed view: `fullBleed` pages (edge-to-edge), the ambient
+ * distinct from a routed view: fullscreen/immersive pages (edge-to-edge), the ambient
  * `/chat` home (open space behind the overlay), and the host-injected companion
  * shell. Everything else is a view rendered through the single
  * RoutedShellContent → ViewRouter path.
@@ -2922,10 +2887,7 @@ function AppContent() {
       reportUserViewClosed();
       return;
     }
-    reportUserViewSwitch(
-      resolveBuiltinTabId(activeViewSurface.viewId),
-      navigationPath,
-    );
+    reportUserViewSwitch(activeViewSurface.viewId, navigationPath);
   }, [
     activeViewSurface.viewId,
     backendConnection?.state,
@@ -3001,7 +2963,6 @@ function AppContent() {
     trimmedNavigationPath(navigationPath),
   );
   const isFullBleed =
-    useTabIsFullBleed(tab) ||
     activeViewSurface.manifest.header === "fullscreen" ||
     activeViewSurface.manifest.header === "immersive";
   // Keep hook order stable across first-run/auth state transitions.

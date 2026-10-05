@@ -72,11 +72,7 @@ export interface SettingsSectionDef {
   prominence?: SettingsSectionProminence;
   /** Padding override for the section body panel. */
   bodyClassName?: string;
-  /**
-   * Hide unless Developer Mode is on (dev builds default on; prod off).
-   * Equivalent to `viewKind: "developer"`.
-   */
-  developerOnly?: boolean;
+
   /**
    * Hide on the cloud mobile build (no host machine). For host/self-host
    * concepts that are meaningless to a cloud user — e.g. the host
@@ -102,11 +98,7 @@ export interface SettingsSectionDef {
    * not infer a platform from viewport size or user-agent strings.
    */
   requires?: readonly SettingsRuntimeCapability[];
-  /**
-   * Four-tier visibility category. Supersedes `developerOnly` when set:
-   * `system`/`release` always show; `developer`/`preview` follow the Settings
-   * toggles. See `ViewKind` in `@elizaos/core`.
-   */
+  /** Four-tier visibility category; absent values default to release. */
   viewKind?: ViewKind;
   /**
    * The section body. Accepts a plain component or a `React.lazy` wrapper so
@@ -117,24 +109,17 @@ export interface SettingsSectionDef {
 }
 /** Shared navigation policy for destinations that should stay one disclosure away. */
 export function settingsSectionIsSecondary(
-  section: Pick<
-    SettingsSectionDef,
-    "developerOnly" | "prominence" | "viewKind"
-  >,
+  section: Pick<SettingsSectionDef, "prominence" | "viewKind">,
 ): boolean {
   return (
     section.prominence === "secondary" ||
-    section.developerOnly === true ||
     section.viewKind === "developer" ||
     section.viewKind === "preview"
   );
 }
 /** Partition one registry-driven group without duplicating prominence policy. */
 export function partitionSettingsSections<
-  T extends Pick<
-    SettingsSectionDef,
-    "developerOnly" | "prominence" | "viewKind"
-  >,
+  T extends Pick<SettingsSectionDef, "prominence" | "viewKind">,
 >(
   sections: readonly T[],
 ): {

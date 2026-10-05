@@ -1,8 +1,4 @@
-/**
- * Chat-domain client DTOs: Conversation*, Chat*, Message*, Stream*, Action*,
- * Emote*, Document*, Memory*, MCP*, Share*. One slice of the ElizaClient type
- * surface, re-exported through client-types.ts.
- */
+/** Chat, conversation, document, and memory client DTOs. */
 
 import type {
   ChatFailureKind,
@@ -94,14 +90,7 @@ export interface TransientClientMediaInput {
     mimeType: string;
   };
 }
-/** Canonical client reference returned after media has been stored. */
-export interface StoredClientMediaReference {
-  id: string;
-  url: string;
-  mimeType?: string;
-  thumbnailUrl?: string;
-  transcriptId?: string;
-}
+
 /** Compatibility name for the transient chat-upload wire payload. */
 export interface ImageAttachment extends TransientClientMediaInput {
   /**

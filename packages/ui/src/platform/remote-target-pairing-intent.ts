@@ -86,9 +86,3 @@ export function subscribeRemoteControllerPairingIntents(
   if (pendingIntent) claim(pendingIntent);
   return () => window.removeEventListener(REMOTE_PAIRING_INTENT_EVENT, handle);
 }
-
-export const remoteControllerPairingIntentInternals = {
-  clearPending(): void {
-    pendingIntent = null;
-  },
-};

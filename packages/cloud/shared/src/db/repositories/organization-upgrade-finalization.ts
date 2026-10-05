@@ -18,6 +18,7 @@ import {
   type OrganizationUpgradeSettlementIdentity,
   upgradeSettlementConflict as reject,
 } from "./organization-upgrade-paid-authority";
+import { resolveAppliedUpgradeIncidentsInTransaction } from "./organization-upgrade-recovery-incidents";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
@@ -226,7 +227,10 @@ export async function finalizePaidOrganizationUpgrade(
       command.organization_upgrade_dispatch_state !== "started"
     )
       reject("original_command_missing");
-    if (command.status === "APPLIED") return { command, replayed: true };
+    if (command.status === "APPLIED") {
+      await resolveAppliedUpgradeIncidentsInTransaction(tx, input);
+      return { command, replayed: true };
+    }
     const verified =
       await subscriptionAuthorityRepository.advancePaidOrganizationUpgradeInTransaction(tx, input);
     const allowance = await postAllowance(tx, verified);
@@ -268,6 +272,7 @@ export async function finalizePaidOrganizationUpgrade(
       )
       .returning();
     if (!applied) reject("lease_lost_before_commit");
+    await resolveAppliedUpgradeIncidentsInTransaction(tx, input);
     return { command: applied, replayed: false };
   });
 }

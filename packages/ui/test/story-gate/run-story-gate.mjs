@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * Story gate - render EVERY Storybook story in headless Chromium and assert it
  * is healthy. Converts the 1,400+ story catalog from "manual review only" into
@@ -25,7 +26,7 @@
  *
  * Usage:
  *   node test/story-gate/run-story-gate.mjs [--static-dir storybook-static]
- *     [--out test/story-gate/output] [--concurrency 6] [--shard i/n]
+ *     [--out <output-directory>] [--concurrency 6] [--shard i/n]
  *     [--section Primitives] [--grep <substr>] [--limit N]
  *     [--no-screenshots] [--no-a11y]
  *
@@ -40,6 +41,7 @@ import { createRequire } from "node:module";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { determinismShim, FROZEN_EPOCH_MS } from "./determinism-shim.mjs";
 import { attachLogCapture } from "./log-capture.mjs";
 
@@ -112,7 +114,7 @@ export function requireShardSpec(raw) {
 export function parseArgs(argv) {
   const a = {
     staticDir: "storybook-static",
-    out: "test/story-gate/output",
+    out: testOutputPath("ui-story-gate", "output"),
     concurrency: 6,
     shard: null,
     section: null,

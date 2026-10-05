@@ -19,7 +19,7 @@ import { Clock, DollarSign, TrendingDown, Zap } from "lucide-react";
 import { Card } from "../../../components/ui/card";
 import { CornerBrackets } from "../../../components/ui/corner-brackets";
 import { StatusBadge } from "../../../components/ui/status-badge";
-import { useT } from "../lib/i18n";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 
 interface ElizaAgentPricingBannerProps {
   sharedCount: number;
