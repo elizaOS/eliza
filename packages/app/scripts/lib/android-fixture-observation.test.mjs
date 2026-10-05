@@ -55,7 +55,7 @@ test("observer scopes preferences, stopped state and notification identity to th
       if (args.includes("run-as"))
         return '<map><string name="envelope">{&quot;records&quot;:{}}</string></map>';
       if (args.includes("dumpsys"))
-        return "User 0: stopped=true\n  User 10: installed=true stopped=false\nUser 11: stopped=true";
+        return "Packages:\n  Package [org.example.fixture] (abc):\n    User 0: stopped=true\n    User 10: installed=true stopped=false\n    User 11: stopped=true\nQueries:\n    User 10:";
       if (args.includes("notification"))
         return "0|org.example.fixture|0|owned|10001\n10|org.other|0|owned|10002\n10|org.example.fixture|1|owned|1010001\n10|org.example.fixture|0|different|1010001";
       throw Error("Unexpected command");
@@ -102,7 +102,12 @@ for (const dump of [
     const observer = androidFixtureObserver({
       packageName: "org.example.fixture",
       androidUser: 10,
-      run: async () => dump,
+      run: async () =>
+        "Packages:\n  Package [org.example.fixture] (abc):\n" +
+        dump
+          .split("\n")
+          .map((line) => `    ${line}`)
+          .join("\n"),
     });
     await assert.rejects(observer.stopped());
   });
@@ -188,3 +193,45 @@ test("incomplete notification keys are not receipt evidence", async () => {
     assert.equal(await observer.notification({ id: 0, tag: "owned" }), false);
   }
 });
+
+// Reduced from an API 35 dumpsys package capture. Queries repeats User headings.
+test("package state excludes query visibility and similarly named packages", async () => {
+  const dump = `Packages:
+  Package [org.example.fixture.test] (def):
+    User 10: ceDataInode=492156 installed=true stopped=true
+  Package [org.example.fixture] (abc):
+    User 0: ceDataInode=0 installed=false stopped=true
+    User 10: ceDataInode=492156 installed=true stopped=false
+      installReason=0
+      runtime permissions:
+        android.permission.POST_NOTIFICATIONS: granted=true
+  Package [org.example.fixture.other] (fed):
+    User 10: installed=true stopped=true
+Queries:
+  queryable via interaction:
+    User 0:
+    User 10:
+Dexopt state:
+  [org.example.fixture]
+`;
+  const observer = androidFixtureObserver({
+    packageName: "org.example.fixture",
+    androidUser: 10,
+    run: async () => dump,
+  });
+  assert.equal(await observer.stopped(), false);
+});
+for (const dump of [
+  "Packages:\n  Package [org.example.fixture.test] (def):\n    User 10: stopped=false",
+  "Packages:\n  Package [org.example.fixture] (abc):\n    User 10: stopped=false\n  Package [org.example.fixture] (def):\n    User 10: stopped=false",
+  "Packages:\n  Package [org.example.fixture] (abc):\nQueries:\n    User 10: stopped=false",
+  "    User 10: stopped=false",
+])
+  test(`unidentified or ambiguous package inventory fails: ${dump}`, async () => {
+    const observer = androidFixtureObserver({
+      packageName: "org.example.fixture",
+      androidUser: 10,
+      run: async () => dump,
+    });
+    await assert.rejects(observer.stopped());
+  });
