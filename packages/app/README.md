@@ -284,6 +284,8 @@ fixture provisioning; this runner does not authorize live integrations. Use `tes
 
 The isolated Android harness also accepts an explicit unique `testClasses` list
 instead of `testClass`, with the complete `expectedTests` count across that suite.
+For one exact method, supply `testMethod` with one class and `expectedTests: 1`;
+the completed method identity must match before acceptance.
 It freezes the selection before asynchronous work, checks every requested class
 through the same strict instrumentation parser, and rejects missing or unexpected
 classes while retaining owned-installation cleanup. This supports product

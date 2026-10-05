@@ -25,6 +25,9 @@ function fixture(t, mode = "") {
     }),
   );
   fs.writeFileSync(log, "");
+  const fixturePackage = mode.startsWith("calendar-")
+    ? "example.calendar.consumer"
+    : "org.example.consumer";
   const adb = path.join(root, "adb.cjs"),
     aapt = path.join(root, "aapt.cjs");
   fs.writeFileSync(
@@ -32,6 +35,12 @@ function fixture(t, mode = "") {
     `#!/usr/bin/env node
 const fs=require('node:fs');const args=process.argv.slice(4);const file=${JSON.stringify(state)};const state=JSON.parse(fs.readFileSync(file));const mode=${JSON.stringify(mode)};
 fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(args)+'\\n');
+if(args.includes('get-current-user'))console.log(state.foreground||0);
+if(args.includes('create-user')){state.userExists=true;fs.writeFileSync(file,JSON.stringify(state));console.log('Success: created user id 10');}
+if(args.includes('switch-user')){state.foreground=Number(args.at(-1));fs.writeFileSync(file,JSON.stringify(state));}
+if(args.includes('get-started-user-state'))console.log('RUNNING_UNLOCKED');
+if(args.includes('remove-user')){state.userExists=false;fs.writeFileSync(file,JSON.stringify(state));console.log('Success');}
+
 if(args[0]==='emu')console.log('owned-test-fixture\\nOK');
 if(args.includes('ro.kernel.qemu'))console.log('1');
 if(args.includes('ro.product.cpu.abi'))console.log('x86_64');
@@ -40,11 +49,16 @@ if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;
 if(args.includes('packages'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
 if(args.includes('resolve-activity'))console.log(state.home);
 if(args[0]==='install'){const id=args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages.push(id);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);}
-if(args.includes('force-stop')&&((mode==='stop-failure-test'&&args.at(-1).endsWith('.test'))||(mode==='stop-failure-app'&&!args.at(-1).endsWith('.test'))))process.exit(1);
+if(args.includes('force-stop')&&((mode.endsWith('stop-failure-test')&&args.at(-1).endsWith('.test'))||(mode.endsWith('stop-failure-app')&&!args.at(-1).endsWith('.test'))))process.exit(1);
 if(args[0]==='uninstall'){if(mode==='cleanup-failure')process.exit(1);state.packages=state.packages.filter(p=>p!==args[1]);fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('instrument')){
  if(mode==='hanging'){fs.writeFileSync(${JSON.stringify(path.join(root, "instrumentation-started"))},'started');setInterval(()=>{},1000);return;}
 
+ if(mode.startsWith('calendar-')){
+  const [cls,method]=args[args.indexOf('class')+1].split('#');
+  for(const code of mode.includes('stop-failure')?[1]:[1,0])console.log(['INSTRUMENTATION_STATUS: class='+cls,'INSTRUMENTATION_STATUS: test='+method,'INSTRUMENTATION_STATUS: numtests=1','INSTRUMENTATION_STATUS_CODE: '+code].join(String.fromCharCode(10)));
+  console.log('OK (1 test)'+String.fromCharCode(10)+'INSTRUMENTATION_CODE: -1');return;
+ }
  if(mode.startsWith('suite')){
   const cases=mode==='suite-missing'?['org.example.consumer.Probe#first','org.example.consumer.Probe#second']:['org.example.consumer.Probe#first','org.example.consumer.Probe#second','org.example.consumer.Second#probe'];
   if(mode==='suite-unexpected')cases[2]='org.unrelated.Injected#probe';
@@ -56,7 +70,7 @@ if(args.includes('instrument')){
  if(mode!=='partial')console.log('INSTRUMENTATION_STATUS: class=org.example.consumer.Probe\\nINSTRUMENTATION_STATUS: test=probe\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: 0');
  console.log('OK (1 test)\\nINSTRUMENTATION_CODE: -1');
 }
-`,
+`.replaceAll("org.example.consumer", fixturePackage),
     { mode: 0o700 },
   );
   fs.writeFileSync(
@@ -65,7 +79,7 @@ if(args.includes('instrument')){
 const args=process.argv.slice(2);const wrong=${JSON.stringify(mode === "wrong-apk")};
 if(args[1]==='badging')console.log("package: name='"+(wrong?'org.unrelated.app':args[2].includes('test.apk')?'org.example.consumer.test':'org.example.consumer')+"'");
 else console.log('E: manifest\\n  E: instrumentation\\n    A: android:name="androidx.test.runner.AndroidJUnitRunner"\\n    A: android:targetPackage="${mode === "wrong-target" ? "org.unrelated.app" : "org.example.consumer"}"');
-`,
+`.replaceAll("org.example.consumer", fixturePackage),
     { mode: 0o700 },
   );
   for (const file of ["app.apk", "test.apk"])
@@ -413,7 +427,7 @@ test("calendar caller rejects a leased fixture before creating users", async (t)
   try {
     const caller = fileURLToPath(
       new URL(
-        "../../../../plugins/plugin-native-calendar/test/android-consumer/run-read-access.mjs",
+        "../../../../plugins/plugin-native-calendar/test/android-consumer/run-consumer.mjs",
         import.meta.url,
       ),
     );
@@ -475,4 +489,118 @@ for (const mode of ["stop-failure-test", "stop-failure-app"])
       f.commands().some((command) => command[0] === "uninstall"),
       false,
     );
+  });
+
+test("single-method selection requires the exact completed method", async (t) => {
+  const f = fixture(t);
+  await runIsolatedAndroidTest({ ...f.options, testMethod: "probe" });
+  assert.ok(
+    f
+      .commands()
+      .filter((args) => args.includes("instrument"))
+      .every(
+        (args) =>
+          args[args.indexOf("class") + 1] ===
+          "org.example.consumer.Probe#probe",
+      ),
+  );
+  await assert.rejects(
+    runIsolatedAndroidTest({ ...f.options, testMethod: "other" }),
+    /Requested method missing/,
+  );
+});
+test("invalid method selections reject before device commands", async (t) => {
+  const f = fixture(t);
+  for (const options of [
+    { testMethod: "probe;bad" },
+    { testMethod: "probe", expectedTests: 2 },
+    {
+      testClass: undefined,
+      testClasses: [
+        "org.example.consumer.Probe",
+        "org.example.consumer.Second",
+      ],
+      testMethod: "probe",
+    },
+  ])
+    await assert.rejects(runIsolatedAndroidTest({ ...f.options, ...options }));
+  assert.deepEqual(f.commands(), []);
+});
+
+for (const [selectedCase, method, granted] of [
+  ["recovery", "committedMarkerRecoveryAndMissingMarkerNeverReplay", true],
+  ["bridge", "permissionAndReviewedProviderLifecycle", false],
+  ["workflow-permission", "workflowPermissionCallback", false],
+  [
+    "stop-failure-test",
+    "committedMarkerRecoveryAndMissingMarkerNeverReplay",
+    true,
+  ],
+])
+  test(`Calendar consumer ${selectedCase} preserves phase and user ownership`, async (t) => {
+    const f = fixture(t, `calendar-${selectedCase}`);
+    const caller = fileURLToPath(
+      new URL(
+        "../../../../plugins/plugin-native-calendar/test/android-consumer/run-consumer.mjs",
+        import.meta.url,
+      ),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        caller,
+        "--adb",
+        f.options.adb,
+        "--aapt",
+        f.options.aapt,
+        "--serial",
+        f.options.serial,
+        "--avd",
+        f.options.expectedAvdName,
+        "--abi",
+        "x86_64",
+        "--apk",
+        f.options.variants[0].apk,
+        "--test-apk",
+        f.options.variants[0].testApk,
+        "--output-root",
+        path.join(f.root, "reports"),
+        "--case",
+        selectedCase.startsWith("stop-") ? "recovery" : selectedCase,
+      ],
+      { env: f.options.env, encoding: "utf8", timeout: 15000 },
+    );
+    const deferred = selectedCase.startsWith("stop-");
+    assert.equal(result.status, deferred ? 1 : 0, result.stderr);
+    const commands = f.commands(),
+      instruments = commands.filter((args) => args.includes("instrument"));
+    assert.equal(instruments.length, 1);
+    assert.ok(
+      instruments[0][instruments[0].indexOf("class") + 1].endsWith(
+        `#${method}`,
+      ),
+    );
+    assert.equal(
+      commands.filter((args) => args.includes("grant")).length,
+      granted ? 2 : 0,
+    );
+    assert.equal(
+      commands.some((args) => args.includes("remove-user")),
+      !deferred,
+    );
+    const state = JSON.parse(fs.readFileSync(f.state));
+    assert.equal(state.foreground, 0);
+    assert.equal(state.userExists, deferred);
+    assert.equal(state.packages.length, deferred ? 2 : 0);
+    const reportRoot = path.join(f.root, "reports");
+    const receipts = JSON.parse(
+      fs.readFileSync(
+        path.join(reportRoot, fs.readdirSync(reportRoot)[0], "receipts.json"),
+      ),
+    );
+    assert.equal(
+      receipts[0].selectedCase,
+      deferred ? "recovery" : selectedCase,
+    );
+    assert.equal(Boolean(receipts[0].cleanupDeferred), deferred);
   });
