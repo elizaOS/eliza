@@ -1,5 +1,7 @@
 /** Exercise the actual HTTP route with controlled auth, billing and provider ports. */
 import { beforeEach, expect, mock, test } from "bun:test";
+import { Hono } from "hono";
+import { corsMiddleware } from "../../../../shared/src/lib/cors/cloud-api-hono-cors";
 import {
   hasTtsSynthesisOptions,
   TtsSynthesisOptions,
@@ -280,4 +282,32 @@ test("WAV preserves rendering controls and reports provider speed", async () => 
   ).toBe("RIFF");
   expect(syntheses[0]).toMatchObject({ speed: 1.1, outputFormat: "pcm_24000" });
   expect(events).not.toContain("cache-get");
+});
+
+test("cross-origin clients can read the rendered speed acknowledgment", async () => {
+  const app = new Hono();
+  app.use("*", corsMiddleware);
+  app.route("/api/v1/voice/tts", route);
+  const origin = "https://cloud.eliza.app";
+  const response = await app.request(
+    "/api/v1/voice/tts",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: JSON.stringify({ ...base, speed: 0.8 }),
+    },
+    {},
+  );
+  await Promise.all(background);
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+  expect(response.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+  expect(response.headers.get("X-Eliza-TTS-Speed")).toBe("0.8");
+  expect(
+    response.headers
+      .get("Access-Control-Expose-Headers")
+      ?.toLowerCase()
+      .split(",")
+      .map((header) => header.trim()),
+  ).toContain("x-eliza-tts-speed");
 });
