@@ -310,6 +310,18 @@ test("classifies complete offloaded failed jobs over real S3 HTTP and refuses mi
     ]) {
       expect(closed).not.toContain(forbidden);
     }
+    // A payload naming another user is not this row's tenant metadata.
+    await db.query("UPDATE jobs SET user_id = $1", [container]);
+    const foreignUser = await readDeletionBillingProvenance(db, migration, {
+      fixtureApiKey: fixtureKey,
+      includeFailedJobs: true,
+    });
+    expect(foreignUser.failedDeleteJobFacts).toMatchObject({
+      validDeleteJobDataCount: 1,
+      tenantMetadataMatchCount: 0,
+      completeStateLossAcknowledgementCount: 0,
+    });
+    await db.query("UPDATE jobs SET user_id = $1", [fixtureUser]);
     const legacyAcknowledgement: Partial<typeof data> = { ...data };
     delete legacyAcknowledgement.stateLossAcknowledgedByUserId;
     delete legacyAcknowledgement.stateLossAcknowledgedAt;
