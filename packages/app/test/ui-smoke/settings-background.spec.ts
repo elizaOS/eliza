@@ -426,7 +426,7 @@ test.describe("Settings appearance and model controls", () => {
       await page.getByRole("option", { name: /Rachel/ }).click();
       await screenshot(page, `voice-selector-selected-${viewport.width}`);
       const preview = page.getByRole("button", {
-        name: "Preview Voice",
+        name: "Preview voice",
         exact: true,
       });
       await preview.click();
