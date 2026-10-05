@@ -3,6 +3,10 @@ import { afterAll, beforeAll, beforeEach, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { installOrganizationUpgradeTestSchema } from "../../db/repositories/organization-upgrade-test-fixture";
 import { seedCancellationTestAccount } from "../../db/repositories/subscription-cancellation-test-fixture";
+import {
+  completeScheduleSubscriptionTestObservation,
+  scheduleCustomerTestObservation,
+} from "./organization-schedule-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -83,11 +87,7 @@ const preview = mock(async (request: unknown) => {
 mock.module("../stripe", () => ({
   requireStripe: () => ({
     customers: {
-      retrieve: async () => ({
-        id: f.source.stripe_customer_id,
-        object: "customer",
-        livemode: false,
-      }),
+      retrieve: async () => scheduleCustomerTestObservation(f.source.stripe_customer_id),
     },
     subscriptions: { retrieve: async () => f.provider, update: write },
     subscriptionSchedules: { create: write, update: write, release: write, cancel: write },
@@ -127,35 +127,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
   f = await seedCancellationTestAccount(undefined, undefined, "pro_monthly");
-  Object.assign(f.provider, {
-    application: null,
-    currency: "usd",
-    collection_method: "charge_automatically",
-    days_until_due: null,
-    automatic_tax: { enabled: false, liability: null },
-    billing_cycle_anchor: f.provider.current_period_start,
-    billing_cycle_anchor_config: null,
-    billing_thresholds: null,
-    default_payment_method: "pm_original",
-    default_source: null,
-    default_tax_rates: [],
-    description: null,
-    discount: null,
-    discounts: [],
-    invoice_settings: { account_tax_ids: null, issuer: { type: "self" } },
-    metadata: {},
-    next_pending_invoice_item_invoice: null,
-    pending_invoice_item_interval: null,
-    pending_setup_intent: null,
-    payment_settings: null,
-  });
-  Object.assign(f.provider.items.data[0]!.price, { tax_behavior: "unspecified" });
-  Object.assign(f.provider.items.data[0]!, {
-    billing_thresholds: null,
-    discounts: [],
-    tax_rates: [],
-    metadata: {},
-  });
+  completeScheduleSubscriptionTestObservation(f.provider);
   afterRead = async () => {};
   mutate = (raw) => raw;
   preview.mockClear();

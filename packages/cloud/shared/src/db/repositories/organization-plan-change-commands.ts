@@ -13,6 +13,7 @@ import {
 } from "../schemas/subscription-billing-operations";
 import { lockOrganizationPlanChangeSource } from "./organization-plan-change";
 import { assertCurrentOrganizationPlanChangeQuote } from "./organization-plan-change-quotes";
+import { readOriginalScheduleQuoteTerms } from "./organization-schedule-quote-terms";
 import {
   lockOrganizationSubscriptionManager,
   type OrganizationSubscriptionIdentity,
@@ -61,6 +62,12 @@ export async function prepareOrganizationPlanChange(
       quote.review_digest !== settlementDigest(quote.review)
     )
       reject("quote_unavailable");
+    const retained =
+      kind === "downgrade"
+        ? await readOriginalScheduleQuoteTerms(tx, quote.id, input.organizationId)
+        : null;
+    if (kind === "downgrade" && !retained && quote.consumed_by_command_id === null)
+      reject("original_retained_terms_required");
     const digest = (
       kind === "upgrade" ? organizationUpgradeIntentDigest : organizationDowngradeIntentDigest
     )({
@@ -70,6 +77,7 @@ export async function prepareOrganizationPlanChange(
       reviewDigest: quote.review_digest,
       sourceDigest: quote.source_digest,
       providerBinding: quote.provider_binding,
+      ...(kind === "downgrade" ? { retainedTermsDigest: retained?.snapshot_digest ?? null } : {}),
     });
     const [existing] = await tx
       .select()

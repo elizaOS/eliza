@@ -4,6 +4,7 @@ import {
   organizationDowngradeReviewSchema,
 } from "../../lib/services/organization-downgrade-review";
 import type { OrganizationPlanChangeProviderBinding } from "../../lib/services/organization-plan-change-provider-binding";
+import type { OrganizationScheduleQuoteTerms } from "../../lib/services/organization-schedule-quote-terms";
 import type { readOrganizationPlanChangeSource } from "./organization-plan-change";
 import {
   readOrganizationPlanChangeQuote,
@@ -15,6 +16,7 @@ export async function saveOrganizationDowngradeQuote(input: {
   captured: Awaited<ReturnType<typeof readOrganizationPlanChangeSource>>;
   review: OrganizationDowngradeReview;
   providerBinding: OrganizationPlanChangeProviderBinding;
+  retainedTerms: OrganizationScheduleQuoteTerms;
 }) {
   const quote = await saveOrganizationPlanChangeQuote({
     ...input,

@@ -11,7 +11,7 @@ import {
   assertOrganizationPlanChangeProviderBindingCurrent,
   resolveOrganizationPlanChangeProviderBinding,
 } from "./organization-plan-change-provider-binding";
-import { observeOrganizationScheduleRetainedTerms } from "./organization-schedule-retained-terms";
+import { captureOrganizationScheduleQuoteTerms } from "./organization-schedule-quote-terms";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   validateCancellationCustomer,
@@ -57,10 +57,15 @@ export async function createOrganizationDowngradeQuote(
     provider: adaptStripeSubscriptionCatalogProvider(stripe),
   });
   const options = { apiVersion: GENERIC_BILLING_STRIPE_API_VERSION };
+  const rawCustomer = await stripe.customers.retrieve(
+    source.stripe_customer_id,
+    { expand: ["tax_ids"] },
+    options,
+  );
   validateCancellationCustomer({
     ...captured,
     environment,
-    raw: await stripe.customers.retrieve(source.stripe_customer_id, {}, options),
+    raw: rawCustomer,
   });
   const rawSubscription = await stripe.subscriptions.retrieve(
     source.stripe_subscription_id,
@@ -76,9 +81,11 @@ export async function createOrganizationDowngradeQuote(
     requireScheduled: false,
     allowRetainedCanceledAt: source.canceled_at,
   });
-  // Check support before offering a review that cannot be safely scheduled. The eventual
-  // dispatcher must reobserve and durably bind these terms before the first provider write.
-  observeOrganizationScheduleRetainedTerms({ raw: rawSubscription, observedAt });
+  const retainedTerms = captureOrganizationScheduleQuoteTerms({
+    rawSubscription,
+    rawCustomer,
+    observedAt,
+  });
   const binding = resolveSubscriptionProviderBinding(
     environment,
     target.key,
@@ -108,5 +115,11 @@ export async function createOrganizationDowngradeQuote(
     target.key,
     getCloudAwareEnv(),
   );
-  return saveOrganizationDowngradeQuote({ identity: input, captured, review, providerBinding });
+  return saveOrganizationDowngradeQuote({
+    identity: input,
+    captured,
+    review,
+    providerBinding,
+    retainedTerms,
+  });
 }
