@@ -13,13 +13,6 @@
     "customConditions": ["eliza-source", "development"],
     "jsx": "react-jsx",
     "paths": {
-      "@elizaos/app/api/auth": ["../../../../app/src/api/auth.ts"],
-      "@elizaos/app/api/compat-route-shared": [
-        "../../../../app/src/api/compat-route-shared.ts"
-      ],
-      "@elizaos/app/services/task-host-capabilities": [
-        "../../../../app/src/services/task-host-capabilities.ts"
-      ],
       "@elizaos/plugin-pdf": ["../../../../../plugins/plugin-pdf/index.ts"]
     }
   },

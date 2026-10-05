@@ -21,7 +21,6 @@ import { readRequestBody } from "@elizaos/host";
 import {
   type DeploymentTargetRuntime,
   getDirectAccountProviderForFirstRunProvider,
-  migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
   normalizeFirstRunProviderId,
@@ -167,7 +166,6 @@ function scheduleCloudApiKeyResave(apiKey: string): void {
         (freshConfig as Record<string, unknown>).cloud = {};
       }
       (freshConfig.cloud as Record<string, unknown>).apiKey = apiKey;
-      migrateLegacyRuntimeConfig(freshConfig as Record<string, unknown>);
       saveElizaConfig(freshConfig);
       logger.info(
         "[api] Re-saved cloud.apiKey after upstream handler clobbered it",

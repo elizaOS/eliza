@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop desktop tray config ts behavior for app shell integration. */
 import { readDesktopEnvFlag } from "./desktop-env-flags";
 import { isKioskShellMode } from "./kiosk-mode";
 

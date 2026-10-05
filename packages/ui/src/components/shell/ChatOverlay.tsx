@@ -4108,13 +4108,7 @@ export function ChatOverlay({
     if (typeof window === "undefined") return undefined;
     const onNavigateHome = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
-      if (
-        detail?.viewId !== "chat" &&
-        detail?.viewId !== "home" &&
-        detail?.viewPath !== "/chat" &&
-        detail?.viewPath !== "/home"
-      )
-        return;
+      if (detail?.viewId !== "chat" && detail?.viewPath !== "/chat") return;
       goHome();
     };
     window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigateHome);

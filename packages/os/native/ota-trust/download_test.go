@@ -336,7 +336,7 @@ func TestArtifactKilledPublication(t *testing.T) {
 }
 
 func TestArtifactSeparateBudgetAndIdleTimeout(t *testing.T) {
-	d, err := NewArtifactDownloader("example.com")
+	d, err := NewArtifactDownloaderWithTimeSource("example.com", &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}})
 	if err != nil {
 		t.Fatal(err)
 	}

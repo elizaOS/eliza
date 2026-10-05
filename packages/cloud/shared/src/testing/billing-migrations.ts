@@ -38,4 +38,27 @@ export async function applyBillingFixtureMigrations(
       if (statement.trim()) await db.query(statement.replaceAll('"public".', ""));
     }
   }
+  if (tags.includes("0512_organization_upgrade_dispatch"))
+    await installBillingCommandEvidenceTestColumns((statement) => db.query(statement));
+}
+
+/** Add shared command projection columns without installing unrelated organization lifecycle guards. */
+export async function installBillingCommandEvidenceTestColumns(
+  execute: (statement: string) => Promise<unknown>,
+): Promise<void> {
+  for (const tag of [
+    "0518_organization_upgrade_historical_settlement",
+    "0519_organization_upgrade_void_result",
+    "0524_organization_schedule_compensation_result",
+  ]) {
+    const migration = await readFile(
+      new URL(`../db/migrations/${tag}.sql`, import.meta.url),
+      "utf8",
+    );
+    await execute(
+      migration
+        .split("--> statement-breakpoint")[0]!
+        .replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"),
+    );
+  }
 }

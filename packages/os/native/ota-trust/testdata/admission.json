@@ -196,7 +196,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -407,7 +408,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -614,7 +616,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -820,7 +823,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -1026,7 +1030,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -1232,7 +1237,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -1438,7 +1444,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -1644,7 +1651,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -1850,7 +1858,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -2056,7 +2065,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -2262,7 +2272,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -2468,7 +2479,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -2674,7 +2686,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -2880,7 +2893,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -3086,7 +3100,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -3292,7 +3307,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -3498,7 +3514,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -3704,7 +3721,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -3911,7 +3929,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -4117,7 +4136,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -4323,7 +4343,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -4531,7 +4552,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -4739,7 +4761,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -4947,7 +4970,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -5155,7 +5179,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -5363,7 +5388,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -5569,7 +5595,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -5775,7 +5802,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -5984,7 +6012,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -6190,7 +6219,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -6396,7 +6426,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -6602,7 +6633,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -6809,7 +6841,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -7016,7 +7049,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 3,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -7223,7 +7257,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 2,
       "securityFloor": 1
@@ -7430,7 +7465,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -7637,7 +7673,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1798761600000,
+      "trustedLowerMs": 1798761600000,
+      "trustedUpperMs": 1798761600000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -7844,14 +7881,14 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 0,
+      "trustedLowerMs": 0,
+      "trustedUpperMs": 0,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
     },
     "expected": {
-      "decision": "defer",
-      "reason": "rollout-time"
+      "error": true
     }
   },
   {
@@ -8053,7 +8090,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -8260,7 +8298,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 2
@@ -8469,7 +8508,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -8678,7 +8718,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -8885,7 +8926,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -9092,7 +9134,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -9299,7 +9342,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -9506,7 +9550,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -9713,7 +9758,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -9920,7 +9966,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -10127,7 +10174,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -10330,7 +10378,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -10537,7 +10586,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -10744,7 +10794,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -10951,7 +11002,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -11158,7 +11210,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -11365,7 +11418,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -11570,7 +11624,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -11775,7 +11830,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -11982,7 +12038,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -12188,7 +12245,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -12393,7 +12451,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -12598,7 +12657,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -12803,7 +12863,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -13008,7 +13069,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -13213,7 +13275,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -13418,7 +13481,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -13623,7 +13687,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -13828,7 +13893,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -14033,7 +14099,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -14234,7 +14301,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -14439,7 +14507,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -14644,7 +14713,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -14849,7 +14919,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -15054,7 +15125,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -15259,7 +15331,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -15462,7 +15535,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -15665,7 +15739,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -15870,7 +15945,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -16075,7 +16151,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -16085,7 +16162,7 @@
     }
   },
   {
-    "name": "missing-policy-trustedNowMs",
+    "name": "missing-policy-trusted-time",
     "release": {
       "schemaVersion": 1,
       "product": "senior-care",
@@ -16486,7 +16563,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
     },
@@ -16691,7 +16769,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "securityFloor": 1
     },
@@ -16896,7 +16975,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1
     },
@@ -17100,7 +17180,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -17305,7 +17386,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -17510,7 +17592,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -17715,7 +17798,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -17920,7 +18004,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -18125,7 +18210,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -18330,7 +18416,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -18535,7 +18622,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -18734,7 +18822,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -18939,7 +19028,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -19144,7 +19234,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -19349,7 +19440,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -19554,7 +19646,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -19759,7 +19852,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -19901,7 +19995,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -20106,7 +20201,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -20311,7 +20407,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -20516,7 +20613,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -20721,7 +20819,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -20926,7 +21025,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -21131,7 +21231,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -21336,7 +21437,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -21541,7 +21643,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -21726,7 +21829,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -21928,7 +22032,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -22133,7 +22238,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -22338,7 +22444,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -22543,7 +22650,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -22746,7 +22854,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -22949,7 +23058,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -23152,7 +23262,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -23353,7 +23464,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -23535,7 +23647,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -23737,7 +23850,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -23942,7 +24056,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -24147,7 +24262,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -24343,7 +24459,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -24545,7 +24662,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -24750,7 +24868,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -24955,7 +25074,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -25157,7 +25277,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -25362,7 +25483,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -25567,7 +25689,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -25772,7 +25895,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -25974,7 +26098,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -26179,7 +26304,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -26384,7 +26510,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -26587,7 +26714,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -26784,7 +26912,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -26989,7 +27118,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -27194,7 +27324,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -27399,7 +27530,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -27604,7 +27736,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -27807,7 +27940,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -28011,7 +28145,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -28153,7 +28288,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -28358,7 +28494,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -28563,7 +28700,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -28768,7 +28906,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -28973,7 +29112,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -29178,7 +29318,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -29383,7 +29524,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -29588,7 +29730,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -29793,7 +29936,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -29978,7 +30122,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -30180,7 +30325,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -30385,7 +30531,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -30590,7 +30737,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -30795,7 +30943,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -30998,7 +31147,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -31201,7 +31351,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -31404,7 +31555,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -31605,7 +31757,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -31787,7 +31940,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -31989,7 +32143,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -32194,7 +32349,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -32399,7 +32555,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -32595,7 +32752,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -32797,7 +32955,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -33002,7 +33161,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -33207,7 +33367,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -33409,7 +33570,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -33614,7 +33776,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -33819,7 +33982,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -34024,7 +34188,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -34226,7 +34391,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -34431,7 +34597,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -34636,7 +34803,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -34839,7 +35007,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -35036,7 +35205,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -35241,7 +35411,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -35446,7 +35617,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -35651,7 +35823,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -35856,7 +36029,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -36059,7 +36233,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -36263,7 +36438,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -36463,7 +36639,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -36668,7 +36845,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -36873,7 +37051,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -37078,7 +37257,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -37283,7 +37463,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -37480,7 +37661,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -37685,7 +37867,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -37890,7 +38073,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -38095,7 +38279,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -38300,7 +38485,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -38505,7 +38691,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -38710,7 +38897,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -38915,7 +39103,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -39121,7 +39310,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -39330,7 +39520,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -39537,7 +39728,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -39744,7 +39936,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -39951,7 +40144,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1
@@ -40158,7 +40352,8 @@
         "github.com",
         "updates.example.com"
       ],
-      "trustedNowMs": 1790899200000,
+      "trustedLowerMs": 1790899200000,
+      "trustedUpperMs": 1790899200000,
       "minimumSequence": 1,
       "minimumRolloutRevision": 1,
       "securityFloor": 1

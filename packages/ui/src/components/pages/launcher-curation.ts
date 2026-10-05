@@ -110,8 +110,6 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "character-select",
   // Character-family sections — reached via the Character tile's section
   // strip (CharacterSectionNav); standalone tiles would triple-tile one hub.
-  // The hidden-set check runs on the CANONICAL id, so this also swallows the
-  // `rolodex` alias and `@elizaos/app-relationship-viewer`'s targetTab.
   "character-skills",
   "experience",
   "relationships",
@@ -134,26 +132,9 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "shopify",
 ]);
 
-/**
- * Legacy id-alias fallback: duplicate/short-id aliases collapsed onto one
- * canonical launcher id. Kills the double "Wallet" (standalone `wallet` view +
- * `wallet.inventory` app-shell page + builtin `inventory` tab) and double
- * "Automations" (`automations` + `triggers`) tiles, and folds the standalone
- * tasks/todos surfaces into Automations.
- *
- * These are SHORT builtin-tab / view-id aliases only — NOT package names. The
- * Package-name → canonical mappings used to live here as a hand-maintained
- * `@elizaos/...` switch that silently drifted from owning declarations; they
- * now derive
- * from the internal-tool app declarations' own `targetTab` metadata via
- * {@link getInternalToolAppTargetTab} (see `canonicalLauncherId`). This map is
- * the covered legacy host-owned fallback for the remaining id aliases that have
- * no owning declaration.
- */
-const LEGACY_ID_ALIAS_FALLBACK: ReadonlyMap<string, string> = new Map([
+const LAUNCHER_GROUP_BY_VIEW_ID: ReadonlyMap<string, string> = new Map([
   ["inventory", "wallet"],
   ["wallet.inventory", "wallet"],
-  ["triggers", "automations"],
   ["todos", "automations"],
   // The task-coordinator plugin view + the builtin Tasks tab are the one Tasks
   // orchestrator surface (/apps/tasks); collapse to a single tile.
@@ -175,29 +156,14 @@ const LEGACY_ID_ALIAS_FALLBACK: ReadonlyMap<string, string> = new Map([
   ["plugins-page", "plugins"],
   ["trajectory-logger", "trajectories"],
   ["trajectory-viewer", "trajectories"],
-  // The legacy contact-book alias shares the Relationships renderer and tile.
-  ["rolodex", "relationships"],
   ["log-viewer", "logs"],
   ["database-viewer", "database"],
 ]);
 
-/**
- * Resolve the canonical launcher id an entry id collapses onto.
- *
- * Precedence:
- *  1. Owner-declared metadata: if `id` is an internal-tool app package name, its
- *     declaration's `targetTab` IS the canonical launcher id (so a package
- *     rename/add flows through with no edit here — the coupling the audit
- *     flagged). This replaces the old hand-kept `@elizaos/...` → canonical
- *     switch.
- *  2. Legacy id-alias fallback: covered short builtin-tab / view-id aliases with
- *     no owning declaration (`inventory`, `triggers`, `rolodex`, …).
- *  3. Identity: the id is already canonical.
- */
 export function canonicalLauncherId(id: string): string {
   const declaredTargetTab = getInternalToolAppTargetTab(id);
   if (declaredTargetTab) return declaredTargetTab;
-  return LEGACY_ID_ALIAS_FALLBACK.get(id) ?? id;
+  return LAUNCHER_GROUP_BY_VIEW_ID.get(id) ?? id;
 }
 
 const APPS_INDEX = new Map(LAUNCHER_APPS_ORDER.map((id, i) => [id, i]));

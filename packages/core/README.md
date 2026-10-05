@@ -34,3 +34,14 @@ bun run --cwd packages/core typecheck
 bun run --cwd packages/core lint:check
 bun run verify
 ```
+
+The browser-safe protocol exports `TaskEventReader` and `mergeTaskEventPage` for
+read-only task activity feeds. Inject a task ID/cursor read transport and a state
+observer; call `start(taskId)`, `refresh()` for explicit retry, and `stop()` on
+teardown. The reader validates every page against the shared event protocol,
+retains admitted history on failure, fences stale replies across task switches,
+and polls until a terminal task has no unknown outcome. It never runs task actions.
+Hosts own activity labels, layout, reading position, error copy, and task-control
+refresh policy. Observer snapshots are detached from the admitted history.
+
+`admitTaskChoiceResponse` in the browser-safe protocol barrel validates optional reply widgets, enforces a host-supplied count limit and binds every widget to the requesting task ID/epoch. It returns detached widget data. Hosts retain count policy, UI and error wording; successful admission grants no execution authority.

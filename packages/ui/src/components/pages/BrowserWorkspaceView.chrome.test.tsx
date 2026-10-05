@@ -102,7 +102,9 @@ vi.mock("../../api/client", async (importOriginal) => {
   return {
     ...actual,
     client: {
-      ...actual.client,
+      getBaseUrl: () => "",
+      getAuthorityRevision: () => 0,
+      onAuthorityChange: () => () => {},
       fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
       getWalletConfig: vi.fn().mockRejectedValue(new Error("no api in test")),
       getBrowserWorkspace: vi.fn().mockResolvedValue({ mode: "web", tabs: [] }),

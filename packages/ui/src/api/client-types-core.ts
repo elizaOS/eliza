@@ -1,8 +1,4 @@
-/**
- * Core-domain client DTOs: Database*, Agent*, ApiError, Runtime*, WebSocket*,
- * ConnectionState*, Sandbox*. One slice of the ElizaClient type surface,
- * re-exported through client-types.ts.
- */
+/** Agent, runtime, connection, and API error client DTOs. */
 
 import type {
   CustomActionDef,
@@ -307,18 +303,7 @@ export interface ModelCatalogEntry {
 }
 /** Provider→entries map inside the `catalog` field of `GET /api/models`. */
 export type ModelCatalogProviders = Record<string, ModelCatalogEntry[]>;
-/**
- * The model-catalog response shape consumed by configuration UI and slash
- * completions. Current runtimes return the curated catalog under `catalog`;
- * some cloud agents served during rolling deploys answered `catalogOnly` with
- * the catalog at the top level, so readers must normalize at their boundary.
- */
-export interface ModelCatalogResponse {
-  providers?: unknown;
-  catalog?: {
-    providers?: unknown;
-  };
-}
+
 export interface ModelCatalog {
   providers: ModelCatalogProviders;
 }

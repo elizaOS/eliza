@@ -9,9 +9,7 @@ import type {
   NormalizedAgentListItemDto,
 } from "@elizaos/cloud-sdk";
 import {
-  AGENT_PRICING,
   DEDICATED_COMPUTE_PRICE_HEADER,
-  formatHourlyRate,
   getDedicatedComputePriceAcceptance,
 } from "@elizaos/cloud-sdk/browser-contracts";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,10 +43,7 @@ import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
   AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
@@ -70,13 +65,14 @@ import {
 } from "../../../components/ui/tooltip";
 import { currentElizaAppOrigin } from "../../../utils/cloud-agent-base";
 import { api, apiWithStatus } from "../../lib/api-client";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 import { parseAgentsResponse } from "../lib/data/eliza-agents";
-import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import { statusDotColor } from "../lib/sandbox-status";
 import { type TrackedJob, useJobPoller } from "../lib/use-job-poller";
 import { useSandboxListPoll } from "../lib/use-sandbox-status-poll";
 import { AgentCostBadge } from "./agent-cost-badge";
+import { AgentDeactivationDetails } from "./agent-deactivation-details";
 import { DedicatedStartConfirmation } from "./dedicated-start-confirmation";
 
 /**
@@ -1580,40 +1576,7 @@ export function ElizaAgentsTable({
         }}
       >
         <AlertDialogContent className="bg-card border-border">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-txt-strong">
-              {t("cloud.containers.agentActions.deactivateTitle", {
-                defaultValue: "Deactivate this agent?",
-              })}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-muted">
-              <span className="block">
-                {t("cloud.containers.agentActions.deactivateBody1", {
-                  defaultValue:
-                    "Your agent stops running and stops consuming hourly credits (currently {{rate}} while running).",
-                  rate: formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE),
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateBody2", {
-                  defaultValue:
-                    "Eliza retains your agent data during deactivation. If deactivation cannot complete, the agent stays running and billing continues.",
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateMinimum", {
-                  defaultValue:
-                    "Any remaining activation minimum is charged when you stop.",
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateBody3", {
-                  defaultValue:
-                    "Reactivation restores the agent's retained data and can take a few minutes; it requires available credits.",
-                })}
-              </span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+          <AgentDeactivationDetails />
           <AlertDialogFooter>
             <AlertDialogCancel className="border-border bg-transparent text-txt hover:bg-surface">
               {t("cloud.elizaAgentsTable.cancel", { defaultValue: "Cancel" })}

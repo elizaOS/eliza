@@ -46,10 +46,6 @@ vi.mock("../state/app-store", () => ({
     selector(mockAppState),
 }));
 
-vi.mock("../state/useDeveloperMode", () => ({
-  useIsDeveloperMode: () => false,
-}));
-
 vi.mock("./visibility", () => ({
   loadChatSidebarVisibility: () => ({}),
 }));

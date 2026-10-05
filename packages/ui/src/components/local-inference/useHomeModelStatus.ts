@@ -88,7 +88,6 @@ export function useHomeModelStatus(): HomeModelStatus {
       runtimeMode.isCloudMode ||
       runtimeMode.isRemoteMode ||
       mobileRuntimeMode === "remote-mac" ||
-      mobileRuntimeMode === "tunnel-to-mobile" ||
       !supportsLocalInferenceStatus()
     ) {
       setStatus(NOT_REQUIRED);

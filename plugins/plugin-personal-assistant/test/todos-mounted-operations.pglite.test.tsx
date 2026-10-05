@@ -23,8 +23,10 @@ import {
 vi.mock("@elizaos/ui", async () => {
   const api = await import("../../../packages/ui/src/api/client");
   const spatial = await import("../../../packages/ui/src/spatial/primitives");
+  const events = await import("../../../packages/ui/src/events/index");
   return {
     ...api,
+    dispatchChatPrefill: events.dispatchChatPrefill,
     SpatialButton: spatial.Button,
     SpatialCard: spatial.Card,
     SpatialDivider: spatial.Divider,
@@ -35,7 +37,10 @@ vi.mock("@elizaos/ui", async () => {
   };
 });
 
-import { client } from "../../../packages/ui/src/api/client";
+import {
+  CHAT_PREFILL_EVENT,
+  type ChatPrefillEventDetail,
+} from "../../../packages/ui/src/events/index";
 import { TodosView } from "../../plugin-todos/src/components/todos/TodosView.tsx";
 import { todosPlugin } from "../../plugin-todos/src/plugin.ts";
 import { ownerTodosAction } from "../src/actions/owner-surfaces.ts";
@@ -123,25 +128,11 @@ it("separates mounted Add dispatch from owner task creation and Retry readback",
   };
   const service = new LifeOpsService(runtime, { ownerEntityId: owner });
   const requests: string[] = [];
-  let delivered!: Promise<unknown>;
   let reply = "";
-  const transport = vi
-    .spyOn(client, "sendChatRest")
-    .mockImplementation(async (text) => {
-      requests.push(text);
-      // Replace only the host transport: the actual message service and strict
-      // model fixture produce the clarification. No successful task is fabricated.
-      delivered = messageService.handleMessage(
-        runtime,
-        { ...message, content: { ...message.content, text } },
-        async (content) => {
-          reply += content.text ?? "";
-          return [];
-        },
-      );
-      await delivered;
-      return { text: reply } as Awaited<ReturnType<typeof client.sendChatRest>>;
-    });
+  const onPrefill = (event: Event) => {
+    requests.push((event as CustomEvent<ChatPrefillEventDetail>).detail.text);
+  };
+  window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
   try {
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", owner);
     await runtime.ensureConnection({
@@ -240,8 +231,26 @@ it("separates mounted Add dispatch from owner task creation and Retry readback",
     };
     await act(async () => {
       await dispatch("VIEW_TODOS_ADD");
-      await delivered;
     });
+    expect(requests).toEqual([ask]);
+    expect(reply).toBe("");
+    expect(
+      await service.repository.listDefinitions(runtime.agentId, {
+        domain: "user_lifeops",
+        subjectType: "owner",
+        subjectId: owner,
+      }),
+    ).toEqual(before);
+    // Add only prefills the composer. Explicitly submit that draft through the
+    // real message service to exercise clarification without inventing a task.
+    await messageService.handleMessage(
+      runtime,
+      { ...message, content: { ...message.content, text: requests[0] } },
+      async (content) => {
+        reply += content.text ?? "";
+        return [];
+      },
+    );
     const diagnosticOutput = testOutputPath("todos-mounted-operations");
     await mkdir(diagnosticOutput, { recursive: true });
     await writeFile(
@@ -333,7 +342,7 @@ it("separates mounted Add dispatch from owner task creation and Retry readback",
           modelDiagnostics: model.getFixtureDiagnostics(),
           limitations: [
             "DOM mounted in jsdom, not desktop/mobile visual certification",
-            "Add transport is an in-process adapter into the real message service",
+            "Add prefills the composer; explicit submission uses the real message service",
             "Authored follow-up uses canonical OWNER_TODOS dispatch, not model intent quality",
           ],
         },
@@ -354,7 +363,7 @@ it("separates mounted Add dispatch from owner task creation and Retry readback",
         cleanup();
         await new Promise<void>((resolve) => setImmediate(resolve));
       });
-      transport.mockRestore();
+      window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
       delete window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__;
       __resetDynamicViewLoaderCacheForTests();
     } finally {

@@ -44,7 +44,9 @@
       "import": "./dist/email-classification/index.js",
       "default": "./dist/email-classification/index.js"
     },
-    "./native-host/*": "./native-host/*.mjs"
+    "./native-host/*": "./native-host/*.mjs",
+    "./native-host/bill-client": "./native-host/bill-client.ts",
+    "./native-host/bill-review-controller": "./native-host/bill-review-controller.ts"
   },
   "scripts": {
     "lint:default-packs": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
@@ -139,7 +141,10 @@
     "pluginParameters": {}
   },
   "elizaos": {
-    "appRegister": "register",
+    "appRegister": {
+      "subpath": "register",
+      "export": "registerApp"
+    },
     "app": {
       "heroImage": "assets/hero.png",
       "featured": true,
@@ -166,6 +171,9 @@
   "files": [
     "dist",
     "native-host/*.mjs",
-    "!native-host/*.test.mjs"
+    "native-host/bill-client.ts",
+    "native-host/*.d.mts",
+    "!native-host/*.test.mjs",
+    "native-host/bill-review-controller.ts"
   ]
 }

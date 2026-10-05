@@ -1500,12 +1500,6 @@ export async function runPollingBackend(
           // embedded-local uses the separate progress-aware budget below.
           remoteNativeFailureStreakStartedAt = null;
         }
-        // Android detached local agent now exposes the service-owned boot
-        // state over the Capacitor plugin. That distinguishes a cold boot
-        // from a launcher or child process death before the renderer's HTTP
-        // probe can connect. Older plugins lack that method, so keep the
-        // legacy hang/connect-failure heuristic only when the native state is
-        // unknown. The overall `deadline` still bounds the whole phase.
         const androidLocalAgentIpc =
           isMobileLocalAgentIpcBase(client.getBaseUrl()) &&
           (isAndroid || isCapacitorNative());
@@ -1516,29 +1510,11 @@ export async function runPollingBackend(
           androidBootState.state === "booting" ||
           androidBootState.state === "restarting" ||
           androidBootState.state === "listening";
-        const legacyAndroidLocalAgentBooting =
-          androidBootState.state === "unknown" &&
-          androidLocalAgentIpc &&
-          (err instanceof ApiHangTimeoutError ||
-            (
-              err as
-                | {
-                    status?: number;
-                  }
-                | undefined
-            )?.status === undefined);
         const localAgentBootProgress =
           !remoteTarget &&
-          (isIosNativeAgentBootInProgress() ||
-            androidNativeBootProgress ||
-            legacyAndroidLocalAgentBooting);
+          (isIosNativeAgentBootInProgress() || androidNativeBootProgress);
         if (localAgentBootProgress) {
-          // PROGRESS-AWARE budget: native evidence says the local agent is
-          // booting, restarting, or accepting connections. Older Android
-          // plugins that lack the boot-state method keep the legacy HTTP
-          // heuristic so existing builds remain bounded by the overall
-          // deadline. A native `dead` state falls through and burns the
-          // consecutive-failure budget.
+          // Only reported native progress resets the consecutive-failure budget.
           nativeFailureStreakStartedAt = null;
         } else if (!remoteTarget) {
           nativeFailureStreakStartedAt ??= Date.now();

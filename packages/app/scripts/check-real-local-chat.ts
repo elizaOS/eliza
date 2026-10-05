@@ -10,12 +10,12 @@ import {
   createDeterministicModelPlugin,
   strictTerminalReplyFixture,
 } from "@elizaos/testing/models";
-import { startApiServer } from "../src/api/server.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../test/helpers/http.ts";
+} from "@elizaos/testing/runtime";
+import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
 

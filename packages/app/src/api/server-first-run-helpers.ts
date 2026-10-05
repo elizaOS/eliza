@@ -16,7 +16,6 @@ import {
   getDefaultStylePreset,
   getStylePresets,
   type LinkedAccountFlagsConfig,
-  migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
   normalizeLinkedAccountFlagsConfig,
@@ -285,7 +284,6 @@ export function persistFirstRunDefaults(
       },
     };
   }
-  migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   saveElizaConfig(config);
   onConfigWrite?.(before, config);
   return adminEntityId;

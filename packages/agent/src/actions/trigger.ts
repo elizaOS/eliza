@@ -586,11 +586,23 @@ async function opCreate(
     !readString(params.scheduledAtIso) &&
     !readString(params.cronExpression)
   ) {
-    return failed(
-      "create",
-      "Provide an explicit schedule before creating a trigger.",
-      "MISSING_SCHEDULE",
-    );
+    return {
+      ...failed(
+        "create",
+        "Provide an explicit schedule before creating a trigger.",
+        "MISSING_SCHEDULE",
+        { acceptance: "rejected", executionStatus: "not_started" },
+      ),
+      // No write has started: corrected schedule parameters can safely retry.
+      // Keep this validation rejection in the trace without giving it authority
+      // over a later committed creation with those corrected parameters.
+      failureProvenance: {
+        kind: "handler_error",
+        boundary: "handler",
+        code: "MISSING_SCHEDULE",
+        retryable: true,
+      },
+    };
   }
 
   const cronExpression = readString(params.cronExpression);

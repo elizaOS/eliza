@@ -204,11 +204,3 @@ export function AgentProvisioningWidget(
     </div>
   );
 }
-
-export const AGENT_PROVISIONING_HOME_WIDGET = {
-  pluginId: "cloud-agent",
-  id: "cloud-agent.provisioning",
-  order: 60,
-  signalKinds: ["activity"],
-  Component: AgentProvisioningWidget,
-} as const;

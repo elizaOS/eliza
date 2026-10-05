@@ -9,7 +9,7 @@
 import type { StylePreset } from "@elizaos/host/protocol";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 
-export { replaceNameTokens } from "../../utils/name-tokens";
+export { replaceNameTokens } from "@elizaos/core/protocol";
 /* ── Roster / preset helpers ─────────────────────────────────────── */
 export type FirstRunPreset = StylePreset;
 export function getFirstRunPresetStyles(

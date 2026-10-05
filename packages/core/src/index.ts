@@ -11,6 +11,7 @@ export * from "./actions";
 export {
 	bindTaskExtractionContext,
 	readTaskExtractionContext,
+	readTaskExtractionRequestIntents,
 } from "./actions/task-extraction-context";
 export {
 	actionToTool,
@@ -501,10 +502,6 @@ export {
 	requireConfirmation,
 } from "./utils/confirmation";
 export { createHash } from "./utils/crypto-compat.ts";
-export {
-	resolveElizaPackageRoot,
-	resolveElizaPackageRootSync,
-} from "./utils/eliza-root.js";
 export {
 	isEnvDisabled,
 	isExactTrueEnvFlag,

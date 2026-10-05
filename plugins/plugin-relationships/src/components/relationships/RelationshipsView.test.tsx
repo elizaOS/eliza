@@ -24,16 +24,14 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// RelationshipsView only touches the narrow `@elizaos/ui/api` client surface:
-// `client.sendChatMessage()` (add-someone + open-entity affordances). The
-// spatial primitives come from the separate `@elizaos/ui/spatial` subpath, which
-// is not mocked.
-const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
+const { dispatchChatPrefill } = vi.hoisted(() => ({
+  dispatchChatPrefill: vi.fn(),
+}));
 vi.mock("@elizaos/ui", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  dispatchChatPrefill,
   client: {
     getBaseUrl: () => "http://test.local",
-    sendChatMessage,
   },
 }));
 
@@ -117,7 +115,7 @@ function agent(agentId: string): HTMLElement {
 
 afterEach(() => {
   cleanup();
-  sendChatMessage.mockClear();
+  dispatchChatPrefill.mockClear();
 });
 
 describe("RelationshipsView — states", () => {
@@ -220,7 +218,7 @@ describe("RelationshipsView — states", () => {
     );
     await screen.findByRole("heading", { name: "No relationships yet" });
     fireEvent.click(agent("add"));
-    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+    expect(dispatchChatPrefill).toHaveBeenCalledTimes(1);
   });
 
   it("routes the open-entity affordance through the assistant chat", async () => {
@@ -237,7 +235,7 @@ describe("RelationshipsView — states", () => {
     );
     await screen.findByText("Pat Doe");
     fireEvent.click(agent("open-ent-pat"));
-    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+    expect(dispatchChatPrefill).toHaveBeenCalledTimes(1);
   });
 
   it("shows the error state with a Retry that refetches into populated", async () => {

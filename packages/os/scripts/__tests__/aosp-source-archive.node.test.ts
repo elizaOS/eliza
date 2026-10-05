@@ -120,7 +120,7 @@ test("AOSP verification rejects incomplete CLI inputs and empty vendor contracts
       /AOSP lock|full Git object ID/,
     );
   }
-  for (const name of ["cuttlefish", "pixel9a", "pixel11pro"])
+  for (const name of ["cuttlefish", "pixel11pro"])
     assert.equal(typeof loadProfile(name).manifest.commit, "string");
 });
 

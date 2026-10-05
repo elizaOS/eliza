@@ -572,16 +572,9 @@ function isIosOnDeviceAgentHttpUrl(value: string): boolean {
     ? canUseIosLocalAgentIpc()
     : iosRuntimeHasOnDeviceAgent();
 }
-/**
- * Whether the selected runtime runs an on-device agent that serves local-agent
- * IPC. Tunnel mode is the phone-side relay into Bun IPC, even though first-run
- * treats its connection target as externally configured.
- */
 function iosRuntimeHasOnDeviceAgent(): boolean {
   const mode = normalizeMobileRuntimeMode(readRuntimeMode());
-  return (
-    mode === "tunnel-to-mobile" || isCommittedOnDeviceMobileRuntimeMode(mode)
-  );
+  return isCommittedOnDeviceMobileRuntimeMode(mode);
 }
 function canUseIosLocalAgentIpc(): boolean {
   if (!isNativeIos()) return false;

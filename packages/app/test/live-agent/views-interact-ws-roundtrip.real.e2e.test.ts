@@ -30,8 +30,8 @@
  *   packages/agent/src/api/pending-request-map.ts
  */
 
+import { req } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { req } from "../helpers/http.ts";
 import {
   type RuntimeHarness,
   startLiveRuntimeServer,

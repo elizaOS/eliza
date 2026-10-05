@@ -272,6 +272,7 @@ function sample(args: {
   unit: string;
   startAt: string | null;
   endAt?: string | null;
+  localDate?: string;
   sourceExternalId: string;
   metadata?: Record<string, unknown>;
 }): LifeOpsHealthMetricSample | null {
@@ -287,7 +288,7 @@ function sample(args: {
     unit: args.unit,
     startAt: args.startAt,
     endAt: args.endAt ?? args.startAt,
-    localDate: localDateFromIso(args.startAt),
+    localDate: args.localDate ?? localDateFromIso(args.startAt),
     sourceExternalId: args.sourceExternalId,
     metadata: args.metadata ?? {},
   });
@@ -946,6 +947,7 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           unit: "h",
           startAt,
           endAt,
+          localDate: date,
           sourceExternalId: `${id}:sleep_hours`,
         }),
         sample({
@@ -956,6 +958,7 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           unit: "score",
           startAt,
           endAt,
+          localDate: date,
           sourceExternalId: `${id}:sleep_score`,
         }),
       ]),
@@ -1193,6 +1196,7 @@ async function syncWithings(
           unit: "h",
           startAt,
           endAt,
+          localDate: date,
           sourceExternalId: `${externalId}:sleep_hours`,
         }),
       ]),

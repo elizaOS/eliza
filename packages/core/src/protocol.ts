@@ -157,10 +157,18 @@ export {
 } from "./messaging/interactive-task.js";
 export type {
 	TaskEvent,
+	TaskEventPage,
+	TaskEventReaderOptions,
+	TaskEventReaderState,
 	TaskOperationStatus,
 	TaskStatus as TaskEventStatus,
 } from "./messaging/task-events.js";
-export { mergeTaskEvents, validateTaskEvent } from "./messaging/task-events.js";
+export {
+	mergeTaskEventPage,
+	mergeTaskEvents,
+	TaskEventReader,
+	validateTaskEvent,
+} from "./messaging/task-events.js";
 export * from "./messaging/task-widgets.js";
 export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";

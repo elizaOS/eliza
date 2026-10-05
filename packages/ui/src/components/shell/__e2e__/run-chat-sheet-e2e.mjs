@@ -40,13 +40,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, webkit } from "playwright";
 import { PNG } from "pngjs";
-import {
-  compileTailwindTheme,
-  renameRecordedVideo,
-  stubElizaCore,
-  stubNodeBuiltins,
-  writeFixturePage,
-} from "../../../testing/e2e-runner/index.ts";
+import { compileTailwindTheme, writeFixturePage } from "../../../testing/e2e-runner/fixture-bundle";
+import { renameRecordedVideo } from "../../../testing/e2e-runner/browser-harness";
+import { stubElizaCore, stubNodeBuiltins } from "../../../testing/e2e-runner/esbuild-stubs";
 import {
   touchDragHold,
   touchSwipe,

@@ -34,7 +34,7 @@ import type {
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
 } from "@elizaos/contracts";
-
+import type { TriggerRunRecord } from "@elizaos/core";
 import type {
   AppRunSummary,
   AppSessionState,
@@ -43,7 +43,6 @@ import type {
 } from "@elizaos/core/protocol";
 import type { FirstRunOptions } from "@elizaos/host/protocol";
 import type { Dispatch, SetStateAction } from "react";
-import type { TriggerRunRecord } from "../api/client";
 import type {
   ChatTokenUsage,
   Conversation,
@@ -89,12 +88,7 @@ import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { Tab } from "../navigation";
 import type { ActionNotice, ActionTone } from "./action-notice";
 import type { AgentProfile } from "./agent-profile-types";
-import type {
-  BackgroundConfig,
-  UiShellMode,
-  UiTheme,
-  UiThemeMode,
-} from "./ui-preferences";
+import type { BackgroundConfig, UiShellMode, UiTheme } from "./ui-preferences";
 
 export type { UiShellMode } from "./ui-preferences";
 export type ShellView = "character" | "desktop";
@@ -303,7 +297,6 @@ export interface AppState {
   uiShellMode: UiShellMode;
   uiLanguage: UiLanguage;
   uiTheme: UiTheme;
-  uiThemeMode: UiThemeMode;
   /** The unified home/app background, shared across the home and every view. */
   backgroundConfig: BackgroundConfig;
   /** True when there is a previous background config to undo to. */
@@ -526,7 +519,6 @@ export interface AppState {
   // Workbench
   workbenchLoading: boolean;
   workbench: WorkbenchOverview | null;
-  workbenchTasksAvailable: boolean;
   workbenchTriggersAvailable: boolean;
   workbenchTodosAvailable: boolean;
   // Agent export/import
@@ -654,8 +646,6 @@ export interface AppActions {
   switchShellView: (view: ShellView) => void;
   navigation: NavigationEventsApi;
   setUiLanguage: (language: UiLanguage) => void;
-  setUiTheme: (theme: UiTheme) => void;
-  setUiThemeMode: (mode: UiThemeMode) => void;
   setBackgroundConfig: (config: BackgroundConfig) => void;
   /** Restore the most recent previous background config (no-op when empty). */
   undoBackgroundConfig: () => void;
@@ -920,4 +910,15 @@ export interface AppActions {
   // Translations
   t: (key: string, values?: Record<string, unknown>) => string;
 }
-export type AppContextValue = AppState & AppActions;
+export type AppContextValue = Omit<
+  AppState,
+  | "autonomousEvents"
+  | "autonomousLatestEventId"
+  | "autonomousRunHealthByRunId"
+  | "chatInput"
+  | "chatPendingImages"
+  | "chatSending"
+  | "conversationMessages"
+  | "ptySessions"
+> &
+  AppActions;

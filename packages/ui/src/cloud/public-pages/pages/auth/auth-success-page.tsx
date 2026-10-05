@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { isElectrobunRuntime } from "../../../../bridge/electrobun-runtime";
 import { Button } from "../../../../components/ui/button";
-import { getBootConfig } from "../../../../config/boot-config";
+import { getBootConfig } from "../../../../config/boot-config-store";
 import { ApiError, api, readCloudBearerToken } from "../../../lib/api-client";
 import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
@@ -276,13 +276,6 @@ export function resolveAuthSuccessCandidate(
     connectionId,
     proof,
   };
-}
-
-/** @deprecated Prefer {@link resolveAuthSuccessCandidate}. */
-export function resolveAuthSuccessSignal(
-  searchParams: URLSearchParams,
-): AuthSuccessCandidate {
-  return resolveAuthSuccessCandidate(searchParams);
 }
 
 /** 5xx/0/network and 429 (rate limit) are retryable; other 4xx are rejected. */
@@ -557,28 +550,6 @@ export async function verifyAuthSuccessCandidate(args: {
   });
   if (ownership.ok) return ownership;
   return asVerifyFailure(ownership.reason);
-}
-
-/** @deprecated Prefer {@link verifyAuthSuccessCandidate}. */
-export async function verifyAuthSuccessConnection(args: {
-  platform: string;
-  connectionId: string;
-  signal?: AbortSignal;
-}): Promise<
-  | {
-      ok: true;
-      platform: string;
-      platformDisplay: string;
-      connectionId: string | null;
-    }
-  | { ok: false; reason: "rejected" | "unavailable" }
-> {
-  return verifyAuthSuccessCandidate({
-    platform: args.platform,
-    connectionId: args.connectionId,
-    proof: null,
-    signal: args.signal,
-  });
 }
 
 export default function AuthSuccessPage() {

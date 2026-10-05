@@ -1,8 +1,7 @@
-/** Validates the pinned Vulkan source contract before Android builds consume the fork without legacy shader overlays. */
+/** Validates the pinned Vulkan source contract before Android builds consume the fork without shader overlays. */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { patchVulkanKernels } from "../kernel-patches/vulkan-kernels.ts";
 
 const shaderRoot = "ggml/src/ggml-vulkan/vulkan-shaders";
 const requiredSources = [
@@ -132,30 +131,4 @@ export function readPinnedNativeRevision(repoRoot) {
   const match = /^160000 commit ([a-f0-9]{40})\t/.exec(entry);
   if (!match) throw new Error("Parent repository has no pinned native gitlink");
   return match[1];
-}
-
-/** Selects the actual pre-build staging path; maintained forks are never overlaid. */
-export function prepareAndroidVulkanSource({
-  source,
-  maintainedSource,
-  expectedRevision,
-  legacy = false,
-  dryRun = false,
-}) {
-  if (legacy) {
-    if (
-      fs.existsSync(source) &&
-      fs.existsSync(maintainedSource) &&
-      fs.realpathSync(source) === fs.realpathSync(maintainedSource)
-    ) {
-      throw new Error(
-        "Legacy Vulkan graft cannot overwrite the maintained native submodule",
-      );
-    }
-    if (!dryRun)
-      patchVulkanKernels(source, { target: "android-legacy-vulkan" });
-    return { mode: "legacy" };
-  }
-  if (!dryRun) validateMaintainedVulkanSource({ source, expectedRevision });
-  return { mode: "maintained" };
 }

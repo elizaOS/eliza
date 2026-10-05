@@ -74,7 +74,7 @@ type PollDisposition =
 	| "delivery_pending"
 	| "offline";
 function isCommittedSession(session: RemoteTargetStoredSession): boolean {
-	return session.activationState !== "staged";
+	return session.activationState === "active";
 }
 function errorCode(error: unknown): string {
 	if (

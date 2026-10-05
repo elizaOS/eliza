@@ -1,16 +1,6 @@
 import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
-import * as path from "node:path";
 import { promisify } from "node:util";
-import {
-  DiskutilPermissionError,
-  InvalidDevicePathError,
-  InvalidImagePathError,
-  UserCancelledAuthError,
-} from "./errors";
-import { downloadFile } from "./image-download";
-import { sha256File } from "./image-file";
-import { withTemporaryImageDirectory } from "./image-workspace";
+import { DiskutilPermissionError } from "./errors";
 import {
   containsProtectedApplePartition,
   type DiskUtilInfoPlist,
@@ -22,45 +12,14 @@ import {
 import { fetchReleaseImages } from "./release-manifest";
 import type {
   ElizaOsImage,
-  InstallerStepId,
   RemovableDrive,
   UsbInstallerBackend,
   WritePlan,
   WriteRequest,
 } from "./types";
 import { createPlatformWritePlan } from "./write-plan";
-import {
-  assertWritePlanAllowed,
-  assertWriteTargetUnchanged,
-} from "./write-safety";
 
 const execFileAsync = promisify(execFile);
-
-// Strict regexes used to gate paths before they hit any subprocess.
-// imagePath must be an absolute file under a known macOS prefix; rawDisk must
-// be a whole-disk character device like /dev/rdisk3 (NOT /dev/rdisk3s1).
-const IMAGE_PATH_RE = /^\/(?:tmp|var|Users|Volumes|private)\/[A-Za-z0-9._/-]+$/;
-const RAW_DISK_RE = /^\/dev\/rdisk\d+$/;
-const DEVICE_DISK_RE = /^\/dev\/disk(\d+)$/;
-
-// ---------------------------------------------------------------------------
-// Shell escaping for osascript / `do shell script` round-tripping.
-// ---------------------------------------------------------------------------
-
-// POSIX single-quote escape: 'a'\''b' style. Safe to concatenate.
-export function shellSingleQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
-// AppleScript-string escape (inside the `"..."` we hand to -e).
-// Only backslashes and double-quotes need escaping inside that string literal.
-export function appleScriptStringEscape(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-// ---------------------------------------------------------------------------
-// diskutil wrappers
-// ---------------------------------------------------------------------------
 
 interface SubprocessError {
   code?: number;
@@ -113,51 +72,6 @@ async function getDiskUtilInfo(
     throw err;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Network helpers
-// ---------------------------------------------------------------------------
-
-async function fileSize(filePath: string): Promise<number> {
-  const stat = await fs.stat(filePath);
-  return stat.size;
-}
-
-// ---------------------------------------------------------------------------
-// Path validation — exported for tests.
-// ---------------------------------------------------------------------------
-
-export function validateImagePath(imagePath: string): string {
-  if (!IMAGE_PATH_RE.test(imagePath)) {
-    throw new InvalidImagePathError(
-      `Image path does not match allowed shape: ${imagePath}`,
-      imagePath,
-    );
-  }
-  return imagePath;
-}
-
-export function deriveRawDisk(devicePath: string): string {
-  const m = DEVICE_DISK_RE.exec(devicePath);
-  if (!m) {
-    throw new InvalidDevicePathError(
-      `Device path is not a whole disk (/dev/diskN): ${devicePath}`,
-      devicePath,
-    );
-  }
-  const rawDisk = `/dev/rdisk${m[1]}`;
-  if (!RAW_DISK_RE.test(rawDisk)) {
-    throw new InvalidDevicePathError(
-      `Derived raw disk failed validation: ${rawDisk}`,
-      rawDisk,
-    );
-  }
-  return rawDisk;
-}
-
-// ---------------------------------------------------------------------------
-// Backend
-// ---------------------------------------------------------------------------
 
 export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
   async listRemovableDrives(): Promise<RemovableDrive[]> {
@@ -237,87 +151,5 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
 
   async createWritePlan(request: WriteRequest): Promise<WritePlan> {
     return createPlatformWritePlan(this, request);
-  }
-
-  async executeWritePlan(
-    plan: WritePlan,
-    onProgress: (step: InstallerStepId, progress: number) => void,
-  ): Promise<void> {
-    plan = structuredClone(plan);
-    assertWritePlanAllowed(plan);
-
-    const { image, drive } = plan;
-    await withTemporaryImageDirectory(async (cacheDir) => {
-      const imagePath = validateImagePath(
-        path.join(cacheDir, `${image.checksumSha256}.iso`),
-      );
-      const rawDisk = deriveRawDisk(drive.devicePath);
-
-      // Step: resolve-image (download)
-      onProgress("resolve-image", 0);
-      await downloadFile(
-        image.url,
-        imagePath,
-        image.sizeBytes,
-        (received, total) => {
-          const pct = total > 0 ? received / total : 0;
-          onProgress("resolve-image", pct);
-        },
-      );
-      onProgress("resolve-image", 1);
-
-      // Pre-checksum: verify size matches manifest if known.
-      if (image.sizeBytes > 0) {
-        const actualSize = await fileSize(imagePath);
-        if (actualSize !== image.sizeBytes) {
-          // Drop the bad file so the next run will re-download from scratch.
-          await fs.rm(imagePath, { force: true });
-          throw new Error(
-            `Downloaded image size ${actualSize} does not match manifest ${image.sizeBytes}; deleted and aborting.`,
-          );
-        }
-      }
-
-      // Step: checksum
-      onProgress("checksum", 0);
-      const actual = await sha256File(imagePath);
-      if (actual !== image.checksumSha256) {
-        await fs.rm(imagePath, { force: true });
-        throw new Error(
-          `Checksum mismatch: expected ${image.checksumSha256}, got ${actual}`,
-        );
-      }
-      onProgress("checksum", 1);
-
-      assertWriteTargetUnchanged(plan, await this.listRemovableDrives());
-      onProgress("write", 0);
-      await execFileAsync("diskutil", ["unmountDisk", drive.devicePath]);
-
-      // Build the `dd` invocation with shell-quoted paths so that even though
-      // osascript double-evaluates the string, no metacharacter can escape.
-      const ddCmd = `dd if=${shellSingleQuote(imagePath)} of=${shellSingleQuote(rawDisk)} bs=1m`;
-      const appleScript = `do shell script "${appleScriptStringEscape(ddCmd)}" with administrator privileges`;
-
-      try {
-        await execFileAsync("osascript", ["-e", appleScript]);
-      } catch (err: unknown) {
-        if (isSubprocessError(err)) {
-          const stderr = err.stderr ?? "";
-          if (/user cancell?ed\./i.test(stderr)) {
-            throw new UserCancelledAuthError(
-              "Authentication cancelled — click Write to retry.",
-            );
-          }
-        }
-        throw err;
-      }
-      onProgress("write", 1);
-
-      // Step: verify (eject)
-      onProgress("verify", 0);
-      await execFileAsync("diskutil", ["eject", drive.devicePath]);
-      onProgress("verify", 1);
-    });
-    onProgress("complete", 1);
   }
 }

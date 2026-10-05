@@ -25,7 +25,7 @@ vi.mock("../../api/client-cloud", () => ({
   waitForCloudAgentRunning: mocks.waitForCloudAgentRunning,
 }));
 
-vi.mock("../../config/branding", () => ({
+vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({ appUrl: "https://elizaos.ai" }),
 }));
 

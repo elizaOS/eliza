@@ -1,7 +1,7 @@
-/** Implements Electrobun desktop desktop test bridge server ts behavior for app shell integration. */
 import crypto from "node:crypto";
 import http from "node:http";
 import { invokeApplicationMenuAction } from "./application-menu-action-registry";
+import { readJsonBody } from "./bridge-http.ts";
 import { readDesktopEnvFlag } from "./desktop-env-flags";
 import {
 	evaluateInCurrentMainWindow,
@@ -40,26 +40,6 @@ function json(
 ): void {
 	res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
 	res.end(JSON.stringify(body));
-}
-
-async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
-	const chunks: Buffer[] = [];
-	let size = 0;
-
-	for await (const chunk of req) {
-		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-		size += buffer.length;
-		if (size > MAX_BODY_BYTES) {
-			throw new Error("request body too large");
-		}
-		chunks.push(buffer);
-	}
-
-	if (chunks.length === 0) {
-		return null;
-	}
-
-	return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function isAuthorized(req: http.IncomingMessage, token: string): boolean {
@@ -143,7 +123,7 @@ export async function startDesktopTestBridgeServer(): Promise<
 			}
 
 			if (pathname === "/main-window/eval" && method === "POST") {
-				const body = await readJsonBody<EvalBody>(req);
+				const body = await readJsonBody<EvalBody>(req, MAX_BODY_BYTES);
 				if (!body?.script?.trim()) {
 					json(res, 400, { error: "script is required" });
 					return;
@@ -200,7 +180,8 @@ export async function startDesktopTestBridgeServer(): Promise<
 				}
 
 				if (method === "POST") {
-					const body = (await readJsonBody<BoundsBody>(req)) ?? {};
+					const body =
+						(await readJsonBody<BoundsBody>(req, MAX_BODY_BYTES)) ?? {};
 					const nextBounds: WindowBounds = {
 						x: pickFiniteNumber(body.x, currentBounds.x),
 						y: pickFiniteNumber(body.y, currentBounds.y),
@@ -233,7 +214,7 @@ export async function startDesktopTestBridgeServer(): Promise<
 			}
 
 			if (pathname === "/menu-action" && method === "POST") {
-				const body = await readJsonBody<MenuActionBody>(req);
+				const body = await readJsonBody<MenuActionBody>(req, MAX_BODY_BYTES);
 				const action = body?.action?.trim();
 				if (!action) {
 					json(res, 400, { error: "action is required" });
@@ -266,7 +247,7 @@ export async function startDesktopTestBridgeServer(): Promise<
 			}
 
 			if (pathname === "/shortcut/press" && method === "POST") {
-				const body = await readJsonBody<ShortcutPressBody>(req);
+				const body = await readJsonBody<ShortcutPressBody>(req, MAX_BODY_BYTES);
 				const id = body?.id?.trim();
 				if (!id) {
 					json(res, 400, { error: "id is required" });

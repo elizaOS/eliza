@@ -1,7 +1,9 @@
 /** Original paid-upgrade authority under organization-first transaction locks. No provider I/O. */
 import { ElizaError } from "@elizaos/core";
 import { and, eq, isNull } from "drizzle-orm";
+import { organizationUpgradeReviewSchema } from "../../lib/services/organization-plan-change-contract";
 import { observePaidOrganizationUpgradeInvoice } from "../../lib/services/organization-upgrade-invoice";
+import { observeLaterPeriodUpgrade } from "../../lib/services/organization-upgrade-later-period";
 import {
   organizationUpgradeIntentDigest,
   organizationUpgradeProviderBindingSchema,
@@ -15,6 +17,7 @@ import {
 } from "../schemas/billing-subscriptions";
 import { organizationEntitlements } from "../schemas/organization-entitlements";
 import { organizationPlanChangeQuotes } from "../schemas/organization-plan-change-quotes";
+import { organizationUpgradeHistoricalTargets } from "../schemas/organization-upgrade-historical-targets";
 import { organizationUpgradeInvoiceOrigins } from "../schemas/organization-upgrade-invoice-origins";
 import { organizations } from "../schemas/organizations";
 import { billingSubscriptionCommands as commands } from "../schemas/subscription-billing-operations";
@@ -93,7 +96,7 @@ export async function lockOrganizationUpgradeSettlement(
     association.subscription_id !== command.subscription_id
   )
     upgradeSettlementConflict("current_association_changed");
-  const [quote] = await tx
+  const [storedQuote] = await tx
     .select()
     .from(organizationPlanChangeQuotes)
     .where(
@@ -103,6 +106,9 @@ export async function lockOrganizationUpgradeSettlement(
       ),
     )
     .for("update");
+  const quote = storedQuote
+    ? { ...storedQuote, review: organizationUpgradeReviewSchema.parse(storedQuote.review) }
+    : undefined;
   if (
     !quote ||
     quote.actor_id !== command.requested_by_user_id ||
@@ -180,12 +186,69 @@ export async function lockOrganizationUpgradeSettlement(
     binding,
     observedAt: now,
   });
-  const target = observeAppliedOrganizationUpgrade({
-    raw: input.rawSubscription,
-    source,
-    review: quote.review,
-    binding,
-    observedAt: now,
-  });
-  return { command, quote, origin, source, projection, paid, target, now };
+  // A later live period needs an independently stored original target. Never rewrite the live object.
+  const later =
+    typeof input.rawSubscription === "object" &&
+    input.rawSubscription !== null &&
+    "current_period_start" in input.rawSubscription &&
+    typeof input.rawSubscription.current_period_start === "number" &&
+    input.rawSubscription.current_period_start * 1000 >= source.current_period_end.getTime();
+  let historicalEvidence: typeof commands.$inferSelect.organization_upgrade_settlement_evidence =
+    null;
+  let target: ReturnType<typeof observeAppliedOrganizationUpgrade>;
+  if (later) {
+    const [receipt] = await tx
+      .select()
+      .from(organizationUpgradeHistoricalTargets)
+      .where(
+        and(
+          eq(organizationUpgradeHistoricalTargets.command_id, command.id),
+          eq(organizationUpgradeHistoricalTargets.organization_id, input.organizationId),
+        ),
+      );
+    if (!receipt) upgradeSettlementConflict("historical_target_unavailable");
+    const observed = observeLaterPeriodUpgrade({
+      source,
+      review: quote.review,
+      binding,
+      observedAt: now,
+      origin: {
+        invoiceId: origin.invoice_id,
+        customerId: origin.customer_id,
+        subscriptionId: origin.subscription_id,
+        livemode: origin.livemode,
+        invoiceCreatedAt: origin.invoice_created_at,
+      },
+      raw: {
+        id: receipt.provider_event_id,
+        object: "event",
+        type: receipt.event_type,
+        api_version: receipt.api_version,
+        created: receipt.event_created_at.getTime() / 1000,
+        livemode: receipt.livemode,
+        data: { object: receipt.raw_subscription },
+      },
+      live: input.rawSubscription,
+    });
+    if (observed.historical.eventDigest !== receipt.evidence_digest)
+      upgradeSettlementConflict("historical_target_digest_changed");
+    target = observed.historical.target;
+    historicalEvidence = {
+      kind: "historical_target_with_live_compatibility",
+      eventId: receipt.provider_event_id,
+      eventDigest: receipt.evidence_digest,
+      liveDigest: observed.liveDigest,
+      livePeriodStart: observed.livePeriodStart.toISOString(),
+      livePeriodEnd: observed.livePeriodEnd.toISOString(),
+      observedAt: now.toISOString(),
+    };
+  } else
+    target = observeAppliedOrganizationUpgrade({
+      raw: input.rawSubscription,
+      source,
+      review: quote.review,
+      binding,
+      observedAt: now,
+    });
+  return { command, quote, origin, source, projection, paid, target, historicalEvidence, now };
 }

@@ -172,7 +172,6 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   ),
   sessionExact("dev.inference-timing", "GET", "/api/dev/inference-timing"),
   sessionExact("dev.boot-history", "GET", "/api/dev/boot-history"),
-  sessionExact("dev.health", "GET", "/api/dev/health"),
   sessionExact("dev.route-timings", "GET", "/api/dev/route-timings"),
 
   sessionExact("auth.password.change", "POST", "/api/auth/password/change"),

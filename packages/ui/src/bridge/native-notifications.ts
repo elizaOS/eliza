@@ -7,7 +7,7 @@
  * separate permission-gated API for hidden browser tabs.
  */
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
-import type { NotificationPriority } from "@elizaos/core";
+import type { NotificationCategory, NotificationPriority } from "@elizaos/core";
 import { logger } from "../logger.ts";
 import {
   isSafeDeepLink,
@@ -30,6 +30,7 @@ export interface NativeNotificationRequest {
   data?: Record<string, unknown>;
   /** Drives the delivery loudness (Android channel, web silence). */
   priority: NotificationPriority;
+  category?: NotificationCategory;
   /**
    * Coalescing key. When set, the OS surface is tagged by it so a superseding
    * same-group arrival REPLACES the prior notification (matching the inbox's
@@ -240,11 +241,6 @@ export function __resetEnsuredChannelsForTests(): void {
   ensuredChannels.clear();
 }
 
-/** Test-only: permit an isolated listener registration in each test case. */
-export function __resetLocalNotificationTapRoutingForTests(): void {
-  localNotificationTapListenerPromise = null;
-}
-
 /**
  * `channelId`: the channel to schedule against (undefined off Android, where no
  * channel is needed). `unusable`: true only when a REQUIRED Android channel
@@ -309,19 +305,42 @@ async function tryLocalNotifications(
   const ownerType = req.data?.ownerType;
   if (
     Capacitor.getPlatform() === "android" &&
+    (req.category === "reminder" || req.category === undefined) &&
     (ownerType === "occurrence" || ownerType === "calendar_event")
   ) {
     const push =
       getNativePlugin<PushNotificationsPluginLike>("PushNotifications");
     const capabilities = await push.getReminderDataCapabilities?.();
-    // Old native builds cannot observe legacy channel provenance. Keep the
-    // durable in-app fallback rather than guess a louder OS channel.
     if (
-      capabilities?.reminderChannelSelection !== true ||
-      typeof push.resolveReminderChannel !== "function"
+      req.category === "reminder" &&
+      capabilities?.reminderPresentation === true
     ) {
-      if (ownerType === "occurrence" && req.priority === "high") return false;
-    } else {
+      if (typeof push.presentReminderNotification !== "function") return false;
+      const result = await push.presentReminderNotification({
+        notificationId: req.id,
+        ...(req.groupKey !== undefined ? { groupKey: req.groupKey } : {}),
+        title: req.title,
+        body: req.body ?? "",
+        priority: req.priority,
+        ownerType,
+        ...(req.deepLink && isSafeDeepLink(req.deepLink)
+          ? { deepLink: req.deepLink }
+          : {}),
+        ...(typeof req.data?.conversationId === "string"
+          ? { conversationId: req.data.conversationId }
+          : {}),
+        ...(typeof req.data?.messageId === "string"
+          ? { messageId: req.data.messageId }
+          : {}),
+      });
+      return result?.accepted === true;
+    }
+    // Preserve the older binary's existing channel contract; only the new
+    // presenter guarantees managed groups. Never add a second post after it.
+    if (
+      capabilities?.reminderChannelSelection === true &&
+      typeof push.resolveReminderChannel === "function"
+    ) {
       const selected = await push.resolveReminderChannel({
         priority: req.priority,
         ownerType,
@@ -342,7 +361,8 @@ async function tryLocalNotifications(
       )
         return false;
       if (entry[0] === "normal") channelPriority = "normal";
-    }
+    } else if (ownerType === "occurrence" && req.priority === "high")
+      return false;
   }
   const channel = await ensureAndroidChannel(plugin, channelPriority);
   // A required Android channel that couldn't be created means the OS would drop

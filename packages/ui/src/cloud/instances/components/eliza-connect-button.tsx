@@ -6,7 +6,7 @@ import { ExternalLink } from "lucide-react";
  * running agent).
  */
 import { Button } from "../../../components/ui/button";
-import { useT } from "../lib/i18n";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 
 interface Props {

@@ -6,14 +6,14 @@
  */
 import path from "node:path";
 import { documentsPlugin } from "@elizaos/plugin-knowledge";
-import { afterAll, beforeAll, expect, it } from "vitest";
-import { createElizaPlugin } from "../../../packages/agent/src/index.ts";
-import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../packages/app/test/helpers/http";
+} from "@elizaos/testing/runtime";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { createElizaPlugin } from "../../../packages/agent/src/index.ts";
+import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
 import {
   isLiveTestEnabled,
   selectLiveProvider,

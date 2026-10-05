@@ -63,14 +63,14 @@ import {
 import { normalizeConversationList } from "./chat-conversation-guards";
 import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
 import {
-  applyStreamingTextModification,
   filterRenderableConversationMessages,
   shouldKeepConversationMessage,
-} from "./internal";
+} from "./conversation-message-filter";
 import { clearSettledPendingChatTurns } from "./pending-chat-turns";
 import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
 import type { LoadConversationMessagesResult } from "./types";
 import type { StreamingTextModification } from "./useStreamingText";
+import { applyStreamingTextModification } from "./useStreamingText";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
 function hasConversationBootstrapMessage(
@@ -2095,14 +2095,12 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   // ── Workbench / update / extension ──────────────────────────────────
   const [workbenchLoading, setWorkbenchLoading] = useState(false);
   const [workbench, setWorkbench] = useState<WorkbenchOverview | null>(null);
-  const [workbenchTasksAvailable, setWorkbenchTasksAvailable] = useState(false);
   const [workbenchTriggersAvailable, setWorkbenchTriggersAvailable] =
     useState(false);
   const [workbenchTodosAvailable, setWorkbenchTodosAvailable] = useState(false);
   const loadWorkbench = useCallback(async () => {
     if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
       setWorkbench(null);
-      setWorkbenchTasksAvailable(false);
       setWorkbenchTriggersAvailable(false);
       setWorkbenchTodosAvailable(false);
       setWorkbenchLoading(false);
@@ -2112,12 +2110,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     try {
       const result = await client.getWorkbenchOverview();
       setWorkbench(result);
-      setWorkbenchTasksAvailable(result.tasksAvailable ?? false);
       setWorkbenchTriggersAvailable(result.triggersAvailable ?? false);
       setWorkbenchTodosAvailable(result.todosAvailable ?? false);
     } catch {
       setWorkbench(null);
-      setWorkbenchTasksAvailable(false);
       setWorkbenchTriggersAvailable(false);
       setWorkbenchTodosAvailable(false);
     } finally {
@@ -2210,7 +2206,6 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     // Workbench
     workbenchLoading,
     workbench,
-    workbenchTasksAvailable,
     workbenchTriggersAvailable,
     workbenchTodosAvailable,
     loadWorkbench,

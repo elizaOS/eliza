@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop registry ts behavior for app shell integration. */
 import { DynamicViewError } from "./errors";
 import {
 	DYNAMIC_VIEW_PLACEMENTS,

@@ -35,19 +35,6 @@ export async function storeRuntimeCredential(
   return "session";
 }
 
-export async function deleteRuntimeCredential(
-  runtimeIdValue: string,
-): Promise<boolean> {
-  const runtimeId = requireRuntimeId(runtimeIdValue);
-  const hadSessionCredential = sessionCredentials.delete(runtimeId);
-  const result = await invokeDesktopBridgeRequest<{ deleted: boolean }>({
-    rpcMethod: "runtimeCredentialDelete",
-    ipcChannel: "runtimeCredential:delete",
-    params: { runtimeId },
-  });
-  return result?.deleted ?? hadSessionCredential;
-}
-
 export async function deleteRuntimeCredentialRecord(
   runtimeIdValue: string,
 ): Promise<boolean> {

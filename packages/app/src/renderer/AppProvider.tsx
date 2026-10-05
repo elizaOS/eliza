@@ -153,15 +153,12 @@ function AppProviderInner({
   const {
     state: {
       uiTheme,
-      uiThemeMode,
       backgroundConfig,
       canUndoBackground,
       canRedoBackground,
       homeTimeWidgetHidden,
       uiAccentId,
     },
-    setUiTheme,
-    setUiThemeMode,
     setBackgroundConfig,
     undoBackgroundConfig,
     redoBackgroundConfig,
@@ -998,7 +995,6 @@ function AppProviderInner({
     loadInventory,
     workbenchLoading,
     workbench,
-    workbenchTasksAvailable,
     workbenchTriggersAvailable,
     workbenchTodosAvailable,
     loadWorkbench,
@@ -1779,33 +1775,6 @@ function AppProviderInner({
     [serverTurnStatus],
   );
 
-  // High-write-frequency state is exposed through narrow fresh contexts below.
-  // AppContext keeps stale compatibility copies for older consumers, but they
-  // intentionally stay out of the dependency list so per-keystroke/per-token/
-  // per-poll updates do not fan out to every AppContext subscriber.
-  const appContextHotCompatibility = useRef<
-    Pick<
-      AppState,
-      | "autonomousEvents"
-      | "autonomousLatestEventId"
-      | "autonomousRunHealthByRunId"
-      | "chatInput"
-      | "chatPendingImages"
-      | "chatSending"
-      | "conversationMessages"
-      | "ptySessions"
-    >
-  >({
-    autonomousEvents: [],
-    autonomousLatestEventId: null,
-    autonomousRunHealthByRunId: {},
-    chatInput: "",
-    chatPendingImages: [],
-    chatSending: false,
-    conversationMessages: [],
-    ptySessions: [],
-  }).current;
-
   const value: AppContextValue = useMemo(
     () => ({
       // Translations
@@ -1815,7 +1784,6 @@ function AppProviderInner({
       uiShellMode,
       uiLanguage,
       uiTheme,
-      uiThemeMode,
       backgroundConfig,
       canUndoBackground,
       canRedoBackground,
@@ -1850,7 +1818,6 @@ function AppProviderInner({
       conversations,
       activeConversationId,
       companionMessageCutoffTs,
-      ...appContextHotCompatibility,
       unreadConversations,
       triggers,
       triggersLoaded,
@@ -1982,7 +1949,6 @@ function AppProviderInner({
       storeSubTab,
       workbenchLoading,
       workbench,
-      workbenchTasksAvailable,
       workbenchTriggersAvailable,
       workbenchTodosAvailable,
       exportBusy,
@@ -2056,8 +2022,6 @@ function AppProviderInner({
       switchShellView,
       navigation,
       setUiLanguage,
-      setUiTheme,
-      setUiThemeMode,
       setBackgroundConfig,
       undoBackgroundConfig,
       redoBackgroundConfig,
@@ -2176,7 +2140,6 @@ function AppProviderInner({
       uiShellMode,
       uiLanguage,
       uiTheme,
-      uiThemeMode,
       backgroundConfig,
       canUndoBackground,
       canRedoBackground,
@@ -2210,18 +2173,6 @@ function AppProviderInner({
       conversations,
       activeConversationId,
       companionMessageCutoffTs,
-      appContextHotCompatibility,
-      // NOTE: conversationMessages intentionally EXCLUDED — it gets a new array
-      // reference on every streamed token. Provided fresh via
-      // ConversationMessagesCtx (useConversationMessages()); the copy left in the
-      // value object is stale and unread.
-      // NOTE: autonomousEvents/autonomousLatestEventId/autonomousRunHealthByRunId
-      // intentionally EXCLUDED — they update on every heartbeat/agent/proactive WS
-      // event but no component reads them from useApp() (readers use the *Ref handles
-      // off useChatState). A stale copy remains in the value object purely to satisfy
-      // the AppContextValue type; excluding them from deps stops the heartbeat stream
-      // from re-rendering all AppContext subscribers.
-      // NOTE: ptySessions intentionally EXCLUDED — provided fresh via PtySessionsCtx.
       unreadConversations,
       triggers,
       triggersLoaded,
@@ -2352,7 +2303,6 @@ function AppProviderInner({
       storeSubTab,
       workbenchLoading,
       workbench,
-      workbenchTasksAvailable,
       workbenchTriggersAvailable,
       workbenchTodosAvailable,
       exportBusy,
@@ -2423,8 +2373,6 @@ function AppProviderInner({
       switchShellView,
       navigation,
       setUiLanguage,
-      setUiTheme,
-      setUiThemeMode,
       setBackgroundConfig,
       undoBackgroundConfig,
       redoBackgroundConfig,

@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { installBillingCommandEvidenceTestColumns } from "../../testing";
 
 const postgresUrl = process.env.APP_BILLING_TEST_POSTGRES_URL;
 const schema = `app_billing_${randomUUID().replaceAll("-", "_")}`;
@@ -95,6 +96,8 @@ beforeAll(async () => {
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await client.exec(statement.replaceAll('"public".', ""));
   }
+  await installBillingCommandEvidenceTestColumns((statement) => client.exec(statement));
+
   await client.query(
     `INSERT INTO billing_merchants(id,organization_id,provider_account_key,livemode,enabled) VALUES ($1,$2,'platform',false,true)`,
     [merchant, org],

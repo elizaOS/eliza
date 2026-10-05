@@ -1,12 +1,18 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { DryRunUsbInstallerBackend } from "../dry-run-backend";
 import { LinuxUsbInstallerBackend } from "../linux-backend";
 import { MacOsUsbInstallerBackend } from "../macos-backend";
+import { createPlatformBackend } from "../platform-backend";
 import { WindowsUsbInstallerBackend } from "../windows-backend";
 
-afterEach(() => vi.unstubAllEnvs());
-it("dry-run discovery does not invent downloadable production images", async () => {
-  expect(await new DryRunUsbInstallerBackend().listImages()).toEqual([]);
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+it("unsupported hosts fail without fabricated drive discovery", () => {
+  vi.stubGlobal("process", { platform: "freebsd" });
+  expect(createPlatformBackend).toThrow(
+    "Unsupported installer platform: freebsd",
+  );
 });
 it.each([
   LinuxUsbInstallerBackend,

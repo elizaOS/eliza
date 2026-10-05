@@ -26,7 +26,7 @@ import {
   subscribeDesktopBridgeEvent,
 } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { useBranding } from "../../config/branding";
+import { useBranding } from "../../config/branding-react.hooks";
 import {
   type ApplicationUpdateSnapshot,
   getApplicationUpdateSnapshot,

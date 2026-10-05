@@ -268,6 +268,17 @@ export async function seedAppStorage(
   overrides: Record<string, string> = {},
 ): Promise<void> {
   const storage = { ...DEFAULT_APP_STORAGE, ...overrides };
+  if (!("elizaos:agent-profiles" in storage)) {
+    const profile = {
+      createdAt: Date.now(),
+      ...JSON.parse(storage["elizaos:active-server"]),
+    };
+    storage["elizaos:agent-profiles"] = JSON.stringify({
+      version: 1,
+      activeProfileId: profile.id,
+      profiles: [profile],
+    });
+  }
   await page.addInitScript(
     ({ entries, seededKey }) => {
       try {
@@ -534,6 +545,9 @@ export async function openSettingsSection(
     await expect(settingsShell.locator(`[id="${sectionId}"]`)).toBeVisible({
       timeout: READY_CHECK_TIMEOUT_MS,
     });
+    await expect(
+      settingsShell.locator(`[data-agent-id="section-${sectionId}"]`),
+    ).toHaveAttribute("aria-current", "page");
     return;
   }
   const sectionHeading = settingsShell.getByText(sectionName).filter({
@@ -2302,6 +2316,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         },
         access: {
           mode: "local",
+          role: "OWNER",
           passwordConfigured: false,
           ownerConfigured: true,
         },

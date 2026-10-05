@@ -438,8 +438,8 @@ async function main(argv = process.argv.slice(2)) {
         throw new Error(
           `[deploy-pixel] ${physicalTarget.targetId} is not running the expected flashed elizaOS image. ` +
             `fingerprint=${JSON.stringify(fingerprint)} packagePath=${JSON.stringify(packagePath)}. ` +
-            "Use android/installer/install-elizaos-android.sh with a lab-validated " +
-            "release manifest, --execute, --confirm-flash, and --reboot-after-flash. " +
+            "Use node scripts/android/install-release.ts with a lab-validated " +
+            "signed release manifest, --execute, and --confirm-flash. " +
             "The platform-signed privileged APK will not be sideloaded onto a physical target.",
         );
       }

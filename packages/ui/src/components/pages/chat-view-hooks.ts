@@ -1135,10 +1135,6 @@ export function useChatVoiceController(options: {
   };
 }
 
-export type UseChatVoiceControllerReturn = ReturnType<
-  typeof useChatVoiceController
->;
-
 export type { ContinuousChatState, ContinuousVoiceSessionState };
 
 /* ── useGameModalMessages ──────────────────────────────────────────── */

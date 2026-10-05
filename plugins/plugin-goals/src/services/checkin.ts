@@ -55,6 +55,8 @@ export const GOAL_CHECKIN_CREATED_BY = "@elizaos/plugin-goals";
 
 /** Dismissal reason recorded when a cadence change retires a slot. */
 export const GOAL_CHECKIN_SYNC_DISMISS_REASON = "goal_checkin_sync";
+/** Reason recorded when sync reopens a once check-in it had dismissed. */
+export const GOAL_CHECKIN_SYNC_REOPEN_REASON = "goal_checkin_sync_reopen";
 
 /** Bounded length of the per-goal `metadata.checkinLog` history. */
 export const GOAL_CHECKIN_LOG_LIMIT = 50;
@@ -96,6 +98,32 @@ export interface GoalCheckinPlan {
 
 export function checkinIdempotencyKey(goalId: string, slotKey: string): string {
   return `goals:checkin:${goalId}:${slotKey}`;
+}
+
+// A recurring slot the sync retired (goal paused, cadence moved away) keeps its
+// dismissed row and that row's idempotency key, so reviving the slot schedules
+// a successor under `<slot key>:resumed:<n>`; the highest generation is the
+// slot's current task.
+const RESUMED_KEY_SEPARATOR = ":resumed:";
+
+/** Every check-in input carries its slot key (see buildCheckinTaskInput). */
+function requireSlotKey(input: ScheduledTaskInput): string {
+  if (!input.idempotencyKey) {
+    throw new Error("Goal check-in task input has no idempotency key");
+  }
+  return input.idempotencyKey;
+}
+
+function slotKeyGeneration(
+  taskKey: string | undefined,
+  slotKey: string,
+): number | null {
+  if (taskKey === slotKey) return 0;
+  if (!taskKey?.startsWith(`${slotKey}${RESUMED_KEY_SEPARATOR}`)) return null;
+  const generation = Number(
+    taskKey.slice(slotKey.length + RESUMED_KEY_SEPARATOR.length),
+  );
+  return Number.isSafeInteger(generation) && generation > 0 ? generation : null;
 }
 
 function warnCadence(goalId: string, detail: string): void {
@@ -432,7 +460,6 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
       buildCheckinTaskInput(goal, plan, nowIso),
     );
     const existing = await this.listGoalTasks(runner, goal.id);
-    const desiredKeys = new Set(desired.map((input) => input.idempotencyKey));
     // A task already holding a desired once instant covers it under any key
     // (including the older unkeyed `once` slot): live, it is kept; finished,
     // that check-in already ran; dismissed, the owner turned it off.
@@ -446,12 +473,25 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     const holdsDesiredOnce = (task: ScheduledTask): boolean =>
       task.trigger.kind === "once" &&
       desiredOnceTriggers.has(Date.parse(task.trigger.atIso));
+    // Only a never-fired task retired by sync may be revived. Sync also
+    // dismisses fired tasks when their date moves; those still cover the
+    // delivered instant, including legacy keys, and must not dispatch again.
+    const syncDismissedPending = (task: ScheduledTask): boolean =>
+      task.state.status === "dismissed" &&
+      task.state.lastDecisionLog === GOAL_CHECKIN_SYNC_DISMISS_REASON &&
+      task.state.firedAt == null &&
+      task.state.completedAt == null;
+
+    const belongsToDesiredSlot = (task: ScheduledTask): boolean =>
+      desired.some(
+        (input) =>
+          slotKeyGeneration(task.idempotencyKey, requireSlotKey(input)) !==
+          null,
+      );
 
     const dismissedTaskIds: string[] = [];
     for (const task of existing) {
-      if (task.idempotencyKey && desiredKeys.has(task.idempotencyKey)) {
-        continue;
-      }
+      if (belongsToDesiredSlot(task)) continue;
       if (holdsDesiredOnce(task)) continue;
       if (TERMINAL_TASK_STATUSES.has(task.state.status)) continue;
       await runner.apply(task.taskId, "dismiss", {
@@ -463,9 +503,18 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     const scheduled: ScheduledTask[] = [];
     const edited: ScheduledTask[] = [];
     for (const input of desired) {
-      const current = existing.find(
-        (task) => task.idempotencyKey === input.idempotencyKey,
-      );
+      let current: ScheduledTask | undefined;
+      let currentGeneration = -1;
+      for (const task of existing) {
+        const generation = slotKeyGeneration(
+          task.idempotencyKey,
+          requireSlotKey(input),
+        );
+        if (generation !== null && generation > currentGeneration) {
+          current = task;
+          currentGeneration = generation;
+        }
+      }
       if (!current) {
         const covered =
           input.trigger.kind === "once" &&
@@ -474,14 +523,39 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
               task.trigger.kind === "once" &&
               input.trigger.kind === "once" &&
               Date.parse(task.trigger.atIso) ===
-                Date.parse(input.trigger.atIso),
+                Date.parse(input.trigger.atIso) &&
+              !syncDismissedPending(task),
           );
         if (!covered) scheduled.push(await runner.schedule(input));
         continue;
       }
-      // A dismissed slot is a deliberate off-switch (owner or sync); never
-      // resurrect it for the same trigger shape.
-      if (current.state.status === "dismissed") continue;
+      if (current.state.status === "dismissed") {
+        // An owner dismissal is a deliberate off-switch and is never undone.
+        // A once task the sync dismissed while pending (the date moved away)
+        // never fired, so moving the date back reopens it: its key stays
+        // reserved and no replacement task could be scheduled under it.
+        if (input.trigger.kind === "once" && syncDismissedPending(current)) {
+          scheduled.push(
+            await runner.apply(current.taskId, "reopen", {
+              reason: GOAL_CHECKIN_SYNC_REOPEN_REASON,
+            }),
+          );
+        } else if (
+          input.trigger.kind !== "once" &&
+          current.state.lastDecisionLog === GOAL_CHECKIN_SYNC_DISMISS_REASON
+        ) {
+          // A recurring slot can't be reopened (it may have fired days ago,
+          // and a reopen would fire that stale occurrence at once): schedule
+          // its successor from now instead.
+          scheduled.push(
+            await runner.schedule({
+              ...input,
+              idempotencyKey: `${input.idempotencyKey}${RESUMED_KEY_SEPARATOR}${currentGeneration + 1}`,
+            }),
+          );
+        }
+        continue;
+      }
       const triggerChanged =
         current.trigger.kind === "once" && input.trigger.kind === "once"
           ? Date.parse(current.trigger.atIso) !==

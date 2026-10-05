@@ -218,6 +218,17 @@ export class ScheduleProjectionRepository {
   }
 
   async upsertOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {
+    // A stale non-terminal projection cannot undo a concurrent completion.
+    // Use the same effective values for assignment and no-op comparison.
+    const preserveCompletion = `life_task_occurrences.state = 'completed'
+      AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')`;
+    const effectiveState = `CASE WHEN ${preserveCompletion}
+      THEN life_task_occurrences.state ELSE excluded.state END`;
+    const effectiveSnoozedUntil = `CASE WHEN ${preserveCompletion}
+      THEN NULL ELSE excluded.snoozed_until END`;
+    const effectiveCompletionPayload = `CASE WHEN ${preserveCompletion}
+      THEN life_task_occurrences.completion_payload_json
+      ELSE excluded.completion_payload_json END`;
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_task_occurrences (
@@ -266,27 +277,48 @@ export class ScheduleProjectionRepository {
         -- completed state and its payload win. Real terminal transitions go
         -- through completeOccurrenceIfNonTerminal / the skip and expire
         -- writers, which always carry a terminal state here.
-        state = CASE
-          WHEN life_task_occurrences.state = 'completed'
-            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
-          THEN life_task_occurrences.state
-          ELSE excluded.state
-        END,
-        snoozed_until = CASE
-          WHEN life_task_occurrences.state = 'completed'
-            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
-          THEN NULL
-          ELSE excluded.snoozed_until
-        END,
-        completion_payload_json = CASE
-          WHEN life_task_occurrences.state = 'completed'
-            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
-          THEN life_task_occurrences.completion_payload_json
-          ELSE excluded.completion_payload_json
-        END,
+        state = ${effectiveState},
+        snoozed_until = ${effectiveSnoozedUntil},
+        completion_payload_json = ${effectiveCompletionPayload},
         derived_target_json = excluded.derived_target_json,
         metadata_json = excluded.metadata_json,
-        updated_at = excluded.updated_at`,
+        updated_at = excluded.updated_at
+      -- A refresh is not a new mutation when the resulting row is unchanged.
+      -- Compare under the conflict-row lock, not an earlier caller snapshot;
+      -- explicit completion/snooze/acknowledgement writers keep their revisions.
+      WHERE (
+        life_task_occurrences.domain,
+        life_task_occurrences.subject_type,
+        life_task_occurrences.subject_id,
+        life_task_occurrences.visibility_scope,
+        life_task_occurrences.context_policy,
+        life_task_occurrences.scheduled_at,
+        life_task_occurrences.due_at,
+        life_task_occurrences.relevance_start_at,
+        life_task_occurrences.relevance_end_at,
+        life_task_occurrences.window_name,
+        life_task_occurrences.state,
+        life_task_occurrences.snoozed_until,
+        life_task_occurrences.completion_payload_json,
+        life_task_occurrences.derived_target_json,
+        life_task_occurrences.metadata_json
+      ) IS DISTINCT FROM (
+        excluded.domain,
+        excluded.subject_type,
+        excluded.subject_id,
+        excluded.visibility_scope,
+        excluded.context_policy,
+        excluded.scheduled_at,
+        excluded.due_at,
+        excluded.relevance_start_at,
+        excluded.relevance_end_at,
+        excluded.window_name,
+        ${effectiveState},
+        ${effectiveSnoozedUntil},
+        ${effectiveCompletionPayload},
+        excluded.derived_target_json,
+        excluded.metadata_json
+      )`,
     );
   }
 

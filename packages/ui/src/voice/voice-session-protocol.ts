@@ -178,12 +178,7 @@ export type ServerControlFrame =
   | ServerErrorEvent
   | ServerUsageEvent;
 export type ServerControlType = ServerControlFrame["t"];
-// ── Mint (POST /api/v1/voice/session) response ─────────────────────────
-export interface VoiceSessionMintRequest {
-  agentId: string;
-  conversationId: string;
-  transport: "websocket";
-}
+
 export interface VoiceSessionCodecOffer {
   codecs: VoiceSessionCodec[];
 }

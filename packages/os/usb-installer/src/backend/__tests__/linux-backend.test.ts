@@ -1,7 +1,6 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import { EventEmitter, once } from "node:events";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { promises as fs } from "node:fs";
-import { basename, dirname } from "node:path";
 import { expect, it, vi } from "vitest";
 import { UnmountFailedError } from "../errors";
 import {
@@ -47,11 +46,33 @@ const plan: WritePlan = {
     minDeviceBytes: 4096,
     minUsbSizeBytes: 4096,
     manifestVersion: 1,
+    schemaVersion: 1,
+    product: "elizaOS",
+    sequence: 1,
+    expires: "2099-01-01T00:00:00Z",
     format: "raw.zst",
   },
   steps: [],
   privilegedWriteImplemented: true,
 };
+
+it.each([undefined, "iso"])(
+  "rejects unsupported image format %s before privilege or disk effects",
+  async (format) => {
+    const findEscalator = vi.fn();
+    const progress = vi.fn();
+    const backend = new LinuxUsbInstallerBackend({ findEscalator });
+    const invalid = {
+      ...plan,
+      image: { ...plan.image, format },
+    } as unknown as WritePlan;
+    await expect(backend.executeWritePlan(invalid, progress)).rejects.toThrow(
+      "Only signed raw.zst",
+    );
+    expect(findEscalator).not.toHaveBeenCalled();
+    expect(progress).not.toHaveBeenCalled();
+  },
+);
 
 it.each([true, false])(
   "requires a successful privileged unmount before writing (busy=%s)",
@@ -157,16 +178,12 @@ it("binds selection to the kernel disk incarnation, even when the serial and pat
   ).rejects.toThrow("kernel identity changed");
 });
 
-it.each([
-  new LinuxUsbInstallerBackend(),
-  new MacOsUsbInstallerBackend(),
-  new WindowsUsbInstallerBackend(),
-])("rejects placeholder checksums before platform writes", async (backend) => {
+it("rejects placeholder checksums before platform writes", async () => {
+  const backend = new LinuxUsbInstallerBackend();
   const progress = vi.fn();
-  const legacyPlan = structuredClone(plan);
-  delete legacyPlan.image.format;
-  legacyPlan.image.checksumSha256 = "0".repeat(64);
-  await expect(backend.executeWritePlan(legacyPlan, progress)).rejects.toThrow(
+  const invalidPlan = structuredClone(plan);
+  invalidPlan.image.checksumSha256 = "0".repeat(64);
+  await expect(backend.executeWritePlan(invalidPlan, progress)).rejects.toThrow(
     "trusted SHA-256 checksum",
   );
   expect(progress).not.toHaveBeenCalled();
@@ -327,142 +344,19 @@ it.each(["privilege", "inventory", "unmount"])(
   },
 );
 
-it.each([255, 256, 257])(
-  "requires an exact legacy write count (actual=%i)",
-  async (bytes) => {
-    const legacy = structuredClone(plan);
-    delete legacy.image.format;
-    const commands: string[] = [];
-    const progress = vi.fn();
-    const backend = new LinuxUsbInstallerBackend({
-      findEscalator: async () => ({ command: "sudo", argsPrefix: ["-n"] }),
-      resolveImage: async () => {},
-      verifyChecksum: async () => {},
-      execFile: async (command) => {
-        commands.push(command);
-        return {
-          stdout: JSON.stringify({
-            blockdevices: [{ name: "sdz", type: "disk", mountpoint: null }],
-          }),
-          stderr: "",
-        };
-      },
-      spawn: () => {
-        const child = Object.assign(new EventEmitter(), {
-          stderr: new EventEmitter(),
-        });
-        queueMicrotask(() => {
-          child.stderr.emit("data", Buffer.from(`${bytes} bytes copied\n`));
-          child.emit("close", 0);
-        });
-        return child as unknown as ChildProcess;
-      },
-    });
-    const result = backend.executeWritePlan(legacy, progress);
-    if (bytes === legacy.image.sizeBytes) {
-      await result;
-      expect(commands).toEqual(["lsblk", "sync"]);
-      expect(progress).toHaveBeenCalledWith("complete", 1);
-    } else {
-      await expect(result).rejects.toMatchObject({
-        name: "WriteIncompleteError",
-      });
-      expect(commands).toEqual(["lsblk"]);
-      expect(progress).not.toHaveBeenCalledWith("complete", 1);
-    }
-  },
-);
-
 it.each([0, -1, Number.NaN, Number.MAX_SAFE_INTEGER + 1])(
-  "rejects invalid legacy image size %s before effects",
+  "rejects invalid image size %s before effects",
   async (sizeBytes) => {
-    const legacy = structuredClone(plan);
-    delete legacy.image.format;
-    legacy.image.sizeBytes = sizeBytes;
+    const invalid = structuredClone(plan);
+    invalid.image.sizeBytes = sizeBytes;
     const privilege = vi.fn();
     const backend = new LinuxUsbInstallerBackend({ findEscalator: privilege });
-    await expect(backend.executeWritePlan(legacy, () => {})).rejects.toThrow(
+    await expect(backend.executeWritePlan(invalid, () => {})).rejects.toThrow(
       "positive safe integer",
     );
     expect(privilege).not.toHaveBeenCalled();
   },
 );
-
-it("retains the legacy write operation until child close after an error", async () => {
-  const legacy = structuredClone(plan);
-  delete legacy.image.format;
-  const child = Object.assign(new EventEmitter(), {
-    stderr: new EventEmitter(),
-  });
-  let spawned!: () => void;
-  const started = new Promise<void>((resolve) => {
-    spawned = resolve;
-  });
-  const backend = new LinuxUsbInstallerBackend({
-    findEscalator: async () => ({ command: "sudo", argsPrefix: ["-n"] }),
-    resolveImage: async () => {},
-    verifyChecksum: async () => {},
-    execFile: async () => ({
-      stdout: JSON.stringify({
-        blockdevices: [{ name: "sdz", type: "disk", mountpoint: null }],
-      }),
-      stderr: "",
-    }),
-    spawn: () => {
-      spawned();
-      return child as unknown as ChildProcess;
-    },
-  });
-  let settled = false;
-  const progress = vi.fn();
-  const failure = new Error("child signalling failed");
-  const operation = backend.executeWritePlan(legacy, progress);
-  void operation.then(
-    () => {
-      settled = true;
-    },
-    () => {
-      settled = true;
-    },
-  );
-  await started;
-  try {
-    child.emit("error", failure);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(settled).toBe(false);
-  } finally {
-    child.emit("close", 0);
-  }
-  await expect(operation).rejects.toBe(failure);
-  expect(progress).not.toHaveBeenCalledWith("complete", 1);
-});
-
-it("uses the authenticated digest instead of the image ID as the cache filename", async () => {
-  const legacy = structuredClone(plan);
-  delete legacy.image.format;
-  legacy.image.id = "../../outside-cache";
-  const stop = new Error("stop before disk effects");
-  let operationDirectory = "";
-  const progress = vi.fn();
-  const resolveImage = vi.fn(async (_image, imagePath: string) => {
-    operationDirectory = dirname(imagePath);
-    expect(basename(imagePath)).toBe(`${legacy.image.checksumSha256}.iso`);
-    expect(basename(dirname(imagePath))).toMatch(
-      /^elizaos-usb-installer-[A-Za-z0-9]+$/,
-    );
-    throw stop;
-  });
-  const backend = new LinuxUsbInstallerBackend({
-    findEscalator: async () => ({ command: "sudo", argsPrefix: ["-n"] }),
-    resolveImage,
-  });
-  await expect(backend.executeWritePlan(legacy, progress)).rejects.toBe(stop);
-  expect(resolveImage).toHaveBeenCalledOnce();
-  expect(progress).not.toHaveBeenCalledWith("complete", 1);
-  await expect(fs.stat(operationDirectory)).rejects.toMatchObject({
-    code: "ENOENT",
-  });
-});
 
 it.runIf(process.platform === "linux")(
   "waits for a real writer with missing stdin to close before rejecting",

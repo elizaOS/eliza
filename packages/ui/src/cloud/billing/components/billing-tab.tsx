@@ -36,8 +36,8 @@ import { toast } from "../../../bridge/toast";
 import { CornerBrackets } from "../../../components/ui/corner-brackets";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
+import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { ApiError, api } from "../../lib/api-client";
-import { isSafeNavigationUrl } from "../../lib/navigation-url";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import {
   type BillingSnapshotV2View,

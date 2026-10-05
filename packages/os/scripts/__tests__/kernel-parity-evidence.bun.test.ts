@@ -123,7 +123,7 @@ test("requires pinned clean tracked kernel inputs", () => {
   );
   const commit = git("rev-parse", "HEAD").trim();
   expect(snapshotSource(root, commit).commit).toBe(commit);
-  expect(() => snapshotSource(root, "0".repeat(40))).toThrow("source lock");
+  expect(() => snapshotSource(root, "0".repeat(40))).toThrow("OS checkout");
   writeFileSync(file, "changed kernel source\n");
   expect(() => snapshotSource(root, commit)).toThrow("tracked changes");
 });

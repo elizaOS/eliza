@@ -36,3 +36,34 @@ uses Android API 26+; browser structure parsing requires API 28+. Production
 password keys must require device authentication. The unauthenticated constructor
 mode is only for host-restricted synthetic tests. Autofill metadata key strings
 retain their existing browser wire protocol identifiers.
+
+
+`DeviceCredentialSession` owns native Activity challenge/result fencing and absolute
+unlock expiry. Reserve an inclusive request-code range; forward activity results,
+`onStop`, and destruction, and call `saveState` from `onSaveInstanceState`. Pass that
+Bundle back on creation. Only the request-code watermark is saved, never a grant or
+continuation. Missing/corrupt restored counters fail closed. Hosts supply localized
+views/prompts and durations. Keep the `locked` listener presentation-only: do not
+call `lock()` recursively from it. `authenticated()` rechecks elapsed time even if
+Android delays timer delivery. This UI grant does not replace Keystore enforcement.
+
+Run `bun run --cwd plugins/plugin-native-secure-store test:native-session` with a
+JDK for deterministic grant tests. The Android DeviceCredentialSession instrumented
+tests use real Bundle/Handler lifecycle plumbing and a synthetic challenge port;
+they do not establish real device credential or biometric acceptance.
+
+`PasswordAutofillCompletion` filters native vault metadata by the validated request
+origin and publishes Android Autofill responses exactly once. Invoke it on the
+main thread with a live authentication/browser-trust predicate, product RemoteViews
+and a result publisher. It checks admission before and after vault access; the
+current session is consumed before publishing, including when the publisher throws.
+No secret is returned through Capacitor. Hosts still own picker UI and lifecycle
+cancellation. Instrumentation uses synthetic records and field IDs, not a trusted
+Chromium integration.
+
+`NativeDeadlineTimer` owns main-thread expiry callbacks with elapsed-time checks,
+replacement/cancellation fencing and terminal close. Use `after` for a display
+duration or `watch(session::remainingMillis, callback)` for an existing Autofill
+request; call `refresh` on resume and close on destruction. `watch` may expire
+synchronously. Hosts retain masking/layout and selected display durations. Cancel
+on screen replacement or stop as appropriate; callbacks are not persisted.

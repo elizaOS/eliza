@@ -1,16 +1,3 @@
-# elizaOS Linux — unified multi-arch live-build builder image.
-#
-# One image, three target architectures (amd64, arm64, riscv64). The
-# host arch must match ELIZAOS_ARCH or qemu-user must be registered via
-# binfmt_misc by the privileged build container.
-#
-# Build:
-#   docker build -t elizaos-linux-builder .
-# Run (amd64 example):
-#   docker run --rm --privileged \
-#       -e ELIZAOS_ARCH=amd64 \
-#       -v "$(pwd):/build" -v "$(pwd)/out:/out" \
-#       elizaos-linux-builder
 ARG DEBIAN_BASE_IMAGE
 FROM ${DEBIAN_BASE_IMAGE}
 
@@ -20,8 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # The digest-pinned base's CA set predates the snapshot TLS certificate.
 # Bootstrap over HTTP; apt still authenticates Debian's signed Release and
-# package hashes. build-live-iso.sh later re-fetches and hashes the locked Release files
-# over HTTPS with the updated ca-certificates package installed here.
+# package hashes.
 RUN test -n "${DEBIAN_SNAPSHOT_SERIAL}" \
     && printf '%s\n' \
         'Types: deb' \
@@ -42,11 +28,6 @@ RUN test -n "${DEBIAN_SNAPSHOT_SERIAL}" \
     && apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         debootstrap \
-        live-build \
-        squashfs-tools \
-        xorriso \
-        isolinux \
-        syslinux-common \
         grub-pc-bin \
         grub-efi-amd64-bin \
         imagemagick \
@@ -80,4 +61,4 @@ RUN test -n "${DEBIAN_SNAPSHOT_SERIAL}" \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-ENTRYPOINT ["bash", "/build/build-live-iso.sh"]
+ENTRYPOINT ["mkosi"]

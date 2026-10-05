@@ -3,8 +3,7 @@
  * the pairing exchange into the app boot path.
  */
 
-export const CLOUD_PAIR_LEGACY_STORAGE_KEY = "eliza:cloud-pair:api-token";
-export const CLOUD_PAIR_SCOPED_STORAGE_PREFIX = `${CLOUD_PAIR_LEGACY_STORAGE_KEY}:`;
+export const CLOUD_PAIR_SCOPED_STORAGE_PREFIX = "eliza:cloud-pair:api-token:";
 export const CLOUD_PAIR_LOCAL_OWNER_HINT_KEY =
   "eliza:cloud-pair:local-owner-agent-id";
 

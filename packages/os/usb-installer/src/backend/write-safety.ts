@@ -87,57 +87,30 @@ export function assertWritePlanAllowed(
     );
   }
 
-  if (plan.image.format === "raw.zst") {
-    if (
-      !hasTrustedChecksum(plan.image.sha256Compressed ?? "") ||
-      !hasTrustedChecksum(plan.image.sha256Expanded ?? "") ||
-      plan.image.sha256Compressed === plan.image.sha256Expanded ||
-      plan.image.checksumSha256 !== plan.image.sha256Compressed ||
-      !Number.isSafeInteger(plan.image.compressedSize) ||
-      Number(plan.image.compressedSize) <= 0 ||
-      plan.image.sizeBytes !== plan.image.compressedSize ||
-      !Number.isSafeInteger(plan.image.expandedSize) ||
-      Number(plan.image.expandedSize) < Number(plan.image.compressedSize) ||
-      !Number.isSafeInteger(plan.image.minDeviceBytes) ||
-      Number(plan.image.minDeviceBytes) < Number(plan.image.expandedSize) ||
-      plan.image.minUsbSizeBytes !== plan.image.minDeviceBytes ||
-      !plan.image.signatureUrl
-    ) {
-      throw new Error(
-        "Canonical raw.zst releases require internally consistent signed sizes, signatures, and compressed and expanded SHA-256 digests.",
-      );
-    }
-    if (options.canonicalRawZstdSupported !== true) {
-      throw new Error(
-        "Canonical raw.zst execution is blocked until this platform backend implements streaming decompression and expanded-device readback verification.",
-      );
-    }
-  }
-}
-
-/** Recheck after downloading; native writers must still bind the opened device. */
-export function assertWriteTargetUnchanged(
-  plan: WritePlan,
-  currentDrives: readonly RemovableDrive[],
-): void {
-  const matches = currentDrives.filter((drive) => drive.id === plan.drive.id);
-  const current = matches[0];
-  if (matches.length !== 1 || !current) {
-    throw new Error(
-      "Selected drive is missing or ambiguous; refresh drives before writing.",
-    );
-  }
+  if (plan.image.format !== "raw.zst")
+    throw new Error("Only signed raw.zst images are supported.");
   if (
-    current.safety !== "safe-removable" ||
-    current.platform !== plan.drive.platform ||
-    current.bus !== plan.drive.bus
+    !hasTrustedChecksum(plan.image.sha256Compressed ?? "") ||
+    !hasTrustedChecksum(plan.image.sha256Expanded ?? "") ||
+    plan.image.sha256Compressed === plan.image.sha256Expanded ||
+    plan.image.checksumSha256 !== plan.image.sha256Compressed ||
+    !Number.isSafeInteger(plan.image.compressedSize) ||
+    Number(plan.image.compressedSize) <= 0 ||
+    plan.image.sizeBytes !== plan.image.compressedSize ||
+    !Number.isSafeInteger(plan.image.expandedSize) ||
+    Number(plan.image.expandedSize) < Number(plan.image.compressedSize) ||
+    !Number.isSafeInteger(plan.image.minDeviceBytes) ||
+    Number(plan.image.minDeviceBytes) < Number(plan.image.expandedSize) ||
+    plan.image.minUsbSizeBytes !== plan.image.minDeviceBytes ||
+    !plan.image.signatureUrl
   ) {
     throw new Error(
-      "Selected drive safety or platform changed before writing.",
+      "Canonical raw.zst releases require internally consistent signed sizes, signatures, and compressed and expanded SHA-256 digests.",
     );
   }
-  assertDriveMatchesExpected(
-    { ...plan.request, expectedDrive: plan.drive },
-    current,
-  );
+  if (options.canonicalRawZstdSupported !== true) {
+    throw new Error(
+      "Canonical raw.zst execution is blocked until this platform backend implements streaming decompression and expanded-device readback verification.",
+    );
+  }
 }

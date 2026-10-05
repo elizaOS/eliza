@@ -1,8 +1,14 @@
-// Shares script lib voice stage b eval helpers across repo automation entrypoints.
-
 import fs from "node:fs";
 import path from "node:path";
 import { testOutputPath } from "../../../../scripts/lib/test-output.ts";
+import {
+  getNumber,
+  getString,
+  isObject,
+  pushNumberError,
+  validateArtifact,
+  validateIsoTimestamp,
+} from "./report-validation.ts";
 
 export const STAGE_B_SCHEMA = "eliza_voice_stage_b_stt_eval_v1";
 export const STAGE_B_ISSUE = "9958";
@@ -37,97 +43,6 @@ const AUDIO_SOURCES = new Set([
 const MIN_UTTERANCES = 10;
 const MIN_ACCEPT_RATE = 0.8;
 const MAX_WORD_ERROR_RATE = 0.35;
-
-function isObject(value) {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function getNumber(source, keys) {
-  if (!isObject(source)) return undefined;
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim()) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return undefined;
-}
-
-function getString(source, keys) {
-  if (!isObject(source)) return undefined;
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return undefined;
-}
-
-function pushNumberError(errors, label, value, predicate, hint) {
-  if (
-    typeof value !== "number" ||
-    !Number.isFinite(value) ||
-    !predicate(value)
-  ) {
-    errors.push(`${label} must be ${hint}`);
-  }
-}
-
-function isUrl(value) {
-  return /^https?:\/\//i.test(value);
-}
-
-function artifactPathExists(artifactPath, reportPath, repoRoot) {
-  if (isUrl(artifactPath)) return true;
-  const candidates = [];
-  if (path.isAbsolute(artifactPath)) candidates.push(artifactPath);
-  else {
-    if (reportPath)
-      candidates.push(path.resolve(path.dirname(reportPath), artifactPath));
-    if (repoRoot) candidates.push(path.resolve(repoRoot, artifactPath));
-    candidates.push(path.resolve(process.cwd(), artifactPath));
-  }
-  return candidates.some((candidate) => fs.existsSync(candidate));
-}
-
-function validateIsoTimestamp(errors, label, value) {
-  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
-    errors.push(`${label} must be an ISO timestamp`);
-  }
-}
-
-function validateArtifact(errors, artifact, context) {
-  if (!isObject(artifact)) {
-    errors.push(
-      `${context.label}.artifacts[${context.index}] must be an object`,
-    );
-    return;
-  }
-  const artifactKind = getString(artifact, ["kind", "type"]);
-  const artifactPath = getString(artifact, ["path", "href", "url"]);
-  if (!artifactKind) {
-    errors.push(
-      `${context.label}.artifacts[${context.index}].kind is required`,
-    );
-  }
-  if (!artifactPath) {
-    errors.push(
-      `${context.label}.artifacts[${context.index}].path is required`,
-    );
-  } else if (
-    !artifactPathExists(artifactPath, context.reportPath, context.repoRoot)
-  ) {
-    errors.push(
-      `${context.label}.artifacts[${context.index}].path does not exist: ${artifactPath}`,
-    );
-  }
-  if (artifact.reviewed !== true) {
-    errors.push(
-      `${context.label}.artifacts[${context.index}].reviewed must be true after manual review`,
-    );
-  }
-}
 
 function validateBattery(errors, label, battery) {
   if (!isObject(battery)) {

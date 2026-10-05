@@ -8,6 +8,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { TrajectoryLlmCallRecord as TrajectoryLlmCall } from "@elizaos/core";
 import {
   type AgentRuntime,
   assertActiveTrajectoryForLlmCall,
@@ -25,8 +26,6 @@ import {
   type ModelTokenMetadata,
   resolveModelTokenMetadata,
 } from "../config/model-metadata.ts";
-
-import type { TrajectoryLlmCall } from "../types/trajectory.ts";
 
 type CompactorRole = "system" | "developer" | "user" | "assistant" | "tool";
 

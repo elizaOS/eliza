@@ -385,14 +385,7 @@ import {
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.ts";
-import {
-  asObject,
-  normalizeTags,
-  parseNullableNumber,
-  readTaskCompleted,
-  readTaskMetadata,
-  toWorkbenchTodo,
-} from "./workbench-helpers.ts";
+import { toWorkbenchTodo } from "./workbench-helpers.ts";
 import {
   DEFAULT_REPLAY_LIMIT,
   parseEventCursor,
@@ -3084,11 +3077,6 @@ async function handleRequestForViewClient(
         error,
         readJsonBody,
         toWorkbenchTodo,
-        normalizeTags,
-        readTaskMetadata,
-        readTaskCompleted,
-        parseNullableNumber,
-        asObject,
         decodePathComponent,
         taskToTriggerSummary,
         listTriggerTasks,

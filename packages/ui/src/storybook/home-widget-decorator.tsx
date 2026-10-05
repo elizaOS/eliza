@@ -29,7 +29,12 @@ const STORY_AUTHENTICATED_SESSION: AuthStatusState = {
   phase: "authenticated",
   identity: { id: "story-owner", displayName: "Story Owner", kind: "owner" },
   session: { id: "story-session", kind: "local", expiresAt: null },
-  access: { mode: "local", passwordConfigured: false, ownerConfigured: true },
+  access: {
+    mode: "local",
+    role: "OWNER",
+    passwordConfigured: false,
+    ownerConfigured: true,
+  },
 };
 const STORY_OWNER_ROLE = { role: "OWNER" } as const;
 
@@ -74,9 +79,9 @@ function SeededHomeWidgetData({ children }: { children: React.ReactNode }) {
       session: { id: "story-session", kind: "local", expiresAt: null },
       access: {
         mode: "local",
+        role: "OWNER",
         passwordConfigured: false,
         ownerConfigured: true,
-        role: "OWNER",
       },
     });
     seedHomeWidgetAppStore();

@@ -17,11 +17,11 @@ import { Badge } from "../../components/ui/badge";
 import { ApiError } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
+import { useCloudT as useT } from "../shell/CloudI18nProvider";
 import { ElizaAgentActions } from "./components/agent-actions";
 import { ElizaConnectButton } from "./components/eliza-connect-button";
 import { getUserFacingAgentType } from "./lib/agent-type";
 import { useAgent } from "./lib/data/eliza-agents";
-import { useT } from "./lib/i18n";
 
 export default function AgentDetailPage() {
   const t = useT();

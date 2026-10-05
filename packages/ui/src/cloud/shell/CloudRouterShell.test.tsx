@@ -1,7 +1,6 @@
-/** Verifies the CloudRouterShell host matrix and its parity with the shared edge redirect contract through the package's configured test harness. */
+/** Verifies the CloudRouterShell host matrix through the package's configured test harness. */
 // @vitest-environment jsdom
 
-import { canonicalCloudPathForLegacyDashboard } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -13,12 +12,7 @@ import {
   resetPrivateCloudRegistrationForTests,
   setPrivateCloudLoadForTests,
 } from "../private-cloud-registration";
-import {
-  AppCatchAllRoute,
-  CLOUD_MANAGEMENT_COMPAT_REDIRECTS,
-  LEGACY_DASHBOARD_REDIRECTS,
-  resolveLegacyCloudSettingsTarget,
-} from "./CloudRouterShell";
+import { AppCatchAllRoute } from "./CloudRouterShell";
 
 /**
  * Apex catch-all regression coverage. elizacloud.ai (an apex control-plane
@@ -332,77 +326,5 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     renderCatchAllWithAppModeMarkers();
     expect(await screen.findByTestId("login-page")).toBeTruthy();
     expect(screen.queryByTestId("agent-app")).toBeNull();
-  });
-});
-describe("CloudRouterShell retired dashboard redirects", () => {
-  it("keeps every shell redirect in parity with the shared edge contract", () => {
-    const routeParameter = "agent-7";
-    for (const { from, to } of LEGACY_DASHBOARD_REDIRECTS) {
-      const concreteSource = `/${from}`
-        .replace(":id", routeParameter)
-        .replace("*", "saved-path");
-      const concreteTarget = to.replace(":id", routeParameter);
-      expect(
-        canonicalCloudPathForLegacyDashboard(concreteSource),
-        concreteSource,
-      ).toBe(concreteTarget);
-    }
-    for (const tab of ["connections", "billing", "organization", "agents"]) {
-      const search = `?tab=${encodeURIComponent(tab)}&return=1`;
-      expect(resolveLegacyCloudSettingsTarget(search), tab).toBe(
-        canonicalCloudPathForLegacyDashboard("/dashboard/settings", search),
-      );
-    }
-    const unknownSearch = "?tab=unknown&return=1";
-    expect(
-      canonicalCloudPathForLegacyDashboard(
-        "/dashboard/settings",
-        unknownSearch,
-      ),
-    ).toBe(resolveLegacyCloudSettingsTarget(unknownSearch));
-  });
-  it("lets the generic dashboard fallback own direct surface migrations", () => {
-    const standalone = new Set([
-      "dashboard/billing",
-      "dashboard/api-keys",
-      "dashboard/monetization",
-      "dashboard/account",
-      "dashboard/security",
-      "dashboard/security/permissions",
-    ]);
-    for (const r of LEGACY_DASHBOARD_REDIRECTS) {
-      expect(standalone.has(r.from), `unexpected redirect for ${r.from}`).toBe(
-        false,
-      );
-    }
-  });
-  it("resolves legacy earnings + affiliates links to the monetization console page", () => {
-    const targets = Object.fromEntries(
-      LEGACY_DASHBOARD_REDIRECTS.map((r) => [r.from, r.to]),
-    );
-    expect(targets["dashboard/earnings"]).toBe("/cloud/monetization");
-    expect(targets["dashboard/affiliates"]).toBe("/cloud/monetization");
-  });
-  it("keeps retired cloud earnings aliases on the canonical monetization page", () => {
-    const targets = Object.fromEntries(
-      CLOUD_MANAGEMENT_COMPAT_REDIRECTS.map((route) => [route.from, route.to]),
-    );
-    expect(targets["cloud/earnings"]).toBe("/cloud/monetization");
-    expect(targets["cloud/affiliates"]).toBe("/cloud/monetization");
-  });
-  it("maps legacy settings tabs to canonical managed Cloud pages", () => {
-    expect(resolveLegacyCloudSettingsTarget("?tab=connections")).toBe(
-      "/cloud/connectors",
-    );
-    expect(
-      resolveLegacyCloudSettingsTarget("?tab=billing&payment=success"),
-    ).toBe("/cloud/billing");
-    expect(resolveLegacyCloudSettingsTarget("?tab=organization")).toBe(
-      "/cloud/organization",
-    );
-    expect(resolveLegacyCloudSettingsTarget("?tab=agents")).toBe(
-      "/cloud/agents",
-    );
-    expect(resolveLegacyCloudSettingsTarget("?tab=unknown")).toBe("/cloud");
   });
 });

@@ -42,6 +42,7 @@ import {
   useActiveAgentAuthority,
   useAgentElement,
   useAppSelector,
+  useChatComposer,
   useRegisterViewChatBinding,
   useTranslation,
   ViewHeader,
@@ -388,7 +389,7 @@ function KnowledgeDocumentsViewForAuthority({
 }: KnowledgeDocumentsViewProps & { authority: string }) {
   const t = useAppSelector((s) => s.t);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
-  const chatSending = useAppSelector((s) => s.chatSending);
+  const { chatSending } = useChatComposer();
   const wasChatSending = useRef(chatSending);
   const authorityRef = useRef(authority);
   authorityRef.current = authority;
