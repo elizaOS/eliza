@@ -1312,6 +1312,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       const f = await seed();
       Object.assign(f.invoice, {
         amount_paid: 0,
+        amount_due: 0,
         payment_intent: null,
         charge: null,
         starting_balance: 0,
@@ -1376,6 +1377,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     const f = await seed();
     Object.assign(f.invoice, {
       amount_paid: 0,
+      amount_due: 0,
       payment_intent: null,
       charge: null,
       starting_balance: 0,
