@@ -86,8 +86,10 @@ export function buildAndroidConsumer({
   fs.mkdirSync(output, { recursive: true });
   for (const { name, source } of artifacts)
     fs.copyFileSync(source, path.join(output, name));
-  invoke(verify);
   const manifest = path.join(output, "apk-manifest.json");
+  // Verification must produce a manifest for this invocation, not reuse an old success.
+  fs.rmSync(manifest, { force: true });
+  invoke(verify);
   if (!fs.statSync(manifest).isFile())
     throw new Error("Android verification manifest is missing");
   const destination = path.join(output, archive.name);

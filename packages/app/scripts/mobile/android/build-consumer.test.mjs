@@ -167,3 +167,18 @@ test("daemon and fixture/native archive selection stay host-controlled", (t) => 
   assert.equal(result.files.length, 2);
   assert.equal(path.basename(result.archive), "native-fixture");
 });
+
+test("a successful verifier that produces no fresh manifest cannot reuse old evidence", (t) => {
+  const f = fixture(t),
+    run = f.options.run;
+  fs.mkdirSync(path.join(f.root, "artifacts"));
+  fs.writeFileSync(
+    path.join(f.root, "artifacts/apk-manifest.json"),
+    "old evidence",
+  );
+  f.options.run = (command, ...args) => {
+    if (command !== "verify") run(command, ...args);
+  };
+  assert.throws(f.build, /ENOENT/);
+  assert.equal(fs.existsSync(path.join(f.root, "artifacts/production")), false);
+});
