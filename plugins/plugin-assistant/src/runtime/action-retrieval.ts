@@ -815,6 +815,10 @@ export function preferredOperationNames(
     send: ["send"],
   };
   const wanted = new Set<string>();
+  // An imperative scheduling outcome creates a record. A schedule mentioned
+  // as data ("read my schedule") and rescheduling retain their own operations.
+  if (/^\s*schedule\s+(?:an?\s+|one(?:[- ]time)?\s+|new\s+)?/iu.test(query))
+    wanted.add("create");
   for (const [operation, terms] of Object.entries(operationTerms)) {
     if (!terms.some((term) => words.has(term))) continue;
     wanted.add(operation);
