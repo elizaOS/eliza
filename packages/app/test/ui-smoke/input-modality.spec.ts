@@ -211,7 +211,7 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("keyboard-only: Tab reaches the composer, typing opens the chat, Enter sends, Escape collapses", async ({
+test("keyboard-only: Tab reaches the composer, Enter sends and reveals the chat, Escape collapses", async ({
   page,
   browserName,
 }) => {
@@ -249,13 +249,11 @@ test("keyboard-only: Tab reaches the composer, typing opens the chat, Enter send
   await expect(composer).toBeVisible();
   await expect(composer).toBeFocused();
 
-  // Typing (keyboard, not fill()) springs the sheet open — semantic outcome.
+  // Typing keeps the draft usable; revealing history depends on whether a
+  // conversation already exists. Sending below must reveal the new turn.
   const prompt = "keyboard-only path proof";
   await page.keyboard.type(prompt);
   await expect(composer).toHaveValue(prompt);
-  await expect(overlay).toHaveAttribute("data-open", "true", {
-    timeout: 15_000,
-  });
 
   // Enter sends: the draft clears and the message lands in the transcript.
   await page.keyboard.press("Enter");
@@ -263,6 +261,7 @@ test("keyboard-only: Tab reaches the composer, typing opens the chat, Enter send
   await expect(
     page.getByTestId("thread-line").filter({ hasText: prompt }).first(),
   ).toBeVisible({ timeout: 15_000 });
+  await expect(overlay).toHaveAttribute("data-open", "true");
 
   // Escape collapses the sheet in one keystroke.
   await page.keyboard.press("Escape");

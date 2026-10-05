@@ -26,6 +26,8 @@ export const client = {
   // (installed in the fixture) intercepts.
   getBaseUrl: () => "",
   getRestAuthToken: () => null,
+  // This fixture has one fixed authority; subscribers still receive a disposer.
+  onAuthorityChange: (_listener: () => void) => () => undefined,
   // Typed widget requests still pass through the fixture's window.fetch mock;
   // mirror the production client's JSON boundary so constructor-based imports
   // and the shared singleton observe the same seeded responses.

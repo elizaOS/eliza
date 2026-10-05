@@ -580,11 +580,14 @@ export async function openSettingsSection(
       window.history.replaceState(null, "", nextUrl);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }, sectionId);
-    await expect(
-      settingsShell.getByRole("heading", { level: 1, name: sectionName }),
-    ).toBeVisible({
+    // Compact sections no longer repeat an h1. Bind readiness to the routed
+    // section body and the canonical selected-section marker instead.
+    await expect(settingsShell.locator(`[id="${sectionId}"]`)).toBeVisible({
       timeout: READY_CHECK_TIMEOUT_MS,
     });
+    await expect(
+      settingsShell.locator(`[data-agent-id="section-${sectionId}"]`),
+    ).toHaveAttribute("aria-current", "page");
     return;
   }
 
@@ -3597,26 +3600,29 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   // smoke server has no native inference or secrets backends, so expose their
   // real healthy-empty envelopes instead of leaking its generic 501 response
   // into otherwise unrelated route and interaction coverage.
-  await page.route("**/api/local-inference/voice-models/preferences", async (route) => {
-    const method = route.request().method();
-    if (method !== "GET" && method !== "POST") {
-      await route.fallback();
-      return;
-    }
-    const preferences = {
-      autoUpdateOnWifi: true,
-      autoUpdateOnCellular: false,
-      autoUpdateOnMetered: false,
-      quietHours: [{ start: "22:00", end: "08:00" }],
-    };
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(
-        method === "GET" ? { preferences } : { ok: true, preferences },
-      ),
-    });
-  });
+  await page.route(
+    "**/api/local-inference/voice-models/preferences",
+    async (route) => {
+      const method = route.request().method();
+      if (method !== "GET" && method !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const preferences = {
+        autoUpdateOnWifi: true,
+        autoUpdateOnCellular: false,
+        autoUpdateOnMetered: false,
+        quietHours: [{ start: "22:00", end: "08:00" }],
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          method === "GET" ? { preferences } : { ok: true, preferences },
+        ),
+      });
+    },
+  );
 
   await page.route("**/api/local-inference/voice-models", async (route) => {
     if (route.request().method() !== "GET") {

@@ -582,7 +582,7 @@ describe("mobile App Auth real HTTP lifecycle", () => {
     expect(await countRows("auth_events")).toBe(1);
   }, 60_000);
 
-  test("ordinary API keys keep authenticating and cannot enter mobile self-revocation", async () => {
+  test("ordinary API keys authenticate until exact self-revocation and retain an idempotent receipt", async () => {
     const generated = apiKeysService.generateApiKey();
     expect(generated.key).toMatch(/^eliza_[0-9a-f]{64}$/);
     expect(generated.key.startsWith("eliza_mobile_")).toBe(false);
@@ -614,24 +614,44 @@ describe("mobile App Auth real HTTP lifecycle", () => {
       },
     });
 
-    const mobileOnlyRevoke = await requestJson(
+    const revokeResponse = await requestJson(
       "/api/v1/api-keys/current",
       "DELETE",
       undefined,
       { "x-api-key": generated.key },
     );
-    expect(mobileOnlyRevoke.status).toBe(401);
-    expect(await mobileOnlyRevoke.json()).toMatchObject({
-      success: false,
-      code: "authentication_required",
+    expect(revokeResponse.status).toBe(200);
+    const receipt = await responseObject(revokeResponse);
+    expect(receipt).toMatchObject({
+      success: true,
+      credentialId: ordinaryId,
+      status: "revoked",
     });
-    expect(await apiKeysRepository.findById(ordinaryId)).toMatchObject({
+    expect(Number.isFinite(Date.parse(String(receipt.revokedAt)))).toBe(true);
+    const tombstone = await apiKeysRepository.findById(ordinaryId);
+    expect(tombstone).toMatchObject({
       id: ordinaryId,
-      is_active: true,
-      deleted_at: null,
+      is_active: false,
+      key_ciphertext: null,
       source_app_id: null,
     });
-    expect(await countRows("auth_events")).toBe(0);
+    expect(tombstone?.deleted_at).toBeInstanceOf(Date);
+    expect(await countRows("auth_events")).toBe(1);
+    const revokedAuth = await app.request(
+      "/api/auth-probe",
+      { headers: { "x-api-key": generated.key } },
+      runtimeEnv,
+    );
+    expect(revokedAuth.status).toBe(401);
+    const responseLossRetry = await requestJson(
+      "/api/v1/api-keys/current",
+      "DELETE",
+      undefined,
+      { "x-api-key": generated.key },
+    );
+    expect(responseLossRetry.status).toBe(200);
+    expect(await responseObject(responseLossRetry)).toEqual(receipt);
+    expect(await countRows("auth_events")).toBe(1);
   });
 
   test("the legacy connect body still returns a consumable legacy code without mobile side effects", async () => {

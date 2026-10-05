@@ -8,6 +8,7 @@ import {
   installRenderTelemetryGuard,
   seedAppStorage,
 } from "./helpers";
+import { injectFullCapabilityHost } from "./onboarding-to-home.shared";
 
 const DOWNLOAD_MODEL_ID = "eliza-1-4b";
 const DOWNLOAD_MODEL = {
@@ -78,14 +79,6 @@ async function fulfillJson(
     status,
     contentType: "application/json",
     body: JSON.stringify(body),
-  });
-}
-
-async function injectFullCapabilityHost(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
-      window.location.origin;
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
 }
 

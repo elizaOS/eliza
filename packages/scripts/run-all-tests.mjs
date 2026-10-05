@@ -815,7 +815,9 @@ function isSingleVitestWrapperCommand(command) {
 }
 
 function isSingleVitestBatchWrapperCommand(command) {
-  return /^node\s+scripts\/run-vitest-batches\.mjs$/.test(
+  // The named agent preflight must succeed before the final batch wrapper
+  // receives JUnit arguments. Do not accept arbitrary shell pipelines.
+  return /^(?:bun\s+run\s+test:mobile-workspace-entry\s+&&\s+)?node\s+scripts\/run-vitest-batches\.mjs$/.test(
     stripLeadingEnvAssignments(command),
   );
 }
