@@ -231,3 +231,11 @@ revalidates this evidence against the original invoice and settlement digest wit
 provider reads or historical backfill. Private payment and balance descriptions are
 excluded. These original observations do not establish current refund health or
 implement later adjustment policy; subsequent evidence must remain separate.
+
+The private retained-renewal adjustment adapter derives provider scope from the
+original grant authority, invoice and settlement record. Missing historical evidence
+or merchant authority fails before provider reads; later invoice totals, balances
+and replacement captures cannot rewrite the original grant. Its output binds the
+subsequent observation to the original evidence digests. The caller must load the
+original paid source revision and separately authenticate, revalidate and persist
+the observation; no correction policy or allowance publication is implied.
