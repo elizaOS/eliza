@@ -36,6 +36,7 @@ export async function runIsolatedAndroidTest({
   runner = "androidx.test.runner.AndroidJUnitRunner",
   testClass,
   testClasses,
+  testMethod,
   expectedTests = 1,
   requiredAbi,
   expectedAvdName,
@@ -70,6 +71,15 @@ export async function runIsolatedAndroidTest({
   );
   for (const name of [packageName, testPackage, runner, ...classes])
     assert.match(name ?? "", packagePattern);
+  if (testMethod !== undefined) {
+    assert.match(testMethod, /^[A-Za-z][A-Za-z0-9_]*$/);
+    assert.equal(classes.length, 1, "Method selection requires one class");
+    assert.equal(
+      expectedTests,
+      1,
+      "Method selection requires exactly one test",
+    );
+  }
   assert.notEqual(packageName, testPackage);
   assert.ok(
     ["arm64-v8a", "x86_64"].includes(requiredAbi),
@@ -335,7 +345,9 @@ export async function runIsolatedAndroidTest({
         "-r",
         "-e",
         "class",
-        classes.join(","),
+        testMethod === undefined
+          ? classes.join(",")
+          : `${classes[0]}#${testMethod}`,
         ...runnerArgs,
         `${testPackage}/${runner}`,
       );
@@ -346,6 +358,12 @@ export async function runIsolatedAndroidTest({
         expectedTests,
         "Unexpected test count",
       );
+      if (testMethod !== undefined)
+        assert.deepEqual(
+          record.instrumentation.cases,
+          [`${classes[0]}#${testMethod}`],
+          "Requested method missing",
+        );
       await collectVariant?.(context);
       signal?.throwIfAborted();
       record.passed = true;
