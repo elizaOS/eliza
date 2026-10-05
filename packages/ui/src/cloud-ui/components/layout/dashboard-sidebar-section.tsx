@@ -11,7 +11,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../../../components/ui/collapsible";
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { DashboardSidebarNavigationItem } from "./dashboard-sidebar-item";
 import type {
   DashboardSidebarItem,

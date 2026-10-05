@@ -41,7 +41,7 @@ import {
 import { Skeleton } from "../../../components/ui/skeleton";
 import { StatusBadge } from "../../../components/ui/status-badge";
 import { Switch } from "../../../components/ui/switch";
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 
 export interface AgentCardData {

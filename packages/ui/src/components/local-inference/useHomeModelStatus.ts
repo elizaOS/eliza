@@ -16,12 +16,12 @@ import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
+import { resolveApiUrl } from "../../utils/asset-url.js";
+import { openEventSource } from "../../utils/event-source";
 import {
   deriveHomeModelStatus,
   type HomeModelStatus,
-} from "../../services/local-inference/home-model-status";
-import { resolveApiUrl } from "../../utils/asset-url.js";
-import { openEventSource } from "../../utils/event-source";
+} from "./home-model-status";
 import { observeModelRoute } from "./model-route-recovery";
 
 const NOT_REQUIRED: HomeModelStatus = {

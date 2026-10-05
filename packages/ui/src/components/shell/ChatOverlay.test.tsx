@@ -112,7 +112,7 @@ import {
 import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,
-} from "../../os-intent/host";
+} from "../../platform/os-intent";
 import {
   loadAgentProfileRegistry,
   saveAgentProfileRegistry,

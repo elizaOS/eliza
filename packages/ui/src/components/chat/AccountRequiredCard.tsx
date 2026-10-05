@@ -16,7 +16,7 @@ import {
   type ConnectorReconnectPhase,
   useConnectorReconnect,
 } from "../../hooks/useConnectorReconnect";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";

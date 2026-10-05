@@ -6,6 +6,7 @@
  */
 
 import {
+  getFirstRunProviderOption,
   resolveServiceRoutingInConfig,
   type SubscriptionProviderStatus,
 } from "@elizaos/host/protocol";
@@ -17,7 +18,6 @@ import {
   useState,
 } from "react";
 import { client } from "../../api/client";
-import { getFirstRunProviderOption } from "../../providers";
 import type { useCloudModelConfig } from "./useCloudModelConfig";
 import type { useProviderSelection } from "./useProviderSelection";
 export interface ProviderBootstrapState {

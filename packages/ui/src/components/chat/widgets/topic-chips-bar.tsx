@@ -8,7 +8,7 @@
  * controlled, computation-free display — it never derives counts or filters.
  */
 
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { Button } from "../../ui/button";
 
 export type TopicChip = {

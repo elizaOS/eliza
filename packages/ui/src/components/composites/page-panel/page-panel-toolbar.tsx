@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import type { PagePanelToolbarProps } from "./page-panel-types";
 
 export const PagePanelToolbar = React.forwardRef<

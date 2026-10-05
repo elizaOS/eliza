@@ -21,7 +21,7 @@ import {
 import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import type { QueryResult } from "../../api/client-types-core";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { PageLayout } from "../../layouts/page-layout";
 import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { resolveAppAssetUrl } from "../../utils/asset-url";

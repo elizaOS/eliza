@@ -22,8 +22,8 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { useAuth as useStewardAuth } from "../../login/hooks/useAuth";
 import { LoginProvider } from "../../login/provider";
+import { useAuth as useStewardAuth } from "../../login/useAuth";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";

@@ -4,8 +4,8 @@
  */
 import { useState } from "react";
 import type { PluginInfo } from "../../api/client-types-config";
-import { getProviderLogo } from "../../providers";
 import { getBrandIcon } from "../conversations/brand-icons";
+import { getProviderLogo } from "../settings/provider-logos";
 import { Card } from "../ui/card";
 import {
   iconImageSource,

@@ -5,7 +5,7 @@
  */
 
 import type { ThemeDefinition } from "@elizaos/contracts";
-import { EXTERNAL_URLS } from "../brand/index.js";
+import { EXTERNAL_URLS } from "@elizaos/host/protocol";
 /**
  * Custom provider that apps can inject into the first-run setup.
  * Uses `string` for id/family so apps aren't restricted to the built-in union.

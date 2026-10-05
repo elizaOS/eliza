@@ -4,8 +4,8 @@
  * and clears launch parameters only after the owner has handled the outcome.
  */
 import * as React from "react";
-import { decodeOsIntentFromHash } from "../../../os-intent/host";
 import { clearAssistantLaunchPayloadFromHash } from "../../../platform/assistant-launch-payload";
+import { decodeOsIntentFromHash } from "../../../platform/os-intent";
 import type { ShellControllerSync } from "./useShellControllerSync";
 
 export function useOsIntentRouting(sync: ShellControllerSync): void {

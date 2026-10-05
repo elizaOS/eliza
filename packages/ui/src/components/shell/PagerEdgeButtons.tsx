@@ -5,7 +5,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 
 /**

@@ -23,11 +23,11 @@ import {
 } from "lucide-react";
 import { memo } from "react";
 import type { NativeToolCallEvent } from "../../../api/client-types-cloud";
-import { cn } from "../../../lib/utils";
 import type {
   SubagentActivity,
   TaskActivityStep,
 } from "../../../state/task-activity-store";
+import { cn } from "../../../utils/cn";
 import { ToolCallEventLog } from "../../tool-events/ToolCallEventLog";
 import { Card } from "../../ui/card";
 import { ChatWidgetShell } from "./chat-widget-shell";

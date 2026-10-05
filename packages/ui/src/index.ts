@@ -1,5 +1,6 @@
 /** Public UI APIs. Internal modules import their owning files directly. */
 
+export { EXTERNAL_URLS } from "@elizaos/host/protocol";
 export { AgentSurfaceProvider } from "./agent-surface/AgentSurfaceContext.js";
 export { AgentButton } from "./agent-surface/components.js";
 export { getViewRegistry } from "./agent-surface/registry.js";
@@ -156,7 +157,7 @@ export {
   registerOverlayApp,
 } from "./apps/overlay-app-registry.js";
 export { AppBackground } from "./backgrounds/AppBackground.js";
-export { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "./brand/index.js";
+export { BRAND_PATHS, LOGO_FILES } from "./brand/index.js";
 export { initializeCapacitorBridge } from "./bridge/capacitor-bridge.js";
 export {
   type DesktopBottomBarSurfaceState,
@@ -227,22 +228,22 @@ export {
   AppWindowRenderer,
   OverlayAppSurface,
 } from "./components/apps/AppWindowRenderer.js";
+export { GameViewOverlay } from "./components/apps/GameViewOverlay.js";
+export { prefetchAppsCatalog } from "./components/apps/load-apps-catalog.js";
 export {
   formatDetailTimestamp,
   selectLatestRunForApp,
   toneForHealthState,
   toneForStatusText,
   toneForViewerAttachment,
-} from "./components/apps/extensions/surface.helpers.js";
+} from "./components/apps/surface.helpers.js";
 export {
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
   SurfaceSection,
   type SurfaceTone,
-} from "./components/apps/extensions/surface.js";
-export { GameViewOverlay } from "./components/apps/GameViewOverlay.js";
-export { prefetchAppsCatalog } from "./components/apps/load-apps-catalog.js";
+} from "./components/apps/surface.js";
 export { AgentAuthGateSurface } from "./components/auth/AgentAuthGateSurface.js";
 export {
   CloudPairRelay,
@@ -254,6 +255,14 @@ export {
   CharacterSectionNav,
   isCharacterSectionPath,
 } from "./components/character/CharacterSectionNav.js";
+export {
+  CodingAgentSettingsSection,
+  registerTaskCoordinatorSlots,
+  type TaskCoordinatorCodingAgentControlChipProps,
+  type TaskCoordinatorCodingAgentSettingsSectionProps,
+  type TaskCoordinatorCodingAgentTasksPanelProps,
+  type TaskCoordinatorPtyConsoleBaseProps,
+} from "./components/chat/task-coordinator-slots.js";
 export { OrchestratorAccountsView } from "./components/chat/widgets/agent-orchestrator-accounts-view.js";
 export { OrchestratorTaskWidget } from "./components/chat/widgets/orchestrator-task-widget.js";
 export {
@@ -273,10 +282,8 @@ export {
   type ElizaCloudTier,
 } from "./components/cockpit/cockpit-modes.js";
 export { DiffReviewPanel } from "./components/composites/DiffReviewPanel.js";
-export {
-  PageLoadingState,
-  PagePanel,
-} from "./components/composites/page-panel/index.js";
+export { PagePanel } from "./components/composites/page-panel/index.js";
+export { PageLoadingState } from "./components/composites/page-panel/page-panel-loading.js";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor.js";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel.js";
 export { DesktopTabBar } from "./components/DesktopTabBar.js";
@@ -810,46 +817,39 @@ export {
   FramedPageBody,
 } from "./layouts/framed-page.js";
 export { PageFrame } from "./layouts/page-frame.js";
-export { cn } from "./lib/utils.js";
 export { logger } from "./logger.js";
-export { LoginAuthGuard } from "./login/components/LoginAuthGuard.js";
-export type { LoginConnectOrCreateWalletProps } from "./login/components/LoginConnectOrCreateWallet.js";
-export { LoginEmailCallback } from "./login/components/LoginEmailCallback.js";
+export type {
+  CreateDefaultWagmiConfigOptions,
+  DefaultWagmiChains,
+  EVMWalletProviderProps,
+} from "./login/EVMProvider.js";
+export { DiscordIcon, GoogleIcon } from "./login/icons.js";
+export { LoginAuthGuard } from "./login/LoginAuthGuard.js";
+export type { LoginConnectOrCreateWalletProps } from "./login/LoginConnectOrCreateWallet.js";
+export { LoginConnectOrCreateWallet } from "./login/LoginConnectOrCreateWallet.js";
+export { LoginEmailCallback } from "./login/LoginEmailCallback.js";
 export {
   LoginForm,
   PASSKEY_ENROLL_PROMPT_KEY,
-} from "./login/components/LoginForm.js";
+} from "./login/LoginForm.js";
 export type {
   LoginFormWithWalletsEvmConfig,
   LoginFormWithWalletsProps,
   LoginFormWithWalletsSolanaConfig,
-} from "./login/components/LoginFormWithWallets.js";
-export { LoginLinkedAccounts } from "./login/components/LoginLinkedAccounts.js";
-export { LoginMfaChallenge } from "./login/components/LoginMfaChallenge.js";
-export { LoginMfaSettings } from "./login/components/LoginMfaSettings.js";
-export { LoginOAuthCallback } from "./login/components/LoginOAuthCallback.js";
-export { LoginTenantPicker } from "./login/components/LoginTenantPicker.js";
-export { LoginUserButton } from "./login/components/LoginUserButton.js";
-export { PasskeyEnrollmentPrompt } from "./login/components/PasskeyEnrollmentPrompt.js";
-export type {
-  WalletChains,
-  WalletLoginClassOverrides,
-  WalletLoginProps,
-} from "./login/components/WalletLogin.js";
-export { useAuth } from "./login/hooks/useAuth.js";
-export { useMfaStepUp } from "./login/hooks/useMfaStepUp.js";
-export { DiscordIcon, GoogleIcon } from "./login/icons/index.js";
+} from "./login/LoginFormWithWallets.js";
+export { LoginLinkedAccounts } from "./login/LoginLinkedAccounts.js";
+export { LoginMfaChallenge } from "./login/LoginMfaChallenge.js";
+export { LoginMfaSettings } from "./login/LoginMfaSettings.js";
+export { LoginOAuthCallback } from "./login/LoginOAuthCallback.js";
+export { LoginTenantPicker } from "./login/LoginTenantPicker.js";
+export { LoginUserButton } from "./login/LoginUserButton.js";
+export { PasskeyEnrollmentPrompt } from "./login/PasskeyEnrollmentPrompt.js";
 export {
   LoginProvider,
   type LoginProviderWithAuthProps,
   useLogin,
 } from "./login/provider.js";
-export type {
-  CreateDefaultWagmiConfigOptions,
-  DefaultWagmiChains,
-  EVMWalletProviderProps,
-} from "./login/providers/EVMProvider.js";
-export type { SolanaWalletProviderProps } from "./login/providers/SolanaProvider.js";
+export type { SolanaWalletProviderProps } from "./login/SolanaProvider.js";
 export type {
   LoginAuthConfig,
   LoginAuthContextValue,
@@ -866,14 +866,20 @@ export type {
   LoginUserButtonProps,
   TenantTheme,
 } from "./login/types.js";
+export { useAuth } from "./login/useAuth.js";
+export { useMfaStepUp } from "./login/useMfaStepUp.js";
+export type {
+  WalletChains,
+  WalletLoginClassOverrides,
+  WalletLoginProps,
+} from "./login/WalletLogin.js";
+export { WalletLogin } from "./login/WalletLogin.js";
 export {
   createDefaultWagmiConfig,
   EVMWalletProvider,
-  LoginConnectOrCreateWallet,
   LoginFormWithWallets,
   SolanaWalletProvider,
-  WalletLogin,
-} from "./login/wallet/index.js";
+} from "./login/wallet.js";
 export {
   acceptNativeTranscriptViewModel,
   type NativeTranscriptViewSource,
@@ -1024,14 +1030,6 @@ export {
 } from "./platform/window-shell.js";
 export { RetainedLazyComponent } from "./retained-lazy.js";
 export { routedShellMainClass } from "./routed-shell-layout.js";
-export {
-  CodingAgentSettingsSection,
-  registerTaskCoordinatorSlots,
-  type TaskCoordinatorCodingAgentControlChipProps,
-  type TaskCoordinatorCodingAgentSettingsSectionProps,
-  type TaskCoordinatorCodingAgentTasksPanelProps,
-  type TaskCoordinatorPtyConsoleBaseProps,
-} from "./slots/task-coordinator-slots.js";
 export { SpatialSurface } from "./spatial/dom.js";
 export type { SpatialTone } from "./spatial/ir.js";
 export {
@@ -1295,6 +1293,7 @@ export {
   resolveCloudEnvironmentBase,
 } from "./utils/cloud-agent-base.js";
 export { isCloudStatusReasonApiKeyOnly } from "./utils/cloud-status.js";
+export { cn } from "./utils/cn.js";
 export { confirmDesktopAction } from "./utils/desktop-dialogs.js";
 export {
   type DesktopClickAuditItem,

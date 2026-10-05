@@ -20,8 +20,8 @@ import {
   getAppShellPageRegistrySnapshot,
   subscribeAppShellPages,
 } from "../../app-shell-registry";
-import { cn } from "../../lib/utils";
 import { getFrontendPlatform } from "../../platform/platform-guards";
+import { cn } from "../../utils/cn";
 import {
   isSectionPath,
   normalizeSectionPath,

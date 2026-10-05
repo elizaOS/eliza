@@ -25,7 +25,7 @@ import type { PluginInfo } from "../../api/client-types-config";
 import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
+import { PageLayoutHeader } from "../../layouts/page-layout";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { openExternalUrl } from "../../utils/openExternalUrl";

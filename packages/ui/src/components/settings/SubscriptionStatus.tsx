@@ -9,6 +9,7 @@
  */
 
 import type { SubscriptionProviderSelectionId } from "@elizaos/host/protocol";
+import { getStoredSubscriptionProvider } from "@elizaos/host/protocol";
 import { AlertTriangle, CheckCircle2, Loader2, LogOut } from "lucide-react";
 import {
   type ReactNode,
@@ -20,7 +21,6 @@ import {
 import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import { useTimeout } from "../../hooks/useTimeout";
-import { getStoredSubscriptionProvider } from "../../providers";
 import { useAppSelector } from "../../state/app-store";
 import { runAsPrivilegedShell } from "../../surface-realm-channel";
 import {

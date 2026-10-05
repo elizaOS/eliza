@@ -44,13 +44,13 @@ import {
 import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import { useWorkspaceMobileSidebarHeader } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import { WorkspaceMobileSidebarScope } from "../../layouts/workspace-layout/workspace-mobile-sidebar-scope";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
 import {
   type TranslationContextValue,
   useTranslation,
 } from "../../state/TranslationContext.hooks";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
+import { cn } from "../../utils/cn";
 import { formatDateTime } from "../../utils/format";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";

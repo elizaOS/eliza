@@ -23,7 +23,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppPageSidebar } from "../../components/shared/AppPageSidebar";
 import { ViewHeader } from "../../components/shared/ViewHeader";
 import { ViewHeaderSidebarTrigger } from "../../components/shared/ViewHeaderSidebarTrigger";
-import { PageLayout } from "../page-layout/page-layout";
+import { PageLayout } from "../page-layout";
 import { useWorkspaceMobileSidebarHeader } from "./workspace-mobile-sidebar-controls.hooks";
 import { WorkspaceMobileSidebarScope } from "./workspace-mobile-sidebar-scope";
 

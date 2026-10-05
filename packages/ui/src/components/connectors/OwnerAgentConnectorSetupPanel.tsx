@@ -22,7 +22,7 @@ import type {
   ConnectorAccountRole,
 } from "../../api/client-agent-connector-accounts";
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import {
   CONNECTOR_UNKNOWN_ROLE_BUCKET,
   ConnectorAccountList,

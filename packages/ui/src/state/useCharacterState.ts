@@ -12,12 +12,12 @@ import { useCallback, useState } from "react";
 import { client } from "../api/client";
 import type { CharacterData } from "../api/client-types-config";
 import type { AgentStatus } from "../api/client-types-core";
+import { logger } from "../logger.ts";
 import {
   parseArrayInput,
   parseMessageExamplesInput,
   prepareDraftForSave,
-} from "../character/character-draft-helpers";
-import { logger } from "../logger.ts";
+} from "./character-draft-helpers";
 import {
   loadAvatarIndex,
   loadPersistedActivePackId,

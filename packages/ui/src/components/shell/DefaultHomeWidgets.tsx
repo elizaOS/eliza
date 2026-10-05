@@ -18,8 +18,8 @@ import {
   useWeather,
   type WeatherKind,
 } from "../../hooks/useWeather";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
