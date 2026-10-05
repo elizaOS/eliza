@@ -1007,6 +1007,105 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
           "./test-support/subscription-scheduled-binding"
         );
         await assertScheduledPaidBinding(paid, f.identity.commandId);
+        // Another missed, now ordinary, interval must settle adjacent to the first
+        // without granting the latest live period or dropping its dunning state.
+        const nextEnd = target.end_date + 30 * 86400;
+        const nextNow =
+          nextEnd + (liveStatus === "grace" ? 10 : SUBSCRIPTION_PAYMENT_GRACE_MS / 1000 + 10);
+        await db.query("UPDATE fixture_clock SET offset_seconds=$1", [nextNow - Date.now() / 1000]);
+        const nextObjects = renewalPaidObjects(paid, provider, {
+          start: target.end_date,
+          end: nextEnd,
+        });
+        nextObjects.invoice.status_transitions.paid_at = Math.floor(nextNow);
+        const nextEventId = `evt_next${f.identity.commandId.replaceAll("-", "")}`,
+          nextCreatedAt = new Date(nextNow * 1000),
+          nextLease = randomUUID();
+        const nextReceipt = await operations.recordEvent({
+          organizationId: paid.organization_id,
+          subscriptionId: paid.id,
+          providerEventId: nextEventId,
+          eventType: "invoice.paid",
+          providerObjectType: "invoice",
+          providerObjectId: nextObjects.invoice.id,
+          livemode: false,
+          eventCreatedAt: nextCreatedAt,
+          payloadDigest: "f".repeat(64),
+          now: nextCreatedAt,
+        });
+        expect(
+          await operations.claimEvent({
+            organizationId: paid.organization_id,
+            receiptId: nextReceipt.value.id,
+            leaseToken: nextLease,
+            leaseDurationMs: 60000,
+          }),
+        ).toBeTruthy();
+        const nextInput = {
+          ...nextObjects,
+          organizationId: paid.organization_id,
+          subscriptionId: paid.id,
+          invoiceId: nextObjects.invoice.id,
+          receiptId: nextReceipt.value.id,
+          leaseToken: nextLease,
+          expectedSubscriptionRevision: paid.lifecycle_revision,
+          expectedProjectionRevision: paid.lifecycle_revision,
+          providerEventId: nextEventId,
+          eventCreatedAt: nextCreatedAt,
+          subscription: {
+            ...nextObjects.subscription,
+            status: liveStatus === "grace" ? "past_due" : liveStatus,
+            schedule: null,
+            latest_invoice: "in_third",
+            current_period_start: nextEnd,
+            current_period_end: nextEnd + 30 * 86400,
+          },
+        };
+        const beforeNext = await state(f);
+        await expect(
+          finalizePaidRenewal({
+            ...nextInput,
+            invoice: {
+              ...nextObjects.invoice,
+              lines: {
+                ...nextObjects.invoice.lines,
+                data: nextObjects.invoice.lines.data.map((line) => ({
+                  ...line,
+                  period: { ...line.period, start: line.period.start + 1 },
+                })),
+              },
+            },
+          }),
+        ).rejects.toThrow();
+        expect(await state(f)).toEqual(beforeNext);
+        expect((await finalizePaidRenewal(nextInput)).replayed).toBeFalse();
+        const afterNext = await state(f);
+        expect(afterNext.source.status).toBe(liveStatus);
+        expect(afterNext.source.current_period_start.getTime()).toBe(target.end_date * 1000);
+        expect(afterNext.source.current_period_end.getTime()).toBe(nextEnd * 1000);
+        expect(afterNext.source.dunning_started_at?.getTime() ?? null).toBe(
+          liveStatus === "active" ? null : nextEnd * 1000,
+        );
+        const nextPeriod = (
+          await db.query(
+            "SELECT * FROM subscription_allowance_periods WHERE stripe_invoice_id=$1",
+            [nextObjects.invoice.id],
+          )
+        ).rows[0];
+        expect(nextPeriod.state).toBe("expired");
+        expect(Number(nextPeriod.available_amount)).toBe(0);
+        expect((await finalizePaidRenewal(nextInput)).replayed).toBeTrue();
+        expect(await state(f)).toEqual(afterNext);
+        const current = await authority.findById(paid.organization_id, paid.id);
+        if (!current) throw new Error("Adjacent historical source missing");
+        const { findSubscriptionRenewalBinding } = await import("./subscription-purchased-binding");
+        expect(
+          (
+            await findSubscriptionRenewalBinding(current, {
+              STRIPE_PLUS_MONTHLY_PRICE_ID: "price_rotated",
+            })
+          ).environment.STRIPE_PLUS_MONTHLY_PRICE_ID,
+        ).toBe("price_plus");
       } finally {
         await db.query("UPDATE fixture_clock SET offset_seconds=0");
       }

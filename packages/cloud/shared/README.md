@@ -128,3 +128,10 @@ settlement. A released/completed schedule can have a later active, past-due or u
 subscription without proving any invoice paid. Original settlement still requires its
 exact interval and latest invoice; historical callers must independently prove captured
 payment, preserve later debt and publish source/allowance in order.
+
+Adjacent ordinary historical renewals use independent live compatibility and captured
+payment proof after the scheduled target settles. Each transaction records only the
+next proven paid interval, expires its old allowance and retains later observed dunning.
+Cancellation commands keep their stricter captured-item/period authority. Ordinary
+renewals currently retain item identity; chronological invoice discovery and verified
+item-replacement history remain required for complete missed-period recovery.
