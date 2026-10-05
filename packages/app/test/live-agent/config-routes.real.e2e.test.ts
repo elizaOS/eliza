@@ -19,8 +19,8 @@
  * Config schema response shape: packages/agent/src/config/schema.ts:93 (ConfigSchemaResponse).
  */
 
+import { req } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { req } from "../helpers/http.ts";
 import { useIsolatedConfigEnv } from "../helpers/isolated-config.ts";
 import {
   type RuntimeHarness,

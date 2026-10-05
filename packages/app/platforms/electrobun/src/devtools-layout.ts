@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop devtools layout ts behavior for app shell integration. */
 type WindowFrame = {
 	x: number;
 	y: number;

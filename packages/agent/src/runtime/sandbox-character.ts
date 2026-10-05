@@ -11,11 +11,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import {
-  type CharacterSettings,
-  logger,
-  resolveElizaPackageRootSync,
-} from "@elizaos/core";
+import { type CharacterSettings, logger } from "@elizaos/core";
+import { resolveElizaPackageRootSync } from "@elizaos/host";
 import {
   type AgentConfig,
   normalizeFirstRunProviderId,

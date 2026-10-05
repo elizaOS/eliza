@@ -3,8 +3,10 @@
  * Plain string (figlet heading + framed table + footer); TTY color applied by dev-platform.
  */
 
-import { prependDevSubsystemFigletHeading } from "@elizaos/app/dev-settings-figlet-heading";
-import { formatDevSettingsTable } from "@elizaos/app/dev-settings-table";
+import {
+  formatDevSettingsTable,
+  prependDevSubsystemFigletHeading,
+} from "@elizaos/app/dev-tools";
 import {
   resolveDesktopApiPortPreference,
   resolveDesktopUiPortPreference,
@@ -22,11 +24,9 @@ export function formatOrchestratorDesktopDevBanner(p) {
     forceRenderer,
     forceRendererCli,
     viteWatch,
-    viteRollupWatch,
     viteDevServer,
     viteDepForce,
     viteDepForceCli,
-    viteRollupWatchCli,
     ranInitialViteBuild,
     rendererStaleReason,
     preferredApiPort,
@@ -50,7 +50,6 @@ export function formatOrchestratorDesktopDevBanner(p) {
 
   let pipeline = "static dist only (no Vite child)";
   if (viteDevServer) pipeline = "vite dev (HMR)";
-  else if (viteRollupWatch) pipeline = "vite build --watch (Rollup)";
 
   const rendererSource = ranInitialViteBuild
     ? forceRendererCli
@@ -63,7 +62,7 @@ export function formatOrchestratorDesktopDevBanner(p) {
   const rendererChange =
     "bun run dev:desktop -- --force-renderer or ELIZA_DESKTOP_RENDERER_BUILD=always; omit to follow mtime heuristic";
 
-  /** @type {import("@elizaos/app/dev-settings-table").DevSettingsRow[]} */
+  /** @type {import("@elizaos/app/dev-tools").DevSettingsRow[]} */
   const rows = [
     {
       setting: ".env.worktree",
@@ -110,33 +109,19 @@ export function formatOrchestratorDesktopDevBanner(p) {
     {
       setting: "Renderer pipeline",
       effective: pipeline,
-      source: "derived — from watch + rollup flags",
-      change:
-        "ELIZA_DESKTOP_VITE_BUILD_WATCH=1 + watch=1 for Rollup; else dev server when watch=1",
+      source: "derived — from watch mode",
+      change: "ELIZA_DESKTOP_VITE_WATCH=1 enables the dev server",
     },
     {
-      setting: "--vite-force / ELIZA_VITE_FORCE / ELIZA_VITE_FORCE",
+      setting: "--vite-force / ELIZA_VITE_FORCE",
       effective: viteDepForce ? "on" : "off",
       source: viteDepForceCli
         ? "cli — --vite-force"
         : process.env.ELIZA_VITE_FORCE === "1"
           ? "env set — ELIZA_VITE_FORCE=1"
-          : process.env.ELIZA_VITE_FORCE === "1"
-            ? "env set — ELIZA_VITE_FORCE=1"
-            : "default (off)",
-      change:
-        "bun run dev:desktop -- --vite-force or export ELIZA_VITE_FORCE=1; unset to disable",
-    },
-    {
-      setting: "--rollup-watch / ELIZA_DESKTOP_VITE_BUILD_WATCH",
-      effective: viteRollupWatch ? "on" : "off",
-      source: viteRollupWatchCli
-        ? "cli — --rollup-watch"
-        : viteRollupWatch
-          ? "env set — ELIZA_DESKTOP_VITE_BUILD_WATCH=1"
           : "default (off)",
       change:
-        "requires ELIZA_DESKTOP_VITE_WATCH=1; bun run dev:desktop -- --rollup-watch or set env",
+        "bun run dev:desktop -- --vite-force or export ELIZA_VITE_FORCE=1; unset to disable",
     },
     {
       setting: "API port (preference)",

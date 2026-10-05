@@ -60,3 +60,10 @@ current session is consumed before publishing, including when the publisher thro
 No secret is returned through Capacitor. Hosts still own picker UI and lifecycle
 cancellation. Instrumentation uses synthetic records and field IDs, not a trusted
 Chromium integration.
+
+`NativeDeadlineTimer` owns main-thread expiry callbacks with elapsed-time checks,
+replacement/cancellation fencing and terminal close. Use `after` for a display
+duration or `watch(session::remainingMillis, callback)` for an existing Autofill
+request; call `refresh` on resume and close on destruction. `watch` may expire
+synchronously. Hosts retain masking/layout and selected display durations. Cancel
+on screen replacement or stop as appropriate; callbacks are not persisted.

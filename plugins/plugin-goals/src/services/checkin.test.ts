@@ -341,6 +341,50 @@ describe("GoalsCheckinService.syncGoalCheckins", () => {
     expect(task.state.status).toBe("dismissed");
   });
 
+  it("resumes a recurring check-in when a paused goal becomes active again", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+
+    await service.syncGoalCheckins(makeGoal());
+    await service.syncGoalCheckins(makeGoal({ status: "paused" }));
+    const resumed = await service.syncGoalCheckins(makeGoal());
+    const again = await service.syncGoalCheckins(makeGoal());
+
+    expect(resumed.scheduled).toHaveLength(1);
+    expect(again.scheduled).toHaveLength(0);
+    expect(again.dismissedTaskIds).toHaveLength(0);
+    const live = (await spine.runner.list({ kind: "checkin" })).filter(
+      (task) => task.state.status === "scheduled",
+    );
+    expect(live).toHaveLength(1);
+    expect(live[0].idempotencyKey).toBe(
+      `${checkinIdempotencyKey("goal-1", "daily")}:resumed:1`,
+    );
+    expect(live[0].trigger).toEqual(resumed.scheduled[0].trigger);
+  });
+
+  it("resumes a recurring check-in when the cadence moves away and back", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+
+    await service.syncGoalCheckins(makeGoal());
+    await service.syncGoalCheckins(
+      makeGoal({
+        cadence: { kind: "weekly", weekdays: [1], windows: ["evening"] },
+      }),
+    );
+    const back = await service.syncGoalCheckins(makeGoal());
+
+    expect(back.scheduled).toHaveLength(1);
+    expect(back.dismissedTaskIds).toHaveLength(1);
+    const live = (await spine.runner.list({ kind: "checkin" })).filter(
+      (task) => task.state.status === "scheduled",
+    );
+    expect(live.map((task) => task.idempotencyKey)).toEqual([
+      `${checkinIdempotencyKey("goal-1", "daily")}:resumed:1`,
+    ]);
+  });
+
   it("never resurrects a slot the owner dismissed", async () => {
     const spine = makeSpine();
     const service = makeService(spine);

@@ -170,13 +170,15 @@ function sanitizeSpeechPunctuation(input: string): string {
 	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
 	// A mark inside a number (`3.14`, `1,299`, `10:30`) is part of one spoken
 	// token: spacing it makes TTS read "3. 14" as a sentence break and two
-	// numbers, so the spacing rules skip it.
+	// numbers, so the spacing rules skip it. A comma whose digit group runs to
+	// the end of the text stays unspaced too: a streamed `$1,2` may still become
+	// `$1,299`, and spacing it would commit `$1,` as already spoken.
 	text = text.replace(
-		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)))\s{0,32}([,;:，；：])\s{0,32}/g,
+		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)|,\d{1,3}$))\s{0,32}([,;:，；：])\s{0,32}/g,
 		"$1 ",
 	);
 	text = text.replace(
-		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)))\s{0,32}([.!?。！？])\s{0,32}/g,
+		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)|,\d{1,3}$))\s{0,32}([.!?。！？])\s{0,32}/g,
 		"$1 ",
 	);
 	// U+2116 (numero sign) is speech-semantic, not punctuation: keep it so a

@@ -42,6 +42,18 @@ public final class DeviceCredentialSessionInstrumentedTest {
       }
     });
   }
+  @Test public void expiryWhileArmingTimerDoesNotInvokeAuthenticatedDestination() {
+    InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+      Host host = new Host(); int[] reads = {0};
+      try (DeviceCredentialSession session = new DeviceCredentialSession(host,10,731,750,null,host,()->reads[0]++ == 0 ? 100 : 110)) {
+        session.authenticate("Test", "Synthetic", () -> host.destinations++);
+        session.onActivityResult(host.code, Activity.RESULT_OK);
+        assertFalse(session.authenticated());
+        assertEquals(0, host.destinations);
+        assertTrue(host.locks > 0);
+      }
+    });
+  }
   @Test public void recreationSavesOnlyCounterAndExhaustionNeverWraps() {
     InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
       Host host = new Host(); Bundle saved = new Bundle();

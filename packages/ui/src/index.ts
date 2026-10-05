@@ -1,6 +1,7 @@
 /** Public UI APIs. Internal modules import their owning files directly. */
 
 export { AgentSurfaceProvider } from "./agent-surface/AgentSurfaceContext.js";
+export { AgentButton } from "./agent-surface/components.js";
 export { getViewRegistry } from "./agent-surface/registry.js";
 export { useAgentElement } from "./agent-surface/useAgentElement.js";
 export { completeAndroidCloudSignIn } from "./android-cloud/android-cloud-auth.js";
@@ -74,6 +75,13 @@ export {
   isCloudAgentGoneError,
   isRateLimitedError,
 } from "./api/client-types-core.js";
+export {
+  type ConversationRoom,
+  type ConversationStopResult,
+  ConversationTurnController,
+  type ConversationTurnObserver,
+  type ConversationTurnTransport,
+} from "./api/conversation-turn-controller.js";
 export { fetchWithCsrf } from "./api/csrf-client.js";
 export type {
   DedicatedActivationConfirmationQuote,
@@ -613,6 +621,7 @@ export {
 export {
   type AppBootConfig,
   type CharacterCatalogData,
+  DEFAULT_BOOT_CONFIG,
   getBootConfig,
   setBootConfig,
 } from "./config/boot-config-store.js";
@@ -1208,10 +1217,8 @@ export type {
 } from "./state/types.js";
 export { ACCENT_PRESETS } from "./state/ui-preferences.js";
 export { useFirstRunChatRelease } from "./state/use-first-run-chat-release.js";
-export {
-  isBootstrapGateRequired,
-  isLoopbackGatewayHost,
-} from "./state/use-startup-shell-controller.js";
+export { useRemoteConnectRequests } from "./state/use-remote-connect-requests.js";
+export { isBootstrapGateRequired } from "./state/use-startup-shell-controller.js";
 export { AppContext, useApp } from "./state/useApp.js";
 export { useAppLifecycleEvents } from "./state/useAppLifecycleEvents.js";
 export {
@@ -1362,6 +1369,11 @@ export {
   playCaptureStartCue,
 } from "./voice/capture-cues.js";
 export {
+  DeviceSpeechController,
+  type DeviceSpeechEnvironment,
+  type DeviceSpeechState,
+} from "./voice/device-speech-controller.js";
+export {
   audioBlobBase64,
   type CumulativeCaptureOptions,
   observeMicrophonePause,
@@ -1372,6 +1384,13 @@ export {
   encodeMonoPcm16Wav,
   encodeMonoPcm16WavChunks,
 } from "./voice/pcm-wave.js";
+export {
+  type SegmentedSpeechOptions,
+  SegmentedSpeechPlayback,
+  type SegmentedSpeechState,
+  type SpeechAudioEnvironment,
+  SpeechPlaybackError,
+} from "./voice/segmented-speech-playback.js";
 export { splitSpeechSegments } from "./voice/speech-segments.js";
 export { useVoiceConfig } from "./voice/useVoiceConfig.js";
 export {

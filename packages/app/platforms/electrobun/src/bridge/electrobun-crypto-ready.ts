@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop electrobun crypto ready ts behavior for app shell integration. */
 export type ElectrobunEncryptResult = {
 	encryptedData: string;
 	iv: string;

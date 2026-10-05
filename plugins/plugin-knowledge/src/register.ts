@@ -1,7 +1,7 @@
 /**
  * Registers the plugin-owned Knowledge document hub with the app shell.
  * Registration is metadata-only at startup; the complete multimedia surface
- * is loaded only when `/documents` or `/character/documents` is opened.
+ * is loaded only when `/character/documents` is opened.
  */
 import { registerAppShellPage } from "@elizaos/ui";
 

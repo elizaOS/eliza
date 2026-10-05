@@ -1,4 +1,3 @@
-/** Exercises run mobile build ios engine gate behavior with deterministic app test fixtures. */
 import { describe, expect, it } from "vitest";
 
 import {

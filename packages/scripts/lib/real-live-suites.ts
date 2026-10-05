@@ -67,7 +67,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
     file: "plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.live.test.ts",
     optIn: "ELIZA_LIVE_TEST",
     anyOf: [["OPENAI_API_KEY"], ["CEREBRAS_API_KEY"]],
-    guardVia: ["packages/app/test/helpers/live-agent-test.ts"],
+    guardVia: ["packages/testing/src/live-agent.ts"],
   },
   {
     file: "plugins/plugin-sql/src/__tests__/integration/progressive-content-postgres-targets.real.test.ts",
@@ -91,7 +91,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-personal-assistant/test/scheduled-task-voicing.live.test.ts",
     requires: ["CEREBRAS_API_KEY"],
-    guardVia: ["packages/app/test/helpers/live-agent-test.ts"],
+    guardVia: ["packages/testing/src/live-agent.ts"],
   },
   {
     file: "plugins/plugin-sql/src/__tests__/migration/membership-authority-ttl-concurrency.postgres.real.test.ts",

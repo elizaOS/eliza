@@ -62,7 +62,7 @@ const BUILTIN_VIEW_CASES: Array<{
   { id: "experience", path: "/character/experience" },
   { id: "character-skills", path: "/character/skills" },
   { id: "memories", path: "/apps/memories" },
-  { id: "rolodex", path: "/rolodex" },
+  { id: "rolodex", path: "/apps/relationships" },
   { id: "voice", path: "/settings/voice" },
   { id: "runtime", path: "/apps/runtime" },
   { id: "database", path: "/apps/database" },

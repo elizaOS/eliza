@@ -19,7 +19,8 @@
     "./progressive-content": "./src/progressive-content.ts",
     "./cli": "./scenario-runner/src/cli.ts",
     "./scenarios": "./scenario-runner/src/scenarios.ts",
-    "./fixtures": "./src/fixtures.ts"
+    "./fixtures": "./src/fixtures.ts",
+    "./live": "./src/live.ts"
   },
   "scripts": {
     "test": "bun run test:fixtures && bun run scenarios:validate && bun run test:evidence && bun run test:runner && bun run test:synthetic-world && bun run test:runtime:e2e",
@@ -124,7 +125,10 @@
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/cloud-test-mocks": "workspace:*",
-    "@elizaos/plugin-browser": "workspace:*"
+    "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@elizaos/agent": {
@@ -191,6 +195,15 @@
       "optional": true
     },
     "@elizaos/plugin-browser": {
+      "optional": true
+    },
+    "@elizaos/plugin-openai": {
+      "optional": true
+    },
+    "@elizaos/plugin-anthropic": {
+      "optional": true
+    },
+    "@elizaos/plugin-elizacloud": {
       "optional": true
     }
   },

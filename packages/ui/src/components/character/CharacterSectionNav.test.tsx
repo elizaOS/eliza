@@ -51,7 +51,7 @@ describe("isCharacterSectionPath", () => {
   it("rejects Knowledge (a standalone peer hub) and unrelated routes", () => {
     for (const path of [
       "/character/documents",
-      "/documents",
+      "/character/documents",
       "/wallet",
       "/apps/logs",
       "/",

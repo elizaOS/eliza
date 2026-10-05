@@ -151,7 +151,7 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
  * - `GET /api/dev/console-log`
  * - `GET /api/dev/voice-latency`
  * - `GET /api/dev/inference-timing`
- * - `GET /api/dev/boot-history` (alias `GET /api/dev/health`)
+ * - `GET /api/dev/boot-history`
  * - `GET /api/dev/route-timings` (perf instrumentation; ELIZA_PERF_INSTRUMENT=1)
  */
 export async function handleDevCompatRoutes(
@@ -423,16 +423,12 @@ export async function handleDevCompatRoutes(
     sendJsonResponse(res, 200, payload);
     return true;
   }
-  // ── GET /api/dev/boot-history (alias /api/dev/health) ───────────────
+  // ── GET /api/dev/boot-history ───────────────
   // Boot phase timings, memory growth, restart count + cause, and the exact
   // error for any plugin that failed to load — read back from the telemetry the
   // runtime already writes under <stateDir>/telemetry/. latestBoot===null means
   // a boot has not completed since process start (restart storm or hard crash).
-  if (
-    method === "GET" &&
-    (url.pathname === "/api/dev/boot-history" ||
-      url.pathname === "/api/dev/health")
-  ) {
+  if (method === "GET" && url.pathname === "/api/dev/boot-history") {
     if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
       sendJsonErrorResponse(res, 403, "loopback only");
       return true;

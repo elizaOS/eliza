@@ -156,7 +156,6 @@ interface TrayPopoverConfig {
 	partition?: string | null;
 	rpc?: TrayPopoverRpc;
 	injectApiBase?: (window: BrowserWindow) => void;
-	wireRpc?: (window: BrowserWindow) => void;
 	onWindowFocused?: (window: BrowserWindow) => void;
 	onWindowClosed?: () => void;
 }
@@ -2423,7 +2422,6 @@ X-GNOME-Autostart-enabled=true
 			...(config.rpc ? { rpc: config.rpc } : {}),
 		};
 		const win = createElectrobunBrowserWindow(options);
-		config.wireRpc?.(win);
 		win.webview.on("dom-ready", () => {
 			config.injectApiBase?.(win);
 		});

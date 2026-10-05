@@ -139,7 +139,10 @@
     "pluginParameters": {}
   },
   "elizaos": {
-    "appRegister": "register",
+    "appRegister": {
+      "subpath": "register",
+      "export": "registerApp"
+    },
     "app": {
       "heroImage": "assets/hero.png",
       "featured": true,

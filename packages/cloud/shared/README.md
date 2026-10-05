@@ -35,3 +35,22 @@ quote and retains one command across retry keys. Downgrade admission is internal
 it does not dispatch a provider effect or publish a scheduled plan. Expiry can
 retire only provably unstarted intents without a live lease; uncertain effects
 remain pending until the original outcome is reconciled.
+
+Schedule execution uses ordered `organization_schedule_effects` records (migration
+0521) under the original command lease. Each exact request has its own provider
+key; configuration requires the original observed create receipt. An observation
+can retain evidence after manager revocation but cannot authorize another write.
+The journal does not perform provider calls or publish a pending plan; receipt
+provenance must be verified by the provider response/event observer before storage.
+
+Original schedule evidence is projected from authenticated Acacia create/update
+responses or request-attributed events. The journal reads original scope and first
+dispatch time under lock and preserves the first receipt on exact replay. Attribution
+is not configured-phase validation: callers still must verify retained terms and
+current provider state before configuration, compensation or pending-plan publication.
+
+Downgrade review preflights pinned retained subscription billing terms before invoice
+preview. The observer normalizes existing discount/tax/payment references and includes
+financial overrides in its digest. Unsupported terms reject instead of being omitted.
+This review check alone does not bind a create effect: the dispatcher must reobserve,
+persist the original retained-term binding and validate phase/default preservation.

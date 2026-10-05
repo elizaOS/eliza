@@ -4,7 +4,6 @@
  */
 
 import {
-  CLOUD_PAIR_LEGACY_STORAGE_KEY,
   type CloudPairRelaySession,
   cloudPairTokenKeyForAgent,
   parseCloudPairRelaySession,
@@ -25,8 +24,7 @@ import {
 import { Button } from "../ui/button";
 
 export { cloudPairTokenKeyForAgent };
-export const CLOUD_PAIR_SESSION_STORAGE_KEY = CLOUD_PAIR_LEGACY_STORAGE_KEY;
-export const CLOUD_PAIR_LOCAL_STORAGE_KEY = CLOUD_PAIR_SESSION_STORAGE_KEY;
+
 interface PairExchangeResponse {
   agentId?: unknown;
   agentName?: unknown;
@@ -242,22 +240,6 @@ export function persistCloudPairApiToken(
     token,
   );
   installCloudPairApiTokenForSession(token);
-  if (persistedInSession || persistedDurably) {
-    // Legacy single-key format is now superseded by the per-agent key. Only
-    // remove it after the scoped write landed, so a failed storage channel
-    // never destroys the only credential the user has.
-    for (const storage of [
-      typeof window === "undefined" ? undefined : window.localStorage,
-      typeof window === "undefined" ? undefined : window.sessionStorage,
-    ]) {
-      try {
-        storage?.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
-      } catch (_storageError) {
-        // error-policy:J3 best-effort legacy cleanup; the per-agent key is the
-        // authority now.
-      }
-    }
-  }
   if (!(persistedInSession || persistedDurably)) {
     throw new Error(
       "Cloud pair API token could not be stored in this browser.",

@@ -2,16 +2,20 @@ package ai.eliza.plugins.securestore.nativeonly;
 
 import android.os.SystemClock;
 import java.util.*;
+import java.util.function.LongSupplier;
 
 /** Ephemeral, one-shot capabilities. No credentials, Intent-supplied field ids, or disk state. */
 public final class PasswordAutofillSessions {
   public static final class Session {
     public final PasswordAutofillRequest request;
-    final long created=SystemClock.elapsedRealtime();
+    private final LongSupplier clock;
+    private final long created;
     public volatile boolean cancelled;
     private volatile boolean consumed;
-    Session(PasswordAutofillRequest request){this.request=request;}
-    public boolean valid(){long elapsed=SystemClock.elapsedRealtime()-created;return !cancelled && !consumed && elapsed>=0 && elapsed<120000;}
+    Session(PasswordAutofillRequest request){this(request,SystemClock::elapsedRealtime);}
+    Session(PasswordAutofillRequest request,LongSupplier clock){this.request=request;this.clock=Objects.requireNonNull(clock);this.created=clock.getAsLong();}
+    public long remainingMillis(){long now=clock.getAsLong(),elapsed=now-created;return cancelled || consumed || created<0 || now<created || elapsed<0 || elapsed>=120000?0:120000-elapsed;}
+    public boolean valid(){return remainingMillis()>0;}
   }
   private static final Map<String,Session> pending=new HashMap<>();
   private static Session current;

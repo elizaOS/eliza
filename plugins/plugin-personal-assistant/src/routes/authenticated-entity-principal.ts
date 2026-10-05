@@ -4,8 +4,10 @@
  * entity: a live session identity must match one unique verified binding.
  */
 import type http from "node:http";
-import { resolveAuthorizedRouteRole } from "@elizaos/app/api/auth";
-import { authStoreForRuntime } from "@elizaos/app/services/auth-store";
+import {
+  authStoreForRuntime,
+  resolveAuthorizedRouteRole,
+} from "@elizaos/app/auth";
 import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import { type AgentRuntime, ElizaError } from "@elizaos/core";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
