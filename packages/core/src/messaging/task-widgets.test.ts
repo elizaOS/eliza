@@ -100,3 +100,9 @@ it("rejects uncloneable reply data before exposing widgets", () => {
 		),
 	).toThrow(expect.objectContaining({ code: "TASK_CHOICES_INVALID" }));
 });
+
+it("rejects sparse widget arrays rather than skipping empty entries", () => {
+	expect(() =>
+		admitTaskChoiceResponse(new Array(1), { taskId: "task", epoch: 0 }, 1),
+	).toThrow(expect.objectContaining({ code: "TASK_CHOICE_INVALID" }));
+});

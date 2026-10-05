@@ -128,7 +128,7 @@ export function admitTaskChoiceResponse(
 			code: "TASK_CHOICES_INVALID",
 		});
 	}
-	return detached.map((widget) => {
+	return Array.from(detached, (widget) => {
 		validateTaskChoiceWidget(widget);
 		if (!task || widget.taskId !== task.taskId || widget.epoch !== task.epoch)
 			throw new ElizaError("Task choice response does not match its request", {
