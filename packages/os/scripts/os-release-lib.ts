@@ -1,7 +1,15 @@
 // Supports OS release manifests, checksums, and TEE evidence automation.
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -88,7 +96,9 @@ function isValidIsoDate(value) {
     return false;
   }
   const time = Date.parse(`${value}T00:00:00Z`);
-  return Number.isFinite(time);
+  return (
+    Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value
+  );
 }
 
 export function parseArgs(argv) {
@@ -117,7 +127,15 @@ export async function readJson(filePath) {
 
 export async function writeJson(filePath, value) {
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+  const temporary = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, {
+      flag: "wx",
+    });
+    await rename(temporary, filePath);
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 export async function fileExists(filePath) {
@@ -186,13 +204,6 @@ function requireString(errors, value, field) {
   }
 }
 
-function requireDate(errors, value, field) {
-  requireString(errors, value, field);
-  if (typeof value === "string" && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    errors.push(`${field} must use YYYY-MM-DD`);
-  }
-}
-
 export function validateManifest(manifest, options = {}) {
   const errors = [];
   const warnings = [];
@@ -214,15 +225,7 @@ export function validateManifest(manifest, options = {}) {
     );
   }
   requireString(errors, manifest?.release?.version, "release.version");
-  requireDate(
-    errors,
-    manifest?.release?.availableDate,
-    "release.availableDate",
-  );
-  if (
-    typeof manifest?.release?.availableDate === "string" &&
-    !isValidIsoDate(manifest.release.availableDate)
-  ) {
+  if (!isValidIsoDate(manifest?.release?.availableDate)) {
     errors.push("release.availableDate must be a valid ISO date (YYYY-MM-DD)");
   }
   if (!releaseStatuses.has(manifest?.release?.status)) {
