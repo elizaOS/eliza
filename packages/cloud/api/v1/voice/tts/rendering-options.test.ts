@@ -73,6 +73,17 @@ mock.module("@elizaos/cloud-shared/lib/services/elevenlabs", () => ({
   TtsSynthesisOptions,
   hasTtsSynthesisOptions,
   getElevenLabsService: () => ({
+    textToSpeechWithTimestamps: async (
+      options: Record<string, unknown>,
+      signal: AbortSignal,
+    ) => {
+      events.push("timed-synthesize");
+      syntheses.push(options);
+      expect(signal).toBeInstanceOf(AbortSignal);
+      return new Response(
+        '{"type":"audio","audioBase64":"AQID"}\n{"type":"done"}\n',
+      ).body!;
+    },
     textToSpeech: async (options: Record<string, unknown>) => {
       events.push("synthesize");
       syntheses.push(options);
@@ -280,4 +291,50 @@ test("WAV preserves rendering controls and reports provider speed", async () => 
   ).toBe("RIFF");
   expect(syntheses[0]).toMatchObject({ speed: 1.1, outputFormat: "pcm_24000" });
   expect(events).not.toContain("cache-get");
+});
+
+test("timed route uses one admitted synthesis and never reads or populates raw audio cache", async () => {
+  const response = await post({ ...base, withTimestamps: true });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Content-Type")).toBe("application/x-ndjson");
+  expect(response.headers.get("X-Eliza-TTS-Timing")).toBe("character-v1");
+  expect(
+    (await response.text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line).type),
+  ).toEqual(["audio", "done"]);
+  expect(events).toContain("timed-synthesize");
+  expect(events).not.toContain("synthesize");
+  expect(events).not.toContain("cache-get");
+  expect(events).not.toContain("cache-put");
+  expect(events.filter((e) => e === "dispatch" || e === "bill")).toEqual([
+    "dispatch",
+    "bill",
+  ]);
+});
+
+test("timing rejects unsupported formats, providers and nonboolean controls before admission", async () => {
+  expect(
+    (await post({ ...base, withTimestamps: true, format: "wav" })).status,
+  ).toBe(400);
+  expect((await post({ ...base, withTimestamps: "true" })).status).toBe(400);
+  expect(
+    (
+      await post(
+        { text: "Hi.", withTimestamps: true },
+        { CARTESIA_API_KEY: "test" },
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await post(
+        { text: "Hi.", withTimestamps: true },
+        { KOKORO_TTS_URL: "https://kokoro.invalid" },
+      )
+    ).status,
+  ).toBe(400);
+  expect(events.filter((e) => e === "auth")).toHaveLength(4);
+  expect(events).not.toContain("admit");
 });
