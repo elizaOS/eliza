@@ -6,6 +6,7 @@ import { z } from "zod";
 import { dbWrite } from "../../db/helpers";
 import { subscriptionBillingOperationsRepository as operations } from "../../db/repositories/subscription-billing-operations";
 import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
+import { recordOriginalInvoiceEvent } from "../../db/repositories/subscription-invoice-event-evidence";
 import {
   finalizePaidRenewal,
   finalizeRecordedPaidRenewal,
@@ -18,6 +19,7 @@ import { assertOrganizationSubscription } from "./organization-subscription-sour
 import { reconcileOrganizationUpgradesBeforeRenewal } from "./organization-upgrade-renewal-ordering";
 import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
 import { renewalUnavailable } from "./stripe-paid-renewal-validation";
+import { createSubscriptionInvoiceEventEvidence } from "./subscription-invoice-event-evidence";
 
 const eventSchema = z.object({
   id: z.string().regex(/^evt_[A-Za-z0-9]+$/),
@@ -114,6 +116,52 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
     const { reconcileSubscriptionCheckout } = await import("./subscription-checkout");
     await reconcileSubscriptionCheckout(session.id, source.organization_id);
     return;
+  }
+  // Preserve authenticated original debit observations before any grant or plan recovery.
+  // Current provider state locates the owner; it must never replace the signed invoice body.
+  const originalBalances = z
+    .object({
+      data: z.object({
+        object: z.object({
+          starting_balance: z.number().optional(),
+          ending_balance: z.number().optional(),
+        }),
+      }),
+    })
+    .safeParse(message.event);
+  const hasDebit = (value: { starting_balance?: number | null; ending_balance?: number | null }) =>
+    (value.starting_balance ?? 0) > 0 || (value.ending_balance ?? 0) > 0;
+  if (
+    hasDebit(fetchedInvoice) ||
+    (originalBalances.success && hasDebit(originalBalances.data.data.object))
+  ) {
+    const providerAccountId = (await requireStripe().accounts.retrieve(null)).id;
+    const observation = createSubscriptionInvoiceEventEvidence(message.event, {
+      organizationId: source.organization_id,
+      subscriptionId: source.id,
+      providerAccountId,
+      customerId: source.stripe_customer_id,
+      providerSubscriptionId: source.stripe_subscription_id,
+      invoiceId: event.data.object.id,
+      providerEventId: event.id,
+      livemode: event.livemode,
+    });
+    await recordOriginalInvoiceEvent(
+      {
+        organizationId: source.organization_id,
+        subscriptionId: source.id,
+        providerEventId: event.id,
+        eventType: event.type,
+        providerObjectType: "invoice",
+        providerObjectId: event.data.object.id,
+        livemode: event.livemode,
+        eventCreatedAt: created,
+        payloadDigest: createHash("sha256").update(JSON.stringify(message.event)).digest("hex"),
+        now: new Date(),
+      },
+      observation,
+    );
+    renewalUnavailable("deferred_invoice_observation_retained");
   }
   const recorded = await operations.recordEvent({
     organizationId: source.organization_id,

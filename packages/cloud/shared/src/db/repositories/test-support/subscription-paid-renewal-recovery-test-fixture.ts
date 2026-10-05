@@ -106,6 +106,12 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     );
     for (const statement of claimMigration.split("--> statement-breakpoint"))
       if (statement.trim()) await database.exec(statement);
+    const invoiceEvidenceMigration = await readFile(
+      new URL("../../migrations/0530_subscription_invoice_event_evidence.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of invoiceEvidenceMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await database.exec(statement);
     service = await import("../../../lib/services/subscription-reconciliation");
   });
   beforeEach(async () => {
@@ -1300,6 +1306,71 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     expect(objectSequences.get(`/v1/subscriptions/${fixture.subscription.id}`)).toHaveLength(0);
     expect(writes).toBe(0);
   });
+
+  for (const canonicalChanged of [false, true])
+    test(`retains original unfunded webhook without funding (later invoice changed=${canonicalChanged})`, async () => {
+      const f = await seed();
+      Object.assign(f.invoice, {
+        amount_paid: 0,
+        payment_intent: null,
+        charge: null,
+        starting_balance: 0,
+        ending_balance: f.invoice.total,
+      });
+      objects.set("/v1/account", { id: "acct_original", object: "account" });
+      const event: Stripe.InvoicePaidEvent = JSON.parse(
+        JSON.stringify({
+          id: `evt_${randomUUID().replaceAll("-", "")}`,
+          object: "event",
+          type: "invoice.paid",
+          api_version: "2024-11-20.acacia",
+          created: Math.floor(Date.now() / 1000),
+          livemode: false,
+          data: { object: f.invoice },
+        }),
+      );
+      if (canonicalChanged)
+        Object.assign(f.invoice, { ending_balance: 0, amount_paid: f.invoice.total });
+      const { reconcileStripePaidRenewal } = await import(
+        "../../../lib/services/stripe-paid-renewal"
+      );
+      const message = {
+        kind: "stripe.event" as const,
+        eventId: event.id,
+        eventType: event.type,
+        event,
+        receivedAt: Date.now(),
+      };
+      await Promise.all(
+        [0, 1].map(() =>
+          expect(reconcileStripePaidRenewal(message)).rejects.toMatchObject({
+            code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
+            context: { reason: "deferred_invoice_observation_retained" },
+          }),
+        ),
+      );
+      const records = await database.query<{
+        evidence: { event: { data: { object: { ending_balance: number; amount_paid: number } } } };
+      }>("SELECT evidence FROM subscription_invoice_event_evidence WHERE organization_id=$1", [
+        f.source.organization_id,
+      ]);
+      expect(records.rows).toHaveLength(1);
+      expect(records.rows[0]!.evidence.event.data.object.ending_balance).toBe(
+        event.data.object.ending_balance!,
+      );
+      expect(records.rows[0]!.evidence.event.data.object.amount_paid).toBe(0);
+      expect(await allowanceCount(f.source.organization_id)).toBe(0);
+      expect(await sourceRevision(f.source.id)).toBe(f.source.lifecycle_revision);
+      expect(writes).toBe(0);
+      expect(requests.toSorted()).toEqual(
+        [
+          `GET /v1/invoices/${f.invoice.id}`,
+          "GET /v1/account",
+          `GET /v1/invoices/${f.invoice.id}`,
+          "GET /v1/account",
+        ].toSorted(),
+      );
+    });
 
   return {
     seed,

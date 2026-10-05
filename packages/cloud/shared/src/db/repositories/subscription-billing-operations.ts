@@ -773,9 +773,10 @@ export class SubscriptionBillingOperationsRepository {
 
   async recordEvent(
     input: RecordSubscriptionEventInput,
+    executor: typeof dbWrite | DbTransaction = dbWrite,
   ): Promise<RepositoryMutation<BillingSubscriptionEventReceipt>> {
     requireDate(input.now, "now");
-    const [created] = await dbWrite
+    const [created] = await executor
       .insert(billingSubscriptionEventReceipts)
       .values({
         id: input.id,
@@ -802,7 +803,7 @@ export class SubscriptionBillingOperationsRepository {
       })
       .returning();
     if (created) return { value: created, replayed: false };
-    const [existing] = await dbWrite
+    const [existing] = await executor
       .select()
       .from(billingSubscriptionEventReceipts)
       .where(
