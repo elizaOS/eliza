@@ -17,6 +17,7 @@ import {
   projectOriginalScheduleResponse,
 } from "../../lib/services/organization-schedule-effect-origin";
 import { proveOrganizationScheduleRelease } from "../../lib/services/organization-schedule-release-proof";
+import { proveReviewedOrganizationScheduleConfiguration } from "../../lib/services/organization-schedule-reviewed-configuration";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
@@ -787,4 +788,163 @@ export async function finalizeOrganizationScheduleCompensation(
     if (!failed) reject("original_lease_lost_before_commit");
     return { command: failed, replayed: false };
   });
+}
+
+export type OrganizationScheduleConfiguredObservation = {
+  createEvidence: { kind: "response" | "event"; raw: unknown };
+  configurationEvidence: { kind: "response" | "event"; raw: unknown };
+  rawCurrentSchedule: unknown;
+  rawSubscription: unknown;
+  rawCustomer: unknown;
+};
+export type OrganizationScheduleConfiguredIdentity = Identity & {
+  leaseToken: string;
+  executionGeneration: number;
+};
+/** Original read-only settlement authority; no new provider effects or manager grant. */
+export async function lockOrganizationScheduleConfiguredAuthority(
+  tx: DbTransaction,
+  input: OrganizationScheduleConfiguredIdentity & OrganizationScheduleConfiguredObservation,
+) {
+  const [org] = await tx
+    .select({
+      id: organizations.id,
+      customer: organizations.stripe_customer_id,
+      active: organizations.is_active,
+      lifecycle: organizations.account_lifecycle_state,
+      fenced: organizations.paid_work_fenced_at,
+      deletion: organizations.account_deletion_request_id,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, input.organizationId))
+    .for("update");
+  if (
+    !org ||
+    !org.active ||
+    org.lifecycle !== "active" ||
+    org.fenced !== null ||
+    org.deletion !== null
+  )
+    reject("organization_authority_unavailable");
+  const [association] = await tx
+    .select()
+    .from(organizationSubscriptionAuthorities)
+    .where(eq(organizationSubscriptionAuthorities.organization_id, input.organizationId))
+    .for("update");
+  const locked = await lockOriginal(tx, input, false);
+  if (
+    !locked.retained ||
+    !association ||
+    association.state !== "current" ||
+    association.subscription_id !== locked.quote.subscription_id
+  )
+    reject("current_source_authority_changed");
+  const existing = await rows(tx, input);
+  const create = existing.find((e) => e.kind === "schedule_create");
+  const configured = existing.find((e) => e.kind === "schedule_configure");
+  if (
+    !create ||
+    !configured ||
+    create.state !== "observed" ||
+    configured.state !== "observed" ||
+    !create.started_at ||
+    !configured.started_at ||
+    !create.receipt ||
+    !configured.receipt ||
+    create.receipt_digest !== settlementDigest(create.receipt) ||
+    configured.receipt_digest !== settlementDigest(configured.receipt) ||
+    configured.predecessor_id !== create.id ||
+    existing.some((e) => e.kind === "schedule_release")
+  )
+    reject("original_configuration_receipts_required");
+  scope(locked, create, undefined);
+  scope(locked, configured, create);
+  const [source] = await tx
+    .select()
+    .from(billingSubscriptions)
+    .where(
+      and(
+        eq(billingSubscriptions.id, locked.quote.subscription_id),
+        eq(billingSubscriptions.organization_id, input.organizationId),
+        isNull(billingSubscriptions.billing_scope_id),
+      ),
+    )
+    .for("update");
+  const [projection] = await tx
+    .select()
+    .from(organizationEntitlements)
+    .where(
+      and(
+        eq(organizationEntitlements.organization_id, input.organizationId),
+        isNull(organizationEntitlements.billing_scope_id),
+      ),
+    )
+    .for("update");
+  if (
+    !source ||
+    source.lifecycle_revision !== locked.quote.subscription_revision ||
+    !projection ||
+    projection.source_subscription_id !== source.id ||
+    projection.source_subscription_revision !== source.lifecycle_revision ||
+    settlementDigest({ source, organizationCustomerId: org.customer }) !==
+      locked.quote.source_digest
+  )
+    reject("original_source_or_projection_changed");
+  const now = await readPostLockDatabaseNow(tx);
+  assertLease(
+    input,
+    locked,
+    {
+      commandId: input.commandId,
+      leaseToken: input.leaseToken,
+      generation: input.executionGeneration,
+    },
+    now,
+  );
+  const requestFor = (effect: typeof create) => ({
+    request: effect.request_payload,
+    providerIdempotencyKey: effect.provider_idempotency_key,
+    customerId: effect.customer_id,
+    subscriptionId: effect.subscription_id,
+    livemode: effect.livemode,
+    startedAt: effect.started_at!,
+  });
+  const verified = proveReviewedOrganizationScheduleConfiguration({
+    source,
+    review: locked.quote.review,
+    providerBinding: locked.binding,
+    originalTerms: locked.retained.snapshot,
+    originalCreate: {
+      originalReceipt: create.receipt,
+      originalRequest: requestFor(create),
+      evidence: input.createEvidence,
+      observedAt: now,
+    },
+    originalConfiguration: {
+      originalReceipt: configured.receipt,
+      originalRequest: requestFor(configured),
+      evidence: input.configurationEvidence,
+      observedAt: now,
+    },
+    rawCurrentSchedule: input.rawCurrentSchedule,
+    rawSubscription: input.rawSubscription,
+    rawCustomer: input.rawCustomer,
+  });
+  if (
+    verified.retainedTermsDigest !== locked.retained.snapshot_digest ||
+    verified.reviewDigest !== locked.quote.review_digest
+  )
+    reject("original_review_or_terms_changed");
+  const proof = {
+    kind: "original_schedule_configured" as const,
+    ...verified,
+    quoteId: locked.quote.id,
+    sourceDigest: locked.quote.source_digest,
+    createEffectId: create.id,
+    configurationEffectId: configured.id,
+    createReceiptDigest: create.receipt_digest!,
+    configurationReceiptDigest: configured.receipt_digest!,
+    observedAt: now.toISOString(),
+  };
+  return { source, projection, command: locked.command, proof };
 }
