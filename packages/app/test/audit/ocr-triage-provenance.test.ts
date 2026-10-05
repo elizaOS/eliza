@@ -796,8 +796,10 @@ describe("measured-control OCR recovery through the real CLI", () => {
     const rescued = run(row);
     expect(rescued.status).toBe(0);
     expect(rescued.report.entries[0].ocrVerdict).toBe("verified");
-    expect(rescued.report.entries[0].positiveSegments).toContain(
-      "Connect in Settings",
+    // The crop may also recognize button edges as noise. Require the complete
+    // label in one trusted segment without requiring a noise-free transcript.
+    expect(rescued.report.entries[0].positiveSegments).toEqual(
+      expect.arrayContaining([expect.stringContaining("Connect in Settings")]),
     );
   });
 
