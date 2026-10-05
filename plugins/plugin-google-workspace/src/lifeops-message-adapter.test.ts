@@ -237,6 +237,17 @@ describe("GoogleGmailAdapter", () => {
     const recent = await adapter.searchMessages(runtime, { sinceMs: 7_500, limit: 5 });
     expect(recent.map((message) => message.externalId).sort()).toEqual(["sent_2", "sent_3"]);
     expect(listCalls.at(-1)?.q).toBe("in:anywhere after:7");
+
+    const wholeSecondBoundary = await adapter.searchMessages(runtime, {
+      sinceMs: 7_000,
+      limit: 5,
+    });
+    expect(wholeSecondBoundary.map((message) => message.externalId).sort()).toEqual([
+      "sent_1",
+      "sent_2",
+      "sent_3",
+    ]);
+    expect(listCalls.at(-1)?.q).toBe("in:anywhere after:6");
   });
   it.each(["byte", "line", "fragment"] as const)(
     "returns complete %s content with no implicit limit",

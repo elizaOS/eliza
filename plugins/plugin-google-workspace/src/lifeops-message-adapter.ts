@@ -225,11 +225,12 @@ async function searchGmailChannels(
   return sortGmailMessages(newest);
 }
 
-// Gmail's `after:` accepts epoch seconds. Flooring keeps every message at or
-// after sinceMs; cacheAndFilter still applies the exact millisecond bound.
+// Gmail's `after:` accepts epoch seconds and is exclusive. Step back to the
+// preceding whole second so the provider returns every message at sinceMs;
+// cacheAndFilter still applies the exact millisecond bound.
 function pushSinceToken(tokens: string[], sinceMs: number | undefined): void {
-  if (sinceMs !== undefined) {
-    tokens.push(`after:${Math.floor(sinceMs / 1000)}`);
+  if (sinceMs !== undefined && sinceMs > 0) {
+    tokens.push(`after:${Math.floor((sinceMs - 1) / 1000)}`);
   }
 }
 
