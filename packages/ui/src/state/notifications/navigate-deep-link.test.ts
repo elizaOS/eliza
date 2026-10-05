@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { listenForNavigateViewRequests } from "../../events";
+import {
+  CHAT_PREFILL_EVENT,
+  type ChatPrefillEventDetail,
+  listenForNavigateViewRequests,
+} from "../../events";
 import { navigateDeepLink } from "./navigate-deep-link";
 
 const target = {
@@ -135,4 +139,34 @@ it("retains the validated canonical notification ID through push metadata admiss
     navigateDeepLink("/chat", { ...target, notificationId }),
   ).resolves.toBe(true);
   stop();
+});
+
+it("strips the URL fragment before reading the chat prefill query", () => {
+  const seen: string[] = [];
+  const onPrefill = (event: Event) => {
+    seen.push((event as CustomEvent<ChatPrefillEventDetail>).detail.text);
+  };
+  window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
+  try {
+    navigateDeepLink("/chat?prefill=hi#frag");
+    expect(seen).toEqual(["hi"]);
+  } finally {
+    window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
+  }
+});
+
+it("ignores a prefill query hidden inside the URL fragment", () => {
+  const seen: string[] = [];
+  const onPrefill = (event: Event) => {
+    seen.push((event as CustomEvent<ChatPrefillEventDetail>).detail.text);
+  };
+  window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
+  const stop = listenForNavigateViewRequests(() => true);
+  try {
+    navigateDeepLink("/chat#frag?prefill=evil");
+    expect(seen).toEqual([]);
+  } finally {
+    window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
+    stop();
+  }
 });
