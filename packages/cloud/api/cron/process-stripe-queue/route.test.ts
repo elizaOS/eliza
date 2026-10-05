@@ -14,6 +14,15 @@ mock.module(
   "@elizaos/cloud-shared/lib/services/organization-schedule-maintenance",
   () => ({ recoverOrganizationSchedules: schedules }),
 );
+const originalInvoices = mock(async () => ({
+  status: "ok",
+  attempts: [],
+  deferredByBudget: 0,
+}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/original-invoice-maintenance",
+  () => ({ recoverOriginalInvoiceObservations: originalInvoices }),
+);
 const adjustments = mock(async () => ({ status: "ok", attempts: [] }));
 mock.module(
   "@elizaos/cloud-shared/lib/services/renewal-adjustment-maintenance",
@@ -62,6 +71,12 @@ mock.module("@/api-queue/stripe-event", () => ({
 }));
 const { default: app } = await import("./route");
 beforeEach(() => {
+  originalInvoices.mockReset();
+  originalInvoices.mockImplementation(async () => ({
+    status: "ok",
+    attempts: [],
+    deferredByBudget: 0,
+  }));
   adjustments.mockReset();
   adjustments.mockImplementation(async () => ({ status: "ok", attempts: [] }));
   upgrades.mockReset();
@@ -81,6 +96,7 @@ test("cron authentication precedes every recovery lane", async () => {
   const response = await app.request("http://localhost/", { method: "POST" });
   expect(response.status).toBe(401);
   expect(upgrades).not.toHaveBeenCalled();
+  expect(originalInvoices).not.toHaveBeenCalled();
   expect(cancellations).not.toHaveBeenCalled();
   expect(schedules).not.toHaveBeenCalled();
 });
@@ -93,6 +109,7 @@ test("authenticated maintenance includes the upgrade recovery result", async () 
   expect(await response.json()).toMatchObject({
     success: true,
     upgrades: { applied: 1 },
+    originalInvoices: { status: "ok", attempts: [], deferredByBudget: 0 },
   });
   expect(upgrades).toHaveBeenCalledWith(5);
   expect(schedules).toHaveBeenCalledWith(5);
@@ -144,4 +161,20 @@ test("unauthenticated requests never start adjustment recovery", async () => {
   const response = await app.request("http://localhost/", { method: "POST" });
   expect(response.status).toBe(401);
   expect(adjustments).not.toHaveBeenCalled();
+});
+
+test("original invoice infrastructure failure remains visible while independent lanes execute", async () => {
+  originalInvoices.mockImplementation(async () => {
+    throw Error("invoice journal unavailable");
+  });
+  const response = await app.request("http://localhost/", {
+    method: "POST",
+    headers: { authorization: "Bearer test-cron" },
+  });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    failedLanes: ["originalInvoices"],
+  });
+  expect(adjustments).toHaveBeenCalledTimes(1);
+  expect(upgrades).toHaveBeenCalledTimes(1);
 });
