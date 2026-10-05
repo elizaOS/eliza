@@ -1304,6 +1304,12 @@ export { isSafeNavigationUrl } from "./utils/navigation-url.js";
 export { openExternalUrl } from "./utils/openExternalUrl.js";
 export { reportRendererDiagnostic } from "./utils/renderer-diagnostics.js";
 export { isTransientOptionalFetchFailure } from "./utils/transient-fetch.js";
+export {
+  formatMinorCurrency,
+  isIsoCalendarDate,
+  isOrderedIsoDateRange,
+  type MinorCurrencyValue,
+} from "./utils/value-formatting";
 export { recoverMissedCurrentView } from "./view-action-handoff.js";
 export {
   loadAppWindowRenderer,
