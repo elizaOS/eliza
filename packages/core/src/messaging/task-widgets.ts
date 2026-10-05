@@ -102,3 +102,38 @@ export function validateTaskChoiceWidget(
 		seen.add(option.value);
 	}
 }
+
+/** Admit a reply's widgets for the task/epoch that requested it. This is a
+ * presentation boundary, not execution authority. Hosts choose the count limit. */
+export function admitTaskChoiceResponse(
+	value: unknown,
+	task: { taskId: string; epoch: number } | undefined,
+	maxWidgets: number,
+): TaskChoiceWidget[] {
+	const values = value ?? [];
+	if (
+		!Number.isSafeInteger(maxWidgets) ||
+		maxWidgets < 0 ||
+		!Array.isArray(values) ||
+		values.length > maxWidgets
+	)
+		throw new ElizaError("Invalid task choice response", {
+			code: "TASK_CHOICES_INVALID",
+		});
+	let detached: unknown[];
+	try {
+		detached = structuredClone(values);
+	} catch {
+		throw new ElizaError("Invalid task choice response", {
+			code: "TASK_CHOICES_INVALID",
+		});
+	}
+	return detached.map((widget) => {
+		validateTaskChoiceWidget(widget);
+		if (!task || widget.taskId !== task.taskId || widget.epoch !== task.epoch)
+			throw new ElizaError("Task choice response does not match its request", {
+				code: "TASK_CHOICES_MISMATCH",
+			});
+		return widget;
+	});
+}
