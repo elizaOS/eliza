@@ -2,6 +2,7 @@
  * A preview is not a price lock, mutation authorization, invoice or payment receipt.
  */
 import { createHash } from "node:crypto";
+import type Stripe from "stripe";
 import { z } from "zod";
 import {
   type PrepareCancellationInput,
@@ -9,6 +10,11 @@ import {
 } from "../../db/repositories/subscription-cancellation";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 import { requireStripe } from "../stripe";
+import {
+  type ConfiguredCancellationAuthority,
+  configuredCancellationRequest,
+  observeConfiguredCancellation,
+} from "./configured-schedule-cancellation";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   cancellationReobserve,
@@ -184,6 +190,7 @@ export async function readOrganizationSubscriptionRenewalReview(
 export async function previewSubscriptionRenewalTerms(captured: {
   source: BillingSubscription;
   organizationCustomerId: string | null;
+  configuredCancellation?: ConfiguredCancellationAuthority | null;
 }): Promise<SubscriptionRenewalReview> {
   const stripe = requireStripe();
   const { environment } = await retrieveSubscriptionLifecycleBinding(captured.source, stripe);
@@ -191,19 +198,43 @@ export async function previewSubscriptionRenewalTerms(captured: {
   const customer = await stripe.customers.retrieve(captured.source.stripe_customer_id);
   validateCancellationCustomer({ ...captured, environment, raw: customer });
   const raw = await stripe.subscriptions.retrieve(captured.source.stripe_subscription_id);
-  validatePeriodEndCancellationObservation({
-    ...captured,
-    environment,
-    raw,
-    observedAt: startedAt,
-    requireScheduled: true,
-  });
-  const preview = await stripe.invoices.createPreview({
-    customer: captured.source.stripe_customer_id,
-    subscription: captured.source.stripe_subscription_id,
-    preview_mode: "next",
-    subscription_details: { cancel_at_period_end: false, proration_behavior: "none" },
-  });
+  if (captured.configuredCancellation) {
+    const observed = observeConfiguredCancellation({
+      authority: captured.configuredCancellation,
+      source: captured.source,
+      rawSubscription: raw,
+      rawSchedule: await stripe.subscriptionSchedules.retrieve(
+        captured.configuredCancellation.scheduleId,
+      ),
+      observedAt: startedAt,
+    });
+    if (!observed.scheduled) cancellationReobserve("configured_cancellation_not_scheduled");
+  } else
+    validatePeriodEndCancellationObservation({
+      ...captured,
+      environment,
+      raw,
+      observedAt: startedAt,
+      requireScheduled: true,
+    });
+  const preview = await stripe.invoices.createPreview(
+    captured.configuredCancellation
+      ? {
+          customer: captured.source.stripe_customer_id,
+          schedule: captured.configuredCancellation.scheduleId,
+          preview_mode: "next",
+          schedule_details: configuredCancellationRequest(
+            captured.configuredCancellation,
+            false,
+          ) as unknown as Stripe.InvoiceCreatePreviewParams.ScheduleDetails,
+        }
+      : {
+          customer: captured.source.stripe_customer_id,
+          subscription: captured.source.stripe_subscription_id,
+          preview_mode: "next",
+          subscription_details: { cancel_at_period_end: false, proration_behavior: "none" },
+        },
+  );
   return projectSubscriptionRenewalReview({
     source: captured.source,
     raw: preview,

@@ -5,7 +5,8 @@ import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type Stripe from "stripe";
 import { z } from "zod";
-import { dbWrite } from "../../db/helpers";
+import { dbWrite, writeTransaction } from "../../db/helpers";
+import { readConfiguredCancellationAuthority } from "../../db/repositories/configured-schedule-cancellation-authority";
 import { subscriptionBillingOperationsRepository as operations } from "../../db/repositories/subscription-billing-operations";
 import { SCHEDULED_CANCELLATION_DISPOSITION } from "../../db/repositories/subscription-cancellation-event-finalization";
 import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
@@ -22,6 +23,7 @@ import { billingSubscriptionCommands } from "../../db/schemas/subscription-billi
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
+import { observeConfiguredCancellation } from "./configured-schedule-cancellation";
 import {
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
@@ -272,16 +274,32 @@ export async function reconcileStripeScheduledCancellationLifecycle(
       organizationCustomerId: organization.customer,
       environment,
     });
-    validatePeriodEndCancellationObservation({
-      source,
-      organizationCustomerId: organization.customer,
-      environment,
-      raw,
-      observedAt: new Date(),
-      requireScheduled: command.kind === "cancel",
-      allowRetainedCanceledAt: source.canceled_at,
-    });
+    const authority = await writeTransaction((tx) =>
+      readConfiguredCancellationAuthority(tx, source),
+    );
+    const rawSchedule = authority
+      ? await stripe.subscriptionSchedules.retrieve(authority.scheduleId)
+      : undefined;
+    if (authority)
+      observeConfiguredCancellation({
+        authority,
+        source,
+        rawSubscription: raw,
+        rawSchedule,
+        observedAt: new Date(),
+      });
+    else
+      validatePeriodEndCancellationObservation({
+        source,
+        organizationCustomerId: organization.customer,
+        environment,
+        raw,
+        observedAt: new Date(),
+        requireScheduled: command.kind === "cancel",
+        allowRetainedCanceledAt: source.canceled_at,
+      });
     await operations.finalizeCancellationEvent({
+      rawSchedule,
       providerAccountId,
       ...lease,
       commandId: command.id,

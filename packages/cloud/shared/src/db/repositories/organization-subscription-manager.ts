@@ -81,6 +81,7 @@ export async function lockCurrentOrganizationSubscription(
   input: OrganizationSubscriptionSourceInput,
   locked: Awaited<ReturnType<typeof lockOrganizationSubscriptionManager>>,
   reject: RejectOrganizationSubscription,
+  pendingPolicy?: "configured_cancellation",
 ) {
   if (
     !locked.association ||
@@ -107,7 +108,7 @@ export async function lockCurrentOrganizationSubscription(
     source.current_period_end === null ||
     source.current_period_end <= locked.now ||
     source.ended_at !== null ||
-    source.pending_plan_key !== null ||
+    (source.pending_plan_key !== null && pendingPolicy !== "configured_cancellation") ||
     source.dunning_started_at !== null ||
     source.grace_expires_at !== null ||
     locked.organization.customer === null ||

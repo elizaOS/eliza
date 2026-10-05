@@ -22,6 +22,10 @@ import type { BillingSubscriptionCommand } from "../../db/schemas/subscription-b
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
 import {
+  configuredCancellationRequest,
+  observeConfiguredCancellation,
+} from "./configured-schedule-cancellation";
+import {
   cancellationReobserve,
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
@@ -97,15 +101,26 @@ async function executeClaim(
     }
     await verifyCustomer();
     let raw = await stripe.subscriptions.retrieve(claim.source.stripe_subscription_id);
-    const initial = validatePeriodEndCancellationObservation({
-      source: claim.source,
-      organizationCustomerId: claim.organizationCustomerId,
-      environment,
-      raw,
-      observedAt: new Date(),
-      requireScheduled: false,
-      allowRetainedCanceledAt: claim.source.canceled_at,
-    });
+    let rawSchedule = claim.configuredCancellation
+      ? await stripe.subscriptionSchedules.retrieve(claim.configuredCancellation.scheduleId)
+      : undefined;
+    const initial = claim.configuredCancellation
+      ? observeConfiguredCancellation({
+          authority: claim.configuredCancellation,
+          source: claim.source,
+          rawSubscription: raw,
+          rawSchedule,
+          observedAt: new Date(),
+        })
+      : validatePeriodEndCancellationObservation({
+          source: claim.source,
+          organizationCustomerId: claim.organizationCustomerId,
+          environment,
+          raw,
+          observedAt: new Date(),
+          requireScheduled: false,
+          allowRetainedCanceledAt: claim.source.canceled_at,
+        });
     if (
       renewalReview !== null &&
       claim.canDispatch &&
@@ -113,6 +128,17 @@ async function executeClaim(
     )
       cancellationReobserve("reviewed_undo_requires_fresh_interactive_dispatch");
     if (initial.scheduled !== targetScheduled && claim.canDispatch && revalidateSession !== null) {
+      if (
+        claim.configuredCancellation &&
+        "mode" in initial &&
+        initial.mode !==
+          (claim.configuredCancellation.originalPending
+            ? "pending"
+            : claim.source.cancel_at_period_end
+              ? "cancelled"
+              : "resumed")
+      )
+        cancellationReobserve("configured_schedule_preflight_mismatch");
       if (
         initial.scheduled !== claim.source.cancel_at_period_end ||
         initial.canceledAt?.getTime() !== claim.source.canceled_at?.getTime()
@@ -133,11 +159,21 @@ async function executeClaim(
       await assertCancellationClaimCurrent(input, claim, true);
       // Stripe has no local lifecycle-revision CAS. A concurrent remote period/plan change
       // is detected by the final retrieval and prevents local publication, even after an accepted mutation.
-      await stripe.subscriptions.update(
-        claim.source.stripe_subscription_id,
-        { cancel_at_period_end: targetScheduled },
-        { idempotencyKey: claim.command.provider_idempotency_key },
-      );
+      if (claim.configuredCancellation) {
+        await stripe.subscriptionSchedules.update(
+          claim.configuredCancellation.scheduleId,
+          configuredCancellationRequest(claim.configuredCancellation, targetScheduled),
+          { idempotencyKey: claim.command.provider_idempotency_key },
+        );
+        rawSchedule = await stripe.subscriptionSchedules.retrieve(
+          claim.configuredCancellation.scheduleId,
+        );
+      } else
+        await stripe.subscriptions.update(
+          claim.source.stripe_subscription_id,
+          { cancel_at_period_end: targetScheduled },
+          { idempotencyKey: claim.command.provider_idempotency_key },
+        );
       raw = await stripe.subscriptions.retrieve(claim.source.stripe_subscription_id);
     } else if (initial.scheduled !== targetScheduled) {
       await releaseCancellation(input, claim);
@@ -145,7 +181,7 @@ async function executeClaim(
     }
     await verifyCustomer();
     await verifySession();
-    return toDto(await finalizeCancellation(input, claim, raw, providerAccountId));
+    return toDto(await finalizeCancellation(input, claim, raw, providerAccountId, rawSchedule));
   } catch (error) {
     // Only a still-ready lease can prove no provider dispatch began. Started attempts retain uncertainty.
     if (renewalReview !== null && (await failReviewedCancellationBeforeDispatch(input, claim))) {
