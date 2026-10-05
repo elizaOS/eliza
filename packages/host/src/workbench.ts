@@ -1,41 +1,25 @@
-/**
- * Workbench task/todo normalization helpers.
- *
- * Used exclusively by workbench-routes.ts to transform elizaOS Task records
- * into the WorkbenchTaskView / WorkbenchTodoView shapes consumed by the
- * dashboard UI.
- */
-
+/** Pure workbench projections shared by agent hosts and workflow routes. */
+import type { WorkbenchTask, WorkbenchTodo } from "@elizaos/contracts";
 import type { Task } from "@elizaos/core";
-import { readTriggerConfig } from "../triggers/runtime.ts";
-import type { WorkbenchTodoView } from "./workbench-context.ts";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
 
 export const WORKBENCH_TODO_TAG = "workbench-todo";
-export const WORKBENCH_TASK_TAG = "workbench-task";
+const WORKBENCH_TASK_TAG = "workbench-task";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface WorkbenchTaskView {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  isCompleted: boolean;
-  updatedAt?: number;
+function hasTaskTrigger(task: Task): boolean {
+  return Boolean(asObject(readTaskMetadata(task).trigger)?.triggerId);
 }
 
-export function asObject(value: unknown): Record<string, unknown> | null {
+export function readWorkbenchTodoMetadata(task: Task): Record<string, unknown> {
+  const metadata = readTaskMetadata(task);
+  return asObject(metadata.workbenchTodo) ?? asObject(metadata.todo) ?? {};
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
 }
 
-export function normalizeStringArray(value: unknown): string[] {
+export function normalizeWorkbenchTags(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is string => typeof item === "string")
@@ -43,7 +27,7 @@ export function normalizeStringArray(value: unknown): string[] {
     .filter((item) => item.length > 0);
 }
 
-export function normalizeTimestamp(value: unknown): number | undefined {
+function normalizeTimestamp(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value instanceof Date) return value.getTime();
   if (typeof value === "string") {
@@ -55,7 +39,7 @@ export function normalizeTimestamp(value: unknown): number | undefined {
   return undefined;
 }
 
-export function parseNullableNumber(value: unknown): number | null {
+export function parseWorkbenchTodoPriority(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -69,7 +53,7 @@ export function readTaskMetadata(task: Task): Record<string, unknown> {
   return asObject(task.metadata) ?? {};
 }
 
-export function normalizeTaskId(task: Task): string | null {
+function normalizeTaskId(task: Task): string | null {
   return typeof task.id === "string" && task.id.trim().length > 0
     ? task.id
     : null;
@@ -78,17 +62,12 @@ export function normalizeTaskId(task: Task): string | null {
 export function readTaskCompleted(task: Task): boolean {
   const metadata = readTaskMetadata(task);
   if (typeof metadata.isCompleted === "boolean") return metadata.isCompleted;
-  const todoMeta =
-    asObject(metadata.workbenchTodo) ?? asObject(metadata.todo) ?? null;
-  if (todoMeta && typeof todoMeta.isCompleted === "boolean") {
-    return todoMeta.isCompleted;
-  }
-  return false;
+  return readWorkbenchTodoMetadata(task).isCompleted === true;
 }
 
 export function isWorkbenchTodoTask(task: Task): boolean {
-  if (readTriggerConfig(task)) return false;
-  const tags = new Set(normalizeStringArray(task.tags));
+  if (hasTaskTrigger(task)) return false;
+  const tags = new Set(normalizeWorkbenchTags(task.tags));
   if (tags.has(WORKBENCH_TODO_TAG) || tags.has("todo")) return true;
   const metadata = readTaskMetadata(task);
   return (
@@ -97,13 +76,11 @@ export function isWorkbenchTodoTask(task: Task): boolean {
   );
 }
 
-export function toWorkbenchTodo(task: Task): WorkbenchTodoView | null {
+export function toWorkbenchTodo(task: Task): WorkbenchTodo | null {
   if (!isWorkbenchTodoTask(task)) return null;
   const id = normalizeTaskId(task);
   if (!id) return null;
-  const metadata = readTaskMetadata(task);
-  const todoMeta =
-    asObject(metadata.workbenchTodo) ?? asObject(metadata.todo) ?? {};
+  const todoMeta = readWorkbenchTodoMetadata(task);
   return {
     id,
     name:
@@ -116,14 +93,14 @@ export function toWorkbenchTodo(task: Task): WorkbenchTodoView | null {
         : typeof task.description === "string"
           ? task.description
           : "",
-    priority: parseNullableNumber(todoMeta.priority),
+    priority: parseWorkbenchTodoPriority(todoMeta.priority),
     isUrgent: todoMeta.isUrgent === true,
     isCompleted: readTaskCompleted(task),
     type:
       typeof todoMeta.type === "string" && todoMeta.type.trim().length > 0
         ? todoMeta.type
         : "task",
-    tags: normalizeStringArray(task.tags),
+    tags: normalizeWorkbenchTags(task.tags),
     createdAt: task.createdAt
       ? new Date(Number(task.createdAt)).toISOString()
       : null,
@@ -133,10 +110,10 @@ export function toWorkbenchTodo(task: Task): WorkbenchTodoView | null {
   };
 }
 
-export function toWorkbenchTask(task: Task): WorkbenchTaskView | null {
-  const tags = normalizeStringArray(task.tags);
+export function toWorkbenchTask(task: Task): WorkbenchTask | null {
+  const tags = normalizeWorkbenchTags(task.tags);
   if (!tags.includes(WORKBENCH_TASK_TAG)) return null;
-  if (readTriggerConfig(task) || isWorkbenchTodoTask(task)) return null;
+  if (hasTaskTrigger(task) || isWorkbenchTodoTask(task)) return null;
   const id = normalizeTaskId(task);
   if (!id) return null;
   const metadata = readTaskMetadata(task);
