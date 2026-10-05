@@ -1,54 +1,38 @@
-/**
- * <LoginTenantPicker /> branch coverage.
- *
- * The dropdown menu opens via state (starts closed) so SSR renders the closed
- * trigger for the dropdown variant; the always-visible list variant renders
- * its items directly. We assert:
- *   - returns null when unauthenticated
- *   - returns null when the SDK lacks tenant methods (no listTenants/switchTenant)
- *   - loading state (tenants null + isTenantsLoading)
- *   - empty state (tenants === [])
- *   - list variant renders each membership with name + role
- *   - active membership is marked + disabled
- *   - dropdown variant renders the active tenant name in the trigger
- */
-
 import * as React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, test } from "vitest";
+import { createLoginAuthContext } from "../../test/login-auth-context.js";
 
 const { LoginTenantPicker } = await import("./LoginTenantPicker.js");
 const { LoginAuthContext } = await import("./provider.js");
 
 const TENANTS = [
-  { tenantId: "app-a", tenantName: "Acme App", role: "owner" },
-  { tenantId: "app-b", tenantName: "Beta App", role: "member" },
+  {
+    tenantId: "app-a",
+    tenantName: "Acme App",
+    role: "owner",
+    joinedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    tenantId: "app-b",
+    tenantName: "Beta App",
+    role: "member",
+    joinedAt: "2026-01-02T00:00:00.000Z",
+  },
 ];
 
-function ctx(overrides: Record<string, unknown>): any {
-  return {
-    isAuthenticated: true,
-    isLoading: false,
-    user: { id: "u1", email: "u@x.io" },
-    session: null,
-    providers: null,
-    isProvidersLoading: false,
-    signOut: () => {},
-    getToken: () => null,
-    activeTenantId: null,
-    tenants: null,
-    isTenantsLoading: false,
-    listTenants: async () => [],
-    switchTenant: async () => false,
-    ...overrides,
-  };
+function ctx(overrides: Parameters<typeof createLoginAuthContext>[0] = {}) {
+  return createLoginAuthContext({ isAuthenticated: true, ...overrides });
 }
 
-function render(value: unknown, props: Record<string, unknown> = {}) {
+function render(
+  value: ReturnType<typeof createLoginAuthContext>,
+  props: Record<string, unknown> = {},
+) {
   return renderToString(
     React.createElement(
       LoginAuthContext.Provider,
-      { value: value as React.ContextType<typeof LoginAuthContext> },
+      { value: value },
       React.createElement(LoginTenantPicker, props),
     ),
   );

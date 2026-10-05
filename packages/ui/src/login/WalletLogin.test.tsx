@@ -1,25 +1,7 @@
-/**
- * WalletLogin tests.
- *
- * The main <WalletLogin> shell uses dynamic imports so that @solana/* is
- * never resolved when chains="evm" (and vice versa). That means the shell
- * renders a fallback on first render and the actual panels load async.
- *
- * These tests cover:
- *   1. Shell renders the right column layout per `chains` prop
- *   2. Shell renders a loading placeholder per enabled chain on first render
- *   3. The EVM panel, rendered directly, wires up signInWithSIWE correctly
- *   4. The Solana panel, rendered directly, wires up signInWithSolana correctly
- *   5. Solana panel disables sign button when context.signInWithSolana is missing
- *
- * We avoid @testing-library / jsdom and use React's built-in renderToString.
- */
-
 import * as React from "react";
 import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-
-// ─── Mocks for peer deps ─────────────────────────────────────────────────────
+import { createLoginAuthContext } from "../../test/login-auth-context.js";
 
 let mockEvmConnected = true;
 let mockSolConnected = true;
@@ -92,8 +74,6 @@ vi.doMock("@solana/wallet-adapter-wallets", () => ({
   BackpackWalletAdapter: class {},
 }));
 
-// ─── Imports under test (after mocks are installed) ──────────────────────────
-
 const { WalletLogin } = await import("./WalletLogin.js");
 const WalletLoginEVM = (await import("./WalletLogin.EVM.js")).default;
 const WalletLoginSolana = (await import("./WalletLogin.Solana.js")).default;
@@ -101,48 +81,16 @@ const { LoginAuthContext } = await import("./provider.js");
 
 function wrap(
   children: React.ReactNode,
-  overrides: Partial<{
-    signInWithSIWE: (
-      a: string,
-      s: (m: string) => Promise<string>,
-    ) => Promise<unknown>;
-    signInWithSolana?: (
-      p: string,
-      s: (m: Uint8Array) => Promise<Uint8Array>,
-    ) => Promise<unknown>;
-  }> = {},
+  overrides: Parameters<typeof createLoginAuthContext>[0] = {},
 ) {
-  const value: any = {
-    isAuthenticated: false,
-    isLoading: false,
-    user: null,
-    session: null,
-    providers: null,
-    isProvidersLoading: false,
-    signOut: () => {},
-    getToken: () => null,
-    signInWithPasskey: async () => ({}),
-    signInWithEmail: async () => ({}),
-    verifyEmailCallback: async () => ({}),
-    signInWithSIWE:
-      overrides.signInWithSIWE ?? (async () => ({ token: "evm-token" })),
-    signInWithSolana:
-      "signInWithSolana" in overrides
-        ? overrides.signInWithSolana
-        : async () => ({ token: "sol-token" }),
-    signInWithOAuth: async () => ({}),
-    activeTenantId: null,
-    tenants: null,
-    isTenantsLoading: false,
-    listTenants: async () => [],
-    switchTenant: async () => {},
-    joinTenant: async () => {},
-    leaveTenant: async () => {},
-  };
+  const value = createLoginAuthContext({
+    signInWithSolana: async () => {
+      throw new Error("Unexpected Solana sign-in during server rendering");
+    },
+    ...overrides,
+  });
   return React.createElement(LoginAuthContext.Provider, { value }, children);
 }
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("<WalletLogin /> shell", () => {
   beforeEach(() => {

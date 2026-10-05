@@ -1,34 +1,13 @@
-/** Exercises loading, signed-out and signed-in rendering through the public UI root using the real auth context. */
 import * as React from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, test } from "vitest";
+import { createLoginAuthContext as ctx } from "../../test/login-auth-context.js";
 
 const { LoginAuthGuard } = await import("../index.ts");
 const { LoginAuthContext } = await import("./provider.js");
 
-function ctx(overrides: Record<string, unknown>): any {
-  return {
-    isAuthenticated: false,
-    isLoading: false,
-    user: null,
-    session: null,
-    providers: null,
-    isProvidersLoading: false,
-    signOut: () => {},
-    getToken: () => null,
-    activeTenantId: null,
-    tenants: null,
-    isTenantsLoading: false,
-    ...overrides,
-  };
-}
-
-function wrap(value: unknown, node: React.ReactNode) {
-  return React.createElement(
-    LoginAuthContext.Provider,
-    { value: value as React.ContextType<typeof LoginAuthContext> },
-    node,
-  );
+function wrap(value: ReturnType<typeof ctx>, node: React.ReactNode) {
+  return React.createElement(LoginAuthContext.Provider, { value: value }, node);
 }
 
 const child = React.createElement(
