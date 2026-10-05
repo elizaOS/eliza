@@ -8,12 +8,15 @@
 import fs from "node:fs";
 import http from "node:http";
 import {
+  type AgentAutomationMode,
   type AgentRuntime,
+  type AgentStartupDiagnostics,
   createIntegrationTelemetrySpan,
   ElizaError,
   EventType,
   formatError,
   type IAgentRuntime,
+  type AgentLogEntry as LogEntry,
   logger,
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   NotificationService,
@@ -359,12 +362,8 @@ import {
 } from "./server-lazy-routes.ts";
 import { createServerResources } from "./server-resources.ts";
 import { createServerState } from "./server-state.ts";
-import type {
-  AgentAutomationMode,
-  AgentStartupDiagnostics,
-  LogEntry,
-  ServerState,
-} from "./server-types.ts";
+import type { ServerState } from "./server-types.ts";
+
 import {
   injectApiBaseIntoHtml,
   isAuthProtectedRoute,
@@ -794,14 +793,9 @@ export {
   streamResponseBodyWithByteLimit,
 } from "./server-helpers-fetch.ts";
 export type {
-  AgentStartupDiagnostics,
   ConversationMeta,
-  LogEntry,
   ServerState,
   ShareIngestItem,
-  SkillEntry,
-  StreamEventEnvelope,
-  StreamEventType,
 } from "./server-types.ts";
 
 /**

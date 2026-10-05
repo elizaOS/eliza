@@ -14,6 +14,7 @@ import {
   type AgentRuntime,
   CHAT_UPLOAD_MIME_TYPES,
   type ChannelType,
+  type ChatImageAttachment,
   type Content,
   ContentType,
   createMessageMemory,
@@ -52,10 +53,7 @@ import {
 } from "../services/plugin-manager-types.ts";
 import { writeFileAtomically } from "../utils/atomic-file.ts";
 import { persistImageThumbnail, persistMediaBytes } from "./media-store.ts";
-import type {
-  ChatAttachmentWithData,
-  ChatImageAttachment,
-} from "./server-types.ts";
+import type { ChatAttachmentWithData } from "./server-types.ts";
 
 export {
   BLOCKED_OBJECT_GRAPH_UNBOUNDED,

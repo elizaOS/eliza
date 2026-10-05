@@ -48,6 +48,7 @@ import {
   getInferenceTimer,
   hasAtLeastRole,
   InferenceTurnTimer,
+  type AgentLogEntry as LogEntry,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -132,7 +133,6 @@ import {
   getChatFailureReply,
   getChatMessageIdOutcome,
   isIntentionalNoResponseResult,
-  type LogEntry,
   normalizeAccountConnectRequest,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
@@ -146,6 +146,7 @@ import {
   resolveTrustedApiPrincipal,
   setChatMessageIdOutcome,
 } from "./chat-routes.ts";
+
 import {
   createChatTokenStreamWriter,
   initSse,
