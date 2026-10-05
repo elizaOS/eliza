@@ -265,6 +265,20 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     expect(await allowanceCount(f.source.organization_id)).toBe(1);
     expect(result.status).toBe("ok");
     expect(result.attempts[0]?.disposition).toBe("applied");
+    const retained = (
+      await database.query<{ metadata: Record<string, unknown> }>(
+        "SELECT metadata FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+        [f.source.organization_id],
+      )
+    ).rows[0]!.metadata.renewalInvoiceAuthority as Record<string, unknown>;
+    expect(retained.kind).toBe("renewal_invoice_authority");
+    expect(retained.invoiceId).toBe(f.invoice.id);
+    expect(retained.customerId).toBe(f.source.stripe_customer_id);
+    expect(retained.subscriptionId).toBe(f.source.id);
+    expect(retained.invoiceLineId).toBe(f.invoice.lines.data[0]!.id);
+    expect(retained.digest).toMatch(/^[a-f0-9]{64}$/);
+    expect(retained.grantDigest).toMatch(/^[a-f0-9]{64}$/);
+
     expect(writes).toBe(0);
     const revisions = (
       await database.query<{
@@ -788,9 +802,21 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     expect(writes).toBe(0);
   });
 
-  test("a later invoice-paid delivery reuses the recovered grant", async () => {
+  test("a later invoice-paid delivery preserves append-only original grant evidence", async () => {
     const f = await seed();
     expect((await service.recoverMissedSubscriptionEvents()).status).toBe("ok");
+    await expect(
+      database.query(
+        "UPDATE subscription_allowance_transactions SET metadata='{}'::jsonb WHERE organization_id=$1 AND kind='grant'",
+        [f.source.organization_id],
+      ),
+    ).rejects.toThrow();
+    const originalEvidence = (
+      await database.query<{ metadata: unknown }>(
+        "SELECT metadata FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+        [f.source.organization_id],
+      )
+    ).rows;
     const { reconcileStripePaidRenewal } = await import(
       "../../../lib/services/stripe-paid-renewal"
     );
@@ -823,6 +849,14 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
         )
       ).rows,
     ).toEqual([{ status: "applied", disposition: "paid_renewal_finalized" }]);
+    expect(
+      (
+        await database.query<{ metadata: unknown }>(
+          "SELECT metadata FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+          [f.source.organization_id],
+        )
+      ).rows,
+    ).toEqual(originalEvidence);
     expect(writes).toBe(0);
   });
 

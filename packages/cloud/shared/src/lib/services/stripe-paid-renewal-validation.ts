@@ -9,6 +9,7 @@ import {
   observeScheduledTargetSubscription,
 } from "./organization-schedule-target-observation";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { createRenewalInvoiceAuthority } from "./renewal-invoice-authority";
 import {
   automaticTax,
   discountAmounts,
@@ -424,6 +425,31 @@ export function validatePaidRenewal(
       : input.databaseNow < graceExpiresAt!
         ? "grace"
         : "past_due";
+  const grantDigest = createHash("sha256")
+    .update(
+      JSON.stringify([
+        source.organization_id,
+        source.id,
+        source.provider,
+        source.provider_environment,
+        invoice.id,
+        source.stripe_customer_id,
+        source.stripe_subscription_id,
+        subscriptionItemId,
+        plan.key,
+        source.catalog_version,
+        line.id,
+        line.period.start,
+        line.period.end,
+        plan.allowance.amountUsd,
+        payment?.id ?? null,
+        charge?.id ?? null,
+        plan.amountCents,
+        ...(adjustmentDigest ? [adjustmentDigest] : []),
+        ...(settlementDigest ? [settlementDigest] : []),
+      ]),
+    )
+    .digest("hex");
   return {
     invoiceId: invoice.id,
     planKey: plan.key,
@@ -436,30 +462,31 @@ export function validatePaidRenewal(
     end,
     amount: plan.allowance.amountUsd,
     providerObjectDigest: observed.providerObjectDigest,
-    grantDigest: createHash("sha256")
-      .update(
-        JSON.stringify([
-          source.organization_id,
-          source.id,
-          source.provider,
-          source.provider_environment,
-          invoice.id,
-          source.stripe_customer_id,
-          source.stripe_subscription_id,
-          subscriptionItemId,
-          plan.key,
-          source.catalog_version,
-          line.id,
-          line.period.start,
-          line.period.end,
-          plan.allowance.amountUsd,
-          payment?.id ?? null,
-          charge?.id ?? null,
-          plan.amountCents,
-          ...(adjustmentDigest ? [adjustmentDigest] : []),
-          ...(settlementDigest ? [settlementDigest] : []),
-        ]),
-      )
-      .digest("hex"),
+    grantDigest,
+    invoiceAuthority: createRenewalInvoiceAuthority({
+      kind: "renewal_invoice_authority",
+      version: 1,
+      organizationId: source.organization_id,
+      subscriptionId: source.id,
+      providerAccountId: input.providerAccountId ?? null,
+      invoiceId: invoice.id,
+      customerId: invoice.customer,
+      providerSubscriptionId: invoice.subscription,
+      subscriptionItemId,
+      invoiceLineId: line.id,
+      priceId: line.price.id,
+      productId: line.price.product,
+      livemode: invoice.livemode,
+      currency: invoice.currency,
+      periodStart: line.period.start,
+      periodEnd: line.period.end,
+      invoiceTotal: invoice.total,
+      amountPaid: invoice.amount_paid,
+      paymentIntentId: payment?.id ?? null,
+      chargeId: charge?.id ?? null,
+      adjustmentDigest: adjustmentDigest ?? null,
+      settlementDigest: settlementDigest ?? null,
+      grantDigest,
+    }),
   };
 }
