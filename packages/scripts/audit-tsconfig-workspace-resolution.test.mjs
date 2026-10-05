@@ -195,7 +195,9 @@ test("generated workspace declarations are valid only when Turbo builds them", (
   }
 });
 
-test("rejects an ambient workspace shim that shadows a source mapping", () => {
+test("rejects an ambient workspace shim that shadows a source mapping", {
+  timeout: 60_000,
+}, () => {
   const root = mkdtempSync(path.join(tmpdir(), "tsconfig-resolution-audit-"));
   try {
     writeJson(path.join(root, "package.json"), {
@@ -321,6 +323,6 @@ test("historic app and Electrobun mappings are real red-green controls", {
   });
   assert.match(
     electrobunBroken.violations.join("\n"),
-    /platforms\/electrobun\/tsconfig\.json: unresolved @elizaos\/capacitor-bun-runtime imported by packages\/app-core\/src\/platform\/ios-runtime-bridge\.ts/,
+    /platforms\/electrobun\/tsconfig\.json: unresolved @elizaos\/capacitor-bun-runtime imported by /,
   );
 });

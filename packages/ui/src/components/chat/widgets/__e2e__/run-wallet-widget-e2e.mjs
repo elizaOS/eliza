@@ -272,7 +272,7 @@ try {
   await desktopPage.goto(
     `file://${htmlPath}?surface=wallet-section&state=default`,
   );
-  await desktopPage.waitForSelector('[data-testid="wallet-section-header-inset"]', {
+  await desktopPage.waitForSelector('[data-testid="section-nav-wallet"]', {
     state: "visible",
     timeout: WIDGET_TIMEOUT_MS,
   });
@@ -288,9 +288,15 @@ try {
   );
   assert(
     (await desktopPage
-      .locator('[data-testid="view-header"] h1, [data-testid="view-header"]')
-      .count()) >= 1,
-    "WALLET SECTION surface renders the Wallet view header",
+      .locator('[data-testid="wallet-section-header-inset"]')
+      .count()) === 1,
+    "WALLET SECTION surface keeps the safe-area header inset",
+  );
+  assert(
+    (await desktopPage
+      .locator('[data-testid="view-header"], [data-testid="view-actions"]')
+      .count()) === 0,
+    "WALLET SECTION surface does not repeat a title header row",
   );
   await desktopPage.screenshot({
     path: join(outDir, "wallet-section-desktop.png"),
@@ -313,7 +319,7 @@ try {
   await mobilePage.goto(
     `file://${htmlPath}?surface=wallet-section&state=held`,
   );
-  await mobilePage.waitForSelector('[data-testid="wallet-section-header-inset"]', {
+  await mobilePage.waitForSelector('[data-testid="section-nav-wallet"]', {
     state: "visible",
     timeout: WIDGET_TIMEOUT_MS,
   });

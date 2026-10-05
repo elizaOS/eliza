@@ -139,7 +139,7 @@ describe("real OCR blank-vs-unreadable classification", () => {
     expect(retried.text).toMatch(/Desert Dusk/i);
   }, 90_000);
 
-  it("does not call a populated mobile launcher blank when the first OCR pass is weak", async () => {
+  it("identifies a populated launcher as wrong view content rather than blank when the first OCR pass is weak", async () => {
     const auditDir = join(dir, "launcher-audit");
     const viewportDir = join(auditDir, "mobile-portrait");
     mkdirSync(viewportDir, { recursive: true });
@@ -181,8 +181,11 @@ describe("real OCR blank-vs-unreadable classification", () => {
       true,
     );
     expect(entry.pixelBlank).toBe(false);
-    expect(entry.ocrVerdict).toBe("needs-eyeball");
-    expect(entry.regression).toBe(false);
+    // The historical capture contains the launcher, while this slug now owns
+    // the unavailable-view fallback. Nonblank pixels must not hide that mismatch.
+    expect(entry.ocrVerdict).toBe("broken");
+    expect(entry.regression).toBe(true);
+    expect(entry.reasons.join(" ")).toMatch(/missing expected content/i);
     expect(entry.reasons.join(" ")).not.toMatch(/pixels are blank/i);
   }, 90_000);
 

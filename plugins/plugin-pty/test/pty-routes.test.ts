@@ -5,7 +5,7 @@
  * interactive/vendor enable flags, session-kind validation, and error responses.
  */
 import { fileURLToPath } from "node:url";
-import type { IAgentRuntime } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL, type IAgentRuntime } from "@elizaos/core";
 import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ptyRoutes } from "../routes/pty-routes";
@@ -207,7 +207,9 @@ describe("POST /api/pty/sessions", () => {
     ]);
     expect(h.calls[0].opts.env?.ELIZA_CODE_CODING_ONLY).toBe("1");
     expect(h.calls[0].opts.env?.OPENAI_API_KEY).toBe("sk-cloud");
-    expect(h.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
+    expect(h.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe(
+      DEFAULT_CEREBRAS_TEXT_MODEL,
+    );
   });
 
   it("403 when interactive spawning is disabled", async () => {
@@ -817,7 +819,7 @@ describe("PTY interactive gate + model fallbacks (regression edges)", () => {
     expect(env?.OPENAI_SMALL_MODEL).toBe("fast-only");
     expect(env?.OPENAI_MEDIUM_MODEL).toBe("fast-only");
     // SMART unset → the cerebras default, not the FAST pin.
-    expect(env?.OPENAI_LARGE_MODEL).toBe("gemma-4-31b");
+    expect(env?.OPENAI_LARGE_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
   });
 
   it("applies the SMART tier env fallback without touching the FAST default", async () => {
@@ -833,8 +835,8 @@ describe("PTY interactive gate + model fallbacks (regression edges)", () => {
     expect(res.status).toBe(200);
     const env = h.calls[0].opts.env;
     // FAST unset → the cerebras default, not the SMART pin.
-    expect(env?.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
-    expect(env?.OPENAI_MEDIUM_MODEL).toBe("gemma-4-31b");
+    expect(env?.OPENAI_SMALL_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
+    expect(env?.OPENAI_MEDIUM_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
     expect(env?.OPENAI_LARGE_MODEL).toBe("smart-only");
   });
 });

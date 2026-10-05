@@ -394,6 +394,9 @@ jobs:
       - name: Build view bundles
         run: bun run build:views
 
+      - name: Initialize pinned native sources for provenance checks
+        run: git submodule update --init --depth 1 -- plugins/plugin-local-inference/native/llama.cpp
+
       - name: Run plugin tests
         # Cap step below the 95m job budget so a flaky plugin
         # (most recently shell rust PTY tests in run 25234887145)
@@ -723,6 +726,9 @@ jobs:
 
       - name: App screenshot quality diagnostics coverage
         run: bunx vitest run --config packages/app/vitest.config.ts packages/app/test/screenshot-quality.test.ts
+
+      - name: Build bundled login for real sidecar diagnostics
+        run: bun run --cwd packages/login build
 
       - name: App-core screenshot quality diagnostics coverage
         run: bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts
