@@ -308,7 +308,7 @@ test("observe has no effect and does not require a pending-store read", async ()
   assert.equal(f.results[0].status, "accepted");
   assert.equal(f.submits, 0);
 });
-test("latest outcome admits identifiers, clears failures and suppresses stale/cancelled responses", async () => {
+test("latest outcome admits identifiers, propagates failures and suppresses stale/cancelled responses", async () => {
   const c = new LatestOutcomeController(),
     values = [],
     old = deferred();
@@ -332,11 +332,14 @@ test("latest outcome admits identifiers, clears failures and suppresses stale/ca
       async () => value,
       (id) => values.push(id),
     );
-  await c.refresh(
-    async () => {
-      throw Error("offline");
-    },
-    (id) => values.push(id),
+  await assert.rejects(
+    c.refresh(
+      async () => {
+        throw Error("offline");
+      },
+      (id) => values.push(id),
+    ),
+    /offline/,
   );
   const cancelled = deferred();
   const p = c.refresh(
@@ -346,5 +349,25 @@ test("latest outcome admits identifiers, clears failures and suppresses stale/ca
   c.cancel();
   cancelled.resolve({ outcome: { taskId: "task3" } });
   await p;
-  assert.deepEqual(values, ["task:2", null, null, null, null, null]);
+  assert.deepEqual(values, ["task:2", null, null, null, null]);
+});
+
+test("stale lookup failures cannot clear a newer outcome", async () => {
+  const c = new LatestOutcomeController();
+  const gate = deferred();
+  const values = [];
+  const pending = c.refresh(
+    async () => {
+      await gate.promise;
+      throw Error("old request failed");
+    },
+    (id) => values.push(id),
+  );
+  await c.refresh(
+    async () => ({ outcome: { taskId: "task:latest" } }),
+    (id) => values.push(id),
+  );
+  gate.resolve();
+  await pending;
+  assert.deepEqual(values, ["task:latest"]);
 });
