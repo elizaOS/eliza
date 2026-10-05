@@ -28,7 +28,8 @@
     "bun": {
       "0001-riscv64-c-loop.patch": "8598ed2d311c951cc755b78e8c9ff6e8d9ebf1948538244b6c40c617d9f2f049",
       "0002-guard-disabled-sampling-profiler.patch": "0cc0bc6d9ff1ece075448cbf91146f8a6298d3a1b47cf1920572a82b2161a647",
-      "0003-disable-scalable-rvv-mask-kernels.patch": "255697e35fd6058d92f654ac3e43a3385c7a5cf2df88888bf6ac3342e61e8465"
+      "0003-disable-scalable-rvv-mask-kernels.patch": "255697e35fd6058d92f654ac3e43a3385c7a5cf2df88888bf6ac3342e61e8465",
+      "0004-include-rejection-scope-guard.patch": "45f6243b8212b2cad8b125a0f272a378d523f04cb1e69e8057488082f0f72822"
     },
     "webkit": {
       "0001-riscv64-c-loop.patch": "9c08d4aa82e65b85b3b90280e6d73174f82d1e6710a7e5a5df974dcce68211f5"
