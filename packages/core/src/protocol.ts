@@ -466,13 +466,7 @@ export {
 } from "./utils/action-results.ts";
 export { hasActionContext } from "./utils/action-validation.ts";
 export * from "./utils/assistant-text.js";
-export {
-	type BatchItemOutcome,
-	Semaphore,
-	TaskDrain,
-	type TaskDrainOptions,
-} from "./utils/batch-queue.js";
-
+export type { BatchItemOutcome } from "./utils/batch-queue.js";
 export * from "./utils/boolean";
 export * from "./utils/channel-utils";
 export * from "./utils/character-message-examples.js";
@@ -492,7 +486,6 @@ export {
 } from "./utils/context-routing.ts";
 export * from "./utils/deadline.js";
 export * from "./utils/deterministic.js";
-
 export * from "./utils/duration.js";
 export * from "./utils/env.js";
 export * from "./utils/errors.js";
@@ -506,7 +499,6 @@ export * from "./utils/extraction-evidence";
 export type { SymlinkType } from "./utils/filesystem.js";
 export * from "./utils/format-bytes.js";
 export * from "./utils/format-error.js";
-
 export * from "./utils/html-raw-text";
 export * from "./utils/inflection-term-keys";
 export * from "./utils/json5-model-output.js";
@@ -523,7 +515,6 @@ export {
 	modelProviderErrorDetail,
 	PROVIDER_CONTEXT_OVERFLOW,
 } from "./utils/model-errors";
-
 export * from "./utils/model-retry";
 export * from "./utils/number-parsing.js";
 export * from "./utils/path-component.js";
@@ -541,8 +532,12 @@ export { sleepWithAbort } from "./utils/retry";
 export * from "./utils/safe-diagnostic-error.js";
 export * from "./utils/serialise.js";
 export * from "./utils/streaming";
-
 export * from "./utils/string-boundaries.js";
+export {
+	Semaphore,
+	TaskDrain,
+	type TaskDrainOptions,
+} from "./utils/task-scheduling.js";
 export {
 	MAX_TEXT_NORMALIZE_EDGES,
 	TEXT_NORMALIZE_UNBOUNDED,
