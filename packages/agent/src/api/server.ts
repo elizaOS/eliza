@@ -1393,6 +1393,18 @@ async function applyRuntimeRestart(
     return false;
   }
 }
+// Wallet imports/generation share process environment and the host vault.
+// Keep rollback inside the same ownership interval as durable config loading.
+let walletKeyMutationTail = Promise.resolve();
+async function acquireWalletKeyMutation(): Promise<() => void> {
+  const previous = walletKeyMutationTail;
+  let release!: () => void;
+  walletKeyMutationTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  return release;
+}
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -2584,123 +2596,132 @@ async function handleRequestForViewClient(
       setSolanaWalletEnv,
       validatePrivateKey,
     } = await getCoreWalletApi();
-    const durableWalletConfig = loadElizaConfig();
-    const walletUsesCloudNetwork =
-      method === "GET" || pathname === "/api/wallet/refresh-cloud";
-    const walletAuthorityView = walletUsesCloudNetwork
-      ? createDevCloudConfigAuthorityView(durableWalletConfig)
-      : durableWalletConfig;
-    const walletConfig =
-      materializeDevCloudConfigAuthorityView(walletAuthorityView);
-    const saveWalletConfig = (nextConfig: ElizaConfig): void => {
-      const persistable = mergeDevCloudConfigAuthorityMutation(
-        durableWalletConfig,
-        walletAuthorityView,
-        nextConfig,
-      );
-      saveElizaConfig(persistable);
-    };
-    if (
-      await handleWalletRoutes({
-        req,
-        res,
-        method,
-        pathname,
-        config: walletConfig,
-        saveConfig: saveWalletConfig,
-        ensureWalletKeysInEnvAndConfig,
-        resolveWalletExportRejection,
-        restartRuntime,
-        scheduleRuntimeRestart,
-        readJsonBody,
-        json,
-        error,
-        deps: {
-          fetchEvmBalances,
-          fetchSolanaBalances,
-          fetchSolanaNativeBalanceViaRpc,
-          getWalletAddresses: () =>
-            getCoreWalletAddresses(state.runtime?.agentId),
-          validatePrivateKey,
-          importWallet,
-          generateWalletForChain,
-          deriveSolanaAddress,
-          setSolanaWalletEnv,
-          resolveWalletRpcReadiness,
-          resolveWalletNetworkMode,
-          getStoredWalletRpcSelections,
-          applyWalletRpcConfigUpdate,
-          resolveWalletCapabilityStatus: (args) => ({
-            ...resolveWalletCapabilityStatus({
-              config: args.config,
-              runtime: args.runtime,
-              getWalletAddresses: () =>
-                getCoreWalletAddresses(args.runtime?.agentId),
+    const releaseWalletKeys =
+      method === "POST" &&
+      (pathname === "/api/wallet/import" || pathname === "/api/wallet/generate")
+        ? await acquireWalletKeyMutation()
+        : undefined;
+    try {
+      const durableWalletConfig = loadElizaConfig();
+      const walletUsesCloudNetwork =
+        method === "GET" || pathname === "/api/wallet/refresh-cloud";
+      const walletAuthorityView = walletUsesCloudNetwork
+        ? createDevCloudConfigAuthorityView(durableWalletConfig)
+        : durableWalletConfig;
+      const walletConfig =
+        materializeDevCloudConfigAuthorityView(walletAuthorityView);
+      const saveWalletConfig = (nextConfig: ElizaConfig): void => {
+        const persistable = mergeDevCloudConfigAuthorityMutation(
+          durableWalletConfig,
+          walletAuthorityView,
+          nextConfig,
+        );
+        saveElizaConfig(persistable);
+      };
+      if (
+        await handleWalletRoutes({
+          req,
+          res,
+          method,
+          pathname,
+          config: walletConfig,
+          saveConfig: saveWalletConfig,
+          ensureWalletKeysInEnvAndConfig,
+          resolveWalletExportRejection,
+          restartRuntime,
+          scheduleRuntimeRestart,
+          readJsonBody,
+          json,
+          error,
+          deps: {
+            fetchEvmBalances,
+            fetchSolanaBalances,
+            fetchSolanaNativeBalanceViaRpc,
+            getWalletAddresses: () =>
+              getCoreWalletAddresses(state.runtime?.agentId),
+            validatePrivateKey,
+            importWallet,
+            generateWalletForChain,
+            deriveSolanaAddress,
+            setSolanaWalletEnv,
+            resolveWalletRpcReadiness,
+            resolveWalletNetworkMode,
+            getStoredWalletRpcSelections,
+            applyWalletRpcConfigUpdate,
+            resolveWalletCapabilityStatus: (args) => ({
+              ...resolveWalletCapabilityStatus({
+                config: args.config,
+                runtime: args.runtime,
+                getWalletAddresses: () =>
+                  getCoreWalletAddresses(args.runtime?.agentId),
+              }),
             }),
-          }),
-          isCloudWalletEnabled,
-          persistConfigEnv,
-          persistWalletPrivateKeys: async (config, keys) => {
-            // saveElizaConfig strips wallet keys from disk in OS-store mode;
-            // boot hydration then reads them back from the host vault.
-            if (!isWalletOsStoreEnabledInConfig(config)) return;
-            const entries = Object.entries(keys);
-            if (!hasDurableHostVault()) {
-              throw new ElizaError(
-                `${entries.map(([key]) => key).join(", ")} cannot be stored: ELIZA_WALLET_OS_STORE keeps wallet keys out of config and this host has no durable vault`,
-                { code: "WALLET_KEY_STORE_UNAVAILABLE" },
-              );
-            }
-            const empty = entries.find(([, value]) => !value?.trim());
-            if (empty) {
-              throw new ElizaError(`${empty[0]} is empty`, {
-                code: "WALLET_KEY_EMPTY",
-              });
-            }
-            const vault = getAgentHostBridge().sharedVault();
-            const options = { sensitive: true, caller: "wallet-routes" };
-            const previous: Array<[string, string | null]> = [];
-            for (const [key] of entries) {
-              previous.push([
-                key,
-                (await vault.has(key))
-                  ? await vault.reveal(key, "wallet-routes")
-                  : null,
-              ]);
-            }
-            try {
-              for (const [key, value] of entries) {
-                await vault.set(key, value as string, options);
-              }
-            } catch (err) {
-              const rollbackFailures: unknown[] = [];
-              for (const [key, value] of previous) {
-                try {
-                  if (value === null) await vault.remove(key);
-                  else await vault.set(key, value, options);
-                } catch (rollbackError) {
-                  rollbackFailures.push(rollbackError);
-                }
-              }
-              if (rollbackFailures.length > 0) {
-                throw new AggregateError(
-                  [err, ...rollbackFailures],
-                  "Wallet key store failed and prior vault keys could not be restored",
+            isCloudWalletEnabled,
+            persistConfigEnv,
+            persistWalletPrivateKeys: async (config, keys) => {
+              // saveElizaConfig strips wallet keys from disk in OS-store mode;
+              // boot hydration then reads them back from the host vault.
+              if (!isWalletOsStoreEnabledInConfig(config)) return;
+              const entries = Object.entries(keys);
+              if (!hasDurableHostVault()) {
+                throw new ElizaError(
+                  `${entries.map(([key]) => key).join(", ")} cannot be stored: ELIZA_WALLET_OS_STORE keeps wallet keys out of config and this host has no durable vault`,
+                  { code: "WALLET_KEY_STORE_UNAVAILABLE" },
                 );
               }
-              throw err;
-            }
+              const empty = entries.find(([, value]) => !value?.trim());
+              if (empty) {
+                throw new ElizaError(`${empty[0]} is empty`, {
+                  code: "WALLET_KEY_EMPTY",
+                });
+              }
+              const vault = getAgentHostBridge().sharedVault();
+              const options = { sensitive: true, caller: "wallet-routes" };
+              const previous: Array<[string, string | null]> = [];
+              for (const [key] of entries) {
+                previous.push([
+                  key,
+                  (await vault.has(key))
+                    ? await vault.reveal(key, "wallet-routes")
+                    : null,
+                ]);
+              }
+              try {
+                for (const [key, value] of entries) {
+                  await vault.set(key, value as string, options);
+                }
+              } catch (err) {
+                const rollbackFailures: unknown[] = [];
+                for (const [key, value] of previous) {
+                  try {
+                    if (value === null) await vault.remove(key);
+                    else await vault.set(key, value, options);
+                  } catch (rollbackError) {
+                    rollbackFailures.push(rollbackError);
+                  }
+                }
+                if (rollbackFailures.length > 0) {
+                  throw new AggregateError(
+                    [err, ...rollbackFailures],
+                    "Wallet key store failed and prior vault keys could not be restored",
+                  );
+                }
+                throw err;
+              }
+            },
+            createIntegrationTelemetrySpan: (args) =>
+              createIntegrationTelemetrySpan({
+                boundary: "wallet",
+                operation: args.operation,
+              }),
           },
-          createIntegrationTelemetrySpan: (args) =>
-            createIntegrationTelemetrySpan({
-              boundary: "wallet",
-              operation: args.operation,
-            }),
-        },
-        runtime: state.runtime ?? null,
-      })
-    ) {
-      return;
+          runtime: state.runtime ?? null,
+        })
+      ) {
+        return;
+      }
+    } finally {
+      releaseWalletKeys?.();
     }
   }
   // ═══════════════════════════════════════════════════════════════════════
