@@ -322,4 +322,6 @@ Consumer APK audits can import `parseXmlTree` and `manifestFacts` from
 and badging output without invoking an SDK or reading files. They report explicit
 manifest declarations, not Android's effective permission/export defaults or a
 release verdict. Missing application attributes remain null; hosts own component
-allowlists, expected package identity and release policy.
+allowlists, expected package identity and release policy. `parseXmlTree` accepts
+a `decodeAttribute` option for callers such as Play-policy inspection that need
+normalized values instead of the default raw strings and hexadecimal integers.

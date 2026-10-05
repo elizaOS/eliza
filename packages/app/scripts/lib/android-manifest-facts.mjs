@@ -8,11 +8,21 @@ const COMPONENT_TAGS = new Set([
 ]);
 const TRUE = "0xffffffff";
 
-/** Parse `aapt dump xmltree` output into an element tree. */
-export function parseXmlTree(text) {
+function rawAttributeValue(encoded) {
+  const value = encoded.trim();
+  const quoted = /^"((?:[^"\\]|\\.)*)"/.exec(value);
+  if (quoted) return quoted[1];
+  return /^\(type 0x[0-9a-f]+\)(0x[0-9a-f]+)$/.exec(value)?.[1] ?? value;
+}
+
+/** Parse `aapt dump xmltree`; callers may supply their own attribute decoder. */
+export function parseXmlTree(
+  text,
+  { decodeAttribute = rawAttributeValue } = {},
+) {
   const root = { name: "#root", attrs: {}, children: [], indent: -1 };
   const stack = [root];
-  for (const line of text.split("\n")) {
+  for (const line of text.split(/\r?\n/)) {
     const match = /^(\s*)([EA]): (.*)$/.exec(line);
     if (!match) continue;
     const indent = match[1].length;
@@ -28,18 +38,11 @@ export function parseXmlTree(text) {
       //      android:exported(0x01010010)=(type 0x12)0xffffffff
       //      android:networkSecurityConfig(0x01010527)=@0x7f150002
       const attr =
-        /^(?:[^\s(]*:)?([A-Za-z_][\w.-]*)(?:\(0x[0-9a-f]+\))?=(.*)$/.exec(
+        /^(?:[^\s(]*:)?([A-Za-z_][\w.-]*)(?:\(0x[0-9a-f]+\))?=(.*)$/i.exec(
           match[3],
         );
       if (!attr) continue;
-      let value = attr[2].trim();
-      const quoted = /^"((?:[^"\\]|\\.)*)"/.exec(value);
-      if (quoted) value = quoted[1];
-      else {
-        const typed = /^\(type 0x[0-9a-f]+\)(0x[0-9a-f]+)$/.exec(value);
-        if (typed) value = typed[1];
-      }
-      stack.at(-1).attrs[attr[1]] = value;
+      stack.at(-1).attrs[attr[1]] = decodeAttribute(attr[2]);
     }
   }
   return root;
