@@ -753,6 +753,12 @@ describe("incremental extractor evidence", () => {
       metadata: { ...reflection.metadata, verificationStatus: "confirmed" },
     };
     await runtime.createMemory(protectedRecord, "memories");
+    // Compare persisted snapshots so storage defaults remain part of the
+    // unchanged-record contract rather than comparing pre-insert inputs.
+    const storedUnrelated = await runtime.getMemoryById(unrelated.id);
+    const storedProtected = await runtime.getMemoryById(protectedRecord.id);
+    expect(storedUnrelated).not.toBeNull();
+    expect(storedProtected).not.toBeNull();
     const args = {
       runtime,
       message: turn,
@@ -772,9 +778,9 @@ describe("incremental extractor evidence", () => {
     if (!reflection.id) throw new Error("Missing stored reflection ID");
     const retired = await runtime.getMemoryById(reflection.id);
     expect(retired && isActiveMemoryEvidence(retired)).toBe(false);
-    expect(await runtime.getMemoryById(unrelated.id)).toEqual(unrelated);
+    expect(await runtime.getMemoryById(unrelated.id)).toEqual(storedUnrelated);
     expect(await runtime.getMemoryById(protectedRecord.id)).toEqual(
-      protectedRecord,
+      storedProtected,
     );
     expect(await runtime.getMemoryById(MESSAGE)).toMatchObject({
       content: turn.content,
