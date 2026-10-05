@@ -49,8 +49,12 @@ export function observeScheduledTargetLiveSubscription(
   const observed = sub.data,
     item = observed.items.data[0]!;
   const now = input.observedAt.getTime();
+  const periodStart = new Date(observed.current_period_start * 1000);
+  const periodEnd = new Date(observed.current_period_end * 1000);
   if (
     !Number.isFinite(now) ||
+    !Number.isFinite(periodStart.getTime()) ||
+    !Number.isFinite(periodEnd.getTime()) ||
     phase.start.getTime() > now ||
     authority.currentSubscriptionRevision !== source.lifecycle_revision ||
     authority.targetPlanKey !== source.pending_plan_key ||
@@ -82,8 +86,8 @@ export function observeScheduledTargetLiveSubscription(
   // belongs to that authenticated invoice, not necessarily this live item.
   return {
     providerStatus: observed.status,
-    periodStart: new Date(observed.current_period_start * 1000),
-    periodEnd: new Date(observed.current_period_end * 1000),
+    periodStart,
+    periodEnd,
     subscriptionItemId: item.id,
     invoiceId: observed.latest_invoice,
     providerObjectDigest: settlementDigest(input.rawSubscription),

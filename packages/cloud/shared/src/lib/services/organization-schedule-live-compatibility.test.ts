@@ -181,6 +181,12 @@ const changes: Array<[string, (f: ReturnType<typeof fixture>) => void]> = [
     },
   ],
   [
+    "unrepresentable live period end",
+    (f) => {
+      f.rawSubscription.current_period_end = Number.MAX_SAFE_INTEGER;
+    },
+  ],
+  [
     "invalid clock",
     (f) => {
       f.observedAt = new Date(NaN);
