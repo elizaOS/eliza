@@ -280,5 +280,9 @@ Migration 0531 retains versioned balance observations under the original invoice
 receipt. The private observer reads outside locks, then rechecks the organization,
 source fence and live receipt lease before atomic append and retry release. The
 claim token replays its first durable result without touching a newer lease.
-Observations never mark financial application complete or grant allowance; callers
-still own bounded maintenance invocation, collection/allocation proof and policy.
+Observations never mark financial application complete or grant allowance. The
+existing authenticated Stripe maintenance endpoint invokes an independent lane of
+at most five original receipts under one 20-second read-only provider deadline.
+Expected observation failures retain receipt-attributed incidents before retry
+release; database failures fail the lane visibly. Deploy migrations through 0531
+before enabling this handler. Collection/allocation proof and policy remain open.

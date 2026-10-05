@@ -33,6 +33,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
   const mutations = new Map<string, (body: URLSearchParams) => object>();
   let writes = 0;
   let beforeChargeResponse: (() => Promise<void>) | null = null;
+  let beforeInvoiceResponse: (() => Promise<void>) | null = null;
   const server = createServer((request, response) => {
     requests.push(`${request.method} ${request.url}`);
     if (request.method !== "GET") writes++;
@@ -74,6 +75,18 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
         () => response.end(JSON.stringify(value)),
         (error: Error) => {
           // error-policy:J1 Controlled transport exposes a failed race fixture as a failed response.
+          response.destroy(error);
+        },
+      );
+      return;
+    }
+    if (request.url?.startsWith("/v1/invoices/") && beforeInvoiceResponse) {
+      const action = beforeInvoiceResponse;
+      beforeInvoiceResponse = null;
+      void action().then(
+        () => response.end(JSON.stringify(value)),
+        (error: Error) => {
+          // error-policy:J1 Controlled provider race failures are transport failures.
           response.destroy(error);
         },
       );
@@ -128,6 +141,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     requests.length = 0;
     writes = 0;
     beforeChargeResponse = null;
+    beforeInvoiceResponse = null;
   });
   afterAll(async () => {
     if (server.listening) {
@@ -1701,6 +1715,149 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       false,
     );
     expect(await x.rows()).toHaveLength(1);
+  });
+  async function prepareInvoiceMaintenance() {
+    const x = await prepareInvoiceObservation();
+    await x.operations.releaseEventForRetry(x.input);
+    await database.query(
+      "UPDATE billing_subscription_event_receipts SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+      [x.owner.receiptId],
+    );
+    const { recoverOriginalInvoiceObservations } = await import(
+      "../../../lib/services/original-invoice-maintenance"
+    );
+    return { ...x, recover: recoverOriginalInvoiceObservations };
+  }
+  test("original invoice maintenance observes terminal unfunded history and backs off without financial application", async () => {
+    const x = await prepareInvoiceMaintenance();
+    await database.query(
+      "UPDATE billing_subscriptions SET status='canceled',stripe_subscription_item_id='si_maintenanceoriginal' WHERE id=$1",
+      [x.f.source.id],
+    );
+    expect(await x.recover()).toMatchObject({
+      status: "ok",
+      attempts: [{ receiptId: x.owner.receiptId, disposition: "recorded" }],
+      deferredByBudget: 0,
+    });
+    expect(await x.rows()).toHaveLength(1);
+    expect((await x.recover()).attempts).toEqual([]);
+    expect(
+      (
+        await database.query(
+          "SELECT status,processed_at,applied_subscription_revision FROM billing_subscription_event_receipts WHERE id=$1",
+          [x.owner.receiptId],
+        )
+      ).rows,
+    ).toEqual([{ status: "received", processed_at: null, applied_subscription_revision: null }]);
+    expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+    expect(writes).toBe(0);
+  });
+  test("original invoice maintenance bounds each run to five claims and leaves remaining work discoverable", async () => {
+    const entries = [];
+    for (let i = 0; i < 6; i++) entries.push(await prepareInvoiceMaintenance());
+    const first = await entries[0]!.recover();
+    expect(first.attempts).toHaveLength(5);
+    expect(first.attempts.every((a) => a.disposition === "recorded")).toBe(true);
+    const second = await entries[0]!.recover();
+    expect(second.attempts).toHaveLength(1);
+    expect(second.attempts[0]!.disposition).toBe("recorded");
+    for (const x of entries) {
+      expect(await x.rows()).toHaveLength(1);
+      expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+    }
+    expect(writes).toBe(0);
+  });
+  test("unavailable original invoice records one durable incident and does not starve a later candidate", async () => {
+    const unavailable = await prepareInvoiceMaintenance();
+    const valid = await prepareInvoiceMaintenance();
+    objects.delete(`/v1/invoices/${unavailable.f.invoice.id}`);
+    const first = await valid.recover();
+    expect(first.status).toBe("degraded");
+    expect(first.attempts).toContainEqual({
+      receiptId: unavailable.owner.receiptId,
+      disposition: "unavailable",
+    });
+    expect(first.attempts).toContainEqual({
+      receiptId: valid.owner.receiptId,
+      disposition: "recorded",
+    });
+    expect(await unavailable.rows()).toHaveLength(0);
+    expect(await valid.rows()).toHaveLength(1);
+    expect((await valid.recover()).attempts).toEqual([]);
+    await database.query(
+      "UPDATE billing_subscription_event_receipts SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+      [unavailable.owner.receiptId],
+    );
+    expect((await valid.recover()).attempts).toContainEqual({
+      receiptId: unavailable.owner.receiptId,
+      disposition: "unavailable",
+    });
+    const incidents = (
+      await database.query(
+        "SELECT subscription_id,event_receipt_id,context FROM billing_subscription_incidents WHERE event_receipt_id=$1",
+        [unavailable.owner.receiptId],
+      )
+    ).rows;
+    expect(incidents).toHaveLength(1);
+    expect(incidents[0]).toMatchObject({
+      subscription_id: unavailable.f.source.id,
+      event_receipt_id: unavailable.owner.receiptId,
+      context: { reason: "observation_unavailable", observedBy: "original_invoice_maintenance" },
+    });
+    expect(writes).toBe(0);
+  });
+  test("original invoice maintenance cannot release a superseding receipt lease", async () => {
+    const x = await prepareInvoiceMaintenance();
+    const replacement = randomUUID();
+    beforeInvoiceResponse = async () => {
+      await database.query(
+        "UPDATE billing_subscription_event_receipts SET lease_token=$2 WHERE id=$1",
+        [x.owner.receiptId, replacement],
+      );
+    };
+    expect(await x.recover()).toMatchObject({
+      status: "degraded",
+      attempts: [{ receiptId: x.owner.receiptId, disposition: "lease_lost" }],
+    });
+    expect(await x.rows()).toHaveLength(0);
+    expect(
+      (
+        await database.query(
+          "SELECT status,lease_token FROM billing_subscription_event_receipts WHERE id=$1",
+          [x.owner.receiptId],
+        )
+      ).rows,
+    ).toEqual([{ status: "processing", lease_token: replacement }]);
+    expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+  });
+  test("original invoice maintenance surfaces journal infrastructure failure without false unavailable evidence", async () => {
+    const x = await prepareInvoiceMaintenance();
+    await database.exec(`CREATE FUNCTION reject_maintenance_invoice_journal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'controlled database outage'; END $$;
+      CREATE TRIGGER reject_maintenance_invoice_journal BEFORE INSERT ON subscription_invoice_observations FOR EACH ROW EXECUTE FUNCTION reject_maintenance_invoice_journal();`);
+    try {
+      await expect(x.recover()).rejects.toThrow();
+      expect(await x.rows()).toHaveLength(0);
+      expect(
+        (
+          await database.query(
+            "SELECT id FROM billing_subscription_incidents WHERE event_receipt_id=$1",
+            [x.owner.receiptId],
+          )
+        ).rows,
+      ).toHaveLength(0);
+      expect(
+        (
+          await database.query(
+            "SELECT status FROM billing_subscription_event_receipts WHERE id=$1",
+            [x.owner.receiptId],
+          )
+        ).rows,
+      ).toEqual([{ status: "processing" }]);
+    } finally {
+      await database.exec(
+        "DROP TRIGGER reject_maintenance_invoice_journal ON subscription_invoice_observations; DROP FUNCTION reject_maintenance_invoice_journal();",
+      );
+    }
   });
   test("original invoice discovery includes terminal sources and replaced current items without a grant", async () => {
     const { f, owner, recovery } = await retainUnfunded();

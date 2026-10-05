@@ -1184,8 +1184,8 @@ export class SubscriptionBillingOperationsRepository {
     organizationId: string;
     receiptId: string;
     leaseToken: string;
-  }): Promise<void> {
-    await dbWrite
+  }): Promise<boolean> {
+    const [released] = await dbWrite
       .update(billingSubscriptionEventReceipts)
       .set({
         status: "received",
@@ -1201,7 +1201,9 @@ export class SubscriptionBillingOperationsRepository {
           eq(billingSubscriptionEventReceipts.lease_token, input.leaseToken),
           gt(billingSubscriptionEventReceipts.lease_expires_at, sql`clock_timestamp()`),
         ),
-      );
+      )
+      .returning({ id: billingSubscriptionEventReceipts.id });
+    return released !== undefined;
   }
 
   async failEvent(input: {
