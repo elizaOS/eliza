@@ -834,10 +834,45 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
             expect(await sourceRevision(f.command.id)).toBe(2);
             expect(await fundingSnapshot()).toEqual(fundingBefore);
             expect(writes).toBe(0);
-            await database.query(
-              "UPDATE organizations SET paid_work_fenced_at=clock_timestamp() WHERE id=$1",
-              [f.orgId],
-            );
+            const head = (
+              await database.query<{ id: string }>(
+                "SELECT id FROM subscription_adjustment_observations WHERE grant_id=$1 ORDER BY version DESC LIMIT 1",
+                [grant.id],
+              )
+            ).rows[0]!;
+            let fenced = false;
+            const fencedStripe = new Stripe("sk_test_cloud_e2e", {
+              host: "127.0.0.1",
+              port: address.port,
+              protocol: "http",
+              maxNetworkRetries: 0,
+              httpClient: Stripe.createFetchHttpClient(async (url, init) => {
+                if (!fenced) {
+                  fenced = true;
+                  await database.query(
+                    "UPDATE organizations SET paid_work_fenced_at=clock_timestamp() WHERE id=$1",
+                    [f.orgId],
+                  );
+                }
+                return fetch(url, init);
+              }),
+            });
+            await expect(
+              observeAndRecordRenewalAdjustment(
+                { ...request, requestId: randomUUID(), expectedPreviousId: head.id },
+                fencedStripe,
+              ),
+            ).rejects.toThrow();
+            expect(fenced).toBe(true);
+            expect(
+              (
+                await database.query(
+                  "SELECT count(*)::int AS count FROM subscription_adjustment_observations WHERE grant_id=$1",
+                  [grant.id],
+                )
+              ).rows,
+            ).toEqual([{ count: 2 }]);
+            expect(await fundingSnapshot()).toEqual(fundingBefore);
             await expect(observeAndRecordRenewalAdjustment(request, stripe)).rejects.toThrow();
           }
         } finally {
