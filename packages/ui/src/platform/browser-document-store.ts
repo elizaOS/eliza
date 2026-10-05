@@ -131,6 +131,36 @@ export class BrowserDocumentStore {
     );
   }
 
+  /** Initialize absent bytes once; existing records (including tombstones) keep their receipt. */
+  async readOrCreate(
+    key: string,
+    raw: string | null,
+    signal?: AbortSignal,
+  ): Promise<BrowserDocumentSnapshot> {
+    if (raw !== null && typeof raw !== "string")
+      throw new TypeError("Expected document bytes or null.");
+    return this.transact(
+      "readwrite",
+      (store, result, fail) => {
+        const request = store.get(key);
+        request.onsuccess = () => {
+          if (request.result !== undefined) {
+            result(request.result);
+            return;
+          }
+          try {
+            const next = { revision: crypto.randomUUID(), raw };
+            store.put(next, key);
+            result(next);
+          } catch (error) {
+            fail(error);
+          }
+        };
+      },
+      signal,
+    );
+  }
+
   /** Raw bytes survive corrupt JSON; reset also advances the receipt (ABA safe). */
   async compareExchange(
     key: string,

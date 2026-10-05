@@ -37,6 +37,8 @@ The durable runtime remains authoritative; this projection grants no task author
 
 `BrowserDocumentStore` stores opaque text with IndexedDB transaction receipts.
 Its compare-and-swap operation detects stale writes and retains reset tombstones;
+`readOrCreate` initializes absent bytes atomically while preserving existing receipts,
+including reset tombstones, across concurrent callers and tabs.
 `edit` serializes asynchronous, side-effect-free callbacks with Web Locks and never
 replays them. Cancellation prevents a late callback from committing. Hosts own
 storage namespaces, schema validation, legacy migration and recovery presentation.
