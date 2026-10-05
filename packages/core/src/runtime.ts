@@ -1975,9 +1975,11 @@ export class AgentRuntime implements IAgentRuntime {
 			if (value !== null && value !== undefined) {
 				// Secrets are stored as strings
 				this.character.secrets[key] = String(value);
-				// Remove the nested secret snapshot so clearing the live value cannot resurrect a revoked
-				// credential.
-				if (nestedSecrets) delete nestedSecrets[key];
+				// Remove a distinct nested snapshot so clearing cannot resurrect a revoked
+				// credential. initialize() can alias these maps; retain the new live value.
+				if (nestedSecrets && nestedSecrets !== this.character.secrets) {
+					delete nestedSecrets[key];
+				}
 			} else {
 				// null clears — callers use setSetting(key, null) to revoke a
 				// previously bridged credential (cloud disconnect, connector
