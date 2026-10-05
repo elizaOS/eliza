@@ -206,3 +206,9 @@ Hosts whose runtime writes its own persistent configuration should use
 to that runtime. It returns the saved token and parsed configuration without
 rewriting existing bytes. `preparePrivateRuntimeFiles` composes this primitive
 with a separate generated launch config for hosts that need a per-launch selection.
+
+`SqliteInteractiveTaskStore.readOwnerHistory` supplies complete owner-scoped
+histories within explicit task/event limits to a synchronous, read-only host
+projection. It reuses page validation and rejects revision, cross-connection,
+same-connection or schema changes instead of publishing a partial report. It
+adds no effect authority and must not be called inside an existing transaction.
