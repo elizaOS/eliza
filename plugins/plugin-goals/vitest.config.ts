@@ -23,6 +23,14 @@ export default defineConfig({
     // real-database tests, including the Relationships package root.
     alias: [
       {
+        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
+        replacement: sourceOf("../../packages/agent/src/services/knowledge-graph/index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-finances\/db\/finances-repository$/,
+        replacement: sourceOf("../plugin-finances/src/db/finances-repository.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-relationships$/,
         replacement: sourceOf("../plugin-relationships/src/index.ts"),
       },
