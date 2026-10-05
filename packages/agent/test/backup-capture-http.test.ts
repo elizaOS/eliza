@@ -13,18 +13,25 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
+import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 import {
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
   type AgentBackupCaptureV2Request,
+  type AgentBackupPostgresDump,
   parseAgentBackupCaptureV2Frames,
 } from "@elizaos/contracts";
+import {
+  AGENT_BACKUP_CANONICAL_JSON,
+  canonicalJsonString,
+} from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { startApiServer } from "../src/api/server.ts";
 import {
   type AgentBackupStateData,
   restoreAgentSnapshot,
+  restorePostgresRows,
 } from "../src/services/agent-backup.ts";
 
 const token = randomUUID();
@@ -287,5 +294,93 @@ it("distinguishes size and storage failures, then creates and restores a complet
     ]);
   } finally {
     await database.close();
+  }
+}, 120_000);
+
+it("rolls back PostgreSQL row restores and preserves other agents over the database protocol", async () => {
+  const db = await PGlite.create(path.join(directory, "postgres-rows"));
+  const owner = randomUUID();
+  const other = randomUUID();
+  const tables = [
+    {
+      name: "memories",
+      columns: ["id", "agent_id"],
+      rows: [{ id: "restored", agent_id: owner }],
+    },
+  ];
+  const dump: AgentBackupPostgresDump = {
+    kind: "postgres-rows",
+    tables,
+    sha256: createHash("sha256")
+      .update(canonicalJsonString(tables, AGENT_BACKUP_CANONICAL_JSON))
+      .digest("hex"),
+  };
+  const restore = async () => {
+    const bridge = new PGLiteSocketServer({ db, host: "127.0.0.1", port: 0 });
+    await bridge.start();
+    try {
+      await restorePostgresRows(
+        `postgresql://postgres@${bridge.getServerConn()}/postgres`,
+        owner,
+        dump,
+      );
+    } finally {
+      await bridge.stop();
+    }
+  };
+  const original = [
+    { id: "old", agent_id: owner },
+    { id: "other", agent_id: other },
+  ];
+  try {
+    await db.exec(`
+      CREATE TABLE memories (id text PRIMARY KEY, agent_id uuid NOT NULL);
+      CREATE TABLE agents (id uuid PRIMARY KEY);
+      CREATE TABLE embeddings (memory_id text REFERENCES memories(id));
+      CREATE TABLE retained_reference (agent_id uuid REFERENCES agents(id));
+      CREATE FUNCTION refuse_embedding_delete() RETURNS trigger AS $$
+        BEGIN RAISE EXCEPTION 'embedding delete denied' USING ERRCODE = '42501'; END
+      $$ LANGUAGE plpgsql;
+      CREATE TRIGGER refuse_delete BEFORE DELETE ON embeddings
+        FOR EACH ROW EXECUTE FUNCTION refuse_embedding_delete();
+    `);
+    await db.query("INSERT INTO memories VALUES ('old', $1), ('other', $2)", [
+      owner,
+      other,
+    ]);
+    await db.query("INSERT INTO agents VALUES ($1), ($2)", [owner, other]);
+    await db.query("INSERT INTO retained_reference VALUES ($1)", [owner]);
+    await db.exec("INSERT INTO embeddings VALUES ('old')");
+    await expect(restore()).rejects.toMatchObject({
+      code: "42501",
+      message: "embedding delete denied",
+    });
+    expect((await db.query("SELECT * FROM memories ORDER BY id")).rows).toEqual(
+      original,
+    );
+    await db.exec("DROP TRIGGER refuse_delete ON embeddings");
+    await expect(restore()).rejects.toMatchObject({
+      code: "23503",
+      table: "retained_reference",
+    });
+    expect((await db.query("SELECT * FROM memories ORDER BY id")).rows).toEqual(
+      original,
+    );
+    expect((await db.query("SELECT * FROM embeddings")).rows).toEqual([
+      { memory_id: "old" },
+    ]);
+    expect(
+      (await db.query("SELECT count(*)::int AS count FROM agents")).rows,
+    ).toEqual([{ count: 2 }]);
+    await db.exec("DROP TABLE retained_reference, embeddings, agents");
+    await restore();
+    expect((await db.query("SELECT * FROM memories ORDER BY id")).rows).toEqual(
+      [
+        { id: "other", agent_id: other },
+        { id: "restored", agent_id: owner },
+      ],
+    );
+  } finally {
+    await db.close();
   }
 }, 120_000);
