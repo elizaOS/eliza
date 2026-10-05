@@ -19,10 +19,10 @@ import { matchPluginRoutePath } from "./plugin-route-path.ts";
  * subset of routes that go through `runtime.routes`.
  */
 interface RuntimeHonoCache {
-  runtime: WeakRef<IAgentRuntime>;
+  signature: string;
   app: Hono;
 }
-let cached: RuntimeHonoCache | null = null;
+const apps = new WeakMap<IAgentRuntime, RuntimeHonoCache>();
 const requestContexts = new WeakMap<
   Request,
   {
@@ -33,7 +33,15 @@ const requestContexts = new WeakMap<
   }
 >();
 function getHonoApp(runtime: IAgentRuntime): Hono {
-  if (cached && cached.runtime.deref() === runtime) {
+  const signature = JSON.stringify(
+    getHttpRuntime(runtime).routes.map((route) => [
+      route.type,
+      route.path,
+      Boolean(route.handler || route.routeHandler),
+    ]),
+  );
+  const cached = apps.get(runtime);
+  if (cached?.signature === signature) {
     return cached.app;
   }
   const app = buildHonoAppForRuntime(runtime, {
@@ -42,12 +50,8 @@ function getHonoApp(runtime: IAgentRuntime): Hono {
     isTrustedLocal: (req) => requestContexts.get(req)?.trustedLocal === true,
     resolveAccessContext: (req) => requestContexts.get(req)?.accessContext,
   });
-  cached = { runtime: new WeakRef(runtime), app };
+  apps.set(runtime, { signature, app });
   return app;
-}
-/** Reset the cached Hono app — call when `runtime.routes` changes. */
-export function resetHonoMountCache(): void {
-  cached = null;
 }
 // Matches the 1 MiB cap applied to the sibling JSON/body readers in
 // server.ts (MAX_BODY_BYTES). The Hono fallback path never goes through that
