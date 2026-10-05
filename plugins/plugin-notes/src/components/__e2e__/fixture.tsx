@@ -104,10 +104,6 @@ if (!root) throw new Error("Notes fixture root is missing.");
 
 createRoot(root).render(
   <AgentSurfaceProvider viewId="notes-fixture">
-    <NotesSurface
-      {...stateProps()}
-      refresh={async () => undefined}
-      standalone
-    />
+    <NotesSurface {...stateProps()} refresh={async () => undefined} />
   </AgentSurfaceProvider>,
 );

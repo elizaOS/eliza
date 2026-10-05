@@ -356,9 +356,6 @@ const KnowledgeListItem = memo(function KnowledgeListItem({
 interface KnowledgeDocumentsViewProps {
   fileInputId?: string;
   inModal?: boolean;
-  /** Own the top-level "Knowledge" header in list state (the canonical
-   *  `/character/documents` route). Off when embedded under other chrome. */
-  standalone?: boolean;
   onDocumentsChange?: (documents: DocumentRecord[]) => void;
   onSelectedDocumentIdChange?: (documentId: string | null) => void;
   selectedDocumentId?: string | null;

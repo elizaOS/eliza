@@ -566,12 +566,7 @@ function CalendarStatusRow({
   );
 }
 
-export interface SimpleCalendarViewProps {
-  /** Render the shared route header. Embedded projections turn this off. */
-  standalone?: boolean;
-}
-
-export function SimpleCalendarView(_props: SimpleCalendarViewProps = {}) {
+export function SimpleCalendarView() {
   const calendar = useCalendarWeek({ viewMode: "month" });
   useViewEvent(VIEW_EVENTS.VIEW_REFRESH, () => {
     void calendar.refresh();

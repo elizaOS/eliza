@@ -15,12 +15,7 @@ import { useNotesState } from "./useNotesState.js";
 export type { NotesSurfaceProps } from "./NotesSurface.js";
 export { NotesSurface } from "./NotesSurface.js";
 
-export interface NotesViewProps {
-  /** Render the shared route header. Embedded projections turn this off. */
-  standalone?: boolean;
-}
-
-export function NotesView({ standalone = false }: NotesViewProps = {}) {
+export function NotesView() {
   const { snapshot, loading, error, refresh } = useNotesState();
   const authority = useActiveAgentAuthority();
   const [target, setTarget] = useState<{
@@ -92,7 +87,6 @@ export function NotesView({ standalone = false }: NotesViewProps = {}) {
       loading={loading}
       error={error}
       refresh={refresh}
-      standalone={standalone}
       sourceNoteTarget={target?.authority === authority ? target : null}
     />
   );
