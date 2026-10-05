@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AsyncNotesStore } from "../src/client/notes-async-store.ts";
+import {
+  DocumentNotesStore,
+  NotesDocumentConflict,
+} from "../src/client/notes-document-store.ts";
 import { SecureNotesStore } from "../src/client/notes-secure-store.ts";
 import { NotesCommitUncertain, NotesStore } from "../src/client/notes-store.ts";
 
@@ -267,160 +270,256 @@ test("a host update to other daily fields after an interrupted migration does no
   );
 });
 
-function documentFixture() {
-  const initial = new NotesStore(config, memory(), [note]);
-  let saved = { revision: 1, raw: initial.raw },
-    writes = 0;
-  const persistence = {
+function documents(currentRaw = null, legacyRaw = null) {
+  let saved = null;
+  let revision = 0;
+  const port = {
+    initialize: async (create) => {
+      if (saved === null)
+        saved = {
+          revision: String(++revision),
+          raw: create(currentRaw, legacyRaw),
+        };
+      return structuredClone(saved);
+    },
     read: async () => structuredClone(saved),
-    raw: (value) => value.raw,
-    compareExchange: async (expected, raw, signal) => {
-      signal?.throwIfAborted();
-      if (JSON.stringify(saved) !== JSON.stringify(expected)) return null;
-      saved = { revision: saved.revision + 1, raw };
-      writes++;
+    compareExchange: async (expected, raw) => {
+      if (JSON.stringify(expected) !== JSON.stringify(saved))
+        throw new NotesDocumentConflict("Notes changed in another view");
+      saved = { revision: String(++revision), raw };
       return structuredClone(saved);
     },
   };
-  return {
-    persistence,
-    read: () => structuredClone(saved),
-    writes: () => writes,
-    revise: () => {
-      saved = { ...saved, revision: saved.revision + 1 };
-    },
-  };
+  return port;
 }
-test("asynchronous Notes fence competing editors without losing the committed snapshot", async () => {
-  const f = documentFixture(),
-    a = await AsyncNotesStore.load(config, f.persistence),
-    b = await AsyncNotesStore.load(config, f.persistence);
+test("async document initialization preserves one collection and exact installed records", async () => {
+  const legacy = JSON.stringify([note]),
+    port = documents(null, legacy);
+  const [a, b] = await Promise.all([
+    DocumentNotesStore.open(port),
+    DocumentNotesStore.open(port),
+  ]);
+  assert.equal(a.raw, b.raw);
+  assert.deepEqual(a.list, [note]);
+  const saved = await port.read();
+  await a.replace(a.list);
+  assert.deepEqual(
+    await port.read(),
+    saved,
+    "unchanged draft does not advance authority",
+  );
+  assert.deepEqual(await a.target(note.id), await b.target(note.id));
+});
+test("simultaneous async editors admit one complete snapshot and preserve the losing draft", async () => {
+  const port = documents(),
+    a = await DocumentNotesStore.open(port, [note]),
+    b = await DocumentNotesStore.open(port);
   const results = await Promise.allSettled([
-    a.replace([{ ...note, body: "A" }]),
-    b.replace([{ ...note, body: "B" }]),
+    a.replace([{ ...note, body: "First" }]),
+    b.replace([{ ...note, body: "Second" }]),
   ]);
   assert.equal(
     results.filter((result) => result.status === "fulfilled").length,
     1,
   );
-  assert.equal(f.writes(), 1);
-  assert.equal(b.needsRecovery, true);
   assert.equal(
-    b.list[0].body,
-    "B",
-    "uncommitted editor text remains recoverable",
+    results.filter((result) => result.status === "rejected").length,
+    1,
   );
-  const reopened = await AsyncNotesStore.load(config, f.persistence);
-  assert.equal(reopened.list[0].body, "A");
-  assert.deepEqual(await reopened.target(note.id), await a.target(note.id));
-});
-test("queued Notes saves settle before a target can authorize a read", async () => {
-  const f = documentFixture(),
-    store = await AsyncNotesStore.load(config, f.persistence);
-  const first = store.replace([{ ...note, body: "First" }]),
-    second = store.replace([{ ...note, body: "Second" }]);
-  const target = await store.target(note.id);
-  await Promise.all([first, second]);
-  assert.equal(f.writes(), 2);
-  const result = await store.execute(
-    { type: "notes_read_selected", target },
-    "read",
-    new AbortController().signal,
-    () => {},
+  assert.equal(JSON.parse((await port.read()).raw).records.length, 1);
+  const loser = results[0].status === "rejected" ? a : b;
+  assert.equal(loser.needsRecovery, true);
+  assert.equal(
+    loser.list[0].body,
+    results[0].status === "rejected" ? "First" : "Second",
   );
-  assert.equal(result.fields.body, "Second");
+  await assert.rejects(loser.target(note.id), NotesDocumentConflict);
 });
-test("Notes deletion retains exact operation tombstones and collection identity", async () => {
-  const f = documentFixture(),
-    store = await AsyncNotesStore.load(config, f.persistence),
-    target = await store.target(note.id);
-  const result = await store.execute(
-    { type: "notes_delete", target },
-    "delete-operation",
-    new AbortController().signal,
-    () => {},
-  );
-  const envelope = JSON.parse(f.read().raw);
-  assert.equal(result.sourceId, target.sourceId);
-  assert.equal(envelope.collectionId, target.sourceId);
-  assert.deepEqual(envelope.records, []);
-  assert.deepEqual(envelope.deleted, [
-    { id: note.id, revision: target.revision, operationId: "delete-operation" },
-  ]);
-});
-test("a lost CAS response faults Notes without replaying its committed edit", async () => {
-  const f = documentFixture(),
-    write = f.persistence.compareExchange;
-  f.persistence.compareExchange = async (...args) => {
-    await write(...args);
-    throw Error("Lost response");
+test("lost async commit acknowledgement cannot replay a delete or lose its tombstone", async () => {
+  const port = documents(),
+    store = await DocumentNotesStore.open(port, [note]);
+  const target = await store.target(note.id),
+    exchange = port.compareExchange;
+  port.compareExchange = async (...args) => {
+    await exchange(...args);
+    throw Error("Lost reply");
   };
-  const store = await AsyncNotesStore.load(config, f.persistence);
   await assert.rejects(
-    store.replace([{ ...note, body: "Saved once" }]),
+    store.execute(
+      { type: "notes_delete", target },
+      "delete-once",
+      new AbortController().signal,
+      () => {},
+    ),
     NotesCommitUncertain,
   );
   assert.equal(store.needsRecovery, true);
+  const reopened = await DocumentNotesStore.open(port);
+  assert.deepEqual(reopened.list, []);
+  assert.deepEqual(JSON.parse(reopened.raw).deleted, [
+    { id: note.id, revision: target.revision, operationId: "delete-once" },
+  ]);
   assert.throws(() => store.replace([note]), NotesCommitUncertain);
-  assert.equal(f.writes(), 1);
-  assert.equal(
-    (await AsyncNotesStore.load(config, f.persistence)).list[0].body,
-    "Saved once",
-  );
 });
-for (const mode of ["cancel", "retire"])
-  test(`Notes recheck ${mode} after preparing an edit and before CAS`, async () => {
-    const f = documentFixture(),
-      store = await AsyncNotesStore.load(config, f.persistence),
-      before = store.raw,
-      target = await store.target(note.id),
-      controller = new AbortController();
-    await assert.rejects(
-      store.execute(
-        {
-          type: "notes_update",
-          target,
-          fields: { title: "New", body: "Edited" },
-        },
-        "edit",
-        controller.signal,
-        () => {
-          if (store.raw !== before) {
-            if (mode === "cancel") controller.abort();
-            else throw Error("Owner retired");
-          }
-        },
-      ),
-    );
-    assert.equal(f.writes(), 0);
-    assert.equal(f.read().raw, before);
-    assert.equal(store.needsRecovery, true);
+test("queued optimistic drafts persist in order and targets wait for their final commit", async () => {
+  const port = documents(),
+    store = await DocumentNotesStore.open(port, [note]),
+    exchange = port.compareExchange;
+  let release, entered;
+  const ready = new Promise((resolve) => {
+    entered = resolve;
   });
-test("unchanged bytes at another document revision still invalidate a Notes editor", async () => {
-  const f = documentFixture(),
-    store = await AsyncNotesStore.load(config, f.persistence);
-  f.revise();
-  await assert.rejects(store.assertCurrent(), /changed in another view/);
-  assert.throws(() => store.replace([note]), /changed in another view/);
-  assert.equal(f.writes(), 0);
+  port.compareExchange = async (...args) => {
+    port.compareExchange = exchange;
+    entered();
+    await new Promise((resolve) => {
+      release = resolve;
+    });
+    return exchange(...args);
+  };
+  const first = store.replace([{ ...note, body: "First" }]);
+  await ready;
+  const second = store.replace([{ ...note, body: "Second" }]);
+  let targetSettled = false;
+  const target = store.target(note.id).then((value) => {
+    targetSettled = true;
+    return value;
+  });
+  await Promise.resolve();
+  assert.equal(targetSettled, false);
+  release();
+  await Promise.all([first, second]);
+  await target;
+  assert.equal(JSON.parse((await port.read()).raw).records[0].body, "Second");
 });
-test("a mismatched acknowledgement cannot claim the proposed Notes edit was saved", async () => {
-  const f = documentFixture();
-  f.persistence.compareExchange = async () => f.read();
-  const store = await AsyncNotesStore.load(config, f.persistence);
+test("async read refuses a changed document even when its bytes return to the prior value", async () => {
+  const port = documents(),
+    store = await DocumentNotesStore.open(port, [note]),
+    old = await port.read();
+  await port.compareExchange(old, old.raw);
+  await assert.rejects(store.assertCurrent(), NotesDocumentConflict);
+  assert.equal(store.needsRecovery, true);
+});
+test("async operations stop before write when authorization changes during preparation", async () => {
+  const port = documents(),
+    store = await DocumentNotesStore.open(port, [note]),
+    target = await store.target(note.id),
+    before = await port.read();
+  let checks = 0;
   await assert.rejects(
-    store.replace([{ ...note, body: "Not saved" }]),
+    store.execute(
+      {
+        type: "notes_update",
+        target,
+        fields: { title: "Changed", body: "Body" },
+      },
+      "edit",
+      new AbortController().signal,
+      () => {
+        if (++checks > 2) throw Error("Retired owner");
+      },
+    ),
+    /Retired owner/,
+  );
+  assert.deepEqual(await port.read(), before);
+});
+test("async readback failure faults the store and preserves the committed revision for reopening", async () => {
+  const port = documents(),
+    store = await DocumentNotesStore.open(port, [note]),
+    exchange = port.compareExchange,
+    read = port.read;
+  port.compareExchange = async (...args) => {
+    const saved = await exchange(...args);
+    port.read = async () => {
+      throw Error("Read unavailable");
+    };
+    return saved;
+  };
+  await assert.rejects(
+    store.replace([{ ...note, body: "Saved" }]),
     NotesCommitUncertain,
   );
   assert.equal(store.needsRecovery, true);
-  assert.equal(JSON.parse(f.read().raw).records[0].body, note.body);
+  port.read = read;
+  assert.equal((await DocumentNotesStore.open(port)).list[0].body, "Saved");
 });
-test("loading a missing document does not invent Notes or migrate host data", async () => {
-  const f = documentFixture();
-  f.persistence.read = async () => null;
+
+test("async document commit rechecks authorization after in-memory preparation", async () => {
+  const port = documents(),
+    store = await DocumentNotesStore.open(port, [note]),
+    target = await store.target(note.id),
+    before = await port.read();
+  let checks = 0,
+    authorized = true;
   await assert.rejects(
-    AsyncNotesStore.load(config, f.persistence),
-    /Notes document is missing/,
+    store.execute(
+      { type: "notes_delete", target },
+      "retired-before-commit",
+      new AbortController().signal,
+      () => {
+        if (!authorized) throw Error("Retired owner");
+        if (++checks === 3)
+          queueMicrotask(() => {
+            authorized = false;
+          });
+      },
+    ),
+    /Retired owner/,
   );
-  assert.equal(f.writes(), 0);
+  assert.deepEqual(await port.read(), before);
+  assert.equal(store.needsRecovery, true);
+});
+
+test("cancellation at the final authority check cannot dispatch a document write", async () => {
+  const port = documents(null, JSON.stringify([note])),
+    store = await DocumentNotesStore.open(port),
+    before = store.raw,
+    target = await store.target(note.id),
+    controller = new AbortController();
+  let writes = 0;
+  const compareExchange = port.compareExchange;
+  port.compareExchange = async (...args) => {
+    writes++;
+    return compareExchange(...args);
+  };
+  await assert.rejects(
+    store.execute(
+      {
+        type: "notes_update",
+        target,
+        fields: { title: "Edited", body: "New" },
+      },
+      "cancelled",
+      controller.signal,
+      () => {
+        if (store.raw !== before) controller.abort();
+      },
+    ),
+  );
+  assert.equal(writes, 0);
+  assert.equal((await port.read()).raw, before);
+  assert.equal(store.needsRecovery, true);
+});
+
+test("encrypted document revision includes archived source bytes", async () => {
+  let saved = null;
+  const vault = {
+    read: async () => structuredClone(saved),
+    compareExchange: async (_key, expected, value) => {
+      if (JSON.stringify(saved) !== JSON.stringify(expected))
+        return { status: "conflict" };
+      saved = structuredClone(value);
+      return { status: "saved" };
+    },
+  };
+  const store = await SecureNotesStore.open(config, vault, memory(), [note]);
+  const raw = store.raw;
+  saved.archive.v1 = "changed archive";
+  await assert.rejects(store.assertCurrent(), NotesDocumentConflict);
+  assert.equal(store.needsRecovery, true);
+  assert.equal(saved.currentRaw, raw);
+  assert.throws(
+    () => store.replace([{ ...note, body: "Stale edit" }]),
+    NotesDocumentConflict,
+  );
 });

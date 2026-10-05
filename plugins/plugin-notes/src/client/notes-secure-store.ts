@@ -1,4 +1,8 @@
-import { AsyncNotesStore } from "./notes-async-store.ts";
+import type { NotesOperation } from "./notes-contract.ts";
+import {
+  DocumentNotesStore,
+  NotesDocumentConflict,
+} from "./notes-document-store.ts";
 import {
   type NoteRecord,
   NotesCommitUncertain,
@@ -96,29 +100,33 @@ const equal = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
 /** Device-local collection. Native CAS is authoritative; no plaintext persistence fallback.
  * The optimistic editor snapshot is never an agent target until pending commits settle. */
-export class SecureNotesStore extends AsyncNotesStore<Saved> {
-  private constructor(
-    config: SecureNotesConfig,
-    vault: NotesVault,
-    saved: Saved,
+export class SecureNotesStore {
+  private constructor(private document: DocumentNotesStore) {}
+  get raw() {
+    return this.document.raw;
+  }
+  get list() {
+    return this.document.list;
+  }
+  get needsRecovery() {
+    return this.document.needsRecovery;
+  }
+  assertCurrent() {
+    return this.document.assertCurrent();
+  }
+  replace(list: NoteRecord[]) {
+    return this.document.replace(list);
+  }
+  target(id: string) {
+    return this.document.target(id);
+  }
+  execute(
+    op: NotesOperation,
+    id: string,
+    signal: AbortSignal,
+    authorized: () => void,
   ) {
-    super(
-      config,
-      {
-        read: () => vault.read<Saved>(config.secureSlot),
-        raw: (value) => value.currentRaw,
-        async compareExchange(expected, nextRaw) {
-          const next = { ...expected, currentRaw: nextRaw };
-          const result = await vault.compareExchange(
-            config.secureSlot,
-            expected,
-            next,
-          );
-          return result.status === "saved" ? next : null;
-        },
-      },
-      saved,
-    );
+    return this.document.execute(op, id, signal, authorized);
   }
   static async open(
     config: SecureNotesConfig,
@@ -228,6 +236,34 @@ export class SecureNotesStore extends AsyncNotesStore<Saved> {
         "Plaintext Notes cleanup did not complete. Reopen to retry cleanup.",
       );
     onStage("opened");
-    return new SecureNotesStore(config, vault, saved);
+    // The encrypted archive participates in the opaque revision, so a changed
+    // archive cannot be accepted merely because its current Notes bytes match.
+    const receipt = (value: Saved) => ({
+      raw: value.currentRaw,
+      revision: JSON.stringify(value),
+    });
+    const migrated = saved;
+    const document = await DocumentNotesStore.open({
+      initialize: async () => receipt(migrated),
+      read: async () => {
+        const current = await vault.read<Saved>(config.secureSlot);
+        return current === null ? null : receipt(current);
+      },
+      compareExchange: async (expected, raw) => {
+        const before: Saved = JSON.parse(expected.revision);
+        const next = { ...before, currentRaw: raw };
+        const result = await vault.compareExchange(
+          config.secureSlot,
+          before,
+          next,
+        );
+        if (result.status !== "saved")
+          throw new NotesDocumentConflict(
+            "Notes changed in another view. Unsaved text remains on this screen.",
+          );
+        return receipt(next);
+      },
+    });
+    return new SecureNotesStore(document);
   }
 }
