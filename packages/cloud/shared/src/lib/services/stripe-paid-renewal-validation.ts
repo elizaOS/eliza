@@ -1,4 +1,4 @@
-/** Validates captured full-price platform Stripe payments for first activation and adjacent renewals; unsupported billing adjustments never become allowance authority. */
+/** Validates captured platform Stripe payments for first activation and adjacent renewals; unsupported billing adjustments never become allowance authority. */
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
@@ -9,6 +9,13 @@ import {
   observeScheduledTargetSubscription,
 } from "./organization-schedule-target-observation";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import {
+  automaticTax,
+  discountAmounts,
+  discountReference,
+  proveInvoiceAdjustments,
+  taxAmounts,
+} from "./stripe-invoice-adjustments";
 import { validateCancellationCustomer } from "./stripe-period-end-cancellation";
 import { observeOrdinaryRenewalLiveSubscription } from "./stripe-renewal-live-observation";
 import {
@@ -47,12 +54,12 @@ export const renewalInvoiceSchema = z.object({
   ending_balance: z.literal(0),
   pre_payment_credit_notes_amount: z.literal(0),
   post_payment_credit_notes_amount: z.literal(0),
-  discount: z.null(),
-  discounts: empty,
-  total_discount_amounts: empty,
-  tax: z.union([z.null(), z.literal(0)]),
-  total_tax_amounts: empty,
-  automatic_tax: z.object({ enabled: z.literal(false) }),
+  discount: discountReference.nullable(),
+  discounts: z.array(discountReference),
+  total_discount_amounts: discountAmounts,
+  tax: seconds.nullable(),
+  total_tax_amounts: taxAmounts,
+  automatic_tax: automaticTax,
   application: z.null(),
   application_fee_amount: z.null(),
   on_behalf_of: z.null(),
@@ -74,8 +81,9 @@ export const renewalInvoiceSchema = z.object({
           proration: z.literal(false),
           currency: z.literal("usd"),
           amount: cents,
-          discount_amounts: empty,
-          tax_amounts: empty,
+          discounts: z.array(discountReference).default([]),
+          discount_amounts: discountAmounts,
+          tax_amounts: taxAmounts,
           period: z.object({ start: seconds, end: seconds }),
           price: z.object({ id: z.string(), product: z.string() }),
         }),
@@ -127,7 +135,7 @@ const chargeSchema = z.object({
   transfer: z.null().optional(),
   transfer_data: z.null(),
 });
-/** Proves only an exact full-price invoice and captured money. The caller must independently
+/** Proves catalog base, reconciled invoice adjustments and exact captured money. The caller must independently
  * prove retained contract authority, current ownership/lifecycle, ordered publication and leases.
  * An expired interval is valid payment evidence, never authority for current access. */
 export function validateCapturedRenewalPayment(input: {
@@ -175,17 +183,10 @@ export function validateCapturedRenewalPayment(input: {
     line.subscription_item !== expected.subscriptionItemId ||
     line.price.id !== expected.priceId ||
     line.price.product !== expected.productId ||
-    [
-      invoice.amount_paid,
-      invoice.amount_due,
-      invoice.total,
-      invoice.subtotal,
-      line.amount,
-      payment.amount,
-      payment.amount_received,
-      charge.amount,
-      charge.amount_captured,
-    ].some((amount) => amount !== expected.amountCents) ||
+    line.amount !== expected.amountCents ||
+    [payment.amount, payment.amount_received, charge.amount, charge.amount_captured].some(
+      (amount) => amount !== invoice.amount_due,
+    ) ||
     payment.id !== invoice.payment_intent ||
     payment.invoice !== invoice.id ||
     payment.customer !== invoice.customer ||
@@ -198,7 +199,8 @@ export function validateCapturedRenewalPayment(input: {
     charge.livemode !== invoice.livemode
   )
     renewalUnavailable("payment_invoice_or_catalog_identity_mismatch");
-  return { invoice, line, payment, charge };
+  const adjustmentDigest = proveInvoiceAdjustments(invoice, line);
+  return { invoice, line, payment, charge, adjustmentDigest };
 }
 export interface PaidRenewalObjects {
   /** Current account retrieved alongside a persisted purchase contract; absent for legacy authority. */
@@ -361,7 +363,7 @@ export function validatePaidRenewal(
     renewalUnavailable("payment_invoice_or_catalog_identity_mismatch");
   if (!source.stripe_subscription_id || !source.stripe_customer_id || !subscriptionItemId)
     renewalUnavailable("missing_payment_owner");
-  const { payment, charge } = validateCapturedRenewalPayment({
+  const { payment, charge, adjustmentDigest } = validateCapturedRenewalPayment({
     invoice: input.invoice,
     paymentIntent: input.paymentIntent,
     charge: input.charge,
@@ -421,6 +423,7 @@ export function validatePaidRenewal(
           payment.id,
           charge.id,
           plan.amountCents,
+          ...(adjustmentDigest ? [adjustmentDigest] : []),
         ]),
       )
       .digest("hex"),
