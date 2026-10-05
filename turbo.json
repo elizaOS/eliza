@@ -628,6 +628,9 @@
         "@elizaos/plugin-agent-orchestrator#typecheck:deps"
       ]
     },
+    "@elizaos/plugin-todos#build": {
+      "dependsOn": ["^build", "@elizaos/ui#build"]
+    },
     "@elizaos/plugin-todos#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/ui#typecheck:deps"]
     },
