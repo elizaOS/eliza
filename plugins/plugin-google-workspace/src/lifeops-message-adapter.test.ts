@@ -147,6 +147,7 @@ describe("GoogleGmailAdapter", () => {
     const mailbox = [
       { id: "sent_3", labelIds: ["SENT"], at: 9_000 },
       { id: "sent_2", labelIds: ["SENT"], at: 8_000 },
+      { id: "sent_mid", labelIds: ["SENT"], at: 7_500 },
       { id: "sent_1", labelIds: ["SENT"], at: 7_000 },
       { id: "inbox_2", labelIds: ["UNREAD", "IMPORTANT", "INBOX"], at: 6_000 },
       { id: "inbox_1", labelIds: ["CATEGORY_UPDATES", "INBOX"], at: 5_000 },
@@ -235,8 +236,12 @@ describe("GoogleGmailAdapter", () => {
     ]);
 
     const recent = await adapter.searchMessages(runtime, { sinceMs: 7_500, limit: 5 });
-    expect(recent.map((message) => message.externalId).sort()).toEqual(["sent_2", "sent_3"]);
-    expect(listCalls.at(-1)?.q).toBe("in:anywhere after:7");
+    expect(recent.map((message) => message.externalId).sort()).toEqual([
+      "sent_2",
+      "sent_3",
+      "sent_mid",
+    ]);
+    expect(listCalls.at(-1)?.q).toBe("in:anywhere after:6");
 
     const wholeSecondBoundary = await adapter.searchMessages(runtime, {
       sinceMs: 7_000,
@@ -246,6 +251,7 @@ describe("GoogleGmailAdapter", () => {
       "sent_1",
       "sent_2",
       "sent_3",
+      "sent_mid",
     ]);
     expect(listCalls.at(-1)?.q).toBe("in:anywhere after:6");
   });
