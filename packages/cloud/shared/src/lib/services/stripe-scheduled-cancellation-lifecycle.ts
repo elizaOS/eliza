@@ -20,7 +20,6 @@ import {
 import { organizations } from "../../db/schemas/organizations";
 import { billingSubscriptionCommands } from "../../db/schemas/subscription-billing-operations";
 import type { StripeEventMessage } from "../../types/stripe-queue-message";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
 import {
@@ -30,6 +29,7 @@ import {
 import { reconcileStripeTerminalLifecycle } from "./stripe-terminal-lifecycle";
 import { resolveSubscriptionProviderBinding } from "./subscription-catalog";
 import { openSubscriptionIncident } from "./subscription-event-incidents";
+import { retrieveSubscriptionLifecycleBinding } from "./subscription-lifecycle-provider-binding";
 
 const seconds = z.number().int().nonnegative().safe();
 const eventSchema = z.object({
@@ -204,6 +204,10 @@ export async function reconcileStripeScheduledCancellationLifecycle(
       const { reconcileStripeDunningLifecycle } = await import("./stripe-dunning-lifecycle");
       return await reconcileStripeDunningLifecycle(message, source.stripe_subscription_id);
     }
+    const { environment, providerAccountId } = await retrieveSubscriptionLifecycleBinding(
+      source,
+      stripe,
+    );
     // Our own cancellation or undo that has not been applied yet finalizes
     // through its command owner first; this observation retries after it.
     if (await hasInFlightScheduleCommand(source)) reject("command_in_flight");
@@ -229,7 +233,7 @@ export async function reconcileStripeScheduledCancellationLifecycle(
     // (paid renewal and recovery own the source); out-of-band plan or schedule
     // changes additionally open an incident instead of retrying into the DLQ.
     if (!command || observedPeriodChanged(raw, source)) {
-      const drift = unownedObservationDrift(raw, source, getCloudAwareEnv());
+      const drift = unownedObservationDrift(raw, source, environment);
       if (drift)
         await openSubscriptionIncident({
           source: { organizationId: source.organization_id, subscriptionId: source.id },
@@ -261,7 +265,6 @@ export async function reconcileStripeScheduledCancellationLifecycle(
       .from(organizations)
       .where(eq(organizations.id, source.organization_id));
     if (!organization) reject("organization_unavailable");
-    const environment = getCloudAwareEnv();
     const customer = await stripe.customers.retrieve(source.stripe_customer_id);
     validateCancellationCustomer({
       raw: customer,
@@ -279,6 +282,7 @@ export async function reconcileStripeScheduledCancellationLifecycle(
       allowRetainedCanceledAt: source.canceled_at,
     });
     await operations.finalizeCancellationEvent({
+      providerAccountId,
       ...lease,
       commandId: command.id,
       subscriptionId: source.id,
