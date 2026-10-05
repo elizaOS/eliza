@@ -12,6 +12,10 @@ import {
   organizationScheduleEffectReceiptSchema,
   scheduleEffectRequestDigest,
 } from "../../lib/services/organization-schedule-effect-contract";
+import {
+  projectAuthenticatedScheduleEvent,
+  projectOriginalScheduleResponse,
+} from "../../lib/services/organization-schedule-effect-origin";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
@@ -336,7 +340,53 @@ export async function recordOrganizationScheduleEffectReceipt(
   effectId: string,
   raw: OrganizationScheduleEffectReceipt,
 ) {
-  const receipt = organizationScheduleEffectReceiptSchema.parse(raw);
+  return recordReceipt(input, claim, effectId, () =>
+    organizationScheduleEffectReceiptSchema.parse(raw),
+  );
+}
+/** Caller authenticates the platform SDK response or verifies the event signature first.
+ * Original identity and dispatch time come from locked storage, never the caller.
+ * Exact evidence replay retains the first observation timestamp and provenance.
+ */
+export async function recordAuthenticatedOrganizationScheduleEvidence(
+  input: Identity,
+  claim: Claim,
+  effectId: string,
+  evidence: { kind: "response" | "event"; raw: unknown },
+) {
+  return recordReceipt(input, claim, effectId, (effect, now) => {
+    if (!effect.started_at) reject("effect_not_started");
+    const args = {
+      raw: evidence.raw,
+      originalRequest: {
+        request: effect.request_payload,
+        providerIdempotencyKey: effect.provider_idempotency_key,
+        customerId: effect.customer_id,
+        subscriptionId: effect.subscription_id,
+        livemode: effect.livemode,
+        startedAt: effect.started_at,
+      },
+      observedAt: now,
+    };
+    const receipt =
+      evidence.kind === "response"
+        ? projectOriginalScheduleResponse(args)
+        : projectAuthenticatedScheduleEvent(args);
+    if (effect.receipt) {
+      // Compare all immutable evidence fields, ignoring only the new observation time.
+      const replay = { ...receipt, observedAt: effect.receipt.observedAt };
+      if (settlementDigest(replay) !== effect.receipt_digest) reject("original_receipt_changed");
+      return effect.receipt;
+    }
+    return receipt;
+  });
+}
+async function recordReceipt(
+  input: Identity,
+  claim: Claim,
+  effectId: string,
+  project: (effect: typeof effects.$inferSelect, now: Date) => OrganizationScheduleEffectReceipt,
+) {
   return writeTransaction(async (tx) => {
     const locked = await lockOriginal(tx, input, false),
       existing = await rows(tx, input),
@@ -349,6 +399,7 @@ export async function recordOrganizationScheduleEffectReceipt(
       effect,
       existing.find((x) => x.id === effect.predecessor_id),
     );
+    const receipt = project(effect, now);
     const observedAt = new Date(receipt.observedAt);
     if (
       receipt.customerId !== effect.customer_id ||
