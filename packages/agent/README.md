@@ -71,6 +71,10 @@ Retain real end-to-end scenarios exercising host, transport, and persistence.
 The package test, test:e2e, and test:integration commands share that suite;
 do not reintroduce removed unit, mock, smoke, or source-inspection tests.
 
+Remote push (APNs/FCM) acceptance requires an enrolled device, token registration
+through the authenticated API, and confirmed delivery to that device while the
+app is backgrounded or closed. The local agent suite does not verify device delivery.
+
 Run the native coding CLI end to end with configured provider credentials:
 
 ```bash
