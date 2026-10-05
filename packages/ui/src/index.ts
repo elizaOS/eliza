@@ -1361,6 +1361,18 @@ export {
   playCaptureSendCue,
   playCaptureStartCue,
 } from "./voice/capture-cues.js";
+export {
+  DeviceSpeechController,
+  type DeviceSpeechEnvironment,
+  type DeviceSpeechState,
+} from "./voice/device-speech-controller.js";
+export {
+  type SegmentedSpeechOptions,
+  SegmentedSpeechPlayback,
+  type SegmentedSpeechState,
+  type SpeechAudioEnvironment,
+  SpeechPlaybackError,
+} from "./voice/segmented-speech-playback.js";
 export { splitSpeechSegments } from "./voice/speech-segments.js";
 export { useVoiceConfig } from "./voice/useVoiceConfig.js";
 export {

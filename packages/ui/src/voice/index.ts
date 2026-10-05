@@ -46,6 +46,11 @@ export {
   startBotFreeMeetingAudioCapture,
 } from "./bot-free-meeting-audio-capture";
 export * from "./character-voice-config";
+export {
+  DeviceSpeechController,
+  type DeviceSpeechEnvironment,
+  type DeviceSpeechState,
+} from "./device-speech-controller.js";
 export * from "./emotion";
 export {
   DESKTOP_FUSED_WAKE_MESSAGE,
@@ -79,6 +84,13 @@ export {
   type PlaybackFrameTap,
   resamplePcmTo16k,
 } from "./playback-frame-pump";
+export {
+  type SegmentedSpeechOptions,
+  SegmentedSpeechPlayback,
+  type SegmentedSpeechState,
+  type SpeechAudioEnvironment,
+  SpeechPlaybackError,
+} from "./segmented-speech-playback.js";
 export {
   SHIPPED_WAKE_HEADS,
   type UseWakeControllerOptions,
