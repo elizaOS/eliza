@@ -390,6 +390,7 @@ it.each(["import", "provision"])(
 it.each([
   { entry: "first-run keys route", vault: true },
   { entry: "first-run keys route", vault: false },
+  { entry: "first-run completion", vault: false },
   { entry: "boot auto-provision", vault: true },
   { entry: "boot auto-provision", vault: false },
 ] as const)(
@@ -437,10 +438,22 @@ it.each([
         hostConfig: loadElizaConfig(),
         skipDeferredStartupWork: true,
       });
-      if (entry === "first-run keys route") {
+      if (
+        entry === "first-run keys route" ||
+        entry === "first-run completion"
+      ) {
         const response = await fetch(
-          `http://127.0.0.1:${server.port}/api/wallet/keys`,
-          { headers: { Authorization: `Bearer ${token}` } },
+          `http://127.0.0.1:${server.port}${entry === "first-run completion" ? "/api/first-run" : "/api/wallet/keys"}`,
+          {
+            method: entry === "first-run completion" ? "POST" : "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            ...(entry === "first-run completion"
+              ? { body: JSON.stringify({ name: "Wallet fixture" }) }
+              : {}),
+          },
         );
         expect(response.status).toBe(vault ? 200 : 500);
       }
