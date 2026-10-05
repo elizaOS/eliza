@@ -80,9 +80,35 @@ export function androidFixtureObserver({ run, packageName, androidUser }) {
     },
     async stopped() {
       const dump = await run("shell", "dumpsys", "package", packageName);
-      const rows = String(dump)
-        .split(/\r?\n/)
-        .filter((line) => new RegExp(`^\\s*User ${user}:`).test(line));
+      // dumpsys repeats User N headings under Queries. Only package state in
+      // the exact Packages block is authoritative, not a global user-row scan.
+      const lines = String(dump).split(/\r?\n/);
+      const sections = lines.flatMap((line, index) =>
+        line === "Packages:" ? [index] : [],
+      );
+      assert.equal(
+        sections.length,
+        1,
+        "Exactly one package inventory required",
+      );
+      const start = sections[0] + 1;
+      const boundary = lines.findIndex(
+        (line, index) => index >= start && /^\S/.test(line),
+      );
+      const inventory = lines.slice(start, boundary < 0 ? undefined : boundary);
+      const packages = inventory.flatMap((line, index) => {
+        const match = line.match(/^ {2}Package \[([^\]]+)\] \([^)]*\):$/);
+        return match ? [{ name: match[1], index }] : [];
+      });
+      const targets = packages.filter((item) => item.name === packageName);
+      assert.equal(targets.length, 1, "Exactly one fixture package required");
+      const packageStart = targets[0].index;
+      const packageEnd = packages.find(
+        (item) => item.index > packageStart,
+      )?.index;
+      const rows = inventory
+        .slice(packageStart + 1, packageEnd)
+        .filter((line) => new RegExp(`^    User ${user}:`).test(line));
       assert.equal(
         rows.length,
         1,
