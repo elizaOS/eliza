@@ -79,6 +79,37 @@ async function publicationSnapshot(organizationId: string) {
     },
   });
 
+  test("original invoice claim rechecks deletion after waiting for the organization lock", async () => {
+    const { owner, recovery } = await contract.retainUnfunded();
+    const holder = await connection();
+    await holder.query("BEGIN");
+    await holder.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [
+      owner.organizationId,
+    ]);
+    const pending = recovery.claimOriginalInvoiceEvent(owner);
+    try {
+      await waitForOrganizationLock();
+      await holder.query(
+        "UPDATE organizations SET paid_work_fenced_at=clock_timestamp() WHERE id=$1",
+        [owner.organizationId],
+      );
+      await holder.query("COMMIT");
+      expect(await pending).toBeNull();
+      expect(
+        (
+          await query<{ attempt_count: number; status: string }>(
+            "SELECT attempt_count,status FROM billing_subscription_event_receipts WHERE id=$1",
+            [owner.receiptId],
+          )
+        ).rows,
+      ).toEqual([{ attempt_count: 0, status: "received" }]);
+    } finally {
+      await holder.query("ROLLBACK");
+      await holder.end();
+      await pending;
+    }
+  });
+
   for (const scenario of ["deletion", "lease"] as const) {
     test(`${scenario} changing while paid recovery waits denies all publication`, async () => {
       const fixture = await contract.seed();

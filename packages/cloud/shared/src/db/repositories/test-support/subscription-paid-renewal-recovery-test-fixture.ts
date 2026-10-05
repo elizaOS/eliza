@@ -1372,8 +1372,204 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       );
     });
 
+  async function retainUnfunded(originalDebit = true) {
+    const f = await seed();
+    Object.assign(f.invoice, {
+      amount_paid: 0,
+      payment_intent: null,
+      charge: null,
+      starting_balance: 0,
+      ending_balance: f.invoice.total,
+    });
+    objects.set("/v1/account", { id: "acct_original", object: "account" });
+    const event: Stripe.InvoicePaidEvent = JSON.parse(
+      JSON.stringify({
+        id: `evt_${randomUUID().replaceAll("-", "")}`,
+        object: "event",
+        type: "invoice.paid",
+        api_version: "2024-11-20.acacia",
+        created: Math.floor(Date.now() / 1000),
+        livemode: false,
+        data: { object: { ...f.invoice, ...(originalDebit ? {} : { ending_balance: 0 }) } },
+      }),
+    );
+    const { reconcileStripePaidRenewal } = await import(
+      "../../../lib/services/stripe-paid-renewal"
+    );
+    await expect(
+      reconcileStripePaidRenewal({
+        kind: "stripe.event",
+        eventId: event.id,
+        eventType: event.type,
+        event,
+        receivedAt: Date.now(),
+      }),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
+    const receipt = (
+      await database.query<{ id: string }>(
+        "SELECT id FROM billing_subscription_event_receipts WHERE provider_event_id=$1",
+        [event.id],
+      )
+    ).rows[0]!;
+    const recovery = await import("../subscription-invoice-event-recovery");
+    const operations = (await import("../subscription-billing-operations"))
+      .subscriptionBillingOperationsRepository;
+    return {
+      f,
+      owner: { organizationId: f.source.organization_id, receiptId: receipt.id },
+      recovery,
+      operations,
+    };
+  }
+  test("original invoice discovery includes terminal sources and replaced current items without a grant", async () => {
+    const { f, owner, recovery } = await retainUnfunded();
+    await database.query(
+      "UPDATE billing_subscriptions SET status='canceled',stripe_subscription_item_id='si_replaced' WHERE id=$1",
+      [f.source.id],
+    );
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([owner]);
+    const claim = await recovery.claimOriginalInvoiceEvent(owner);
+    expect(claim?.evidence.event.data.object.lines.data[0]?.subscription_item).toBe(
+      f.invoice.lines.data[0]!.subscription_item,
+    );
+    expect(await allowanceCount(owner.organizationId)).toBe(0);
+    expect(writes).toBe(0);
+  });
+  test("original invoice claims share one existing receipt lease across concurrent workers", async () => {
+    const { owner, recovery } = await retainUnfunded();
+    const claims = await Promise.all([
+      recovery.claimOriginalInvoiceEvent(owner),
+      recovery.claimOriginalInvoiceEvent(owner),
+    ]);
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    expect(claims.find(Boolean)?.attempt).toBe(1);
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([]);
+    expect(
+      await recovery.claimOriginalInvoiceEvent({ ...owner, organizationId: randomUUID() }),
+    ).toBeNull();
+  });
+  test("original invoice retry backoff uses the existing receipt counter and database time", async () => {
+    const { owner, recovery, operations } = await retainUnfunded();
+    const first = (await recovery.claimOriginalInvoiceEvent(owner))!;
+    await operations.releaseEventForRetry(first);
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([]);
+    expect(await recovery.claimOriginalInvoiceEvent(owner)).toBeNull();
+    await database.query(
+      "UPDATE billing_subscription_event_receipts SET updated_at=clock_timestamp()-interval '61 seconds' WHERE id=$1",
+      [owner.receiptId],
+    );
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([owner]);
+    const second = (await recovery.claimOriginalInvoiceEvent(owner))!;
+    expect(second.attempt).toBe(2);
+    expect(second.leaseToken).not.toBe(first.leaseToken);
+    await operations.releaseEventForRetry(first);
+    expect(await recovery.claimOriginalInvoiceEvent(owner)).toBeNull();
+  });
+  test("expired original invoice lease is reclaimed without mutating retained evidence", async () => {
+    const { owner, recovery } = await retainUnfunded();
+    const first = (await recovery.claimOriginalInvoiceEvent(owner))!;
+    await database.query(
+      "UPDATE billing_subscription_event_receipts SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [owner.receiptId],
+    );
+    const second = (await recovery.claimOriginalInvoiceEvent(owner))!;
+    expect(second.evidence).toEqual(first.evidence);
+    expect(second.attempt).toBe(2);
+    expect(second.leaseToken).not.toBe(first.leaseToken);
+  });
+  for (const field of ["paid_work_fenced_at", "is_active"] as const)
+    test(`original invoice recovery respects organization ${field}`, async () => {
+      const { owner, recovery } = await retainUnfunded();
+      await database.query(
+        `UPDATE organizations SET ${field}=${field === "is_active" ? "false" : "clock_timestamp()"} WHERE id=$1`,
+        [owner.organizationId],
+      );
+      expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([]);
+      expect(await recovery.claimOriginalInvoiceEvent(owner)).toBeNull();
+    });
+  test("original invoice recovery respects an independent subscription billing fence", async () => {
+    const { f, owner, recovery, operations } = await retainUnfunded();
+    await operations.createFence({
+      organizationId: owner.organizationId,
+      subscriptionId: f.source.id,
+      providerEventId: null,
+      providerEventCreatedAt: null,
+      providerObjectDigest: "f".repeat(64),
+      nextReconcileAt: null,
+      now: new Date(),
+    });
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([owner]);
+    await database.query(
+      "UPDATE subscription_billing_fences SET state='quarantined',fence_revision=fence_revision+1 WHERE organization_id=$1",
+      [owner.organizationId],
+    );
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([]);
+    expect(await recovery.claimOriginalInvoiceEvent(owner)).toBeNull();
+  });
+  test("original invoice fences stay bound to their subscription when an organization has multiple sources", async () => {
+    const { f, owner, recovery, operations } = await retainUnfunded();
+    const otherId = randomUUID();
+    await database.query(
+      `INSERT INTO billing_subscriptions SELECT (jsonb_populate_record(NULL::billing_subscriptions,
+        to_jsonb(s) || jsonb_build_object('id',$2::text,'status','canceled',
+          'stripe_subscription_id',$3::text,'stripe_subscription_item_id',$4::text))).*
+        FROM billing_subscriptions s WHERE id=$1`,
+      [
+        f.source.id,
+        otherId,
+        `sub_${otherId.replaceAll("-", "")}`,
+        `si_${otherId.replaceAll("-", "")}`,
+      ],
+    );
+    for (const subscriptionId of [f.source.id, otherId])
+      await operations.createFence({
+        organizationId: owner.organizationId,
+        subscriptionId,
+        providerEventId: null,
+        providerEventCreatedAt: null,
+        providerObjectDigest: "f".repeat(64),
+        nextReconcileAt: null,
+        now: new Date(),
+      });
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([owner]);
+    await database.query(
+      "UPDATE subscription_billing_fences SET state='quarantined',fence_revision=fence_revision+1 WHERE subscription_id=$1",
+      [f.source.id],
+    );
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([]);
+    expect(await recovery.claimOriginalInvoiceEvent(owner)).toBeNull();
+  });
+  test("original invoice discovery excludes terminal receipt outcomes", async () => {
+    const { owner, recovery, operations } = await retainUnfunded();
+    const claim = (await recovery.claimOriginalInvoiceEvent(owner))!;
+    await operations.failEvent({
+      ...claim,
+      status: "quarantined",
+      errorCode: "controlled_quarantine",
+    });
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([]);
+    expect(await recovery.claimOriginalInvoiceEvent(owner)).toBeNull();
+  });
+  test("original invoice recovery cannot infer original debt from a later provider balance", async () => {
+    const { owner, recovery } = await retainUnfunded(false);
+    expect(await recovery.listDueOriginalInvoiceEvents(5)).toEqual([]);
+    expect(await recovery.claimOriginalInvoiceEvent(owner)).toBeNull();
+  });
+  test("original invoice discovery and claim bounds fail explicitly", async () => {
+    const { owner, recovery } = await retainUnfunded();
+    for (const limit of [0, 6, 1.5, Number.NaN])
+      await expect(recovery.listDueOriginalInvoiceEvents(limit)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_INVOICE_RECOVERY_UNAVAILABLE",
+      });
+    for (const leaseDurationMs of [0, 60_001])
+      await expect(
+        recovery.claimOriginalInvoiceEvent({ ...owner, leaseDurationMs }),
+      ).rejects.toMatchObject({ code: "SUBSCRIPTION_INVOICE_RECOVERY_UNAVAILABLE" });
+  });
+
   return {
     seed,
+    retainUnfunded,
     recover: () => service.recoverMissedSubscriptionEvents(),
     allowanceCount,
     sourceRevision,
