@@ -119,3 +119,9 @@ Captured renewal payment proof is independently reusable for an exact retained i
 interval, price, owner and amount. It does not read or synthesize current subscription
 state. Current renewal publication still requires its live period/latest-invoice checks;
 historical publication must separately preserve ordered source authority and current dunning.
+
+Scheduled target observation separates compatible live state from original-period
+settlement. A released/completed schedule can have a later active, past-due or unpaid
+subscription without proving any invoice paid. Original settlement still requires its
+exact interval and latest invoice; historical callers must independently prove captured
+payment, preserve later debt and publish source/allowance in order.
