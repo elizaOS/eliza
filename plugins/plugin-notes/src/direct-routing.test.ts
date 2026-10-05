@@ -96,4 +96,23 @@ describe("Notes creation capability routing", () => {
       [],
     );
   });
+  it("routes the captured explicit read through the current-record reader", async () => {
+    const ctx = await context();
+    ctx.message.content.text = "Read the note titled QA latest regression.";
+    const routes = await resolveEligibleDirectActionRoutes(ctx);
+    expect(routes.map((r) => r.action.name)).toEqual(["NOTES_LIST"]);
+    expect(
+      await resolveEligibleDirectActionRoutes({ ...ctx, userRoles: ["USER"] }),
+    ).toEqual([]);
+  });
+  it.each([
+    "What did I just write?",
+    "Explain how to read notes.",
+    "The user said read my notes.",
+    "Read a story about notes.",
+  ])("leaves ordinary recall and noncommands unchanged: %s", async (text) => {
+    const ctx = await context();
+    ctx.message.content.text = text;
+    expect(await resolveEligibleDirectActionRoutes(ctx)).toEqual([]);
+  });
 });
