@@ -12,6 +12,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { decodeHTML } from "entities";
 import { stripHtmlRawTextElements, toWellFormedUnicode } from "@elizaos/core";
 import {
   failureToActionResult,
@@ -33,14 +34,6 @@ export function isCodingWebFetchEnabled(): boolean {
 }
 
 function decodeHtmlEntity(entity: string): string {
-  const named: Record<string, string> = {
-    amp: "&",
-    apos: "'",
-    gt: ">",
-    lt: "<",
-    nbsp: " ",
-    quot: '"',
-  };
   if (entity.startsWith("#")) {
     const code = entity.startsWith("#x")
       ? Number.parseInt(entity.slice(2), 16)
@@ -54,7 +47,7 @@ function decodeHtmlEntity(entity: string): string {
       (code < 0xd800 || code > 0xdfff);
     return isUnicodeScalarValue ? String.fromCodePoint(code) : `&${entity};`;
   }
-  return named[entity] ?? `&${entity};`;
+  return decodeHTML(`&${entity};`);
 }
 
 function normalizeWhitespace(text: string): string {
