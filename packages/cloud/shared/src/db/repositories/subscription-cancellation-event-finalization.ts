@@ -1,5 +1,7 @@
 /** Reconciles only the latest immutable applied cancellation or undo result with a fresh scheduled provider observation, publishing source, projection and receipt atomically. */
+
 import { and, eq, isNull } from "drizzle-orm";
+import { observeConfiguredCancellation } from "../../lib/services/configured-schedule-cancellation";
 import {
   cancellationReobserve,
   validateCancellationCustomer,
@@ -16,6 +18,7 @@ import {
   billingSubscriptionCommands,
   billingSubscriptionEventReceipts,
 } from "../schemas/subscription-billing-operations";
+import { readConfiguredCancellationAuthority } from "./configured-schedule-cancellation-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import type {
@@ -49,6 +52,7 @@ export interface FinalizeCancellationEventInput {
   providerEventId: string;
   eventCreatedAt: Date;
   raw: unknown;
+  rawSchedule?: unknown;
   customer: unknown;
 }
 export async function finalizeCancellationEvent(
@@ -207,15 +211,24 @@ export async function finalizeCancellationEvent(
       organizationCustomerId: organization.stripe_customer_id,
       environment,
     });
-    const observed = validatePeriodEndCancellationObservation({
-      source: current,
-      organizationCustomerId: organization.stripe_customer_id,
-      environment,
-      raw: input.raw,
-      observedAt: databaseNow,
-      requireScheduled: latest.kind === "cancel",
-      allowRetainedCanceledAt: current.canceled_at,
-    });
+    const authority = await readConfiguredCancellationAuthority(tx, current);
+    const observed = authority
+      ? observeConfiguredCancellation({
+          authority,
+          source: current,
+          rawSubscription: input.raw,
+          rawSchedule: input.rawSchedule,
+          observedAt: databaseNow,
+        })
+      : validatePeriodEndCancellationObservation({
+          source: current,
+          organizationCustomerId: organization.stripe_customer_id,
+          environment,
+          raw: input.raw,
+          observedAt: databaseNow,
+          requireScheduled: latest.kind === "cancel",
+          allowRetainedCanceledAt: current.canceled_at,
+        });
     if (
       observed.scheduled !== (latest.kind === "cancel") ||
       current.cancel_at_period_end !== observed.scheduled ||

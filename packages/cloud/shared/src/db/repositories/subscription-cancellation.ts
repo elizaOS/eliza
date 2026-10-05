@@ -1,7 +1,9 @@
 /** Serializes organization cancellation intent, provider leases and atomic lifecycle publication against primary actor and subscription authority. Provider requests occur outside these transactions. */
+
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import { observeConfiguredCancellation } from "../../lib/services/configured-schedule-cancellation";
 import { validatePeriodEndCancellationObservation } from "../../lib/services/stripe-period-end-cancellation";
 import { resolveSubscriptionLifecycleBinding } from "../../lib/services/subscription-lifecycle-provider-binding";
 import {
@@ -18,6 +20,7 @@ import {
   billingSubscriptionCommands,
   billingSubscriptionRenewalReviews,
 } from "../schemas/subscription-billing-operations";
+import { readConfiguredCancellationAuthority } from "./configured-schedule-cancellation-authority";
 import {
   lockCurrentOrganizationSubscription,
   lockOrganizationSubscriptionManager,
@@ -51,12 +54,20 @@ function reject(reason: string): never {
 function lockActor(tx: DbTransaction, input: CancellationIdentity) {
   return lockOrganizationSubscriptionManager(tx, input, reject);
 }
-function currentSource(
+async function currentSource(
   tx: DbTransaction,
   input: Omit<PrepareCancellationInput, "idempotencyKey">,
   locked: Awaited<ReturnType<typeof lockActor>>,
 ) {
-  return lockCurrentOrganizationSubscription(tx, input, locked, reject);
+  const source = await lockCurrentOrganizationSubscription(
+    tx,
+    input,
+    locked,
+    reject,
+    "configured_cancellation",
+  );
+  if (source.pending_plan_key !== null) await readConfiguredCancellationAuthority(tx, source);
+  return source;
 }
 /** Captures eligible undo authority without admitting a command or sending a provider mutation. */
 export async function readCancellationUndoReviewSource(
@@ -96,7 +107,11 @@ export async function readCancellationUndoReviewSource(
       projection.source_subscription_revision !== source.lifecycle_revision
     )
       reject("projection_unavailable");
-    return { source, organizationCustomerId: locked.organization.customer };
+    return {
+      source,
+      organizationCustomerId: locked.organization.customer,
+      configuredCancellation: await readConfiguredCancellationAuthority(tx, source),
+    };
   });
 }
 function intentDigest(
@@ -148,6 +163,12 @@ export async function prepareCancellation(
       return existing;
     }
     const source = await currentSource(tx, input, locked);
+    if (
+      kind === "resume" &&
+      input.renewalReview === undefined &&
+      (await readConfiguredCancellationAuthority(tx, source))
+    )
+      reject("configured_resume_requires_renewal_review");
     const predecessor = await readLatestSubscriptionScheduleCommand(tx, source);
     if (
       kind === "resume"
@@ -314,6 +335,7 @@ export async function claimCancellation(
     return {
       command: claimed,
       source,
+      configuredCancellation: await readConfiguredCancellationAuthority(tx, source),
       organizationCustomerId: locked.organization.customer,
       projectionRevision: projection.projection_revision,
       canDispatch: command.cancellation_dispatch_state === "ready",
@@ -346,6 +368,7 @@ export async function finalizeCancellation(
   claim: CancellationClaim,
   raw: unknown,
   providerAccountId?: string,
+  rawSchedule?: unknown,
 ) {
   return writeTransaction(async (tx) => {
     const locked = await lockActor(tx, input);
@@ -387,15 +410,27 @@ export async function finalizeCancellation(
       locked,
     );
     await validatePredecessor(tx, source, command);
-    const observed = validatePeriodEndCancellationObservation({
-      source,
-      organizationCustomerId: locked.organization.customer,
-      environment: await resolveSubscriptionLifecycleBinding(source, providerAccountId, tx),
-      raw,
-      observedAt: now,
-      requireScheduled: command.kind === "cancel",
-      allowRetainedCanceledAt: source.canceled_at,
-    });
+    const configuredCancellation = await readConfiguredCancellationAuthority(tx, source);
+    if (configuredCancellation?.authorityDigest !== claim.configuredCancellation?.authorityDigest)
+      reject("configured_cancellation_authority_changed");
+    const environment = await resolveSubscriptionLifecycleBinding(source, providerAccountId, tx);
+    const observed = configuredCancellation
+      ? observeConfiguredCancellation({
+          authority: configuredCancellation,
+          source,
+          rawSubscription: raw,
+          rawSchedule,
+          observedAt: now,
+        })
+      : validatePeriodEndCancellationObservation({
+          source,
+          organizationCustomerId: locked.organization.customer,
+          environment,
+          raw,
+          observedAt: now,
+          requireScheduled: command.kind === "cancel",
+          allowRetainedCanceledAt: source.canceled_at,
+        });
     if (observed.scheduled !== (command.kind === "cancel")) reject("schedule_effect_unconfirmed");
     const values = {
       provider: source.provider,
@@ -411,7 +446,7 @@ export async function finalizeCancellation(
       ended_at: source.ended_at,
       dunning_started_at: source.dunning_started_at,
       grace_expires_at: source.grace_expires_at,
-      pending_plan_key: source.pending_plan_key,
+      pending_plan_key: configuredCancellation ? null : source.pending_plan_key,
     };
     const changed = await subscriptionAuthorityRepository.advanceCommandInTransaction(tx, {
       organizationId: input.organizationId,
@@ -532,6 +567,12 @@ export async function assertCancellationClaimCurrent(
       locked,
     );
     await validatePredecessor(tx, source, command);
+    const configuredCancellation = await readConfiguredCancellationAuthority(tx, source);
+    if (
+      configuredCancellation?.authorityDigest !== claim.configuredCancellation?.authorityDigest ||
+      configuredCancellation?.originalPending !== claim.configuredCancellation?.originalPending
+    )
+      reject("configured_cancellation_authority_changed");
     if (markDispatch) {
       if (command.cancellation_dispatch_state !== "ready")
         reject("dispatch_already_started_or_unknown");
