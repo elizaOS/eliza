@@ -95,8 +95,8 @@ async function lockOriginalExecution(tx: DbTransaction, input: Identity) {
       })
   )
     reject("command_review_changed");
-  organizationUpgradeReviewSchema.parse(quote.review);
-  return { command, quote };
+  const review = organizationUpgradeReviewSchema.parse(quote.review);
+  return { command, quote: { ...quote, review } };
 }
 async function currentSource(
   tx: DbTransaction,

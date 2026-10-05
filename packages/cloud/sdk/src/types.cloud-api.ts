@@ -96,6 +96,35 @@ export interface OrganizationSubscriptionUpgradeQuoteDto {
 export type OrganizationSubscriptionUpgradeQuoteResponse =
   ApiSuccessEnvelope<OrganizationSubscriptionUpgradeQuoteDto>;
 
+/** Lower-plan review: no immediate charge; recurringEstimate is not a guaranteed next invoice. */
+export interface OrganizationSubscriptionDowngradeReviewDto {
+  kind: "downgrade_estimate";
+  subscriptionId: string;
+  expectedSubscriptionRevision: string;
+  sourcePlanKey: "plus_monthly" | "pro_monthly";
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  currency: "usd";
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  effectiveAt: string;
+  amountDueNowCents: 0;
+  targetBaseAmountCents: number;
+  targetAllowanceUsd: string;
+  recurringEstimate: OrganizationSubscriptionUpgradeInvoiceDto;
+  observedAt: string;
+  expiresAt: string;
+}
+
+export type OrganizationSubscriptionDowngradeQuoteRequest =
+  OrganizationSubscriptionUpgradeQuoteRequest;
+export interface OrganizationSubscriptionDowngradeQuoteDto {
+  quoteId: string;
+  review: OrganizationSubscriptionDowngradeReviewDto;
+}
+export type OrganizationSubscriptionDowngradeQuoteResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionDowngradeQuoteDto>;
+
 /** Durable server-owned outcome; OUTCOME_UNKNOWN never authorizes a new payment or intent. */
 export interface OrganizationSubscriptionUpgradeCommandDto {
   commandId: string;
