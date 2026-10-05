@@ -94,12 +94,46 @@ function telegramChatIdFromChannelId(channelId: unknown): string | null {
 }
 
 function buildIMessageLink(room: Record<string, unknown>): string | null {
+  // plugin-imessage `ensureRoomExists` persists chat.db `chat_identifier` as
+  // room metadata `chatId` and `Room.channelId`. It never writes `handle`,
+  // `chatIdentifier`, or `chat_identifier`, so those keys alone leave every
+  // iMessage triage row without a link. 1:1 ids are a phone or email (bare,
+  // or `iMessage;-;+1555…`); group ids (`chat…`, `iMessage;+;chat…`) have no
+  // public `imessage://` target and stay null so the inbox keeps `/inbox`.
   const handle =
-    str(room.handle) || str(room.chatIdentifier) || str(room.chat_identifier);
+    str(room.handle) ||
+    str(room.chatIdentifier) ||
+    str(room.chat_identifier) ||
+    imessageDirectAddress(room.chatId) ||
+    imessageDirectAddress(room.channelId);
   if (handle) {
     return `imessage://${handle}`;
   }
   return null;
+}
+
+/** Phone or email an `imessage://` URL can open, or null for a group chat id. */
+function imessageDirectAddress(value: unknown): string | null {
+  const raw = str(value);
+  if (!raw) return null;
+  const parts = raw.split(";");
+  let candidate = raw;
+  if (parts.length >= 3) {
+    // AppleScript / chat.db form: "<service>;<+|->;<id>". "+" is a group.
+    if (parts[1] !== "-") return null;
+    candidate = parts.slice(2).join(";");
+  }
+  if (isImessageEmail(candidate) || isImessagePhone(candidate))
+    return candidate;
+  return null;
+}
+
+function isImessageEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isImessagePhone(value: string): boolean {
+  return /^\+?[0-9]{7,15}$/.test(value);
 }
 
 function buildWhatsAppLink(room: Record<string, unknown>): string | null {

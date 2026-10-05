@@ -113,6 +113,44 @@ describe("buildDeepLink — iMessage / WhatsApp", () => {
     ).toBe("imessage://+1555");
   });
 
+  it("opens a 1:1 chat from the chatId and channelId imessage persists", () => {
+    // plugin-imessage ensureRoomExists stores chat.db chat_identifier as
+    // metadata.chatId and Room.channelId. Direct chats are a phone/email,
+    // sometimes wrapped as "<service>;-;<address>".
+    expect(
+      buildDeepLink("imessage", {
+        roomMeta: {
+          accountId: "default",
+          chatId: "iMessage;-;+15551234567",
+          chatType: "direct",
+          channelId: "iMessage;-;+15551234567",
+        },
+      }),
+    ).toBe("imessage://+15551234567");
+    expect(
+      buildDeepLink("imessage", {
+        roomMeta: { channelId: "person@icloud.com" },
+      }),
+    ).toBe("imessage://person@icloud.com");
+    expect(
+      buildDeepLink("imessage", { roomMeta: { chatId: "+15551234567" } }),
+    ).toBe("imessage://+15551234567");
+    // Group ids have no public imessage:// form.
+    expect(
+      buildDeepLink("imessage", {
+        roomMeta: {
+          chatId: "iMessage;+;chat123",
+          channelId: "iMessage;+;chat123",
+          chatType: "group",
+        },
+      }),
+    ).toBeNull();
+    expect(
+      buildDeepLink("imessage", { roomMeta: { chatId: "chat839201928374" } }),
+    ).toBeNull();
+    expect(buildDeepLink("imessage", { roomMeta: {} })).toBeNull();
+  });
+
   it("whatsapp strips non-digits and the jid suffix", () => {
     expect(
       buildDeepLink("whatsapp", { roomMeta: { phoneNumber: "+1 (555) 12" } }),
