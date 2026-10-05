@@ -443,3 +443,29 @@ test("async readback failure faults the store and preserves the committed revisi
   port.read = read;
   assert.equal((await DocumentNotesStore.open(port)).list[0].body, "Saved");
 });
+
+test("async document commit rechecks authorization after in-memory preparation", async () => {
+  const port = documents(),
+    store = await DocumentNotesStore.open(port, [note]),
+    target = await store.target(note.id),
+    before = await port.read();
+  let checks = 0,
+    authorized = true;
+  await assert.rejects(
+    store.execute(
+      { type: "notes_delete", target },
+      "retired-before-commit",
+      new AbortController().signal,
+      () => {
+        if (!authorized) throw Error("Retired owner");
+        if (++checks === 3)
+          queueMicrotask(() => {
+            authorized = false;
+          });
+      },
+    ),
+    /Retired owner/,
+  );
+  assert.deepEqual(await port.read(), before);
+  assert.equal(store.needsRecovery, true);
+});

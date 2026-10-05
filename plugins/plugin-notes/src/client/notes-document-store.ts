@@ -116,7 +116,7 @@ export class DocumentNotesStore {
     });
     return task;
   }
-  private commit(raw: string, signal?: AbortSignal) {
+  private commit(raw: string, signal?: AbortSignal, authorized?: () => void) {
     const task = this.tail.then(async () => {
       this.check();
       signal?.throwIfAborted();
@@ -127,6 +127,7 @@ export class DocumentNotesStore {
           );
         return;
       }
+      authorized?.();
       let saved: NotesDocumentSnapshot;
       try {
         saved = snapshot(
@@ -192,8 +193,10 @@ export class DocumentNotesStore {
       authorized();
       const before = this.raw,
         result = await this.inner.execute(op, id, signal, authorized);
-      if (this.raw !== before) await this.commit(this.raw, signal);
+      if (this.raw !== before) await this.commit(this.raw, signal, authorized);
       else await this.assertCurrent(signal);
+      signal.throwIfAborted();
+      authorized();
       return result;
     } finally {
       this.activeOperation = false;
