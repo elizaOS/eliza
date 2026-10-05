@@ -13,7 +13,10 @@ import {
   getStylePresets,
 } from "@elizaos/host/protocol";
 import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";
-import { persistWalletPrivateKeys } from "./wallet-key-store.ts";
+import {
+  persistWalletPrivateKeys,
+  restoreWalletPrivateKeysFromVault,
+} from "./wallet-key-store.ts";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet-keygen.ts";
 
 // ---------------------------------------------------------------------------
@@ -433,6 +436,11 @@ export function getCloudProviderOptions(): Array<{
 export async function ensureWalletKeysInEnvAndConfig(
   config: ElizaConfig,
 ): Promise<boolean> {
+  // The vault is the durable wallet store in OS-store mode and its boot
+  // hydrate only runs after the listener is live; consult it before deciding
+  // anything is missing so a pre-hydration provisioning request reuses the
+  // stored wallet instead of overwriting it.
+  await restoreWalletPrivateKeysFromVault(config);
   const missingEvm =
     typeof process.env.EVM_PRIVATE_KEY !== "string" ||
     !process.env.EVM_PRIVATE_KEY.trim();
