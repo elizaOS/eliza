@@ -92,8 +92,9 @@ require_text '($1 * 512) + $2' \
 for unit in elizaos-session.target elizaos-agent.service elizaos-desktop.service; do
     require_file "${MKOSI_DIR}/mkosi.extra/usr/lib/systemd/user/${unit}"
 done
+require_file "${ROOT}/packaging/debian/validate-user-units"
 if command -v systemd-analyze >/dev/null 2>&1; then
-    "${ROOT}/../packaging/debian/validate-user-units" \
+    "${ROOT}/packaging/debian/validate-user-units" \
         "${MKOSI_DIR}/mkosi.extra/usr/lib/systemd/user" /opt/elizaos \
         && ok "systemd user units validate" || bad "invalid systemd user units"
 else
