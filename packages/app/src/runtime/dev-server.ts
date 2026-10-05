@@ -57,7 +57,7 @@ import {
 } from "@elizaos/host/protocol";
 import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-routes";
 import { startApiServer } from "../api/server";
-import { colorizeDevSettingsStartupBanner } from "../dev-settings-banner-style.js";
+import { colorizeDevSettingsStartupBanner } from "../dev-tools.js";
 import {
   formatApiDevSettingsBannerText,
   shouldShowApiDevSettingsBanner,

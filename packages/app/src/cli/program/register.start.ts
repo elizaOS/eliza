@@ -17,9 +17,8 @@ import {
 } from "@elizaos/host/protocol";
 import type { Command } from "commander";
 import { bootLap } from "../../boot-profile";
-import { formatDocsLink } from "../../terminal/links.js";
-import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
+import { formatDocsLink, theme } from "../terminal.js";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
 /**

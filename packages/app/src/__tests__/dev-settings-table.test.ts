@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  boxRow,
-  formatDevSettingsTable,
-  wrapToWidth,
-} from "../dev-settings-table";
+import { boxRow, formatDevSettingsTable, wrapToWidth } from "../dev-tools";
 
 describe("dev settings table boundaries", () => {
   it.each([NaN, Infinity, -1, 0, 0.5])(

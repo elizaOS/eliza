@@ -34,7 +34,7 @@ import {
   resolveFlatpakRefs,
   withFlatpakStagingCleanup,
   writeMetadata,
-} from "../package-electrobun-flatpak.ts";
+} from "./package-electrobun-flatpak.ts";
 
 const tempDirs: string[] = [];
 

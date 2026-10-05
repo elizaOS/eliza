@@ -11,9 +11,9 @@
 
 import { spawnSync } from "node:child_process";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
-import type { CheckCategory, CheckResult, CheckStatus } from "../doctor/checks";
+import type { CheckCategory, CheckResult, CheckStatus } from "../doctor";
+import { theme } from "../terminal.js";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
 // ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ export function registerDoctorCommand(program: Command) {
     .option("--json", "Output results as JSON (CI-friendly)")
     .action(async (opts: { ports: boolean; fix: boolean; json: boolean }) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
-        const { runAllChecks } = await import("../doctor/checks");
+        const { runAllChecks } = await import("../doctor");
         let results = await runAllChecks({ checkPorts: opts.ports });
         const fixFailures: string[] = [];
         if (opts.fix) {
