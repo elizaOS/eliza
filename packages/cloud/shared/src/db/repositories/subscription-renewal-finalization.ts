@@ -7,10 +7,7 @@ import {
   renewalUnavailable,
   validatePaidRenewal,
 } from "../../lib/services/stripe-paid-renewal-validation";
-import {
-  assertCheckoutProviderAuthority,
-  checkoutContractEnvironment,
-} from "../../lib/services/subscription-checkout-contract";
+import { assertCheckoutProviderAuthority } from "../../lib/services/subscription-checkout-contract";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
 import type { BillingSubscription } from "../schemas/billing-subscriptions";
@@ -27,7 +24,7 @@ import { subscriptionAllowanceRepository } from "./subscription-allowance";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import { subscriptionBillingOperationsRepository as operations } from "./subscription-billing-operations";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
-import { findPurchasedSubscriptionContract } from "./subscription-purchased-binding";
+import { findSubscriptionRenewalBinding } from "./subscription-purchased-binding";
 import type { ReconciliationIdentity } from "./subscription-reconciliation-lease";
 export const PAID_RENEWAL_DISPOSITION = "paid_renewal_finalized";
 export interface FinalizePaidRenewalInput extends PaidRenewalObjects {
@@ -181,17 +178,21 @@ export async function publishPaidRenewalInTransaction(
       ),
     )
     .for("update");
-  const contract = await findPurchasedSubscriptionContract(source, tx);
-  const environment = getCloudAwareEnv();
+  const configuredEnvironment = getCloudAwareEnv();
+  const { contract, environment } = await findSubscriptionRenewalBinding(
+    source,
+    configuredEnvironment,
+    tx,
+  );
   if (contract) {
     if (!input.providerAccountId) renewalUnavailable("purchased_binding_account_missing");
-    assertCheckoutProviderAuthority(contract, input.providerAccountId, environment);
+    assertCheckoutProviderAuthority(contract, input.providerAccountId, configuredEnvironment);
   }
   const verified = validatePaidRenewal({
     ...input,
     source,
     organizationCustomerId: input.organizationCustomerId,
-    environment: contract ? checkoutContractEnvironment(contract, environment) : environment,
+    environment,
     databaseNow: now,
     replayPeriod: existing !== undefined,
   });
