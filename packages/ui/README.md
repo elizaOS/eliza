@@ -60,3 +60,5 @@ startup for host-selected runtime bridges. Hosts supply URLs, native HTTP
 fallback, budgets and messages. Once native availability is established, failures
 never fall back or replay requests. Account refresh fences earlier responses;
 cancelling their publication does not undo native effects already dispatched.
+Requests wait for account refresh. A failed or timed-out refresh blocks requests
+until the host explicitly retries refresh; late status replies cannot restart polling.

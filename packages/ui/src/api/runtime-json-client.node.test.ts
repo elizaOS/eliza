@@ -236,3 +236,33 @@ test("requests wait until the current account restart has completed", async () =
   assert.equal(premature, 0);
   assert.equal(requests, 1);
 });
+
+test("a stalled account restart releases waiting callers at the startup deadline", async () => {
+  const native = bridge();
+  native.restart = () => new Promise(() => {});
+  let requests = 0;
+  native.request = async () => {
+    requests++;
+    return { status: 200, data: null };
+  };
+  const client = setup(native, { startupTimeoutMs: 40 });
+  const refresh = client.refreshNativeAccount().then(
+    () => "resolved",
+    (error) => error.message,
+  );
+  const request = client.request("/private").then(
+    () => "resolved",
+    (error) => error.message,
+  );
+  const outcomes = await Promise.race([
+    Promise.all([refresh, request]),
+    new Promise((resolve) => setTimeout(() => resolve("still waiting"), 500)),
+  ]);
+  assert.deepEqual(outcomes, ["startup", "startup"]);
+  await assert.rejects(client.request("/private"), /startup/);
+  assert.equal(requests, 0);
+  native.restart = async () => running;
+  await client.refreshNativeAccount();
+  await client.request("/private");
+  assert.equal(requests, 1);
+});
