@@ -128,6 +128,7 @@ export class DocumentNotesStore {
         return;
       }
       authorized?.();
+      signal?.throwIfAborted();
       let saved: NotesDocumentSnapshot;
       try {
         saved = snapshot(

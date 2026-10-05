@@ -3,9 +3,17 @@ import { gmailSourceLink } from "./bill-source-link.mjs";
 
 export class BillClientResponseError extends Error {
   readonly code = "BILL_CLIENT_RESPONSE_INVALID";
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = "BillClientResponseError";
+  }
+}
+
+function parseResponseUrl(value: string, message: string): URL {
+  try {
+    return new URL(value);
+  } catch (cause) {
+    throw new BillClientResponseError(message, { cause });
   }
 }
 
@@ -111,7 +119,7 @@ export function readBillSourceOffer(
       throw new BillClientResponseError("Unsupported source candidate");
     validators.money(f);
     validateBillSourceLinks(c.sources);
-    const origin = new URL(f.origin);
+    const origin = parseResponseUrl(f.origin, "Unsupported source website");
     if (origin.protocol !== "https:" || origin.origin !== f.origin)
       throw new BillClientResponseError("Unsupported source website");
     if (
@@ -297,7 +305,7 @@ export function readBillDecision(
     for (const value of [c.expected, c.observed, c.billSource])
       if (typeof value !== "string" || !value || value.length > 300)
         throw new BillClientResponseError("Invalid conflict detail");
-    const url = new URL(c.websiteSource);
+    const url = parseResponseUrl(c.websiteSource, "Invalid conflict source");
     if (
       url.protocol !== "https:" ||
       url.username ||
@@ -316,7 +324,8 @@ export function readBillDecision(
   const source = decision.review?.source || decision.source;
   if (
     source &&
-    (typeof source !== "string" || new URL(source).protocol !== "https:")
+    (typeof source !== "string" ||
+      parseResponseUrl(source, "Invalid bill source").protocol !== "https:")
   )
     throw new BillClientResponseError("Invalid bill source");
   return structuredClone(decision);
