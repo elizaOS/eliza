@@ -104,10 +104,23 @@ function buildSlackLink(
   if (!teamId || !channelId) return null;
 
   if (messageId) {
-    const ts = messageId.startsWith("p") ? messageId.slice(1) : messageId;
+    // The web-client thread route takes the raw dotted message ts
+    // (app.slack.com/client/<team>/<channel>/thread/<channel>-<ts>), but a
+    // stored id may carry the archives-permalink token form p<dotless>
+    // (chat.getPermalink maps ts 1358546515.000008 to p135854651500008).
+    // Restore the dot before the last six digits so both stored forms open
+    // the thread; a dotted ts passes through unchanged.
+    const ts = dottedSlackTs(messageId);
     return `https://app.slack.com/client/${teamId}/${channelId}/thread/${channelId}-${ts}`;
   }
   return `slack://channel?team=${teamId}&id=${channelId}`;
+}
+
+function dottedSlackTs(messageId: string): string {
+  if (!messageId.startsWith("p")) return messageId;
+  const digits = messageId.slice(1);
+  if (digits.length <= 6) return digits;
+  return `${digits.slice(0, -6)}.${digits.slice(-6)}`;
 }
 
 function buildGmailLink(
