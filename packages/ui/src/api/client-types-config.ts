@@ -452,7 +452,6 @@ export interface WorkbenchTodo {
   type: string;
 }
 export interface WorkbenchOverview {
-  tasks: WorkbenchTask[];
   triggers: TriggerSummary[];
   todos: WorkbenchTodo[];
   autonomy?: {

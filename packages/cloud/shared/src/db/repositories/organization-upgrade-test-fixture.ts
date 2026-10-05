@@ -20,6 +20,7 @@ export async function installOrganizationUpgradeTestSchema(
           "0516_organization_upgrade_paid_finalization",
           "0517_organization_upgrade_historical_targets",
           "0518_organization_upgrade_historical_settlement",
+          "0519_organization_upgrade_void_result",
         ]
       : []),
   ]) {
@@ -28,6 +29,10 @@ export async function installOrganizationUpgradeTestSchema(
       if (q.trim())
         await execute(
           q
+            .replace(
+              "ADD COLUMN organization_upgrade_failure_evidence",
+              "ADD COLUMN IF NOT EXISTS organization_upgrade_failure_evidence",
+            )
             .replace(
               "ADD COLUMN organization_upgrade_settlement_evidence",
               "ADD COLUMN IF NOT EXISTS organization_upgrade_settlement_evidence",

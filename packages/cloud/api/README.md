@@ -67,8 +67,23 @@ The current billing manager session is required and revalidated after provider
 reads. The no-store response contains `quoteId` and `review`, separating due-now
 proration/tax/discount/customer-balance terms from a long-term recurring estimate.
 The exact reviewed timestamp and prorated additional allowance are retained.
-Apply migrations `0511_organization_plan_change_quotes` and
-`0512_organization_upgrade_dispatch` and
-`0513_organization_upgrade_live_lease` before deployment.
-Saving a quote creates no charge, command or allowance grant. Upgrade confirmation
-and scheduled downgrade are separate lifecycle work and are not exposed here.
+Apply organization-upgrade migrations 0511 through 0519 before deployment.
+Saving a quote creates no charge, command or allowance grant. Confirmation and
+payment continuation use the separate endpoints below; scheduled downgrade remains
+separate lifecycle work.
+
+`POST /api/v1/subscriptions/upgrade/confirm` accepts only `quoteId` and
+`idempotencyKey`. It revalidates the current manager and original review before
+one dispatch; retries retain the original command. `GET /api/v1/subscriptions/upgrade/:commandId`
+reads durable status without provider work. Both return no-store responses and
+require a current billing-manager session. `OUTCOME_UNKNOWN` can include pending
+payment and must not trigger a new intent. `failure: review_required` means an
+unstarted review ended; `invoice_void` requires definitive original void evidence.
+Product UI/native adoption and real provider acceptance remain separate work.
+
+`POST /api/v1/subscriptions/upgrade/:commandId/payment` reconciles the original
+command and returns either durable status or an ephemeral private hosted-invoice
+continuation. It checks the original invoice, reviewed amount, pending target and
+unpaid payment intent, then revalidates manager/source/session authority. It never
+creates or pays an invoice. The no-store URL must stay out of logs, model context
+and history. Call again after browser return; return alone does not prove payment.

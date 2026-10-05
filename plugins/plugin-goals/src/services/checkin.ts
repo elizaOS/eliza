@@ -55,6 +55,8 @@ export const GOAL_CHECKIN_CREATED_BY = "@elizaos/plugin-goals";
 
 /** Dismissal reason recorded when a cadence change retires a slot. */
 export const GOAL_CHECKIN_SYNC_DISMISS_REASON = "goal_checkin_sync";
+/** Reason recorded when sync reopens a once check-in it had dismissed. */
+export const GOAL_CHECKIN_SYNC_REOPEN_REASON = "goal_checkin_sync_reopen";
 
 /** Bounded length of the per-goal `metadata.checkinLog` history. */
 export const GOAL_CHECKIN_LOG_LIMIT = 50;
@@ -446,6 +448,14 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     const holdsDesiredOnce = (task: ScheduledTask): boolean =>
       task.trigger.kind === "once" &&
       desiredOnceTriggers.has(Date.parse(task.trigger.atIso));
+    // Only a never-fired task retired by sync may be revived. Sync also
+    // dismisses fired tasks when their date moves; those still cover the
+    // delivered instant, including legacy keys, and must not dispatch again.
+    const syncDismissedPending = (task: ScheduledTask): boolean =>
+      task.state.status === "dismissed" &&
+      task.state.lastDecisionLog === GOAL_CHECKIN_SYNC_DISMISS_REASON &&
+      task.state.firedAt == null &&
+      task.state.completedAt == null;
 
     const dismissedTaskIds: string[] = [];
     for (const task of existing) {
@@ -474,14 +484,26 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
               task.trigger.kind === "once" &&
               input.trigger.kind === "once" &&
               Date.parse(task.trigger.atIso) ===
-                Date.parse(input.trigger.atIso),
+                Date.parse(input.trigger.atIso) &&
+              !syncDismissedPending(task),
           );
         if (!covered) scheduled.push(await runner.schedule(input));
         continue;
       }
-      // A dismissed slot is a deliberate off-switch (owner or sync); never
-      // resurrect it for the same trigger shape.
-      if (current.state.status === "dismissed") continue;
+      if (current.state.status === "dismissed") {
+        // An owner dismissal is a deliberate off-switch and is never undone.
+        // A once task the sync dismissed while pending (the date moved away)
+        // never fired, so moving the date back reopens it: its key stays
+        // reserved and no replacement task could be scheduled under it.
+        if (input.trigger.kind === "once" && syncDismissedPending(current)) {
+          scheduled.push(
+            await runner.apply(current.taskId, "reopen", {
+              reason: GOAL_CHECKIN_SYNC_REOPEN_REASON,
+            }),
+          );
+        }
+        continue;
+      }
       const triggerChanged =
         current.trigger.kind === "once" && input.trigger.kind === "once"
           ? Date.parse(current.trigger.atIso) !==

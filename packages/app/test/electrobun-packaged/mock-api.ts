@@ -1095,11 +1095,9 @@ export async function startMockApiServer(
 
     if (method === "GET" && pathname === "/api/workbench/overview") {
       json(res, 200, {
-        tasks: [],
         triggers: [],
         todos: [],
         autonomy: { enabled: true, thinking: false, lastEventAt: null },
-        tasksAvailable: true,
         triggersAvailable: true,
         todosAvailable: true,
       });

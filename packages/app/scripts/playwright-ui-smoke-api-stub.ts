@@ -642,31 +642,6 @@ const emptyLifeOpsSocialSummary = {
   fetchedAt: smokeGeneratedAt,
 };
 
-const emptyBrowserBridgeSettings = {
-  enabled: true,
-  trackingMode: "current_tab",
-  allowBrowserControl: false,
-  requireConfirmationForAccountAffecting: true,
-  incognitoEnabled: false,
-  siteAccessMode: "current_site_only",
-  grantedOrigins: [],
-  blockedOrigins: [],
-  maxRememberedTabs: 10,
-  pauseUntil: null,
-  metadata: {},
-  updatedAt: null,
-};
-
-const emptyBrowserBridgePackageStatus = {
-  extensionPath: null,
-  chromeBuildPath: null,
-  chromePackagePath: null,
-  safariAppPath: null,
-  safariPackagePath: null,
-  safariWebExtensionPath: null,
-  releaseManifest: null,
-};
-
 const stubCharacter = {
   name: "Eliza",
   username: "eliza",
@@ -1565,21 +1540,16 @@ async function drainRequest(req) {
 
 function workbenchOverview() {
   return {
-    tasks: [],
     triggers: [],
     todos: [],
     summary: {
-      totalTasks: 0,
-      completedTasks: 0,
       totalTriggers: 0,
       activeTriggers: 0,
       totalTodos: 0,
       completedTodos: 0,
     },
-    tasksAvailable: false,
     triggersAvailable: false,
     todosAvailable: false,
-    lifeopsAvailable: false,
   };
 }
 

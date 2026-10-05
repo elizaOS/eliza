@@ -96,6 +96,13 @@ export {
   getDefaultRemoteControlCloudConnection,
 } from "./api/remote-control-cloud-default.js";
 export {
+  createRuntimeJsonClient,
+  type RuntimeJsonBridge,
+  type RuntimeJsonResponse,
+  RuntimeRequestError,
+  type RuntimeStatus,
+} from "./api/runtime-json-client.js";
+export {
   TaskLifecycle,
   type TaskLifecycleMessages,
   type TaskLifecycleRequest,
@@ -1300,6 +1307,12 @@ export { isSafeNavigationUrl } from "./utils/navigation-url.js";
 export { openExternalUrl } from "./utils/openExternalUrl.js";
 export { reportRendererDiagnostic } from "./utils/renderer-diagnostics.js";
 export { isTransientOptionalFetchFailure } from "./utils/transient-fetch.js";
+export {
+  formatMinorCurrency,
+  isIsoCalendarDate,
+  isOrderedIsoDateRange,
+  type MinorCurrencyValue,
+} from "./utils/value-formatting";
 export { recoverMissedCurrentView } from "./view-action-handoff.js";
 export {
   loadAppWindowRenderer,

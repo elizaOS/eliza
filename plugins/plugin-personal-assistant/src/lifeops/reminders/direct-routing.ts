@@ -74,7 +74,7 @@ export function createOwnerReminderDirectRoutingRule(): DirectActionRoutingRule 
   return {
     id: "lifeops.owner-reminder-create",
     actionNames: ["OWNER_REMINDERS"],
-    replacesActionNames: ["TRIGGER_CREATE"],
+    replacesActionNames: ["TRIGGER", "TRIGGER_CREATE"],
     requiredActionTags: [
       "domain:reminders",
       "capability:write",

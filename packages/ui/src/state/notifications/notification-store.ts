@@ -225,6 +225,7 @@ async function deliver(notification: AgentNotification): Promise<void> {
       deepLink: notification.deepLink,
       data: notification.data,
       priority: notification.priority,
+      category: notification.category,
       groupKey: notification.groupKey,
     },
     { allowHiddenWeb: true },

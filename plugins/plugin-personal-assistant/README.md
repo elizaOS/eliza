@@ -49,3 +49,7 @@ runtime, SQLite stores, workflow policy and four required presentation strings
 from the host. Authorization is rechecked after asynchronous work; source
 selection and duplicate choice delivery retain their durable task bindings.
 Product helper descriptions, support/study routes and UI copy stay with hosts.
+
+The native bill-outcome store's `loadEvidence()` returns the current observation
+and whether that exact validated record is persisted. Host reports can distinguish
+pending observations from durable evidence without querying the store's tables.

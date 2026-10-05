@@ -182,5 +182,33 @@ provider policy, command and launch-receipt callback. It owns one child and reap
 it if receipt persistence fails; signal listeners are removed on child closure.
 It does not restart processes or replace the account supervisor. Parent
 directories must be private and host-controlled, and receipt callbacks must
-settle. The native-host end-to-end suite covers real disk and child-process
+settle. Hosts with an existing token-format contract may supply a synchronous
+`createToken` factory; it runs only for a newly created token file. Existing
+tokens are preserved and validated regardless of the current factory. The native-host end-to-end suite covers real disk and child-process
 isolation, failure cleanup and cancellation during launch.
+
+`native-host/task-evidence-store.mjs` stores host-validated append-only evidence
+separately from the task transition journal. Supply a trusted table name, source,
+input validator, record limit and authenticated owner. The task reader must use
+the same synchronous SQLite connection without starting its own transaction.
+The store serializes ownership/epoch checks, sequencing and idempotency with
+writes; it never advances tasks or authorizes effects. Keep product measurement
+schemas and summaries in the host. Existing compatible tables are preserved.
+
+Trusted native hosts can use `native-host/private-runtime-launch.mjs`'s
+`readPrivateRuntimeJson` for bounded, read-only POSIX configuration reads. Hosts
+supply the byte budget and own parent-directory trust and schema validation.
+The reader rejects symlink leaves, non-regular files, unexpected ownership and
+group/other permissions; it never creates files or changes their permissions.
+
+Hosts whose runtime writes its own persistent configuration should use
+`preparePrivateRuntimeProfile` and continue passing their original config path
+to that runtime. It returns the saved token and parsed configuration without
+rewriting existing bytes. `preparePrivateRuntimeFiles` composes this primitive
+with a separate generated launch config for hosts that need a per-launch selection.
+
+`SqliteInteractiveTaskStore.readOwnerHistory` supplies complete owner-scoped
+histories within explicit task/event limits to a synchronous, read-only host
+projection. It reuses page validation and rejects revision, cross-connection,
+same-connection or schema changes instead of publishing a partial report. It
+adds no effect authority and must not be called inside an existing transaction.
