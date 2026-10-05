@@ -123,3 +123,26 @@ identity remains host-owned. The audio JSON includes `renderedSpeed` only as an
 acknowledged numeric speed (otherwise null); clients must retain their local pace
 adjustment when an older Cloud deployment omits the acknowledgement. A mismatched
 or malformed acknowledgement rejects the audio instead of applying pace twice.
+
+
+Native progressive speech uses three JSON POST routes under `/voice/tts/stream`:
+`start` accepts a stable `requestId` (16–128 ASCII letters, digits, underscores or
+hyphens) plus the existing text/rendering controls; it returns `streamId`, state
+and acknowledged `renderedSpeed`. `pull` accepts that streamId and a zero-based
+cursor, returning `{cursor, frame}`. Increment the cursor only after consuming its
+frame; retrying the same cursor replays the last result. Audio frames carry MP3
+base64, sequence and original/normalized character timing; only the explicit
+`done` frame confirms completion. Preserve provider timing coordinates; do not
+infer word times from text length. Legacy MP3 responses have null timing and use
+the original request, without a second synthesis.
+
+`cancel` accepts either streamId or requestId. Cancelling by requestId before start
+creates a tombstone, so an overtaken start cannot synthesize. Hosts should route
+cancel independently of a blocked pull. Account changes invalidate all delivery.
+Call the returned route handler's `closeSpeechStreams()` when shutting down a
+host. Streams are private in-memory sessions, not persistent playback jobs:
+request replay protection lasts at most ten minutes and ends on host restart.
+Never automatically restart an uncertain synthesis under a new request identity.
+Two active streams and 32 retained identities bound host resources; capacity
+rejection is explicit. Clients must stop playback on cancellation/account change
+and discard unfinished media; this transport alone does not implement playback.

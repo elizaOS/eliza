@@ -25,7 +25,8 @@
     "native-host/managed-google-read-port.mjs",
     "native-host/errors.mjs",
     "native-host/subscription-review.mjs",
-    "native-host/plan-change.mjs"
+    "native-host/plan-change.mjs",
+    "native-host/timed-speech.mjs"
   ],
   "sideEffects": false,
   "scripts": {
