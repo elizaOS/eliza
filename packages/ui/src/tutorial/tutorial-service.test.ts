@@ -70,3 +70,29 @@ it("normalizes malformed persisted fields without crashing boot", async () => {
     completedStepIds: [],
   });
 });
+
+it("retains completion from older installs without rewriting their saved flag", async () => {
+  localStorage.setItem("eliza:tutorial-completed", "1");
+  const tour = await import("./tutorial-service");
+  expect(tour.getTutorialState().status).toBe("completed");
+  expect(localStorage.getItem("eliza:tutorial-completed")).toBe("1");
+  expect(localStorage.getItem("eliza:tutorial-state")).toBeNull();
+});
+
+it("prefers a current explicit restart over legacy completion", async () => {
+  localStorage.setItem("eliza:tutorial-completed", "1");
+  localStorage.setItem(
+    "eliza:tutorial-state",
+    JSON.stringify({
+      status: "active",
+      stepIndex: 1,
+      startedAt: 123,
+      completedStepIds: [TUTORIAL_STEP_IDS[0]],
+    }),
+  );
+  const tour = await import("./tutorial-service");
+  expect(tour.getTutorialState()).toMatchObject({
+    status: "active",
+    stepIndex: 1,
+  });
+});
