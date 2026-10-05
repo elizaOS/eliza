@@ -448,11 +448,14 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     const holdsDesiredOnce = (task: ScheduledTask): boolean =>
       task.trigger.kind === "once" &&
       desiredOnceTriggers.has(Date.parse(task.trigger.atIso));
-    // Sync dismisses a pending once task when its date moves away; that is not
-    // the owner turning the check-in off, so it must not block a move back.
-    const syncDismissed = (task: ScheduledTask): boolean =>
+    // Only a never-fired task retired by sync may be revived. Sync also
+    // dismisses fired tasks when their date moves; those still cover the
+    // delivered instant, including legacy keys, and must not dispatch again.
+    const syncDismissedPending = (task: ScheduledTask): boolean =>
       task.state.status === "dismissed" &&
-      task.state.lastDecisionLog === GOAL_CHECKIN_SYNC_DISMISS_REASON;
+      task.state.lastDecisionLog === GOAL_CHECKIN_SYNC_DISMISS_REASON &&
+      task.state.firedAt == null &&
+      task.state.completedAt == null;
 
     const dismissedTaskIds: string[] = [];
     for (const task of existing) {
@@ -482,7 +485,7 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
               input.trigger.kind === "once" &&
               Date.parse(task.trigger.atIso) ===
                 Date.parse(input.trigger.atIso) &&
-              !syncDismissed(task),
+              !syncDismissedPending(task),
           );
         if (!covered) scheduled.push(await runner.schedule(input));
         continue;
@@ -492,7 +495,7 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
         // A once task the sync dismissed while pending (the date moved away)
         // never fired, so moving the date back reopens it: its key stays
         // reserved and no replacement task could be scheduled under it.
-        if (input.trigger.kind === "once" && syncDismissed(current)) {
+        if (input.trigger.kind === "once" && syncDismissedPending(current)) {
           scheduled.push(
             await runner.apply(current.taskId, "reopen", {
               reason: GOAL_CHECKIN_SYNC_REOPEN_REASON,

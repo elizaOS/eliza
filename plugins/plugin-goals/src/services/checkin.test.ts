@@ -481,6 +481,50 @@ describe("GoalsCheckinService.syncGoalCheckins", () => {
     expect(spine.dispatched).toEqual([live[0].taskId]);
   });
 
+  it.each([
+    ["instant", "2026-10-05T16:00:00.000Z"],
+    ["instant", "2026-10-07T15:00:00.000Z"],
+    ["legacy", "2026-10-05T16:00:00.000Z"],
+    ["legacy", "2026-10-07T15:00:00.000Z"],
+  ] as const)(
+    "does not revive a fired %s once check-in when moved back at %s",
+    async (keyKind, backAt) => {
+      const spine = makeSpine();
+      const service = makeService(spine);
+      const dueA = "2026-10-05T15:00:00.000Z";
+      const onceGoal = (dueAt: string) =>
+        makeGoal({ cadence: { kind: "once", dueAt } });
+      const original =
+        keyKind === "legacy"
+          ? await spine.runner.schedule(
+              buildCheckinTaskInput(
+                onceGoal(dueA),
+                { slotKey: "once", trigger: { kind: "once", atIso: dueA } },
+                CREATED_ISO,
+              ),
+            )
+          : (await service.syncGoalCheckins(onceGoal(dueA))).scheduled[0];
+      spine.setNow(dueA);
+      await spine.runner.fire(original.taskId);
+      await service.syncGoalCheckins(onceGoal("2026-10-12T15:00:00.000Z"));
+      spine.setNow(backAt);
+
+      const back = await service.syncGoalCheckins(onceGoal(dueA));
+      expect(back.scheduled).toHaveLength(0);
+      const tasks = await spine.runner.list({ kind: "checkin" });
+      expect(tasks.filter((task) => task.state.status === "scheduled")).toEqual(
+        [],
+      );
+      expect(
+        tasks.find((task) => task.taskId === original.taskId)?.state,
+      ).toMatchObject({
+        status: "dismissed",
+        firedAt: dueA,
+      });
+      expect(spine.dispatched).toEqual([original.taskId]);
+    },
+  );
+
   it("keeps an owner-dismissed once check-in off after the date moves away and back", async () => {
     const spine = makeSpine();
     const service = makeService(spine);
