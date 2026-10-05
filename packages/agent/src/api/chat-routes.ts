@@ -1820,6 +1820,13 @@ async function hasRecentAssistantMemory(
     });
   }
 }
+/**
+ * Reports whether a visible assistant reply exists in the room since
+ * `sinceMs`. A failed storage read rejects with `ElizaError`
+ * (`ASSISTANT_MEMORY_READ_FAILED`) instead of resolving `false`: `false`
+ * always means a confirmed "no recent reply", and callers must not catch the
+ * rejection and substitute `false`.
+ */
 export async function hasRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1829,6 +1836,12 @@ export async function hasRecentVisibleAssistantMemorySince(
     await getRecentVisibleAssistantMemoryTextSince(runtime, roomId, sinceMs),
   );
 }
+/**
+ * Returns the most recent visible assistant reply text since `sinceMs`, or
+ * `null` only when a successful read confirms no such reply. A storage read
+ * failure rejects with `ElizaError` (`ASSISTANT_MEMORY_READ_FAILED`) rather
+ * than degrading to `null`, which would read as "no prior reply".
+ */
 export async function getRecentVisibleAssistantMemoryTextSince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1881,6 +1894,15 @@ export function compareAssistantTurnRecencyDescending(
     (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
   );
 }
+/**
+ * Reads the most recent visible (non-internal) assistant turn at or after
+ * `sinceMs - slackMs`, newest first, as `{ id, text }`. Resolves `null` only
+ * when a successful read confirms no such turn; a failed storage read rejects
+ * with `ElizaError` (`ASSISTANT_MEMORY_READ_FAILED`) wrapping the cause.
+ * Fail closed is the contract: a fabricated "no prior reply" would regenerate
+ * and re-send a previous turn's answer on rapid-fire retries. Reachable by
+ * external consumers through `@elizaos/agent/api/chat-routes`.
+ */
 export async function getRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
