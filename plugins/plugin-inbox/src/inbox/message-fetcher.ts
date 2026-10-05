@@ -295,17 +295,23 @@ function sourceNotWiredStatus(
  * inbox candidates, so the agent's own replies and blank texts must not fill
  * the window: a single capped read can come back empty while older user
  * messages exist. Pages continue until that many candidates are in hand or
- * history ends. A repeated page (a store that ignores offset) stops the scan.
+ * history ends. A repeated page (a store that ignores offset) stops the scan,
+ * as does reaching rows older than the caller's `sinceMs` window: the store
+ * returns rows newest-first, so no later page can produce a candidate. No page
+ * count caps the scan: every non-final page advances the offset until history
+ * ends, so silently returning fewer candidates than requested cannot happen.
  */
 async function loadInboxCandidateMemories(
   runtime: IAgentRuntime,
   sourceRoomIds: UUID[],
   limit: number,
   accept: (memory: Memory) => boolean,
+  sinceMs: number,
 ): Promise<Memory[]> {
   const pageSize = limit * 3;
   const filtered: Memory[] = [];
   const seenMemoryIds = new Set<string>();
+  let previousPageFingerprint: string | null = null;
   let offset = 0;
   while (filtered.length < limit) {
     const page = await runtime.getMemoriesByRoomIds({
@@ -315,8 +321,18 @@ async function loadInboxCandidateMemories(
       offset,
     });
     if (page.length === 0) break;
+    // A store that ignores offset returns the same rows for every page,
+    // including rows without an id that the seen-id guard cannot deduplicate.
+    const fingerprint = page.map(pageRowFingerprint).join("\n");
+    if (fingerprint === previousPageFingerprint) break;
+    previousPageFingerprint = fingerprint;
     let fresh = 0;
+    let oldest = Number.POSITIVE_INFINITY;
     for (const memory of page) {
+      const createdAt = Number(memory.createdAt);
+      if (Number.isFinite(createdAt) && createdAt < oldest) {
+        oldest = createdAt;
+      }
       const memoryId = typeof memory.id === "string" ? memory.id : "";
       if (memoryId.length > 0 && seenMemoryIds.has(memoryId)) continue;
       if (memoryId.length > 0) seenMemoryIds.add(memoryId);
@@ -324,9 +340,17 @@ async function loadInboxCandidateMemories(
       if (accept(memory)) filtered.push(memory);
     }
     if (fresh === 0 || page.length < pageSize) break;
+    if (sinceMs > 0 && oldest < sinceMs) break;
     offset += page.length;
   }
   return filtered;
+}
+
+function pageRowFingerprint(memory: Memory): string {
+  if (typeof memory.id === "string" && memory.id.length > 0) {
+    return `id:${memory.id}`;
+  }
+  return `row:${String(memory.createdAt)}|${String(memory.roomId)}|${extractText(memory)}`;
 }
 
 export async function fetchChatMessages(
@@ -384,6 +408,7 @@ export async function fetchChatMessages(
       // Blank texts are not inbox rows and must not consume a result slot.
       return extractText(memory).length > 0;
     },
+    sinceMs,
   );
 
   filtered.sort(
