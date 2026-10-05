@@ -35,7 +35,8 @@ test("follows complete pages and requires both original order identities", async
         }
       : { data: [match], has_more: false };
   });
-  expect(await findCheckoutSessionForOrder(stripe, order, () => 0)).toBe(match);
+  const recovered = await findCheckoutSessionForOrder(stripe, order, () => 0);
+  expect(Object.is(recovered, match)).toBe(true);
   expect(calls.map((input) => [input.customer, input.starting_after])).toEqual([
     ["cus-1", undefined],
     ["cus-1", "session-1"],
