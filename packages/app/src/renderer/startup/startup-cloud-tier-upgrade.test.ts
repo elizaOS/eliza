@@ -108,3 +108,21 @@ test("a delayed tier lookup cannot restore a logged-out selection", async () => 
   expect(clientRef.setBaseUrl).not.toHaveBeenCalled();
   expect(clientRef.setToken).not.toHaveBeenCalled();
 });
+
+test("restores a retained owner-bound pair token without adopting the legacy global key", async () => {
+  const owned = { ...active, accessToken: "retained-agent-token" };
+  savePersistedActiveServer(owned);
+  localStorage.setItem("eliza:cloud-pair:api-token", "unrelated-legacy-token");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { executionTier: "dedicated" } })),
+    ),
+  );
+  const clientRef = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+  await applyRestoredConnection({ restoredActiveServer: owned, clientRef });
+  await new Promise((done) => setTimeout(done, 20));
+  expect(clientRef.setToken).toHaveBeenLastCalledWith("retained-agent-token");
+  expect(loadPersistedActiveServer()?.accessToken).toBe("retained-agent-token");
+});
