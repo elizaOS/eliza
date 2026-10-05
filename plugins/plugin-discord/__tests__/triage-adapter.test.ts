@@ -149,6 +149,84 @@ describe("mapDiscordMemoryToRef", () => {
 });
 
 describe("DiscordTriageAdapter", () => {
+	it("stops paging a channel whose reads ignore the before cursor", async () => {
+		const page = ["3", "2", "1"].map((messageId) =>
+			discordMemory({ messageId, channelId: "555", entityId: AGENT_ID }),
+		);
+		let calls = 0;
+		const service = {
+			...createFakeDiscordService(),
+			async fetchConnectorMessages(): Promise<Memory[]> {
+				calls += 1;
+				return page;
+			},
+		};
+
+		const refs = await new DiscordTriageAdapter().listMessages(
+			createRuntime(service),
+			{
+				channelIds: ["555"],
+				limit: 3,
+			},
+		);
+
+		expect(refs).toEqual([]);
+		expect(calls).toBe(2);
+	});
+
+	it("pages past the agent's own replies to fill the requested limit", async () => {
+		// Newest first, as Discord returns them: ids 10..1, where the agent wrote
+		// 10, 9, 8, 6 and 5.
+		const agentIds = new Set(["10", "9", "8", "6", "5"]);
+		const history = Array.from({ length: 10 }, (_, index) => {
+			const messageId = String(10 - index);
+			return discordMemory({
+				messageId,
+				channelId: "555",
+				serverId: "777",
+				entityId: agentIds.has(messageId) ? AGENT_ID : USER_ID,
+				createdAt: 1_000 + Number(messageId),
+			});
+		});
+		const fetches: Array<{ limit?: number; before?: string }> = [];
+		const service = {
+			...createFakeDiscordService({
+				channels: [{ channelId: "555", serverId: "777" }],
+			}),
+			async fetchConnectorMessages(
+				_context: MessageConnectorQueryContext,
+				params: { channelId?: string; limit?: number; before?: string },
+			): Promise<Memory[]> {
+				fetches.push({ limit: params.limit, before: params.before });
+				const older = params.before
+					? history.filter(
+							(memory) =>
+								BigInt(String(memory.metadata?.discordMessageId)) <
+								BigInt(params.before as string),
+						)
+					: history;
+				return params.limit === undefined
+					? older
+					: older.slice(0, params.limit);
+			},
+		};
+
+		const refs = await new DiscordTriageAdapter().listMessages(
+			createRuntime(service),
+			{
+				channelIds: ["555"],
+				limit: 3,
+			},
+		);
+
+		expect(refs.map((ref) => ref.externalId)).toEqual(["7", "4", "3"]);
+		expect(fetches).toEqual([
+			{ limit: 3, before: undefined },
+			{ limit: 3, before: "8" },
+			{ limit: 3, before: "5" },
+		]);
+	});
+
 	it("is unavailable when the discord service is missing or malformed", () => {
 		const adapter = new DiscordTriageAdapter();
 		expect(adapter.isAvailable(createRuntime(null))).toBe(false);
