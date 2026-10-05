@@ -161,7 +161,7 @@ export async function failRenewalAdjustment(
 }
 
 /** Discovery is grant-scoped, including original invoices of terminal subscriptions.
- * Missing legacy evidence is not synthesized. This does not itself claim or observe work. */
+ * Legacy evidence is included for explicit unavailable reporting, never synthesized. */
 export async function listDueRenewalAdjustmentGrants(limit: number) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 5) unavailable();
   return dbWrite
@@ -181,13 +181,89 @@ export async function listDueRenewalAdjustmentGrants(limit: number) {
         eq(organizations.account_lifecycle_state, "active"),
         isNull(organizations.paid_work_fenced_at),
         isNull(organizations.account_deletion_request_id),
-        sql`${grants.metadata}->'renewalInvoiceAuthority'->>'providerAccountId' IS NOT NULL`,
-        sql`${grants.metadata}->'renewalInvoiceDetails'->>'digest' IS NOT NULL`,
-        sql`${grants.metadata}->'renewalSettlementDetails'->>'digest' IS NOT NULL`,
         sql`(${scans.next_due_at} IS NULL OR ${scans.next_due_at}<=clock_timestamp())`,
         sql`NOT EXISTS (SELECT 1 FROM subscription_adjustment_attempts a WHERE a.grant_id=${grants.id} AND a.disposition='processing' AND a.expires_at>clock_timestamp())`,
       ),
     )
     .orderBy(sql`COALESCE(${scans.next_due_at},${grants.created_at})`, grants.id)
     .limit(limit);
+}
+
+/** Resolves incident ownership from the original funded period, never from provider input. */
+export async function readAdjustmentIncidentSource(input: {
+  organizationId: string;
+  grantId: string;
+}) {
+  const [row] = await dbWrite
+    .select({ subscriptionId: periods.subscription_id })
+    .from(grants)
+    .innerJoin(periods, eq(periods.id, grants.allowance_period_id))
+    .where(
+      and(
+        eq(grants.id, input.grantId),
+        eq(grants.organization_id, input.organizationId),
+        eq(periods.organization_id, input.organizationId),
+        eq(grants.kind, "grant"),
+        eq(grants.merchant_key, "platform"),
+        isNull(grants.billing_scope_id),
+        eq(periods.merchant_key, "platform"),
+        isNull(periods.billing_scope_id),
+        eq(periods.grant_source, "paid_invoice"),
+      ),
+    )
+    .limit(1);
+  if (!row?.subscriptionId) unavailable();
+  return { ...input, subscriptionId: row.subscriptionId };
+}
+
+/** Back off unclaimable historical evidence after its incident has been durably reported.
+ * Never modifies an active claim or fabricates an original evidence snapshot. */
+export async function deferUnavailableRenewalAdjustment(input: {
+  organizationId: string;
+  grantId: string;
+}) {
+  await readAdjustmentIncidentSource(input);
+  return writeTransaction(async (tx) => {
+    const [org] = await tx
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .for("update");
+    if (!org) unavailable();
+    const admittedAt = await readPostLockDatabaseNow(tx);
+    await tx
+      .insert(scans)
+      .values({
+        grant_id: input.grantId,
+        organization_id: input.organizationId,
+        next_due_at: admittedAt,
+      })
+      .onConflictDoNothing();
+    const [scan] = await tx
+      .select()
+      .from(scans)
+      .where(eq(scans.grant_id, input.grantId))
+      .for("update");
+    if (!scan || scan.organization_id !== input.organizationId) unavailable();
+    const [pending] = await tx
+      .select({ id: attempts.id })
+      .from(attempts)
+      .where(and(eq(attempts.grant_id, input.grantId), eq(attempts.disposition, "processing")))
+      .for("update");
+    const now = await readPostLockDatabaseNow(tx);
+    // An expired worker still owns an immutable receipt; the next successful claim
+    // supersedes it. Deferral must not silently complete or replace that attempt.
+    if (pending || scan.next_due_at > now) return false;
+    const failures = scan.failures + 1;
+    await tx
+      .update(scans)
+      .set({
+        failures,
+        next_due_at: new Date(
+          now.getTime() + Math.min(3600000, 30000 * 2 ** Math.min(failures - 1, 7)),
+        ),
+      })
+      .where(eq(scans.grant_id, input.grantId));
+    return true;
+  });
 }

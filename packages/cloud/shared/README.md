@@ -254,3 +254,11 @@ uses original funded periods without excluding terminal subscription history.
 Journal append, completion and next-due scheduling commit together; expired
 workers cannot publish. These private primitives do not enable automatic polling,
 change allowance policy or reconstruct missing legacy evidence.
+
+The existing Stripe maintenance endpoint now invokes bounded original-grant
+adjustment observation recovery independently of current-subscription recovery.
+It reuses the read-only absolute-deadline provider client, records grant-attributed
+incidents in the existing billing operations store, and backs off unavailable
+legacy evidence without reconstruction. Lane infrastructure failures remain visible;
+recorded observations never post allowance corrections. Deploy migrations through
+0529 before enabling the updated maintenance handler.

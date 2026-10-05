@@ -14,6 +14,11 @@ mock.module(
   "@elizaos/cloud-shared/lib/services/organization-schedule-maintenance",
   () => ({ recoverOrganizationSchedules: schedules }),
 );
+const adjustments = mock(async () => ({ status: "ok", attempts: [] }));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/renewal-adjustment-maintenance",
+  () => ({ recoverRenewalAdjustmentObservations: adjustments }),
+);
 const cancellations = mock(async () => ({ inspected: 0 }));
 mock.module("@elizaos/cloud-shared/auth", () => ({
   requireCronSecret: (c: Context) => {
@@ -57,6 +62,8 @@ mock.module("@/api-queue/stripe-event", () => ({
 }));
 const { default: app } = await import("./route");
 beforeEach(() => {
+  adjustments.mockReset();
+  adjustments.mockImplementation(async () => ({ status: "ok", attempts: [] }));
   upgrades.mockReset();
   upgrades.mockImplementation(async () => ({
     inspected: 1,
@@ -118,4 +125,23 @@ test("schedule infrastructure failure does not stop independent recovery lanes",
   expect(await response.json()).toMatchObject({ failedLanes: ["schedules"] });
   expect(upgrades).toHaveBeenCalledTimes(1);
   expect(cancellations).toHaveBeenCalledTimes(1);
+});
+
+test("adjustment evidence failure is reported without stopping other maintenance", async () => {
+  adjustments.mockImplementation(async () => {
+    throw Error("observation database unavailable");
+  });
+  const response = await app.request("http://localhost/", {
+    method: "POST",
+    headers: { authorization: "Bearer test-cron" },
+  });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ failedLanes: ["adjustments"] });
+  expect(upgrades).toHaveBeenCalledTimes(1);
+  expect(cancellations).toHaveBeenCalledTimes(1);
+});
+test("unauthenticated requests never start adjustment recovery", async () => {
+  const response = await app.request("http://localhost/", { method: "POST" });
+  expect(response.status).toBe(401);
+  expect(adjustments).not.toHaveBeenCalled();
 });
