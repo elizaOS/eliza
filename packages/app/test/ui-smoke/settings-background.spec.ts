@@ -2,7 +2,7 @@
  * Playwright UI-smoke spec for the Settings Background app flow using the real
  * renderer fixture.
  */
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import sharp from "sharp";
@@ -271,6 +271,7 @@ async function seedSettingsBackgroundStorage(
 ): Promise<void> {
   await seedAppStorage(page, {
     "eliza:mobile-runtime-mode": "local",
+    "eliza:permissions-primed": "1",
     [UI_BACKGROUND_STORAGE_KEY]: JSON.stringify(background),
   });
 }
@@ -658,14 +659,13 @@ test.describe("settings background policies and recovery controls", () => {
     await screenshot(page, "mobile-general-hover");
   });
 
-  test("routed Settings keeps an opaque safe-area backdrop with either wallpaper", async ({
-    page,
-  }) => {
-    await rm(SCREENSHOT_DIR, { force: true, recursive: true });
-    const wallpaper = await busyWallpaperDataUrl();
-    await installReadyDesktopStatusBridge(page);
-    await installSettingsBackgroundRoutes(page);
-    for (const mode of ["shader", "image"] as const) {
+  for (const mode of ["shader", "image"] as const) {
+    test(`routed Settings keeps an opaque safe-area backdrop with ${mode} wallpaper`, async ({
+      page,
+    }) => {
+      const wallpaper = await busyWallpaperDataUrl();
+      await installReadyDesktopStatusBridge(page);
+      await installSettingsBackgroundRoutes(page);
       await seedSettingsBackgroundStorage(page, {
         mode,
         color: "#ef5a1f",
@@ -706,12 +706,12 @@ test.describe("settings background policies and recovery controls", () => {
         expect(geometry.right).toBeGreaterThanOrEqual(geometry.viewportWidth);
         await screenshot(page, `${name}-${mode}-opaque-settings`);
       }
-    }
-    // The same saved photo must still paint on the launcher.
-    await page.setViewportSize(DESKTOP_VIEWPORT);
-    await openAppPath(page, "/views");
-    await expect(page.getByTestId("app-background-image")).toBeAttached();
-    await expect(page.getByTestId("app-opaque-background")).toHaveCount(0);
-    await screenshot(page, "launcher-image-desktop");
-  });
+      // The same saved background must still paint on the launcher.
+      await page.setViewportSize(DESKTOP_VIEWPORT);
+      await openAppPath(page, "/views");
+      await expect(page.getByTestId(`app-background-${mode}`)).toBeAttached();
+      await expect(page.getByTestId("app-opaque-background")).toHaveCount(0);
+      await screenshot(page, `launcher-${mode}-desktop`);
+    });
+  }
 });
