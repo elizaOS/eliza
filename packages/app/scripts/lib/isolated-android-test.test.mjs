@@ -48,7 +48,10 @@ if(args.includes('getenforce'))console.log(mode==='permissive'?'Permissive':'Enf
 if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;if(state.reads===2)state.packages.push('org.example.consumer');fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('packages'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
 if(args.includes('resolve-activity'))console.log(state.home);
-if(args[0]==='install'){const id=args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages.push(id);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);}
+if(args[0]==='install'){const id=args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages=[...new Set([...state.packages,id])];(state.files??={})[id]=file+'.'+id+'.apk';fs.copyFileSync(args.at(-1),state.files[id]);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);console.log('Success');}
+if(args.slice(0,3).join(' ')==='shell pm path')console.log('package:/data/'+args.at(-1)+'.apk');
+if(args[0]==='pull'){const id=args[1].slice('/data/'.length,-4);fs.copyFileSync(state.files[id],args[2]);}
+
 if(args.includes('force-stop')&&((mode.endsWith('stop-failure-test')&&args.at(-1).endsWith('.test'))||(mode.endsWith('stop-failure-app')&&!args.at(-1).endsWith('.test'))))process.exit(1);
 if(args[0]==='uninstall'){if(mode==='cleanup-failure')process.exit(1);state.packages=state.packages.filter(p=>p!==args[1]);fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('instrument')){
@@ -76,7 +79,7 @@ if(args.includes('instrument')){
   fs.writeFileSync(
     aapt,
     `#!/usr/bin/env node
-const args=process.argv.slice(2);const wrong=${JSON.stringify(mode === "wrong-apk")};
+const args=process.argv.slice(2);const wrong=${JSON.stringify(mode === "wrong-apk")}||(${JSON.stringify(mode === "wrong-upgrade")}&&args[2].includes('candidate'));
 if(args[1]==='badging')console.log("package: name='"+(wrong?'org.unrelated.app':args[2].includes('test.apk')?'org.example.consumer.test':'org.example.consumer')+"'");
 else console.log('E: manifest\\n  E: instrumentation\\n    A: android:name="androidx.test.runner.AndroidJUnitRunner"\\n    A: android:targetPackage="${mode === "wrong-target" ? "org.unrelated.app" : "org.example.consumer"}"');
 `.replaceAll("org.example.consumer", fixturePackage),
@@ -604,3 +607,111 @@ for (const [selectedCase, method, granted] of [
     );
     assert.equal(Boolean(receipts[0].cleanupDeferred), deferred);
   });
+
+function upgradeFixture(t, mode) {
+  const f = fixture(t, mode);
+  for (const name of ["candidate.apk", "candidate-test.apk"])
+    fs.writeFileSync(path.join(f.root, name), name);
+  f.options.variants = f.options.variants.slice(0, 1).map((variant) => ({
+    ...variant,
+    upgrade: {
+      apk: path.join(f.root, "candidate.apk"),
+      testApk: path.join(f.root, "candidate-test.apk"),
+    },
+  }));
+  f.options.runnerArgs = ["-e", "upgradePhase", "seed"];
+  f.options.upgradeRunnerArgs = ["-e", "upgradePhase", "verify"];
+  return f;
+}
+test("installed upgrade admits both APK pairs, preserves installation between exact phases and verifies hashes", async (t) => {
+  const f = upgradeFixture(t),
+    hooks = [];
+  const report = await runIsolatedAndroidTest({
+    ...f.options,
+    beforeUpgrade: () => hooks.push("before"),
+    afterUpgrade: () => hooks.push("after"),
+  });
+  assert.deepEqual(hooks, ["before", "after"]);
+  assert.equal(report.variants[0].upgrade.instrumentation.totalTests, 1);
+  const commands = f.commands(),
+    phases = commands.filter((c) => c.includes("instrument"));
+  assert.equal(phases.length, 2);
+  assert.ok(phases[0].includes("seed"));
+  assert.ok(phases[1].includes("verify"));
+  const between = commands.slice(
+    commands.indexOf(phases[0]) + 1,
+    commands.indexOf(phases[1]),
+  );
+  assert.equal(
+    between.filter((c) => c[0] === "install" && c.includes("-r")).length,
+    2,
+  );
+  assert.ok(!between.some((c) => c[0] === "uninstall"));
+  assert.ok(report.cleaned);
+  assert.ok(
+    fs.existsSync(path.join(f.options.directory, "standalone-baseline.log")),
+  );
+  assert.ok(
+    fs.existsSync(path.join(f.options.directory, "standalone-candidate.log")),
+  );
+});
+test("changed candidate APK is refused before replacement", async (t) => {
+  const f = upgradeFixture(t);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      beforeUpgrade: () =>
+        fs.writeFileSync(f.options.variants[0].upgrade.apk, "changed"),
+    }),
+    /changed after preflight/,
+  );
+  assert.ok(!f.commands().some((c) => c[0] === "install" && c.includes("-r")));
+});
+test("changed installed code preserves both packages for explicit recovery", async (t) => {
+  const f = upgradeFixture(t);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      beforeUpgrade: () => {
+        const state = JSON.parse(fs.readFileSync(f.state));
+        state.files["org.example.consumer"] = f.options.variants[0].upgrade.apk;
+        fs.writeFileSync(f.state, JSON.stringify(state));
+      },
+    }),
+    /changed before replacement/,
+  );
+  assert.ok(!f.commands().some((c) => c[0] === "uninstall"));
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.cleanupDeferred, true);
+});
+test("upgrade runner selectors are rejected before any device mutation", async (t) => {
+  const f = upgradeFixture(t);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      upgradeRunnerArgs: ["-e", "class", "org.other.Probe"],
+    }),
+    /selection is owned/,
+  );
+  assert.deepEqual(f.commands(), []);
+});
+
+test("candidate identity is admitted before the baseline can install", async (t) => {
+  const f = upgradeFixture(t, "wrong-upgrade");
+  await assert.rejects(
+    runIsolatedAndroidTest(f.options),
+    /APK identity differs/,
+  );
+  assert.deepEqual(f.commands(), []);
+});
+test("identical baseline and candidate are refused before device mutation", async (t) => {
+  const f = upgradeFixture(t);
+  fs.copyFileSync(f.options.variants[0].apk, f.options.variants[0].upgrade.apk);
+  await assert.rejects(
+    runIsolatedAndroidTest(f.options),
+    /Upgrade must change/,
+  );
+  assert.deepEqual(f.commands(), []);
+});
