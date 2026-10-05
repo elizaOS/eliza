@@ -19,6 +19,7 @@ import type {
   GenericBillingCommandResult,
 } from "../../lib/services/generic-billing-command-types";
 import type { CheckoutContract } from "../../lib/services/subscription-checkout-contract";
+import type { SubscriptionInvoiceEventEvidence } from "../../lib/services/subscription-invoice-event-evidence";
 import type { SubscriptionRenewalReview } from "../../lib/services/subscription-renewal-review-contract";
 import { appBillingScopes, billingMerchants } from "./app-billing";
 import { appClientRegistrations } from "./app-delegations";
@@ -706,5 +707,24 @@ export const billingSubscriptionRenewalReviews = pgTable(
       "billing_renewal_review_payload_check",
       sql`(jsonb_typeof(${table.payload})='object' AND ${table.payload}->>'kind'='renewal_estimate' AND ${table.payload}->>'termsDigest' ~ '^[a-f0-9]{64}$' AND ${table.payload}->>'expectedSubscriptionRevision' ~ '^[1-9][0-9]*$') IS TRUE`,
     ),
+  }),
+);
+
+/** Original invoice observation retained atomically with its authenticated receipt. */
+export const subscriptionInvoiceEventEvidence = pgTable(
+  "subscription_invoice_event_evidence",
+  {
+    receipt_id: uuid("receipt_id").primaryKey(),
+    organization_id: uuid("organization_id").notNull(),
+    evidence: jsonb("evidence").$type<SubscriptionInvoiceEventEvidence>().notNull(),
+  },
+  (table) => ({
+    receipt_owner_fk: foreignKey({
+      columns: [table.receipt_id, table.organization_id],
+      foreignColumns: [
+        billingSubscriptionEventReceipts.id,
+        billingSubscriptionEventReceipts.organization_id,
+      ],
+    }).onDelete("restrict"),
   }),
 );
