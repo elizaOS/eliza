@@ -3,7 +3,7 @@
  * `ConfigRenderer`'s field renderers and `UiRenderer`. Centralizes the density
  * (compact/regular) and error-state styling so every config control looks the same.
  */
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 export function getConfigInputClassName({
   className,

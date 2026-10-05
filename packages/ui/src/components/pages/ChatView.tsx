@@ -48,11 +48,7 @@ import { logger } from "../../logger.ts";
 import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,
-} from "../../os-intent/host";
-import {
-  CodingAgentControlChip,
-  PtyConsoleBase,
-} from "../../slots/task-coordinator-slots.js";
+} from "../../platform/os-intent";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
@@ -85,6 +81,10 @@ import {
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
 import { PersonalAccountStateBanner } from "../chat/PersonalAccountStateBanner";
+import {
+  CodingAgentControlChip,
+  PtyConsoleBase,
+} from "../chat/task-coordinator-slots.js";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";

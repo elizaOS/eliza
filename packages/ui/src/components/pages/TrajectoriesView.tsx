@@ -35,9 +35,9 @@ import {
   FramedPageBody,
   FramedPageHeader,
 } from "../../layouts/framed-page";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
+import { cn } from "../../utils/cn";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,

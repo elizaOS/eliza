@@ -17,8 +17,8 @@ import {
   useState,
 } from "react";
 import { useSharedNow } from "../../hooks/useSharedNow";
-import { cn } from "../../lib/utils";
 import { categoryIcon } from "../../state/notifications/category-icon";
+import { cn } from "../../utils/cn";
 import { formatRelativeTimeShort } from "../../utils/format";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import {

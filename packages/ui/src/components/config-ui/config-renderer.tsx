@@ -28,9 +28,8 @@ import type {
   FieldRenderer,
   FieldRenderProps,
 } from "../../config/config-catalog";
-
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Banner } from "../ui/banner";

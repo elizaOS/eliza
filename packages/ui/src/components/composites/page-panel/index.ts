@@ -1,8 +1,4 @@
-/**
- * Barrel for the page-panel surface. Re-exports every sub-part and assembles
- * the compound `PagePanel` (Root + Header/Frame/ContentArea/Empty/Loading/…)
- * that view pages use as their standard content chrome.
- */
+/** Assembles the compound page surface from its owned components. */
 
 import { ContentState } from "./content-state";
 import { PagePanelCollapsibleSection } from "./page-panel-collapsible-section";
@@ -23,17 +19,6 @@ import {
 import { PageLoadingState } from "./page-panel-loading";
 import { PagePanelRoot } from "./page-panel-root";
 import { PagePanelToolbar } from "./page-panel-toolbar";
-
-export * from "./content-state";
-export * from "./page-panel-collapsible-section";
-export * from "./page-panel-empty";
-export * from "./page-panel-feature-empty";
-export * from "./page-panel-frame";
-export * from "./page-panel-header";
-export * from "./page-panel-loading";
-export * from "./page-panel-root";
-export * from "./page-panel-toolbar";
-export * from "./page-panel-types";
 
 export const PagePanel = Object.assign(PagePanelRoot, {
   CollapsibleSection: PagePanelCollapsibleSection,

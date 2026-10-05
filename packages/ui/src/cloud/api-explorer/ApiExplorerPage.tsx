@@ -44,7 +44,7 @@ import { OpenApiViewer } from "../../cloud-ui/components/docs/openapi-viewer";
 import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { api } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";

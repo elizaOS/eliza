@@ -81,22 +81,17 @@ import {
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
-import {
-  CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
-  Z_SHELL_OVERLAY,
-} from "../../lib/floating-layers";
-import { cn } from "../../lib/utils";
 import { logger } from "../../logger.ts";
-import {
-  OS_INTENT_COMPOSER_PREFILL_EVENT,
-  type OsIntentComposerPrefillDetail,
-} from "../../os-intent/host";
 import {
   isAndroid,
   isIOS,
   isNative,
   isStandalonePwa,
 } from "../../platform/init";
+import {
+  OS_INTENT_COMPOSER_PREFILL_EVENT,
+  type OsIntentComposerPrefillDetail,
+} from "../../platform/os-intent";
 import {
   getPhysicalScreenVerticalExtent,
   KEYBOARD_INTRUSION_THRESHOLD_PX,
@@ -118,6 +113,11 @@ import { useViewChatBinding } from "../../state/view-chat-binding";
 import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
 import { tryHandleTutorialText } from "../../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../../utils/clipboard";
+import { cn } from "../../utils/cn";
+import {
+  CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
+  Z_SHELL_OVERLAY,
+} from "../../utils/floating-layers";
 import {
   bytesToMb,
   CHAT_UPLOAD_ACCEPT,

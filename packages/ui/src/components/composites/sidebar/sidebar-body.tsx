@@ -3,7 +3,7 @@
  * frame and the resize edge, carrying the expand/collapse crossfade transition.
  */
 import * as React from "react";
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import type { SidebarBodyProps } from "./sidebar-types";
 
 const sidebarBodyClassName =

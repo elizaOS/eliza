@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 type RouteGroup = {
   group: string;

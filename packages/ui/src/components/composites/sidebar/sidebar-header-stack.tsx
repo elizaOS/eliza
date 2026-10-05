@@ -2,7 +2,7 @@
  * Vertically-spaced container for a sidebar header's stacked rows, carrying the
  * expand/collapse transition. The bare layout primitive under `SidebarHeader`.
  */
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import type { SidebarHeaderStackProps } from "./sidebar-types";
 
 const sidebarHeaderStackClassName =

@@ -5,9 +5,8 @@
  * carries the game-modal spacing variant. Consumed by ChatView.
  */
 import * as React from "react";
-import { assignRef } from "../../../lib/refs";
-
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
+import { assignRef } from "../../../utils/refs";
 import { Card } from "../../ui/card";
 import type { ChatVariant } from "./chat-types";
 

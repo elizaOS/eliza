@@ -6,7 +6,7 @@ import { cva } from "class-variance-authority";
 // biome-ignore lint/correctness/noUnusedImports: Required for this package's JSX transform in tests.
 import * as React from "react";
 
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { Card } from "../../ui/card";
 import type { SidebarPanelProps } from "./sidebar-types";
 

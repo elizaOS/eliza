@@ -7,7 +7,7 @@
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
 import type * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 export type AvatarFallbackTone =
   | "default"

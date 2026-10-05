@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 /**
  * Base skeleton block: an aria-hidden pulsing placeholder. The single skeleton

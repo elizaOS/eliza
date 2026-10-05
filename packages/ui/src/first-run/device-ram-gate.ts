@@ -20,9 +20,9 @@
  * `peek` at decision time.
  */
 
+import { getDeviceResourceSnapshot } from "../bridge/resource-snapshot";
 import { logger } from "../logger.ts";
 import { isAndroid, isIOS } from "../platform/init";
-import { getDeviceResourceSnapshot } from "../services/local-inference/resource-snapshot-bridge";
 import {
   classifyDeviceRamTier,
   type DeviceRamTierAssessment,

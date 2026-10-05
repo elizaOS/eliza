@@ -4,7 +4,7 @@
 import type * as React from "react";
 import { Card } from "../../../components/ui/card";
 import { CornerBrackets } from "../../../components/ui/corner-brackets";
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 interface AgentCardProps {
   title: string;

@@ -24,7 +24,7 @@ import { parseSegments } from "../components/chat/message-parser-helpers";
 import { Alert } from "../components/ui/alert";
 import { Card } from "../components/ui/card";
 import { CodeBlock } from "../components/ui/code-block";
-import { cn } from "../lib/utils";
+import { cn } from "../utils/cn";
 
 /** Fold a decoded event log into the render model (memoized by identity). */
 export function useTranscriptEvents(

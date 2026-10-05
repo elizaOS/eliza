@@ -31,7 +31,7 @@ import {
   type ApplicationUpdateSnapshot,
   getApplicationUpdateSnapshot,
   mapAgentUpdateStatusToSnapshot,
-} from "../../services/app-updates/update-policy";
+} from "../../platform/app-update-policy";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { openDesktopSurfaceWindow } from "../../utils/desktop-workspace";
 import { openExternalUrl } from "../../utils/openExternalUrl";

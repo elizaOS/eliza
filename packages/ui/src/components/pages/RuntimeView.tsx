@@ -25,7 +25,7 @@ import type {
 } from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { PageLayout } from "../../layouts/page-layout";
 import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";

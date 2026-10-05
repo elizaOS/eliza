@@ -13,8 +13,8 @@
  */
 
 import type { ChatTurnStatus } from "@elizaos/contracts";
-import type { HomeModelStatus } from "../../../services/local-inference/home-model-status";
 import type { MicrophonePermissionState } from "../../../voice/local-asr-capture";
+import type { HomeModelStatus } from "../../local-inference/home-model-status";
 import type { ShellAuthGate } from "../shell-auth-gate";
 import {
   isShellPhase,
