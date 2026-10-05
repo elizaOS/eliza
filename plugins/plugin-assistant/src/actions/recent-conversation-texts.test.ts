@@ -17,7 +17,6 @@ describe("recentConversationTexts", () => {
       } as never,
       message: { roomId: "room-1" } as never,
       state: { values: { recentMessages: "current state message" } } as never,
-      limit: 3,
     });
 
     expect(result).toEqual(["older valid message", "current state message"]);

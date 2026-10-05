@@ -29,9 +29,7 @@ function isHighSurrogate(code: number): boolean {
 	return code >= 0xd800 && code <= 0xdbff;
 }
 
-// ============================================================================
 // StreamError - Standardized error handling for streaming
-// ============================================================================
 
 /** Error codes for streaming operations */
 export type StreamErrorCode =
@@ -66,9 +64,7 @@ export class StreamError extends Error {
 	}
 }
 
-// ============================================================================
 // Shared constants and utilities
-// ============================================================================
 
 /** Maximum chunk size to prevent DoS (1MB) */
 const MAX_CHUNK_SIZE = 1024 * 1024;
@@ -93,9 +89,7 @@ function validateChunkSize(chunk: string): void {
 	}
 }
 
-// ============================================================================
 // PassthroughExtractor - Simplest implementation
-// ============================================================================
 
 /**
  * Streams all content as-is without any filtering.
@@ -120,35 +114,9 @@ export class PassthroughExtractor implements IStreamExtractor {
 	}
 }
 
-// ============================================================================
 // MarkableExtractor - Passthrough with external completion control
-// ============================================================================
 
-/**
- * Passthrough extractor that can be marked complete externally.
- *
- * WHY: When using StructuredFieldStreamExtractor inside dynamicPromptExecFromState,
- * extraction/completion is handled internally. But the outer streaming context
- * still needs to know when streaming is complete for retry/fallback logic.
- *
- * This extractor passes through all content and provides a markComplete() method
- * that the caller can invoke when the underlying operation completes successfully.
- *
- * @example
- * ```ts
- * const extractor = new MarkableExtractor();
- * const ctx = createStreamingContext(extractor, callback);
- *
- * const result = await dynamicPromptExecFromState({ ... });
- * if (result) {
- *   extractor.markComplete(); // Signal success
- * }
- *
- * if (ctx.isComplete()) {
- *   // Now returns true after markComplete()
- * }
- * ```
- */
+/** Passes through streaming text while allowing the owning structured extractor to mark completion for retry and fallback handling. */
 export class MarkableExtractor implements IStreamExtractor {
 	private _done = false;
 
@@ -252,9 +220,7 @@ export interface ValidationDiagnosis {
 	incompleteFields: string[];
 }
 
-// ============================================================================
 // StructuredFieldStreamExtractor - top-level field extraction
-// ============================================================================
 
 const STRUCTURED_TOP_LEVEL_FIELD_RE =
 	/^([A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?):(?:\s?(.*))?$/;
@@ -602,9 +568,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	}
 }
 
-// ============================================================================
 // ResponseSkeletonStreamExtractor - JSON skeleton field extraction
-// ============================================================================
 
 /**
  * Extracts selected free-string fields from a streamed JSON response skeleton.
@@ -1240,7 +1204,7 @@ function decodeJsonEscape(raw: string): string {
 }
 
 /**
- * Match any canonical reasoning open tag (`<think>`, `<thinking>`, ...) at
+ * Match any canonical reasoning open tag (`<think>`, `<thinking>`,...) at
  * `index`. `partial` means the source ends inside a prefix of at least one
  * tag, so the caller must hold the remainder until more input arrives.
  */
@@ -1391,9 +1355,7 @@ function findBalancedJsonEnd(value: string): number | null {
 	return null;
 }
 
-// ============================================================================
 // Streaming Context Helpers
-// ============================================================================
 
 import type { StreamingContext } from "../streaming-context";
 

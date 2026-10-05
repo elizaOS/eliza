@@ -10,16 +10,16 @@ import type { UiLanguage } from "./i18n/language.js";
 
 // ── App lifecycle ────────────────────────────────────────────────────────
 export const COMMAND_PALETTE_EVENT = "eliza:command-palette" as const;
-/** Global push-to-talk hotkey toggle (#20483): first press starts pill
- *  listening, second press stops and sends. Trigger-only OS shortcuts cannot
- *  report key-up, so the hotkey path is press-to-start/press-to-send rather
- *  than hold-to-talk. */
+/** Global push-to-talk hotkey toggle: first press starts pill
+ * listening, second press stops and sends. Trigger-only OS shortcuts cannot
+ * report key-up, so the hotkey path is press-to-start/press-to-send rather
+ * than hold-to-talk. */
 export const PUSH_TO_TALK_TOGGLE_EVENT = "eliza:push-to-talk-toggle" as const;
-/** Global fn-hold push-to-talk quasimode (#20483): the native fn (Globe) key
- *  monitor reports true hold semantics — down starts pill listening, up sends,
- *  and a cancelled release (fn-chord, monitor loss) aborts without sending.
- *  Complements {@link PUSH_TO_TALK_TOGGLE_EVENT}, which stays the toggle
- *  fallback for non-mac and store builds. */
+/** Global fn-hold push-to-talk quasimode: the native fn (Globe) key
+ * monitor reports true hold semantics — down starts pill listening, up sends,
+ * and a cancelled release (fn-chord, monitor loss) aborts without sending.
+ * Complements {@link PUSH_TO_TALK_TOGGLE_EVENT}, which stays the toggle
+ * fallback for non-mac and store builds. */
 export const PUSH_TO_TALK_HOLD_EVENT = "eliza:push-to-talk-hold" as const;
 
 /** Detail payload for {@link PUSH_TO_TALK_HOLD_EVENT}. */
@@ -57,7 +57,7 @@ export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
 export const CHAT_AVATAR_VOICE_EVENT = "eliza:chat-avatar-voice" as const;
 export const APP_EMOTE_EVENT = "eliza:app-emote" as const;
 /**
- * Fused on-device wake (#9953 / #10351). The battery-efficient native
+ * Fused on-device wake. The battery-efficient native
  * openWakeWord runtime (`libwakeword` via `wake-word-ggml.ts`) runs in the
  * agent/native process; each detected stage is forwarded to the renderer as
  * this window event, where `useWakeController` activates the bottom bar and
@@ -155,7 +155,7 @@ export interface BackgroundApplyPayload extends Record<string, unknown> {
 	 * The renderer resolves it against the shared background catalog to a config
 	 * (color / vetted image URL / named GLSL preset). Like `presetId`, this NEVER
 	 * carries GLSL source or an arbitrary URL — an unknown name is ignored, so a
-	 * crafted payload can't wedge or escape the background (#11088 / #13523).
+	 * crafted payload can't wedge or escape the background.
 	 */
 	catalogId?: string;
 }

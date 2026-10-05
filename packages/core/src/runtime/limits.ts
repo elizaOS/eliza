@@ -58,11 +58,11 @@ export interface ChainingLoopConfig {
 	 *
 	 * Set to `Number.POSITIVE_INFINITY` to disable the guard. The default
 	 * of 1.5M tokens is calibrated against observed trajectories:
-	 *   - well-formed single-turn answers: 50k–250k cumulative tokens.
-	 *   - normal multi-step tool chains: 400k–800k cumulative.
-	 *   - the runaway replan that motivated this guard: 2.2M cumulative
-	 *     (13 planner iterations growing monotonically until the model's
-	 *     per-call window overflowed).
+	 * - well-formed single-turn answers: 50k–250k cumulative tokens.
+	 * - normal multi-step tool chains: 400k–800k cumulative.
+	 * - the runaway replan that motivated this guard: 2.2M cumulative
+	 * (13 planner iterations growing monotonically until the model's
+	 * per-call window overflowed).
 	 *
 	 * 1.5M sits comfortably above legitimate traffic and well below the
 	 * runaway level — a turn that exceeds it is almost certainly stuck.

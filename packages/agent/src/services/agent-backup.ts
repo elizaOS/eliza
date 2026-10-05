@@ -50,17 +50,14 @@ import {
   type IAgentRuntime,
   logger,
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  resolveStateDir,
+  resolveUserPath,
   stableJsonString,
   timeInferenceSpan,
 } from "@elizaos/core";
-
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { z } from "zod";
-import type { ElizaConfig } from "../config/config.ts";
-import {
-  resolveConfigPath,
-  resolveStateDir,
-  resolveUserPath,
-} from "../config/paths.ts";
+import { resolveConfigPath } from "../config/paths.ts";
 import { maybeInjectFault } from "../runtime/crash-injection.ts";
 import { cancelAndDrainDeferredBoot } from "../runtime/deferred-boot-owner.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";

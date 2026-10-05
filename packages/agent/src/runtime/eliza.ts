@@ -34,6 +34,8 @@ import {
   type Provider,
   type RuntimeStopOptions,
   requireConfirmedSendHandlerDelivery,
+  resolveStateDir,
+  resolveUserPath,
   stringToUuid,
   type TargetInfo,
   type UUID,
@@ -46,6 +48,7 @@ import {
 import {
   buildDefaultElizaCloudServiceRouting,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  type ElizaConfig,
   getFirstRunProviderOption,
   isElizaSettingsDebugEnabled,
   isMobilePlatform,
@@ -86,7 +89,6 @@ import {
 } from "../api/wallet.ts";
 import {
   configFileExists,
-  type ElizaConfig,
   loadEffectiveElizaConfig,
   loadElizaConfig,
 } from "../config/config.ts";
@@ -101,11 +103,7 @@ import {
   CONNECTOR_ENV_MAP,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
-import {
-  ensurePrivateDir,
-  resolveStateDir,
-  resolveUserPath,
-} from "../config/paths.ts";
+import { ensurePrivateDir } from "../config/paths.ts";
 import {
   assertNoRetiredCharacterToolRestrictions,
   assertNoRetiredToolRestrictions,
@@ -314,7 +312,7 @@ async function loadRemoteCodingRunnerModule(): Promise<RemoteCodingRunnerModule>
   )) as RemoteCodingRunnerModule;
 }
 
-import { default as rolesPlugin } from "./roles/src/index.ts";
+import { default as rolesPlugin } from "./roles.ts";
 
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);

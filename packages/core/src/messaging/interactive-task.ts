@@ -6,7 +6,7 @@ import { ElizaError } from "../errors.ts";
 import type {
 	MessageInteractionAuthorizationDecision,
 	MessageInteractionBindings,
-} from "./interactions/sessions.ts";
+} from "./interaction-sessions.ts";
 
 export type TaskOwner = Pick<
 	MessageInteractionBindings,

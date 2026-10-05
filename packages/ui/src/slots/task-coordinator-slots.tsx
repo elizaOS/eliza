@@ -1,58 +1,84 @@
-/**
- * Slots for task-coordinator (coding-agent) UI surfaces rendered by app.
- *
- * app deliberately does not import from @elizaos/plugin-agent-orchestrator —
- * that would create a package -> app-plugin dependency (coding-agent
- * components live under plugins/plugin-agent-orchestrator) and a circular edge
- * (task-coordinator already imports app for its hooks/types). Instead,
- * app plugins that want coding-agent surfaces call
- * `registerTaskCoordinatorSlots` with their component implementations at
- * boot time, and app renders them via the `*Slot` components below.
- *
- * Registration happens via a side-effect import in the root app entry (see
- * the task-coordinator slot-registration module).
- */
+import { type ComponentType, useSyncExternalStore } from "react";
+import type { CodingAgentSession } from "../api/client-types-cloud.js";
+import { getUiRegistryStore } from "../registry-host.js";
 
-import {
-  registeredTaskCoordinatorSlots,
-  type TaskCoordinatorCodingAgentControlChipProps,
-  type TaskCoordinatorCodingAgentSettingsSectionProps,
-  type TaskCoordinatorCodingAgentTasksPanelProps,
-  type TaskCoordinatorPtyConsoleBaseProps,
-} from "./task-coordinator-slots.helpers";
+export type TaskCoordinatorCodingAgentSettingsSectionProps = Record<
+  string,
+  never
+>;
 
-export type {
-  TaskCoordinatorCodingAgentControlChipProps,
-  TaskCoordinatorCodingAgentSettingsSectionProps,
-  TaskCoordinatorCodingAgentTasksPanelProps,
-  TaskCoordinatorPtyConsoleBaseProps,
-  TaskCoordinatorSlots,
-} from "./task-coordinator-slots.helpers";
+export interface TaskCoordinatorCodingAgentTasksPanelProps {
+  fullPage?: boolean;
+}
+
+export type TaskCoordinatorCodingAgentControlChipProps = Record<string, never>;
+
+export interface TaskCoordinatorPtyConsoleBaseProps {
+  activeSessionId: string;
+  sessions: CodingAgentSession[];
+  onClose: () => void;
+  variant: "drawer" | "side-panel" | "full";
+}
+
+export interface TaskCoordinatorSlots {
+  CodingAgentSettingsSection: ComponentType<TaskCoordinatorCodingAgentSettingsSectionProps>;
+  CodingAgentTasksPanel: ComponentType<TaskCoordinatorCodingAgentTasksPanelProps>;
+  CodingAgentControlChip: ComponentType<TaskCoordinatorCodingAgentControlChipProps>;
+  PtyConsoleBase: ComponentType<TaskCoordinatorPtyConsoleBaseProps>;
+}
+
+function slotStore() {
+  return getUiRegistryStore("task-coordinator-slots", () => ({
+    components: {} as Partial<TaskCoordinatorSlots>,
+    listeners: new Set<() => void>(),
+  }));
+}
+
+function subscribeSlots(listener: () => void): () => void {
+  const { listeners } = slotStore();
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function useSlot<K extends keyof TaskCoordinatorSlots>(name: K) {
+  const snapshot = () => slotStore().components[name];
+  return useSyncExternalStore(subscribeSlots, snapshot, snapshot);
+}
+
+export function registerTaskCoordinatorSlots(
+  components: Partial<TaskCoordinatorSlots>,
+): void {
+  const store = slotStore();
+  Object.assign(store.components, components);
+  for (const listener of store.listeners) listener();
+}
 
 export function CodingAgentSettingsSection(
   props: TaskCoordinatorCodingAgentSettingsSectionProps,
 ): React.JSX.Element | null {
-  const Component = registeredTaskCoordinatorSlots.CodingAgentSettingsSection;
+  const Component = useSlot("CodingAgentSettingsSection");
   return Component ? <Component {...props} /> : null;
 }
 
 export function CodingAgentTasksPanel(
   props: TaskCoordinatorCodingAgentTasksPanelProps,
 ): React.JSX.Element | null {
-  const Component = registeredTaskCoordinatorSlots.CodingAgentTasksPanel;
+  const Component = useSlot("CodingAgentTasksPanel");
   return Component ? <Component {...props} /> : null;
 }
 
 export function CodingAgentControlChip(
   props: TaskCoordinatorCodingAgentControlChipProps,
 ): React.JSX.Element | null {
-  const Component = registeredTaskCoordinatorSlots.CodingAgentControlChip;
+  const Component = useSlot("CodingAgentControlChip");
   return Component ? <Component {...props} /> : null;
 }
 
 export function PtyConsoleBase(
   props: TaskCoordinatorPtyConsoleBaseProps,
 ): React.JSX.Element | null {
-  const Component = registeredTaskCoordinatorSlots.PtyConsoleBase;
+  const Component = useSlot("PtyConsoleBase");
   return Component ? <Component {...props} /> : null;
 }

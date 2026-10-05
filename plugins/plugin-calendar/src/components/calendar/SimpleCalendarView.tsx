@@ -21,7 +21,6 @@ import {
   useAgentElement,
   useViewEvent,
   VIEW_EVENTS,
-  ViewHeader,
 } from "@elizaos/ui";
 
 import {
@@ -567,14 +566,7 @@ function CalendarStatusRow({
   );
 }
 
-export interface SimpleCalendarViewProps {
-  /** Render the shared route header. Embedded projections turn this off. */
-  standalone?: boolean;
-}
-
-export function SimpleCalendarView({
-  standalone = false,
-}: SimpleCalendarViewProps = {}) {
+export function SimpleCalendarView() {
   const calendar = useCalendarWeek({ viewMode: "month" });
   useViewEvent(VIEW_EVENTS.VIEW_REFRESH, () => {
     void calendar.refresh();
@@ -857,7 +849,6 @@ export function SimpleCalendarView({
           .eliza-calendar-day { transition: none !important; }
         }
       `}</style>
-      {standalone ? <ViewHeader title="Calendar" /> : null}
       <PagePanel.ContentArea data-testid="simple-calendar-scroll-region">
         <PagePanel.ContentRail
           width="wide"

@@ -30,7 +30,7 @@ export {
   isAdminDevBypass,
   type UseAdminGateResult,
   useAdminGate,
-} from "./data/use-admin-gate";
+} from "./use-admin-gate";
 
 /** Stable cloud-route paths (no compat redirect; safe to self-register). */
 export const ADMIN_MODERATION_ROUTE_PATH = "cloud/admin";

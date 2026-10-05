@@ -44,9 +44,9 @@ function encodeConnectorKeySegment(value: string): string {
  * connector-specific (e.g. bluebubbles needs both serverUrl and password,
  * imessage just needs cliPath OR dbPath OR enabled:true) but the broad
  * pattern is:
- *   - block exists, is an object, and isn't `enabled: false`
- *   - has at least one of { botToken, token, apiKey } — the universal case
- *   - OR matches the connector-specific shape (per-case branches below)
+ * - block exists, is an object, and isn't `enabled: false`
+ * - has at least one of { botToken, token, apiKey } — the universal case
+ * - OR matches the connector-specific shape (per-case branches below)
  *
  * Used by per-plugin `auto-enable.ts` predicates that just want to delegate
  * "is this connector wired?" to a single source of truth, and by app-side
@@ -76,9 +76,7 @@ export function isConnectorConfigured(
 				config.enabled === true || config.cliPath || config.dbPath,
 			);
 		case "whatsapp":
-			// authState/sessionPath: legacy field names
-			// authDir: Baileys multi-file auth state directory (WhatsAppAccountSchema)
-			// accounts: at least one account with authDir set and not explicitly disabled
+			// Accept authState, sessionPath, authDir, or an enabled account with authDir.
 			return Boolean(
 				config.authState ||
 					config.sessionPath ||
@@ -124,7 +122,7 @@ function isRecordObject(value: unknown): boolean {
  * GoogleChatAccountSchema: `serviceAccount` is a string OR a parsed key
  * object, `serviceAccountFile` is a path string. `serviceAccountKey` is not a
  * schema field but is accepted because the GOOGLE_CHAT_SERVICE_ACCOUNT_KEY
- * env alias historically mapped there.
+ * environment alias supplies that field.
  */
 function hasGoogleChatCredential(row: Record<string, unknown>): boolean {
 	return (

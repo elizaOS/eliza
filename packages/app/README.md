@@ -248,6 +248,20 @@ must settle device work and return `{cleaned: true}` only after proving its pack
 cleanup; missing proof or a thrown scenario retains the user for explicit recovery.
 It does not provision providers, grant permissions or install product packages.
 
+`scripts/lib/isolated-android-user-test.mjs` composes both lifecycles under one
+lease. Supply the test options above, `homePackage`, `userName`, positive command
+and cleanup deadlines, and a new evidence directory; omit `androidUser` and
+`deviceLease`. It records `user-verification.json`, restores owner 0 after test
+failure, and removes the secondary user only with matching fresh package-cleanup
+evidence. Product hooks still own permissions and fixture assertions.
+
+`scripts/lib/android-fixture-observation.mjs` reads a named SharedPreferences
+string, package stopped state, or exact notification key through the harness's
+ADB executor. Supply its explicit secondary user and package identity. These
+observations never start instrumentation or an Activity, which would interfere
+with pending-alarm/reboot evidence. Product code owns envelope schemas and
+fixture assertions; the helper does not retain unrelated preferences or bodies.
+
 For installed upgrades, each variant supplies baseline `apk`/`testApk` and an
 `upgrade: {apk, testApk}` candidate pair. Both pairs are admitted before device
 mutation. `runnerArgs` seeds the baseline; `upgradeRunnerArgs` verifies the
@@ -296,3 +310,32 @@ or publishes a release. Hosts select environment, distribution names and archive
 identity. Missing build outputs or failed verification prevent archive publication.
 Run `node --test scripts/mobile/android/build-consumer.test.mjs` for ordering, failure
 and stale-artifact isolation checks.
+
+Consumer `runIsolatedAndroidTest` campaigns admit exactly the selected runner by
+default. Hosts whose test APK declares other runners must list their class names
+in `additionalInstrumentationRunners`; every declaration must target the same
+application package, with no missing, duplicate, or undeclared runners. This
+changes APK admission only: instrumentation still executes the selected `runner`.
+
+For installed upgrades, each `variants[]` entry and its `upgrade` artifact may
+set `additionalInstrumentationRunners` independently. Omission inherits the
+campaign default; an explicit empty list admits only the selected runner.
+Every artifact must match its own exact declaration set before any APK installs.
+This supports historical test APKs without admitting undeclared candidate runners.
+
+Scenario hooks can call `context.instrumentPhase(name, runnerArgs)` after both
+owned APKs are installed. Each phase keeps the campaign's exact test selection,
+APK hash checks, user, timeout and strict result parser. Names must be unique
+letters/digits/underscores/hyphens starting with a letter. Results are recorded in
+`variants[].phases` and output in `<variant>-phase-<name>.log`. Runner extras
+cannot override test selection. Cleanup hooks may run a final fixture phase even
+after cancellation; failed or partial installs do not expose this function.
+
+Consumer APK audits can import `parseXmlTree` and `manifestFacts` from
+`scripts/lib/android-manifest-facts.mjs`. These pure helpers decode aapt xmltree
+and badging output without invoking an SDK or reading files. They report explicit
+manifest declarations, not Android's effective permission/export defaults or a
+release verdict. Missing application attributes remain null; hosts own component
+allowlists, expected package identity and release policy. `parseXmlTree` accepts
+a `decodeAttribute` option for callers such as Play-policy inspection that need
+normalized values instead of the default raw strings and hexadecimal integers.

@@ -23,7 +23,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { loadPersistedActiveServer } from "../../state/persistence";
-import { useAgents } from "../instances/lib/data/eliza-agents";
+import { useAgents } from "../instances/lib/eliza-agents";
 import { useSessionAuth } from "../lib/use-session-auth";
 import {
   redirectToSsoBridge,

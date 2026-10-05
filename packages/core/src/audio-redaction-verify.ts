@@ -1,25 +1,6 @@
 /**
- * Audio PII redaction — re-transcribe verifier contract (#14807).
- *
- * Deliberately SEPARATE from the span producer (`audio-redaction.ts`): the
- * verifier must be able to run on a DIFFERENT ASR backend than the one that
- * produced the word spans, so a model that missed a PII token in span
- * production cannot "verify" the redacted audio with the same blind spot
- * (acceptance note on #14807). The provider contract is intentionally
- * minimal — normalized transcript text in, no timestamps required — so
- * self-hosted OpenAI-compatible STT endpoints (faster-whisper, FunASR,
- * SenseVoice) plug in as independent verifiers next to the local
- * `ModelType.TRANSCRIPTION` handler.
- *
- * Judgment semantics (pure, unit-testable here):
- *  - **PII absence** is separator-insensitive containment over normalized
- *    text (never transcript equality — Whisper-family models hallucinate
- *    filler over silence, and that is fine as long as no PII token surfaces).
- *  - **Sentinel presence** guards against over-mute: known non-PII words from
- *    the original must still be heard.
- *  - **No verifier ⇒ typed failure.** An unreachable/unregistered ASR makes
- *    the verify step FAIL ({@link AudioRedactionVerifyUnavailableError}),
- *    never a vacuous pass; a transcriber that throws mid-run fails the run.
+ * Verifies audio redaction by retranscribing with an independently selected ASR provider, so
+ * span-production misses do not automatically pass verification.
  */
 
 import { normalizeSpokenText } from "./audio-redaction.js";

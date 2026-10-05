@@ -234,7 +234,7 @@ export function stringifyForDiagnostics(value: unknown): string {
 	// single never-pruned WeakSet rendered a shared (non-cyclic) sub-object — a
 	// DAG, e.g. the same tool result referenced from two keys — as "[Circular]",
 	// silently dropping the second reference from recorded trajectories and
-	// evaluator diagnostics (#31004). `this` is the holder of the key being
+	// evaluator diagnostics. `this` is the holder of the key being
 	// visited and JSON.stringify walks depth-first, so pruning the stack back to
 	// `this` keeps exactly the ancestor chain while still collapsing true cycles.
 	const ancestors: object[] = [];
@@ -334,12 +334,12 @@ export function parsePseudoTagToolInvocations(
  * Clean a model-produced reply field before it reaches the user. Removes
  * structural junk that weak models emit as plain text but which is never
  * user-facing content:
- *   1. the model's NATIVE tool-call serialization emitted as text instead of a
- *      structured call, e.g.
- *      `<tool_call>WEB_FETCH<arg_key>url</arg_key><arg_value>...</arg_value></tool_call>`
- *      (observed on cerebras gpt-oss / zai; eliza routes real tool calls
- *      structurally, and this markup never appears in eliza's own format), and
- *   2. a reply that is ONLY JSON punctuation (braces/brackets/quotes/commas).
+ * 1. the model's NATIVE tool-call serialization emitted as text instead of a
+ * structured call, e.g.
+ * `<tool_call>WEB_FETCH<arg_key>url</arg_key><arg_value>...</arg_value></tool_call>`
+ * (observed on cerebras gpt-oss / zai; eliza routes real tool calls
+ * structurally, and this markup never appears in eliza's own format), and
+ * 2. a reply that is ONLY JSON punctuation (braces/brackets/quotes/commas).
  *
  * Structural artifact removal - the sibling of the existing `[tool output:]`
  * markup stripping - not semantic-content matching. The truncated-open branch is

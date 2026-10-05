@@ -78,8 +78,8 @@ send waits for an earlier room abort; failed aborts discard that room and report
 failure before an explicit retry can create another. `reset` invalidates ownership
 and teardown callbacks. A stop receipt does not prove an external action was undone.
 
-Browser speech lifecycle leaves are available from `src/voice/device-speech-controller.ts`
-and `src/voice/segmented-speech-playback.ts`. `DeviceSpeechController` owns device
+Browser speech lifecycle APIs are available from the package root.
+`DeviceSpeechController` owns device
 utterance cancellation, stale callbacks and page visibility cleanup; dispose it on
 unmount. `SegmentedSpeechPlayback` owns sequential synthesized clips, playback
 state/captions, live rate changes and object URL/player cleanup. Inject synthesis

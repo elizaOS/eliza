@@ -3,7 +3,7 @@
  *
  * One shape shared across every layer: the meeting bot that JOINS a call
  * (plugin-meetings platform adapters), the pipeline that TRANSCRIBES it into
- * `Transcript` records (see ./transcripts.ts), the API routes + client that
+ * `Transcript` records (see./transcripts.ts), the API routes + client that
  * TRANSPORT session state, and the UI that renders live + archived meeting
  * transcripts. Pure, browser- + node-safe: types, constants, and URL parsing
  * only — no runtime imports.
@@ -149,7 +149,7 @@ export interface MeetingSession {
 	transcriptId?: string;
 	/**
 	 * Present (true) on a served session DTO when the viewer's transcript
-	 * disclosure resolved to the redacted variant (#14781): `transcriptId` stays
+	 * disclosure resolved to the redacted variant: `transcriptId` stays
 	 * usable (the transcripts API serves that viewer the variant under the same
 	 * id) and the client renders a redacted badge. Never stored.
 	 */

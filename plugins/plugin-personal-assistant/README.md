@@ -75,3 +75,19 @@ account and bill and supplies authorization, provider matching, UI stages and co
 Current lookup failures reject for host error reporting without clearing the last result.
 These clients do not grant payment authority or start work without an explicit call.
 Run `npm run test:bill-host` for their sequencing and uncertainty regressions.
+
+`native-host/configured-bill-helper.mjs` composes a reviewed helper configuration
+with the native browser target, managed bill/PDF discovery and private evidence
+files. Hosts supply configuration validation, bill controls, authorization and
+observation policy, parsing, evidence projection/namespace and presentation.
+Native profile and task-owner/goal fences are checked before delegated operations.
+Closing is idempotent and attempts both host and native cleanup even after an
+exception; startup rollback preserves the original failure and cleanup errors.
+Real local-socket and private-file tests cover these boundaries; they do not
+establish live browser, provider or device acceptance.
+
+`native-host/load-configured-bill-helper.mjs` loads explicit helper configuration,
+passes the task artifact's source identity to the reviewed document loader, and
+binds document/Google ports to the configured actor and grant. Only an explicitly
+optional missing file is ignored; invalid configuration or provenance fails closed.
+It imports the selected runtime through a file URL, preserving paths with spaces.

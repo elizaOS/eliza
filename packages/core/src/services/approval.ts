@@ -185,21 +185,21 @@ export class ApprovalService extends Service {
 	 * @example
 	 * ```typescript
 	 * const result = await approvalService.requestApproval({
-	 *   name: 'EXEC_APPROVAL',
-	 *   description: 'Execute command: rm -rf /tmp/cache',
-	 *   roomId: message.roomId,
-	 *   options: STANDARD_OPTIONS.ALLOW_ONCE_ALWAYS_DENY,
-	 *   timeoutMs: 120000,
-	 *   timeoutDefault: 'deny',
-	 *   onSelect: async (option, task, runtime) => {
-	 *     if (option === 'allow-always') {
-	 *       await addToAllowlist(command);
-	 *     }
-	 *   },
+	 * name: 'EXEC_APPROVAL',
+	 * description: 'Execute command: rm -rf /tmp/cache',
+	 * roomId: message.roomId,
+	 * options: STANDARD_OPTIONS.ALLOW_ONCE_ALWAYS_DENY,
+	 * timeoutMs: 120000,
+	 * timeoutDefault: 'deny',
+	 * onSelect: async (option, task, runtime) => {
+	 * if (option === 'allow-always') {
+	 * await addToAllowlist(command);
+	 * }
+	 * },
 	 * });
 	 *
 	 * if (result.success && result.selectedOption !== 'deny') {
-	 *   await executeCommand();
+	 * await executeCommand();
 	 * }
 	 * ```
 	 */
@@ -390,7 +390,7 @@ export class ApprovalService extends Service {
 
 	/**
 	 * Get every pending approval across all rooms for this agent. Powers the
-	 * canonical "needs your response" surface (#9449), which aggregates the
+	 * canonical "needs your response" surface, which aggregates the
 	 * agent's blocked-on-user decisions rather than scoping to one room.
 	 */
 	async getAllPendingApprovals(): Promise<Task[]> {
@@ -403,7 +403,7 @@ export class ApprovalService extends Service {
 	/**
 	 * List every in-flight approval as a canonical {@link PendingUserAction} — the
 	 * shared "the agent is waiting on you" shape that a needs-attention UI, a
-	 * provider, and the home-attention ranker all read (see #9449, Pillar C).
+	 * provider, and the home-attention ranker all read.
 	 *
 	 * Unlike {@link getPendingApprovals} (room-scoped raw `Task`s with no caller),
 	 * this is agent-wide and pre-normalized, so callers don't reshape per surface.
@@ -570,7 +570,7 @@ export class ApprovalService extends Service {
 					return true; // No role restriction
 				}
 
-				// #12087 Item 8: resolve the sender's role from the message via
+				//: resolve the sender's role from the message via
 				// checkSenderRole, which hashes the room's serverId once through the
 				// world lookup. The prior getUserServerRole(runtime, entityId,
 				// room.worldId) passed an ALREADY-hashed worldId as serverId, so it

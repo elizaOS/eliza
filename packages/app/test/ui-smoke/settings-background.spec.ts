@@ -126,6 +126,14 @@ async function installSettingsBackgroundRoutes(
   page: Page,
   hubOverrides: Partial<ModelHubSnapshot> = {},
 ): Promise<void> {
+  // Model and voice controls belong to the local desktop host. Its bridge alone
+  // does not replace the production web bundle's cloud-only boot policy.
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__ELIZAOS_APP_BOOT_CONFIG__ =
+      {
+        apiBase: window.location.origin,
+      };
+  });
   await installDefaultAppRoutes(page);
   await page.route("**/api/cloud/credits", (route) =>
     fulfillJson(route, {
@@ -426,7 +434,7 @@ test.describe("Settings appearance and model controls", () => {
       await page.getByRole("option", { name: /Rachel/ }).click();
       await screenshot(page, `voice-selector-selected-${viewport.width}`);
       const preview = page.getByRole("button", {
-        name: "Preview Voice",
+        name: "Preview voice",
         exact: true,
       });
       await preview.click();
@@ -550,6 +558,61 @@ test.describe("Settings appearance and model controls", () => {
     await screenshot(page, "mobile-general-hover");
   });
 
+  for (const mode of ["shader", "image"] as const) {
+    test(`routed Settings keeps an opaque safe-area backdrop with ${mode} wallpaper`, async ({
+      page,
+    }) => {
+      const wallpaper = await busyWallpaperDataUrl();
+      await installReadyDesktopStatusBridge(page);
+      await installSettingsBackgroundRoutes(page);
+      await seedSettingsBackgroundStorage(page, {
+        mode,
+        color: "#ef5a1f",
+        ...(mode === "image" ? { imageUrl: wallpaper } : {}),
+      });
+      for (const [name, viewport] of [
+        ["desktop", DESKTOP_VIEWPORT],
+        ["mobile", MOBILE_VIEWPORT],
+      ] as const) {
+        await page.setViewportSize(viewport);
+        await gotoSettings(page);
+        const backdrop = page.getByTestId("app-opaque-background");
+        await expect(backdrop).toBeAttached();
+        await expect(page.getByTestId("app-background-shader")).toHaveCount(0);
+        await expect(page.getByTestId("app-background-image")).toHaveCount(0);
+        const geometry = await backdrop.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          const color = getComputedStyle(element).backgroundColor;
+          return {
+            top: rect.top,
+            left: rect.left,
+            bottom: rect.bottom,
+            right: rect.right,
+            viewportHeight: innerHeight,
+            viewportWidth: innerWidth,
+            color,
+            alpha: color.startsWith("rgba(")
+              ? Number(color.slice(5, -1).split(",").at(-1))
+              : color === "transparent"
+                ? 0
+                : 1,
+          };
+        });
+        expect(geometry.alpha, geometry.color).toBe(1);
+        expect(geometry.top).toBeLessThanOrEqual(0);
+        expect(geometry.left).toBeLessThanOrEqual(0);
+        expect(geometry.bottom).toBeGreaterThanOrEqual(geometry.viewportHeight);
+        expect(geometry.right).toBeGreaterThanOrEqual(geometry.viewportWidth);
+        await screenshot(page, `${name}-${mode}-opaque-settings`);
+      }
+      // The same saved background must still paint on the launcher.
+      await page.setViewportSize(DESKTOP_VIEWPORT);
+      await openAppPath(page, "/views");
+      await expect(page.getByTestId(`app-background-${mode}`)).toBeAttached();
+      await expect(page.getByTestId("app-opaque-background")).toHaveCount(0);
+      await screenshot(page, `launcher-${mode}-desktop`);
+    });
+  }
   test("keeps Settings opaque while preserving the selected launcher wallpaper", async ({
     page,
   }) => {

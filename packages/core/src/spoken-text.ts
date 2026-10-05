@@ -66,12 +66,7 @@ const DIRECTION_CLOSERS = new Map([
 	["}", "{"],
 ] as const);
 
-/**
- * Removes all balanced bracket regions in linear time. Independent stacks
- * preserve the legacy sanitizer's permissive handling of crossed delimiter
- * types while ensuring that a deeply nested outer direction cannot become
- * speech merely because the compatibility peel reached its pass budget.
- */
+/** Removes balanced bracket regions in linear time. Independent delimiter stacks support crossed bracket types without exposing nested stage directions as speech. */
 function stripResidualBalancedDirections(input: string): string {
 	const removals = new Int32Array(input.length + 1);
 	const openerStacks = new Map<string, number[]>(

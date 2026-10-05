@@ -139,12 +139,13 @@ vi.mock("../services/router-handler", () => ({
 	installRouterHandler: vi.fn(),
 }));
 
-vi.mock("../services/voice", () => ({
-	decodeMonoPcm16Wav: vi.fn(() => ({
-		pcm: new Float32Array([0]),
-		sampleRate: 16_000,
-	})),
-}));
+// The real codec, so TRANSCRIPTION tests prove which bytes were decoded.
+vi.mock("../services/voice", async () => {
+	const codec = await vi.importActual<
+		typeof import("../services/voice/wav-codec")
+	>("../services/voice/wav-codec");
+	return { decodeMonoPcm16Wav: vi.fn(codec.decodeMonoPcm16Wav) };
+});
 
 import { resolveLocalInferenceLoadArgs } from "../services/active-model";
 import { BionicHostLoader } from "../services/bionic-host-loader";
@@ -156,6 +157,10 @@ import {
 	TimedAsrService,
 } from "../services/runtime-services";
 import { VoiceStartupError } from "../services/voice/errors";
+import {
+	decodeMonoPcm16Wav,
+	encodeMonoPcm16Wav,
+} from "../services/voice/wav-codec";
 import { registerLocalInferenceBoot } from "./boot";
 import {
 	ensureLocalInferenceHandler,
@@ -263,6 +268,13 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllEnvs());
 
+// Values exactly representable in PCM16, at a non-default rate, so the
+// asserted decode can only come from these bytes.
+const SPEECH_PCM = new Float32Array([0, -0.5, -0.25, 0]);
+function speechWav(): Uint8Array {
+	return encodeMonoPcm16Wav(SPEECH_PCM, 22_050);
+}
+
 describe("ensureLocalInferenceHandler", () => {
 	it("registers only embeddings for an opted-in provisioned cloud runtime", async () => {
 		vi.stubEnv("ELIZA_CLOUD_PROVISIONED", "1");
@@ -315,9 +327,7 @@ describe("ensureLocalInferenceHandler", () => {
 			expect(timedAsr).toBeInstanceOf(TimedAsrService);
 			if (!timedAsr) throw new Error("timed ASR service did not start");
 			expect(timedAsr.isAvailable()).toBe(true);
-			await expect(
-				timedAsr.transcribeWav(new Uint8Array([1, 2, 3])),
-			).resolves.toEqual({
+			await expect(timedAsr.transcribeWav(speechWav())).resolves.toEqual({
 				text: "timed transcription",
 				words: [{ word: "timed", start: 0, end: 0.25 }],
 			});
@@ -875,14 +885,14 @@ describe("ensureLocalInferenceHandler", () => {
 			ModelType.TRANSCRIPTION,
 		);
 
-		await expect(
-			handler(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
-		).resolves.toBe("transcribed");
+		await expect(handler(runtime, { audio: speechWav() })).resolves.toBe(
+			"transcribed",
+		);
 
 		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
 		expect(engineState.ensureActiveBundleVoiceReady).not.toHaveBeenCalled();
 		expect(engineState.transcribePcm).toHaveBeenCalledWith(
-			{ pcm: new Float32Array([0]), sampleRate: 16_000 },
+			decodeMonoPcm16Wav(speechWav()),
 			undefined,
 			undefined,
 		);
@@ -900,11 +910,16 @@ describe("ensureLocalInferenceHandler", () => {
 		await expect(
 			handler(runtime, {
 				audioUrl: "",
-				audio: new Uint8Array([82, 73, 70, 70]),
+				audio: speechWav(),
 				mimeType: "audio/wav",
 			}),
 		).resolves.toBe("transcribed");
 		expect(engineState.transcribePcm).toHaveBeenCalledTimes(1);
+		expect(engineState.transcribePcm).toHaveBeenCalledWith(
+			{ pcm: SPEECH_PCM, sampleRate: 22_050 },
+			undefined,
+			undefined,
+		);
 	});
 
 	it("fails fast when the fused voice bundle is unavailable (no whisper fallback)", async () => {
@@ -922,9 +937,9 @@ describe("ensureLocalInferenceHandler", () => {
 			ModelType.TRANSCRIPTION,
 		);
 
-		await expect(
-			handler(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
-		).rejects.toThrow(VoiceStartupError);
+		await expect(handler(runtime, { audio: speechWav() })).rejects.toThrow(
+			VoiceStartupError,
+		);
 
 		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
 		expect(engineState.transcribePcm).not.toHaveBeenCalled();

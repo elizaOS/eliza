@@ -48,6 +48,10 @@ export * from "./api/backup-v2-stream-response.ts";
 export * from "./api/bug-report-routes.ts";
 export * from "./api/character-routes.ts";
 export {
+  isClientVisibleNoResponse,
+  isNoResponsePlaceholder,
+} from "./api/chat-text-helpers.ts";
+export {
   type CloudConfigLike,
   handleCloudBillingRoute,
   handleCloudCompatRoute,
@@ -161,17 +165,10 @@ export {
 export { routeAutonomyTextToUser } from "./api/server-helpers-swarm.ts";
 export { resolveWalletExportRejection } from "./api/server-helpers-wallet.ts";
 export type {
-  AgentAutomationMode,
   ChatAttachmentWithData,
   ConnectorRouteHandler,
-  ConversationAutomationType,
   ConversationMeta,
-  ConversationMetadata,
-  ConversationScope,
   PluginEntry,
-  PluginParamDef,
-  StreamEventType,
-  TradePermissionMode,
 } from "./api/server-types.ts";
 export { injectApiBaseIntoHtml } from "./api/static-file-server.ts";
 export * from "./api/subscription-routes.ts";
@@ -199,6 +196,7 @@ export * from "./config/schema.ts";
 export * from "./config/telegram-custom-commands.ts";
 export { type LoadHooksOptions, loadHooks } from "./hooks/loader.ts";
 export { createHookEvent, triggerHook } from "./hooks/registry.ts";
+export { rolesProvider } from "./providers/roles.ts";
 export * from "./providers/workspace.ts";
 export * from "./runtime/advanced-capabilities-config.ts";
 export * from "./runtime/agent-event-service.ts";
@@ -349,8 +347,7 @@ export {
   RETENTION_BOUNDS_REQUIRED_SETTING,
   retentionBoundsRequired,
 } from "./runtime/retention-task.ts";
-export { default as rolesPlugin } from "./runtime/roles/src/index.ts";
-export { rolesProvider } from "./runtime/roles/src/provider.ts";
+export { default as rolesPlugin } from "./runtime/roles.ts";
 export {
   hydrateConfigEnvForBoot,
   isEnvKeyAllowedForForwarding,
@@ -781,8 +778,4 @@ export * from "./triggers/humanize.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";
 export * from "./triggers/types.ts";
-export type {
-  AutonomousConfigLike,
-  CloudProxyConfigLike,
-} from "./types/config-like.ts";
 export * from "./version-resolver.ts";

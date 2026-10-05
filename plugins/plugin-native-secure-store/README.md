@@ -76,3 +76,14 @@ uses immutable one-shot PendingIntents and revokes partially constructed offers 
 failure. Hosts retain localized save rejection and picker UI. Instrumentation covers
 real response parcelables with synthetic requests; it does not establish trusted
 Chromium or device credential acceptance.
+
+`JsonCredentialSlots` provides native-only JSON slot storage for hosts with the
+version/IV-length AES-GCM frame. Hosts supply a no-backup directory, Keystore
+alias and per-slot UTF-8 byte limits; renderer access policy remains with the
+host. Slot filenames and AAD are the lowercase SHA-256 hex digest of the UTF-8
+slot name. Preserve all deployed identities when adopting this helper. It does
+not share the single-file `RuntimeCredentialStore` frame. A process-wide lock
+covers cold key creation, reads, writes, removal and compare-and-exchange across
+instances; writers in separate Android processes need separate coordination.
+The device suite checks old-frame compatibility, backup recovery, tampering,
+byte limits, concurrent cold writes and competing admissions with synthetic JSON.

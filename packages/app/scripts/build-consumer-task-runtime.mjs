@@ -31,6 +31,19 @@ export function buildTaskRuntime(
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-task-build-"));
   try {
     exportCommittedSources(sourceRoot, sourceCommit, temporary, SOURCE_PATHS);
+    // Resolve the layout from the exported commit, including older reviewed sources.
+    const interactionSources = Object.fromEntries(
+      ["sessions", "profiles", "profile-catalog"].map((name) => {
+        const current = `messaging/interaction-${name}`;
+        const legacy = `messaging/interactions/${name}`;
+        return [
+          name,
+          fs.existsSync(path.join(temporary, `packages/core/src/${current}.ts`))
+            ? current
+            : legacy,
+        ];
+      }),
+    );
     // This isolated consumer contains only the task runtime. Its local barrel
     // resolves public imports to the same committed implementations without
     // pulling the full agent kernel or unrelated workspace dependencies.
@@ -39,9 +52,7 @@ export function buildTaskRuntime(
       [
         "errors",
         "messaging/interactive-task",
-        "messaging/interactions/sessions",
-        "messaging/interactions/profiles",
-        "messaging/interactions/profile-catalog",
+        ...Object.values(interactionSources),
         "messaging/task-widgets",
       ]
         .map((name) => `export * from './packages/core/src/${name}.ts';`)
@@ -64,13 +75,13 @@ export function buildTaskRuntime(
               "./packages/core/src/messaging/interactive-task.ts",
             ],
             "@elizaos/core/messaging/interactions/sessions": [
-              "./packages/core/src/messaging/interactions/sessions.ts",
+              `./packages/core/src/${interactionSources.sessions}.ts`,
             ],
             "@elizaos/core/messaging/interactions/profiles": [
-              "./packages/core/src/messaging/interactions/profiles.ts",
+              `./packages/core/src/${interactionSources.profiles}.ts`,
             ],
             "@elizaos/core/messaging/interactions/profile-catalog": [
-              "./packages/core/src/messaging/interactions/profile-catalog.ts",
+              `./packages/core/src/${interactionSources["profile-catalog"]}.ts`,
             ],
             "@elizaos/core/messaging/task-widgets": [
               "./packages/core/src/messaging/task-widgets.ts",
@@ -87,7 +98,7 @@ export function buildTaskRuntime(
             `export * from './packages/agent/src/services/interactive-task-${name}.ts';`,
         )
         .join("\n") +
-        "\nexport * from './packages/agent/src/services/sqlite-message-interaction-session-store.ts';\nexport * from './packages/core/src/messaging/interactions/sessions.ts';\nexport * from './plugins/plugin-browser/src/native-socket-target.ts';\nexport * from './plugins/plugin-browser/src/task-actuator.ts';\nexport * from './plugins/plugin-google-workspace/src/task-code-resolver.ts';",
+        `\nexport * from './packages/agent/src/services/sqlite-message-interaction-session-store.ts';\nexport * from './packages/core/src/${interactionSources.sessions}.ts';\nexport * from './plugins/plugin-browser/src/native-socket-target.ts';\nexport * from './plugins/plugin-browser/src/task-actuator.ts';\nexport * from './plugins/plugin-google-workspace/src/task-code-resolver.ts';`,
     );
     fs.mkdirSync(path.dirname(output), { recursive: true });
     execFileSync(

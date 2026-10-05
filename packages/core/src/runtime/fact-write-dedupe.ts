@@ -84,12 +84,12 @@ function readFactMetadata(memory: Memory): FactMetadata {
  *
  * - `confidence` — strictly higher (or present where the kept row has none).
  * - `kind` — present where the kept row has none. The FACTS reader defaults a
- *   missing kind to `durable`, so an explicit stamp is always more precise;
- *   an already-set kind is never flipped here (durable/current transitions
- *   belong to the reflection pass).
+ * missing kind to `durable`, so an explicit stamp is always more precise;
+ * an already-set kind is never flipped here (durable/current transitions
+ * belong to the reflection pass).
  * - `validAt` / `lastConfirmedAt` — strictly more recent (or newly present):
- *   a re-asserted `current` fact should not keep decaying from its first
- *   observation's timestamp.
+ * a re-asserted `current` fact should not keep decaying from its first
+ * observation's timestamp.
  */
 export function mergeStrongerFactMetadata(
 	existing: Memory,

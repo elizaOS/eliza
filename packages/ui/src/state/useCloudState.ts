@@ -51,7 +51,7 @@ import type { CloudCredits, CloudStatus } from "../api/client-types-cloud";
 import { invokeDesktopBridgeRequestWithTimeout } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";
-import { publishCloudAuthComplete } from "../cloud/auth/cloud-auth-complete-signal";
+import { publishCloudAuthComplete } from "../cloud/cloud-auth-complete-signal";
 import { sanitizeLoginReturnTo } from "../cloud/public-pages/lib/login-return-to";
 import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";

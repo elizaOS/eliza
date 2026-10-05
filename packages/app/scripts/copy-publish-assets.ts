@@ -77,6 +77,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/lib/android-bun-artifacts.lock.json",
   "scripts/lib/android-cloud-artifact-audit.ts",
   "scripts/lib/android-cloud-routing-markers.ts",
+  "scripts/lib/android-manifest-facts.mjs",
   "scripts/lib/android-runtime-packaging.ts",
   "scripts/lib/api-supervisor.ts",
   "scripts/lib/apk-runtime-provenance.ts",

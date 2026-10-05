@@ -7,7 +7,7 @@ import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { ensureConnection } from "./connection";
 import { recordOwnerGrant, recordRoleGrant } from "./roles";
-import { stringToUuid } from "./utils";
+import { stringToUuid } from "./utils/string-to-uuid.js";
 
 describe("ensureConnection", () => {
 	it("persists an exact Discord server binding on the room", async () => {

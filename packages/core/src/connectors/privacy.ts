@@ -13,11 +13,11 @@ import type { ConnectorAccount } from "./account-manager";
  * Stored on `account.metadata.privacy`. Defaults to `owner_only` when missing.
  *
  * - `owner_only` (default): only OWNER role users may see this account's data
- *   in surfaced summaries, providers, and contexts.
+ * in surfaced summaries, providers, and contexts.
  * - `team_visible`: OWNER + TEAM/ADMIN roles may see.
  * - `semi_public`: anyone interacting with the agent may see.
  * - `public`: broadcast-eligible (agent may post publicly mentioning data
- *   from this account).
+ * from this account).
  */
 export type PrivacyLevel =
 	| "owner_only"

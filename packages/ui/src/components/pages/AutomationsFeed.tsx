@@ -44,7 +44,7 @@ import {
   FramedPageBody,
   FramedPageHeader,
   FramedPageNavigation,
-} from "../../layouts/framed-page/framed-page";
+} from "../../layouts/framed-page";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
   FEED_FILTERS,
@@ -758,7 +758,6 @@ export function AutomationsFeed({
       >
         {/* Uniform view header (#13451/#13597): bare-icon back, centered title. */}
         <FramedPageHeader
-          title={t("automationsfeed.title", { defaultValue: "Automations" })}
           actions={
             <DropdownMenu open={createOpen} onOpenChange={setCreateOpen}>
               <DropdownMenuTrigger asChild>

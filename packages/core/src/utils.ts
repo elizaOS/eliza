@@ -266,7 +266,7 @@ export const formatMessageSegments = ({
 			: null;
 		// A reaction message's `text` is a short stub that truncates the reacted-to
 		// content; surface the full original so the planner reads the complete
-		// statement and does not back-rationalize a truncated fragment (#9874).
+		// statement and does not back-rationalize a truncated fragment.
 		const reactedContextString =
 			typeof reactedMessageText === "string" && reactedMessageText.trim()
 				? `(reacted-to message in full: "${reactedMessageText.trim()}")`
@@ -387,13 +387,7 @@ export function parseToonKeyValue<T = Record<string, unknown>>(
 	return found ? (result as T) : null;
 }
 
-/**
- * Legacy structured-response parser.
- *
- * Prefer JSON structured output for new prompts. This compatibility helper keeps
- * older XML-based cloud prompts working while native tool-calling migration
- * finishes those surfaces.
- */
+/** Parses XML-style structured model responses. */
 export function parseKeyValueXml<T = Record<string, unknown>>(
 	// audit:allowlist - retained for cloud/ XML evaluators
 	text: string,
@@ -468,7 +462,7 @@ function isUtf8WithinByteBudget(value: string, maxBytes: number): boolean {
 }
 
 function findFirstXmlBlock(
-	// audit:allowlist - helper for parseKeyValueXml (legacy XML parser, retained for cloud/)
+	// audit:allowlist - helper for parsing XML-structured model output
 	input: string,
 ): { tag: string; content: string } | null {
 	let i = 0;
@@ -698,16 +692,6 @@ export async function splitChunks(
 	return chunks;
 }
 
-/** @deprecated Prompt inputs are preserved; provider boundaries reject unsupported sizes. */
-export async function trimTokens(
-	prompt: string,
-	_maxTokens: number,
-	_runtime: IAgentRuntime,
-) {
-	if (!prompt) throw new Error("Trim tokens received a null prompt");
-	return prompt;
-}
-
 /**
  * Parses a string to determine its boolean equivalent.
  *
@@ -732,9 +716,6 @@ export function parseBooleanFromText(
 	return false;
 }
 
-export { stringToUuid } from "./utils/string-to-uuid.js";
-export { validateUuid } from "./utils/uuid.js";
-
 export const getContentTypeFromMimeType = (
 	mimeType: string,
 ): ContentType | undefined => {
@@ -750,46 +731,6 @@ export const getContentTypeFromMimeType = (
 	}
 	return undefined;
 };
-
-export {
-	resolveActionContexts,
-	resolveProviderContexts,
-} from "./utils/context-catalog";
-export {
-	AVAILABLE_CONTEXTS_STATE_KEY,
-	attachAvailableContexts,
-	CONTEXT_ROUTING_METADATA_KEY,
-	CONTEXT_ROUTING_STATE_KEY,
-	type ContextRoutingDecision,
-	deriveAvailableContexts,
-	getActiveRoutingContexts,
-	getActiveRoutingContextsForTurn,
-	getContextRoutingFromMessage,
-	getContextRoutingFromState,
-	inferContextRoutingFromMessage,
-	inferContextRoutingFromText,
-	mergeContextRouting,
-	parseContextList,
-	parseContextRoutingMetadata,
-	setContextRoutingMetadata,
-	shouldIncludeByContext,
-} from "./utils/context-routing";
-export {
-	extractUserText,
-	getUserMessageText,
-	hasDocumentAugmentationEnvelope,
-	normalizeUserMessageText,
-	stripAugmentationForPersistence,
-} from "./utils/message-text";
-// `export * from "./utils"` (in index.ts etc.) resolves to this file, not
-// to a `./utils/index.ts`. Any helper in the `utils/` directory that needs to be
-// reachable from `@elizaos/core` must be re-exported here.
-export { getLocalServerUrl } from "./utils/node";
-export {
-	isSyntheticConversationArtifactMemory,
-	isSyntheticConversationArtifactText,
-} from "./utils/synthetic-conversation-artifact";
-export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
 
 export interface ProviderUsageLike {
 	promptTokens?: number;

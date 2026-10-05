@@ -272,14 +272,14 @@ export {
   ELIZA_CLOUD_TIER_MODEL,
   type ElizaCloudTier,
 } from "./components/cockpit/cockpit-modes.js";
-export { DiffReviewPanel } from "./components/composites/code/DiffReviewPanel.js";
+export { DiffReviewPanel } from "./components/composites/DiffReviewPanel.js";
 export {
   PageLoadingState,
   PagePanel,
 } from "./components/composites/page-panel/index.js";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor.js";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel.js";
-export { DesktopTabBar } from "./components/desktop/DesktopTabBar.js";
+export { DesktopTabBar } from "./components/DesktopTabBar.js";
 export {
   TaskChoice,
   type TaskChoiceMessages,
@@ -808,8 +808,8 @@ export { createTranslator } from "./i18n/index.js";
 export {
   FramedPage,
   FramedPageBody,
-} from "./layouts/framed-page/framed-page.js";
-export { PageFrame } from "./layouts/page-frame/page-frame.js";
+} from "./layouts/framed-page.js";
+export { PageFrame } from "./layouts/page-frame.js";
 export { cn } from "./lib/utils.js";
 export { logger } from "./logger.js";
 export { LoginAuthGuard } from "./login/components/LoginAuthGuard.js";
@@ -837,12 +837,12 @@ export type {
   WalletLoginProps,
 } from "./login/components/WalletLogin.js";
 export { useAuth } from "./login/hooks/useAuth.js";
-export { useLogin } from "./login/hooks/useLogin.js";
 export { useMfaStepUp } from "./login/hooks/useMfaStepUp.js";
 export { DiscordIcon, GoogleIcon } from "./login/icons/index.js";
 export {
   LoginProvider,
   type LoginProviderWithAuthProps,
+  useLogin,
 } from "./login/provider.js";
 export type {
   CreateDefaultWagmiConfigOptions,
@@ -1025,13 +1025,13 @@ export {
 export { RetainedLazyComponent } from "./retained-lazy.js";
 export { routedShellMainClass } from "./routed-shell-layout.js";
 export {
+  CodingAgentSettingsSection,
   registerTaskCoordinatorSlots,
   type TaskCoordinatorCodingAgentControlChipProps,
   type TaskCoordinatorCodingAgentSettingsSectionProps,
   type TaskCoordinatorCodingAgentTasksPanelProps,
   type TaskCoordinatorPtyConsoleBaseProps,
-} from "./slots/task-coordinator-slots.helpers.js";
-export { CodingAgentSettingsSection } from "./slots/task-coordinator-slots.js";
+} from "./slots/task-coordinator-slots.js";
 export { SpatialSurface } from "./spatial/dom.js";
 export type { SpatialTone } from "./spatial/ir.js";
 export {

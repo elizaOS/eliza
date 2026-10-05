@@ -372,11 +372,7 @@ function isTrustedLocalReferer(raw: string, host: string | null): boolean {
  * policy gates; the host/origin/proxy classification is identical for all.
  */
 export function isTrustedLocalRequest(
-	// `socket` is declared optional because it genuinely can be absent: Node nulls
-	// it once a connection is destroyed, and in-process route dispatch (tests, the
-	// embedded mobile transport) invokes handlers with a synthetic request that
-	// never had one. The type used to promise a socket, so the access below threw
-	// a TypeError instead of reaching a trust decision.
+	// Destroyed connections and synthetic in-process requests may have no socket.
 	req: Pick<http.IncomingMessage, "headers"> & {
 		socket?: Pick<http.IncomingMessage["socket"], "remoteAddress"> | null;
 	},

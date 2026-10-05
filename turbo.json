@@ -628,6 +628,43 @@
         "@elizaos/plugin-agent-orchestrator#typecheck:deps"
       ]
     },
+    "@elizaos/plugin-todos#build": {
+      "dependsOn": [
+        "^build",
+        "@elizaos/ui#build"
+      ],
+      "env": [
+        "LOG_LEVEL"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!dist/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx",
+        "!**/__tests__/**",
+        "$TURBO_ROOT$/plugins/plugin-build.ts",
+        "$TURBO_ROOT$/plugins/plugin-build-externals.ts",
+        "$TURBO_ROOT$/plugins/tsup.plugin-packages.shared.ts",
+        "$TURBO_ROOT$/packages/scripts/view-bundle-vite.config.ts",
+        "$TURBO_ROOT$/packages/scripts/prepare-package-dist.ts",
+        "$TURBO_ROOT$/packages/scripts/copy-package-assets.ts",
+        "$TURBO_ROOT$/packages/scripts/ensure-tsc-nested-output-dir.ts",
+        "$TURBO_ROOT$/packages/scripts/flatten-tsc-package-output.ts",
+        "$TURBO_ROOT$/packages/scripts/rm-path-recursive.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/script-metadata.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/workspaces.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/repo-root.ts",
+        "$TURBO_ROOT$/packages/scripts/lib/rewrite-module-specifiers.ts",
+        "$TURBO_ROOT$/packages/scripts/rewrite-dist-relative-imports-node-esm.ts",
+        "$TURBO_ROOT$/packages/scripts/with-package-build-lock.ts"
+      ]
+    },
     "@elizaos/plugin-todos#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/ui#typecheck:deps"]
     },

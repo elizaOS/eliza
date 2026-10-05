@@ -13,7 +13,7 @@ import {
 	resolveOwnerEntityIdOrDefault,
 } from "./roles";
 import type { IAgentRuntime } from "./types/runtime.js";
-import { validateUuid } from "./utils.ts";
+import { validateUuid } from "./utils/uuid.js";
 
 type WorldMetadataShape = {
 	ownership?: { ownerId?: string };
@@ -49,7 +49,7 @@ export async function resolveOwnerEntityId(
 			worldId = room.worldId;
 			const world = await runtime.getWorld(room.worldId);
 			const metadata = (world?.metadata ?? {}) as WorldMetadataShape;
-			// Legacy connector worlds may hold a platform id here (see roles.ts).
+			// Connector worlds may store a platform identifier rather than an entity UUID.
 			const candidateOwnerId = validateUuid(metadata.ownership?.ownerId);
 			if (candidateOwnerId) return candidateOwnerId;
 		}
