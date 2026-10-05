@@ -214,7 +214,6 @@ import {
   discoverPluginsFromManifest,
   getReleaseBundledPluginIds,
   isBlockedEnvKey,
-  type PluginEntry,
 } from "./plugin-discovery-helpers.ts";
 import {
   getPluginInventory,
@@ -362,7 +361,7 @@ import {
 } from "./server-lazy-routes.ts";
 import { createServerResources } from "./server-resources.ts";
 import { createServerState } from "./server-state.ts";
-import type { ServerState } from "./server-types.ts";
+import type { PluginEntry, ServerState } from "./server-types.ts";
 
 import {
   injectApiBaseIntoHtml,
