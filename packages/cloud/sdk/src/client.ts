@@ -135,6 +135,8 @@ import {
   type OpenApiSpec,
   type OrganizationSubscriptionCancellationRequest,
   type OrganizationSubscriptionCancellationResponse,
+  type OrganizationSubscriptionDowngradeCommandResponse,
+  type OrganizationSubscriptionDowngradeConfirmRequest,
   type OrganizationSubscriptionDowngradeQuoteRequest,
   type OrganizationSubscriptionDowngradeQuoteResponse,
   type OrganizationSubscriptionRenewalReviewResponse,
@@ -615,6 +617,25 @@ export class ElizaCloudClient {
     return this.v1.requestData("POST", "/subscriptions/downgrade/review", {
       json: input,
     });
+  }
+
+  /** Confirms the original lower-plan quote; retries retain its original durable command. */
+  confirmOrganizationSubscriptionDowngrade(
+    input: OrganizationSubscriptionDowngradeConfirmRequest,
+  ): Promise<OrganizationSubscriptionDowngradeCommandResponse> {
+    return this.v1.requestData("POST", "/subscriptions/downgrade/confirm", {
+      json: input,
+    });
+  }
+
+  /** Reads configuration status only; APPLIED is pending-plan state, not payment. */
+  readOrganizationSubscriptionDowngrade(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionDowngradeCommandResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/downgrade/${encodeURIComponent(commandId)}`,
+    );
   }
 
   /** Confirms the original reviewed quote; retries retain its original durable command. */
