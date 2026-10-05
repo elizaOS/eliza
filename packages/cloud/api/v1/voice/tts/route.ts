@@ -13,7 +13,11 @@ import {
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
-import { getElevenLabsService } from "@elizaos/cloud-shared/lib/services/elevenlabs";
+import {
+  getElevenLabsService,
+  hasTtsSynthesisOptions,
+  TtsSynthesisOptions,
+} from "@elizaos/cloud-shared/lib/services/elevenlabs";
 import { drainPcm16ToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
 import { recordCustomVoiceUsage } from "@elizaos/cloud-shared/lib/services/tts-custom-voice-usage";
 import {
@@ -90,7 +94,7 @@ function resolveElevenLabsVoiceRevision(
   return `elevenlabs:${voiceId}:${modelId}:${DEFAULT_OUTPUT_FORMAT}`;
 }
 const MAX_TEXT_LENGTH = 5000;
-const TtsBody = z.object({
+const TtsBody = TtsSynthesisOptions.extend({
   text: z.string(),
   voiceId: z.string().optional(),
   modelId: z.string().optional(),
@@ -255,6 +259,21 @@ async function __hono_POST(c: AppContext) {
         { status: 400 },
       );
     }
+    if (
+      body &&
+      hasTtsSynthesisOptions(body) &&
+      providerSelection?.ok &&
+      providerSelection.provider !== "elevenlabs"
+    ) {
+      pendingResponse = Response.json(
+        {
+          error:
+            "Synthesis options require an explicitly selected ElevenLabs voice",
+          code: "unsupported_synthesis_options",
+        },
+        { status: 400 },
+      );
+    }
     const willAdmit =
       pendingResponse === undefined &&
       providerSelection?.ok === true &&
@@ -317,7 +336,15 @@ async function __hono_POST(c: AppContext) {
       surface: "media_generation_prompt",
       organizationId: user.organization_id,
       userId: user.id,
-      text: `TTS text: ${text}`,
+      text: [
+        `TTS text: ${text}`,
+        ...(body.previousText !== undefined
+          ? [`Previous context: ${body.previousText}`]
+          : []),
+        ...(body.nextText !== undefined
+          ? [`Next context: ${body.nextText}`]
+          : []),
+      ].join("\n"),
       metadata: {
         type: "tts",
         model: modelId || "eleven_flash_v2_5",
@@ -483,9 +510,13 @@ async function __hono_POST(c: AppContext) {
         : voiceId || "EXAVITQu4vr4xnSDxMaL";
     const resolvedModelId = modelId || "eleven_flash_v2_5";
     const snipResult = firstSentenceSnip(text);
-    const cacheBypass = shouldBypassCloudFirstLineCache({
-      modelId: resolvedModelId,
-    });
+    // Context and rendering controls change audio. Never read or populate a
+    // legacy text-only cache entry for these requests.
+    const cacheBypass =
+      hasTtsSynthesisOptions(body) ||
+      shouldBypassCloudFirstLineCache({
+        modelId: resolvedModelId,
+      });
     const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
     const mp3CacheProvider =
       providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
@@ -741,6 +772,7 @@ async function __hono_POST(c: AppContext) {
         const elevenlabs = getElevenLabsService(env);
         await markPaidTtsProviderDispatch();
         audioStream = await elevenlabs.textToSpeech({
+          ...TtsSynthesisOptions.parse(body),
           text,
           voiceId,
           modelId,
@@ -905,6 +937,11 @@ async function __hono_POST(c: AppContext) {
           "Content-Type": "audio/wav",
           "Cache-Control": "no-cache",
           ...buildTtsObservabilityHeaders(synthesisEngine, timings),
+          // Clients can avoid applying the requested pace a second time and
+          // remain compatible with deployments predating provider controls.
+          ...(body.speed !== undefined
+            ? { "X-Eliza-TTS-Speed": String(body.speed) }
+            : {}),
           "X-TTS-Cache": "miss",
         },
       });
@@ -915,6 +952,11 @@ async function __hono_POST(c: AppContext) {
         "Transfer-Encoding": "chunked",
         "Cache-Control": "no-cache",
         ...buildTtsObservabilityHeaders(synthesisEngine, timings),
+        // Clients can avoid applying the requested pace a second time and
+        // remain compatible with deployments predating provider controls.
+        ...(body.speed !== undefined
+          ? { "X-Eliza-TTS-Speed": String(body.speed) }
+          : {}),
         "X-TTS-Cache": "miss",
       },
     });

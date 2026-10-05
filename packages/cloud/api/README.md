@@ -118,3 +118,17 @@ command authority is a conflict, not proof that a replacement intent is safe.
 Apply scheduling migrations through 0527 before deployment. Unattended recovery,
 configured-schedule undo/cancel/resume, retained-adjustment payment authority and
 live qualification remain required before product rollout.
+
+## Speech rendering controls
+
+`POST /api/v1/voice/tts` accepts optional `speed` (0.7–1.2), `previousText` and
+`nextText` (at most 5,000 characters each), and `applyTextNormalization`
+(`auto`, `on`, `off`) for ElevenLabs synthesis. Explicitly pin an ElevenLabs
+voice when the deployment defaults to another provider; unsupported providers
+reject these options instead of silently dropping them. Context passes through
+content screening, but only the synthesized text is priced. Requests with any
+rendering control bypass the legacy audio cache. Explicit normalization takes
+precedence over the service's legacy latency optimization. Successful responses
+with explicit speed include `X-Eliza-TTS-Speed`, allowing clients to avoid applying
+pace twice and detect older deployments. Response audio and
+existing authorization, admission and billing boundaries are unchanged.
