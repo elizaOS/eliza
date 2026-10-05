@@ -1,20 +1,4 @@
-/**
- * Provides the causal persistence barrier used by planner-continuation
- * evidence after visible message delivery has completed, plus the artifact
- * state machine that turns a live run into its reviewable receipt.
- *
- * The state machine exists because a live run can fail at any of several
- * distinct points — before the harness exists, after it exists but before
- * any case ran, after some but not all cases produced evidence, after every
- * case produced evidence but the test itself still failed, or during
- * teardown — and each of those must render as a visibly different, honestly
- * labeled artifact rather than as `captured` (which previously was asserted
- * from `harness` being merely non-null, so it read as healthy for wrong
- * runs). The artifact is written atomically (temp file + rename in the same
- * directory) so a killed process leaves the last fully-written state (the
- * `started` sentinel written before any case ran, at worst) rather than a
- * half-written or stale file from an earlier run.
- */
+/** Persists planner-continuation evidence atomically. Artifact states distinguish startup, partial execution, completion, failure, and teardown; a non-null harness alone is not completion evidence. */
 
 import { rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";

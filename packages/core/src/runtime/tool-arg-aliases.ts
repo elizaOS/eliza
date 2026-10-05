@@ -4,7 +4,7 @@
  * placeholder into a tool argument the executor may substitute the real value
  * — but only from an explicit capability map minted for this turn, never from
  * an ambient `runtime.getSetting(name)` lookup keyed by model-authored text
- * (issue #20091). A guessed alias that redaction did not emit this turn, or
+ *. A guessed alias that redaction did not emit this turn, or
  * an alias on a turn that is not owner-authorized, stays redacted.
  *
  * The canonical owner alias (`ELIZA_ADMIN_ENTITY_ID`) is granted only when

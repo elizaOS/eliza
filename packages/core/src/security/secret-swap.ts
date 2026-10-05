@@ -97,12 +97,7 @@ const MIN_PII_VALUE_LENGTH = 4;
 const PLACEHOLDER_PREFIX = "__ELIZA_SECRET_";
 // Contact references are data to preserve, not credentials to omit.
 const CONTACT_PLACEHOLDER_PREFIX = "__ELIZA_CONTACT_";
-/**
- * Broad "looks like one of our placeholders" pattern (any session nonce, or the
- * legacy no-nonce form). Used only to AVOID swapping a value that is already a
- * placeholder; actual restore is scoped to the session-specific nonce so a
- * forged placeholder from input/model output never resolves to a real secret.
- */
+/** Recognizes placeholder-shaped text to avoid swapping it twice. Restoration accepts only this session’s nonce, so input cannot forge a reference to a real secret. */
 const PLACEHOLDER_PATTERN =
 	/__ELIZA_(?:SECRET|CONTACT)_(?:[0-9a-f]{8,}_)?\d+__/g;
 
@@ -481,21 +476,14 @@ export class SecretSwapSession {
 	/**
 	 * Longest token (secret value or minted placeholder) the session holds,
 	 * maintained incrementally as entries are added. The streaming guard
-	 * ({@link ./guarded-stream}) reads this to size its carry-over window: a known
+	 * ({@link./guarded-stream}) reads this to size its carry-over window: a known
 	 * secret that arrives split across two chunks must be held whole, so the guard
 	 * never emits a chunk shorter than the longest value it might straddle.
 	 */
 	private maxToken = 0;
 	/** Per-session nonce woven into every placeholder so it is unforgeable. */
 	private readonly nonce = generateSessionNonce();
-	/**
-	 * Restore/assert match only THIS session's nonce'd placeholders. A
-	 * placeholder-shaped string with a different/legacy nonce is benign text the
-	 * layer never minted — it cannot reference a real secret, so it is left as-is
-	 * (no leak) rather than triggering a false "unresolved" failure. Fail-loud is
-	 * reserved for a this-session placeholder that should resolve but does not
-	 * (e.g. a model that fabricated `…_999__`).
-	 */
+	/** Restores only placeholders minted for this session. Other or absent nonces remain text; unresolved current-session placeholders fail explicitly. */
 	private readonly placeholderPattern = new RegExp(
 		`__ELIZA_(?:SECRET|CONTACT)_${this.nonce}_\\d+__`,
 		"g",
@@ -535,7 +523,7 @@ export class SecretSwapSession {
 	substituteText(text: string): string {
 		let result = text;
 		// 1) Assignment-style secrets (KEY=…, "token":"…", Bearer …, PEM blocks)
-		//    from the shared redact pattern set — value-extracted, including short values.
+		// from the shared redact pattern set — value-extracted, including short values.
 		const assignments = [
 			...collectEncodedCredentials(result, this.exemptValues),
 			...collectUriCredentials(result, this.exemptValues),
@@ -547,8 +535,8 @@ export class SecretSwapSession {
 			this.entryForValue(value, "secret");
 		}
 		// 2) Validated PII / token classes (credit-card+Luhn, email, ssn, iban,
-		//    jwt, cloud keys, …). Already proven sensitive by their detector, so
-		//    its own length floor applies; class can be opted out via disabledKinds.
+		// jwt, cloud keys, …). Already proven sensitive by their detector, so
+		// its own length floor applies; class can be opted out via disabledKinds.
 		for (const match of detectPii(result, {
 			disabledKinds: this.disabledKinds,
 		})) {

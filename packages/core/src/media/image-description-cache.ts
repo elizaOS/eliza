@@ -1,9 +1,9 @@
 /** Image analysis cache for immutable media and the complete analysis prompt. */
 
-import { parseJSONObjectFromText } from "../text/model-output.js";
 import { ModelType } from "../types/model.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { createHash } from "../utils/crypto-compat.js";
+import { parseJSONObjectFromText } from "../utils/json5-model-output.js";
 import { resolveSetting } from "../utils/resolve-setting.js";
 import { trustedLocalMediaUrl } from "./local-store.js";
 export interface CachedImageDescription {

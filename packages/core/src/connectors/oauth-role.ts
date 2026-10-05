@@ -1,17 +1,4 @@
-/**
- * Shared helper for connector plugins that resolve the requested account role
- * from an OAuth start flow's metadata.
- *
- * The connector setup UI threads the user's intent (`OWNER`, `AGENT`, or
- * `TEAM`) through `startConnectorAccountOAuth({ metadata: { requestedRole } })`.
- * The cloud-side OAuth pipeline carries that metadata into the
- * `completeOAuth` callback, where each plugin needs to read it and pin the
- * resulting `ConnectorAccount` to the right role.
- *
- * Without this helper each plugin's `completeOAuth` reimplemented the same
- * literal-string narrowing block — and the legacy default of hardcoded
- * `role: "OWNER"` ignored the requested role entirely.
- */
+/** Resolves the requested connector account role from OAuth metadata. The role must remain bound to the initiating flow across host and provider boundaries. */
 
 import { logger } from "../logger";
 import type { ConnectorAccountRole } from "../types/connector-account-policy";

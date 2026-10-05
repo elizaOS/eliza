@@ -226,7 +226,7 @@ function walkDeep<T>(
 		// must not be cloned onto a null-prototype object — cloning drops
 		// non-enumerable symbol properties and breaks SDK contract checks
 		// (asSchema throws "schema is not a function"). Sanitize their
-		// string-valued own properties in-place instead (#18081).
+		// string-valued own properties in-place instead.
 		enterContainer(value, depth, ctx);
 		try {
 			const ownKeys = Reflect.ownKeys(value);

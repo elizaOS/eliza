@@ -28,9 +28,9 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
  * Canonical Stage 1 tool name.
  *
  * - HANDLE_RESPONSE: stage 1, called once per inbound message. The model
- *   declares intent (RESPOND / IGNORE / STOP), picks contexts to engage,
- *   may emit a simple-mode reply directly, and may extract durable
- *   facts / relationships for the memory pipeline.
+ * declares intent (RESPOND / IGNORE / STOP), picks contexts to engage,
+ * may emit a simple-mode reply directly, and may extract durable
+ * facts / relationships for the memory pipeline.
  *
  * Stage 2 (planning) does not go through a single wrapper tool. Each
  * Action is exposed to the LLM as its own native tool whose name is the
@@ -41,10 +41,10 @@ export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
 
 /** Reserved planner protocol for loading authorized schemas without domain effects. */
 export const DISCOVER_ACTIONS_NAME = "DISCOVER_ACTIONS" as const;
-/** Legacy discovery name retained as the canonical action's declared simile. */
+/** Declared discovery simile for the canonical action. */
 export const DISCOVER_TOOLS_NAME = "DISCOVER_TOOLS" as const;
 
-/** Recognize current and persisted legacy planner discovery calls. */
+/** Recognizes planner discovery calls by their declared names. */
 export function isDiscoveryActionName(name: string): boolean {
 	const normalized = name.trim().toUpperCase();
 	return (
@@ -217,9 +217,9 @@ export function createHandleResponseTool(options?: {
  * Stage 1 tool. The model uses this once per inbound message to declare
  * how it wants to handle the turn. Output drives the rest of the pipeline:
  *
- *   shouldRespond = "RESPOND" → engage `contexts`, run planner against the per-action tools
- *   shouldRespond = "IGNORE"  → terminate silently
- *   shouldRespond = "STOP"    → terminate with terminal stop signal
+ * shouldRespond = "RESPOND" → engage `contexts`, run planner against the per-action tools
+ * shouldRespond = "IGNORE" → terminate silently
+ * shouldRespond = "STOP" → terminate with terminal stop signal
  *
  * `replyText` is always present (the user-facing reply). For trivially simple
  * replies that don't need action planning the model sets `contexts = ["simple"]`
@@ -336,8 +336,8 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
  * JSONSchema, so the LLM calls each action directly by name.
  *
  * Tool description is composed from (in order):
- *   - the action's `routingHint` (if present, on its own line)
- *   - the complete `description` (legacy compressed text is fallback-only)
+ * - the action's `routingHint` (if present, on its own line)
+ * - the complete `description` (short descriptions are fallback-only)
  *
  * The order of `actions` is preserved in the output (callers control
  * tool ordering by ordering the input). Names are validated against
@@ -354,13 +354,8 @@ export function buildPlannerToolsFromActions(
 }
 
 /**
- * A promoted operation's own description names only its operation
- * (`promoteSubactionsToActions`), so exposing a family does not repeat the
- * umbrella description per operation (#31017: nine MESSAGE_* tools each
- * restated it). Within one tool list the umbrella description is stated once,
- * on the family's first emitted operation, unless the umbrella's own tool in
- * the same list already carries it; later operations reference that tool.
- * `actions[i]` is the action rendered as `tools[i]`.
+ * Emits the umbrella description once per tool family, on its first operation unless the
+ * umbrella tool already carries it.
  */
 function statePromotedFamilyDescriptionsOnce(
 	actions: ReadonlyArray<PlannerToolActionShape>,
@@ -398,18 +393,9 @@ function statePromotedFamilyDescriptionsOnce(
  * Options accepted by {@link buildPlannerToolsFromTieredActions}.
  */
 export interface BuildPlannerToolsFromTieredActionsOptions {
-	/** @deprecated Parent allow-lists are ignored; every parent expands. */
-	tierAParents?: ReadonlySet<string> | readonly string[];
 	/**
-	 * Optional registry of `name → Action` used to resolve string-only
-	 * sub-action references (parents may declare `subActions: ["FOO_BAR"]`).
-	 * When a string reference is not resolvable through this map, it is
-	 * skipped silently — string refs are advisory and the parent's handler
-	 * can still dispatch to them internally if the planner picks the parent.
-	 *
-	 * When provided, inline-Action sub-actions must also resolve through this
-	 * map. Runtime callers pass the already-authorized per-turn action set, so
-	 * expanding an absent inline object would disclose a rejected child.
+	 * Resolves string child references. Unresolved references are omitted; inline children must
+	 * resolve to registered actions when a lookup is supplied.
 	 */
 	actionLookup?:
 		| ReadonlyMap<string, PlannerToolActionShape>
@@ -423,10 +409,6 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 		parentName: string;
 		subActionName: string;
 	}) => void;
-	/** @deprecated Child allow-lists are ignored; every registered child expands. */
-	tierAChildrenByParent?:
-		| ReadonlyMap<string, readonly string[]>
-		| Readonly<Record<string, readonly string[]>>;
 	/**
 	 * Expand registered child actions into first-class native tools. Defaults to
 	 * true. A caller may disable expansion only when it still exposes every
@@ -438,17 +420,8 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 }
 
 /**
- * Lenient key used only as a compatibility fallback for resolving string child
- * references. Separators and case are deliberately ignored.
- *
- * It must never be used as an action's IDENTITY. Because it strips every
- * non-alphanumeric character, distinct registered actions such as
- * `GMAIL_CREATE_DRAFT` and `GMAILCREATEDRAFT` — both legal under
- * {@link NATIVE_TOOL_NAME_PATTERN}, and treated as distinct everywhere else in
- * the runtime (see `matchActionWildcardParts`) — collapse onto one key. Keying
- * emission or sub-action resolution on it silently drops one of the pair from
- * the planner surface, or resolves a string sub-action reference to the wrong
- * Action. Use {@link toolIdentityKey} for identity.
+ * Case- and separator-insensitive fallback for string child references. Never use this key
+ * as action identity: distinct valid names can normalize to the same value.
  */
 function normalizeParentNameKey(name: string): string {
 	return String(name)
@@ -540,12 +513,12 @@ function resolveActionLookup(
  * alongside the parent, so relevance metadata cannot hide a callable action.
  *
  * Sub-action resolution:
- *   - Inline `Action` sub-actions are resolved through an explicitly supplied
- *     authorized lookup before expansion; standalone callers without a lookup
- *     retain the inline object.
- *   - String-only sub-action references are resolved through `actionLookup`
- *     when provided; references that cannot be resolved are skipped silently
- *     (the parent's handler can still route to them).
+ * - Inline `Action` sub-actions are resolved through an explicitly supplied
+ * authorized lookup before expansion; standalone callers without a lookup
+ * retain the inline object.
+ * - String-only sub-action references are resolved through `actionLookup`
+ * when provided; references that cannot be resolved are skipped silently
+ * (the parent's handler can still route to them).
  *
  * The output is deduplicated by tool `name` — if a child appears both as a
  * top-level entry in `actions` AND as a sub-action under a tier-A parent, it

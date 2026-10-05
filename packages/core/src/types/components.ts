@@ -105,15 +105,7 @@ export interface ActionParameter {
 	 * on MEMORY_CREATE is what native tool-calling models honour.
 	 */
 	requiredForSubactions?: readonly string[];
-	/**
-	 * Explicit legacy string selectors that may satisfy this required parameter
-	 * at runtime admission. Each alternative must also be a declared parameter,
-	 * supplied as an own, nonempty string and valid against both schemas. Only an
-	 * absent canonical parameter may be waived; arguments are never renamed.
-	 * Native tool schemas still require the canonical name. Use this only when
-	 * the owning handler deliberately supports these alternatives and validates
-	 * conflicting values. Other required parameters remain required.
-	 */
+	/** Declared string-selector alternatives for a required parameter. Each must be a valid, nonempty own value satisfying both schemas. Only an absent canonical selector may be waived; conflicting values remain the owner handler’s responsibility. Native schemas require canonical names. */
 	legacyRequiredAlternatives?: readonly string[];
 	/**
 	 * Accepted arg-name synonyms for this parameter. The pre-validation
@@ -397,14 +389,14 @@ export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
  * destination audience as well as the actor.
  *
  * Two forms, both fail-closed:
- *  - `owner_exclusive` (the original, unchanged): the destination must be a
- *    verified owner-only room — evaluated by `decisionFromAudience`.
- *  - `audience_admission` (added with the min-over-members policy wiring): the
- *    gate admits the component only when the ATTESTED delivery audience as a
- *    whole earns full disclosure for `subject`, computed by
- *    `resolveAudienceAdmission` over the same attested census. One ungranted
- *    non-agent member caps the room, exactly like `owner_exclusive` is the
- *    degenerate two-party-owner-DM case of this policy.
+ * - `owner_exclusive` (the original, unchanged): the destination must be a
+ * verified owner-only room — evaluated by `decisionFromAudience`.
+ * - `audience_admission` (added with the min-over-members policy wiring): the
+ * gate admits the component only when the ATTESTED delivery audience as a
+ * whole earns full disclosure for `subject`, computed by
+ * `resolveAudienceAdmission` over the same attested census. One ungranted
+ * non-agent member caps the room, exactly like `owner_exclusive` is the
+ * degenerate two-party-owner-DM case of this policy.
  */
 export type DisclosureGate =
 	| { require: "owner_exclusive" }
@@ -449,23 +441,7 @@ export interface Action {
 	/** Optional priority for action ordering */
 	priority?: number;
 
-	/**
-	 * Explicit override policy for name collisions during registration.
-	 *
-	 * When two components register under the same `name`, the runtime keeps the
-	 * first-registered instance (deterministic first-wins) and emits a WARN for
-	 * the undeclared collision. Set `override: true` on the LATER registrant to
-	 * declare that it intentionally supersedes an already-registered component of
-	 * the same name; the runtime then replaces the incumbent and logs the
-	 * override at INFO instead of warning. This turns a silent, order-sensitive
-	 * dedupe into an explicit, declared precedence contract.
-	 *
-	 * NOTE: `override` is honored on the DIRECT host/core registration path only.
-	 * Across `registerPlugin` boundaries it is downgraded to safe first-wins,
-	 * because hot plugin teardown (unload/reload/rollback) does not restore a
-	 * displaced incumbent — a plugin override would otherwise destructively strip
-	 * another plugin's component on unload.
-	 */
+	/** Direct registration may replace a component with override: true; undeclared collisions warn and keep the incumbent. Plugin registration remains first-wins because teardown cannot restore displaced components. */
 	override?: boolean;
 
 	/**
@@ -500,10 +476,10 @@ export interface Action {
 	/**
 	 * One-line routing hint surfaced to the planner. Replaces hand-written
 	 * domain-routing prose in the v5 planner template. Format:
-	 *   "<TRIGGER> -> <action> [+ secondary contexts]; <do/don't note>"
+	 * "<TRIGGER> -> <action> [+ secondary contexts]; <do/don't note>"
 	 * Examples:
-	 *   - PERSONAL_ASSISTANT: "real flight/hotel/trip booking -> PERSONAL_ASSISTANT action=book_travel; no browse-first or web-search-first"
-	 *   - VOICE_CALL:  "explicit call/phone/dial a person/business -> VOICE_CALL first; calendar/email secondary"
+	 * - PERSONAL_ASSISTANT: "real flight/hotel/trip booking -> PERSONAL_ASSISTANT action=book_travel; no browse-first or web-search-first"
+	 * - VOICE_CALL: "explicit call/phone/dial a person/business -> VOICE_CALL first; calendar/email secondary"
 	 * Surfaced into the planner prompt via {{actionRoutingHints}} so each
 	 * action carries its own routing rule alongside its description.
 	 *
@@ -516,8 +492,8 @@ export interface Action {
 	 * a noun or simile with a sibling (e.g. TASKS vs SCHEDULED_TASKS, WEB_SEARCH
 	 * vs MEMORY search) should state its boundary here, and name the sibling to
 	 * route to, e.g.:
-	 *   "coding/software delegation -> TASKS; reminders/check-ins/recurring
-	 *    personal items -> SCHEDULED_TASKS/OWNER_REMINDERS (NOT this action)".
+	 * "coding/software delegation -> TASKS; reminders/check-ins/recurring
+	 * personal items -> SCHEDULED_TASKS/OWNER_REMINDERS (NOT this action)".
 	 * Reference an UPPER_SNAKE_CASE sibling action name explicitly — those tokens
 	 * remain explicit in the authored routing hint.
 	 */
@@ -593,18 +569,18 @@ export interface Action {
 	 * @example
 	 * ```typescript
 	 * parameters: [
-	 *   {
-	 *     name: "targetUser",
-	 *     description: "The username or ID of the user to send the message to",
-	 *     required: true,
-	 *     schema: { type: "string" }
-	 *   },
-	 *   {
-	 *     name: "platform",
-	 *     description: "The platform to send the message on (telegram, discord, etc)",
-	 *     required: false,
-	 *     schema: { type: "string", enum: ["telegram", "discord", "x"], default: "telegram" }
-	 *   }
+	 * {
+	 * name: "targetUser",
+	 * description: "The username or ID of the user to send the message to",
+	 * required: true,
+	 * schema: { type: "string" }
+	 * },
+	 * {
+	 * name: "platform",
+	 * description: "The platform to send the message on (telegram, discord, etc)",
+	 * required: false,
+	 * schema: { type: "string", enum: ["telegram", "discord", "x"], default: "telegram" }
+	 * }
 	 * ]
 	 * ```
 	 */
@@ -733,14 +709,14 @@ export interface Action {
 	 * Closes gap A5 / W1-R2 in the Eliza-1 pipeline plan.
 	 *
 	 * Semantics (cost-aware, ascending escalation on failure):
-	 * - `LOCAL`     — prefer a local-provider registration (e.g. Ollama, LM
-	 *                 Studio, MLX, llama.cpp). If the local registration errors
-	 *                 or no local handler is registered, the runtime escalates
-	 *                 one step up: `LOCAL → TEXT_SMALL → TEXT_LARGE`.
+	 * - `LOCAL` — prefer a local-provider registration (e.g. Ollama, LM
+	 * Studio, MLX, llama.cpp). If the local registration errors
+	 * or no local handler is registered, the runtime escalates
+	 * one step up: `LOCAL → TEXT_SMALL → TEXT_LARGE`.
 	 * - `TEXT_SMALL`— prefer a small cloud-class model. Escalates to
-	 *                 `TEXT_LARGE` on error.
+	 * `TEXT_LARGE` on error.
 	 * - `TEXT_LARGE`— prefer a large cloud-class model. Top of the chain — no
-	 *                 escalation.
+	 * escalation.
 	 *
 	 * The resolver applies this routing only when the action handler invokes
 	 * `runtime.useModel()` for a text-generation model type. Non-text model
@@ -749,20 +725,12 @@ export interface Action {
 	 * resolution and fallback behavior verbatim.
 	 *
 	 * @see eliza/packages/core/src/runtime/action-model-routing.ts for the
-	 *      strategy-registry implementation.
+	 * strategy-registry implementation.
 	 */
 	modelClass?: ActionModelClass;
 }
 
-/**
- * Per-action model routing classes. Closes gap A5: provider switching was
- * previously per-provider only — actions could not request a small/local
- * model independently of the planner's choice.
- *
- * The runtime maps each class to a fallback chain via the strategy registry
- * in `runtime/action-model-routing.ts`. Order of escalation on error is:
- *   `LOCAL → TEXT_SMALL → TEXT_LARGE`
- */
+/** Action model-routing classes escalate through the registered LOCAL → TEXT_SMALL → TEXT_LARGE fallback chain. */
 export type ActionModelClass = "TEXT_LARGE" | "TEXT_SMALL" | "LOCAL";
 
 export type { JsonPrimitive } from "./primitives";
@@ -877,7 +845,7 @@ export interface Provider {
 	 */
 	description?: string;
 
-	/** Compressed description for legacy catalog rendering and diagnostics. */
+	/** Short description for catalog diagnostics. */
 	descriptionCompressed?: string;
 	/** Alias accepted for plugin compatibility; canonical output uses descriptionCompressed */
 	compressedDescription?: string;
@@ -929,7 +897,7 @@ export interface Provider {
 	 * materializes `contexts` from the gate's anyOf surface at registration.
 	 * A contextGate adds context requirements on top of the provider's
 	 * top-level `roleGate`; it does not waive it unless it declares its own
-	 * (#12087 Item 14).
+	 *.
 	 */
 	contextGate?: ContextGate;
 
@@ -948,12 +916,7 @@ export interface Provider {
 	 */
 	registerByDefault?: boolean;
 
-	/**
-	 * Legacy name for an always-on planning provider. Composed on planning turns
-	 * regardless of selected contexts, subject to role and disclosure gates.
-	 * Stage 1 admits only its explicit dialogue/character provider list; this
-	 * flag cannot add domain state to the response decision.
-	 */
+	/** Always-on planning provider, subject to role and disclosure gates. Stage 1 uses its explicit dialogue/character list; this flag cannot add domain state to response decisions. */
 	alwaysInResponseState?: boolean;
 
 	/** Optional role gate checked before including this provider. */
@@ -1155,12 +1118,7 @@ export interface ActionResult {
 	/** Safe action-owned prose used only if required model synthesis is unavailable. */
 	modelReplyFallback?: string;
 
-	/**
-	 * Explicit chain-control override. `false` aborts the remaining planner queue
-	 * and returns immediately, including for legacy failure and fire-and-forget
-	 * actions that do not own a complete user reply. Prefer `turnComplete` for the
-	 * safe single-operation evaluator fast path.
-	 */
+	/** Explicit false aborts the remaining planner queue, including failed and fire-and-forget actions. turnComplete is the conservative single-operation completion signal. */
 	continueChain?: boolean;
 
 	/** Optional cleanup function to execute after action completion */
@@ -1179,36 +1137,7 @@ export interface ActionContext {
 	getPreviousResult?: (actionName: string) => ActionResult | undefined;
 }
 
-/**
- * Canonical callback type for streaming response chunks.
- *
- * WHY one type: Before this consolidation the same `(chunk, messageId?) => …`
- * signature was inlined in 8+ locations across runtime, model, message-service,
- * and streaming-context types — with inconsistent return types (`Promise<void>`
- * vs `void | Promise<void>`). Adding data (e.g. `accumulated`) required editing
- * every copy. A single alias eliminates drift and makes additional fields
- * (field name, token index, session handle) a one-line additive change.
- *
- * WHY `accumulated`: Two independent stream extractors in `useModel`
- * previously caused TTS garbling because consumers had to re-derive the full
- * text from deltas — and the two extractors produced deltas at different
- * timings. Providing the authoritative accumulated text from the extractor
- * makes that entire category of reassembly bugs impossible.
- *
- * WHY `void | Promise<void>`: The most permissive return — allows both sync
- * callbacks (simple loggers, test spies) and async ones (network, TTS).
- *
- * @param chunk - Delta text since the last emission for this field.
- * @param messageId - Streaming session / message identifier (UUID or opaque string).
- * @param accumulated - Full extracted text so far for the streaming field.
- *   Present when the emission originates from a structured field extractor.
- *   Undefined for raw-token streams (useModel without an extractor) where no
- *   field-level accumulation exists.
- * @param streamRevision - Monotonically allocated structured-extractor attempt
- *   number. A change means `accumulated` restarted and consumers must discard
- *   incremental state from the preceding attempt. Undefined for raw-token
- *   streams.
- */
+/** Streams a text delta with optional message ID and authoritative accumulated field text. streamRevision changes reset the accumulated stream; consumers must discard prior-attempt state. Raw-token streams omit accumulation and revision. Callbacks may be synchronous or asynchronous. */
 export type StreamChunkCallback = (
 	chunk: string,
 	messageId?: string,
@@ -1240,11 +1169,11 @@ export interface HandlerOptions {
 	 * @example
 	 * ```typescript
 	 * handler: async (runtime, message, state, options) => {
-	 *   const params = options?.parameters;
-	 *   if (params) {
-	 *     const targetUser = params.targetUser as string;
-	 *     const platform = params.platform as string ?? "telegram"; // backfill default
-	 *   }
+	 * const params = options?.parameters;
+	 * if (params) {
+	 * const targetUser = params.targetUser as string;
+	 * const platform = params.platform as string ?? "telegram"; // backfill default
+	 * }
 	 * }
 	 * ```
 	 */

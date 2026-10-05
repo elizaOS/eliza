@@ -295,7 +295,7 @@ export interface DocumentDeleteParams extends DocumentRequesterContext {
 
 /**
  * Durable audit row committed in the SAME adapter transaction as an
- * authorization-role write (#23100). A committed role change must never be
+ * authorization-role write. A committed role change must never be
  * separable from its audit record, so the audit insert rides the CAS
  * transaction rather than a follow-up `createLogs` call.
  */
@@ -316,7 +316,7 @@ export interface RoleWriteAuditRecord {
 
 /**
  * Compare-and-swap replacement of a world's whole `metadata` JSON under the
- * exact prior snapshot (#23100 role-write atomicity). Mirrors the document
+ * exact prior snapshot. Mirrors the document
  * mutation contract: the adapter compares `expectedMetadata` against the
  * stored value in the same transaction that writes `replacementMetadata`,
  * commits the audit row only on success, and reports a typed conflict so a
@@ -843,32 +843,7 @@ export interface DurableRecordStore {
 	delete(namespace: string, key: string): Promise<boolean>;
 }
 
-/**
- * Interface for database operations.
- *
- * **Design: Batch-First CRUD**
- *
- * All create/read-by-ID/update/delete methods accept and return arrays.
- * This is intentional and non-negotiable for adapter implementations.
- *
- * WHY: elizaOS agents process events that frequently touch multiple DB rows
- * in a single tick -- load entity + room, store memory + log, clean up tasks.
- * Under the old single-item API, each was a separate round-trip. At scale
- * (multiple agents, concurrent conversations), this saturated connection pools
- * and made network latency the bottleneck. Batch methods let SQL adapters use
- * `IN (...)` clauses, multi-row inserts, and transactions -- actual DB-level
- * batching instead of application-level loops.
- *
- * Single-item convenience wrappers (e.g. `getAgent(id)`) live on `AgentRuntime`
- * and `IAgentRuntime`, NOT here. They delegate to batch methods internally.
- * This keeps the adapter contract simple: implement batch, get single-item free.
- *
- * **Query methods** (complex filter params, not ID lookups) remain singular because
- * batching `searchMemories` would mean "run N different searches" -- a fundamentally
- * different operation than "look up N items by their IDs."
- *
- * See DATABASE_BATCH_API.md for the full design rationale and migration guide.
- */
+/** Database adapters implement batch CRUD; runtime wrappers provide single-item convenience methods. Filtered queries remain individual operations and must enforce authorization before ordering or pagination. */
 export interface IDatabaseAdapter<DB extends object = object> {
 	/** Optional transactional domain records in this same agent database. */
 	readonly recordStore?: DurableRecordStore;
@@ -969,9 +944,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * Returning UUID[] suggests creation, which is misleading for updates.
 	 *
 	 * IMPLEMENTATION NOTES:
-	 * - PostgreSQL: INSERT ... ON CONFLICT (id) DO UPDATE SET ...
-	 * - MySQL: INSERT ... ON DUPLICATE KEY UPDATE ...
-	 * - InMemory: map.has(id) ? map.set(id, merged) : map.set(id, agent)
+	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET...
+	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE...
+	 * - InMemory: map.has(id) ? map.set(id, merged): map.set(id, agent)
 	 *
 	 * @param agents Agents to upsert (ID is required for each)
 	 */
@@ -1024,8 +999,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * EXAMPLE: Create entity + its components atomically:
 	 * ```
 	 * await adapter.transaction(async (tx) => {
-	 *   await tx.createEntities([entity]);
-	 *   await tx.createComponents(components);
+	 * await tx.createEntities([entity]);
+	 * await tx.createComponents(components);
 	 * });
 	 * ```
 	 *
@@ -1039,7 +1014,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 *
 	 * @param callback Function that receives a transactional adapter proxy
 	 * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs callback under RLS for this entity.
-	 *        WHY optional: System paths (migrations, boot, admin) run without a user entity; required would break them.
+	 * WHY optional: System paths (migrations, boot, admin) run without a user entity; required would break them.
 	 * @returns Promise resolving to callback's return value
 	 * @throws Error if any operation in the callback fails (SQL: rolls back, InMemory: does NOT)
 	 */
@@ -1082,8 +1057,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * new IDs - they're idempotent operations where the ID is the lookup key.
 	 *
 	 * IMPLEMENTATION NOTES:
-	 * - PostgreSQL: INSERT ... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, ...
-	 * - MySQL: INSERT ... ON DUPLICATE KEY UPDATE name = VALUES(name), ...
+	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,...
+	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE name = VALUES(name),...
 	 * - InMemory: entities.set(id, merged)
 	 * - Conflict resolution: Last write wins (update all fields from input)
 	 *
@@ -1152,10 +1127,10 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * - int_spartan.ts: master registry becomes unnecessary
 	 *
 	 * TWO-QUERY APPROACH (critical for correctness):
-	 * 1. Query 1: SELECT DISTINCT entity_id FROM components WHERE ... LIMIT N
+	 * 1. Query 1: SELECT DISTINCT entity_id FROM components WHERE... LIMIT N
 	 * 2. Query 2: SELECT entities.*, components.* WHERE entity_id IN (...)
 	 *
-	 * WHY two queries: A single SELECT DISTINCT ... JOIN ... LIMIT can return fewer
+	 * WHY two queries: A single SELECT DISTINCT... JOIN... LIMIT can return fewer
 	 * than LIMIT entities if entities have multiple components (DISTINCT dedupes AFTER
 	 * LIMIT). Two queries ensures LIMIT applies to entity count, not row count.
 	 *
@@ -1176,7 +1151,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * @param params.limit Non-negative safe-integer maximum (applies to distinct entities, not rows)
 	 * @param params.offset Non-negative safe-integer count to skip for pagination
 	 * @param params.includeAllComponents If false (default): return only matched component type.
-	 *                                     If true: return all components for matched entities.
+	 * If true: return all components for matched entities.
 	 * @returns Entities with their components (filtered by includeAllComponents)
 	 */
 	queryEntities(params: {
@@ -1246,11 +1221,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * - Do NOT update: createdAt (preserve original timestamp)
 	 *
 	 * IMPLEMENTATION NOTES:
-	 * - PostgreSQL: INSERT ... ON CONFLICT (entity_id, type, world_id, source_entity_id)
-	 *   DO UPDATE SET data = EXCLUDED.data, ...
-	 *   Requires unique_component_natural_key constraint with NULLS NOT DISTINCT
-	 * - MySQL: INSERT ... ON DUPLICATE KEY UPDATE data = VALUES(data), ...
-	 *   Requires UNIQUE KEY on (entity_id, type, world_id, source_entity_id)
+	 * - PostgreSQL: INSERT... ON CONFLICT (entity_id, type, world_id, source_entity_id)
+	 * DO UPDATE SET data = EXCLUDED.data,...
+	 * Requires unique_component_natural_key constraint with NULLS NOT DISTINCT
+	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE data = VALUES(data),...
+	 * Requires UNIQUE KEY on (entity_id, type, world_id, source_entity_id)
 	 * - InMemory: Find by natural key, update if found, insert if not
 	 *
 	 * TRAP: If input contains duplicate natural keys, dedupe first (last-wins).
@@ -1277,25 +1252,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	/** Complete distinct memory-type inventory for this adapter's agent; used by trusted exports. */
 	listMemoryTypes?(): Promise<string[]>;
 
-	/**
-	 * Get memories matching criteria
-	 *
-	 * WHY metadata parameter: Eliminates the "fetch 50K rows, filter in JS" antipattern
-	 * seen in the legacy knowledge implementation. Database-level JSON filtering is 50-100x faster:
-	 * - PostgreSQL: Uses GIN-indexed @> operator on jsonb columns
-	 * - MySQL: Uses JSON_CONTAINS() function
-	 * - InMemory: Deep equality check (less efficient but correct)
-	 *
-	 * WHY limit/offset: Standard pagination naming (limit = max results, offset = skip N).
-	 *
-	 * @param params.metadata Filter by metadata fields (partial object match)
-	 * @param params.limit Max results to return
-	 * @param params.offset Skip first N results for pagination
-	 * @param params.cursor Exclusive keyset cursor in the requested order. When
-	 * provided, results start strictly after `(createdAt, id)` and `offset` must
-	 * not be used. This keeps multi-query scans stable when earlier rows mutate.
-	 * @param params.tableName Memory type/table (required)
-	 */
+	/** Queries memories with storage-side metadata filtering. An exclusive (createdAt, id) cursor cannot be combined with offset; authorization precedes pagination. */
 	getMemories(params: {
 		entityId?: UUID;
 		/** Restrict returned rows by author while `entityId` remains the RLS principal. */
@@ -1346,13 +1303,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
-	/**
-	 * Required native document-store contract. Version 4 covers canonical
-	 * visibility for list/lookup/search plus atomic revision replacement. Adapter
-	 * authors migrating from version 2 must implement all six methods; there is
-	 * deliberately no bounded compatibility scan because it cannot preserve
-	 * authorization, counts, or pagination guarantees.
-	 */
+	/** Required document-store v4 contract: authorized list/lookup/search, atomic revision replacement, and compare-and-swap mutations. A bounded fallback scan cannot preserve authorization, counts, or pagination. */
 	readonly documentListQueryCapability: 4;
 	/** Native bounded source projection; absent adapters must fail explicitly. */
 	readonly documentRangeReadCapability?: 1 | 2;
@@ -1382,7 +1333,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	/**
 	 * Atomic compare-and-swap replacement of a world's whole metadata under the
 	 * exact prior snapshot, committing the audit row in the same transaction
-	 * (#23100 role-write atomicity). Authorization role writes MUST go through
+	 *. Authorization role writes MUST go through
 	 * this operation and fail closed when an adapter omits the optional
 	 * capability; they never fall back to a blind `updateWorlds` overwrite.
 	 */
@@ -1409,7 +1360,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * apply the same folded-token semantics in JS. Rows come back ranked:
 	 * `ftsRank` desc, then `trigramSimilarity` desc, then recency, so multi-word
 	 * non-adjacent queries and hits older than any recency window are both found
-	 * and correctly ordered (#13534).
+	 * and correctly ordered.
 	 */
 	searchMessages(params: {
 		roomIds: UUID[];
@@ -1579,11 +1530,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * processing after a failed update. Now failures are exceptional, not expected.
 	 *
 	 * WHY batch: SQL adapters use CASE expressions for single UPDATE statement:
-	 *   UPDATE memories SET content = CASE
-	 *     WHEN id = $1 THEN $2
-	 *     WHEN id = $3 THEN $4
-	 *     ...
-	 *   WHERE id IN ($1, $3, ...)
+	 * UPDATE memories SET content = CASE
+	 * WHEN id = $1 THEN $2
+	 * WHEN id = $3 THEN $4
+	 *...
+	 * WHERE id IN ($1, $3,...)
 	 *
 	 * @throws Error if any update fails (transaction rolls back)
 	 */
@@ -1662,8 +1613,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * UUIDs based on world name/type). No need to return IDs.
 	 *
 	 * IMPLEMENTATION NOTES:
-	 * - PostgreSQL: INSERT ... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, ...
-	 * - MySQL: INSERT ... ON DUPLICATE KEY UPDATE name = VALUES(name), ...
+	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,...
+	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE name = VALUES(name),...
 	 * - InMemory: worlds.set(id, world)
 	 *
 	 * @param worlds Worlds to upsert (ID required for each)
@@ -1713,8 +1664,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * is often deterministic (hash of participant IDs). No need to return IDs.
 	 *
 	 * IMPLEMENTATION NOTES:
-	 * - PostgreSQL: INSERT ... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, ...
-	 * - MySQL: INSERT ... ON DUPLICATE KEY UPDATE name = VALUES(name), ...
+	 * - PostgreSQL: INSERT... ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,...
+	 * - MySQL: INSERT... ON DUPLICATE KEY UPDATE name = VALUES(name),...
 	 * - InMemory: rooms.set(id, room)
 	 * - Partial updates: Full replacement (all fields updated)
 	 *
@@ -1844,18 +1795,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	): Promise<boolean>;
 
 	// Only task instance methods - definitions are in-memory
-	/**
-	 * Get tasks matching criteria
-	 *
-	 * WHY limit/offset added: Previously returned ALL matching tasks, which could
-	 * be thousands of records. Task queues grow unbounded over time, causing:
-	 * - Memory exhaustion when loading full queue
-	 * - Slow queries without limits
-	 * - UI freeze when rendering thousands of tasks
-	 *
-	 * @param params.limit Max results (default: unlimited, use with caution)
-	 * @param params.offset Skip first N results for pagination
-	 */
+	/** Queries tasks with optional limit and offset. Omitted limit is unbounded. */
 	getTasks(params: {
 		roomId?: UUID;
 		worldId?: UUID;
@@ -1874,11 +1814,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	// getTasksByName() are query methods (filter by room, tags, name).
 	createTasks(tasks: Task[]): Promise<UUID[]>;
 	getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
-	/**
-	 * Atomically updates a queued task only while its lifecycle status is
-	 * pending (or absent for legacy rows). The queue tag and status predicate
-	 * are evaluated by storage in the same mutation that applies `task`.
-	 */
+	/** Atomically updates a queued task only while status is pending or absent. Storage evaluates the queue tag and lifecycle predicate in the same mutation. */
 	updatePendingTask?(id: UUID, task: Partial<Task>): Promise<boolean>;
 	/**
 	 * Atomically merges `patch.set` into the task's metadata and removes
@@ -2041,8 +1977,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * if (!store) throw new Error('Plugin storage not available');
 	 *
 	 * const goals = await store.query<Goal>('goals', {
-	 *   agentId: runtime.agentId,
-	 *   isCompleted: false
+	 * agentId: runtime.agentId,
+	 * isCompleted: false
 	 * });
 	 * ```
 	 */
@@ -2154,8 +2090,8 @@ export interface MemorySearchParams extends StandardMemoryOptions {
  * ```typescript
  * // In a PostgreSQL adapter:
  * interface PgConnection extends DbConnection {
- *   pool: Pool;
- *   query: <T>(sql: string, params?: unknown[]) => Promise<T>;
+ * pool: Pool;
+ * query: <T>(sql: string, params?: unknown[]) => Promise<T>;
  * }
  * ```
  */

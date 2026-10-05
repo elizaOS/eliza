@@ -9,9 +9,7 @@ import type { ControlMessageAction } from "./messaging";
 import type { Content, JsonObject, JsonValue, UUID } from "./primitives";
 import { Service, ServiceType } from "./service";
 
-// ============================================================================
 // Token & Wallet Types
-// ============================================================================
 
 export interface TokenBalance {
 	address: string;
@@ -60,9 +58,7 @@ export interface WalletPortfolio {
 	assets: WalletAsset[];
 }
 
-// ============================================================================
 // Liquidity Pool Types
-// ============================================================================
 
 export interface PoolTokenInfo {
 	mint: string;
@@ -103,9 +99,7 @@ export interface TransactionResult {
 	data?: JsonObject;
 }
 
-// ============================================================================
 // Message Bus Service Interface
-// ============================================================================
 
 export interface IMessageBusService extends Service {
 	notifyActionStart(
@@ -141,9 +135,7 @@ export abstract class IControlTransportService extends Service {
 	abstract sendMessage(message: ControlTransportMessage): Promise<void>;
 }
 
-// ============================================================================
 // Token & Wallet Interfaces
-// ============================================================================
 
 export abstract class ITokenDataService extends Service {
 	static override readonly serviceType = ServiceType.TOKEN_DATA;
@@ -192,9 +184,7 @@ export abstract class IWalletService extends Service {
 	): Promise<string>;
 }
 
-// ============================================================================
 // Liquidity Pool Interfaces
-// ============================================================================
 
 export abstract class ILpService extends Service {
 	static override readonly serviceType = "lp_pool";
@@ -237,9 +227,7 @@ export abstract class ILpService extends Service {
 	): Promise<Record<string, Partial<PoolInfo>>>;
 }
 
-// ============================================================================
 // Transcription & Audio Interfaces
-// ============================================================================
 
 export abstract class ITranscriptionService extends Service {
 	static override readonly serviceType = ServiceType.TRANSCRIPTION;
@@ -281,9 +269,7 @@ export abstract class ITranscriptionService extends Service {
 	abstract detectLanguage(audioPath: string | Buffer): Promise<string>;
 }
 
-// ============================================================================
 // Video Interfaces
-// ============================================================================
 
 export abstract class IVideoService extends Service {
 	static override readonly serviceType = ServiceType.VIDEO;
@@ -314,9 +300,7 @@ export abstract class IVideoService extends Service {
 	abstract getAvailableFormats(url: string): Promise<VideoFormat[]>;
 }
 
-// ============================================================================
 // Media Generation Interfaces
-// ============================================================================
 
 export type MediaGenerationMediaType = "image" | "video" | "audio";
 export type MediaGenerationAudioKind = "music" | "sfx" | "tts";
@@ -374,9 +358,7 @@ export abstract class IMediaGenerationService extends Service {
 	): Promise<MediaGenerationResponse>;
 }
 
-// ============================================================================
 // Browser Interfaces
-// ============================================================================
 
 /** Options for {@link IScreenCaptureService.startFrameCapture}. */
 export interface ScreenCaptureFrameOptions {
@@ -450,9 +432,7 @@ export abstract class IBrowserService extends Service {
 	abstract refresh(): Promise<void>;
 }
 
-// ============================================================================
 // PDF Interfaces
-// ============================================================================
 
 export abstract class IPdfService extends Service {
 	static override readonly serviceType = ServiceType.PDF;
@@ -477,9 +457,7 @@ export abstract class IPdfService extends Service {
 	abstract splitPdf(pdfPath: string | Buffer): Promise<Buffer[]>;
 }
 
-// ============================================================================
 // File Storage Interfaces
-// ============================================================================
 
 /** A stored file's identity + served handle. */
 export interface StoredFile {
@@ -556,9 +534,7 @@ export abstract class IFileStorageService extends Service {
 	abstract delete(fileName: string): Promise<boolean>;
 }
 
-// ============================================================================
 // Email Interfaces
-// ============================================================================
 
 export abstract class IEmailService extends Service {
 	static override readonly serviceType = ServiceType.EMAIL;
@@ -595,9 +571,7 @@ export abstract class IEmailService extends Service {
 	): Promise<EmailMessage[]>;
 }
 
-// ============================================================================
 // Message Interfaces
-// ============================================================================
 
 export abstract class IMessagingService extends Service {
 	static override readonly serviceType = ServiceType.MESSAGE;
@@ -650,9 +624,7 @@ export abstract class IMessagingService extends Service {
 	): Promise<MessageInfo[]>;
 }
 
-// ============================================================================
 // Post/Social Media Interfaces
-// ============================================================================
 
 export abstract class IPostService extends Service {
 	static override readonly serviceType = ServiceType.POST;
@@ -702,9 +674,7 @@ export abstract class IPostService extends Service {
 	): Promise<PostInfo[]>;
 }
 
-// ============================================================================
 // Transcription & Audio Interfaces
-// ============================================================================
 
 /**
  * Options for audio transcription.
@@ -818,9 +788,7 @@ export interface TextToSpeechOptions {
 	response_format?: "mp3" | "opus" | "aac" | "flac";
 }
 
-// ============================================================================
 // Video Interfaces
-// ============================================================================
 
 /**
  * Video information.
@@ -916,9 +884,7 @@ export interface VideoProcessingOptions {
 	videoCodec?: string;
 }
 
-// ============================================================================
 // Browser Interfaces
-// ============================================================================
 
 /**
  * Browser navigation options.
@@ -1020,9 +986,7 @@ export interface TypeOptions {
 	clear?: boolean;
 }
 
-// ============================================================================
 // PDF Interfaces
-// ============================================================================
 
 /**
  * PDF text extraction result.
@@ -1074,9 +1038,7 @@ export interface PdfConversionOptions {
 	compression?: boolean;
 }
 
-// ============================================================================
 // Email Interfaces
-// ============================================================================
 
 /**
  * Email address with optional name.
@@ -1220,9 +1182,7 @@ export interface EmailAccount {
 	quotaLimit?: number;
 }
 
-// ============================================================================
 // Message Interfaces
-// ============================================================================
 
 /**
  * Message participant information.
@@ -1425,9 +1385,7 @@ export interface MessageChannel {
 	unreadCount?: number;
 }
 
-// ============================================================================
 // Post/Social Media Interfaces
-// ============================================================================
 
 /**
  * Post media content.

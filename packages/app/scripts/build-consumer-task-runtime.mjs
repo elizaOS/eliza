@@ -64,13 +64,13 @@ export function buildTaskRuntime(
               "./packages/core/src/messaging/interactive-task.ts",
             ],
             "@elizaos/core/messaging/interactions/sessions": [
-              "./packages/core/src/messaging/interactions/sessions.ts",
+              "./packages/core/src/messaging/interaction-sessions.ts",
             ],
             "@elizaos/core/messaging/interactions/profiles": [
-              "./packages/core/src/messaging/interactions/profiles.ts",
+              "./packages/core/src/messaging/interaction-profiles.ts",
             ],
             "@elizaos/core/messaging/interactions/profile-catalog": [
-              "./packages/core/src/messaging/interactions/profile-catalog.ts",
+              "./packages/core/src/messaging/interaction-profile-catalog.ts",
             ],
             "@elizaos/core/messaging/task-widgets": [
               "./packages/core/src/messaging/task-widgets.ts",
@@ -87,7 +87,7 @@ export function buildTaskRuntime(
             `export * from './packages/agent/src/services/interactive-task-${name}.ts';`,
         )
         .join("\n") +
-        "\nexport * from './packages/agent/src/services/sqlite-message-interaction-session-store.ts';\nexport * from './packages/core/src/messaging/interactions/sessions.ts';\nexport * from './plugins/plugin-browser/src/native-socket-target.ts';\nexport * from './plugins/plugin-browser/src/task-actuator.ts';\nexport * from './plugins/plugin-google-workspace/src/task-code-resolver.ts';",
+        "\nexport * from './packages/agent/src/services/sqlite-message-interaction-session-store.ts';\nexport * from './packages/core/src/messaging/interaction-sessions.ts';\nexport * from './plugins/plugin-browser/src/native-socket-target.ts';\nexport * from './plugins/plugin-browser/src/task-actuator.ts';\nexport * from './plugins/plugin-google-workspace/src/task-code-resolver.ts';",
     );
     fs.mkdirSync(path.dirname(output), { recursive: true });
     execFileSync(
