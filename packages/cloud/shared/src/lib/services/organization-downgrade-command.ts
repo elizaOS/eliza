@@ -9,10 +9,7 @@ import {
   claimOrganizationSchedule,
   finishOrganizationScheduleAttempt,
   readOrganizationScheduleCommand,
-  readOrganizationScheduleRecoverySource,
-  recordAuthenticatedOrganizationScheduleEvidence,
 } from "../../db/repositories/organization-schedule-effects";
-import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
 import {
   compensateOrganizationScheduleCreate,
@@ -22,12 +19,11 @@ import {
   dispatchOrganizationScheduleConfiguration,
   prepareObservedOrganizationScheduleConfiguration,
 } from "./organization-schedule-configuration";
+import { recoverOriginalOrganizationScheduleCreate } from "./organization-schedule-create-recovery";
 import { dispatchOrganizationScheduleCreate } from "./organization-schedule-dispatch";
-import { findOriginalScheduleEvent } from "./organization-schedule-event-search";
 import { observeAndFinalizeOrganizationScheduleConfiguration } from "./organization-schedule-publication";
 
 type Identity = Parameters<typeof readOrganizationScheduleCommand>[0];
-type Claim = Parameters<typeof readOrganizationScheduleRecoverySource>[1];
 type Evidence = { kind: "event" | "response"; raw: unknown };
 export function projectOrganizationSubscriptionDowngradeCommand(
   context: Awaited<ReturnType<typeof readOrganizationScheduleCommand>>,
@@ -71,35 +67,6 @@ export async function readOrganizationSubscriptionDowngrade(
   const context = await readOrganizationScheduleCommand(input);
   await verifySession();
   return projectOrganizationSubscriptionDowngradeCommand(context);
-}
-
-async function recoverCreate(identity: Identity, claim: Claim): Promise<Evidence> {
-  const context = await readOrganizationScheduleRecoverySource(identity, claim);
-  const create = context.effects.find((e) => e.kind === "schedule_create");
-  if (!create || create.state === "ready" || !create.started_at)
-    throw new ElizaError("Original started schedule creation required", {
-      code: "SUBSCRIPTION_PLAN_CHANGE_CONFLICT",
-    });
-  const evidence: Evidence = {
-    kind: "event",
-    raw: (
-      await findOriginalScheduleEvent({
-        reader: requireStripe().events,
-        originalRequest: {
-          request: create.request_payload,
-          providerIdempotencyKey: create.provider_idempotency_key,
-          customerId: create.customer_id,
-          subscriptionId: create.subscription_id,
-          livemode: create.livemode,
-          startedAt: create.started_at,
-        },
-        observedAt: new Date(),
-      })
-    ).raw,
-  };
-  if (create.state === "started")
-    await recordAuthenticatedOrganizationScheduleEvidence(identity, claim, create.id, evidence);
-  return evidence;
 }
 
 /** This may dispatch a still-ready original effect only after renewed session/source/quote checks. */
@@ -149,7 +116,7 @@ export async function confirmOrganizationSubscriptionDowngrade(
           createdEvidence = (
             await dispatchOrganizationScheduleCreate(identity, claim, effect.id, verify)
           ).evidence;
-        } else createdEvidence = await recoverCreate(identity, claim);
+        } else createdEvidence = await recoverOriginalOrganizationScheduleCreate(identity, claim);
         configurationId = (
           await prepareObservedOrganizationScheduleConfiguration(
             identity,

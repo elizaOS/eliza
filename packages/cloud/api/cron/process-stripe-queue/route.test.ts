@@ -9,6 +9,11 @@ const upgrades = mock(async (_limit: number) => ({
   unavailable: 0,
   deferred: 0,
 }));
+const schedules = mock(async (_limit: number) => ({ inspected: 0 }));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/organization-schedule-maintenance",
+  () => ({ recoverOrganizationSchedules: schedules }),
+);
 const cancellations = mock(async () => ({ inspected: 0 }));
 mock.module("@elizaos/cloud-shared/auth", () => ({
   requireCronSecret: (c: Context) => {
@@ -61,6 +66,8 @@ beforeEach(() => {
     deferred: 0,
   }));
   cancellations.mockClear();
+  schedules.mockReset();
+  schedules.mockImplementation(async () => ({ inspected: 0 }));
 });
 afterAll(() => mock.restore());
 test("cron authentication precedes every recovery lane", async () => {
@@ -68,6 +75,7 @@ test("cron authentication precedes every recovery lane", async () => {
   expect(response.status).toBe(401);
   expect(upgrades).not.toHaveBeenCalled();
   expect(cancellations).not.toHaveBeenCalled();
+  expect(schedules).not.toHaveBeenCalled();
 });
 test("authenticated maintenance includes the upgrade recovery result", async () => {
   const response = await app.request("http://localhost/", {
@@ -80,6 +88,7 @@ test("authenticated maintenance includes the upgrade recovery result", async () 
     upgrades: { applied: 1 },
   });
   expect(upgrades).toHaveBeenCalledWith(5);
+  expect(schedules).toHaveBeenCalledWith(5);
 });
 test("upgrade infrastructure failure is visible while independent lanes still execute", async () => {
   upgrades.mockImplementation(async () => {
@@ -94,5 +103,19 @@ test("upgrade infrastructure failure is visible while independent lanes still ex
     success: false,
     failedLanes: ["upgrades"],
   });
+  expect(cancellations).toHaveBeenCalledTimes(1);
+});
+
+test("schedule infrastructure failure does not stop independent recovery lanes", async () => {
+  schedules.mockImplementation(async () => {
+    throw Error("journal unavailable");
+  });
+  const response = await app.request("http://localhost/", {
+    method: "POST",
+    headers: { authorization: "Bearer test-cron" },
+  });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ failedLanes: ["schedules"] });
+  expect(upgrades).toHaveBeenCalledTimes(1);
   expect(cancellations).toHaveBeenCalledTimes(1);
 });

@@ -167,5 +167,10 @@ partial-create cleanup. A started effect is never dispatched again. Same-quote
 retries keep the original command even with another retry key; occupied leases
 return durable status. Session failure survives cleanup, and status reads perform
 no provider work. Authenticated confirmation/status routes and SDK methods now expose this coordinator.
-Native/product adoption, unattended recovery scheduling and retained-adjustment
-payment authority still need integration and qualification.
+The existing Stripe maintenance process recovers original schedules in bounded,
+leased batches. It observes started effects, expires unstarted intents, and can
+clean up a proven unconfigured creation after review expiry. It never creates or
+configures a schedule. Recovery retains scoped incidents with backoff and resolves
+them atomically with the original terminal command, without borrowing a manager
+session. Native/product adoption and retained-adjustment payment authority still
+need integration and qualification.
