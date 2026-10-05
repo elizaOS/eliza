@@ -45,7 +45,8 @@
       "default": "./dist/email-classification/index.js"
     },
     "./native-host/*": "./native-host/*.mjs",
-    "./native-host/bill-client": "./native-host/bill-client.ts"
+    "./native-host/bill-client": "./native-host/bill-client.ts",
+    "./native-host/bill-review-controller": "./native-host/bill-review-controller.ts"
   },
   "scripts": {
     "lint:default-packs": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
@@ -172,6 +173,7 @@
     "native-host/*.mjs",
     "native-host/bill-client.ts",
     "native-host/*.d.mts",
-    "!native-host/*.test.mjs"
+    "!native-host/*.test.mjs",
+    "native-host/bill-review-controller.ts"
   ]
 }
