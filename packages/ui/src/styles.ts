@@ -7,5 +7,4 @@
  */
 import "./styles/styles.css";
 import "./styles/brand-gold.css";
-import "./cloud-ui/index.css";
 import "@elizaos/ui/styles/login.css";
