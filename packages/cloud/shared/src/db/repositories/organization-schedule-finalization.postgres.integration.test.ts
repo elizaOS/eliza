@@ -853,6 +853,7 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     });
     const snapshot = structuredClone(f.input.rawCurrentSchedule),
       target = snapshot.phases[1]!;
+    if (typeof target.end_date !== "number") throw new Error("Target fixture needs a finite end");
     snapshot.current_phase = { start_date: target.start_date, end_date: target.end_date };
     const objects = renewalPaidObjects(
       { ...source, plan_key: "plus_monthly", stripe_subscription_item_id: "si_target" },
@@ -982,7 +983,7 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
           api_version: "2024-11-20.acacia",
           pending_webhooks: 0,
           request: null,
-        } as import("stripe").default.Event,
+        } as unknown as import("stripe").default.Event,
       });
       const row = await db.query(
         "SELECT status, applied_subscription_revision FROM billing_subscription_event_receipts WHERE provider_event_id=$1",
