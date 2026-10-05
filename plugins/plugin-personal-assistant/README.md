@@ -84,3 +84,9 @@ Closing is idempotent and attempts both host and native cleanup even after an
 exception; startup rollback preserves the original failure and cleanup errors.
 Real local-socket and private-file tests cover these boundaries; they do not
 establish live browser, provider or device acceptance.
+
+`native-host/load-configured-bill-helper.mjs` loads explicit helper configuration,
+passes the task artifact's source identity to the reviewed document loader, and
+binds document/Google ports to the configured actor and grant. Only an explicitly
+optional missing file is ignored; invalid configuration or provenance fails closed.
+It imports the selected runtime through a file URL, preserving paths with spaces.
