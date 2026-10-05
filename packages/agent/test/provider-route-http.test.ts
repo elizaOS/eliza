@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ElizaConfig } from "@elizaos/host/protocol";
+import {
+  type ElizaConfig,
+  isLocalOnlyInferenceInConfig,
+} from "@elizaos/host/protocol";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import openaiPlugin from "../../../plugins/plugin-openai/index.ts";
@@ -12,7 +15,7 @@ import {
   getBaseURL,
 } from "../../../plugins/plugin-openai/utils/config.ts";
 import { startApiServer } from "../src/api/server.ts";
-import { loadElizaConfig } from "../src/config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../src/config/config.ts";
 import { collectPluginNames } from "../src/runtime/plugin-collector.ts";
 import { buildRuntimeSettingsProjection } from "../src/runtime/runtime-settings.ts";
 
@@ -68,6 +71,59 @@ beforeAll(async () => {
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
   }))
     vi.stubEnv(key, value);
+  const localOnlyInputs: ElizaConfig[] = [
+    { cloud: { enabled: false }, serviceRouting: {} },
+    { cloud: { inferenceMode: "local" } },
+    { cloud: { services: { inference: false } } },
+  ];
+  for (const input of localOnlyInputs) {
+    await writeFile(configPath, JSON.stringify({ ...input, env: config.env }));
+    const selected = loadElizaConfig();
+    expect(isLocalOnlyInferenceInConfig(selected)).toBe(true);
+    expect(selected.serviceRouting).toEqual({});
+    expect(selected.cloud?.inferenceMode).toBeUndefined();
+    expect(selected.cloud?.services?.inference).toBeUndefined();
+    for (const name of ["openai", "anthropic", "elizacloud"]) {
+      expect(collectPluginNames(selected).has(`@elizaos/plugin-${name}`)).toBe(
+        false,
+      );
+    }
+    saveElizaConfig(selected);
+    const reloaded = loadElizaConfig();
+    expect(isLocalOnlyInferenceInConfig(reloaded)).toBe(true);
+    expect(reloaded.serviceRouting).toEqual({});
+    expect(reloaded.env?.vars).toMatchObject(config.env?.vars ?? {});
+  }
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      deploymentTarget: {
+        runtime: "remote",
+        provider: "remote",
+        remoteApiBase: "https://remote.example",
+      },
+      cloud: { inferenceMode: "local" },
+      env: config.env,
+    }),
+  );
+  const remote = loadElizaConfig();
+  expect(isLocalOnlyInferenceInConfig(remote)).toBe(false);
+  expect(remote.serviceRouting?.llmText).toMatchObject({
+    transport: "remote",
+    remoteApiBase: "https://remote.example",
+  });
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      cloud: { inferenceMode: "byok" },
+      env: config.env,
+    }),
+  );
+  const direct = loadElizaConfig();
+  expect(isLocalOnlyInferenceInConfig(direct)).toBe(false);
+  expect(direct.serviceRouting?.llmText?.transport).toBe("direct");
+  expect(collectPluginNames(direct).has("@elizaos/plugin-openai")).toBe(true);
+  await writeFile(configPath, JSON.stringify(config));
   const loaded = loadElizaConfig();
   expect(loaded.cloud?.inferenceMode).toBeUndefined();
   expect(loaded.cloud?.services?.inference).toBeUndefined();
@@ -174,18 +230,12 @@ it("retires a persisted ChatGPT/Codex subscription chat route while keeping the 
 
   const models = await request("/api/models/config");
   expect(models.status).toBe(200);
-  // The dead Codex route no longer claims chat; the stored OpenAI API key
-  // signal is what can serve it now.
   expect((await models.json()).activeChat?.provider).not.toBe("openai-codex");
 
   const configResponse = await request("/api/config");
   expect(configResponse.status).toBe(200);
   const migrated = await configResponse.json();
-  // The retired route is gone; only a provider the user configured directly
-  // (here the stored OpenAI API key) may be derived in its place.
-  expect(migrated.serviceRouting?.llmText?.backend).not.toBe(
-    "openai-subscription",
-  );
+  expect(migrated.serviceRouting).toEqual({});
   expect(migrated.agents?.defaults?.model?.primary).toBeUndefined();
   expect(migrated.agents?.defaults?.subscriptionProvider).toBe("openai-codex");
 
