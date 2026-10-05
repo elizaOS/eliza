@@ -30,6 +30,7 @@ export async function installOrganizationUpgradeTestSchema(
                 "0523_organization_schedule_compensation",
                 "0524_organization_schedule_compensation_result",
                 "0525_organization_schedule_configured_result",
+                "0526_organization_schedule_configured_snapshot",
               ]
             : []),
         ]
@@ -40,6 +41,10 @@ export async function installOrganizationUpgradeTestSchema(
       if (q.trim())
         await execute(
           q
+            .replace(
+              "ADD COLUMN organization_schedule_configuration_snapshot",
+              "ADD COLUMN IF NOT EXISTS organization_schedule_configuration_snapshot",
+            )
             .replace(
               "ADD COLUMN organization_schedule_configuration_evidence",
               "ADD COLUMN IF NOT EXISTS organization_schedule_configuration_evidence",
