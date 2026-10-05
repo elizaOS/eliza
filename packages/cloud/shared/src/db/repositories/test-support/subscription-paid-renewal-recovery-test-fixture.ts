@@ -846,16 +846,21 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
               port: address.port,
               protocol: "http",
               maxNetworkRetries: 0,
-              httpClient: Stripe.createFetchHttpClient(async (url, init) => {
-                if (!fenced) {
-                  fenced = true;
-                  await database.query(
-                    "UPDATE organizations SET paid_work_fenced_at=clock_timestamp() WHERE id=$1",
-                    [f.orgId],
-                  );
-                }
-                return fetch(url, init);
-              }),
+              httpClient: Stripe.createFetchHttpClient(
+                Object.assign(
+                  async (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+                    if (!fenced) {
+                      fenced = true;
+                      await database.query(
+                        "UPDATE organizations SET paid_work_fenced_at=clock_timestamp() WHERE id=$1",
+                        [f.orgId],
+                      );
+                    }
+                    return fetch(url, init);
+                  },
+                  { preconnect: fetch.preconnect },
+                ),
+              ),
             });
             await expect(
               observeAndRecordRenewalAdjustment(
