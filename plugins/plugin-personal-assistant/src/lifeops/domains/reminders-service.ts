@@ -1211,6 +1211,7 @@ export type RemindersDeps = {
     occurrenceId: string,
     request: SnoozeLifeOpsOccurrenceRequest,
     now?: Date,
+    options?: { expectedDefinitionUpdatedAt: string },
   ) => Promise<LifeOpsOccurrenceView>;
   checkinSource: CheckinSourceService;
 };
@@ -3680,6 +3681,9 @@ export class RemindersDomain {
     classifierSource?: string | null;
     semanticReason?: string | null;
   }): Promise<void> {
+    let admission:
+      | { occurrence: LifeOpsOccurrence; definition: LifeOpsTaskDefinition }
+      | undefined;
     if (args.ownerType === "occurrence") {
       // Classification may have awaited a model while the owner cancelled.
       // Revalidate current scoped policy before any acknowledgement or snooze.
@@ -3708,6 +3712,8 @@ export class RemindersDomain {
         );
         return;
       }
+      if (!occurrence) return;
+      admission = { occurrence, definition };
     }
     if (args.resolution === "snoozed") {
       if (args.ownerType !== "occurrence" || !args.snoozeRequest) {
@@ -3738,29 +3744,67 @@ export class RemindersDomain {
     const acknowledgementNote = args.responseText
       ? `Owner replied: ${args.responseText}`
       : args.reason;
-    if (args.resolution === "snoozed") {
-      if (!args.snoozeRequest) {
-        // Unreachable: the resolution-validation block above early-returns
-        // when a snoozed resolution lacks a snoozeRequest. Re-assert so the
-        // type system narrows it to non-null for snoozeOccurrence.
-        throw new Error(
-          "snoozeRequest is required to snooze a reminder occurrence",
-        );
+    if (admission) {
+      try {
+        if (args.resolution === "snoozed") {
+          if (!args.snoozeRequest)
+            throw new Error(
+              "snoozeRequest is required to snooze a reminder occurrence",
+            );
+          await this.deps.snoozeOccurrence(
+            args.ownerId,
+            args.snoozeRequest,
+            new Date(args.respondedAt ?? args.reviewedAt),
+            {
+              expectedDefinitionUpdatedAt: admission.definition.updatedAt,
+            },
+          );
+        } else {
+          await this.ctx.repository.updateOccurrence(
+            {
+              ...admission.occurrence,
+              metadata: {
+                ...admission.occurrence.metadata,
+                reminderAcknowledgedAt: args.respondedAt ?? args.reviewedAt,
+                reminderAcknowledgedNote: acknowledgementNote,
+                reminderAcknowledgedResolution: args.resolution,
+              },
+              updatedAt: nextMutationRevision(admission.occurrence.updatedAt),
+            },
+            {
+              definitionScope: {
+                domain: admission.definition.domain,
+                subjectType: admission.definition.subjectType,
+                subjectId: admission.definition.subjectId,
+              },
+              expectedUpdatedAt: admission.occurrence.updatedAt,
+              expectedDefinitionUpdatedAt: admission.definition.updatedAt,
+            },
+          );
+        }
+      } catch (error) {
+        if (
+          error instanceof ElizaError &&
+          error.code === "LIFEOPS_OCCURRENCE_CONFLICT"
+        ) {
+          const definition = await getCallerDefinition(
+            this.ctx.repository,
+            this.ctx,
+            admission.definition.id,
+          );
+          if (definition && definition.status !== "active") {
+            await this.closeInactiveDefinitionReview(
+              args.attempt,
+              definition.status,
+            );
+            return;
+          }
+        }
+        throw error;
       }
-      await this.deps.snoozeOccurrence(
-        args.ownerId,
-        args.snoozeRequest,
-        new Date(args.respondedAt ?? args.reviewedAt),
-      );
-      await this.ctx.repository.updateReminderAttemptOutcome(
-        args.attempt.id,
-        args.attempt.outcome,
-        reviewMetadata,
-      );
-      Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
-      args.attempt.reviewStatus = "resolved";
-      return;
     }
+    // A rejected CAS is not a resolved owner response. Commit job success only
+    // after the admitted occurrence mutation has actually completed.
     await this.ctx.repository.updateReminderAttemptOutcome(
       args.attempt.id,
       args.attempt.outcome,
@@ -3768,24 +3812,8 @@ export class RemindersDomain {
     );
     Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
     args.attempt.reviewStatus = "resolved";
-    if (args.ownerType === "occurrence") {
-      const occurrence = await this.ctx.repository.getOccurrence(
-        this.ctx.agentId(),
-        args.ownerId,
-      );
-      if (occurrence) {
-        await this.ctx.repository.updateOccurrence({
-          ...occurrence,
-          metadata: {
-            ...occurrence.metadata,
-            reminderAcknowledgedAt: args.respondedAt ?? args.reviewedAt,
-            reminderAcknowledgedNote: acknowledgementNote,
-            reminderAcknowledgedResolution: args.resolution,
-          },
-          updatedAt: nextMutationRevision(occurrence.updatedAt),
-        });
-      }
-    } else {
+    if (args.resolution === "snoozed") return;
+    if (args.ownerType === "calendar_event") {
       const event = (
         await this.ctx.repository.listCalendarEvents(
           this.ctx.agentId(),

@@ -1094,6 +1094,7 @@ export class DefinitionsDomain {
     occurrenceId: string,
     request: SnoozeLifeOpsOccurrenceRequest,
     now = new Date(),
+    options?: { expectedDefinitionUpdatedAt: string },
   ): Promise<LifeOpsOccurrenceView> {
     if (!Number.isFinite(now.getTime())) {
       fail(400, "snooze time must be a valid date");
@@ -1152,7 +1153,8 @@ export class DefinitionsDomain {
     await this.ctx.repository.updateOccurrence(updatedOccurrence, {
       definitionScope,
       expectedUpdatedAt: occurrence.updatedAt,
-      expectedDefinitionUpdatedAt: definition.updatedAt,
+      expectedDefinitionUpdatedAt:
+        options?.expectedDefinitionUpdatedAt ?? definition.updatedAt,
     });
     await this.ctx.recordAudit(
       "occurrence_snoozed",

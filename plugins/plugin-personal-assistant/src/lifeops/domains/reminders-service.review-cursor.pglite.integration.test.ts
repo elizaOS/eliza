@@ -1269,3 +1269,105 @@ it("keeps normal delivery admitted for a freshly active definition", async () =>
     ),
   ).toEqual(before);
 });
+
+it.each(["completed", "snoozed"] as const)(
+  "enforces active admission at the %s mutation boundary",
+  async (resolution) => {
+    for (const change of ["archived", "active_revision", "none"] as const) {
+      const f = await reviewFixture(`Admission ${resolution} ${change}`);
+      const definitionRevision = f.original.definition.updatedAt;
+      const originalUpdate = service.repository.updateOccurrence.bind(
+        service.repository,
+      );
+      const originalSnooze = service.snoozeOccurrence.bind(service);
+      let changed = false;
+      const changeDefinition = async () => {
+        if (changed || change === "none") return;
+        changed = true;
+        await service.updateDefinition(
+          f.original.definition.id,
+          change === "archived"
+            ? { status: "archived" }
+            : { title: "Still active but changed" },
+        );
+      };
+      const update = vi
+        .spyOn(service.repository, "updateOccurrence")
+        .mockImplementation(async (occurrence, options) => {
+          if (occurrence.id === f.occurrence.id && resolution === "completed")
+            await changeDefinition();
+          return originalUpdate(occurrence, options);
+        });
+      const snooze = vi
+        .spyOn(service, "snoozeOccurrence")
+        .mockImplementation(async (id, request, now, options) => {
+          if (id === f.occurrence.id) await changeDefinition();
+          return originalSnooze(id, request, now, options);
+        });
+      try {
+        const resolving =
+          service.remindersDomain.resolveReminderReviewFromOwnerResponse({
+            ownerType: "occurrence",
+            ownerId: f.occurrence.id,
+            attempt: f.attempt,
+            reviewedAt: f.now.toISOString(),
+            resolution,
+            responseText: "Bound owner response",
+            respondedAt: f.now.toISOString(),
+            snoozeRequest: resolution === "snoozed" ? { minutes: 10 } : null,
+            confidence: 1,
+            reason: "admitted_semantic_response",
+            classifierSource: "semantic",
+          });
+        if (change === "active_revision")
+          await expect(resolving).rejects.toMatchObject({
+            code: "LIFEOPS_OCCURRENCE_CONFLICT",
+          });
+        else await resolving;
+        const [attempt] = await service.repository.listReminderAttempts(
+          fixture.runtime.agentId,
+          { ownerType: "occurrence", ownerId: f.occurrence.id },
+        );
+        const occurrence = await service.repository.getOccurrence(
+          fixture.runtime.agentId,
+          f.occurrence.id,
+        );
+        if (change === "none") {
+          expect(attempt.reviewStatus).toBe("resolved");
+          if (resolution === "snoozed")
+            expect(occurrence?.state).toBe("snoozed");
+          else
+            expect(occurrence?.metadata.reminderAcknowledgedResolution).toBe(
+              "completed",
+            );
+        } else {
+          expect(occurrence?.metadata.reminderAcknowledgedAt).toBeUndefined();
+          expect(occurrence?.snoozedUntil).toBeNull();
+          if (change === "archived")
+            expect(attempt).toMatchObject({
+              reviewStatus: "resolved",
+              deliveryMetadata: {
+                reviewReason: "definition_archived",
+                reminderReviewDecision: "no_response",
+              },
+            });
+          else
+            expect(attempt.deliveryMetadata).toEqual(
+              f.attempt.deliveryMetadata,
+            );
+        }
+        expect(
+          update.mock.calls.find(([row]) => row.id === f.occurrence.id)?.[1]
+            ?.expectedDefinitionUpdatedAt,
+        ).toBe(definitionRevision);
+        if (resolution === "snoozed")
+          expect(snooze.mock.calls[0]?.[3]?.expectedDefinitionUpdatedAt).toBe(
+            definitionRevision,
+          );
+      } finally {
+        update.mockRestore();
+        snooze.mockRestore();
+      }
+    }
+  },
+);
