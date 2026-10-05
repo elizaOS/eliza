@@ -88,6 +88,8 @@ test("outcome insert failure and interrupted completion retry storage only and p
     let result = outcomes.save(decision, "observation");
     assert.equal(result.status, "paid");
     assert.equal(result.saveStatus, "pending");
+    assert.equal(outcomes.loadEvidence().persisted, false);
+    assert.equal(outcomes.loadEvidence().record.observedAt, observedAt);
     assert.equal(runtime.get(task.id).status, "active");
     db.exec("DROP TRIGGER fail_outcome");
     result = outcomes.retry();
@@ -96,6 +98,12 @@ test("outcome insert failure and interrupted completion retry storage only and p
       db.prepare("SELECT COUNT(*) AS n FROM bill_outcomes_v1").get().n,
       1,
     );
+    assert.equal(outcomes.loadEvidence().persisted, true);
+    const savedDocument = db.prepare("SELECT document FROM bill_outcomes_v1 WHERE task_id=?").get(task.id).document;
+    const conflict = JSON.parse(savedDocument); conflict.observedAt++;
+    db.prepare("UPDATE bill_outcomes_v1 SET document=? WHERE task_id=?").run(JSON.stringify(conflict), task.id);
+    assert.equal(outcomes.loadEvidence().persisted, false);
+    db.prepare("UPDATE bill_outcomes_v1 SET document=? WHERE task_id=?").run(savedDocument, task.id);
     // Recreate the host service: the first commit is durable even though completion failed.
     outcomes = createBillOutcomeStore(db, wrapped).forTask(runtime, task.id);
     failCompletion = false;

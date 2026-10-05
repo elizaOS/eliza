@@ -160,6 +160,63 @@ export class SqliteInteractiveTaskStore {
     });
   }
 
+  /** Complete bounded history for synchronous host evidence projection.
+   * Uses existing page transactions; callbacks must be read-only and synchronous.
+   * Any observed database change invalidates the result rather than publishing a partial cohort.
+   */
+  readOwnerHistory<T>(
+    owner: TaskOwner,
+    limits: { maxTasks: number; maxEvents: number },
+    inspect: (histories: { task: InteractiveTask; events: TaskEvent[] }[]) => T,
+  ): T {
+    const { maxTasks, maxEvents } = limits;
+    if (!Number.isSafeInteger(maxTasks) || maxTasks < 1 || maxTasks >= 0x7fffffff ||
+        !Number.isSafeInteger(maxEvents) || maxEvents < 1 || maxEvents >= 0x7fffffff)
+      fail("Invalid task history limits", "TASK_INVALID");
+    const mark = () => {
+      const version = this.db.prepare("PRAGMA data_version").get() as { data_version: number };
+      const changes = this.db.prepare("SELECT total_changes() AS changes").get() as { changes: number };
+      const schema = this.db.prepare("PRAGMA schema_version").get() as { schema_version: number };
+      const values = [version?.data_version, changes?.changes, schema?.schema_version];
+      if (values.some(value => !Number.isSafeInteger(value) || value < 0))
+        fail("Invalid task history snapshot", "TASK_STORAGE_CORRUPT");
+      return JSON.stringify(values);
+    };
+    const before = mark();
+    const row = this.db.prepare(
+      "SELECT json_group_array(id) AS ids FROM (SELECT id FROM interactive_task_journal_v1 WHERE owner_key=? ORDER BY id LIMIT ?)",
+    ).get(ownerKey(owner), maxTasks + 1) as { ids: string };
+    const ids: unknown = JSON.parse(row.ids);
+    if (!Array.isArray(ids) || ids.some(id => typeof id !== "string"))
+      fail("Invalid task history index", "TASK_STORAGE_CORRUPT");
+    if (ids.length > maxTasks) fail("Task history exceeds limit", "TASK_HISTORY_LIMIT");
+    const histories: { task: InteractiveTask; events: TaskEvent[] }[] = [];
+    let remaining = maxEvents;
+    for (const id of ids) {
+      let cursor = -1;
+      let task: InteractiveTask | undefined;
+      const events: TaskEvent[] = [];
+      for (;;) {
+        const page = this.events(id, owner, cursor);
+        if (task && task.revision !== page.task.revision)
+          fail("Task history changed during read", "TASK_HISTORY_CHANGED");
+        task = page.task;
+        remaining -= page.events.length;
+        if (remaining < 0) fail("Task history exceeds limit", "TASK_HISTORY_LIMIT");
+        events.push(...page.events);
+        cursor = page.cursor;
+        if (!page.hasMore) break;
+      }
+      histories.push({ task, events });
+    }
+    const result = inspect(histories);
+    if (result !== null && (typeof result === "object" || typeof result === "function") &&
+        typeof (result as { then?: unknown }).then === "function")
+      fail("Task history projection must be synchronous", "TASK_INVALID");
+    if (mark() !== before) fail("Task history changed during read", "TASK_HISTORY_CHANGED");
+    return result;
+  }
+
   private transaction<T>(work: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");
     try {
