@@ -451,7 +451,7 @@ def _parse_parameters_array(arr_src: str) -> list[dict[str, Any]]:
         keys = _find_top_level_keys(obj)
         body_inner = obj[1:-1]
 
-        def _slice(name: str) -> str | None:
+        def _slice(name: str, keys=keys, body_inner=body_inner) -> str | None:
             v = keys.get(name)
             if v is None:
                 return None

@@ -12,22 +12,30 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  closeOcrEngines,
+  ocrImage,
+  ocrImageRegion,
+  resetTesseractProbe,
+} from "@elizaos/testing/evidence/visual-primitives";
 import sharp from "sharp";
 import {
   evaluateOcrContent,
   type OcrResult,
 } from "../test/ui-smoke/ocr-content-rules";
 import {
-  closeOcrEngines,
-  ocrImage,
-  resetTesseractProbe,
-} from "./mvp-visual-verify/ocr.mjs";
+  loadBaselineManifest,
+  resolveBaselinePath,
+} from "./mvp-visual-verify/baselines.ts";
 import { runOcrTriage } from "./ocr-triage";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LAUNCHER_CAPTURE = resolve(
-  HERE,
-  "mvp-visual-verify/baseline/mobile-portrait/builtin-rolodex.png",
+const baselineRoot = resolve(HERE, "mvp-visual-verify/baseline");
+const LAUNCHER_CAPTURE = resolveBaselinePath(
+  baselineRoot,
+  await loadBaselineManifest(baselineRoot),
+  "mobile-portrait",
+  "builtin-rolodex",
 );
 const dir = mkdtempSync(join(tmpdir(), "ocr-real-engine-"));
 const previousEngine = process.env.ELIZA_MVP_OCR_ENGINE;
@@ -72,6 +80,35 @@ afterAll(async () => {
 });
 
 describe("real OCR blank-vs-unreadable classification", () => {
+  it.each(["dark", "light"])(
+    "reads both lines of a small %s control from its pixels",
+    async (theme) => {
+      const background = theme === "dark" ? "#482310" : "#f5e8db";
+      const foreground = theme === "dark" ? "#ffffff" : "#111111";
+      const pixels = await sharp(
+        Buffer.from(`
+        <svg width="180" height="60" xmlns="http://www.w3.org/2000/svg">
+          <rect width="180" height="60" fill="${background}" />
+          <text x="24" y="25" font-family="Arial, sans-serif" font-size="14" fill="${foreground}">Desert Dusk</text>
+          <text x="24" y="43" font-family="Arial, sans-serif" font-size="12" fill="${foreground}">warm landscape</text>
+        </svg>
+      `),
+      )
+        .png()
+        .toBuffer();
+      const result = await ocrImageRegion(pixels, {
+        left: 10,
+        top: 5,
+        width: 160,
+        height: 50,
+      });
+      expect(result.text).toMatch(/Desert Dusk/i);
+      expect(result.text).toMatch(/warm landscape/i);
+      expect(result.meanConfidence).toBeGreaterThanOrEqual(0.55);
+    },
+    60_000,
+  );
+
   it.each(["dark", "light"])(
     "preserves muted labels on a %s interface without inventing missing content",
     async (theme) => {
@@ -139,16 +176,18 @@ describe("real OCR blank-vs-unreadable classification", () => {
     expect(retried.text).toMatch(/Desert Dusk/i);
   }, 90_000);
 
-  it("identifies a populated launcher as wrong view content rather than blank when the first OCR pass is weak", async () => {
+  it("rejects a launcher captured in place of the expected view without calling populated pixels blank", async () => {
     const auditDir = join(dir, "launcher-audit");
     const viewportDir = join(auditDir, "mobile-portrait");
     mkdirSync(viewportDir, { recursive: true });
-    copyFileSync(LAUNCHER_CAPTURE, join(viewportDir, "builtin-rolodex.png"));
+    // The archive filename records its original route, but these pixels are
+    // the launcher and must use the launcher semantic contract.
+    copyFileSync(LAUNCHER_CAPTURE, join(viewportDir, "builtin-views.png"));
     writeFileSync(
       join(auditDir, "report.json"),
       JSON.stringify([
         {
-          slug: "builtin-rolodex",
+          slug: "builtin-views",
           viewport: "mobile-portrait",
           viewType: "gui",
           verdict: "good",
@@ -181,8 +220,9 @@ describe("real OCR blank-vs-unreadable classification", () => {
       true,
     );
     expect(entry.pixelBlank).toBe(false);
-    // The historical capture contains the launcher, while this slug now owns
-    // the unavailable-view fallback. Nonblank pixels must not hide that mismatch.
+    // The historical capture contains launcher icons rather than the requested
+    // view. A successful fallback must retain that semantic mismatch, not turn
+    // a nonblank but wrong screen into accepted product evidence.
     expect(entry.ocrVerdict).toBe("broken");
     expect(entry.regression).toBe(true);
     expect(entry.reasons.join(" ")).toMatch(/missing expected content/i);

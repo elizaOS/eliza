@@ -4,7 +4,7 @@
  * plugin must all satisfy so the React UI can start/message/stop the
  * on-device agent runtime the same way regardless of platform. This is the
  * TS mirror of the native bridge ABI documented in
- * packages/native/bun-runtime/BRIDGE_CONTRACT.md; breaking changes here
+ * plugins/plugin-native-bun-runtime/engine/Sources/ElizaBunEngineShim/eliza_bun_engine.h; breaking changes here
  * should bump `__ELIZA_BRIDGE_VERSION__` on the native side too.
  */
 

@@ -1,5 +1,6 @@
 // Handles compatibility cloud API compat agents id logs route traffic through route-local auth checks.
-import { Hono } from "hono";
+
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
 /**
  * GET /api/compat/agents/[id]/logs
  *
@@ -14,12 +15,15 @@ import { Hono } from "hono";
  * was also subject to SSRF guards / firewall on the Worker→core hop.
  * The daemon path works uniformly.
  */
-import { envelope, errorEnvelope } from "@/lib/api/compat-envelope";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import {
+  envelope,
+  errorEnvelope,
+} from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { requireCompatAuth } from "../../../_lib/auth";
 import { handleCompatCorsOptions, withCompatCors } from "../../../_lib/cors";
 import { handleCompatError } from "../../../_lib/error-handler";

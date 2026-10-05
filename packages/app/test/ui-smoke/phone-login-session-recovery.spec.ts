@@ -44,10 +44,10 @@ for (const viewport of VIEWPORTS) {
     page,
   }, testInfo) => {
     await page.setViewportSize(viewport);
-    // Recovery only contacts the server for an unexpired identity-bearing JWT.
-    // An opaque/malformed token is correctly discarded before network sync.
-    // The HTTP fixture below rejects this older session authoritatively.
-    await seedStewardSession(page, { jwt: true, subject: "older-user" });
+    await seedStewardSession(page, {
+      jwt: true,
+      subject: "older-session-user",
+    });
 
     const frontendEvents: string[] = [];
     page.on("console", (message) =>

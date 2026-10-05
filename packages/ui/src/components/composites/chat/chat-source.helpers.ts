@@ -33,7 +33,7 @@ const DEFAULT_CHAT_SOURCE_META: ChatSourceMeta = {
 
 const chatSourceMetaRegistry = new Map<string, ChatSourceMeta>();
 
-let chatReactionEmojiRenderer:
+const chatReactionEmojiRenderer:
   | ((emoji: string) => React.ReactNode | null)
   | null = null;
 
@@ -47,27 +47,9 @@ export function normalizeChatSourceKey(
   return normalized.length > 0 ? normalized : null;
 }
 
-export function registerChatSourceMetaEntries(
-  entries: Record<string, ChatSourceMeta>,
-): void {
-  for (const [key, meta] of Object.entries(entries)) {
-    const normalized = normalizeChatSourceKey(key);
-    if (!normalized) {
-      continue;
-    }
-    chatSourceMetaRegistry.set(normalized, meta);
-  }
-}
-
 export function hasChatSourceMeta(source: string): boolean {
   const normalized = normalizeChatSourceKey(source);
   return normalized ? chatSourceMetaRegistry.has(normalized) : false;
-}
-
-export function registerChatReactionEmojiRenderer(
-  renderer: ((emoji: string) => React.ReactNode | null) | null,
-): void {
-  chatReactionEmojiRenderer = renderer;
 }
 
 export function renderChatReactionEmoji(emoji: string): React.ReactNode | null {

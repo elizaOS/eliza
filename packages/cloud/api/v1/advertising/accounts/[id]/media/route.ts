@@ -2,13 +2,13 @@
  * POST /api/v1/advertising/accounts/[id]/media — upload/map media into a provider asset library.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { advertisingService } from "@elizaos/cloud-shared/lib/services/advertising";
+import { UploadMediaSchema } from "@elizaos/cloud-shared/lib/services/advertising/schemas";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { advertisingService } from "@/lib/services/advertising";
-import { UploadMediaSchema } from "@/lib/services/advertising/schemas";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

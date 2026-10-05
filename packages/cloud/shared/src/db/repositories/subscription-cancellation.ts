@@ -1,22 +1,27 @@
 /** Serializes organization cancellation intent, provider leases and atomic lifecycle publication against primary actor and subscription authority. Provider requests occur outside these transactions. */
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 import { validatePeriodEndCancellationObservation } from "../../lib/services/stripe-period-end-cancellation";
+import {
+  type SubscriptionRenewalReview,
+  subscriptionRenewalReviewSchema,
+} from "../../lib/services/subscription-renewal-review-contract";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
-import {
-  billingSubscriptions,
-  organizationSubscriptionAuthorities,
-} from "../schemas/billing-subscriptions";
+import { organizationSubscriptionAuthorities } from "../schemas/billing-subscriptions";
 import { organizationEntitlements } from "../schemas/organization-entitlements";
 import { organizations } from "../schemas/organizations";
 import {
   type BillingSubscriptionCommand,
   billingSubscriptionCommands,
+  billingSubscriptionRenewalReviews,
 } from "../schemas/subscription-billing-operations";
-import { users } from "../schemas/users";
+import {
+  lockCurrentOrganizationSubscription,
+  lockOrganizationSubscriptionManager,
+} from "./organization-subscription-manager";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
@@ -30,6 +35,7 @@ export interface PrepareCancellationInput extends CancellationIdentity {
   subscriptionId: string;
   expectedSubscriptionRevision: number;
   idempotencyKey: string;
+  renewalReview?: SubscriptionRenewalReview;
 }
 function reject(reason: string): never {
   throw new ElizaError("Organization subscription cancellation is not currently authorized", {
@@ -42,98 +48,62 @@ function reject(reason: string): never {
     context: { reason },
   });
 }
-async function lockActor(tx: DbTransaction, input: CancellationIdentity) {
-  const [organization] = await tx
-    .select({
-      id: organizations.id,
-      active: organizations.is_active,
-      state: organizations.account_lifecycle_state,
-      deletion: organizations.account_deletion_request_id,
-      fenced: organizations.paid_work_fenced_at,
-      customer: organizations.stripe_customer_id,
-    })
-    .from(organizations)
-    .where(eq(organizations.id, input.organizationId))
-    .for("update");
-  if (
-    !organization ||
-    !organization.active ||
-    organization.state !== "active" ||
-    organization.deletion !== null ||
-    organization.fenced !== null
-  )
-    reject("organization_authority_unavailable");
-  const [association] = await tx
-    .select()
-    .from(organizationSubscriptionAuthorities)
-    .where(eq(organizationSubscriptionAuthorities.organization_id, input.organizationId))
-    .for("update");
-  const [actor] = await tx
-    .select({
-      organizationId: users.organization_id,
-      role: users.role,
-      active: users.is_active,
-      anonymous: users.is_anonymous,
-      deleted: users.deleted_at,
-      expires: users.expires_at,
-    })
-    .from(users)
-    .where(eq(users.id, input.actorId));
-  const now = await readPostLockDatabaseNow(tx);
-  if (
-    !actor ||
-    actor.organizationId !== input.organizationId ||
-    !actor.active ||
-    actor.anonymous ||
-    actor.deleted !== null ||
-    (actor.expires !== null && actor.expires <= now) ||
-    (actor.role !== "owner" && actor.role !== "admin")
-  )
-    reject("current_manager_required");
-  return { organization, association, now };
+function lockActor(tx: DbTransaction, input: CancellationIdentity) {
+  return lockOrganizationSubscriptionManager(tx, input, reject);
 }
-async function currentSource(
+function currentSource(
   tx: DbTransaction,
-  input: PrepareCancellationInput,
+  input: Omit<PrepareCancellationInput, "idempotencyKey">,
   locked: Awaited<ReturnType<typeof lockActor>>,
 ) {
-  if (
-    !locked.association ||
-    locked.association.state !== "current" ||
-    locked.association.subscription_id !== input.subscriptionId
-  )
-    reject("current_subscription_unavailable");
-  const [source] = await tx
-    .select()
-    .from(billingSubscriptions)
-    .where(
-      and(
-        eq(billingSubscriptions.organization_id, input.organizationId),
-        eq(billingSubscriptions.id, input.subscriptionId),
-      ),
+  return lockCurrentOrganizationSubscription(tx, input, locked, reject);
+}
+/** Captures eligible undo authority without admitting a command or sending a provider mutation. */
+export async function readCancellationUndoReviewSource(
+  input: Omit<PrepareCancellationInput, "idempotencyKey">,
+) {
+  return writeTransaction(async (tx) => {
+    const locked = await lockActor(tx, input);
+    const source = await currentSource(tx, input, locked);
+    const predecessor = await readLatestSubscriptionScheduleCommand(tx, source);
+    if (!source.cancel_at_period_end || predecessor?.kind !== "cancel")
+      reject("schedule_transition_unavailable");
+    const [live] = await tx
+      .select({ id: billingSubscriptionCommands.id })
+      .from(billingSubscriptionCommands)
+      .where(
+        and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.organization_id, input.organizationId),
+          inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
+        ),
+      )
+      .limit(1);
+    if (live) reject("contradictory_command_pending");
+    const [projection] = await tx
+      .select()
+      .from(organizationEntitlements)
+      .where(
+        and(
+          isNull(organizationEntitlements.billing_scope_id),
+          eq(organizationEntitlements.organization_id, input.organizationId),
+        ),
+      );
+    if (
+      !projection ||
+      projection.source_subscription_id !== source.id ||
+      projection.source_subscription_revision !== source.lifecycle_revision
     )
-    .for("update");
-  if (
-    !source ||
-    source.lifecycle_revision !== input.expectedSubscriptionRevision ||
-    source.status !== "active" ||
-    source.current_period_start === null ||
-    source.current_period_end === null ||
-    source.current_period_end <= locked.now ||
-    source.ended_at !== null ||
-    source.pending_plan_key !== null ||
-    source.dunning_started_at !== null ||
-    source.grace_expires_at !== null ||
-    locked.organization.customer === null ||
-    locked.organization.customer !== source.stripe_customer_id
-  )
-    reject("source_changed_or_unsupported");
-  return source;
+      reject("projection_unavailable");
+    return { source, organizationCustomerId: locked.organization.customer };
+  });
 }
 function intentDigest(
   input: PrepareCancellationInput,
   kind: "cancel" | "resume",
   predecessorCommandId: string | null = null,
+  renewalTermsDigest = input.renewalReview?.termsDigest,
 ): string {
   return createHash("sha256")
     .update(
@@ -144,6 +114,7 @@ function intentDigest(
         expectedSubscriptionRevision: input.expectedSubscriptionRevision,
         kind: kind === "cancel" ? "cancel_at_period_end" : "undo_cancel_at_period_end",
         ...(predecessorCommandId === null ? {} : { predecessorCommandId }),
+        ...(renewalTermsDigest === undefined ? {} : { renewalTermsDigest }),
       }),
     )
     .digest("hex");
@@ -152,6 +123,7 @@ export async function prepareCancellation(
   input: PrepareCancellationInput,
   kind: "cancel" | "resume" = "cancel",
 ): Promise<BillingSubscriptionCommand> {
+  if (input.renewalReview !== undefined && kind !== "resume") reject("review_requires_undo");
   return writeTransaction(async (tx) => {
     const locked = await lockActor(tx, input);
     const [existing] = await tx
@@ -159,6 +131,8 @@ export async function prepareCancellation(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.idempotency_key, input.idempotencyKey),
         ),
@@ -186,12 +160,33 @@ export async function prepareCancellation(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN", "SUCCEEDED"]),
         ),
       )
       .limit(1);
     if (live) reject("contradictory_command_pending");
+    if (input.renewalReview !== undefined) {
+      const parsed = subscriptionRenewalReviewSchema.safeParse(input.renewalReview);
+      if (!parsed.success) reject("renewal_review_invalid");
+      const review = parsed.data;
+      const observed = Date.parse(review.observedAt),
+        expires = Date.parse(review.expiresAt);
+      if (
+        review.subscriptionId !== source.id ||
+        review.expectedSubscriptionRevision !== String(source.lifecycle_revision) ||
+        review.catalogVersion !== source.catalog_version ||
+        review.planKey !== source.plan_key ||
+        review.renewalAt !== source.current_period_end?.toISOString() ||
+        observed > locked.now.getTime() + 5000 ||
+        expires <= locked.now.getTime() ||
+        expires > observed + 60_000 ||
+        expires <= observed
+      )
+        reject("renewal_review_expired_or_changed");
+    }
     const id = randomUUID();
     const [command] = await tx
       .insert(billingSubscriptionCommands)
@@ -212,6 +207,14 @@ export async function prepareCancellation(
       })
       .returning();
     if (!command) reject("command_insert_failed");
+    if (input.renewalReview !== undefined)
+      await tx.insert(billingSubscriptionRenewalReviews).values({
+        command_id: command.id,
+        organization_id: input.organizationId,
+        payload: input.renewalReview,
+        expires_at: new Date(input.renewalReview.expiresAt),
+        created_at: locked.now,
+      });
     return command;
   });
 }
@@ -226,6 +229,8 @@ export async function readCancellation(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, input.commandId),
           eq(billingSubscriptionCommands.kind, kind),
@@ -246,6 +251,8 @@ export async function claimCancellation(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, input.commandId),
         ),
@@ -268,7 +275,6 @@ export async function claimCancellation(
         ...input,
         subscriptionId: command.subscription_id,
         expectedSubscriptionRevision: command.expected_subscription_revision,
-        idempotencyKey: command.idempotency_key,
       },
       locked,
     );
@@ -276,7 +282,13 @@ export async function claimCancellation(
     const [projection] = await tx
       .select()
       .from(organizationEntitlements)
-      .where(eq(organizationEntitlements.organization_id, input.organizationId));
+      .where(
+        and(
+          isNull(organizationEntitlements.billing_scope_id),
+          eq(organizationEntitlements.organization_id, input.organizationId),
+          isNull(organizationEntitlements.billing_scope_id),
+        ),
+      );
     if (
       !projection ||
       projection.source_subscription_id !== source.id ||
@@ -318,6 +330,8 @@ export async function releaseCancellation(input: CancellationIdentity, claim: Ca
       .set({ lease_token: null, lease_expires_at: null, updated_at: sql`clock_timestamp()` })
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.id, claim.command.id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
@@ -339,6 +353,8 @@ export async function finalizeCancellation(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, claim.command.id),
         ),
@@ -366,7 +382,6 @@ export async function finalizeCancellation(
         ...input,
         subscriptionId: claim.source.id,
         expectedSubscriptionRevision: claim.source.lifecycle_revision,
-        idempotencyKey: command.idempotency_key,
       },
       locked,
     );
@@ -434,6 +449,8 @@ export async function finalizeCancellation(
       })
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.id, command.id),
           eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
           eq(billingSubscriptionCommands.lease_token, command.lease_token!),
@@ -446,6 +463,16 @@ export async function finalizeCancellation(
     return applied;
   });
 }
+function recoverableCancellationState() {
+  return sql`(${billingSubscriptionCommands.status} = 'OUTCOME_UNKNOWN' OR (
+    ${billingSubscriptionCommands.status} = 'PREPARED' AND EXISTS (
+      SELECT 1 FROM ${billingSubscriptionRenewalReviews} AS renewal_review
+      WHERE renewal_review.command_id = ${billingSubscriptionCommands.id}
+        AND renewal_review.organization_id = ${billingSubscriptionCommands.organization_id}
+        AND renewal_review.expires_at <= clock_timestamp()
+    )
+  ))`;
+}
 /** Filter before LIMIT and rotate each claimed inspection, so one unverifiable command cannot monopolize recovery. */
 export async function listCancellationRecovery(limit: number) {
   return dbWrite
@@ -453,8 +480,10 @@ export async function listCancellationRecovery(limit: number) {
     .from(billingSubscriptionCommands)
     .where(
       and(
+        isNull(billingSubscriptionCommands.billing_scope_id),
+        isNull(billingSubscriptionCommands.app_id),
         inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
-        eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+        recoverableCancellationState(),
         sql`(${billingSubscriptionCommands.lease_expires_at} IS NULL OR ${billingSubscriptionCommands.lease_expires_at} <= clock_timestamp())`,
       ),
     )
@@ -475,6 +504,8 @@ export async function assertCancellationClaimCurrent(
       .from(billingSubscriptionCommands)
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.organization_id, input.organizationId),
           eq(billingSubscriptionCommands.id, claim.command.id),
         ),
@@ -496,7 +527,6 @@ export async function assertCancellationClaimCurrent(
         ...input,
         subscriptionId: claim.source.id,
         expectedSubscriptionRevision: claim.source.lifecycle_revision,
-        idempotencyKey: command.idempotency_key,
       },
       locked,
     );
@@ -513,6 +543,8 @@ export async function assertCancellationClaimCurrent(
         })
         .where(
           and(
+            isNull(billingSubscriptionCommands.billing_scope_id),
+            isNull(billingSubscriptionCommands.app_id),
             eq(billingSubscriptionCommands.id, command.id),
             eq(billingSubscriptionCommands.organization_id, input.organizationId),
             eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
@@ -547,10 +579,14 @@ export async function rotateCancellationRecovery(command: BillingSubscriptionCom
       .set({ updated_at: sql`clock_timestamp()` })
       .where(
         and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           eq(billingSubscriptionCommands.id, command.id),
           eq(billingSubscriptionCommands.organization_id, command.organization_id),
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
           inArray(billingSubscriptionCommands.kind, ["cancel", "resume"]),
-          eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+          recoverableCancellationState(),
         ),
       );
   });
@@ -569,4 +605,117 @@ async function validatePredecessor(
       : source.cancel_at_period_end || (latest !== null && latest.kind !== "resume"))
   )
     reject("schedule_predecessor_changed");
+}
+
+/** Replays only recorded state, without refreshing terms or repeating a dispatch. */
+export async function readReviewedCancellationReplay(
+  input: PrepareCancellationInput & { expectedRenewalTermsDigest: string },
+) {
+  return writeTransaction(async (tx) => {
+    await lockActor(tx, input);
+    const [command] = await tx
+      .select()
+      .from(billingSubscriptionCommands)
+      .where(
+        and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.organization_id, input.organizationId),
+          eq(billingSubscriptionCommands.idempotency_key, input.idempotencyKey),
+        ),
+      )
+      .for("update");
+    if (!command) return null;
+    if (
+      command.kind !== "resume" ||
+      command.request_digest !==
+        intentDigest(
+          input,
+          "resume",
+          command.schedule_predecessor_command_id,
+          input.expectedRenewalTermsDigest,
+        )
+    )
+      reject("idempotency_intent_changed");
+    const [receipt] = await tx
+      .select()
+      .from(billingSubscriptionRenewalReviews)
+      .where(
+        and(
+          eq(billingSubscriptionRenewalReviews.organization_id, input.organizationId),
+          eq(billingSubscriptionRenewalReviews.command_id, command.id),
+        ),
+      );
+    if (!receipt || receipt.payload.termsDigest !== input.expectedRenewalTermsDigest)
+      reject("renewal_review_receipt_unavailable");
+    return command;
+  });
+}
+export async function readCancellationRenewalReview(
+  input: CancellationIdentity,
+  commandId: string,
+) {
+  return writeTransaction(async (tx) => {
+    await lockActor(tx, input);
+    const [receipt] = await tx
+      .select()
+      .from(billingSubscriptionRenewalReviews)
+      .where(
+        and(
+          eq(billingSubscriptionRenewalReviews.organization_id, input.organizationId),
+          eq(billingSubscriptionRenewalReviews.command_id, commandId),
+        ),
+      );
+    if (!receipt) return null;
+    const parsed = subscriptionRenewalReviewSchema.safeParse(receipt.payload);
+    if (!parsed.success) reject("renewal_review_receipt_invalid");
+    return parsed.data;
+  });
+}
+/** A ready, owned lease proves this reviewed command has never crossed the dispatch fence. */
+export async function failReviewedCancellationBeforeDispatch(
+  input: CancellationIdentity,
+  claim: CancellationClaim,
+) {
+  return writeTransaction(async (tx) => {
+    await lockActor(tx, input);
+    const [receipt] = await tx
+      .select({ id: billingSubscriptionRenewalReviews.command_id })
+      .from(billingSubscriptionRenewalReviews)
+      .where(
+        and(
+          eq(billingSubscriptionRenewalReviews.organization_id, input.organizationId),
+          eq(billingSubscriptionRenewalReviews.command_id, claim.command.id),
+        ),
+      );
+    if (!receipt) return false;
+    const [failed] = await tx
+      .update(billingSubscriptionCommands)
+      .set({
+        status: "FAILED",
+        error_code: "RENEWAL_REVIEW_REJECTED_BEFORE_DISPATCH",
+        state_revision: sql`${billingSubscriptionCommands.state_revision} + 1`,
+        completed_at: sql`clock_timestamp()`,
+        updated_at: sql`clock_timestamp()`,
+        lease_token: null,
+        lease_expires_at: null,
+      })
+      .where(
+        and(
+          isNull(billingSubscriptionCommands.billing_scope_id),
+          isNull(billingSubscriptionCommands.app_id),
+          eq(billingSubscriptionCommands.organization_id, input.organizationId),
+          eq(billingSubscriptionCommands.id, claim.command.id),
+          eq(billingSubscriptionCommands.requested_by_user_id, input.actorId),
+          eq(billingSubscriptionCommands.kind, "resume"),
+          eq(billingSubscriptionCommands.status, "OUTCOME_UNKNOWN"),
+          eq(billingSubscriptionCommands.cancellation_dispatch_state, "ready"),
+          eq(billingSubscriptionCommands.lease_token, claim.command.lease_token!),
+          eq(billingSubscriptionCommands.execution_generation, claim.command.execution_generation),
+          gt(billingSubscriptionCommands.lease_expires_at, sql`clock_timestamp()`),
+        ),
+      )
+      .returning({ id: billingSubscriptionCommands.id });
+    return Boolean(failed);
+  });
 }

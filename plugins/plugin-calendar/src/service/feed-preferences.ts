@@ -7,12 +7,12 @@
  * without remaining authoritative or reintroducing whole-record races.
  */
 
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsCalendarProvider,
   LifeOpsCalendarSourceKey,
   LifeOpsConnectorSide,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   executeRawSqlTx,

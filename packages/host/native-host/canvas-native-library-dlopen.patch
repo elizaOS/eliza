@@ -1,0 +1,13 @@
+--- a/js-binding.js
++++ b/js-binding.js
+@@ -63,7 +63,9 @@
+ function requireNative() {
+   if (process.env.NAPI_RS_NATIVE_LIBRARY_PATH) {
+     try {
+-      return require(process.env.NAPI_RS_NATIVE_LIBRARY_PATH)
++      const nativeModule = { exports: {} }
++      process.dlopen(nativeModule, process.env.NAPI_RS_NATIVE_LIBRARY_PATH)
++      return nativeModule.exports
+     } catch (err) {
+       loadErrors.push(err)
+     }

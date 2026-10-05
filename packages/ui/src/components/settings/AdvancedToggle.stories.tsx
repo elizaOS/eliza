@@ -53,7 +53,7 @@ export const InSettingsRow: Story = {
     <div className="flex max-w-md items-center justify-between rounded-md border border-border/50 bg-bg-elevated px-4 py-3">
       <div>
         <div className="text-sm font-medium text-fg">ASR provider</div>
-        <div className="text-xs-tight text-muted">
+        <div className="text-xs-tight text-muted-strong">
           Reveal power-user knobs like the speech recognition backend.
         </div>
       </div>

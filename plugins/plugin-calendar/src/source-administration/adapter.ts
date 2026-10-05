@@ -8,7 +8,6 @@
  * authoritative empty calendar.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsCalendarSourceAdministrationEntry,
   LifeOpsCalendarSourceAdministrationSnapshot,
@@ -17,10 +16,10 @@ import type {
   LifeOpsCalendarSourceSelectionReceipt,
   LifeOpsCalendarSummary,
   SetLifeOpsCalendarSourceSelectionRequest,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import { CalendarServiceError } from "../internal/errors.js";
 import { CalendarService } from "../service/CalendarService.js";
-import { getCalendarFeedPreference } from "../service/feed-preferences.js";
 
 export const CALENDAR_SOURCE_INTERNAL_URL = new URL("http://127.0.0.1/");
 
@@ -129,22 +128,18 @@ export async function listCalendarSourceAdministration(
     const key = sourceKey(calendar);
     const identity = sourceIdentityKey(key);
     selectableIdentities.add(identity);
-    const preference = await getCalendarFeedPreference(runtime, {
-      provider: key.provider,
-      side: key.side,
-      grantId: key.grantId,
-      connectorAccountId: key.connectorAccountId,
-      calendarId: key.calendarId,
-      initialIncluded: calendar.includeInFeed,
-    });
+    // listCalendars already reads the versioned preference for every exact
+    // source and throws CALENDAR_SOURCE_PREFERENCE_INCOMPLETE (CalendarService)
+    // when either field is missing. Reuse that snapshot: zero additional
+    // preference SQL per source.
     entries.push({
       key,
       accountEmail: calendar.accountEmail,
       summary: calendar.summary,
       primary: calendar.primary,
       accessRole: calendar.accessRole,
-      includeInFeed: preference.included,
-      selectionVersion: preference.version,
+      includeInFeed: calendar.includeInFeed,
+      selectionVersion: calendar.selectionVersion,
       health: healthByIdentity.get(identity) ?? unobservedHealth(calendar),
     });
   }

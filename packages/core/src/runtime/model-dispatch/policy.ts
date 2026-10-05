@@ -1,12 +1,14 @@
 /** Defines model registration, admission, and diagnostic policies shared by runtime model dispatch. */
+
+import { ElizaError } from "../../errors.js";
 import {
-	type JsonValue,
 	type ModelHandler,
 	type ModelRegistrationMetadata,
 	type ResponseSkeleton,
 	TEXT_GENERATION_MODEL_TYPES,
 	type TextStreamResult,
-} from "../../types";
+} from "../../types/model.js";
+import type { JsonValue } from "../../types/primitives.js";
 import { assertModelOutputComplete } from "../../utils/model-errors";
 import { isPlainObject } from "../../utils/type-guards";
 
@@ -24,15 +26,18 @@ export function isUnavailableLocalModel(error: unknown): boolean {
 }
 
 /** Distinguishes absent model configuration from a deliberately disabled capability. */
-export class NoModelProviderConfiguredError extends Error {
+export class NoModelProviderConfiguredError extends ElizaError {
+	override readonly name = "NoModelProviderConfiguredError";
 	readonly reason: "no-provider" | "capability-disabled";
 
 	constructor(
-		message: string = "This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).",
+		message: string = "This agent has no model provider configured. Register a model provider plugin before requesting inference.",
 		reason: "no-provider" | "capability-disabled" = "no-provider",
 	) {
-		super(message);
-		this.name = "NoModelProviderConfiguredError";
+		super(message, {
+			code: "NO_MODEL_PROVIDER_CONFIGURED",
+			context: { reason },
+		});
 		this.reason = reason;
 	}
 }
@@ -79,6 +84,23 @@ export function isTextStreamResult(
 		"usage" in value &&
 		"finishReason" in value
 	);
+}
+
+/** Built-in text slots accept text, a typed text result, or a text stream.
+ * Custom model slots retain their own result contracts. */
+export function assertModelResultPresent(
+	result: unknown,
+	modelType: string,
+): void {
+	if (!TEXT_GENERATION_MODEL_KEYS.includes(modelType)) return;
+	if (typeof result === "string") return;
+	if (typeof result === "object" && result !== null) {
+		if (isTextStreamResult(result)) {
+			if (typeof result.textStream?.[Symbol.asyncIterator] === "function")
+				return;
+		} else if ("text" in result && typeof result.text === "string") return;
+	}
+	throw new TypeError(`Invalid text result for model type ${modelType}`);
 }
 
 export async function assertRuntimeModelOutputComplete(args: {

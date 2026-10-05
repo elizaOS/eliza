@@ -19,7 +19,7 @@ import type {
   ScheduledTask,
   ScheduledTaskInput,
 } from "@elizaos/plugin-scheduling";
-import { resolveDefaultTimeZone } from "../defaults.js";
+import { resolveConfiguredTimeZone } from "../defaults.js";
 import { asCacheRuntime } from "../runtime-cache.js";
 import {
   buildDefaultsPack,
@@ -304,8 +304,8 @@ export class FirstRunService {
   /**
    * Idempotent, boot-safe seeder for the first-run defaults pack.
    *
-   * Runs on EVERY boot (not gated behind first-run completion) so existing
-   * devices that predate the defaults pack still receive it. For each pack
+   * Runs after owner setup is complete. Booting or foregrounding a fresh
+   * profile does not authorize proactive routines. For each pack
    * item: if its idempotency key has NEVER been seeded on this device, the
    * task is created and the key is recorded; if the key was already seeded
    * once, the item is skipped — so a default the user later deleted is not
@@ -320,9 +320,12 @@ export class FirstRunService {
     seeded: ScheduledTask[];
     skipped: string[];
   }> {
+    const record = await this.stateStore.read();
+    if (record.status !== "complete") return { seeded: [], skipped: [] };
     const facts = await this.factStore.read();
     const morningWindow = facts.morningWindow?.value ?? DEFAULT_MORNING_WINDOW;
-    const timezone = facts.timezone?.value ?? resolveDefaultTimeZone();
+    const timezone =
+      facts.timezone?.value ?? resolveConfiguredTimeZone(this.runtime);
     const channel = facts.preferredNotificationChannel?.value ?? "in_app";
 
     const pack = buildDefaultsPack({
@@ -658,7 +661,7 @@ export class FirstRunService {
 
   private resolveTimezone(): string {
     try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      return resolveConfiguredTimeZone(this.runtime);
     } catch {
       return "UTC";
     }
@@ -762,7 +765,8 @@ async function finalizeCustomizeAnswers(
   const preferredName = parsePreferredName(answers.preferredName) ?? "";
   // Timezone is the device zone, threaded in as the inferred `timezone` input;
   // absent it, the host zone is the honest best-effort (never fabricated).
-  const timezone = parseTimezone(answers.timezone) ?? resolveDefaultTimeZone();
+  const timezone =
+    parseTimezone(answers.timezone) ?? resolveConfiguredTimeZone(runtime);
   // Windows are learned, not asked — but an owner who VOLUNTEERS one in
   // speech has answered it, and the seeded pack must anchor to that instead
   // of the 06:00 default (#16941 live: a volunteered 06:30/07:00 wake still

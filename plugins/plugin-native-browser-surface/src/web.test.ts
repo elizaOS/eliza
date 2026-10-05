@@ -28,6 +28,32 @@ describe("BrowserSurfaceWeb", () => {
   });
 
   it("rejects every surface method as unavailable", async () => {
+    await expect(web.getBrowserHelperEntryState()).rejects.toThrow(
+      /native-only/i,
+    );
+    await expect(web.requestBrowserHelperEntryPermission()).rejects.toThrow(
+      /native-only/i,
+    );
+    await expect(
+      web.hideBrowserDockWithEntry({
+        label: "Helper",
+        description: "Return to helper",
+      }),
+    ).rejects.toThrow(/native-only/i);
+    await expect(web.restoreBrowserDockFromEntry()).rejects.toThrow(
+      /native-only/i,
+    );
+    await expect(
+      web.openDockedBrowser({ url: "https://example.test" }),
+    ).rejects.toThrow(/native-only/i);
+    await expect(web.setBrowserDockVisible({ visible: false })).rejects.toThrow(
+      /native-only/i,
+    );
+    await expect(web.getBrowserDockState()).rejects.toThrow(/native-only/i);
+    await expect(web.presentBrowser()).rejects.toThrow(/native-only/i);
+    await expect(
+      web.openBrowser({ url: "https://example.com" }),
+    ).rejects.toThrow(/native-only/i);
     await expect(
       web.setBounds({
         ...identity,
@@ -61,6 +87,12 @@ describe("BrowserSurfaceWeb", () => {
       web.navigate({ ...identity, id: "a", url: "https://example.com" }),
     ).rejects.toThrow(/native-only/i);
     await expect(web.reloadSurface({ ...identity, id: "a" })).rejects.toThrow(
+      /native-only/i,
+    );
+    await expect(web.goBack({ ...identity, id: "a" })).rejects.toThrow(
+      /native-only/i,
+    );
+    await expect(web.readPage({ ...identity, id: "a" })).rejects.toThrow(
       /native-only/i,
     );
     await expect(web.presentSurface({ ...identity, id: "a" })).rejects.toThrow(

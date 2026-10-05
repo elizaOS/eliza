@@ -21,14 +21,10 @@
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
-import type {
-	Character,
-	IAgentRuntime,
-	Setting,
-	SetupConfig,
-	World,
-	WorldSettings,
-} from "./types";
+import type { Character } from "./types/agent.js";
+import type { World } from "./types/environment.js";
+import type { IAgentRuntime } from "./types/runtime.js";
+import type { Setting, SetupConfig, WorldSettings } from "./types/settings.js";
 import { BufferUtils } from "./utils/buffer";
 import * as cryptoUtils from "./utils/crypto-compat";
 import { getEnv, getEnvironment } from "./utils/environment";

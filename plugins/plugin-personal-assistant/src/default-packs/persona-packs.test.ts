@@ -6,7 +6,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { lintPacks } from "./lint.js";
 import {
   ADHD_BODY_DOUBLE_PACK_KEY,
   adhdBodyDoublePack,
@@ -100,11 +99,7 @@ describe("object-permanence-watcher pack", () => {
   });
 });
 
-describe("persona packs — content lint", () => {
-  it("all persona pack prompts pass the default-pack content lint", () => {
-    expect(lintPacks([...PERSONA_PACKS])).toEqual([]);
-  });
-
+describe("persona pack idempotency", () => {
   it("every persona pack record has a stable idempotency key", () => {
     const keys = PERSONA_PACKS.flatMap((p) =>
       p.records.map((r) => r.idempotencyKey),

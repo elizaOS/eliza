@@ -4,7 +4,7 @@
  * Turns a detected GPU (`{ name, totalMemoryMiB }`) into a fully resolved
  * `llama-server` flag set, optionally narrowed for a specific bundle id.
  *
- * The static profile defaults live in `@elizaos/shared`
+ * The static profile defaults live in `@elizaos/plugin-native-inference/model-gpu`
  * (`gpu-profiles.ts`); this module layers the per-GPU JSON configs at
  * `packages/inference/configs/gpu/*.json` on top, and adds bundle-aware
  * overrides + a VRAM-bucket fallback for cards we don't have a tuned
@@ -24,14 +24,12 @@
  * Scope: single-GPU only — never split layers across cards in this
  * tier.
  */
-
 import {
 	GPU_PROFILES,
 	type GpuProfile,
 	type GpuProfileId,
 	matchGpuProfile,
-} from "@elizaos/shared";
-
+} from "@elizaos/plugin-native-inference/model-catalog/gpu-profiles";
 /** Minimum input the helper needs to make a choice. */
 export interface GpuInfo {
 	/** Raw GPU name from `nvidia-smi --query-gpu=name`. */
@@ -39,7 +37,6 @@ export interface GpuInfo {
 	/** Total VRAM in MiB (also from `nvidia-smi --query-gpu=memory.total`). */
 	totalMemoryMiB: number;
 }
-
 /** Resolved llama-server flag set returned by `selectGpuConfig`. */
 export interface LlamaServerFlags {
 	n_gpu_layers: number;
@@ -61,7 +58,6 @@ export interface LlamaServerFlags {
 	draft_min: number;
 	draft_p_min: number;
 }
-
 /** Per-bundle override block read from `bundle_recommendations`. */
 export interface BundleRecommendation {
 	ctx_size?: number;
@@ -72,7 +68,6 @@ export interface BundleRecommendation {
 	cache_type_v?: string;
 	no_kv_offload?: boolean;
 }
-
 /** Per-GPU expected metrics. All values flagged as extrapolated until measured. */
 export interface ExpectedMetrics {
 	ttfa_p50_ms: number;
@@ -81,7 +76,6 @@ export interface ExpectedMetrics {
 	tokens_per_second_decode?: number;
 	_provenance: "measured" | "extrapolated";
 }
-
 /** Full per-GPU JSON config; mirrors `gpu-config.schema.json`. */
 export interface GpuConfig {
 	id: GpuProfileId;
@@ -99,7 +93,6 @@ export interface GpuConfig {
 	expected_metrics: ExpectedMetrics;
 	known_limits: string[];
 }
-
 /** Fallback bucket — used when `matchGpuProfile` returns null. */
 export interface FallbackBucket {
 	max_vram_gb: number;
@@ -107,7 +100,6 @@ export interface FallbackBucket {
 	label: string;
 	parallel_scale?: number;
 }
-
 /**
  * Result of `selectGpuConfig`. `source` records why we chose this
  * config so the runtime can log it (especially when a fallback bucket
@@ -123,7 +115,6 @@ export interface SelectedGpuConfig {
 	/** Bucket label when `source === "bucket"`; undefined otherwise. */
 	bucketLabel?: string;
 }
-
 // ---------------------------------------------------------------------------
 // Static config table (mirrors packages/inference/configs/gpu/*.json).
 //
@@ -132,7 +123,6 @@ export interface SelectedGpuConfig {
 // regenerate this constant — `gpu-autotune.test.ts` enforces the table
 // matches the files on disk by spot-checking key fields.
 // ---------------------------------------------------------------------------
-
 export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
 	"rtx-3090": {
 		id: "rtx-3090",
@@ -364,7 +354,6 @@ export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
 		],
 	},
 };
-
 /**
  * VRAM-bucket fallback table. Ordered ascending by `max_vram_gb`; the
  * first row whose threshold the GPU does NOT exceed wins. `config_id`
@@ -389,18 +378,20 @@ export const FALLBACK_BUCKETS: ReadonlyArray<FallbackBucket> = [
 	{ max_vram_gb: 80, config_id: "rtx-5090", label: "large" },
 	{ max_vram_gb: 9999, config_id: "h200", label: "huge" },
 ];
-
 /**
  * Pick a `GpuConfig` for a detected GPU.
  *
- * 1. Try the exact-name matcher in `@elizaos/shared`.
+ * 1. Try the exact-name matcher in `@elizaos/plugin-native-inference/model-gpu`.
  * 2. If that fails, fall through to the first VRAM bucket whose
  *    threshold the GPU does NOT exceed.
  * 3. Return `null` only when no bucket applies.
  */
 export function selectGpuConfig(
 	gpu: GpuInfo,
-	opts: { bundleId?: string; overrides?: Partial<LlamaServerFlags> } = {},
+	opts: {
+		bundleId?: string;
+		overrides?: Partial<LlamaServerFlags>;
+	} = {},
 ): SelectedGpuConfig | null {
 	const matchedId = matchGpuProfile(gpu.name);
 	if (matchedId) {
@@ -411,11 +402,9 @@ export function selectGpuConfig(
 			source: "match",
 		});
 	}
-
 	const vramGb = gpu.totalMemoryMiB / 1024;
 	const bucket = pickFallbackBucket(vramGb);
 	if (!bucket?.config_id) return null;
-
 	return finalize({
 		config: GPU_CONFIGS[bucket.config_id],
 		bundleId: opts.bundleId ?? null,
@@ -425,7 +414,6 @@ export function selectGpuConfig(
 		parallelScale: bucket.parallel_scale,
 	});
 }
-
 /** Pick the first bucket whose `max_vram_gb` the GPU does NOT exceed. */
 export function pickFallbackBucket(vramGb: number): FallbackBucket | null {
 	for (const b of FALLBACK_BUCKETS) {
@@ -433,7 +421,6 @@ export function pickFallbackBucket(vramGb: number): FallbackBucket | null {
 	}
 	return null;
 }
-
 function finalize(args: {
 	config: GpuConfig;
 	bundleId: string | null;
@@ -443,7 +430,6 @@ function finalize(args: {
 	parallelScale?: number;
 }): SelectedGpuConfig {
 	const baseFlags: LlamaServerFlags = { ...args.config.llama_server_flags };
-
 	// Apply bundle recommendation if present.
 	if (args.bundleId) {
 		const rec = args.config.bundle_recommendations[args.bundleId];
@@ -469,7 +455,6 @@ function finalize(args: {
 			}
 		}
 	}
-
 	// Scale parallel down for under-spec bucket fallbacks.
 	if (args.source === "bucket" && args.parallelScale !== undefined) {
 		baseFlags.n_parallel = Math.max(
@@ -477,12 +462,10 @@ function finalize(args: {
 			Math.floor(baseFlags.n_parallel * args.parallelScale),
 		);
 	}
-
 	// Per-call overrides — final word.
 	if (args.overrides) {
 		Object.assign(baseFlags, args.overrides);
 	}
-
 	return {
 		config: args.config,
 		flags: baseFlags,
@@ -491,7 +474,6 @@ function finalize(args: {
 		...(args.bucketLabel ? { bucketLabel: args.bucketLabel } : {}),
 	};
 }
-
 /**
  * Convert resolved `LlamaServerFlags` to the canonical `llama-server`
  * argv list. Mirrors the flag names llama.cpp actually accepts —
@@ -522,7 +504,6 @@ export function flagsToLlamaServerArgv(flags: LlamaServerFlags): string[] {
 	argv.push("--ctx-checkpoint-interval", String(flags.ctx_checkpoint_interval));
 	return argv;
 }
-
 /**
  * Cross-check: return the static `GpuProfile` for a `GpuConfig`. Used
  * by the FFI runtime spawn site to feed `applyGpuProfile()` with the

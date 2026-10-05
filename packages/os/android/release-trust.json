@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "keys": [],
+  "revokedReleaseDigests": [],
+  "revokedKeyIds": [],
+  "note": "Deliberately unenrolled. Add independently verified Ed25519 public keys and role/channel scope through reviewed changes after qualification. Never add private keys here.",
+  "minimumRevocationSequence": 1,
+  "revocationBulletin": null
+}

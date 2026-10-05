@@ -1,47 +1,8 @@
 /**
- * Browser bridge token, expiry, focus-window, and domain policy helpers.
+ * Legacy browser history expiry, focus-window, and domain policy helpers.
  */
 
 export const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
-export const DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS =
-  30 * 24 * 60 * 60 * 1000;
-export const MAX_NATIVE_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS = 5 * 60 * 1000;
-
-type BrowserBridgeCompanionPairingTokenEnv = {
-  readonly [key: string]: string | undefined;
-};
-
-export function resolveBrowserBridgeCompanionPairingTokenTtlMs(
-  env: BrowserBridgeCompanionPairingTokenEnv = process.env,
-): number {
-  const raw =
-    env.BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS ??
-    env.ELIZA_BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS;
-  if (typeof raw === "string" && raw.trim().length > 0) {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.trunc(parsed);
-    }
-  }
-  return DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS;
-}
-
-export function resolveBrowserBridgeCompanionPairingTokenExpiresAt(
-  nowMs = Date.now(),
-  env?: Parameters<typeof resolveBrowserBridgeCompanionPairingTokenTtlMs>[0],
-  pairingKind: "manual" | "native_enrollment" = "manual",
-): string {
-  const configuredTtlMs = resolveBrowserBridgeCompanionPairingTokenTtlMs(env);
-  const ttlMs =
-    pairingKind === "native_enrollment"
-      ? Math.min(
-          configuredTtlMs,
-          MAX_NATIVE_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS,
-        )
-      : configuredTtlMs;
-  return new Date(nowMs + ttlMs).toISOString();
-}
-
 export function browserBridgeDomainFromUrl(url: string): string | null {
   try {
     const parsed = new URL(url);

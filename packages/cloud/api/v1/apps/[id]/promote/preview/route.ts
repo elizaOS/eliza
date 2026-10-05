@@ -1,5 +1,10 @@
 /** Generates authenticated promotion previews for cloud applications. */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   asGenerativeCacheApiError,
@@ -7,12 +12,6 @@ import {
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * Promotion Preview API
@@ -21,21 +20,21 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Returns AI-generated sample posts for Discord, Telegram, and Twitter.
  */
 
-import { z } from "zod";
-import { appsService } from "@/lib/services/apps";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import {
   getDiscordConfigWithDefaults,
   getTelegramConfigWithDefaults,
   getTwitterConfigWithDefaults,
-} from "@/lib/services/automation-constants";
-import { discordAppAutomationService } from "@/lib/services/discord-automation/app-automation";
+} from "@elizaos/cloud-shared/lib/services/automation-constants";
+import { discordAppAutomationService } from "@elizaos/cloud-shared/lib/services/discord-automation/app-automation";
 import {
   type GenerativeOperationContext,
   isGenerativeOperationAdmissionError,
-} from "@/lib/services/generative-operation";
-import { telegramAppAutomationService } from "@/lib/services/telegram-automation/app-automation";
-import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/generative-operation";
+import { telegramAppAutomationService } from "@elizaos/cloud-shared/lib/services/telegram-automation/app-automation";
+import { twitterAppAutomationService } from "@elizaos/cloud-shared/lib/services/twitter-automation/app-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { z } from "zod";
 
 const PreviewRequestSchema = z.object({
   platforms: z.array(z.enum(["discord", "telegram", "twitter"])).min(1),

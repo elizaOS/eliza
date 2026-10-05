@@ -2,7 +2,7 @@
  * Live-model scenario: a sleep recap summarizes regularity without inventing
  * metrics it does not have.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -12,7 +12,7 @@ export default scenario({
   tags: ["health", "sleep", "lifeops", "health_checkin"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-health", "@elizaos/plugin-agent-skills"],
+    plugins: ["@elizaos/plugin-health"],
   },
   turns: [
     {

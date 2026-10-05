@@ -20,12 +20,12 @@
  * driving fresh inspection themselves.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsCircadianState,
   LifeOpsScheduleInsight,
   LifeOpsScheduleMealLabel,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 
 /**
  * The contract's view of "the current sleep window". `state` is null when

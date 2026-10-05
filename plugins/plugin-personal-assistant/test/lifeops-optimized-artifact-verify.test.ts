@@ -24,12 +24,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { OPTIMIZED_PROMPT_SERVICE } from "@elizaos/core";
 import {
-  OPTIMIZED_PROMPT_SERVICE,
   type OptimizedPromptArtifact,
   OptimizedPromptService,
   type OptimizedPromptTask,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import {
   buildScreenTimeRecapRules,
   SCREENTIME_RECAP_INSTRUCTIONS,

@@ -63,10 +63,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
       TEXT_SMALL: "TEXT_SMALL",
     },
     Service,
-    composePromptFromState: vi.fn(() => ""),
     createUniqueUuid: (_runtime: { agentId?: string }, value: string) => stringToUuid(value),
     logger,
-    parseJSONObjectFromText: (text: string) => JSON.parse(text),
     stringToUuid,
   };
 });

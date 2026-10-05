@@ -3,7 +3,7 @@
 // runtime (no mocks, no component fixture).
 //
 // Enable with ELIZA_UI_SMOKE_LIVE_STACK=1 (the harness boots the real
-// app-core runtime). The spec also needs @elizaos/plugin-personal-assistant
+// app runtime). The spec also needs @elizaos/plugin-personal-assistant
 // enabled so its LIFEOPS_SCHEDULER task worker drives the ScheduledTask runner
 // and its in_app notification dispatch — set
 // ELIZA_UI_SMOKE_PLUGIN_ENTRIES=personal-assistant.

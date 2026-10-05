@@ -3,7 +3,8 @@
  *
  * This composition stops after a digest-pinned Docker container is created in
  * the stopped, networkless quarantine. It deliberately has no start,
- * readiness, billing, registry-publication, or routing dependency.
+ * readiness, billing, registry-publication, or routing dependency; the restore
+ * coordinator (agent-backup-restore-coordinator.ts) owns every later phase.
  */
 
 import { Buffer } from "node:buffer";
@@ -627,10 +628,23 @@ function exactLocatorFromHandle(params: {
     ["replacementSecretCleanupVersion", 1],
     ["quarantine", true],
     ["allocationCounted", true],
-    ["bridgePort", 0],
-    ["webUiPort", 0],
   ] as const) {
     assertMetadataValue(metadata, key, expected);
+  }
+  // Host ports are reserved at create and stay inert until the coordinator's
+  // serving transition attaches a network; they are never a route by themselves.
+  const reservedPorts = [metadata.bridgePort, metadata.webUiPort];
+  if (
+    !reservedPorts.every(
+      (port) =>
+        typeof port === "number" && Number.isSafeInteger(port) && port > 0 && port <= 65_535,
+    ) ||
+    reservedPorts[0] === reservedPorts[1]
+  ) {
+    throw runtimeError(
+      "AGENT_BACKUP_RESTORE_PROVIDER_HANDLE_MISMATCH",
+      "Restore provider handle lacks its reserved inert host ports",
+    );
   }
   for (const key of [
     "headscaleIp",

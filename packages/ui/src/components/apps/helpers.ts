@@ -6,22 +6,20 @@
  * order and internal-tool ordering — never by ad-hoc package-name sets here.
  */
 
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
+import type { EnabledViewKinds } from "@elizaos/core";
 import {
   getElizaCuratedAppCatalogOrder,
   isElizaCuratedAppName,
+  isViewVisible,
   normalizeElizaCuratedAppName,
   packageNameToAppRouteSlug,
-} from "@elizaos/shared";
-import type { RegistryAppInfo } from "../../api";
+  type RegistryAppInfo,
+} from "@elizaos/core/protocol";
 import { getBootConfig } from "../../config/boot-config-store";
 import {
   getInternalToolAppCatalogOrder,
   isInternalToolApp,
 } from "./internal-tool-apps";
-
-export const DEFAULT_VIEWER_SANDBOX =
-  "allow-scripts allow-same-origin allow-popups";
 
 export const CATEGORY_LABELS: Record<string, string> = {
   game: "Game",
@@ -30,7 +28,6 @@ export const CATEGORY_LABELS: Record<string, string> = {
   world: "World",
   utility: "Utility",
 };
-
 export type AppCatalogSectionKey =
   | "featured"
   | "favorites"
@@ -38,7 +35,6 @@ export type AppCatalogSectionKey =
   | "developerUtilities"
   | "finance"
   | "other";
-
 export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
   {
     featured: "Featured",
@@ -48,24 +44,20 @@ export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
     finance: "Finance",
     other: "Other",
   };
-
 export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/app",
-  "@elizaos/browser-bridge-extension",
   "app-counter",
   "@elizaos/plugin-form",
-  "@elizaos/plugin-documents",
+  "@elizaos/plugin-knowledge",
   "@elizaos/plugin-screenshare",
-  "@elizaos/plugin-task-coordinator",
+  "@elizaos/plugin-agent-orchestrator",
   // Shared wallet/inventory system package — provides components used by the
   // app shell, not a standalone installable app.
   "@elizaos/plugin-wallet",
 ] as const;
-
 const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
   APPS_VIEW_HIDDEN_APP_NAMES,
 );
-
 /**
  * Catalog sections an app may declare in `package.json` →
  * `elizaos.app.catalogSection`. The dynamic `featured` / `favorites` sections
@@ -78,7 +70,6 @@ const DECLARABLE_APP_CATALOG_SECTIONS = new Set<AppCatalogSectionKey>([
   "finance",
   "other",
 ]);
-
 function isDeclarableCatalogSection(
   value: string | undefined,
 ): value is AppCatalogSectionKey {
@@ -87,7 +78,6 @@ function isDeclarableCatalogSection(
     (DECLARABLE_APP_CATALOG_SECTIONS as ReadonlySet<string>).has(value)
   );
 }
-
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
   "featured",
   "favorites",
@@ -96,7 +86,6 @@ const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
   "developerUtilities",
   "other",
 ];
-
 function getConfiguredDefaultAppNames(): ReadonlySet<string> {
   return new Set(
     (getBootConfig().defaultApps ?? []).filter(
@@ -104,30 +93,16 @@ function getConfiguredDefaultAppNames(): ReadonlySet<string> {
     ),
   );
 }
-
 function isFeaturedApp(
   app: Pick<RegistryAppInfo, "name" | "featured">,
 ): boolean {
   return app.featured === true || getConfiguredDefaultAppNames().has(app.name);
 }
-
 export interface AppCatalogSection {
   key: AppCatalogSectionKey;
   label: string;
   apps: RegistryAppInfo[];
 }
-
-const SESSION_MODE_LABELS: Record<string, string> = {
-  "spectate-and-steer": "Spectate + steer",
-};
-
-const SESSION_FEATURE_LABELS: Record<string, string> = {
-  commands: "Commands",
-  telemetry: "Telemetry",
-  pause: "Pause",
-  resume: "Resume",
-  suggestions: "Suggestions",
-};
 
 interface AppsCatalogFilterOptions {
   activeAppNames?: ReadonlySet<string>;
@@ -144,7 +119,6 @@ interface AppsCatalogFilterOptions {
    */
   enabledKinds?: EnabledViewKinds;
 }
-
 function parseBooleanEnvValue(value: unknown): boolean {
   const normalized = String(value ?? "")
     .trim()
@@ -156,25 +130,21 @@ function parseBooleanEnvValue(value: unknown): boolean {
     normalized === "on"
   );
 }
-
 function shouldShowAllApps(showAllApps?: boolean): boolean {
   if (typeof showAllApps === "boolean") {
     return showAllApps;
   }
   return parseBooleanEnvValue(import.meta.env.VITE_PUBLIC_SHOW_ALL_APPS);
 }
-
 export function isHiddenFromAppsView(appName: string): boolean {
   return APPS_VIEW_HIDDEN_APP_NAME_SET.has(appName);
 }
-
 export function isCuratedGameApp(
   app: Pick<RegistryAppInfo, "category" | "name">,
 ): boolean {
   void app.category;
   return isElizaCuratedAppName(app.name);
 }
-
 export function shouldShowAppInAppsView(
   app: Pick<
     RegistryAppInfo,
@@ -210,11 +180,9 @@ export function shouldShowAppInAppsView(
   ) {
     return false;
   }
-
   if (shouldShowAllApps(showAllApps)) {
     return true;
   }
-
   const canonicalName = isInternalToolApp(app.name)
     ? app.name
     : (normalizeElizaCuratedAppName(app.name) ?? app.name);
@@ -226,7 +194,6 @@ export function shouldShowAppInAppsView(
     catalogSection: app.catalogSection,
     featured: app.featured,
   });
-
   if (
     app.defaultHidden === true &&
     !(walletEnabled && app.scope === "wallet") &&
@@ -235,7 +202,6 @@ export function shouldShowAppInAppsView(
   ) {
     return false;
   }
-
   if (sectionKey === "games") {
     return (
       app.defaultHidden === false ||
@@ -243,10 +209,8 @@ export function shouldShowAppInAppsView(
       configuredDefaultAppNames.has(canonicalName)
     );
   }
-
   return true;
 }
-
 export function filterAppsForCatalog(
   apps: RegistryAppInfo[],
   {
@@ -268,14 +232,12 @@ export function filterAppsForCatalog(
     if (toolOrderDiff !== 0) {
       return toolOrderDiff;
     }
-
     const orderDiff =
       getElizaCuratedAppCatalogOrder(left.name) -
       getElizaCuratedAppCatalogOrder(right.name);
     if (orderDiff !== 0) {
       return orderDiff;
     }
-
     const leftCanonicalName = normalizeElizaCuratedAppName(left.name);
     const rightCanonicalName = normalizeElizaCuratedAppName(right.name);
     const leftCanonicalPenalty = left.name === leftCanonicalName ? 0 : 1;
@@ -283,10 +245,8 @@ export function filterAppsForCatalog(
     if (leftCanonicalPenalty !== rightCanonicalPenalty) {
       return leftCanonicalPenalty - rightCanonicalPenalty;
     }
-
     return (right.stars ?? 0) - (left.stars ?? 0);
   });
-
   return sortedApps.filter((app) => {
     if (!shouldShowAppInAppsView(app, { isProd, showAllApps, walletEnabled })) {
       return false;
@@ -325,21 +285,6 @@ export function filterAppsForCatalog(
   });
 }
 
-export function getDefaultAppsCatalogSelection(
-  apps: RegistryAppInfo[],
-  options: {
-    isProd?: boolean;
-    showAllApps?: boolean;
-    walletEnabled?: boolean;
-  } = {},
-): string | null {
-  return (
-    filterAppsForCatalog(apps, {
-      ...options,
-    })[0]?.name ?? null
-  );
-}
-
 export function getAppCatalogSectionKey(
   app: Pick<
     RegistryAppInfo,
@@ -354,15 +299,12 @@ export function getAppCatalogSectionKey(
   if (isFeaturedApp(app)) {
     return "featured";
   }
-
   if (isInternalToolApp(app.name)) {
     return "developerUtilities";
   }
-
   if (isDeclarableCatalogSection(app.catalogSection)) {
     return app.catalogSection;
   }
-
   const normalizedCategory = app.category.trim().toLowerCase();
   if (normalizedCategory === "game") {
     return "games";
@@ -376,7 +318,6 @@ export function getAppCatalogSectionKey(
   if (normalizedCategory === "platform") {
     return "finance";
   }
-
   const searchBlob = [
     app.name,
     app.displayName ?? "",
@@ -385,7 +326,6 @@ export function getAppCatalogSectionKey(
   ]
     .join(" ")
     .toLowerCase();
-
   if (/companion|avatar|assistant|friend|chat|social/.test(searchBlob)) {
     return "games";
   }
@@ -403,10 +343,8 @@ export function getAppCatalogSectionKey(
   ) {
     return "developerUtilities";
   }
-
   return "other";
 }
-
 export function getAppCatalogSectionLabel(
   app: Pick<
     RegistryAppInfo,
@@ -420,7 +358,6 @@ export function getAppCatalogSectionLabel(
 ): string {
   return APP_CATALOG_SECTION_LABELS[getAppCatalogSectionKey(app)];
 }
-
 export function groupAppsForCatalog(
   apps: RegistryAppInfo[],
   {
@@ -432,7 +369,6 @@ export function groupAppsForCatalog(
   const sections: AppCatalogSection[] = [];
   const groupedApps = new Map<AppCatalogSectionKey, RegistryAppInfo[]>();
   const surfacedAppNames = new Set<string>();
-
   const favoriteApps = apps.filter((app) => favoriteAppNames.has(app.name));
   if (favoriteApps.length > 0) {
     sections.push({
@@ -444,7 +380,6 @@ export function groupAppsForCatalog(
       surfacedAppNames.add(app.name);
     }
   }
-
   const featuredApps = apps.filter(
     (app) => isFeaturedApp(app) && !favoriteAppNames.has(app.name),
   );
@@ -458,7 +393,6 @@ export function groupAppsForCatalog(
       surfacedAppNames.add(app.name);
     }
   }
-
   for (const app of apps) {
     if (surfacedAppNames.has(app.name)) {
       continue;
@@ -468,7 +402,6 @@ export function groupAppsForCatalog(
     sectionApps.push(app);
     groupedApps.set(sectionKey, sectionApps);
   }
-
   return [
     ...sections,
     ...APP_CATALOG_SECTION_ORDER.flatMap((key) => {
@@ -479,7 +412,6 @@ export function groupAppsForCatalog(
       if (sectionApps.length === 0) {
         return [];
       }
-
       return [
         {
           key,
@@ -490,15 +422,10 @@ export function groupAppsForCatalog(
     }),
   ];
 }
-
 export function getAppShortName(app: RegistryAppInfo): string {
   const display = app.displayName ?? app.name;
   const clean = display.replace(/^@[^/]+\/app-/, "");
   return clean.charAt(0).toUpperCase() + clean.slice(1);
-}
-
-export function getAppEmoji(app: RegistryAppInfo): string {
-  return getAppIconName(app);
 }
 
 export function getAppIconName(app: RegistryAppInfo): string {
@@ -510,24 +437,7 @@ export function getAppIconName(app: RegistryAppInfo): string {
   return "Package";
 }
 
-export function getAppSessionModeLabel(
-  app: Pick<RegistryAppInfo, "session">,
-): string | null {
-  const mode = app.session?.mode;
-  if (!mode) return null;
-  return SESSION_MODE_LABELS[mode] ?? mode;
-}
-
-export function getAppSessionFeatureLabels(
-  app: Pick<RegistryAppInfo, "session">,
-): string[] {
-  return (app.session?.features ?? []).map(
-    (feature) => SESSION_FEATURE_LABELS[feature] ?? feature,
-  );
-}
-
 /* ── App URL slugs ──────────────────────────────────────────────────── */
-
 /**
  * Derive a URL slug from an app's package name.
  *
@@ -549,7 +459,6 @@ export function getAppSlug(appName: string): string {
       .toLowerCase() || appName
   );
 }
-
 /** Find an app by its URL slug. */
 export function findAppBySlug(
   apps: readonly RegistryAppInfo[],

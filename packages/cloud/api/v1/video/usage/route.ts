@@ -3,16 +3,16 @@
  * Aggregate usage summary for the caller's video generations.
  */
 
-import { Hono } from "hono";
-import { generationsRepository } from "@/db/repositories";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { generationsRepository } from "@elizaos/cloud-shared/db/repositories";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { generationsService } from "@/lib/services/generations";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 interface VideoUsageResponse {
   totalRenders: number;

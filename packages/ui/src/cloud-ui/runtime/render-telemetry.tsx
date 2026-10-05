@@ -23,7 +23,7 @@ import {
   INFO_THRESHOLD,
   isRenderTelemetryEnabled,
   nextRenderTelemetrySequence,
-  type RenderTelemetrySeverity,
+  RenderTelemetryWindow,
   WINDOW_MS,
 } from "../../hooks/useRenderGuard";
 
@@ -34,8 +34,7 @@ export function RenderTelemetryProfiler({
   children: ReactNode;
   id?: string;
 }) {
-  const commits = useRef<number[]>([]);
-  const lastSeverity = useRef<RenderTelemetrySeverity | null>(null);
+  const window = useRef(new RenderTelemetryWindow());
 
   const onRender = useMemo<ProfilerOnRenderCallback>(
     () =>
@@ -50,22 +49,9 @@ export function RenderTelemetryProfiler({
         if (!isRenderTelemetryEnabled()) return;
 
         const now = Date.now();
-        const ts = commits.current;
-        ts.push(now);
-        while (ts.length > 0 && ts[0] < now - WINDOW_MS) {
-          ts.shift();
-        }
-
-        if (ts.length < INFO_THRESHOLD) {
-          lastSeverity.current = null;
-          return;
-        }
-
-        const severity: RenderTelemetrySeverity =
-          ts.length >= ERROR_THRESHOLD ? "error" : "info";
-        if (lastSeverity.current === severity) return;
-        if (lastSeverity.current === "error") return;
-        lastSeverity.current = severity;
+        const severity = window.current.record(now);
+        if (!severity) return;
+        const ts = window.current.timestamps;
 
         emitRenderTelemetry({
           source: "ReactProfiler",

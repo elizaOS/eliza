@@ -1,5 +1,5 @@
 /** Presents configured login methods and routes their challenges through the shared authentication context. */
-import type { LoginAuthResult, LoginMfaRequiredResult } from "@elizaos/login";
+import type { LoginAuthResult, LoginMfaRequiredResult } from "@elizaos/auth";
 import type React from "react";
 import {
   useCallback,
@@ -191,7 +191,6 @@ export function LoginForm({
   guestEmailPlaceholder = "you@example.com",
   guestTokenPlaceholder = "email verification token",
   onGuestDeleted,
-  showSIWE = false,
   showWallets = false,
   showGoogle = true,
   showDiscord = true,
@@ -582,7 +581,7 @@ export function LoginForm({
     setErrorMsg(null);
     try {
       if (typeof ctx.signInWithOAuth !== "function") {
-        throw new Error("OAuth unavailable. update @elizaos/login");
+        throw new Error("OAuth unavailable. update @elizaos/auth");
       }
       const result = await ctx.signInWithOAuth(
         provider,
@@ -1113,23 +1112,6 @@ export function LoginForm({
               <span>Farcaster</span>
             </Button>
           )}
-        </div>
-      )}
-
-      {/* Legacy SIWE placeholder. Prefer `showWallets` instead. Kept for
-          backward compatibility with any consumer that was relying on the
-          (disabled) placeholder button. */}
-      {showSIWE && !hasWallet && (
-        <div className="stwd-login__oauth">
-          <Button
-            className="stwd-login__btn stwd-login__btn--siwe"
-            disabled={true}
-            type="button"
-            title="connect a wallet to sign in"
-          >
-            <EthereumIcon size={18} />
-            <span>sign in with ethereum</span>
-          </Button>
         </div>
       )}
 

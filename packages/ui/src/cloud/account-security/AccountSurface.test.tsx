@@ -9,7 +9,8 @@ import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentSurfaceProvider } from "../../agent-surface/AgentSurfaceContext";
 import { getOrCreateViewRegistry } from "../../agent-surface/registry";
-import { PageHeaderProvider, usePageHeader } from "../../cloud-ui";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
+import { usePageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 
 const accountState = vi.hoisted(() => ({
   value: {

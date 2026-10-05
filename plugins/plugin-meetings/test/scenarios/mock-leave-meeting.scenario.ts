@@ -5,10 +5,7 @@
  */
 
 import type { UUID } from "@elizaos/core";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/scenario-runner/schema";
+import { type ScenarioContext, scenario } from "@elizaos/testing";
 import {
   assertMeetingMockLedger,
   finalizeMeetingMockLedger,

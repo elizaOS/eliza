@@ -11,7 +11,7 @@ import type {
   LifeOpsXConnectorStatus,
   LifeOpsXDm,
   LifeOpsXPostResponse,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 
 export interface LifeOpsXService {
   resolveXGrant(

@@ -35,13 +35,13 @@ import type {
 } from "@elizaos/core";
 import { cloneConnectorJsonObject, redactConnectorJsonAudit } from "@elizaos/core";
 import { and, desc, eq, gt, isNull, type SQL, sql } from "drizzle-orm";
+import { authOwnerBindingTable } from "../schema/authOwnerBinding";
 import {
-  authOwnerBindingTable,
   connectorAccountAuditEventsTable,
   connectorAccountCredentialsTable,
   connectorAccountsTable,
   oauthFlowsTable,
-} from "../schema/index";
+} from "../schema/connectorAccounts";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 

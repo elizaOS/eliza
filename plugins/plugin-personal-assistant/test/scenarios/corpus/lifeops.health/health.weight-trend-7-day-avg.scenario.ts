@@ -4,10 +4,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/scenario-runner/schema";
+import { type ScenarioContext, scenario } from "@elizaos/testing";
 import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
 
 export default scenario({
@@ -18,7 +15,7 @@ export default scenario({
   tags: ["lifeops", "health", "weight", "trend"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

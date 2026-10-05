@@ -5,8 +5,9 @@
 import { X } from "lucide-react";
 import * as React from "react";
 
-import { useBranding } from "../../config/branding";
-import { useNativeGlassAnchor } from "../../glass";
+import { useBranding } from "../../config/branding-react.hooks";
+import { useNativeGlassAnchor } from "../../glass/GlassSurface";
+import { useDialogFocus } from "../../hooks/useDialogFocus";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
 import { Button } from "../ui/button";
@@ -23,9 +24,6 @@ export interface AssistantOverlayProps {
    *  the overlay stays closed (pill-only capture). */
   open?: boolean;
 }
-
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * Bottom-sheet / centered-drawer container for the assistant chat.
@@ -58,72 +56,7 @@ export function AssistantOverlay({
     colorScheme: "dark",
     tintColor: NATIVE_GLASS_DARK_TINT,
   });
-  const previousFocusRef = React.useRef<HTMLElement | null>(null);
-
-  // Manage Escape, focus trap, initial focus, and focus return as a single
-  // effect bound to isOpen so cleanup/setup pair correctly across opens.
-  React.useEffect(() => {
-    if (!isOpen) return undefined;
-    if (typeof document === "undefined") return undefined;
-
-    // Remember where focus was before we steal it.
-    previousFocusRef.current =
-      (document.activeElement as HTMLElement | null) ?? null;
-
-    // Move initial focus into the dialog after mount. The dialog itself has
-    // tabIndex={-1} so it can receive programmatic focus if no descendant is
-    // focusable yet (e.g., empty ChatSurface with disabled send).
-    const dialog = dialogRef.current;
-    if (dialog) {
-      const firstFocusable =
-        dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-      (firstFocusable ?? dialog).focus();
-    }
-
-    function getFocusable(): HTMLElement[] {
-      if (!dialog) return [];
-      return Array.from(
-        dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-      );
-    }
-
-    function onKey(event: KeyboardEvent): void {
-      if (event.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = getFocusable();
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialog?.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      if (event.shiftKey) {
-        if (active === first || active === dialog) {
-          event.preventDefault();
-          last.focus();
-        }
-      } else if (active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      // Restore focus to the trigger (e.g. the HomePill).
-      const previous = previousFocusRef.current;
-      if (previous && typeof previous.focus === "function") {
-        previous.focus();
-      }
-      previousFocusRef.current = null;
-    };
-  }, [isOpen, onClose]);
+  useDialogFocus(dialogRef, isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -168,6 +101,7 @@ export function AssistantOverlay({
         }}
         visualStyle={{
           borderColor: "var(--assistant-overlay-border)",
+          backgroundColor: "var(--assistant-overlay-card)",
         }}
         className="h-full w-full overflow-hidden motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
       >

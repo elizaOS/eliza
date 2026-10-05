@@ -23,6 +23,8 @@ import type { State } from "../types/state";
 export interface ResponseHandlerPatch {
 	processMessage?: MessageHandlerAction;
 	requiresTool?: boolean;
+	/** Mark a terminal refusal without granting a completed-effect claim. */
+	replyEffectStatus?: "non_applied";
 	setContexts?: readonly AgentContext[];
 	addContexts?: readonly AgentContext[];
 	addCandidateActions?: readonly string[];
@@ -190,6 +192,10 @@ function applyResponseHandlerPatch(
 	if (typeof patch.requiresTool === "boolean") {
 		messageHandler.plan.requiresTool = patch.requiresTool;
 		changed.push("requiresTool");
+	}
+	if (patch.replyEffectStatus === "non_applied") {
+		messageHandler.plan.replyEffectStatus = "non_applied";
+		changed.push("replyEffectStatus:non_applied");
 	}
 	if (patch.setContexts) {
 		messageHandler.plan.contexts = filterAvailableContexts(

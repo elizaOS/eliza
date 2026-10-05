@@ -1,8 +1,10 @@
 /** Resolves and fetches authenticated sandbox API and web targets across Docker, legacy bridges, and Worker routing. Untrusted URLs retain SSRF validation; trusted routing derives from canonical sandbox and node records. */
 
 import { isIP } from "node:net";
+import { ElizaError } from "@elizaos/core";
 import { type AgentSandbox } from "../../../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../../../db/repositories/docker-nodes";
+import { isAgentBridgePath } from "../../../agent-api-routing";
 import { getElizaAgentPublicWebUiUrl } from "../../../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../../../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../../../security/outbound-url";
@@ -185,11 +187,22 @@ export class SandboxTransport {
     const workerTarget = this.getWorkerAgentRouterFetchTarget(rec, path);
     if (workerTarget) return workerTarget;
 
+    const route = new URL(path, "https://agent-route.invalid/");
+    if (route.origin !== "https://agent-route.invalid" || route.pathname.startsWith("//")) {
+      throw new ElizaError("Agent API path must be relative to the agent origin", {
+        code: "AGENT_API_PATH_ORIGIN_MISMATCH",
+        context: { boundary: "sandbox-agent-api" },
+      });
+    }
     const baseDomain = this.getConfiguredAgentBaseDomain();
 
-    const trustedWebBaseUrl = await this.getTrustedDockerWebBaseUrl(rec);
-    if (trustedWebBaseUrl) {
-      return { url: new URL(path, trustedWebBaseUrl).toString() };
+    path = `${route.pathname}${route.search}${route.hash}`;
+    const bridgePath = isAgentBridgePath(route.pathname);
+    const trustedBaseUrl = bridgePath
+      ? await this.getTrustedDockerBridgeBaseUrl(rec)
+      : await this.getTrustedDockerWebBaseUrl(rec);
+    if (trustedBaseUrl) {
+      return { url: new URL(path, trustedBaseUrl).toString() };
     }
 
     if (baseDomain) {

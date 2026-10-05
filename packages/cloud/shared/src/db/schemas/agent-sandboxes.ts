@@ -170,6 +170,14 @@ export interface AgentActivationReceipt {
   requiresRestart: boolean;
 }
 
+/** Exact runtime and private ingress retained by an unpaid stop in place (#30746). */
+export interface AgentRetainedRuntime {
+  runtime: import("../../lib/services/sandbox-runtime-observation").SandboxRuntimeIdentity;
+  bridgeUrl: string;
+  healthUrl: string;
+  retainedAt: string;
+}
+
 export const agentSandboxes = pgTable(
   "agent_sandboxes",
   {
@@ -442,6 +450,14 @@ export const agentSandboxes = pgTable(
     replacement_cleanup_created_at: timestamp("replacement_cleanup_created_at", {
       withTimezone: true,
     }),
+    /**
+     * Exact immutable runtime an unpaid stop retained in place because a
+     * current backup could not be captured (#30746). While set, the stopped
+     * container, its mounts and its node are protected from orphan reaping and
+     * node retirement, and only an exact in-place resume or an authorized
+     * deletion may retire it.
+     */
+    retained_runtime: jsonb("retained_runtime").$type<AgentRetainedRuntime>(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
@@ -689,6 +705,10 @@ export const agentSandboxes = pgTable(
         ${table.deletion_attempt_id} IS NOT NULL
         AND ${table.deletion_started_at} IS NOT NULL
       )`,
+    ),
+    retained_runtime_object_check: check(
+      "agent_sandboxes_retained_runtime_object",
+      sql`${table.retained_runtime} IS NULL OR jsonb_typeof(${table.retained_runtime}) = 'object'`,
     ),
     pre_delete_capture_waiver_shape_check: check(
       "agent_sandboxes_pre_delete_capture_waiver_shape_check",

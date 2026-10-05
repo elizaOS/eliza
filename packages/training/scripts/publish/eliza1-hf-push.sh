@@ -65,18 +65,18 @@ This wrapper requires BOTH:
 Without both, no HF upload is attempted. The would-be command is:
 
   cd packages/training && \
-    python3 -m scripts.publish.publish_eliza1_model_repo \
+    python3 -m eliza_training.publish.publish_eliza1_model_repo \
       --bundles-root ~/.eliza/local-inference/models
 
 To dry-run the per-tier plan instead (no HF API calls), run:
 
-  node packages/training/scripts/publish/eliza1-hf-stage.mjs --dry-run
+  node packages/training/scripts/publish/eliza1-hf-stage.ts --dry-run
 
 To dry-run via the underlying CLI:
 
   HF_TOKEN= huggingface-cli upload --help   # confirm hf is installed
   cd packages/training && \
-    python3 -m scripts.publish.publish_eliza1_model_repo \
+    python3 -m eliza_training.publish.publish_eliza1_model_repo \
       --bundles-root ~/.eliza/local-inference/models \
       --dry-run --report /tmp/eliza1-hf-plan.json
 
@@ -98,5 +98,5 @@ echo "eliza1-hf-push: HF_TOKEN present and --yes-i-will-pay acknowledged." >&2
 echo "eliza1-hf-push: dispatching to scripts.publish.publish_eliza1_model_repo." >&2
 echo "eliza1-hf-push: any tier not 'uploadable' will block the push (gate-honest)." >&2
 
-exec env HF_TOKEN="${TOKEN}" "${PYTHON}" -m scripts.publish.publish_eliza1_model_repo \
+exec env HF_TOKEN="${TOKEN}" "${PYTHON}" -m eliza_training.publish.publish_eliza1_model_repo \
   "${PASSTHROUGH[@]}"

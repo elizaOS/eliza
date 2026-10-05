@@ -7,8 +7,8 @@
 
 import { Keyboard } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { invokeDesktopBridgeRequest } from "../../bridge";
-import { useAppSelector } from "../../state";
+import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
+import { useAppSelector } from "../../state/app-store";
 import {
   acceleratorFromKeyboardEvent,
   DEFAULT_CHAT_OVERLAY_ACCELERATOR,

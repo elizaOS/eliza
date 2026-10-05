@@ -35,16 +35,14 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from scripts.publish.hub_inventory import remote_lfs_shas
+from eliza_training.publish.hub_inventory import remote_lfs_shas
 
 # Top-level docs (bundled at the repo root).
 TOP_LEVEL_FILES: tuple[str, ...] = (
     "pyproject.toml",
+    "setup.py",
     "uv.lock",
-    "CLAUDE.md",
     "AGENTS.md",
     "RL_STRATEGY.md",
     "Dockerfile",
@@ -205,7 +203,7 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "Apache-2.0 for source. Note that abliterated weight artifacts produced\n"
         "by `scripts/training/abliterate.py` are *AGPL-3.0* downstream because\n"
-        "Heretic itself is AGPL — see `CLAUDE.md` for the full caveat.\n"
+        "Heretic itself is AGPL — see `AGENTS.md` for the full caveat.\n"
     )
 
 

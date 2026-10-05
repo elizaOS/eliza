@@ -73,12 +73,7 @@ REQUIRED_ARTIFACTS: tuple[str, ...] = (
 OPTIONAL_ARTIFACTS: tuple[str, ...] = ("kokoro.onnx",)
 
 
-def _sha256_file(path: Path, chunk: int = 1 << 20) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
+from eliza_training.lib.file_integrity import sha256_file as _sha256_file
 
 
 def _load_eval(release_dir: Path) -> dict[str, Any]:
@@ -247,7 +242,7 @@ def _model_card(
             "   `elizaos/eliza-1` and stage it into bundle-local",
             "   `tts/kokoro/voices/<voice>.bin` during release assembly.",
             f"2. Register `{voice_name}` in",
-            "   `packages/shared/src/local-inference/kokoro/voice-presets.ts`",
+            "   `plugins/plugin-local-inference/src/services/voice/kokoro/voice-presets.ts`",
             "   using the fields in `voice-preset.json`.",
             "3. Optional: set `ELIZA_KOKORO_DEFAULT_VOICE_ID` to make this the default",
             "   voice on a bundle.",

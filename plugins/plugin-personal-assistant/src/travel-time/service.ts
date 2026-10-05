@@ -6,11 +6,11 @@
  * explicit per-cell errors, and no fabricated duration.
  */
 
-import { ElizaError } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import type {
   RouteMatrixOraclePayload,
   RouteMatrixOracleQuery,

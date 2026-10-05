@@ -55,154 +55,10 @@ interface LockRaceHooks {
   beforeTransitionMarkerCleanup?: () => Promise<void>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function validIsoDate(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
-}
-
-function validBoundedJson(value: unknown): boolean {
-  const stack: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
-  let nodes = 0;
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || current.depth > 32 || ++nodes > 100_000) return false;
-    if (typeof current.value === "string") {
-      if (new TextEncoder().encode(current.value).length > 65_536) return false;
-      continue;
-    }
-    if (Array.isArray(current.value)) {
-      if (current.value.length > 10_000) return false;
-      for (const child of current.value)
-        stack.push({ value: child, depth: current.depth + 1 });
-      continue;
-    }
-    if (isRecord(current.value)) {
-      const entries = Object.entries(current.value);
-      if (entries.length > 10_000) return false;
-      for (const [key, child] of entries) {
-        if (
-          key === "__proto__" ||
-          key === "prototype" ||
-          key === "constructor" ||
-          new TextEncoder().encode(key).length > 512
-        )
-          return false;
-        stack.push({ value: child, depth: current.depth + 1 });
-      }
-    }
-  }
-  return true;
-}
-
-function structurallyValidConsume(value: Record<string, unknown>): boolean {
-  if (value.state === "pending") return true;
-  if (
-    value.state !== "claimed" &&
-    value.state !== "committed" &&
-    value.state !== "completed"
-  )
-    return false;
-  if (
-    typeof value.claimId !== "string" ||
-    typeof value.replayKey !== "string" ||
-    typeof value.responseDigest !== "string" ||
-    !isRecord(value.response) ||
-    !validIsoDate(value.claimedAt) ||
-    !Number.isSafeInteger(value.attempt) ||
-    Number(value.attempt) < 1
-  )
-    return false;
-  if (value.state === "claimed")
-    return (
-      validIsoDate(value.claimExpiresAt) &&
-      Date.parse(String(value.claimExpiresAt)) >
-        Date.parse(String(value.claimedAt))
-    );
-  if (value.state === "committed")
-    return (
-      validIsoDate(value.committedAt) &&
-      Date.parse(String(value.committedAt)) >=
-        Date.parse(String(value.claimedAt))
-    );
-  const receipt = value.receipt;
-  return (
-    validIsoDate(value.committedAt) &&
-    validIsoDate(value.completedAt) &&
-    Date.parse(String(value.committedAt)) >=
-      Date.parse(String(value.claimedAt)) &&
-    Date.parse(String(value.completedAt)) >=
-      Date.parse(String(value.committedAt)) &&
-    isRecord(receipt) &&
-    typeof receipt.receiptId === "string" &&
-    receipt.idempotencyKey === value.replayKey &&
-    receipt.status === "completed" &&
-    validIsoDate(receipt.completedAt) &&
-    isRecord(receipt.result)
-  );
-}
-
-function structurallyValidSession(value: unknown, reference: string): boolean {
-  if (!isRecord(value)) return false;
-  const bindings = value.bindings;
-  const authorization = value.authorization;
-  const consume = value.consume;
-  return (
-    value.sessionVersion === 1 &&
-    value.reference === reference &&
-    [
-      "choice",
-      "form",
-      "approval",
-      "setup",
-      "auth",
-      "task",
-      "file",
-      "followup",
-    ].includes(String(value.purpose)) &&
-    ["choice", "form", "followups", "task", "secret"].includes(
-      String(value.blockKind),
-    ) &&
-    ["native", "conversational", "signed-hosted", "sensitive-request"].includes(
-      String(value.flow),
-    ) &&
-    typeof value.profileId === "string" &&
-    isRecord(bindings) &&
-    typeof bindings.actorId === "string" &&
-    isRecord(bindings.audience) &&
-    typeof bindings.audience.kind === "string" &&
-    typeof bindings.audience.id === "string" &&
-    typeof bindings.agentId === "string" &&
-    isRecord(bindings.connector) &&
-    typeof bindings.connector.source === "string" &&
-    typeof bindings.connector.accountId === "string" &&
-    typeof bindings.roomId === "string" &&
-    typeof bindings.sourceMessageId === "string" &&
-    isRecord(value.responseSchema) &&
-    Array.isArray(value.responseSchema.fields) &&
-    value.responseSchema.additionalFields === false &&
-    isRecord(authorization) &&
-    typeof authorization.decisionId === "string" &&
-    typeof authorization.policyRevision === "string" &&
-    validIsoDate(authorization.decidedAt) &&
-    ["active", "revoked"].includes(String(authorization.state)) &&
-    ((authorization.state === "active" && authorization.revokedAt === null) ||
-      (authorization.state === "revoked" &&
-        validIsoDate(authorization.revokedAt))) &&
-    isRecord(value.effect) &&
-    typeof value.effect.kind === "string" &&
-    validIsoDate(value.createdAt) &&
-    validIsoDate(value.expiresAt) &&
-    isRecord(consume) &&
-    structurallyValidConsume(consume) &&
-    Number.isSafeInteger(value.revision) &&
-    Number(value.revision) >= 0
-  );
-}
+import {
+  structurallyValidSession,
+  validBoundedJson,
+} from "./message-interaction-validation.ts";
 
 export interface FileMessageInteractionSessionStoreOptions {
   stateDirectory: string;
@@ -381,19 +237,8 @@ export class FileMessageInteractionSessionStore
       device: directoryStat.dev,
       inode: directoryStat.ino,
     };
-    const existing = await existsLstat(this.filePath);
-    if (existing?.isSymbolicLink() || (existing && !existing.isFile())) {
-      storeError(
-        "UNSAFE_INTERACTION_STORE_PATH",
-        "Interaction store file must be a regular file.",
-      );
-    }
-    if (existing && (existing.nlink !== 1 || (existing.mode & 0o077) !== 0)) {
-      storeError(
-        "UNSAFE_INTERACTION_STORE_PATH",
-        "Interaction store file must be private and have one filesystem link.",
-      );
-    }
+    // File validation belongs inside the lock: atomic replacement can retire
+    // the inode observed by an unlocked lstat, even for a legitimate writer.
     this.initialized = true;
   }
 
@@ -1265,7 +1110,7 @@ export class FileMessageInteractionSessionStore
 
   private async transaction<T>(
     operation: (document: SessionFile) => T | Promise<T>,
-    options: { opportunisticPrune?: boolean } = {},
+    options: { opportunisticPrune?: boolean; readOnly?: boolean } = {},
   ): Promise<T> {
     const owner = await this.acquireLock();
     let result: T | undefined;
@@ -1273,19 +1118,21 @@ export class FileMessageInteractionSessionStore
     try {
       await this.assertDirectoryIdentity();
       const document = await this.readFile();
-      if (options.opportunisticPrune !== false) {
+      if (!options.readOnly && options.opportunisticPrune !== false) {
         this.prune(document, this.clock());
       }
       result = await operation(document);
       await this.assertDirectoryIdentity();
-      await this.writeFile(document);
+      if (!options.readOnly) await this.writeFile(document);
     } catch (error) {
+      // error-policy:J2 preserve the operation failure alongside lock teardown.
       operationError = error;
     }
     let releaseError: unknown;
     try {
       await this.releaseLock(owner);
     } catch (error) {
+      // error-policy:J2 retain lock recovery details before translating writes.
       releaseError = error;
     }
     if (operationError && releaseError) {
@@ -1318,6 +1165,7 @@ export class FileMessageInteractionSessionStore
       );
     }
     if (operationError) throw operationError;
+    if (releaseError && options.readOnly) throw releaseError;
     if (releaseError) {
       // error-policy:J2 The state rename and directory fsync completed before
       // every release path, so no release failure is safe for caller retry.
@@ -1364,11 +1212,13 @@ export class FileMessageInteractionSessionStore
   }
 
   async get(reference: string): Promise<MessageInteractionSession | null> {
-    await this.initialize();
-    const document = await this.readFile();
-    return document.sessions[reference]
-      ? structuredClone(document.sessions[reference])
-      : null;
+    return this.transaction(
+      (document) =>
+        document.sessions[reference]
+          ? structuredClone(document.sessions[reference])
+          : null,
+      { readOnly: true },
+    );
   }
 
   async claimIfCurrent(
@@ -1409,17 +1259,19 @@ export class FileMessageInteractionSessionStore
   }): Promise<MessageInteractionSession[]> {
     safeInteger(args.committedBefore, "committedBefore", 0);
     safeInteger(args.limit, "limit", 1);
-    await this.initialize();
-    const document = await this.readFile();
-    return Object.values(document.sessions)
-      .filter(
-        (session) =>
-          session.consume.state === "committed" &&
-          Date.parse(session.consume.committedAt) <= args.committedBefore,
-      )
-      .sort((a, b) => a.reference.localeCompare(b.reference))
-      .slice(0, args.limit)
-      .map((session) => structuredClone(session));
+    return this.transaction(
+      (document) =>
+        Object.values(document.sessions)
+          .filter(
+            (session) =>
+              session.consume.state === "committed" &&
+              Date.parse(session.consume.committedAt) <= args.committedBefore,
+          )
+          .sort((a, b) => a.reference.localeCompare(b.reference))
+          .slice(0, args.limit)
+          .map((session) => structuredClone(session)),
+      { readOnly: true },
+    );
   }
 
   async reconcileCommitted(

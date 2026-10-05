@@ -8,62 +8,24 @@ import { describe, expect, it } from "vitest";
 
 import {
   createTalkModeAudioState,
-  getVolumeMutePolicy,
   reduceTalkModeAudioPolicy,
-  type TalkModeAudioPlatform,
 } from "./volumeMutePolicy";
 
-const platforms: TalkModeAudioPlatform[] = [
-  "ios",
-  "android",
-  "electrobun",
-  "browser",
-];
-
 describe("volume and mute policy", () => {
-  it("defines the platform output lanes without treating mute as capture stop", () => {
-    expect(getVolumeMutePolicy("ios")).toMatchObject({
-      captureContinuesWhenOutputMuted: true,
-      captureIndicatorWhenOutputMuted: "recording",
-      ttsOutputChannel: "ios-play-and-record-voice-chat",
-      ttsProgressWhenOutputMuted: "continue",
-      requiresDeviceAudioVerification: true,
+  it("keeps capture active and visibly recording when output is muted", () => {
+    let state = createTalkModeAudioState();
+    state = reduceTalkModeAudioPolicy(state, { type: "capture-started" });
+    state = reduceTalkModeAudioPolicy(state, {
+      type: "output-mute-changed",
+      muted: true,
     });
-    expect(getVolumeMutePolicy("android")).toMatchObject({
-      ttsOutputChannel: "android-voice-communication",
-      requiresDeviceAudioVerification: true,
+    state = reduceTalkModeAudioPolicy(state, {
+      type: "output-volume-changed",
+      volume: 0,
     });
-    expect(getVolumeMutePolicy("electrobun")).toMatchObject({
-      ttsOutputChannel: "desktop-system-output",
-      requiresDeviceAudioVerification: true,
-    });
-    expect(getVolumeMutePolicy("browser")).toMatchObject({
-      ttsOutputChannel: "browser-speech-synthesis-output",
-      requiresDeviceAudioVerification: false,
-    });
+    expect(state.captureActive).toBe(true);
+    expect(state.captureIndicator).toBe("recording");
   });
-
-  it.each(platforms)(
-    "keeps %s capture live and visibly recording while output is muted",
-    (platform) => {
-      const policy = getVolumeMutePolicy(platform);
-      let state = createTalkModeAudioState();
-
-      state = reduceTalkModeAudioPolicy(state, { type: "capture-started" });
-      state = reduceTalkModeAudioPolicy(state, {
-        type: "output-mute-changed",
-        muted: true,
-      });
-      state = reduceTalkModeAudioPolicy(state, {
-        type: "output-volume-changed",
-        volume: 0,
-      });
-
-      expect(policy.captureContinuesWhenOutputMuted).toBe(true);
-      expect(state.captureActive).toBe(true);
-      expect(state.captureIndicator).toBe("recording");
-    },
-  );
 
   it("continues TTS silently when hardware mute or volume 0 is applied", () => {
     let state = createTalkModeAudioState();

@@ -6,16 +6,16 @@
  * Job must belong to the caller's organization.
  */
 
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { validateServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@elizaos/cloud-shared/lib/eliza-agent-web-ui";
+import { publicJobErrorSummary } from "@elizaos/cloud-shared/lib/services/job-error-text";
+import { JOB_TYPES } from "@elizaos/cloud-shared/lib/services/provisioning-job-types";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { validateServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
-import { publicJobErrorSummary } from "@/lib/services/job-error-text";
-import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

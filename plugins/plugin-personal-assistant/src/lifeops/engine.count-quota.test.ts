@@ -5,13 +5,11 @@
  * normalization bounds, and the LLM-param path that must no longer invent
  * wall-clock slot times for a bare count. No runtime graph; deterministic.
  */
+
+import type { LifeOpsCadence, LifeOpsTaskDefinition } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import type { ExtractedTaskParams } from "../actions/lib/extract-task-plan.ts";
 import { buildCadenceFromLlmParams } from "../actions/life.ts";
-import type {
-  LifeOpsCadence,
-  LifeOpsTaskDefinition,
-} from "../contracts/index.js";
 import { materializeDefinitionOccurrences } from "./engine.ts";
 import { normalizeCadence } from "./service-normalize-task.ts";
 

@@ -8,7 +8,7 @@
  * component (React Fast Refresh-compatible).
  */
 
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useContext, useEffect, useRef } from "react";
 import {
   AgentSurfaceContext,
   type AgentSurfaceContextValue,
@@ -19,23 +19,32 @@ import type { AgentViewType } from "./types";
 export interface AgentSurfaceProviderProps {
   viewId: string;
   viewType?: AgentViewType;
+  installationId?: string;
   children: ReactNode;
 }
 
 export function AgentSurfaceProvider({
   viewId,
   viewType = "gui",
+  installationId: explicitInstallationId,
   children,
 }: AgentSurfaceProviderProps) {
+  const parent = useContext(AgentSurfaceContext);
+  const installationId =
+    explicitInstallationId ??
+    (parent?.viewId === viewId && parent.viewType === viewType
+      ? parent.registry.installationId
+      : undefined);
   // The registry instance is owned for the lifetime of this provider.
   const valueRef = useRef<AgentSurfaceContextValue | null>(null);
   if (
     !valueRef.current ||
     valueRef.current.viewId !== viewId ||
-    valueRef.current.viewType !== viewType
+    valueRef.current.viewType !== viewType ||
+    valueRef.current.registry.installationId !== installationId
   ) {
     valueRef.current = {
-      registry: getOrCreateViewRegistry(viewId, viewType),
+      registry: getOrCreateViewRegistry(viewId, viewType, installationId),
       viewId,
       viewType,
     };

@@ -41,6 +41,15 @@ export class CacheInvalidation {
   }
 
   /**
+   * Invalidates the cached pay-as-you-go RPM tier after a purchase, refund or
+   * reversal changes the purchased-credit total it is derived from (#23019).
+   * Inference debits do not change that total, so they do not call this.
+   */
+  static async onPurchasedCreditMutation(organizationId: string): Promise<void> {
+    await cache.del(CacheKeys.org.rateLimitTier(organizationId));
+  }
+
+  /**
    * Invalidates caches when a usage record is created.
    *
    * Narrow invalidation: only the live `analytics:overview:*` keys (which

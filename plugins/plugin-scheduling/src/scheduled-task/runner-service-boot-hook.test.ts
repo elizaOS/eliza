@@ -1,12 +1,4 @@
-/**
- * Real-module coverage for the runner boot-hook ordering primitive (#16309):
- * ScheduledTaskRunnerService.start releases registered hooks with the live
- * instance, hooks registered after start run immediately, and a throwing hook
- * is reported through runtime.reportError without failing service startup.
- * The runtime is a minimal stub with no database adapter, so start() skips
- * the legacy-table migration; no mocking of the module under test.
- */
-
+/** Exercises real service hook ordering and failure reporting with a minimal runtime that skips database migration. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -22,70 +14,60 @@ function buildRuntime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-async function settled(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
 describe("ScheduledTaskRunnerService boot hooks", () => {
-  it("runs a pre-registered hook only once the service instance exists", async () => {
+  it("binds hooks before startup, after startup and after restart to the live service", async () => {
     const runtime = buildRuntime();
     const seen: ScheduledTaskRunnerService[] = [];
-    registerScheduledTaskRunnerBootHook(runtime, (service) => {
-      seen.push(service);
+    const before = new Promise<ScheduledTaskRunnerService>((resolve) => {
+      registerScheduledTaskRunnerBootHook(runtime, (service) => {
+        seen.push(service);
+        resolve(service);
+      });
     });
-    await settled();
-    expect(seen).toHaveLength(0);
+    await Promise.resolve();
+    expect(seen).toEqual([]);
+    const first = await ScheduledTaskRunnerService.start(runtime);
+    expect(await before).toBe(first);
+    expect(seen).toEqual([first]);
 
-    const service = await ScheduledTaskRunnerService.start(runtime);
-    await settled();
-    expect(seen).toEqual([service]);
+    const after = new Promise<ScheduledTaskRunnerService>((resolve) => {
+      registerScheduledTaskRunnerBootHook(runtime, resolve);
+    });
+    expect(await after).toBe(first);
+    await first.stop();
+
+    const restartedHook = new Promise<ScheduledTaskRunnerService>((resolve) => {
+      registerScheduledTaskRunnerBootHook(runtime, (service) => {
+        seen.push(service);
+        resolve(service);
+      });
+    });
+    await Promise.resolve();
+    expect(seen).toEqual([first]);
+    const restarted = await ScheduledTaskRunnerService.start(runtime);
+    expect(await restartedHook).toBe(restarted);
+    expect(restarted).not.toBe(first);
+    expect(seen).toEqual([first, restarted]);
+    await restarted.stop();
   });
 
-  it("runs a hook registered after start immediately with the live instance", async () => {
+  it("reports a throwing hook while service startup succeeds", async () => {
     const runtime = buildRuntime();
-    const service = await ScheduledTaskRunnerService.start(runtime);
-
-    const seen: ScheduledTaskRunnerService[] = [];
-    registerScheduledTaskRunnerBootHook(runtime, (hooked) => {
-      seen.push(hooked);
+    const reported = new Promise<void>((resolve) => {
+      runtime.reportError = vi.fn(() => resolve());
     });
-    await settled();
-    expect(seen).toEqual([service]);
-  });
-
-  it("reports a throwing hook via runtime.reportError and start still succeeds", async () => {
-    const runtime = buildRuntime();
     const failure = new Error("hook failed");
     registerScheduledTaskRunnerBootHook(runtime, () => {
       throw failure;
     });
-
     const service = await ScheduledTaskRunnerService.start(runtime);
-    await settled();
-
+    await reported;
     expect(service).toBeInstanceOf(ScheduledTaskRunnerService);
     expect(runtime.reportError).toHaveBeenCalledWith(
       "scheduling.runnerBootHook",
       failure,
       { agentId: runtime.agentId },
     );
-  });
-
-  it("does not run a post-stop hook against the stale service instance", async () => {
-    const runtime = buildRuntime();
-    const first = await ScheduledTaskRunnerService.start(runtime);
-    await first.stop();
-
-    const seen: ScheduledTaskRunnerService[] = [];
-    registerScheduledTaskRunnerBootHook(runtime, (service) => {
-      seen.push(service);
-    });
-    await settled();
-    expect(seen).toEqual([]);
-
-    const restarted = await ScheduledTaskRunnerService.start(runtime);
-    await settled();
-    expect(restarted).not.toBe(first);
-    expect(seen).toEqual([restarted]);
+    await service.stop();
   });
 });

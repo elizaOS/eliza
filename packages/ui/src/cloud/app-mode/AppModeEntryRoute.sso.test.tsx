@@ -2,7 +2,7 @@
 // @vitest-environment jsdom
 // @vitest-environment-options {"url": "https://cloud.eliza.app/"}
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -144,7 +144,7 @@ describe("AppModeEntryRoute — SSO auto-bridge (managed app origin)", () => {
     expect(screen.getByText("Signing you in")).toBeTruthy();
   });
 
-  it("signed out with no cross-host cookie hint starts the auth-origin login handoff", async () => {
+  it("signed out with no cross-host cookie hint checks the auth origin for a session to share", async () => {
     renderEntry("/");
     await waitFor(() => expect(replacedUrls).toHaveLength(1));
     expect(replacedUrls[0]).toMatch(

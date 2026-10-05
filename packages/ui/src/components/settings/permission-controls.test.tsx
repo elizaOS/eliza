@@ -8,17 +8,16 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginInfo } from "../../api";
+import type { PluginInfo } from "../../api/client-types-config";
 import { CapabilityToggle, PermissionRow } from "./permission-controls";
-import type { CapabilityDef } from "./permission-types";
-import { SYSTEM_PERMISSIONS } from "./permission-types";
+import { type CapabilityDef, SYSTEM_PERMISSIONS } from "./permission-types";
 
 const appMock = vi.hoisted(() => ({
   t: (key: string, options?: { defaultValue?: string }) =>
     options?.defaultValue ?? key,
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: typeof appMock) => unknown) => sel(appMock),
   useAppSelectorShallow: (sel: (value: typeof appMock) => unknown) =>
     sel(appMock),

@@ -16,7 +16,7 @@ const readCsrfTokenFromCookie = vi.fn();
 const requestViaAgentTransport = vi.fn();
 const fetchWithCsrf = vi.fn();
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
+vi.mock("@elizaos/plugin-elizacloud/steward-session-client", () => ({
   readStoredStewardToken: () => readStoredStewardToken(),
 }));
 vi.mock("../api/csrf-client", () => ({

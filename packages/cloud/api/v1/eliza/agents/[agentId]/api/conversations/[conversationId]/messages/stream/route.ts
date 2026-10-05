@@ -4,34 +4,42 @@
  * Scope authorization and turn execution are cache-only on the response path;
  * cold hydration is scheduled under waitUntil and surfaced as retryable 503.
  */
-import { Hono } from "hono";
-import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
-import { timingSafeEqualSecret } from "@/lib/auth/cron";
-import { cache } from "@/lib/cache/client";
-import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
-import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+
+import type { AgentSandbox } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { timingSafeEqualSecret } from "@elizaos/cloud-shared/lib/auth/cron";
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
+import { CacheKeys, CacheTTL } from "@elizaos/cloud-shared/lib/cache/keys";
+import { resolveElizaTraceId } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import {
+  personalDirectChatRefusalResponse,
+  resolveSharedSurfaceTarget,
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   type CachedAgentSandbox,
   rehydrateCachedAgentDates,
-} from "@/lib/services/shared-runtime/cached-agent-dates";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates";
 import {
   type CanonicalScopedStreamRequest,
   handleCanonicalScopedAgentStream,
-} from "@/lib/services/shared-runtime/canonical-scoped-stream";
-import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/canonical-scoped-stream";
+import { isPersonalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
-import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import {
   classifySharedTurnOutcome,
   recordSharedTurnAttempt,
   type SharedTurnRuntimeKind,
-} from "@/lib/services/shared-runtime/shared-turn-observability";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-turn-observability";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { proxyLocalDedicatedOrNext } from "../../../../_local-dedicated-proxy";
 
 /**
@@ -285,6 +293,28 @@ app.post("/", async (c) => {
     }
 
     const conversationId = c.req.param("conversationId") ?? r.agentId;
+    const personal = "agentKind" in r && r.agentKind === "personal";
+    // The personal identity follows its entitlement route (#25146).
+    const target = await resolveSharedSurfaceTarget({
+      agent: r.agent,
+      personal,
+      conversationId,
+      namespace: worker.namespace,
+    });
+    if (!target.ok) {
+      const refusal = personalDirectChatRefusalResponse(target.refusal);
+      return {
+        response: applyCorsHeaders(
+          Response.json(refusal.body, {
+            status: refusal.status,
+            headers: refusal.headers,
+          }),
+          CORS_METHODS,
+          origin,
+        ),
+        runtimeKind: "personal",
+      };
+    }
     return {
       response: await handleCanonicalScopedAgentStream({
         traceId: c.get("traceId"),
@@ -292,7 +322,10 @@ app.post("/", async (c) => {
         agent: r.agent,
         agentId: r.agentId,
         orgId: r.orgId,
-        conversationId,
+        conversationId: target.roomId,
+        ...(target.accountState
+          ? { trustedAccountState: target.accountState }
+          : {}),
         ...("userId" in r ? { userId: r.userId } : {}),
         body: raw,
         origin,

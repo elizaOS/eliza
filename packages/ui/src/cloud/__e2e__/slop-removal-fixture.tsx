@@ -22,7 +22,7 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { MockAppProvider } from "../../storybook/mock-providers";
-import { registerAllCloudSurfaces } from "../register-all";
+import { registerAllCloudSurfaces } from "./register-all";
 import {
   CloudAccountSection,
   CloudApiKeysSection,

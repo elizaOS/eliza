@@ -3,7 +3,7 @@
  */
 
 import type { ReactNode } from "react";
-import { DashboardRoutePage } from "../../../cloud-ui/components/layout";
+import { DashboardRoutePage } from "../../../cloud-ui/components/layout/dashboard-route-page";
 
 interface AppPageWrapperProps {
   appName: string;

@@ -36,13 +36,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from training.tokenization import tokenize_with_explicit_limit
+from eliza_training.training.tokenization import tokenize_with_explicit_limit
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from format_for_training import format_record  # noqa: E402
-from lib.attn import select_attn_impl  # noqa: E402
+from eliza_training.format_for_training import format_record  # noqa: E402
+from eliza_training.lib.attn import select_attn_impl  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -220,7 +219,7 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    from training.model_registry import get as _registry_get
+    from eliza_training.training.model_registry import get as _registry_get
     entry = _registry_get(args.registry_key)
     log.info("registry %s → hf=%s seq_len=%d optimizer=%s",
              entry.short_name, entry.hf_id, entry.seq_len, entry.optimizer)
@@ -335,7 +334,7 @@ def main() -> int:
         run_name=out_dir.name,
     )
 
-    from training.optimizer import (
+    from eliza_training.training.optimizer import (
         _NON_LOWRANK_NAME_HINTS,
         build_apollo_mini_optimizer_from_groups,
         build_apollo_optimizer_from_groups,
@@ -395,7 +394,7 @@ def main() -> int:
         processing_class=tokenizer,
     )
 
-    from training.instrumentation import (
+    from eliza_training.training.instrumentation import (
         InstrumentationConfig, log_environment, make_hf_callback,
     )
     log_environment(

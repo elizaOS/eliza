@@ -759,7 +759,7 @@ def train_student(
     # Local import to avoid top-level dependency on the training package
     # whose own imports drag in torch.
     try:
-        from packages.training.scripts.training.optimizer import (
+        from eliza_training.training.optimizer import (
             build_apollo_mini_optimizer,
             build_apollo_optimizer,
         )

@@ -8,13 +8,7 @@ import { buildPlugin } from "../plugin-build";
 await buildPlugin({
   name: "@elizaos/plugin-coding-tools",
   clean: true,
-  externals: [
-    "@elizaos/core",
-    "@elizaos/shared",
-    "@vscode/ripgrep",
-    "phonemizer",
-    "figlet",
-  ],
+  externals: ["@elizaos/core", "@vscode/ripgrep", "phonemizer", "figlet"],
   targets: [
     {
       label: "Node",

@@ -17,14 +17,14 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Button } from "../../../../components/primitives";
+import { Button } from "../../../../components/ui/button";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   OIDC_ISSUER_ENV_VAR,
   type PreparedOidcResumeTarget,
   prepareOidcResumeTarget,
 } from "../../lib/oidc-continue";
-import { usePageTitle } from "../../lib/use-page-title";
 
 export default function OidcContinuePage() {
   const t = useCloudT();
@@ -33,7 +33,7 @@ export default function OidcContinuePage() {
     PreparedOidcResumeTarget["status"] | null
   >(null);
 
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.oidcContinue.metaTitle", {
       defaultValue: "Signing in | Eliza Cloud",
     }),

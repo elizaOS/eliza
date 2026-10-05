@@ -8,21 +8,21 @@
  * ordinary channel message.
  */
 
-import { Hono } from "hono";
-import { requestId } from "hono/request-id";
-import { secureHeaders } from "hono/secure-headers";
-import { runWithDbCacheAsync } from "@/db/client";
+import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
 import {
   getIpKey,
   getRequestIp,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { httpTelemetryMiddleware } from "@/lib/observability/http-telemetry-hono";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import { runWithRequestContext } from "@/lib/runtime/request-context";
-import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { httpTelemetryMiddleware } from "@elizaos/cloud-shared/lib/observability/http-telemetry-hono";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { runWithRequestContext } from "@elizaos/cloud-shared/lib/runtime/request-context";
+import { setRuntimeR2Bucket } from "@elizaos/cloud-shared/lib/storage/r2-runtime-binding";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { requestId } from "hono/request-id";
+import { secureHeaders } from "hono/secure-headers";
 import gatewayToken from "../internal/auth/token/route";
 import managedDiscordMessages from "../internal/discord/eliza-app/messages/route";
 import pendingDiscordGreetings from "../internal/discord/eliza-app/pending-greetings/route";

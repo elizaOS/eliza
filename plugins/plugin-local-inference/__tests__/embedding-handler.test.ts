@@ -13,7 +13,7 @@
  *     (determinism is the *loader's* contract — the provider does not
  *     re-quantize or perturb).
  *
- * The catalog (`packages/shared/src/local-inference/catalog.ts`) declares
+ * The catalog (`plugins/plugin-native-inference/src/model-catalog/catalog.ts`) declares
  * a single 1024-dim Matryoshka embedding region for every tier that has
  * `hasEmbedding: true` (every tier except the 2b entry tier, which serves
  * embeddings by pooling the text backbone via the lazily-started sidecar).

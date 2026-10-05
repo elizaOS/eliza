@@ -8,12 +8,19 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationMessage } from "../api";
+import type {
+  Conversation,
+  ConversationMessage,
+} from "../api/client-types-chat";
 
 const mocks = vi.hoisted(() => ({
   client: {
+    // This fixture keeps one stable runtime authority throughout each scenario.
+    onAuthorityChange: vi.fn(() => () => {}),
     getConversationMessages: vi.fn(),
-    listConversations: vi.fn(async () => ({ conversations: [] })),
+    listConversations: vi.fn<() => Promise<{ conversations: Conversation[] }>>(
+      async () => ({ conversations: [] }),
+    ),
     getConfig: vi.fn(async () => ({ ui: {} })),
     repointBaseUrl: vi.fn(),
     setBaseUrl: vi.fn(),
@@ -25,7 +32,7 @@ let runtimeAuthoritySwitchListener:
   | ((phase: "before" | "after") => void)
   | undefined;
 
-vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 vi.mock("./switch-runtime", () => ({
   subscribeRuntimeAuthoritySwitch: mocks.subscribeRuntimeAuthoritySwitch,
 }));
@@ -117,6 +124,255 @@ beforeEach(() => {
 });
 
 describe("useDataLoaders — conversation message prefetch cache", () => {
+  it("preserves user titles while excluding explicitly scoped surface conversations", async () => {
+    const conversation = (
+      id: string,
+      title: string,
+      metadata?: Conversation["metadata"],
+    ): Conversation => ({
+      id,
+      title,
+      roomId: id,
+      createdAt: "2026-10-04T12:00:00Z",
+      updatedAt: "2026-10-04T12:00:00Z",
+      metadata,
+    });
+    const visible = [
+      conversation("user-wallet", "wallet"),
+      conversation("user-browser", "browser", { scope: "general" }),
+    ];
+    mocks.client.listConversations.mockResolvedValue({
+      conversations: [
+        ...visible,
+        conversation("page", "Research", { scope: "page-browser" }),
+        conversation("automation", "Schedule", {
+          scope: "automation-workflow",
+        }),
+      ],
+    });
+    const { deps } = makeDeps();
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      expect(await result.current.loadConversations()).toEqual(visible);
+    });
+    expect(deps.setConversations).toHaveBeenCalledWith(visible);
+  });
+
+  it("places a later-arriving same-millisecond message by UUID order", async () => {
+    const sharedAt = 1_700_000_000_000;
+    const lower = {
+      ...userMsg("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+      timestamp: sharedAt,
+    };
+    const upper = {
+      ...userMsg("BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB"),
+      timestamp: sharedAt,
+    };
+    mocks.client.getConversationMessages.mockResolvedValue({
+      messages: [upper],
+    });
+    const { deps, activeConversationIdRef, conversationMessagesRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    act(() => {
+      result.current.applyConversationMessageStream("conv-a", [lower], []);
+    });
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([lower.id, upper.id]);
+  });
+
+  it("keeps a relayed local command before its same-millisecond reply", async () => {
+    mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
+    const { deps, activeConversationIdRef, conversationMessagesRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    // The rows appendLocalCommandTurn appends for a `#` command, as the
+    // developer-tab bridge relays them.
+    const sharedAt = 1_700_000_000_000;
+    const command = {
+      ...userMsg(`local-user-${sharedAt}-abc123`),
+      timestamp: sharedAt,
+    };
+    const reply = {
+      ...assistantMsg(`local-assistant-${sharedAt}-abc123`),
+      timestamp: sharedAt,
+      source: "local_command",
+    };
+    act(() => {
+      result.current.applyConversationMessageStream(
+        "conv-a",
+        [command, reply],
+        [],
+      );
+    });
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([command.id, reply.id]);
+  });
+
+  it("orders durable UUIDs across interleaved local rows without reversing the local turn", async () => {
+    mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
+    const { deps, activeConversationIdRef, conversationMessagesRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    const timestamp = 1_700_000_000_000;
+    const upper = {
+      ...userMsg("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+      timestamp,
+    };
+    const lower = {
+      ...userMsg("00000000-0000-0000-0000-000000000001"),
+      timestamp,
+    };
+    const command = { ...userMsg("local-user-T-nonce"), timestamp };
+    const reply = { ...assistantMsg("local-assistant-T-nonce"), timestamp };
+    act(() => {
+      result.current.applyConversationMessageStream(
+        "conv-a",
+        [upper, command, reply, lower],
+        [],
+      );
+    });
+    expect(conversationMessagesRef.current.map((row) => row.id)).toEqual([
+      lower.id,
+      command.id,
+      reply.id,
+      upper.id,
+    ]);
+  });
+
+  it("keeps a relayed ephemeral final reply through history refresh, then honors its streamed removal", async () => {
+    const persisted = { ...userMsg("server-user"), timestamp: 5 };
+    mocks.client.getConversationMessages.mockResolvedValue({
+      messages: [persisted],
+    });
+    const { deps, activeConversationIdRef, conversationMessagesRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    const reply = {
+      ...assistantMsg("temp-final"),
+      clientRenderId: "temp-final",
+      timestamp: 2,
+      assistantEphemeral: true,
+      replyToMessageId: "server-user",
+      text: "The model context is too large; nothing was changed.",
+    };
+    act(() => {
+      result.current.applyConversationMessageStream("conv-a", [reply], []);
+    });
+    expect(result.current.getConversationMessagesSnapshot("conv-a")).toEqual([
+      persisted,
+      reply,
+    ]);
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    expect(conversationMessagesRef.current).toEqual([persisted, reply]);
+    act(() => {
+      result.current.applyConversationMessageStream("conv-a", [], [reply.id]);
+    });
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    expect(conversationMessagesRef.current).toEqual([persisted]);
+  });
+
+  it("deduplicates a relayed optimistic-to-durable replacement against server history", async () => {
+    mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
+    const { deps, activeConversationIdRef, conversationMessagesRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    const optimistic = {
+      ...assistantMsg("temp-final"),
+      clientRenderId: "temp-final",
+      text: "Saved.",
+    };
+    const durable = { ...optimistic, id: "server-final" };
+    act(() => {
+      result.current.applyConversationMessageStream("conv-a", [optimistic], []);
+      result.current.applyConversationMessageStream(
+        "conv-a",
+        [durable],
+        [optimistic.id],
+      );
+    });
+    mocks.client.getConversationMessages.mockResolvedValue({
+      messages: [{ ...durable, clientRenderId: undefined }],
+    });
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    expect(conversationMessagesRef.current).toHaveLength(1);
+    expect(conversationMessagesRef.current[0]).toMatchObject({
+      id: "server-final",
+      text: "Saved.",
+    });
+  });
+
+  it("does not read or merge stream rows across released conversation ownership", async () => {
+    mocks.client.getConversationMessages.mockImplementation(
+      async (id: string) => ({ messages: [userMsg(id)] }),
+    );
+    const { deps, activeConversationIdRef, conversationMessagesRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    act(() => {
+      result.current.claimConversationMessagesOwnership("conv-b");
+      activeConversationIdRef.current = "conv-b";
+    });
+    expect(
+      result.current.getConversationMessagesSnapshot("conv-a"),
+    ).toBeUndefined();
+    expect(
+      result.current.getConversationMessagesSnapshot("conv-b"),
+    ).toBeUndefined();
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-b");
+    });
+    act(() => {
+      result.current.applyConversationMessageStream(
+        "conv-a",
+        [assistantMsg("temp-private-a")],
+        [],
+      );
+    });
+    expect(conversationMessagesRef.current).toEqual([userMsg("conv-b")]);
+    expect(result.current.getConversationMessagesSnapshot("conv-b")).toEqual([
+      userMsg("conv-b"),
+    ]);
+    act(() => {
+      runtimeAuthoritySwitchListener?.("before");
+    });
+    expect(
+      result.current.getConversationMessagesSnapshot("conv-b"),
+    ).toBeUndefined();
+  });
+
   it("prefetch warms the cache so the next load paints synchronously (no network wait)", async () => {
     mocks.client.getConversationMessages.mockImplementation(
       async (id: string) => ({ messages: [userMsg(id)] }),

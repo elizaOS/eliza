@@ -38,7 +38,7 @@ export interface SavedLoginRevealRecord {
   domain: string | null;
 }
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listSavedLogins(domain?: string): Promise<{
       logins: readonly SavedLoginListRecord[];

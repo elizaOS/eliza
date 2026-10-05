@@ -30,7 +30,7 @@ import { logger } from "@elizaos/core";
 
 const NATIVE_DYLIB_CANDIDATES = [
   process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
-  "../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+  "../../../packages/app/platforms/electrobun/src/libMacWindowEffects.dylib",
 ].filter(Boolean);
 
 /**

@@ -2,7 +2,7 @@
  * Core ML image-gen backend contract (WS3) — iOS via Capacitor bridge.
  *
  * The contract for the Swift side. The real implementation lives in
- * `eliza/packages/app-core/platforms/ios/App/App/ImageGenBridge.swift`
+ * `eliza/packages/app/platforms/ios/App/App/ImageGenBridge.swift`
  * (skeleton written under `// MARK: - Contract`). At runtime the iOS
  * plugin (`@elizaos/plugin-ios-local-inference`) registers a Capacitor
  * service that exposes:

@@ -44,8 +44,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
-from lib.runtime_phases import classify_phase, PHASE_OOB  # noqa: E402
+from eliza_training.lib.runtime_phases import classify_phase, PHASE_OOB  # noqa: E402
 
 NORMALIZED = ROOT / "data" / "normalized"
 SYNTHESIZED = ROOT / "data" / "synthesized"

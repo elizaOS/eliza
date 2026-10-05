@@ -1,28 +1,28 @@
-// Handles v1 cloud API v1 twitter callback route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import { cache } from "@/lib/cache/client";
+/** Completes X OAuth callbacks and projects only verified identities as connected. */
+
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import {
   getDefaultPlatformRedirectOrigins,
   LOOPBACK_REDIRECT_ORIGINS,
   resolveOAuthSuccessRedirectUrl,
-} from "@/lib/security/redirect-validation";
-import { linkVerifiedXOwnerIdentity } from "@/lib/services/eliza-app/x-personal-identity";
-import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
+} from "@elizaos/cloud-shared/lib/security/redirect-validation";
+import { linkVerifiedXOwnerIdentity } from "@elizaos/cloud-shared/lib/services/eliza-app/x-personal-identity";
+import { invalidateOAuthState } from "@elizaos/cloud-shared/lib/services/oauth/invalidation";
 import {
   clearOAuthSuccessParams,
   isOAuthSuccessLandingPath,
   mintOAuthSuccessProof,
-} from "@/lib/services/oauth/success-proof";
-import { twitterAutomationService } from "@/lib/services/twitter-automation";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth/success-proof";
+import {
+  normalizeXProviderIdentity,
+  X_PROVIDER_IDENTITY_VERIFICATION_FAILED,
+} from "@elizaos/cloud-shared/lib/services/oauth/x-identity";
+import { twitterAutomationService } from "@elizaos/cloud-shared/lib/services/twitter-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
-
-function redirectErrorDetail(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/\s+/g, " ").trim().slice(0, 240);
-}
 
 app.get("/", async (c) => {
   const oauthToken = c.req.query("oauth_token");
@@ -36,7 +36,7 @@ app.get("/", async (c) => {
     c.env?.NEXT_PUBLIC_APP_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
     "https://cloud.eliza.app";
-  const defaultRedirectPath = "/cloud/settings?tab=connections";
+  const defaultRedirectPath = "/cloud/connectors";
   const allowedAbsoluteOrigins = [
     ...getDefaultPlatformRedirectOrigins(),
     ...LOOPBACK_REDIRECT_ORIGINS,
@@ -162,26 +162,30 @@ app.get("/", async (c) => {
         state.codeVerifier,
         state.redirectUri,
       );
-    } catch (error) {
-      const detail = redirectErrorDetail(error);
+    } catch {
+      // error-policy:J1 translate provider failures without exposing response details.
       logger.error("[Twitter Callback] Failed to exchange OAuth2 token", {
-        error: detail,
+        errorCode: "token_exchange_failed",
         organizationId: state.organizationId,
       });
       return redirectTo(
         buildRedirectUrl(state.redirectUrl, {
           twitter_error: "token_exchange_failed",
-          twitter_error_detail: detail,
         }),
       );
     }
 
+    const verifiedIdentity = normalizeXProviderIdentity({
+      userId: tokens.userId,
+      username: tokens.screenName,
+    });
+
     try {
-      if (state.connectionRole === "owner" && tokens.userId) {
+      if (state.connectionRole === "owner" && verifiedIdentity) {
         await linkVerifiedXOwnerIdentity({
           organizationId: state.organizationId,
           userId: state.userId,
-          twitterUserId: tokens.userId,
+          twitterUserId: verifiedIdentity.userId,
         });
       }
       await twitterAutomationService.storeCredentials(
@@ -211,20 +215,25 @@ app.get("/", async (c) => {
     }
 
     await invalidateOAuthState(state.organizationId, "twitter", state.userId);
+
+    if (!verifiedIdentity || tokens.identityLookupError) {
+      logger.warn("[Twitter Callback] OAuth2 identity verification failed", {
+        organizationId: state.organizationId,
+        errorCode: X_PROVIDER_IDENTITY_VERIFICATION_FAILED,
+      });
+      return redirectTo(
+        buildRedirectUrl(state.redirectUrl, {
+          twitter_error: X_PROVIDER_IDENTITY_VERIFICATION_FAILED,
+        }),
+      );
+    }
+
     const successParams: Record<string, string> = {
       twitter_connected: "true",
       platform: "twitter",
       twitter_role: state.connectionRole ?? "owner",
+      twitter_username: verifiedIdentity.username,
     };
-    if (tokens.screenName) {
-      successParams.twitter_username = tokens.screenName;
-    }
-    if (tokens.identityLookupError) {
-      successParams.twitter_warning = "identity_lookup_failed";
-      successParams.twitter_warning_detail = redirectErrorDetail(
-        tokens.identityLookupError,
-      );
-    }
     const successTarget = buildRedirectUrl(state.redirectUrl, successParams);
     if (isOAuthSuccessLandingPath(successTarget.pathname)) {
       const proof = await mintOAuthSuccessProof({
@@ -320,16 +329,15 @@ app.get("/", async (c) => {
       state.oauthTokenSecret,
       oauthVerifier,
     );
-  } catch (error) {
-    const detail = redirectErrorDetail(error);
+  } catch {
+    // error-policy:J1 translate provider failures without exposing response details.
     logger.error("[Twitter Callback] Failed to exchange token", {
-      error: detail,
+      errorCode: "token_exchange_failed",
       organizationId: state.organizationId,
     });
     return redirectTo(
       buildRedirectUrl(redirectUrl, {
         twitter_error: "token_exchange_failed",
-        twitter_error_detail: detail,
       }),
     );
   }

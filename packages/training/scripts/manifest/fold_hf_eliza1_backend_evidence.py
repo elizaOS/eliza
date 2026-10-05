@@ -15,10 +15,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-try:
-    from scripts.manifest.eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS, SUPPORTED_BACKENDS_BY_TIER
-except ImportError:  # pragma: no cover
-    from eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS, SUPPORTED_BACKENDS_BY_TIER  # type: ignore
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS, SUPPORTED_BACKENDS_BY_TIER
 
 
 def _download_json(api: Any, repo_id: str, path: str) -> dict[str, Any]:

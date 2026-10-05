@@ -2,7 +2,8 @@
  * Resolves the runtime TeeEvidencePolicy from environment variables, in
  * precedence order: an inline policy JSON, a policy file path, an inline or
  * file-path release manifest, or a bare ELIZA_TEE_REQUIRED fail-closed policy;
- * returns undefined when TEE is unconfigured. Applies freshness options
+ * returns undefined when TEE is unconfigured. Deployment-required attestation
+ * remains mandatory regardless of the selected source. Applies freshness options
  * (expected nonce, max age, clock) and folds in a runtime revocation manifest —
  * signature-verified against a configured authority key before merge, so an
  * unsigned or forged revocation list is refused rather than silently applied.
@@ -35,7 +36,7 @@ export async function resolveTeeRuntimePolicy(
     options.readText ?? ((filePath) => readFile(filePath, "utf8"));
   const inlinePolicy = env.ELIZA_TEE_POLICY_JSON;
   if (inlinePolicy?.trim()) {
-    return withRuntimeRevocations(
+    return withRuntimeRequirements(
       normalizeRuntimePolicy(JSON.parse(inlinePolicy), env, options.nowMs),
       env,
       readText,
@@ -44,7 +45,7 @@ export async function resolveTeeRuntimePolicy(
 
   const policyPath = env.ELIZA_TEE_POLICY_PATH;
   if (policyPath?.trim()) {
-    return withRuntimeRevocations(
+    return withRuntimeRequirements(
       normalizeRuntimePolicy(
         JSON.parse(await readText(policyPath.trim())),
         env,
@@ -57,7 +58,7 @@ export async function resolveTeeRuntimePolicy(
 
   const inlineManifest = env.ELIZA_TEE_RELEASE_MANIFEST_JSON;
   if (inlineManifest?.trim()) {
-    return withRuntimeRevocations(
+    return withRuntimeRequirements(
       teePolicyFromReleaseManifest(
         JSON.parse(inlineManifest) as TeeReleaseManifestLike,
         runtimePolicyOptions(env, options.nowMs),
@@ -69,7 +70,7 @@ export async function resolveTeeRuntimePolicy(
 
   const manifestPath = env.ELIZA_TEE_RELEASE_MANIFEST_PATH;
   if (manifestPath?.trim()) {
-    return withRuntimeRevocations(
+    return withRuntimeRequirements(
       teePolicyFromReleaseManifest(
         JSON.parse(
           await readText(manifestPath.trim()),
@@ -82,7 +83,7 @@ export async function resolveTeeRuntimePolicy(
   }
 
   if (env.ELIZA_TEE_REQUIRED === "true") {
-    return withRuntimeRevocations(
+    return withRuntimeRequirements(
       {
         required: true,
         ...runtimePolicyOptions(env, options.nowMs),
@@ -108,15 +109,19 @@ function normalizeRuntimePolicy(
   };
 }
 
-async function withRuntimeRevocations(
+async function withRuntimeRequirements(
   policy: TeeEvidencePolicy,
   env: TeeRuntimeConfigEnv,
   readText: (path: string) => Promise<string>,
 ): Promise<TeeEvidencePolicy> {
+  // Deployment-required attestation cannot be relaxed by a selected policy or
+  // a release manifest that disables its own optional TEE profile.
+  const requiredPolicy =
+    env.ELIZA_TEE_REQUIRED === "true" ? { ...policy, required: true } : policy;
   const inlineRevocations = env.ELIZA_TEE_REVOCATIONS_JSON;
   if (inlineRevocations?.trim()) {
     return mergeTeeRevocationsIntoPolicy(
-      policy,
+      requiredPolicy,
       verifiedRevocationManifest(
         JSON.parse(inlineRevocations) as TeeRevocationManifest,
         env,
@@ -127,7 +132,7 @@ async function withRuntimeRevocations(
   const revocationPath = env.ELIZA_TEE_REVOCATIONS_PATH;
   if (revocationPath?.trim()) {
     return mergeTeeRevocationsIntoPolicy(
-      policy,
+      requiredPolicy,
       verifiedRevocationManifest(
         JSON.parse(
           await readText(revocationPath.trim()),
@@ -137,7 +142,7 @@ async function withRuntimeRevocations(
     );
   }
 
-  return policy;
+  return requiredPolicy;
 }
 
 /**

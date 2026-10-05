@@ -1,24 +1,121 @@
 /**
- * Registers Cloud embedding handlers and validates dimension configuration before dispatch.
+ * Serves Cloud embeddings with dimension validation and shared ownership of
+ * identical in-flight requests. Completed vectors are not cached here.
  */
+import { nativeApplicationOperationHeaders, getNativeApplicationSlot } from "../utils/config";
+import { nativeFundingFailure } from "../utils/native-funding";
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import {
+  BGE_SMALL_VECTOR_SPACE,
+  copyEmbeddingVectorSpace,
   ElizaError,
+  identifyEmbeddingVector,
   logger,
   ModelType,
   timeInferenceSpan,
   VECTOR_DIMS,
 } from "@elizaos/core";
-import { getSetting } from "../utils/config";
+import {
+  getAppId,
+  getSetting,
+  resolveCloudSdkAuthorityTuple,
+} from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { createCloudApiClient } from "../utils/sdk-client";
 import { nextWarmingRetryDelayMs } from "./text";
 
 const MAX_BATCH_SIZE = 100;
 
+interface PendingEmbeddingBatch {
+  controller: AbortController;
+  promise: Promise<number[][]>;
+  consumers: number;
+  settled: boolean;
+}
+
+const pendingEmbeddingBatches = new WeakMap<
+  IAgentRuntime,
+  Map<string, PendingEmbeddingBatch>
+>();
+
+/** Share only pending identical work; each caller retains its cancellation owner. */
+function sharePendingEmbeddingBatch(
+  runtime: IAgentRuntime,
+  key: string,
+  signal: AbortSignal | undefined,
+  execute: (signal: AbortSignal) => Promise<number[][]>,
+): Promise<number[][]> {
+  if (signal?.aborted) return Promise.reject(signal.reason);
+  let batches = pendingEmbeddingBatches.get(runtime);
+  if (!batches) {
+    batches = new Map();
+    pendingEmbeddingBatches.set(runtime, batches);
+  }
+  let pending = batches.get(key);
+  if (!pending) {
+    const controller = new AbortController();
+    const entry: PendingEmbeddingBatch = {
+      controller,
+      consumers: 0,
+      settled: false,
+      // Publish ownership before execution, so synchronous failures and
+      // cancellation follow the same cleanup path as network failures.
+      promise: Promise.resolve().then(() => execute(controller.signal)),
+    };
+    entry.promise = entry.promise.finally(() => {
+      entry.settled = true;
+      if (batches.get(key) === entry) batches.delete(key);
+    });
+    batches.set(key, entry);
+    pending = entry;
+  }
+  const entry = pending;
+  entry.consumers += 1;
+  return new Promise((resolve, reject) => {
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      signal?.removeEventListener("abort", abort);
+      entry.consumers -= 1;
+      if (entry.consumers === 0 && !entry.settled) {
+        // An abandoned operation must not accept a new caller while its
+        // canceled transport is still unwinding.
+        if (batches.get(key) === entry) batches.delete(key);
+        entry.controller.abort(signal?.reason);
+      }
+    };
+    const abort = (): void => {
+      release();
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    void entry.promise.then(
+      (vectors) => {
+        if (released) return;
+        release();
+        // Consumers may normalize or store vectors independently.
+        resolve(vectors.map((vector) => {
+          const copy = [...vector];
+          copyEmbeddingVectorSpace(vector, copy);
+          return copy;
+        }));
+      },
+      (error) => {
+        // error-policy:J5 every interested caller observes this rejection;
+        // canceled callers already observed their own abort reason.
+        if (released) return;
+        release();
+        reject(error);
+      },
+    );
+  });
+}
+
 // ── Bounded retry/backoff for the /embeddings round-trip ──────────────────
-// Embeddings are off the turn's critical path (queueEmbeddingGeneration is
-// fire-and-forget), so a stall here delays the embedding QUEUE, not a reply.
+// Background indexing and foreground recall both use this transport. Identical
+// overlapping batches share one request without canceling another caller's work.
 // The old behaviour — one blind 30s (or full retry-after) sleep then a single
 // retry — could park the queue for 30s+ on a transient 429. Replaced with
 // bounded exponential backoff + jitter, a CAP on any single wait (so a large
@@ -95,18 +192,20 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
   const embeddingModelName = getSetting(
     runtime,
     "ELIZAOS_CLOUD_EMBEDDING_MODEL",
-    "text-embedding-3-small"
+    "bge-small-en-v1.5"
   );
   // Prefix parsing would turn a malformed setting into a valid but unintended dimension.
+  const defaultDimension = embeddingModelName === "bge-small-en-v1.5" ? "384" : "1536";
   const rawDimension =
-    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") || "1536";
+    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", defaultDimension) || defaultDimension;
   const trimmedDimension = rawDimension.trim();
   const embeddingDimension = (
     /^\d+$/.test(trimmedDimension) ? Number(trimmedDimension) : Number.NaN
   ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
 
-  if (!Object.values(VECTOR_DIMS).includes(embeddingDimension)) {
-    const allowedDimensions = Object.values(VECTOR_DIMS);
+  const allowedDimensions =
+    embeddingModelName === "bge-small-en-v1.5" ? [384] : Object.values(VECTOR_DIMS);
+  if (!allowedDimensions.includes(embeddingDimension)) {
     throw new ElizaError(
       `Invalid ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS value ${JSON.stringify(rawDimension)}; expected one of ${allowedDimensions.join(", ")}`,
       {
@@ -125,11 +224,10 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
 }
 
 /**
- * The init probe vector. `runtime.ensureEmbeddingDimension()` calls the handler
- * with `null` purely to learn the vector length; it only inspects `.length`, so
- * a deterministic non-zero[0] marker vector is the correct, legitimate response.
- * This is the ONLY place a synthetic vector is returned — every real failure
- * throws so it can never be persisted as a corrupt embedding (Commandment 8).
+ * Legacy providers use a synthetic width-only initialization probe. Canonical
+ * BGE initialization makes a real request instead, so the runtime can verify
+ * the representation before activating storage. This marker never represents
+ * user content and must not be persisted.
  */
 function createInitProbeVector(dimension: number): number[] {
   const vector = Array(dimension).fill(0);
@@ -145,10 +243,15 @@ export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
-  const { embeddingDimension } = getEmbeddingConfig(runtime);
-  const signal =
-    typeof params === "object" && params !== null ? params.signal : undefined;
+  const { embeddingModelName, embeddingDimension } = getEmbeddingConfig(runtime);
+  const signal = typeof params === "object" && params !== null ? params.signal : undefined;
 
+  if (params === null && embeddingModelName === "bge-small-en-v1.5") {
+    const vectors = await handleBatchTextEmbedding(runtime, [
+      "Embedding representation initialization.",
+    ]);
+    return vectors[0];
+  }
   if (params === null) {
     logger.debug("Creating test embedding for initialization");
     return createInitProbeVector(embeddingDimension);
@@ -198,19 +301,62 @@ export async function handleBatchTextEmbedding(
   // the bad input to the caller (Commandment 8) instead of papering over it.
   const validTexts: { text: string; originalIndex: number }[] = [];
   for (let i = 0; i < texts.length; i++) {
-    const text = texts[i]?.trim();
-    if (!text) {
+    const text = texts[i];
+    if (typeof text !== "string" || !text.trim()) {
       throw new Error(`Cannot generate embedding for empty text at index ${i}`);
     }
     validTexts.push({ text, originalIndex: i });
   }
 
-  const results: number[][] = new Array(texts.length);
+  // Credential/endpoint and app attribution changes create a different flight.
+  // The key is process-local, never logged, and removed when work settles.
+  const authority = resolveCloudSdkAuthorityTuple(runtime, true);
+  // Without an explicit credential, keep calls independent of credential-keyed flights.
+  if (!authority.apiKey) {
+    return executeEmbeddingBatch(
+      runtime,
+      client,
+      validTexts,
+      embeddingModelName,
+      embeddingDimension,
+      signal,
+    );
+  }
+  const key = JSON.stringify([
+    authority,
+    getAppId(runtime),
+    embeddingModelName,
+    embeddingDimension,
+    validTexts.map(({ text }) => text),
+  ]);
+  return sharePendingEmbeddingBatch(runtime, key, signal, (sharedSignal) =>
+    executeEmbeddingBatch(
+      runtime,
+      client,
+      validTexts,
+      embeddingModelName,
+      embeddingDimension,
+      sharedSignal,
+    ),
+  );
+}
+
+async function executeEmbeddingBatch(
+  runtime: IAgentRuntime,
+  client: ReturnType<typeof createCloudApiClient>,
+  validTexts: { text: string; originalIndex: number }[],
+  embeddingModelName: string | undefined,
+  embeddingDimension: number,
+  signal: AbortSignal | undefined,
+): Promise<number[][]> {
+  const results: number[][] = new Array(validTexts.length);
 
   for (let batchStart = 0; batchStart < validTexts.length; batchStart += MAX_BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + MAX_BATCH_SIZE, validTexts.length);
     const batch = validTexts.slice(batchStart, batchEnd);
     const batchTexts = batch.map((b) => b.text);
+    const selectedFundingSlot = getNativeApplicationSlot(runtime);
+    const operationHeaders = nativeApplicationOperationHeaders(runtime);
 
     logger.info(
       `[BatchEmbeddings] Processing batch ${Math.floor(batchStart / MAX_BATCH_SIZE) + 1}/${Math.ceil(validTexts.length / MAX_BATCH_SIZE)}: ${batch.length} texts`
@@ -241,6 +387,7 @@ export async function handleBatchTextEmbedding(
           "cloud.embedding",
           () =>
             client.requestRaw("POST", "/embeddings", {
+              headers: operationHeaders,
               json: {
                 model: embeddingModelName,
                 input: batchTexts,
@@ -348,6 +495,7 @@ export async function handleBatchTextEmbedding(
 
       const data = (await response.json()) as {
         data?: Array<{ embedding: number[]; index: number }>;
+        embedding_space?: string;
         usage?: { prompt_tokens: number; total_tokens: number };
       };
 
@@ -365,17 +513,32 @@ export async function handleBatchTextEmbedding(
         );
       }
 
+      if (
+        embeddingModelName === "bge-small-en-v1.5" &&
+        data.embedding_space !== BGE_SMALL_VECTOR_SPACE
+      ) {
+        throw new ElizaError(
+          "The embedding server must identify the canonical BGE CLS/L2 representation; update the server before using its vectors",
+          {
+            code: "ELIZA_CLOUD_EMBEDDING_SPACE_MISMATCH",
+            context: { expected: BGE_SMALL_VECTOR_SPACE, received: data.embedding_space ?? null },
+          }
+        );
+      }
+      const seenIndices = new Set<number>();
       for (const item of data.data) {
         // The response `index` addresses this batch slice. A malformed/duplicated
         // or cross-batch (absolute) index would make `batch[item.index]` undefined
         // and crash on `.originalIndex`; guard it explicitly.
         const slot =
           typeof item.index === "number" ? batch[item.index] : undefined;
-        if (!slot) {
-          throw new Error(
-            `[BatchEmbeddings] response index out of range: ${String(item.index)} (batch size ${batch.length})`
+        if (!slot || !Number.isInteger(item.index) || seenIndices.has(item.index)) {
+          throw new ElizaError(
+            `[BatchEmbeddings] response index out of range or duplicated: ${String(item.index)} (batch size ${batch.length})`,
+            { code: "ELIZA_CLOUD_EMBEDDING_RESPONSE_INVALID", context: { index: item.index, batchSize: batch.length } }
           );
         }
+        seenIndices.add(item.index);
         // Width must match the configured dimension exactly. A wrong width is the
         // root of the "Skipping embedding insert: dimension mismatch" (#8769)
         // silent drop downstream — surface it here so the router can fall through.
@@ -386,7 +549,19 @@ export async function handleBatchTextEmbedding(
             }d but agent is configured for ${embeddingDimension}d`
           );
         }
-        results[slot.originalIndex] = item.embedding;
+        if (
+          !item.embedding.every(Number.isFinite) ||
+          !item.embedding.some((value) => value !== 0)
+        ) {
+          throw new ElizaError("Embedding response contains a zero or non-finite vector", {
+            code: "ELIZA_CLOUD_EMBEDDING_RESPONSE_INVALID",
+            context: { index: item.index },
+          });
+        }
+        results[slot.originalIndex] =
+          embeddingModelName === "bge-small-en-v1.5"
+            ? identifyEmbeddingVector(item.embedding, BGE_SMALL_VECTOR_SPACE)
+            : item.embedding;
       }
 
       if (data.usage) {
@@ -408,7 +583,8 @@ export async function handleBatchTextEmbedding(
       // vectors that would corrupt the embedding store (Commandment 8).
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`[BatchEmbeddings] Batch failed: ${message}`);
-      throw error instanceof Error ? error : new Error(message);
+      // error-policy:J2 Preserve selected funding instead of authorizing another provider or queue purchase.
+      throw nativeFundingFailure(selectedFundingSlot, error instanceof Error ? error : new Error(message));
     }
   }
 

@@ -1,6 +1,6 @@
 /**
  * `DatabaseAdapter` — the abstract base every concrete persistence adapter
- * (plugin-sql's Drizzle adapters, `InMemoryDatabaseAdapter`, …) extends to
+ * (plugin-sql's Drizzle adapters, `SQLiteDatabaseAdapter`, …) extends to
  * satisfy the {@link IDatabaseAdapter} contract declared in `types/database.ts`.
  * It carries no storage logic: it re-declares the batch-first CRUD surface
  * (arrays in, arrays out) as `abstract` methods, so a missing override is a
@@ -11,11 +11,12 @@
  */
 
 import { ElizaError } from "./errors";
+import type { AccessContext } from "./types/access-context.js";
+import type { Agent } from "./types/agent.js";
 import type {
-	AccessContext,
-	Agent,
 	AppendConnectorAccountAuditEventParams,
-	Component,
+	AtomicMemoryPublicationParams,
+	AtomicMemoryPublicationResult,
 	ConnectorAccountAuditEventRecord,
 	ConnectorAccountCredentialRefRecord,
 	ConnectorAccountRecord,
@@ -33,40 +34,46 @@ import type {
 	DocumentListQueryResult,
 	DocumentMutationResult,
 	DocumentRevisionReplaceParams,
-	Entity,
 	GetConnectorAccountCredentialRefParams,
 	GetConnectorAccountParams,
 	GetOAuthFlowStateParams,
 	IDatabaseAdapter,
-	JsonValue,
 	ListConnectorAccountCredentialRefsParams,
 	ListConnectorAccountsParams,
 	Log,
 	LogBody,
-	Memory,
-	MemoryMetadata,
+	MessageContentPublicationParams,
+	MessageContentPublicationResult,
+	MessageContentRangeReadParams,
+	MessageContentRangeReadResult,
 	MessageSearchHit,
-	Metadata,
 	OAuthFlowRecord,
+	ParticipantUpdateFields,
+	ParticipantUserState,
+	PatchOp,
+	SetConnectorAccountCredentialRefParams,
+	UpdateOAuthFlowStateParams,
+	UpsertConnectorAccountParams,
+	WorldMetadataCompareAndSwapParams,
+	WorldMetadataMutationResult,
+} from "./types/database.js";
+import type {
+	Component,
+	Entity,
+	Participant,
+	Relationship,
+	Room,
+	World,
+} from "./types/environment.js";
+import type { Memory, MemoryMetadata } from "./types/memory.js";
+import type {
 	PairingAllowlistEntry,
 	PairingAllowlistQuery,
 	PairingRequest,
 	PairingRequestQuery,
-	Participant,
-	ParticipantUpdateFields,
-	ParticipantUserState,
-	PatchOp,
-	Relationship,
-	Room,
-	SetConnectorAccountCredentialRefParams,
-	Task,
-	UpdateOAuthFlowStateParams,
-	UpsertConnectorAccountParams,
-	UUID,
-	World,
-	WorldMetadataCompareAndSwapParams,
-	WorldMetadataMutationResult,
-} from "./types";
+} from "./types/pairing.js";
+import type { JsonValue, Metadata, UUID } from "./types/primitives.js";
+import type { Task } from "./types/task.js";
 
 /** Enforces the shared pagination contract for entity-query boundaries. */
 export function validateQueryEntitiesPagination(params: {
@@ -135,7 +142,7 @@ export function compareTasksForQuery(left: Task, right: Task): number {
  * - Serves as the compile-time contract: if you extend this class and miss
  *   a method, TypeScript tells you immediately.
  * - Contains no persistence logic. Concrete adapters (plugin-sql's Drizzle
- *   adapters, InMemoryDatabaseAdapter, etc.) own storage behavior; unsupported
+ *   adapters, SQLiteDatabaseAdapter, etc.) own storage behavior; unsupported
  *   optional domains throw a clear adapter-level error.
  *
  * All CRUD methods are batch-first (arrays in, arrays out). See
@@ -147,6 +154,26 @@ export function compareTasksForQuery(left: Task, right: Task): number {
 export abstract class DatabaseAdapter<DB extends object = object>
 	implements IDatabaseAdapter<DB>
 {
+	abstract readonly messageContentSegmentCapability: 1;
+
+	abstract publishMessageContentSegments(
+		params: MessageContentPublicationParams,
+	): Promise<MessageContentPublicationResult>;
+
+	abstract readMessageContentRange(
+		params: MessageContentRangeReadParams,
+	): Promise<MessageContentRangeReadResult>;
+
+	async compareAndSwapMemoryPublication(
+		_params: AtomicMemoryPublicationParams,
+	): Promise<AtomicMemoryPublicationResult> {
+		throw new ElizaError(
+			"Atomic memory publication is unsupported by this adapter",
+			{
+				code: "CONTENT_CONTINUITY_ATOMIC_PUBLICATION_UNSUPPORTED",
+			},
+		);
+	}
 	/**
 	 * Exact document-store contract implemented by every first-class adapter.
 	 * Version 4 adds storage-enforced direct-grant replacement.
@@ -262,7 +289,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract getEntitiesForRooms(
 		roomIds: UUID[],
 		includeComponents?: boolean,
-	): Promise<import("./types").EntitiesForRoomsResult>;
+	): Promise<import("./types/database.js").EntitiesForRoomsResult>;
 
 	/**
 	 * Creates a new entities in the database.
@@ -481,6 +508,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract searchMemories(params: {
 		tableName: string;
 		embedding: number[];
+		/** Omit returned vectors only; similarity still uses the stored embedding. */
+		includeEmbedding?: boolean;
+		/** Narrow eligible rooms before ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
@@ -508,6 +539,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		memories: Array<{ memory: Memory; tableName: string }>,
 		options?: { entityContext?: UUID },
 	): Promise<void>;
+	abstract updateMemoryEmbedding(
+		update: import("./types/database").MemoryEmbeddingUpdate,
+	): Promise<boolean>;
 	abstract deleteMemories(memoryIds: UUID[]): Promise<void>;
 
 	abstract deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void>;
@@ -605,7 +639,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
 	abstract getParticipantsForRooms(
 		roomIds: UUID[],
-	): Promise<import("./types").ParticipantsForRoomsResult>;
+	): Promise<import("./types/database.js").ParticipantsForRoomsResult>;
 
 	abstract areRoomParticipants(
 		pairs: Array<{ roomId: UUID; entityId: UUID }>,
@@ -683,6 +717,16 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		entries: Array<{ key: string; value: T }>,
 	): Promise<boolean>;
 	abstract deleteCaches(keys: string[]): Promise<boolean>;
+	compareAndSetCache<T>(
+		_key: string,
+		_expected: unknown,
+		_replacement: T,
+	): Promise<boolean> {
+		throw new ElizaError(
+			"Database adapter does not support atomic cache updates",
+			{ code: "CACHE_CAS_CAPABILITY_REQUIRED" },
+		);
+	}
 
 	/**
 	 * Retrieves tasks based on specified parameters.
@@ -730,11 +774,11 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	// ── Pairing CRUD (batch-only for mutations) ─────────────────────────
 	abstract getPairingRequests(
 		queries: PairingRequestQuery[],
-	): Promise<import("./types").PairingRequestsResult>;
+	): Promise<import("./types/database.js").PairingRequestsResult>;
 
 	abstract getPairingAllowlists(
 		queries: PairingAllowlistQuery[],
-	): Promise<import("./types").PairingAllowlistsResult>;
+	): Promise<import("./types/database.js").PairingAllowlistsResult>;
 
 	abstract createPairingRequests(requests: PairingRequest[]): Promise<UUID[]>;
 	abstract updatePairingRequests(requests: PairingRequest[]): Promise<void>;

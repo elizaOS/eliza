@@ -2,7 +2,8 @@
  * Documents service access helpers.
  */
 
-import type { AgentRuntime, DocumentService as DocumentServiceType } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
+import type { DocumentService as DocumentServiceType } from "@elizaos/plugin-assistant";
 
 const MAX_RETRIES = 5;
 const INITIAL_DELAY_MS = 50; // Start low, increases exponentially

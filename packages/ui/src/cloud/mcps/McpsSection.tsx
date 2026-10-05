@@ -7,8 +7,13 @@
  * standalone route, so the section and any direct mount stay identical.
  */
 
+import { CloudSettingsSectionShell } from "../settings/CloudSettingsSectionShell";
 import { McpsSurface } from "./McpsRoute";
 
 export function McpsSection() {
-  return <McpsSurface />;
+  return (
+    <CloudSettingsSectionShell>
+      <McpsSurface />
+    </CloudSettingsSectionShell>
+  );
 }

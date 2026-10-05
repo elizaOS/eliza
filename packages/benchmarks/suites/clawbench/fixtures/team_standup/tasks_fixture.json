@@ -1,0 +1,109 @@
+[
+  {
+    "id": "TC-880",
+    "title": "Implement auth session management",
+    "status": "Blocked",
+    "priority": "P0",
+    "owner": "marcus.johnson",
+    "notes": "Testing is blocked on Redis provisioning."
+  },
+  {
+    "id": "TC-891",
+    "title": "Add rate limiting to public API",
+    "status": "In Progress",
+    "priority": "P1",
+    "owner": "marcus.johnson"
+  },
+  {
+    "id": "TC-903",
+    "title": "Fix timezone bug in scheduler",
+    "status": "In Progress",
+    "priority": "P1",
+    "owner": "james.liu"
+  },
+  {
+    "id": "TC-912",
+    "title": "Update error messages for auth flow",
+    "status": "In Progress",
+    "priority": "P1",
+    "owner": "marcus.johnson"
+  },
+  {
+    "id": "TC-918",
+    "title": "Refactor dashboard data fetching",
+    "status": "In Review",
+    "priority": "P1",
+    "owner": "priya.patel"
+  },
+  {
+    "id": "TC-920",
+    "title": "Add dashboard loading skeletons",
+    "status": "In Review",
+    "priority": "P2",
+    "owner": "priya.patel"
+  },
+  {
+    "id": "TC-924",
+    "title": "Provision Redis cluster",
+    "status": "Blocked",
+    "priority": "P0",
+    "owner": "tom.anderson",
+    "notes": "Needs managed versus self-hosted decision."
+  },
+  {
+    "id": "TC-926",
+    "title": "Repair CI integration-test lane",
+    "status": "In Progress",
+    "priority": "P1",
+    "owner": "tom.anderson"
+  },
+  {
+    "id": "TC-928",
+    "title": "Write analytics incident postmortem",
+    "status": "Todo",
+    "priority": "P1",
+    "owner": "marcus.johnson"
+  },
+  {
+    "id": "TC-929",
+    "title": "Validate dashboard query performance",
+    "status": "Todo",
+    "priority": "P2",
+    "owner": "priya.patel"
+  },
+  {
+    "id": "TC-930",
+    "title": "Document auth migration rollout",
+    "status": "Todo",
+    "priority": "P2",
+    "owner": "james.liu"
+  },
+  {
+    "id": "TC-931",
+    "title": "Add scheduler migration regression tests",
+    "status": "Todo",
+    "priority": "P2",
+    "owner": "james.liu"
+  },
+  {
+    "id": "TC-932",
+    "title": "Review Sprint 14 backlog",
+    "status": "Todo",
+    "priority": "P2",
+    "owner": "alex.chen"
+  },
+  {
+    "id": "TC-933",
+    "title": "Update API operational runbook",
+    "status": "Todo",
+    "priority": "P3",
+    "owner": "tom.anderson"
+  },
+  {
+    "id": "TC-934",
+    "title": "Archive obsolete dashboard experiments",
+    "status": "Backlog",
+    "priority": "P3",
+    "owner": "priya.patel"
+  }
+]

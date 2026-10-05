@@ -8,17 +8,24 @@
  * conversation and stream-event types for API consumers.
  */
 import type http from "node:http";
-import type { AgentRuntime, Media, UUID } from "@elizaos/core";
-import type { CloudManager } from "@elizaos/plugin-elizacloud/host-routes";
+import type {
+  ConversationMetadata,
+  TradePermissionMode,
+} from "@elizaos/contracts";
 import type {
   AgentAutomationMode,
+  AgentRuntime,
   AgentStartupDiagnostics,
-  ConversationMetadata,
-  LogEntry,
+  AgentLogEntry as LogEntry,
+  Media,
+  PermissionState,
   PluginParamDef,
   SkillEntry,
   StreamEventEnvelope,
-} from "@elizaos/shared";
+  UUID,
+} from "@elizaos/core";
+
+import type { CloudManager } from "@elizaos/plugin-elizacloud/host-routes";
 import type { ElizaConfig } from "../config/config.ts";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
@@ -35,18 +42,20 @@ export interface TelegramAccountAuthSessionLike {
 }
 
 export type {
-  AgentAutomationMode,
-  AgentStartupDiagnostics,
-  ChatImageAttachment,
   ConversationAutomationType,
   ConversationMetadata,
   ConversationScope,
-  LogEntry,
+} from "@elizaos/contracts";
+export type {
+  AgentAutomationMode,
+  AgentLogEntry as LogEntry,
+  AgentStartupDiagnostics,
+  AgentStreamEventType as StreamEventType,
+  ChatImageAttachment,
   PluginParamDef,
   SkillEntry,
   StreamEventEnvelope,
-  StreamEventType,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
@@ -76,7 +85,7 @@ export type ConnectorRouteHandler = (
   method: string,
 ) => Promise<boolean>;
 
-export type { TradePermissionMode } from "@elizaos/shared";
+export type { TradePermissionMode } from "@elizaos/contracts";
 
 export interface PluginEntry {
   id: string;
@@ -200,17 +209,17 @@ export interface ServerState {
    */
   activeConversationId: string | null;
   /** Transient OAuth flow state for subscription auth. */
-  _anthropicFlow?: import("@elizaos/auth/anthropic").AnthropicFlow;
-  _codexFlow?: import("@elizaos/auth/openai-codex").CodexFlow;
+  _anthropicFlow?: import("@elizaos/auth/auth").AnthropicFlow;
+  _codexFlow?: import("@elizaos/auth/auth").CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
   /** System permission states (cached from the desktop bridge). */
-  permissionStates?: Record<string, import("@elizaos/shared").PermissionState>;
+  permissionStates?: Record<string, PermissionState>;
   /** Whether shell access is enabled (can be toggled in UI). */
   shellEnabled?: boolean;
   /** Agent automation permission mode for self-directed config changes. */
   agentAutomationMode?: AgentAutomationMode;
   /** Wallet trade execution permission mode (user-sign/manual/agent-auto). */
-  tradePermissionMode?: import("@elizaos/shared").TradePermissionMode;
+  tradePermissionMode?: TradePermissionMode;
   /** Reasons a restart is pending. Empty array = no restart needed. */
   pendingRestartReasons: string[];
   /** Route handlers registered by connector plugins (loaded dynamically). */

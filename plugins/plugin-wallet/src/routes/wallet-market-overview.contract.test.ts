@@ -181,3 +181,88 @@ describe("wallet market overview provider contracts", () => {
     expect(dto.predictions).toEqual([]);
   });
 });
+
+it.each(["prices", "movers"] as const)(
+  "fills unavailable cloud %s from the direct feed while preserving other cloud sources",
+  async (missing) => {
+    const markets = [
+      ...recorded.coinGeckoMarkets,
+      {
+        id: "synthetic-mover",
+        symbol: "move",
+        name: "Synthetic Mover",
+        current_price: 12,
+        price_change_percentage_24h: 5,
+        market_cap_rank: 40,
+      },
+    ];
+    installMarketFetch(markets);
+    const initial = createResponse();
+    await handleWalletMarketOverviewRoute(createRequest(), initial);
+    const cloud =
+      initial.json<import("../contracts").WalletMarketOverviewResponse>();
+    cloud.stale = true;
+    cloud.sources[missing] = {
+      ...cloud.sources[missing],
+      available: false,
+      stale: true,
+      error: "CoinGecko responded 429",
+    };
+    cloud[missing] = [];
+    const healthy = missing === "prices" ? "movers" : "prices";
+    cloud.sources[healthy].stale = true;
+    __resetWalletMarketOverviewCacheForTests();
+    let directCalls = 0;
+    __setWalletMarketOverviewFetchForTests(async (url) => {
+      const href = String(url);
+      if (href.includes("/market/preview/")) return jsonResponse(cloud);
+      if (href.includes("coingecko.com")) {
+        directCalls++;
+        return jsonResponse(markets);
+      }
+      throw new Error("Prediction provider unavailable");
+    });
+    const res = createResponse();
+    await handleWalletMarketOverviewRoute(createRequest(), res);
+    const dto = res.json<import("../contracts").WalletMarketOverviewResponse>();
+    expect(directCalls).toBe(1);
+    expect(dto[missing].length).toBeGreaterThan(0);
+    expect(dto.sources[missing]).toMatchObject({
+      available: true,
+      stale: false,
+      error: null,
+    });
+    expect(dto[healthy]).toEqual(cloud[healthy]);
+    expect(dto.sources[healthy]).toEqual(cloud.sources[healthy]);
+    expect(dto.predictions).toEqual(cloud.predictions);
+    expect(dto.sources.predictions).toEqual(cloud.sources.predictions);
+    expect(dto.stale).toBe(true);
+  },
+);
+
+it("retains partial cloud data and its source errors when the direct fallback also fails", async () => {
+  installRecordedFetch();
+  const initial = createResponse();
+  await handleWalletMarketOverviewRoute(createRequest(), initial);
+  const cloud =
+    initial.json<import("../contracts").WalletMarketOverviewResponse>();
+  cloud.stale = true;
+  cloud.sources.prices = {
+    ...cloud.sources.prices,
+    available: false,
+    stale: true,
+    error: "CoinGecko responded 429",
+  };
+  __resetWalletMarketOverviewCacheForTests();
+  let directCalls = 0;
+  __setWalletMarketOverviewFetchForTests(async (url) => {
+    if (String(url).includes("/market/preview/")) return jsonResponse(cloud);
+    if (String(url).includes("coingecko.com")) directCalls++;
+    throw new Error("Direct feed unavailable");
+  });
+  const res = createResponse();
+  await handleWalletMarketOverviewRoute(createRequest(), res);
+  expect(res.statusCode).toBe(200);
+  expect(directCalls).toBe(1);
+  expect(res.json()).toEqual(cloud);
+});

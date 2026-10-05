@@ -206,7 +206,6 @@ echo "GPUs detected/used: $GPUS"
 # Make eliza_reward_fn importable as a top-level module path. verl resolves
 # `custom_reward_function.path` directly so this is mostly belt-and-braces
 # for the data-loader workers.
-export PYTHONPATH="$TRAIN_ROOT/scripts:${PYTHONPATH:-}"
 
 if ! python3 -c "import verl" 2>/dev/null; then
   echo ""

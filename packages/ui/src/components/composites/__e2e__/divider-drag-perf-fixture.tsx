@@ -19,7 +19,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { useRafCoalescer } from "../../../gestures";
+import { useRafCoalescer } from "../../../gestures/useRafCoalescer";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 560;

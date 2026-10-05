@@ -8,7 +8,7 @@ import {
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
 	trustedDeliveryAudienceCacheKey,
-} from "../../security/index.js";
+} from "../../security/trusted-delivery-audience.js";
 import {
 	getStreamingContext,
 	runWithStreamingContext,
@@ -19,24 +19,18 @@ import {
 	type TrajectoryProviderAccessLogger,
 	withProviderStep,
 } from "../../trajectory-utils";
-import type {
-	IAgentRuntime,
-	Memory,
-	PipelineHookPhase,
-	Provider,
-	ResolvedPipelineHook,
-	Service,
-	ServiceTypeName,
-	State,
-	StateValue,
-} from "../../types";
+import type { Provider } from "../../types/components.js";
+import type { Memory } from "../../types/memory.js";
 import { composeStateProvidersPipelineHookContext } from "../../types/pipeline-hooks";
+import type { IAgentRuntime } from "../../types/runtime.js";
+import type { Service, ServiceTypeName } from "../../types/service.js";
+import type { State, StateValue } from "../../types/state.js";
 import { resolveProviderContexts } from "../../utils/context-catalog";
 import {
 	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "../../utils/context-routing";
-import { buildDeterministicSeed } from "../../utils/deterministic";
+import { buildDeterministicSeed } from "../../utils/deterministic.js";
 import { toWellFormedUnicode } from "../../utils/well-formed.js";
 import { buildProviderAttributionsFromState } from "../trajectory-provider-attribution";
 import {
@@ -118,7 +112,6 @@ export class ProviderStateComposer {
 		// cached providers to execute again. Reused providers are logged as cache
 		// hits below, so enabling trajectories cannot add latency or change what a
 		// provider observes.
-		const filterList = onlyInclude ? includeList : null;
 		const emptyObj = {
 			values: {},
 			data: {},
@@ -145,78 +138,13 @@ export class ProviderStateComposer {
 					message.roomId)
 				? cachedCandidate
 				: emptyObj;
-		const activeContexts = getActiveRoutingContextsForTurn(
-			cachedState,
+		const providerNames = await this.selectProviderNames(
 			message,
+			cachedState,
+			includeList,
+			onlyInclude,
 		);
-		const providerNames = new Set<string>();
-		if (filterList && filterList.length > 0) {
-			// The onlyInclude path honors the explicit name list without enforcing
-			// provider roleGates: the Stage-1 response state deliberately
-			// force-includes recall providers like FACTS for every sender, and
-			// unassigned senders (ordinary humans AND relay/webhook bridges
-			// carrying human conversation) resolve to GUEST by default (roles.ts
-			// getEntityRole), so gate enforcement here would silently strip
-			// cross-turn recall from exactly the turns that need it. Callers that
-			// name a provider explicitly own that inclusion decision.
-			for (const name of filterList) {
-				providerNames.add(name);
-			}
-		} else {
-			for (const p of this.runtime.providers.filter(
-				(p) => !p.private && !p.dynamic,
-			)) {
-				if (
-					activeContexts.length > 0 &&
-					!shouldIncludeByContext(resolveProviderContexts(p), activeContexts)
-				) {
-					continue;
-				}
-				providerNames.add(p.name);
-			}
-		}
-		if (!filterList && includeList && includeList.length > 0) {
-			for (const name of includeList) {
-				providerNames.add(name);
-			}
-		}
-		// Opt-in provider-selection hook: lets a host app filter, extend, or
-		// reorder the provider set per message intent before any provider runs.
-		// Guarded so the default (no-hook) path stays allocation-free.
-		if (this.lifecycle.hasProviderSelectionHooks()) {
-			const selection = composeStateProvidersPipelineHookContext({
-				message,
-				providers: { current: [...providerNames] },
-				activeContexts,
-				onlyInclude,
-				includeList,
-			});
-			await this.runtime.applyPipelineHooks(
-				"compose_state_providers",
-				selection,
-			);
-			// Boundary validation: a buggy hook may replace `current` with a
-			// non-array (or throw mid-mutation). Only adopt a well-formed list;
-			// otherwise keep the pre-hook selection rather than crash the turn.
-			const selected = selection.providers.current;
-			if (Array.isArray(selected)) {
-				providerNames.clear();
-				for (const name of selected) {
-					if (typeof name === "string" && name.length > 0) {
-						providerNames.add(name);
-					}
-				}
-			} else {
-				this.runtime.logger.warn(
-					{
-						src: "agent",
-						agentId: this.runtime.agentId,
-						phase: "compose_state_providers",
-					},
-					"compose_state_providers hook left providers.current non-array; keeping pre-hook selection",
-				);
-			}
-		}
+
 		const providersToGet: Provider[] = [];
 		const deniedSensitiveProviderNames = new Set<string>();
 		let ownerDisclosureDecision:
@@ -254,6 +182,15 @@ export class ProviderStateComposer {
 				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
 		);
 
+		const selectedProviderNames = providersToGet.map(
+			(provider) => provider.name,
+		);
+		const providerSelectionKey = JSON.stringify(
+			[...selectedProviderNames].sort(),
+		);
+		const selectionChanged =
+			cachedState.data.__providerSelectionKey !== providerSelectionKey;
+
 		// `refreshProviders` lets a caller reuse cached provider results and re-run
 		// only the named providers, plus providers not yet cached for this
 		// message. An empty array requests maximum reuse. `null` preserves the
@@ -274,6 +211,7 @@ export class ProviderStateComposer {
 		const providersToRun = refreshSet
 			? providersToGet.filter(
 					(p) =>
+						selectionChanged ||
 						p.disclosureGate?.require === "owner_exclusive" ||
 						refreshSet.has(p.name) ||
 						!cachedProviderNames?.has(p.name),
@@ -316,7 +254,7 @@ export class ProviderStateComposer {
 				const providerRuntime: IAgentRuntime = this.runtime;
 				const inFlightKey =
 					message.id && !refreshSet?.has(provider.name)
-						? `${message.id}\u0000${message.roomId}\u0000${provider.name}\u0000${
+						? `${message.id}\u0000${message.roomId}\u0000${providerSelectionKey}\u0000${provider.name}\u0000${
 								provider.disclosureGate?.require === "owner_exclusive"
 									? trustedDeliveryAudienceCacheKey(message)
 									: "public"
@@ -355,6 +293,7 @@ export class ProviderStateComposer {
 										withProviderStep(providerRuntime, provider.name, () =>
 											provider.get(providerRuntime, message, cachedState, {
 												signal: workController.signal,
+												selectedProviderNames,
 											}),
 										),
 									),
@@ -523,6 +462,9 @@ export class ProviderStateComposer {
 			currentProviderResults[freshResult.providerName] = {
 				...freshResult,
 				text: redactedText,
+				discoveryText: freshResult.discoveryText
+					? this.runtime.redactSecrets(freshResult.discoveryText)
+					: freshResult.discoveryText,
 				values:
 					freshResult.values && typeof freshResult.values === "object"
 						? Object.fromEntries(
@@ -587,166 +529,182 @@ export class ProviderStateComposer {
 				providerAttribution.providerAttributions;
 			activeTrajectoryContext.providerAttributionState = attributionState;
 		}
-		if (trajectoryStepId && trajLogger) {
-			const userText =
-				typeof message.content.text === "string" ? message.content.text : "";
-			const trajCtx = activeTrajectoryContext;
-			const providerTraceId = this.runtime.getActiveTrace(
-				this.runtime.getCurrentRunId(),
-			)?.id;
-			for (const [providerIndex, r] of providerData.entries()) {
-				try {
-					const overlapsWith = providerOverlaps[providerIndex];
-					if (!overlapsWith) {
-						throw new Error(
-							`Missing provider overlap row at index ${providerIndex}`,
+		const recordProviderAccesses = (includeText: boolean) => {
+			if (trajectoryStepId && trajLogger) {
+				const userText =
+					typeof message.content.text === "string" ? message.content.text : "";
+				const trajCtx = activeTrajectoryContext;
+				const providerTraceId = this.runtime.getActiveTrace(
+					this.runtime.getCurrentRunId(),
+				)?.id;
+				for (const [providerIndex, r] of providerData.entries()) {
+					try {
+						const overlapsWith = providerOverlaps[providerIndex];
+						if (!overlapsWith) {
+							throw new Error(
+								`Missing provider overlap row at index ${providerIndex}`,
+							);
+						}
+						const redactedText =
+							currentProviderResults[r.providerName]?.text ?? "";
+						const attribution = providerAttributionByName.get(r.providerName);
+						trajLogger.logProviderAccess({
+							stepId: trajectoryStepId,
+							providerName: r.providerName,
+							startedAt: r.providerStartedAt,
+							endedAt: r.providerEndedAt,
+							durationMs: r.providerDurationMs,
+							overlapsWith,
+							data: {
+								// Retain only audience-authorized, secret-redacted text; never raw values/data.
+								...(includeText && !r.providerError
+									? { text: redactedText }
+									: {}),
+								textLength: redactedText.length,
+								outcome: r.providerOutcome,
+								coalesced: r.providerCoalesced,
+								cacheHit: false,
+								...(r.providerError ? { errorCode: r.providerError.code } : {}),
+							},
+							sha256: attribution?.sha256,
+							tokenCount: attribution?.tokenCount,
+							position: attribution?.position,
+							// Spans index providersText, which is not persisted on the
+							// access row — omit them so readers do not slice a different
+							// string with compose-local offsets.
+							purpose: "compose_state",
+							query: { message: toWellFormedUnicode(userText) },
+							runId: trajCtx?.runId,
+							roomId: trajCtx?.roomId,
+							messageId: trajCtx?.messageId,
+							executionTraceId: providerTraceId,
+						});
+					} catch (error) {
+						// error-policy:J7 trajectory diagnostics must not replace the
+						// provider result or kill the message loop.
+						this.runtime.reportError(
+							"AgentRuntime.composeState.providerTrajectory",
+							error,
+							{
+								provider: r.providerName,
+								messageId: message.id,
+							},
 						);
 					}
-					const redactedText =
-						currentProviderResults[r.providerName]?.text ?? "";
-					const attribution = providerAttributionByName.get(r.providerName);
-					trajLogger.logProviderAccess({
-						stepId: trajectoryStepId,
-						providerName: r.providerName,
-						startedAt: r.providerStartedAt,
-						endedAt: r.providerEndedAt,
-						durationMs: r.providerDurationMs,
-						overlapsWith,
-						data: {
-							textLength: redactedText.length,
-							outcome: r.providerOutcome,
-							coalesced: r.providerCoalesced,
-							cacheHit: false,
-							...(r.providerError ? { errorCode: r.providerError.code } : {}),
-						},
-						sha256: attribution?.sha256,
-						tokenCount: attribution?.tokenCount,
-						position: attribution?.position,
-						// Spans index providersText, which is not persisted on the
-						// access row — omit them so readers do not slice a different
-						// string with compose-local offsets.
-						purpose: "compose_state",
-						query: { message: toWellFormedUnicode(userText) },
-						runId: trajCtx?.runId,
-						roomId: trajCtx?.roomId,
-						messageId: trajCtx?.messageId,
-						executionTraceId: providerTraceId,
-					});
-				} catch (error) {
-					// error-policy:J7 trajectory diagnostics must not replace the
-					// provider result or kill the message loop.
-					this.runtime.reportError(
-						"AgentRuntime.composeState.providerTrajectory",
-						error,
-						{
-							provider: r.providerName,
-							messageId: message.id,
-						},
-					);
+				}
+				for (const provider of reusedProviders) {
+					try {
+						const cached = currentProviderResults[provider.name];
+						const attribution = providerAttributionByName.get(provider.name);
+						trajLogger.logProviderAccess({
+							stepId: trajectoryStepId,
+							providerName: provider.name,
+							startedAt: composeStartedAt,
+							endedAt: composeStartedAt,
+							durationMs: 0,
+							overlapsWith: [],
+							data: {
+								...(includeText && cached ? { text: cached.text ?? "" } : {}),
+								textLength:
+									typeof cached?.text === "string" ? cached.text.length : 0,
+								outcome: cached?.providerOutcome ?? "success",
+								coalesced: false,
+								cacheHit: true,
+								...(typeof cached?.providerDurationMs === "number"
+									? { sourceDurationMs: cached.providerDurationMs }
+									: {}),
+							},
+							sha256: attribution?.sha256,
+							tokenCount: attribution?.tokenCount,
+							position: attribution?.position,
+							purpose: "compose_state",
+							query: { message: toWellFormedUnicode(userText) },
+							runId: trajCtx?.runId,
+							roomId: trajCtx?.roomId,
+							messageId: trajCtx?.messageId,
+							executionTraceId: providerTraceId,
+						});
+					} catch (error) {
+						// error-policy:J7 trajectory diagnostics must not replace the
+						// cached provider result or kill the message loop.
+						this.runtime.reportError(
+							"AgentRuntime.composeState.cachedProviderTrajectory",
+							error,
+							{
+								provider: provider.name,
+								messageId: message.id,
+							},
+						);
+					}
 				}
 			}
-			for (const provider of reusedProviders) {
-				try {
-					const cached = currentProviderResults[provider.name];
-					const attribution = providerAttributionByName.get(provider.name);
-					trajLogger.logProviderAccess({
-						stepId: trajectoryStepId,
-						providerName: provider.name,
-						startedAt: composeStartedAt,
-						endedAt: composeStartedAt,
-						durationMs: 0,
-						overlapsWith: [],
-						data: {
-							textLength:
-								typeof cached?.text === "string" ? cached.text.length : 0,
-							outcome: cached?.providerOutcome ?? "success",
-							coalesced: false,
-							cacheHit: true,
-							...(typeof cached?.providerDurationMs === "number"
-								? { sourceDurationMs: cached.providerDurationMs }
-								: {}),
-						},
-						sha256: attribution?.sha256,
-						tokenCount: attribution?.tokenCount,
-						position: attribution?.position,
-						purpose: "compose_state",
-						query: { message: toWellFormedUnicode(userText) },
-						runId: trajCtx?.runId,
-						roomId: trajCtx?.roomId,
-						messageId: trajCtx?.messageId,
-						executionTraceId: providerTraceId,
-					});
-				} catch (error) {
-					// error-policy:J7 trajectory diagnostics must not replace the
-					// cached provider result or kill the message loop.
-					this.runtime.reportError(
-						"AgentRuntime.composeState.cachedProviderTrajectory",
-						error,
-						{
-							provider: provider.name,
-							messageId: message.id,
-						},
-					);
+		};
+		let includeProviderText = false;
+		try {
+			// A designed turn abort (threadOps abort op, user "stop", client
+			// disconnect) owns the whole composition, including the post-provider
+			// assembly window. Surface that owner cancellation even when every provider
+			// already settled; provider-originated failures were reported above and are
+			// not misclassified as aborts merely because their Error name resembles one.
+			throwIfProviderCompositionAborted(
+				providerSignal,
+				this.lifecycle.isStopping(),
+			);
+			if (failedProviderData.length === 1) {
+				const failedProvider = failedProviderData[0];
+				if (failedProvider?.providerError) {
+					throw failedProvider.providerError;
 				}
 			}
-		}
-		// A designed turn abort (threadOps abort op, user "stop", client
-		// disconnect) owns the whole composition, including the post-provider
-		// assembly window. Surface that owner cancellation even when every provider
-		// already settled; provider-originated failures were reported above and are
-		// not misclassified as aborts merely because their Error name resembles one.
-		throwIfProviderCompositionAborted(
-			providerSignal,
-			this.lifecycle.isStopping(),
-		);
-		if (failedProviderData.length === 1) {
-			const failedProvider = failedProviderData[0];
-			if (failedProvider?.providerError) {
-				throw failedProvider.providerError;
-			}
-		}
-		if (failedProviderData.length > 1) {
-			// error-policy:J2 preserve every provider failure behind one
-			// state-composition error so callers receive the complete cause chain.
-			throw new ElizaError(
-				`State composition failed in ${failedProviderData.length} providers`,
-				{
-					code: "STATE_COMPOSITION_PROVIDER_FAILURES",
-					cause: new AggregateError(
-						failedProviderData.flatMap((record) =>
-							record.providerError ? [record.providerError] : [],
+			if (failedProviderData.length > 1) {
+				// error-policy:J2 preserve every provider failure behind one
+				// state-composition error so callers receive the complete cause chain.
+				throw new ElizaError(
+					`State composition failed in ${failedProviderData.length} providers`,
+					{
+						code: "STATE_COMPOSITION_PROVIDER_FAILURES",
+						cause: new AggregateError(
+							failedProviderData.flatMap((record) =>
+								record.providerError ? [record.providerError] : [],
+							),
 						),
-					),
-					severity: "ephemeral",
-					context: {
-						providers: failedProviderData.map((record) => record.providerName),
-						messageId: message.id,
-						roomId: message.roomId,
+						severity: "ephemeral",
+						context: {
+							providers: failedProviderData.map(
+								(record) => record.providerName,
+							),
+							messageId: message.id,
+							roomId: message.roomId,
+						},
 					},
-				},
-			);
-		}
-		if (containsSensitiveProvider) {
-			const disclosure = await revalidateOwnerExclusiveDisclosure(
-				this.runtime,
-				message,
-			);
-			if (!disclosure.allowed) {
-				throw new ElizaError(PRIVACY_DENIED_TEXT, {
-					code: "OWNER_PRIVATE_AUDIENCE_CHANGED",
-					severity: "ephemeral",
-					context: {
-						messageId: message.id,
-						roomId: message.roomId,
-						reason: disclosure.reason,
-					},
-				});
+				);
 			}
+			if (containsSensitiveProvider) {
+				const disclosure = await revalidateOwnerExclusiveDisclosure(
+					this.runtime,
+					message,
+				);
+				if (!disclosure.allowed) {
+					throw new ElizaError(PRIVACY_DENIED_TEXT, {
+						code: "OWNER_PRIVATE_AUDIENCE_CHANGED",
+						severity: "ephemeral",
+						context: {
+							messageId: message.id,
+							roomId: message.roomId,
+							reason: disclosure.reason,
+						},
+					});
+				}
+			}
+			throwIfProviderCompositionAborted(
+				providerSignal,
+				this.lifecycle.isStopping(),
+			);
+			includeProviderText = true;
+		} finally {
+			// Preserve failure diagnostics, but retain text only after final audience and cancellation checks.
+			recordProviderAccesses(includeProviderText);
 		}
-		throwIfProviderCompositionAborted(
-			providerSignal,
-			this.lifecycle.isStopping(),
-		);
 		const conversationSeed = buildDeterministicSeed(
 			this.runtime.agentId,
 			message.roomId,
@@ -787,6 +745,7 @@ export class ProviderStateComposer {
 			data: {
 				...cachedState.data,
 				__roomId: message.roomId,
+				__providerSelectionKey: providerSelectionKey,
 				__conversationSeed: conversationSeed,
 				__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 				providerOrder: providerOrderNames,
@@ -794,6 +753,115 @@ export class ProviderStateComposer {
 			},
 			text: providersText,
 		} as State;
+		this.publishState(
+			message,
+			newState,
+			providersToGet,
+			currentProviderResults,
+			containsSensitiveProvider,
+			providerSelectionKey,
+			audienceCacheKey,
+			conversationSeed,
+			providerSignal,
+		);
+		return newState;
+	}
+	/** Select names before disclosure admission or execution; explicit stages remain an upper bound. */
+	private async selectProviderNames(
+		message: Memory,
+		cachedState: State,
+		includeList: string[] | null,
+		onlyInclude: boolean,
+	): Promise<Set<string>> {
+		const filterList = onlyInclude ? includeList : null;
+		const activeContexts = getActiveRoutingContextsForTurn(
+			cachedState,
+			message,
+		);
+		const providerNames = new Set<string>();
+		if (filterList) {
+			// Explicit stage selection owns role/context admission. Hooks may narrow
+			// that selection but cannot expand it into another stage's providers.
+			for (const name of filterList) {
+				providerNames.add(name);
+			}
+		} else {
+			for (const p of this.runtime.providers.filter(
+				(p) => !p.private && !p.dynamic,
+			)) {
+				if (
+					activeContexts.length > 0 &&
+					!shouldIncludeByContext(resolveProviderContexts(p), activeContexts)
+				) {
+					continue;
+				}
+				providerNames.add(p.name);
+			}
+		}
+		if (!filterList && includeList && includeList.length > 0) {
+			for (const name of includeList) {
+				providerNames.add(name);
+			}
+		}
+		// Opt-in provider-selection hook: lets a host app filter, extend, or
+		// reorder the provider set per message intent before any provider runs.
+		// Guarded so the default (no-hook) path stays allocation-free.
+		if (this.lifecycle.hasProviderSelectionHooks()) {
+			const selection = composeStateProvidersPipelineHookContext({
+				message,
+				providers: { current: [...providerNames] },
+				activeContexts,
+				onlyInclude,
+				includeList,
+			});
+			await this.runtime.applyPipelineHooks(
+				"compose_state_providers",
+				selection,
+			);
+			// Boundary validation: a buggy hook may replace `current` with a
+			// non-array (or throw mid-mutation). Only adopt a well-formed list;
+			// otherwise keep the pre-hook selection rather than crash the turn.
+			const selected = selection.providers.current;
+			if (Array.isArray(selected)) {
+				providerNames.clear();
+				for (const name of selected) {
+					if (typeof name === "string" && name.length > 0) {
+						providerNames.add(name);
+					}
+				}
+			} else {
+				this.runtime.logger.warn(
+					{
+						src: "agent",
+						agentId: this.runtime.agentId,
+						phase: "compose_state_providers",
+					},
+					"compose_state_providers hook left providers.current non-array; keeping pre-hook selection",
+				);
+			}
+		}
+		if (filterList) {
+			const allowed = new Set(filterList);
+			for (const name of providerNames) {
+				if (!allowed.has(name)) providerNames.delete(name);
+			}
+		}
+
+		return providerNames;
+	}
+
+	/** Publish only after audience checks; cancellation is rechecked after reading lazy provider values. */
+	private publishState(
+		message: Memory,
+		newState: State,
+		providersToGet: Provider[],
+		currentProviderResults: Record<string, CachedProviderResult>,
+		containsSensitiveProvider: boolean,
+		providerSelectionKey: string,
+		audienceCacheKey: string,
+		conversationSeed: string,
+		providerSignal: AbortSignal | undefined,
+	): void {
 		// Provider values can be lazily materialized while assembling the state;
 		// recheck at the mutation boundary so a cancellation in that window cannot
 		// populate either the normal cache or the audience-scoped public cache.
@@ -850,6 +918,7 @@ export class ProviderStateComposer {
 					values: { ...publicValues, providers: publicText },
 					data: {
 						__roomId: message.roomId,
+						__providerSelectionKey: providerSelectionKey,
 						__conversationSeed: conversationSeed,
 						__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 						providerOrder: publicProviders.map((provider) => provider.name),
@@ -859,6 +928,5 @@ export class ProviderStateComposer {
 				},
 			});
 		}
-		return newState;
 	}
 }

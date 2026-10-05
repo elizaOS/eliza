@@ -23,7 +23,7 @@ vi.mock("./persistence", () => ({
   saveFavoriteApps: vi.fn(),
   saveRecentApps: vi.fn(),
 }));
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: { getBaseUrl: () => "http://127.0.0.1:31337" },
 }));
 vi.mock("../api/app-shell-capabilities", () => ({

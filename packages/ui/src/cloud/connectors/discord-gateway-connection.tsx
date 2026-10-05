@@ -1,3 +1,7 @@
+"use client";
+
+import { ApiError, api, apiErrorMessage, apiFetch } from "../lib/api-client";
+
 /**
  * Discord Gateway Bot cloud connector (multi-connection CRUD).
  *
@@ -6,7 +10,7 @@
  * injected on native targets.
  */
 
-"use client";
+
 
 import {
   AlertCircle,
@@ -50,7 +54,7 @@ import {
 } from "../../components/ui/select";
 import { StatusBadge } from "../../components/ui/status-badge";
 import { TextLink } from "../../components/ui/text-link";
-import { ApiError, api, apiFetch } from "../lib/api-client";
+
 import { useCloudT } from "../shell/CloudI18nProvider";
 
 type TFn = ReturnType<typeof useCloudT>;
@@ -144,17 +148,7 @@ interface DiscordGatewayConnection {
   createdAt: string;
 }
 
-function apiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const body = error.body;
-    if (body && typeof body === "object" && "error" in body) {
-      const apiError = (body as { error?: unknown }).error;
-      if (typeof apiError === "string" && apiError) return apiError;
-    }
-    return error.message || fallback;
-  }
-  return fallback;
-}
+
 
 function getStatusBadge(status: DiscordGatewayConnection["status"], t: TFn) {
   switch (status) {

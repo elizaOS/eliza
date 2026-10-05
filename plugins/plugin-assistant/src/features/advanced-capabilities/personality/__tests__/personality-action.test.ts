@@ -1,0 +1,750 @@
+/**
+ * Covers the PERSONALITY action handler against the in-memory FakeRuntime and a
+ * real PersonalityStore (no live model): scope-clarification for ambiguous
+ * requests, trait/reply-gate/directive mutations, named-profile load/save, and
+ * the audit-memory trail. Admin-only paths run on an owner-seeded runtime so
+ * hasRoleAccess grants access.
+ */
+
+import type { ActionResult, HandlerOptions } from "@elizaos/core";
+import {
+  promoteSubactionsToActions,
+  runWithActionRoutingContext,
+  validateToolArgs,
+  withActiveRoutingContexts,
+} from "@elizaos/core";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { runEvaluator } from "../../../../runtime/evaluator.ts";
+import { actionResultToPlannerToolResult } from "../../../../runtime/planner-loop.ts";
+import { personalityAction } from "../actions/personality.ts";
+import { GLOBAL_PERSONALITY_SCOPE, PERSONALITY_AUDIT_TABLE } from "../types.ts";
+import {
+  captureCallback,
+  initStore,
+  makeFakeRuntime,
+  makeMessage,
+} from "./test-helpers.ts";
+
+describe("personalityAction — routing ownership", () => {
+  test("admits personal-rule operations in the memory context", async () => {
+    const fake = makeFakeRuntime();
+    await initStore(fake);
+    const message = makeMessage({
+      entityId: TEST_SENDER,
+      agentId: fake.runtime.agentId,
+      text: "Remove my saved interaction rule",
+    });
+    const state = withActiveRoutingContexts(
+      { text: "", values: {}, data: {} },
+      message,
+      ["memory"],
+    );
+    const valid = await personalityAction.validate(
+      fake.runtime,
+      message,
+      state,
+    );
+    expect(valid).toBe(true);
+  });
+
+  test("does not claim the current-turn STOP_TALKING simile owned by IGNORE", () => {
+    expect(personalityAction.similes).not.toContain("STOP_TALKING");
+  });
+
+  test("declares USER as the coarse action floor", () => {
+    expect(personalityAction.roleGate).toEqual({ minRole: "USER" });
+  });
+});
+
+// Fixed sender entity for the `run` helper. Pass it as `owner` to makeFakeRuntime
+// when a test needs the sender treated as admin/owner (admin-only ops).
+const TEST_SENDER = "00000000-0000-4000-8000-0000000000ff" as never;
+
+async function run(
+  fake: ReturnType<typeof makeFakeRuntime>,
+  userText: string,
+  op: string,
+  extraParams: Record<string, unknown> = {},
+) {
+  const message = makeMessage({
+    entityId: fake.runtime.agentId, // we'll override per-test for non-self
+    agentId: fake.runtime.agentId,
+    text: userText,
+  });
+  // Use a distinct entity for the message so it's not "from self"
+  message.entityId = TEST_SENDER;
+  const { cb, calls } = captureCallback();
+  const opts: HandlerOptions = {
+    parameters: { op, ...extraParams } as never,
+  };
+  const result = (await personalityAction.handler(
+    fake.runtime,
+    message,
+    undefined,
+    opts as unknown as Record<string, unknown>,
+    cb,
+  )) as ActionResult;
+  return { result, calls, message };
+}
+
+describe("personalityAction — non-ambiguity (scope clarification)", () => {
+  let fake: ReturnType<typeof makeFakeRuntime>;
+  beforeEach(async () => {
+    fake = makeFakeRuntime();
+    await initStore(fake);
+  });
+
+  test("set_trait without scope returns clarification, not auto-pick", async () => {
+    const { result, calls } = await run(fake, "be nicer", "set_trait", {
+      trait: "tone",
+      value: "warm",
+    });
+    expect(result.success).toBe(false);
+    expect(result.values?.needsClarification).toBe(true);
+    expect(calls[0].text).toMatch(/for you specifically, or globally/);
+  });
+
+  test("set_reply_gate without scope returns clarification", async () => {
+    const { result } = await run(fake, "shut up", "set_reply_gate", {
+      mode: "never_until_lift",
+    });
+    expect(result.success).toBe(false);
+    expect(result.values?.needsClarification).toBe(true);
+  });
+
+  test("show_state without scope returns clarification", async () => {
+    const { result } = await run(fake, "what's your personality", "show_state");
+    expect(result.success).toBe(false);
+    expect(result.values?.needsClarification).toBe(true);
+  });
+});
+
+describe("personalityAction — subactions write structured state", () => {
+  let fake: ReturnType<typeof makeFakeRuntime>;
+  beforeEach(async () => {
+    fake = makeFakeRuntime();
+    await initStore(fake);
+  });
+
+  test("set_trait user-scope writes user slot only", async () => {
+    const { result, calls } = await run(fake, "be terse with me", "set_trait", {
+      scope: "user",
+      trait: "verbosity",
+      value: "terse",
+    });
+    expect(result.success).toBe(true);
+    // #17923 humanization: the ack is a human sentence, not settings-speak
+    // ("Set verbosity=terse for you."). Machine detail rides in values/data.
+    expect(calls[0].text).toBe("Okay — I'll be terse with you from here on.");
+    expect(calls[0].text).not.toContain("=");
+    expect(result.values).toMatchObject({
+      scope: "user",
+      trait: "verbosity",
+      value: "terse",
+    });
+    expect(
+      (result.data as { after?: { verbosity?: string | null } }).after
+        ?.verbosity,
+    ).toBe("terse");
+    const userSlot = fake.store.getSlot(
+      "00000000-0000-4000-8000-0000000000ff" as never,
+    );
+    expect(userSlot.verbosity).toBe("terse");
+    const globalSlot = fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE);
+    expect(globalSlot.verbosity).toBeNull();
+  });
+
+  test("set_trait invalid value rejects", async () => {
+    const { result } = await run(fake, "be xxx", "set_trait", {
+      scope: "user",
+      trait: "verbosity",
+      value: "bogus",
+    });
+    expect(result.success).toBe(false);
+    expect(result.values?.error).toBe("INVALID_PARAMETERS");
+  });
+
+  test("set_reply_gate=never_until_lift writes the gate", async () => {
+    const { result, calls } = await run(fake, "shut up", "set_reply_gate", {
+      scope: "user",
+      mode: "never_until_lift",
+    });
+    expect(result.success).toBe(true);
+    expect(calls[0].text).toMatch(/silent until you/);
+    const slot = fake.store.getSlot(
+      "00000000-0000-4000-8000-0000000000ff" as never,
+    );
+    expect(slot.reply_gate).toBe("never_until_lift");
+  });
+
+  test("set_reply_gate=addressed_or_ambient writes the gate with its own ack", async () => {
+    const { result, calls } = await run(
+      fake,
+      "only join in when it's for you or open chat",
+      "set_reply_gate",
+      {
+        scope: "user",
+        mode: "addressed_or_ambient",
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(calls[0].text).toMatch(/address me|undirected/);
+    const slot = fake.store.getSlot(
+      "00000000-0000-4000-8000-0000000000ff" as never,
+    );
+    expect(slot.reply_gate).toBe("addressed_or_ambient");
+  });
+
+  test("lift_reply_gate resets to 'always'", async () => {
+    await run(fake, "shut up", "set_reply_gate", {
+      scope: "user",
+      mode: "never_until_lift",
+    });
+    const { result } = await run(fake, "ok talk again", "lift_reply_gate", {
+      scope: "user",
+    });
+    expect(result.success).toBe(true);
+    const slot = fake.store.getSlot(
+      "00000000-0000-4000-8000-0000000000ff" as never,
+    );
+    expect(slot.reply_gate).toBe("always");
+  });
+
+  test("add_directive only allowed in user scope", async () => {
+    const { result } = await run(fake, "remember this", "add_directive", {
+      scope: "global",
+      directive: "no emojis",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("add_directive stores under user slot", async () => {
+    const { result } = await run(fake, "no emojis please", "add_directive", {
+      scope: "user",
+      directive: "no emojis",
+    });
+    expect(result.success).toBe(true);
+    const slot = fake.store.getSlot(
+      "00000000-0000-4000-8000-0000000000ff" as never,
+    );
+    expect(slot.custom_directives).toContain("no emojis");
+  });
+
+  test("adding a personal directive without scope preserves existing preferences", async () => {
+    await run(fake, "be concise", "set_trait", {
+      scope: "user",
+      trait: "verbosity",
+      value: "terse",
+    });
+    await run(fake, "no emojis", "add_directive", {
+      scope: "user",
+      directive: "no emojis",
+    });
+    const globalBefore = fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE);
+    const { result } = await run(
+      fake,
+      "use my name naturally",
+      "add_directive",
+      {
+        directive: "Use my name when natural, not in every reply.",
+      },
+    );
+    expect(result.success).toBe(true);
+    const slot = fake.store.getSlot(TEST_SENDER);
+    expect(slot.custom_directives).toEqual([
+      "no emojis",
+      "Use my name when natural, not in every reply.",
+    ]);
+    expect(slot.verbosity).toBe("terse");
+    expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE)).toEqual(globalBefore);
+  });
+
+  test("clear_directives wipes the user list", async () => {
+    await run(fake, "no emojis", "add_directive", {
+      scope: "user",
+      directive: "no emojis",
+    });
+    const { result } = await run(
+      fake,
+      "clear preferences",
+      "clear_directives",
+      {
+        scope: "user",
+      },
+    );
+    expect(result.success).toBe(true);
+    const slot = fake.store.getSlot(
+      "00000000-0000-4000-8000-0000000000ff" as never,
+    );
+    expect(slot.custom_directives).toEqual([]);
+  });
+
+  test("show_state user returns slot summary", async () => {
+    await run(fake, "be terse", "set_trait", {
+      scope: "user",
+      trait: "verbosity",
+      value: "terse",
+    });
+    const { result, calls } = await run(fake, "show me", "show_state", {
+      scope: "user",
+    });
+    expect(result.success).toBe(true);
+    // Humanized summary — no key=value settings-speak in the spoken line; the
+    // raw slot stays available as machine detail in data.slot.
+    expect(calls[0].text).toContain("verbosity terse");
+    expect(calls[0].text).not.toContain("=");
+    expect(
+      (result.data as { slot?: { verbosity?: string | null } }).slot?.verbosity,
+    ).toBe("terse");
+  });
+});
+
+describe("personalityAction — profiles", () => {
+  let fake: ReturnType<typeof makeFakeRuntime>;
+  beforeEach(async () => {
+    // load_profile / save_profile are admin-only; make the test sender the
+    // canonical owner so hasRoleAccess grants admin (it now fails CLOSED on an
+    // unresolved role — the old "no world → admin" leniency is gone).
+    fake = makeFakeRuntime({ owner: TEST_SENDER });
+    await initStore(fake);
+  });
+
+  test("list_profiles enumerates defaults", async () => {
+    const { result, calls } = await run(fake, "list profiles", "list_profiles");
+    expect(result.success).toBe(true);
+    expect(calls[0].text).toContain("focused");
+    expect(calls[0].text).toContain("default");
+  });
+
+  test("load_profile applies a known profile globally", async () => {
+    const { result } = await run(fake, "load focused", "load_profile", {
+      name: "focused",
+    });
+    expect(result.success).toBe(true);
+    const globalSlot = fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE);
+    expect(globalSlot.verbosity).toBe("terse");
+    expect(globalSlot.tone).toBe("direct");
+  });
+
+  test("load_profile with unknown name rejects", async () => {
+    const { result } = await run(fake, "load mystery", "load_profile", {
+      name: "mystery-profile-name",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("save_profile snapshots current global state", async () => {
+    await run(fake, "be terse", "set_trait", {
+      scope: "global",
+      trait: "verbosity",
+      value: "terse",
+    });
+    const { result } = await run(fake, "save", "save_profile", {
+      name: "my-favorite",
+      description: "snapshot for testing",
+    });
+    expect(result.success).toBe(true);
+    const profile = fake.store.getProfile("my-favorite");
+    expect(profile?.verbosity).toBe("terse");
+  });
+});
+
+describe("personalityAction — authorization follows reach and effect", () => {
+  test("a user can personalize their slot but cannot mutate global state", async () => {
+    const fake = makeFakeRuntime();
+    await initStore(fake);
+
+    const personal = await run(fake, "be terse with me", "set_trait", {
+      scope: "user",
+      trait: "verbosity",
+      value: "terse",
+    });
+    expect(personal.result.success).toBe(true);
+
+    const global = await run(fake, "be terse with everyone", "set_trait", {
+      scope: "global",
+      trait: "verbosity",
+      value: "terse",
+    });
+    expect(global.result.success).toBe(false);
+    expect(global.result.data).toMatchObject({
+      reach: "agent_wide",
+      requiredRole: "OWNER",
+    });
+    expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE).verbosity).toBeNull();
+  });
+
+  test("a user cannot inspect global state or the shared profile registry", async () => {
+    const fake = makeFakeRuntime();
+    await initStore(fake);
+
+    for (const request of [
+      await run(fake, "show global settings", "show_state", {
+        scope: "global",
+      }),
+      await run(fake, "list profiles", "list_profiles"),
+    ]) {
+      expect(request.result.success).toBe(false);
+      expect(request.result.data).toMatchObject({
+        reach: "agent_wide",
+        requiredRole: "ADMIN",
+      });
+    }
+  });
+
+  test("an admin can inspect global state and list shared profiles", async () => {
+    const fake = makeFakeRuntime({ admins: [TEST_SENDER] });
+    await initStore(fake);
+
+    const state = await run(fake, "show global settings", "show_state", {
+      scope: "global",
+    });
+    const profiles = await run(fake, "list profiles", "list_profiles");
+    expect(state.result.success).toBe(true);
+    expect(profiles.result.success).toBe(true);
+    expect(profiles.calls[0].text).toContain("focused");
+  });
+
+  test("an admin cannot save or load shared profiles", async () => {
+    const fake = makeFakeRuntime({ admins: [TEST_SENDER] });
+    await initStore(fake);
+
+    const save = await run(fake, "save this", "save_profile", {
+      name: "admin-denied",
+    });
+    const load = await run(fake, "load focused", "load_profile", {
+      name: "focused",
+    });
+    for (const request of [save, load]) {
+      expect(request.result.success).toBe(false);
+      expect(request.result.data).toMatchObject({
+        reach: "agent_wide",
+        requiredRole: "OWNER",
+      });
+    }
+    expect(fake.store.getProfile("admin-denied")).toBeNull();
+    expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE).verbosity).toBeNull();
+  });
+
+  test("a global add_directive request clears the owner floor before its unsupported-scope response", async () => {
+    const fake = makeFakeRuntime();
+    await initStore(fake);
+    const { result } = await run(
+      fake,
+      "everyone should avoid emojis",
+      "add_directive",
+      {
+        scope: "global",
+        directive: "avoid emojis",
+      },
+    );
+    expect(result.values?.error).toBe("PERMISSION_DENIED");
+    expect(result.data).toMatchObject({
+      reach: "agent_wide",
+      requiredRole: "OWNER",
+    });
+  });
+
+  test("the owner can mutate global state and manage profiles", async () => {
+    const fake = makeFakeRuntime({ owner: TEST_SENDER });
+    await initStore(fake);
+
+    const mutate = await run(fake, "be warm with everyone", "set_trait", {
+      scope: "global",
+      trait: "tone",
+      value: "warm",
+    });
+    const save = await run(fake, "save this", "save_profile", {
+      name: "owner-profile",
+    });
+    const load = await run(fake, "load focused", "load_profile", {
+      name: "focused",
+    });
+    expect(mutate.result.success).toBe(true);
+    expect(save.result.success).toBe(true);
+    expect(load.result.success).toBe(true);
+    expect(fake.store.getProfile("owner-profile")?.tone).toBe("warm");
+    expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE).verbosity).toBe(
+      "terse",
+    );
+  });
+});
+
+describe("personalityAction — single-delivery settlement", () => {
+  // Every success confirmation must settle as verified + turnComplete with the
+  // callback text as the canonical userFacingText, so the action's own callback
+  // is the turn's sole user-facing delivery. Without it, the evaluator rejects
+  // a FINISH with an empty messageToUser and replans, and the user receives the
+  // confirmation twice (observed live on set_reply_gate).
+  const cases: Array<{
+    op: string;
+    userText: string;
+    params: Record<string, unknown>;
+  }> = [
+    {
+      op: "set_trait",
+      userText: "be terse with me",
+      params: { scope: "user", trait: "verbosity", value: "terse" },
+    },
+    {
+      op: "clear_trait",
+      userText: "reset verbosity",
+      params: { scope: "user", trait: "verbosity" },
+    },
+    {
+      op: "set_reply_gate",
+      userText: "only reply when I mention you",
+      params: { scope: "user", mode: "on_mention" },
+    },
+    {
+      op: "lift_reply_gate",
+      userText: "talk again",
+      params: { scope: "user" },
+    },
+    {
+      op: "add_directive",
+      userText: "no emojis please",
+      params: { scope: "user", directive: "no emojis" },
+    },
+    {
+      op: "clear_directives",
+      userText: "clear preferences",
+      params: { scope: "user" },
+    },
+    {
+      op: "load_profile",
+      userText: "load focused",
+      params: { name: "focused" },
+    },
+    {
+      op: "save_profile",
+      userText: "save this",
+      params: { name: "snapshot", description: "test snapshot" },
+    },
+    { op: "list_profiles", userText: "list profiles", params: {} },
+    { op: "show_state", userText: "show me", params: { scope: "user" } },
+  ];
+
+  for (const { op, userText, params } of cases) {
+    test(`${op} settles its confirmation as the sole user-facing delivery`, async () => {
+      // Owner-seeded so the admin-only profile ops pass the role gate.
+      const fake = makeFakeRuntime({ owner: TEST_SENDER });
+      await initStore(fake);
+      const { result, calls } = await run(fake, userText, op, params);
+      expect(result.success).toBe(true);
+      expect(calls).toHaveLength(1);
+      expect(result.userFacingText).toBe(result.text);
+      expect(calls[0].text).toBe(result.userFacingText);
+      expect(result.verifiedUserFacing).toBe(true);
+      expect(result.turnComplete).toBe(true);
+    });
+  }
+});
+
+describe("personalityAction — audit trail", () => {
+  test("set_trait writes an audit memory of type personality_change", async () => {
+    const fake = makeFakeRuntime();
+    await initStore(fake);
+    const { result } = await run(fake, "be terse", "set_trait", {
+      scope: "user",
+      trait: "verbosity",
+      value: "terse",
+    });
+    expect(result.success).toBe(true);
+    const audit = fake.memories.get(PERSONALITY_AUDIT_TABLE) ?? [];
+    expect(audit.length).toBeGreaterThan(0);
+    expect(audit[0].content.source).toBe("personality_change");
+    const meta = audit[0].metadata as Record<string, unknown>;
+    expect(meta.action).toBe("set_trait");
+    expect(meta.personalityScope).toBe("user");
+  });
+});
+
+describe("individual directive removal", () => {
+  test("removes an exact legacy personal directive without clearing unrelated rules", async () => {
+    const fake = makeFakeRuntime({ owner: TEST_SENDER });
+    await initStore(fake);
+    const directive = "When writing a note, include ORCHID OK.";
+    const otherUser = "00000000-0000-4000-8000-0000000000aa" as never;
+    await fake.store.setSlot({
+      ...fake.store.getSlot(TEST_SENDER),
+      custom_directives: [directive, "keep this rule"],
+    });
+    await fake.store.setSlot({
+      ...fake.store.getSlot(otherUser),
+      custom_directives: [directive],
+    });
+    await fake.store.setSlot({
+      ...fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE),
+      custom_directives: ["Global rule"],
+    });
+    const otherBefore = structuredClone(fake.store.getSlot(otherUser));
+    const globalBefore = structuredClone(
+      fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE),
+    );
+    const { result } = await run(
+      fake,
+      "Remove only the saved ORCHID OK note-writing directive from my personal preferences. Keep all my other preferences.",
+      "remove_directive",
+      { directive },
+    );
+    expect(fake.store.getSlot(otherUser)).toEqual(otherBefore);
+    expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE)).toEqual(globalBefore);
+    expect(result.success).toBe(true);
+    expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+      "keep this rule",
+    ]);
+  });
+  test("does not remove a paraphrase or a global directive", async () => {
+    const fake = makeFakeRuntime({ owner: TEST_SENDER });
+    await initStore(fake);
+    await fake.store.setSlot({
+      ...fake.store.getSlot(TEST_SENDER),
+      custom_directives: ["exact rule"],
+    });
+    for (const args of [
+      { scope: "user", directive: "similar rule" },
+      { scope: "global", directive: "exact rule" },
+    ]) {
+      const { result } = await run(fake, "cancel it", "remove_directive", args);
+      expect(result.success).toBe(false);
+    }
+    expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+      "exact rule",
+    ]);
+  });
+});
+
+describe("personal directive completion receipts", () => {
+  test("keeps a planner-owned preference read internal for the complete request", async () => {
+    const fake = makeFakeRuntime({ owner: TEST_SENDER });
+    await initStore(fake);
+    await fake.store.setSlot({
+      ...fake.store.getSlot(TEST_SENDER),
+      custom_directives: ["keep this rule", "QA rule"],
+    });
+    const message = makeMessage({
+      entityId: TEST_SENDER,
+      agentId: fake.runtime.agentId,
+      text: "Remove only the QA rule",
+    });
+    const { cb, calls } = captureCallback();
+    const result = await runWithActionRoutingContext(
+      {
+        actionName: "PERSONALITY",
+        messageId: message.id,
+        replyOwner: "planner",
+        modelClass: undefined,
+      },
+      () =>
+        personalityAction.handler(
+          fake.runtime,
+          message,
+          undefined,
+          { parameters: { action: "show_state", scope: "user" } },
+          cb,
+        ),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      transcriptVisibility: "internal",
+      modelReplyRequired: true,
+      turnComplete: false,
+      data: { slot: { custom_directives: ["keep this rule", "QA rule"] } },
+    });
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(calls).toHaveLength(0);
+    expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+      "keep this rule",
+      "QA rule",
+    ]);
+  });
+
+  test.each(["add_directive", "remove_directive"])(
+    "can finish %s from the durable result in one evaluation",
+    async (op) => {
+      const fake = makeFakeRuntime({ owner: TEST_SENDER });
+      await initStore(fake);
+      await fake.store.setSlot({
+        ...fake.store.getSlot(TEST_SENDER),
+        custom_directives:
+          op === "remove_directive"
+            ? ["QA rule", "keep this rule"]
+            : ["keep this rule"],
+      });
+      const message = makeMessage({
+        entityId: TEST_SENDER,
+        agentId: fake.runtime.agentId,
+        text: "Change only the QA rule for me.",
+      });
+      const { cb, calls } = captureCallback();
+      const result = await runWithActionRoutingContext(
+        {
+          actionName: "PERSONALITY",
+          messageId: message.id,
+          replyOwner: "planner",
+          modelClass: undefined,
+        },
+        async () =>
+          (await personalityAction.handler(
+            fake.runtime,
+            message,
+            undefined,
+            { parameters: { action: op, directive: "QA rule" } },
+            cb,
+          )) as ActionResult,
+      );
+      const useModel = vi.fn(async () =>
+        JSON.stringify({
+          success: true,
+          decision: "FINISH",
+          thought: "The recorded personal directive change is complete.",
+          messageToUser:
+            op === "add_directive"
+              ? "Added that reply rule."
+              : "Removed that reply rule.",
+          effectReceiptIds:
+            result.effectReceipts?.map((receipt) => receipt.receiptId) ?? [],
+        }),
+      );
+      const completion = await runEvaluator({
+        runtime: { useModel },
+        context: { id: "personality-proof", events: [] },
+        trajectory: {
+          context: { id: "personality-proof", events: [] },
+          codingMode: false,
+          steps: [
+            {
+              iteration: 1,
+              toolCall: { name: "PERSONALITY", params: { action: op } },
+              result: actionResultToPlannerToolResult(result),
+            },
+          ],
+          archivedSteps: [],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+        },
+      });
+      expect(completion.decision, JSON.stringify(completion)).toBe("FINISH");
+      expect(useModel).toHaveBeenCalledTimes(1);
+      expect(calls).toHaveLength(0);
+      expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual(
+        op === "add_directive"
+          ? ["keep this rule", "QA rule"]
+          : ["keep this rule"],
+      );
+    },
+  );
+});
+
+test.each(["ADD_DIRECTIVE", "REMOVE_DIRECTIVE"])(
+  "requires directive text on promoted PERSONALITY_%s",
+  (suffix) => {
+    const child = promoteSubactionsToActions(personalityAction).find(
+      (action) => action.name === `PERSONALITY_${suffix}`,
+    );
+    if (!child) throw new Error("Missing directive operation");
+    expect(validateToolArgs(child, {}).valid).toBe(false);
+    expect(validateToolArgs(child, { directive: "QA rule" }).valid).toBe(true);
+  },
+);

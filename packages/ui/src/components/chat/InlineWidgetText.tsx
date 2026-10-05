@@ -4,9 +4,9 @@
  * affordances stay consistent with the full chat view.
  */
 
-import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core/protocol";
 import type { ReactNode } from "react";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { CodeBlock } from "../ui/code-block";
 import {
@@ -24,7 +24,15 @@ import "./widgets/inline-builtins";
 import { getInlineWidget } from "./widgets/inline-registry";
 import { useInlineWidgetContext } from "./widgets/use-inline-widget-context";
 
-export function InlineWidgetText({ content }: { content: string }): ReactNode {
+export function InlineWidgetText({
+  content,
+  messageId,
+  producerScope,
+}: {
+  content: string;
+  messageId?: string;
+  producerScope?: string;
+}): ReactNode {
   const { sendActionMessage } = useAppSelectorShallow((s) => ({
     sendActionMessage: s.sendActionMessage,
   }));
@@ -34,7 +42,12 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
 
   // Same shared contract MessageContent (ChatView) uses, so interactive inline
   // widgets behave identically on both surfaces.
-  const ctx = useInlineWidgetContext(sendActionMessage, setChatInput);
+  const ctx = useInlineWidgetContext(
+    sendActionMessage,
+    setChatInput,
+    messageId,
+    producerScope,
+  );
 
   // The overlay shows clean display text (no raw analysis view), so parse in
   // non-analysis mode — hidden reasoning/tool tags are stripped, not leaked.

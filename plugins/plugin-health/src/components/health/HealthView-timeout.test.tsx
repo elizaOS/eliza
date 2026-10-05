@@ -6,7 +6,8 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: { getBaseUrl: () => "http://test.local" },
 }));
 

@@ -12,8 +12,7 @@ import type {
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
 // `ElizaClient` comes from the UI barrel so the client extension augments the
 // same class instance used by the frontend shell.
-import { ElizaClient } from "@elizaos/ui/api/client-base";
-import { getAppBlockerPlugin } from "@elizaos/ui/bridge";
+import { client, ElizaClient, getAppBlockerPlugin } from "@elizaos/ui";
 
 function requireAppBlockerPlugin(): AppBlockerPluginLike {
   const plugin = getAppBlockerPlugin();
@@ -31,35 +30,37 @@ function requireAppBlockerPlugin(): AppBlockerPluginLike {
   return plugin;
 }
 
-declare module "@elizaos/ui/api/client-base" {
-  interface ElizaClient {
-    checkAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
-    requestAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
-    getAppBlockerStatus(): Promise<AppBlockerStatus>;
-    getInstalledAppsToBlock(): Promise<{ apps: InstalledApp[] }>;
-    selectAppBlockerApps(): Promise<SelectAppsResult>;
-    startAppBlock(options: BlockAppsOptions): Promise<BlockAppsResult>;
-    stopAppBlock(): Promise<UnblockAppsResult>;
-  }
+export interface AppBlockerClientMethods {
+  checkAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
+  requestAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
+  getAppBlockerStatus(): Promise<AppBlockerStatus>;
+  getInstalledAppsToBlock(): Promise<{ apps: InstalledApp[] }>;
+  selectAppBlockerApps(): Promise<SelectAppsResult>;
+  startAppBlock(options: BlockAppsOptions): Promise<BlockAppsResult>;
+  stopAppBlock(): Promise<UnblockAppsResult>;
 }
 
-ElizaClient.prototype.checkAppBlockerPermissions = async () =>
+export const appBlockerClient = client as ElizaClient & AppBlockerClientMethods;
+const appBlockerPrototype = ElizaClient.prototype as ElizaClient &
+  AppBlockerClientMethods;
+
+appBlockerPrototype.checkAppBlockerPermissions = async () =>
   requireAppBlockerPlugin().checkPermissions();
 
-ElizaClient.prototype.requestAppBlockerPermissions = async () =>
+appBlockerPrototype.requestAppBlockerPermissions = async () =>
   requireAppBlockerPlugin().requestPermissions();
 
-ElizaClient.prototype.getAppBlockerStatus = async () =>
+appBlockerPrototype.getAppBlockerStatus = async () =>
   requireAppBlockerPlugin().getStatus();
 
-ElizaClient.prototype.getInstalledAppsToBlock = async () =>
+appBlockerPrototype.getInstalledAppsToBlock = async () =>
   requireAppBlockerPlugin().getInstalledApps();
 
-ElizaClient.prototype.selectAppBlockerApps = async () =>
+appBlockerPrototype.selectAppBlockerApps = async () =>
   requireAppBlockerPlugin().selectApps();
 
-ElizaClient.prototype.startAppBlock = async (options: BlockAppsOptions) =>
+appBlockerPrototype.startAppBlock = async (options: BlockAppsOptions) =>
   requireAppBlockerPlugin().blockApps(options);
 
-ElizaClient.prototype.stopAppBlock = async () =>
+appBlockerPrototype.stopAppBlock = async () =>
   requireAppBlockerPlugin().unblockApps();

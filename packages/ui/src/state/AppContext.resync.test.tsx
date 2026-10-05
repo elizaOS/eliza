@@ -5,7 +5,7 @@ import { renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
-import type { LoadConversationMessagesResult } from "./internal";
+import type { LoadConversationMessagesResult } from "./types";
 import { useResyncReconcile } from "./useResyncReconcile";
 
 /**

@@ -235,10 +235,15 @@ export class ElizaCloudClient {
     if (!res.success) throw new Error(res.error ?? "Failed to delete agent");
   }
 
-  async provision(agentId: string): Promise<ProvisionInfo> {
+  async provision(
+    agentId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ProvisionInfo> {
     const res = await this.request<ProvisionInfo>(
       "POST",
       `/api/v1/eliza/agents/${agentId}/provision`,
+      undefined,
+      options.signal,
     );
     if (!res.success || !res.data)
       throw new Error(res.error ?? "Failed to provision sandbox");
@@ -379,7 +384,10 @@ export class ElizaCloudClient {
     if (!res.success) throw new Error(res.error ?? "Restore failed");
   }
 
-  async heartbeat(agentId: string): Promise<boolean> {
+  async heartbeat(
+    agentId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<boolean> {
     const url = `${this.baseUrl}/api/v1/eliza/agents/${agentId}/bridge`;
     try {
       const response = await fetch(url, {
@@ -390,7 +398,7 @@ export class ElizaCloudClient {
         },
         body: JSON.stringify({ jsonrpc: "2.0", method: "heartbeat" }),
         redirect: "manual",
-        signal: AbortSignal.timeout(10_000),
+        signal: withTimeout(10_000, options.signal),
       });
       if (isRedirectResponse(response)) return false;
       return response.ok;
@@ -575,6 +583,7 @@ export class ElizaCloudClient {
     method: string,
     path: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<ApiResponse<T>> {
     const headers: Record<string, string> = { "X-Api-Key": this.apiKey };
     if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -584,7 +593,7 @@ export class ElizaCloudClient {
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       redirect: "manual",
-      signal: AbortSignal.timeout(30_000),
+      signal: withTimeout(30_000, signal),
     });
 
     if (isRedirectResponse(response)) {
@@ -604,4 +613,10 @@ export class ElizaCloudClient {
 
     return (await response.json()) as ApiResponse<T>;
   }
+}
+
+/** A request deadline that also honors a caller's cancellation signal. */
+function withTimeout(ms: number, signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(ms);
+  return signal ? AbortSignal.any([timeout, signal]) : timeout;
 }

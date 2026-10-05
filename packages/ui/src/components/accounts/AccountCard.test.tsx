@@ -4,7 +4,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AccountWithCredentialFlag } from "../../api/client-agent";
+import type { AccountWithCredentialFlag } from "../../api/client-agent-accounts";
 import { AccountCard } from "./AccountCard";
 
 vi.mock("../../state/app-store", () => ({

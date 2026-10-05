@@ -9,6 +9,8 @@
  * renders in Storybook / the screenshot harness across every state. The
  * fetching container lives in `agent-orchestrator.tsx`.
  */
+
+import type { TranslateFn } from "@elizaos/contracts";
 import { Bot, CircleUser, Users, Workflow, Wrench } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { useAgentElement } from "../../../agent-surface/useAgentElement";
@@ -17,7 +19,6 @@ import type {
   OrchestratorRoomRoster,
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
-import type { TranslateFn } from "../../../types";
 import { Button } from "../../ui/button";
 import { fallbackTranslate } from "./agent-orchestrator-accounts-view";
 import { EmptyWidgetState, WidgetSection } from "./shared";
@@ -330,7 +331,7 @@ export function OrchestratorRoomView({
       icon={<Users className="size-4" />}
       action={
         <span
-          className="shrink-0 rounded-full bg-muted/15 px-1.5 py-0.5 text-3xs font-medium text-muted"
+          className="shrink-0 rounded-full bg-muted/15 px-1.5 py-0.5 text-3xs font-medium text-muted-strong"
           title={t("agentorchestrator.activeAgentsTotal", {
             defaultValue: "{{count}} active across {{rooms}} rooms",
             count: totalActive,

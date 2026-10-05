@@ -16,7 +16,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { FramedPage } from "../../layouts/framed-page";
+import { FramedPage } from "../../layouts/framed-page/framed-page";
 import {
   CharacterSectionNav,
   isCharacterSectionPath,
@@ -36,11 +36,10 @@ afterEach(() => {
 });
 
 describe("isCharacterSectionPath", () => {
-  it("matches every family section route and the relationships alias", () => {
+  it("matches every family section route", () => {
     for (const path of [
       "/character",
       "/apps/relationships",
-      "/character/relationships",
       "/character/skills",
       "/character/experience",
       "/character/skills?focus=1",
@@ -52,7 +51,7 @@ describe("isCharacterSectionPath", () => {
   it("rejects Knowledge (a standalone peer hub) and unrelated routes", () => {
     for (const path of [
       "/character/documents",
-      "/documents",
+      "/character/documents",
       "/wallet",
       "/apps/logs",
       "/",
@@ -104,8 +103,8 @@ describe("CharacterSectionNav", () => {
     ).toBeNull();
   });
 
-  it("marks Relationships active on both its canonical route and the legacy alias", () => {
-    for (const path of ["/apps/relationships", "/character/relationships"]) {
+  it("marks Relationships active on its canonical route", () => {
+    for (const path of ["/apps/relationships"]) {
       renderCharacterSectionNav(path);
       const strip = screen.getByTestId("section-nav-character");
       expect(

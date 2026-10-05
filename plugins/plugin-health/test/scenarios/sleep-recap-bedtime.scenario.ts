@@ -2,7 +2,7 @@
  * Sleep parity scenario covers bedtime wind-down and morning recap behavior
  * contributed by the health default packs.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 export default scenario({
   lane: "live-only",
   id: "sleep-recap-bedtime",
@@ -11,7 +11,7 @@ export default scenario({
   tags: ["lifeops", "health", "sleep", "bedtime"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-health", "@elizaos/plugin-agent-skills"],
+    plugins: ["@elizaos/plugin-health"],
   },
   rooms: [
     {

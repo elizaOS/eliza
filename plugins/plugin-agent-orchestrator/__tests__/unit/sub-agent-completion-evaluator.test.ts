@@ -7,7 +7,7 @@ import type {
   MessageHandlerResult,
   ResponseHandlerEvaluatorContext,
 } from "@elizaos/core";
-import { SIMPLE_CONTEXT_ID } from "@elizaos/core";
+import { SIMPLE_CONTEXT_ID } from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
 import { subAgentCompletionResponseEvaluator } from "../../src/evaluators/sub-agent-completion.js";
 

@@ -16,12 +16,12 @@
  * touched. Protected by CRON_SECRET.
  */
 
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { strandedAgentKeySweeper } from "@elizaos/cloud-shared/lib/services/stranded-agent-key-sweeper";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { type Context, Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { strandedAgentKeySweeper } from "@/lib/services/stranded-agent-key-sweeper";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 export const DEFAULT_STRANDED_SANDBOX_KEY_GRACE_MS = 6 * 60 * 60 * 1000;
 

@@ -23,7 +23,6 @@ import asyncio
 import json
 import logging
 import random
-import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -32,28 +31,27 @@ import torch
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
-sys.path.insert(0, str(PYTHON_ROOT))
 
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import (  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.lib.generation_integrity import (  # noqa: E402
     model_context_tokens,
     remaining_model_context_tokens,
     require_complete_generated_tokens,
 )
 
-from src.training.continuous_rl import (
+from eliza_training.rl.continuous_rl import (
     ContinuousRLAgent,
     ContinuousRLConfig,
     RewardTracker,
     _compute_reward,
 )
-from src.training.deterministic_eval import (
+from eliza_training.rl.deterministic_eval import (
     ACTION_REASON_ASSISTANT_PREFIX,
     ACTION_REASON_PROMPTS,
     ACTION_REASON_SYSTEM_PROMPT,
     score_action_reason_response,
 )
-from src.training.simulation_bridge import (
+from eliza_training.rl.simulation_bridge import (
     ActionOutcome,
     MarketState,
     NewsItem,
@@ -371,7 +369,7 @@ async def run_demo(args: argparse.Namespace) -> dict[str, Any]:
 
     # ── SFT warmup: teach Action/Reason format before game play ──────────
     logger.info("\n--- SFT WARMUP (shared alignment data) ---")
-    from src.training.deterministic_eval import ACTION_REASON_ALIGNMENT_SAMPLES
+    from eliza_training.rl.deterministic_eval import ACTION_REASON_ALIGNMENT_SAMPLES
 
     for agent in agents:
         agent.model.train()

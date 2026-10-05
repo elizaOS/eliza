@@ -5,14 +5,14 @@
 "use client";
 
 import type { EnhancedAnalyticsDataDto } from "@elizaos/cloud-sdk";
+import { Badge } from "../../../components/ui/badge";
 import {
-  Badge,
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-  Progress,
-} from "../../../cloud-ui";
+} from "../../../components/ui/card";
+import { Progress } from "../../../components/ui/progress";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { toSuccessRatePercent } from "../lib/format";
 

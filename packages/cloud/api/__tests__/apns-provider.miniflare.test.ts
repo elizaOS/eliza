@@ -13,26 +13,6 @@ describe("Cloud APNs provider Workerd boundary", () => {
 
   beforeAll(async () => {
     buildDirectory = await mkdtemp(join(tmpdir(), "eliza-apns-workerd-"));
-    const coreDirectory = fileURLToPath(
-      new URL("../../../core/", import.meta.url),
-    );
-    const coreBuild = Bun.spawn({
-      cmd: [process.execPath, "build.ts", "--edge-only"],
-      cwd: coreDirectory,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [coreBuildExitCode, coreBuildStdout, coreBuildStderr] =
-      await Promise.all([
-        coreBuild.exited,
-        new Response(coreBuild.stdout).text(),
-        new Response(coreBuild.stderr).text(),
-      ]);
-    if (coreBuildExitCode !== 0) {
-      throw new Error(
-        `Failed to build @elizaos/core/edge:\n${coreBuildStdout}\n${coreBuildStderr}`,
-      );
-    }
     const entrypoint = fileURLToPath(
       new URL("../test/fixtures/apns-provider-worker.ts", import.meta.url),
     );
@@ -44,18 +24,6 @@ describe("Cloud APNs provider Workerd boundary", () => {
       conditions: ["worker"],
       external: ["node:*"],
       minify: true,
-      plugins: [
-        {
-          name: "eliza-core-edge-boundary",
-          setup(build) {
-            // Match the deployed Worker artifact instead of following the
-            // workspace TypeScript alias into core's unbundled source graph.
-            build.onResolve({ filter: /^@elizaos\/core\/edge$/ }, () => ({
-              path: join(coreDirectory, "dist/edge/index.edge.js"),
-            }));
-          },
-        },
-      ],
     });
     if (!result.success) {
       throw new Error(

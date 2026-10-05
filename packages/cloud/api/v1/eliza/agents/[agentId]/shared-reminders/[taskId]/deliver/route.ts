@@ -4,13 +4,13 @@
  * from the container request.
  */
 
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { sharedReminderDispatcher } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-reminder-cron";
+import { readCommittedSharedReminderForTarget } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-scheduling";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { sharedReminderDispatcher } from "@/lib/services/shared-runtime/shared-reminder-cron";
-import { readCommittedSharedReminderForTarget } from "@/lib/services/shared-runtime/shared-scheduling";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const bodySchema = z.object({ firedAtIso: z.string().datetime() });
 const app = new Hono<AppEnv>();

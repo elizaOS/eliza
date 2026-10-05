@@ -243,17 +243,21 @@ export function createDiscordTargetSource(): TargetSource {
 
 /**
  * Register the Discord target source into the runtime's
- * `TargetSourceRegistryService`, if present. Safe to call from plugin init and
- * across hot-reloads; a fresh source (with a fresh cache) replaces any prior
- * registration. Defers one tick if the registry is not yet up. Never throws.
+ * `TargetSourceRegistryService`. Safe to call from plugin init and across
+ * hot-reloads; a fresh source (with a fresh cache) replaces any prior
+ * registration.
+ *
+ * When the registry is already running (hot-reload after boot) the source is
+ * registered synchronously. During plugin init the registry service cannot be
+ * running yet — plugin services only start after `runtime.initPromise`
+ * resolves — so registration waits on
+ * `runtime.getServiceLoadPromise(CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE)`.
+ * A registry that never starts (not registered, failed to start, runtime
+ * stopped) is logged as a warning; it is never silently dropped. Never throws.
  */
 export function registerDiscordTargetSource(runtime: IAgentRuntime): void {
 	const source = createDiscordTargetSource();
-	const tryRegister = (): boolean => {
-		const registry = runtime.getService?.(
-			CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
-		) as TargetSourceRegistry | null | undefined;
-		if (!registry || typeof registry.register !== "function") return false;
+	const register = (registry: TargetSourceRegistry): void => {
 		try {
 			registry.register(source);
 		} catch (err) {
@@ -265,11 +269,51 @@ export function registerDiscordTargetSource(runtime: IAgentRuntime): void {
 				"Failed to register Discord target source with TargetSourceRegistry",
 			);
 		}
-		return true;
 	};
+	const asRegistry = (service: unknown): TargetSourceRegistry | null =>
+		service &&
+		typeof (service as Partial<TargetSourceRegistry>).register === "function"
+			? (service as TargetSourceRegistry)
+			: null;
 
-	if (tryRegister()) return;
-	setImmediate(() => {
-		tryRegister();
-	});
+	const running = asRegistry(
+		runtime.getService?.(CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE),
+	);
+	if (running) {
+		register(running);
+		return;
+	}
+
+	if (typeof runtime.getServiceLoadPromise !== "function") {
+		logger.warn(
+			{ src: "discord:target-source" },
+			"Runtime has no TargetSourceRegistry and cannot await one; Discord target source not registered",
+		);
+		return;
+	}
+
+	void runtime
+		.getServiceLoadPromise(CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE)
+		.then(
+			(service) => {
+				const registry = asRegistry(service);
+				if (!registry) {
+					logger.warn(
+						{ src: "discord:target-source" },
+						"TargetSourceRegistry service does not implement register(); Discord target source not registered",
+					);
+					return;
+				}
+				register(registry);
+			},
+			(err: unknown) => {
+				logger.warn(
+					{
+						src: "discord:target-source",
+						err: err instanceof Error ? err.message : String(err),
+					},
+					"TargetSourceRegistry did not start; Discord target source not registered",
+				);
+			},
+		);
 }

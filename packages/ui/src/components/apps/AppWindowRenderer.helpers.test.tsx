@@ -1,6 +1,5 @@
 /** Verifies getOverlayAppLazyComponent through the package's configured test harness. */
 // @vitest-environment jsdom
-
 /**
  * Covers `getOverlayAppLazyComponent` — the per-loader lazy-component cache and
  * its retained-lazy warm-up — in jsdom with a stubbed `requestIdleCallback`.
@@ -10,9 +9,12 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  OverlayApp,
+  OverlayAppContext,
+} from "../../apps/overlay-app-api.js";
 import { __resetRetainedLazyModulesForTests } from "../../retained-lazy";
 import { getOverlayAppLazyComponent } from "./AppWindowRenderer.helpers";
-import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
 
 describe("getOverlayAppLazyComponent", () => {
   beforeEach(() => {
@@ -29,13 +31,11 @@ describe("getOverlayAppLazyComponent", () => {
       return 1;
     };
   });
-
   afterEach(() => {
     cleanup();
     __resetRetainedLazyModulesForTests();
     delete (window as Partial<Window>).requestIdleCallback;
   });
-
   it("uses a stable retained wrapper and cleans up after pressure", async () => {
     const cleanupModule = vi.fn();
     const app: OverlayApp = {
@@ -51,23 +51,19 @@ describe("getOverlayAppLazyComponent", () => {
         cleanup: cleanupModule,
       }),
     };
-
     const Overlay = getOverlayAppLazyComponent(app);
     expect(Overlay).toBe(getOverlayAppLazyComponent(app));
     expect(Overlay).toBeTruthy();
     if (!Overlay) return;
-
     const rendered = render(
       <Overlay exitToApps={() => {}} uiTheme="light" t={(key) => key} />,
     );
     await screen.findByText("Overlay loaded");
     rendered.unmount();
-
     expect(cleanupModule).not.toHaveBeenCalled();
     window.dispatchEvent(new Event("memorypressure"));
     await waitFor(() => expect(cleanupModule).toHaveBeenCalledTimes(1));
   });
-
   it("renders a recoverable plain-language card when the overlay bundle fails, and Retry re-imports", async () => {
     // Regression: an overlay app whose lazy bundle rejected used to render a
     // blank white screen (fallback:null, no onError). It must now show the SAME
@@ -94,15 +90,12 @@ describe("getOverlayAppLazyComponent", () => {
         };
       },
     };
-
     const Overlay = getOverlayAppLazyComponent(app);
     expect(Overlay).toBeTruthy();
     if (!Overlay) return;
-
     const { container } = render(
       <Overlay exitToApps={() => {}} uiTheme="light" t={(key) => key} />,
     );
-
     // The card is actually mounted — a blank screen would render none of this.
     const retry = await screen.findByRole("button", { name: /retry/i });
     expect(screen.getByText("This view couldn’t open")).toBeTruthy();
@@ -111,16 +104,13 @@ describe("getOverlayAppLazyComponent", () => {
       screen.queryByText("Failed to fetch dynamically imported module"),
     ).toBeNull();
     expect(container.textContent).not.toBe("");
-
     await act(async () => {
       retry.click();
     });
-
     await screen.findByText("Overlay recovered");
     expect(screen.queryByText("This view couldn’t open")).toBeNull();
     consoleError.mockRestore();
   });
-
   it("renders the error card when the overlay module lacks a renderable default export", async () => {
     const app: OverlayApp = {
       name: "test.overlay.noexport",
@@ -132,13 +122,10 @@ describe("getOverlayAppLazyComponent", () => {
         default: undefined as unknown as ComponentType<OverlayAppContext>,
       }),
     };
-
     const Overlay = getOverlayAppLazyComponent(app);
     expect(Overlay).toBeTruthy();
     if (!Overlay) return;
-
     render(<Overlay exitToApps={() => {}} uiTheme="light" t={(key) => key} />);
-
     await screen.findByText("This view couldn’t open");
     expect(screen.queryByText("View ID: test.overlay.noexport")).toBeNull();
   });

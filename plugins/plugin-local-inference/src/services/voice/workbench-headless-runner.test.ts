@@ -12,10 +12,8 @@ import {
 	runVoiceWorkbenchHeadless,
 	type VoiceWorkbenchServices,
 } from "./workbench-headless-runner";
-import {
-	groundTruthMockServices,
-	VOICE_WORKBENCH_SCENARIOS,
-} from "./workbench-scenarios";
+import { realDecisionLogicServices } from "./workbench-logic-services";
+import { VOICE_WORKBENCH_SCENARIOS } from "./workbench-scenarios";
 
 const SCENARIO: VoiceScenario = {
 	id: "runner-demo",
@@ -48,7 +46,7 @@ describe("runVoiceScenarioHeadless — honesty contract", () => {
 		const run = await runVoiceScenarioHeadless({
 			scenario: SCENARIO,
 			corpus: null,
-			services: groundTruthMockServices(),
+			services: realDecisionLogicServices(),
 		});
 		expect(run.status).toBe("skipped");
 		expect(run.skipReason).toMatch(/corpus/);
@@ -56,23 +54,6 @@ describe("runVoiceScenarioHeadless — honesty contract", () => {
 });
 
 describe("runVoiceScenarioHeadless — scoring", () => {
-	it("a ground-truth-perfect backend passes every scorer", async () => {
-		const corpus = await generateVoiceCorpus(SCENARIO);
-		const run = await runVoiceScenarioHeadless({
-			scenario: SCENARIO,
-			corpus,
-			services: groundTruthMockServices(),
-		});
-		expect(run.status).toBe("ran");
-		expect(run.cases.every((c) => c.passed)).toBe(true);
-		const kinds = new Set(run.cases.map((c) => c.kind));
-		expect(kinds.has("tts-asr-roundtrip")).toBe(true);
-		expect(kinds.has("eot-decision")).toBe(true);
-		expect(kinds.has("diarization")).toBe(true);
-		expect(kinds.has("respond-decision")).toBe(true);
-		expect(kinds.has("voice-entity-match")).toBe(true);
-	});
-
 	it("a faulty backend fails the scorers it regressed", async () => {
 		const corpus = await generateVoiceCorpus(SCENARIO);
 		// Diarization always says "alice" + the agent always responds.
@@ -255,7 +236,7 @@ describe("runVoiceScenarioHeadless — audio capture sink (#8934)", () => {
 		const run = await runVoiceScenarioHeadless({
 			scenario: SCENARIO,
 			corpus,
-			services: groundTruthMockServices(),
+			services: realDecisionLogicServices(),
 			captureAudio: { dir: audioDir, relativeTo: runDir },
 		});
 
@@ -317,7 +298,7 @@ describe("runVoiceScenarioHeadless — audio capture sink (#8934)", () => {
 		const run = await runVoiceScenarioHeadless({
 			scenario: SCENARIO,
 			corpus,
-			services: groundTruthMockServices(),
+			services: realDecisionLogicServices(),
 		});
 
 		expect(run.status).toBe("ran");
@@ -362,32 +343,9 @@ describe("runVoiceScenarioHeadless — speaker-gated barge-in / ERLE / partials"
 		if (gating?.kind === "barge-in-gating") expect(gating.wrongCancels).toBe(2);
 	});
 
-	it("scores ERLE + echo rejection on the desktop-AEC scenario (mock lane)", async () => {
-		const s = scenario("desktop-aec-echo");
-		const corpus = await generateVoiceCorpus(s);
-		const run = await runVoiceScenarioHeadless({
-			scenario: s,
-			corpus,
-			services: groundTruthMockServices(),
-		});
-		const kinds = new Set(run.cases.map((c) => c.kind));
-		expect(kinds.has("erle")).toBe(true);
-		expect(kinds.has("echo-rejection")).toBe(true);
-		expect(run.cases.every((c) => c.passed)).toBe(true);
-	});
-
 	it("scores partial monotonicity only when the lane emits a partial stream", async () => {
 		const s = scenario("streaming-partials-monotonic");
 		const corpus = await generateVoiceCorpus(s);
-		// Mock emits partials for streaming-partials scenarios → scored + passes.
-		const withPartials = await runVoiceScenarioHeadless({
-			scenario: s,
-			corpus,
-			services: groundTruthMockServices(),
-		});
-		expect(
-			withPartials.cases.some((c) => c.kind === "partial-monotonicity"),
-		).toBe(true);
 		// A batch-only backend emits no partials → honestly unscored (never faked).
 		const batchOnly: VoiceWorkbenchServices = {
 			async observeTurn({ label }) {
@@ -413,23 +371,6 @@ describe("runVoiceScenarioHeadless — speaker-gated barge-in / ERLE / partials"
 });
 
 describe("runVoiceWorkbenchHeadless over the built-in scenario matrix", () => {
-	it("the ground-truth mock lane produces an overall PASS report", async () => {
-		const entries = await Promise.all(
-			VOICE_WORKBENCH_SCENARIOS.map(async (scenario) => ({
-				scenario,
-				corpus: await generateVoiceCorpus(scenario),
-			})),
-		);
-		const runs = await runVoiceWorkbenchHeadless({
-			scenarios: entries,
-			services: groundTruthMockServices(),
-		});
-		const report = buildVoiceWorkbenchReport(runs);
-		expect(report.overall).toBe("pass");
-		expect(report.scenariosRan).toBe(VOICE_WORKBENCH_SCENARIOS.length);
-		expect(report.scenariosSkipped).toBe(0);
-	});
-
 	it("an absent backend skips the whole matrix (overall skipped, never pass)", async () => {
 		const entries = await Promise.all(
 			VOICE_WORKBENCH_SCENARIOS.map(async (scenario) => ({

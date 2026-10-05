@@ -16,7 +16,10 @@ export interface SecretValidationPattern {
 	minLength?: number;
 	/** Maximum length requirement */
 	maxLength?: number;
-	/** Example of a valid format (redacted/fake) */
+	/**
+	 * Redacted format hint. This table ships in browser bundles, so a
+	 * credential-shaped placeholder trips release secret audits.
+	 */
 	example?: string;
 }
 
@@ -36,7 +39,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		pattern: /^sk-[a-zA-Z0-9-_]{20,}$/,
 		description: 'OpenAI API key must start with "sk-"',
 		minLength: 20,
-		example: "sk-proj-xxxxxxxxxxxxxxxxxxxx",
+		example: "sk-proj-…",
 	},
 
 	ANTHROPIC_API_KEY: {
@@ -50,7 +53,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		pattern: /^AIza[a-zA-Z0-9-_]{30,}$/,
 		description: 'Google API key must start with "AIza"',
 		minLength: 30,
-		example: "AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+		example: "AIzaSy…",
 	},
 
 	GROQ_API_KEY: {
@@ -113,7 +116,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		pattern: /^sk-[a-zA-Z0-9]{20,}$/,
 		description: 'DeepSeek API key must start with "sk-"',
 		minLength: 20,
-		example: "sk-xxxxxxxxxxxxxxxxxxxx",
+		example: "sk-…",
 	},
 
 	ZAI_API_KEY: {
@@ -127,7 +130,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		pattern: /^sk-[a-zA-Z0-9._-]{20,}$/,
 		description: 'Moonshot API key must start with "sk-"',
 		minLength: 20,
-		example: "sk-xxxxxxxxxxxxxxxxxxxx",
+		example: "sk-…",
 	},
 
 	// ─────────────────────────────────────────────────────────────────────────────

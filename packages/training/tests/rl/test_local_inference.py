@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "training"))
 
-from local_inference import LocalTextGenerator, clean_generated_text, restore_assistant_prefix
-from turboquant import TurboQuantSettings
+from eliza_training.rl.local_inference import LocalTextGenerator, clean_generated_text, restore_assistant_prefix
+from eliza_training.rl.turboquant import TurboQuantSettings
 
 
 def test_clean_generated_text_strips_chat_role_artifacts() -> None:
@@ -48,36 +45,13 @@ def test_restore_assistant_prefix_falls_back_to_prefix_when_empty() -> None:
     assert restore_assistant_prefix("", "Action: ") == "Action:"
 
 
-def test_generate_messages_mlx_restores_assistant_prefix() -> None:
-    class FakeTokenizer:
-        chat_template = None
-
-    captured: dict[str, str] = {}
-
-    def fake_generate(model, tokenizer, **kwargs):
-        captured["prompt"] = kwargs["prompt"]
-        return "hold and stay flat.\nReason: no catalyst."
-
-    generator = object.__new__(LocalTextGenerator)
-    generator.backend = "mlx"
-    generator.model = object()
-    generator.tokenizer = FakeTokenizer()
-    generator._sampler = None
-    generator._generate = fake_generate
-
-    response = generator.generate_messages(
-        [{"role": "user", "content": "What do you do?"}],
-        assistant_prefix="Action: ",
-    )
-
-    assert captured["prompt"].endswith("Assistant: Action: ")
-    assert response == "Action: hold and stay flat.\nReason: no catalyst."
 
 
 def test_generate_messages_cpu_restores_assistant_prefix() -> None:
     class FakeTokenizer:
         chat_template = None
         eos_token_id = 0
+        model_max_length = 128
 
         def __call__(self, text, return_tensors="pt"):
             return {"input_ids": torch.tensor([[1, 2, 3]])}
@@ -116,6 +90,7 @@ def test_generate_messages_cpu_passes_turboquant_cache(monkeypatch) -> None:
     class FakeTokenizer:
         chat_template = None
         eos_token_id = 0
+        model_max_length = 128
 
         def __call__(self, text, return_tensors="pt"):
             return {"input_ids": torch.tensor([[1, 2, 3]])}
@@ -149,8 +124,8 @@ def test_generate_messages_cpu_passes_turboquant_cache(monkeypatch) -> None:
 
     response = generator.generate_messages(
         [{"role": "user", "content": "What do you do?"}],
-        max_new_tokens=4,
     )
 
     assert response == "safe reply"
     assert "past_key_values" in captured
+    assert captured["max_new_tokens"] == 125

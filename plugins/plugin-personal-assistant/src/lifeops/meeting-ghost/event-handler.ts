@@ -10,7 +10,7 @@ import type { EventPayload, IAgentRuntime } from "@elizaos/core";
 import type {
   MeetingGhostAttendanceContext,
   MeetingTranscriptFinalizedPayload,
-} from "@elizaos/shared";
+} from "@elizaos/core/protocol";
 import { projectFinalizedTranscriptCommitments } from "../commitments/transcript-hook.js";
 import {
   type RunMeetingGhostInput,

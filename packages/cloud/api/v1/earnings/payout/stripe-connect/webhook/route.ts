@@ -1,18 +1,25 @@
 // Handles webhook cloud API v1 earnings payout stripe connect webhook route traffic with signature or internal auth checks.
 import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
 import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  getRequestIp,
+  moneyRateLimit,
+  RateLimitPresets,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import { mapConnectWebhookEvent } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
+import {
+  isStripeConfigured,
+  requireStripe,
+} from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  moneyRateLimit,
-  RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { isStripeConfigured, requireStripe } from "@/lib/stripe";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * Maximum age (seconds) the Stripe `t=` timestamp may be relative to server
@@ -30,14 +37,6 @@ async function hashConnectPayload(body: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-function getClientIp(c: AppContext): string {
-  return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip") ||
-    "unknown"
-  );
 }
 
 /**
@@ -98,7 +97,7 @@ async function handlePOST(c: AppContext): Promise<Response> {
         action: "redemption.payout",
         result: "denied",
         resource: { type: "webhook", id: "stripe-connect" },
-        ip: getClientIp(c),
+        ip: getRequestIp(c),
         request_id: c.get("requestId"),
         metadata: { provider: "stripe-connect", reason },
       })
@@ -124,7 +123,7 @@ async function handlePOST(c: AppContext): Promise<Response> {
     provider: "stripe-connect",
     event_type: event.type,
     payload_hash: await hashConnectPayload(body),
-    source_ip: getClientIp(c),
+    source_ip: getRequestIp(c) ?? "unknown",
     event_timestamp: event.created ? new Date(event.created * 1000) : undefined,
   });
   if (!dedupe.created) {

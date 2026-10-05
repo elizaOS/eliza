@@ -11,7 +11,7 @@ import { PassThrough } from "node:stream";
 import {
 	readRoutingPreferences,
 	writeRoutingPreferences,
-} from "@elizaos/shared/local-inference/routing-preferences";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-preferences";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 function freshActiveState() {
@@ -95,6 +95,19 @@ function createRouteTestMocks() {
 				state.active = freshActiveState();
 				return state.active;
 			}),
+			startDownload: vi.fn(async (modelId: string) => ({
+				jobId: `job-${modelId}`,
+				modelId,
+				state: "queued",
+				received: 0,
+				total: 1,
+				bytesPerSec: 0,
+				etaMs: null,
+				startedAt: "2026-05-17T06:17:00.000Z",
+				updatedAt: "2026-05-17T06:17:00.000Z",
+			})),
+			getDownloads: vi.fn(() => [] as unknown[]),
+			cancelDownload: vi.fn((_modelId: string) => false),
 		},
 	};
 }
@@ -112,6 +125,9 @@ vi.mock("./services/service.ts", () => ({
 		getActive: getRouteTestMocks().serviceMock.getActive,
 		setActive: getRouteTestMocks().serviceMock.setActive,
 		clearActive: getRouteTestMocks().serviceMock.clearActive,
+		startDownload: getRouteTestMocks().serviceMock.startDownload,
+		getDownloads: getRouteTestMocks().serviceMock.getDownloads,
+		cancelDownload: getRouteTestMocks().serviceMock.cancelDownload,
 	},
 }));
 
@@ -120,10 +136,13 @@ vi.mock("./services/service.js", () => ({
 		getActive: getRouteTestMocks().serviceMock.getActive,
 		setActive: getRouteTestMocks().serviceMock.setActive,
 		clearActive: getRouteTestMocks().serviceMock.clearActive,
+		startDownload: getRouteTestMocks().serviceMock.startDownload,
+		getDownloads: getRouteTestMocks().serviceMock.getDownloads,
+		cancelDownload: getRouteTestMocks().serviceMock.cancelDownload,
 	},
 }));
 
-vi.mock("@elizaos/plugin-capacitor-bridge", () => ({
+vi.mock("@elizaos/plugin-native-inference/host-bridge", () => ({
 	getMobileDeviceBridgeStatus:
 		getRouteTestMocks().bridgeMock.getMobileDeviceBridgeStatus,
 	loadMobileDeviceBridgeModel:
@@ -135,7 +154,7 @@ vi.mock("@elizaos/plugin-capacitor-bridge", () => ({
 // getMobileDeviceBridgeApi imports this deep subpath (the bare entry is
 // stubbed on mobile), so the providers-route tests must mock it here.
 vi.mock(
-	"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap",
+	"@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap",
 	() => ({
 		getMobileDeviceBridgeStatus:
 			getRouteTestMocks().bridgeMock.getMobileDeviceBridgeStatus,
@@ -157,12 +176,12 @@ vi.mock("@elizaos/plugin-native-inference", () => ({
 }));
 
 import {
+	applyLocalInferenceManagementMutation,
 	getLocalInferenceActiveModelId,
 	getLocalInferenceActiveSnapshot,
 	getLocalInferenceChatStatus,
 	handleLocalInferenceChatCommand,
 	handleLocalInferenceRoutes,
-	reauthorizeRedirectHeaders,
 } from "./local-inference-routes.js";
 
 const { aospMock, bridgeMock, serviceMock } = getRouteTestMocks();
@@ -600,47 +619,55 @@ describe("GET /api/local-inference/providers — bionic-host serving signal (#11
 	});
 });
 
-describe("reauthorizeRedirectHeaders — no HF token leak across redirects", () => {
-	const savedToken = process.env.HF_TOKEN;
-	beforeEach(() => {
-		process.env.HF_TOKEN = "hf-secret-token";
-	});
-	afterEach(() => {
-		if (savedToken === undefined) delete process.env.HF_TOKEN;
-		else process.env.HF_TOKEN = savedToken;
-	});
-
-	const baseHeaders = {
-		"user-agent": "Eliza-MobileLocalInference/1.0",
-		authorization: "Bearer hf-secret-token",
-	};
-
-	it.each([
-		"https://cdn-lfs-us-1.hf.co/repo/abc123",
-		"https://prod-cas-shard.s3.amazonaws.com/abc?X-Amz-Signature=z",
-		"https://example.cloudfront.net/model.gguf",
-	])("strips Authorization when redirected cross-host to %s", (nextUrl) => {
-		const next = reauthorizeRedirectHeaders(baseHeaders, nextUrl);
-		expect(next.authorization).toBeUndefined();
-		expect(next.Authorization).toBeUndefined();
-		// Non-auth headers are preserved.
-		expect(next["user-agent"]).toBe("Eliza-MobileLocalInference/1.0");
-	});
-
-	it("keeps Authorization when the redirect target is still a HuggingFace host", () => {
-		const next = reauthorizeRedirectHeaders(
-			baseHeaders,
-			"https://huggingface.co/repo/resolve/main/model.gguf",
+describe("downloads delegate to the canonical Downloader (#26629)", () => {
+	it("start_download goes through the service downloader, not a route-local copy", async () => {
+		serviceMock.startDownload.mockClear();
+		const result = await applyLocalInferenceManagementMutation({
+			op: "start_download",
+			modelId: "eliza-1-2b",
+		});
+		expect(serviceMock.startDownload).toHaveBeenCalledExactlyOnceWith(
+			"eliza-1-2b",
 		);
-		expect(next.authorization).toBe("Bearer hf-secret-token");
+		expect(result).toMatchObject({
+			op: "start_download",
+			modelId: "eliza-1-2b",
+			job: { jobId: "job-eliza-1-2b", state: "queued" },
+		});
 	});
 
-	it("does not synthesize an Authorization header when none was configured", () => {
-		delete process.env.HF_TOKEN;
-		const next = reauthorizeRedirectHeaders(
-			{ "user-agent": "x" },
-			"https://huggingface.co/repo/resolve/main/model.gguf",
+	it("reports cancelled=false when no download was in flight", async () => {
+		serviceMock.cancelDownload.mockClear();
+		serviceMock.cancelDownload.mockReturnValueOnce(false);
+		const result = await applyLocalInferenceManagementMutation({
+			op: "cancel_download",
+			modelId: "eliza-1-2b",
+		});
+		expect(serviceMock.cancelDownload).toHaveBeenCalledWith("eliza-1-2b");
+		expect(result).toEqual({
+			op: "cancel_download",
+			modelId: "eliza-1-2b",
+			cancelled: false,
+		});
+	});
+
+	it("cancels every in-flight service download when no model is named", async () => {
+		serviceMock.getDownloads.mockReturnValueOnce([
+			{ modelId: "eliza-1-4b", state: "downloading" },
+			{ modelId: "eliza-1-2b", state: "completed" },
+		]);
+		serviceMock.cancelDownload.mockClear();
+		serviceMock.cancelDownload.mockReturnValueOnce(true);
+		const result = await applyLocalInferenceManagementMutation({
+			op: "cancel_download",
+		});
+		expect(serviceMock.cancelDownload).toHaveBeenCalledExactlyOnceWith(
+			"eliza-1-4b",
 		);
-		expect(next.authorization).toBeUndefined();
+		expect(result).toEqual({
+			op: "cancel_download",
+			modelId: "eliza-1-4b",
+			cancelled: true,
+		});
 	});
 });

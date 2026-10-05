@@ -1,5 +1,5 @@
 // Provides shared scenario helpers for LifeOps approval and owner-outcome checks.
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
 
 /**
  * Shared OUTCOME predicates for approval-gated executive-assistant scenarios.
@@ -11,7 +11,7 @@ import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
  * and the owner's decision runs through the live `RESOLVE_REQUEST` action whose
  * `ActionResult.data.state` is the value returned by the queue's SQL UPDATE
  * (`transitionWithResolution` in `src/lifeops/approval-queue.ts`). The runner
- * captures both on `ctx.actionsCalled` (`packages/scenario-runner/src/interceptor.ts`).
+ * captures both on `ctx.actionsCalled` (`packages/testing/scenario-runner/src/interceptor.ts`).
  *
  * We deliberately do NOT use the `approvalRequestExists` /
  * `approvalStateTransition` final-check types for these flows: the runner's

@@ -7,15 +7,15 @@
 
 import { createHash } from "node:crypto";
 import { apiKeysRepository } from "../../db/repositories/api-keys";
-import { type UserWithOrganization, usersRepository } from "../../db/repositories/users";
+import type { UserWithOrganization } from "../../db/repositories/users";
 import type { ApiKey } from "../../db/schemas/api-keys";
 import type { Organization } from "../../db/schemas/organizations";
 import { AuthenticationError, ForbiddenError } from "../api/errors";
 import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 
 export interface InferenceApiKeyAuthTimingObserver {
-  keyLookup(durationMs: number): void;
-  userOrgLookup(durationMs: number): void;
+  /** One primary statement resolving key, user, and organization together. */
+  identityLookup(durationMs: number): void;
 }
 
 export interface InferenceApiKeyAuthOptions {
@@ -42,15 +42,6 @@ function reject(
   throw error;
 }
 
-async function findApiKey(rawKey: string): Promise<ApiKey | null> {
-  const keyHash = createHash("sha256").update(rawKey).digest("hex");
-  return (await apiKeysRepository.findByHashConsistent(keyHash)) ?? null;
-}
-
-async function findUser(userId: string): Promise<UserWithOrganization | undefined> {
-  return await usersRepository.findWithOrganizationForWrite(userId);
-}
-
 /**
  * Preserve the general API-key boundary's error classes, messages, and
  * ordering while exposing per-hop timings to bounded telemetry. The caller
@@ -60,13 +51,15 @@ export async function requireInferenceApiKeyWithOrg(
   rawKey: string,
   options: InferenceApiKeyAuthOptions = {},
 ): Promise<InferenceApiKeyAuthResult> {
-  const keyStartedAt = performance.now();
-  let apiKey: ApiKey | null;
+  const keyHash = createHash("sha256").update(rawKey).digest("hex");
+  const identityStartedAt = performance.now();
+  let identity: Awaited<ReturnType<typeof apiKeysRepository.findIdentityByHashConsistent>>;
   try {
-    apiKey = await findApiKey(rawKey);
+    identity = await apiKeysRepository.findIdentityByHashConsistent(keyHash);
   } finally {
-    options.timing?.keyLookup(performance.now() - keyStartedAt);
+    options.timing?.identityLookup(performance.now() - identityStartedAt);
   }
+  const apiKey: ApiKey | null = identity?.apiKey ?? null;
   if (!apiKey) {
     reject(options, new AuthenticationError("Invalid or expired API key"), "credential_invalid");
   }
@@ -80,13 +73,7 @@ export async function requireInferenceApiKeyWithOrg(
     reject(options, new ForbiddenError("API key is inactive"), "credential_inactive");
   }
 
-  const userStartedAt = performance.now();
-  let user: UserWithOrganization | undefined;
-  try {
-    user = await findUser(apiKey.user_id);
-  } finally {
-    options.timing?.userOrgLookup(performance.now() - userStartedAt);
-  }
+  const user: UserWithOrganization | null = identity?.user ?? null;
   if (!user) {
     reject(
       options,

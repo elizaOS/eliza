@@ -9,11 +9,16 @@
  * Enable is a SettingsSwitchRow. Amount and threshold are SettingsInputRow
  * number fields. Save and canonical Card chrome stay as the multi-field editor.
  * Reads/writes /api/v1/billing/settings.
+ *
+ * Charge disclosure (#23020): when an affiliate surcharge applies, the card
+ * shows the credited base, affiliate markup, platform fee and total card
+ * charge as separate lines before the customer saves. The amounts come from
+ * the server (`autoTopUp.chargePreview`, re-quoted with `?previewAmount=` as
+ * the amount is edited); the client never computes money.
  */
 
 "use client";
 
-import { Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   CreditCard,
@@ -30,15 +35,29 @@ import {
 } from "../../../components/settings/settings-agent-rows";
 import { Alert } from "../../../components/ui/alert";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
+
+export interface AutoTopUpChargePreview {
+  attribution: "none" | "affiliate" | "unavailable";
+  breakdown: {
+    creditedBaseUsd: string;
+    affiliateMarkupUsd: string;
+    platformFeeUsd: string;
+    totalChargeUsd: string;
+    surchargeApplies: boolean;
+  };
+}
 
 interface AutoTopUpSettings {
   enabled: boolean;
   amount: number;
   threshold: number;
   hasPaymentMethod: boolean;
+  chargePreview: AutoTopUpChargePreview | null;
 }
 
 interface Limits {
@@ -82,6 +101,50 @@ function requireFiniteNumber(value: unknown, field: string): number {
   return value;
 }
 
+const USD_AMOUNT = /^(?:0|[1-9]\d*)\.\d{2}$/;
+
+function requireUsd(value: unknown, field: string): string {
+  if (typeof value !== "string" || !USD_AMOUNT.test(value)) {
+    throw new TypeError(`Billing settings response omitted ${field}`);
+  }
+  return value;
+}
+
+function parseChargePreview(value: unknown): AutoTopUpChargePreview | null {
+  if (value === null || value === undefined) return null;
+  const preview = requireRecord(value, "settings.autoTopUp.chargePreview");
+  const attribution = preview.attribution;
+  if (
+    attribution !== "none" &&
+    attribution !== "affiliate" &&
+    attribution !== "unavailable"
+  ) {
+    throw new TypeError(
+      "Billing settings response omitted settings.autoTopUp.chargePreview.attribution",
+    );
+  }
+  const breakdown = requireRecord(
+    preview.breakdown,
+    "settings.autoTopUp.chargePreview.breakdown",
+  );
+  return {
+    attribution,
+    breakdown: {
+      creditedBaseUsd: requireUsd(breakdown.creditedBaseUsd, "creditedBaseUsd"),
+      affiliateMarkupUsd: requireUsd(
+        breakdown.affiliateMarkupUsd,
+        "affiliateMarkupUsd",
+      ),
+      platformFeeUsd: requireUsd(breakdown.platformFeeUsd, "platformFeeUsd"),
+      totalChargeUsd: requireUsd(breakdown.totalChargeUsd, "totalChargeUsd"),
+      surchargeApplies: requireBoolean(
+        breakdown.surchargeApplies,
+        "surchargeApplies",
+      ),
+    },
+  };
+}
+
 function parseAutoTopUpSettings(value: unknown): AutoTopUpSettings {
   const settings = requireRecord(value, "settings.autoTopUp");
   return {
@@ -95,6 +158,7 @@ function parseAutoTopUpSettings(value: unknown): AutoTopUpSettings {
       settings.hasPaymentMethod,
       "settings.autoTopUp.hasPaymentMethod",
     ),
+    chargePreview: parseChargePreview(settings.chargePreview),
   };
 }
 
@@ -144,6 +208,92 @@ function inputValue(value: number): string {
   return value === 0 ? "" : String(value);
 }
 
+/** Separate lines for the credited base and any affiliate surcharge. */
+export function AutoTopUpChargeBreakdown({
+  preview,
+}: {
+  preview: AutoTopUpChargePreview;
+}) {
+  const t = useCloudT();
+  const { breakdown } = preview;
+  const rows: Array<{ key: string; label: string; value: string }> = [
+    {
+      key: "base",
+      label: t("cloud.autoTopUp.breakdown.creditedBase", {
+        defaultValue: "Credits added",
+      }),
+      value: breakdown.creditedBaseUsd,
+    },
+  ];
+  if (breakdown.surchargeApplies) {
+    rows.push(
+      {
+        key: "affiliate",
+        label: t("cloud.autoTopUp.breakdown.affiliateMarkup", {
+          defaultValue: "Affiliate markup",
+        }),
+        value: breakdown.affiliateMarkupUsd,
+      },
+      {
+        key: "platform",
+        label: t("cloud.autoTopUp.breakdown.platformFee", {
+          defaultValue: "Platform fee",
+        }),
+        value: breakdown.platformFeeUsd,
+      },
+    );
+  }
+  return (
+    <div
+      className="space-y-2 rounded-sm border border-border p-3"
+      data-testid="cloud-billing-auto-top-up-breakdown"
+    >
+      <p className="text-xs font-mono uppercase text-muted">
+        {t("cloud.autoTopUp.breakdown.title", {
+          defaultValue: "Each automatic top-up",
+        })}
+      </p>
+      <dl className="space-y-1">
+        {rows.map((row) => (
+          <div
+            key={row.key}
+            className="flex items-center justify-between gap-4 text-xs font-mono"
+          >
+            <dt className="text-muted">{row.label}</dt>
+            <dd className="tabular-nums text-txt">{`$${row.value}`}</dd>
+          </div>
+        ))}
+        <div className="flex items-center justify-between gap-4 border-t border-border pt-1 text-xs font-mono">
+          <dt className="text-txt">
+            {t("cloud.autoTopUp.breakdown.totalCharge", {
+              defaultValue: "Total card charge",
+            })}
+          </dt>
+          <dd className="tabular-nums text-txt-strong">
+            {`$${breakdown.totalChargeUsd}`}
+          </dd>
+        </div>
+      </dl>
+      {breakdown.surchargeApplies ? (
+        <p className="text-pretty text-xs font-mono text-muted">
+          {t("cloud.autoTopUp.breakdown.affiliateNote", {
+            defaultValue:
+              "Your account was referred by an affiliate, so each top-up includes the affiliate's markup and a platform fee on top of the credits added.",
+          })}
+        </p>
+      ) : null}
+      {preview.attribution === "unavailable" ? (
+        <p className="text-pretty text-xs font-mono text-muted">
+          {t("cloud.autoTopUp.breakdown.attributionUnavailable", {
+            defaultValue:
+              "Referral details are temporarily unavailable. If they are still unavailable when a top-up runs, no affiliate surcharge is charged. Your receipt shows the exact amount.",
+          })}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function AutoTopUpCard() {
   const t = useCloudT();
   const [settings, setSettings] = useState<AutoTopUpSettings | null>(null);
@@ -154,6 +304,8 @@ export function AutoTopUpCard() {
 
   const [enabled, setEnabled] = useState(false);
   const [amount, setAmount] = useState("");
+  const [chargePreview, setChargePreview] =
+    useState<AutoTopUpChargePreview | null>(null);
   const [threshold, setThreshold] = useState("");
   const mountedRef = useRef(false);
   const loadInFlightRef = useRef(false);
@@ -174,6 +326,7 @@ export function AutoTopUpCard() {
       }
 
       setSettings(data.settings.autoTopUp);
+      setChargePreview(data.settings.autoTopUp.chargePreview);
       setLimits(data.settings.limits);
       setEnabled(data.settings.autoTopUp.enabled);
       setAmount(inputValue(data.settings.autoTopUp.amount));
@@ -209,6 +362,53 @@ export function AutoTopUpCard() {
 
   const parsedAmount = parseFloat(amount);
   const parsedThreshold = parseFloat(threshold);
+
+  const currentChargePreview =
+    chargePreview &&
+    Number(chargePreview.breakdown.creditedBaseUsd) === parsedAmount
+      ? chargePreview
+      : null;
+
+  // Re-quote the server-computed charge lines while the amount is edited so
+  // the surcharge is disclosed before the customer saves (#23020).
+  useEffect(() => {
+    if (!settings || !limits) return;
+    if (
+      !Number.isFinite(parsedAmount) ||
+      parsedAmount < limits.minAmount ||
+      parsedAmount > limits.maxAmount
+    ) {
+      setChargePreview(null);
+      return;
+    }
+    if (parsedAmount === settings.amount) {
+      setChargePreview(settings.chargePreview);
+      return;
+    }
+    setChargePreview(null);
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void api<unknown>(
+        `${ENDPOINT}?previewAmount=${encodeURIComponent(String(parsedAmount))}`,
+      )
+        .then((response) => {
+          if (cancelled || !mountedRef.current) return;
+          setChargePreview(
+            parseBillingSettingsResponse(response).settings.autoTopUp
+              .chargePreview,
+          );
+        })
+        .catch(() => {
+          // error-policy:J4 a failed re-quote hides the stale lines instead of
+          // showing amounts for a different top-up size.
+          if (!cancelled && mountedRef.current) setChargePreview(null);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [limits, parsedAmount, settings]);
 
   const amountError = useMemo(() => {
     if (!limits || !enabled) return null;
@@ -263,6 +463,8 @@ export function AutoTopUpCard() {
       return;
     }
 
+    if (enabled && !amountError && !currentChargePreview) return;
+
     saveInFlightRef.current = true;
     const generation = ++saveGenerationRef.current;
     setSaving(true);
@@ -286,6 +488,7 @@ export function AutoTopUpCard() {
       }
 
       setSettings(saved);
+      setChargePreview(saved.chargePreview);
       setEnabled(saved.enabled);
       setAmount(inputValue(saved.amount));
       setThreshold(inputValue(saved.threshold));
@@ -481,7 +684,7 @@ export function AutoTopUpCard() {
               defaultValue: "Top-up amount",
             })}
             description={t("cloud.autoTopUp.amountDescription", {
-              defaultValue: "Charged to the saved card each cycle, in USD.",
+              defaultValue: "Credits added each cycle. Fees are shown below.",
             })}
             value={amount}
             onValueChange={setAmount}
@@ -514,12 +717,29 @@ export function AutoTopUpCard() {
           />
         </div>
 
+        {enabled && !amountError ? (
+          currentChargePreview ? (
+            <AutoTopUpChargeBreakdown preview={currentChargePreview} />
+          ) : (
+            <p role="status" className="text-xs text-muted">
+              {t("cloud.autoTopUp.previewPending", {
+                defaultValue:
+                  "A current charge preview is required before saving. If it does not load, change the amount to retry.",
+              })}
+            </p>
+          )
+        ) : null}
+
         <Card asChild variant="billingTopDivider">
           <div className="flex items-center justify-end gap-3">
             <Button
               type="button"
               onClick={handleSave}
-              disabled={saving || !!noPaymentMethod}
+              disabled={
+                saving ||
+                !!noPaymentMethod ||
+                (enabled && !amountError && !currentChargePreview)
+              }
               aria-busy={saving}
             >
               {saving ? (

@@ -76,10 +76,7 @@
     ]
   },
   "kernels": {
-    "required": [
-      "turboquant_q4",
-      "turbo3_tcq"
-    ],
+    "required": ["turboquant_q4", "turbo3_tcq"],
     "optional": [],
     "verifiedBackends": {
       "metal": {

@@ -2,12 +2,10 @@
  * Tracks bar-surface window placement so launcher and overlay panes stay
  * within viewport constraints.
  */
-import * as React from "react";
 
-import {
-  type NavigateViewDetail,
-  pathForNavigateViewDetail,
-} from "../../app-navigate-view";
+import type { NavigateViewDetail } from "@elizaos/core/protocol";
+import * as React from "react";
+import { pathForNavigateViewDetail } from "../../app-navigate-view";
 import {
   openDesktopAppWindow,
   openDesktopLauncherWindow,
@@ -30,7 +28,7 @@ const LAUNCHER_VIEW_IDS: ReadonlySet<string> = new Set([
  * Bridge the chromeless bottom-bar shell to on-demand surface windows (#9953
  * Phase 3). The bar renders only the chat overlay — it has no full-app tab
  * system — so a "show a view" / "show the launcher" intent (the
- * `eliza:navigate:view` bus the agent + slash commands already drive) must open
+ * `eliza:navigate:view` bus agent and user navigation drive) must open
  * a dedicated desktop window instead of switching an inline tab.
  *
  * The launcher is summoned as its own window; it is never the resting surface.

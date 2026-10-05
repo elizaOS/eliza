@@ -5,18 +5,19 @@
  * SSE/CORS response shape used by HTTP routes and in-process voice turns.
  */
 
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import { chatSseFrame } from "../chat-sse-frames";
-import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
 import { applyCorsHeaders } from "../proxy/cors";
 import {
   coordinateSharedBridge,
   coordinateSharedStream,
   type SharedConversationCoordinatorOptions,
 } from "./conversation-coordinator";
+import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import type { SharedRuntimeChannel } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -52,6 +53,8 @@ export interface CanonicalScopedStreamRequest {
   trustedHistoryCutoffAt?: number;
   /** Keep an authenticated control prompt out of durable conversation history. */
   transientInput?: true;
+  /** Server-resolved Dedicated fallback account state (#25146); never from the body. */
+  trustedAccountState?: PersonalSharedFallbackAccountState;
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
@@ -226,6 +229,7 @@ export async function handleCanonicalScopedAgentStream(
       traceId: request.traceId,
       trustedHistoryCutoffAt,
       transientInput,
+      ...(request.trustedAccountState ? { trustedAccountState: request.trustedAccountState } : {}),
     };
     upstream =
       request.responseMode === "buffered"

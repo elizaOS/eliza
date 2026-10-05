@@ -1,0 +1,405 @@
+[
+  {
+    "id": "research-001",
+    "type": "research",
+    "prompt": "What are the key differences between proof-of-work and proof-of-stake consensus mechanisms? Provide a structured comparison covering security, energy consumption, decentralization, and validator requirements.",
+    "expected_keywords": [
+      "security",
+      "energy",
+      "decentralization",
+      "validator",
+      "stake",
+      "mining"
+    ],
+    "category": "research",
+    "difficulty": "easy",
+    "max_score": 10,
+    "evaluation": {
+      "criteria": [
+        {
+          "name": "accuracy",
+          "weight": 0.3,
+          "description": "Factual correctness of claims"
+        },
+        {
+          "name": "completeness",
+          "weight": 0.3,
+          "description": "Covers all requested dimensions"
+        },
+        {
+          "name": "structure",
+          "weight": 0.2,
+          "description": "Well-organized comparison format"
+        },
+        {
+          "name": "depth",
+          "weight": 0.2,
+          "description": "Goes beyond surface-level explanations"
+        }
+      ]
+    }
+  },
+  {
+    "id": "research-002",
+    "type": "research",
+    "prompt": "Analyze the trade-offs between microservices and monolithic architectures for a startup building a real-time collaboration tool. Consider scalability, development velocity, operational complexity, and team size.",
+    "expected_keywords": [
+      "scalability",
+      "latency",
+      "deployment",
+      "team",
+      "complexity",
+      "monolith",
+      "microservice"
+    ],
+    "category": "research",
+    "difficulty": "medium",
+    "max_score": 10,
+    "evaluation": {
+      "criteria": [
+        {
+          "name": "accuracy",
+          "weight": 0.25,
+          "description": "Correct characterization of trade-offs"
+        },
+        {
+          "name": "completeness",
+          "weight": 0.25,
+          "description": "Addresses all four dimensions"
+        },
+        {
+          "name": "context_awareness",
+          "weight": 0.25,
+          "description": "Tailored to startup context"
+        },
+        {
+          "name": "actionability",
+          "weight": 0.25,
+          "description": "Provides a clear recommendation"
+        }
+      ]
+    }
+  },
+  {
+    "id": "research-003",
+    "type": "research",
+    "prompt": "Explain how transformer attention mechanisms work, starting from the intuition behind self-attention, through the mathematical formulation of scaled dot-product attention, to multi-head attention. Include why each design choice was made.",
+    "expected_keywords": [
+      "query",
+      "key",
+      "value",
+      "softmax",
+      "scaling",
+      "multi-head",
+      "attention"
+    ],
+    "category": "research",
+    "difficulty": "hard",
+    "max_score": 10,
+    "evaluation": {
+      "criteria": [
+        {
+          "name": "accuracy",
+          "weight": 0.35,
+          "description": "Mathematical and conceptual correctness"
+        },
+        {
+          "name": "clarity",
+          "weight": 0.25,
+          "description": "Explains intuitions before formulas"
+        },
+        {
+          "name": "completeness",
+          "weight": 0.25,
+          "description": "Covers all three levels requested"
+        },
+        {
+          "name": "reasoning",
+          "weight": 0.15,
+          "description": "Explains why each design choice exists"
+        }
+      ]
+    }
+  },
+  {
+    "id": "research-004",
+    "type": "research",
+    "prompt": "Compare WebSocket, Server-Sent Events (SSE), and HTTP long-polling for building a real-time notification system. Which would you recommend for a mobile-first application with intermittent connectivity?",
+    "expected_keywords": [
+      "websocket",
+      "SSE",
+      "polling",
+      "bidirectional",
+      "reconnection",
+      "mobile"
+    ],
+    "category": "research",
+    "difficulty": "medium",
+    "max_score": 10,
+    "evaluation": {
+      "criteria": [
+        {
+          "name": "accuracy",
+          "weight": 0.3,
+          "description": "Correct technical characterization"
+        },
+        {
+          "name": "completeness",
+          "weight": 0.25,
+          "description": "Compares all three approaches"
+        },
+        {
+          "name": "context_awareness",
+          "weight": 0.25,
+          "description": "Mobile-first considerations"
+        },
+        {
+          "name": "recommendation",
+          "weight": 0.2,
+          "description": "Clear justified recommendation"
+        }
+      ]
+    }
+  },
+  {
+    "id": "research-005",
+    "type": "research",
+    "prompt": "What are the security implications of using JWTs for session management compared to server-side sessions with opaque tokens? Cover token theft, revocation, size, and statelessness trade-offs.",
+    "expected_keywords": [
+      "JWT",
+      "session",
+      "revocation",
+      "stateless",
+      "token",
+      "XSS",
+      "CSRF"
+    ],
+    "category": "research",
+    "difficulty": "medium",
+    "max_score": 10,
+    "evaluation": {
+      "criteria": [
+        {
+          "name": "accuracy",
+          "weight": 0.3,
+          "description": "Security claims are correct"
+        },
+        {
+          "name": "completeness",
+          "weight": 0.3,
+          "description": "Covers all requested dimensions"
+        },
+        {
+          "name": "nuance",
+          "weight": 0.2,
+          "description": "Acknowledges when each approach fits"
+        },
+        {
+          "name": "practical",
+          "weight": 0.2,
+          "description": "Mentions mitigation strategies"
+        }
+      ]
+    }
+  },
+  {
+    "id": "research-006",
+    "type": "research",
+    "prompt": "Investigate the current state of WebAssembly (WASM) for server-side applications. What languages compile to WASM effectively? What are the performance characteristics compared to native code? What are the security isolation benefits?",
+    "expected_keywords": [
+      "WASM",
+      "Rust",
+      "sandbox",
+      "isolation",
+      "performance",
+      "bytecode"
+    ],
+    "category": "research",
+    "difficulty": "hard",
+    "max_score": 10,
+    "evaluation": {
+      "criteria": [
+        {
+          "name": "accuracy",
+          "weight": 0.3,
+          "description": "Technical claims about WASM are correct"
+        },
+        {
+          "name": "completeness",
+          "weight": 0.25,
+          "description": "Covers languages, perf, and security"
+        },
+        {
+          "name": "depth",
+          "weight": 0.25,
+          "description": "Beyond surface-level overview"
+        },
+        {
+          "name": "currency",
+          "weight": 0.2,
+          "description": "Reflects recent developments"
+        }
+      ]
+    }
+  },
+  {
+    "id": "research-007",
+    "type": "research",
+    "prompt": "Summarize the CAP theorem and explain how modern distributed databases like CockroachDB, DynamoDB, and Cassandra position themselves within its constraints. Are there any criticisms of the CAP theorem?",
+    "expected_keywords": [
+      "consistency",
+      "availability",
+      "partition",
+      "CAP",
+      "eventual",
+      "strong"
+    ],
+    "category": "research",
+    "difficulty": "hard",
+    "max_score": 10,
+    "evaluation": {
+      "criteria": [
+        {
+          "name": "accuracy",
+          "weight": 0.3,
+          "description": "Correct characterization of CAP and databases"
+        },
+        {
+          "name": "completeness",
+          "weight": 0.25,
+          "description": "Covers all three databases and criticisms"
+        },
+        {
+          "name": "depth",
+          "weight": 0.25,
+          "description": "Goes beyond basic CAP statement"
+        },
+        {
+          "name": "nuance",
+          "weight": 0.2,
+          "description": "Acknowledges limitations of CAP framing"
+        }
+      ]
+    }
+  },
+  {
+    "id": "research-008",
+    "type": "research",
+    "prompt": "What is retrieval-augmented generation (RAG) and how does it improve LLM outputs? Describe the architecture, embedding strategies, chunking approaches, and common failure modes.",
+    "expected_keywords": [
+      "retrieval",
+      "embedding",
+      "vector",
+      "chunk",
+      "hallucination",
+      "context"
+    ],
+    "category": "research",
+    "difficulty": "medium",
+    "max_score": 10,
+    "evaluation": {
+      "criteria": [
+        {
+          "name": "accuracy",
+          "weight": 0.3,
+          "description": "Correct technical description of RAG"
+        },
+        {
+          "name": "completeness",
+          "weight": 0.3,
+          "description": "Covers architecture, embeddings, chunking, failures"
+        },
+        {
+          "name": "practical",
+          "weight": 0.2,
+          "description": "Actionable implementation guidance"
+        },
+        {
+          "name": "depth",
+          "weight": 0.2,
+          "description": "Beyond surface-level explanation"
+        }
+      ]
+    }
+  },
+  {
+    "id": "research-009",
+    "type": "research",
+    "prompt": "Explain the differences between optimistic and pessimistic concurrency control in databases. When should each be used? Provide concrete examples of scenarios where one outperforms the other.",
+    "expected_keywords": [
+      "lock",
+      "conflict",
+      "transaction",
+      "throughput",
+      "contention",
+      "rollback"
+    ],
+    "category": "research",
+    "difficulty": "medium",
+    "max_score": 10,
+    "evaluation": {
+      "criteria": [
+        {
+          "name": "accuracy",
+          "weight": 0.3,
+          "description": "Correct concurrency control descriptions"
+        },
+        {
+          "name": "examples",
+          "weight": 0.3,
+          "description": "Concrete, illustrative scenarios"
+        },
+        {
+          "name": "completeness",
+          "weight": 0.2,
+          "description": "Covers both approaches thoroughly"
+        },
+        {
+          "name": "guidance",
+          "weight": 0.2,
+          "description": "Clear decision framework"
+        }
+      ]
+    }
+  },
+  {
+    "id": "research-010",
+    "type": "research",
+    "prompt": "Analyze the environmental and computational costs of training large language models. What approaches exist to reduce these costs while maintaining capability? Cover distillation, quantization, and efficient architectures.",
+    "expected_keywords": [
+      "training",
+      "compute",
+      "distillation",
+      "quantization",
+      "efficiency",
+      "parameter"
+    ],
+    "category": "research",
+    "difficulty": "hard",
+    "max_score": 10,
+    "evaluation": {
+      "criteria": [
+        {
+          "name": "accuracy",
+          "weight": 0.3,
+          "description": "Factual claims about costs and techniques"
+        },
+        {
+          "name": "completeness",
+          "weight": 0.25,
+          "description": "Covers all three requested approaches"
+        },
+        {
+          "name": "depth",
+          "weight": 0.25,
+          "description": "Technical detail on each approach"
+        },
+        {
+          "name": "balance",
+          "weight": 0.2,
+          "description": "Balanced view of trade-offs"
+        }
+      ]
+    }
+  }
+]

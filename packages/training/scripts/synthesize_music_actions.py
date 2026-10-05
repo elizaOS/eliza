@@ -32,23 +32,21 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import random
-import sys
 from pathlib import Path
 from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.eliza_record import (  # noqa: E402
+from eliza_training.lib.eliza_record import (  # noqa: E402
     ACTION_REPLY,
     ACTION_TASK_CALL,
     build,
     stable_id,
 )
-from lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
+from eliza_training.lib.jsonl import write_jsonl  # noqa: E402
+from eliza_training.lib.expected_response import ExpectedResponseEncoder, JsonExpectedResponseEncoder  # noqa: E402
 
 ACTIONS_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 OUT_DIR = ROOT / "data" / "synthesized" / "action_examples"
@@ -1393,16 +1391,6 @@ GENERATORS = [
     ("STOP_MUSIC", gen_stop_music),
 ]
 
-
-def write_jsonl(records: Iterable[dict], path: Path) -> int:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    n = 0
-    with path.open("w", encoding="utf-8") as f:
-        for rec in records:
-            f.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")))
-            f.write("\n")
-            n += 1
-    return n
 
 
 def main() -> int:

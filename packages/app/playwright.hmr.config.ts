@@ -2,11 +2,13 @@
  * Playwright configuration for the Playwright Hmr app test lane, including
  * browser projects and app-server wiring.
  */
+
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
-import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
+import { testOutputPath } from "../scripts/lib/test-output.ts";
+import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.ts";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(appDir, "../..");
@@ -42,7 +44,7 @@ export default defineConfig({
   retries: 2,
   workers: 1,
   reporter: "list",
-  outputDir: "./test-results/hmr",
+  outputDir: testOutputPath("app", "hmr"),
   use: {
     baseURL: `http://127.0.0.1:${uiPort}`,
     trace: "retain-on-failure",
@@ -64,7 +66,6 @@ export default defineConfig({
       ELIZA_DEV_CLOUD_TARGET: "offline",
       // Keep the API process watcher off (HMR under test is Vite's, not the
       // API's), quiet logs, and skip optional camera deps in CI.
-      ELIZA_DEV_CLOUD_TARGET: "offline",
       ELIZA_DEV_NO_WATCH: "1",
       ELIZA_DEV_QUIET_LOGS: "1",
       ELIZA_NO_VISION_DEPS: "1",
@@ -79,7 +80,12 @@ export default defineConfig({
       FORCE_COLOR: "0",
       NODE_NO_WARNINGS: "1",
     },
-    port: uiPort,
+    // Readiness must mean "Vite is serving its client", not "something accepted
+    // a TCP connection": a bare `port` probe can be satisfied by a transient
+    // listener that reuses the reserved port before Vite binds it, and Playwright
+    // then runs the specs into ERR_CONNECTION_REFUSED (#31762). Polling a path
+    // only Vite serves waits for the real dev client instead.
+    url: `http://127.0.0.1:${uiPort}/@vite/client`,
     reuseExistingServer: false,
     timeout: 120_000,
   },

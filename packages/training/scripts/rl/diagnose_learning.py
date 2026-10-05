@@ -21,7 +21,6 @@ import argparse
 import asyncio
 import json
 import logging
-import sys
 from pathlib import Path
 
 import torch
@@ -29,23 +28,22 @@ import torch.nn.functional as F
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
-sys.path.insert(0, str(PYTHON_ROOT))
 
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import (  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.lib.generation_integrity import (  # noqa: E402
     model_context_tokens,
     remaining_model_context_tokens,
     require_complete_generated_tokens,
 )
 
-from src.training.deterministic_eval import (
+from eliza_training.rl.deterministic_eval import (
     ACTION_REASON_ALIGNMENT_SAMPLES,
     ACTION_REASON_ASSISTANT_PREFIX,
     ACTION_REASON_PROMPTS,
     ACTION_REASON_SYSTEM_PROMPT,
     score_action_reason_response,
 )
-from src.training.team_rl import (
+from eliza_training.rl.team_rl import (
     AGENT_NAMES,
     TeamConfig,
     TeamModel,
@@ -53,7 +51,7 @@ from src.training.team_rl import (
     compute_reward,
     parse_action,
 )
-from src.training.verifiable_game import VerifiableGameBridge
+from eliza_training.rl.verifiable_game import VerifiableGameBridge
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("diagnose")

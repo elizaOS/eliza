@@ -24,7 +24,7 @@ export function appleRemindersMacosBridgeCandidates(args?: {
     },
     {
       label: "local Apple permissions bridge",
-      path: `../../../../packages/app-core/platforms/electrobun/src/${APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME}`,
+      path: `../../../../packages/app/platforms/electrobun/src/${APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME}`,
     },
   ].filter((candidate) => candidate.path.trim().length > 0);
 }

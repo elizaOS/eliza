@@ -5,15 +5,15 @@
  * Called by the desktop agent after cloud login to configure Steward locally.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { resolveServerStewardApiUrlFromEnv } from "@elizaos/cloud-shared/lib/steward-url";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { dbWrite } from "@/db/helpers";
-import { organizations } from "@/db/schemas/organizations";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { resolveServerStewardApiUrlFromEnv } from "@/lib/steward-url";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

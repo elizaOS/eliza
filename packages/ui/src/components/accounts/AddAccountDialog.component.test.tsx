@@ -47,7 +47,7 @@ const oauthState = vi.hoisted(() => ({
   writeSubscriptionOAuth: vi.fn(),
 }));
 
-vi.mock("../../api", () => ({ client: api }));
+vi.mock("../../api/client", () => ({ client: api }));
 vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (state: {
@@ -55,9 +55,7 @@ vi.mock("../../state/app-store", () => ({
     }) => unknown,
   ) => selector({ t: (_key, vars) => String(vars?.defaultValue ?? _key) }),
 }));
-vi.mock("../../utils", () => ({
-  // The helper reports whether the navigation was accepted; the dialog drops
-  // to its error step on `false`.
+vi.mock("../../utils/openExternalUrl", () => ({
   navigatePreOpenedWindow: vi.fn(() => true),
   preOpenWindow: vi.fn(() => ({ close: vi.fn() })),
 }));

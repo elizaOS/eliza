@@ -2,14 +2,14 @@
  * POST /api/v1/device-bus/devices — register / upsert a paired device.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { devices } from "@elizaos/cloud-shared/db/schemas";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbWrite } from "@/db/helpers";
-import { devices } from "@/db/schemas";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const registerSchema = z.object({
   deviceId: z.string().uuid().optional(),

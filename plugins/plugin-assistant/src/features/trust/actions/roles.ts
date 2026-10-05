@@ -1,0 +1,394 @@
+/**
+ * Handler for the TRUST umbrella's `update_role` subaction: assigns
+ * OWNER/ADMIN/NONE roles to entities within a group or world channel. A
+ * `TEXT_LARGE` extraction resolves who-gets-what from the request (explicit
+ * action parameters take precedence over the model output), the OWNER-only rule
+ * in `canModifyRole` is enforced per assignment, and results are persisted into
+ * `world.metadata.roles`. Requires `state`, a GROUP/WORLD channel, a `serverId`,
+ * and a resolvable world; each rejection path replies via the callback and
+ * returns a structured `ActionResult`.
+ */
+
+import {
+  type ActionResult,
+  ChannelType,
+  type HandlerCallback,
+  type IAgentRuntime,
+  isObjectRecord as isRecord,
+  logger,
+  type Memory,
+  ModelType,
+  Role,
+  type RoleName,
+  type State,
+  setEntityRoleCas,
+  type UUID,
+  type World,
+} from "@elizaos/core";
+import dedent from "dedent";
+
+const canModifyRole = (
+  currentRole: Role,
+  targetRole: Role | null,
+  _newRole: Role,
+): boolean => {
+  if (targetRole === currentRole) return false;
+  return currentRole === Role.OWNER;
+};
+
+interface RoleAssignment {
+  entityId: string;
+  newRole: Role;
+}
+
+function normalizeRole(value: unknown): Role | null {
+  const normalized =
+    typeof value === "string" ? value.trim().toUpperCase() : "";
+  return (Object.values(Role) as string[]).includes(normalized)
+    ? (normalized as Role)
+    : null;
+}
+
+function extractRoleAssignments(result: unknown): RoleAssignment[] {
+  const assignments: RoleAssignment[] = [];
+
+  const addAssignment = (rawEntityId: unknown, rawRole: unknown): void => {
+    const entityId = typeof rawEntityId === "string" ? rawEntityId.trim() : "";
+    const newRole = normalizeRole(rawRole);
+    if (!entityId || !newRole) {
+      return;
+    }
+    assignments.push({ entityId, newRole });
+  };
+
+  const traverse = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        traverse(item);
+      }
+      return;
+    }
+
+    if (!isRecord(node)) {
+      return;
+    }
+
+    if ("entityId" in node && "newRole" in node) {
+      addAssignment(node.entityId, node.newRole);
+    }
+
+    for (const value of Object.values(node)) {
+      traverse(value);
+    }
+  };
+
+  traverse(result);
+  return assignments;
+}
+
+type ActionOptions = Record<string, unknown>;
+
+function readNestedParameters(
+  options: ActionOptions | undefined,
+): ActionOptions {
+  const nested = options?.parameters;
+  if (typeof nested === "object" && nested !== null && !Array.isArray(nested)) {
+    return nested as ActionOptions;
+  }
+  return {};
+}
+
+export async function updateRoleHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: ActionOptions | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  if (!state) {
+    logger.error("State is required for role assignment");
+    throw new Error("State is required for role assignment");
+  }
+
+  const channelType = message.content.channelType as ChannelType;
+  if (channelType !== ChannelType.GROUP && channelType !== ChannelType.WORLD) {
+    // Planner-facing only: channel/server plumbing is tool-speak; the
+    // evaluator explains the limitation to the user in voice.
+    return {
+      success: false,
+      text: "Role assignment only works in a group or world channel; tell the user roles can't be changed here.",
+      data: {
+        actionName: "TRUST",
+        subaction: "update_role",
+        success: false,
+        error: "Unsupported channel type",
+      },
+    };
+  }
+
+  const { roomId } = message;
+  const serverId = message.content.serverId as string;
+  if (!serverId) {
+    return {
+      success: false,
+      text: "Role assignment requires a serverId on the message; tell the user roles can't be changed from this channel.",
+      data: {
+        actionName: "TRUST",
+        subaction: "update_role",
+        success: false,
+        error: "Missing serverId",
+      },
+    };
+  }
+
+  const worldId = runtime.getSetting("WORLD_ID");
+
+  let world: World | null = null;
+
+  if (worldId) {
+    world = await runtime.getWorld(worldId as UUID);
+  }
+
+  if (!world) {
+    logger.error("World not found");
+    return {
+      success: false,
+      text: "World not found; tell the user role assignment isn't available here.",
+      data: {
+        actionName: "TRUST",
+        subaction: "update_role",
+        success: false,
+        error: "World not found",
+      },
+    };
+  }
+
+  if (!world.metadata?.roles) {
+    world.metadata = world.metadata || {};
+    world.metadata.roles = {};
+  }
+
+  const entities = await runtime.getEntitiesForRoom(roomId);
+
+  const requesterRole = world.metadata.roles[message.entityId] || Role.NONE;
+
+  const serverMembers = entities
+    .map((entity) => {
+      const names = entity.names.filter(Boolean).join(", ") || "Unknown";
+      return `- entityId: ${entity.id}\n  names: ${names}`;
+    })
+    .join("\n");
+
+  const extractionPrompt = dedent`
+				# Task: Parse Role Assignment
+
+				I need to extract user role assignments from the input text. Users can be referenced by name, username, or mention.
+
+				The available role types are:
+				- OWNER: Full control over the server and all settings
+				- ADMIN: Ability to manage channels and moderate content
+				- NONE: Regular user with no special permissions
+
+				# Current server members:
+				${serverMembers || "No members available"}
+
+				# Current speaker role:
+				${requesterRole}
+
+				# Current context:
+				${state.text}
+
+				Return only assignments that are clearly requested and match a current server member.
+				Each entry has:
+				- entityId: The exact entityId from Current server members
+				- newRole: The role to assign (OWNER, ADMIN, or NONE)
+			`;
+
+  const params = readNestedParameters(options);
+  const parsed = await runtime.dynamicPromptExecFromState({
+    state,
+    params: { prompt: extractionPrompt },
+    schema: [
+      {
+        field: "roleAssignments",
+        description:
+          "Role assignments clearly requested by the speaker, or an empty list when none are valid",
+        type: "array",
+        items: {
+          description: "One role assignment",
+          type: "object",
+          properties: [
+            {
+              field: "entityId",
+              description: "Exact entityId from Current server members",
+              required: true,
+            },
+            {
+              field: "newRole",
+              description: "One of OWNER, ADMIN, or NONE",
+              required: true,
+            },
+          ],
+        },
+        required: false,
+        validateField: false,
+        streamField: false,
+      },
+    ],
+    options: {
+      modelType: ModelType.TEXT_LARGE,
+      contextCheckLevel: 0,
+      maxRetries: 1,
+    },
+  });
+
+  const explicitAssignments = extractRoleAssignments(params.roleAssignments);
+  const result = explicitAssignments.length
+    ? explicitAssignments
+    : extractRoleAssignments(parsed);
+
+  if (!result.length) {
+    return {
+      success: false,
+      text: "No valid role assignments found in the request; ask the user who should get which role.",
+      data: {
+        actionName: "TRUST",
+        subaction: "update_role",
+        success: false,
+        message: "No valid role assignments found",
+      },
+    };
+  }
+
+  let worldUpdated = false;
+  const updatedRoles: Array<{
+    entityName: string;
+    entityId: string;
+    newRole: Role;
+  }> = [];
+
+  const summaryLines: string[] = [];
+  for (const assignment of result) {
+    const targetEntity = entities.find((e) => e.id === assignment.entityId);
+    if (!targetEntity) {
+      logger.error("Could not find an ID to assign to");
+      continue;
+    }
+
+    const currentRole = world.metadata.roles[assignment.entityId];
+
+    if (!canModifyRole(requesterRole, currentRole, assignment.newRole)) {
+      summaryLines.push(
+        `You don't have permission to change ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
+      );
+      continue;
+    }
+
+    // #23100: commit through the atomic compare-and-swap path instead of
+    // the former whole-world blind write — a concurrent metadata writer
+    // becomes a typed conflict (re-read + re-check per attempt inside the
+    // CAS loop) rather than being silently overwritten. The write targets
+    // THIS handler's resolved world (the configured WORLD_ID setting may
+    // differ from the message room's world), and there is deliberately NO
+    // trailing runtime.updateWorld(world): the handler's pre-loop world
+    // object is stale by then and a blind overwrite would clobber the
+    // committed CAS results it is reporting success for.
+    const casResult = await setEntityRoleCas(
+      runtime,
+      message,
+      assignment.entityId,
+      assignment.newRole === Role.NONE
+        ? "GUEST"
+        : (assignment.newRole as RoleName),
+      {
+        worldId: world.id as UUID,
+        authorize: (fresh) => {
+          if (!fresh) return false;
+          const freshRoles = fresh.metadata.roles ?? {};
+          // The local canModifyRole is typed on the message-loop Role
+          // vocabulary; the metadata stores RoleName strings whose
+          // ranks agree (MEMBER ≡ USER), so compare normalized.
+          const freshRequesterRole = normalizeRole(
+            freshRoles[message.entityId],
+          );
+          const freshTargetRole = normalizeRole(
+            freshRoles[assignment.entityId],
+          );
+          if (freshRequesterRole === freshTargetRole) return false;
+          return freshRequesterRole === "OWNER";
+        },
+      },
+    );
+    if (casResult.status === "committed") {
+      worldUpdated = true;
+      updatedRoles.push({
+        entityName: targetEntity.names[0] || "Unknown",
+        entityId: assignment.entityId,
+        newRole: assignment.newRole,
+      });
+      summaryLines.push(
+        `Updated ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
+      );
+    } else if (casResult.status === "world_not_found") {
+      summaryLines.push(
+        `Could not update ${targetEntity.names[0]}'s role; the world is gone.`,
+      );
+    } else if (casResult.status === "unauthorized") {
+      // Authorization was re-checked against fresh state and denied —
+      // report the permission loss, not a phantom concurrency retry.
+      summaryLines.push(
+        `Could not update ${targetEntity.names[0]}'s role; permission was revoked while processing. Ask an OWNER to retry.`,
+      );
+    } else {
+      summaryLines.push(
+        `Could not update ${targetEntity.names[0]}'s role due to a concurrent change; retry.`,
+      );
+    }
+  }
+
+  if (worldUpdated) {
+    logger.info(`Updated roles in world metadata for server ${serverId}`);
+  }
+
+  if (!worldUpdated) {
+    return {
+      success: false,
+      data: {
+        actionName: "TRUST",
+        subaction: "update_role",
+        success: false,
+        updatedRoles,
+        totalProcessed: result.length,
+        totalUpdated: 0,
+      },
+      text: summaryLines.length
+        ? summaryLines.join("\n")
+        : "No roles were updated.",
+    };
+  }
+
+  // One aggregated confirmation instead of a bubble per assignment: verified +
+  // turnComplete make it the turn's sole delivery instead of double-messaging
+  // with the evaluator.
+  const summaryText = summaryLines.join("\n");
+  await callback?.({
+    text: summaryText,
+    actions: ["TRUST"],
+    source: "discord",
+  });
+  return {
+    success: true,
+    userFacingText: summaryText,
+    verifiedUserFacing: true,
+    turnComplete: true,
+    data: {
+      actionName: "TRUST",
+      subaction: "update_role",
+      success: true,
+      updatedRoles,
+      totalProcessed: result.length,
+      totalUpdated: updatedRoles.length,
+    },
+    text: summaryText,
+  };
+}

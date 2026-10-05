@@ -3,11 +3,19 @@
  *
  * Chromium records page video as WebM. PR evidence expects MP4 where the runner
  * has ffmpeg, so this helper transcodes the Playwright artifact without making
- * ordinary smoke tests depend on ffmpeg being installed.
+ * ordinary smoke tests depend on ffmpeg being installed. A transcode is labeled
+ * video/mp4 only after ffprobe proves one H.264 yuv420p stream with a positive
+ * duration (#29774); an unprovable transcode keeps the honest WebM recording,
+ * and a provably invalid MP4 fails the test.
  */
 import { spawn } from "node:child_process";
-import { copyFile } from "node:fs/promises";
+import { copyFile, rm } from "node:fs/promises";
 import type { TestInfo, Video } from "@playwright/test";
+import {
+  type BrowserVideoEvidenceProbe,
+  resolveFfprobe,
+  validateBrowserVideoMp4,
+} from "../../../scripts/lib/browser-video-evidence.ts";
 
 async function runFfmpeg(args: string[]): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -33,9 +41,20 @@ export async function saveBrowserVideoArtifact(args: {
   video: Video;
   testInfo: TestInfo;
   basename: string;
-}): Promise<{ path: string; contentType: string }> {
+  expectedWidth?: number;
+  expectedHeight?: number;
+}): Promise<{
+  path: string;
+  contentType: string;
+  probe?: BrowserVideoEvidenceProbe;
+}> {
   const sourcePath = await args.video.path();
   const mp4Path = args.testInfo.outputPath(`${args.basename}.mp4`);
+  const saveWebm = async () => {
+    const webmPath = args.testInfo.outputPath(`${args.basename}.webm`);
+    await copyFile(sourcePath, webmPath);
+    return { path: webmPath, contentType: "video/webm" };
+  };
   try {
     await runFfmpeg([
       "-y",
@@ -50,11 +69,22 @@ export async function saveBrowserVideoArtifact(args: {
       "+faststart",
       mp4Path,
     ]);
-    return { path: mp4Path, contentType: "video/mp4" };
   } catch {
     // error-policy:J4 capture evidence remains usable when a local runner lacks ffmpeg.
-    const webmPath = args.testInfo.outputPath(`${args.basename}.webm`);
-    await copyFile(sourcePath, webmPath);
-    return { path: webmPath, contentType: "video/webm" };
+    return saveWebm();
   }
+  const ffprobe = resolveFfprobe();
+  if (!ffprobe) {
+    // An MP4 that cannot be probed is not labeled as MP4 evidence; keep the
+    // original recording under its real media type instead.
+    await rm(mp4Path, { force: true });
+    return saveWebm();
+  }
+  // Throws BrowserVideoEvidenceError for a malformed or mislabeled transcode.
+  const probe = validateBrowserVideoMp4(mp4Path, {
+    ffprobe,
+    expectedWidth: args.expectedWidth,
+    expectedHeight: args.expectedHeight,
+  });
+  return { path: mp4Path, contentType: "video/mp4", probe };
 }

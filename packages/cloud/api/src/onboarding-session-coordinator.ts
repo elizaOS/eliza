@@ -4,17 +4,17 @@
  * browser continuation-token lookup and migration from pre-coordinator data.
  */
 
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import type {
   OnboardingChatInput,
   OnboardingChatMessage,
   OnboardingChatResult,
   OnboardingSession,
-} from "@/lib/services/eliza-app/onboarding-chat";
-import { onboardingCoordinatorErrorResponse } from "@/lib/services/eliza-app/onboarding-coordinator-transport";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat";
+import { onboardingCoordinatorErrorResponse } from "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-coordinator-transport";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 interface CoordinatorRequest {
   input: OnboardingChatInput;
@@ -662,7 +662,7 @@ export class OnboardingSessionCoordinator {
     // outage must not report a successful admission as a failed delivery.
     try {
       const { mirrorOnboardingSessionToCache } = await import(
-        "@/lib/services/eliza-app/onboarding-chat"
+        "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat"
       );
       await mirrorOnboardingSessionToCache(session);
     } catch (error) {
@@ -684,7 +684,9 @@ export class OnboardingSessionCoordinator {
       deliverCommittedProactiveGreeting,
       loadCachedOnboardingSession,
       runOnboardingChatWithStore,
-    } = await import("@/lib/services/eliza-app/onboarding-chat");
+    } = await import(
+      "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat"
+    );
     const platformScope = `platform:${storageComponent(request.sessionId)}`;
     const platformSessionKey = sessionStorageKey(platformScope);
     // A messaging turn is anonymous, so it can only ever name the platform

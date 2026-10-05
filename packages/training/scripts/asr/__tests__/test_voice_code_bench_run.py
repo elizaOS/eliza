@@ -9,16 +9,14 @@ from __future__ import annotations
 
 import io
 import json
-import sys
 import wave
 from pathlib import Path
 
 import pytest
 
 ASR_DIR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ASR_DIR))
 
-import voice_code_bench_run as runner  # noqa: E402
+import eliza_training.asr.voice_code_bench_run as runner  # noqa: E402
 
 
 def _wav() -> bytes:

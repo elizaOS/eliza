@@ -30,7 +30,7 @@ import {
   createAgentBackupManifestV3,
   parseAgentBackupRestoreV3CandidateReceipt,
   parseAgentBackupRestoreV3CandidateSealAuthorizationRequest,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import type { AgentBackupRestoreV3CandidateExecution } from "../agent-backup-restore-v3-candidate-execution";
 
 export const CANDIDATE_IDS = {

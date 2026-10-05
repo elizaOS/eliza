@@ -16,7 +16,7 @@ import {
   type LifeOpsRelationship,
   type LifeOpsRelationshipInteraction,
   SELF_ENTITY_ID,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   contactAttributes,

@@ -16,24 +16,25 @@
  */
 
 import crypto from "node:crypto";
-import type {
-  Action,
-  ActionResult,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "@elizaos/core";
-import { logger, toWellFormedUnicode } from "@elizaos/core";
 import {
+  type Action,
+  type ActionResult,
   type AwarenessRegistry,
-  createSelfApiRequestHeaders,
   getValidationKeywordTerms,
-  isSelfEditEnabled,
-  requestRestart,
-  resolveServerOnlyPort,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
   textIncludesKeywordTerm,
-} from "@elizaos/shared";
+  toWellFormedUnicode,
+  type UUID,
+} from "@elizaos/core";
+import { isSelfEditEnabled } from "@elizaos/host";
+import {
+  createSelfApiRequestHeaders,
+  requireRestartHandler,
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
 
 const RUNTIME_OPS = [
   "status",
@@ -121,7 +122,7 @@ function isAwarenessRegistry(value: unknown): value is AwarenessRegistry {
 }
 
 function getApiBase(): string {
-  return `http://localhost:${resolveServerOnlyPort(process.env)}`;
+  return resolveSelfApiBaseUrl(process.env);
 }
 
 function isExplicitRestartRequest(message: Memory | undefined): boolean {
@@ -269,9 +270,30 @@ function describeActionsOp(
 }
 
 interface ReloadConfigResponse {
-  reloaded?: boolean;
-  applied?: string[];
-  requiresRestart?: string[];
+  reloaded: true;
+  applied: string[];
+  requiresRestart: string[];
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
+}
+
+/** The reload route answers `{ reloaded: true, applied, requiresRestart }`; anything else is not an acknowledgement. */
+function isReloadConfigAcknowledgement(
+  value: unknown,
+): value is ReloadConfigResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    record.reloaded === true &&
+    isStringArray(record.applied) &&
+    isStringArray(record.requiresRestart)
+  );
 }
 
 async function reloadConfigOp(): Promise<ActionResult> {
@@ -298,9 +320,19 @@ async function reloadConfigOp(): Promise<ActionResult> {
       }
       return fail("reload_config", `Config reload failed: ${detail}`);
     }
-    const data = (await resp.json()) as ReloadConfigResponse;
-    const applied = data.applied ?? [];
-    const requiresRestart = data.requiresRestart ?? [];
+    const data: unknown = await resp.json();
+    if (!isReloadConfigAcknowledgement(data)) {
+      // A 2xx without the route's acknowledgement proves no reload happened;
+      // reporting "No hot-reloadable fields changed." would claim one did.
+      logger.warn(
+        `[runtime] reload_config response did not acknowledge the reload (${resp.status}).`,
+      );
+      return fail(
+        "reload_config",
+        `Config reload failed: the server did not acknowledge the reload (HTTP ${resp.status}).`,
+      );
+    }
+    const { applied, requiresRestart } = data;
     const lines = [
       applied.length
         ? `Applied: ${applied.join(", ")}`
@@ -364,6 +396,7 @@ async function restartOp(
   // a memory entry (legacy RESTART_AGENT semantics). When invoked without a
   // message context (programmatic) or via an internal source, skip the memory
   // write — that path is the legacy RESTART_RUNTIME semantics.
+  const restart = requireRestartHandler();
   const isFromChat = isExplicitRestartRequest(message);
   const restartText = reason ? `Restarting… (${reason})` : "Restarting…";
 
@@ -380,7 +413,13 @@ async function restartOp(
   }
 
   setTimeout(() => {
-    requestRestart(reason);
+    void Promise.resolve()
+      .then(() => restart(reason))
+      .catch((error: unknown) => {
+        // error-policy:J7 deferred host failures remain observable after action admission.
+        logger.error({ error, reason }, "[runtime] Deferred restart failed");
+        runtime.reportError("runtime.restart", error);
+      });
   }, SHUTDOWN_DELAY_MS);
 
   return {

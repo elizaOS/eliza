@@ -17,13 +17,13 @@
  * value. Opt-out via `ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1`.
  */
 
-import { logger } from "@elizaos/core";
 import {
   listVaultInventory,
   resolveActiveValue,
   type Vault,
   type VaultEntryMeta,
-} from "@elizaos/vault";
+} from "@elizaos/auth/vault";
+import { logger } from "@elizaos/core";
 import {
   isDevCloudEnvOwnedKey,
   isDevCloudInternalEnvKey,

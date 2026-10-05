@@ -8,6 +8,7 @@
  * `@capacitor/core` is doubled to exercise both web and native platforms.
  */
 
+import { createMemoryStorage } from "@elizaos/testing/browser-mocks";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,7 +29,7 @@ vi.mock("@capacitor/core", () => ({
 // page-reload reality: ONLY a persisted localStorage JWT, no Steward provider
 // mounted.
 
-import { setBootConfig } from "../../config/boot-config";
+import { setBootConfig } from "../../config/boot-config-store";
 import { useAuthenticatedQueryGate } from "./auth-query";
 
 function makeJwt(payload: Record<string, unknown>): string {
@@ -38,24 +39,6 @@ function makeJwt(payload: Record<string, unknown>): string {
       .replace(/\//g, "_")
       .replace(/=+$/, "");
   return `${b64url({ alg: "HS256", typ: "JWT" })}.${b64url(payload)}.sig`;
-}
-
-function createMemoryStorage(): Storage {
-  const store = new Map<string, string>();
-  return {
-    get length() {
-      return store.size;
-    },
-    clear: () => store.clear(),
-    getItem: (key: string) => store.get(key) ?? null,
-    key: (index: number) => [...store.keys()][index] ?? null,
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-    setItem: (key: string, value: string) => {
-      store.set(key, String(value));
-    },
-  };
 }
 
 let storage: Storage;

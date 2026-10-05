@@ -17,13 +17,13 @@
  *     pulling connectors itself.
  */
 
+import type { EntityResolveCandidate } from "@elizaos/contracts";
 import type {
   IAgentRuntime,
   NotificationService,
   Service,
 } from "@elizaos/core";
 import { logger, ServiceType } from "@elizaos/core";
-import type { EntityResolveCandidate } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "./config.ts";
 import { extractAsciiEmailAddress } from "./email-address.ts";
 import {

@@ -5,16 +5,16 @@
  * unauthenticated caller squat ids and insert unbounded rows (row-spam).
  */
 
-import { Hono } from "hono";
 import {
   getIpKey,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { cliAuthSessionsService } from "@/lib/services/cli-auth-sessions";
-import { getCorsHeaders } from "@/lib/utils/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { cliAuthSessionsService } from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
+import { getCorsHeaders } from "@elizaos/cloud-shared/lib/utils/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

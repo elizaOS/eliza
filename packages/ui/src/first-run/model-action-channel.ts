@@ -23,11 +23,6 @@ export function setModelActionHandler(next: ModelActionHandler | null): void {
   handler = next;
 }
 
-/** True for any reserved `__model__:` control value. */
-export function isModelActionValue(value: string): boolean {
-  return value.startsWith(MODEL_ACTION_PREFIX);
-}
-
 /**
  * Consume a reserved `__model__:` control value: dispatch it to the active
  * conductor (if any) and report that the value was handled so the caller must

@@ -5,7 +5,7 @@ import {
   parseSharedTodoCutoverSnapshot,
   type SharedTodoCutoverSnapshot,
   TodoCutoverContractError,
-} from "@elizaos/shared/todo-cutover";
+} from "@elizaos/core";
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
@@ -228,12 +228,12 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       { runWithCloudBindingsAsync },
       { JOB_TYPES, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES },
     ] = await Promise.all([
-      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes.ts"),
-      import("@elizaos/cloud-shared/db/repositories/apps.ts"),
-      import("@elizaos/cloud-shared/db/repositories/containers.ts"),
-      import("@elizaos/cloud-shared/db/repositories/jobs.ts"),
-      import("@elizaos/cloud-shared/lib/runtime/cloud-bindings.ts"),
-      import("@elizaos/cloud-shared/lib/services/provisioning-job-types.ts"),
+      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes"),
+      import("@elizaos/cloud-shared/db/repositories/apps"),
+      import("@elizaos/cloud-shared/db/repositories/containers"),
+      import("@elizaos/cloud-shared/db/repositories/jobs"),
+      import("@elizaos/cloud-shared/lib/runtime/cloud-bindings"),
+      import("@elizaos/cloud-shared/agent-contracts"),
     ]);
 
     return runWithCloudBindingsAsync(
@@ -1011,8 +1011,8 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     if (databaseUrl) {
       const [{ containersRepository }, { runWithCloudBindingsAsync }] =
         await Promise.all([
-          import("@elizaos/cloud-shared/db/repositories/containers.ts"),
-          import("@elizaos/cloud-shared/lib/runtime/cloud-bindings.ts"),
+          import("@elizaos/cloud-shared/db/repositories/containers"),
+          import("@elizaos/cloud-shared/lib/runtime/cloud-bindings"),
         ]);
       const rows = await runWithCloudBindingsAsync(
         { DATABASE_URL: databaseUrl },

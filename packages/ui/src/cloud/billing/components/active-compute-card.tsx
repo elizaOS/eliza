@@ -3,7 +3,6 @@
 "use client";
 
 import type { Observed } from "@elizaos/cloud-sdk/account-billing-snapshot";
-import { Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   Box,
@@ -15,7 +14,7 @@ import {
   ServerCog,
 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Alert } from "../../../components/ui/alert";
+import { Alert, AlertDescription } from "../../../components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,9 +27,12 @@ import {
   AlertDialogTrigger,
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { StatusBadge } from "../../../components/ui/status-badge";
+import { openCloudBillingConsole } from "../../billing-console";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type {
   BillingSnapshotResource,
@@ -155,6 +157,20 @@ function ResourceCard({
   const openedCancellationSignatureRef = useRef<string | null>(null);
   const pendingDialogFocusRef = useRef(false);
   const [cancellationDialogOpen, setCancellationDialogOpen] = useState(false);
+  const [openingBilling, setOpeningBilling] = useState(false);
+  const [billingOpenFailed, setBillingOpenFailed] = useState(false);
+  const openBilling = async () => {
+    setOpeningBilling(true);
+    setBillingOpenFailed(false);
+    try {
+      setBillingOpenFailed(!(await openCloudBillingConsole()));
+    } catch {
+      // error-policy:J4 Keep the account-session handoff retryable when the browser cannot open.
+      setBillingOpenFailed(true);
+    } finally {
+      setOpeningBilling(false);
+    }
+  };
   const ResourceIcon = resource.resourceType === "container" ? Box : ServerCog;
   const typeLabel =
     resource.resourceType === "container"
@@ -288,7 +304,7 @@ function ResourceCard({
     : control.blockers.includes("interactive_session_required")
       ? t("cloud.billing.compute.cancel.interactiveRequired", {
           defaultValue:
-            "Sign in with an interactive account session to manage billing for this resource.",
+            "Manage this resource in Cloud billing. You may need to sign in again.",
         })
       : t("cloud.billing.compute.cancel.managerRequired", {
           defaultValue:
@@ -450,7 +466,39 @@ function ResourceCard({
                   role="status"
                   variant="default"
                 >
-                  {cancellationBlockerMessage}
+                  <AlertDescription className="min-w-0 text-inherit">
+                    <p>{cancellationBlockerMessage}</p>
+                    {control.blockers.includes(
+                      "interactive_session_required",
+                    ) &&
+                    !control.blockers.includes("billing_account_ineligible") ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        disabled={openingBilling}
+                        onClick={() => void openBilling()}
+                      >
+                        {openingBilling
+                          ? t("cloud.join.openingBilling", {
+                              defaultValue: "Opening billing...",
+                            })
+                          : t("cloud.billing.compute.cancel.openBilling", {
+                              defaultValue: "Open Cloud billing",
+                            })}
+                      </Button>
+                    ) : null}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {billingOpenFailed ? (
+                <Alert role="alert" variant="destructive">
+                  <AlertDescription className="min-w-0 text-inherit">
+                    {t("cloud.join.billingOpenFailed", {
+                      defaultValue: "Could not open billing. Please try again.",
+                    })}
+                  </AlertDescription>
                 </Alert>
               ) : null}
 
@@ -468,7 +516,7 @@ function ResourceCard({
                         : "default"
                   }
                 >
-                  <div className="flex items-start gap-2">
+                  <AlertDescription className="flex min-w-0 items-start gap-2 text-inherit">
                     {isPending ? (
                       <Loader2
                         className="mt-0.5 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none"
@@ -496,7 +544,7 @@ function ResourceCard({
                         </p>
                       ) : null}
                     </div>
-                  </div>
+                  </AlertDescription>
                 </Alert>
               ) : null}
 
@@ -689,7 +737,13 @@ export function ActiveComputeCardView({
     const paused = state.kind === "paused";
     const retrying = state.kind === "error" && state.retrying;
     return (
-      <Card variant="brand">
+      <Card
+        variant="brand"
+        role="region"
+        aria-label={t("cloud.billing.compute.title", {
+          defaultValue: "Active compute",
+        })}
+      >
         <CornerBrackets size="sm" />
         <div className="relative z-10 flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
           <div role="alert" className="flex min-w-0 items-start gap-3">
@@ -777,7 +831,14 @@ export function ActiveComputeCardView({
               });
 
   return (
-    <Card variant="brand" aria-busy={state.refreshing || undefined}>
+    <Card
+      variant="brand"
+      role="region"
+      aria-label={t("cloud.billing.compute.title", {
+        defaultValue: "Active compute",
+      })}
+      aria-busy={state.refreshing || undefined}
+    >
       <CornerBrackets size="sm" />
       <div className="relative z-10 space-y-5">
         <p
@@ -876,7 +937,7 @@ export function ActiveComputeCardView({
             ) : null}
           </Card>
         ) : (
-          <p className="text-xs font-mono text-muted">
+          <p className="text-xs font-mono text-muted-strong">
             {t("cloud.billing.compute.observedAt", {
               observedAt: observedTimestamp(totalObservation.observedAt),
               defaultValue: "Observed {{observedAt}}",

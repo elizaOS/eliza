@@ -44,6 +44,7 @@
  * under the user's finger; groups inherit the position of their highest-ranked
  * row.
  */
+
 import type {
   AgentNotification,
   PendingUserAction,
@@ -62,18 +63,20 @@ import {
   useState,
 } from "react";
 import { dispatchChatOpen, dispatchChatPrefill } from "../../events";
+import type { MomentumSample } from "../../gestures/momentum";
 import {
   getMomentumReleaseVelocity,
   getVelocityAwareSettleDuration,
   MOMENTUM_RELEASE_WINDOW_MS,
-  type MomentumSample,
   shouldCommitMomentumDetent,
-  useRafCoalescer,
-} from "../../gestures";
+} from "../../gestures/momentum";
+import { useRafCoalescer } from "../../gestures/useRafCoalescer";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import {
   isSafeDeepLink,
   navigateDeepLink,
+  readNotificationChatTarget,
 } from "../../state/notifications/navigate-deep-link";
 import {
   removeNotification,
@@ -441,41 +444,6 @@ function isChatGestureTarget(target: EventTarget | null): boolean {
   );
 }
 
-function usePrefersReducedMotion(): boolean {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      return false;
-    }
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  });
-
-  useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof window.matchMedia !== "function"
-    ) {
-      return undefined;
-    }
-
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setPrefersReducedMotion(mediaQuery.matches);
-    update();
-
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", update);
-      return () => mediaQuery.removeEventListener("change", update);
-    }
-
-    mediaQuery.addListener(update);
-    return () => mediaQuery.removeListener(update);
-  }, []);
-
-  return prefersReducedMotion;
-}
-
 export function __setNotificationsHomeCenterRenderObserverForTests(
   observer: (() => void) | null,
 ): void {
@@ -590,7 +558,7 @@ export function NotificationsHomeCenter({
   const surfaceReady = hasNotifications || (hydrated && pendingActionsLoaded);
   const showHydrationFailure =
     hydrationStatus === "failed" && pendingActions.length === 0;
-  const reduceMotion = usePrefersReducedMotion();
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(true);
@@ -1514,7 +1482,14 @@ export function NotificationsHomeCenter({
       const home = emptyGestureTargetRef?.current;
       if (home && target instanceof Node && !home.contains(target)) return;
       const center = centerRef.current;
-      if (target instanceof Node && center && !center.contains(target)) {
+      // A reduced-motion fold can remove its button before document bubbling.
+      // Preserve containment from dispatch, when that button was still inside.
+      if (
+        target instanceof Node &&
+        center &&
+        !center.contains(target) &&
+        !event.composedPath().includes(center)
+      ) {
         requestShadeCollapse();
       }
     };
@@ -2359,7 +2334,16 @@ export function NotificationsHomeCenter({
       // event acts on it AND removes it. State-backed pending actions above
       // remain until their canonical request resolves.
       if (n.deepLink && isSafeDeepLink(n.deepLink)) {
-        navigateDeepLink(n.deepLink);
+        const applied =
+          readNotificationChatTarget(n.data) === undefined
+            ? navigateDeepLink(n.deepLink)
+            : navigateDeepLink(n.deepLink, n.data);
+        if (applied) {
+          void applied.then((accepted) => {
+            if (accepted) void removeNotification(n.id);
+          });
+          return;
+        }
       }
       void removeNotification(n.id);
     },

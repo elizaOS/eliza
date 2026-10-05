@@ -1,6 +1,6 @@
 /** Routes validated DoorDash Live View or provider-blocked native handoffs into the app Browser. */
 
-import type { ChatActionResultSummary } from "./api";
+import type { ChatActionResultSummary } from "./api/client-types-chat";
 import { dispatchNavigateViewRequest } from "./events";
 
 const LIVE_VIEW_HOST = "live.browser.run";

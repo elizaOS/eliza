@@ -59,7 +59,7 @@ describe("voice-preset-format v2", () => {
 		const instruct = "young adult female, warm, soft, neutral us-american";
 		const metadata = {
 			voiceId: "same",
-			generator: "freeze-voice.mjs",
+			generator: "freeze-voice.ts",
 			referenceClipIds: ["same_001", "same_003"],
 			referenceSeconds: 13.48,
 		};

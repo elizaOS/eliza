@@ -27,11 +27,11 @@ const shortcutStore = vi.hoisted(() => ({
   set: vi.fn(),
 }));
 
-vi.mock("../../bridge", () => ({
+vi.mock("../../bridge/electrobun-rpc", () => ({
   invokeDesktopBridgeRequest: bridge.request,
 }));
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: (options: {
     id: string;
     label: string;

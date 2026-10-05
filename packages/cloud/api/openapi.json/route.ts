@@ -7,9 +7,9 @@
  * GET /api/openapi.json
  */
 
+import { API_ENDPOINTS } from "@elizaos/cloud-sdk/api-explorer";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { API_ENDPOINTS } from "@/lib/swagger/endpoint-discovery";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 type OpenApiPathItem = Record<
   string,

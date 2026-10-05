@@ -2,7 +2,7 @@
 // that file exports only React components and stays Fast-Refresh-compatible
 // (Vite would full-reload a component file that also exports a plain function).
 // The view bundle re-exports `interact` via ./wallet-view-bundle.ts.
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 import {
   loadWalletViewState,
   resolveWalletAddresses,

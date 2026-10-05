@@ -17,7 +17,7 @@
  * deliberately not implemented.
  */
 
-import type { LinkedAccountHealthDetail, LinkedAccountUsage } from "@elizaos/core";
+import { type LinkedAccountHealthDetail, type LinkedAccountUsage } from "@elizaos/host/protocol";
 import {
   type PooledCredential,
   type PooledCredentialWithContributor,
@@ -34,7 +34,6 @@ import {
   type PooledDirectProvider,
 } from "./provider-map";
 import { getTeamPoolRegistry } from "./registry";
-
 export class TeamCredentialPoolError extends Error {
   constructor(
     message: string,
@@ -44,7 +43,6 @@ export class TeamCredentialPoolError extends Error {
     this.name = "TeamCredentialPoolError";
   }
 }
-
 /** Masked view — the ONLY shape reads ever return. Never carries key material. */
 export interface PooledCredentialSummary {
   id: string;
@@ -56,15 +54,19 @@ export interface PooledCredentialSummary {
   health: string;
   healthDetail: LinkedAccountHealthDetail | null;
   usage: LinkedAccountUsage | null;
-  contributedBy: { id: string; name: string | null } | null;
+  contributedBy: {
+    id: string;
+    name: string | null;
+  } | null;
   callsToday: number;
   lastUsedAt: string | null;
   createdAt: string;
 }
-
 function toSummary(
   row: PooledCredential,
-  contributor?: { name: string | null } | null,
+  contributor?: {
+    name: string | null;
+  } | null,
   callsToday = 0,
 ): PooledCredentialSummary {
   return {
@@ -85,11 +87,9 @@ function toSummary(
     createdAt: row.created_at.toISOString(),
   };
 }
-
 function utcToday(): string {
   return new Date().toISOString().slice(0, 10);
 }
-
 export interface ContributePooledCredentialParams {
   organizationId: string;
   userId: string;
@@ -99,7 +99,6 @@ export interface ContributePooledCredentialParams {
   priority?: number;
   audit: AuditContext;
 }
-
 export async function contributePooledCredential(
   params: ContributePooledCredentialParams,
 ): Promise<PooledCredentialSummary> {
@@ -116,7 +115,6 @@ export async function contributePooledCredential(
   if (apiKey.length < 8) {
     throw new TeamCredentialPoolError("API key is too short to be valid.");
   }
-
   // Live probe BEFORE pooling — a revoked/typo'd key never poisons rotation.
   const probe = await probePooledApiKey(provider as PooledDirectProvider, apiKey);
   if (!probe.ok) {
@@ -124,7 +122,6 @@ export async function contributePooledCredential(
       `Key failed live validation against ${provider} (status ${probe.status}). Not added.`,
     );
   }
-
   const last4 = keyLast4(apiKey);
   const secret = await secretsService.create(
     {
@@ -142,7 +139,6 @@ export async function contributePooledCredential(
     },
     params.audit,
   );
-
   let row: PooledCredential;
   try {
     row = await pooledCredentialsRepository.create({
@@ -173,17 +169,14 @@ export async function contributePooledCredential(
       });
     throw err;
   }
-
   getTeamPoolRegistry().invalidate(params.organizationId);
   logger.info("[TeamCredentialPool] credential contributed", {
     organizationId: params.organizationId,
     credentialId: row.id,
     provider,
   });
-
   return toSummary(row);
 }
-
 export async function listPooledCredentials(
   organizationId: string,
 ): Promise<PooledCredentialSummary[]> {
@@ -195,7 +188,6 @@ export async function listPooledCredentials(
     toSummary(row, { name: row.contributor_name }, todayTotals.get(row.id) ?? 0),
   );
 }
-
 export async function getPooledCredential(
   id: string,
   organizationId?: string,
@@ -204,7 +196,6 @@ export async function getPooledCredential(
     ? pooledCredentialsRepository.findByIdForOrganization(id, organizationId)
     : pooledCredentialsRepository.findById(id);
 }
-
 export interface UpdatePooledCredentialParams {
   credentialId: string;
   organizationId: string;
@@ -212,7 +203,6 @@ export interface UpdatePooledCredentialParams {
   priority?: number;
   label?: string;
 }
-
 export async function updatePooledCredential(
   params: UpdatePooledCredentialParams,
 ): Promise<PooledCredentialSummary> {
@@ -231,7 +221,6 @@ export async function updatePooledCredential(
   getTeamPoolRegistry().invalidate(params.organizationId);
   return toSummary(updated);
 }
-
 export async function removePooledCredential(params: {
   credentialId: string;
   organizationId: string;

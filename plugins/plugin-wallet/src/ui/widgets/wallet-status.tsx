@@ -8,9 +8,10 @@ import {
   Button,
   type ChatSidebarWidgetProps,
   EmptyWidgetState,
+  useAppSelector,
   WidgetSection,
-} from "@elizaos/ui/components";
-import { useAppSelector } from "@elizaos/ui/state";
+} from "@elizaos/ui";
+
 import { Check, Copy, Wallet } from "lucide-react";
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";

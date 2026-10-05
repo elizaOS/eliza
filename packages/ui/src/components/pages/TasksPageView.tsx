@@ -13,7 +13,7 @@
  */
 import { Cloud } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { navigateBrowserPath } from "../../app-navigate-view";
 import {
   getAppShellPageRegistrySnapshot,
@@ -26,10 +26,10 @@ import {
   FramedPageBody,
   FramedPageHeader,
   FramedPageNavigation,
-} from "../../layouts/framed-page";
+} from "../../layouts/framed-page/framed-page";
 import { getWindowNavigationPath } from "../../navigation";
 import { CodingAgentTasksPanel } from "../../slots/task-coordinator-slots.js";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import {
   AppsManagementActions,
   AppsManagementSection,

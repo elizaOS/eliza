@@ -6,9 +6,9 @@
  * across different messaging platforms.
  */
 
-import type { IAgentRuntime } from "../types";
 import type { PairingChannel } from "../types/pairing";
 import { getPairingIdLabel } from "../types/pairing";
+import type { IAgentRuntime } from "../types/runtime.js";
 import { ServiceType } from "../types/service";
 import type { PairingService } from "./pairing";
 

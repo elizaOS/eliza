@@ -5,7 +5,7 @@
  * 1:1 structural mirror of {@link EmbeddingGenerationService}
  * (`packages/core/src/services/embedding.ts`): it listens for a trigger event
  * (`PII_SCRUB_REQUESTED`, like `EMBEDDING_GENERATION_REQUESTED`), drains a
- * priority `BatchQueue` (`packages/core/src/utils/batch-queue.ts`) on the core
+ * priority `BatchQueue` (`packages/core/src/utils/batch-queue/index.ts`) on the core
  * task scheduler, and processes each item without ever blocking an agent turn.
  * No new scheduler, no new queue - the rails already exist in-repo.
  *
@@ -70,7 +70,7 @@ import type { PiiScrubRequestPayload } from "../types/events.js";
 import { EventType } from "../types/events.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { Service } from "../types/service.js";
-import { BatchQueue } from "../utils/batch-queue.js";
+import { BatchQueue } from "../utils/batch-queue/index.js";
 
 /** One unit of scrub work on the drain queue. */
 interface PiiScrubQueueItem {

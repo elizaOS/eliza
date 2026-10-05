@@ -1,17 +1,21 @@
 // Handles v1 cloud API PII scrub job status traffic with route-local auth expectations.
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   getPiiScrubJobForOrg,
   toPiiScrubJobDto,
-} from "@/lib/services/pii-scrub-jobs";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/pii-scrub-jobs";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const jobIdSchema = z.string().uuid();
 

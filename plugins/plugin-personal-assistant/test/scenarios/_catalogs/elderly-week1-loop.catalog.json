@@ -7,7 +7,7 @@
     "persona": "elderly non-technical (robustness axis)",
     "targetCount": 6,
     "notes": [
-      "Standalone verification ledger for the elderly week-1 loop (daily check-in, missed-checkin follow-up + no-reply expiry, quiet-user watcher, bill reminder). Not one of the fixed A1-K1 persona packs, so it is intentionally outside the check-lifeops-persona-catalog-coverage.mjs EXPECTED_CATALOGS gate.",
+      "Standalone verification ledger for the elderly week-1 loop (daily check-in, missed-checkin follow-up + no-reply expiry, quiet-user watcher, bill reminder).",
       "Structural scenarios drive the REAL ScheduledTask spine (REST create + logical-clock ticks) and assert persisted store transitions. They are keyless-runnable under the deterministic proxy and also pass live (Cerebras gpt-oss-120b); lane is `live-only` because the pinned strict PR corpus currently cannot render scheduled dispatches under (dispatch-render.ts useModel with no strict fixture — a develop-side gap independent of these proofs).",
       "status: authored = scenario file exists; verified = a real run (keyless deterministic and/or live Cerebras) has been captured and hand-reviewed."
     ]

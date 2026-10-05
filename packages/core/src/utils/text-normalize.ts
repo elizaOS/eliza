@@ -73,6 +73,7 @@ function reserveEdge(ctx: WalkContext): void {
  * - Empty/nullish values are dropped
  * - Strings are trimmed
  * - Dates become deterministic ISO-8601 strings
+ * - Errors become `Name: message` fragments
  * - Objects become `key: value` fragments
  * - Scalars are stringified
  */
@@ -139,7 +140,8 @@ function flattenTextValuesWithAncestors(
 		}
 		ctx.ancestors.add(value);
 		try {
-			const fragments: string[] = [];
+			const fragments: string[] =
+				value instanceof Error ? [formatErrorFragment(value)] : [];
 			const record = value as Record<string, unknown>;
 			for (const key in record) {
 				// Count inherited enumeration too so a hostile prototype cannot evade the
@@ -160,6 +162,17 @@ function flattenTextValuesWithAncestors(
 	}
 
 	return [String(value)];
+}
+
+/**
+ * Render an Error as `Name: message`, degrading to the name when the message is
+ * empty. Subclasses keep their own name, so a `RangeError("oops")` reads as
+ * `RangeError: oops` rather than being flattened to a generic `Error`.
+ */
+function formatErrorFragment(error: Error): string {
+	const name = error.name || "Error";
+	const message = typeof error.message === "string" ? error.message.trim() : "";
+	return message ? `${name}: ${message}` : name;
 }
 
 function getDateTimestamp(value: object): number | undefined {

@@ -2,7 +2,7 @@
  * Chooses when blocked or failed coding-agent sessions should pull focus into
  * the Terminal channel without repeatedly stealing attention.
  */
-import type { CodingAgentSession } from "../../api/client";
+import type { CodingAgentSession } from "../../api/client-types-cloud";
 
 /**
  * Session states that should pull the user's attention into the Terminal

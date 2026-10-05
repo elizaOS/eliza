@@ -12,10 +12,13 @@
  * hook swallows + cleans up state) stays at the call-site.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/protocol";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
-import { resolveApiUrl } from "../utils";
+import { resolveApiUrl } from "../utils/asset-url";
 import {
   buildSharedRuntimeSttBody,
   configuredCloudVoiceOrigin,

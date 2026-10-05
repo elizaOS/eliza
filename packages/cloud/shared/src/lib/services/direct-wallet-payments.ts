@@ -938,7 +938,7 @@ async function verifyEvmNativePayment(params: {
   }
   if (tx.value > ceiling) {
     throw new Error(
-      `Transaction amount ${tx.value} is above the expected ceiling ${ceiling} (expected ${params.expectedUnits}, slippage ${slippageBps} bps). Refusing to credit a gross overpayment — please request a refund or create a new payment.`,
+      `Transaction amount ${tx.value} is above the expected ceiling ${ceiling} (expected ${params.expectedUnits}, slippage ${slippageBps} bps). Refusing to credit a gross overpayment. Contact support: crypto refunds are issued only as Eliza Cloud credits, never on-chain.`,
     );
   }
   return {

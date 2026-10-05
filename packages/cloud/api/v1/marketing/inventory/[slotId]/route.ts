@@ -6,14 +6,17 @@
  * DELETE /api/v1/marketing/inventory/:slotId  — delete the slot
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { adInventoryService } from "@elizaos/cloud-shared/lib/services/ad-inventory";
+import { mintAdTagToken } from "@elizaos/cloud-shared/lib/services/ad-tag-token";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { adInventoryService } from "@/lib/services/ad-inventory";
-import { mintAdTagToken } from "@/lib/services/ad-tag-token";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const UpdateSlotSchema = z.object({
   name: z.string().min(1).max(100).optional(),

@@ -43,6 +43,7 @@ export class LocalInferenceLoaderRuntimeService
 
 	readonly generate?: Generate;
 	readonly embed?: Embed;
+	readonly prepareEmbeddingModel?: LocalInferenceLoader["prepareEmbeddingModel"];
 	readonly getMemoryArbiter?: () => unknown;
 	readonly transcribe?: RuntimeLocalInferenceLoader["transcribe"];
 	readonly describeImage?: RuntimeLocalInferenceLoader["describeImage"];
@@ -55,6 +56,9 @@ export class LocalInferenceLoaderRuntimeService
 		super(runtime);
 		if (loader.generate) this.generate = loader.generate.bind(loader);
 		if (loader.embed) this.embed = loader.embed.bind(loader);
+		if (loader.prepareEmbeddingModel) {
+			this.prepareEmbeddingModel = loader.prepareEmbeddingModel.bind(loader);
+		}
 		if (loader.getMemoryArbiter) {
 			this.getMemoryArbiter = loader.getMemoryArbiter.bind(loader);
 		}

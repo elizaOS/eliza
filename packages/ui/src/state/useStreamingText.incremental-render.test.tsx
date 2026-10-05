@@ -17,17 +17,17 @@
  */
 
 import { act, cleanup, render, renderHook } from "@testing-library/react";
-import type { MutableRefObject } from "react";
-import { useState } from "react";
+import { type MutableRefObject, useState } from "react";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
-  CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
-} from "../api";
-import type { LoadConversationMessagesResult } from "./internal";
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
 import { STREAMING_RENDER_INTERVAL_MS } from "./streaming-render-cadence";
+import type { LoadConversationMessagesResult } from "./types";
 import { useChatSend } from "./useChatSend";
 import { applyStreamingTextModification } from "./useStreamingText";
 
@@ -43,9 +43,7 @@ const apiMocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../api", () => ({
-  client: apiMocks.client,
-}));
+vi.mock("../api/client", () => ({ client: apiMocks.client }));
 
 vi.mock("../api/client-cloud", () => ({
   isDirectCloudSharedAgentBase: () => false,

@@ -7,8 +7,8 @@
  */
 
 import { createElement } from "react";
-import { useBranding } from "../../config/branding";
-import { useAppSelector } from "../../state";
+import { useBranding } from "../../config/branding-react.hooks";
+import { useAppSelector } from "../../state/app-store";
 import { formatDateTime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";

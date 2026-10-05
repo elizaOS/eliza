@@ -1,0 +1,14 @@
+# actionlint recognizes the repository-owned KVM fleet used by Cuttlefish and
+# other hardware-virtualized OS image validation jobs.
+
+self-hosted-runner:
+  labels:
+    - kvm
+    - riscv64
+    - elizaos-release-build
+    - elizaos-release-signing
+
+paths:
+  .github/workflows/*.yml:
+    ignore:
+      - "shellcheck reported issue in this script: SC[0-9]+:(info|style):"

@@ -159,7 +159,7 @@ async function deliveredOrder(input?: {
     clientRequestKey: `request-${input?.session ?? "cs_a"}`,
     requestDigest: "a".repeat(64),
     purchaseType: "custom_amount",
-    creditsToGrant: input?.credits ?? "17.000000",
+    creditsToGrant: input?.credits ?? "5.000000",
     chargeAmountCents: input?.cents ?? 500,
     currency: "usd",
     stripeCustomerId: input?.customer ?? "cus_a",
@@ -237,19 +237,60 @@ describe("Stripe Checkout order authority", () => {
     );
   });
 
-  test("grants server-owned pack credits independently from exact charge cents", async () => {
+  test("new orders are $5-$1,000 pay-as-you-go top-ups with no pack or bonus (#22963)", async () => {
+    const base = {
+      organizationId: ORG_A,
+      initiatedByUserId: USER_A,
+      requestDigest: "c".repeat(64),
+      purchaseType: "custom_amount" as const,
+      currency: "usd",
+      stripeCustomerId: "cus_a",
+    };
+    const attempt = (key: string, overrides: Record<string, unknown>) =>
+      service.create({
+        ...base,
+        clientRequestKey: `request-policy-${key}`,
+        creditsToGrant: "5.000000",
+        chargeAmountCents: 500,
+        ...overrides,
+      } as Parameters<typeof service.create>[0]);
+
+    await expect(
+      attempt("pack", { purchaseType: "credit_pack", creditPackId: PACK_A }),
+    ).rejects.toMatchObject({ code: "STRIPE_CHECKOUT_CREDIT_PACK_RETIRED" });
+    await expect(
+      attempt("below", { creditsToGrant: "4.990000", chargeAmountCents: 499 }),
+    ).rejects.toMatchObject({ code: "STRIPE_CHECKOUT_AMOUNT_OUT_OF_RANGE" });
+    await expect(
+      attempt("above", { creditsToGrant: "1000.010000", chargeAmountCents: 100_001 }),
+    ).rejects.toMatchObject({ code: "STRIPE_CHECKOUT_AMOUNT_OUT_OF_RANGE" });
+    await expect(attempt("bonus", { creditsToGrant: "6.000000" })).rejects.toMatchObject({
+      code: "STRIPE_CHECKOUT_GRANT_MISMATCH",
+    });
+    expect((await rows()).orders).toHaveLength(0);
+
+    const minimum = await attempt("minimum", {});
+    const maximum = await attempt("maximum", {
+      creditsToGrant: "1000.000000",
+      chargeAmountCents: 100_000,
+    });
+    expect(minimum.charge_amount_cents).toBe(500n);
+    expect(maximum.charge_amount_cents).toBe(100_000n);
+  });
+
+  test("grants exactly the charged amount as credits with no bonus", async () => {
     const order = await deliveredOrder();
     const result = await service.settle(receipt(order.id), {
       callerOrganizationId: ORG_A,
       callerUserId: USER_A,
     });
-    expect(result).toMatchObject({ alreadyApplied: false, newBalance: 17 });
+    expect(result).toMatchObject({ alreadyApplied: false, newBalance: 5 });
     const state = await rows();
-    expect(state.balances[0]?.credit_balance).toBe("17.000000");
+    expect(state.balances[0]?.credit_balance).toBe("5.000000");
     expect(state.credits).toEqual([
       expect.objectContaining({
         organization_id: ORG_A,
-        amount: "17.000000",
+        amount: "5.000000",
         stripe_payment_intent_id: "pi_a",
       }),
     ]);
@@ -260,7 +301,7 @@ describe("Stripe Checkout order authority", () => {
     });
     expect(await creditsService.getTransactionByStripePaymentIntent("pi_a")).toMatchObject({
       organization_id: ORG_A,
-      amount: "17.000000",
+      amount: "5.000000",
     });
   });
 
@@ -274,7 +315,7 @@ describe("Stripe Checkout order authority", () => {
     expect(results.filter((result) => !result.alreadyApplied)).toHaveLength(1);
     const state = await rows();
     expect(state.credits).toHaveLength(1);
-    expect(state.balances[0]?.credit_balance).toBe("17.000000");
+    expect(state.balances[0]?.credit_balance).toBe("5.000000");
   });
 
   test("trusted webhook or verify receipts recover Session-create ACK loss exactly once", async () => {
@@ -446,7 +487,7 @@ describe("Stripe Checkout order authority", () => {
       });
       state = await rows();
       expect(state.credits).toHaveLength(1);
-      expect(state.balances[0]?.credit_balance).toBe("17.000000");
+      expect(state.balances[0]?.credit_balance).toBe("5.000000");
     } finally {
       creditsService.addCredits = realAddCredits;
     }

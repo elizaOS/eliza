@@ -37,27 +37,25 @@
  * than answered out of the existing session (`lib/oidc/authentication-request`).
  */
 
-import { Hono } from "hono";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   getIpKey,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { resolveOidcAuthenticationPolicy } from "@/lib/oidc/authentication-request";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { resolveOidcAuthenticationPolicy } from "@elizaos/cloud-shared/lib/oidc/authentication-request";
 import {
   getOidcClient,
   intersectScopes,
   isRegisteredRedirectUri,
   type OidcClient,
-} from "@/lib/oidc/clients";
+} from "@elizaos/cloud-shared/lib/oidc/clients";
 import {
   issueOidcAuthorizationCode,
   looksLikeOidcRequestId,
   OIDC_REQUEST_TTL_SECONDS,
   parkOidcAuthorizationRequest,
   resumeOidcAuthorizationRequest,
-} from "@/lib/oidc/codes";
+} from "@elizaos/cloud-shared/lib/oidc/codes";
 import {
   describeOidcConfigFailure,
   isOidcEnabled,
@@ -65,24 +63,32 @@ import {
   OIDC_RESUME_PATH,
   type OidcConfig,
   resolveOidcConfig,
-} from "@/lib/oidc/config";
+} from "@elizaos/cloud-shared/lib/oidc/config";
 import {
   buildOidcErrorRedirect,
   type OidcErrorCode,
   renderOidcErrorPage,
-} from "@/lib/oidc/errors";
-import { isOidcSigningConfigured } from "@/lib/oidc/keys";
+} from "@elizaos/cloud-shared/lib/oidc/errors";
+import { isOidcSigningConfigured } from "@elizaos/cloud-shared/lib/oidc/keys";
 import {
   computeOidcRequestBindingHash,
   createOidcRequestBindingSecret,
   matchesOidcRequestBinding,
   oidcRequestBindingCookieName,
-} from "@/lib/oidc/request-binding";
-import { resolveOidcSession } from "@/lib/oidc/session";
-import { assertOidcSubjectEligible, loadOidcSubject } from "@/lib/oidc/subject";
-import { resolveOidcUsername } from "@/lib/oidc/username";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/oidc/request-binding";
+import { resolveOidcSession } from "@elizaos/cloud-shared/lib/oidc/session";
+import {
+  assertOidcSubjectEligible,
+  loadOidcSubject,
+} from "@elizaos/cloud-shared/lib/oidc/subject";
+import { resolveOidcUsername } from "@elizaos/cloud-shared/lib/oidc/username";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { emitOidcAudit } from "../audit";
 
 const app = new Hono<AppEnv>();

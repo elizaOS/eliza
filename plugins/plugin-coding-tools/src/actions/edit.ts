@@ -15,10 +15,13 @@ import {
 } from "@elizaos/core";
 
 import {
+  fileEffectReceipt,
+  fileMutationResult,
+} from "../lib/file-effect-receipt.js";
+import {
   failureToActionResult,
   readBoolParam,
   readStringParam,
-  userFacingSuccessResult,
 } from "../lib/format.js";
 import { resolveInputPath } from "../lib/path-utils.js";
 import { detectSecrets } from "../lib/secrets.js";
@@ -94,8 +97,12 @@ export async function editFileHandler(
       message: "old_string and new_string are identical; nothing to do",
     });
   }
+  // Real multiline source can legitimately contain string or regex escapes.
+  // Do not confuse those source bytes with an entirely double-escaped edit.
   if (
     !allowLiteralEscapes &&
+    !newStr.includes("\n") &&
+    !newStr.includes("\r") &&
     (newStr.includes("\\n") || newStr.includes("\\r"))
   ) {
     return failureToActionResult({
@@ -201,25 +208,60 @@ export async function editFileHandler(
     });
   }
 
-  await fileState.recordWrite(conversationId, resolved);
+  let receipt: Awaited<ReturnType<typeof fileEffectReceipt>>;
+  try {
+    receipt = await fileEffectReceipt({
+      path: resolved,
+      content: updated,
+      operation: "edit",
+    });
+  } catch (error) {
+    // error-policy:J1 post-write verification boundary; the mutation may have
+    // happened, but no applied receipt or success callback is fabricated.
+    return {
+      ...failAtPath({
+        reason: "io_error",
+        message: `write completed but verification failed: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+      failureProvenance: {
+        kind: "persistence_error",
+        boundary: "persistence",
+        code: "FILE_WRITE_UNVERIFIED",
+        retryable: false,
+      },
+    };
+  }
+
+  try {
+    await fileState.recordWrite(conversationId, resolved);
+  } catch (error) {
+    // error-policy:J1 bookkeeping failed after commit; preserve the actual
+    // mutation proof and do not deliver an unqualified success confirmation.
+    return {
+      ...failAtPath({
+        reason: "internal",
+        message: `write committed but file-state tracking failed: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+      effectReceipts: [receipt],
+      failureProvenance: {
+        kind: "persistence_error",
+        boundary: "persistence",
+        code: "FILE_STATE_TRACKING_FAILED",
+        retryable: false,
+      },
+    };
+  }
   coreLogger.debug(
     `${CODING_TOOLS_LOG_PREFIX} EDIT ${resolved} replacements=${replacements} firstLine=${firstLine}`,
   );
 
   const text = `Replaced ${replacements} occurrence${replacements === 1 ? "" : "s"} in ${resolved} (first at line ${firstLine})`;
-  if (callback) await callback({ text, source: "coding-tools" });
-
-  // Same single-delivery contract as the write op: the edit confirmation is
-  // the complete answer to a single-operation turn.
-  return {
-    ...userFacingSuccessResult(text, {
-      path: resolved,
-      replacements,
-      firstLine,
-      addedLines,
-      removedLines,
-    }),
-    verifiedUserFacing: true,
-    turnComplete: true,
-  };
+  return fileMutationResult({
+    runtime,
+    receipt,
+    text,
+    content: updated,
+    data: { path: resolved, replacements, firstLine, addedLines, removedLines },
+    callback,
+  });
 }

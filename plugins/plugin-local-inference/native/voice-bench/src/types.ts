@@ -10,7 +10,7 @@
 
 /** Minimal interface a synthetic audio source implements so the bench
  *  harness can stand in for a real `MicSource` without dragging the full
- *  `@elizaos/app-core` types graph into the bench package. The synthetic
+ *  `@elizaos/app` types graph into the bench package. The synthetic
  *  source emits PCM frames at wall-clock rate and lets the runner inject
  *  barge-in / false-EOS events at scripted offsets. */
 export interface BenchPcmFrame {

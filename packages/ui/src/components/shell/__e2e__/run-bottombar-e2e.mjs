@@ -14,12 +14,9 @@
 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  compileTailwindTheme,
-  runBrowserFixtureE2E,
-  stubElizaCore,
-  stubNodeBuiltins,
-} from "../../../testing/e2e-runner/index.ts";
+import { compileTailwindTheme } from "../../../testing/e2e-runner/fixture-bundle";
+import { runBrowserFixtureE2E } from "../../../testing/e2e-runner/browser-harness";
+import { stubElizaCore, stubNodeBuiltins } from "../../../testing/e2e-runner/esbuild-stubs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiRoot = resolve(here, "../../../.."); // packages/ui

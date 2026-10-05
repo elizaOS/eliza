@@ -8,6 +8,11 @@
  * Sibling of the trigger path's TRIGGER_REF_MISMATCH guard; update stays
  * exempt per that precedent.
  */
+
+import type {
+  LifeOpsDefinitionRecord,
+  LifeOpsTaskDefinition,
+} from "@elizaos/contracts";
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -15,10 +20,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  LifeOpsDefinitionRecord,
-  LifeOpsTaskDefinition,
-} from "../contracts/index.js";
 import { runLifeOperationHandler } from "./life.js";
 
 const serviceState = vi.hoisted(() => ({
@@ -127,6 +128,7 @@ function makeRuntime(): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-000000000003" as UUID,
     getRoom: vi.fn(async () => null),
+    getTasks: vi.fn(async () => []),
     useModel: vi.fn(async () => ""),
     getCache: vi.fn(async () => null),
     setCache: vi.fn(async () => true),

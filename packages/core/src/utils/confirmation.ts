@@ -104,6 +104,19 @@ function readUserText(message: Memory): string {
 }
 
 /**
+ * Classify the user's own message as an affirmative confirmation reply using
+ * the same detector as {@link requireConfirmation}. Callers that persist their
+ * pending preview durably (instead of in the runtime cache) use this so the
+ * decision is still bound to the actual user reply, never to model output.
+ */
+export function isAffirmativeConfirmationReply(
+	message: Memory,
+	confirmRegex: RegExp = DEFAULT_CONFIRM_REGEX,
+): boolean {
+	return confirmRegex.test(readUserText(message));
+}
+
+/**
  * Two-phase destructive-action helper.
  *
  * Returns:
@@ -133,7 +146,6 @@ export async function requireConfirmation(
 	const confirmRegex = args.confirmRegex ?? DEFAULT_CONFIRM_REGEX;
 	const userId = String(args.message.entityId);
 	const cacheKey = buildCacheKey(userId, args.actionName, args.pendingKey);
-	const userText = readUserText(args.message);
 
 	const existing = await args.runtime.getCache<PendingConfirmation>(cacheKey);
 	const fresh = !existing || Date.now() - existing.createdAt > existing.ttlMs;
@@ -160,7 +172,10 @@ export async function requireConfirmation(
 	// Existing pending record found — interpret the user's reply.
 	await args.runtime.deleteCache(cacheKey);
 
-	const status: ConfirmationStatus = confirmRegex.test(userText)
+	const status: ConfirmationStatus = isAffirmativeConfirmationReply(
+		args.message,
+		confirmRegex,
+	)
 		? "confirmed"
 		: "cancelled";
 	return { status, metadata: existing.metadata };

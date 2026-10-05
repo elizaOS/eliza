@@ -3,12 +3,13 @@
  * `withDrive` mixin that composes the Drive domain's file and connector-scope
  * methods onto the LifeOpsService base.
  */
-import type { GoogleDriveFile } from "@elizaos/plugin-google-workspace";
+
 import type {
+  LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-} from "@elizaos/shared";
-import type { LifeOpsConnectorGrant } from "../contracts/index.js";
+} from "@elizaos/contracts";
+import type { GoogleDriveFile } from "@elizaos/plugin-google-workspace";
 
 export {
   DRIVE_CONNECTOR_CAPABILITIES,

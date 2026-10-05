@@ -34,12 +34,15 @@ vi.mock("../../lib/api-client", () => ({
   ApiError: FakeApiError,
 }));
 
-vi.mock("../../../cloud-ui", () => ({
+vi.mock("../../../cloud-ui/components/layout/dashboard-page", () => ({
   DashboardPageContainer: ({ children }: PropsWithChildren) => (
     <div>{children}</div>
   ),
-  useSetPageHeader: () => undefined,
 }));
+vi.mock(
+  "../../../cloud-ui/components/layout/page-header-context.hooks",
+  () => ({ useSetPageHeader: () => undefined }),
+);
 
 vi.mock("../data/audit-client", () => ({
   emitAuditEvent,

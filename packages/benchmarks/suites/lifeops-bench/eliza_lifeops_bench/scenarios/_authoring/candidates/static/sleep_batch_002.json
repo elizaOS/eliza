@@ -1,0 +1,741 @@
+[
+  {
+    "id": "sleep.set_daily_bedtime_1030pm",
+    "name": "Set daily bedtime reminder at 10:30pm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Please create a daily bedtime alarm for 10:30\u202fpm local time.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Bedtime",
+          "details": {
+            "kind": "alarm",
+            "cadence": "daily",
+            "timeOfDay": "22:30",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["bedtime", "10:30"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a recurring bedtime alarm via LIFE_CREATE."
+  },
+  {
+    "id": "sleep.set_oneoff_winddown_10pm",
+    "name": "Schedule a one\u2011off wind\u2011down session at 10\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Set a one\u2011off 30\u2011minute wind\u2011down routine starting tonight at 10\u202fpm, no screens.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "reminder",
+          "promptInstructions": "Wind\u2011down: no screens, lights low, 30\u202fminutes.",
+          "trigger": {
+            "kind": "once",
+            "atIso": "2026-05-10T22:00:00Z"
+          },
+          "priority": "medium",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": ["wind\u2011down"],
+    "first_question_fallback": {
+      "canned_answer": "Just tonight, not recurring.",
+      "applies_when": "agent asks if it should recur"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a one\u2011off scheduled task for a wind\u2011down routine."
+  },
+  {
+    "id": "sleep.find_conflicts_after_10pm",
+    "name": "Find calendar conflicts after 10\u202fpm tonight",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Show me any events on my primary calendar after 10\u202fpm that could interfere with my bedtime.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "search_events",
+          "intent": "search events after 22:00",
+          "details": {
+            "windowStart": "2026-05-10T22:00:00Z",
+            "windowEnd": "2026-05-11T06:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["conflict"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Searches the primary calendar for events overlapping the bedtime window."
+  },
+  {
+    "id": "sleep.set_weekend_bedtime_11pm",
+    "name": "Set weekend bedtime alarm at 11\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Create a bedtime alarm for Saturdays and Sundays at 11\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Weekend Bedtime",
+          "details": {
+            "kind": "alarm",
+            "cadence": "weekly",
+            "dayOfWeek": ["Saturday", "Sunday"],
+            "timeOfDay": "23:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["11:00", "weekend"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, only on weekends.",
+      "applies_when": "agent asks if it should apply every day"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a weekly alarm limited to weekend days."
+  },
+  {
+    "id": "sleep.update_bedtime_to_1030",
+    "name": "Change bedtime alarm to 10:30\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Move my existing bedtime alarm to 10:30\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_UPDATE",
+        "kwargs": {
+          "subaction": "update",
+          "kind": "definition",
+          "title": "Bedtime",
+          "details": {
+            "timeOfDay": "22:30"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["10:30"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Updates the time of an existing bedtime alarm."
+  },
+  {
+    "id": "sleep.skip_bedtime_tomorrow",
+    "name": "Skip bedtime alarm for tomorrow",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Please skip my bedtime alarm for tomorrow morning.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SKIP",
+        "kwargs": {
+          "subaction": "skip",
+          "kind": "definition",
+          "title": "Bedtime",
+          "details": {
+            "skipDate": "2026-05-11"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["skip", "tomorrow"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, just for tomorrow.",
+      "applies_when": "agent asks which date to skip"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Temporarily disables the bedtime alarm for a single day."
+  },
+  {
+    "id": "sleep.delete_nap_alarm",
+    "name": "Delete my afternoon nap alarm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Please remove the nap alarm I have for 2\u202fpm each day.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_DELETE",
+        "kwargs": {
+          "subaction": "delete",
+          "kind": "definition",
+          "title": "Afternoon Nap",
+          "details": {
+            "timeOfDay": "14:00"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["deleted", "nap"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, the 2\u202fpm daily nap alarm.",
+      "applies_when": "agent asks which nap alarm to delete"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Removes a recurring nap alarm."
+  },
+  {
+    "id": "sleep.create_morning_wakeup_7am",
+    "name": "Create a 7\u202fam morning wake\u2011up alarm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Set a daily wake\u2011up alarm for 7\u202fam.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Morning Wake\u2011up",
+          "details": {
+            "kind": "alarm",
+            "cadence": "daily",
+            "timeOfDay": "07:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["7:00", "wake\u2011up"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a daily morning alarm."
+  },
+  {
+    "id": "sleep.get_last_month_sleep_average",
+    "name": "Average sleep hours for last month",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "What was my average sleep duration per night for the previous month?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "sleep_hours",
+          "days": 30
+        }
+      }
+    ],
+    "required_outputs": ["average", "hours"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Aggregates sleep hours over the past 30 days."
+  },
+  {
+    "id": "sleep.schedule_nap_reminder_2pm",
+    "name": "Schedule a daily 2\u202fpm nap reminder",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Add a daily reminder for a 30\u2011minute nap at 2\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "reminder",
+          "promptInstructions": "30\u2011minute nap.",
+          "trigger": {
+            "kind": "daily",
+            "atIso": "2026-05-10T14:00:00Z"
+          },
+          "priority": "low",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": ["nap", "2:00"],
+    "first_question_fallback": {
+      "canned_answer": "Just once a day, at 2\u202fpm.",
+      "applies_when": "agent asks about recurrence"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a daily nap reminder via SCHEDULED_TASK_CREATE."
+  },
+  {
+    "id": "sleep.find_conflicts_family_calendar",
+    "name": "Find bedtime conflicts on family calendar",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Check my family calendar for any events after 10\u202fpm tonight that might clash with my bedtime.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "search_events",
+          "intent": "search family calendar after 22:00",
+          "query": "cal_family",
+          "details": {
+            "windowStart": "2026-05-10T22:00:00Z",
+            "windowEnd": "2026-05-11T06:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["family", "conflict"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Searches the family calendar for overlapping events."
+  },
+  {
+    "id": "sleep.set_bedtime_reminder_with_timezone",
+    "name": "Set bedtime reminder with explicit timezone",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Create a daily bedtime alarm for 10\u202fpm Eastern Time.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Bedtime",
+          "details": {
+            "kind": "alarm",
+            "cadence": "daily",
+            "timeOfDay": "22:00",
+            "timeZone": "America/New_York",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["10:00", "Eastern"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, Eastern Time (America/New_York).",
+      "applies_when": "agent asks which time zone to use"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a daily bedtime alarm with a specific time zone."
+  },
+  {
+    "id": "sleep.get_recent_sleep_metrics",
+    "name": "Show last 3 nights of sleep data",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Give me the sleep duration for the past three nights.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "sleep_hours",
+          "days": 3
+        }
+      }
+    ],
+    "required_outputs": ["hours", "night"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Retrieves sleep hours for the most recent three days."
+  },
+  {
+    "id": "sleep.delete_sleep_quality_metric",
+    "name": "Delete the sleep\u2011quality metric",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Remove the sleep_quality health metric I added earlier.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "delete_metric",
+          "metric": "sleep_quality"
+        }
+      }
+    ],
+    "required_outputs": ["deleted", "sleep_quality"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Deletes a custom health metric."
+  },
+  {
+    "id": "sleep.set_nap_alarm_30min",
+    "name": "Create a 30\u2011minute nap alarm at 2\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Add a one\u2011off nap alarm for today at 2\u202fpm that lasts 30 minutes.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Afternoon Nap",
+          "details": {
+            "kind": "alarm",
+            "cadence": "once",
+            "timeOfDay": "14:00",
+            "durationMinutes": 30,
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["nap", "30"],
+    "first_question_fallback": {
+      "canned_answer": "Just today, not recurring.",
+      "applies_when": "agent asks if the nap should repeat"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a single\u2011use nap alarm with a set duration."
+  },
+  {
+    "id": "sleep.snooze_winddown_10min",
+    "name": "Snooze tonight's wind\u2011down reminder by 10\u202fminutes",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Snooze my wind\u2011down task for tonight by ten minutes.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_SNOOZE",
+        "kwargs": {
+          "subaction": "snooze",
+          "taskId": "task_00001",
+          "minutes": 10,
+          "reason": "need more time"
+        }
+      }
+    ],
+    "required_outputs": ["10", "minutes"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Delays a scheduled wind\u2011down task."
+  },
+  {
+    "id": "sleep.show_sleep_trends_last_90days",
+    "name": "Show sleep trends for the last 90 days",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Give me a trend line of my average sleep duration over the past three months.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "sleep_hours",
+          "days": 90
+        }
+      }
+    ],
+    "required_outputs": ["trend", "sleep"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Requests a trend analysis for sleep hours over 90 days."
+  },
+  {
+    "id": "sleep.create_sleep_coach_task",
+    "name": "Create a sleep\u2011coach scheduled task",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Set a daily reminder at 9\u202fpm to review my sleep goals.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "reminder",
+          "promptInstructions": "Review sleep goals.",
+          "trigger": {
+            "kind": "daily",
+            "atIso": "2026-05-10T21:00:00Z"
+          },
+          "priority": "high",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": ["9:00", "sleep"],
+    "first_question_fallback": {
+      "canned_answer": "Just once a day, at 9\u202fpm.",
+      "applies_when": "agent asks about recurrence"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a daily sleep\u2011coaching reminder."
+  },
+  {
+    "id": "sleep.find_conflicts_with_work_calendar",
+    "name": "Find bedtime conflicts on work calendar",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Search my work calendar for any events after 10\u202fpm that could interfere with bedtime.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "search_events",
+          "intent": "search work calendar after 22:00",
+          "query": "cal_work",
+          "details": {
+            "windowStart": "2026-05-10T22:00:00Z",
+            "windowEnd": "2026-05-11T06:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["work", "conflict"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Checks the work calendar for late\u2011night events."
+  },
+  {
+    "id": "sleep.set_weekday_bedtime_1030",
+    "name": "Set weekday bedtime alarm at 10:30\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Create a bedtime alarm for Monday through Friday at 10:30\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Weekday Bedtime",
+          "details": {
+            "kind": "alarm",
+            "cadence": "weekly",
+            "dayOfWeek": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday"
+            ],
+            "timeOfDay": "22:30",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["10:30", "weekday"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, only on weekdays.",
+      "applies_when": "agent asks if it should apply on weekends"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a weekly alarm limited to weekdays."
+  },
+  {
+    "id": "sleep.update_winddown_task_time",
+    "name": "Change wind\u2011down task start time to 9:30\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Move my nightly wind\u2011down reminder to start at 9:30\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_UPDATE",
+        "kwargs": {
+          "subaction": "update",
+          "taskId": "task_00003",
+          "trigger": {
+            "kind": "once",
+            "atIso": "2026-05-10T21:30:00Z"
+          },
+          "reason": "adjusted bedtime"
+        }
+      }
+    ],
+    "required_outputs": ["9:30"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Updates the start time of an existing wind\u2011down task."
+  },
+  {
+    "id": "sleep.list_all_sleep_alarms",
+    "name": "List all sleep\u2011related alarms",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Give me a list of all my sleep\u2011related alarms.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE",
+        "kwargs": {
+          "subaction": "list",
+          "kind": "definition",
+          "title": "Sleep Alarms"
+        }
+      }
+    ],
+    "required_outputs": ["alarm"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Retrieves a list of all defined sleep alarms."
+  },
+  {
+    "id": "sleep.disable_all_sleep_alarms",
+    "name": "Disable all sleep alarms for the weekend",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Temporarily disable every sleep alarm for Saturday and Sunday.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_UPDATE",
+        "kwargs": {
+          "subaction": "update",
+          "kind": "definition",
+          "title": "All Sleep Alarms",
+          "details": {
+            "skipDates": ["2026-05-13", "2026-05-14"]
+          }
+        }
+      }
+    ],
+    "required_outputs": ["disabled", "Saturday"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, just for Saturday and Sunday.",
+      "applies_when": "agent asks which days to disable"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Bulk\u2011disables sleep alarms for the weekend."
+  },
+  {
+    "id": "sleep.set_nap_reminder_with_duration",
+    "name": "Create a daily nap reminder with duration",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Add a daily reminder for a 45\u2011minute nap at 1\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "reminder",
+          "promptInstructions": "45\u2011minute nap.",
+          "trigger": {
+            "kind": "daily",
+            "atIso": "2026-05-10T13:00:00Z"
+          },
+          "priority": "low",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": ["45", "nap"],
+    "first_question_fallback": {
+      "canned_answer": "Just a daily reminder, not recurring on weekends.",
+      "applies_when": "agent asks about weekend recurrence"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a daily nap reminder with a specific duration."
+  },
+  {
+    "id": "sleep.get_sleep_quality_last_month",
+    "name": "Retrieve sleep\u2011quality scores for the last month",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "What were my sleep_quality scores for each day of the past 30 days?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "sleep_quality",
+          "days": 30
+        }
+      }
+    ],
+    "required_outputs": ["sleep_quality"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Fetches daily values of a custom sleep quality metric."
+  },
+  {
+    "id": "sleep.set_bedtime_with_reason",
+    "name": "Create bedtime alarm with a reason note",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Set a daily bedtime alarm for 11\u202fpm and add a note that says 'need more rest'.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Bedtime",
+          "details": {
+            "kind": "alarm",
+            "cadence": "daily",
+            "timeOfDay": "23:00",
+            "note": "need more rest",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["11:00", "rest"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a bedtime alarm with an attached explanatory note."
+  }
+]

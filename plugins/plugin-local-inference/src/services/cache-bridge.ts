@@ -2,7 +2,7 @@
  * Cache bridge for the local-inference path.
  *
  * Translates the runtime's `ProviderCachePlan` (a provider-neutral cache
- * plan emitted by `@elizaos/core`'s `buildProviderCachePlan`) into
+ * plan emitted by assistant's `buildProviderCachePlan`) into
  * concrete behaviour for the two local backends:
  *
  *   1. Out-of-process llama-server (MTP / buun-llama-cpp): stable

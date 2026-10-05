@@ -1,14 +1,15 @@
 // Handles admin cloud API v1 admin warm pool route traffic with privileged auth expectations.
-import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { requireAdmin } from "@/lib/auth";
-import { containersEnv } from "@/lib/config/containers-env";
+
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { requireAdmin } from "@elizaos/cloud-shared/lib/auth";
+import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
 import {
   computeForecast,
   DEFAULT_WARM_POOL_POLICY,
-} from "@/lib/services/containers/agent-warm-pool-forecast";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-forecast";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Admin: warm pool state for the infrastructure dashboard.

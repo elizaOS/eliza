@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
 }));

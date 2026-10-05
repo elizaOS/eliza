@@ -1,5 +1,5 @@
 // Defines the reminder dispatch capability LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 function assertApiBody(options: {
   includesAll?: ReadonlyArray<string>;
@@ -35,7 +35,7 @@ function assertApiBody(options: {
  *   - The firing pipeline runs and delivers a reminder on the `in_app` channel.
  *     The executor enforces `expectedStatus` on both api turns and runs
  *     `assertResponse(status, body)` on the process turn
- *     (`packages/scenario-runner/src/executor.ts`); the body must contain
+ *     (`packages/testing/scenario-runner/src/executor.ts`); the body must contain
  *     `"delivered"` and `"in_app"` or the turn fails. So a regression that
  *     stops the reminder from being scheduled, matched, or delivered surfaces
  *     as a failing scenario.
@@ -61,7 +61,7 @@ export default scenario({
   tags: ["lifeops", "reminders", "reminder_dispatch", "llm-eval"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

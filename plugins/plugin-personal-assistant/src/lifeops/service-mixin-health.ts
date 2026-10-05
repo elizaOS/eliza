@@ -3,11 +3,7 @@
  * `withHealth` mixin that composes the health domain's connect/disconnect and
  * summary methods onto the LifeOpsService base.
  */
-import type {
-  HealthBackend,
-  HealthDailySummary,
-  HealthDataPoint,
-} from "@elizaos/plugin-health";
+
 import type {
   DisconnectLifeOpsHealthConnectorRequest,
   GetLifeOpsHealthSummaryRequest,
@@ -19,7 +15,12 @@ import type {
   StartLifeOpsHealthConnectorRequest,
   StartLifeOpsHealthConnectorResponse,
   SyncLifeOpsHealthConnectorRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
+import type {
+  HealthBackend,
+  HealthDailySummary,
+  HealthDataPoint,
+} from "@elizaos/plugin-health";
 
 export type LifeOpsHealthServicePublic = {
   getHealthConnectorStatus(): Promise<{
@@ -55,11 +56,20 @@ export type LifeOpsHealthServicePublic = {
   getHealthSummary(
     request?: GetLifeOpsHealthSummaryRequest,
   ): Promise<LifeOpsHealthSummaryResponse>;
-  getHealthDailySummary(date: string): Promise<HealthDailySummary>;
-  getHealthTrend(days: number): Promise<HealthDailySummary[]>;
-  getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]>;
+  getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary>;
+  getHealthTrend(
+    days: number,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary[]>;
+  getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]>;
 };

@@ -1,11 +1,11 @@
 name: "Setup Bun Workspace"
-description: "Install Bun workspace dependencies and required native deps for eliza CI jobs."
+description: "Install Bun workspace dependencies; native compiler prerequisites are explicit caller opt-ins."
 
 inputs:
   bun-version:
     description: "Bun version to install"
     required: false
-    default: "1.3.14"
+    default: "1.4.2"
   python-version:
     description: "Python version for node-gyp fallbacks"
     required: false
@@ -13,11 +13,11 @@ inputs:
   setup-python:
     description: "Whether to set up Python for node-gyp fallbacks"
     required: false
-    default: "true"
+    default: "false"
   install-protoc:
     description: "Whether to install protoc for Rust plugin builds"
     required: false
-    default: "true"
+    default: "false"
   force-protoc-github-fallback:
     description: "Force the pinned GitHub protoc fallback path for setup action self-tests"
     required: false
@@ -29,23 +29,31 @@ inputs:
   install-native-deps:
     description: "Whether to install native apt dependencies"
     required: false
-    default: "true"
+    default: "false"
   run-postinstall:
     description: "Whether to run the repo postinstall step explicitly"
     required: false
     default: "true"
   setup-fused-inference:
     description: >-
-      Whether repo postinstall should provision and verify the desktop fused
-      inference runtime. Generic CI lanes must leave this disabled; only the
-      desktop contract and release build opt in.
+      Whether repo postinstall should provision and verify the desktop fused inference runtime. Generic CI lanes must leave this disabled; only the desktop contract and release build opt in.
     required: false
     default: "false"
+  publish-caches:
+    description: "Publish caches after a successful job. Equivalent matrix readers disable publication while retaining the same restores and task execution."
+    required: false
+    default: "true"
+  publish-bun-install-cache:
+    description: "Publish the Bun download archive independently of Turbo; empty inherits publish-caches."
+    required: false
+    default: ""
+  cache-turbo:
+    description: "Restore and save Turbo task outputs; disable for consumers that do not run Turbo. Use independently of the Bun download cache."
+    required: false
+    default: "true"
   cache-bun-install:
     description: >-
-      Whether to restore/save the global Bun install cache. Disable this for
-      cold-path jobs when a broad multi-gigabyte fallback restore costs more
-      than fetching the lockfile's actual dependency set.
+      Whether to restore/save the Bun install cache for the exact lockfile. Callers may disable this when downloading the archive costs more than fetching dependencies.
     required: false
     default: "true"
   skip-avatar-clone:
@@ -62,10 +70,7 @@ inputs:
     default: "false"
   setup-node:
     description: >-
-      Whether to set up Node.js. Self-hosted runners are not guaranteed to have
-      `node` on PATH, and this action's very first step (turbo-cache-key) shells
-      out to `node`, so leave this on unless the caller already ran
-      actions/setup-node in the same job.
+      Whether to set up Node.js. Self-hosted runners are not guaranteed to have `node` on PATH, and this action's very first step (turbo-cache-key) shells out to `node`, so leave this on unless the caller already ran actions/setup-node in the same job.
     required: false
     default: "true"
   node-version:
@@ -77,7 +82,7 @@ runs:
   using: "composite"
   steps:
     # Self-hosted (hetzner-robot) runners are not guaranteed to expose `node`
-    # on the step PATH, and the very next step (turbo-cache-key.mjs) invokes
+    # on the step PATH, and the very next step (turbo-cache-key.ts) invokes
     # `node` directly. Without this, jobs that
     # rely solely on this composite for their toolchain fail with
     # "node: command not found" on runners missing a system Node. setup-node is
@@ -104,12 +109,25 @@ runs:
     # deterministic hash restore prefix still permits safe cross-lane warming.
     - name: Compute deterministic Turbo cache key
       id: turbo-key
+      if: ${{ inputs.cache-turbo == 'true' }}
       shell: bash
-      run: node packages/scripts/turbo-cache-key.mjs --github-output
+      run: node packages/scripts/turbo-cache-key.ts --github-output
 
     - name: Restore and save Turbo cache (GitHub-native)
       id: turbo-cache
+      if: ${{ inputs.cache-turbo == 'true' && inputs.publish-caches == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .turbo
+        key: turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}-${{ github.job }}
+        restore-keys: |
+          turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}-
+          turbo-${{ runner.os }}-
+
+    - name: Restore Turbo cache without publication
+      id: turbo-cache-reader
+      if: ${{ inputs.cache-turbo == 'true' && inputs.publish-caches != 'true' }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: .turbo
         key: turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}-${{ github.job }}
@@ -344,11 +362,20 @@ runs:
     - name: Resolve Bun release variant
       id: bun-variant
       shell: bash
-      run: node packages/scripts/ci-fetch-bun-release.mjs --print-variant
+      run: node packages/scripts/ci-fetch-bun-release.ts --print-variant
 
     - name: Restore Bun release zip
       id: bun-zip-cache
+      if: ${{ inputs.publish-caches == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/eliza-bun-release/bun.zip
+        key: bun-release-${{ steps.bun-variant.outputs.variant }}-${{ inputs.bun-version }}
+
+    - name: Restore Bun release zip without publication
+      id: bun-zip-cache-reader
+      if: ${{ inputs.publish-caches != 'true' }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ${{ runner.temp }}/eliza-bun-release/bun.zip
         key: bun-release-${{ steps.bun-variant.outputs.variant }}-${{ inputs.bun-version }}
@@ -365,16 +392,16 @@ runs:
         server_log="${RUNNER_TEMP}/eliza-bun-release-server.log"
         mkdir -p "$out"
         rm -f "$url_file" "$out/download-url" "$server_log"
-        node packages/scripts/ci-fetch-bun-release.mjs --out-dir "$out"
+        node packages/scripts/ci-fetch-bun-release.ts --out-dir "$out"
         # Cache restores only bun.zip. A previous job's download-url (dead
         # localhost port) must not be published as bun-download-url. Detach
         # the server so bash exiting this step does not SIGHUP it.
-        nohup node packages/scripts/ci-fetch-bun-release.mjs \
+        nohup node packages/scripts/ci-fetch-bun-release.ts \
           --out-dir "$out" --serve-only --url-file "$url_file" \
           >"$server_log" 2>&1 &
         server_pid=$!
         disown || true
-        if ! url="$(node packages/scripts/ci-await-bun-release-server.mjs \
+        if ! url="$(node packages/scripts/ci-await-bun-release-server.ts \
           --pid "$server_pid" --url-file "$url_file" --timeout-ms 60000)"; then
           echo "::error::Bun zip local server did not become ready"
           if [ -s "$server_log" ]; then
@@ -402,19 +429,20 @@ runs:
         no-cache: true
 
     - name: Cache Bun install
-      # Cache the Bun install store on every OS, Linux included (#12338). Long
-      # cold-path jobs can opt out: attempt 1 on #16657 missed the exact key,
-      # then spent 2m50s (Type Check) / 2m04s (Build) restoring a stale 1.6 GiB
-      # fallback before a sub-minute install. Pinned by SHA (no floating @v5)
-      # to avoid the Bun/cache-action drift #12338 targets.
-      if: ${{ inputs.cache-bun-install == 'true' }}
+      # An exact lockfile key avoids restoring unrelated multi-gigabyte stores.
+      # On a miss Bun fetches the frozen lockfile's required dependencies.
+      if: ${{ inputs.cache-bun-install == 'true' && (inputs.publish-bun-install-cache == 'true' || (inputs.publish-bun-install-cache == '' && inputs.publish-caches == 'true')) }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock') }}
-        restore-keys: |
-          bun-${{ runner.os }}-${{ inputs.bun-version }}-
-          bun-${{ runner.os }}-
+
+    - name: Restore Bun install cache without publication
+      if: ${{ inputs.cache-bun-install == 'true' && !(inputs.publish-bun-install-cache == 'true' || (inputs.publish-bun-install-cache == '' && inputs.publish-caches == 'true')) }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock') }}
 
     - name: Initialize submodules
       if: ${{ inputs.init-submodules == 'true' }}
@@ -435,7 +463,7 @@ runs:
             exit "$install_status"
           fi
           echo "Dependency install failed; retrying once after cleaning Bun's install cache."
-          node packages/scripts/rm-path-recursive.mjs ~/.bun/install/cache
+          node packages/scripts/rm-path-recursive.ts ~/.bun/install/cache
           sleep 5
         done
       env:
@@ -505,19 +533,9 @@ runs:
         ELIZA_NO_VISION_DEPS: ${{ inputs.no-vision-deps == 'true' && '1' || '' }}
         ELIZA_SKIP_FUSED_INFERENCE_SETUP: ${{ inputs.setup-fused-inference != 'true' && '1' || '' }}
 
-    - name: Ensure workspace + native-plugin symlinks (postinstall safety net)
-      # `bun run postinstall` chains `bun scripts/patch-*` steps before
-      # `ensure-workspace-symlinks.mjs` / `ensure-native-plugins-linked.mjs`;
-      # if a `bun` invocation fails partway (e.g. the placeholder binary),
-      # those symlinks never get created and downstream vitest jobs hit
-      # "Failed to resolve entry for @elizaos/<workspace-pkg>". Run them
-      # explicitly with `node` (always available) so the symlinks exist
-      # regardless of how postinstall fared. Both scripts are idempotent.
+    - name: Ensure workspace symlinks (postinstall safety net)
+      # The workspace linker covers every plugin in both package-resolution roots.
+      # Run it explicitly when an earlier postinstall step could have failed.
       shell: bash
       run: |
-        node packages/scripts/ensure-workspace-symlinks.mjs || echo "::warning::ensure-workspace-symlinks failed"
-        node packages/scripts/ensure-native-plugins-linked.mjs || echo "::warning::ensure-native-plugins-linked failed"
-
-    - name: Ensure generated shared i18n data
-      shell: bash
-      run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+        node packages/scripts/ensure-workspace-symlinks.ts

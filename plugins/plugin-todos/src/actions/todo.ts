@@ -13,18 +13,22 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from "@elizaos/core/edge";
-import { validateUuid } from "@elizaos/core/edge";
+} from "@elizaos/core";
+import { isAffirmativeConfirmationReply, validateUuid } from "@elizaos/core";
 
 import {
   type CreateTodoInput,
   findDuplicateTodoId,
   isTodoStore,
   isValidTodoListLimit,
+  type TodoLocator,
   type TodoMutationExecution,
+  type TodoReplyClassification,
   type TodoStore,
+  type TodoTargetMiss,
   type UpdateTodoInput,
 } from "../store.js";
+import { todoRef } from "../todo-match.js";
 import {
   TODO_ACTIONS,
   TODO_FAILURE_TEXT_PREFIX,
@@ -43,6 +47,8 @@ interface TodoActionParameters {
   subaction?: unknown;
   op?: unknown;
   id?: unknown;
+  target?: unknown;
+  ref?: unknown;
   content?: unknown;
   activeForm?: unknown;
   status?: unknown;
@@ -356,10 +362,92 @@ async function ledgeredNoEffectResult(
   };
 }
 
-function ledgeredNotFound(id: string): ActionResult {
+const CONFIRMATION_SUFFIX = "Reply yes to confirm or no to cancel.";
+
+/**
+ * Read how the planner addressed an existing todo. `update` keeps `content`
+ * for the replacement text, so its visible-content target is `target` only;
+ * the other mutations also accept `content` as the visible content.
+ */
+function readLocator(
+  params: TodoActionParameters,
+  action: "update" | "complete" | "cancel" | "delete",
+): TodoLocator | null {
+  const id = readString(params.id);
+  if (id) return { id };
+  const ref = readString(params.ref);
+  if (ref) return { ref };
+  const target =
+    readString(params.target) ??
+    (action === "update" ? undefined : readString(params.content));
+  return target ? { match: target } : null;
+}
+
+function notFoundMessage(locator: TodoLocator): string {
+  if (locator.id !== undefined) {
+    return `todo ${locator.id} not found for this user`;
+  }
+  if (locator.ref !== undefined) {
+    return `todo ${locator.ref} not found for this user`;
+  }
+  return `no todo matching ${quotedContent(locator.match)} found for this user`;
+}
+
+function missingLocator(action: string): ActionResult {
+  return failure(
+    "missing_param",
+    `target (the todo's visible content) is required for action=${action}`,
+  );
+}
+
+/**
+ * Turn a committed miss into a grounded outcome. Ambiguity lists every
+ * candidate with its stable ref, state, and creation date so the user (and
+ * the next planner turn) can select one even if the list changes meanwhile.
+ */
+async function missResult(
+  action: TodoMutationAction,
+  locator: TodoLocator,
+  miss: TodoTargetMiss | undefined,
+  entityId: string,
+): Promise<ActionResult> {
+  if (miss?.kind !== "ambiguous") {
+    return {
+      ...failure("not_found", notFoundMessage(locator)),
+      modelReplyRequired: true,
+    };
+  }
+  const candidates = await Promise.all(
+    miss.candidates.map(async (todo) => ({
+      ref: await todoRef(todo.id),
+      content: todo.content,
+      status: todo.status,
+      createdAt: todo.createdAt.toISOString(),
+    })),
+  );
+  const lines = candidates.map(
+    (candidate) =>
+      `- ${quotedContent(candidate.content)} (${statePhrase(candidate.status)}, added ${candidate.createdAt.slice(0, 10)}) ref ${candidate.ref}`,
+  );
+  const text = [
+    `${candidates.length} todos match ${quotedContent(
+      locator.match ?? locator.ref ?? "",
+    )}, so nothing was changed. Which one did you mean?`,
+    ...lines,
+  ].join("\n");
   return {
-    ...failure("not_found", `todo ${id} not found for this user`),
+    success: true,
+    text,
     modelReplyRequired: true,
+    data: {
+      actionName: "TODO",
+      action,
+      op: action,
+      entityId,
+      clarificationRequired: true,
+      awaitingUserInput: true,
+      candidates,
+    },
   };
 }
 
@@ -368,6 +456,8 @@ interface ActionHandlerArgs {
   scope: ScopeContext;
   params: TodoActionParameters;
   callback: HandlerCallback | undefined;
+  /** The user's own message, classified for durable confirmation gates. */
+  reply: TodoReplyClassification;
 }
 
 interface MutationActionHandlerArgs extends ActionHandlerArgs {
@@ -446,12 +536,22 @@ async function actionCreate({
   params,
   callback,
   idempotencyKey,
+  reply,
 }: MutationActionHandlerArgs): Promise<ActionResult> {
   const content = readString(params.content);
   if (!content) {
     return failure("missing_param", "content is required for action=create");
   }
-  const status = readStatus(params.status) ?? "pending";
+  const status =
+    params.status === undefined || params.status === null
+      ? "pending"
+      : readStatus(params.status);
+  if (!status) {
+    return failure(
+      "invalid_param",
+      `status must be one of: ${TODO_STATUSES.join(", ")}`,
+    );
+  }
   const activeForm = readString(params.activeForm);
   const parentTodoId = readString(params.parentTodoId);
   const input: Omit<CreateTodoInput, "entityId" | "agentId"> = {
@@ -466,12 +566,30 @@ async function actionCreate({
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
     idempotencyKey,
-    mutation: { action: "create", input },
+    mutation: { action: "create", input, reply },
   });
   if (execution.result.action !== "create") {
     throw new Error("Todo mutation result does not match action=create");
   }
   const todo = execution.result.todo;
+  if (execution.result.duplicate === true) {
+    const prompt = `${quotedContent(todo.content)} is already on your list (${statePhrase(todo.status)}), so nothing was added. Add another copy anyway? ${CONFIRMATION_SUFFIX}`;
+    return {
+      success: true,
+      text: prompt,
+      modelReplyRequired: true,
+      data: {
+        actionName: "TODO",
+        action: "create" as const,
+        op: "create" as const,
+        entityId: scope.entityId,
+        duplicate: true,
+        existing: todo,
+        requiresConfirmation: true,
+        awaitingUserInput: true,
+      },
+    };
+  }
   const text = createdConfirmation(todo);
   return appliedMutationResult({
     action: "create",
@@ -499,17 +617,23 @@ async function actionUpdate({
   callback,
   idempotencyKey,
 }: MutationActionHandlerArgs): Promise<ActionResult> {
-  const id = readString(params.id);
-  if (!id) {
-    return failure("missing_param", "id is required for action=update");
-  }
+  const locator = readLocator(params, "update");
+  if (!locator) return missingLocator("update");
   const patch: UpdateTodoInput = {};
   const content = readString(params.content);
   if (content !== undefined) patch.content = content;
   const activeForm = readString(params.activeForm);
   if (activeForm !== undefined) patch.activeForm = activeForm;
-  const status = readStatus(params.status);
-  if (status !== undefined) patch.status = status;
+  if (params.status !== undefined && params.status !== null) {
+    const status = readStatus(params.status);
+    if (!status) {
+      return failure(
+        "invalid_param",
+        `status must be one of: ${TODO_STATUSES.join(", ")}`,
+      );
+    }
+    patch.status = status;
+  }
   const detachParent = readBoolean(params.detachParent) ?? false;
   if (detachParent && Object.hasOwn(params, "parentTodoId")) {
     return failure(
@@ -532,14 +656,14 @@ async function actionUpdate({
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
     idempotencyKey,
-    mutation: { action: "update", id, patch },
+    mutation: { action: "update", ...locator, patch },
   });
   if (execution.result.action !== "update") {
     throw new Error("Todo mutation result does not match action=update");
   }
   const todo = execution.result.todo;
   if (!todo) {
-    return ledgeredNotFound(id);
+    return missResult("update", locator, execution.result.miss, scope.entityId);
   }
   const text = updatedConfirmation(todo);
   return appliedMutationResult({
@@ -566,21 +690,19 @@ async function actionSetStatus(
   action: "complete" | "cancel",
 ): Promise<ActionResult> {
   const { service, scope, params, callback, idempotencyKey } = args;
-  const id = readString(params.id);
-  if (!id) {
-    return failure("missing_param", `id is required for action=${action}`);
-  }
+  const locator = readLocator(params, action);
+  if (!locator) return missingLocator(action);
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
     idempotencyKey,
-    mutation: { action, id },
+    mutation: { action, ...locator },
   });
   if (execution.result.action !== action) {
     throw new Error(`Todo mutation result does not match action=${action}`);
   }
   const todo = execution.result.todo;
   if (!todo) {
-    return ledgeredNotFound(id);
+    return missResult(action, locator, execution.result.miss, scope.entityId);
   }
   const text = settledConfirmation(action, todo);
   return appliedMutationResult({
@@ -604,31 +726,31 @@ async function actionDelete({
   callback,
   idempotencyKey,
 }: MutationActionHandlerArgs): Promise<ActionResult> {
-  const id = readString(params.id);
-  if (!id) {
-    return failure("missing_param", "id is required for action=delete");
-  }
+  const locator = readLocator(params, "delete");
+  if (!locator) return missingLocator("delete");
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
     idempotencyKey,
-    mutation: { action: "delete", id },
+    mutation: { action: "delete", ...locator },
   });
   if (execution.result.action !== "delete") {
     throw new Error("Todo mutation result does not match action=delete");
   }
   const existing = execution.result.deleted;
-  if (!existing) return ledgeredNotFound(id);
+  if (!existing) {
+    return missResult("delete", locator, execution.result.miss, scope.entityId);
+  }
   const text = `Deleted ${quotedContent(existing.content)} from your list.`;
   return appliedMutationResult({
     action: "delete",
     callback,
     text,
-    resource: { kind: "todos.todo", id },
+    resource: { kind: "todos.todo", id: existing.id },
     data: {
       action: "delete" as const,
       op: "delete" as const,
       entityId: scope.entityId,
-      id,
+      id: existing.id,
     },
     execution,
   });
@@ -675,25 +797,58 @@ async function actionClear({
   scope,
   callback,
   idempotencyKey,
+  reply,
 }: MutationActionHandlerArgs): Promise<ActionResult> {
+  // Clear reconciles on the same (entityId, agentId) scope every read uses,
+  // so it removes the user's whole cross-room list (#28006). The store gates
+  // it: the first call records a durable preview, and only the user's own
+  // affirmative reply to that preview removes exactly the previewed rows.
   const execution = await service.applyMutation({
     scope: { entityId: scope.entityId, agentId: scope.agentId },
     idempotencyKey,
-    mutation: { action: "clear", roomId: scope.roomId },
+    mutation: { action: "clear", reply },
   });
   if (execution.result.action !== "clear") {
     throw new Error("Todo mutation result does not match action=clear");
   }
-  const { count } = execution.result;
-  const text =
-    count === 0
-      ? "Your list was already empty."
-      : `Cleared ${count} todo${count === 1 ? "" : "s"} from your list.`;
+  const { count, gate, preview } = execution.result;
+  if (gate === "preview") {
+    const rows = preview ?? [];
+    const text = [
+      `This will remove ${rows.length} todo${rows.length === 1 ? "" : "s"} from your list:`,
+      ...rows.map(
+        (todo) =>
+          `- ${quotedContent(todo.content)} (${statePhrase(todo.status)})`,
+      ),
+      CONFIRMATION_SUFFIX,
+    ].join("\n");
+    return ledgeredNoEffectResult(callback, text, {
+      action: "clear" as const,
+      op: "clear" as const,
+      entityId: scope.entityId,
+      count: 0,
+      preview: rows,
+      requiresConfirmation: true,
+      awaitingUserInput: true,
+    });
+  }
+  let text: string;
+  if (gate === "cancelled") {
+    text = "Cancelled. Your list was left unchanged.";
+  } else if (count === 0) {
+    text =
+      gate === "confirmed"
+        ? "Nothing was removed; the previewed todos were already gone."
+        : "Your list was already empty.";
+  } else {
+    text = `Cleared ${count} todo${count === 1 ? "" : "s"} from your list.`;
+  }
   const data = {
     action: "clear" as const,
     op: "clear" as const,
     entityId: scope.entityId,
     count,
+    ...(gate !== undefined ? { gate } : {}),
   };
   if (!execution.applied) {
     return ledgeredNoEffectResult(callback, text, data);
@@ -764,7 +919,7 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       "CLEAR_TODOS",
     ],
     description:
-      "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+      "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one; an open todo with the same content is not duplicated without the user's yes), update, complete, cancel, delete (address the todo by `target`, its visible content or a close paraphrase; if several match, the reply lists them with a `ref` to pass back), list, clear (previews the user's entire list and removes it only after the user replies yes). Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
     descriptionCompressed:
       "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
     parameters: [
@@ -776,14 +931,30 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
         schema: { type: "string" as const, enum: [...TODO_ACTIONS] },
       },
       {
+        name: "target",
+        description:
+          "Visible content of the existing todo to update/complete/cancel/delete, as shown in the list (a close paraphrase also works).",
+        required: false,
+        schema: { type: "string" as const },
+      },
+      {
+        name: "ref",
+        description:
+          "Stable ref (t-xxxxxxxx) from a clarification listing several matching todos; selects exactly that one.",
+        required: false,
+        schema: { type: "string" as const },
+      },
+      {
         name: "id",
-        description: "Todo id (update/complete/cancel/delete).",
+        description:
+          "Storage id, only when a tool result supplied it (update/complete/cancel/delete).",
         required: false,
         schema: { type: "string" as const },
       },
       {
         name: "content",
-        description: "Imperative form, e.g. 'Add tests' (create/update).",
+        description:
+          "Imperative form, e.g. 'Add tests' (create; new text for update).",
         required: false,
         schema: { type: "string" as const },
       },
@@ -887,7 +1058,17 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
             "Todo storage is not available for this runtime.",
           );
         }
-        const args: ActionHandlerArgs = { service, scope, params, callback };
+        const args: ActionHandlerArgs = {
+          service,
+          scope,
+          params,
+          callback,
+          // Confirmation is bound to the user's actual reply text, never to a
+          // model-supplied `confirmed` flag (see core confirmation helpers).
+          reply: isAffirmativeConfirmationReply(message)
+            ? "affirmative"
+            : "other",
+        };
         if (action === "list") return await actionList(args);
         const idempotencyKey = mutationIdempotencyKey(message, options);
         if (!idempotencyKey) {
@@ -968,15 +1149,15 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       [
         {
           name: "{{name1}}",
-          content: { text: "Cancel todo abc-123.", source: "chat" },
+          content: { text: "I finished the PR feedback todo.", source: "chat" },
         },
         {
           name: "{{agentName}}",
           content: {
-            text: "Cancelling that todo.",
+            text: "Marking it done.",
             actions: ["TODO"],
             thought:
-              "Cancel intent on a specific id maps to TODO action=cancel with id=abc-123.",
+              "Completion of a listed todo maps to TODO action=complete with target='review PR feedback' (its visible content).",
           },
         },
       ],

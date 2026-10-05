@@ -113,6 +113,7 @@ class TalkModePlugin : Plugin() {
     private var lastInterruptedAtSeconds: Double? = null
     @Volatile private var activePcmConnection: HttpURLConnection? = null
     @Volatile private var activeLocalAgentSocket: LocalSocket? = null
+    @Volatile private var activeBionicTtsSocket: LocalSocket? = null
 
     // Voice audio session (communication-mode routing + focus, mirrors the iOS
     // .playAndRecord/.voiceChat/.defaultToSpeaker session). Held for the whole
@@ -137,7 +138,8 @@ class TalkModePlugin : Plugin() {
     // mutually exclusive with SpeechRecognizer on the mic: Android only lets one
     // capture client own a given input source at a time, so starting frame
     // capture SUSPENDS any active SpeechRecognizer and stopping it resumes STT.
-    private var audioRecord: AudioRecord? = null
+    @Volatile private var audioRecord: AudioRecord? = null
+    private var audioFramesDestroyed = false
     private var audioFrameJob: Job? = null
     private val audioFrameRunning = AtomicBoolean(false)
     private var sttSuspendedForFrames = false
@@ -450,7 +452,17 @@ class TalkModePlugin : Plugin() {
         val useLocalInferenceTts = call.getBoolean("useLocalInferenceTts", false) ?: false
         val directive = call.getObject("directive")
 
+        // One speech call owns pcmTrack at a time. A replacement first closes
+        // the prior call's sockets/connection (so blocking reads unwind) and
+        // cancels it, then waits for it to settle and release playback before
+        // acquiring its own track.
+        val previous = speakingJob
+        if (previous?.isActive == true) {
+            lastInterruptedAtSeconds = computeInterruptedAt()
+            stopSpeakingInternal()
+        }
         speakingJob = scope.launch {
+            previous?.join()
             speakInternal(text, useSystemTts, useLocalInferenceTts, directive, call)
         }
     }
@@ -516,7 +528,12 @@ class TalkModePlugin : Plugin() {
         }
     }
 
+    @Synchronized
     private fun startAudioFramesInternal(call: PluginCall) {
+        if (audioFramesDestroyed) {
+            call.reject("TalkMode has been destroyed", "AUDIO_CAPTURE_DESTROYED")
+            return
+        }
         if (audioFrameRunning.get()) {
             call.resolve(TalkModeAndroidBridgeContract.audioFramesStartedPayload(
                 sampleRate = lastFrameSampleRate,
@@ -650,16 +667,18 @@ class TalkModePlugin : Plugin() {
         // IO dispatcher: a tight blocking read loop must not sit on the main
         // thread. Frames are marshalled to JS via notifyListeners (thread-safe).
         audioFrameJob = scope.launch(Dispatchers.IO) {
-            val buffer = ShortArray(frameSamples)
-            val bytes = ByteArray(frameSamples * 2)
-            var frameIndex = 0L
+            var failure: Exception? = null
             try {
-                while (audioFrameRunning.get() && isActive) {
+                val buffer = ShortArray(frameSamples)
+                val bytes = ByteArray(frameSamples * 2)
+                var frameIndex = 0L
+                while (audioFrameRunning.get() && audioRecord === record && isActive) {
                     val read = record.read(buffer, 0, frameSamples)
-                    if (read <= 0) {
-                        // ERROR_INVALID_OPERATION (-3) / ERROR_BAD_VALUE (-2):
-                        // the record was released or the mic was taken; stop.
-                        if (read < 0) break
+                    if (read < 0 || record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                        throw IllegalStateException("AudioRecord capture stopped (read result $read)")
+                    }
+                    if (read == 0) {
+                        yield()
                         continue
                     }
                     var sumSquares = 0.0
@@ -680,26 +699,46 @@ class TalkModePlugin : Plugin() {
                     val idx = frameIndex
                     frameIndex += 1
                     val ts = SystemClock.elapsedRealtime()
-                    notifyListeners("audioFrame", JSObject().apply {
-                        put("pcm16", pcmBase64)
-                        put("sampleRate", record.sampleRate)
-                        put("channels", 1)
-                        put("samples", read)
-                        put("rms", rms)
-                        put("timestamp", ts)
-                        put("frameIndex", idx)
-                    })
+                    synchronized(this@TalkModePlugin) {
+                        if (audioRecord !== record || !audioFrameRunning.get() || !isActive) return@synchronized
+                        notifyListeners("audioFrame", JSObject().apply {
+                            put("pcm16", pcmBase64)
+                            put("sampleRate", record.sampleRate)
+                            put("channels", 1)
+                            put("samples", read)
+                            put("rms", rms)
+                            put("timestamp", ts)
+                            put("frameIndex", idx)
+                        })
+                    }
                 }
-            } catch (e: Throwable) {
-                Log.e(TAG, "Audio frame loop error", e)
-                notifyListeners("error", JSObject().apply {
-                    put("message", "Audio frame capture stopped: ${e.message}")
-                    put("fatal", false)
-                })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failure = e
+            } finally {
+                finishAudioFrames(record, failure)
             }
         }
     }
 
+    @Synchronized
+    private fun finishAudioFrames(record: AudioRecord, failure: Exception?) {
+        // A canceled reader may finish after a replacement session starts.
+        // Only the session that still owns the recorder can change its state.
+        if (audioRecord !== record) return
+        stopAudioFramesInternal()
+        if (failure != null) {
+            Log.e(TAG, "Audio frame loop error", failure)
+            notifyListeners("error", JSObject().apply {
+                put("message", "Audio frame capture stopped: ${failure.message}")
+                put("code", "AUDIO_CAPTURE_FAILED")
+                put("fatal", false)
+            })
+        }
+    }
+
+    @Synchronized
     private fun stopAudioFramesInternal() {
         if (!audioFrameRunning.getAndSet(false) && audioRecord == null) {
             return
@@ -719,11 +758,13 @@ class TalkModePlugin : Plugin() {
             if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                 record.stop()
             }
-        } catch (_: Throwable) {
+        } catch (e: Exception) {
+            Log.w(TAG, "AudioRecord stop failed during cleanup", e)
         }
         try {
             record.release()
-        } catch (_: Throwable) {
+        } catch (e: Exception) {
+            Log.w(TAG, "AudioRecord release failed during cleanup", e)
         }
     }
 
@@ -1063,6 +1104,10 @@ class TalkModePlugin : Plugin() {
                             lastInterruptedAtSeconds?.let { put("interruptedAt", it) }
                         })
                     }
+                } catch (e: CancellationException) {
+                    // Stop, replacement, or teardown: never fall back to system
+                    // speech for a cancelled call.
+                    throw e
                 } catch (e: Exception) {
                     if (pcmStopRequested.get()) {
                         call.resolve(JSObject().apply {
@@ -1105,6 +1150,8 @@ class TalkModePlugin : Plugin() {
                             lastInterruptedAtSeconds?.let { put("interruptedAt", it) }
                         })
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     if (pcmStopRequested.get()) {
                         call.resolve(JSObject().apply {
@@ -1120,6 +1167,16 @@ class TalkModePlugin : Plugin() {
             } else {
                 speakWithSystemTts(text, call)
             }
+        } catch (e: CancellationException) {
+            // The cancelled call settles once, as interrupted, and cancellation
+            // keeps propagating to the coroutine that owns it.
+            call.resolve(JSObject().apply {
+                put("completed", false)
+                put("interrupted", true)
+                put("usedSystemTts", usedSystemTts)
+                lastInterruptedAtSeconds?.let { put("interruptedAt", it) }
+            })
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Speak failed", e)
             call.resolve(JSObject().apply {
@@ -1301,13 +1358,20 @@ class TalkModePlugin : Plugin() {
         if (trimmed.isEmpty()) return@withContext false
         val speed = (directive?.optDouble("speed", 1.0) ?: 1.0).toFloat()
         val sock = LocalSocket()
+        // Registered before connect so stopSpeakingInternal() can close it
+        // during connect, phonemization, or the synthesis read.
+        activeBionicTtsSocket = sock
         try {
             sock.connect(
                 LocalSocketAddress(BIONIC_INFER_SOCKET, LocalSocketAddress.Namespace.ABSTRACT)
             )
         } catch (e: Exception) {
+            releaseBionicTtsSocket(sock)
+            // A stop that closed the socket mid-connect is not an unreachable
+            // host: report it handled so no fallback voice starts.
+            if (pcmStopRequested.get()) return@withContext true
+            ensureActive()
             Log.d(TAG, "bionic Kokoro TTS host unreachable: ${e.message}")
-            try { sock.close() } catch (_: Exception) {}
             return@withContext false
         }
         try {
@@ -1325,6 +1389,8 @@ class TalkModePlugin : Plugin() {
                         throw IllegalStateException("Local agent returned invalid Kokoro phonemization")
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 throw KokoroPhonemizationException(e)
             }
@@ -1388,8 +1454,15 @@ class TalkModePlugin : Plugin() {
             true
         } finally {
             cleanupPcmTrack()
-            try { sock.close() } catch (_: Exception) {}
+            releaseBionicTtsSocket(sock)
         }
+    }
+
+    private fun releaseBionicTtsSocket(sock: LocalSocket) {
+        if (activeBionicTtsSocket === sock) {
+            activeBionicTtsSocket = null
+        }
+        try { sock.close() } catch (_: Exception) {}
     }
 
     private class KokoroPhonemizationException(cause: Exception) :
@@ -1814,6 +1887,16 @@ class TalkModePlugin : Plugin() {
                 put("interrupted", false)
                 put("usedSystemTts", true)
             })
+        } catch (e: TimeoutCancellationException) {
+            call.resolve(JSObject().apply {
+                put("completed", false)
+                put("interrupted", false)
+                put("usedSystemTts", true)
+                put("error", e.message ?: "System TTS timed out")
+            })
+        } catch (e: CancellationException) {
+            // Settled by speakInternal as interrupted.
+            throw e
         } catch (e: Exception) {
             call.resolve(JSObject().apply {
                 put("completed", false)
@@ -1943,6 +2026,9 @@ class TalkModePlugin : Plugin() {
         val localAgentSocket = activeLocalAgentSocket
         activeLocalAgentSocket = null
         try { localAgentSocket?.close() } catch (_: Exception) {}
+        val bionicTtsSocket = activeBionicTtsSocket
+        activeBionicTtsSocket = null
+        try { bionicTtsSocket?.close() } catch (_: Exception) {}
         val conn = activePcmConnection
         activePcmConnection = null
         conn?.disconnect()
@@ -2116,12 +2202,13 @@ class TalkModePlugin : Plugin() {
         systemTts?.shutdown()
         systemTts = null
         cleanupPcmTrack()
-        audioFrameRunning.set(false)
-        audioFrameJob?.cancel()
-        releaseAudioRecord()
+        synchronized(this) {
+            audioFramesDestroyed = true
+            stopAudioFramesInternal()
+        }
         silenceJob?.cancel()
         restartJob?.cancel()
-        speakingJob?.cancel()
+        stopSpeakingInternal()
         releaseVoiceAudioSession()
         scope.cancel()
     }

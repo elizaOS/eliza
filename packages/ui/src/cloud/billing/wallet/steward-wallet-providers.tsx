@@ -24,7 +24,6 @@
  * deep-link WalletConnect stays unavailable rather than false-green.
  */
 
-import { BRAND_COLORS } from "@elizaos/shared/brand";
 import {
   connectorsForWallets,
   darkTheme,
@@ -46,6 +45,7 @@ import { useMemo } from "react";
 import { type Config, createConfig, http, WagmiProvider } from "wagmi";
 import { base, bsc } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
+import { BRAND_COLORS } from "../../../brand/index.js";
 import { readWalletConnectProjectIdFromEnv } from "./wallet-connect-project-id";
 
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";

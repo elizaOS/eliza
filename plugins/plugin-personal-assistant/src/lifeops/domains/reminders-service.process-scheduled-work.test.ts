@@ -73,7 +73,7 @@ function makeDomain() {
     readEffectiveScheduleState: vi.fn(async () => null),
     refreshEffectiveScheduleState: vi.fn(async () => null),
     processReminders: vi.fn(async () => ({ now: NOW, attempts: [] })),
-    processSleepCycleCheckins: vi.fn(async () => undefined),
+    processSleepCycleCheckins: vi.fn(async () => []),
     runTelemetryMaintenanceIfDue: vi.fn(async () => undefined),
   };
   Object.assign(domain as unknown as Record<string, unknown>, overrides);
@@ -86,6 +86,28 @@ describe("RemindersDomain.processScheduledWork subsystem isolation", () => {
     vi.mocked(processDueScheduledTasks).mockResolvedValue(
       emptyScheduledTaskResult,
     );
+  });
+
+  it("surfaces rejected check-in delivery in the scheduler summary", async () => {
+    const { domain, overrides } = makeDomain();
+    const rejected = {
+      kind: "night",
+      status: "disconnected",
+      reportId: "night-report",
+      messageId: null,
+      reason: "disconnected",
+      message: "No stream",
+      persisted: false,
+    };
+    overrides.processSleepCycleCheckins.mockResolvedValue([rejected]);
+    const result = await domain.processScheduledWork({ now: NOW });
+    expect(result.sleepCycleCheckins).toEqual([rejected]);
+    expect(result.subsystemFailures).toEqual([
+      expect.objectContaining({
+        subsystem: "sleep_cycle_checkins",
+        error: expect.stringContaining("disconnected"),
+      }),
+    ]);
   });
 
   it("returns an empty subsystemFailures list when every subsystem succeeds", async () => {

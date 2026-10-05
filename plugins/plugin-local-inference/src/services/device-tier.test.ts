@@ -48,9 +48,22 @@ describe("selectBestEliza1FitForDevice — mobile guard never hands a phone 9B",
 		platform: "linux",
 	});
 
-	it("this 8GB phone lands on 2B with a phone-sized window", () => {
+	it("this 8GB phone gets no local tier: the published 2B text GGUF (4.6 GiB) exceeds its model budget", () => {
 		withPlatform("android", () => {
-			const fit = selectBestEliza1FitForDevice(devicePhoneProbe);
+			expect(selectBestEliza1FitForDevice(devicePhoneProbe)).toBeNull();
+		});
+	});
+
+	it("a 12GB phone lands on 2B with a phone-sized window", () => {
+		const twelveGbPhone = probe({
+			totalRamGb: 12,
+			freeRamGb: 6,
+			gpu: null,
+			arch: "arm64",
+			platform: "linux",
+		});
+		withPlatform("android", () => {
+			const fit = selectBestEliza1FitForDevice(twelveGbPhone);
 			expect(fit?.tierId).toBe("eliza-1-2b");
 			expect(fit?.contextLength).toBeLessThanOrEqual(65536);
 		});

@@ -13,6 +13,11 @@ import {
   MemoryType,
 } from "@elizaos/core";
 
+import type {
+  CharacterPersistenceSource as CharacterHistorySource,
+  PersistableCharacter as RuntimeCharacterLike,
+} from "@elizaos/plugin-assistant/character-persistence";
+
 export const CHARACTER_HISTORY_TABLE = "character_modifications";
 /**
  * Honest character snapshots are a handful of objects deep. Zod
@@ -193,25 +198,10 @@ export function createHistoryWalkContext(): HistoryWalkContext {
   return { visits: 0, visiting: new WeakSet<object>() };
 }
 
-export type RuntimeCharacterLike = {
-  name?: string;
-  username?: string;
-  bio?: string | string[];
-  system?: string;
-  adjectives?: string[];
-  topics?: string[];
-  style?: {
-    all?: string[];
-    chat?: string[];
-    post?: string[];
-  };
-  postExamples?: string[];
-  messageExamples?: unknown;
-  settings?: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-};
-
-export type CharacterHistorySource = "manual" | "agent" | "restore";
+export type {
+  CharacterPersistenceSource as CharacterHistorySource,
+  PersistableCharacter as RuntimeCharacterLike,
+} from "@elizaos/plugin-assistant/character-persistence";
 
 export type CharacterHistoryValue =
   | string

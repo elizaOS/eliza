@@ -4,13 +4,13 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 const deployScript = readFileSync(
-  `${import.meta.dir}/../scripts/deploy-railway.sh`,
+  `${import.meta.dir}/../../../scripts/gateway-discord/deploy-railway.sh`,
   "utf8",
 );
 
 test("the Railway deploy script builds the source-form workspace bundle", async () => {
   const process = Bun.spawn(
-    ["bash", "scripts/deploy-railway.sh", "--build-only"],
+    ["bash", "../../scripts/gateway-discord/deploy-railway.sh", "--build-only"],
     {
       cwd: `${import.meta.dir}/..`,
       stdout: "pipe",
@@ -31,7 +31,7 @@ test("the Railway deploy script builds the source-form workspace bundle", async 
 
 test("the Railway deploy script rejects unknown modes before building", async () => {
   const process = Bun.spawn(
-    ["bash", "scripts/deploy-railway.sh", "--unexpected"],
+    ["bash", "../../scripts/gateway-discord/deploy-railway.sh", "--unexpected"],
     {
       cwd: `${import.meta.dir}/..`,
       stdout: "pipe",
@@ -50,7 +50,7 @@ test("the Railway deploy script rejects unknown modes before building", async ()
 test("the staged Railway image uses the verified shared Opus selector", () => {
   expect(deployScript).toContain('"@discordjs/opus": "0.10.0"');
   expect(deployScript).toContain(
-    'cp "$HERE/scripts/select-opus-prebuild.ts" "$STAGE/select-opus-prebuild.ts"',
+    'cp "$SCRIPT_DIR/select-opus-prebuild.ts" "$STAGE/select-opus-prebuild.ts"',
   );
   expect(deployScript).toContain(
     'npm_config_target="$' +

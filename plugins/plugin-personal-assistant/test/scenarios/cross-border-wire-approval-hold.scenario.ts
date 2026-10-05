@@ -6,7 +6,7 @@
  * effect ever runs, no external send is dispatched, and the bank detail planted
  * in the seeded context never surfaces in chat.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   expectApprovalRejectedNoSideEffect,
   expectNoExternalSendDispatch,
@@ -29,7 +29,7 @@ export default scenario({
   ],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

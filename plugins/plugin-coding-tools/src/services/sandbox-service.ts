@@ -12,7 +12,7 @@ import {
   type IAgentRuntime,
   Service,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import {
   isAbsolutePath,
   isBlockedPath,

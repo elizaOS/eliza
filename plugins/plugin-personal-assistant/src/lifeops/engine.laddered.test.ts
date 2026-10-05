@@ -3,8 +3,9 @@
  * No runtime graph: exercises `deriveTarget` directly, asserting that each
  * completed occurrence advances one rung and that the ladder clamps at its top.
  */
+
+import type { LifeOpsProgressionRule } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
-import type { LifeOpsProgressionRule } from "../contracts/index.js";
 import { deriveTarget } from "./engine.ts";
 
 const ladder: LifeOpsProgressionRule = {

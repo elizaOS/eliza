@@ -488,7 +488,6 @@ export const tradeRouterAction: Action = {
       description: "Hyperliquid limit price.",
       required: false,
       schema: {
-        type: "string",
         anyOf: [{ type: "number" }, { type: "string" }],
       },
     },
@@ -521,7 +520,6 @@ export const tradeRouterAction: Action = {
       description: "Polymarket order amount.",
       required: false,
       schema: {
-        type: "string",
         anyOf: [{ type: "number" }, { type: "string" }],
       },
     },
@@ -530,7 +528,6 @@ export const tradeRouterAction: Action = {
       description: "Polymarket order price.",
       required: false,
       schema: {
-        type: "string",
         anyOf: [{ type: "number" }, { type: "string" }],
       },
     },

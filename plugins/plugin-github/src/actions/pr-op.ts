@@ -12,6 +12,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  ElizaError,
   logger,
   requireConfirmation,
   toWellFormedUnicode,
@@ -113,55 +114,97 @@ async function runList(
   const repo = requireString(options, "repo");
   const prs: PRSummary[] = [];
 
-  if (repo) {
-    const parts = splitRepo(repo);
-    if (!parts) {
-      const err = `Invalid repo "${repo}" — expected "owner/name"`;
-      await callback?.({ text: err });
-      return { success: false, error: err };
-    }
-    const resp = await resolved.client.pulls.list({
-      owner: parts.owner,
-      repo: parts.name,
-      state,
-      per_page: 100,
-    });
-    for (const pr of resp.data) {
-      if (author && pr.user?.login !== author) {
-        continue;
-      }
-      prs.push({
-        repo,
-        number: pr.number,
-        title: pr.title,
-        author: pr.user?.login ?? null,
-        state: pr.state,
-        url: pr.html_url,
+  const parts = repo ? splitRepo(repo) : null;
+  if (repo && !parts) {
+    const err = `Invalid repo "${repo}" — expected "owner/name"`;
+    await callback?.({ text: err });
+    return { success: false, error: err };
+  }
+
+  if (repo && parts && !author) {
+    for (let page = 1; ; page++) {
+      const resp = await resolved.client.pulls.list({
+        owner: parts.owner,
+        repo: parts.name,
+        state,
+        per_page: 100,
+        page,
+        sort: "created",
+        direction: "asc",
       });
+      for (const pr of resp.data) {
+        prs.push({
+          repo,
+          number: pr.number,
+          title: pr.title,
+          author: pr.user?.login ?? null,
+          state: pr.state,
+          url: pr.html_url,
+        });
+      }
+      if (resp.data.length < 100) break;
     }
   } else {
+    // An author filter runs server-side through search (with a `repo:`
+    // qualifier when scoped): filtering one REST page client-side missed every
+    // matching PR beyond the newest 100.
     const q = [
       "is:pr",
       state === "all" ? "" : `is:${state}`,
+      parts ? `repo:${parts.owner}/${parts.name}` : "",
       author ? `author:${author}` : "",
     ]
       .filter(Boolean)
       .join(" ");
-    const resp = await resolved.client.search.issuesAndPullRequests({
-      q,
-      per_page: 50,
-    });
-    for (const item of resp.data.items) {
-      const match = /\/repos\/([^/]+\/[^/]+)(?:\/|$)/.exec(item.repository_url);
-      const repoName = match?.[1] ?? item.repository_url;
-      prs.push({
-        repo: repoName,
-        number: item.number,
-        title: item.title,
-        author: item.user?.login ?? null,
-        state: item.state,
-        url: item.html_url,
+    for (let page = 1; ; page++) {
+      const resp = await resolved.client.search.issuesAndPullRequests({
+        q,
+        per_page: 100,
+        page,
+        sort: "created",
+        order: "asc",
       });
+      if (resp.data.incomplete_results || (resp.data.total_count ?? 0) > 1000) {
+        throw new ElizaError(
+          "GitHub search cannot return a complete PR list; narrow the search and retry",
+          { code: "GITHUB_PR_LIST_INCOMPLETE" },
+        );
+      }
+      for (const item of resp.data.items) {
+        const match = /\/repos\/([^/]+\/[^/]+)(?:\/|$)/.exec(
+          item.repository_url,
+        );
+        const repoName = match?.[1] ?? item.repository_url;
+        prs.push({
+          repo: repoName,
+          number: item.number,
+          title: item.title,
+          author: item.user?.login ?? null,
+          state: item.state,
+          url: item.html_url,
+        });
+      }
+      if (
+        resp.data.items.length < 100 ||
+        prs.length === resp.data.total_count
+      ) {
+        if (
+          resp.data.total_count !== undefined &&
+          prs.length !== resp.data.total_count
+        ) {
+          throw new ElizaError(
+            "GitHub search changed while reading pages; retry for a complete PR list",
+            { code: "GITHUB_PR_LIST_INCOMPLETE" },
+          );
+        }
+        break;
+      }
+      if (page === 10) {
+        throw new ElizaError(
+          "GitHub search reached its result limit; narrow the search and retry",
+          { code: "GITHUB_PR_LIST_INCOMPLETE" },
+        );
+      }
     }
   }
 
@@ -211,7 +254,7 @@ async function runReview(
   });
   if (decision.status === "pending") {
     const text = `${preview} Reply yes to confirm or no to cancel.`;
-    await callback?.({ text });
+    // requireConfirmation already delivered the pending prompt exactly once.
     return {
       success: true,
       text,

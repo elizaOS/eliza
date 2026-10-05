@@ -4,7 +4,6 @@ import { logger } from "@elizaos/core";
 import type { OpenAITextToSpeechParams } from "../types";
 import {
   getSetting,
-  isBrowser,
   isCloudTtsAvailable,
   resolveCloudTimeoutMs,
 } from "../utils/config";
@@ -176,11 +175,7 @@ async function fetchTextToSpeech(
       throw new Error("ElizaOS Cloud TTS response body is null");
     }
 
-    if (!isBrowser()) {
-      return await webStreamToNodeStream(res.body);
-    }
-
-    return res.body;
+    return await webStreamToNodeStream(res.body);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to fetch speech from ElizaOS Cloud TTS: ${message}`);

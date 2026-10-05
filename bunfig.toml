@@ -1,23 +1,8 @@
 [test]
-# Global test timeout in milliseconds
-# Use shorter timeout in CI to prevent hanging
 timeout = 60000
-
-# Coverage configuration
-coverage = true
-
-[install]
-# Optimize installation for CI
-cache = true
-auto = "fallback"
-
-[run]
-# Use bun's cross-platform shell so package.json scripts that use
-# POSIX env-var prefixes (e.g. `FOO=bar bun ...`) and POSIX-style
-# `&&` chains work the same on Windows as on Unix.
-shell = "bun"
-
-coverage-exclude = [
+# Coverage is opt-in: bun test --coverage <paths>.
+# Live receipts: bun test --timeout=120000 <paths> (without coverage).
+coveragePathIgnorePatterns = [
   "**/dist/**",
   "**/build/**",
   "**/chunk-*.js",
@@ -28,3 +13,11 @@ coverage-exclude = [
   "**/coverage/**",
   "**/.turbo/**",
 ]
+
+[install]
+cache = true
+auto = "fallback"
+
+[run]
+# Keep POSIX-style package scripts portable to Windows.
+shell = "bun"

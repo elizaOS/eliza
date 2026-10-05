@@ -12,11 +12,6 @@ interface CloudImageProps
   fill?: boolean;
   priority?: boolean;
   sizes?: string;
-  placeholder?: string;
-  blurDataURL?: string;
-  quality?: number;
-  loader?: never;
-  unoptimized?: boolean;
 }
 
 export default function CloudImage({
@@ -25,12 +20,8 @@ export default function CloudImage({
   height,
   alt,
   fill,
-  priority: _priority,
-  sizes: _sizes,
-  placeholder: _placeholder,
-  blurDataURL: _blurDataURL,
-  quality: _quality,
-  unoptimized: _unoptimized,
+  priority,
+  sizes,
   style,
   ...rest
 }: CloudImageProps) {
@@ -49,7 +40,9 @@ export default function CloudImage({
       width={width}
       height={height}
       alt={alt}
-      loading="lazy"
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : undefined}
+      sizes={sizes}
       style={finalStyle}
       {...rest}
     />

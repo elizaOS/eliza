@@ -191,11 +191,6 @@ export function measureStartup(
   }
 }
 
-/** Snapshot of the current trace (clones the marks array). */
-export function getStartupTrace(): StartupTrace {
-  return { traceId, timeOrigin: originMs(), marks: marks.slice() };
-}
-
 /** True once a given checkpoint has been recorded. */
 export function hasStartupMark(name: string): boolean {
   return recorded.has(name);

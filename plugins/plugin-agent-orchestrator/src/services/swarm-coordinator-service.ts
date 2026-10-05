@@ -18,11 +18,11 @@ import type {
 } from "@elizaos/core";
 import {
   ElizaError,
-  FAILED_TOOL_FALLBACK_MESSAGE,
   logger,
   Service,
   SWARM_COORDINATOR_SERVICE_TYPE,
 } from "@elizaos/core";
+import { FAILED_TOOL_FALLBACK_MESSAGE } from "@elizaos/plugin-assistant";
 import { AcpService } from "./acp-service.js";
 import { isPendingHandoffCurrent } from "./handoff-pending.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";

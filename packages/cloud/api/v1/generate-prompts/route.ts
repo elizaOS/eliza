@@ -7,6 +7,13 @@
  */
 
 import { openai } from "@ai-sdk/openai";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { estimateTokens } from "@elizaos/cloud-shared/lib/pricing";
+import { billUsage } from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { Hono } from "hono";
@@ -15,13 +22,6 @@ import {
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { estimateTokens } from "@/lib/pricing";
-import { billUsage } from "@/lib/services/ai-billing";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

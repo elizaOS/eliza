@@ -1,19 +1,27 @@
 // Handles v1 cloud API v1 eliza agents agentid wake route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse, ValidationError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import {
+  errorToResponse,
+  ValidationError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
+import { requireDedicatedComputePriceAcceptance } from "@elizaos/cloud-shared/lib/services/dedicated-compute-price-acceptance";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const CORS_METHODS = "POST, OPTIONS";
 
@@ -189,6 +197,8 @@ async function __hono_POST(
     }
 
     // Credit gate: waking provisions paid compute.
+    const priceError = requireDedicatedComputePriceAcceptance(request);
+    if (priceError) return applyCorsHeaders(priceError, CORS_METHODS);
     const creditCheck = await checkAgentCreditGate(user.organization_id);
     if (!creditCheck.allowed) {
       const body = insufficientCredits402(

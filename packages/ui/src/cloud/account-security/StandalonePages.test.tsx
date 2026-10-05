@@ -4,7 +4,7 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { PageHeaderProvider } from "../../cloud-ui";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
 
 vi.mock("../shell/CloudI18nProvider", () => ({
   useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
@@ -12,8 +12,9 @@ vi.mock("../shell/CloudI18nProvider", () => ({
 }));
 
 vi.mock("./AccountSurface", async () => {
-  const { useSetPageHeader } =
-    await vi.importActual<typeof import("../../cloud-ui")>("../../cloud-ui");
+  const { useSetPageHeader } = await vi.importActual<
+    typeof import("../../cloud-ui/components/layout/page-header-context.hooks")
+  >("../../cloud-ui/components/layout/page-header-context.hooks");
   return {
     AccountSurface: () => {
       useSetPageHeader({ title: "Account" });
@@ -23,8 +24,9 @@ vi.mock("./AccountSurface", async () => {
 });
 
 vi.mock("./PermissionsSurface", async () => {
-  const { useSetPageHeader } =
-    await vi.importActual<typeof import("../../cloud-ui")>("../../cloud-ui");
+  const { useSetPageHeader } = await vi.importActual<
+    typeof import("../../cloud-ui/components/layout/page-header-context.hooks")
+  >("../../cloud-ui/components/layout/page-header-context.hooks");
   return {
     PermissionsSurface: () => {
       useSetPageHeader({ title: "Permissions" });

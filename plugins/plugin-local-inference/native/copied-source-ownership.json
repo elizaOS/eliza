@@ -1,91 +1,219 @@
 {
   "version": 1,
-  "policy": "Standalone packages are canonical. Exact integrated copies must remain byte-identical; adapted files require an explicit integration reason.",
+  "policy": "Standalone native source directories are canonical. Exact integrated copies must remain byte-identical; adapted files require an explicit integration reason.",
   "families": [
     {
       "name": "wakeword",
-      "ownerRoot": "packages/native/plugins/wakeword-cpp/src",
+      "ownerRoot": "plugins/plugin-local-inference/native/wakeword-cpp/src",
       "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/wakeword",
-      "exact": ["wakeword_window.c", "wakeword_runtime.c", "wakeword_internal.h", "wakeword_melspec.c"],
-      "adapted": []
+      "exact": [
+        "wakeword_window.c",
+        "wakeword_internal.h",
+        "wakeword_melspec.c"
+      ],
+      "adapted": [
+        {
+          "file": "wakeword_runtime.c",
+          "reason": "Standalone documentation names the relocated repository converter; the pinned fork retains its original script path. All other bytes must match.",
+          "documentationPathRewrites": [
+            {
+              "from": "packages/scripts/plugins/plugin-local-inference/native/wakeword-cpp/wakeword_to_gguf.py",
+              "to": "scripts/wakeword_to_gguf.py"
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "wakeword-public-abi",
-      "ownerRoot": "packages/native/plugins/wakeword-cpp/include/wakeword",
+      "ownerRoot": "plugins/plugin-local-inference/native/wakeword-cpp/include/wakeword",
       "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/wakeword/include/wakeword",
-      "exact": ["wakeword.h"],
+      "exact": [
+        "wakeword.h"
+      ],
       "adapted": []
     },
     {
       "name": "silero-vad",
-      "ownerRoot": "packages/native/plugins/silero-vad-cpp/src",
+      "ownerRoot": "plugins/plugin-local-inference/native/silero-vad-cpp/src",
       "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/vad",
-      "exact": ["silero_vad_runtime.c", "silero_vad_state.c", "silero_vad_resample.c", "silero_vad_state.h"],
-      "adapted": []
+      "exact": [
+        "silero_vad_state.c",
+        "silero_vad_resample.c",
+        "silero_vad_state.h"
+      ],
+      "adapted": [
+        {
+          "file": "silero_vad_runtime.c",
+          "reason": "Standalone documentation names the relocated repository converter; the pinned fork retains its original script path. All other bytes must match.",
+          "documentationPathRewrites": [
+            {
+              "from": "packages/scripts/plugins/plugin-local-inference/native/silero-vad-cpp/silero_vad_to_gguf.py",
+              "to": "scripts/silero_vad_to_gguf.py"
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "silero-vad-public-abi",
-      "ownerRoot": "packages/native/plugins/silero-vad-cpp/include/silero_vad",
+      "ownerRoot": "plugins/plugin-local-inference/native/silero-vad-cpp/include/silero_vad",
       "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/vad/include/silero_vad",
-      "exact": ["silero_vad.h"],
-      "adapted": []
+      "exact": [],
+      "adapted": [
+        {
+          "file": "silero_vad.h",
+          "reason": "Standalone documentation names the relocated repository converter; the pinned fork retains its original script path. All other bytes must match.",
+          "documentationPathRewrites": [
+            {
+              "from": "packages/scripts/plugins/plugin-local-inference/native/silero-vad-cpp/silero_vad_to_gguf.py",
+              "to": "scripts/silero_vad_to_gguf.py"
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "voice-classifier",
-      "ownerRoot": "packages/native/plugins/voice-classifier-cpp/src",
+      "ownerRoot": "plugins/plugin-local-inference/native/voice-classifier-cpp/src",
       "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/voice_classifier",
-      "exact": ["voice_mel_features.c", "voice_speaker_distance.c", "voice_gguf_tensors.c", "voice_gguf_loader.c", "voice_speaker.c", "voice_diarizer.c", "voice_gguf_tensors.h"],
+      "exact": [
+        "voice_mel_features.c",
+        "voice_speaker_distance.c",
+        "voice_gguf_tensors.c",
+        "voice_gguf_loader.c",
+        "voice_speaker.c",
+        "voice_diarizer.c"
+      ],
       "adapted": [
-        { "file": "voice_gguf_loader.h", "reason": "Integrated omnivoice loader exposes llama.cpp-owned include wiring." }
+        {
+          "file": "voice_gguf_loader.h",
+          "reason": "Integrated omnivoice loader exposes llama.cpp-owned include wiring."
+        },
+        {
+          "file": "voice_gguf_tensors.h",
+          "reason": "Standalone documentation names the relocated repository converter; the pinned fork retains its original script path. All other bytes must match.",
+          "documentationPathRewrites": [
+            {
+              "from": "packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_diarizer_to_gguf.py",
+              "to": "scripts/voice_diarizer_to_gguf.py"
+            }
+          ]
+        }
       ]
     },
     {
       "name": "voice-classifier-public-abi",
-      "ownerRoot": "packages/native/plugins/voice-classifier-cpp/include/voice_classifier",
+      "ownerRoot": "plugins/plugin-local-inference/native/voice-classifier-cpp/include/voice_classifier",
       "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/src/voice-classifiers/voice_classifier/include/voice_classifier",
-      "exact": ["voice_classifier.h"],
-      "adapted": []
+      "exact": [],
+      "adapted": [
+        {
+          "file": "voice_classifier.h",
+          "reason": "Standalone documentation names the relocated repository converter; the pinned fork retains its original script path. All other bytes must match.",
+          "documentationPathRewrites": [
+            {
+              "from": "packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_diarizer_to_gguf.py",
+              "to": "scripts/voice_diarizer_to_gguf.py"
+            },
+            {
+              "from": "packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_emotion_to_gguf.py",
+              "to": "scripts/voice_emotion_to_gguf.py"
+            },
+            {
+              "from": "packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_eot_to_gguf.py",
+              "to": "scripts/voice_eot_to_gguf.py"
+            },
+            {
+              "from": "packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_speaker_to_gguf.py",
+              "to": "scripts/voice_speaker_to_gguf.py"
+            }
+          ]
+        }
+      ]
     },
     {
       "name": "qjl-cpu",
-      "ownerRoot": "packages/native/plugins/qjl-cpu/src",
+      "ownerRoot": "plugins/plugin-local-inference/native/qjl-cpu/src",
       "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-cpu/qjl",
-      "exact": ["qjl_quantize_ref.c", "qjl_projection.c", "qjl_score_i8_ref.c", "qjl_score_ref.c", "qjl_block.h"],
+      "exact": [
+        "qjl_quantize_ref.c",
+        "qjl_score_i8_ref.c",
+        "qjl_score_ref.c",
+        "qjl_block.h"
+      ],
       "adapted": [
-        { "file": "qjl_quantize_neon.c", "reason": "ggml integration uses fork dispatch macros." },
-        { "file": "qjl_quantize_avx2.c", "reason": "ggml integration uses fork dispatch macros." },
-        { "file": "qjl_cpu_features.h", "reason": "ggml integration binds the fork feature probe." },
-        { "file": "qjl_score_avxvnni.c", "reason": "ggml integration uses fork SIMD dispatch." },
-        { "file": "qjl_dispatch.c", "reason": "ggml integration registers ggml kernels." },
-        { "file": "qjl_score_avx2.c", "reason": "ggml integration uses fork SIMD dispatch." },
-        { "file": "qjl_score_neon.c", "reason": "ggml integration uses fork SIMD dispatch." },
-        { "file": "qjl_score_dotprod.c", "reason": "ggml integration uses fork SIMD dispatch." }
+        {
+          "file": "qjl_quantize_neon.c",
+          "reason": "ggml integration uses fork dispatch macros."
+        },
+        {
+          "file": "qjl_quantize_avx2.c",
+          "reason": "ggml integration uses fork dispatch macros."
+        },
+        {
+          "file": "qjl_cpu_features.h",
+          "reason": "ggml integration binds the fork feature probe."
+        },
+        {
+          "file": "qjl_score_avxvnni.c",
+          "reason": "ggml integration uses fork SIMD dispatch."
+        },
+        {
+          "file": "qjl_dispatch.c",
+          "reason": "ggml integration registers ggml kernels."
+        },
+        {
+          "file": "qjl_score_avx2.c",
+          "reason": "ggml integration uses fork SIMD dispatch."
+        },
+        {
+          "file": "qjl_score_neon.c",
+          "reason": "ggml integration uses fork SIMD dispatch."
+        },
+        {
+          "file": "qjl_score_dotprod.c",
+          "reason": "ggml integration uses fork SIMD dispatch."
+        },
+        {
+          "file": "qjl_projection.c",
+          "reason": "Standalone documentation names the relocated repository converter; the pinned fork retains its original script path. All other bytes must match.",
+          "documentationPathRewrites": [
+            {
+              "from": "packages/scripts/plugins/plugin-local-inference/native/qjl-cpu/gen_fixtures.py",
+              "to": "scripts/gen_fixtures.py"
+            }
+          ]
+        }
       ],
       "standalone": [
         {
           "file": "qjl_quantize_rvv.c",
-          "owner": "packages/native/plugins/qjl-cpu",
+          "owner": "plugins/plugin-local-inference/native/qjl-cpu",
           "reason": "The canonical RVV encoder remains standalone because the pinned llama.cpp fork has no RVV QJL dispatch path."
         },
         {
           "file": "qjl_score_rvv.c",
-          "owner": "packages/native/plugins/qjl-cpu",
+          "owner": "plugins/plugin-local-inference/native/qjl-cpu",
           "reason": "The canonical RVV floating-point scorer remains standalone because the pinned llama.cpp fork has no RVV QJL dispatch path."
         },
         {
           "file": "qjl_score_i8_rvv.c",
-          "owner": "packages/native/plugins/qjl-cpu",
+          "owner": "plugins/plugin-local-inference/native/qjl-cpu",
           "reason": "The canonical RVV int8 scorer remains standalone because the pinned llama.cpp fork has no RVV QJL dispatch path."
         }
       ]
     },
     {
       "name": "polarquant-cpu",
-      "ownerRoot": "packages/native/plugins/polarquant-cpu/fork-integration",
+      "ownerRoot": "plugins/plugin-local-inference/native/polarquant-cpu/fork-integration",
       "mirrorRoot": "plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-cpu",
       "exact": [],
       "adapted": [
-        { "file": "quants-polar.c", "reason": "Production fork materializes the standalone patch-set against its pinned ggml revision." }
+        {
+          "file": "quants-polar.c",
+          "reason": "Production fork materializes the standalone patch-set against its pinned ggml revision."
+        }
       ]
     }
   ]

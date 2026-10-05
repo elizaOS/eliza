@@ -15,7 +15,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AccountWithCredentialFlag } from "../../api/client-agent";
+import type { AccountWithCredentialFlag } from "../../api/client-agent-accounts";
 import { AccountCommandTable } from "./AccountCommandTable";
 
 vi.mock("../../state/app-store", () => ({

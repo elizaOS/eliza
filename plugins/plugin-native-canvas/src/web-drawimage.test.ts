@@ -120,7 +120,7 @@ describe("CanvasWeb.drawImage save/restore balance", () => {
     document.body.innerHTML = "";
   });
 
-  it("balances save/restore when the image fails to load", async () => {
+  it("balances state after a failed image and keeps the next draw opaque", async () => {
     installFakeImage("error");
     const canvas = new CanvasWeb();
     const { canvasId } = await canvas.create({
@@ -141,32 +141,12 @@ describe("CanvasWeb.drawImage save/restore balance", () => {
     // The save() frame must be fully unwound even though drawImage rejected.
     expect(ctx.saveCount).toBe(ctx.restoreCount);
     expect(ctx.globalAlpha).toBe(1);
-  });
 
-  it("does not leak the failed draw opacity onto a later drawRect", async () => {
-    installFakeImage("error");
-    const canvas = new CanvasWeb();
-    const { canvasId } = await canvas.create({
-      size: { width: 10, height: 10 },
-    });
-
-    await expect(
-      canvas.drawImage({
-        canvasId,
-        image: "https://example.invalid/missing.png",
-        destRect: { x: 0, y: 0, width: 10, height: 10 },
-        drawOptions: { opacity: 0.5 },
-      }),
-    ).rejects.toThrow("Failed to load image");
-
-    // A subsequent fully-opaque rectangle must fill at alpha 1, not the 0.5
-    // requested by the failed image draw.
     await canvas.drawRect({
       canvasId,
       rect: { x: 0, y: 0, width: 5, height: 5 },
       fill: { color: { r: 255, g: 0, b: 0 } },
     });
-
     expect(ctx.fillAlphas).toEqual([1]);
   });
 

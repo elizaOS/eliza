@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "repository": "oven-sh/bun",
+  "channels": {
+    "stable": {
+      "version": "1.4.2",
+      "revision": "744846f844374847c902b5e7fd59b4342a51ef99",
+      "artifacts": {
+        "x64": {
+          "assetId": 545310078,
+          "archiveSha256": "4835eca59d6da70f4674f5642f6e459dcadab773695b2ed9922d131057989742",
+          "binarySha256": "16b72935ffd7a503b978c186874539c92aade4e3515b70a5abf5db2581fdef7d"
+        },
+        "aarch64": {
+          "assetId": 545308209,
+          "archiveSha256": "71760b6c8ea30623b81a4907cb815d48e2ea266f2e73e751534a44a0607950df",
+          "binarySha256": "1101cd0aa92ea214c2aaf4bb3761ca3c76a90aae0e6f94c07efb4e8c4f18a8fc"
+        }
+      }
+    },
+    "canary": {
+      "version": "1.4.3-canary.1",
+      "revision": "988ce730e56dc96a221d1228d8499128e16634b8",
+      "artifacts": {
+        "x64": {
+          "assetId": 546854924,
+          "archiveSha256": "2b5e923d2092281f3be8935461e0887bff1eaba49912bf8895babfd18fa106db",
+          "binarySha256": "9803d0ed16801288ee712543a4f986046419b9b11e1d8fa9c9940a8f87d574a8"
+        },
+        "aarch64": {
+          "assetId": 546854917,
+          "archiveSha256": "bd1b729e4a593b9401f22dc6fc370cde648c74a54fffd2e0d71a72a0a07a9d6e",
+          "binarySha256": "a10fd9136af9fc3248dce630608fd5e63a6924ce1327fbdeb45ba04dc2d1d371"
+        }
+      }
+    }
+  }
+}

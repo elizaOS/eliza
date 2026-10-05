@@ -16,7 +16,7 @@
  *   `LOCAL → TEXT_SMALL → TEXT_LARGE`
  *
  * Failure semantics:
- *   - If the preferred model handler throws, escalate one step up the chain
+ *   - If the preferred model handler has a retryable provider failure, escalate
  *     and retry. The last step in the chain is terminal — its error is
  *     re-raised.
  *   - If the call returns a `confidence` field below the strategy's threshold,
@@ -25,6 +25,7 @@
  */
 
 import { LOCAL_MODEL_PROVIDERS } from "../constants/secrets";
+import { isModelProviderFallbackError } from "../security/model-failure.ts";
 import type { ActionModelClass } from "../types/components";
 import type { ModelHandler, ModelRegistrationMetadata } from "../types/model";
 import { ModelType } from "../types/model";
@@ -380,8 +381,9 @@ export async function executeChainWithFallback<TResult>(
 			}
 			return result;
 		} catch (err) {
-			// error-policy:J4 Each chain entry is an explicitly configured model
-			// failover; the final failure still propagates after all entries are tried.
+			// error-policy:J4 Only provider availability failures permit another
+			// attempt. Cancellation, admission and invalid results stay terminal.
+			if (!isModelProviderFallbackError(err, resolved.modelType)) throw err;
 			lastError = err;
 			// Continue to the next step in the chain.
 		}

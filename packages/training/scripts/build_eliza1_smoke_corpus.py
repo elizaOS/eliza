@@ -20,9 +20,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_PATH = Path(__file__).resolve()
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from format_for_training import format_record  # noqa: E402
+from eliza_training.format_for_training import format_record  # noqa: E402
 
 SOURCE_PATH = ROOT / "fixtures" / "eliza1-smoke-source.jsonl"
 OUT_DIR = ROOT / "data" / "final-eliza1-smoke"

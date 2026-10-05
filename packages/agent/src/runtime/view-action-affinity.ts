@@ -7,7 +7,14 @@
  * map, validates it for drift against registered actions/views, and renders the
  * active-view awareness block injected into planner prompts.
  */
+import type { IAgentRuntime } from "@elizaos/core";
+import type { ViewRegistryEntry } from "../api/view-registry-types.ts";
 import { getView, listViews } from "../api/views-registry.ts";
+import {
+  createViewClientStore,
+  getViewClientScope,
+  type ViewClientScope,
+} from "./view-client-context.ts";
 
 const VIEW_TYPES = ["gui", "xr", "tui"] as const;
 
@@ -30,6 +37,7 @@ export interface ActiveViewElement {
 export interface ActiveViewContext {
   viewId: string;
   viewLabel: string;
+  installationId?: string;
   viewType: "gui" | "tui" | "xr";
   viewPath: string | null;
   /**
@@ -46,6 +54,8 @@ export interface ActiveViewContext {
    * owner so multiple shells cannot all execute one agent action.
    */
   clientId?: string;
+  /** In-process HTTP host that owns the mounted client. */
+  hostKey?: object;
   /**
    * ISO timestamp of the most recent switch INTO this view, and who drove it.
    * Carried from the navigate route so Stage-1 can acknowledge a just-happened
@@ -69,59 +79,75 @@ function isActiveViewSwitchFresh(view: ActiveViewContext): boolean {
   return Date.now() - at <= ACTIVE_VIEW_SWITCH_FRESH_MS;
 }
 
-let activeView: ActiveViewContext | null = null;
+const activeViews = createViewClientStore<ActiveViewContext>();
 
-/**
- * Publish the shell's current view for planner awareness.
- *
- * When the caller re-publishes the *same* `viewId` without an `elements`
- * (or `clientId`) field — the navigate route does this on every re-navigate —
- * keep the prior element snapshot so multi-turn planner prompts do not lose
- * the addressable-element block after the first interact (#17918). Navigating
- * to a different viewId still replaces the context wholesale (elements drop
- * until the shell reports a new snapshot).
- */
-export function setActiveViewContext(view: ActiveViewContext | null): void {
-  if (view === null) {
-    activeView = null;
+export function setActiveViewContext(
+  runtime: IAgentRuntime,
+  view: ActiveViewContext | null,
+  scope: ViewClientScope | undefined = getViewClientScope(),
+): void {
+  if (!view) {
+    activeViews.delete(runtime, scope);
     return;
   }
-  if (activeView && activeView.viewId === view.viewId) {
-    activeView = {
-      ...view,
-      elements: view.elements ?? activeView.elements,
-      clientId: view.clientId ?? activeView.clientId,
-    };
-    return;
-  }
-  activeView = view;
+  const current = activeViews.get(runtime, scope);
+  activeViews.set(
+    runtime,
+    current?.viewId === view.viewId &&
+      current.viewType === view.viewType &&
+      current.installationId === view.installationId
+      ? {
+          ...view,
+          elements: view.elements ?? current.elements,
+          clientId: view.clientId ?? current.clientId,
+        }
+      : view,
+    scope,
+  );
 }
-
-export function getActiveViewContext(): ActiveViewContext | null {
-  return activeView;
+export function getActiveViewContext(
+  runtime: IAgentRuntime,
+  scope: ViewClientScope | undefined = getViewClientScope(),
+): ActiveViewContext | null {
+  const view = activeViews.get(runtime, scope);
+  if (
+    view?.installationId &&
+    getView(runtime, view.viewId, { viewType: view.viewType })
+      ?.installationId !== view.installationId
+  )
+    return null;
+  return view;
 }
-
-export function clearActiveViewContext(): void {
-  activeView = null;
+export function clearActiveViewContext(
+  runtime: IAgentRuntime,
+  scope: ViewClientScope | undefined = getViewClientScope(),
+): void {
+  activeViews.delete(runtime, scope);
 }
-
-/**
- * Update the element snapshot for the active view. Gated on `viewId` matching
- * the current active view so a stale or background view's report (the shell may
- * have several mounted surfaces) can never overwrite the foreground view's
- * elements. Returns false when no view is active or the id differs.
- */
 export function setActiveViewElements(
-  viewId: string,
+  runtime: IAgentRuntime,
+  entry: ViewRegistryEntry,
   elements: readonly ActiveViewElement[],
-  clientId?: string | null,
+  scope: ViewClientScope | undefined = getViewClientScope(),
 ): boolean {
-  if (!activeView || activeView.viewId !== viewId) return false;
-  activeView = {
-    ...activeView,
-    elements,
-    ...(clientId ? { clientId } : {}),
-  };
+  const current = activeViews.get(runtime, scope);
+  if (
+    !current ||
+    current.viewId !== entry.id ||
+    current.viewType !== entry.viewType ||
+    current.installationId !== entry.installationId ||
+    getView(runtime, entry.id, { viewType: entry.viewType }) !== entry
+  )
+    return false;
+  activeViews.set(
+    runtime,
+    {
+      ...current,
+      elements,
+      ...(scope ? { clientId: scope.clientId, hostKey: scope.hostKey } : {}),
+    },
+    scope,
+  );
   return true;
 }
 
@@ -138,10 +164,12 @@ function normalizeRelatedActions(actions: readonly string[] | undefined) {
  * declares `relatedActions`; a view that wants a GATED action it exposes only
  * while active declares `scopedActions` (see view-scoped-actions.ts).
  */
-export function viewActionAffinityMap(): Record<string, readonly string[]> {
+export function viewActionAffinityMap(
+  runtime: IAgentRuntime,
+): Record<string, readonly string[]> {
   const map = new Map<string, string[]>();
   for (const viewType of VIEW_TYPES) {
-    for (const view of listViews({
+    for (const view of listViews(runtime, {
       developerMode: true,
       includeAllKinds: true,
       viewType,
@@ -154,16 +182,6 @@ export function viewActionAffinityMap(): Record<string, readonly string[]> {
   return Object.fromEntries(map);
 }
 
-function getViewRelatedActions(viewId: string): string[] {
-  for (const viewType of VIEW_TYPES) {
-    const declared = normalizeRelatedActions(
-      getView(viewId, { viewType })?.relatedActions,
-    );
-    if (declared.length > 0) return declared;
-  }
-  return [];
-}
-
 /**
  * Resolve the set of action names to keep at full param detail for the active
  * view — its declared `relatedActions`. Returns an empty set when no view is
@@ -171,10 +189,17 @@ function getViewRelatedActions(viewId: string): string[] {
  * capabilities and, for gated named actions, the view-scoped action registry).
  */
 export function viewScopedActionNames(
+  runtime: IAgentRuntime,
   viewId: string | null | undefined,
+  viewType: ActiveViewContext["viewType"] = "gui",
 ): Set<string> {
   if (!viewId) return new Set();
-  return new Set(getViewRelatedActions(viewId));
+  const entry = getView(runtime, viewId, { viewType });
+  return new Set(
+    entry?.viewType === viewType
+      ? normalizeRelatedActions(entry.relatedActions)
+      : [],
+  );
 }
 
 /**
@@ -186,16 +211,18 @@ export function viewScopedActionNames(
  * action registry to avoid an import cycle with the registration module.
  */
 export function viewScopedNamedActions(
+  runtime: IAgentRuntime,
   viewId: string | null | undefined,
+  viewType: ActiveViewContext["viewType"] = "gui",
 ): { name: string; description: string }[] {
   if (!viewId) return [];
-  for (const viewType of VIEW_TYPES) {
-    const scoped = getView(viewId, { viewType })?.scopedActions;
-    if (scoped && scoped.length > 0) {
-      return scoped.map((a) => ({ name: a.name, description: a.description }));
-    }
-  }
-  return [];
+  const entry = getView(runtime, viewId, { viewType });
+  return entry?.viewType === viewType
+    ? (entry.scopedActions ?? []).map(({ name, description }) => ({
+        name,
+        description,
+      }))
+    : [];
 }
 
 /**
@@ -206,12 +233,15 @@ export function viewScopedNamedActions(
  * mappings are aggregated into one line per boot.
  */
 export function validateViewActionMap(
+  runtime: IAgentRuntime,
   registeredActions: string[],
   logger?: { warn: (msg: string) => void; debug?: (msg: string) => void },
 ): void {
   const registered = new Set(registeredActions.map((a) => a.toUpperCase()));
   const missingByView = new Map<string, string[]>();
-  for (const [viewId, actions] of Object.entries(viewActionAffinityMap())) {
+  for (const [viewId, actions] of Object.entries(
+    viewActionAffinityMap(runtime),
+  )) {
     const missing = actions.filter(
       (action) => !registered.has(action.toUpperCase()),
     );
@@ -248,11 +278,12 @@ export function validateViewActionMap(
  * @param viewsWithCapabilities view ids that declare a `ViewCapability[]`.
  */
 export function validateViewCoverage(
+  runtime: IAgentRuntime,
   registeredViewIds: Iterable<string>,
   viewsWithCapabilities: Iterable<string>,
   logger?: { warn: (msg: string) => void; debug?: (msg: string) => void },
 ): string[] {
-  const mapped = new Set(Object.keys(viewActionAffinityMap()));
+  const mapped = new Set(Object.keys(viewActionAffinityMap(runtime)));
   const withCaps = new Set(viewsWithCapabilities);
   const uncovered: string[] = [];
   for (const viewId of registeredViewIds) {
@@ -276,17 +307,22 @@ export function validateViewCoverage(
  * element through the view-interact capabilities. Exposed for the planner /
  * context-renderer to inject; pure so it is trivially testable.
  */
-export function renderActiveViewContextBlock(view: ActiveViewContext): string {
-  const scoped = [...viewScopedActionNames(view.viewId)];
+export function renderActiveViewContextBlock(
+  runtime: IAgentRuntime,
+  view: ActiveViewContext,
+): string {
+  const scoped = [
+    ...viewScopedActionNames(runtime, view.viewId, view.viewType),
+  ];
   const lines = [
     "# Active View",
     `The user is looking at the "${view.viewLabel}" view (id: ${view.viewId}, ${view.viewType}${view.viewPath ? `, path ${view.viewPath}` : ""}).`,
   ];
-  // Turn-scoped acknowledgement of a just-happened switch (#8788): only on the
-  // immediately-following turn (freshness decays after 15s), so it never lingers.
+  // A recent switch is display context, not a request for a separate reply.
+  // Freshness decays after 15s so it cannot become persistent navigation intent.
   if (isActiveViewSwitchFresh(view)) {
     lines.push(
-      `The user just switched into this view${view.source === "agent" ? " (you navigated here)" : ""} — briefly acknowledge the switch in your reply before doing anything else.`,
+      `The user just switched into this view${view.source === "agent" ? " (you navigated here)" : ""}.`,
     );
   }
   lines.push(
@@ -301,7 +337,7 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
       `Actions most relevant while on this view (prefer these when the request fits): ${scoped.join(", ")}.`,
     );
   }
-  const named = viewScopedNamedActions(view.viewId);
+  const named = viewScopedNamedActions(runtime, view.viewId, view.viewType);
   if (named.length > 0) {
     lines.push(
       "Named actions this view exposes only while it is active (invoke by name — they drive its controls for you):",
@@ -381,12 +417,13 @@ export function stripActiveViewAwarenessBlock(prompt: string): string {
  * header when present; otherwise prepended.
  */
 export function applyActiveViewAwareness(
+  runtime: IAgentRuntime,
   prompt: string,
   view: ActiveViewContext | null | undefined,
 ): string {
   if (!view) return prompt;
   const cleaned = stripActiveViewAwarenessBlock(prompt);
-  const block = renderActiveViewContextBlock(view);
+  const block = renderActiveViewContextBlock(runtime, view);
   const header = "\n# Available Actions";
   const idx = cleaned.indexOf(header);
   if (idx === -1) {

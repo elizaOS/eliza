@@ -3,8 +3,8 @@
  * unavailable state at the provider boundary.
  */
 
+import type { LifeOpsCalendarSourceAdministrationSnapshot } from "@elizaos/contracts";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarSourceAdministrationSnapshot } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   calendarSourcesProvider,

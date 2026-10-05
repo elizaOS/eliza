@@ -1,9 +1,9 @@
 // Deep Vault page secrets round-trip against the REAL live stack.
 //
-// The keyless ui-smoke stub (playwright-ui-smoke-api-stub.mjs) cannot honor this
+// The keyless ui-smoke stub (playwright-ui-smoke-api-stub.ts) cannot honor this
 // flow: its `GET /api/secrets/inventory` always returns `[]` and its PUT does not
 // persist, so a write→reload→read-back never converges. This spec therefore
-// exploits the real app-core runtime + on-disk vault (ELIZA_UI_SMOKE_LIVE_STACK=1)
+// exploits the real app runtime + on-disk vault (ELIZA_UI_SMOKE_LIVE_STACK=1)
 // and is classified LIVE_ONLY. It NEVER stubs the route under test — the secrets
 // inventory PUT/GET/DELETE hit the real backend, which is the whole point.
 //

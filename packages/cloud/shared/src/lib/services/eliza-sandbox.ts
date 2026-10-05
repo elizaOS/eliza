@@ -1,6 +1,9 @@
 /** Exposes cloud sandbox operations and composes lifecycle, bridge, backup, and transport owners. All owners share the service’s provider instance and lifecycle authority; the facade preserves existing callers and orchestration boundaries. */
 
-import { SandboxProvision } from "./eliza-sandbox/lifecycle/provision.js";
+import {
+  RETAINED_RUNTIME_PROVISION_REFUSAL,
+  SandboxProvision,
+} from "./eliza-sandbox/lifecycle/provision.js";
 import { ElizaSandboxServiceTestHooks } from "./eliza-sandbox/lifecycle/provision-hooks.js";
 
 export { SandboxReachabilityUnresolvedError } from "./eliza-sandbox/lifecycle/provision-errors.js";
@@ -13,6 +16,7 @@ export type {
   DeleteAuthorization,
 } from "./eliza-sandbox/lifecycle/deletion-contracts.js";
 
+import { admitCoordinatedAgentBackupRestore } from "./eliza-sandbox/lifecycle/coordinated-restore.js";
 import { SandboxPower } from "./eliza-sandbox/lifecycle/power.js";
 
 export type { AgentSuspendExecutionResult } from "./eliza-sandbox/lifecycle/power-contracts.js";
@@ -250,9 +254,11 @@ export class ElizaSandboxService {
       this.persistUnresolvedReplacementCleanupFence(...args),
     ensureRuntimeAgentStarted: (...args) => this.ensureRuntimeAgentStarted(...args),
     transferReplacementToPrimary: (...args) => this.transferReplacementToPrimary(...args),
+    fenceAdoptedProvisionForCleanup: (...args) => this.fenceAdoptedProvisionForCleanup(...args),
     pushState: (...args) => this.pushState(...args),
   });
   readonly #warmClaim = new SandboxWarmClaim({
+    getProvider: (...args) => this.getProvider(...args),
     fetchAgentApi: (...args) => this.fetchAgentApi(...args),
     lockLifecycle: (...args) => this.lockLifecycle(...args),
     getAgentForLifecycleMutation: (...args) => this.getAgentForLifecycleMutation(...args),
@@ -273,6 +279,7 @@ export class ElizaSandboxService {
     retirePersistedReplacementCleanup: (...args) => this.retirePersistedReplacementCleanup(...args),
   });
   readonly #power = new SandboxPower({
+    getProvider: (...args) => this.getProvider(...args),
     getAgentForWrite: (...args) => this.getAgentForWrite(...args),
     fetchSnapshotState: (...args) => this.fetchSnapshotState(...args),
     lockLifecycle: (...args) => this.lockLifecycle(...args),
@@ -920,7 +927,7 @@ export class ElizaSandboxService {
       return row;
     });
     if (updated?.claimed_at && updated.warm_claim_credential_state === "pending") {
-      const { provisioningJobService } = await import("./provisioning-jobs");
+      const { provisioningJobService } = await import("./provisioning-job-queue");
       await provisioningJobService.enqueueAgentRestartOnce({
         agentId: updated.id,
         organizationId: updated.organization_id,
@@ -1253,15 +1260,25 @@ export class ElizaSandboxService {
    */
   private async runBoundedSandboxStopForReplacement(
     sandboxId: string,
+    options?: Parameters<NonNullable<SandboxProvider["stopForReplacement"]>>[1],
   ): Promise<BoundedSandboxStopResult> {
     return withTimeout(
       (async (): Promise<null | { error: unknown }> => {
         try {
           const provider = await this.getProvider();
+          if (options?.expectedRuntime) {
+            if (!provider.stopObservedRuntime)
+              throw new ElizaError("Provider cannot stop the exact prepared runtime", {
+                code: "SANDBOX_EXACT_STOP_UNSUPPORTED",
+              });
+            await provider.stopObservedRuntime(sandboxId, options.expectedRuntime);
+            return null;
+          }
           if (!provider.stopForReplacement) {
             throw new Error("Sandbox provider cannot prove workload absence before replacement");
           }
-          await provider.stopForReplacement(sandboxId);
+          if (options) await provider.stopForReplacement(sandboxId, options);
+          else await provider.stopForReplacement(sandboxId);
           return null;
         } catch (error) {
           // error-policy:J1 provider boundary translation — replacement remains
@@ -2249,6 +2266,10 @@ export class ElizaSandboxService {
     }
 
     const restoringRunningGeneration = rec.status === "running";
+    if (!restoringRunningGeneration && rec.retained_runtime) {
+      // Replacing a retained runtime would discard writes no backup covers.
+      return { success: false, error: RETAINED_RUNTIME_PROVISION_REFUSAL };
+    }
     if (restoringRunningGeneration && !rec.bridge_url) {
       return { success: false, error: "Running agent is missing its restore endpoint" };
     }
@@ -2278,6 +2299,12 @@ export class ElizaSandboxService {
         };
       }
     }
+
+    // Catalogued manifest-v3 backups restore through the exact coordinator
+    // (quarantined create, verified generation, signed boot, route CAS) when
+    // it is enabled. Legacy snapshot rows keep the push/re-provision path.
+    const coordinated = await admitCoordinatedAgentBackupRestore(rec, storedBackup);
+    if (coordinated) return coordinated;
 
     if (!restoringRunningGeneration) {
       // Pin the restore point selected above. `from-backup` also makes
@@ -2782,7 +2809,7 @@ export class ElizaSandboxService {
       error_message: `${DB_LIVENESS_RESTART_MARKER} count=${nextCount} at=${new Date(now).toISOString()} reason=${reason}`,
     });
     if (!updated) return;
-    const { provisioningJobService } = await import("./provisioning-jobs");
+    const { provisioningJobService } = await import("./provisioning-job-queue");
     const result = await provisioningJobService.enqueueAgentRestartOnce({
       agentId: rec.id,
       organizationId: rec.organization_id,
@@ -3105,6 +3132,22 @@ export class ElizaSandboxService {
     rec = probeSource;
 
     const provider = await this.getProvider();
+    // Paid provisioning may be midway through restoring application state.
+    // Health alone must not publish it; the owning provision job completes it.
+    if (provider.computeFundingCapability === "host-lease-v1") return "unresolved";
+    // A container that is healthy but was never proven to have applied the
+    // agent's known backup must not become routable (#30697). Health says
+    // nothing about restored state; only the provision job's restore tail may
+    // commit readiness. First creation without any backup keeps the #15310
+    // transport-blip recovery.
+    if (await agentSandboxesRepository.getLatestBackup(agentId)) {
+      logger.warn(
+        "[agent-sandbox] Stuck provisioning row retains an unapplied backup; leaving it for the provision job",
+        { agentId },
+      );
+      return "unresolved";
+    }
+
     const handle: SandboxHandle = {
       sandboxId: probeSource.sandbox_id,
       bridgeUrl: rec.bridge_url ?? "",
@@ -3369,6 +3412,11 @@ export class ElizaSandboxService {
   ): ReturnType<SandboxReplacementCleanup["transferReplacementToPrimary"]> {
     return this.#replacementCleanup.transferReplacementToPrimary(...args);
   }
+  private fenceAdoptedProvisionForCleanup(
+    ...args: Parameters<SandboxReplacementCleanup["fenceAdoptedProvisionForCleanup"]>
+  ): ReturnType<SandboxReplacementCleanup["fenceAdoptedProvisionForCleanup"]> {
+    return this.#replacementCleanup.fenceAdoptedProvisionForCleanup(...args);
+  }
   private assertAdminCanaryCleanupExpectation(
     ...args: Parameters<SandboxReplacementCleanup["assertAdminCanaryCleanupExpectation"]>
   ): ReturnType<SandboxReplacementCleanup["assertAdminCanaryCleanupExpectation"]> {
@@ -3438,11 +3486,6 @@ export class ElizaSandboxService {
     ...args: Parameters<SandboxBackup["persistSnapshotWithinTransaction"]>
   ): ReturnType<SandboxBackup["persistSnapshotWithinTransaction"]> {
     return this.#backup.persistSnapshotWithinTransaction(...args);
-  }
-  private degradeUnrecoverableSnapshot(
-    ...args: Parameters<SandboxProvision["degradeUnrecoverableSnapshot"]>
-  ): ReturnType<SandboxProvision["degradeUnrecoverableSnapshot"]> {
-    return this.#provision.degradeUnrecoverableSnapshot(...args);
   }
   private markError(
     ...args: Parameters<SandboxProvision["markError"]>

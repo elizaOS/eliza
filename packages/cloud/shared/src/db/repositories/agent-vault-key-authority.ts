@@ -2,8 +2,8 @@
 
 import { Buffer } from "node:buffer";
 import { createHash, randomBytes as nodeRandomBytes, timingSafeEqual } from "node:crypto";
+import { type KmsClient, orgKey } from "@elizaos/auth/kms";
 import { ElizaError } from "@elizaos/core";
-import { type KmsClient, orgKey } from "@elizaos/core/security/kms";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { isValidUUID } from "../../lib/utils/validation";
 import { getKmsClient } from "../crypto/kms-client";

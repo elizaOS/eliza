@@ -24,7 +24,11 @@
  */
 
 import { createHash } from "node:crypto";
-import { AGENT_BACKUP_CANONICAL_JSON, stableJsonString } from "@elizaos/shared/canonical-json";
+import {
+  AGENT_BACKUP_CANONICAL_JSON,
+  canonicalJsonString,
+  stableJsonString,
+} from "@elizaos/core/protocol";
 import type {
   AgentBackupDeltaData,
   AgentBackupPlainStateData,
@@ -84,7 +88,7 @@ export function emptyBackupState(): AgentBackupStateData {
  * rejecting it. Canonical bytes are unchanged for every state that hashed
  * before, so stored `content_hash` values stay valid.
  */
-function stableStringify(value: unknown): string {
+function stableStringify(value: unknown): string | undefined {
   return stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON);
 }
 
@@ -106,7 +110,9 @@ function sharedMemoryPrefix(parent: AgentBackupMemory[], child: AgentBackupMemor
 
 /** Stable content hash of a state. Equal states (key order aside) hash equal. */
 export function computeStateHash(state: AgentBackupStateData): string {
-  return createHash("sha256").update(stableStringify(state)).digest("hex");
+  return createHash("sha256")
+    .update(canonicalJsonString(state, AGENT_BACKUP_CANONICAL_JSON))
+    .digest("hex");
 }
 
 /** Compute the delta that turns `base` into `next`. */

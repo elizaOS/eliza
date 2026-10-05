@@ -5,9 +5,9 @@
  */
 
 import type { Content, ContentValue, Memory } from "@elizaos/core";
+import { memoryTable } from "@elizaos/plugin-sql";
 import { and, desc, eq, type InferSelectModel, inArray, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../helpers";
-import { memoryTable } from "../../schemas/eliza";
 
 type MemoryRow = InferSelectModel<typeof memoryTable>;
 type StoredMemory = Memory & { type: string };

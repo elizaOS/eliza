@@ -4,20 +4,23 @@
  * globally; cache + rate-limit policy comes from market-preview service.
  */
 
-import { Hono } from "hono";
 import {
   getIpKey,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   loadPublicPredictionPreview,
   PUBLIC_MARKET_OVERVIEW_CACHE_CONTROL,
   PUBLIC_MARKET_PREVIEW_CORS_METHODS,
   PUBLIC_PREDICTIONS_RATE_LIMIT,
-} from "@/lib/services/market-preview";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/market-preview";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

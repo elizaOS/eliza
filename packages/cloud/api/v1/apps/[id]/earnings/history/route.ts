@@ -1,12 +1,13 @@
 // Handles v1 cloud API v1 apps id earnings history route traffic with route-local auth expectations.
+
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { appEarningsService } from "@elizaos/cloud-shared/lib/services/app-earnings";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { appEarningsService } from "@/lib/services/app-earnings";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(50),

@@ -5,11 +5,12 @@
  * remain decimal text because Google does not bound them to JavaScript's safe
  * integer range; SQL numeric comparisons and BigInt callers preserve ordering.
  */
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+
 import {
   LIFEOPS_CONNECTOR_SIDES,
   type LifeOpsConnectorSide,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   sqlBoolean,

@@ -1,7 +1,7 @@
 /** Coordinates coalesced provider execution, per-caller cancellation, and complete provider-result observations. Shared work is cancelled only when its final interested caller leaves or the runtime stops. */
 
 import type { ElizaError } from "../../errors";
-import type { ProviderResult } from "../../types";
+import type { ProviderResult } from "../../types/components.js";
 import { TurnAbortedError } from "../turn-controller";
 
 export type ProviderExecutionOutcome = "success" | "error" | "aborted";

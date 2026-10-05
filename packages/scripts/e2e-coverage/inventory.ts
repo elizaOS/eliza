@@ -4,9 +4,8 @@
  * Two complementary surface inventories live here:
  *
  * 1. **Surface coverage matrix (issue #8802).** Enumerates, from real source,
- *    every surface that ships a behavioural effect a user can trigger — slash
- *    commands, pre-LLM shortcuts (#8791), plugin-declared HTTP routes, and
- *    views — then cross-checks each against the committed coverage manifest
+ *    plugin-declared HTTP routes and cross-checks each against the committed
+ *    coverage manifest
  *    (`./manifest.ts`). A surface item is "covered" only when a real test
  *    artifact exists AND contains a declared signal string (the anti-larp
  *    check: a shape-only unit test that never names the real handler does not
@@ -20,26 +19,14 @@
  *    exercises it. Included in the diagnostic report.
  *
  * Both inventories perform no network or runtime boot — they statically scan
- * the plugin tree and (for the matrix) import only the dependency-light
- * `getConnectorCommands` projection.
+ * the plugin tree.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { commandShortcuts } from "../../../plugins/plugin-commands/src/actions/shortcuts.ts";
-// Dependency-light: connector-catalog only imports ./registry + ./settings-sections
-// + ./types (a type-only `@elizaos/core` import that erases at compile), so this
-// pulls no runtime framework code.
-import { getConnectorCommands } from "../../../plugins/plugin-commands/src/connector-catalog.ts";
 import type { ManifestEntry } from "./manifest.ts";
-import {
-  COMMAND_COVERAGE,
-  LARP_TEST_ARTIFACTS,
-  PLUGIN_ROUTE_COVERAGE,
-  SHORTCUT_COVERAGE,
-  SHORTCUT_REGISTRY_HINTS,
-} from "./manifest.ts";
+import { LARP_TEST_ARTIFACTS, PLUGIN_ROUTE_COVERAGE } from "./manifest.ts";
 
 export const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -205,45 +192,6 @@ function hasAnyTestFile(dir: string): boolean {
   return false;
 }
 
-/** True when the #8791 pre-LLM shortcut registry exists in source yet. */
-export function discoverShortcutRegistry(root = REPO_ROOT): string[] {
-  const hits: string[] = [];
-  for (const rel of SHORTCUT_REGISTRY_HINTS) {
-    if (existsSync(path.join(root, rel))) hits.push(rel);
-  }
-  return hits;
-}
-
-export interface ShortcutSurfaceInfo {
-  shortcutId: string;
-  alias: string;
-  targetKind: string;
-  targetName: string;
-  signal: string;
-}
-
-export function discoverCommandShortcutSurfaces(): ShortcutSurfaceInfo[] {
-  const surfaces: ShortcutSurfaceInfo[] = [];
-  for (const shortcut of commandShortcuts) {
-    const target =
-      shortcut.target.kind === "action"
-        ? shortcut.target.name
-        : "path" in shortcut.target
-          ? shortcut.target.path
-          : shortcut.target.kind;
-    for (const alias of shortcut.aliases ?? []) {
-      surfaces.push({
-        shortcutId: shortcut.id,
-        alias,
-        targetKind: shortcut.target.kind,
-        targetName: target,
-        signal: `${shortcut.id}:${alias}->${target}`,
-      });
-    }
-  }
-  return surfaces.sort((a, b) => a.signal.localeCompare(b.signal));
-}
-
 export interface CoverageResolution {
   status: "covered" | "exempt" | "missing";
   detail: string;
@@ -323,7 +271,7 @@ export function resolveCoverage(
 
 export interface SurfaceItem {
   id: string;
-  kind: "command" | "shortcut" | "plugin-route";
+  kind: "plugin-route";
   status: "covered" | "exempt" | "missing";
   detail: string;
   artifacts: string[];
@@ -336,8 +284,6 @@ export interface CoverageMatrix {
   schema: "eliza_e2e_coverage_matrix_v1";
   generatedAt: string;
   summary: {
-    commands: { total: number; covered: number };
-    shortcuts: { total: number; covered: number; gated: boolean };
     pluginRoutes: { total: number; covered: number; exempt: number };
     blockingGaps: number;
     advisoryGaps: number;
@@ -358,73 +304,6 @@ export function buildCoverageMatrix(options?: {
   const root = options?.root ?? REPO_ROOT;
   const generatedAt = options?.generatedAt ?? "1970-01-01T00:00:00.000Z";
   const items: SurfaceItem[] = [];
-
-  // ── Slash commands ──────────────────────────────────────────────────────
-  // The served catalog is the source of truth; coverage is satisfied
-  // collectively by the full-catalog contract artifacts (which assert the exact
-  // served set == getConnectorCommands), plus the navigate/client/agent dispatch
-  // specs. We list each command for visibility but resolve them as one surface.
-  const commands = getConnectorCommands("gui");
-  const commandCoverage = resolveCoverage(COMMAND_COVERAGE, root);
-  let commandsCovered = 0;
-  for (const command of commands) {
-    const covered = commandCoverage.status === "covered";
-    if (covered) commandsCovered += 1;
-    items.push({
-      id: `command:${command.name}`,
-      kind: "command",
-      status: commandCoverage.status,
-      detail:
-        commandCoverage.status === "covered"
-          ? `target=${command.target.kind}; ${commandCoverage.detail}`
-          : commandCoverage.detail,
-      artifacts: commandCoverage.artifacts,
-      blocking: true,
-      meta: { targetKind: command.target.kind },
-    });
-  }
-
-  // ── Shortcuts (#8791 — pre-LLM shortcut registry) ───────────────────────
-  // While the registry is absent the surface is gated (empty + advisory). Once
-  // #8791 lands at one of SHORTCUT_REGISTRY_HINTS it lights up and the gate
-  // requires shortcut coverage, resolved from SHORTCUT_COVERAGE against the real
-  // shortcut-gate e2e (runShortcutGate driving a real AgentRuntime).
-  const shortcutRegistry = discoverShortcutRegistry(root);
-  const shortcutSurfaces =
-    shortcutRegistry.length === 0 ? [] : discoverCommandShortcutSurfaces();
-  const shortcutsGated = shortcutRegistry.length === 0;
-  let shortcutsCovered = 0;
-  if (!shortcutsGated) {
-    for (const shortcut of shortcutSurfaces) {
-      const resolution = resolveCoverage(
-        SHORTCUT_COVERAGE.status === "covered"
-          ? {
-              ...SHORTCUT_COVERAGE,
-              signals: [...SHORTCUT_COVERAGE.signals, shortcut.signal],
-            }
-          : SHORTCUT_COVERAGE,
-        root,
-      );
-      if (resolution.status === "covered") shortcutsCovered += 1;
-      items.push({
-        id: `shortcut:${shortcut.signal}`,
-        kind: "shortcut",
-        status: resolution.status,
-        detail: `#8791 shortcut registry present (${shortcutRegistry.join(", ")}); alias=${shortcut.alias}; target=${shortcut.targetKind}:${shortcut.targetName}; ${resolution.detail}`,
-        artifacts: resolution.artifacts,
-        // A landed registry with no real e2e is a blocking gap (the contract:
-        // every shortcut alias/target has deterministic e2e evidence).
-        blocking: resolution.status !== "covered",
-        meta: {
-          registry: shortcutRegistry,
-          shortcutId: shortcut.shortcutId,
-          alias: shortcut.alias,
-          targetKind: shortcut.targetKind,
-          targetName: shortcut.targetName,
-        },
-      });
-    }
-  }
 
   // ── Plugin routes ───────────────────────────────────────────────────────
   const routePlugins = discoverRoutePlugins(root);
@@ -456,12 +335,6 @@ export function buildCoverageMatrix(options?: {
     schema: "eliza_e2e_coverage_matrix_v1",
     generatedAt,
     summary: {
-      commands: { total: commands.length, covered: commandsCovered },
-      shortcuts: {
-        total: shortcutSurfaces.length,
-        covered: shortcutsCovered,
-        gated: shortcutsGated,
-      },
       pluginRoutes: {
         total: routePlugins.length,
         covered: routesCovered,
@@ -481,7 +354,7 @@ export function buildCoverageMatrix(options?: {
 //
 // "Keyless e2e" means a scenario that runs on a PR under the deterministic LLM
 // proxy with zero credentials — i.e. a scenario in the
-// `packages/scenario-runner/test/scenarios` deterministic corpus, or a
+// `packages/testing/scenario-runner/test/scenarios` deterministic corpus, or a
 // package-owned scenario tagged `lane: "pr-deterministic"`. A
 // plugin "has keyless e2e" when at least one such scenario names it in its
 // `requires.plugins`. Detection is static (source read, no plugin import) so the
@@ -493,7 +366,14 @@ const PLUGINS_DIR = path.join(REPO_ROOT, "plugins");
 
 /** Scenario corpora that run keyless on a PR. */
 const KEYLESS_SCENARIO_ROOTS = [
-  path.join(REPO_ROOT, "packages", "scenario-runner", "test", "scenarios"),
+  path.join(
+    REPO_ROOT,
+    "packages",
+    "testing",
+    "scenario-runner",
+    "test",
+    "scenarios",
+  ),
   ...listDirs(PLUGINS_DIR).map((dir) =>
     path.join(PLUGINS_DIR, dir, "test", "scenarios"),
   ),

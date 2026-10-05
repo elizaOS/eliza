@@ -1,0 +1,23 @@
+{
+  "name": "@elizaos/provisioning-worker",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx --tsconfig ../../shared/tsconfig.json src/index.ts",
+    "start:apps": "tsx --tsconfig ../../shared/tsconfig.json src/apps.ts",
+    "typecheck": "tsc --noEmit",
+    "lint:check": "bunx @biomejs/biome check .",
+    "test": "bun test tests"
+  },
+  "dependencies": {
+    "@elizaos/auth": "workspace:*",
+    "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/cloud-services-common": "workspace:*"
+  },
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@types/node": "22.19.17",
+    "bun-types": "1.4.2"
+  }
+}

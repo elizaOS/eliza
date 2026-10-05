@@ -16,7 +16,7 @@ const cloudLoginWindow = vi.hoisted(() => ({
   claim: vi.fn(),
 }));
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: null, agentProps: {} }),
 }));
 

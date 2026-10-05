@@ -32,21 +32,21 @@ export interface MeteredHint {
 }
 
 export interface PathHints {
-  /** `NWPath.isExpensive` — true when the link is metered per Apple's policy. */
-  isExpensive: boolean;
+  /** `NWPath.isExpensive`; null when no authoritative path is available. */
+  isExpensive: boolean | null;
   /**
-   * `NWPath.isConstrained` — true when Low Data Mode is engaged. The voice-
-   * updater treats this as "metered" because the user has explicitly asked
-   * the OS to limit non-essential traffic.
+   * `NWPath.isConstrained`: true for Low Data Mode, null when unavailable.
+   * The updater treats true as metered because the user asked the OS to
+   * limit non-essential traffic.
    */
-  isConstrained: boolean;
+  isConstrained: boolean | null;
   /** Source label for debugging — always `"nw-path-monitor"` from this plugin. */
   source: "nw-path-monitor";
 }
 
 export interface NetworkPolicyPlugin {
-  /** Android-only. Returns `{ metered: null, source: "android-os" }` on iOS / web. */
+  /** Android cost hint; otherwise unknown, except browser Data Saver can restrict it. */
   getMeteredHint(): Promise<MeteredHint>;
-  /** iOS-only. Returns `{ isExpensive: false, isConstrained: false, source: "nw-path-monitor" }` on Android / web. */
+  /** iOS cost hints; otherwise null, except browser Data Saver can supply true. */
   getPathHints(): Promise<PathHints>;
 }

@@ -6,7 +6,7 @@
  */
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import { logger, runPluginMigrations, stringToUuid } from "@elizaos/core";
-import { readTwilioCredentialsFromEnv } from "@elizaos/plugin-phone/twilio";
+import { readTwilioCredentialsFromEnv } from "@elizaos/plugin-native-phone/twilio";
 
 export const LIFEOPS_TASK_NAME = "LIFEOPS_SCHEDULER" as const;
 export const LIFEOPS_TASK_TAGS = ["queue", "repeat", "lifeops"] as const;
@@ -281,6 +281,10 @@ export async function ensureLifeOpsSchedulerTask(
       description: "Process life-ops reminders and scheduled workflows",
       metadata,
     });
+    if (runtime.adapter?.supportsAtomicTaskWake === true)
+      await runtime.patchTaskMetadata(existing.id, {
+        wake: { requestAt: Date.now() },
+      });
     return existing.id;
   }
 

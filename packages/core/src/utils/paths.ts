@@ -9,11 +9,8 @@ import { join } from "node:path";
 import { resolveStateDir } from "./state-dir";
 
 function getEnvVar(key: string): string | undefined {
-	if (typeof process !== "undefined" && process.env) {
-		const raw = process.env[key]?.trim();
-		return raw && raw.length > 0 ? raw : undefined;
-	}
-	return undefined;
+	const raw = process.env[key]?.trim();
+	return raw && raw.length > 0 ? raw : undefined;
 }
 
 export interface ElizaPathsConfig {

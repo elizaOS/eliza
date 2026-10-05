@@ -5,8 +5,8 @@
 
 import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { usePageTitle } from "../../lib/use-page-title";
 
 type TFn = ReturnType<typeof useCloudT>;
 
@@ -117,7 +117,7 @@ function buildSections(t: TFn): Array<{ title: string; body: string }> {
 
 export default function PrivacyPolicyPage() {
   const t = useCloudT();
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.privacy.metaTitle", {
       defaultValue: "Privacy Policy | Eliza Cloud",
     }),

@@ -30,7 +30,7 @@ export interface StoredFile {
   createdAt: number;
 }
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listFiles(): Promise<{ files: StoredFile[]; restricted?: boolean }>;
     deleteFile(fileName: string): Promise<{ deleted: boolean }>;

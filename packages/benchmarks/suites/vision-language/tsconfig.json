@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"],
+    "customConditions": ["eliza-source"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.json",
+    "samples/**/*.json",
+    "tests/**/*.ts"
+  ]
+}

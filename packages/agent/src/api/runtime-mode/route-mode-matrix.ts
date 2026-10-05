@@ -190,6 +190,35 @@ export const ROUTE_MODE_MATRIX: ReadonlyArray<RouteModeRule> = [
     reason: "local ASR transcription — hidden in cloud + remote",
   },
 
+  {
+    path: "/api/tts/kokoro",
+    method: "POST",
+    modes: ["local", "local-only"],
+    owner: null,
+    reason: "explicit standalone host speech output",
+  },
+  {
+    path: "/api/tts/kokoro/status",
+    method: "GET",
+    modes: ["local", "local-only"],
+    owner: null,
+    reason: "explicit standalone host speech readiness",
+  },
+  {
+    path: "/api/asr/whisper",
+    method: "POST",
+    modes: ["local", "local-only"],
+    owner: null,
+    reason: "explicit standalone host speech provider",
+  },
+  {
+    path: "/api/asr/whisper/status",
+    method: "GET",
+    modes: ["local", "local-only"],
+    owner: null,
+    reason: "explicit standalone host speech provider status",
+  },
+
   // ── /api/dev/* — dev observability (always-on for local dev) ──────────
   // Cloud-provisioned containers can disable separately via env, but the
   // matrix entry is "all modes" so the dispatcher does not synthesise a

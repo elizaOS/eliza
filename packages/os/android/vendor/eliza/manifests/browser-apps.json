@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 2,
+  "chromium": {
+    "variants": {
+      "x86_64": {
+        "packageName": "org.chromium.chrome",
+        "versionName": "156.0.8072.0",
+        "versionCode": "807200079",
+        "architectures": [
+          "x86_64"
+        ],
+        "channel": "development",
+        "sha256": "750b839d8b7fd3dd3ca43268cc5a8c4ac3ab57ae051a2b1b2814984f5b8c9cc1",
+        "signerSha256": "32a2fc74d731105859e5a85df16d95f102d85b22099b8064c5d8915c61dad1e0",
+        "sourceUrl": "https://storage.googleapis.com/chromium-browser-snapshots/AndroidDesktop_x64/1703955/chrome-android-desktop.zip"
+      },
+      "arm64": {
+        "packageName": "org.chromium.chrome",
+        "versionName": "156.0.8072.0",
+        "versionCode": "807200074",
+        "architectures": [
+          "arm64"
+        ],
+        "channel": "development",
+        "sha256": "069064a60d17ed2bdf2ba049d8b1647c6f9d67ac2b1b4bdd1118d2f9e157a427",
+        "signerSha256": "32a2fc74d731105859e5a85df16d95f102d85b22099b8064c5d8915c61dad1e0",
+        "sourceUrl": "https://storage.googleapis.com/chromium-browser-snapshots/AndroidDesktop_arm64/1704002/chrome-android-desktop.zip"
+      }
+    }
+  },
+  "bitwarden": {
+    "packageName": "com.x8bit.bitwarden",
+    "versionName": "2026.9.0",
+    "versionCode": "21909",
+    "architectures": [
+      "x86_64",
+      "arm64"
+    ],
+    "channel": "stable",
+    "sha256": "981939c676baf7cb0f0ddd2142794749e5b885bac2c06529f4ef21fb8b925112",
+    "signerSha256": "de6ec91431557995297bf3e65bc80349bc603a04708160618c86bc9994171c90",
+    "sourceUrl": "https://mobileapp.bitwarden.com/fdroid/repo/bitwarden_v2026.9.0-bwpm.apk",
+    "repositoryFingerprintSha256": "bc54ea6fd1cd5175bcccc47c561c5726e1c3ed7e686b6db4b18bac843a3efe6c",
+    "repositoryUrl": "https://mobileapp.bitwarden.com/fdroid/repo",
+    "sync": "manual"
+  }
+}

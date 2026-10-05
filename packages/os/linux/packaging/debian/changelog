@@ -1,0 +1,15 @@
+elizaos-app (2.0.3~beta.7-2) unstable; urgency=medium
+
+  * Make graphical-session autostart an explicit desktop-owner choice.
+
+ -- elizaOS <dev@app.elizaos.ai>  Thu, 20 Aug 2026 00:00:00 +0000
+
+elizaos-app (2.0.3~beta.7-1) unstable; urgency=medium
+
+  * Initial Debian packaging
+  * Personal AI assistant built on elizaOS
+  * CLI with interactive onboarding
+  * Multi-provider AI support (Anthropic, OpenAI, Google, Ollama, etc.)
+  * Web dashboard on port 18789
+
+ -- elizaos <dev@app.elizaos.ai>  Sat, 07 Feb 2026 00:00:00 +0000

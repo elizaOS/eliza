@@ -9,18 +9,18 @@
  * rows exactly as before the extraction.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type CalendarHostGate,
-  CalendarService,
-} from "@elizaos/plugin-calendar";
 import type {
   LifeOpsAuditEvent,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleConnectorStatus,
   LifeOpsReminderPlan,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type CalendarHostGate,
+  CalendarService,
+} from "@elizaos/plugin-calendar";
 import { resolveCalendarGuestAvailabilityGrants } from "./guest-availability-grants.js";
 import { LifeOpsService } from "./service.js";
 

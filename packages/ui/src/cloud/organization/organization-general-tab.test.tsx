@@ -1,6 +1,6 @@
 /**
- * Renders OrganizationGeneralTab through SettingsRow and asserts labelled
- * status fields, inactive badge, and omitted billing email. jsdom, no backend.
+ * Exercises organization data formatting and conditional billing/status
+ * presentation through the real component in jsdom, without a backend.
  */
 // @vitest-environment jsdom
 
@@ -28,22 +28,14 @@ afterEach(() => {
 });
 
 describe("OrganizationGeneralTab", () => {
-  it("renders labelled organization and billing readouts", () => {
+  it("renders organization values and formats date and credit balance", () => {
     render(<OrganizationGeneralTab organization={makeOrg()} />);
 
-    expect(screen.getByText("Organization details")).toBeTruthy();
-    expect(screen.getByText("Organization name")).toBeTruthy();
     expect(screen.getByText("Sol's Organization")).toBeTruthy();
-    expect(screen.getByText("Organization slug")).toBeTruthy();
     expect(screen.getByText("sols-org")).toBeTruthy();
-    expect(screen.getByText("Status")).toBeTruthy();
     expect(screen.getByText("Active")).toBeTruthy();
-    expect(screen.getByText("Created")).toBeTruthy();
     expect(screen.getByText("Mar 15, 2026")).toBeTruthy();
-    expect(screen.getByText("Billing information")).toBeTruthy();
-    expect(screen.getByText("Credit balance")).toBeTruthy();
     expect(screen.getByText("1,250 credits")).toBeTruthy();
-    expect(screen.getByText("Billing email")).toBeTruthy();
     expect(screen.getByText("billing@example.com")).toBeTruthy();
   });
 
@@ -57,6 +49,5 @@ describe("OrganizationGeneralTab", () => {
     expect(screen.getByText("Inactive")).toBeTruthy();
     expect(screen.queryByText("Active")).toBeNull();
     expect(screen.queryByText("Billing email")).toBeNull();
-    expect(screen.getByText("Credit balance")).toBeTruthy();
   });
 });

@@ -44,7 +44,7 @@ describe("iMessage message connector registration", () => {
       getContacts: vi.fn(() => new Map()),
       sendMessage: vi.fn(async (to: string, text: string) => {
         sent.push({ to, text });
-        return { success: true, messageId: "im-1", chatId: "chat-1" };
+        return { success: true, localEffectIds: ["local-completion-1"], chatId: "chat-1" };
       }),
     } as unknown as IMessageService;
 

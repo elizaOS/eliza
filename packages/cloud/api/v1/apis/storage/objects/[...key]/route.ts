@@ -22,34 +22,33 @@
  * recover the exact immutable provider generation before any provider access.
  */
 
-import { type Context, Hono } from "hono";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
   StoragePutConflictError,
   StorageQuotaExceededError,
-} from "@/db/repositories";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
+} from "@elizaos/cloud-shared/db/repositories";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { storageOperationPriceUsd } from "@elizaos/cloud-shared/lib/constants/pricing";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
 import {
   calculateStoragePutPrice,
   executeNativeStorageDelete,
   executeNativeStoragePut,
   NativeStoragePutError,
   resolveNativeStorageObject,
-} from "@/lib/services/storage/native-storage-put";
+} from "@elizaos/cloud-shared/lib/services/storage/native-storage-put";
 import {
   executeNativeStorageGetOrHead,
   NativeStorageReadError,
-} from "@/lib/services/storage/native-storage-read";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/storage/native-storage-read";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { type Context, Hono } from "hono";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
   cancelBestEffort,
   parseTrustworthyDecimalInteger,
 } from "./put-body-budget";
 
-const STORAGE_SERVICE_ID = "storage";
 const MAX_OBJECT_KEY_LENGTH = 1024;
 const R2_NOT_CONFIGURED_BODY = {
   error:
@@ -175,11 +174,8 @@ app.put("/*", async (c) => {
     const body = c.req.raw.body;
     if (!body) return c.json({ error: "Request body is required" }, 400);
 
-    const flatCost = await getServiceMethodCost(STORAGE_SERVICE_ID, "put");
-    const perByteCost = await getServiceMethodCost(
-      STORAGE_SERVICE_ID,
-      "put_per_byte",
-    );
+    const flatCost = storageOperationPriceUsd("put");
+    const perByteCost = storageOperationPriceUsd("put_per_byte");
     const totalCost = calculateStoragePutPrice(flatCost, perByteCost, bytes);
     const response = await executeNativeStoragePut({
       bucket: c.env.BLOB,
@@ -199,7 +195,7 @@ app.put("/*", async (c) => {
       return c.json(
         {
           error: "Insufficient credits",
-          topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+          topUpUrl: "https://cloud.eliza.app/cloud/billing",
         },
         402,
       );
@@ -247,7 +243,7 @@ async function handleStorageGet(c: Context<AppEnv>) {
     }
 
     if (!c.env.BLOB) return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    const priceUsd = await getServiceMethodCost(STORAGE_SERVICE_ID, "get");
+    const priceUsd = storageOperationPriceUsd("get");
     const result = await executeNativeStorageGetOrHead({
       bucket: c.env.BLOB,
       organizationId: organization_id,
@@ -299,7 +295,7 @@ async function handleStorageHead(c: Context<AppEnv>) {
     }
 
     if (!c.env.BLOB?.head) return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    const priceUsd = await getServiceMethodCost(STORAGE_SERVICE_ID, "head");
+    const priceUsd = storageOperationPriceUsd("head");
     const result = await executeNativeStorageGetOrHead({
       bucket: c.env.BLOB,
       organizationId: organization_id,
@@ -339,7 +335,7 @@ function storageReadFailure(
     return c.json(
       {
         error: "Insufficient credits",
-        topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+        topUpUrl: "https://cloud.eliza.app/cloud/billing",
       },
       402,
     );
@@ -379,10 +375,7 @@ app.delete("/*", async (c) => {
     );
     if (nativeObject?.deleted_at) return new Response(null, { status: 204 });
     if (nativeObject?.provider_key) {
-      const deleteCost = await getServiceMethodCost(
-        STORAGE_SERVICE_ID,
-        "delete",
-      );
+      const deleteCost = storageOperationPriceUsd("delete");
       await executeNativeStorageDelete({
         bucket: c.env.BLOB,
         organizationId: organization_id,

@@ -93,7 +93,7 @@ export const seoMessages: SeoMessages = {
     billing: {
       title: "Billing & Credits",
       description:
-        "Manage your credits, view usage, and buy credit packs. Transparent pricing across every AI operation.",
+        "Subscribe to Plus or Pro for a monthly allowance, or top up pay-as-you-go credits from $5 to $1,000. Transparent pricing across every AI operation.",
     },
     apiKeys: {
       title: "API Keys",

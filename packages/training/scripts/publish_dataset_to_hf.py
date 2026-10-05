@@ -42,10 +42,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from scripts.publish.hub_inventory import remote_lfs_shas
+from eliza_training.publish.hub_inventory import remote_lfs_shas
 DATA = ROOT / "data"
 DATASETS = ROOT / "datasets"
 
@@ -953,9 +951,12 @@ def publish(spec: DatasetSpec, repo_id: str, public: bool) -> int:
     api = HfApi(token=hf_token())
 
     try:
-        api.repo_info(repo_id, repo_type="dataset")
+        repo = api.repo_info(repo_id, repo_type="dataset")
         log.info("repo %s already exists", repo_id)
-    except RepositoryNotFoundError:
+    except RepositoryNotFoundError as exc:
+        # error-policy:J1 Only an explicit not-found response permits creation.
+        if exc.response is None or exc.response.status_code != 404:
+            raise
         log.info("repo %s does not exist — creating (private=%s)", repo_id, not public)
         api.create_repo(
             repo_id=repo_id,
@@ -963,6 +964,11 @@ def publish(spec: DatasetSpec, repo_id: str, public: bool) -> int:
             private=not public,
             exist_ok=False,
         )
+        repo = api.repo_info(repo_id, repo_type="dataset")
+
+    if not public and getattr(repo, "private", None) is not True:
+        log.error("repo %s is not confirmed private; refusing to upload", repo_id)
+        return 2
 
     if spec.is_pointer_only:
         api.upload_file(

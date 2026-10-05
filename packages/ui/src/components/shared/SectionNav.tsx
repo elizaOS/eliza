@@ -19,7 +19,7 @@
  */
 
 import { useSyncExternalStore } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import {
   type AppShellPageRegistration,
   getAppShellPageRegistrySnapshot,

@@ -5,13 +5,13 @@
  * Does NOT debit credits or call the cloudflare register endpoint.
  */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { cloudflareRegistrarService } from "@elizaos/cloud-shared/lib/services/cloudflare-registrar";
+import { computeDomainPrice } from "@elizaos/cloud-shared/lib/services/domain-pricing";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { cloudflareRegistrarService } from "@/lib/services/cloudflare-registrar";
-import { computeDomainPrice } from "@/lib/services/domain-pricing";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { loadOwnedApp } from "../guards";
 import { domainBodySchema as CheckSchema } from "../schemas";
 

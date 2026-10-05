@@ -33,7 +33,7 @@ const tmpRoots: string[] = [];
 
 // Published bundle contract after the Gemma-4 cutover: tier suffix →
 // architecture bundle slug used in every per-tier GGUF filename
-// (mirrors ELIZA_1_BUNDLE_SLUGS in @elizaos/shared/local-inference/catalog).
+// (mirrors ELIZA_1_BUNDLE_SLUGS in @elizaos/plugin-native-inference/model-catalog/catalog).
 const TIER_BUNDLE_SLUGS: Readonly<Record<string, string>> = {
 	"2b": "e2b",
 	"4b": "e4b",

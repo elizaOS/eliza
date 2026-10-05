@@ -27,7 +27,7 @@ import {
 	FIRST_SENTENCE_SNIP_VERSION,
 	type FirstSentenceSnipResult,
 	firstSentenceSnip,
-} from "@elizaos/shared";
+} from "@elizaos/voice";
 import {
 	type FirstLineCache,
 	type FirstLineCacheEntry,

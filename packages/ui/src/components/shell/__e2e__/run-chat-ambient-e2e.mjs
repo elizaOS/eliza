@@ -12,14 +12,8 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  createAssertGate,
-  createSnapper,
-  finishRun,
-  renameRecordedVideo,
-  withChromium,
-  writeFixturePage,
-} from "../../../testing/e2e-runner/index.ts";
+import { createAssertGate, createSnapper, finishRun, renameRecordedVideo, withChromium } from "../../../testing/e2e-runner/browser-harness";
+import { writeFixturePage } from "../../../testing/e2e-runner/fixture-bundle";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");

@@ -27,14 +27,13 @@ describe("writeWorkspaceIdentity", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("scaffolds both AGENTS.md and CLAUDE.md into a bare workspace", async () => {
+  it("scaffolds only AGENTS.md into a bare workspace", async () => {
     await writeWorkspaceIdentity(dir);
     expect(existsSync(join(dir, "AGENTS.md"))).toBe(true);
-    expect(existsSync(join(dir, "CLAUDE.md"))).toBe(true);
+    expect(existsSync(join(dir, "CLAUDE.md"))).toBe(false);
     // Default (no broker) renders the manual with the placeholder stripped.
     const expected = buildSubAgentIdentityMd({ brokerWired: false });
     expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toBe(expected);
-    expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe(expected);
   });
 
   it("omits the broker section when the broker is not wired", async () => {

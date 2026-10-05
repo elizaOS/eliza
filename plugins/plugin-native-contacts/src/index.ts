@@ -1,17 +1,16 @@
 /**
- * Entry point registering the `ElizaContacts` Capacitor plugin — the JS
- * bridge to Android's `ContactsContract` (list/create/import contacts) —
- * with `ContactsWeb` lazily loaded as the web fallback; re-exports the
- * shared types from `./definitions`.
+ * Public package entry for plugin/runtime consumers. `ContactsView` remains the
+ * raw embeddable surface; hosts that own page navigation load the framed
+ * `ContactsPage` through the `/ui`, signed-registration, or view-bundle ABI.
  */
-import { registerPlugin } from "@capacitor/core";
-
-import type { ContactsPlugin } from "./definitions";
-
-export * from "./definitions";
-
-const loadWeb = () => import("./web").then((m) => new m.ContactsWeb());
-
-export const Contacts = registerPlugin<ContactsPlugin>("ElizaContacts", {
-  web: loadWeb,
-});
+export { ContactsAppView } from "./components/ContactsAppView";
+export { ContactsPage } from "./components/ContactsPage";
+export { ContactsView } from "./components/ContactsView";
+export {
+  CONTACTS_APP_NAME,
+  contactsApp,
+  registerContactsApp,
+} from "./components/contacts-app";
+export { appContactsPlugin, contactsProvider } from "./plugin";
+export * from "./register";
+export * from "./ui";

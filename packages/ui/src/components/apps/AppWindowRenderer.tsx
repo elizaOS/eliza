@@ -8,33 +8,50 @@
 
 import {
   type ComponentType,
+  lazy,
   Suspense,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
+  getAppShellPageRegistrySnapshot,
   overlayAgentSurfaceDescriptor,
   requireRegisteredAgentSurface,
+  subscribeAppShellPages,
 } from "../../app-shell-registry";
+import type {
+  OverlayApp,
+  OverlayAppContext,
+} from "../../apps/overlay-app-api.js";
+import { getAvailableOverlayApps } from "../../apps/overlay-app-registry.js";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { Card } from "../ui/card";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { getOverlayAppLazyComponent } from "./AppWindowRenderer.helpers";
+import { resolveDeclaredAppWindowRoute } from "./AppWindowRenderer.route-resolution";
 import { getAppSlug } from "./helpers";
-import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
-import { getAvailableOverlayApps } from "./overlay-app-registry";
+
+const DeclaredAppWindowSurface = lazy(() =>
+  import("./AppWindowRenderer.routes").then((module) => ({
+    default: module.DeclaredAppWindowSurface,
+  })),
+);
+const RegistryAppWindowView = lazy(() =>
+  import("./AppWindowRenderer.routes").then((module) => ({
+    default: module.RegistryAppWindowView,
+  })),
+);
 
 export interface AppWindowRendererProps {
   slug: string;
 }
-
 export interface OverlayAppSurfaceProps extends OverlayAppContext {
   app: OverlayApp;
 }
-
 async function runOverlayLifecycleHook(
   app: OverlayApp,
   phase: "launch" | "stop",
@@ -54,14 +71,12 @@ async function runOverlayLifecycleHook(
     });
   }
 }
-
 function resolveOverlayAppBySlug(slug: string): OverlayApp | undefined {
   const normalizedSlug = slug.toLowerCase();
   return getAvailableOverlayApps().find(
     (app) => getAppSlug(app.name).toLowerCase() === normalizedSlug,
   );
 }
-
 // Overlay apps register asynchronously: the host loads plugin side-effect
 // modules off the first-paint critical path (idle-scheduled), so an app window
 // opened deep-link/standalone can mount BEFORE its overlay app has registered.
@@ -69,13 +84,11 @@ function resolveOverlayAppBySlug(slug: string): OverlayApp | undefined {
 // instead of being stranded on a permanent "App not found".
 const RESOLVE_RETRY_INTERVAL_MS = 120;
 const RESOLVE_RETRY_WINDOW_MS = 8000;
-
 function getLazyComponentForApp(
   app: OverlayApp,
 ): ComponentType<OverlayAppContext> | null {
   return getOverlayAppLazyComponent(app);
 }
-
 function AppFallback(): React.ReactElement {
   return (
     <Card
@@ -84,7 +97,6 @@ function AppFallback(): React.ReactElement {
     />
   );
 }
-
 /**
  * Mount one resolved overlay through the same generated bridge used by
  * registry-backed app-shell pages. Both the main-window overlay and detached
@@ -100,7 +112,6 @@ export function OverlayAppSurface({
   const descriptor = requireRegisteredAgentSurface(
     overlayAgentSurfaceDescriptor(app),
   );
-
   const lifecycleQueueRef = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     const launch = lifecycleQueueRef.current.then(() =>
@@ -117,7 +128,6 @@ export function OverlayAppSurface({
       );
     };
   }, [app]);
-
   const context = useMemo<OverlayAppContext>(
     () => ({ exitToApps, uiTheme, t }),
     [exitToApps, t, uiTheme],
@@ -142,7 +152,6 @@ export function OverlayAppSurface({
       </Card>
     );
   }
-
   return (
     <ShellViewAgentSurface
       viewId={descriptor.viewId}
@@ -152,18 +161,34 @@ export function OverlayAppSurface({
     </ShellViewAgentSurface>
   );
 }
-
 export function AppWindowRenderer({
+  slug,
+}: AppWindowRendererProps): React.ReactElement {
+  useSyncExternalStore(
+    subscribeAppShellPages,
+    getAppShellPageRegistrySnapshot,
+    getAppShellPageRegistrySnapshot,
+  );
+  return (
+    <Suspense fallback={<AppFallback />}>
+      {resolveDeclaredAppWindowRoute(slug) ? (
+        <DeclaredAppWindowSurface slug={slug} />
+      ) : (
+        <OverlayOrCatalogWindow key={slug} slug={slug} />
+      )}
+    </Suspense>
+  );
+}
+
+function OverlayOrCatalogWindow({
   slug,
 }: AppWindowRendererProps): React.ReactElement {
   const initialApp = useMemo(() => resolveOverlayAppBySlug(slug), [slug]);
   const [app, setApp] = useState<OverlayApp | undefined>(initialApp);
-
   // Reset to the freshest synchronous resolution whenever the slug changes.
   useEffect(() => {
     setApp(resolveOverlayAppBySlug(slug));
   }, [slug]);
-
   // If the app isn't registered yet, poll the registry briefly until it shows
   // up (late async plugin registration) or the retry window elapses.
   useEffect(() => {
@@ -178,7 +203,6 @@ export function AppWindowRenderer({
     }, RESOLVE_RETRY_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [app, slug]);
-
   // Read the theme from the DOM in an effect (not during render) and keep it in
   // sync as the document class toggles, so the memoized context only changes when
   // the theme actually changes.
@@ -194,13 +218,11 @@ export function AppWindowRenderer({
     observer.observe(root, { attributes: true, attributeFilter: ["class"] });
     return () => observer.disconnect();
   }, []);
-
   const exitToApps = useCallback(() => {
     // Exit a running overlay app back to the launcher grid, which lives at
     // `/views` (`/apps` is a retired My Apps deep link into Projects, #17031).
     window.location.href = "/views";
   }, []);
-
   // Stable identity so embedded apps can use React.memo: only changes when a
   // render-affecting field (exitToApps / uiTheme) actually changes.
   const context = useMemo<OverlayAppContext>(
@@ -211,13 +233,8 @@ export function AppWindowRenderer({
     }),
     [exitToApps, uiTheme],
   );
-
   if (!app) {
-    return (
-      <div className="flex h-full items-center justify-center bg-background text-sm text-muted-foreground">
-        App not found: {slug}
-      </div>
-    );
+    return <RegistryAppWindowView slug={slug} />;
   }
   return <OverlayAppSurface app={app} {...context} />;
 }

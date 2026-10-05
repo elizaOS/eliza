@@ -5,8 +5,8 @@
  * so Telegram retries cannot duplicate a reply.
  */
 
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 export const PERSONAL_TELEGRAM_DELIVERY_PATH = "/v1/delivery";
 // Epoch 1 omitted the connector account from both routing boundaries. Epoch 2

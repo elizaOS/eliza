@@ -20,26 +20,26 @@
  * spent proxying the shipping catalog, never an arbitrary user-chosen repo.
  */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  createHfProxyEgressQuotaStore,
+  type HfProxyEgressQuotaStore,
+} from "@elizaos/cloud-shared/lib/services/hf-proxy-egress-quota";
+import { logger, redact } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  createHfProxyEgressQuotaStore,
-  type HfProxyEgressQuotaStore,
-} from "@/lib/services/hf-proxy-egress-quota";
-import { logger, redact } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const HF_UPSTREAM_HOST = "https://huggingface.co";
 const DEFAULT_MONTHLY_EGRESS_LIMIT_BYTES = 500 * 1024 ** 3;
 
 /**
  * Only repos under this org may be proxied. The curated eliza-1 catalog lives at
- * `elizaos/eliza-1` (`ELIZA_1_HF_REPO` in `@elizaos/shared/local-inference`);
+ * `elizaos/eliza-1` (`ELIZA_1_HF_REPO` in `@elizaos/plugin-native-inference/model-catalog`);
  * scoping to the org prefix keeps the cloud's `HF_TOKEN` from being used to
  * download arbitrary — including gated third-party — HuggingFace repos on the
  * cloud's bandwidth/quota.

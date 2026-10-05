@@ -4,7 +4,7 @@
  * and a +1 goal count delta.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -14,7 +14,7 @@ export default scenario({
   tags: ["lifeops", "goals", "relationships", "happy-path"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

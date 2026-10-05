@@ -5,12 +5,11 @@
  * param since EventSource cannot set headers.
  */
 
+import type { DeviceBridgeStatus } from "@elizaos/contracts";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import { useEffect, useState } from "react";
-import type { DeviceBridgeStatus } from "../../api/client-local-inference";
-import { resolveApiUrl } from "../../utils/asset-url";
-import { getElizaApiToken } from "../../utils/eliza-globals";
+import { resolveApiUrl } from "../../utils/asset-url.js";
 import { openEventSource } from "../../utils/event-source";
-
 export function buildDeviceBridgeStatusStreamUrl(
   rawUrl: string,
   token?: string | null,
@@ -21,10 +20,8 @@ export function buildDeviceBridgeStatusStreamUrl(
   }
   return `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}token=${encodeURIComponent(trimmedToken)}`;
 }
-
 export function useDeviceBridgeStatus() {
   const [status, setStatus] = useState<DeviceBridgeStatus | null>(null);
-
   useEffect(() => {
     const url = buildDeviceBridgeStatusStreamUrl(
       resolveApiUrl("/api/local-inference/device/stream"),
@@ -50,6 +47,5 @@ export function useDeviceBridgeStatus() {
     }
     return () => eventSource?.close();
   }, []);
-
   return status;
 }

@@ -22,6 +22,7 @@ export interface ContactsPermissionStatus {
 
 export interface ListContactsOptions {
   query?: string;
+  /** Positive safe integer; omission returns every matching contact. */
   limit?: number;
 }
 
@@ -49,9 +50,9 @@ export interface ContactsPlugin {
   importVCard(options: ImportVCardOptions): Promise<{
     imported: ImportedContactSummary[];
   }>;
-  /** Current contacts (READ/WRITE_CONTACTS) permission state. Web: granted. */
+  /** Current contacts (READ/WRITE_CONTACTS) permission state. Web: unavailable. */
   checkPermissions(): Promise<ContactsPermissionStatus>;
-  /** Prompt for contacts access (no-op grant on web). Feature-gated; never
+  /** Prompt for contacts access (unavailable on web). Feature-gated; never
    *  requested at launch. */
   requestPermissions(): Promise<ContactsPermissionStatus>;
 }

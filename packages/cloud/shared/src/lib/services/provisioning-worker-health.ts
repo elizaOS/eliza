@@ -1,4 +1,4 @@
-// Coordinates cloud service provisioning worker health behavior behind route handlers.
+/** Coordinates provisioning heartbeat health checks and releases owned Redis connections. */
 import {
   buildRedisClient,
   type CompatibleRedis,
@@ -91,6 +91,7 @@ export async function checkProvisioningWorkerHealth(
     try {
       raw = await redis.get(PROVISIONING_WORKER_HEARTBEAT_KEY);
     } catch (error) {
+      // error-policy:J1 Translate transport failure into the provisioning health response.
       return {
         ok: false,
         required: true,

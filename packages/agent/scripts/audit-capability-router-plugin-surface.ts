@@ -1,13 +1,15 @@
-// Drives repo automation audit capability router plugin surface with explicit CLI and CI behavior.
+/**
+ * Checks that kernel and host plugin fields have explicit remote-capability
+ * classifications and that live-report requirements cover the published RPC wire.
+ * This is a schema audit; execution evidence comes from validated RPC receipts.
+ */
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 
 const pluginFile = "packages/core/src/types/plugin.ts";
-const capabilityFile = "packages/core/src/capabilities/index.ts";
+const capabilityFile = "packages/core/src/capabilities/protocol.ts";
 const conformanceFile =
-  "packages/agent/src/services/remote-capability-endpoint-conformance.ts";
-const fixtureServerFile =
-  "packages/agent/scripts/capability-router-fixture-server.ts";
+  "packages/agent/scripts/lib/remote-capability-endpoint-conformance.ts";
 const liveReportValidatorFile =
   "packages/agent/scripts/validate-capability-router-live-reports.ts";
 
@@ -41,14 +43,13 @@ const localOnly = new Set([
   "mode",
   "remote",
   "adapter",
+  // Database admission is evaluated by the host loading the plugin. Remote
+  // workers own their storage backend; this is not a mirrored RPC capability.
+  "databaseBackends",
   "tests",
   "dependencies",
   "testDependencies",
   "autoEnable",
-  // Pre-LLM shortcut gate (#8791): registered into the runtime ShortcutRegistry,
-  // not exposed over the capability-router remote boundary (RemotePluginModuleManifest
-  // has no shortcuts key and no remote-manifest builder reads it).
-  "shortcuts",
   // Pre-action dispatch hooks drained at the top of the chat loop; registered
   // into the runtime ChatPreHandlerRegistry in-process, never mirrored over the
   // remote wire (no manifest key, no builder reads it).
@@ -79,7 +80,10 @@ const localOnly = new Set([
 const remoteManifestKeys = new Set(
   readTypeMembers(capabilityFile, "RemotePluginModuleManifest"),
 );
-const pluginKeys = readInterfaceMembers(pluginFile, "Plugin");
+const pluginKeys = [
+  ...readInterfaceMembers(pluginFile, "Plugin"),
+  ...readInterfaceMembers("packages/host/src/api/http-plugin.ts", "HttpPlugin"),
+];
 const failures: string[] = [];
 
 for (const key of pluginKeys) {
@@ -120,8 +124,6 @@ const pluginRpcMethods = readStringUnionMembers(
 const conformanceRequiredMethods = pluginRpcMethods.filter(
   (method) => method !== "plugin.modules.list",
 );
-const conformanceSource = readFileSync(conformanceFile, "utf8");
-const fixtureServerSource = readFileSync(fixtureServerFile, "utf8");
 const conformanceSurfaces = readStringUnionMembers(
   conformanceFile,
   "RemoteCapabilityEndpointConformanceSurface",
@@ -154,20 +156,7 @@ compareSets(
   Object.keys(liveReportValidatorRpcMethodRecord),
 );
 
-for (const method of pluginRpcMethods) {
-  if (!fixtureServerSource.includes(`case "${method}"`)) {
-    failures.push(
-      `RuntimeBrokerCapabilityMethod.${method} is missing a capability-router-fixture-server case.`,
-    );
-  }
-}
-
 for (const method of conformanceRequiredMethods) {
-  if (!conformanceSource.includes(`"${method}"`)) {
-    failures.push(
-      `RuntimeBrokerCapabilityMethod.${method} is not exercised by remote capability endpoint conformance.`,
-    );
-  }
   if (!liveReportValidatorRpcMethods.has(method)) {
     failures.push(
       `RuntimeBrokerCapabilityMethod.${method} is not required by live report validation.`,

@@ -3,39 +3,18 @@
  * resolution conditions.
  */
 
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   ? baseConfig.resolve.alias
   : [];
-const coreEdgeSource = fileURLToPath(
-  new URL("../../packages/core/src/index.edge.ts", import.meta.url),
-);
-// `@elizaos/core` (imported by service.ts) re-exports `@elizaos/prompts`, whose
-// dist is not built per test job. The narrowed `conditions: ["node"]` below
-// drops the package's `module` source condition, so pin prompts to source
-// directly — the same source-alias remedy the base config applies to logger.
-const promptsSource = fileURLToPath(
-  new URL("../../packages/prompts/src/index.ts", import.meta.url),
-);
 
 export default defineConfig({
   resolve: {
     ...baseConfig.resolve,
     conditions: ["node"],
-    alias: [
-      { find: /^@elizaos\/core\/edge$/, replacement: coreEdgeSource },
-      { find: /^@elizaos\/prompts$/, replacement: promptsSource },
-      {
-        find: /^@elizaos\/core\/errors$/,
-        replacement: fileURLToPath(
-          new URL("../../packages/core/src/errors.ts", import.meta.url),
-        ),
-      },
-      ...baseAliases,
-    ],
+    alias: baseAliases,
   },
   ssr: {
     resolve: {

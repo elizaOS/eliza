@@ -1,3 +1,8 @@
+/**
+ * Reads Android role membership and device settings for the native system bridge.
+ * RoleManager is authoritative for this app's membership; default-handler APIs
+ * provide external holder identities when the app does not hold a role.
+ */
 package ai.eliza.plugins.system
 
 import android.app.role.RoleManager
@@ -10,20 +15,6 @@ import android.provider.Settings
 import android.provider.Telephony
 import android.telecom.TelecomManager
 
-/**
- * Pure, [Context]-backed reader for the Android system state that [SystemPlugin]
- * exposes to the launcher's System/Settings views (role status + device
- * settings).
- *
- * The read logic used to live inside the Capacitor [com.getcapacitor.Plugin],
- * coupled to a `PluginCall`/`Bridge`, which is exactly why it "ran on no test,
- * on no device" (issue #9967): you could not exercise the real Android reads
- * without standing up a WebView bridge. Extracting it here lets an instrumented
- * `androidTest` drive the actual device APIs (`RoleManager`, `AudioManager`,
- * `Settings`) against a real phone/emulator. [SystemPlugin] delegates to this
- * reader and builds its JS response from these values unchanged, so the wire
- * contract is identical.
- */
 class SystemDeviceReader(private val context: Context) {
 
     data class RoleStatus(
@@ -60,13 +51,15 @@ class SystemDeviceReader(private val context: Context) {
             val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
             for ((name, androidRole) in ROLE_MAP) {
                 val available = roleManager.isRoleAvailable(androidRole)
-                val holders = if (available) roleHolders(name) else emptyList()
+                val held = available && roleManager.isRoleHeld(androidRole)
+                val holders = if (held) listOf(context.packageName)
+                    else if (available) roleHolders(name) else emptyList()
                 roles.add(
                     RoleStatus(
                         role = name,
                         androidRole = androidRole,
                         available = available,
-                        held = holders.contains(context.packageName),
+                        held = held,
                         holders = holders,
                     ),
                 )

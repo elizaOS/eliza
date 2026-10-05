@@ -1,5 +1,5 @@
 import * as http from "node:http";
-import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, describe, expect, it } from "vitest";
 import { fetchUpstream, handleCloudBillingRoute } from "../src/routes/cloud-billing-routes";
 

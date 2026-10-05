@@ -1,3 +1,4 @@
+import { formatDiagnosticError } from "./safe-diagnostic-error.js";
 /**
  * Canonical error-message extractor. Returns an `Error`'s `.message` and
  * `String(value)` for everything else.
@@ -26,4 +27,9 @@ export function formatError(error: unknown): string {
 			return "[unstringifiable error]";
 		}
 	}
+}
+
+/** Preserve diagnostic stacks without allowing hostile thrown values to mask an error. */
+export function formatErrorWithStack(error: unknown): string {
+	return formatDiagnosticError(error);
 }

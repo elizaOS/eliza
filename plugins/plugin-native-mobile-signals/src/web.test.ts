@@ -1,19 +1,14 @@
+/** Exercises the real web fallback with controlled browser globals and battery responses. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MobileSignalsWeb } from "./web";
 
 function setNavigator(value: Partial<Navigator>): void {
-  Object.defineProperty(globalThis, "navigator", {
-    configurable: true,
-    value,
-  });
+  vi.stubGlobal("navigator", value);
 }
 
 function setDocument(value: Partial<Document>): void {
-  Object.defineProperty(globalThis, "document", {
-    configurable: true,
-    value,
-  });
+  vi.stubGlobal("document", value);
 }
 
 describe("MobileSignalsWeb fallback", () => {
@@ -105,7 +100,7 @@ describe("MobileSignalsWeb fallback", () => {
     });
   });
 
-  it("degrades malformed or rejected battery API results to null metadata", async () => {
+  it("degrades rejected battery API reads to null metadata", async () => {
     setNavigator({
       userAgent: "Mozilla/5.0",
       getBattery: vi.fn(async () => {

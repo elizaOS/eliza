@@ -21,6 +21,7 @@ import {
   MIN_RESERVATION,
 } from "./credits";
 import { debitInferenceCost } from "./inference-billing-fast-path";
+import { fundSubscriberInferenceCharge } from "./subscriber-inference-funding";
 
 interface RecoveryBase {
   version: 1;
@@ -38,6 +39,18 @@ export interface OrganizationInferenceAdmissionRecovery extends RecoveryBase {
   kind: "organization";
   accounting:
     | { kind: "direct_debit" }
+    /**
+     * Allowance-first subscriber funding; the gate ceiling is funding capacity.
+     * An affiliate-marked request pins its payout contract so recovery enqueues
+     * the collected markup atomically with the funded debit.
+     */
+    | {
+        kind: "subscription_funding";
+        affiliate?: {
+          attribution: AffiliateBillingAttribution;
+          payoutSourceId: string;
+        };
+      }
     | {
         kind: "affiliate_debit";
         attribution: AffiliateBillingAttribution;
@@ -67,6 +80,8 @@ export type InferenceAdmissionRecoveryContext =
 export interface InferenceAdmissionRecoveryResult {
   balanceUsd: number;
   balanceRevision: string;
+  /** Present when the balance is subscriber funding capacity, not credit only. */
+  balanceView?: "funding";
   /** Amount reflected in the authoritative organization balance. */
   collectedUsd: number;
   /**
@@ -301,6 +316,51 @@ export async function recoverExpiredInferenceAdmissionLease(
   }
   if (context.kind === "organization" && !options.inferenceBalanceFence) {
     throw new Error("Organization inference recovery requires an admission balance fence");
+  }
+  if (context.kind === "organization" && context.accounting.kind === "subscription_funding") {
+    // Replays the live settlement's funding identity. The post-accounting
+    // capacity is read inside the funding transaction, so no readback follows.
+    const affiliate = context.accounting.affiliate;
+    if (
+      affiliate &&
+      (!isAffiliateBillingAttribution(affiliate.attribution) ||
+        affiliate.attribution.affiliateUserId === context.userId ||
+        !affiliate.payoutSourceId ||
+        affiliate.payoutSourceId.trim() !== affiliate.payoutSourceId)
+    ) {
+      throw new Error(
+        "Subscriber affiliate inference recovery requires pinned attribution and payout identity",
+      );
+    }
+    const funded = await fundSubscriberInferenceCharge({
+      organizationId: context.organizationId,
+      requestId: context.requestId,
+      userId: context.userId,
+      model: context.model,
+      provider: context.provider,
+      billingSource: context.billingSource,
+      description: context.description,
+      metadata: context.metadata,
+      amountUsd: estimatedCostUsd,
+      ...(affiliate && {
+        affiliatePayout: {
+          attribution: affiliate.attribution,
+          sourceId: affiliate.payoutSourceId,
+        },
+      }),
+    });
+    const recovered = recoveredCharge(
+      estimatedCostUsd,
+      funded.reconciliation,
+      funded.reconciliation.collectedAmount ?? 0,
+    );
+    return {
+      balanceUsd: funded.capacity.balanceUsd,
+      balanceRevision: funded.capacity.balanceRevision,
+      balanceView: "funding",
+      collectedUsd: recovered.collectedUsd,
+      gateConsumedUsd: recovered.gateConsumedUsd,
+    };
   }
 
   const recovered =

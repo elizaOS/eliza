@@ -13,8 +13,8 @@
 
 import { Calendar, Clock3, Zap } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { CRON_PRESETS, formatSchedule } from "../../utils/cron-format";
 import { PagePanel } from "../composites/page-panel";
@@ -180,13 +180,15 @@ export function TaskEditor({
           cronExpression:
             scheduleKind === "recurring" ? cron.trim() : undefined,
           eventKind: scheduleKind === "event" ? eventName.trim() : undefined,
-          wakeMode: "inject_now" as const,
-          enabled: true,
         };
         if (initial?.triggerId) {
           await client.updateTrigger(initial.triggerId, request);
         } else {
-          await client.createTrigger(request);
+          await client.createTrigger({
+            ...request,
+            wakeMode: "inject_now",
+            enabled: true,
+          });
           // Cross-boundary edit: this automation was a workbench "once" task and
           // is now a trigger. Delete the stale workbench task so it doesn't keep
           // existing alongside the new trigger (no duplicate).
@@ -471,8 +473,8 @@ function CronPresetButton({
       variant="choice"
       size="tiny"
       shape="circle"
-      data-state={active ? "on" : "off"}
       {...agentProps}
+      data-state={active ? "on" : "off"}
     >
       {label}
     </Button>

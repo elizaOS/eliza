@@ -8,7 +8,7 @@ import type { Page } from "@playwright/test";
 import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
-} from "../../../agent/src/api/dynamic-view-host-external.mjs";
+} from "../../../agent/src/api/dynamic-view-host-external.ts";
 
 export async function installRemoteConnectionsView(page: Page) {
   const bundlePath = "/api/views/lifeops-connections/bundle.js";

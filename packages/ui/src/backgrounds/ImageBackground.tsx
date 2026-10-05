@@ -1,12 +1,12 @@
+import { resolveWallpaperUrl } from "../utils/asset-url";
 /**
  * Cover-image background layer for the unified app background, given a data or
  * /api/media URL.
  */
+
 import type * as React from "react";
 import { Card } from "../components/ui/card";
 import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
-import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
-
 export interface ImageBackgroundProps {
   /** Cover-image source — a data URL or a served `/api/media/…` URL. */
   imageUrl: string;
@@ -19,7 +19,6 @@ export interface ImageBackgroundProps {
    */
   imageHostedNatively?: boolean;
 }
-
 /**
  * Resolve a wallpaper `imageUrl` into one reachable from the renderer in every
  * shell (web, packaged desktop `file://`, native `capacitor://`). The stored URL
@@ -35,20 +34,6 @@ export interface ImageBackgroundProps {
  *    would resolve to `file:///wallpapers` and fail. This is the same
  *    URL-resolution trap `resolveTileImageUrl` handles for launcher hero art.
  */
-export function resolveWallpaperUrl(url: string): string {
-  if (
-    url.startsWith("data:") ||
-    url.startsWith("blob:") ||
-    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
-    url.startsWith("//")
-  ) {
-    return url;
-  }
-  if (url.startsWith("/api/") || url.startsWith("api/")) {
-    return resolveApiUrl(url);
-  }
-  return resolveAppAssetUrl(url);
-}
 
 /**
  * A full-bleed cover image for the unified app background. Centered, cover-fit,
@@ -107,11 +92,11 @@ export function ImageBackground({
       }}
     >
       {/* Legibility scrim: recede the wallpaper so content wins. Kept INSIDE
-          the image layer (not a sibling) so the shell's exactly-one-background
-          invariant holds and every image wallpaper — default or user-uploaded —
-          gets the same treatment. NO cosmetic bottom-floor gradient below it:
-          the fixed wallpaper and mirrored root canvas make the image's own
-          pixels own the home-indicator edge, lock-screen style. */}
+            the image layer (not a sibling) so the shell's exactly-one-background
+            invariant holds and every image wallpaper — default or user-uploaded —
+            gets the same treatment. NO cosmetic bottom-floor gradient below it:
+            the fixed wallpaper and mirrored root canvas make the image's own
+            pixels own the home-indicator edge, lock-screen style. */}
       <Card
         aria-hidden="true"
         data-testid="app-background-image-scrim"

@@ -1,6 +1,6 @@
 // Handles v1 cloud API pending document blob retention with route-local auth expectations.
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const DELETE_RETRY_DELAYS_MS = [100, 250] as const;
 

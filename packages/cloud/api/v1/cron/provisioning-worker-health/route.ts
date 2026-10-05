@@ -24,16 +24,19 @@
  * Protected by CRON_SECRET; supports GET (Workers cron trigger) and POST (manual hits).
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   type DedicatedFleetLiveness,
   monitorDedicatedFleetLiveness,
-} from "@/lib/services/dedicated-fleet-liveness";
-import { monitorProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health-monitor";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/dedicated-fleet-liveness";
+import { monitorProvisioningWorkerHealth } from "@elizaos/cloud-shared/lib/services/provisioning-worker-health-monitor";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

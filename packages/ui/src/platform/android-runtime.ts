@@ -2,7 +2,7 @@
  * Android runtime mode resolution.
  *
  * The Android build orchestrator ships three target APKs (see
- * `packages/app-core/scripts/run-mobile-build.mjs`):
+ * `packages/app/scripts/run-mobile-build.ts`):
  *
  *   - `android`         — sideload-only debug client with the on-device
  *                         agent runtime (Bun via libeliza_bun.so) plus

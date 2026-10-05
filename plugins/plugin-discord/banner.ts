@@ -5,10 +5,8 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-	lifeOpsPassiveConnectorsEnabled,
-	truncateWellFormed,
-} from "@elizaos/core";
+import { truncateWellFormed } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 import { listEnabledDiscordAccounts } from "./accounts";
 import { getDiscordSettings } from "./environment";
 import {

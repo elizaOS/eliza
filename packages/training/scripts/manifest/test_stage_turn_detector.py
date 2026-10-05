@@ -8,18 +8,16 @@ network calls. The actual ONNX byte transfer is mocked by patching
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-# Allow `from scripts.manifest import …` even when the test is invoked
+# Allow `from eliza_training.manifest import …` even when the test is invoked
 # without the package install (mirrors sibling test scaffolding).
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scripts.manifest import stage_eliza1_bundle_assets as stage  # noqa: E402
-from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
+from eliza_training.manifest import stage_eliza1_bundle_assets as stage  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

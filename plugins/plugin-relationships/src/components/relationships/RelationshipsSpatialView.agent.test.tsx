@@ -3,10 +3,8 @@
  * keyboard focus restoration, filtering, teardown, and error-action dispatch.
  */
 // @vitest-environment jsdom
-import {
-  AgentSurfaceProvider,
-  getViewRegistry,
-} from "@elizaos/ui/agent-surface";
+
+import { AgentSurfaceProvider, getViewRegistry } from "@elizaos/ui";
 import {
   act,
   cleanup,

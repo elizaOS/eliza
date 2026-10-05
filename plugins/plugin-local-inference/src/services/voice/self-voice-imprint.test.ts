@@ -1,9 +1,10 @@
 /** Covers `AgentSelfVoiceImprint`: TTS-centroid building, the agent-specific
  * self-voice decision gate, and the shared #12255 handle. Deterministic, fake encoder. */
+
+import { AGENT_SELF_VOICE_IMPRINT_THRESHOLD } from "@elizaos/voice";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	__resetAgentSelfVoiceImprintsForTest,
-	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
 	AgentSelfVoiceImprint,
 	getAgentSelfVoiceImprint,
 	registerAgentSelfVoiceImprint,

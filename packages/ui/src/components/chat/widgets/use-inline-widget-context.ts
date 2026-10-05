@@ -19,15 +19,24 @@ import type { FormResultValue } from "./form-request";
 import type { InlineWidgetContext } from "./inline-registry";
 
 export function useInlineWidgetContext(
-  sendActionMessage: (text: string) => Promise<void>,
+  sendActionMessage: (
+    text: string,
+    options?: { metadata?: Record<string, unknown> },
+  ) => Promise<void>,
   setChatInput: (text: string) => void,
+  messageId?: string,
+  producerScope?: string,
 ): InlineWidgetContext {
   return useMemo<InlineWidgetContext>(
     () => ({
+      messageId,
+      producerScope,
       // A choice pick / default followup: send the value back through the
       // action-message pipeline.
-      sendAction: (value: string) => {
-        void sendActionMessage(value);
+      sendAction: (value: string, metadata?: Record<string, unknown>) => {
+        void (metadata
+          ? sendActionMessage(value, { metadata })
+          : sendActionMessage(value));
       },
       // A followup `navigate` chip: deliver the passive view-switch SUGGESTION
       // as the same `eliza:navigate:view` event the VIEWS action uses. A
@@ -52,6 +61,6 @@ export function useInlineWidgetContext(
         );
       },
     }),
-    [sendActionMessage, setChatInput],
+    [sendActionMessage, setChatInput, messageId, producerScope],
   );
 }

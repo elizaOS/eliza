@@ -3,7 +3,7 @@
  * Durable definition checks prevent action selection alone from counting as success.
  */
 import { AgentRuntime, validateUuid } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { LifeOpsService } from "../../src/lifeops/service.js";
 
 function record(value: unknown): Record<string, unknown> | null {

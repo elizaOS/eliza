@@ -12,12 +12,12 @@
  * Everywhere else (localhost, desktop/mobile local agents, self-hosted remotes)
  * the same-origin agent needs no cloud auth, so probes fire immediately — no
  * auth round-trip is inserted into those hot paths. Consumers:
- * `notifications-boot`, `useWeather`, `useRuntimeMode`, `useSlashCommandController`.
+ * `notifications-boot`, `useWeather`, `useRuntimeMode`.
  */
 
 import { Capacitor } from "@capacitor/core";
-import { client } from "../api";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 import { useIsAuthenticated } from "./useAuthStatus";
 

@@ -11,14 +11,14 @@
 
 import { Globe } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import {
-  type BrowserWorkspaceSnapshot,
-  type BrowserWorkspaceTab,
-  client,
-} from "../../../api";
-import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import type {
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
+} from "../../../api/browser-contracts";
+import { client } from "../../../api/client";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
-import { useAppSelector } from "../../../state";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
+import { useAppSelector } from "../../../state/app-store";
 import { Button } from "../../ui/button";
 import { WidgetSection } from "./shared";
 import type { ChatSidebarWidgetProps } from "./types";

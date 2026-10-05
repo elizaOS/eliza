@@ -81,7 +81,7 @@ registerWidgetComponent(
 );
 
 /**
- * Public API for plugins outside app-core to append widget declarations to the
+ * Public API for plugins outside app to append widget declarations to the
  * built-in fallback list. Declarations appear in the sidebar when the runtime
  * plugin snapshot isn't available or when the plugin is in the fallback set.
  */

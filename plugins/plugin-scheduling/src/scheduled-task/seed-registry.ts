@@ -32,6 +32,14 @@ export interface DefaultTaskPack {
    * supersedes it. The two never double-seed. Defaults to `false`.
    */
   fallback?: boolean;
+  /**
+   * An opt-in pack seeded ALONGSIDE whichever fallback/consumer packs resolve.
+   * It never counts as a consumer pack (so it does not suppress the built-in
+   * fallback) and is never dropped when a consumer pack registers. Its tasks
+   * must carry idempotency keys distinct from every other pack. Defaults to
+   * `false`.
+   */
+  supplemental?: boolean;
 }
 
 const defaultTaskPacksByRuntime = new WeakMap<
@@ -66,17 +74,23 @@ export function getDefaultTaskPacks(
   return Array.from(packMap(runtime).values());
 }
 
+/** True for a pack that participates in the consumer-vs-fallback gate. */
+function isConsumerPack(pack: DefaultTaskPack): boolean {
+  return pack.fallback !== true && pack.supplemental !== true;
+}
+
 /**
  * Resolve the packs the seeder should materialize. When any consumer
- * (non-fallback) pack is registered, fallback packs are dropped — the consumer
- * owns the domain content and the built-in fallback exists only to cover the
- * no-consumer case (e.g. a stock mobile boot). When only fallback packs are
- * registered, they are returned as-is.
+ * (non-fallback, non-supplemental) pack is registered, fallback packs are
+ * dropped — the consumer owns the domain content and the built-in fallback
+ * exists only to cover the no-consumer case (e.g. a stock mobile boot). When
+ * only fallback packs are registered, they are returned as-is. Supplemental
+ * packs are always kept and never affect that gate.
  */
 export function resolvePacksToSeed(
   packs: readonly DefaultTaskPack[],
 ): readonly DefaultTaskPack[] {
-  const hasConsumerPack = packs.some((pack) => pack.fallback !== true);
+  const hasConsumerPack = packs.some(isConsumerPack);
   return hasConsumerPack
     ? packs.filter((pack) => pack.fallback !== true)
     : packs;

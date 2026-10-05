@@ -8,7 +8,7 @@
  */
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { AgentStatus } from "../api";
+import type { AgentStatus } from "../api/client-types-core";
 import { useLifecycleState } from "./useLifecycleState";
 
 const RUNNING: AgentStatus = {

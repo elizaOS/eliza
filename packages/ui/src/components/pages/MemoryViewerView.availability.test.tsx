@@ -21,8 +21,21 @@ const clientMock = vi.hoisted(() => ({
   getMemoriesByEntity: vi.fn(),
 }));
 
-vi.mock("../../api/client", () => ({ client: clientMock }));
-vi.mock("../../state", () => ({
+// This standalone page fixture has no connected runtime view installation.
+// Catalog binding and reporting are exercised by the shell/catalog integration tests.
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: [] }),
+}));
+
+vi.mock("../../api/client", () => ({
+  client: {
+    ...clientMock,
+    getBaseUrl: () => "http://localhost:3000",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: () => () => {},
+  },
+}));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (state: {
       t: (key: string, options?: { defaultValue?: string }) => string;

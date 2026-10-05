@@ -11,7 +11,7 @@
  * the cent. They fail loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -39,6 +39,9 @@ async function getBalance(): Promise<number> {
 }
 
 async function seedOrg(balance: string): Promise<void> {
+  await dbWrite.execute(
+    `DELETE FROM organization_payment_reversal_holds WHERE organization_id = '${ORG_ID}';`,
+  );
   await dbWrite.execute(`DELETE FROM credit_transactions WHERE organization_id = '${ORG_ID}';`);
   await dbWrite.execute(`DELETE FROM organizations WHERE id = '${ORG_ID}';`);
   await dbWrite.execute(
@@ -315,6 +318,24 @@ beforeAll(async () => {
         creator_user_id text,
         reason text NOT NULL,
         quarantined_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      // clawbackCredits records an unrecovered shortfall's billing hold in the
+      // same statement (#22930).
+      `CREATE TABLE IF NOT EXISTS organization_payment_reversal_holds (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        organization_id uuid NOT NULL,
+        reason text NOT NULL,
+        stripe_dispute_id text,
+        clawback_transaction_id uuid UNIQUE,
+        shortfall_usd numeric(16,6),
+        outstanding_usd numeric(16,6),
+        stripe_charge_id text,
+        stripe_payment_intent_id text,
+        amount_cents bigint,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        released_at timestamptz,
+        released_by text,
+        release_reason text
       )`,
       // applyCreditIncrease (the refund path) uses
       // `ON CONFLICT (stripe_payment_intent_id) DO NOTHING`, which requires this
@@ -1330,6 +1351,22 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       };
       expect(Number(row.amount)).toBeCloseTo(-50, 6);
       expect(Number(row.metadata.unrecovered_clawback_usd)).toBeCloseTo(50, 6);
+
+      // The shortfall places exactly one billing hold owing that amount.
+      const holds = await dbWrite.execute(
+        `SELECT reason, shortfall_usd, outstanding_usd, clawback_transaction_id FROM organization_payment_reversal_holds WHERE organization_id = '${ORG_ID}';`,
+      );
+      expect(holds.rows).toHaveLength(1);
+      const hold = holds.rows[0] as {
+        reason: string;
+        shortfall_usd: string;
+        outstanding_usd: string;
+        clawback_transaction_id: string;
+      };
+      expect(hold.reason).toBe("reversal_shortfall");
+      expect(Number(hold.shortfall_usd)).toBeCloseTo(50, 6);
+      expect(Number(hold.outstanding_usd)).toBeCloseTo(50, 6);
+      expect(hold.clawback_transaction_id).toBe(r.transaction.id);
     },
     PGLITE_TIMEOUT,
   );
@@ -1529,6 +1566,52 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       // Balance: 100 - 10 + 4 - 4 = 90 — the org holds exactly what the fiat
       // flows imply (grant refunded in full, only $4 was ever reinstated).
       expect(await getBalance()).toBeCloseTo(90, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("CreditsService.collectAffiliateInferenceFallback fenced settlement (#30865)", () => {
+  test(
+    "publishes the committed debit result without a balance readback",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("1");
+      const snapshotSpy = spyOn(creditsService, "getOrganizationBalanceSnapshot");
+      const inferenceBalanceFence = {
+        lowerCommittedBalance: mock(async (_balance: number, _revision: string) => undefined),
+        publishAuthoritativeBalance: mock(async (_balance: number, _revision: string) => undefined),
+      };
+      try {
+        await expect(
+          creditsService.collectAffiliateInferenceFallback({
+            organizationId: ORG_ID,
+            userId: USER_ID,
+            requestId: "req-affiliate-readback-30865",
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            actualCost: 0.9,
+            reservationMetadata: {},
+            preserveInferenceBalanceHint: true,
+            inferenceBalanceFence,
+          }),
+        ).resolves.toMatchObject({ actualCost: 0.9, collectedAmount: 0.9 });
+        // The atomic debit already returned the authoritative balance and
+        // revision; the settlement must not read the organization back.
+        expect(snapshotSpy).not.toHaveBeenCalled();
+      } finally {
+        snapshotSpy.mockRestore();
+      }
+
+      const authoritative = await creditsService.getOrganizationBalanceSnapshot(ORG_ID);
+      expect(authoritative.balanceUsd).toBeCloseTo(0.1, 6);
+      const [lowered] = inferenceBalanceFence.lowerCommittedBalance.mock.calls;
+      const [published] = inferenceBalanceFence.publishAuthoritativeBalance.mock.calls;
+      expect(lowered?.[0]).toBeCloseTo(0.1, 6);
+      expect(published?.[0]).toBeCloseTo(0.1, 6);
+      expect(published?.[1]).toBe(authoritative.revision);
+      expect(lowered?.[1]).toBe(authoritative.revision);
     },
     PGLITE_TIMEOUT,
   );

@@ -1,12 +1,12 @@
 "use client";
 
+import { ExternalLink } from "lucide-react";
 /**
  * Button that opens/connects to a cloud agent instance (external link into the
  * running agent).
  */
-import { Button } from "@elizaos/ui/cloud-ui";
-import { ExternalLink } from "lucide-react";
-import { useT } from "../lib/i18n";
+import { Button } from "../../../components/ui/button";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 
 interface Props {

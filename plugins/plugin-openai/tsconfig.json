@@ -4,8 +4,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": [
-      "ES2022",
-      "DOM"
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
     ],
     "strict": true,
     "strictNullChecks": true,
@@ -26,9 +27,6 @@
       "bun-types"
     ],
     "paths": {
-      "@elizaos/core": [
-        "../../../packages/core/dist/node"
-      ]
     }
   },
   "include": [

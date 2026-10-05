@@ -138,7 +138,8 @@ export const RICH_INTERACTION_PROFILE: InteractionProfileTemplate = {
 
 export type FirstPartyInteractionProfileFamily =
 	| "button-native"
-	| "conversational";
+	| "conversational"
+	| "read-only";
 
 export interface FirstPartyInteractionConnectorAuditEntry {
 	plugin: string;
@@ -187,22 +188,6 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 		note: "text and attachment transport",
 	},
 	{
-		plugin: "plugin-instagram",
-		registrationSite: "plugin-instagram/src/service.ts",
-		source: "instagram",
-		targetKind: "thread",
-		profileFamily: "conversational",
-		note: "existing DM threads",
-	},
-	{
-		plugin: "plugin-matrix",
-		registrationSite: "plugin-matrix/src/service.ts",
-		source: "matrix",
-		targetKind: "room",
-		profileFamily: "conversational",
-		note: "rooms and threads",
-	},
-	{
 		plugin: "plugin-slack",
 		registrationSite: "plugin-slack/src/service.ts",
 		source: "slack",
@@ -212,27 +197,35 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	},
 	{
 		plugin: "plugin-telegram",
+		registrationSite: "plugin-telegram/src/account-client-service.ts",
+		source: "telegram",
+		targetKind: "user",
+		profileFamily: "read-only",
+		note: "personal account history and search; no outbound interaction transport",
+	},
+	{
+		plugin: "plugin-telegram",
+		registrationSite: "plugin-telegram/src/account-client-service.ts",
+		source: "telegram",
+		targetKind: "channel",
+		profileFamily: "read-only",
+		note: "personal account history and search; no outbound interaction transport",
+	},
+	{
+		plugin: "plugin-telegram",
+		registrationSite: "plugin-telegram/src/account-client-service.ts",
+		source: "telegram",
+		targetKind: "thread",
+		profileFamily: "read-only",
+		note: "personal account history and search; no outbound interaction transport",
+	},
+	{
+		plugin: "plugin-telegram",
 		registrationSite: "plugin-telegram/src/service.ts",
 		source: "telegram",
 		targetKind: "room",
 		profileFamily: "button-native",
 		note: "inline keyboard already exists",
-	},
-	{
-		plugin: "plugin-wechat",
-		registrationSite: "plugin-wechat/src/index.ts",
-		source: "wechat",
-		targetKind: "room",
-		profileFamily: "conversational",
-		note: "users and groups",
-	},
-	{
-		plugin: "plugin-whatsapp",
-		registrationSite: "plugin-whatsapp/src/runtime-service.ts",
-		source: "whatsapp",
-		targetKind: "phone",
-		profileFamily: "conversational",
-		note: "Cloud API messages",
 	},
 	{
 		plugin: "plugin-x",
@@ -246,7 +239,9 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 
 /** Deterministic handoff artifact for connector implementers and reviewers. */
 export function renderFirstPartyInteractionCapabilityMatrix(): string {
-	const profiles = FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map((entry) =>
+	const profiles = FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.filter(
+		(entry) => entry.profileFamily !== "read-only",
+	).map((entry) =>
 		createConnectorInteractionCapabilityProfile({
 			template:
 				entry.profileFamily === "button-native"
@@ -264,5 +259,18 @@ export function renderFirstPartyInteractionCapabilityMatrix(): string {
 		"This generated baseline is conservative. Each runtime registration materializes the family for its concrete account and target; #24288 may advertise stronger limits only with adapter tests.",
 		"",
 		renderInteractionCapabilityMatrix(profiles),
+		"",
+		"## Read-only registrations",
+		"",
+		"These registrations expose history and search only. They cannot deliver interaction blocks or collect replies through this connector.",
+		"",
+		"| Connector | Registration | Target | Outbound interaction delivery |",
+		"| --- | --- | --- | --- |",
+		...FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.filter(
+			(entry) => entry.profileFamily === "read-only",
+		).map(
+			(entry) =>
+				`| ${entry.source} | ${entry.registrationSite} | ${entry.targetKind}:<target> | unsupported |`,
+		),
 	].join("\n");
 }

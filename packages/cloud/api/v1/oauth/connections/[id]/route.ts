@@ -1,23 +1,23 @@
 // Handles v1 cloud API v1 oauth connections id route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * GET /api/v1/oauth/connections/:id - Get a specific OAuth connection
  * DELETE /api/v1/oauth/connections/:id - Revoke a connection
  */
 
-import { ApiError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   Errors,
   internalErrorResponse,
   OAuthError,
   oauthService,
-} from "@/lib/services/oauth";
-import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/oauth";
+import { invalidateOAuthState } from "@elizaos/cloud-shared/lib/services/oauth/invalidation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 async function getAccessibleConnection(
   organizationId: string,

@@ -435,9 +435,12 @@ describe("PdfService", () => {
 
 		await expect(
 			service({ useModel }).extractCompleteDocument(validPdfBuffer()),
-		).rejects.toThrow(
-			"Complete PDF extraction failed on page 2 of 3: vision unavailable",
-		);
+		).rejects.toMatchObject({
+      code: "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE",
+      context: { pageNumber: 2, pageCount: 3 },
+      cause: expect.objectContaining({ message: "vision unavailable" }),
+    });
+    expect(useModel).toHaveBeenCalledTimes(2);
 	});
 
 	it("preserves OCR text alongside native and vision page evidence", async () => {
@@ -754,4 +757,84 @@ describe("PdfService", () => {
 	it("fails cleanup on malformed caller input instead of returning uncleaned content", () => {
 		expect(() => service().cleanUpContent(null as never)).toThrow();
 	});
+  it("does not dispatch OCR or vision after ownership is revoked during rendering", async () => {
+    getDocumentProxyMock.mockResolvedValue(makeDeclaredPdf(2));
+    let active = true;
+    const ownershipError = new Error("Task ownership expired");
+    renderPageAsImageMock.mockImplementation(async () => {
+      active = false;
+      return "data:image/png;base64,cGFnZQ==";
+    });
+    const ocrPage = vi.fn(async () => "text");
+    const useModel = vi.fn(async () => ({ title: "page", description: "text" }));
+    await expect(service({ useModel }).extractCompleteDocument(validPdfBuffer(), {
+      ocrPage,
+      assertActive: () => { if (!active) throw ownershipError; },
+    })).rejects.toBe(ownershipError);
+    expect(ocrPage).not.toHaveBeenCalled();
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("discards a model result after cancellation without publishing or reading another page", async () => {
+    getDocumentProxyMock.mockResolvedValue(makeDeclaredPdf(2));
+    const controller = new AbortController();
+    const onPageComplete = vi.fn();
+    const useModel = vi.fn(async () => {
+      controller.abort(new Error("Task cancelled"));
+      return { title: "page", description: "late text" };
+    });
+    await expect(service({ useModel }).extractCompleteDocument(validPdfBuffer(), {
+      signal: controller.signal, onPageComplete,
+    })).rejects.toThrow("Task cancelled");
+    expect(onPageComplete).not.toHaveBeenCalled();
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(useModel).toHaveBeenCalledWith("IMAGE_DESCRIPTION", expect.objectContaining({signal:controller.signal}));
+    expect(renderPageAsImageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a pre-cancelled extraction before opening the document", async () => {
+    const controller = new AbortController();
+    const reason = new Error("Task cancelled");
+    controller.abort(reason);
+    await expect(service().extractCompleteDocument(validPdfBuffer(), {
+      signal: controller.signal,
+    })).rejects.toBe(reason);
+    expect(getDocumentProxyMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the original cancellation signal when caller options change during OCR", async () => {
+    getDocumentProxyMock.mockResolvedValue(makeDeclaredPdf(2));
+    const controller = new AbortController();
+    const reason = new Error("Task cancelled during OCR");
+    const useModel = vi.fn();
+    const onPageComplete = vi.fn();
+    const options = {
+      signal: controller.signal,
+      onPageComplete,
+      ocrPage: async () => {
+        options.signal = new AbortController().signal;
+        controller.abort(reason);
+        return "late OCR";
+      },
+    };
+    await expect(service({ useModel }).extractCompleteDocument(validPdfBuffer(), options)).rejects.toBe(reason);
+    expect(useModel).not.toHaveBeenCalled();
+    expect(onPageComplete).not.toHaveBeenCalled();
+  });
+
+  it("preserves cancellation when the model rejects rather than classifying an outage", async () => {
+    getDocumentProxyMock.mockResolvedValue(makeDeclaredPdf(1));
+    const controller = new AbortController();
+    const reason = new Error("Task cancelled during model request");
+    const onPageComplete = vi.fn();
+    const useModel = vi.fn(async () => {
+      controller.abort(reason);
+      throw new Error("provider abort");
+    });
+    await expect(service({ useModel }).extractCompleteDocument(validPdfBuffer(), {
+      signal: controller.signal, onPageComplete,
+    })).rejects.toBe(reason);
+    expect(onPageComplete).not.toHaveBeenCalled();
+  });
+
 });

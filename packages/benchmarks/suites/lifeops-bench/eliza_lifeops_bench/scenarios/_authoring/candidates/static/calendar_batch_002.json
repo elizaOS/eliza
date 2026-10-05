@@ -1,0 +1,144 @@
+[
+  {
+    "id": "calendar.create_lunch_maya_15may",
+    "name": "Create lunch meeting with Dr. Sam",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Schedule a lunch with Dr. Sam at 12:30pm UTC on 2026-05-15 for 45 minutes, on my primary calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "create lunch with Dr. Sam on 2026-05-15 12:30-13:15 UTC",
+          "title": "Lunch with Dr. Sam",
+          "details": {
+            "calendarId": "cal_primary",
+            "start": "2026-05-15T12:30:00Z",
+            "end": "2026-05-15T13:15:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Lunch", "Dr. Sam", "12:30"],
+    "first_question_fallback": {
+      "canned_answer": "primary calendar, no other attendees",
+      "applies_when": "agent asks which calendar or attendees"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Create a single event with a specific time, duration, and title on the primary calendar."
+  },
+  {
+    "id": "calendar.reschedule_dentist_friday",
+    "name": "Reschedule dentist appointment to Friday morning",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Move my dentist appointment to Friday at 10:00 UTC.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "update_event",
+          "intent": "move dentist appointment event_00045 to Friday 10:00-10:30 UTC",
+          "details": {
+            "eventId": "event_00045",
+            "calendarId": "cal_primary",
+            "start": "2026-05-12T10:00:00Z",
+            "end": "2026-05-12T10:30:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["dentist", "Friday"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, move it to Friday at 10am on my primary calendar.",
+      "applies_when": "agent asks for confirmation before moving the appointment"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Reschedule an existing dentist appointment to a new day and time."
+  },
+  {
+    "id": "calendar.cancel_team_sync_monday",
+    "name": "Cancel team sync meeting on Monday",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Please cancel the 'Team Sync' meeting scheduled for next Monday on my work calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "delete_event",
+          "intent": "cancel 'Team Sync' event event_00070 on cal_work on 2026-05-13",
+          "details": {
+            "eventId": "event_00070",
+            "calendarId": "cal_work"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Team Sync", "cancel"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Cancel a specific meeting on the work calendar."
+  },
+  {
+    "id": "calendar.propose_coffee_chat",
+    "name": "Propose coffee chat slots",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Propose three 30\u2011minute time slots between 2026-05-12 and 2026-05-14 for a coffee chat with Alex.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "propose_times",
+          "intent": "find three 30-minute slots between 2026-05-12 and 2026-05-14 for coffee chat",
+          "durationMinutes": 30,
+          "slotCount": 3,
+          "windowStart": "2026-05-12T00:00:00Z",
+          "windowEnd": "2026-05-14T23:59:59Z",
+          "title": "Coffee chat with Alex"
+        }
+      }
+    ],
+    "required_outputs": ["coffee", "30", "slot"],
+    "first_question_fallback": {
+      "canned_answer": "Just me and Alex, no other attendees.",
+      "applies_when": "agent asks about attendees or duration"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Search for multiple possible meeting times for a short coffee chat."
+  },
+  {
+    "id": "calendar.check_availability_saturday",
+    "name": "Check availability Saturday afternoon",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "am i free saturday 14:00-16:00 UTC?",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "check_availability",
+          "intent": "is owner free 2026-05-14T14:00 to 16:00 UTC",
+          "startAt": "2026-05-14T14:00:00Z",
+          "endAt": "2026-05-14T16:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Simple availability query for a two\u2011hour block on Saturday."
+  }
+]

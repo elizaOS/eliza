@@ -146,6 +146,45 @@ afterEach(async () => {
 });
 
 describe("Calendar historical source migration", () => {
+  it("skips absent legacy tables without importing rows", async () => {
+    await database.exec("DROP SCHEMA app_lifeops CASCADE");
+    await expect(migrateCalendarTables(carveOutDatabase)).resolves.toEqual([
+      { table: "life_calendar_events", outcome: "source-missing" },
+      { table: "life_calendar_sync_states", outcome: "source-missing" },
+    ]);
+    expect(
+      await exec("SELECT id FROM app_calendar.life_calendar_events"),
+    ).toEqual([]);
+    expect(
+      await exec("SELECT id FROM app_calendar.life_calendar_sync_states"),
+    ).toEqual([]);
+  });
+
+  it("bootstraps linked identities that reject duplicates and invalid states", async () => {
+    await migrateCalendarTables(carveOutDatabase);
+    const insert = (id: string, local: string, remote: string, state: string) =>
+      database.query(
+        `INSERT INTO app_calendar.linked_calendar_events (
+          id, agent_id, local_event_id, connector_account_id, provider_calendar_id,
+          provider_event_id, state, idempotency_key, created_at, updated_at
+        ) VALUES ($1, 'agent-1', $2, 'account-1', 'primary', $3, $4, $1, 'now', 'now')`,
+        [id, local, remote, state],
+      );
+    await insert("link-1", "local-1", "remote-1", "quarantined");
+    await expect(
+      insert("link-2", "local-1", "remote-2", "clean"),
+    ).rejects.toMatchObject({ code: "23505" });
+    await expect(
+      insert("link-3", "local-2", "remote-1", "clean"),
+    ).rejects.toMatchObject({ code: "23505" });
+    await expect(
+      insert("link-4", "local-2", "remote-2", "invalid"),
+    ).rejects.toMatchObject({ code: "23514" });
+    expect(
+      await exec("SELECT id, state FROM app_calendar.linked_calendar_events"),
+    ).toEqual([{ id: "link-1", state: "quarantined" }]);
+  });
+
   it("copies both historical tables with defaults and leaves their source rows untouched", async () => {
     const sourceEventsBefore = await database.query(
       "SELECT * FROM app_lifeops.life_calendar_events ORDER BY id",

@@ -73,7 +73,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           SOURCE_SHA: ${{ inputs.source_sha }}
-        run: node packages/scripts/develop-effect-ledger.mjs await-source --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID" --source-branch "$GITHUB_REF_NAME"
+        run: node packages/scripts/develop-effect-ledger.ts await-source --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID" --source-branch "$GITHUB_REF_NAME"
 
       - name: Download exact validation manifest
         env:
@@ -87,4 +87,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           SOURCE_SHA: ${{ inputs.source_sha }}
-        run: node packages/scripts/develop-effect-ledger.mjs reconcile --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID" --source-branch "$GITHUB_REF_NAME" --expected .develop-evidence/expected.json --observed .develop-evidence/observed.json
+        run: node packages/scripts/develop-effect-ledger.ts reconcile --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID" --source-branch "$GITHUB_REF_NAME" --expected .develop-evidence/expected.json --observed .develop-evidence/observed.json

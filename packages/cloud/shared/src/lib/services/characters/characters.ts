@@ -19,6 +19,7 @@ import {
 
 export type { UserCharacter } from "../../../db/repositories";
 
+import { memoryTable, participantTable, roomTable } from "@elizaos/plugin-sql";
 import { agentsRepository } from "../../../db/repositories/agents/agents";
 import {
   elizaRoomCharactersTable,
@@ -26,7 +27,6 @@ import {
   userCharacters,
   users,
 } from "../../../db/schemas";
-import { memoryTable, participantTable, roomTable } from "../../../db/schemas/eliza";
 import { ValidationError } from "../../api/cloud-worker-errors";
 import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";

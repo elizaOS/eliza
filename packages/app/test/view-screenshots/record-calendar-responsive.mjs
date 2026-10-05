@@ -110,8 +110,8 @@ async function main() {
               .locator(":scope > div")
               .evaluateAll((rows) =>
                 rows.map((row) => ({
-                  columns: getComputedStyle(row).gridTemplateColumns
-                    .split(" ")
+                  columns: getComputedStyle(row)
+                    .gridTemplateColumns.split(" ")
                     .filter(Boolean).length,
                   cells: row.children.length,
                 })),

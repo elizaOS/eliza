@@ -5,9 +5,8 @@
  * Steward, Hyperliquid, Polymarket, or network access.
  */
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import { actionToJsonSchema } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-
-import { actionToJsonSchema } from "../../../../packages/core/src/actions/action-schema.js";
 import {
   requireTradeOrderConfirmation,
   TRADE_CONFIRM_ACTION,

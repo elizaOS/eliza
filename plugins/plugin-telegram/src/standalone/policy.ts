@@ -2,10 +2,8 @@
  * Selects the opt-in standalone Telegram poller from the resolved runtime
  * plugin set and explicit deployment settings.
  */
-import {
-  type IAgentRuntime,
-  lifeOpsPassiveConnectorsEnabled,
-} from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 
 function isExplicitTrue(value: string | undefined): boolean {
   if (!value) {

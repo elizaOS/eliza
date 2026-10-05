@@ -14,6 +14,11 @@ import type {
   BscTransferExecuteResponse,
   DropStatus,
   MintResult,
+  StewardBalanceResponse,
+  StewardTokenBalancesResponse,
+  StewardWalletAddressesResponse,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
   VerificationResult,
   WalletAddresses,
   WalletBalancesResponse,
@@ -24,29 +29,24 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import { ElizaClient } from "./client-base";
 import type {
-  ApplyProductionWalletDefaultsResponse,
   RegistrationResult,
   RegistryConfig,
   RegistryStatus,
   VerificationMessageResponse,
-  WalletExportResult,
   WhitelistStatus,
-} from "./client-types";
+} from "./client-types-cloud";
+import type { WalletExportResult } from "./client-types-config";
+import type { ApplyProductionWalletDefaultsResponse } from "./client-types-core";
 import type {
   StewardApprovalActionResponse,
-  StewardBalanceResponse,
   StewardHistoryResponse,
   StewardPendingResponse,
   StewardSignRequest,
   StewardSignResponse,
   StewardStatusResponse,
-  StewardTokenBalancesResponse,
-  StewardWalletAddressesResponse,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
 } from "./client-types-steward";
 import type {
   BrowserWorkspaceSolanaMessageSignatureResult,
@@ -58,16 +58,15 @@ import type {
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
-
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getWalletAddresses(): Promise<WalletAddresses>;
     getWalletBalances(): Promise<WalletBalancesResponse>;
     getWalletNfts(): Promise<WalletNftsResponse>;
     getWalletConfig(): Promise<WalletConfigStatus>;
-    updateWalletConfig(
-      config: WalletConfigUpdateRequest,
-    ): Promise<{ ok: boolean }>;
+    updateWalletConfig(config: WalletConfigUpdateRequest): Promise<{
+      ok: boolean;
+    }>;
     refreshCloudWallets(): Promise<{
       ok: boolean;
       warnings?: string[];
@@ -75,13 +74,18 @@ declare module "./client-base" {
     setWalletPrimary(params: {
       chain: "evm" | "solana";
       source: "local" | "cloud";
-    }): Promise<{ ok: boolean }>;
+    }): Promise<{
+      ok: boolean;
+    }>;
     generateWallet(params?: {
       chain?: "evm" | "solana" | "both";
       source?: "local" | "steward";
     }): Promise<{
       ok: boolean;
-      wallets: Array<{ chain: string; address: string }>;
+      wallets: Array<{
+        chain: string;
+        address: string;
+      }>;
       source?: string;
       warnings?: string[];
     }>;
@@ -168,14 +172,18 @@ declare module "./client-base" {
       endpoint?: string;
       tokenURI?: string;
     }): Promise<RegistrationResult>;
-    updateRegistryTokenURI(
-      tokenURI: string,
-    ): Promise<{ ok: boolean; txHash: string }>;
+    updateRegistryTokenURI(tokenURI: string): Promise<{
+      ok: boolean;
+      txHash: string;
+    }>;
     syncRegistryProfile(params?: {
       name?: string;
       endpoint?: string;
       tokenURI?: string;
-    }): Promise<{ ok: boolean; txHash: string }>;
+    }): Promise<{
+      ok: boolean;
+      txHash: string;
+    }>;
     getRegistryConfig(): Promise<RegistryConfig>;
     getDropStatus(): Promise<DropStatus>;
     mintAgent(params?: {
@@ -193,27 +201,21 @@ declare module "./client-base" {
     verifyTwitter(tweetUrl: string): Promise<VerificationResult>;
   }
 }
-
 // ---------------------------------------------------------------------------
 // Prototype augmentation
 // ---------------------------------------------------------------------------
-
 ElizaClient.prototype.getWalletAddresses = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/addresses");
 };
-
 ElizaClient.prototype.getWalletBalances = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/balances");
 };
-
 ElizaClient.prototype.getWalletNfts = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/nfts");
 };
-
 ElizaClient.prototype.getWalletConfig = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/config");
 };
-
 ElizaClient.prototype.updateWalletConfig = async function (
   this: ElizaClient,
   config,
@@ -223,13 +225,11 @@ ElizaClient.prototype.updateWalletConfig = async function (
     body: JSON.stringify(config),
   });
 };
-
 ElizaClient.prototype.refreshCloudWallets = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/refresh-cloud", {
     method: "POST",
   });
 };
-
 ElizaClient.prototype.setWalletPrimary = async function (
   this: ElizaClient,
   params,
@@ -239,7 +239,6 @@ ElizaClient.prototype.setWalletPrimary = async function (
     body: JSON.stringify(params),
   });
 };
-
 ElizaClient.prototype.generateWallet = async function (
   this: ElizaClient,
   params = {},
@@ -249,7 +248,6 @@ ElizaClient.prototype.generateWallet = async function (
     body: JSON.stringify(params),
   });
 };
-
 ElizaClient.prototype.exportWalletKeys = async function (
   this: ElizaClient,
   exportToken,
@@ -259,7 +257,6 @@ ElizaClient.prototype.exportWalletKeys = async function (
     body: JSON.stringify({ confirm: true, exportToken }),
   });
 };
-
 ElizaClient.prototype.getBscTradePreflight = async function (
   this: ElizaClient,
   tokenAddress?,
@@ -271,7 +268,6 @@ ElizaClient.prototype.getBscTradePreflight = async function (
     ),
   });
 };
-
 ElizaClient.prototype.getBscTradeQuote = async function (
   this: ElizaClient,
   request,
@@ -281,7 +277,6 @@ ElizaClient.prototype.getBscTradeQuote = async function (
     body: JSON.stringify(request),
   });
 };
-
 ElizaClient.prototype.executeBscTrade = async function (
   this: ElizaClient,
   request,
@@ -291,7 +286,6 @@ ElizaClient.prototype.executeBscTrade = async function (
     body: JSON.stringify(request),
   });
 };
-
 ElizaClient.prototype.executeBscTransfer = async function (
   this: ElizaClient,
   request,
@@ -301,7 +295,6 @@ ElizaClient.prototype.executeBscTransfer = async function (
     body: JSON.stringify(request),
   });
 };
-
 ElizaClient.prototype.getBscTradeTxStatus = async function (
   this: ElizaClient,
   hash,
@@ -310,15 +303,12 @@ ElizaClient.prototype.getBscTradeTxStatus = async function (
     `/api/wallet/trade/tx-status?hash=${encodeURIComponent(hash)}`,
   );
 };
-
 ElizaClient.prototype.getStewardStatus = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/steward-status");
 };
-
 ElizaClient.prototype.getStewardAddresses = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/steward-addresses");
 };
-
 ElizaClient.prototype.getStewardBalance = async function (
   this: ElizaClient,
   chainId?,
@@ -327,7 +317,6 @@ ElizaClient.prototype.getStewardBalance = async function (
     chainId == null ? "" : `?chainId=${encodeURIComponent(String(chainId))}`;
   return this.fetch(`/api/wallet/steward-balances${qs}`);
 };
-
 ElizaClient.prototype.getStewardTokens = async function (
   this: ElizaClient,
   chainId?,
@@ -336,7 +325,6 @@ ElizaClient.prototype.getStewardTokens = async function (
     chainId == null ? "" : `?chainId=${encodeURIComponent(String(chainId))}`;
   return this.fetch(`/api/wallet/steward-tokens${qs}`);
 };
-
 ElizaClient.prototype.getStewardWebhookEvents = async function (
   this: ElizaClient,
   opts?,
@@ -347,11 +335,9 @@ ElizaClient.prototype.getStewardWebhookEvents = async function (
   const qs = params.toString();
   return this.fetch(`/api/wallet/steward-webhook-events${qs ? `?${qs}` : ""}`);
 };
-
 ElizaClient.prototype.getStewardPolicies = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/steward-policies");
 };
-
 ElizaClient.prototype.setStewardPolicies = async function (
   this: ElizaClient,
   policies,
@@ -361,7 +347,6 @@ ElizaClient.prototype.setStewardPolicies = async function (
     body: JSON.stringify({ policies }),
   });
 };
-
 ElizaClient.prototype.getStewardHistory = async function (
   this: ElizaClient,
   opts?,
@@ -373,11 +358,9 @@ ElizaClient.prototype.getStewardHistory = async function (
   const qs = params.toString();
   return this.fetch(`/api/wallet/steward-tx-records${qs ? `?${qs}` : ""}`);
 };
-
 ElizaClient.prototype.getStewardPending = async function (this: ElizaClient) {
   return this.fetch("/api/wallet/steward-pending-approvals");
 };
-
 ElizaClient.prototype.approveStewardTx = async function (
   this: ElizaClient,
   txId,
@@ -387,7 +370,6 @@ ElizaClient.prototype.approveStewardTx = async function (
     body: JSON.stringify({ txId }),
   });
 };
-
 ElizaClient.prototype.rejectStewardTx = async function (
   this: ElizaClient,
   txId,
@@ -398,7 +380,6 @@ ElizaClient.prototype.rejectStewardTx = async function (
     body: JSON.stringify({ txId, reason }),
   });
 };
-
 ElizaClient.prototype.signViaSteward = async function (
   this: ElizaClient,
   request,
@@ -408,7 +389,6 @@ ElizaClient.prototype.signViaSteward = async function (
     body: JSON.stringify(request),
   });
 };
-
 ElizaClient.prototype.sendBrowserWalletTransaction = async function (
   this: ElizaClient,
   request,
@@ -418,7 +398,6 @@ ElizaClient.prototype.sendBrowserWalletTransaction = async function (
     body: JSON.stringify(request),
   });
 };
-
 ElizaClient.prototype.signBrowserWalletMessage = async function (
   this: ElizaClient,
   message,
@@ -428,7 +407,6 @@ ElizaClient.prototype.signBrowserWalletMessage = async function (
     body: JSON.stringify({ message }),
   });
 };
-
 ElizaClient.prototype.signBrowserSolanaMessage = async function (
   this: ElizaClient,
   request,
@@ -438,7 +416,6 @@ ElizaClient.prototype.signBrowserSolanaMessage = async function (
     body: JSON.stringify(request),
   });
 };
-
 ElizaClient.prototype.sendBrowserSolanaTransaction = async function (
   this: ElizaClient,
   request,
@@ -448,13 +425,11 @@ ElizaClient.prototype.sendBrowserSolanaTransaction = async function (
     body: JSON.stringify(request),
   });
 };
-
 ElizaClient.prototype.getWalletMarketOverview = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/wallet/market-overview");
 };
-
 ElizaClient.prototype.getWalletTradingProfile = async function (
   this: ElizaClient,
   window = "30d",
@@ -463,7 +438,6 @@ ElizaClient.prototype.getWalletTradingProfile = async function (
   const params = new URLSearchParams({ window, source });
   return this.fetch(`/api/wallet/trading/profile?${params.toString()}`);
 };
-
 ElizaClient.prototype.applyProductionWalletDefaults = async function (
   this: ElizaClient,
 ) {
@@ -472,11 +446,9 @@ ElizaClient.prototype.applyProductionWalletDefaults = async function (
     body: JSON.stringify({ confirm: true }),
   });
 };
-
 ElizaClient.prototype.getRegistryStatus = async function (this: ElizaClient) {
   return this.fetch("/api/registry/status");
 };
-
 ElizaClient.prototype.registerAgent = async function (
   this: ElizaClient,
   params?,
@@ -486,7 +458,6 @@ ElizaClient.prototype.registerAgent = async function (
     body: JSON.stringify(params ?? {}),
   });
 };
-
 ElizaClient.prototype.updateRegistryTokenURI = async function (
   this: ElizaClient,
   tokenURI,
@@ -496,7 +467,6 @@ ElizaClient.prototype.updateRegistryTokenURI = async function (
     body: JSON.stringify({ tokenURI }),
   });
 };
-
 ElizaClient.prototype.syncRegistryProfile = async function (
   this: ElizaClient,
   params?,
@@ -506,22 +476,18 @@ ElizaClient.prototype.syncRegistryProfile = async function (
     body: JSON.stringify(params ?? {}),
   });
 };
-
 ElizaClient.prototype.getRegistryConfig = async function (this: ElizaClient) {
   return this.fetch("/api/registry/config");
 };
-
 ElizaClient.prototype.getDropStatus = async function (this: ElizaClient) {
   return this.fetch("/api/drop/status");
 };
-
 ElizaClient.prototype.mintAgent = async function (this: ElizaClient, params?) {
   return this.fetch("/api/drop/mint", {
     method: "POST",
     body: JSON.stringify(params ?? {}),
   });
 };
-
 ElizaClient.prototype.mintAgentWhitelist = async function (
   this: ElizaClient,
   params,
@@ -531,17 +497,14 @@ ElizaClient.prototype.mintAgentWhitelist = async function (
     body: JSON.stringify(params),
   });
 };
-
 ElizaClient.prototype.getWhitelistStatus = async function (this: ElizaClient) {
   return this.fetch("/api/whitelist/status");
 };
-
 ElizaClient.prototype.generateTwitterVerificationMessage = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/whitelist/twitter/message", { method: "POST" });
 };
-
 ElizaClient.prototype.verifyTwitter = async function (
   this: ElizaClient,
   tweetUrl,

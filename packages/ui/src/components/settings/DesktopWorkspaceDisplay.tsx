@@ -4,7 +4,7 @@
  * scrollable `<pre>` inside the settings layout.
  */
 
-import type { TranslateFn } from "../../types";
+import type { TranslateFn } from "@elizaos/contracts";
 import { SettingsGroup, SettingsRow } from "./settings-layout";
 
 export function DesktopWorkspaceDisplay({

@@ -100,7 +100,23 @@ const RUNTIME_STUBS = {
       async getHistory(agentId, roomId, store) {
         return await store.load(agentId, roomId);
       },
-      async bridge() {
+      async bridge(agent, rpc, options) {
+        if (rpc.id === "fallback-account-state") {
+          // Echo the server-owned options the coordinator admitted, plus the
+          // exact history the turn would load for its room.
+          const history = await options.historyStore.load(agent.id, rpc.params.roomId);
+          return {
+            jsonrpc: "2.0",
+            id: rpc.id,
+            result: {
+              text: JSON.stringify({
+                accountState: options.trustedAccountState ?? null,
+                funding: options.funding,
+                history,
+              }),
+            },
+          };
+        }
         await fetch("https://model-probe.test/v1/chat/completions", {
           method: "POST",
           body: "unexpected-shared-reminder-inference",
@@ -108,6 +124,16 @@ const RUNTIME_STUBS = {
         throw new Error("Committed cutover reached Shared inference");
       },
       async stream(agent, rpc, options) {
+        if (rpc.id === "fallback-account-state-stream") {
+          // Echo the server-owned account state the streaming turn admitted.
+          const body = JSON.stringify({
+            accountState: options.trustedAccountState ?? null,
+            funding: options.funding,
+          });
+          return new Response("event: done\\ndata: " + body + "\\n\\n", {
+            headers: { "content-type": "text/event-stream" },
+          });
+        }
         if (rpc.id === "barge-eviction") {
           const roomId = rpc.params.roomId;
           const interrupted = [
@@ -463,6 +489,122 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     expect(after.status, afterBody).toBe(200);
     expect(JSON.parse(afterBody)).toEqual({ history });
     expect(modelRequests).toEqual([]);
+
+    // Dedicated access withdrawn (#25146): the scoped fallback journal is a
+    // separate coordinator that admits the platform-funded turn with the
+    // server-owned account state while the canonical room stays sealed, and
+    // it loads none of the canonical (pre-upgrade/Dedicated) history.
+    const journalRoomId = "fallback:6d8f0a52-3c1e-4f8b-9a2d-1b7e5c4d3a21";
+    const accountState = {
+      access: "shared_fallback",
+      state: "shared_active",
+      reason: "subscription_payment_failed",
+      dedicatedMemory: "unavailable",
+      generation: 1,
+      dedicatedRetainedUntil: "2026-10-27T00:00:00.000Z",
+      recoveryAction: { kind: "restore_subscription", path: "/cloud/billing" },
+    };
+    const fallbackTurn = (state: unknown) =>
+      post(`${personalAgent.id}:${journalRoomId}`, "/personal-bridge", {
+        operation: "personal-bridge",
+        agent: personalAgent,
+        trustedAccountState: state,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "fallback-account-state",
+          method: "message.send",
+          params: {
+            text: "What did we work on last week?",
+            roomId: journalRoomId,
+          },
+        },
+      });
+    const admitted = await fallbackTurn(accountState);
+    const admittedBody = await admitted.text();
+    expect(admitted.status, admittedBody).toBe(200);
+    const echoed = JSON.parse(
+      (JSON.parse(admittedBody) as { result: { text: string } }).result.text,
+    );
+    expect(echoed).toEqual({ accountState, funding: "platform", history: [] });
+
+    // The signed, expiring pay-action link crosses the boundary unchanged on
+    // both the buffered and the streaming turn.
+    const linked = {
+      ...accountState,
+      recoveryAction: {
+        ...accountState.recoveryAction,
+        link: {
+          url: "https://cloud.example.test/api/v1/eliza/personal/recovery/eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ1In0.c2ln",
+          expiresAt: "2026-09-30T00:00:00.000Z",
+        },
+      },
+    };
+    const linkedTurn = await fallbackTurn(linked);
+    const linkedBody = await linkedTurn.text();
+    expect(linkedTurn.status, linkedBody).toBe(200);
+    expect(
+      JSON.parse(
+        (JSON.parse(linkedBody) as { result: { text: string } }).result.text,
+      ).accountState,
+    ).toEqual(linked);
+    const streamed = await post(
+      `${personalAgent.id}:${journalRoomId}`,
+      "/personal-stream",
+      {
+        operation: "personal-stream",
+        agent: personalAgent,
+        trustedAccountState: linked,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "fallback-account-state-stream",
+          method: "message.send",
+          params: { text: "Where is my Dedicated?", roomId: journalRoomId },
+        },
+      },
+    );
+    const streamedBody = await streamed.text();
+    expect(streamed.status, streamedBody).toBe(200);
+    expect(streamedBody).toContain(
+      JSON.stringify({ accountState: linked, funding: "platform" }),
+    );
+
+    // Anything but the exact minimal shape is rejected at the boundary.
+    for (const invalid of [
+      { ...accountState, cardLast4: "4242" },
+      { ...accountState, dedicatedMemory: "available" },
+      {
+        ...accountState,
+        recoveryAction: {
+          kind: "restore_subscription",
+          path: "https://x.test",
+        },
+      },
+      {
+        ...linked,
+        recoveryAction: {
+          ...linked.recoveryAction,
+          link: {
+            ...linked.recoveryAction.link,
+            url: `${linked.recoveryAction.link.url}?card=4242424242424242`,
+          },
+        },
+      },
+      {
+        ...linked,
+        recoveryAction: {
+          ...linked.recoveryAction,
+          link: { ...linked.recoveryAction.link, cardLast4: "4242" },
+        },
+      },
+    ]) {
+      const rejected = await fallbackTurn(invalid);
+      const rejectedBody = await rejected.text();
+      expect(rejected.status, rejectedBody).toBe(400);
+      expect(JSON.parse(rejectedBody)).toMatchObject({
+        code: "invalid_account_state",
+      });
+    }
+    expect(modelRequests).toEqual([]);
   }, 120_000);
 
   test("an evicted object reloads a checkpointed interrupted turn before admission", async () => {
@@ -547,5 +689,115 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       { id: "workerd-interrupted-assistant", interrupted: true },
     ]);
     releaseFinalizationGate();
+  }, 120_000);
+
+  test("a connector turn refused by the cutover seal is a retryable hold, before and after commit", async () => {
+    const { coordinateSharedBridge } = await import(
+      "../../shared/src/lib/services/shared-runtime/conversation-coordinator"
+    );
+    const { PersonalCutoverHoldError } = await import(
+      "../../shared/src/lib/services/shared-runtime/shared-runtime-errors"
+    );
+    const agent = {
+      id: "personal:cutover-connector-hold",
+      organization_id: "organization-cutover-hold",
+      user_id: "user-cutover-hold",
+      character_id: null,
+      agent_name: "Eliza",
+      agent_config: { character: { name: "Eliza" } },
+      execution_tier: "shared",
+    };
+    const room = agent.id;
+    const token = "personal-cutover:hold-source:hold-dedicated";
+    // The production coordinator client reaches the same Workerd object the
+    // seal was written to; only the namespace addressing is substituted.
+    const namespace = {
+      getByName: () => ({
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          miniflare.dispatchFetch(String(input), {
+            method: init?.method,
+            body: init?.body as string,
+            headers: {
+              "content-type": "application/json",
+              "x-test-room": room,
+            },
+          }) as unknown as Promise<Response>,
+      }),
+    };
+    const connectorTurn = () =>
+      coordinateSharedBridge(
+        agent as never,
+        {
+          jsonrpc: "2.0",
+          id: "blooio:eliza-app:held-turn",
+          method: "message.send",
+          params: {
+            text: "remind me to call mom",
+            roomId: room,
+            clientMessageId: "blooio:eliza-app:held-turn",
+          },
+        },
+        {
+          namespace: namespace as never,
+          executionCtx: { waitUntil: () => undefined },
+          agentKind: "personal",
+        },
+      );
+
+    const seeded = await post(room, "/__test/seed", {
+      conversation: {
+        agentId: agent.id,
+        channelId: agent.id,
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    });
+    expect(seeded.status, await seeded.text()).toBe(200);
+    const sealed = await post(room, "/cutover-seal", {
+      operation: "cutover-seal",
+      agentId: agent.id,
+      roomId: room,
+      token,
+      leaseMs: 60_000,
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+      dedicatedAgentId: "hold-dedicated",
+    });
+    expect(sealed.status, await sealed.text()).toBe(200);
+
+    // Sealed, not yet committed: a hold the connector retries shortly.
+    const whileSealed = await connectorTurn().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(whileSealed).toBeInstanceOf(PersonalCutoverHoldError);
+    expect(whileSealed).toMatchObject({
+      committed: false,
+      retryAfterSeconds: 1,
+    });
+
+    const committed = await post(room, "/cutover-commit", {
+      operation: "cutover-commit",
+      token,
+    });
+    expect(committed.status, await committed.text()).toBe(200);
+
+    // Committed: still a hold, never a terminal conflict, so the retry
+    // re-resolves the attested Dedicated route instead of dropping the turn.
+    const afterCommit = await connectorTurn().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(afterCommit).toBeInstanceOf(PersonalCutoverHoldError);
+    expect(afterCommit).toMatchObject({ committed: true });
+
+    // Neither refusal admitted the turn into Shared history or inference.
+    const history = await post(room, "/history", {
+      operation: "history",
+      agentId: agent.id,
+      roomId: room,
+    });
+    expect(await history.json()).toEqual({ history: [] });
   }, 120_000);
 });

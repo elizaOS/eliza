@@ -1,12 +1,13 @@
 /** Covers echo playback-delay estimation and per-platform seed defaults (#9583). Deterministic. */
-import { describe, expect, it } from "vitest";
+
 import {
 	DEFAULT_PLAYBACK_DELAY_MS,
 	estimateEchoDelaySamples,
 	PLATFORM_PLAYBACK_DELAY_DEFAULTS,
 	platformPlaybackDelayMs,
 	platformPlaybackDelaySamples,
-} from "./echo-delay.ts";
+} from "@elizaos/voice";
+import { describe, expect, it } from "vitest";
 
 /** Deterministic PRNG so fixtures are reproducible across runs/CI. */
 function mulberry32(seed: number): () => number {

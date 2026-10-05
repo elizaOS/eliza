@@ -83,6 +83,7 @@ function gmailMessage(args: {
   listUnsubscribe?: string;
   listUnsubscribePost?: string;
   listId?: string;
+  receivedAt?: string;
 }) {
   const headers: Record<string, string> = {};
   if (args.listUnsubscribe) headers["List-Unsubscribe"] = args.listUnsubscribe;
@@ -103,7 +104,7 @@ function gmailMessage(args: {
     to: [],
     cc: [],
     snippet: "",
-    receivedAt: "2026-06-17T08:00:00.000Z",
+    receivedAt: args.receivedAt ?? "2026-06-17T08:00:00.000Z",
     isUnread: true,
     isImportant: false,
     likelyReplyNeeded: false,
@@ -247,6 +248,145 @@ describe("InboxUnsubscribeService", () => {
       expect(shop?.unsubscribeMailto).toBe("mailto:unsub@shop.com");
     });
 
+    it("classifies a mailto+https+one-click sender as http_one_click (RFC 8058 §2)", async () => {
+      // RFC 8058 §2 recommends senders publish BOTH a mailto and an https URI
+      // alongside `List-Unsubscribe-Post`. The classifier must agree with the
+      // executor's HTTP-first preference, not label this common case "mailto".
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            from: "Brand News",
+            listUnsubscribe:
+              "<mailto:unsub@brand.com>, <https://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+      expect(brand?.unsubscribeMethod).toBe("http_one_click");
+      expect(brand?.unsubscribeHttpUrl).toBe("https://brand.com/unsub");
+      expect(brand?.unsubscribeMailto).toBe("mailto:unsub@brand.com");
+      expect(result.summary.oneClickEligibleCount).toBe(1);
+      expect(result.summary.mailtoOnlyCount).toBe(0);
+    });
+
+    it("downgrades a mailto+cleartext-http one-click sender to http_get (RFC 8058 https-only)", async () => {
+      // RFC 8058 §2 mandates an https URI for the one-click POST. A cleartext
+      // http target with a one-click post header must NOT be classified
+      // http_one_click; it stays an HTTP GET so unsubscribe credentials are
+      // never POSTed over an unencrypted transport, while still agreeing with
+      // the executor's URL-first dispatch (never "mailto").
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<mailto:unsub@brand.com>, <http://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+      expect(brand?.unsubscribeMethod).toBe("http_get");
+      expect(brand?.unsubscribeHttpUrl).toBe("http://brand.com/unsub");
+      expect(result.summary.oneClickEligibleCount).toBe(0);
+      expect(result.summary.mailtoOnlyCount).toBe(0);
+    });
+
+    it("prefers the https target over a cleartext http one for one-click", async () => {
+      // When a sender lists both an http and an https unsubscribe URL, the
+      // https entry must win so the one-click POST goes to the compliant
+      // secure target regardless of header order.
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<http://brand.com/unsub>, <https://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+      expect(brand?.unsubscribeMethod).toBe("http_one_click");
+      expect(brand?.unsubscribeHttpUrl).toBe("https://brand.com/unsub");
+      expect(result.summary.oneClickEligibleCount).toBe(1);
+    });
+
+    it("classifies a mailto+https sender WITHOUT a one-click post as http_get", async () => {
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<mailto:unsub@brand.com>, <https://brand.com/unsub>",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+      expect(brand?.unsubscribeMethod).toBe("http_get");
+      expect(result.summary.oneClickEligibleCount).toBe(0);
+      expect(result.summary.mailtoOnlyCount).toBe(0);
+    });
+
+    it("downgrades a malformed one-click marker to http_get (RFC 8058 exact key/value)", async () => {
+      // RFC 8058 §2 fixes `List-Unsubscribe-Post` to the exact pair
+      // `List-Unsubscribe=One-Click`. A substring match on `one-click` would
+      // promote a sender whose header only CONTAINS the token — e.g.
+      // `List-Unsubscribe=Not-One-Click` — to a state-changing one-click POST
+      // with a fabricated canonical body. The classifier must reject the
+      // malformed marker and stay an HTTP GET.
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<mailto:unsub@brand.com>, <https://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=Not-One-Click",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const result = await service.scanEmailSubscriptions();
+
+      const brand = result.senders.find(
+        (sender) => sender.senderEmail === "news@brand.com",
+      );
+      expect(brand?.unsubscribeMethod).toBe("http_get");
+      expect(result.summary.oneClickEligibleCount).toBe(0);
+    });
+
     it("falls back to manual_only when no List-Unsubscribe header is present", async () => {
       const gateway = makeGateway({
         messages: [gmailMessage({ id: "m1", fromEmail: "x@y.com" })],
@@ -256,6 +396,39 @@ describe("InboxUnsubscribeService", () => {
       expect(result.senders[0]?.unsubscribeMethod).toBe("manual_only");
       expect(result.summary.manualOnlyCount).toBe(1);
     });
+
+    it.each([
+      ["newest-first", ["2026-06-17", "2026-06-16", "2026-06-15"]],
+      ["newest in the middle", ["2026-06-16", "2026-06-17", "2026-06-15"]],
+    ])(
+      "derives first/latest sender chronology by timestamp (%s)",
+      async (_order, days) => {
+        const gateway = makeGateway({
+          messages: days.map((day) =>
+            gmailMessage({
+              id: day,
+              fromEmail: "news@brand.com",
+              listUnsubscribe: "<https://brand.com/unsub>",
+              receivedAt: `${day}T09:00:00.000Z`,
+            }),
+          ),
+        });
+        const { service } = makeService(gateway);
+
+        const result = await service.scanEmailSubscriptions();
+        const brand = result.senders.find(
+          (sender) => sender.senderEmail === "news@brand.com",
+        );
+
+        expect(brand).toMatchObject({
+          messageCount: 3,
+          firstSeenAt: "2026-06-15T09:00:00.000Z",
+          latestSeenAt: "2026-06-17T09:00:00.000Z",
+          latestMessageId: `${AGENT_ID}:google:owner:gmail:2026-06-17`,
+          latestThreadId: "thread-2026-06-17",
+        });
+      },
+    );
 
     it("keeps every Gmail message and sender when maxMessages is omitted", async () => {
       const messages = Array.from({ length: 501 }, (_, index) =>
@@ -389,6 +562,120 @@ describe("InboxUnsubscribeService", () => {
       expect(record.status).toBe("succeeded");
       expect(record.httpStatusCode).toBe(200);
       expect(tracked.cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("fires an RFC 8058 one-click POST for a mailto+https+one-click sender", async () => {
+      // Regression for #29677: the header carries both a mailto and an https
+      // target plus `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. Before
+      // the fix the classifier returned "mailto", so the executor issued an
+      // HTTP GET (a no-op on POST-only mailer platforms) and recorded
+      // `http_get`. It must now POST with the one-click body and record
+      // `http_one_click`.
+      const tracked = trackedResponse(200);
+      let observedMethod: string | undefined;
+      let observedBody: string | undefined;
+      fetchSpy.mockImplementation(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          expect(String(input)).toBe("https://brand.com/unsub");
+          observedMethod = init?.method;
+          observedBody = typeof init?.body === "string" ? init.body : undefined;
+          return tracked.response;
+        },
+      );
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<mailto:unsub@brand.com>, <https://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click",
+          }),
+        ],
+      });
+      const { service, records } = makeService(gateway);
+
+      const { record } = await service.unsubscribeEmailSender({
+        senderEmail: "news@brand.com",
+        userAuthorization: true,
+      });
+
+      expect(observedMethod).toBe("POST");
+      expect(observedBody).toBe("List-Unsubscribe=One-Click");
+      expect(record.method).toBe("http_one_click");
+      expect(record.status).toBe("succeeded");
+      expect(record.httpStatusCode).toBe(200);
+      expect(records).toHaveLength(1);
+    });
+
+    it("fires an HTTP GET (not POST) for a malformed one-click marker", async () => {
+      // Executor-level regression for the malformed-marker finding: a header
+      // that merely contains `one-click` (here `List-Unsubscribe=Not-One-Click`)
+      // must not reach the state-changing POST branch. The wire request stays a
+      // GET with no fabricated one-click body, and the record reflects that.
+      const tracked = trackedResponse(200);
+      let observedMethod: string | undefined;
+      let observedBody: string | undefined;
+      fetchSpy.mockImplementation(
+        async (_input: RequestInfo | URL, init?: RequestInit) => {
+          observedMethod = init?.method;
+          observedBody = typeof init?.body === "string" ? init.body : undefined;
+          return tracked.response;
+        },
+      );
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<mailto:unsub@brand.com>, <https://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=Not-One-Click",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const { record } = await service.unsubscribeEmailSender({
+        senderEmail: "news@brand.com",
+        userAuthorization: true,
+      });
+
+      expect(observedMethod).toBe("GET");
+      expect(observedBody).toBeUndefined();
+      expect(record.method).toBe("http_get");
+      expect(record.status).toBe("succeeded");
+    });
+
+    it("fires an HTTP GET for a mailto+https sender without a one-click post", async () => {
+      const tracked = trackedResponse(200);
+      let observedMethod: string | undefined;
+      fetchSpy.mockImplementation(
+        async (_input: RequestInfo | URL, init?: RequestInit) => {
+          observedMethod = init?.method;
+          return tracked.response;
+        },
+      );
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe:
+              "<mailto:unsub@brand.com>, <https://brand.com/unsub>",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const { record } = await service.unsubscribeEmailSender({
+        senderEmail: "news@brand.com",
+        userAuthorization: true,
+      });
+
+      expect(observedMethod).toBe("GET");
+      expect(record.method).toBe("http_get");
+      expect(record.status).toBe("succeeded");
     });
 
     it("sends a mailto unsubscribe through the Gmail gateway", async () => {

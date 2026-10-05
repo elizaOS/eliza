@@ -20,8 +20,8 @@ status`` can render a single readable line:
 
 Use::
 
-    python -m scripts.lib.vast_budget snapshot <instance_id>
-    python -m scripts.lib.vast_budget enforce  <instance_id>
+    python -m eliza_training.lib.vast_budget snapshot <instance_id>
+    python -m eliza_training.lib.vast_budget enforce  <instance_id>
 
 The ``enforce`` subcommand returns:
 
@@ -44,7 +44,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass
 
-from scripts.lib import vast as _vast_cli
+from eliza_training.lib import vast as _vast_cli
 
 
 SOFT_CAP_ENV = "ELIZA_VAST_MAX_USD"
@@ -299,7 +299,7 @@ def _print_human(snap: CostSnapshot) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="scripts.lib.vast_budget")
+    parser = argparse.ArgumentParser(prog="eliza_training.lib.vast_budget")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_snap = sub.add_parser(

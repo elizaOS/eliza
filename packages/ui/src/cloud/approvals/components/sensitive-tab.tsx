@@ -16,9 +16,9 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Button,
-  Input,
-} from "../../../components/primitives";
+} from "../../../components/ui/alert";
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
 import {
   formatApprovalTimestamp,
   useCancelSensitiveRequest,

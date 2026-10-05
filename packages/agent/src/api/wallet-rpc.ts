@@ -6,19 +6,26 @@
  * choices, network mode, credential env keys) back into ElizaConfig and
  * `process.env`. Pure resolution logic consumed by the wallet routes and services.
  */
+
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
-  isElizaCloudServiceSelectedInConfig,
-  migrateLegacyRuntimeConfig,
   normalizeWalletRpcSelections,
-  resolveCloudApiBaseUrl,
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
   type WalletConfigUpdateRequest,
   type WalletRpcChain,
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
+import {
+  isElizaCloudServiceSelectedInConfig,
+  migrateLegacyRuntimeConfig,
+} from "@elizaos/host/protocol";
+
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import type { ElizaConfig } from "../config/config.ts";
 
 function normalizeSecret(value: string | null | undefined): string | null {
@@ -191,16 +198,36 @@ export function resolveWalletNetworkMode(
   config?: WalletCapableConfig | null,
   fallback?: string | null,
 ): "mainnet" | "testnet" {
-  const normalized = (
+  const rawValue =
     fallback ??
     config?.wallet?.network ??
     process.env.ELIZA_WALLET_NETWORK ??
-    ""
+    "";
+  const source =
+    fallback != null
+      ? "fallback"
+      : config?.wallet?.network != null
+        ? "config.wallet.network"
+        : process.env.ELIZA_WALLET_NETWORK != null
+          ? "ELIZA_WALLET_NETWORK"
+          : "default";
+  const normalized = (
+    typeof rawValue === "string" ? rawValue : String(rawValue)
   )
     .trim()
     .toLowerCase();
+  // Explicit default: unset or blank across all three sources resolves to
+  // mainnet. Only a blank value takes this path; anything else must match.
+  if (normalized === "") return "mainnet";
+  if (normalized === "mainnet") return "mainnet";
   if (normalized === "testnet") return "testnet";
-  return "mainnet";
+  throw new ElizaError(
+    `Invalid wallet network ${JSON.stringify(String(rawValue))} from ${source}: expected "mainnet" or "testnet" (case-insensitive); unset defaults to "mainnet".`,
+    {
+      code: "WALLET_NETWORK_INVALID",
+      context: { received: String(rawValue), source },
+    },
+  );
 }
 
 function uniqueRpcUrls(

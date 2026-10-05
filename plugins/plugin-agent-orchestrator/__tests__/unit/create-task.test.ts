@@ -5,6 +5,7 @@
 import * as os from "node:os";
 import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import { taskOperationSchemaOverrides } from "../../src/actions/task-operation-schemas.js";
 // CREATE_AGENT_TASK is `TASKS { action: "create" }` (the default action).
 import { createTaskAction } from "../../src/actions/tasks.js";
 import { codingAgentExamplesProvider } from "../../src/providers/action-examples.js";
@@ -18,9 +19,9 @@ import {
 
 describe("TASKS:create", () => {
   it("rejects a history operation alias on the promoted create tool", async () => {
-    const create = promoteSubactionsToActions(createTaskAction).find(
-      (action) => action.name === "TASKS_CREATE",
-    );
+    const create = promoteSubactionsToActions(createTaskAction, {
+      overrides: taskOperationSchemaOverrides(createTaskAction),
+    }).find((action) => action.name === "TASKS_CREATE");
     if (!create) throw new Error("TASKS_CREATE was not promoted");
     const svc = serviceMock();
 

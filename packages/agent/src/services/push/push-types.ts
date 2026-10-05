@@ -2,7 +2,7 @@
  * Shared types for the remote-push delivery seam (APNs + FCM).
  */
 
-import type { JsonValue } from "@elizaos/core";
+import type { JsonValue, NotificationPriority } from "@elizaos/core";
 
 /** The user-facing content a single push carries. */
 export interface PushMessage {
@@ -10,6 +10,10 @@ export interface PushMessage {
   title: string;
   /** Optional longer body line. */
   body?: string;
+  /** Canonical urgency; omitted by legacy callers that retain transport defaults. */
+  priority?: NotificationPriority;
+  /** Selected from the registered Android device capability, never notification data. */
+  androidReminderDataNotifications?: boolean;
   /**
    * Structured custom data delivered alongside the alert so the app can
    * deep-link and dedupe against the in-app notification center. Values are

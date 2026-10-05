@@ -16,8 +16,8 @@
  * sibling `goals-attention-data.ts` glance read model.
  */
 
-import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { client } from "../../../api/client";
 import { fetchWithCsrf } from "../../../api/csrf-client";
 
 /** Home-card poll cadence — matches the TodosView 15s background refresh. */

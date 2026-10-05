@@ -82,6 +82,41 @@ describe("inbox operation error mapping", () => {
     >;
   }
 
+  it.each([
+    ["reply", {}, false],
+    ["reply", { confirmed: true }, true],
+    ["approve", {}, true],
+  ] as const)(
+    "authorizes a %s route send only from the owner's explicit decision (%o)",
+    async (operation, body, send) => {
+      executeInboxQueueOperation.mockResolvedValueOnce({
+        success: true,
+        text: "ok",
+      });
+      const { inboxRoutes } = await import("../src/routes/inbox-routes.ts");
+      const route = inboxRoutes.find(
+        (candidate) =>
+          candidate.type === "POST" &&
+          candidate.path === `/api/lifeops/inbox/:id/${operation}`,
+      );
+      await route?.routeHandler?.(
+        makeContext({
+          method: "POST",
+          path: `/api/lifeops/inbox/entry-1/${operation}`,
+          params: { id: "entry-1" },
+          body,
+          isTrustedLocal: true,
+        }),
+      );
+      expect(executeInboxQueueOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subaction: operation,
+          authorization: { kind: "route", send },
+        }),
+      );
+    },
+  );
+
   it("maps a not-found entry to 404 (distinct from bad input)", async () => {
     executeInboxQueueOperation.mockRejectedValueOnce(
       new Error("inbox entry entry-1 was not found"),

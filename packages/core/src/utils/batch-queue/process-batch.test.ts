@@ -1,85 +1,87 @@
 /**
  * Exercises the opt-in `processBatch` path on BatchQueue that lets the
  * embedding-drain embed N texts in one request. Per-item callers (no
- * `processBatch`) are unaffected; with it set, a drain calls it ONCE and only
- * falls back to the per-item `process` if the batched call throws.
+ * `processBatch`) are unaffected; with it set, a drain calls it ONCE and routes
+ * batch-wide throws and explicit failed item outcomes through per-item retries.
  */
 
-import { describe, expect, test } from "vitest";
+import { ElizaError } from "@elizaos/core";
+import { describe, expect, test, vi } from "vitest";
+import { isModelFundingAuthorityError } from "../model-errors";
 import { BatchQueue } from "./index";
 
 describe("BatchQueue processBatch", () => {
-	function makeQueue(opts: {
-		process: (item: number) => Promise<void>;
-		processBatch?: (
-			items: number[],
-		) => Promise<{ item: number; success: boolean; retryCount: number }[]>;
-	}) {
-		return new BatchQueue<number>({
-			name: "TEST_DRAIN",
+	test("a failed funded batch cannot become new per-item purchases", async () => {
+		const failure = new ElizaError("Recover original funded batch", {
+			code: "MODEL_FUNDING_AUTHORITY_FAILED",
+		});
+		const process = vi.fn(async (_item: number) => {});
+		const exhausted = vi.fn(async (_item: number, _error: Error) => {});
+		const q = new BatchQueue<number>({
+			name: "FUNDED_DRAIN",
 			batchSize: 10,
 			drainIntervalMs: 100,
 			getPriority: () => "normal",
-			maxParallel: 5,
-			process: opts.process,
-			processBatch: opts.processBatch,
-		});
-	}
-
-	test("a drain calls processBatch ONCE with the whole slice, not process per-item", async () => {
-		const perItem: number[] = [];
-		const batched: number[][] = [];
-		const q = makeQueue({
-			process: async (item) => {
-				perItem.push(item);
-			},
-			processBatch: async (items) => {
-				batched.push([...items]);
-				return items.map((item) => ({ item, success: true, retryCount: 0 }));
-			},
-		});
-
-		q.enqueue(1);
-		q.enqueue(2);
-		q.enqueue(3);
-		await q.drain();
-
-		// One batched call for all three; the per-item path never ran.
-		expect(batched).toEqual([[1, 2, 3]]);
-		expect(perItem).toEqual([]);
-	});
-
-	test("a batch-wide failure falls back to the per-item process path", async () => {
-		const perItem: number[] = [];
-		const q = makeQueue({
-			process: async (item) => {
-				perItem.push(item);
-			},
+			process,
 			processBatch: async () => {
-				throw new Error("batch endpoint down");
+				throw failure;
 			},
+			shouldRetry: (_item, error) => !isModelFundingAuthorityError(error),
+			onExhausted: exhausted,
 		});
-
 		q.enqueue(1);
 		q.enqueue(2);
 		await q.drain();
-
-		// processBatch threw -> every item was processed individually (retry path).
-		expect(perItem.sort()).toEqual([1, 2]);
+		await q.drain();
+		expect(process).not.toHaveBeenCalled();
+		expect(exhausted.mock.calls).toEqual([
+			[1, failure],
+			[2, failure],
+		]);
 	});
 
-	test("without processBatch, behavior is unchanged (per-item only)", async () => {
-		const perItem: number[] = [];
-		const q = makeQueue({
-			process: async (item) => {
-				perItem.push(item);
+	test("failed item outcomes are retried per item, in batch order", async () => {
+		const fatal = new Error("fatal");
+		const process = vi.fn(async (item: number) => {
+			if (item === 3) throw new Error("still failing");
+		});
+		const exhausted = vi.fn(async (_item: number, _error: Error) => {});
+		const seen: Array<{ item: number; success: boolean; retryCount: number }> =
+			[];
+		const q = new BatchQueue<number>({
+			name: "PARTIAL_DRAIN",
+			batchSize: 10,
+			drainIntervalMs: 100,
+			getPriority: () => "normal",
+			maxRetriesAfterFailure: 1,
+			retryPolicy: { minDelayMs: 0, maxDelayMs: 0, jitter: 0 },
+			process,
+			processBatch: async (items) =>
+				items.map((item) =>
+					item === 1
+						? { item, success: true, retryCount: 0 }
+						: {
+								item,
+								success: false,
+								error: item === 4 ? fatal : new Error("batch item failed"),
+								retryCount: 0,
+							},
+				),
+			shouldRetry: (_item, error) => error !== fatal,
+			onExhausted: exhausted,
+			onDrainBatchOutcomes: (outcomes) => {
+				seen.push(...outcomes);
 			},
 		});
-
-		q.enqueue(7);
-		q.enqueue(8);
+		for (const item of [1, 2, 3, 4]) q.enqueue(item);
 		await q.drain();
-
-		expect(perItem.sort()).toEqual([7, 8]);
+		expect(process.mock.calls.map(([item]) => item)).toEqual([2, 3, 3]);
+		expect(exhausted.mock.calls.map(([item]) => item)).toEqual([4, 3]);
+		expect(seen).toMatchObject([
+			{ item: 1, success: true, retryCount: 0 },
+			{ item: 2, success: true, retryCount: 0 },
+			{ item: 3, success: false, retryCount: 1 },
+			{ item: 4, success: false, retryCount: 0 },
+		]);
 	});
 });

@@ -75,3 +75,66 @@ export function isStreamingRequest(
     return url.includes("/stream");
   }
 }
+
+/** Reject unsupported bridge payloads rather than silently dropping their bytes. */
+export function requireTextRequestBody(
+  body: BodyInit | null | undefined,
+): string | null | undefined {
+  const text = bodyToString(body);
+  if (text === undefined && body != null) {
+    throw new TypeError(
+      "This native bridge supports string and URLSearchParams request bodies only.",
+    );
+  }
+  return text;
+}
+
+/** Bound a bridge wait without replaying a dispatched effect on cancellation. */
+export async function awaitBridgeRequest<T>(
+  request: () => Promise<T>,
+  signal?: AbortSignal | null,
+  timeoutMs?: number,
+): Promise<T> {
+  signal?.throwIfAborted();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let abortListener: (() => void) | undefined;
+  const interrupted = new Promise<never>((_resolve, reject) => {
+    if (signal) {
+      abortListener = () => reject(signal.reason);
+      signal.addEventListener("abort", abortListener, { once: true });
+    }
+    if (timeoutMs !== undefined) {
+      timeoutId = setTimeout(
+        () =>
+          reject(
+            new DOMException(
+              "The native bridge request timed out",
+              "TimeoutError",
+            ),
+          ),
+        timeoutMs,
+      );
+    }
+  });
+  try {
+    return await Promise.race([request(), interrupted]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    if (signal && abortListener)
+      signal.removeEventListener("abort", abortListener);
+  }
+}
+
+export function findSseEventBreak(chunkBuffer: string): {
+  index: number;
+  length: number;
+} | null {
+  const lfBreak = chunkBuffer.indexOf("\n\n");
+  const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
+  if (lfBreak === -1 && crlfBreak === -1) return null;
+  if (lfBreak === -1) return { index: crlfBreak, length: 4 };
+  if (crlfBreak === -1) return { index: lfBreak, length: 2 };
+  return lfBreak < crlfBreak
+    ? { index: lfBreak, length: 2 }
+    : { index: crlfBreak, length: 4 };
+}

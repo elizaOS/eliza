@@ -8,7 +8,7 @@ import { Capacitor } from "@capacitor/core";
 import { BellRing } from "lucide-react";
 import { useCallback, useState } from "react";
 import { deliverSystemNotification } from "../../bridge/notification-delivery";
-import { isDesktopPlatform } from "../../platform";
+import { isDesktopPlatform } from "../../platform/init";
 import { useWebPush } from "../../state/notifications/useWebPush";
 import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsStack } from "./settings-layout";

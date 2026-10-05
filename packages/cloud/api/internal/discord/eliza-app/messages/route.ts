@@ -4,12 +4,12 @@
  * gateway identity across the nested Shared dispatch exactly once.
  */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
 
 const messageSchema = z.object({
@@ -46,9 +46,13 @@ app.post("/", async (c) => {
     const validationMs = performance.now() - validationStartedAt;
     if (body.guildId) {
       const [gatewayRouter, guildText, sharedWorker] = await Promise.all([
-        import("@/lib/services/agent-gateway-router"),
-        import("@/lib/services/managed-discord-guild-voice"),
-        import("@/lib/services/shared-runtime/resolve-shared-agent"),
+        import("@elizaos/cloud-shared/lib/services/agent-gateway-router"),
+        import(
+          "@elizaos/cloud-shared/lib/services/managed-discord-guild-voice"
+        ),
+        import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent"
+        ),
       ]);
       const { agentGatewayRouterService } = gatewayRouter;
       const {

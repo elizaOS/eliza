@@ -11,8 +11,8 @@
  */
 
 import { toast } from "../../../bridge/toast";
+import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { apiWithStatus } from "../../lib/api-client";
-import { isSafeNavigationUrl } from "../../lib/navigation-url";
 
 const MAX_PAIRING_WAIT_MS = 120_000;
 const DEFAULT_RETRY_AFTER_MS = 5_000;

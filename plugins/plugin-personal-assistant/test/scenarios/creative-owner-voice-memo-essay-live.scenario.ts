@@ -4,7 +4,7 @@
  * an accepted edit when the standing document is revised on the next turn.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const ownerSources = [
   {

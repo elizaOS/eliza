@@ -8,6 +8,8 @@ export const SUBSCRIPTION_LIFECYCLE_UNSUPPORTED = "SUBSCRIPTION_LIFECYCLE_UNSUPP
 export const SUBSCRIPTION_LIFECYCLE_REOBSERVE = "SUBSCRIPTION_LIFECYCLE_REOBSERVE";
 export const SUBSCRIPTION_LIFECYCLE_LEASE_LOST = "SUBSCRIPTION_LIFECYCLE_LEASE_LOST";
 export const TERMINAL_LIFECYCLE_DISPOSITION = "terminal_lifecycle_finalized";
+/** Receipt disposition for an authentic observation that none of our commands produced (renewal, benign or out-of-band update); recovery reconciles it. */
+export const NO_OWNED_CHANGE_DISPOSITION = "no_owned_change";
 
 const terminalObservationSchema = z
   .object({
@@ -99,25 +101,28 @@ export function validateTerminalSource(
     "stripe_subscription_item_id",
     "catalog_version",
     "plan_key",
-    "current_period_start",
-    "current_period_end",
   ] as const) {
-    const stored = current[field];
-    const observed = values[field];
-    const same =
-      stored instanceof Date && observed instanceof Date
-        ? stored.getTime() === observed.getTime()
-        : stored === observed;
-    if (!same) {
+    if (current[field] !== values[field]) {
       lifecycleFailure(
         SUBSCRIPTION_LIFECYCLE_UNSUPPORTED,
-        "Observation changes provider, plan or period authority outside this finalizer",
+        "Observation changes provider or plan authority outside this finalizer",
         { subscriptionId: current.id, field },
       );
     }
   }
+  // Stripe advances the period at renewal even when that invoice fails, so a
+  // subscription canceled after dunning reports a later period than the stored
+  // one. Identity above must match; the terminal period is published as Stripe
+  // observed it, provided it never moves backwards and a published terminal
+  // source is never rewritten.
+  const terminalSource = ["canceled", "incomplete_expired"].includes(current.status);
   if (
     values.current_period_end <= values.current_period_start ||
+    (current.current_period_start !== null &&
+      values.current_period_start < current.current_period_start) ||
+    (terminalSource &&
+      (current.current_period_start?.getTime() !== values.current_period_start.getTime() ||
+        current.current_period_end?.getTime() !== values.current_period_end.getTime())) ||
     (values.status === "incomplete_expired" &&
       !["pending", "incomplete", "incomplete_expired"].includes(current.status)) ||
     (["canceled", "incomplete_expired"].includes(current.status) &&

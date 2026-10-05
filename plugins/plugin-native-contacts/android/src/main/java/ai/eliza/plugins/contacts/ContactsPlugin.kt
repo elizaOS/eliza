@@ -1,3 +1,4 @@
+/** Exposes permission-gated Android address-book reads, creation and vCard import through Capacitor. */
 package ai.eliza.plugins.contacts
 
 import android.Manifest
@@ -11,11 +12,7 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 
-// Declares the `contacts` alias so the Capacitor base Plugin auto-provides
-// checkPermissions()/requestPermissions() — the app can REQUEST contacts access
-// on first use of the Contacts feature instead of only rejecting (which forced
-// the user to grant it from system Settings). Nothing requests this at launch;
-// it is feature-gated to the Contacts view.
+// Contacts access is requested by the feature on first use, never at app launch.
 @CapacitorPlugin(
     name = "ElizaContacts",
     permissions = [
@@ -36,15 +33,13 @@ class ContactsPlugin : Plugin() {
             return
         }
 
-        val requestedLimit = call.getInt("limit")
-        if (requestedLimit != null && requestedLimit <= 0) {
-            call.reject("limit must be positive")
+        val requestedLimit = (call.data.opt("limit") as? Number)?.toDouble()
+        if (call.data.has("limit") && (requestedLimit == null || !requestedLimit.isFinite() ||
+                requestedLimit <= 0 || requestedLimit > 9_007_199_254_740_991.0 || requestedLimit % 1.0 != 0.0)) {
+            call.reject("limit must be a positive safe integer", "INVALID_LIMIT")
             return
         }
-        val limit = requestedLimit ?: Int.MAX_VALUE
-        // The ContactsProvider query is delegated to ContactsReader so it can be
-        // exercised by an instrumented androidTest (write→read round-trip) without
-        // a Capacitor Bridge (issue #9967); the JS shape below is unchanged.
+        val limit = requestedLimit?.toLong()
         val contacts = JSArray()
         try {
             for (record in ContactsReader(context).listContacts(call.getString("query"), limit)) {
@@ -60,8 +55,9 @@ class ContactsPlugin : Plugin() {
                     ),
                 )
             }
-        } catch (error: IllegalStateException) {
-            call.reject(error.message ?: "Contacts provider returned no cursor")
+        } catch (error: Exception) {
+            // error-policy:J1 Provider failures reject the complete bridge read; partial contact data is never returned.
+            call.reject("Contacts provider could not complete the read", "CONTACTS_UNAVAILABLE", error)
             return
         }
 
@@ -303,11 +299,12 @@ class ContactsPlugin : Plugin() {
             val separator = line.indexOf(':')
             if (separator <= 0) continue
             val key = line.substring(0, separator).substringBefore(';').uppercase()
-            val value = decodeVCardValue(line.substring(separator + 1)).trim()
+            val rawValue = line.substring(separator + 1)
+            val value = decodeVCardValue(rawValue).trim()
             if (value.isEmpty()) continue
             when (key) {
                 "FN" -> fullName = value
-                "N" -> structuredName = structuredNameToDisplayName(value)
+                "N" -> structuredName = structuredNameToDisplayName(rawValue)
                 "TEL" -> phoneNumbers.add(value)
                 "EMAIL" -> emailAddresses.add(value)
             }
@@ -322,7 +319,20 @@ class ContactsPlugin : Plugin() {
     }
 
     private fun structuredNameToDisplayName(value: String): String {
-        val parts = value.split(';').map { decodeVCardValue(it).trim() }
+        // Split before decoding: escaped semicolons belong to a name component.
+        val parts = mutableListOf<String>()
+        val component = StringBuilder()
+        var escaped = false
+        for (character in value) {
+            if (character == ';' && !escaped) {
+                parts.add(decodeVCardValue(component.toString()).trim())
+                component.setLength(0)
+            } else {
+                component.append(character)
+                escaped = if (escaped) false else character == '\\'
+            }
+        }
+        parts.add(decodeVCardValue(component.toString()).trim())
         val family = parts.getOrNull(0).orEmpty()
         val given = parts.getOrNull(1).orEmpty()
         val additional = parts.getOrNull(2).orEmpty()
@@ -334,12 +344,24 @@ class ContactsPlugin : Plugin() {
     }
 
     private fun decodeVCardValue(value: String): String {
-        return value
-            .replace("\\n", "\n")
-            .replace("\\N", "\n")
-            .replace("\\,", ",")
-            .replace("\\;", ";")
-            .replace("\\\\", "\\")
+        // Decode each escape once. Chained replacements corrupt a literal
+        // backslash followed by n into a newline (RFC 6350 section 3.4).
+        val decoded = StringBuilder()
+        var index = 0
+        while (index < value.length) {
+            val character = value[index++]
+            if (character != '\\' || index == value.length) {
+                decoded.append(character)
+                continue
+            }
+            val escaped = value[index++]
+            when (escaped) {
+                'n', 'N' -> decoded.append('\n')
+                '\\', ',', ';' -> decoded.append(escaped)
+                else -> decoded.append('\\').append(escaped)
+            }
+        }
+        return decoded.toString()
     }
 
     private data class ParsedVCard(

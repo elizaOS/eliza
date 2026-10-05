@@ -15,8 +15,8 @@ import type {
   EmailUnsubscribeRequest,
   EmailUnsubscribeResult,
   EmailUnsubscribeScanRequest,
-} from "@elizaos/plugin-inbox/inbox/email-unsubscribe-types";
-import { InboxUnsubscribeService } from "@elizaos/plugin-inbox/inbox/unsubscribe-service";
+} from "@elizaos/plugin-inbox";
+import { InboxUnsubscribeService } from "@elizaos/plugin-inbox";
 import type { LifeOpsContext } from "../lifeops-context.js";
 export class EmailUnsubscribeDomain {
   constructor(private readonly ctx: LifeOpsContext) {}

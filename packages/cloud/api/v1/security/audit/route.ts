@@ -6,6 +6,12 @@
  * actor, org, ip, user-agent, request id, and final allowlist validation.
  */
 
+import { requireUserWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -13,11 +19,6 @@ import {
   CLIENT_AUDIT_ACTIONS,
 } from "@/api-app/services/audit";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -57,14 +58,6 @@ function toAuditResult(
   }
 }
 
-function clientIp(c: AppContext): string | undefined {
-  return (
-    c.req.header("cf-connecting-ip") ??
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-    undefined
-  );
-}
-
 app.post("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
@@ -80,7 +73,7 @@ app.post("/", async (c) => {
       action: input.action,
       result: toAuditResult(input.result),
       resource: input.resource ?? null,
-      ip: clientIp(c),
+      ip: getRequestIp(c),
       user_agent: c.req.header("user-agent") ?? undefined,
       request_id: c.get("requestId"),
       org_id: user.organization_id,

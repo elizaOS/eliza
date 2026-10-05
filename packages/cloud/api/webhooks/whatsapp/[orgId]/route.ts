@@ -9,22 +9,20 @@
  * POST /api/webhooks/whatsapp/[orgId]  -- Incoming messages
  */
 
-import { Hono } from "hono";
-import { ZodError } from "zod";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
-import { messageRouterService } from "@/lib/services/message-router";
-import { phoneErrorDiagnostic } from "@/lib/services/phone-error-diagnostics";
-import { whatsappAutomationService } from "@/lib/services/whatsapp-automation";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { agentGatewayRouterService } from "@elizaos/cloud-shared/lib/services/agent-gateway-router";
+import { messageRouterService } from "@elizaos/cloud-shared/lib/services/message-router";
+import { phoneErrorDiagnostic } from "@elizaos/cloud-shared/lib/services/phone-error-diagnostics";
+import { whatsappAutomationService } from "@elizaos/cloud-shared/lib/services/whatsapp-automation";
 import {
   releaseProcessingClaim,
   tryClaimForProcessing,
-} from "@/lib/utils/idempotency";
-import { logger } from "@/lib/utils/logger";
-import { createPerfTrace } from "@/lib/utils/perf-trace";
+} from "@elizaos/cloud-shared/lib/utils/idempotency";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { createPerfTrace } from "@elizaos/cloud-shared/lib/utils/perf-trace";
 import {
   extractWhatsAppMessages,
   isValidWhatsAppId,
@@ -33,8 +31,13 @@ import {
   startWhatsAppTypingIndicator,
   type WhatsAppIncomingMessage,
   type WhatsAppWebhookPayload,
-} from "@/lib/utils/whatsapp-api";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/utils/whatsapp-api";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { ZodError } from "zod";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

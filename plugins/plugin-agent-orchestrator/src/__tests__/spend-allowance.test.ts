@@ -259,9 +259,9 @@ describe("decideSpendAuthorization", () => {
     expect(create.reason).toBe("non-self-spend");
     expect(create.estimatedCostUsd).toBeNull();
 
-    // apps.charges.create is paid-risk but the *payer* funds it (revenue)
+    // x402.requests.create is paid-risk but the *payer* funds it (revenue)
     const charge = decideSpendAuthorization({
-      command: "apps.charges.create",
+      command: "x402.requests.create",
       risk: "paid",
       capUsd: 50,
       alreadySpentUsd: 0,

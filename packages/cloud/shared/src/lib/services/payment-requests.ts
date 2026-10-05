@@ -1,10 +1,11 @@
 /** Coordinates payment-request state, provider intents, and transport projections. */
+
+import type { PaymentRequestDto } from "@elizaos/cloud-shared/types";
 import type {
   PaymentRequestRow,
   PaymentRequestsRepository,
 } from "../../db/repositories/payment-requests";
 import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "../../db/schemas/payment-requests";
-import type { PaymentRequestDto } from "../types/cloud-api";
 
 export { IgnoredWebhookEvent } from "./payment-webhook-errors";
 

@@ -34,4 +34,4 @@ export {
   resolveInboxRequest,
   toInboxMessage,
   toInboxMessages,
-} from "@elizaos/plugin-inbox/inbox/aggregate";
+} from "@elizaos/plugin-inbox";

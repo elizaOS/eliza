@@ -1,8 +1,11 @@
 /** Exercises the inference shell's native-first, bounded-fallback ingress guard. */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import type {
+  AppEnv,
+  RuntimeRateLimitBinding,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import type { AppEnv, RuntimeRateLimitBinding } from "@/types/cloud-worker-env";
 import {
   _resetInferenceIngressRateLimit,
   inferenceIngressRateLimit,

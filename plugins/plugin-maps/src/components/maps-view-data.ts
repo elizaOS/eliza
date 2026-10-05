@@ -1,6 +1,6 @@
 /** Validates browser responses from the authenticated Maps view broker. */
 
-import { fetchWithCsrf } from "@elizaos/ui/api/csrf-client";
+import { fetchWithCsrf } from "@elizaos/ui";
 import {
   type MapsPlacePageResult,
   type MapsPlaceResult,

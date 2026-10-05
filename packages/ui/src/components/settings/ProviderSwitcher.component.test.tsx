@@ -72,7 +72,7 @@ vi.mock("../../hooks/useRuntimeMode", () => ({
     },
   }),
 }));
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     getBaseUrl: vi.fn(() =>
       selection.cloudRuntimeLocked
@@ -92,7 +92,7 @@ vi.mock("../../state/persistence", () => ({
         }
       : null,
 }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (
     selector: (state: Record<string, unknown>) => unknown,
   ) =>

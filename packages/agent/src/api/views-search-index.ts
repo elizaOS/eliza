@@ -6,12 +6,13 @@
  * so startup is never blocked.
  *
  * Usage:
- *   await viewSearchIndex.indexView(entry, runtime);
- *   const results = await viewSearchIndex.search(query, runtime, 10);
+ *   await getViewSearchIndex(runtime).indexView(entry);
+ *   const results = await getViewSearchIndex(runtime).search(query, 10);
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
+import { assertRuntimeViewEntry } from "./view-installations.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
 
 export interface ViewSearchEntry {
@@ -51,7 +52,12 @@ export function buildViewEmbeddingText(view: ViewRegistryEntry): string {
 }
 
 class ViewSearchIndex {
-  private readonly entries = new Map<string, ViewSearchEntry>();
+  private readonly entries = new Map<
+    string,
+    ViewSearchEntry & { view: ViewRegistryEntry }
+  >();
+
+  constructor(private readonly runtime: IAgentRuntime) {}
 
   private key(viewId: string, viewType: ViewRegistryEntry["viewType"]): string {
     return `${viewType}:${viewId}`;
@@ -61,12 +67,11 @@ class ViewSearchIndex {
    * Compute and store an embedding for `view`.
    * Returns without indexing when the runtime has no embedding model configured.
    */
-  async indexView(
-    view: ViewRegistryEntry,
-    runtime: IAgentRuntime,
-  ): Promise<void> {
+  async indexView(view: ViewRegistryEntry): Promise<void> {
+    const runtime = this.runtime;
     const text = buildViewEmbeddingText(view);
     try {
+      assertRuntimeViewEntry(runtime, view);
       const result = await runtime.useModel(ModelType.TEXT_EMBEDDING, { text });
       const embedding = Array.isArray(result) ? (result as number[]) : [];
       if (embedding.length === 0) {
@@ -76,11 +81,13 @@ class ViewSearchIndex {
         );
         return;
       }
+      assertRuntimeViewEntry(runtime, view);
       this.entries.set(this.key(view.id, view.viewType), {
         viewId: view.id,
         viewType: view.viewType,
         embedding,
         text,
+        view,
       });
     } catch (err) {
       // error-policy:J4 semantic search explicitly degrades to keyword ranking.
@@ -115,7 +122,6 @@ class ViewSearchIndex {
    */
   async search(
     query: string,
-    runtime: IAgentRuntime,
     topK = 10,
   ): Promise<
     Array<{
@@ -124,6 +130,7 @@ class ViewSearchIndex {
       score: number;
     }>
   > {
+    const runtime = this.runtime;
     if (this.entries.size === 0) return [];
     if (!Number.isSafeInteger(topK) || topK <= 0) return [];
 
@@ -149,7 +156,13 @@ class ViewSearchIndex {
       viewType: ViewRegistryEntry["viewType"];
       score: number;
     }> = [];
-    for (const entry of this.entries.values()) {
+    for (const [key, entry] of this.entries) {
+      try {
+        assertRuntimeViewEntry(runtime, entry.view);
+      } catch {
+        this.entries.delete(key);
+        continue;
+      }
       const score = cosineSimilarity(queryEmbedding, entry.embedding);
       scored.push({
         viewId: entry.viewId,
@@ -179,5 +192,12 @@ class ViewSearchIndex {
   }
 }
 
-/** Singleton shared across the process. */
-export const viewSearchIndex = new ViewSearchIndex();
+const runtimeIndexes = new WeakMap<IAgentRuntime, ViewSearchIndex>();
+export function getViewSearchIndex(runtime: IAgentRuntime): ViewSearchIndex {
+  let index = runtimeIndexes.get(runtime);
+  if (!index) {
+    index = new ViewSearchIndex(runtime);
+    runtimeIndexes.set(runtime, index);
+  }
+  return index;
+}

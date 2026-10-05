@@ -5,8 +5,8 @@
  */
 
 import { useCallback } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { useSetPageHeader } from "../../cloud-ui";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { useSetPageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 import { ContentState } from "../../components/composites/page-panel/content-state";
 import { Button } from "../../components/ui/button";
 import { buildSameTabCloudLoginPath } from "../../state/cloud-login-launch";

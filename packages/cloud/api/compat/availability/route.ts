@@ -6,12 +6,18 @@
  * hostnames to end users is an unnecessary information leak).
  */
 
+import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
+import { validateServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key";
+import { authenticateWaifuBridge } from "@elizaos/cloud-shared/lib/auth/waifu-bridge";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
-import { validateServiceKey } from "@/lib/auth/service-key";
-import { authenticateWaifuBridge } from "@/lib/auth/waifu-bridge";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, OPTIONS";
 

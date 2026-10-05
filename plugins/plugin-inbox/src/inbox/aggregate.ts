@@ -25,7 +25,7 @@
  *     (declared in `message-fetcher.ts`), implemented by the host's connector
  *     projections.
  */
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+
 import {
   type GetLifeOpsInboxRequest,
   LIFEOPS_INBOX_CHANNELS,
@@ -36,7 +36,8 @@ import {
   type LifeOpsInboxMessage,
   type LifeOpsInboxSourceStatus,
   type LifeOpsInboxThreadGroup,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   fetchAllMessages,
   type GmailInboxSource,

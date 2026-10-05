@@ -25,14 +25,18 @@
  * task row is broken.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
-import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
+import {
+  hasRoleAccess,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+} from "@elizaos/core";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import {
   getScheduledTaskRunner,
   pendingPromptRoomIdForTask,
 } from "@elizaos/plugin-scheduling";
 import { CheckinService } from "../checkin/checkin-service.js";
-import { resolvePendingPromptsStore } from "../pending-prompts/store.js";
 import { recordTaskStateEntry } from "./scheduler.js";
 
 const LOG_SRC = "lifeops:scheduled-task:inbound-reply-completion";
@@ -114,7 +118,7 @@ export async function completeFiredTasksOnOwnerReply(
   const roomId = typeof message.roomId === "string" ? message.roomId : null;
   if (!roomId) return EMPTY;
   if (message.entityId === runtime.agentId) return EMPTY;
-  if (!(await hasOwnerAccess(runtime, message))) return EMPTY;
+  if (!(await hasRoleAccess(runtime, message, "OWNER"))) return EMPTY;
 
   const repliedAtIso =
     typeof message.createdAt === "number" && Number.isFinite(message.createdAt)

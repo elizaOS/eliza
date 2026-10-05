@@ -37,10 +37,6 @@ const LOADERS: Record<string, () => Promise<{ default: ComponentType }>> = {
     import(
       "../../../../plugins/plugin-health/src/components/health/HealthView.tsx"
     ) as Promise<{ default: ComponentType }>,
-  finances: () =>
-    import(
-      "../../../../plugins/plugin-finances/src/components/finances/FinancesView.tsx"
-    ) as Promise<{ default: ComponentType }>,
   inbox: () =>
     import(
       "../../../../plugins/plugin-inbox/src/components/inbox/InboxView.tsx"
@@ -55,16 +51,35 @@ const LOADERS: Record<string, () => Promise<{ default: ComponentType }>> = {
     ) as Promise<{ default: ComponentType }>,
   documents: () =>
     import(
-      "../../../../plugins/plugin-documents/src/components/documents/KnowledgeDocumentsView.tsx"
+      "../../../../plugins/plugin-knowledge/src/components/documents/DocumentsView.tsx"
     ) as Promise<{ default: ComponentType }>,
   relationships: () =>
     import(
       "../../../../plugins/plugin-relationships/src/components/relationships/RelationshipsView.tsx"
     ) as Promise<{ default: ComponentType }>,
-  calendar: () =>
-    import(
+  calendar: async () => {
+    if (state.startsWith("sources-")) {
+      const { CalendarSourceManager } = await import(
+        "../../../../plugins/plugin-calendar/src/components/CalendarSourceManager.tsx"
+      );
+      return {
+        default: () => (
+          <CalendarSourceManager
+            sourceHealth={
+              (globalThis.__VIEW_HARNESS_CALENDAR__?.sources ??
+                []) as Parameters<
+                typeof CalendarSourceManager
+              >[0]["sourceHealth"]
+            }
+          />
+        ),
+      };
+    }
+    const { CalendarPage } = await import(
       "../../../../plugins/plugin-calendar/src/components/calendar/CalendarPage.tsx"
-    ) as Promise<{ default: ComponentType }>,
+    );
+    return { default: CalendarPage };
+  },
 };
 
 async function main(): Promise<void> {

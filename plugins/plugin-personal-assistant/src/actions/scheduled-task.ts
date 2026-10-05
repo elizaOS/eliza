@@ -39,6 +39,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { stableStringify } from "@elizaos/core";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -47,7 +48,6 @@ import {
   lifeOpsNoopEffect,
 } from "../lifeops/action-effect-result.js";
 import { messageText } from "../lifeops/google/format-helpers.js";
-import { resolvePendingPromptsStore } from "../lifeops/pending-prompts/store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   bindScheduledTaskToInboundChat,
@@ -1736,7 +1736,7 @@ export const scheduledTaskAction: Action & {
   descriptionCompressed:
     "low-level scheduled-item admin; NOT new owner reminders/deadlines/habits/goals (-> OWNER_REMINDERS/OWNER_ROUTINES/OWNER_GOALS create)",
   routingHint:
-    'manage EXISTING scheduled items ("snooze that reminder", "show me only overdue tasks" -> action=list dueWindow=overdue, "what\'s due today" -> action=list dueWindow=today, "complete check-in", "scheduled-item history") -> SCHEDULED_TASKS; NEW owner reminders/deadlines ("remind me to renew registration by the 20th", "call mom tomorrow") -> OWNER_REMINDERS action=create; NEW habit/routine/recurring personal reminder ("brush my teeth at 8 am and 9 pm every day", "remind me daily at 9pm") -> OWNER_ROUTINES/OWNER_REMINDERS action=create; NEW owner goals, savings/trip goals, fitness goals, learning goals, or goal support/check-in plans -> OWNER_GOALS action=create; coding/project/agent task threads -> TASKS/plugin-task-coordinator; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
+    'manage EXISTING scheduled items ("snooze that reminder", "show me only overdue tasks" -> action=list dueWindow=overdue, "what\'s due today" -> action=list dueWindow=today, "complete check-in", "scheduled-item history") -> SCHEDULED_TASKS; NEW owner reminders/deadlines ("remind me to renew registration by the 20th", "call mom tomorrow") -> OWNER_REMINDERS action=create; NEW habit/routine/recurring personal reminder ("brush my teeth at 8 am and 9 pm every day", "remind me daily at 9pm") -> OWNER_ROUTINES/OWNER_REMINDERS action=create; NEW owner goals, savings/trip goals, fitness goals, learning goals, or goal support/check-in plans -> OWNER_GOALS action=create; coding/project/agent task threads -> TASKS/plugin-agent-orchestrator; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
   contexts: [
     "tasks",
     "automation",

@@ -1,6 +1,6 @@
 /**
  * Default vitest config for plugin-sql. The runner
- * (`packages/scripts/run-all-tests.mjs`) drives lanes via env:
+ * (`packages/scripts/run-all-tests.ts`) drives lanes via env:
  * `TEST_LANE=pr` sets `VITEST_EXCLUDE_REAL=1`; `TEST_LANE=post-merge` clears
  * it so the real-PGlite suites (`runtime-migrator.real.test.ts`,
  * `pglite-adapter.real.test.ts`, …) run instead of being excluded (#10104).

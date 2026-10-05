@@ -31,7 +31,7 @@ const WIDGET_VISIBILITY_STORAGE_KEY_PREFIX = "eliza:widget-visibility";
  * {@link ../components/chat/TasksEventsPanel.tsx}. Lets the same edit panel
  * toggle Apps even though it's not a registry widget.
  */
-export const APPS_SECTION_VISIBILITY_KEY = "app-core/apps.section";
+export const APPS_SECTION_VISIBILITY_KEY = "app/apps.section";
 
 export interface WidgetVisibilityState {
   /**
@@ -136,9 +136,7 @@ export function applyChatSidebarVisibility<
   );
 }
 
-export const applyWidgetVisibility = applyChatSidebarVisibility;
 export const loadChatSidebarVisibility = loadWidgetVisibility;
-export const saveChatSidebarVisibility = saveWidgetVisibility;
 
 export {
   CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY,

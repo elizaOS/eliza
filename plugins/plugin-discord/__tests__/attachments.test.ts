@@ -1,11 +1,16 @@
 /**
- * Unit tests for the `AttachmentManager` — media type detection and download,
- * against a mocked runtime (no live Discord or network).
+ * Unit tests for the `AttachmentManager` — media type detection, download, and
+ * the bounded inbound attachment cache — against a mocked runtime (no live
+ * Discord or network).
  */
 import { ContentType, type IAgentRuntime, ModelType } from "@elizaos/core";
 import { type Attachment, Collection } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AttachmentManager } from "../attachments";
+import {
+	AttachmentManager,
+	DISCORD_ATTACHMENT_CACHE_MAX_ENTRIES,
+	DISCORD_ATTACHMENT_CACHE_TTL_MS,
+} from "../attachments";
 
 function makeRuntime(): IAgentRuntime {
 	return {
@@ -156,5 +161,142 @@ describe("AttachmentManager", () => {
 			description: "image description",
 			text: "image description",
 		});
+	});
+});
+
+describe("AttachmentManager inbound cache", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("hits the cache on a second process of the same attachment id", async () => {
+		const runtime = makeRuntime();
+		const manager = new AttachmentManager(runtime);
+		const first = attachment({
+			id: "image-cache",
+			url: "https://cdn.discordapp.com/image.png?ex=1",
+			name: "image.png",
+			contentType: "image/png",
+		});
+
+		const firstMedia = await manager.processAttachment(first);
+		expect(firstMedia?.text).toBe("image description");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+
+		const secondMedia = await manager.processAttachment(first);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(secondMedia?.id).toBe("image-cache");
+		expect(secondMedia?.text).toBeUndefined();
+	});
+
+	it("does not duplicate work for different signed URLs with the same id", async () => {
+		const runtime = makeRuntime();
+		const manager = new AttachmentManager(runtime);
+
+		await manager.processAttachment(
+			attachment({
+				id: "stable-id",
+				url: "https://cdn.discordapp.com/image.png?ex=111&is=222",
+				name: "image.png",
+				contentType: "image/png",
+			}),
+		);
+		await manager.processAttachment(
+			attachment({
+				id: "stable-id",
+				url: "https://cdn.discordapp.com/image.png?ex=999&is=888",
+				name: "image.png",
+				contentType: "image/png",
+			}),
+		);
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not retain extracted transcript text in the cached entry", async () => {
+		const runtime = makeRuntime();
+		const manager = new AttachmentManager(runtime);
+		const first = await manager.processAttachment(
+			attachment({
+				id: "described",
+				url: "https://cdn.discordapp.com/image.png",
+				name: "image.png",
+				contentType: "image/png",
+			}),
+		);
+		expect(first?.text).toBe("image description");
+
+		const cached = await manager.processAttachment(
+			attachment({
+				id: "described",
+				url: "https://cdn.discordapp.com/image.png?ex=rotated",
+				name: "image.png",
+				contentType: "image/png",
+			}),
+		);
+		expect(cached).not.toHaveProperty("text");
+	});
+
+	it("evicts the oldest id once the cache cap is exceeded", async () => {
+		const runtime = makeRuntime();
+		const manager = new AttachmentManager(runtime);
+
+		for (let i = 0; i < DISCORD_ATTACHMENT_CACHE_MAX_ENTRIES + 1; i++) {
+			await manager.processAttachment(
+				attachment({
+					id: `img-${i}`,
+					url: `https://cdn.discordapp.com/${i}.png`,
+					name: `${i}.png`,
+					contentType: "image/png",
+				}),
+			);
+		}
+		expect(runtime.useModel).toHaveBeenCalledTimes(
+			DISCORD_ATTACHMENT_CACHE_MAX_ENTRIES + 1,
+		);
+
+		await manager.processAttachment(
+			attachment({
+				id: "img-0",
+				url: "https://cdn.discordapp.com/0.png",
+				name: "0.png",
+				contentType: "image/png",
+			}),
+		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(
+			DISCORD_ATTACHMENT_CACHE_MAX_ENTRIES + 2,
+		);
+	});
+
+	it("evicts expired entries on the TTL sweep", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+		const runtime = makeRuntime();
+		const manager = new AttachmentManager(runtime);
+
+		await manager.processAttachment(
+			attachment({
+				id: "ttl-image",
+				url: "https://cdn.discordapp.com/image.png",
+				name: "image.png",
+				contentType: "image/png",
+			}),
+		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+
+		vi.setSystemTime(
+			new Date("2026-01-01T00:00:00Z").getTime() +
+				DISCORD_ATTACHMENT_CACHE_TTL_MS +
+				1,
+		);
+		await manager.processAttachment(
+			attachment({
+				id: "ttl-image",
+				url: "https://cdn.discordapp.com/image.png?ex=later",
+				name: "image.png",
+				contentType: "image/png",
+			}),
+		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 });

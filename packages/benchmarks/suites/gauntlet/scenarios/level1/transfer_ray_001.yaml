@@ -1,0 +1,23 @@
+id: transfer_ray_001
+level: 1
+name: RAY Transfer
+description: 'Level 1 protocol interaction: RAY Transfer'
+category: transfer
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 10.0
+    tokens:
+      USDC: 1000
+      BONK: 10000000
+tasks:
+- id: task_transfer_ray_001
+  type: transfer
+  parameters:
+    token: RAY
+    amount: 2
+  timeout_ms: 30000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

@@ -26,6 +26,7 @@ import { applyRemoteDockerRuntimeMode } from "../../remote-docker-runtime-mode";
 import { type SandboxProvider } from "../../sandbox-provider";
 import { SandboxReplacementCleanupUnresolvedError } from "../../sandbox-provider-types";
 import { hasReadyWarmClaimCredential } from "../../warm-claim-key-push";
+import { keepsAgentStateOnContainerVolume } from "../agent-config.js";
 import { SandboxBackup } from "../backup/service.js";
 import { SandboxTransport } from "../bridge/transport.js";
 import { SandboxLifecycleAuthority } from "./authority.js";
@@ -426,6 +427,23 @@ export class SandboxImageSwap {
       };
     }
 
+    // Materialize at-rest-encrypted BYO secrets before container create (#11332).
+    const upgradeEnv = await decryptAgentEnvVars(
+      (agent.environment_vars as Record<string, string>) ?? {},
+    );
+    if (keepsAgentStateOnContainerVolume(upgradeEnv)) {
+      // Blue/green provisions the replacement on another node with a fresh
+      // volume and no restore source, so cutting over would serve an empty
+      // database while the history stays on the retired container (#31334).
+      // Refuse before any container work until a fenced transfer exists.
+      return {
+        success: false,
+        rolledBack: true,
+        error:
+          "Local-state agent upgrades require a fenced state transfer; refusing blue/green cutover",
+      };
+    }
+
     const oldNodeId = agent.node_id;
     const oldContainerName = agent.container_name;
     const oldSandboxId = agent.sandbox_id;
@@ -459,10 +477,6 @@ export class SandboxImageSwap {
       };
     }
 
-    // Materialize at-rest-encrypted BYO secrets before container create (#11332).
-    const upgradeEnv = await decryptAgentEnvVars(
-      (agent.environment_vars as Record<string, string>) ?? {},
-    );
     const config = {
       agentId,
       agentName: agent.agent_name ?? "",

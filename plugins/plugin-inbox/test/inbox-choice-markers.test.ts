@@ -3,9 +3,10 @@
  * parse through the real core interaction parser, labels are sanitized, and
  * every chip value survives the connector reply-callback size cap.
  */
+
+import { encodeReplyCallback } from "@elizaos/core";
+import { parseInteractionBlocks } from "@elizaos/core/protocol";
 import { describe, expect, it } from "vitest";
-import { encodeReplyCallback } from "../../../packages/core/src/messaging/interactions/callback";
-import { parseInteractionBlocks } from "../../../packages/core/src/messaging/interactions/parse";
 import {
   appendInboxDraftChoiceMarker,
   appendInboxTriageChoiceMarkers,

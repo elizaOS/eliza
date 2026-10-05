@@ -10,7 +10,7 @@ Tests cover:
 
 import pytest
 
-from src.training.quality_scorer import (
+from eliza_training.rl.quality_scorer import (
     QualityScore,
     calculate_combined_length_penalty,
     calculate_response_length_penalty,
@@ -21,7 +21,7 @@ from src.training.quality_scorer import (
     score_response_batch,
     score_response_for_reward,
 )
-from src.training.scenario_pool import (
+from eliza_training.rl.scenario_pool import (
     MarketState,
     PerpetualState,
     PortfolioState,

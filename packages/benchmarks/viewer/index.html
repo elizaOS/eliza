@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>elizaOS Benchmark Viewer</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <h1>elizaOS Benchmark Viewer</h1>
+        <p id="generated-at">Loading benchmark data...</p>
+      </header>
+
+      <section class="cards" id="summary-cards"></section>
+
+      <nav class="tabs" id="tab-nav">
+        <button type="button" class="tab-button is-active" data-tab="overview">Overview</button>
+        <button type="button" class="tab-button" data-tab="diff">Trajectory Diff</button>
+        <button type="button" class="tab-button" data-tab="playback">Playback</button>
+      </nav>
+
+      <div class="tab-panel is-active" data-tab="overview">
+      <section class="panel">
+        <h2>Runs</h2>
+        <div class="controls">
+          <label>
+            Sort by
+            <select id="sort-by">
+              <option value="started_at">started_at</option>
+              <option value="agent">agent</option>
+              <option value="run_id">run_id</option>
+              <option value="benchmark_id">benchmark_id</option>
+              <option value="status">status</option>
+              <option value="score">score</option>
+              <option value="delta_to_high_score">delta_to_high_score</option>
+            </select>
+          </label>
+          <label>
+            Order
+            <select id="sort-order">
+              <option value="desc">desc</option>
+              <option value="asc">asc</option>
+            </select>
+          </label>
+          <label>
+            Benchmark
+            <select id="filter-benchmark">
+              <option value="">all</option>
+            </select>
+          </label>
+          <label>
+            Status
+            <select id="filter-status">
+              <option value="">all</option>
+            </select>
+          </label>
+          <label>
+            Search
+            <input id="filter-search" type="search" placeholder="run id, model, agent..." />
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table id="runs-table">
+            <thead>
+              <tr>
+                <th data-sort="run_id">run_id</th>
+                <th data-sort="run_group_id">run_group_id</th>
+                <th data-sort="benchmark_id">benchmark</th>
+                <th data-sort="status">status</th>
+                <th data-sort="agent">agent</th>
+                <th data-sort="provider">provider</th>
+                <th data-sort="model">model</th>
+                <th data-sort="score">score</th>
+                <th data-sort="input_tokens">input_tokens</th>
+                <th data-sort="output_tokens">output_tokens</th>
+                <th data-sort="total_tokens">total_tokens</th>
+                <th data-sort="cached_tokens">cached_tokens</th>
+                <th data-sort="call_count">calls</th>
+                <th data-sort="high_score_value">high_score</th>
+                <th data-sort="delta_to_high_score">delta</th>
+                <th data-sort="started_at">started_at</th>
+                <th data-sort="duration_seconds">duration_s</th>
+              </tr>
+            </thead>
+            <tbody id="runs-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Latest Scores</h2>
+        <p class="hint">Real-agent rows only. Synthetic / calibration baselines are listed separately below.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>benchmark</th>
+                <th>run_id</th>
+                <th>agent</th>
+                <th>provider</th>
+                <th>model</th>
+                <th>score</th>
+                <th>input_tokens</th>
+                <th>output_tokens</th>
+                <th>total_tokens</th>
+                <th>cached_tokens</th>
+                <th>calls</th>
+                <th>high_score</th>
+                <th>delta</th>
+              </tr>
+            </thead>
+            <tbody id="latest-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Synthetic baselines (no model invoked)</h2>
+        <p class="hint">
+          Hardcoded calibration knobs (<code>perfect_v1=1.0</code>, <code>half_v1=0.5</code>, <code>wrong_v1=0.0</code>, <code>random_v1</code>).
+          These do not exercise any agent or model. They exist to verify the score-extraction pipeline.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>benchmark</th>
+                <th>run_id</th>
+                <th>agent</th>
+                <th>score</th>
+              </tr>
+            </thead>
+            <tbody id="synthetic-body"></tbody>
+          </table>
+        </div>
+      </section>
+      </div>
+
+      <div class="tab-panel" data-tab="diff">
+        <section class="panel">
+          <h2>Trajectory Diff Groups</h2>
+          <p class="hint">Groups where at least two harnesses produced a canonical trajectory for the same (benchmark, task).</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>run_group_id</th>
+                  <th>benchmark</th>
+                  <th>task_id</th>
+                  <th>harnesses</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="diff-groups-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="diff-detail-panel" hidden>
+          <h2 id="diff-detail-title">Diff</h2>
+          <div class="diff-legend">
+            <span class="diff-swatch diff-equal"></span>identical
+            <span class="diff-swatch diff-differ"></span>differing
+            <span class="diff-swatch diff-tool-only"></span>tool_call mismatch
+          </div>
+          <div class="table-wrap">
+            <table id="diff-table">
+              <thead id="diff-table-head"></thead>
+              <tbody id="diff-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-tab="playback">
+        <section class="panel">
+          <h2>Trajectory Playback</h2>
+          <p class="hint">Successful harness runs with canonical trajectory records. Choose one run to inspect each recorded step in order.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>run_group_id</th>
+                  <th>benchmark</th>
+                  <th>task_id</th>
+                  <th>harness</th>
+                  <th>steps</th>
+                  <th>started_at</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="playback-runs-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="playback-detail-panel" hidden>
+          <div class="playback-header">
+            <div>
+              <h2 id="playback-detail-title">Playback</h2>
+              <p class="hint" id="playback-detail-subtitle"></p>
+            </div>
+            <label>
+              Harness
+              <select id="playback-harness-select"></select>
+            </label>
+          </div>
+          <div class="playback-controls">
+            <button type="button" id="playback-prev">Prev</button>
+            <label>
+              Step index
+              <input id="playback-step-index" type="number" min="0" value="0" />
+            </label>
+            <span id="playback-step-total" class="hint">0 steps</span>
+            <button type="button" id="playback-next">Next</button>
+          </div>
+          <div id="playback-step-body"></div>
+        </section>
+      </div>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

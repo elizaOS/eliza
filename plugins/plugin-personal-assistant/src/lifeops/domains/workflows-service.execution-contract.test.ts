@@ -7,13 +7,14 @@
  * calendar/inbox/reminders domains; the system under test (the engine) is
  * real.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+
 import type {
   LifeOpsAuditEvent,
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   type AnyWorkflowStepContribution,

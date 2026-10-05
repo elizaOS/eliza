@@ -2,24 +2,12 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
-    "outDir": "../dist",
     "sourceMap": true,
     "inlineSources": true,
     "declaration": true,
     "emitDeclarationOnly": true,
     "ignoreDeprecations": "6.0",
-    "noEmit": false,
-    "paths": {
-      "@elizaos/core": [
-        "../../../packages/core/dist",
-        "../../packages/core/dist"
-      ]
-    },
-    "types": [
-      "node",
-      "bun-types"
-    ]
-  },
+    "noEmit": false,  },
   "include": [
     "**/*.ts"
   ],
@@ -29,6 +17,8 @@
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "vitest.real-runtime.config.ts"
+    "vitest.real-runtime.config.ts",
+    "dist",
+    "node_modules"
   ]
 }

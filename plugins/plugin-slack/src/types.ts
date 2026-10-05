@@ -198,6 +198,8 @@ export interface SlackMessage {
   subtype: string | undefined;
   ts: string;
   user: string | undefined;
+  /** Posting app's bot id; set on bot and webhook messages, which may carry no `user`. */
+  botId?: string;
   text: string;
   threadTs: string | undefined;
   replyCount: number | undefined;

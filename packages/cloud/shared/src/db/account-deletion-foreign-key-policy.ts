@@ -23,9 +23,13 @@ export interface AccountDeletionForeignKeyDescriptor {
   targetColumns: string;
   onDelete: string;
 }
-/** SHA-256 of the 255 sorted direct user/organization FK descriptors. */
+/**
+ * SHA-256 of the 274 sorted direct user/organization FK descriptors, each
+ * serialized as `source|columns|target|targetColumns|onDelete` and joined with
+ * `\n` (see `serializeDescriptor`). Recompute when the FK inventory changes.
+ */
 export const ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256 =
-  "9b668878ab92df12b2710ae60dbf228064f51db1163eeeb65e39b20625b07a1c";
+  "a79cc245e9885f9e9a4bc6e766f12cf32ab80c56f4b1a44b52bd11c7b786b52e";
 
 function serializeDescriptor(descriptor: AccountDeletionForeignKeyDescriptor): string {
   return [
@@ -153,6 +157,7 @@ const RETAINED_AUDIT_TABLES = new Set([
   "admin_users",
   "affiliate_payout_outbox",
   "agent_billing_records",
+  "agent_compute_subjects",
   "ai_billing_records",
   "app_earnings_transactions",
   "app_requests",
@@ -164,6 +169,12 @@ const RETAINED_AUDIT_TABLES = new Set([
   "billing_cancel_commands",
   "billing_funding_reservations",
   "billing_subscription_commands",
+  "billing_subscription_renewal_reviews",
+  "organization_plan_change_quotes",
+  "organization_upgrade_invoice_origins",
+  "organization_upgrade_historical_targets",
+  "organization_schedule_effects",
+  "organization_schedule_quote_terms",
   "billing_subscription_event_receipts",
   "billing_subscription_incidents",
   "billing_subscription_revisions",

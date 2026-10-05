@@ -113,25 +113,40 @@ function isRetryableModelError(error: unknown): boolean {
   );
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export async function executeWithRetry<T>(
   operationName: string,
   fn: () => Promise<T>,
-  config: RetryConfig = DEFAULT_RETRY_CONFIG
+  config: RetryConfig = DEFAULT_RETRY_CONFIG,
+  /** The caller's cancellation signal; a cancelled request is never retried. */
+  signal?: AbortSignal
 ): Promise<T> {
   let delayMs = config.initialDelayMs;
 
   for (let attempt = 0; attempt <= config.maxRetries; attempt += 1) {
+    signal?.throwIfAborted();
     try {
       return await fn();
     } catch (error) {
       // error-policy:J2 context-adding rethrow — transient errors are retried
-      // with backoff; non-retryable errors and exhausted attempts rethrow the
-      // original provider error unchanged. No failure is converted to a result.
-      if (!isRetryableModelError(error) || attempt === config.maxRetries) {
+      // with backoff; non-retryable errors, cancellation by the caller, and
+      // exhausted attempts rethrow the original provider error unchanged. No
+      // failure is converted to a result.
+      if (signal?.aborted || !isRetryableModelError(error) || attempt === config.maxRetries) {
         throw error;
       }
 
@@ -140,7 +155,8 @@ export async function executeWithRetry<T>(
           `(attempt ${attempt + 1} of ${config.maxRetries + 1} total): ${getErrorMessage(error)}`
       );
 
-      await sleep(delayMs);
+      // A cancel during the backoff ends it with the caller's abort reason.
+      await sleep(delayMs, signal);
       delayMs = Math.min(Math.round(delayMs * config.backoffFactor), config.maxDelayMs);
     }
   }

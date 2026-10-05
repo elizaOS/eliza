@@ -1,3 +1,5 @@
+import { API_KEY_PREFIX_HINTS } from "@elizaos/host/protocol";
+
 /**
  * Plugin configuration validation.
  *
@@ -47,22 +49,6 @@ export interface PluginParamInfo {
   description: string;
   default?: string;
 }
-
-// ---------------------------------------------------------------------------
-// API key prefix patterns for format validation
-// ---------------------------------------------------------------------------
-
-const KEY_PREFIX_HINTS: Readonly<
-  Record<string, { prefix: string; label: string }>
-> = {
-  ANTHROPIC_API_KEY: { prefix: "sk-ant-", label: "Anthropic" },
-  OPENAI_API_KEY: { prefix: "sk-", label: "OpenAI" },
-  GROQ_API_KEY: { prefix: "gsk_", label: "Groq" },
-  XAI_API_KEY: { prefix: "xai-", label: "xAI" },
-  OPENROUTER_API_KEY: { prefix: "sk-or-", label: "OpenRouter" },
-  DEEPSEEK_API_KEY: { prefix: "sk-", label: "DeepSeek" },
-  MOONSHOT_API_KEY: { prefix: "sk-", label: "Kimi / Moonshot" },
-};
 
 // ---------------------------------------------------------------------------
 // Validation logic
@@ -141,7 +127,7 @@ export function validatePluginConfig(
       }
 
       // Format validation for known key patterns
-      const hint = KEY_PREFIX_HINTS[param.key];
+      const hint = API_KEY_PREFIX_HINTS[param.key];
       if (hint && !value.startsWith(hint.prefix)) {
         warnings.push({
           field: param.key,
@@ -166,7 +152,7 @@ export function validatePluginConfig(
         message: `${envKey} is required but not set`,
       });
     } else {
-      const hint = KEY_PREFIX_HINTS[envKey];
+      const hint = API_KEY_PREFIX_HINTS[envKey];
       if (hint && !currentValue.startsWith(hint.prefix)) {
         warnings.push({
           field: envKey,

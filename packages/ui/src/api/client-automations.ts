@@ -8,7 +8,7 @@ import { ElizaClient } from "./client-base";
 import type { AutomationListResponse } from "./client-types-config";
 import { workflowSurfaceClient } from "./workflow-surface-routing";
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listAutomations(options?: {
       timeoutMs?: number;

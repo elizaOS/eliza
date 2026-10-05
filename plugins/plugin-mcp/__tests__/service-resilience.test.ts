@@ -112,6 +112,7 @@ describe("HTTP transport error tolerance", () => {
       status: "connected",
       reconnectAttempts: 0,
       consecutivePingFailures: 0,
+      config: connection.server.config,
     });
     const onerror = (connection.transport as { onerror?: (error: Error) => Promise<void> }).onerror;
     if (!onerror) throw new Error("onerror handler was not installed");

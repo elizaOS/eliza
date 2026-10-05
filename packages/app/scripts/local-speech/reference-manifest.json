@@ -1,0 +1,86 @@
+[
+  {
+    "path": "cmudict.dict",
+    "url": "https://raw.githubusercontent.com/cmusphinx/cmudict/74790861f652b15e4ac49015a90074ad62a27690/cmudict.dict",
+    "bytes": 3618488,
+    "sha256": "81917843c7f44ce2b094ac63873c2c7a4cf802040792c455ba3ca406891c3d22"
+  },
+  {
+    "path": "cmudict-LICENSE",
+    "url": "https://raw.githubusercontent.com/cmusphinx/cmudict/74790861f652b15e4ac49015a90074ad62a27690/LICENSE",
+    "bytes": 1754,
+    "sha256": "bd4ce8e44170a5f9f481310ca85c51de3c4f851a65e679b40e603b143bd3542a"
+  },
+  {
+    "path": "whisper-LICENSE",
+    "url": "https://raw.githubusercontent.com/openai/whisper/main/LICENSE",
+    "bytes": 1063,
+    "sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d"
+  },
+  {
+    "path": "onnxruntime-LICENSE",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.28.2/LICENSE",
+    "bytes": 1073,
+    "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+  },
+  {
+    "path": "ljspeech-MODEL_CARD",
+    "url": "https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/ljspeech/medium/MODEL_CARD",
+    "bytes": 517,
+    "sha256": "fbee1529c89d36b3fe76d7e9f3f832dce17f44900a52d76a9bda735654766b4d"
+  },
+  {
+    "path": "piper-voices-README.md",
+    "url": "https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/README.md",
+    "bytes": 497,
+    "sha256": "33e93643fce5180886300f9f0070eeeab8af148efb8e84361f8904def80fd9fb"
+  },
+  {
+    "path": "onnxruntime-headers/onnxruntime_session_options_config_keys.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.28.2/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h",
+    "bytes": 41738,
+    "sha256": "f3a80fcec7fa9e38de3191fc48714231892bc9c5dc8a06adecebf946a1937a29"
+  },
+  {
+    "path": "onnxruntime-headers/onnxruntime_error_code.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.28.2/include/onnxruntime/core/session/onnxruntime_error_code.h",
+    "bytes": 2775,
+    "sha256": "5ce3b054e798eced8d14f5b86e98692fd33470463f96194ce0700a2d53dd8721"
+  },
+  {
+    "path": "onnxruntime-headers/onnxruntime_run_options_config_keys.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.28.2/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h",
+    "bytes": 2952,
+    "sha256": "973037c14b0f1af0854ae25cd676776f79dbcfd2a6791f6ee17a5374c2a62550"
+  },
+  {
+    "path": "onnxruntime-headers/onnxruntime_float16.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.28.2/include/onnxruntime/core/session/onnxruntime_float16.h",
+    "bytes": 17991,
+    "sha256": "88b242845d25981633a0bbd1c148e273cf8bfb016ea3f57c4af41a06530f72b0"
+  },
+  {
+    "path": "onnxruntime-headers/onnxruntime_cxx_inline.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.28.2/include/onnxruntime/core/session/onnxruntime_cxx_inline.h",
+    "bytes": 157610,
+    "sha256": "97f960b1bc4a372918893ef4c77102dee725ccfce0d76607f4570b03e7e28325"
+  },
+  {
+    "path": "onnxruntime-headers/onnxruntime_cxx_api.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.28.2/include/onnxruntime/core/session/onnxruntime_cxx_api.h",
+    "bytes": 168928,
+    "sha256": "c6bf005e4063b7db911d0a6b030452bcb9d4fc5e87530a39d94c4a5fcd311b61"
+  },
+  {
+    "path": "onnxruntime-headers/onnxruntime_ep_c_api.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.28.2/include/onnxruntime/core/session/onnxruntime_ep_c_api.h",
+    "bytes": 152985,
+    "sha256": "db86df0f846b8d3bdbf429a5c76c5805293196575ca3c475878612591cd18e51"
+  },
+  {
+    "path": "onnxruntime-headers/onnxruntime_c_api.h",
+    "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.28.2/include/onnxruntime/core/session/onnxruntime_c_api.h",
+    "bytes": 394991,
+    "sha256": "b69a133143c0da61782b2b02cc8a620d21ac139231fd211719776d10385135c1"
+  }
+]

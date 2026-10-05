@@ -6,7 +6,10 @@
  * skipped/terminal states. The harness is a real AgentRuntime with the
  * personal-assistant schema migrated into PGlite — no mocked repository.
  */
-import type { LifeOpsDefinitionRecord } from "@elizaos/shared";
+import type {
+  LifeOpsDefinitionRecord,
+  LifeOpsOccurrence,
+} from "@elizaos/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -14,6 +17,7 @@ import {
 } from "../../test/helpers/runtime.js";
 import { LifeOpsRepository } from "./repository.js";
 import { LifeOpsService } from "./service.js";
+import { executeRawSql, sqlQuote } from "./sql.js";
 
 describe("count-per-day quota progress — real store", () => {
   let runtimeResult: RealTestRuntimeResult;
@@ -280,6 +284,101 @@ describe("count-per-day quota progress — real store", () => {
     });
   });
 
+  it("neutral projection refresh preserves its heap tuple and usable mutation revision", async () => {
+    const { record, occurrenceId } = await createQuotaDefinition(
+      "neutral refresh quota",
+    );
+    const before = await repository.getOccurrence(agentId, occurrenceId);
+    if (!before) throw new Error("quota occurrence missing");
+    const tuple = () =>
+      executeRawSql(
+        runtimeResult.runtime,
+        `SELECT ctid::text AS tuple_id FROM app_lifeops.life_task_occurrences WHERE id = ${sqlQuote(occurrenceId)}`,
+      );
+    const beforeTuple = await tuple();
+    const nextRevision = new Date(
+      Date.parse(before.updatedAt) + 60000,
+    ).toISOString();
+    await repository.upsertOccurrence({
+      ...before,
+      updatedAt: nextRevision,
+    });
+    expect(await repository.getOccurrence(agentId, occurrenceId)).toEqual(
+      before,
+    );
+    expect(await tuple()).toEqual(beforeTuple);
+    const changed = {
+      ...before,
+      metadata: {
+        ...before.metadata,
+        reminderAcknowledgedNote: "Owner acknowledged",
+      },
+      updatedAt: nextRevision,
+    };
+    await repository.updateOccurrence(changed, {
+      definitionScope: {
+        domain: record.definition.domain,
+        subjectType: record.definition.subjectType,
+        subjectId: record.definition.subjectId,
+      },
+      expectedUpdatedAt: before.updatedAt,
+      expectedDefinitionUpdatedAt: record.definition.updatedAt,
+    });
+    expect(await repository.getOccurrence(agentId, occurrenceId)).toEqual(
+      changed,
+    );
+    expect(await tuple()).not.toEqual(beforeTuple);
+  });
+
+  it.each([
+    [
+      "deadline",
+      (row: LifeOpsOccurrence) => ({
+        dueAt: new Date(
+          Date.parse(row.dueAt ?? row.relevanceEndAt) + 1000,
+        ).toISOString(),
+      }),
+    ],
+    ["privacy policy", () => ({ contextPolicy: "never" as const })],
+    [
+      "completion evidence",
+      (row: LifeOpsOccurrence) => ({
+        completionPayload: {
+          completedAt: row.updatedAt,
+          note: "Evidence updated",
+        },
+      }),
+    ],
+    [
+      "progression target",
+      () => ({ derivedTarget: { targetCount: 4, kind: "count_per_day" } }),
+    ],
+    [
+      "opaque metadata",
+      (row: LifeOpsOccurrence) => ({
+        metadata: { ...row.metadata, reminderAcknowledgedNote: "Acknowledged" },
+      }),
+    ],
+  ] as const)(
+    "writes a real %s projection change and its new revision",
+    async (label, change) => {
+      const { occurrenceId } = await createQuotaDefinition(
+        `changed ${label} quota`,
+      );
+      const before = await repository.getOccurrence(agentId, occurrenceId);
+      if (!before) throw new Error("quota occurrence missing");
+      const after = {
+        ...before,
+        ...change(before),
+        updatedAt: new Date(Date.parse(before.updatedAt) + 1000).toISOString(),
+      };
+      await repository.upsertOccurrence(after);
+      expect(await repository.getOccurrence(agentId, occurrenceId)).toEqual(
+        after,
+      );
+    },
+  );
+
   it("cannot resurrect a completed day from a stale re-materialization", async () => {
     const { occurrenceId } = await createQuotaDefinition("stale upsert quota");
     const stale = await repository.getOccurrence(agentId, occurrenceId);
@@ -306,6 +405,25 @@ describe("count-per-day quota progress — real store", () => {
     );
     expect(afterStaleWrite?.state).toBe("completed");
     expect(afterStaleWrite?.progress?.remainingCount).toBe(0);
+    expect(afterStaleWrite?.completionPayload).toEqual(
+      completed?.completionPayload,
+    );
+    const current = await repository.getOccurrence(agentId, occurrenceId);
+    if (!current) throw new Error("completed quota occurrence missing");
+    await repository.upsertOccurrence({
+      ...current,
+      state: "pending",
+      snoozedUntil: new Date(
+        Date.parse(current.updatedAt) + 60000,
+      ).toISOString(),
+      completionPayload: null,
+      updatedAt: new Date(Date.parse(current.updatedAt) + 1000).toISOString(),
+    });
+    // Protection is applied before comparison: the stale fields have no
+    // effective change and must not invalidate the completed revision.
+    expect(await repository.getOccurrence(agentId, occurrenceId)).toEqual(
+      current,
+    );
   });
 
   it("refuses increments from a skipped occurrence and on non-quota cadences", async () => {

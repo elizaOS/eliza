@@ -5,9 +5,8 @@
  * memory with an embedding when the runtime provides that capability.
  */
 import { type IAgentRuntime, type Memory, ModelType } from "@elizaos/core";
-import { buildMcpProviderProjection } from "@elizaos/shared/mcp";
+import { buildMcpProviderProjection } from "../protocol-utils/provider-projection.js";
 import type { McpProvider, McpServer } from "../types";
-
 export async function createMcpMemory(
   runtime: IAgentRuntime,
   message: Memory,
@@ -21,7 +20,7 @@ export async function createMcpMemory(
     agentId: runtime.agentId,
     roomId: message.roomId,
     content: {
-      text: `Used the "${type}" from "${serverName}" server. 
+      text: `Used the "${type}" from "${serverName}" server.
         Content: ${content}`,
       metadata: {
         ...metadata,
@@ -29,14 +28,11 @@ export async function createMcpMemory(
       },
     },
   };
-
   const persistedMemory = runtime.getModel(ModelType.TEXT_EMBEDDING)
     ? await runtime.addEmbeddingToMemory(memory)
     : memory;
-
   await runtime.createMemory(persistedMemory, type === "resource" ? "resources" : "tools", true);
 }
-
 export function buildMcpProviderData(servers: readonly McpServer[]): McpProvider {
   return buildMcpProviderProjection(servers) as McpProvider;
 }

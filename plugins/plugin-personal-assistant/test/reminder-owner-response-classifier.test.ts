@@ -138,10 +138,10 @@ describe("classifyReminderOwnerResponse (#14717)", () => {
     });
   });
 
-  it("does not fast-path exact replies when standalone resolution is disallowed", async () => {
+  it("vetoes exact replies before a semantic judge when standalone resolution is disallowed", async () => {
     const semantic = stubSemantic({
-      decision: "abstain",
-      resolution: null,
+      decision: "explicit_resolution",
+      resolution: "completed",
       snoozeRequest: null,
       confidence: 0.4,
       reason: "competing_prompts",
@@ -151,9 +151,10 @@ describe("classifyReminderOwnerResponse (#14717)", () => {
       context: adjacentContext({ allowStandaloneResolution: false }),
       semanticClassifier: semantic.classifier,
     });
-    expect(semantic.calls).toHaveLength(1);
+    expect(semantic.calls).toHaveLength(0);
     expect(result.decision).toBe("unrelated");
-    expect(result.classifierSource).toBe("semantic_abstain");
+    expect(result.classifierSource).toBe("deterministic");
+    expect(result.reason).toBe("standalone_resolution_not_allowed");
   });
 
   it("does not fast-path exact replies outside the prompt-adjacency window", () => {

@@ -13,8 +13,8 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   expectScenarioToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,
@@ -31,7 +31,7 @@ export default scenario({
   tags: ["lifeops", "cross-channel", "dedup", "identity-merge"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -5,7 +5,7 @@ import type {
 	MessageConnectorMetadata,
 	PostConnector,
 	PostConnectorMetadata,
-} from "../types";
+} from "../types/runtime.js";
 
 export function labelFromMessageConnectorSource(source: string): string {
 	const label = source

@@ -1,5 +1,4 @@
 /** Provides deterministic environment helpers shared by agent package tests. */
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,53 +15,11 @@ function restoreEnv(entries: RestoreEntry[]): void {
   }
 }
 
-function loadProfileEnv(): void {
-  const profilePath = path.join(os.homedir(), ".profile");
-  if (!fs.existsSync(profilePath)) {
-    return;
-  }
-  try {
-    const output = execFileSync(
-      "/bin/bash",
-      ["-lc", `set -a; source "${profilePath}" >/dev/null 2>&1; env -0`],
-      { encoding: "utf8" },
-    );
-    const entries = output.split("\0");
-    let applied = 0;
-    for (const entry of entries) {
-      if (!entry) {
-        continue;
-      }
-      const idx = entry.indexOf("=");
-      if (idx <= 0) {
-        continue;
-      }
-      const key = entry.slice(0, idx);
-      if (!key || (process.env[key] ?? "") !== "") {
-        continue;
-      }
-      process.env[key] = entry.slice(idx + 1);
-      applied += 1;
-    }
-    if (applied > 0) {
-      console.log(`[live] loaded ${applied} env vars from ~/.profile`);
-    }
-  } catch {}
-}
-
-export function installTestEnv(): { cleanup: () => void; tempHome: string } {
-  const live =
-    process.env.LIVE === "1" ||
-    process.env.ELIZA_LIVE_TEST === "1" ||
-    process.env.ELIZA_LIVE_GATEWAY === "1";
-
-  // Live tests must use the real user environment (keys, profiles, config).
-  // The default test env isolates HOME to avoid touching real state.
-  if (live) {
-    loadProfileEnv();
-    return { cleanup: () => {}, tempHome: process.env.HOME ?? "" };
-  }
-
+/** Always isolates the retained local scenarios from developer state. */
+export function withIsolatedTestHome(): {
+  cleanup: () => void;
+  tempHome: string;
+} {
   const restore: RestoreEntry[] = [
     { key: "ELIZA_TEST_FAST", value: process.env.ELIZA_TEST_FAST },
     { key: "HOME", value: process.env.HOME },
@@ -113,7 +70,7 @@ export function installTestEnv(): { cleanup: () => void; tempHome: string } {
   delete process.env.ELIZA_BRIDGE_HOST;
   delete process.env.ELIZA_BRIDGE_PORT;
   delete process.env.ELIZA_CANVAS_HOST_PORT;
-  // Avoid leaking real GitHub/Copilot tokens into non-live test runs.
+  // Keep real connector credentials out of these local scenarios.
   delete process.env.TELEGRAM_BOT_TOKEN;
   delete process.env.DISCORD_BOT_TOKEN;
   delete process.env.SLACK_BOT_TOKEN;
@@ -137,17 +94,8 @@ export function installTestEnv(): { cleanup: () => void; tempHome: string } {
 
   const cleanup = () => {
     restoreEnv(restore);
-    try {
-      fs.rmSync(tempHome, { recursive: true, force: true });
-    } catch {}
+    fs.rmSync(tempHome, { recursive: true, force: true });
   };
 
   return { cleanup, tempHome };
-}
-
-export function withIsolatedTestHome(): {
-  cleanup: () => void;
-  tempHome: string;
-} {
-  return installTestEnv();
 }

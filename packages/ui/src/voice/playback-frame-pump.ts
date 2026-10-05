@@ -9,7 +9,7 @@
  */
 
 import { fetchWithCsrf } from "../api/csrf-client";
-import { resolveApiUrl } from "../utils";
+import { resolveApiUrl } from "../utils/asset-url";
 import { ttsDebug } from "../utils/tts-debug";
 import { resolveAudioWorkletModuleUrl } from "./audio-worklet-module-urls";
 import {
@@ -329,16 +329,6 @@ class StreamingLinearResampler {
     this.sourcePosition -= drop;
     return Float32Array.from(out);
   }
-}
-
-export function resamplePcmTo16k(
-  pcm: Float32Array,
-  sourceSampleRate: number,
-): Float32Array {
-  return new StreamingLinearResampler(
-    sourceSampleRate,
-    TARGET_SAMPLE_RATE,
-  ).push(pcm);
 }
 
 function concatFloat32(

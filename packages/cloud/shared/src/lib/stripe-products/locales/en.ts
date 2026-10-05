@@ -9,9 +9,12 @@
 export interface StripeProductMessages {
   creditsName: string;
   topupDescription: (amount: number) => string;
+  /** Crypto/x402 refund policy stated in every top-up prompt (#22968). */
+  cryptoRefundPolicy: string;
 }
 
 export const stripeProductMessages: StripeProductMessages = {
   creditsName: "Eliza Cloud Credits",
   topupDescription: (amount: number) => `Eliza Cloud credit top-up: $${amount}`,
+  cryptoRefundPolicy: "Refunds are issued only as Eliza Cloud credits, never on-chain or to fiat.",
 };

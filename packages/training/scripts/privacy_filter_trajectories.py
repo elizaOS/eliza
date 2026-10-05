@@ -897,6 +897,21 @@ def filter_json_value(
 _INLINE_PATTERNS: list[PatternSpec] | None = None
 
 
+def apply_privacy_filter(payload: dict[str, Any]) -> tuple[dict[str, Any], FilterStats]:
+    """Apply the canonical local rules to one complete record and return counts."""
+    import io
+
+    stats = FilterStats()
+    cleaned = filter_json_value(
+        payload, path="$", location=SourceLocation("inline", None, 0),
+        stats=stats, ledger=io.StringIO(),
+        config=RuntimeConfig(patterns=default_patterns()),
+    )
+    if not isinstance(cleaned, dict):
+        raise TypeError("privacy filter expected a record object")
+    return cleaned, stats
+
+
 def _inline_patterns() -> list[PatternSpec]:
     """Compile (and cache) the default regex patterns for inline use.
 

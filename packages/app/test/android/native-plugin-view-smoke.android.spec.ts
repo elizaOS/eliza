@@ -2,23 +2,24 @@
  * Android device smoke spec for the Native Plugin View Smoke Android native
  * plugin app surface.
  */
+
 import fs from "node:fs";
 import path from "node:path";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
   startAndroidScreenRecord,
-} from "../../scripts/lib/android-capture.mjs";
+} from "../../scripts/lib/android-capture.ts";
 import {
   APP_ID,
   adbDevice,
   resolveAdb,
-} from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-device.ts";
 import { expect, test, waitForShellReady } from "./android-harness";
 
 const ARTIFACT_DIR = path.join(
-  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
-    path.join(process.cwd(), "test-results", "android"),
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ?? testOutputPath("app", "android"),
   "native-plugin-view-smoke",
 );
 

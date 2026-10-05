@@ -1,6 +1,5 @@
 /** Production adapter for LifeOps connection management over canonical local APIs. */
 
-import type { CalendarClientMethods } from "@elizaos/plugin-calendar/api/client-calendar";
 import type {
   LifeOpsCalendarProvider,
   LifeOpsCalendarSummary,
@@ -8,9 +7,10 @@ import type {
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
   SeedLifeOpsCalendarRequest,
-} from "@elizaos/shared";
-import { client } from "@elizaos/ui/api";
-import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
+} from "@elizaos/contracts";
+import type { CalendarClientMethods } from "@elizaos/plugin-calendar";
+import { client, dispatchNavigateViewEvent } from "@elizaos/ui";
+
 import type { LifeOpsElizaClientMethods } from "../../api/client-lifeops.js";
 import type {
   LifeOpsConnectionsAdapter,
@@ -120,6 +120,9 @@ async function loadSnapshot(
 }
 
 export const defaultLifeOpsConnectionsAdapter: LifeOpsConnectionsAdapter = {
+  getLinkedCalendarControl: () => lifeOpsClient.getLinkedCalendarControl(),
+  updateLinkedCalendarControl: (request) =>
+    lifeOpsClient.updateLinkedCalendarControl(request),
   load: ({ forceSync = false } = {}) => loadSnapshot(forceSync),
   async connectGoogle(capabilities: LifeOpsGoogleCapability[]) {
     const result = await lifeOpsClient.startLifeOpsGoogleConnector({

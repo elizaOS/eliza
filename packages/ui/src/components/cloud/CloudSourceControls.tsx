@@ -6,7 +6,7 @@
  * user's own provider key.
  */
 import { CheckCircle2, WifiOff } from "lucide-react";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { ConnectionStatus } from "../ui/connection-status";
 

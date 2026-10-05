@@ -1,15 +1,11 @@
-"""Local SFT training utilities (optimizers, validation harnesses).
-
-Quantization lives next to this in `scripts/quantization/`; benchmarks live in
-`scripts/benchmark/`. This package owns only the optimizer side of the
-training pipeline (APOLLO and APOLLO-Mini).
-"""
+"""Training model metadata and lazily loaded optimizer factories."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .model_registry import REGISTRY, ModelEntry, Tier, get
     from .optimizer import (
         build_apollo_mini_optimizer,
         build_apollo_optimizer,
@@ -17,6 +13,7 @@ if TYPE_CHECKING:
     )
 
 __all__ = [
+    "REGISTRY", "ModelEntry", "Tier", "get",
     "build_apollo_mini_optimizer",
     "build_apollo_optimizer",
     "optimizer_state_bytes",
@@ -24,6 +21,10 @@ __all__ = [
 
 
 def __getattr__(name: str) -> Any:
+    if name in {"REGISTRY", "ModelEntry", "Tier", "get"}:
+        from . import model_registry
+
+        return getattr(model_registry, name)
     if name in __all__:
         from . import optimizer
 

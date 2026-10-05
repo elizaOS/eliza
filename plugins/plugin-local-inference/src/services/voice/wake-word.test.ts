@@ -4,7 +4,7 @@
  *   - `OpenWakeWordDetector`: refractory debounce + sustained threshold gating,
  *     driven by a deterministic scripted `WakeWordModel`.
  *   - `resolveWakeWordModel`: returns null when the bundle has no
- *     `wake/openwakeword.gguf` (optional asset).
+ *     complete three-file wake model (optional assets).
  *   - `GgmlWakeWordModel`: routes through the `eliza_inference_wakeword_*`
  *     FFI surface, surfaces a structured `runtime-not-ready` error when
  *     the fused build does not export the wake-word symbols (the only
@@ -13,7 +13,7 @@
  *
  * The real on-device pipeline is covered by an integration test in the
  * fused-build's test suite (one that actually mmaps a bundled
- * `openwakeword.gguf` and runs frames through it). That test cannot run
+ * three head GGUFs and runs frames through them). That test cannot run
  * in this package without the native library, so the unit suite here
  * mocks `ElizaInferenceFfi` and asserts the bindings drive the FFI as
  * advertised.
@@ -164,6 +164,37 @@ describe("resolveWakeWordModel", () => {
 			resolveWakeWordModel({ bundleRoot: "/nonexistent/bundle" }),
 		).toBeNull();
 	});
+	it("requires all three model files in the active bundle", () => {
+		const dir = mkdtempSync(path.join(os.tmpdir(), "wake-paths-"));
+		try {
+			mkdirSync(path.join(dir, "wake"));
+			writeFileSync(path.join(dir, "wake", "openwakeword.gguf"), "obsolete");
+			expect(resolveWakeWordModel({ bundleRoot: dir })).toBeNull();
+			for (const kind of ["melspec", "embedding"]) {
+				writeFileSync(
+					path.join(dir, "wake", `hey-eliza.${kind}.gguf`),
+					"fixture",
+				);
+			}
+			expect(resolveWakeWordModel({ bundleRoot: dir })).toBeNull();
+			writeFileSync(
+				path.join(dir, "wake", "hey-eliza.classifier.gguf"),
+				"fixture",
+			);
+			expect(resolveWakeWordModel({ bundleRoot: dir })).toEqual({
+				melspec: path.join(dir, "wake", "hey-eliza.melspec.gguf"),
+				embedding: path.join(dir, "wake", "hey-eliza.embedding.gguf"),
+				classifier: path.join(dir, "wake", "hey-eliza.classifier.gguf"),
+				head: "hey-eliza",
+			});
+			expect(
+				resolveWakeWordModel({ bundleRoot: dir, head: "other" }),
+			).toBeNull();
+			expect(resolveWakeWordModel({})).toBeNull();
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });
 
 // --- Native FFI routing ---------------------------------------------------
@@ -290,9 +321,13 @@ describe("loadBundledWakeWordModel", () => {
 	it("prefers the fused GgmlWakeWordModel when the bundle GGUF is present and FFI supports it", async () => {
 		const dir = mkdtempSync(path.join(os.tmpdir(), "fused-wake-"));
 		try {
-			const gguf = path.join(dir, "wake", "openwakeword.gguf");
-			mkdirSync(path.dirname(gguf), { recursive: true });
-			writeFileSync(gguf, "");
+			mkdirSync(path.join(dir, "wake"), { recursive: true });
+			for (const kind of ["melspec", "embedding", "classifier"]) {
+				writeFileSync(
+					path.join(dir, "wake", `hey-eliza.${kind}.gguf`),
+					"fixture",
+				);
+			}
 			const ffi = makeMockFfi(true);
 			const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
 			const model = await loadBundledWakeWordModel({

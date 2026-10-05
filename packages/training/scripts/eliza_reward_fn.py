@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from lib.generation_integrity import anthropic_max_output_tokens, require_complete_generation
+from eliza_training.lib.generation_integrity import anthropic_max_output_tokens, require_complete_generation
 
 log = logging.getLogger("eliza-reward")
 

@@ -16,6 +16,7 @@
  * `checkin.real.test.ts`.
  */
 
+import type { LifeOpsGoalDefinition } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   createAnchorRegistry,
@@ -34,8 +35,8 @@ import {
   type ScheduledTaskRunnerHandle,
   ScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import type { LifeOpsGoalDefinition } from "@elizaos/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { GoalsRepository } from "../db/goals-repository.ts";
 import {
   buildCheckinTaskInput,
   checkinIdempotencyKey,
@@ -192,7 +193,10 @@ describe("checkinTriggersForGoal — cadence → trigger mapping", () => {
       makeGoal({ cadence: { kind: "once", dueAt: DENVER_9AM_UTC_ISO } }),
     );
     expect(plans).toEqual([
-      { slotKey: "once", trigger: { kind: "once", atIso: DENVER_9AM_UTC_ISO } },
+      {
+        slotKey: `once:${DENVER_9AM_UTC_ISO}`,
+        trigger: { kind: "once", atIso: DENVER_9AM_UTC_ISO },
+      },
     ]);
   });
 
@@ -337,6 +341,50 @@ describe("GoalsCheckinService.syncGoalCheckins", () => {
     expect(task.state.status).toBe("dismissed");
   });
 
+  it("resumes a recurring check-in when a paused goal becomes active again", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+
+    await service.syncGoalCheckins(makeGoal());
+    await service.syncGoalCheckins(makeGoal({ status: "paused" }));
+    const resumed = await service.syncGoalCheckins(makeGoal());
+    const again = await service.syncGoalCheckins(makeGoal());
+
+    expect(resumed.scheduled).toHaveLength(1);
+    expect(again.scheduled).toHaveLength(0);
+    expect(again.dismissedTaskIds).toHaveLength(0);
+    const live = (await spine.runner.list({ kind: "checkin" })).filter(
+      (task) => task.state.status === "scheduled",
+    );
+    expect(live).toHaveLength(1);
+    expect(live[0].idempotencyKey).toBe(
+      `${checkinIdempotencyKey("goal-1", "daily")}:resumed:1`,
+    );
+    expect(live[0].trigger).toEqual(resumed.scheduled[0].trigger);
+  });
+
+  it("resumes a recurring check-in when the cadence moves away and back", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+
+    await service.syncGoalCheckins(makeGoal());
+    await service.syncGoalCheckins(
+      makeGoal({
+        cadence: { kind: "weekly", weekdays: [1], windows: ["evening"] },
+      }),
+    );
+    const back = await service.syncGoalCheckins(makeGoal());
+
+    expect(back.scheduled).toHaveLength(1);
+    expect(back.dismissedTaskIds).toHaveLength(1);
+    const live = (await spine.runner.list({ kind: "checkin" })).filter(
+      (task) => task.state.status === "scheduled",
+    );
+    expect(live.map((task) => task.idempotencyKey)).toEqual([
+      `${checkinIdempotencyKey("goal-1", "daily")}:resumed:1`,
+    ]);
+  });
+
   it("never resurrects a slot the owner dismissed", async () => {
     const spine = makeSpine();
     const service = makeService(spine);
@@ -352,6 +400,216 @@ describe("GoalsCheckinService.syncGoalCheckins", () => {
     expect(resync.edited).toHaveLength(0);
     const [task] = await spine.runner.list({ kind: "checkin" });
     expect(task.state.status).toBe("dismissed");
+  });
+
+  it("schedules a new check-in when a once goal that already fired is moved", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+    const firstDue = "2026-10-05T15:00:00.000Z";
+    const movedDue = "2026-10-12T15:00:00.000Z";
+
+    const first = await service.syncGoalCheckins(
+      makeGoal({ cadence: { kind: "once", dueAt: firstDue } }),
+    );
+    await spine.runner.apply(first.scheduled[0].taskId, "complete", {});
+    const moved = await service.syncGoalCheckins(
+      makeGoal({ cadence: { kind: "once", dueAt: movedDue } }),
+    );
+
+    expect(moved.edited).toHaveLength(0);
+    expect(moved.scheduled).toHaveLength(1);
+    expect(moved.scheduled[0]).toMatchObject({
+      trigger: { kind: "once", atIso: movedDue },
+      state: { status: "scheduled" },
+    });
+    const tasks = await spine.runner.list({ kind: "checkin" });
+    expect(tasks.map((task) => task.state.status).sort()).toEqual([
+      "completed",
+      "scheduled",
+    ]);
+  });
+
+  it("does not re-arm a once instant that already ran or was dismissed, under any key", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+    const dueAt = "2026-10-05T15:00:00.000Z";
+    const goal = makeGoal({ cadence: { kind: "once", dueAt } });
+    // A check-in stored under the older unkeyed `once` slot that already ran.
+    const legacy = await spine.runner.schedule({
+      ...buildCheckinTaskInput(
+        goal,
+        { slotKey: "once", trigger: { kind: "once", atIso: dueAt } },
+        CREATED_ISO,
+      ),
+    });
+    await spine.runner.apply(legacy.taskId, "complete", {});
+
+    const resync = await service.syncGoalCheckins(goal);
+
+    expect(resync.scheduled).toHaveLength(0);
+    expect(resync.dismissedTaskIds).toHaveLength(0);
+    expect(await spine.runner.list({ kind: "checkin" })).toHaveLength(1);
+  });
+
+  it.each([
+    ["scheduled", "once"],
+    ["completed", "once"],
+    ["dismissed", "once"],
+    ["scheduled", "once:2026-10-05T15:00:00.000Z"],
+    ["completed", "once:2026-10-05T15:00:00.000Z"],
+    ["dismissed", "once:2026-10-05T15:00:00.000Z"],
+  ] as const)(
+    "preserves a %s once task with key %s across equivalent timestamps",
+    async (status, slotKey) => {
+      const spine = makeSpine();
+      const service = makeService(spine);
+      const goal = makeGoal({
+        cadence: { kind: "once", dueAt: "2026-10-05T15:00:00.000Z" },
+      });
+      const legacy = await spine.runner.schedule(
+        buildCheckinTaskInput(
+          goal,
+          {
+            slotKey,
+            trigger: { atIso: "2026-10-05T11:00:00-04:00", kind: "once" },
+          },
+          CREATED_ISO,
+        ),
+      );
+      if (status !== "scheduled")
+        await spine.runner.apply(
+          legacy.taskId,
+          status === "completed" ? "complete" : "dismiss",
+          {},
+        );
+      expect(await service.syncGoalCheckins(goal)).toEqual({
+        scheduled: [],
+        edited: [],
+        dismissedTaskIds: [],
+      });
+      expect(await spine.runner.list({ kind: "checkin" })).toHaveLength(1);
+      expect(
+        checkinTriggersForGoal(
+          makeGoal({
+            cadence: { kind: "once", dueAt: "2026-10-05T11:00:00-04:00" },
+          }),
+        ),
+      ).toEqual(checkinTriggersForGoal(goal));
+    },
+  );
+
+  it("revives the pending check-in when a once goal is moved away and back", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+    const dueA = "2026-10-05T15:00:00.000Z";
+    const dueB = "2026-10-12T15:00:00.000Z";
+    const onceGoal = (dueAt: string) =>
+      makeGoal({ cadence: { kind: "once", dueAt } });
+
+    const first = await service.syncGoalCheckins(onceGoal(dueA));
+    await service.syncGoalCheckins(onceGoal(dueB));
+    const back = await service.syncGoalCheckins(onceGoal(dueA));
+
+    expect(back.scheduled.map((task) => task.taskId)).toEqual([
+      first.scheduled[0].taskId,
+    ]);
+    const live = (await spine.runner.list({ kind: "checkin" })).filter(
+      (task) => task.state.status === "scheduled",
+    );
+    expect(live).toHaveLength(1);
+    expect(live[0].trigger).toEqual({ kind: "once", atIso: dueA });
+
+    spine.setNow(dueA);
+    const fired = await spine.runner.fire(live[0].taskId);
+    expect(fired.state.status).toBe("fired");
+    expect(spine.dispatched).toEqual([live[0].taskId]);
+  });
+
+  it.each([
+    ["instant", "2026-10-05T16:00:00.000Z"],
+    ["instant", "2026-10-07T15:00:00.000Z"],
+    ["legacy", "2026-10-05T16:00:00.000Z"],
+    ["legacy", "2026-10-07T15:00:00.000Z"],
+  ] as const)(
+    "does not revive a fired %s once check-in when moved back at %s",
+    async (keyKind, backAt) => {
+      const spine = makeSpine();
+      const service = makeService(spine);
+      const dueA = "2026-10-05T15:00:00.000Z";
+      const onceGoal = (dueAt: string) =>
+        makeGoal({ cadence: { kind: "once", dueAt } });
+      const original =
+        keyKind === "legacy"
+          ? await spine.runner.schedule(
+              buildCheckinTaskInput(
+                onceGoal(dueA),
+                { slotKey: "once", trigger: { kind: "once", atIso: dueA } },
+                CREATED_ISO,
+              ),
+            )
+          : (await service.syncGoalCheckins(onceGoal(dueA))).scheduled[0];
+      spine.setNow(dueA);
+      await spine.runner.fire(original.taskId);
+      await service.syncGoalCheckins(onceGoal("2026-10-12T15:00:00.000Z"));
+      spine.setNow(backAt);
+
+      const back = await service.syncGoalCheckins(onceGoal(dueA));
+      expect(back.scheduled).toHaveLength(0);
+      const tasks = await spine.runner.list({ kind: "checkin" });
+      expect(tasks.filter((task) => task.state.status === "scheduled")).toEqual(
+        [],
+      );
+      expect(
+        tasks.find((task) => task.taskId === original.taskId)?.state,
+      ).toMatchObject({
+        status: "dismissed",
+        firedAt: dueA,
+      });
+      expect(spine.dispatched).toEqual([original.taskId]);
+    },
+  );
+
+  it("keeps an owner-dismissed once check-in off after the date moves away and back", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+    const dueA = "2026-10-05T15:00:00.000Z";
+    const onceGoal = (dueAt: string) =>
+      makeGoal({ cadence: { kind: "once", dueAt } });
+
+    const first = await service.syncGoalCheckins(onceGoal(dueA));
+    await spine.runner.apply(first.scheduled[0].taskId, "dismiss", {
+      reason: "owner said stop",
+    });
+    await service.syncGoalCheckins(onceGoal("2026-10-12T15:00:00.000Z"));
+    const back = await service.syncGoalCheckins(onceGoal(dueA));
+
+    expect(back.scheduled).toHaveLength(0);
+    const ownerDismissed = (await spine.runner.list({ kind: "checkin" })).find(
+      (task) => task.taskId === first.scheduled[0].taskId,
+    );
+    expect(ownerDismissed?.state.status).toBe("dismissed");
+  });
+
+  it("moves a still-pending once check-in to the new instant", async () => {
+    const spine = makeSpine();
+    const service = makeService(spine);
+    const first = await service.syncGoalCheckins(
+      makeGoal({
+        cadence: { kind: "once", dueAt: "2026-10-05T15:00:00.000Z" },
+      }),
+    );
+    const moved = await service.syncGoalCheckins(
+      makeGoal({
+        cadence: { kind: "once", dueAt: "2026-10-12T15:00:00.000Z" },
+      }),
+    );
+
+    expect(moved.dismissedTaskIds).toEqual([first.scheduled[0].taskId]);
+    expect(moved.scheduled).toHaveLength(1);
+    expect(moved.scheduled[0].trigger).toEqual({
+      kind: "once",
+      atIso: "2026-10-12T15:00:00.000Z",
+    });
   });
 });
 
@@ -407,5 +665,56 @@ describe("goal check-in tick mechanics", () => {
     expect(input.kind).toBe("checkin");
     expect(input.respectsGlobalPause).toBe(true);
     expect(input.source).toBe("plugin");
+  });
+});
+
+describe("goals startup reconciliation shutdown", () => {
+  it("stops without waiting for a runtime that never initialized", async () => {
+    const hasService = vi.fn();
+    const service = await GoalsCheckinService.start({
+      initPromise: new Promise<void>(() => {}),
+      hasService,
+    } as unknown as IAgentRuntime);
+    await service.stop();
+    expect(hasService).not.toHaveBeenCalled();
+  });
+
+  it("drains an admitted database read before stop resolves", async () => {
+    let finishRead!: () => void;
+    let enteredRead!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enteredRead = resolve;
+    });
+    const read = new Promise<void>((resolve) => {
+      finishRead = resolve;
+    });
+    const list = vi
+      .spyOn(GoalsRepository.prototype, "listGoals")
+      .mockImplementation(async () => {
+        enteredRead();
+        await read;
+        return [];
+      });
+    try {
+      const service = await GoalsCheckinService.start({
+        agentId: AGENT_ID,
+        initPromise: Promise.resolve(),
+        hasService: () => true,
+        getServiceLoadPromise: () => Promise.resolve({}),
+      } as unknown as IAgentRuntime);
+      await entered;
+      let stopped = false;
+      const stopping = service.stop().then(() => {
+        stopped = true;
+      });
+      await Promise.resolve();
+      expect(stopped).toBe(false);
+      finishRead();
+      await stopping;
+      expect(list).toHaveBeenCalledTimes(1);
+    } finally {
+      finishRead();
+      list.mockRestore();
+    }
   });
 });

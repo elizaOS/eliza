@@ -26,7 +26,7 @@ const cacheMock = vi.hoisted(() => ({
 }));
 const detailRenderMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ agentProps: {}, ref: null }),
 }));
 
@@ -49,7 +49,7 @@ vi.mock("../../hooks/useMediaQuery", () => ({
   useMediaQuery: () => mediaQueryState.mobile,
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: unknown) => unknown) =>
     selector({
       setActionNotice: vi.fn(),

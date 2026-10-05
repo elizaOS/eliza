@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseIntrospector } from "../../runtime-migrator/drizzle-adapters/database-introspector";
 import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
-import * as coreSchema from "../../schema";
+import { schema as coreSchema } from "../../schema";
 
 describe("Production Migration Scenarios", () => {
   let pgClient: PGlite;

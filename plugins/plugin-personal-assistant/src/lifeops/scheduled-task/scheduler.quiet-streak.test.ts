@@ -8,6 +8,7 @@
  * scoped and reversible.
  */
 import { EventType, type Memory, stringToUuid } from "@elizaos/core";
+import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -18,7 +19,6 @@ import {
   readScheduledTaskLog,
 } from "../../providers/recent-task-states.ts";
 import { resolveOwnerFactStore } from "../owner/fact-store.ts";
-import { resolvePendingPromptsStore } from "../pending-prompts/store.ts";
 import { LifeOpsRepository } from "../repository.ts";
 import { settleDeferredInboundScans } from "./deferred-inbound-scans.ts";
 import type { ScheduledTask } from "./index.ts";

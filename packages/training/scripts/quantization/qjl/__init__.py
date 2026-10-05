@@ -28,8 +28,8 @@ The four extensions this directory builds:
   * ``cuda_qjl_gqa_score`` — grouped-query-attention scoring kernel
   * ``quantization``       — int4/int2 KV-value batched matmul kernel
 
-The Python wrappers (``matmul.py``, ``new_pack.py``) are byte-identical
-to upstream apart from this docstring. ``qjl_kernel.py`` was modified to
+``new_pack.py`` retains its upstream implementation; ``matmul.py`` uses
+package-relative compiled-extension imports. ``qjl_kernel.py`` was modified to
 dispatch by ``head_dim`` to the correct ``_h{128,256}`` kernel
 specialization (the kernels in ``csrc/`` are templated on EMB_DIM so a
 single rebuild produces both variants). See ``NOTICE.md`` in this

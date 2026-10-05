@@ -1,8 +1,5 @@
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import {
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,

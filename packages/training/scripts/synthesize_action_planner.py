@@ -33,9 +33,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.eliza_record import (  # noqa: E402
+from eliza_training.lib.eliza_record import (  # noqa: E402
     build, stable_id,
 )
 

@@ -5,7 +5,7 @@
  * TTL matches the 2-minute webhook signature validity window.
  */
 
-import { count, eq, gt, lt } from "drizzle-orm";
+import { count, eq, gt, lt, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { idempotencyKeys } from "../../db/schemas/idempotency-keys";
 import { logger } from "./logger";
@@ -53,7 +53,13 @@ export async function tryClaimForProcessing(key: string, source = "unknown"): Pr
     const rows = await dbWrite
       .insert(idempotencyKeys)
       .values({ key, source, expires_at })
-      .onConflictDoNothing({ target: idempotencyKeys.key })
+      .onConflictDoUpdate({
+        target: idempotencyKeys.key,
+        set: { source, expires_at },
+        // Reclaim keys whose TTL has passed: a crashed claimer must not block
+        // retries until the cleanup cron runs. Live keys stay claimed.
+        where: sql`${idempotencyKeys.expires_at} < now()`,
+      })
       .returning({ key: idempotencyKeys.key });
 
     // length === 1 means we inserted (claimed), 0 means key already exists (conflict)
@@ -63,6 +69,34 @@ export async function tryClaimForProcessing(key: string, source = "unknown"): Pr
       failureClass: "idempotency_store_failed",
     });
     return true; // Fail open to avoid dropping messages
+  }
+}
+
+/** Outcome of `processOnce`: the work ran here, or another delivery already holds the key. */
+export type ProcessOnceOutcome<T> = { status: "processed"; result: T } | { status: "duplicate" };
+
+/**
+ * Run webhook work at most once per key. The key is claimed atomically BEFORE
+ * the work starts, so a redelivery that overlaps a slow first delivery is
+ * refused instead of processed twice (the check-then-mark shape leaves that
+ * window open for the whole duration of the work). A failing work function
+ * releases the claim so a genuine retry can proceed, and the error propagates
+ * to the caller's boundary.
+ */
+export async function processOnce<T>(
+  key: string,
+  source: string,
+  work: () => Promise<T>,
+): Promise<ProcessOnceOutcome<T>> {
+  const claimed = await tryClaimForProcessing(key, source);
+  if (!claimed) return { status: "duplicate" };
+  try {
+    return { status: "processed", result: await work() };
+  } catch (error) {
+    // error-policy:J2 the claim is released so the provider's retry is not
+    // refused as a duplicate; the failure itself is rethrown unchanged.
+    await releaseProcessingClaim(key);
+    throw error;
   }
 }
 

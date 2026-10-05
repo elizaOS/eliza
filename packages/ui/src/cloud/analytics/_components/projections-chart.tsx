@@ -2,11 +2,8 @@
  * Projections chart: historical + projected cost trend with low-balance /
  * high-burn alerts.
  */
-
 "use client";
-
 import type { ProjectionsDataDto } from "@elizaos/cloud-sdk";
-import { formatUsd as formatCurrency } from "@elizaos/shared/utils/format";
 import { format } from "date-fns";
 import { Activity, AlertTriangle, Info, TrendingUp } from "lucide-react";
 import { useMemo } from "react";
@@ -23,25 +20,28 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Badge,
+} from "../../../components/ui/alert";
+import { Badge } from "../../../components/ui/badge";
+import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+} from "../../../components/ui/card";
+import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "../../../cloud-ui";
+} from "../../../components/ui/chart";
+import { formatUsd as formatCurrency } from "../../../utils/format.js";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
 interface ProjectionsChartProps {
   data: ProjectionsDataDto;
 }
-
 export function ProjectionsChart({ data }: ProjectionsChartProps) {
   const t = useCloudT();
   const { projections, alerts, creditBalance } = data;
-
   const chartConfig = {
     historical: {
       label: t("cloud.projectionsChart.historical", {
@@ -56,7 +56,6 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
       color: "var(--muted)",
     },
   } as const;
-
   const chartData = useMemo(() => {
     return projections.map((point) => ({
       date: format(new Date(point.timestamp), "MMM d"),
@@ -67,13 +66,11 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
       confidence: point.confidence,
     }));
   }, [projections]);
-
   const todayIndex = chartData.findIndex((d) => !d.isProjected);
   const lastHistoricalDate =
     todayIndex >= 0
       ? chartData[chartData.length - todayIndex - 1]?.fullDate
       : "";
-
   const getAlertIcon = (type: "warning" | "danger" | "info") => {
     switch (type) {
       case "danger":
@@ -84,7 +81,6 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
         return Info;
     }
   };
-
   const getAlertVariant = (type: "warning" | "danger" | "info") => {
     switch (type) {
       case "danger":
@@ -95,7 +91,6 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
         return "default" as const;
     }
   };
-
   return (
     <div className="space-y-6">
       <Card variant="reportPanel">
@@ -222,7 +217,6 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                           const fullDate = inner.payload?.fullDate ?? "";
                           const isProjected = inner.payload?.isProjected;
                           const confidence = inner.payload?.confidence;
-
                           if (isProjected && confidence) {
                             return t("cloud.projectionsChart.confidenceLabel", {
                               date: fullDate,

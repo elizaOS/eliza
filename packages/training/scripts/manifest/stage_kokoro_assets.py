@@ -13,8 +13,9 @@ bundle so Kokoro is the only shipped/default TTS backend.
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file as _sha256_file
+
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -32,7 +33,7 @@ except ModuleNotFoundError:  # pragma: no cover - env-only path
 try:
     from .eliza1_manifest import validate_manifest
 except ImportError:  # pragma: no cover - direct script execution path
-    from eliza1_manifest import validate_manifest
+    from eliza_training.manifest.eliza1_manifest import validate_manifest
 
 KOKORO_REPO: Final[str] = "elizaos/eliza-1"
 DEFAULT_BUNDLES_ROOT: Final[Path] = Path.home() / ".eliza" / "local-inference" / "models"
@@ -83,12 +84,6 @@ def _require_hf() -> tuple[Any, Any]:
     return HfApi, hf_hub_download
 
 
-def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
 
 
 def _copy_or_link(source: Path, destination: Path, *, link_mode: str) -> None:

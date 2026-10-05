@@ -1,0 +1,82 @@
+[
+  {
+    "id": "sm_101",
+    "channel": "#platform-engineering",
+    "channelId": "C_ENG",
+    "author": "marcus.johnson",
+    "text": "Found the root cause of the export issue. It's the cursor reset bug in v2.14.5. Fix is ready in PR #356 — just 12 lines. All unit tests pass. Need to validate on a large dataset before shipping.",
+    "timestamp": "2026-02-07T09:40:00-08:00"
+  },
+  {
+    "id": "sm_102",
+    "channel": "#platform-engineering",
+    "channelId": "C_ENG",
+    "author": "james.liu",
+    "text": "@marcus.johnson I can help test. I have a 100K row dataset from the load test suite. Want me to spin up a staging instance with your branch?",
+    "timestamp": "2026-02-07T09:50:00-08:00"
+  },
+  {
+    "id": "sm_103",
+    "channel": "#platform-engineering",
+    "channelId": "C_ENG",
+    "author": "marcus.johnson",
+    "text": "@james.liu yes please! The branch is fix/export-cursor-reset. If it passes on 100K rows I'm confident we can ship.",
+    "timestamp": "2026-02-07T09:52:00-08:00"
+  },
+  {
+    "id": "sm_104",
+    "channel": "#platform-engineering",
+    "channelId": "C_ENG",
+    "author": "tom.anderson",
+    "text": "I can fast-track the deploy once the fix is validated. We have a maintenance window at 1pm — I'll prep the release pipeline.",
+    "timestamp": "2026-02-07T10:00:00-08:00"
+  },
+  {
+    "id": "sm_105",
+    "channel": "#incidents",
+    "channelId": "C_INCIDENTS",
+    "author": "pagerduty-bot",
+    "text": "🔴 P0 INCIDENT OPEN: Data export timeouts affecting Enterprise customers. 3 tickets: TICKET-4518, TICKET-4521, TICKET-4523. Escalated by Acme Corp VP Engineering. Incident commander: @alex.chen",
+    "timestamp": "2026-02-07T09:20:00-08:00"
+  },
+  {
+    "id": "sm_106",
+    "channel": "#incidents",
+    "channelId": "C_INCIDENTS",
+    "author": "marcus.johnson",
+    "text": "Root cause identified: batch cursor regression in v2.14.5 (shipped Feb 3). Fix in PR #356. ETA for production deploy: ~3 hours pending staging validation.",
+    "timestamp": "2026-02-07T10:05:00-08:00"
+  },
+  {
+    "id": "sm_107",
+    "channel": "#platform-general",
+    "channelId": "C_GENERAL",
+    "author": "sarah.kim",
+    "text": "Alex — heads up, David is asking about the Acme Corp escalation. Please loop him in on status. Also the sprint 13 planning at 3pm conflicts with the arch review at 4pm — Marcus can't be in both. How do you want to handle?",
+    "timestamp": "2026-02-07T10:10:00-08:00"
+  },
+  {
+    "id": "sm_108",
+    "channel": "#platform-general",
+    "channelId": "C_GENERAL",
+    "author": "priya.patel",
+    "text": "Is the 2pm call with Acme Corp's VP still happening? I was going to present the Dashboard V2 mockups to the design team at 2pm. Can reschedule if needed.",
+    "timestamp": "2026-02-07T10:15:00-08:00"
+  },
+  {
+    "id": "sm_109",
+    "channel": "#oncall",
+    "channelId": "C_ONCALL",
+    "author": "alert-bot",
+    "text": "⚠️ ALERT: Export worker queue depth at 847 (threshold: 100). Retried exports accumulating. Recommendation: pause retries until fix deployed.",
+    "timestamp": "2026-02-07T10:20:00-08:00"
+  },
+  {
+    "id": "sm_110",
+    "channel": "#platform-engineering",
+    "channelId": "C_ENG",
+    "author": "james.liu",
+    "text": "Staging validation complete on fix/export-cursor-reset. 100K rows exported in 45 seconds (was timing out before). LGTM for production. @marcus.johnson @tom.anderson",
+    "timestamp": "2026-02-07T11:30:00-08:00"
+  }
+]

@@ -1,159 +1,86 @@
 # @elizaos/cloud-shared
 
-Shared backend code for Eliza Cloud: billing arithmetic, Drizzle DB schemas/repositories/migrations, the server-side service library, transport types, and route/auth helpers. This is a private workspace library — there is no app or dev server here. Consumers import its source directly via subpath exports.
+Shared backend code for Eliza Cloud: billing arithmetic, Drizzle DB
+schemas/repositories/migrations, server-side service library, transport types, and
+route/auth helpers.
 
-## Consumers
+Source-consumed cloud backend library. Tenant scoping, billing arithmetic, database
+schemas, migrations, and shared services live here. Apply additive migrations through
+the host; never create production tables on a request path.
 
-- `@elizaos/cloud-api` — Hono API on Cloudflare Workers; imports `lib/`, `db/`, `billing/`, `types/`.
-- `@elizaos/container-control-plane` — Node service for Hetzner container provisioning.
-- Server-side plugins that require Cloud database or service implementations.
+## Development
 
-## Source layout
-
-```
-src/
-  index.ts        top barrel — re-exports billing/db/lib/types as namespaces
-  billing/        pure, isomorphic markup math (applyMarkup, credit markup, Twilio SMS)
-  db/             Drizzle layer — schemas/, repositories/ (CQRS), migrations/,
-                  client.ts, database-url.ts, crypto/, utils/
-  lib/            SERVER-ONLY services + use-cases — services/, auth*.ts,
-                  api/ middleware/ cors/ http/ session/, stripe.ts, pricing.ts,
-                  promotion-pricing.ts, utils/logger.ts
-  types/          cloud-api.ts (DTOs), cloud-worker-env.ts, stripe-queue-message.ts
-drizzle.config.ts            schema ./src/db/schemas, out ./src/db/migrations
-scripts/messaging-gateway-preflight.mjs
-docs/                        WHY docs (provisioning, messaging gateways)
-```
-
-Import via subpath: `@elizaos/cloud-shared/billing`, `/db`, `/db/repositories/apps`, `/lib`, `/lib/services/<x>`, `/types`. Exports map (`package.json`): `.` `./billing` `./db` `./db/*` `./lib` `./lib/*` `./types` `./types/*`.
-
-Synthetic test consumers use `/db/repositories/synthetic-environment-leases`.
-Its guarded callback receives the same locked PostgreSQL/PGlite transaction as
-the generation check, so an old reset generation cannot commit afterward.
-`/db/repositories/synthetic-world-commands` persists the storage-neutral
-command journal in that transaction. Its PGlite contract test uses the real
-agents repository to prove the domain mutation, transactional readback, result
-serialization, and `COMMITTED` transition commit or roll back together.
-The lease and subprocess authorities share the exact 512-character namespace
-validator. Treat a transaction/transport exception as ambiguous and reconcile
-the canonical snapshot before retrying an acquire, rollover, or release.
-
-`src/lib/` is server-only. Browser surfaces in `packages/app` consume public
-`@elizaos/cloud-sdk` contracts directly; legacy browser-safe paths here remain
-compatibility exports, not the dependency boundary for new browser code.
-
-## App billing account registration
-
-`db/repositories/app-billing-accounts` owns unconfigured individual buyer accounts.
-An interactive app creator registers an environment through
-`POST /api/v1/apps/:id/billing/registration`; the immutable infrastructure payer
-is the app's owning organization. Existing `appsRepository.connectUser` consent
-and registration share the app row lock and materialize one account per
-registration and user. Only the explicit OAuth approval marker is consent; analytics-only
-app membership never creates or authorizes a billing account. Reads require current consent, active account/app state,
-and either a user session or a currently valid source-app mobile credential.
-General infrastructure API keys cannot authorize a buyer read.
-
-These records contain no provider account/customer, subscription, trial claim,
-or grant. Merchant and policy authority remain explicitly unconfigured. They do
-not define workspace/team billing or trial eligibility, and deleting consent or
-the app removes these unconfigured records. Historical organization billing
-records are not adopted or modified. Migration `0381_app_billing_registration.sql`
-must run before deploying the updated consent repository. Future lifecycle work
-must extend the existing subscription journal rather than treat these account
-records as a second lifecycle authority.
-
-## Commands
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun run --cwd packages/cloud/shared typecheck            # tsc --noEmit
-bun run --cwd packages/cloud/shared lint                 # biome check
-bun run --cwd packages/cloud/shared lint:fix
-bun run --cwd packages/cloud/shared test                 # bun test
-bun run --cwd packages/cloud/shared db:generate          # drizzle-kit generate
-bun run --cwd packages/cloud/shared db:migrate           # migrate-with-diagnostics.ts
-bun run --cwd packages/cloud/shared db:migrate:drizzle   # alias of guarded db:migrate
-bun run --cwd packages/cloud/shared db:studio            # drizzle-kit studio
-bun run --cwd packages/cloud/shared db:check-migrations  # drizzle-kit check
-bun run --cwd packages/cloud/shared preflight:messaging-gateways
+bun run --cwd packages/cloud/shared test   # tests
 ```
 
-There is no build step here (`build:linked-workspaces` defers to the repo-root `build:core`).
+No standalone build script is defined; this package is consumed or executed from source.
 
-## Config
+Managed Gmail attachment reads retain the explicit grant/message/part identity,
+bound provider response sizes, and recheck the grant after the last provider
+response before releasing complete attachment bytes. Provider/parser errors must
+not disclose message bodies or tokens. Task policy and document extraction remain
+host responsibilities.
 
-`db/database-url.ts` resolves the Postgres URL: explicit `DATABASE_URL` / `TEST_DATABASE_URL` (Railway in production) wins; otherwise local dev falls back to a file-backed PGlite store at `pglite://<cwd>/.eliza/.pgdata` (override the path with `PGLITE_DATA_DIR` / `LOCAL_DATABASE_PATH`). The `lib/` services read service-specific env (Stripe, Steward session/JWT secrets, BitRouter/provider keys, Telegram/Discord/WhatsApp, Hetzner/container infra). See `.env.example` for the full set.
+Use `/auth` for Worker request authentication, `/agents` for durable job admission
+and polling, and `/node` for provisioning execution. Public client DTOs belong
+to `@elizaos/cloud-sdk/contracts`; Node execution must not enter the agents graph.
+Shared exports are explicit. Leaf entries preserve lazy loading and schema ownership;
+do not add wildcard exports or consumer aliases that bypass the export map.
 
-## More
+Organization plan-change admission atomically consumes the original actor-owned
+quote and retains one command across retry keys. Downgrade admission is internal:
+it does not dispatch a provider effect or publish a scheduled plan. Expiry can
+retire only provably unstarted intents without a live lease; uncertain effects
+remain pending until the original outcome is reconciled.
 
-See [CLAUDE.md](./CLAUDE.md) for the migration workflow, how to add tables/services/DTOs, and the architecture rules (CQRS, server-only `lib/`, append-only migrations). WHY docs live under `docs/`.
+Schedule execution uses ordered `organization_schedule_effects` records (migration
+0521) under the original command lease. Each exact request has its own provider
+key; configuration requires the original observed create receipt. An observation
+can retain evidence after manager revocation but cannot authorize another write.
+The journal does not perform provider calls or publish a pending plan; receipt
+provenance must be verified by the provider response/event observer before storage.
 
-## Terminal Stripe lifecycle reconciliation
+Original schedule evidence is projected from authenticated Acacia create/update
+responses or request-attributed events. The journal reads original scope and first
+dispatch time under lock and preserves the first receipt on exact replay. Attribution
+is not configured-phase validation: callers still must verify retained terms and
+current provider state before configuration, compensation or pending-plan publication.
 
-The existing Stripe webhook queue calls `stripe-terminal-lifecycle` for updates
-and deletions of known organization subscriptions. It retrieves the subscription
-through the configured platform Stripe client, validates the deployment and
-server catalog bindings, and publishes terminal state through the atomic
-subscription receipt/finalizer transaction. Connect-account events, unknown
-identities, nonterminal transitions, changed periods or catalog bindings, and
-out-of-order observations remain retryable in the existing queue/DLQ.
+Downgrade review preflights pinned retained subscription billing terms before invoice
+preview. The observer normalizes existing discount/tax/payment references and includes
+financial overrides in its digest. Unsupported terms reject instead of being omitted.
+Migration 0522 binds normalized subscription settings and customer inheritance to the
+original quote in the same transaction. New downgrade intent digests include that
+immutable binding; historical version-1 started effects retain read-only recovery.
+New admission/dispatch cannot use missing bindings or attach them after consumption.
+The dispatcher must still reobserve matching terms and validate phase/default
+preservation before provider writes and scheduled-state publication.
 
-This path issues no provider mutations or grants. It does not implement checkout,
-trial activation, renewal funding, dunning/grace policy, refunds, or generic app
-subscriber lifecycle. Local consumer tests control the Stripe transport boundary;
-they do not establish live merchant credentials or provider execution evidence.
+Private schedule dispatch now reobserves original terms and catalog before one-time
+create/configure writes. Separate stable keys, original response/event recovery and
+full-history event traversal preserve unknown outcomes without replay. Phase mapping
+retains supported settings, and configuration previews the actual mapped schedule.
+Configured-state proof checks original attribution, current phases/defaults and unchanged
+subscription/customer terms. These internal helpers do not expose public confirmation. Original configuration
+settlement recomputes proof under the locked review and source authority, then atomically
+records a pending lower plan, source revision, entitlement projection and immutable command.
+The current paid plan and allowance are preserved; no target allowance is granted before renewal.
+The one-shot configure dispatcher now performs fresh reads and invokes this finalizer.
+Read-only recovery uses original events for a lost response, retains the first receipt,
+and never repeats a provider update. Terminal results replay without provider access. Partial-create cleanup uses an independently journaled,
+cancellation-preserving release only while configuration has never started. Read-only
+recovery uses original events and fresh state, never another release attempt. Proven cleanup
+atomically retires its command as FAILED while preserving paid source, projection and allowance;
+organization fencing cannot strand that original cleanup. Configured publication requires
+an active unfenced organization, original-period evidence and a live original lease.
+Command orchestration, public confirmation, renewal settlement and live provider qualification remain required before
+product adoption. Cleanup proof currently requires the original billing period and does
+not claim renewal-crossing recovery.
 
-## Durable cancellation notice state
-
-Each canonical `canceled` revision inserts one `cancel_effective` intent
-in the same transaction as its source revision, entitlement and event receipt.
-The intent starts `policy_unavailable`. The existing Stripe queue cron sweeps
-these intents and suppresses stale source revisions. It does not infer recipients,
-notice cadence, timezone, amounts, or a grace period. Newer canceled revisions
-retain a successor intent. A prior attempt other than proven pre-submission
-supersession puts an approved successor in `reconciliation_required`; a new
-revision alone does not authorize another message. This slice does not implement
-reminder or reconciliation policy, or complete subscription notifications.
-
-`SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON` is an optional server-owned registry
-of explicitly approved dispatches. Each entry must name `approvalReference`,
-`organizationId`, `subscriptionId`, `sourceRevision`, `kind: "cancel_effective"`,
-`recipient`, UTC `sendAt`/`notAfter`, an IANA `timezone`, and approved `subject`,
-`text`, and `html`. No registry is configured by this change. Its approval
-reference records an external product/operations decision; parsing configuration
-is not independent proof of that approval. There is no browser registration API
-or default message. Missing, ambiguous or invalid configuration stays unavailable.
-Configuration must reference the exact current source revision; a changed registry
-digest suppresses an already claimed attempt before submission.
-
-The dispatcher commits an attempt before mail I/O, then holds organization,
-account, source and notice locks through final checks and typed
-`Email.dispatchBounded`. Its SMTP transport owns the physical TCP socket: a
-maximum ten-second absolute deadline destroys it, and dispatch waits for local
-closure before releasing the transaction. The remaining lease and approved window
-can shorten this deadline. This is below the database client's five-minute idle
-transaction timeout; it does not make SMTP and PostgreSQL an atomic distributed
-commit or guarantee recipient delivery. SendGrid remains explicitly unavailable
-for bounded notices because this path has no owned cancellation contract for it.
-Legacy mail methods keep their existing behavior. A durable inspection cursor
-rotates unavailable and future notices; only a claimed attempt consumes the
-one-submission budget per sweep. After a worker crash or unknown provider
-acceptance, an expired attempt becomes `uncertain` and is never automatically
-resent. Accepted submission is stored as `accepted`, never `delivered`; rejection
-and unavailable transport also require a separate approved reconciliation decision.
-This deliberately favors avoiding duplicate messages over guaranteed delivery.
-
-The organization billing snapshot includes a `cancellationNotice` observation for
-the current canceled revision. It reports persisted email submission state and
-its last update under the same primary transaction as the subscription read.
-`accepted` is transport acceptance, while `delivery: "not_observed"` explicitly
-retains the absence of recipient evidence. Missing current intent is unavailable;
-a non-canceled subscription has no applicable cancellation notice. Historical
-revisions, message content, recipient addresses, and transport identifiers are
-not exposed in this public observation. Reading it cannot dispatch or retry mail.
-
-Migration `0382_subscription_notice_intents.sql` must precede deploying the
-updated finalizer. Intent/attempt identity and terminal outcomes are immutable;
-source erasure cascades their rows and the portable account export includes them.
-Local evidence uses real PGlite transactions and a loopback SMTP server only.
-Controlled live recipient/provider evidence and policy approval remain separate.
+The canonical migration journal includes 0520–0525 in order. Scheduling deployment
+must use the journal-driven migration runner; loading SQL directly in a test fixture
+alone does not establish deployment discovery. The scheduling ledger regression
+exercises the same canonical migration loader used by that runner.

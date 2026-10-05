@@ -7,7 +7,7 @@ import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 
 type XReadOpts = {
   limit?: number;

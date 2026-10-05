@@ -6,6 +6,8 @@
  */
 
 import { audienceAdmissionGateFailure } from "../access-control/audience-disclosure";
+import { ElizaError } from "../errors";
+import { checkSenderRole } from "../roles";
 import {
 	disclosureGateFailure,
 	getTrustedDeliveryAudience,
@@ -13,6 +15,7 @@ import {
 import type { Action } from "../types/components";
 import type { AgentContext, RoleGate, RoleGateRole } from "../types/contexts";
 import type { Memory } from "../types/memory";
+import type { IAgentRuntime } from "../types/runtime";
 import { resolveActionRolePolicyRole } from "./action-role-policy";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
 import { privateActionAllowedOnTurn } from "./private-action-gate";
@@ -161,4 +164,91 @@ export function canActionRun(
 	ctx: ActionGateContext,
 ): boolean {
 	return actionGateFailure(action, ctx) === undefined;
+}
+
+/**
+ * Resolve the caller's canonical role for gate evaluation. The agent itself is
+ * OWNER; a missing canonical room/world is GUEST (the non-authorizing floor);
+ * a role-store failure throws rather than guessing a role.
+ */
+export async function resolveActionCallerRoles(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<RoleGateRole[]> {
+	if (
+		typeof message.entityId === "string" &&
+		message.entityId === runtime.agentId
+	) {
+		return ["OWNER"];
+	}
+
+	try {
+		const result = await checkSenderRole(runtime, message);
+		if (result?.role) {
+			return [result.role as RoleGateRole];
+		}
+	} catch (error) {
+		// error-policy:J2 A role-store failure cannot be converted into a role
+		// because doing so would authorize actions without canonical evidence.
+		throw new ElizaError("Failed to resolve the tool caller's role", {
+			code: "ACTION_CALLER_ROLE_LOOKUP_FAILED",
+			cause: error,
+			context: {
+				messageId: message.id,
+				roomId: message.roomId,
+				entityId: message.entityId,
+			},
+		});
+	}
+
+	return ["GUEST"];
+}
+
+/** True when evaluating `action` needs the caller's resolved role. */
+export function actionGateNeedsCallerRoles(action: GateableAction): boolean {
+	return Boolean(
+		action.roleGate ||
+			action.contextGate?.roleGate ||
+			resolveActionRolePolicyRole(action),
+	);
+}
+
+/**
+ * {@link actionGateFailure} for a concrete turn, resolving the caller's role
+ * only when the action declares a role requirement. Used by execution paths
+ * that do not come through the planned tool-call executor (mode hooks, plan
+ * steps) so every path applies the same gate.
+ */
+export async function resolveActionGateFailure(
+	runtime: IAgentRuntime,
+	action: GateableAction,
+	ctx: Omit<ActionGateContext, "message" | "skipPrivateGate"> & {
+		message: Memory;
+		/**
+		 * `false` for paths that never selected contexts for this execution
+		 * (non-CONTEXT mode hooks, plan steps): context declarations are routing
+		 * metadata there, while private/disclosure/role requirements still apply.
+		 */
+		evaluateContexts?: boolean;
+	},
+): Promise<string | undefined> {
+	const gated: GateableAction =
+		ctx.evaluateContexts === false
+			? {
+					name: action.name,
+					private: action.private,
+					roleGate: action.roleGate,
+					disclosureGate: action.disclosureGate,
+					contextGate: action.contextGate?.roleGate
+						? { roleGate: action.contextGate.roleGate }
+						: undefined,
+				}
+			: action;
+	return actionGateFailure(gated, {
+		...ctx,
+		userRoles:
+			ctx.userRoles?.length || !actionGateNeedsCallerRoles(action)
+				? ctx.userRoles
+				: await resolveActionCallerRoles(runtime, ctx.message),
+	});
 }

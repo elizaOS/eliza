@@ -1,8 +1,8 @@
 /** Races a generation rollover from an independent OS process. */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/shared/contracts/synthetic-environment-lease";
-import { SqliteSyntheticEnvironmentLeaseStore } from "../../src/synthetic-environment/sqlite-lease-store";
+import type { SyntheticEnvironmentLeaseAuthority } from "@elizaos/contracts";
+import { SqliteSyntheticEnvironmentLeaseStore } from "@elizaos/testing/synthetic-world/sqlite";
 
 const [databasePath, authorityPath, readyPath, goPath] = process.argv.slice(2);
 if (!databasePath || !authorityPath || !readyPath || !goPath) {
@@ -14,9 +14,8 @@ const authority = JSON.parse(
 const store = new SqliteSyntheticEnvironmentLeaseStore(databasePath);
 writeFileSync(readyPath, `${process.pid}\n`, { mode: 0o600 });
 while (!existsSync(goPath)) await Bun.sleep(5);
-
 try {
-  const receipt = await store.rollover({ authority, leaseDurationMs: 5_000 });
+  const receipt = await store.rollover({ authority, leaseDurationMs: 5000 });
   process.stdout.write(
     `${JSON.stringify({ ok: true, operation: receipt.operation, authority: receipt.authority })}\n`,
   );

@@ -1,21 +1,22 @@
 /** Handles cloud API feedback route traffic with route-local auth expectations. */
 
 import { escapeHtml } from "@elizaos/cloud-shared/lib/utils/html";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+
 /**
  * POST /api/feedback
  * Sends user feedback to the developer email.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { emailService } from "@/lib/services/email";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { emailService } from "@elizaos/cloud-shared/lib/services/email";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const feedbackSchema = z.object({
   name: z.string().max(100).optional().default(""),

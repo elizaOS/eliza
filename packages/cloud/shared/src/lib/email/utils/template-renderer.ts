@@ -4,6 +4,7 @@
 
 import { getEmailMessages, interpolateMessage } from "../messages";
 import type {
+  AgentRetentionDeletionNoticeEmailData,
   AutoTopUpDisabledEmailData,
   AutoTopUpSuccessEmailData,
   ContainerShutdownWarningEmailData,
@@ -23,7 +24,7 @@ import { EMAIL_TEMPLATES } from "./email-templates.generated";
 function loadTemplate(filename: string): string {
   // Templates are bundled as strings (email-templates.generated.ts) — the
   // Workers runtime has no filesystem and no import.meta.url, so reading them
-  // from disk threw. Regenerate via scripts/generate-email-templates.mjs.
+  // from disk threw. Regenerate via scripts/generate-email-templates.ts.
   const template = EMAIL_TEMPLATES[filename];
   if (template === undefined) {
     throw new Error(`Unknown email template: ${filename}`);
@@ -383,6 +384,55 @@ export function renderContainerShutdownWarningTemplate(data: ContainerShutdownWa
 
   return {
     html: interpolate(htmlTemplate, templateData),
+    text: interpolate(textTemplate, templateData),
+  };
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+/**
+ * Renders the agent funding-retention deletion notice (#22967). Agent and
+ * organization names are customer-controlled, so the HTML version escapes
+ * every interpolated value.
+ */
+export function renderAgentRetentionDeletionNoticeTemplate(
+  data: AgentRetentionDeletionNoticeEmailData,
+): {
+  html: string;
+  text: string;
+} {
+  const htmlTemplate = loadTemplate("agent-retention-deletion-notice.html");
+  const textTemplate = loadTemplate("agent-retention-deletion-notice.txt");
+  const templateData: Record<string, string | number> = {
+    organizationName: data.organizationName,
+    agentName: data.agentName,
+    reasonText:
+      data.reason === "credits_exhausted"
+        ? "your organization ran out of credits"
+        : "your Plus/Pro plan lapsed",
+    daysRemaining: data.daysRemaining,
+    suspendedAt: data.suspendedAt,
+    deleteAfter: data.deleteAfter,
+    backupRetainUntil: data.backupRetainUntil,
+    billingUrl: data.billingUrl,
+    dashboardUrl: data.dashboardUrl,
+    currentYear: new Date().getFullYear(),
+  };
+  const htmlData = Object.fromEntries(
+    Object.entries(templateData).map(([key, value]) => [
+      key,
+      typeof value === "string" ? escapeHtml(value) : value,
+    ]),
+  );
+  return {
+    html: interpolate(htmlTemplate, htmlData),
     text: interpolate(textTemplate, templateData),
   };
 }

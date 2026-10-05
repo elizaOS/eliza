@@ -7,3 +7,16 @@ Members:
     qjl_apply               — runtime K-side 1-bit JL sketch.
     abliteration_apply      — orthogonal refusal-direction ablation.
 """
+
+
+__all__ = ["PROFILES", "QuantProfile"]
+
+
+def __getattr__(name: str):
+    if name == "PROFILES":
+        from .gguf_profile import PROFILES
+        return PROFILES
+    if name == "QuantProfile":
+        from .gguf_k_quant import QuantProfile
+        return QuantProfile
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

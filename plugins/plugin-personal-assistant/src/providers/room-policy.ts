@@ -23,7 +23,7 @@ import { logger, toWellFormedUnicode } from "@elizaos/core";
 import {
   describeResumeCondition,
   resolveHandoffStore,
-} from "../lifeops/handoff/store.js";
+} from "@elizaos/plugin-assistant";
 
 const QUIET_RESULT: ProviderResult = {
   text: "",

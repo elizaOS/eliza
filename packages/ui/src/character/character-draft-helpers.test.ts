@@ -1,40 +1,38 @@
-/**
- * Unit tests for character-draft-helpers: validates newline-separated array parsing and message examples.
- */
 import { describe, expect, it } from "vitest";
-import {
-  parseArrayInput,
-  parseMessageExamplesInput,
-} from "./character-draft-helpers.ts";
+import { prepareDraftForSave } from "./character-draft-helpers";
 
-describe("character-draft-helpers", () => {
-  describe("parseArrayInput", () => {
-    it("splits multiline strings into trimmed non-empty array", () => {
-      const input = "  apple  \n  banana  \n\n  orange  ";
-      const result = parseArrayInput(input);
-      expect(result).toEqual(["apple", "banana", "orange"]);
+describe("character message example persistence", () => {
+  it("preserves each message's actions through speaker normalization and repeated text", () => {
+    const saved = prepareDraftForSave({
+      name: "Eliza",
+      messageExamples: [
+        {
+          examples: [
+            {
+              name: "assistant",
+              content: { text: "Hello Eliza", actions: ["FIRST"] },
+            },
+            {
+              name: "assistant",
+              content: { text: "Hello Eliza", actions: ["SECOND"] },
+            },
+          ],
+        },
+      ],
     });
-
-    it("returns empty array for empty string", () => {
-      expect(parseArrayInput("")).toEqual([]);
-      expect(parseArrayInput("   \n  \n  ")).toEqual([]);
-    });
-  });
-
-  describe("parseMessageExamplesInput", () => {
-    it("returns empty array for empty input", () => {
-      expect(parseMessageExamplesInput("")).toEqual([]);
-      expect(parseMessageExamplesInput("   ")).toEqual([]);
-    });
-
-    it("parses block of speaker: message lines into structured examples", () => {
-      const input = "Alice: Hello there!\nBob: Hi Alice!";
-      const result = parseMessageExamplesInput(input);
-      expect(result.length).toBe(1);
-      expect(result[0].examples).toEqual([
-        { name: "Alice", content: { text: "Hello there!" } },
-        { name: "Bob", content: { text: "Hi Alice!" } },
-      ]);
-    });
+    expect(saved.messageExamples).toEqual([
+      {
+        examples: [
+          {
+            name: "Eliza",
+            content: { text: "Hello {{name}}", actions: ["FIRST"] },
+          },
+          {
+            name: "Eliza",
+            content: { text: "Hello {{name}}", actions: ["SECOND"] },
+          },
+        ],
+      },
+    ]);
   });
 });

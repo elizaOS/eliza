@@ -8,7 +8,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

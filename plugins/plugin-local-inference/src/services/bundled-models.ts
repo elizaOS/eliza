@@ -102,7 +102,7 @@ export async function registerBundledModels(): Promise<number> {
 		} catch {
 			// File didn't extract — manifest references something the APK
 			// didn't ship. Skip this entry rather than registering a broken
-			// path. AOSP build's stage-default-models.mjs is the source of
+			// path. AOSP build's stage-default-models.ts is the source of
 			// truth; if a file is missing the build is broken upstream.
 			continue;
 		}

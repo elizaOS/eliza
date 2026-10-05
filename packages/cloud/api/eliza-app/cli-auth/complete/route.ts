@@ -6,14 +6,14 @@
  * Stores the JWT in `api_key_plain` so the CLI can pick it up via /poll.
  */
 
+import { db } from "@elizaos/cloud-shared/db/client";
+import { cliAuthSessions } from "@elizaos/cloud-shared/db/schemas/cli-auth-sessions";
+import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { db } from "@/db/client";
-import { cliAuthSessions } from "@/db/schemas/cli-auth-sessions";
-import { elizaAppSessionService } from "@/lib/services/eliza-app";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

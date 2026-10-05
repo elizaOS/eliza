@@ -1,5 +1,5 @@
 /** Resolves the login service for browser proxies and server-side authentication clients. */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 
 const STEWARD_PREFIX = "/steward";
 

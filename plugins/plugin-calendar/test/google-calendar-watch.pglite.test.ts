@@ -5,6 +5,10 @@
  */
 import { createServer, type Server } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
+import type {
+  LifeOpsConnectorGrant,
+  LifeOpsGoogleConnectorStatus,
+} from "@elizaos/contracts";
 import type { ConnectorAccountManager, IAgentRuntime } from "@elizaos/core";
 import {
   createGoogleConnectorAccountProvider,
@@ -15,10 +19,6 @@ import {
   getScheduledTaskRunner,
   ScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import type {
-  LifeOpsConnectorGrant,
-  LifeOpsGoogleConnectorStatus,
-} from "@elizaos/shared";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

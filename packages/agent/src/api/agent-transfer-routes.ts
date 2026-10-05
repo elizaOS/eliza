@@ -10,14 +10,16 @@
  * live runtime and the server's owner-auth boundary.
  */
 import type http from "node:http";
+import {
+  AGENT_TRANSFER_MAX_PASSWORD_BYTES,
+  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
+  PostAgentExportRequestSchema,
+} from "@elizaos/contracts";
 import type { AgentRuntime } from "@elizaos/core";
-import { readRequestBodyBuffer } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
-import { PostAgentExportRequestSchema } from "@elizaos/shared";
+import { readRequestBodyBuffer } from "@elizaos/host";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 const MAX_IMPORT_BYTES = 512 * 1_048_576;
-const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
-const AGENT_TRANSFER_MAX_PASSWORD_LENGTH = 1024;
 
 function readRawBody(
   req: http.IncomingMessage,
@@ -44,7 +46,7 @@ export interface AgentTransferRouteContext extends RouteRequestContext {
   exportAgent: (
     runtime: AgentRuntime,
     password: string,
-    options: { includeLogs: boolean },
+    options: { includeLogs: boolean; excludeSecrets: boolean },
   ) => Promise<Buffer>;
   estimateExportSize: (runtime: AgentRuntime) => Promise<unknown>;
   importAgent: (
@@ -96,6 +98,7 @@ export async function handleAgentTransferRoutes(
     try {
       const fileBuffer = await exportAgent(state.runtime, body.password, {
         includeLogs: body.includeLogs === true,
+        excludeSecrets: body.excludeSecrets === true,
       });
 
       const agentName = (state.runtime.character.name ?? "agent")
@@ -175,10 +178,10 @@ export async function handleAgentTransferRoutes(
       );
       return true;
     }
-    if (passwordLength > AGENT_TRANSFER_MAX_PASSWORD_LENGTH) {
+    if (passwordLength > AGENT_TRANSFER_MAX_PASSWORD_BYTES) {
       error(
         res,
-        `Password is too long (max ${AGENT_TRANSFER_MAX_PASSWORD_LENGTH} bytes).`,
+        `Password is too long (max ${AGENT_TRANSFER_MAX_PASSWORD_BYTES} bytes).`,
         400,
       );
       return true;

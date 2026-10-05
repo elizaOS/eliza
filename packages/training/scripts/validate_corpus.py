@@ -67,6 +67,11 @@ Exit codes:
 
 from __future__ import annotations
 
+from eliza_training.lib.privacy_attestation import (
+    PRIVACY_ATTESTATION_SCHEMA, PRIVACY_ATTESTATION_VERSION,
+    has_privacy_attestation as _has_privacy_attestation,
+)
+
 import argparse
 import hashlib
 import json
@@ -77,7 +82,6 @@ from pathlib import Path
 from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
 
 # Canonical action vocabulary (mirrors lib/eliza_record.py).
 ACTION_RESPOND = "RESPOND"
@@ -91,16 +95,13 @@ ROUTING_ACTIONS = {ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP}
 # DATASET_REVIEW.md-flagged default-thought leaks. Single source of truth
 # lives in scripts/lib/eliza_record.DEFAULT_THOUGHT_LEAKS — re-import here
 # so the validator and the adapters scrub the same set.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts.lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
-from scripts.lib.native_record import (  # noqa: E402
+from eliza_training.lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
+from eliza_training.lib.native_record import (  # noqa: E402
     FORMAT as ELIZA_NATIVE_FORMAT,
     validate_native_record,
 )
-from scripts.format_for_training import format_record  # noqa: E402
+from eliza_training.format_for_training import format_record  # noqa: E402
 
-PRIVACY_ATTESTATION_SCHEMA = "eliza.privacy_filter_attestation.v1"
-PRIVACY_ATTESTATION_VERSION = 1
 
 # Stale action names that must not appear in fresh corpus rows (renamed/removed
 # in the runtime — see config/eliza1_action_aliases.json and action-docs.ts).
@@ -124,37 +125,8 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _privacy_attestation_candidates(record: dict[str, Any]) -> list[dict[str, Any]]:
-    metadata = _as_dict(record.get("metadata"))
-    candidates: list[dict[str, Any]] = []
-    for value in (
-        record.get("privacyAttestation"),
-        record.get("privacy_attestation"),
-        metadata.get("privacy_attestation"),
-        metadata.get("privacyAttestation"),
-        metadata.get("privacy"),
-        record.get("privacy"),
-    ):
-        if isinstance(value, dict):
-            candidates.append(value)
-    return candidates
 
 
-def _has_privacy_attestation(record: dict[str, Any]) -> bool:
-    for attestation in _privacy_attestation_candidates(record):
-        privacy = _as_dict(attestation.get("privacy"))
-        if (
-            attestation.get("schema") == PRIVACY_ATTESTATION_SCHEMA
-            and attestation.get("version") == PRIVACY_ATTESTATION_VERSION
-            and attestation.get("passed") is True
-            and (
-                attestation.get("reviewed") is True
-                or attestation.get("redacted") is True
-                or privacy.get("reviewed") is True
-            )
-        ):
-            return True
-    return False
 
 
 def native_content_hash(rec: dict[str, Any]) -> str | None:
@@ -205,7 +177,7 @@ def validate_native_v1(rec: dict) -> list[tuple[str, str]]:
     # Confirm it renders to a training example.
     if has_privacy_attestation:
         try:
-            from scripts.format_for_training import format_record  # noqa: PLC0415
+            from eliza_training.format_for_training import format_record  # noqa: PLC0415
             rendered = format_record(rec)
             if not rendered or not rendered.get("messages"):
                 errs.append(("native_v1_unrenderable",
@@ -262,7 +234,7 @@ def _load_source_allowlist() -> set[str]:
             if m:
                 sources.add(m.group(1))
     try:
-        from scripts.lib.adapters import REGISTRY  # noqa: WPS433
+        from eliza_training.lib.adapters import REGISTRY  # noqa: WPS433
         sources.update(REGISTRY.keys())
     except Exception:
         pass

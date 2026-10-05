@@ -1,10 +1,11 @@
 /** Stable OAuth-style error responses for the native App Auth boundary. */
-import type { Context } from "hono";
+
 import {
   MobileAppAuthProtocolError,
   type MobileAppAuthProtocolErrorCode,
-} from "@/lib/services/mobile-app-auth";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { Context } from "hono";
 
 const STATUS_BY_CODE: Record<
   MobileAppAuthProtocolErrorCode,

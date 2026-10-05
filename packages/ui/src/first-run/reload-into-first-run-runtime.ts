@@ -15,27 +15,6 @@ export const FIRST_RUN_TARGET_QUERY_NAME = "runtimeTarget";
 
 export type FirstRunReloadTarget = "cloud" | "local" | "remote";
 
-function isFirstRunReloadTarget(
-  value: string | null,
-): value is FirstRunReloadTarget {
-  return value === "cloud" || value === "local" || value === "remote";
-}
-
-export function readFirstRunRuntimeTarget(
-  search: string | URLSearchParams = typeof window === "undefined"
-    ? ""
-    : window.location.search,
-): FirstRunReloadTarget | null {
-  const params =
-    typeof search === "string" ? new URLSearchParams(search) : search;
-  const runtime = params.get(FIRST_RUN_QUERY_NAME);
-  if (runtime !== FIRST_RUN_QUERY_VALUE) {
-    return null;
-  }
-  const target = params.get(FIRST_RUN_TARGET_QUERY_NAME);
-  return isFirstRunReloadTarget(target) ? target : "local";
-}
-
 export function reloadIntoFirstRunRuntime(target?: FirstRunReloadTarget): void {
   if (typeof window === "undefined") return;
   persistMobileRuntimeModeForServerTarget("");

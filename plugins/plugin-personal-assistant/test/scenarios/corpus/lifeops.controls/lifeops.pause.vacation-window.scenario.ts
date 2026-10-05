@@ -3,8 +3,8 @@
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 
 /**
  * Closes the gap from the lifeops audit (`docs/audits/lifeops-2026-05-09/
@@ -25,7 +25,7 @@ export default scenario({
     "When the owner asks the agent to pause routines for a vacation window, the planner should route to the LIFEOPS action with verb=pause. The result data should carry the resolved pause window so downstream callers can verify scope.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

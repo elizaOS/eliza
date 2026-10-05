@@ -20,7 +20,7 @@ import {
   buildCredentialProxyCanonicalString,
   credentialProxyBodyHash,
   signCredentialProxyRequest,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AcpJsonRpcMessage,

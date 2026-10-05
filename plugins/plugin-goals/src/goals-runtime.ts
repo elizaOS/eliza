@@ -18,11 +18,11 @@
  */
 
 import crypto from "node:crypto";
+import type { LifeOpsOwnership } from "@elizaos/contracts";
 import {
   type IAgentRuntime,
   resolveOwnerEntityIdOrDefault,
 } from "@elizaos/core";
-import type { LifeOpsOwnership } from "@elizaos/shared";
 import { GoalsRepository } from "./db/goals-repository.ts";
 import { requireAgentId } from "./goal-normalize.ts";
 import {

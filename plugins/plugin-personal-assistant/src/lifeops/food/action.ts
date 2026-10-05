@@ -11,9 +11,10 @@
  * rejection instead of silently publishing different content. Approved
  * handoffs are materialized elsewhere (RESOLVE_REQUEST), never here.
  */
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   completeLifeOpsEffect,
   lifeOpsAppliedEffect,

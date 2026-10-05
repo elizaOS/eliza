@@ -3,6 +3,8 @@
  * to runtime message events, so the test drives the registered handler and
  * verifies both the activity signal and relationship/contact recency writes.
  */
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type ComposerActivityPayload,
   EventType,
@@ -11,7 +13,6 @@ import {
   type UUID,
   type ViewSwitchedPayload,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockState = vi.hoisted(() => {

@@ -6,10 +6,10 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { isSafeTerraformStateAddress } from "../validate-terraform-state-address.mjs";
+import { isSafeTerraformStateAddress } from "../validate-terraform-state-address.ts";
 
 const scriptPath = fileURLToPath(
-  new URL("../validate-terraform-state-address.mjs", import.meta.url),
+  new URL("../validate-terraform-state-address.ts", import.meta.url),
 );
 
 function runValidator(addresses: string[]) {

@@ -1,3 +1,4 @@
+/** Validates SMS bridge inputs and exposes the browser unavailable fallback. */
 import { WebPlugin } from "@capacitor/core";
 
 import type {
@@ -21,16 +22,16 @@ function validateSendSmsOptions(options: SendSmsOptions): void {
   }
 }
 
-function normalizeListLimit(limit: unknown): number | undefined {
-  if (limit === undefined) return undefined;
-  if (typeof limit !== "number" || !Number.isFinite(limit)) {
-    throw new Error("limit must be between 1 and 500");
+function validateListLimit(limit: unknown): void {
+  if (limit === undefined) return;
+  if (
+    typeof limit !== "number" ||
+    !Number.isInteger(limit) ||
+    limit <= 0 ||
+    limit > 2_147_483_647
+  ) {
+    throw new Error("limit must be a positive 32-bit integer");
   }
-  const normalized = Math.trunc(limit);
-  if (normalized < 1 || normalized > 500) {
-    throw new Error("limit must be between 1 and 500");
-  }
-  return normalized;
 }
 
 export class MessagesWeb extends WebPlugin implements MessagesPlugin {
@@ -42,7 +43,7 @@ export class MessagesWeb extends WebPlugin implements MessagesPlugin {
   async listMessages(
     options?: ListMessagesOptions,
   ): Promise<{ messages: SmsMessageSummary[] }> {
-    normalizeListLimit(options?.limit);
+    validateListLimit(options?.limit);
     return { messages: [] };
   }
 

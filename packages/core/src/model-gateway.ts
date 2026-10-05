@@ -20,8 +20,7 @@
  *    an error naming the offending variable. This prevents an operator from
  *    silently bypassing the broker by leaving a raw key in the environment.
  *
- * Pure string logic with no Node-only dependencies, so it is safe in the
- * browser bundle and exported from both the node and browser barrels.
+ * Exported through the Node runtime barrel for host and provider assembly.
  *
  * SIBLING LAYER (#11536 E2): plugins/plugin-agent-orchestrator/src/services/
  * model-gateway.ts (PR #11651, merged) covers the SPAWNED SUB-AGENT env path

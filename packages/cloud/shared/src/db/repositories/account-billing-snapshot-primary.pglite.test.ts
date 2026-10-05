@@ -38,7 +38,7 @@ test("the full primary reader and public projection preserve source and exact am
   });
 }, 120_000);
 
-test("paid snapshot uses admitted policy and preserves null ceilings across balance changes", async () => {
+test("paid snapshot uses admitted policy and preserves entitlement ceilings across balance changes", async () => {
   const { subscriptionAuthorityRepository } = await import("./subscription-authority");
   const { subscriptionEntitlementsRepository } = await import("./subscription-entitlements");
   const { readPrimaryAccountBillingSnapshot } = await import("./account-billing-snapshot");
@@ -84,13 +84,20 @@ test("paid snapshot uses admitted policy and preserves null ceilings across bala
     tier: admitted.tier.status === "available" ? admitted.tier.value : undefined,
     tierSourceCreditTotal: null,
   });
+  // Paid plans project explicit catalog ceilings (never below Free) from the
+  // subscription entitlement projection.
+  const ceiling = (limit: bigint) => ({
+    status: "available",
+    source: "subscription-entitlement",
+    limit,
+  });
   expect(before.policyLimits).toMatchObject({
-    characters: { status: "unavailable" },
-    sandboxes: { status: "unavailable" },
-    nonEagerSandboxes: { status: "unavailable" },
-    containers: { status: "unavailable" },
-    apps: { status: "unavailable" },
-    storage: { status: "unavailable" },
+    characters: ceiling(5n),
+    sandboxes: ceiling(5n),
+    nonEagerSandboxes: ceiling(5n),
+    containers: ceiling(1n),
+    apps: ceiling(25n),
+    storage: ceiling(5n * 1024n ** 3n),
   });
   await database
     .getPgliteClientForTests()

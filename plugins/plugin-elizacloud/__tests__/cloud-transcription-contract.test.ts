@@ -116,6 +116,19 @@ describe("plugin-elizacloud TRANSCRIPTION param shapes", () => {
     expect(body.get("model")).toBeNull();
   });
 
+  it("transcribes in-process audio bytes sent beside the required empty audioUrl", async () => {
+    const fetchSpy = mockSttResponse({ text: "from bytes" });
+    const text = await handleTranscription(makeRuntime(), {
+      audioUrl: "",
+      audio: Buffer.from("RIFF....WAVEfmt "),
+      mimeType: "audio/wav",
+    } as never);
+    expect(text).toBe("from bytes");
+    expect(vi.mocked(fetchWithSsrfGuard)).not.toHaveBeenCalled();
+    const body = (fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined)?.body as FormData;
+    expect((body.get("audio") as File | null)?.size).toBe(16);
+  });
+
   it("fetches a string audio URL through the SSRF guard", async () => {
     mockSttResponse({ transcript: "from url" });
     vi.mocked(fetchWithSsrfGuard).mockResolvedValue({

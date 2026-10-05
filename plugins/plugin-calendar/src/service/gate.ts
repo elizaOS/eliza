@@ -4,11 +4,6 @@
  * rows are supplied by the host or LifeOps through this seam.
  */
 import crypto from "node:crypto";
-import {
-  getConnectorAccountManager,
-  type IAgentRuntime,
-  logger,
-} from "@elizaos/core";
 import type {
   LifeOpsAuditEvent,
   LifeOpsConnectorGrant,
@@ -16,7 +11,12 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsGoogleConnectorStatus,
   LifeOpsReminderPlan,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  logger,
+} from "@elizaos/core";
 import { fail } from "../internal/errors.js";
 import {
   disconnectedGoogleStatus,

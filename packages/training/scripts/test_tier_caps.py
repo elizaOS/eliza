@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.pack_dataset import (
+from eliza_training.pack_dataset import (
     TIER_CAPS,
     TIER_E_HERMES_COMBINED,
     compute_targets,

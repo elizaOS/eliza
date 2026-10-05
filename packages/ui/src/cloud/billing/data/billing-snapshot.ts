@@ -11,6 +11,9 @@ import type {
   ActiveComputeResourceSnapshot,
   ExactBillingValue,
   Observed,
+  OrganizationSubscriptionSnapshot,
+  SubscriptionCancellationBlockerCode,
+  SubscriptionCancellationControlSnapshot,
 } from "@elizaos/cloud-sdk/account-billing-snapshot";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
@@ -55,10 +58,29 @@ export type BillingSnapshotResource = Pick<
   estimatedRecurringComputeCostPerDay: Observed<DailyUsd>;
 };
 
+/** The organization Plus/Pro fields this UI renders; provider identifiers never reach it. */
+export interface BillingSubscriptionView {
+  subscriptionId: string;
+  planKey: OrganizationSubscriptionSnapshot["planKey"];
+  state: OrganizationSubscriptionSnapshot["state"];
+  currentPeriodEnd: string;
+  cancelAtPeriodEnd: boolean;
+  pendingPlanKey: OrganizationSubscriptionSnapshot["pendingPlanKey"];
+  graceExpiresAt: string | null;
+  dunningStartedAt: string | null;
+  allowance: Observed<{
+    granted: string;
+    effectiveRemaining: Observed<string>;
+  }>;
+  cancellationControl: SubscriptionCancellationControlSnapshot;
+}
+
 export interface BillingSnapshotV2View {
   snapshotStartedAt: string;
   snapshotCompletedAt: string;
   balance: Observed<AccountBalanceSnapshot>;
+  /** Unparseable subscription evidence is reported as unavailable, never as "no subscription". */
+  subscription: Observed<BillingSubscriptionView>;
   activeCompute: {
     resources: Observed<BillingSnapshotResource[]>;
     estimatedRecurringComputeCostPerDay: Observed<DailyUsd>;
@@ -285,6 +307,144 @@ function parseResources(value: unknown): BillingSnapshotResource[] {
   return resources;
 }
 
+const SUBSCRIPTION_STATES = new Set<string>([
+  "pending",
+  "incomplete",
+  "active",
+  "grace",
+  "past_due",
+  "unpaid",
+  "canceled",
+  "incomplete_expired",
+]);
+const SUBSCRIPTION_BLOCKERS = new Set<string>([
+  "interactive_session_required",
+  "billing_account_ineligible",
+  "owner_or_admin_role_required",
+  "subscription_state_unsupported",
+]);
+const EXACT_ALLOWANCE_USD = /^(?:0|[1-9]\d*)\.\d{6}$/;
+
+function planKey(value: unknown): "plus_monthly" | "pro_monthly" {
+  return value === "plus_monthly" || value === "pro_monthly"
+    ? value
+    : invalidResponse();
+}
+
+function allowanceAmount(value: unknown): string {
+  if (typeof value !== "string" || !EXACT_ALLOWANCE_USD.test(value)) {
+    return invalidResponse();
+  }
+  return value;
+}
+
+function parseSubscriptionControl(
+  value: unknown,
+): SubscriptionCancellationControlSnapshot {
+  const control = asRecord(value);
+  const subscriptionId = nonEmptyString(control.subscriptionId);
+  const undo = control.action === "undo";
+  if (
+    (control.action !== "cancel" && !undo) ||
+    control.method !== "POST" ||
+    control.endpoint !==
+      (undo
+        ? "/api/v1/subscriptions/cancel/undo"
+        : "/api/v1/subscriptions/cancel") ||
+    typeof control.eligible !== "boolean" ||
+    !Array.isArray(control.blockers)
+  ) {
+    return invalidResponse();
+  }
+  const seen = new Set<string>();
+  const blockers = control.blockers.map((blocker) => {
+    if (
+      typeof blocker !== "string" ||
+      !SUBSCRIPTION_BLOCKERS.has(blocker) ||
+      seen.has(blocker)
+    ) {
+      return invalidResponse();
+    }
+    seen.add(blocker);
+    return blocker as SubscriptionCancellationBlockerCode;
+  });
+  const expected = control.expectedSubscriptionRevision;
+  if (
+    control.eligible !== (blockers.length === 0) ||
+    !Number.isSafeInteger(expected) ||
+    Number(expected) <= 0
+  ) {
+    return invalidResponse();
+  }
+  return {
+    action: undo ? "undo" : "cancel",
+    method: "POST",
+    endpoint: undo
+      ? "/api/v1/subscriptions/cancel/undo"
+      : "/api/v1/subscriptions/cancel",
+    subscriptionId,
+    expectedSubscriptionRevision: Number(expected),
+    eligible: control.eligible,
+    blockers,
+  };
+}
+
+function parseSubscription(value: unknown): BillingSubscriptionView {
+  const record = asRecord(value);
+  const state = record.state;
+  if (typeof state !== "string" || !SUBSCRIPTION_STATES.has(state)) {
+    return invalidResponse();
+  }
+  if (typeof record.cancelAtPeriodEnd !== "boolean") return invalidResponse();
+  const subscriptionId = nonEmptyString(record.subscriptionId);
+  const cancellationControl = parseSubscriptionControl(
+    record.cancellationControl,
+  );
+  if (cancellationControl.subscriptionId !== subscriptionId) {
+    return invalidResponse();
+  }
+  return {
+    subscriptionId,
+    planKey: planKey(record.planKey),
+    state: state as BillingSubscriptionView["state"],
+    currentPeriodEnd: canonicalIsoTimestamp(record.currentPeriodEnd),
+    cancelAtPeriodEnd: record.cancelAtPeriodEnd,
+    pendingPlanKey:
+      record.pendingPlanKey === null ? null : planKey(record.pendingPlanKey),
+    graceExpiresAt: nullableCanonicalIsoTimestamp(record.graceExpiresAt),
+    dunningStartedAt: nullableCanonicalIsoTimestamp(record.dunningStartedAt),
+    allowance: parseObserved(record.allowance, (allowance) => {
+      const fields = asRecord(allowance);
+      return {
+        granted: allowanceAmount(fields.granted),
+        effectiveRemaining: parseObserved(
+          fields.effectiveRemaining,
+          allowanceAmount,
+        ),
+      };
+    }),
+    cancellationControl,
+  };
+}
+
+function observedSubscription(
+  value: unknown,
+  fallbackObservedAt: string,
+): Observed<BillingSubscriptionView> {
+  try {
+    return parseObserved(value, parseSubscription);
+  } catch {
+    // error-policy:J3 A subscription block from an older or drifted server must not hide the
+    // rest of billing; it renders as explicitly unavailable, never as "no subscription".
+    return {
+      status: "unavailable",
+      source: "billing-snapshot-v2",
+      observedAt: fallbackObservedAt,
+      error: { code: "subscription_snapshot_invalid", retryable: true },
+    };
+  }
+}
+
 /** Parse the additive success envelope returned by GET /api/v1/billing/limits. */
 export function parseBillingSnapshotV2Envelope(
   value: unknown,
@@ -307,6 +467,7 @@ export function parseBillingSnapshotV2Envelope(
     snapshotStartedAt,
     snapshotCompletedAt,
     balance: parseObserved(v2.balance, parseBalance),
+    subscription: observedSubscription(v2.subscription, snapshotCompletedAt),
     activeCompute: {
       resources: parseObserved(activeCompute.resources, parseResources),
       estimatedRecurringComputeCostPerDay: parseObserved(

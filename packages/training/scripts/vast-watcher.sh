@@ -147,7 +147,7 @@ budget_pass() {
   local enf_out enf_rc
   enf_out="$( cd "$ROOT" && \
     REGISTRY_KEY="${REGISTRY_KEY:-}" RUN_NAME="${RUN_NAME:-}" \
-    python3 -m scripts.lib.vast_budget enforce "$iid" 2>&1 )"
+    python3 -m eliza_training.lib.vast_budget enforce "$iid" 2>&1 )"
   enf_rc=$?
   case "$enf_rc" in
     0)

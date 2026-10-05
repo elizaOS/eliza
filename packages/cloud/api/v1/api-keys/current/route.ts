@@ -4,22 +4,28 @@
  * agree on one exact identity; a response-loss retry can recover only that
  * credential's durable tombstone.
  */
-import { Hono } from "hono";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import { authEvents } from "@/db/schemas/auth-events";
+
+import { requireApiKeyCredential } from "@elizaos/cloud-shared/auth";
 import {
   ApiError,
   AuthenticationError,
   failureResponse,
-} from "@/lib/api/cloud-worker-errors";
-import { requireApiKeyCredential } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService, isMobileApiKeySecret } from "@/lib/services/api-keys";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  apiKeysService,
+  isMobileApiKeySecret,
+} from "@elizaos/cloud-shared/lib/services/api-keys";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { createTransactionalAudit } from "@/api-app/services/audit-transactional";
 
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
@@ -34,61 +40,47 @@ function readSinglePresentedApiKey(c: AppContext): string | null {
   return headerKey ?? bearerKey;
 }
 
-async function emitSelfRevocationAudit(
-  c: AppContext,
-  result: NonNullable<
-    Awaited<ReturnType<typeof apiKeysService.revokePresentedMobileCredential>>
-  >,
-): Promise<void> {
-  if (!result.revokedNow) return;
-  await getAuditDispatcher()
-    .emit({
-      actor: { type: "user", id: result.userId },
-      action: "api_key.revoke",
-      result: "success",
-      resource: { type: "api_key", id: result.receipt.credentialId },
-      org_id: result.organizationId,
-      request_id: c.get("requestId"),
-      metadata: {
-        key_id: result.receipt.credentialId,
-        reason: "credential_self_revoke",
-      },
-    })
-    .catch((error: unknown) => {
-      // error-policy:J7 audit telemetry cannot resurrect an already-revoked credential.
-      logger.warn("[API Keys] Self-revoke audit emit failed", {
-        error: error instanceof Error ? error.message : String(error),
+type SelfRevocationResult = NonNullable<
+  Awaited<ReturnType<typeof apiKeysService.revokePresentedMobileCredential>>
+>;
+
+/** Durable `api_key.revoke` record written inside the tombstone transaction. */
+function selfRevocationAudit(c: AppContext) {
+  const audit = createTransactionalAudit();
+  return {
+    audit,
+    write: async (
+      tx: Parameters<typeof audit.write>[0],
+      result: SelfRevocationResult,
+    ) => {
+      await audit.write(tx, {
+        actor: { type: "user", id: result.userId },
+        action: "api_key.revoke",
+        result: "success",
+        resource: { type: "api_key", id: result.receipt.credentialId },
+        org_id: result.organizationId,
+        request_id: c.get("requestId"),
+        metadata: {
+          key_id: result.receipt.credentialId,
+          reason: "credential_self_revoke",
+        },
       });
-    });
+    },
+  };
 }
 
 app.delete("/", async (c) => {
   try {
     const standardSecret = readSinglePresentedApiKey(c);
     if (standardSecret && /^eliza_[0-9a-f]{64}$/.test(standardSecret)) {
+      const selfAudit = selfRevocationAudit(c);
       const result = await apiKeysService.revokePresentedStandardCredential(
         standardSecret,
-        async (tx, result) => {
-          await tx.insert(authEvents).values({
-            event_id: crypto.randomUUID(),
-            ts: new Date(),
-            actor_type: "user",
-            actor_id: result.userId,
-            action: "api_key.revoke",
-            result: "success",
-            resource_type: "api_key",
-            resource_id: result.receipt.credentialId,
-            org_id: result.organizationId,
-            request_id: c.get("requestId"),
-            metadata: {
-              key_id: result.receipt.credentialId,
-              reason: "credential_self_revoke",
-            },
-          });
-        },
+        selfAudit.write,
       );
       if (!result)
         throw AuthenticationError("API key identity could not be proven");
+      await selfAudit.audit.publish();
       return c.json({ success: true, ...result.receipt });
     }
     let credential: Awaited<ReturnType<typeof requireApiKeyCredential>>;
@@ -104,12 +96,16 @@ app.delete("/", async (c) => {
         (error.status === 401 || error.status === 503)
       ) {
         const presented = readSinglePresentedApiKey(c);
+        const selfAudit = selfRevocationAudit(c);
         const result =
           presented && isMobileApiKeySecret(presented)
-            ? await apiKeysService.revokePresentedMobileCredential(presented)
+            ? await apiKeysService.revokePresentedMobileCredential(
+                presented,
+                selfAudit.write,
+              )
             : null;
         if (result) {
-          await emitSelfRevocationAudit(c, result);
+          await selfAudit.audit.publish();
           return c.json({ success: true, ...result.receipt });
         }
       }
@@ -128,8 +124,12 @@ app.delete("/", async (c) => {
       throw AuthenticationError("Mobile API key identity could not be proven");
     }
 
-    const result = await apiKeysService.revokeExactMobileCredential(credential);
-    await emitSelfRevocationAudit(c, result);
+    const selfAudit = selfRevocationAudit(c);
+    const result = await apiKeysService.revokeExactMobileCredential(
+      credential,
+      selfAudit.write,
+    );
+    await selfAudit.audit.publish();
     return c.json({ success: true, ...result.receipt });
   } catch (error) {
     // error-policy:J1 HTTP boundary returns a canonical auth or dependency failure.

@@ -22,10 +22,17 @@
  * fetcher seams so they stay offline.
  */
 
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import type {
   LifeOpsPersonalBaselineResponse,
   LifeOpsRegularityClass,

@@ -24,7 +24,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useAppSelector } from "../../../state";
+import { useAppSelector } from "../../../state/app-store";
 import { Button } from "../../ui/button";
 
 export interface ChatWidgetShellProps {

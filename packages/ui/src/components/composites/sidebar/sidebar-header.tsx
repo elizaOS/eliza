@@ -3,9 +3,8 @@
  * children, laid out on a `SidebarHeaderStack`.
  */
 import type * as React from "react";
-
-import type { SidebarSearchBarProps } from "../search";
-import { SidebarSearchBar } from "../search";
+import type { SidebarSearchBarProps } from "../search/searchbar";
+import { SidebarSearchBar } from "../search/searchbar";
 import { SidebarHeaderStack } from "./sidebar-header-stack";
 
 export interface SidebarHeaderProps

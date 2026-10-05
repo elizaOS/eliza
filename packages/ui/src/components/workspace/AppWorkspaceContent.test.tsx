@@ -5,9 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppWorkspaceContent } from "./AppWorkspaceContent";
 
-vi.mock("../../hooks", () => ({
-  useMediaQuery: () => false,
-}));
+vi.mock("../../hooks/useMediaQuery", () => ({ useMediaQuery: () => false }));
 
 const CHAT_CLEARANCE = "pb-[var(--eliza-chat-clearance,5.25rem)]";
 

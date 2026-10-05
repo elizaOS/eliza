@@ -5,7 +5,7 @@
  * approved/executing/done). The close-out turn is judged on loop-closure
  * semantics rather than prompt echoes.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import {
   expectApprovalResolvedApproved,
   expectPendingApprovalSeeded,
@@ -20,7 +20,7 @@ export default scenario({
   tags: ["lifeops", "executive-assistant", "documents", "approvals", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

@@ -50,7 +50,7 @@ const badgeVariants = cva(
         keyHint:
           "border-border/50 bg-card px-1.5 py-0.5 text-2xs font-medium text-muted",
         adminMono:
-          "rounded-sm border-border bg-bg-hover px-1.5 py-0.5 font-mono text-2xs font-normal text-muted",
+          "rounded-sm border-border bg-bg-hover px-1.5 py-0.5 font-mono text-2xs font-normal text-muted-strong",
         vaultAccent:
           "rounded-full border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent",
         vaultInfo:

@@ -2,11 +2,11 @@
  * /cloud/invoices/:id — single invoice detail.
  */
 
+import { Navigate, useParams } from "react-router-dom";
 import {
   DashboardErrorState,
   DashboardLoadingState,
-} from "@elizaos/ui/cloud-ui";
-import { Navigate, useParams } from "react-router-dom";
+} from "../../cloud-ui/components/dashboard/route-placeholders";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { InvoiceDetailClient } from "./components/invoice-detail-client";
 import { ApiError, useBillingUser, useInvoice } from "./data/billing-data";

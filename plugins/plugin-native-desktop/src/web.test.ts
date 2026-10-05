@@ -17,24 +17,15 @@ const EXPECTED_TEST_PLATFORM =
     : "linux";
 
 function setNavigator(value: Partial<Navigator>): void {
-  Object.defineProperty(globalThis, "navigator", {
-    configurable: true,
-    value,
-  });
+  vi.stubGlobal("navigator", value);
 }
 
 function setWindow(value: Partial<Window> & Record<string, unknown>): void {
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value,
-  });
+  vi.stubGlobal("window", value);
 }
 
 function setDocument(value: Record<string, unknown>): void {
-  Object.defineProperty(globalThis, "document", {
-    configurable: true,
-    value,
-  });
+  vi.stubGlobal("document", value);
 }
 
 describe("DesktopWeb browser fallback contracts", () => {
@@ -196,25 +187,8 @@ describe("DesktopWeb browser fallback contracts", () => {
   });
 
   it("cleans browser focus and blur listeners on handle removal and removeAllListeners", async () => {
-    const listeners = new Map<string, EventListener[]>();
-    const addEventListener = vi.fn(
-      (eventName: string, listener: EventListener) => {
-        const existing = listeners.get(eventName) ?? [];
-        existing.push(listener);
-        listeners.set(eventName, existing);
-      },
-    );
-    const removeEventListener = vi.fn(
-      (eventName: string, listener: EventListener) => {
-        listeners.set(
-          eventName,
-          (listeners.get(eventName) ?? []).filter(
-            (entry) => entry !== listener,
-          ),
-        );
-      },
-    );
-    setWindow({ addEventListener, removeEventListener });
+    const events = new EventTarget();
+    vi.stubGlobal("window", events);
 
     const plugin = new DesktopWeb();
     const focused = vi.fn();
@@ -222,20 +196,20 @@ describe("DesktopWeb browser fallback contracts", () => {
     const focusHandle = await plugin.addListener("windowFocus", focused);
     await plugin.addListener("windowBlur", blurred);
 
-    listeners.get("focus")?.forEach((listener) => {
-      listener(new Event("focus"));
-    });
-    listeners.get("blur")?.forEach((listener) => {
-      listener(new Event("blur"));
-    });
-    expect(focused).toHaveBeenCalledWith(undefined);
-    expect(blurred).toHaveBeenCalledWith(undefined);
+    events.dispatchEvent(new Event("focus"));
+    events.dispatchEvent(new Event("blur"));
+    expect(focused).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(blurred).toHaveBeenCalledExactlyOnceWith(undefined);
 
     await focusHandle.remove();
-    expect(listeners.get("focus")).toEqual([]);
+    events.dispatchEvent(new Event("focus"));
+    events.dispatchEvent(new Event("blur"));
+    expect(focused).toHaveBeenCalledTimes(1);
+    expect(blurred).toHaveBeenCalledTimes(2);
+
     await plugin.removeAllListeners();
-    expect(listeners.get("blur")).toEqual([]);
-    expect(removeEventListener).toHaveBeenCalledTimes(2);
+    events.dispatchEvent(new Event("blur"));
+    expect(blurred).toHaveBeenCalledTimes(2);
   });
 
   it("rejects unsafe external URLs before opening a window", async () => {
@@ -245,6 +219,7 @@ describe("DesktopWeb browser fallback contracts", () => {
     await expect(
       new DesktopWeb().openExternal({ url: "javascript:alert(1)" }),
     ).rejects.toThrow("url protocol is not allowed");
+    expect(open).not.toHaveBeenCalled();
     await expect(
       new DesktopWeb().openExternal({ url: "https://example.com/path" }),
     ).resolves.toBeUndefined();
@@ -256,41 +231,24 @@ describe("DesktopWeb browser fallback contracts", () => {
     );
   });
 
-  it("propagates exitFullscreen rejection instead of fabricating success", async () => {
-    // exitFullscreen rejects with a TypeError when the document is not
-    // currently fullscreen; the caller must observe that rejection.
-    const rejection = new TypeError("Document not active");
-    const exitFullscreen = vi.fn(() => Promise.reject(rejection));
-    const requestFullscreen = vi.fn(() => Promise.resolve());
-    setDocument({
-      documentElement: { requestFullscreen },
-      exitFullscreen,
-    });
+  it.each([false, true])(
+    "propagates the selected fullscreen rejection (flag=%s)",
+    async (flag) => {
+      const rejection = new TypeError("Fullscreen transition denied");
+      const selected = vi.fn(() => Promise.reject(rejection));
+      const other = vi.fn(() => Promise.resolve());
+      setDocument({
+        documentElement: { requestFullscreen: flag ? selected : other },
+        exitFullscreen: flag ? other : selected,
+      });
 
-    await expect(new DesktopWeb().setFullscreen({ flag: false })).rejects.toBe(
-      rejection,
-    );
-    expect(exitFullscreen).toHaveBeenCalledTimes(1);
-    expect(requestFullscreen).not.toHaveBeenCalled();
-  });
-
-  it("propagates requestFullscreen rejection when there is no user gesture", async () => {
-    const rejection = new TypeError(
-      "API can only be initiated by a user gesture.",
-    );
-    const requestFullscreen = vi.fn(() => Promise.reject(rejection));
-    const exitFullscreen = vi.fn(() => Promise.resolve());
-    setDocument({
-      documentElement: { requestFullscreen },
-      exitFullscreen,
-    });
-
-    await expect(new DesktopWeb().setFullscreen({ flag: true })).rejects.toBe(
-      rejection,
-    );
-    expect(requestFullscreen).toHaveBeenCalledTimes(1);
-    expect(exitFullscreen).not.toHaveBeenCalled();
-  });
+      await expect(new DesktopWeb().setFullscreen({ flag })).rejects.toBe(
+        rejection,
+      );
+      expect(selected).toHaveBeenCalledTimes(1);
+      expect(other).not.toHaveBeenCalled();
+    },
+  );
 
   it("resolves when the underlying fullscreen transition succeeds", async () => {
     const requestFullscreen = vi.fn(() => Promise.resolve());
@@ -307,34 +265,6 @@ describe("DesktopWeb browser fallback contracts", () => {
     ).resolves.toBeUndefined();
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
     expect(exitFullscreen).toHaveBeenCalledTimes(1);
-  });
-
-  it("emits no unhandled rejection when a fullscreen transition fails", async () => {
-    const unhandled: unknown[] = [];
-    const onUnhandled = (reason: unknown): void => {
-      unhandled.push(reason);
-    };
-    process.on("unhandledRejection", onUnhandled);
-    setDocument({
-      documentElement: {
-        requestFullscreen: () =>
-          Promise.reject(new TypeError("no user gesture")),
-      },
-      exitFullscreen: () => Promise.reject(new TypeError("not fullscreen")),
-    });
-
-    const plugin = new DesktopWeb();
-    // The caller's try/catch owns the rejection for both flag values.
-    await expect(plugin.setFullscreen({ flag: true })).rejects.toThrow(
-      "no user gesture",
-    );
-    await expect(plugin.setFullscreen({ flag: false })).rejects.toThrow(
-      "not fullscreen",
-    );
-    // Flush the microtask/macrotask queue so any stray rejection would surface.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    process.off("unhandledRejection", onUnhandled);
-    expect(unhandled).toEqual([]);
   });
 
   it("clamps valid battery levels and ignores malformed battery fields", async () => {

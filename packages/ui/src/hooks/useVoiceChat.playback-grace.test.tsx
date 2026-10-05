@@ -54,7 +54,8 @@ class FakeAudioWorkletNode {
   }
 }
 
-class FakeAudioContext {
+class FakeAudioContext extends EventTarget {
+  currentTime = 0;
   state = "running";
   destination = {};
   audioWorklet = { addModule };
@@ -263,8 +264,9 @@ describe("useVoiceChat playback is decoupled from the visualizer worklet (#16102
       createdSources[0]?.connect.mock.calls.some(([arg]) => arg === node),
     );
     expect(tapNode).toBeDefined();
-    // Still only the single warm preload — no per-utterance module loads.
-    expect(addModule).toHaveBeenCalledTimes(1);
+    // Vitest clears call history between tests; the shared context must not
+    // load the module again for this utterance.
+    expect(addModule).not.toHaveBeenCalled();
 
     await act(async () => {
       createdSources[0]?.onended?.();

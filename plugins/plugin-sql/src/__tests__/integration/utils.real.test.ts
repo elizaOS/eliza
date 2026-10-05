@@ -73,6 +73,45 @@ describe("Utils Integration Tests", () => {
       expect(result).toBe(path.join(tempDir, ".env"));
     });
 
+    it.each(["directory", "worktree file"])(
+      "should stop at a Git %s boundary before loading a parent checkout env",
+      (gitKind) => {
+        const checkout = path.join(tempDir, "checkout");
+        const nested = path.join(checkout, "nested");
+        fs.mkdirSync(nested, { recursive: true });
+        if (gitKind === "directory") {
+          fs.mkdirSync(path.join(checkout, ".git"));
+        } else {
+          fs.writeFileSync(path.join(checkout, ".git"), "gitdir: /test/worktree");
+        }
+        fs.writeFileSync(
+          path.join(tempDir, ".env"),
+          "OPENAI_SMALL_MODEL=parent-only-model\nCEREBRAS_API_KEY=parent-only-key"
+        );
+        delete process.env.OPENAI_SMALL_MODEL;
+        delete process.env.CEREBRAS_API_KEY;
+        delete process.env.ELIZA_BENCH_DISABLE_DOTENV;
+        delete process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY;
+        process.cwd = () => nested;
+
+        expect(resolveEnvFile()).toBe(path.join(nested, ".env"));
+        expect(resolvePgliteDir("/explicit/data")).toBe("/explicit/data");
+        expect(process.env.OPENAI_SMALL_MODEL).toBeUndefined();
+        expect(process.env.CEREBRAS_API_KEY).toBeUndefined();
+      }
+    );
+
+    it("should still load the checkout env from a nested directory", () => {
+      const checkout = path.join(tempDir, "checkout");
+      const nested = path.join(checkout, "nested");
+      fs.mkdirSync(nested, { recursive: true });
+      fs.writeFileSync(path.join(checkout, ".git"), "gitdir: /test/worktree");
+      fs.writeFileSync(path.join(checkout, ".env"), "TEST=true");
+      fs.writeFileSync(path.join(tempDir, ".env"), "TEST=wrong-checkout");
+
+      expect(resolveEnvFile(nested)).toBe(path.join(checkout, ".env"));
+    });
+
     it("should return .env path in start directory if not found", () => {
       const subDir = path.join(tempDir, "sub");
       fs.mkdirSync(subDir, { recursive: true });
@@ -121,9 +160,28 @@ describe("Utils Integration Tests", () => {
       fs.writeFileSync(path.join(tempDir, ".env"), "PGLITE_DATA_DIR=/from/env/file");
       delete process.env.PGLITE_DATA_DIR;
 
-      const result = resolvePgliteDir();
-      expect(process.env.PGLITE_DATA_DIR).toBe("/from/env/file");
-      expect(result).toBe("/from/env/file");
+      const originalDisableDotenv = process.env.ELIZA_BENCH_DISABLE_DOTENV;
+      const originalSubscriptionOnly = process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY;
+      try {
+        // Opt in only after the resolver is bound to this test-owned .env.
+        expect(resolveEnvFile()).toBe(path.join(tempDir, ".env"));
+        delete process.env.ELIZA_BENCH_DISABLE_DOTENV;
+        delete process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY;
+        const result = resolvePgliteDir();
+        expect(process.env.PGLITE_DATA_DIR).toBe("/from/env/file");
+        expect(result).toBe("/from/env/file");
+      } finally {
+        if (originalDisableDotenv === undefined) {
+          delete process.env.ELIZA_BENCH_DISABLE_DOTENV;
+        } else {
+          process.env.ELIZA_BENCH_DISABLE_DOTENV = originalDisableDotenv;
+        }
+        if (originalSubscriptionOnly === undefined) {
+          delete process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY;
+        } else {
+          process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY = originalSubscriptionOnly;
+        }
+      }
     });
 
     it("should not load .env credentials in subscription benchmark mode", () => {

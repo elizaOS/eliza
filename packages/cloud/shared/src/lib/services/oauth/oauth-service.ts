@@ -31,7 +31,7 @@ import type {
 } from "./types";
 import { formatOAuthConnectionRole, normalizeOAuthConnectionRole } from "./types";
 
-const DEFAULT_REDIRECT = "/cloud/settings?tab=connections";
+const DEFAULT_REDIRECT = "/cloud/connectors";
 const STATE_TTL = 600; // 10 minutes
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type PlatformCredential = typeof platformCredentials.$inferSelect;

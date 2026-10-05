@@ -1,9 +1,8 @@
 // Worker boundary: the Vertex tune handler depends on node:fs. Keep this
 // mounted as an explicit 501 until the operation moves to a Node sidecar.
 
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 app.all("*", (c) =>

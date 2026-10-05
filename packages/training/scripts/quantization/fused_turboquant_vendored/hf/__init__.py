@@ -1,6 +1,6 @@
 """HuggingFace transformers integration for fused-turboquant."""
 
-from quantization.fused_turboquant_vendored.hf.fused_cache import (
+from eliza_training.quantization.fused_turboquant_vendored.hf.fused_cache import (
     CompressedKVCache,
     check_model_compatibility,
     patch_model,

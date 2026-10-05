@@ -91,6 +91,33 @@ jobs:
             echo "- thresholds:     ${MAX_BEHIND_COMMITS} commits / ${MAX_BEHIND_HOURS}h"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Commit distance alone cannot see an unattested upload: a Worker or Pages
+      # build from another branch can sit "0 behind" while serving a tree the
+      # protected release never produced. Require one exact Pages/Worker SHA
+      # reachable from the canonical branch (#27229).
+      - name: Checkout verifier source and canonical history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Verify exact-SHA release authority
+        id: authority
+        run: |
+          set -euo pipefail
+          if node packages/cloud/scripts/release-authority-drift.ts --environment staging; then
+            echo "authority_ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "authority_ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Decide drift
         id: drift
         env:
@@ -168,6 +195,12 @@ jobs:
           echo "::error::staging.eliza.app is ${{ steps.compare.outputs.behind_commits }} commits / ~${{ steps.compare.outputs.behind_hours }}h behind staging (threshold ${MAX_BEHIND_COMMITS} commits / ${MAX_BEHIND_HOURS}h)."
           exit 1
 
+      - name: Fail loud on release-authority drift
+        if: steps.authority.outputs.authority_ok != 'true'
+        run: |
+          echo "::error::staging Pages/Worker do not serve one exact SHA reachable from the staging branch; see the release authority summary (#27229)."
+          exit 1
+
       - name: OK
-        if: steps.drift.outputs.stale != 'true'
+        if: steps.drift.outputs.stale != 'true' && steps.authority.outputs.authority_ok == 'true'
         run: echo "staging is within drift thresholds (${{ steps.compare.outputs.behind_commits }} commits / ~${{ steps.compare.outputs.behind_hours }}h behind)."

@@ -17,19 +17,16 @@
  * This middleware is mounted globally before the router in src/index.ts.
  */
 
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
+import { jsonError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { MiddlewareHandler } from "hono";
-
-import { jsonError } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../v1/remote/host-auth";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
 const publicPathPrefixes = [
-  // This product boundary validates its registered BFF secret plus one-time code or revocable grant.
-  "/api/v1/outreachr",
   "/api/health",
   "/api/i18n/locale",
   "/api/og",
@@ -97,7 +94,6 @@ const publicPathPrefixes = [
   "/api/v1/topup",
   "/api/v1/x402",
   "/api/v1/market/preview",
-  "/api/stripe/credit-packs",
   "/api/stripe/webhook",
   // Unified payment_requests settlement webhook. Public like the compatibility
   // /api/stripe/webhook above; the handler enforces the stripe-signature and
@@ -215,6 +211,14 @@ function isPublicOutOfBandTokenPath(pathname: string, method = "GET"): boolean {
   ) {
     return true;
   }
+  // Signed, expiring Dedicated-fallback recovery link (#25146). The route
+  // verifies the token and only redirects to the signed-in billing page.
+  if (
+    (method === "GET" || method === "HEAD") &&
+    /^\/api\/v1\/eliza\/personal\/recovery\/[^/]+\/?$/.test(pathname)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -239,6 +243,14 @@ export function isPublicPath(pathname: string, method = "GET"): boolean {
   ) {
     return true;
   }
+  // Fixed-copy return page for shared subscription checkout links; it reads no account state.
+  if (
+    (method === "GET" || method === "HEAD") &&
+    (pathname === "/api/v1/subscriptions/checkout/payer" ||
+      pathname === "/api/v1/subscriptions/checkout/payer/")
+  ) {
+    return true;
+  }
   if (
     pathname === "/api/v1/oauth/success-proof/verify" ||
     pathname === "/api/v1/oauth/success-proof/verify/"
@@ -248,7 +260,13 @@ export function isPublicPath(pathname: string, method = "GET"): boolean {
   if (/^\/api\/v1\/oauth\/[^/]+\/callback\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/generate-image\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/public\/?$/.test(pathname)) return true;
-  if (/^\/api\/v1\/apps\/[^/]+\/charges\/[^/]+\/?$/.test(pathname)) return true;
+  // Generic billing leaf handlers authenticate free sessions or registered app delegation.
+  if (
+    /^\/api\/v1\/apps\/[^/]+\/billing\/(?:catalog|accounts)(?:\/|$)/.test(
+      pathname,
+    )
+  )
+    return true;
   if (/^\/api\/characters\/[^/]+\/public\/?$/.test(pathname)) return true;
   if (isPublicOutOfBandTokenPath(pathname, method)) return true;
   return publicPathPrefixes.some(
@@ -268,6 +286,9 @@ export function isRouteAuthenticatedInferencePath(
 ): boolean {
   if (method !== "POST" && method !== "OPTIONS") return false;
   return (
+    /^\/api\/v1\/apps\/[^/]+\/inference\/chat\/completions\/?$/.test(
+      pathname,
+    ) ||
     /^\/api\/v1\/eliza\/agents\/[^/]+\/(?:stream|bridge)\/?$/.test(pathname) ||
     /^\/api\/v1\/eliza\/agents\/[^/]+\/api\/conversations\/[^/]+\/messages(?:\/stream)?\/?$/.test(
       pathname,
@@ -430,7 +451,7 @@ function isLocalDevAdminRequest(
         metadata: { reason: "local_dev_admin_bypass" },
       })
       .catch((err) => {
-        logger.warn("[Auth] dev-admin audit emit failed", {
+        logger.error("[Auth] dev-admin audit emit failed", {
           error: err instanceof Error ? err.message : String(err),
         });
       });

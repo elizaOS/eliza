@@ -1,0 +1,8 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"types": ["node", "bun"]
+	},
+	"include": ["build.ts", "scripts/**/*.ts", "vitest.config.ts"],
+	"exclude": ["scripts/fixtures/**"]
+}

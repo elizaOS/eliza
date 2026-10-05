@@ -11,8 +11,8 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FormRequestSpec } from "../message-form-parser";
 import { ChoiceWidget } from "./ChoiceWidget";
-import type { FormRequestSpec } from "./form-request";
 import { FormRequest } from "./form-request";
 
 // radix Select uses pointer-capture APIs jsdom doesn't implement; polyfill them

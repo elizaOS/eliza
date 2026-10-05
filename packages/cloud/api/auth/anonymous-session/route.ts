@@ -10,6 +10,19 @@
  * but rewritten for Workers (no `next/headers`).
  */
 
+import { dbRead } from "@elizaos/cloud-shared/db/helpers";
+import { userIdentities } from "@elizaos/cloud-shared/db/schemas/user-identities";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  getRequestIp,
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { createAnonymousUserAndSession } from "@elizaos/cloud-shared/lib/services/anonymous-session-creator";
+import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
@@ -19,19 +32,6 @@ import {
   MAX_ANONYMOUS_MESSAGE_LIMIT,
   parseAnonymousPositiveIntEnv,
 } from "@/api/auth/anonymous-session-config";
-import { dbRead } from "@/db/helpers";
-import { userIdentities } from "@/db/schemas/user-identities";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  getRequestIp,
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { createAnonymousUserAndSession } from "@/lib/services/anonymous-session-creator";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { usersService } from "@/lib/services/users";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
 

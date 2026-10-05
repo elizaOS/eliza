@@ -134,21 +134,48 @@ function toTier0(matches: readonly PiiMatch[]): Tier0Span[] {
 }
 
 /**
- * True when `candidate` is already covered by a deterministic tier-0 span —
- * either the same value or a substring contained inside a matched span. Such a
- * candidate is a redundant escalation and is dropped.
+ * True when `candidate` is already covered by a deterministic tier-0 match —
+ * either the same value or a substring contained inside a matched value. Such a
+ * candidate is a redundant escalation and is dropped. Blank candidates carry
+ * nothing to judge and count as covered.
  */
 function coveredByTier0(
 	candidate: string,
-	tier0: readonly Tier0Span[],
+	tier0Values: readonly string[],
 ): boolean {
 	const needle = candidate.trim();
 	if (needle.length === 0) return true;
-	for (const span of tier0) {
-		if (span.span === needle) return true;
-		if (span.span.includes(needle)) return true;
+	for (const value of tier0Values) {
+		if (value === needle || value.includes(needle)) return true;
 	}
 	return false;
+}
+
+/** Candidates split by whether the deterministic tier-0 floor already covers them. */
+export interface ScrubCandidatePartition {
+	/** Candidates equal to, or contained in, a tier-0 match (never escalated). */
+	readonly covered: readonly string[];
+	/** Candidates that still require model judgment. */
+	readonly residue: readonly string[];
+}
+
+/**
+ * Split model-judgment candidates into tier-0-covered and residue using the
+ * seam's containment rule. Every lane (local seam, cloud executor) uses this so
+ * the "no escalation needed" decision cannot drift between them.
+ */
+export function partitionScrubCandidates(
+	candidates: readonly string[],
+	tier0Values: readonly string[],
+): ScrubCandidatePartition {
+	const covered: string[] = [];
+	const residue: string[] = [];
+	for (const candidate of candidates) {
+		(coveredByTier0(candidate, tier0Values) ? covered : residue).push(
+			candidate,
+		);
+	}
+	return { covered, residue };
 }
 
 /**
@@ -173,8 +200,9 @@ export async function scrubWithEscalation(
 		detectPii(request.text, { disabledKinds: request.disabledKinds }),
 	);
 
-	const residue = request.candidateSpans.filter(
-		(c) => !coveredByTier0(c, tier0),
+	const { residue } = partitionScrubCandidates(
+		request.candidateSpans,
+		tier0.map((span) => span.span),
 	);
 
 	// Tier-0 short-circuit: nothing the model needs to judge → zero model calls.

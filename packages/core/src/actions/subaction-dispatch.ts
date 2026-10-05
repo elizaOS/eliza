@@ -5,7 +5,7 @@
  * `UNKNOWN_SUBACTION` `ActionResult` when the operation is missing or unknown.
  * Lets one planner-visible parent action fan out to many second-level operations.
  */
-import type { ActionResult } from "../types";
+import type { ActionResult } from "../types/components.js";
 
 export type SubactionParameters = Record<string, unknown> | undefined;
 

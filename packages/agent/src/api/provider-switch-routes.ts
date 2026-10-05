@@ -8,21 +8,24 @@
  * (409). elizacloud is handled as a cloud-managed connection.
  */
 import type http from "node:http";
+import type { SecretsManager } from "@elizaos/auth/vault";
+import { PostProviderSwitchRequestSchema } from "@elizaos/contracts";
 import { logger } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   normalizeFirstRunProviderId,
-  PostProviderSwitchRequestSchema,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
-import type { SecretsManager } from "@elizaos/vault";
+  type ReadJsonBodyOptions,
+} from "@elizaos/host/protocol";
+
+import { resolveDevCloudEnvAuthority } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import type { ElizaConfig } from "../config/config.ts";
+import type {
+  ProviderSwitchIntent,
+  RuntimeOperationManager,
+} from "../runtime/operations/types.ts";
 import {
   defaultSecretsManager,
-  type ProviderSwitchIntent,
   persistProviderApiKey,
-  type RuntimeOperationManager,
-} from "../runtime/operations/index.ts";
+} from "../runtime/operations/vault-bridge.ts";
 import {
   applyFirstRunConnectionConfig,
   createProviderSwitchConnection,
@@ -61,6 +64,12 @@ export interface ProviderSwitchRouteContext {
 // Route handler
 // ---------------------------------------------------------------------------
 
+/** Provider ids that used to select the removed Codex CLI chat handler. */
+function isRetiredSubscriptionChatProvider(provider: string): boolean {
+  const normalized = provider.trim().toLowerCase();
+  return normalized === "openai-subscription" || normalized === "openai-codex";
+}
+
 function readIdempotencyKey(
   headers: http.IncomingHttpHeaders,
 ): string | undefined {
@@ -92,7 +101,13 @@ export async function handleProviderSwitchRoutes(
 
     const normalizedProvider = normalizeFirstRunProviderId(body.provider);
     if (!normalizedProvider) {
-      error(res, "Invalid provider", 400);
+      error(
+        res,
+        isRetiredSubscriptionChatProvider(body.provider)
+          ? "The ChatGPT/Codex subscription cannot power chat. Link it under Accounts for coding agents and choose a different chat provider."
+          : "Invalid provider",
+        400,
+      );
       return true;
     }
 

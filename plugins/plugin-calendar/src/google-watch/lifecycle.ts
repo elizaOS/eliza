@@ -12,6 +12,10 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
+import type {
+  LifeOpsCalendarChangeDeliveryHealth,
+  LifeOpsConnectorSide,
+} from "@elizaos/contracts";
 import {
   ElizaError,
   type IAgentRuntime,
@@ -26,10 +30,6 @@ import {
   registerScheduledTaskChannelDispatcher,
   type ScheduledTaskDispatchRecord,
 } from "@elizaos/plugin-scheduling";
-import type {
-  LifeOpsCalendarChangeDeliveryHealth,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
 import { requireGoogleServiceMethod } from "../internal/google-delegates.js";
 import {
   type GoogleCalendarWatchChannel,

@@ -13,7 +13,10 @@
  * confirmation flows, and side-effect dispatch stay in the umbrella action.
  */
 
-import type { HandlerOptions, IAgentRuntime, Memory, State } from "../types";
+import type { HandlerOptions } from "../types/components.js";
+import type { Memory } from "../types/memory.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { State } from "../types/state.js";
 import { runExtractorPipeline } from "./extractor-pipeline";
 import { parseJsonModelRecord } from "./json-model-output";
 import { recentConversationTextsFromState } from "./recent-context";
@@ -27,6 +30,8 @@ export interface SubactionSpec<TParams = Record<string, unknown>> {
 	descriptionCompressed: string;
 	/** Required parameter keys; missing any -> triggers extraction. */
 	required: ReadonlyArray<keyof TParams & string>;
+	/** Required array keys whose explicit empty value is valid; omission is still missing. */
+	allowEmptyArrays?: ReadonlyArray<keyof TParams & string>;
 	/** Optional keys; surfaced to extractor as "may extract if obvious". */
 	optional?: ReadonlyArray<keyof TParams & string>;
 }
@@ -82,7 +87,7 @@ function nonEmptyString(value: unknown): value is string {
 	return typeof value === "string" && value.trim().length > 0;
 }
 
-function valueIsPresent(value: unknown): boolean {
+function valueIsPresent(value: unknown, allowEmptyArray = false): boolean {
 	if (value === null || value === undefined) {
 		return false;
 	}
@@ -90,7 +95,7 @@ function valueIsPresent(value: unknown): boolean {
 		return value.trim().length > 0;
 	}
 	if (Array.isArray(value)) {
-		return value.length > 0;
+		return allowEmptyArray || value.length > 0;
 	}
 	return true;
 }
@@ -113,9 +118,10 @@ function missingRequiredKeys<TSubaction extends string>(
 	params: Record<string, unknown>,
 ): string[] {
 	const required = subactions[subaction]?.required ?? [];
+	const allowEmptyArrays = subactions[subaction]?.allowEmptyArrays;
 	const missing: string[] = [];
 	for (const key of required) {
-		if (!valueIsPresent(params[key])) {
+		if (!valueIsPresent(params[key], allowEmptyArrays?.includes(key))) {
 			missing.push(key);
 		}
 	}
@@ -141,7 +147,8 @@ function pickKnownParams<TSubaction extends string>(
 		if (
 			allowed.has(key) &&
 			value !== undefined &&
-			(!spec.required.includes(key) || valueIsPresent(value))
+			(!spec.required.includes(key) ||
+				valueIsPresent(value, spec.allowEmptyArrays?.includes(key)))
 		) {
 			result[key] = value;
 		}
@@ -180,6 +187,11 @@ function describeSubactionsForPrompt<TSubaction extends string>(
 				`- ${key}: ${spec.description}`,
 				`  required: ${required}`,
 				`  optional: ${optional}`,
+				...(spec.allowEmptyArrays?.length
+					? [
+							`  explicit empty arrays are valid for: ${spec.allowEmptyArrays.join(", ")}; do not default omitted values to []`,
+						]
+					: []),
 			].join("\n"),
 		);
 	}

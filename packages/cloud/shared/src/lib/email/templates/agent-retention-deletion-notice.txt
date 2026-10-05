@@ -1,0 +1,23 @@
+AGENT DELETION NOTICE
+=====================
+
+Organization: {{organizationName}}
+
+Your agent "{{agentName}}" has been paused since {{suspendedAt}} because {{reasonText}}.
+
+We keep a paused agent's container for 30 days. In {{daysRemaining}} day(s), on {{deleteAfter}}, the container will be deleted.
+
+WHAT HAPPENS ON {{deleteAfter}}
+-------------------------------
+• The agent's container is deleted.
+• The latest backup of the agent is kept for 90 more days, until {{backupRetainUntil}}.
+
+KEEP YOUR AGENT
+---------------
+Pay before {{deleteAfter}} and the same agent resumes where it left off.
+Visit: {{billingUrl}}
+
+---
+Questions? Reply to this email or open Eliza Cloud: {{dashboardUrl}}
+
+© {{currentYear}} Eliza Cloud. All rights reserved.

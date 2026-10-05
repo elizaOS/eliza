@@ -6,11 +6,11 @@
  * custom domains without embedding cloud database credentials.
  */
 
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { managedDomainsService } from "@elizaos/cloud-shared/lib/services/managed-domains";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { appsService } from "@/lib/services/apps";
-import { managedDomainsService } from "@/lib/services/managed-domains";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ResolveSchema = z.object({
   domain: z

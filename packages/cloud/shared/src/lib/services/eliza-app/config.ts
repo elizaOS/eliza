@@ -6,7 +6,7 @@
  * required for core session flows.
  */
 
-import { EXTERNAL_URLS } from "@elizaos/shared/brand";
+import { EXTERNAL_URLS } from "@elizaos/host/protocol";
 import { getPromptPreset, type PromptPreset } from "../../eliza/prompt-presets";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models";
 
@@ -86,7 +86,9 @@ export const elizaAppConfig = {
     return {
       apiKey: optionalRuntimeEnv("ELIZA_APP_BLOOIO_API_KEY"),
       webhookSecret: process.env.ELIZA_APP_BLOOIO_WEBHOOK_SECRET || "",
-      phoneNumber: optionalRuntimeEnv("ELIZA_APP_BLOOIO_PHONE_NUMBER", "+18087881821"),
+      // No default line: each environment configures its own sender, and a
+      // production fallback would silently bind staging to production (#22787).
+      phoneNumber: optionalRuntimeEnv("ELIZA_APP_BLOOIO_PHONE_NUMBER"),
     };
   },
 

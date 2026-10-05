@@ -18,13 +18,7 @@ export default defineConfig({
   // automatic runtime so the merged UI-suite `.tsx` files transform correctly.
   esbuild: { jsx: "automatic" },
   resolve: {
-    // Anchored-regex entries:
-    // force a single React/ReactDOM copy across workspace packages, and
-    // collapse `@elizaos/ui` plus the mocked subpaths onto the ui package's
-    // SOURCE entry so the suite runs before workspace build artifacts exist.
-    // The wallet gui test fully `vi.mock`s `@elizaos/ui`, so the source file is
-    // only resolved (to key the mock), never loaded. Anchors keep unlisted
-    // subpaths (e.g. `@elizaos/ui/spatial`) resolving through package exports.
+    // Use source for the single public UI entry and share one React instance.
     alias: [
       {
         find: /^react$/,
@@ -42,10 +36,6 @@ export default defineConfig({
         find: /^react-dom\/client$/,
         replacement: require.resolve("react-dom/client"),
       },
-      {
-        find: /^@elizaos\/ui\/(agent-surface|api|bridge|components(?:\/.*)?|hooks|layouts|state|utils)$/,
-        replacement: uiSource,
-      },
       { find: /^@elizaos\/ui$/, replacement: uiSource },
       // plugin-health publishes no matching subpath export; redirect to source.
       {
@@ -57,38 +47,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/core$/,
-        replacement: path.resolve(
-          rootDir,
-          "../../packages/core/src/index.node.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/logger$/,
-        replacement: path.resolve(
-          rootDir,
-          "../../packages/logger/src/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/shared\/automation-node-contributors$/,
-        replacement: path.resolve(
-          rootDir,
-          "../../packages/shared/src/automation-node-contributors.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/shared\/elizacloud$/,
-        replacement: path.resolve(
-          rootDir,
-          "../../packages/shared/src/elizacloud/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/shared$/,
-        replacement: path.resolve(
-          rootDir,
-          "../../packages/shared/src/index.ts",
-        ),
+        replacement: path.resolve(rootDir, "../../packages/core/src/index.ts"),
       },
     ],
   },
@@ -103,7 +62,7 @@ export default defineConfig({
       // #9310 §E: the guarded live suites (rpc-providers opt-in gate,
       // birdeye keyless self-skip, EVM JSON-extraction live-LLM self-skip via
       // ELIZA_LIVE_JSON_TEST/ELIZA_LIVE_TEST) are invocable only in the
-      // post-merge lane, where run-all-tests.mjs sets ELIZA_LIVE_TEST=1 and
+      // post-merge lane, where run-all-tests.ts sets ELIZA_LIVE_TEST=1 and
       // prints a named skip accounting. The unguarded transfer.live file
       // (needs a funded wallet) stays excluded in every lane.
       ...(process.env.VITEST_LANE === "post-merge"

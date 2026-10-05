@@ -20,6 +20,26 @@ describe("browser workspace tab lifecycle (web mode)", () => {
     await __resetBrowserWorkspaceStateForTests();
   });
 
+  it.each([
+    {
+      subaction: "tab" as const,
+      tabAction: "close" as const,
+      id: "btab_missing",
+    },
+    { subaction: "close" as const, id: "btab_missing" },
+  ])("rejects closing a tab id that is not open: %j", async (command) => {
+    await openBrowserWorkspaceTab({ url: "about:blank" }, webEnv);
+
+    await expect(
+      executeBrowserWorkspaceCommand(command, webEnv),
+    ).rejects.toMatchObject({ browserWorkspaceErrorCode: "tab_not_found" });
+    const remaining = await executeBrowserWorkspaceCommand(
+      { subaction: "tab", tabAction: "list" },
+      webEnv,
+    );
+    expect(remaining.tabs).toHaveLength(1);
+  });
+
   it("lists, opens, switches, and closes tabs in web mode", async () => {
     // Seed one tab.
     const first = await openBrowserWorkspaceTab({ url: "about:blank" }, webEnv);

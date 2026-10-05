@@ -38,7 +38,7 @@ import * as discordCoordinationSchema from "../coordination-schema.ts";
 import { deterministicCoordinationNonce } from "../group-coordination.ts";
 import { MessageManager } from "../messages.ts";
 import type { ICompatRuntime, IDiscordService } from "../types.ts";
-import { createTestRuntime, type TestRuntimeResult } from "./helpers/pglite-runtime.ts";
+import { createTestRuntime, type TestRuntimeResult } from "@elizaos/testing/runtime";
 
 const AGENT_A = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa" as UUID;
 const AGENT_B = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb" as UUID;

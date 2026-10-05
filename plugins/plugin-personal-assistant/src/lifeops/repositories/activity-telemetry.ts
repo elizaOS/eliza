@@ -1,15 +1,15 @@
 /** Owns activity telemetry persistence for LifeOps. Keeps domain mutations and existing transaction or claim boundaries together. */
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
-import type { LifeOpsSleepEpisodeRecord } from "@elizaos/plugin-health/sleep/sleep-episode-types";
 import type {
   LifeOpsActivitySignal,
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeSession,
   LifeOpsTelemetryEvent,
   LifeOpsTelemetryFamily,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
+import type { LifeOpsSleepEpisodeRecord } from "@elizaos/plugin-health/sleep/sleep-episode-types";
 import { getSignalSourceRegistry } from "../registries/signal-source-registry.js";
 import { publishActivitySignalToBus } from "../signals/activity-signal-publisher.js";
 import { getActivitySignalBus } from "../signals/bus.js";

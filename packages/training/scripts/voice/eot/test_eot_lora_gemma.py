@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.voice.eot.prep_eot_corpus import apply_gemma_user_template
-from scripts.voice.eot.train_eot_lora import (
+from eliza_training.voice.eot.prep_eot_corpus import apply_gemma_user_template
+from eliza_training.voice.eot.train_eot_lora import (
     TIER_REGISTRY,
     eot_loss_weights,
     resolve_tier,

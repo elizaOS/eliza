@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createLiveRuntimeChildEnv } from "../../../../packages/app-core/test/helpers/live-child-env.ts";
+import { createLiveRuntimeChildEnv } from "../../../../packages/app/test/helpers/live-child-env.ts";
 
 type RuntimeHarness = {
   port: number;

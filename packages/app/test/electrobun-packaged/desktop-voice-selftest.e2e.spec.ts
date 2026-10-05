@@ -4,7 +4,7 @@
  * This is matrix-only: it is skipped from the broad packaged desktop suite
  * unless ELIZA_VOICE_DESKTOP_SELFTEST=1. When enabled, it launches the real
  * packaged desktop shell directly into ?shellMode=voice-selftest, points the
- * renderer at a real app-core API base, and requires the production
+ * renderer at a real app API base, and requires the production
  * ASR -> agent SSE -> local TTS harness to report every stage as pass.
  */
 import { execFileSync } from "node:child_process";
@@ -171,7 +171,7 @@ test.describe("packaged desktop live voice self-test", () => {
     const apiBase = resolveVoiceApiBase();
     expect(
       apiBase,
-      "ELIZA_VOICE_DESKTOP_API_BASE must point at a real app-core API base for live desktop voice evidence.",
+      "ELIZA_VOICE_DESKTOP_API_BASE must point at a real app API base for live desktop voice evidence.",
     ).toMatch(/^https?:\/\//);
     const revision = execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: repoRoot,

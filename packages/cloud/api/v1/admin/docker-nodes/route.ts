@@ -7,19 +7,19 @@
  * Requires super_admin role.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
 import {
   dockerNodesRepository,
   stampDockerNodeEnvironmentMetadata,
-} from "@/db/repositories/docker-nodes";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { containersEnv } from "@/lib/config/containers-env";
-import { resolveNodeCapacity } from "@/lib/services/docker-node-manager";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/db/repositories/docker-nodes";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
+import { resolveNodeCapacity } from "@elizaos/cloud-shared/lib/services/docker-node-manager";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const app = new Hono<AppEnv>();
 

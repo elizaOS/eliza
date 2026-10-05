@@ -17,8 +17,8 @@ import type {
   IAgentRuntime,
   Memory,
   Plugin,
-} from "@elizaos/core/edge";
-import { stableStringify } from "@elizaos/core/edge";
+} from "@elizaos/core";
+import { stableStringify } from "@elizaos/core";
 import {
   hasScheduledTaskApplyReceipt,
   isScheduledTaskRecurring,

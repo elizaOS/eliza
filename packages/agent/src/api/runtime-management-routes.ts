@@ -6,8 +6,9 @@ import {
   isRuntimeManagementOperation,
   type RuntimeManagementRequest,
   type RuntimeManagementResult,
-  readJsonBody,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { readJsonBody } from "@elizaos/host";
+
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { PendingRequestMap } from "./pending-request-map.ts";
 import {

@@ -18,27 +18,15 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
-try:
-    from scripts.manifest.eliza1_manifest import (
-        ELIZA_1_HF_REPO,
-        ELIZA_1_PUBLISHABLE_RELEASE_STATES,
-        ELIZA_1_TIERS,
-        SUPPORTED_BACKENDS_BY_TIER,
-    )
-    from scripts.manifest.eliza1_platform_plan import CONTEXTS_BY_TIER, build_plan, text_artifact_name
-except ImportError:  # pragma: no cover - script execution path
-    from eliza1_manifest import (
-        ELIZA_1_HF_REPO,
-        ELIZA_1_PUBLISHABLE_RELEASE_STATES,
-        ELIZA_1_TIERS,
-        SUPPORTED_BACKENDS_BY_TIER,
-    )
-    from eliza1_platform_plan import CONTEXTS_BY_TIER, build_plan, text_artifact_name
+from eliza_training.manifest.eliza1_manifest import (
+    ELIZA_1_HF_REPO,
+    ELIZA_1_PUBLISHABLE_RELEASE_STATES,
+    ELIZA_1_TIERS,
+    SUPPORTED_BACKENDS_BY_TIER,
+)
+from eliza_training.manifest.eliza1_platform_plan import CONTEXTS_BY_TIER, build_plan, text_artifact_name
 
-try:
-    from scripts.manifest.eliza1_platform_plan import PlatformTarget
-except ImportError:  # pragma: no cover - script execution path
-    from eliza1_platform_plan import PlatformTarget
+from eliza_training.manifest.eliza1_platform_plan import PlatformTarget
 
 DEFAULT_DATASET_REPO = "elizaos/eliza-1-training"
 LEGACY_TIER_MARKERS = ("27b-1m", "27B-1m", "27b_1m", "27B_1M")

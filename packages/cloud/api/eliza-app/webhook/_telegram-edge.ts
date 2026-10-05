@@ -6,16 +6,8 @@
  */
 
 import {
-  extractIdentityLinkCode,
-  identityLinkReply,
-} from "@elizaos/cloud-services-common/identity-link-code";
-import {
-  PERSONAL_SHARED_FAILURE_REPLY,
-  readPersonalSharedFailureMetadata,
-} from "@elizaos/cloud-services-common/personal-shared-failure";
-import { executeResponseAttempts } from "@elizaos/cloud-services-common/response-attempts";
-import {
   attestTelegramBotIdentity,
+  executeTelegramDelivery,
   parseTelegramWebhook,
   resolveTelegramVoiceNote,
   sendTelegramReply,
@@ -24,30 +16,39 @@ import {
   TelegramApiResponseError,
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
-  TelegramIdentityAttestationError,
-  verifyTelegramWebhook,
-} from "@elizaos/cloud-services-common/telegram-connector";
-import {
-  executeTelegramDelivery,
   type TelegramDeliveryLedger,
   type TelegramDeliveryState,
   TelegramEgressAlreadyClaimedError,
-} from "@elizaos/cloud-services-common/telegram-delivery";
+  TelegramIdentityAttestationError,
+  telegramReplyWithMedia,
+  verifyTelegramWebhook,
+} from "@elizaos/cloud-services-common/telegram";
+import {
+  executeResponseAttempts,
+  extractIdentityLinkCode,
+  identityLinkReply,
+  personalSharedFailureReply,
+  personalSharedNoResponseFailure,
+  readPersonalSharedFailureMetadata,
+} from "@elizaos/cloud-services-common/transport";
+import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
+import { timingSafeEqualSecret } from "@elizaos/cloud-shared/lib/auth/cron";
+import { appendServerTiming } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { sha256Hex } from "@elizaos/cloud-shared/lib/oidc/crypto";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { runWithRequestContext } from "@elizaos/cloud-shared/lib/runtime/request-context";
+import { setRuntimeR2Bucket } from "@elizaos/cloud-shared/lib/storage/r2-runtime-binding";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
 import {
   isPersonalTelegramDeliveryEpoch1CompatEnabled,
   PERSONAL_TELEGRAM_DELIVERY_EPOCH,
   PERSONAL_TELEGRAM_DELIVERY_PATH,
 } from "@/api-app/personal-telegram-delivery";
-import { runWithDbCacheAsync } from "@/db/client";
-import { timingSafeEqualSecret } from "@/lib/auth/cron";
-import { appendServerTiming } from "@/lib/observability/http-telemetry";
-import { sha256Hex } from "@/lib/oidc/crypto";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import { runWithRequestContext } from "@/lib/runtime/request-context";
-import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_ATTEMPTS = 3;
 const VOICE_MAX_ATTEMPTS = 2;
@@ -1146,7 +1147,29 @@ export async function handlePersonalTelegramEdge(
                   "Personal Shared edge turn returned no reply",
                 );
               }
-              reply = candidate;
+              const deliveredReply =
+                event.chatType === "private" && !event.membershipChange
+                  ? telegramReplyWithMedia(
+                      candidate,
+                      payload &&
+                        typeof payload === "object" &&
+                        "data" in payload
+                        ? (payload.data as { mediaUrls?: unknown } | null)
+                            ?.mediaUrls
+                        : undefined,
+                    )
+                  : candidate;
+              if (
+                event.chatType === "private" &&
+                !event.membershipChange &&
+                deliveredReply.trim().length === 0
+              ) {
+                throw new PersonalTelegramPreEgressError(
+                  "Personal Shared private turn completed without a reply",
+                  { failure: personalSharedNoResponseFailure() },
+                );
+              }
+              reply = deliveredReply;
             }
           } catch (error) {
             // error-policy:J4 only the typed, expected pre-egress failure
@@ -1188,7 +1211,7 @@ export async function handlePersonalTelegramEdge(
             await sendTelegramReply(
               config,
               event,
-              PERSONAL_SHARED_FAILURE_REPLY,
+              personalSharedFailureReply(fallbackFailure),
               logger,
               deliveryHooks,
             );
@@ -1238,6 +1261,24 @@ export async function handlePersonalTelegramEdge(
     // error-policy:J1 translate an exact delivery-claim conflict at the route boundary.
     if (error instanceof TelegramEgressAlreadyClaimedError) {
       return c.json({ success: false, error: "Egress already claimed" }, 503);
+    }
+    if (error instanceof TelegramApiResponseError) {
+      // A private chat that just delivered this update is only unreachable
+      // when the attested outbound bot is not the bot that received it (for
+      // example, a retired bot still pointing its webhook here with a shared
+      // secret). Record that value-safe classification before propagating.
+      logger.error("[PersonalTelegramEdge] provider rejected egress", {
+        traceId,
+        project,
+        connectorAccountId,
+        messageId: event.messageId,
+        chatType: event.chatType,
+        providerErrorCode: error.errorCode,
+        recipientUnreachable:
+          event.chatType === "private" &&
+          (error.errorCode === 403 ||
+            (error.errorCode === 400 && /chat not found/i.test(error.message))),
+      });
     }
     throw error;
   }

@@ -55,18 +55,21 @@ const mountedProviderCapabilities = vi.hoisted(() => ({
 
 const PROVIDERS_CACHE_KEY = "eliza.steward.providers.v1:elizacloud";
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@elizaos/shared/steward-session-client")
-    >();
-  return {
-    ...actual,
-    hasStewardAuthedCookie: () => sessionSpies.hasCookie,
-  };
-});
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+      >();
+    return {
+      ...actual,
+      hasStewardAuthedCookie: () => sessionSpies.hasCookie,
+    };
+  },
+);
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     getProviders = stewardAuthSpies.getProviders;
     getSession = stewardAuthSpies.getSession;

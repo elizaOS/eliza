@@ -4,7 +4,11 @@
  * isTeeEvidence and normalizeTeeEvidence, which validate and coerce an untrusted
  * evidence document at the boundary, and the digest helpers used to compare
  * measurements. Shared shape across the tee-* boot-gate, policy, and unseal stack.
+ * GPU trust (`gpuProtected`, `gpuFirmware`) is stripped from input documents
+ * unless the caller states the evidence came from the verified NVIDIA path
+ * (`tee-gpu-evidence.ts`). Dependency-free: packages/os loads it directly.
  */
+
 export type TeeKind =
   | "tdx"
   | "sev-snp"
@@ -29,6 +33,14 @@ export type TeeMeasurementName =
   | "modelWeights"
   | "npuFirmware"
   | "gpuFirmware"
+  /** dstack application id, compose hash and OS image hash (verifier-bound). */
+  | "app"
+  /** Intel TDX registers read from the raw quote (hex). */
+  | "mrtd"
+  | "rtmr0"
+  | "rtmr1"
+  | "rtmr2"
+  | "rtmr3"
   | (string & {});
 
 export type TeeMeasurements = Partial<Record<TeeMeasurementName, string>>;
@@ -80,11 +92,24 @@ export function isTeeEvidence(value: unknown): value is TeeEvidence {
   return typeof value.kind === "string" && value.kind.trim().length > 0;
 }
 
-export function normalizeTeeEvidence(value: unknown): TeeEvidence {
+export type NormalizeTeeEvidenceOptions = {
+  /**
+   * True only for evidence built from a locally verified NVIDIA attestation
+   * (see `isGpuVerifiedEvidence`). Otherwise GPU claims are dropped.
+   */
+  gpuVerified?: boolean;
+};
+
+export function normalizeTeeEvidence(
+  value: unknown,
+  options: NormalizeTeeEvidenceOptions = {},
+): TeeEvidence {
   if (!isRecord(value)) {
     throw new Error("TEE evidence must be an object.");
   }
   const kind = readRequiredString(value, "kind");
+  // Untrusted documents cannot assert GPU trust; only verified evidence keeps it.
+  const gpuTrusted = options.gpuVerified === true;
   return {
     kind,
     ...(readOptionalString(value, "provider") === undefined
@@ -99,15 +124,17 @@ export function normalizeTeeEvidence(value: unknown): TeeEvidence {
     ...(readOptionalInteger(value, "securityVersion") === undefined
       ? {}
       : { securityVersion: readOptionalInteger(value, "securityVersion") }),
-    ...(normalizeMeasurements(value.measurements) === undefined
+    ...(normalizeMeasurements(value.measurements, gpuTrusted) === undefined
       ? {}
-      : { measurements: normalizeMeasurements(value.measurements) }),
+      : {
+          measurements: normalizeMeasurements(value.measurements, gpuTrusted),
+        }),
     ...(normalizeFreshness(value.freshness) === undefined
       ? {}
       : { freshness: normalizeFreshness(value.freshness) }),
-    ...(normalizeClaims(value.claims) === undefined
+    ...(normalizeClaims(value.claims, gpuTrusted) === undefined
       ? {}
-      : { claims: normalizeClaims(value.claims) }),
+      : { claims: normalizeClaims(value.claims, gpuTrusted) }),
     ...(readOptionalString(value, "quote") === undefined
       ? {}
       : { quote: readOptionalString(value, "quote") }),
@@ -137,7 +164,10 @@ export function normalizeDigest(value: string): string {
     : trimmed;
 }
 
-function normalizeMeasurements(value: unknown): TeeMeasurements | undefined {
+function normalizeMeasurements(
+  value: unknown,
+  gpuTrusted: boolean,
+): TeeMeasurements | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) {
     throw new Error("TEE evidence measurements must be an object.");
@@ -147,6 +177,7 @@ function normalizeMeasurements(value: unknown): TeeMeasurements | undefined {
     if (typeof raw !== "string") {
       throw new Error(`TEE measurement "${key}" must be a string.`);
     }
+    if (key === "gpuFirmware" && !gpuTrusted) continue;
     const next = raw.trim();
     if (next.length > 0) {
       measurements[key] = next;
@@ -170,7 +201,10 @@ function normalizeFreshness(value: unknown): TeeFreshness | undefined {
   return Object.keys(freshness).length === 0 ? undefined : freshness;
 }
 
-function normalizeClaims(value: unknown): TeeClaims | undefined {
+function normalizeClaims(
+  value: unknown,
+  gpuTrusted: boolean,
+): TeeClaims | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) {
     throw new Error("TEE evidence claims must be an object.");
@@ -190,6 +224,7 @@ function normalizeClaims(value: unknown): TeeClaims | undefined {
     if (typeof value[key] !== "boolean") {
       throw new Error(`TEE claim "${key}" must be boolean.`);
     }
+    if (key === "gpuProtected" && !gpuTrusted) continue;
     claims[key] = value[key];
   }
   return Object.keys(claims).length === 0 ? undefined : claims;

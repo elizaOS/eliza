@@ -6,11 +6,14 @@
  * eliza-app session token.
  */
 
+import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
+import {
+  OAuthError,
+  oauthService,
+} from "@elizaos/cloud-shared/lib/services/oauth";
+import { getProvider } from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { elizaAppSessionService } from "@/lib/services/eliza-app";
-import { OAuthError, oauthService } from "@/lib/services/oauth";
-import { getProvider } from "@/lib/services/oauth/provider-registry";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 interface InitiateBody {
   returnPath?: string;

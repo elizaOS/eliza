@@ -1,5 +1,5 @@
 /** Defines normalized webhook events, configuration, and platform adapters. */
-import type { TelegramDeliveryHooks } from "@elizaos/cloud-services-common/telegram-delivery";
+import type { TelegramDeliveryHooks } from "@elizaos/cloud-services-common/telegram";
 import { ElizaError } from "@elizaos/core";
 export type Platform = "telegram" | "blooio" | "twilio" | "whatsapp";
 

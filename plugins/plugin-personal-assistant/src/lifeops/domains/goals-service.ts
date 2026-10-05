@@ -4,11 +4,7 @@
  * `@elizaos/plugin-goals`. Ties goals to their reminder plans and occurrences so
  * the scheduler can drive goal check-ins.
  */
-import {
-  GoalsService,
-  scoreGoalSimilarity,
-} from "@elizaos/plugin-goals/goals-service";
-import { getGoalsCheckinService } from "@elizaos/plugin-goals/services/checkin";
+
 import type {
   CreateLifeOpsGoalRequest,
   LifeOpsActivitySignal,
@@ -33,8 +29,13 @@ import type {
   LifeOpsTaskDefinition,
   LifeOpsWeeklyGoalReview,
   UpdateLifeOpsGoalRequest,
-} from "../../contracts/index.js";
-import { LIFEOPS_GOAL_SUGGESTION_KINDS } from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { LIFEOPS_GOAL_SUGGESTION_KINDS } from "@elizaos/contracts";
+import {
+  GoalsService,
+  scoreGoalSimilarity,
+} from "@elizaos/plugin-goals/goals-service";
+import { getGoalsCheckinService } from "@elizaos/plugin-goals/services/checkin";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import {
   type buildGoalSemanticReviewMetadata,

@@ -738,6 +738,29 @@ function telegramThreadParams(event: TelegramConnectorEvent): {
   return { message_thread_id: messageThreadId };
 }
 
+/** Preserve HTTPS artifact links through Telegram's receipt-backed text delivery path. */
+export function telegramReplyWithMedia(
+  text: string,
+  mediaUrls: unknown,
+): string {
+  if (!Array.isArray(mediaUrls)) return text;
+  const links = mediaUrls.flatMap((value): string[] => {
+    if (typeof value !== "string") return [];
+    try {
+      const url = new URL(value.trim());
+      return url.protocol === "https:" ? [url.toString()] : [];
+    } catch {
+      // error-policy:J3 ignore malformed artifact references at the transport boundary.
+      return [];
+    }
+  });
+  const existing = new Set(text.split("\n").map((line) => line.trim()));
+  const missing = [...new Set(links)].filter((link) => !existing.has(link));
+  return missing.length
+    ? [text.trim(), ...missing].filter(Boolean).join("\n")
+    : text;
+}
+
 export async function sendTelegramReply(
   config: TelegramConnectorConfig,
   event: TelegramConnectorEvent,

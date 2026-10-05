@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eliza-adapter"
+version = "0.1.0"
+description = "Benchmark adapter for the TypeScript eliza agent"
+requires-python = ">=3.11"
+dependencies = ["elizaos-benchmark-support==0.1.0"]
+
+[tool.setuptools.packages.find]
+namespaces = false
+where = ["."]
+include = ["eliza_adapter*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [
+    "../../suites/gauntlet/src",
+    "../../suites/mmau-audio",
+    "../../suites/experience",
+    "../../suites/webshop",
+]

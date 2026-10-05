@@ -1,6 +1,7 @@
 /** Seeds migrated primary cancellation authority and a pinned Stripe response for service and HTTP integration tests. Only unrelated identity columns are fixture-defined. */
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { applyAppBillingTestMigrations } from "./app-billing-test-migrations";
 import { installOrganizationPolicyTestSchema } from "./organization-policy-test-fixture";
 export async function installCancellationTestSchema(execute: (query: string) => Promise<unknown>) {
   await execute(`CREATE TABLE organizations(id uuid PRIMARY KEY,is_active boolean NOT NULL DEFAULT true,account_deletion_request_id uuid);
@@ -11,14 +12,24 @@ export async function installCancellationTestSchema(execute: (query: string) => 
     "0382_subscription_notice_intents.sql",
     "0383_subscription_cancellation_result.sql",
     "0384_subscription_cancellation_undo.sql",
+    "0397_subscription_checkout_contract.sql",
   ]) {
     const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await execute(statement);
   }
+  await applyAppBillingTestMigrations(execute, true);
+  const reviewMigration = await readFile(
+    new URL("../migrations/0510_subscription_renewal_review_receipts.sql", import.meta.url),
+    "utf8",
+  );
+  for (const statement of reviewMigration.split("--> statement-breakpoint"))
+    if (statement.trim()) await execute(statement);
 }
 export async function seedCancellationTestAccount(
   queryOverride?: (text: string, values: unknown[]) => Promise<unknown>,
+  period?: { start: Date; end: Date },
+  planKey: "plus_monthly" | "pro_monthly" = "plus_monthly",
 ) {
   const { getPgliteClientForTests } = await import("../client");
   const query =
@@ -37,11 +48,11 @@ export async function seedCancellationTestAccount(
     stripe_customer_id: `cus_${suffix}`,
     stripe_subscription_id: `sub_${suffix}`,
     stripe_subscription_item_id: `si_${suffix}`,
-    plan_key: "plus_monthly" as const,
+    plan_key: planKey,
     catalog_version: "v1",
     status: "active" as const,
-    current_period_start: new Date((now - 86400) * 1000),
-    current_period_end: new Date((now + 86400) * 1000),
+    current_period_start: period?.start ?? new Date((now - 86400) * 1000),
+    current_period_end: period?.end ?? new Date((now + 86400) * 1000),
     cancel_at_period_end: false,
     canceled_at: null,
     ended_at: null,
@@ -86,8 +97,8 @@ export async function seedCancellationTestAccount(
       livemode: false,
       customer: source.stripe_customer_id,
       status: "active",
-      current_period_start: now - 86400,
-      current_period_end: now + 86400,
+      current_period_start: Math.floor(source.current_period_start.getTime() / 1000),
+      current_period_end: Math.floor(source.current_period_end.getTime() / 1000),
       cancel_at_period_end: false,
       cancel_at: null as number | null,
       canceled_at: null as number | null,
@@ -108,11 +119,11 @@ export async function seedCancellationTestAccount(
             object: "subscription_item",
             quantity: 1,
             price: {
-              id: "price_plus",
-              product: "prod_plus",
+              id: planKey === "plus_monthly" ? "price_plus" : "price_pro",
+              product: planKey === "plus_monthly" ? "prod_plus" : "prod_pro",
               livemode: false,
               currency: "usd",
-              unit_amount: 3000,
+              unit_amount: planKey === "plus_monthly" ? 3000 : 10000,
               type: "recurring",
               billing_scheme: "per_unit",
               transform_quantity: null,

@@ -7,7 +7,7 @@
 import { once } from "node:events";
 import { createServer, type Server } from "node:http";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { client } from "../api";
+import { client } from "../api/client";
 import { loadAgentProfileRegistry } from "../state/agent-profiles";
 import { loadPersistedActiveServer } from "../state/persistence";
 import { applyLaunchConnection } from "./browser-launch";

@@ -1,13 +1,12 @@
+/**
+ * Deterministic outbound Slack attachment tests covering byte uploads, data-URL
+ * resolution, filename precedence, per-file failure isolation, and safe logs.
+ * Slack Web API calls are mocked; the data-URL case uses the real core resolver.
+ */
 import { Buffer } from "node:buffer";
-import type { Media } from "@elizaos/core";
+import type { IAgentRuntime, Media } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { SlackService } from "./service";
-
-// Outbound media coverage for the Slack connector (#8876). Slack's API takes
-// file BYTES (not a URL), so agent `Media` attachments are fetched through the
-// SSRF-guarded fetcher and uploaded via uploadFile. We stub the (instance)
-// fetch wrapper + uploadFile so the test runs offline and exercises only the
-// new send-outbound-attachments logic.
 
 type TestService = SlackService & {
   sendOutboundAttachments: (
@@ -15,7 +14,7 @@ type TestService = SlackService & {
     attachments: Media[],
     threadTs: string | undefined,
     accountId: string | null,
-  ) => Promise<void>;
+  ) => Promise<{ delivered: unknown[]; failures: unknown[] }>;
   fetchAttachmentBytes: ReturnType<typeof vi.fn>;
   uploadFile: ReturnType<typeof vi.fn>;
 };
@@ -77,6 +76,36 @@ describe("Slack outbound attachments", () => {
     expect(service.uploadFile).toHaveBeenCalledTimes(2);
   });
 
+  it("decodes a generated data URL and uploads its bytes", async () => {
+    const service = createService();
+    const realFetcher = (SlackService.prototype as unknown as TestService)
+      .fetchAttachmentBytes;
+    service.fetchAttachmentBytes = realFetcher.bind(service) as ReturnType<
+      typeof vi.fn
+    >;
+
+    await service.sendOutboundAttachments(
+      "C1",
+      [
+        media({
+          id: "generated",
+          url: "data:image/png;base64,aGVsbG8=",
+          title: "generated.png",
+        }),
+      ],
+      undefined,
+      null,
+    );
+
+    expect(service.uploadFile).toHaveBeenCalledWith(
+      "C1",
+      Buffer.from("hello"),
+      "generated.png",
+      { title: "generated.png", threadTs: undefined },
+      null,
+    );
+  });
+
   it("derives the filename: filename > title > fetched name", async () => {
     const service = createService();
     await service.sendOutboundAttachments(
@@ -110,32 +139,105 @@ describe("Slack outbound attachments", () => {
     );
   });
 
-  it("swallows a fetch failure (warns) and still uploads the rest", async () => {
+  it("reports a fetch failure and still uploads the rest", async () => {
     const service = createService();
     service.fetchAttachmentBytes = vi
       .fn()
       .mockRejectedValueOnce(new Error("ssrf blocked"))
       .mockResolvedValueOnce({ buffer: Buffer.from("ok"), fileName: "ok.png" });
 
-    await expect(
-      service.sendOutboundAttachments(
-        "C1",
-        [
-          media({ id: "bad", url: "http://169.254.169.254/x" }),
-          media({ id: "good", url: "https://x/ok.png" }),
-        ],
-        undefined,
-        null,
-      ),
-    ).resolves.toBeUndefined();
+    const delivery = await service.sendOutboundAttachments(
+      "C1",
+      [
+        media({ id: "bad", url: "DATA:image/png;base64,c2VjcmV0" }),
+        media({ id: "good", url: "https://x/ok.png" }),
+      ],
+      undefined,
+      null,
+    );
+    expect(delivery).toMatchObject({
+      delivered: [{ fileId: "F1" }],
+      failures: [
+        {
+          source: { scheme: "data", path: "image/png" },
+          code: "SLACK_ATTACHMENT_UPLOAD_FAILED",
+        },
+      ],
+    });
+    expect(JSON.stringify(delivery)).not.toContain("c2VjcmV0");
 
     expect(service.uploadFile).toHaveBeenCalledTimes(1);
-    expect(
-      (
-        service as unknown as {
-          runtime: { logger: { warn: ReturnType<typeof vi.fn> } };
-        }
-      ).runtime.logger.warn,
-    ).toHaveBeenCalled();
+    const warn = (
+      service as unknown as {
+        runtime: { logger: { warn: ReturnType<typeof vi.fn> } };
+      }
+    ).runtime.logger.warn;
+    expect(warn).toHaveBeenCalled();
+    expect(warn.mock.calls[0]?.[0]).toMatchObject({
+      scheme: "data",
+      path: "image/png",
+    });
+    expect(warn.mock.calls[0]?.[0]).not.toHaveProperty("url");
+    expect(JSON.stringify(warn.mock.calls[0]?.[0])).not.toContain("c2VjcmV0");
   });
+});
+
+it("returns partial receipts instead of success when an attachment cannot be fetched", async () => {
+  const service = createService();
+  Object.assign(service, {
+    resolveAccountIdForTarget: async () => null,
+    getClientForAccount: () => ({}),
+    sendMessage: vi.fn(async () => ({
+      messages: [{ ts: "1234567890.123456" }],
+    })),
+  });
+  service.fetchAttachmentBytes.mockRejectedValueOnce(new Error("fetch denied"));
+  const outcome = await service.handleSendMessage(
+    {} as IAgentRuntime,
+    { source: "slack", channelId: "C12345678" },
+    {
+      text: "caption",
+      attachments: [media({ url: "https://bad.example/file" })],
+    },
+  );
+  expect(outcome).toMatchObject({
+    kind: "partially_delivered",
+    receipt: { providerMessageIds: ["1234567890.123456"] },
+  });
+});
+
+it("rejects a missing attachment URL before sending text", async () => {
+  const service = createService();
+  const send = vi.fn();
+  Object.assign(service, {
+    resolveAccountIdForTarget: async () => null,
+    getClientForAccount: () => ({}),
+    sendMessage: send,
+  });
+  expect(
+    await service.handleSendMessage(
+      {} as IAgentRuntime,
+      { source: "slack", channelId: "C12345678" },
+      { text: "caption", attachments: [media({ url: "" })] },
+    ),
+  ).toMatchObject({ kind: "not_delivered", code: "SLACK_INVALID_ATTACHMENT" });
+  expect(send).not.toHaveBeenCalled();
+});
+
+it("does not turn an uncertain upload into retry-safe non-delivery", async () => {
+  const service = createService();
+  Object.assign(service, {
+    resolveAccountIdForTarget: async () => null,
+    getClientForAccount: () => ({}),
+  });
+  service.uploadFile.mockRejectedValueOnce(
+    new Error("response lost after upload"),
+  );
+  await expect(
+    service.handleSendMessage(
+      {} as IAgentRuntime,
+      { source: "slack", channelId: "C12345678" },
+      { attachments: [media({})] },
+    ),
+  ).rejects.toMatchObject({ code: "SLACK_DELIVERY_UNKNOWN" });
 });

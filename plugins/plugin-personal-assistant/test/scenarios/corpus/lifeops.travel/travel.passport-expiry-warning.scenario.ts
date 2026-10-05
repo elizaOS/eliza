@@ -4,8 +4,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
@@ -21,7 +21,7 @@ export default scenario({
     "Many countries require ≥6 months passport validity from entry date. When booking an international trip whose entry date is within that window, the agent must warn the user — NOT silently book and let them get stuck at the airport.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

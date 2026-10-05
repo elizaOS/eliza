@@ -1,20 +1,4 @@
-/**
- * Dispatch-policy enforcement tests (#10721 H2).
- *
- * Before the fix, a typed connector `DispatchResult { ok: false }` was
- * stashed in `metadata.lastDispatchResult` and the fire still reported
- * `"fired"`: the user silently never received the message and
- * `decideDispatchPolicy` (retry / backoff / ladder-advance / fail-loud)
- * was dead code. These tests drive the REAL runner with a scripted
- * dispatcher and assert the policy is enforced end to end:
- *
- *  - retry with backoff on `rate_limited` (same step, bounded attempts)
- *  - ladder advance across channels on permanent failures
- *  - `surface_degraded` records `metadata.connectorDegradation`
- *  - terminal `failed` + `pipeline.onFail` when the ladder is exhausted
- *  - the parked retry row is indexed AND due at the retry time
- *  - success and snooze clear the retry continuation
- */
+/** Exercises real runner retry, escalation and lossless dispatch boundaries with explicit scripted connector outcomes. */
 
 import { describe, expect, it } from "vitest";
 
@@ -68,7 +52,6 @@ interface Harness {
   /** Queue the result(s) the dispatcher returns, in call order. */
   queueDispatchResults(...results: Array<DispatchResult | undefined>): void;
   setNow(iso: string): void;
-  nowIso(): string;
 }
 
 function makeHarness(
@@ -124,8 +107,9 @@ function makeHarness(
     subjectStore: { wasUpdatedSince: () => false },
     dispatcher: {
       async dispatch(record) {
-        const result: DispatchResult | undefined =
-          queued.length > 0 ? queued.shift() : { ok: true };
+        if (queued.length === 0)
+          throw new Error("scripted dispatch results exhausted");
+        const result = queued.shift();
         dispatches.push({ record, result });
         return result;
       },
@@ -144,12 +128,8 @@ function makeHarness(
     ...(opts.channelAvailable
       ? { channelAvailable: opts.channelAvailable }
       : {}),
-    hostCapabilities: () => {
-      const profiles = Array.isArray(TASK_EXECUTION_PROFILES)
-        ? TASK_EXECUTION_PROFILES
-        : [];
-      return new Set([DEFAULT_TASK_EXECUTION_PROFILE, ...profiles]);
-    },
+    hostCapabilities: () =>
+      new Set([DEFAULT_TASK_EXECUTION_PROFILE, ...TASK_EXECUTION_PROFILES]),
     now: () => new Date(nowIso),
   });
 
@@ -165,7 +145,6 @@ function makeHarness(
     setNow(iso) {
       nowIso = iso;
     },
-    nowIso: () => nowIso,
   };
 }
 
@@ -232,15 +211,18 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     expect(children).toHaveLength(1);
   });
 
-  it("rate_limited retries the same step with backoff and stays out of 'fired'", async () => {
+  it("rate-limited delivery stays pending until its indexed retry succeeds", async () => {
     const h = makeHarness();
     const task = await h.runner.schedule(reminderInput());
-    h.queueDispatchResults({
-      ok: false,
-      reason: "rate_limited",
-      retryAfterMinutes: 10,
-      userActionable: false,
-    });
+    h.queueDispatchResults(
+      {
+        ok: false,
+        reason: "rate_limited",
+        retryAfterMinutes: 10,
+        userActionable: false,
+      },
+      { ok: true, messageId: "msg-42" },
+    );
 
     const result = await h.runner.fireWithResult(task.taskId);
     expect(result.kind).toBe("dispatch_deferred");
@@ -271,6 +253,17 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     });
     expect(at.due).toBe(true);
     expect(at.reason).toBe("scheduled_override_due");
+
+    h.setNow(result.nextAttemptAtIso);
+    expect((await h.runner.fireWithResult(task.taskId)).kind).toBe("fired");
+    const delivered = await h.store.get(task.taskId);
+    expect(delivered?.state.status).toBe("fired");
+    expect(delivered?.metadata?.pendingDispatch).toBeUndefined();
+    expect(delivered?.metadata?.lastDispatchResult).toEqual({
+      ok: true,
+      messageId: "msg-42",
+    });
+    expect(h.dispatches).toHaveLength(2);
   });
 
   it("never retries or advances a delivery with unknown provider acceptance", async () => {
@@ -300,36 +293,6 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     expect(persisted?.metadata?.pendingDispatch).toBeUndefined();
     expect(await transitions(h, task.taskId)).not.toContain("dispatch_retried");
     expect(await transitions(h, task.taskId)).not.toContain("escalated");
-  });
-
-  it("retry then success delivers and clears the continuation", async () => {
-    const h = makeHarness();
-    const task = await h.runner.schedule(reminderInput());
-    h.queueDispatchResults(
-      {
-        ok: false,
-        reason: "rate_limited",
-        retryAfterMinutes: 5,
-        userActionable: false,
-      },
-      { ok: true, messageId: "msg-42" },
-    );
-
-    const first = await h.runner.fireWithResult(task.taskId);
-    expect(first.kind).toBe("dispatch_deferred");
-
-    h.setNow("2026-05-11T12:05:00.000Z");
-    const second = await h.runner.fireWithResult(task.taskId);
-    expect(second.kind).toBe("fired");
-
-    const persisted = await h.store.get(task.taskId);
-    expect(persisted?.state.status).toBe("fired");
-    expect(persisted?.metadata?.pendingDispatch).toBeUndefined();
-    expect(persisted?.metadata?.lastDispatchResult).toEqual({
-      ok: true,
-      messageId: "msg-42",
-    });
-    expect(h.dispatches).toHaveLength(2);
   });
 
   it("persists an event payload across retry and escalation dispatches", async () => {
@@ -453,6 +416,7 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
       ...JSON.parse('{"__proto__":{"reason":"quorum"}}'),
     };
 
+    h.queueDispatchResults({ ok: true });
     await h.runner.fireWithResult(task.taskId, { eventPayload });
     const dispatched = h.dispatches[0]?.record.eventPayload;
     expect(JSON.parse(JSON.stringify(dispatched))).toEqual(
@@ -480,8 +444,9 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     let result = await h.runner.fireWithResult(task.taskId);
     for (let i = 0; i < 3; i++) {
       expect(result.kind).toBe("dispatch_deferred");
-      const parked = await h.store.get(task.taskId);
-      h.setNow(parked?.state.firedAt ?? h.nowIso());
+      if (result.kind !== "dispatch_deferred")
+        throw new Error("expected deferred dispatch");
+      h.setNow(result.nextAttemptAtIso);
       result = await h.runner.fireWithResult(task.taskId);
     }
     // 4th attempt: budget exhausted, no ladder step to advance to → failed.
@@ -517,17 +482,12 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     );
 
     let result = await h.runner.fireWithResult(task.taskId);
-    const attempts: string[] = [h.dispatches[0]?.record.channelKey ?? ""];
     while (result.kind === "dispatch_deferred") {
-      const parked = await h.store.get(task.taskId);
-      h.setNow(parked?.state.firedAt ?? h.nowIso());
+      h.setNow(result.nextAttemptAtIso);
       result = await h.runner.fireWithResult(task.taskId);
-      attempts.push(
-        h.dispatches[h.dispatches.length - 1]?.record.channelKey ?? "",
-      );
     }
 
-    expect(attempts).toEqual([
+    expect(h.dispatches.map(({ record }) => record.channelKey)).toEqual([
       "in_app",
       "push",
       "telegram",
@@ -542,8 +502,6 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     const persisted = await h.store.get(task.taskId);
     expect(persisted?.state.status).toBe("failed");
 
-    // Ladder delays honored: step 1 at +15m, step 2 at +45m after its
-    // predecessor's attempt instant.
     const escalatedRows = (
       await h.logStore.list({
         agentId: "agent-dispatch-policy",
@@ -553,68 +511,45 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     expect(escalatedRows).toHaveLength(8);
   });
 
-  it("skips disconnected high-priority connector candidates and parks on a connected fallback", async () => {
-    const h = makeHarness("2026-05-11T12:00:00.000Z", {
-      channelAvailable: (channelKey) =>
-        channelKey === "telegram" || channelKey === "in_app",
-    });
-    const task = await h.runner.schedule(reminderInput({ priority: "high" }));
-    h.queueDispatchResults({
-      ok: false,
-      reason: "transport_error",
-      userActionable: false,
-    });
+  it.each([
+    ["telegram", 1],
+    ["imessage", 6],
+  ] as const)(
+    "skips disconnected candidates and delivers through connected %s",
+    async (channel, stepIndex) => {
+      const h = makeHarness("2026-05-11T12:00:00.000Z", {
+        channelAvailable: (channelKey) =>
+          channelKey === channel || channelKey === "in_app",
+      });
+      const task = await h.runner.schedule(reminderInput({ priority: "high" }));
+      h.queueDispatchResults({
+        ok: false,
+        reason: "transport_error",
+        userActionable: false,
+      });
 
-    const result = await h.runner.fireWithResult(task.taskId);
-    expect(result.kind).toBe("dispatch_deferred");
-    if (result.kind !== "dispatch_deferred") throw new Error("unreachable");
-    expect(result.reason).toBe("advance:transport_error");
-    expect(result.nextAttemptAtIso).toBe("2026-05-11T12:45:00.000Z");
+      const result = await h.runner.fireWithResult(task.taskId);
+      expect(result.kind).toBe("dispatch_deferred");
+      if (result.kind !== "dispatch_deferred") throw new Error("unreachable");
+      expect(result.reason).toBe("advance:transport_error");
+      expect(result.nextAttemptAtIso).toBe("2026-05-11T12:45:00.000Z");
 
-    const persisted = await h.store.get(task.taskId);
-    expect(persisted?.metadata?.pendingDispatch).toEqual({
-      stepIndex: 1,
-      attempt: 0,
-    });
+      const persisted = await h.store.get(task.taskId);
+      expect(persisted?.metadata?.pendingDispatch).toEqual({
+        stepIndex,
+        attempt: 0,
+      });
 
-    h.setNow(result.nextAttemptAtIso);
-    h.queueDispatchResults({ ok: true, messageId: "telegram-ok" });
-    const delivered = await h.runner.fireWithResult(task.taskId);
-    expect(delivered.kind).toBe("fired");
-    expect(h.dispatches.map((d) => d.record.channelKey)).toEqual([
-      "in_app",
-      "telegram",
-    ]);
-  });
-
-  it("keeps imessage eligible when it is connected", async () => {
-    const h = makeHarness("2026-05-11T12:00:00.000Z", {
-      channelAvailable: (channelKey) =>
-        channelKey === "imessage" || channelKey === "in_app",
-    });
-    const task = await h.runner.schedule(reminderInput({ priority: "high" }));
-    h.queueDispatchResults({
-      ok: false,
-      reason: "transport_error",
-      userActionable: false,
-    });
-
-    const result = await h.runner.fireWithResult(task.taskId);
-    expect(result.kind).toBe("dispatch_deferred");
-    const persisted = await h.store.get(task.taskId);
-    expect(persisted?.metadata?.pendingDispatch).toEqual({
-      stepIndex: 6,
-      attempt: 0,
-    });
-
-    h.setNow(persisted?.state.firedAt ?? h.nowIso());
-    h.queueDispatchResults({ ok: true, messageId: "imessage-ok" });
-    await h.runner.fireWithResult(task.taskId);
-    expect(h.dispatches.map((d) => d.record.channelKey)).toEqual([
-      "in_app",
-      "imessage",
-    ]);
-  });
+      h.setNow(result.nextAttemptAtIso);
+      h.queueDispatchResults({ ok: true, messageId: `${channel}-ok` });
+      const delivered = await h.runner.fireWithResult(task.taskId);
+      expect(delivered.kind).toBe("fired");
+      expect(h.dispatches.map((d) => d.record.channelKey)).toEqual([
+        "in_app",
+        channel,
+      ]);
+    },
+  );
 
   it("user-actionable failure surfaces connector degradation while advancing", async () => {
     const h = makeHarness();

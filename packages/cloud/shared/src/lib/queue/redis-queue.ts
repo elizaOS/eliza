@@ -3,9 +3,13 @@
  *
  * `enqueue` pushes a JSON-serialized envelope onto a list; `drain` pops
  * up to `max` envelopes and runs the handler. The handler reports either
- * `ack` (drop the message), `retry` (push back with attempts++ until
- * `maxAttempts`, then send to the DLQ list), or `dlq` (push straight to
- * the DLQ — used for permanent failures).
+ * `ack` (drop the message), `retry` (push back with attempts++ and an
+ * exponential `notBefore` delay until `maxAttempts`, then send to the DLQ
+ * list), or `dlq` (push straight to the DLQ — used for permanent failures).
+ * A message whose `notBefore` is in the future is requeued untouched, and a
+ * drain stops once it pops a message it already requeued, so one cron tick
+ * never burns a retry budget. `onDeadLetter` lets the owner release
+ * producer-side dedupe so a provider resend can re-enter the queue.
  *
  * Backed by the same shared `cache` client, so it follows the same
  * adapter selection (Upstash REST in cloud, native Redis or embedded
@@ -20,6 +24,8 @@ interface Envelope<T> {
   body: T;
   attempts: number;
   enqueuedAt: number;
+  /** Epoch ms before which a retried message is not handled. */
+  notBefore?: number;
 }
 
 export type DrainResult = "ack" | "retry" | "dlq";
@@ -30,13 +36,19 @@ export type DrainHandler<T> = (envelope: {
   enqueuedAt: number;
 }) => Promise<DrainResult>;
 
-export interface DrainOptions {
+export interface DrainOptions<T = unknown> {
   /** Max messages to pop in one call (default 25). */
   max?: number;
   /** Max processing time before bailing on the remaining batch (default 25_000 ms). */
   budgetMs?: number;
   /** Max retry attempts before promoting a message to the DLQ (default 5). */
   maxAttempts?: number;
+  /** First retry delay; doubles per attempt (default 60_000 ms). */
+  retryBaseDelayMs?: number;
+  /** Retry delay ceiling (default 3_600_000 ms). */
+  retryMaxDelayMs?: number;
+  /** Runs after a message is durably written to the DLQ; failures are logged, the message stays in the DLQ. */
+  onDeadLetter?: (envelope: { body: T; attempts: number; enqueuedAt: number }) => Promise<void>;
 }
 
 export interface DrainStats {
@@ -45,17 +57,29 @@ export interface DrainStats {
   retried: number;
   dlqed: number;
   failed: number;
+  /** Messages requeued untouched because their retry delay has not elapsed. */
+  deferred: number;
+}
+
+export function retryDelayMs(attempts: number, baseMs: number, maxMs: number): number {
+  return Math.min(baseMs * 2 ** Math.max(0, Math.min(attempts - 1, 30)), maxMs);
 }
 
 function dlqKey(queueKey: string): string {
   return `${queueKey}:dlq`;
 }
 
-async function pushRequired(queueKey: string, envelope: Envelope<unknown>): Promise<void> {
-  const written = await cache.pushQueueHead(queueKey, JSON.stringify(envelope));
+async function pushRawRequired(queueKey: string, raw: string): Promise<void> {
+  const written = await cache.pushQueueHead(queueKey, raw);
   if (written === null) {
     throw new Error(`[Queue] Redis unavailable; cannot push to ${queueKey}`);
   }
+}
+
+async function pushRequired(queueKey: string, envelope: Envelope<unknown>): Promise<string> {
+  const raw = JSON.stringify(envelope);
+  await pushRawRequired(queueKey, raw);
+  return raw;
 }
 
 /**
@@ -74,14 +98,43 @@ export async function enqueue<T>(queueKey: string, body: T): Promise<void> {
 export async function drain<T>(
   queueKey: string,
   handler: DrainHandler<T>,
-  options: DrainOptions = {},
+  options: DrainOptions<T> = {},
 ): Promise<DrainStats> {
   const max = options.max ?? 25;
   const budgetMs = options.budgetMs ?? 25_000;
   const maxAttempts = options.maxAttempts ?? 5;
+  const retryBaseDelayMs = options.retryBaseDelayMs ?? 60_000;
+  const retryMaxDelayMs = options.retryMaxDelayMs ?? 3_600_000;
   const start = Date.now();
 
-  const stats: DrainStats = { attempted: 0, acked: 0, retried: 0, dlqed: 0, failed: 0 };
+  const stats: DrainStats = {
+    attempted: 0,
+    acked: 0,
+    retried: 0,
+    dlqed: 0,
+    failed: 0,
+    deferred: 0,
+  };
+  // Serialized envelopes this drain pushed back; popping one means the queue wrapped.
+  const requeued = new Set<string>();
+  const deadLetter = async (envelope: Envelope<T>) => {
+    await pushRequired(dlqKey(queueKey), envelope);
+    stats.dlqed++;
+    if (!options.onDeadLetter) return;
+    try {
+      await options.onDeadLetter({
+        body: envelope.body,
+        attempts: envelope.attempts,
+        enqueuedAt: envelope.enqueuedAt,
+      });
+    } catch (hookError) {
+      // error-policy:J7 the message is already durable in the DLQ; the release hook failure is surfaced, not retried.
+      logger.error(`[Queue] Dead-letter hook failed for ${queueKey}`, {
+        error: hookError instanceof Error ? hookError.message : String(hookError),
+        attempts: envelope.attempts,
+      });
+    }
+  };
 
   for (let i = 0; i < max; i++) {
     if (Date.now() - start > budgetMs) {
@@ -91,6 +144,10 @@ export async function drain<T>(
 
     const raw = await cache.popQueueTail(queueKey);
     if (raw === null) break;
+    if (requeued.has(raw)) {
+      await pushRawRequired(queueKey, raw);
+      break;
+    }
 
     let envelope: Envelope<T>;
     try {
@@ -101,6 +158,13 @@ export async function drain<T>(
         sample: truncateWellFormed(toWellFormedUnicode(raw), 200),
       });
       stats.failed++;
+      continue;
+    }
+
+    if (typeof envelope.notBefore === "number" && envelope.notBefore > Date.now()) {
+      await pushRawRequired(queueKey, raw);
+      requeued.add(raw);
+      stats.deferred++;
       continue;
     }
 
@@ -124,17 +188,23 @@ export async function drain<T>(
       case "ack":
         stats.acked++;
         break;
-      case "dlq":
-        await pushRequired(dlqKey(queueKey), envelope);
-        stats.dlqed++;
+      case "dlq": {
+        const { notBefore: _notBefore, ...dead } = envelope;
+        await deadLetter(dead);
         break;
+      }
       case "retry": {
-        const next: Envelope<T> = { ...envelope, attempts: envelope.attempts + 1 };
-        if (next.attempts >= maxAttempts) {
-          await pushRequired(dlqKey(queueKey), next);
-          stats.dlqed++;
+        const attempts = envelope.attempts + 1;
+        if (attempts >= maxAttempts) {
+          const { notBefore: _notBefore, ...dead } = envelope;
+          await deadLetter({ ...dead, attempts });
         } else {
-          await pushRequired(queueKey, next);
+          const next: Envelope<T> = {
+            ...envelope,
+            attempts,
+            notBefore: Date.now() + retryDelayMs(attempts, retryBaseDelayMs, retryMaxDelayMs),
+          };
+          requeued.add(await pushRequired(queueKey, next));
           stats.retried++;
         }
         break;

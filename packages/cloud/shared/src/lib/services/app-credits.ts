@@ -1,5 +1,5 @@
 /**
- * Service for managing app-specific credit balances and purchases.
+ * Service for app monetization settings and app-attributed inference billing.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -19,7 +19,7 @@ import {
 import { apps, appUsers } from "../../db/schemas/apps";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { organizations } from "../../db/schemas/organizations";
-import { redeemableEarnings } from "../../db/schemas/redeemable-earnings";
+import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getRequestIdempotencyKey } from "../runtime/request-context";
@@ -31,6 +31,7 @@ import {
   parseAppMonetizationNumber,
 } from "./app-credit-math";
 import { APP_USAGE_PROJECTION_VERSION } from "./app-usage-projections";
+import { CreatorMonetizationRetiredError } from "./creator-monetization-retirement";
 import { assertCreditRefundReservationPresent } from "./credit-reconciliation-invariants";
 import {
   APP_CHAT_RESERVATION_SETTLEMENT_MARKER,
@@ -342,33 +343,6 @@ function totalInferenceChargeForApp(app: AppCreditAccountingApp, baseCost: numbe
 }
 
 /**
- * Parameters for purchasing app credits.
- */
-export interface AppCreditPurchaseParams {
-  appId: string;
-  userId: string;
-  organizationId: string;
-  purchaseAmount: number | string;
-  stripePaymentIntentId?: string; // For deduplication on webhook retries
-  /** Reuse the caller's settlement transaction so every purchase projection commits together. */
-  transaction?: DbTransaction;
-}
-
-/**
- * Result of purchasing app credits.
- *
- * `newBalance` is the purchasing user's ORGANIZATION credit balance — app
- * purchases and app inference share the single org ledger (#8253).
- */
-export interface AppCreditPurchaseResult {
-  success: boolean;
-  creditsAdded: number;
-  platformOffset: number;
-  creatorEarnings: number;
-  newBalance: number;
-}
-
-/**
  * Parameters for deducting app credits.
  */
 export interface AppCreditDeductionParams {
@@ -490,10 +464,10 @@ export interface AppCreditReconciliationResult {
 }
 
 /**
- * Service for managing app-specific credit balances, purchases, and deductions.
+ * Service for app monetization settings and app-attributed inference debits.
  */
 export class AppCreditsService {
-  /** The org credit balance — the single ledger app purchases fund and app inference debits (#8253). */
+  /** The org credit balance — the single ledger app inference debits (#8253). */
   private async readOrgBalance(
     organizationId: string,
     transaction?: DbTransaction,
@@ -510,250 +484,6 @@ export class AppCreditsService {
     // error-policy:J6 missing org preserves the existing no-credit result path; a present
     // org with corrupt money data must fail closed.
     return org ? parseOrgCreditBalance(org.credit_balance) : 0;
-  }
-
-  async processPurchase(params: AppCreditPurchaseParams): Promise<AppCreditPurchaseResult> {
-    const { appId, userId, organizationId, stripePaymentIntentId, transaction } = params;
-    const purchaseAmountDecimal = new Decimal(params.purchaseAmount);
-    if (!purchaseAmountDecimal.isFinite() || !purchaseAmountDecimal.gt(0)) {
-      throw new Error("App credit purchase amount must be a positive decimal");
-    }
-    const purchaseAmount = purchaseAmountDecimal.toFixed();
-    // Preserve string-valued provider money end to end. Existing internal
-    // number callers retain their metadata shape for API compatibility.
-    const purchaseAmountValue =
-      typeof params.purchaseAmount === "string" ? purchaseAmount : purchaseAmountDecimal.toNumber();
-
-    const app = transaction
-      ? (await transaction.select().from(apps).where(eq(apps.id, appId)).limit(1))[0]
-      : await appsRepository.findById(appId);
-    if (!app) {
-      throw new Error(`App not found: ${appId}`);
-    }
-
-    if (stripePaymentIntentId) {
-      const existingTransaction = await appEarningsRepository.findTransactionByPaymentIntent(
-        appId,
-        stripePaymentIntentId,
-        transaction,
-      );
-      if (existingTransaction) {
-        const existingMetadata =
-          existingTransaction.metadata && typeof existingTransaction.metadata === "object"
-            ? existingTransaction.metadata
-            : {};
-        if (
-          existingTransaction.app_id !== appId ||
-          existingTransaction.user_id !== userId ||
-          existingMetadata.organizationId !== organizationId ||
-          !new Decimal(String(existingMetadata.purchaseAmount)).equals(purchaseAmountDecimal) ||
-          existingMetadata.stripePaymentIntentId !== stripePaymentIntentId
-        ) {
-          throw new Error(`App purchase projection replay mismatch for ${stripePaymentIntentId}`);
-        }
-        return {
-          success: true,
-          creditsAdded: 0,
-          platformOffset: 0,
-          creatorEarnings: 0,
-          newBalance: await this.readOrgBalance(organizationId, transaction),
-        };
-      }
-    }
-
-    // Only apply platform offset and creator share if monetization is active
-    // (enabled AND not review-rejected — a ban revokes earnings); users always
-    // get full credits for their purchase. Math in app-credit-math.ts.
-    const monetizationActive = isAppMonetizationActive(app);
-    const quotedCreatorSharePercentage = monetizationActive
-      ? parseAppMonetizationNumber("purchase_share_percentage", app.purchase_share_percentage, {
-          min: 0,
-          max: 100,
-        })
-      : 0;
-    const quotedPlatformOffset = monetizationActive
-      ? Decimal.min(
-          purchaseAmountDecimal,
-          new Decimal(
-            parseAppMonetizationNumber("platform_offset_amount", app.platform_offset_amount, {
-              min: 0,
-            }),
-          ),
-        )
-      : new Decimal(0);
-    const quotedCreatorEarnings = purchaseAmountDecimal
-      .minus(quotedPlatformOffset)
-      .mul(quotedCreatorSharePercentage)
-      .div(100)
-      .toDecimalPlaces(6);
-    const quotedSplit = {
-      creditsToAdd: purchaseAmountDecimal.toDecimalPlaces(6).toFixed(6),
-      platformOffset: quotedPlatformOffset.toDecimalPlaces(6).toFixed(6),
-      creatorEarnings: quotedCreatorEarnings.toFixed(6),
-    };
-
-    logger.info("[AppCredits] Processing purchase", {
-      appId,
-      userId,
-      purchaseAmount: purchaseAmountValue,
-      platformOffset: quotedSplit.platformOffset,
-      creatorEarnings: quotedSplit.creatorEarnings,
-      creditsToAdd: quotedSplit.creditsToAdd,
-    });
-
-    // Credit the purchasing user's ORG balance — the same ledger
-    // `deductCredits()` debits — so purchased credits are spendable on app
-    // inference (#8253: previously this funded the per-app
-    // `app_credit_balances` pool, which the spend path no longer reads, so
-    // purchased credits were stranded).
-    const { transaction: purchaseCredit, newBalance } = await creditsService.addCredits({
-      organizationId,
-      amount:
-        typeof params.purchaseAmount === "string"
-          ? quotedSplit.creditsToAdd
-          : purchaseAmountDecimal.toNumber(),
-      description: `App credit purchase (${app.name ?? appId})`,
-      metadata: {
-        appId,
-        userId,
-        organizationId,
-        purchaseAmount: purchaseAmountValue,
-        creditsToAdd: quotedSplit.creditsToAdd,
-        platformOffset: quotedSplit.platformOffset,
-        creatorEarnings: quotedSplit.creatorEarnings,
-        creatorSharePercentage: quotedCreatorSharePercentage,
-        creatorUserId: app.created_by_user_id,
-        type: "app_credit_purchase",
-      },
-      ...(stripePaymentIntentId && { stripePaymentIntentId }),
-      db: transaction,
-    });
-
-    const persistedPurchaseMetadata =
-      purchaseCredit.metadata && typeof purchaseCredit.metadata === "object"
-        ? purchaseCredit.metadata
-        : {};
-    const persistedPurchaseAmount = new Decimal(purchaseCredit.amount);
-    const creditsToAdd = parseAppMonetizationNumber(
-      "purchase_credit_transaction.creditsToAdd",
-      persistedPurchaseMetadata.creditsToAdd,
-      { min: 0 },
-    );
-    const platformOffset = parseAppMonetizationNumber(
-      "purchase_credit_transaction.platformOffset",
-      persistedPurchaseMetadata.platformOffset,
-      { min: 0 },
-    );
-    const creatorEarnings = parseAppMonetizationNumber(
-      "purchase_credit_transaction.creatorEarnings",
-      persistedPurchaseMetadata.creatorEarnings,
-      { min: 0 },
-    );
-    const creatorSharePercentage = parseAppMonetizationNumber(
-      "purchase_credit_transaction.creatorSharePercentage",
-      persistedPurchaseMetadata.creatorSharePercentage,
-      { min: 0, max: 100 },
-    );
-    const pinnedCreatorUserId =
-      typeof persistedPurchaseMetadata.creatorUserId === "string"
-        ? persistedPurchaseMetadata.creatorUserId
-        : null;
-    if (
-      purchaseCredit.organization_id !== organizationId ||
-      purchaseCredit.type !== "credit" ||
-      !persistedPurchaseAmount.isFinite() ||
-      !persistedPurchaseAmount.equals(purchaseAmountDecimal.toDecimalPlaces(6)) ||
-      persistedPurchaseMetadata.appId !== appId ||
-      persistedPurchaseMetadata.userId !== userId ||
-      persistedPurchaseMetadata.organizationId !== organizationId ||
-      !new Decimal(creditsToAdd).equals(purchaseAmountDecimal.toDecimalPlaces(6)) ||
-      new Decimal(platformOffset).greaterThan(persistedPurchaseAmount) ||
-      new Decimal(creatorEarnings).greaterThan(persistedPurchaseAmount.minus(platformOffset)) ||
-      !new Decimal(creatorEarnings)
-        .toDecimalPlaces(6)
-        .equals(
-          persistedPurchaseAmount
-            .minus(platformOffset)
-            .mul(creatorSharePercentage)
-            .div(100)
-            .toDecimalPlaces(6),
-        ) ||
-      (stripePaymentIntentId &&
-        purchaseCredit.stripe_payment_intent_id !== stripePaymentIntentId) ||
-      (creatorEarnings > 0 && !pinnedCreatorUserId)
-    ) {
-      throw new Error(
-        `App purchase credit replay mismatch for ${stripePaymentIntentId ?? purchaseCredit.id}`,
-      );
-    }
-    const chargeTimeApp: AppCreditAccountingApp = {
-      ...app,
-      created_by_user_id: pinnedCreatorUserId,
-    };
-
-    // Track app user activity for purchase (this will create app_users record if new user)
-    await this.trackAppUserActivity(
-      app,
-      userId,
-      "0.00",
-      {
-        type: "purchase",
-        purchaseAmount: purchaseAmountValue,
-        creditsAdded: creditsToAdd,
-        ...(stripePaymentIntentId && { stripePaymentIntentId }),
-      },
-      transaction,
-    );
-
-    // CRITICAL: Always create a transaction record for deduplication purposes
-    // Even when monetization is disabled, we need to track the purchase
-    if (creatorEarnings > 0) {
-      await this.recordCreatorEarnings(
-        appId,
-        userId,
-        "purchase_share",
-        creatorEarnings,
-        platformOffset,
-        "purchase",
-        {
-          purchaseAmount: purchaseAmountValue,
-          organizationId,
-          platformOffset,
-          creatorSharePercentage,
-          chargeTransactionId: purchaseCredit.id,
-          ...(stripePaymentIntentId && { stripePaymentIntentId }),
-        },
-        chargeTimeApp,
-        transaction,
-      );
-    } else if (stripePaymentIntentId) {
-      // Monetization disabled but still need transaction record for deduplication
-      await appEarningsRepository.createTransaction(
-        {
-          app_id: appId,
-          user_id: userId,
-          type: "credit_purchase",
-          amount: "0", // No earnings when monetization disabled
-          description: "Credit purchase (monetization disabled)",
-          metadata: {
-            organizationId,
-            purchaseAmount: purchaseAmountValue,
-            creditsAdded: creditsToAdd,
-            stripePaymentIntentId,
-            monetizationDisabled: true,
-          },
-        },
-        transaction,
-      );
-    }
-
-    return {
-      success: true,
-      creditsAdded: creditsToAdd,
-      platformOffset,
-      creatorEarnings,
-      newBalance,
-    };
   }
 
   async reserveInferenceCredits(
@@ -1707,7 +1437,8 @@ export class AppCreditsService {
         !factUserId ||
         factAppId !== normalizeUuidIdentity(params.appId) ||
         factUserId !== normalizeUuidIdentity(params.userId) ||
-        (params.organizationId !== undefined && params.organizationId !== organizationId) ||
+        (params.organizationId !== undefined &&
+          normalizeUuidIdentity(params.organizationId) !== organizationId) ||
         !reservedBase.isFinite() ||
         reservedBase.isNegative() ||
         !markupPercentage.isFinite() ||
@@ -1720,19 +1451,12 @@ export class AppCreditsService {
       const [existing] = await tx
         .select()
         .from(appReservationSettlements)
-        .where(
-          eq(appReservationSettlements.reservation_transaction_id, params.reservationTransactionId),
-        )
+        .where(eq(appReservationSettlements.reservation_transaction_id, reservation.id))
         .limit(1);
       const [legacyQuarantine] = await tx
         .select()
         .from(appReservationSettlementQuarantines)
-        .where(
-          eq(
-            appReservationSettlementQuarantines.reservation_transaction_id,
-            params.reservationTransactionId,
-          ),
-        )
+        .where(eq(appReservationSettlementQuarantines.reservation_transaction_id, reservation.id))
         .limit(1);
       const [lockedOrg] = await tx
         .select({ balance: organizations.credit_balance })
@@ -1806,12 +1530,12 @@ export class AppCreditsService {
       const [currentApp] = await tx
         .select()
         .from(apps)
-        .where(eq(apps.id, params.appId))
+        .where(eq(apps.id, factAppId))
         .for("update")
         .limit(1);
       const accountingApp: AppCreditAccountingApp = {
         ...(currentApp ?? {}),
-        name: typeof facts.appName === "string" ? facts.appName : params.appId,
+        name: typeof facts.appName === "string" ? facts.appName : factAppId,
         created_by_user_id: creatorUserId,
         monetization_enabled: markupPercentage.gt(0),
         review_status: markupPercentage.gt(0) ? "approved" : "rejected",
@@ -1820,10 +1544,53 @@ export class AppCreditsService {
         inference_markup_percentage: markupPercentage.toNumber(),
         persistAppEarnings: Boolean(currentApp),
       };
+      const initialCreatorAmount = reservedBase
+        .mul(markupPercentage)
+        .div(100)
+        .toDecimalPlaces(6, Decimal.ROUND_HALF_UP)
+        .toDecimalPlaces(4, Decimal.ROUND_DOWN);
+      const originalCreatorRows = await tx
+        .select()
+        .from(redeemableEarningsLedger)
+        .where(
+          sql`lower(${redeemableEarningsLedger.metadata}->>'chargeTransactionId') = ${reservation.id}`,
+        )
+        .for("update");
+      const originalCreator = originalCreatorRows[0];
+      if (
+        initialCreatorAmount.isZero()
+          ? originalCreatorRows.length !== 0
+          : originalCreatorRows.length !== 1 ||
+            !originalCreator ||
+            originalCreator.user_id !== creatorUserId ||
+            originalCreator.entry_type !== "earning" ||
+            originalCreator.earnings_source !== "miniapp" ||
+            normalizeUuidIdentity(originalCreator.metadata.app_id) !== factAppId ||
+            normalizeUuidIdentity(originalCreator.metadata.transaction_user_id) !== factUserId ||
+            originalCreator.metadata.earnings_type !== "inference_markup" ||
+            originalCreator.metadata.original_source_id !==
+              `app-charge:${reservation.id}:inference_markup:deduct` ||
+            !new Decimal(originalCreator.amount).equals(initialCreatorAmount)
+      ) {
+        throw new ElizaError("App settlement lacks its committed creator earning authority", {
+          code: "APP_CREATOR_SETTLEMENT_AUTHORITY_MISMATCH",
+          context: { reservationTransactionId: reservation.id, organizationId },
+        });
+      }
+      const collectsActual =
+        !organizationAdjustment.gt(0) || new Decimal(lockedOrg.balance).gte(organizationAdjustment);
+      const finalCreatorAmount = collectsActual
+        ? actualBase
+            .mul(markupPercentage)
+            .div(100)
+            .toDecimalPlaces(6, Decimal.ROUND_HALF_UP)
+            .toDecimalPlaces(4, Decimal.ROUND_DOWN)
+        : initialCreatorAmount;
+      const creatorLedgerAdjustment = finalCreatorAmount.minus(initialCreatorAmount);
       const identityMetadata = {
         ...params.metadata,
-        reservation_transaction_id: params.reservationTransactionId,
-        idempotencyKey: `app-reservation-settlement:${params.reservationTransactionId}`,
+        reservation_transaction_id: reservation.id,
+        idempotencyKey: `app-reservation-settlement:${reservation.id}`,
         terminal_source: terminalSource,
       };
 
@@ -1840,11 +1607,11 @@ export class AppCreditsService {
           refundAmount: organizationAdjustment.abs().toNumber(),
           scope: "AppCreditsService.settleAppReservation",
         });
-        if (creatorAdjustment.lt(0) && creatorUserId) {
+        if (creatorLedgerAdjustment.lt(0) && creatorUserId) {
           const reversal = await this.reverseCreatorEarnings(
-            params.appId,
-            params.userId,
-            creatorAdjustment.abs().toNumber(),
+            factAppId,
+            factUserId,
+            creatorLedgerAdjustment.abs().toNumber(),
             platformAdjustment.abs().toNumber(),
             "reconcile_refund",
             identityMetadata,
@@ -1857,8 +1624,8 @@ export class AppCreditsService {
         const refund = await creditsService.refundCredits({
           organizationId,
           amount: organizationAdjustment.abs().toFixed(6),
-          description: `App reconciliation refund (${accountingApp.name ?? params.appId})`,
-          stripePaymentIntentId: `reconcile-refund:${params.reservationTransactionId}`,
+          description: `App reconciliation refund (${accountingApp.name ?? factAppId})`,
+          stripePaymentIntentId: `reconcile-refund:${reservation.id}`,
           metadata: identityMetadata,
           db: tx,
           deferCacheInvalidation: true,
@@ -1870,8 +1637,8 @@ export class AppCreditsService {
           const debit = await creditsService.reserveAndDeductCredits({
             organizationId,
             amount: organizationAdjustment.toNumber(),
-            description: `App reconciliation charge (${accountingApp.name ?? params.appId})`,
-            stripePaymentIntentId: `reconcile-charge:${params.reservationTransactionId}`,
+            description: `App reconciliation charge (${accountingApp.name ?? factAppId})`,
+            stripePaymentIntentId: `reconcile-charge:${reservation.id}`,
             metadata: identityMetadata,
             db: tx,
             deferPostCommitEffects: true,
@@ -1882,12 +1649,12 @@ export class AppCreditsService {
           newBalance = debit.newBalance;
           resultOutcome = "overage";
           creditTransactionId = debit.transaction.id;
-          if (creatorAdjustment.gt(0) && creatorUserId) {
+          if (creatorLedgerAdjustment.gt(0) && creatorUserId) {
             const earning = await this.recordCreatorEarnings(
-              params.appId,
-              params.userId,
+              factAppId,
+              factUserId,
               "inference_markup",
-              creatorAdjustment.toNumber(),
+              creatorLedgerAdjustment.toNumber(),
               platformAdjustment.toNumber(),
               "reconcile_charge",
               identityMetadata,
@@ -1905,11 +1672,15 @@ export class AppCreditsService {
       const [receipt] = await tx
         .insert(appReservationSettlements)
         .values({
-          reservation_transaction_id: params.reservationTransactionId,
+          reservation_transaction_id: reservation.id,
           organization_id: organizationId,
-          app_id: params.appId,
-          user_id: params.userId,
+          app_id: factAppId,
+          user_id: factUserId,
           creator_user_id: creatorUserId,
+          creator_rule_version: 2,
+          creator_original_ledger_entry_id: originalCreator?.id ?? null,
+          creator_initial_amount: initialCreatorAmount.toFixed(4),
+          creator_final_amount: finalCreatorAmount.toFixed(4),
           terminal_source: terminalSource,
           outcome: resultOutcome,
           reserved_base_cost: reservedBase.toFixed(6),
@@ -1931,7 +1702,7 @@ export class AppCreditsService {
         .set({ settled_at: new Date() })
         .where(
           and(
-            eq(creditTransactions.id, params.reservationTransactionId),
+            eq(creditTransactions.id, reservation.id),
             eq(creditTransactions.organization_id, organizationId),
             sql`${creditTransactions.settled_at} IS NULL`,
           ),
@@ -2502,6 +2273,9 @@ export class AppCreditsService {
       purchaseSharePercentage?: number;
     },
   ): Promise<void> {
+    if (settings.monetizationEnabled === true) {
+      throw new CreatorMonetizationRetiredError("app_monetization");
+    }
     if (
       settings.inferenceMarkupPercentage !== undefined &&
       (settings.inferenceMarkupPercentage < 0 || settings.inferenceMarkupPercentage > 1000)
@@ -2533,15 +2307,6 @@ export class AppCreditsService {
     // through (fenced) so the toggle takes effect immediately without
     // manufacturing a cold cache-only miss on the very next inference.
     await publishAppCacheAfterMutation(appId, updated);
-
-    // When enabling monetization, ensure earnings record exists
-    // This prevents null state when viewing earnings dashboard
-    if (settings.monetizationEnabled === true) {
-      await appEarningsRepository.getOrCreate(appId);
-      logger.info("[AppCredits] Initialized earnings record for app", {
-        appId,
-      });
-    }
 
     logger.info("[AppCredits] Updated monetization settings", {
       appId,

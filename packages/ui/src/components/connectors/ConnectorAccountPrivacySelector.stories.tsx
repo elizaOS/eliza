@@ -5,7 +5,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
-import type { ConnectorAccountPrivacy } from "../../api/client-agent";
+import type { ConnectorAccountPrivacy } from "../../api/client-agent-connector-accounts";
 import { TranslationProvider } from "../../state/TranslationProvider";
 import { ConnectorAccountPrivacySelector } from "./ConnectorAccountPrivacySelector";
 

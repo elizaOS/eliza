@@ -1,11 +1,13 @@
+"use client";
+
+import { ApiError, api, apiErrorMessage } from "../lib/api-client";
+
 /**
  * iMessage (Blooio) cloud connector (token-credential + webhook secret).
  *
  * Raw `fetch` connect/disconnect/webhook-secret calls are swapped for the cloud
  * {@link api} client so the steward Bearer token is injected on native targets.
  */
-
-"use client";
 
 import { ExternalLink, Loader2, MessageCircle, Smartphone } from "lucide-react";
 import { useState } from "react";
@@ -27,7 +29,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Separator } from "../../components/ui/separator";
 import { TextLink } from "../../components/ui/text-link";
-import { ApiError, api } from "../lib/api-client";
+
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
 
@@ -38,18 +40,6 @@ interface BlooioStatus {
   webhookUrl?: string;
   hasWebhookSecret?: boolean;
   error?: string;
-}
-
-function apiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const body = error.body;
-    if (body && typeof body === "object" && "error" in body) {
-      const apiError = (body as { error?: unknown }).error;
-      if (typeof apiError === "string" && apiError) return apiError;
-    }
-    return error.message || fallback;
-  }
-  return fallback;
 }
 
 export function BlooioConnection() {

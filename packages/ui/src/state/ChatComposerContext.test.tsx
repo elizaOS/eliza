@@ -19,6 +19,8 @@ import {
 } from "./ChatComposerContext.hooks";
 import {
   clearPendingChatTurn,
+  clearSettledPendingChatTurns,
+  listPendingChatTurns,
   PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS,
   persistPendingChatTurn,
 } from "./pending-chat-turns";
@@ -222,6 +224,9 @@ describe("ChatComposerContext draft persistence", () => {
 
     expect(setChatInput).toHaveBeenCalledWith("reload-safe message");
     expect(readChatDraft("conversation-1")).toBe("reload-safe message");
+    expect(listPendingChatTurns("conversation-1")[0]?.restoredToDraft).toBe(
+      true,
+    );
   });
 
   it("does not restore a pending send after server truth clears its receipt", async () => {
@@ -251,5 +256,104 @@ describe("ChatComposerContext draft persistence", () => {
 
     expect(setChatInput).not.toHaveBeenCalledWith("already settled");
     expect(readChatDraft("conversation-1")).toBeNull();
+  });
+
+  it("waits for history after a late cold launch before restoring an old pending send", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-19T00:00:00.000Z"));
+    persistPendingChatTurn({
+      conversationId: "conversation-1",
+      clientMessageId: "client-late",
+      text: "accepted while phone was off",
+      sentAt: Date.now(),
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    const setChatInput = vi.fn();
+    render(
+      <DraftHarness
+        activeConversationId="conversation-1"
+        chatInput=""
+        setChatInput={setChatInput}
+      />,
+    );
+    expect(setChatInput).not.toHaveBeenCalledWith(
+      "accepted while phone was off",
+    );
+    clearPendingChatTurn("conversation-1", "client-late");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS);
+    });
+    expect(setChatInput).not.toHaveBeenCalledWith(
+      "accepted while phone was off",
+    );
+    expect(readChatDraft("conversation-1")).toBeNull();
+  });
+
+  it("keeps an uncertain send id through two cold launches without history", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-19T00:00:00.000Z"));
+    persistPendingChatTurn({
+      conversationId: "conversation-1",
+      clientMessageId: "client-original",
+      text: "uncertain send",
+      sentAt: Date.now(),
+    });
+    const first = render(
+      <DraftHarness
+        activeConversationId="conversation-1"
+        chatInput=""
+        setChatInput={vi.fn()}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS);
+    });
+    expect(readChatDraft("conversation-1")).toBe("uncertain send");
+    first.unmount();
+    render(
+      <DraftHarness
+        activeConversationId="conversation-1"
+        chatInput=""
+        setChatInput={vi.fn()}
+      />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS);
+    });
+    expect(listPendingChatTurns("conversation-1")).toEqual([
+      expect.objectContaining({ clientMessageId: "client-original" }),
+    ]);
+  });
+
+  it("removes a recovered draft when later server history confirms that send", () => {
+    const sentAt = Date.now();
+    persistPendingChatTurn({
+      conversationId: "conversation-1",
+      clientMessageId: "client-original",
+      text: "accepted prompt",
+      sentAt,
+    });
+    writeChatDraft("conversation-1", "accepted prompt");
+    const setChatInput = vi.fn();
+    render(
+      <DraftHarness
+        activeConversationId="conversation-1"
+        chatInput="accepted prompt"
+        setChatInput={setChatInput}
+      />,
+    );
+    act(() => {
+      clearSettledPendingChatTurns("conversation-1", [
+        {
+          id: "server-user",
+          role: "user",
+          text: "accepted prompt",
+          timestamp: sentAt,
+        },
+      ]);
+    });
+    expect(setChatInput).toHaveBeenCalledWith("");
+    expect(readChatDraft("conversation-1")).toBeNull();
+    expect(listPendingChatTurns("conversation-1")).toEqual([]);
   });
 });

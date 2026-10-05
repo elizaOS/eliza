@@ -10,9 +10,9 @@ import {
   activityEventToPlaintext,
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core";
+} from "@elizaos/core/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import { parseProactiveMessageEvent } from "../state/parsers";
 import {
   isRailGestureActive,

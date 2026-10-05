@@ -44,7 +44,7 @@ function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRunti
 }
 
 describe("iMessage connector — outbound media dispatch", () => {
-  it("passes the first attachment URL through to sendMessage as mediaUrl", async () => {
+  it("passes every attachment URL through to sendMessage", async () => {
     const registrations: MessageConnectorRegistration[] = [];
     const runtime = makeRuntime(registrations);
     const service = {
@@ -53,7 +53,7 @@ describe("iMessage connector — outbound media dispatch", () => {
       getChats: vi.fn(async () => []),
       getRecentMessages: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
-      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+      sendMessage: vi.fn(async () => ({ success: true, localEffectIds: ["local-completion-1"] })),
     } as unknown as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);
@@ -63,12 +63,15 @@ describe("iMessage connector — outbound media dispatch", () => {
       { source: "imessage", entityId: "+1 (415) 555-2671" as UUID } as ConnectorTargetInfo,
       {
         text: "here is the file",
-        attachments: [{ id: "a1", url: "/media/generated-speech.mp3", contentType: "audio" }],
+        attachments: [
+          { id: "a1", url: "/media/generated-speech.mp3", contentType: "audio" },
+          { id: "a2", url: "/media/second.png", contentType: "image" },
+        ],
       } as unknown as ConnectorContent
     );
 
     expect(service.sendMessage).toHaveBeenCalledWith("+14155552671", "here is the file", {
-      mediaUrl: "/media/generated-speech.mp3",
+      mediaUrls: ["/media/generated-speech.mp3", "/media/second.png"],
       accountId: "default",
     });
   });
@@ -82,7 +85,7 @@ describe("iMessage connector — outbound media dispatch", () => {
       getChats: vi.fn(async () => []),
       getRecentMessages: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
-      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+      sendMessage: vi.fn(async () => ({ success: true, localEffectIds: ["local-completion-1"] })),
     } as unknown as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);
@@ -97,7 +100,7 @@ describe("iMessage connector — outbound media dispatch", () => {
     );
 
     expect(service.sendMessage).toHaveBeenCalledWith("+14155552671", "", {
-      mediaUrl: "/media/pic.png",
+      mediaUrls: ["/media/pic.png"],
       accountId: "default",
     });
   });
@@ -111,7 +114,7 @@ describe("iMessage connector — outbound media dispatch", () => {
       getChats: vi.fn(async () => []),
       getRecentMessages: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
-      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+      sendMessage: vi.fn(async () => ({ success: true, localEffectIds: ["local-completion-1"] })),
     } as unknown as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);

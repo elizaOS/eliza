@@ -27,6 +27,11 @@ tokenization. Missing attestations fail closed unless the operator sets
 
 from __future__ import annotations
 
+from eliza_training.lib.privacy_attestation import (
+    PRIVACY_ATTESTATION_SCHEMA, PRIVACY_ATTESTATION_VERSION,
+    has_privacy_attestation as _is_privacy_attested,
+)
+
 import json
 import os
 import re
@@ -38,13 +43,11 @@ ROOT = Path(__file__).resolve().parent.parent
 PROMPT_REGISTRY = ROOT / "data" / "prompts" / "registry.json"
 
 NATIVE_FORMAT = "eliza_native_v1"
-PRIVACY_ATTESTATION_SCHEMA = "eliza.privacy_filter_attestation.v1"
-PRIVACY_ATTESTATION_VERSION = 1
 
 # Mandatory privacy filter — every record must pass through this before
 # JSONL write. Importing eagerly means a broken filter aborts the script;
 # there is no bypass path.
-from privacy_filter_trajectories import (  # noqa: E402
+from eliza_training.privacy_filter_trajectories import (  # noqa: E402
     PrivacyFilterError,
     redact_value as _redact_value,
 )
@@ -52,7 +55,7 @@ from privacy_filter_trajectories import (  # noqa: E402
 # Force pattern compile at import time so any failure surfaces here, not
 # at first record. `_inline_patterns()` raises `PrivacyFilterError` on
 # empty/failed compile; let it propagate.
-from privacy_filter_trajectories import _inline_patterns as _compile_inline_patterns  # noqa: E402
+from eliza_training.privacy_filter_trajectories import _inline_patterns as _compile_inline_patterns  # noqa: E402
 
 try:
     _compile_inline_patterns()
@@ -153,42 +156,8 @@ def _privacy_override_reason() -> str:
     return os.environ.get("ELIZA_TRAINING_PRIVACY_OVERRIDE_REASON", "").strip()
 
 
-def _privacy_attestation_candidates(record: dict[str, Any]) -> list[dict[str, Any]]:
-    metadata = _as_dict(record.get("metadata"))
-    candidates: list[dict[str, Any]] = []
-    for value in (
-        record.get("privacyAttestation"),
-        record.get("privacy_attestation"),
-        metadata.get("privacy_attestation"),
-        metadata.get("privacyAttestation"),
-        metadata.get("privacy"),
-        record.get("privacy"),
-    ):
-        if isinstance(value, dict):
-            candidates.append(value)
-    return candidates
 
 
-def _is_privacy_attested(record: dict[str, Any]) -> bool:
-    for attestation in _privacy_attestation_candidates(record):
-        schema = attestation.get("schema")
-        version = attestation.get("version")
-        passed = attestation.get("passed")
-        reviewed = attestation.get("reviewed")
-        redacted = attestation.get("redacted")
-        privacy = _as_dict(attestation.get("privacy"))
-        if (
-            schema == PRIVACY_ATTESTATION_SCHEMA
-            and version == PRIVACY_ATTESTATION_VERSION
-            and passed is True
-            and (
-                reviewed is True
-                or redacted is True
-                or privacy.get("reviewed") is True
-            )
-        ):
-            return True
-    return False
 
 
 def _require_native_privacy_attestation(record: dict[str, Any]) -> None:

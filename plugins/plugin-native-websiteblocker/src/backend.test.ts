@@ -1,3 +1,4 @@
+/** Exercises real native-to-engine result translation with a fake Capacitor collaborator. */
 import { describe, expect, it, vi } from "vitest";
 
 import { createNativeWebsiteBlockerBackend } from "./backend";
@@ -153,7 +154,7 @@ describe("createNativeWebsiteBlockerBackend", () => {
       success: true as const,
       removed: true,
       status: {
-        active: false,
+        active: true,
         endsAt: null,
         websites: [],
         canUnblockEarly: true,

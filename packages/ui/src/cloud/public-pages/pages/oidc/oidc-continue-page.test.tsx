@@ -10,7 +10,9 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
   useCloudT: () => (_key: string, opts?: { defaultValue?: string }) =>
     opts?.defaultValue ?? _key,
 }));
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
 const { prepareOidcResumeTargetMock } = vi.hoisted(() => ({
   prepareOidcResumeTargetMock: vi.fn(),

@@ -65,8 +65,10 @@ const checkoutIntentState = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("@elizaos/ui/cloud-ui", () => ({
+vi.mock("../../components/ui/button", () => ({
   Button: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+vi.mock("../../components/ui/card", () => ({
   Card: ({ children, ...props }: { children: ReactNode }) => (
     <section {...props}>{children}</section>
   ),
@@ -82,6 +84,8 @@ vi.mock("@elizaos/ui/cloud-ui", () => ({
     if (children === "Purchase Successful!") renderState.successTitle();
     return <h1>{children}</h1>;
   },
+}));
+vi.mock("../../cloud-ui/components/dashboard/route-placeholders", () => ({
   DashboardLoadingState: ({ label }: { label: string }) => (
     <div role="status" aria-live="polite" aria-label={label} />
   ),

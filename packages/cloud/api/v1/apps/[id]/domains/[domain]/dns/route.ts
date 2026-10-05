@@ -7,14 +7,14 @@
  * their existing dns provider.
  */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { cloudflareDnsService } from "@elizaos/cloud-shared/lib/services/cloudflare-dns";
+import { extractErrorMessage } from "@elizaos/cloud-shared/lib/utils/error-handling";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { cloudflareDnsService } from "@/lib/services/cloudflare-dns";
-import { extractErrorMessage } from "@/lib/utils/error-handling";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { loadCloudflareManagedDomain } from "../../guards";
 
 const RecordTypes = ["A", "AAAA", "CNAME", "TXT", "MX", "SRV", "CAA"] as const;

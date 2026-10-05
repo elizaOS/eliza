@@ -6,12 +6,12 @@
 import { AlertCircle, Home, RefreshCw } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Button } from "../../../../components/primitives";
+import { Button } from "../../../../components/ui/button";
 import { appModeNavigation } from "../../../app-mode/app-mode";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { pairedAppLoginUrlForMintHost } from "../../../sso-bridge/sso-bridge";
 import { resolveLoginReturnTo } from "../../lib/login-return-to";
-import { usePageTitle } from "../../lib/use-page-title";
 import { AuthResultShell } from "./auth-result-shell";
 
 export function AuthErrorPageForHost({
@@ -36,7 +36,7 @@ export function AuthErrorPageForHost({
     if (reason) headingRef.current?.focus({ preventScroll: true });
   }, [reason]);
 
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.authError.metaTitle", {
       defaultValue: "Authentication Error | Eliza Cloud",
     }),

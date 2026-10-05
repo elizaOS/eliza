@@ -4,17 +4,18 @@
  * grounding prompt, runs the extractor pipeline, and merges extracted fields
  * with the current goal metadata so partial updates don't clobber prior state.
  */
+
+import type {
+  CreateLifeOpsGoalRequest,
+  LifeOpsGoalDefinition,
+  UpdateLifeOpsGoalRequest,
+} from "@elizaos/contracts";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   parseJsonModelRecord,
   recentConversationTexts,
   runExtractorPipeline,
 } from "@elizaos/core";
-import type {
-  CreateLifeOpsGoalRequest,
-  LifeOpsGoalDefinition,
-  UpdateLifeOpsGoalRequest,
-} from "../../contracts/index.js";
 import {
   buildGoalGroundingMetadata,
   GOAL_GROUNDING_STATES,

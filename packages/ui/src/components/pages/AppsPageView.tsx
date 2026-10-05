@@ -6,14 +6,14 @@
  * invisible).
  */
 
-import { logger } from "@elizaos/logger";
 import { useEffect, useState } from "react";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
+import { logger } from "../../logger.ts";
 import {
   getWindowNavigationPath,
   shouldUseHashNavigation,
 } from "../../navigation";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { shellHistory } from "../../surface-realm-channel";
 import { FullscreenView } from "../apps/FullscreenView";
 import { getAppSlug } from "../apps/helpers";

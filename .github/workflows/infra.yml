@@ -358,7 +358,7 @@ jobs:
           fi
           if [ "$OPERATION" = "state-rm" ]; then
             [ -n "$STATE_ADDRESS" ] || { echo "::error::state_address is required for state-rm"; exit 1; }
-            node packages/scripts/validate-terraform-state-address.mjs "$STATE_ADDRESS"
+            node packages/scripts/validate-terraform-state-address.ts "$STATE_ADDRESS"
           fi
           if [ "$OPERATION" = "plan" ] || [ "$OPERATION" = "apply" ]; then
             [ -n "$TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY" ] || { echo "::error::TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY is required"; exit 1; }
@@ -437,7 +437,7 @@ jobs:
           if [ "$TERRAFORM_PLAN_SCOPE" = "canonical-edge-additive" ]; then
             reviewed_plan="$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
             terraform show -json selected.tfplan > "$reviewed_plan"
-            node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-canonical-edge-additive-plan.mjs" \
+            node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-canonical-edge-additive-plan.ts" \
               "$reviewed_plan" "${{ inputs.environment }}"
           fi
 
@@ -464,7 +464,7 @@ jobs:
             --arg planSha256 "$plan_digest" \
             '{component:$component,environment:$environment,operation:$operation,planScope:$planScope,runId:$runId,runAttempt:$runAttempt,sourceRef:$sourceRef,sourceSha:$sourceSha,planSha256:$planSha256}' \
             > "$artifact_dir/plan-metadata.json"
-          node "$GITHUB_WORKSPACE/packages/scripts/terraform-plan-envelope.mjs" \
+          node "$GITHUB_WORKSPACE/packages/scripts/terraform-plan-envelope.ts" \
             encrypt \
             selected.tfplan \
             "$artifact_dir/selected.tfplan.enc" \
@@ -519,7 +519,7 @@ jobs:
         run: |
           set -euo pipefail
           artifact_dir="$RUNNER_TEMP/reviewed-terraform-plan"
-          node "$GITHUB_WORKSPACE/packages/scripts/terraform-plan-envelope.mjs" \
+          node "$GITHUB_WORKSPACE/packages/scripts/terraform-plan-envelope.ts" \
             decrypt \
             "$artifact_dir/selected.tfplan.enc" \
             selected.tfplan \
@@ -541,7 +541,7 @@ jobs:
           set -euo pipefail
           reviewed_plan="$RUNNER_TEMP/canonical-edge-reviewed-plan.json"
           terraform show -json selected.tfplan > "$reviewed_plan"
-          node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-canonical-edge-additive-plan.mjs" \
+          node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-canonical-edge-additive-plan.ts" \
             "$reviewed_plan" "$TARGET_ENVIRONMENT"
 
       - name: Apply reviewed plan
@@ -558,7 +558,7 @@ jobs:
           terraform output -json railway_tunnel_dns > "$RUNNER_TEMP/railway-tunnel-dns.json"
           terraform output -json redirect_dns > "$RUNNER_TEMP/redirect-dns.json"
           terraform output -json legacy_certificate_packs > "$RUNNER_TEMP/legacy-certificate-packs.json"
-          node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-pages-domain-state.mjs" \
+          node "$GITHUB_WORKSPACE/packages/scripts/validate-terraform-pages-domain-state.ts" \
             "$RUNNER_TEMP/pages-domains.json" \
             "$RUNNER_TEMP/canonical-edge.json" \
             "$RUNNER_TEMP/railway-tunnel-dns.json" \
@@ -652,7 +652,7 @@ jobs:
 
       - name: Verify live environment routing
         if: inputs.component == 'pages-domains' && inputs.operation == 'apply'
-        run: node packages/cloud/scripts/verify-environment-routing-cli.mjs --environment "${{ inputs.environment }}" --require-beacon
+        run: node packages/cloud/scripts/verify-environment-routing-cli.ts --environment "${{ inputs.environment }}" --require-beacon
 
       - name: Remove exact state address
         if: inputs.operation == 'state-rm'

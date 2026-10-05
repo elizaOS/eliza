@@ -1,6 +1,6 @@
 /**
  * Shape tests for Cerebras-mode config resolution (base URL, key, model getters)
- * and the deterministic local embedding fallback. Mocked runtime, no network.
+ * and explicit embedding-provider availability. Mocked runtime, no network.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -268,7 +268,7 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getUsageProvider(runtime)).toBe("openai");
   });
 
-  it("uses a deterministic local embedding fallback in Cerebras mode without an embedding endpoint", async () => {
+  it("rejects embeddings without a real endpoint in Cerebras mode", async () => {
     const runtime = buildRuntime({
       OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
       CEREBRAS_API_KEY: "csk-cerebras-fake",
@@ -278,16 +278,11 @@ describe("plugin-openai Cerebras config (pure)", () => {
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("remote embeddings should not be called"));
 
-    const first = await handleTextEmbedding(runtime, {
-      text: "remember the launch code",
-    });
-    const second = await handleTextEmbedding(runtime, {
-      text: "remember the launch code",
-    });
-
+    await expect(
+      handleTextEmbedding(runtime, {
+        text: "remember the launch code",
+      })
+    ).rejects.toMatchObject({ code: "EMBEDDING_PROVIDER_UNAVAILABLE" });
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(first).toHaveLength(1536);
-    expect(first).toEqual(second);
-    expect(first.some((value) => value !== 0)).toBe(true);
   });
 });

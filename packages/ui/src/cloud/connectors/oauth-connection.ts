@@ -12,8 +12,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "../../bridge/toast";
-import { ApiError, api } from "../lib/api-client";
-import { isSafeNavigationUrl } from "../lib/navigation-url";
+import { isSafeNavigationUrl } from "../../utils/navigation-url";
+import {
+  ApiError,
+  api,
+  apiErrorMessage as errorBodyMessage,
+} from "../lib/api-client";
 
 /**
  * A single OAuth connection row returned by
@@ -52,18 +56,6 @@ interface UseOAuthConnectionsResult {
   connect: () => Promise<void>;
   disconnect: (connectionId: string) => Promise<void>;
   refetch: () => Promise<void>;
-}
-
-function errorBodyMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const body = error.body;
-    if (body && typeof body === "object" && "error" in body) {
-      const apiError = (body as { error?: unknown }).error;
-      if (typeof apiError === "string" && apiError) return apiError;
-    }
-    return error.message || fallback;
-  }
-  return fallback;
 }
 
 export function useOAuthConnections(

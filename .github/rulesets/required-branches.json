@@ -5,9 +5,7 @@
   "bypass_actors": [],
   "conditions": {
     "ref_name": {
-      "include": [
-        "refs/heads/develop"
-      ],
+      "include": ["refs/heads/develop"],
       "exclude": []
     }
   },
@@ -24,10 +22,7 @@
     {
       "type": "pull_request",
       "parameters": {
-        "allowed_merge_methods": [
-          "squash",
-          "rebase"
-        ],
+        "allowed_merge_methods": ["squash", "rebase"],
         "dismiss_stale_reviews_on_push": true,
         "require_code_owner_review": false,
         "require_last_push_approval": true,

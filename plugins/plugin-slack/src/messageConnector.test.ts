@@ -4,7 +4,11 @@
  * against a `SlackService` instance with its Slack-facing methods stubbed. No
  * live Slack API.
  */
-import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  MessageConnectorTarget,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { compareSlackConnectorTargets, SlackService } from "./service";
 import type { SlackChannel } from "./types";
@@ -517,6 +521,73 @@ describe("Slack message connector adapter", () => {
 
     expect(result).toHaveLength(501);
     expect(history).toHaveBeenCalledTimes(34);
+  });
+
+  it("attributes a history bot or webhook post to that bot, not to the agent", async () => {
+    const runtime = createRuntime();
+    const history = vi.fn(async () => ({
+      messages: [
+        {
+          type: "message",
+          subtype: "bot_message",
+          ts: "1700000001.000001",
+          bot_id: "B0XYZ",
+          text: "Deploy failed",
+        },
+        {
+          type: "message",
+          ts: "1700000002.000001",
+          user: "U0AGENT",
+          bot_id: "B0AGENT",
+          text: "On it",
+        },
+      ],
+      response_metadata: { next_cursor: "" },
+    }));
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        runtime,
+        client: { conversations: { history } },
+        defaultAccountId: "default",
+        accountStates: new Map(),
+        getBotUserIdForAccount: () => "U0AGENT",
+        getRoomId: async () => "room-1",
+        getChannel: async () => null,
+        getUser: async () => null,
+      },
+    );
+    const toMemory = (
+      service as unknown as {
+        slackMessageToMemory: (
+          message: unknown,
+          channelId: string,
+          threadTs: string | undefined,
+          accountId: string,
+        ) => Promise<Memory>;
+      }
+    ).slackMessageToMemory.bind(service);
+
+    const [webhook, own] = await service.readHistory(
+      "C12345678",
+      undefined,
+      "default",
+    );
+    const webhookMemory = await toMemory(
+      webhook,
+      "C12345678",
+      undefined,
+      "default",
+    );
+    const ownMemory = await toMemory(own, "C12345678", undefined, "default");
+
+    expect(webhookMemory.entityId).not.toBe(runtime.agentId);
+    expect(webhookMemory.metadata).toMatchObject({
+      fromId: "B0XYZ",
+      fromBot: true,
+      sender: expect.objectContaining({ id: "B0XYZ" }),
+    });
+    expect(ownMemory.entityId).toBe(runtime.agentId);
   });
 
   it("keeps every search match when no result page was requested", async () => {

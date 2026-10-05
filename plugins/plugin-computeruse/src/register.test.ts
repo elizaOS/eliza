@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const registerAppShellPage = vi.hoisted(() => vi.fn());
 
-vi.mock("@elizaos/ui/app-shell-registry", () => ({ registerAppShellPage }));
+vi.mock("@elizaos/ui", () => ({
+  registerAppShellPage,
+}));
 
 describe("Computer Sessions app registration", () => {
   beforeEach(() => {
@@ -12,7 +14,7 @@ describe("Computer Sessions app registration", () => {
   });
 
   it("registers a packaged page with a local component loader", async () => {
-    await import("./register.js");
+    (await import("./register.js")).registerApp();
 
     expect(registerAppShellPage).toHaveBeenCalledOnce();
     expect(registerAppShellPage).toHaveBeenCalledWith(

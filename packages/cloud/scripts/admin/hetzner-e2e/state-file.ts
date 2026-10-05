@@ -1,11 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Shared state-file helper for the Hetzner E2E workflow.
- *
- * Each helper script in the workflow contributes incremental data
- * (server_id, ip, agent_id, ...) into a single JSON file that the
- * teardown step reads. Writes are atomic (write-tmp + rename) so a
- * crashed step never leaves a half-written file behind.
+ * Persists the manual Hetzner diagnostic's host and agent identities for teardown.
+ * Each command adds its result to one state file; atomic replacement prevents
+ * an interrupted write from leaving partial JSON.
  */
 
 import {

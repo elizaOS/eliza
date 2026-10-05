@@ -3,13 +3,16 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../api";
+import { client } from "../api/client";
 import { savePersistedActiveServer } from "./persistence";
 
 const bridgeState = vi.hoisted(() => ({ electrobun: false }));
 
-vi.mock("../bridge", () => ({
+vi.mock("../bridge/electrobun-rpc", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../bridge/electrobun-rpc")>()),
   invokeDesktopBridgeRequestWithTimeout: vi.fn(),
+}));
+vi.mock("../bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => bridgeState.electrobun,
 }));
 
@@ -104,6 +107,91 @@ describe("useCloudState — dedicated-agent status polling gate", () => {
     },
   );
 
+  it("keeps verification pending until credits settle without trusting provisional auth", async () => {
+    bridgeState.electrobun = true;
+    let finishCredits!: (
+      value: Awaited<ReturnType<typeof client.getCloudCredits>>,
+    ) => void;
+    getCloudCreditsSpy.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishCredits = resolve;
+        }),
+    );
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    expect(result.current.elizaCloudStatusLoading).toBe(true);
+    let poll!: Promise<boolean>;
+    await act(async () => {
+      poll = result.current.pollCloudCredits();
+    });
+    expect(result.current.elizaCloudStatusLoading).toBe(true);
+    expect(result.current.elizaCloudConnected).toBe(false);
+    await act(async () => {
+      finishCredits({ connected: false, balance: 0, authRejected: true });
+      expect(await poll).toBe(false);
+    });
+    expect(result.current.elizaCloudStatusLoading).toBe(false);
+    expect(result.current.elizaCloudConnected).toBe(false);
+    expect(result.current.elizaCloudAuthRejected).toBe(true);
+    unmount();
+  });
+
+  it("exposes unavailable status after a failed initial poll and clears it on a successful retry", async () => {
+    bridgeState.electrobun = true;
+    getCloudStatusSpy.mockRejectedValueOnce(
+      new Error("status transport unavailable"),
+    );
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      expect(await result.current.pollCloudCredits()).toBe(false);
+    });
+    expect(result.current.elizaCloudStatusLoading).toBe(false);
+    expect(result.current.elizaCloudStatusUnavailable).toBe(true);
+    expect(result.current.elizaCloudConnected).toBe(false);
+    await act(async () => {
+      expect(await result.current.pollCloudCredits()).toBe(true);
+    });
+    expect(result.current.elizaCloudStatusUnavailable).toBe(false);
+    expect(result.current.elizaCloudConnected).toBe(true);
+    unmount();
+  });
+
+  it("keeps verification pending until every overlapping poll settles", async () => {
+    bridgeState.electrobun = true;
+    type Status = Awaited<ReturnType<typeof client.getCloudStatus>>;
+    const finishStatus: Array<(value: Status) => void> = [];
+    getCloudStatusSpy.mockImplementation(
+      () => new Promise<Status>((resolve) => finishStatus.push(resolve)),
+    );
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    let first!: Promise<boolean>;
+    let second!: Promise<boolean>;
+    await act(async () => {
+      first = result.current.pollCloudCredits();
+      second = result.current.pollCloudCredits();
+    });
+    expect(getCloudStatusSpy).toHaveBeenCalledTimes(2);
+    const disconnected: Status = {
+      enabled: true,
+      connected: false,
+      hasApiKey: false,
+      cloudVoiceProxyAvailable: false,
+    };
+    await act(async () => {
+      finishStatus[0](disconnected);
+      expect(await first).toBe(false);
+    });
+    expect(result.current.elizaCloudStatusLoading).toBe(true);
+    await act(async () => {
+      finishStatus[1](disconnected);
+      expect(await second).toBe(false);
+    });
+    expect(result.current.elizaCloudStatusLoading).toBe(false);
+    expect(result.current.elizaCloudConnected).toBe(false);
+    expect(getCloudCreditsSpy).not.toHaveBeenCalled();
+    unmount();
+  });
+
   it("polls through the supported direct Cloud transport in Electrobun", async () => {
     bridgeState.electrobun = true;
     const { result, unmount } = renderHook(() => useCloudState(makeParams()));
@@ -131,6 +219,7 @@ describe("useCloudState — dedicated-agent status polling gate", () => {
     });
 
     expect(connected).toBe(false);
+    expect(result.current.elizaCloudStatusLoading).toBe(false);
     expect(getCloudStatusSpy).not.toHaveBeenCalled();
     expect(getCloudCreditsSpy).not.toHaveBeenCalled();
     expect(result.current.elizaCloudConnected).toBe(false);

@@ -27,7 +27,6 @@ export const PULL_CANCEL_SETTLE_MS = SHADE_SETTLE_MS;
 export const SHADE_MIN_FLICK_DISTANCE_PX = 22;
 export const SHADE_FLICK_VELOCITY_PX_PER_MS = 0.45;
 export const SHADE_MIN_VELOCITY_SAMPLE_MS = 16;
-export const NOTIFICATION_COUNT_RESTORE_MS = SHADE_SETTLE_MS;
 
 export function isClickBelowNotificationCards(
   target: EventTarget | null,

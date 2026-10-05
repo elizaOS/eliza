@@ -1,12 +1,12 @@
 /**
  * Re-export shim. The LifeOps normalize/validation primitives are now
- * runtime-level primitives in `@elizaos/shared` (pure, dependency-free beyond
+ * runtime-level primitives in `@elizaos/core` (pure, dependency-free beyond
  * `@elizaos/core` and the LifeOps contract types/constants). This file
  * preserves the historical `./service-normalize.js` import path for in-plugin
  * callers.
  */
+
 export {
-  defaultOwnerEntityId,
   fail,
   lifeOpsErrorMessage,
   normalizeEnumValue,
@@ -30,4 +30,5 @@ export {
   normalizeValidTimeZone,
   requireAgentId,
   requireNonEmptyString,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+export { defaultOwnerEntityId } from "@elizaos/host";

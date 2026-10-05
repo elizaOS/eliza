@@ -230,15 +230,25 @@ export function stringifyForModel(value: unknown): string {
 /** Serialize diagnostic context without allowing hostile or cyclic values to mask the original event. */
 export function stringifyForDiagnostics(value: unknown): string {
 	if (typeof value === "string") return value;
-	const seen = new WeakSet<object>();
+	// Track only the CURRENT path's ancestors, not every object ever visited. A
+	// single never-pruned WeakSet rendered a shared (non-cyclic) sub-object — a
+	// DAG, e.g. the same tool result referenced from two keys — as "[Circular]",
+	// silently dropping the second reference from recorded trajectories and
+	// evaluator diagnostics (#31004). `this` is the holder of the key being
+	// visited and JSON.stringify walks depth-first, so pruning the stack back to
+	// `this` keeps exactly the ancestor chain while still collapsing true cycles.
+	const ancestors: object[] = [];
 	try {
 		const serialized = JSON.stringify(
 			value,
-			(_key, nestedValue: unknown) => {
+			function (_key, nestedValue: unknown) {
 				if (typeof nestedValue === "bigint") return `${nestedValue}n`;
 				if (nestedValue && typeof nestedValue === "object") {
-					if (seen.has(nestedValue)) return "[Circular]";
-					seen.add(nestedValue);
+					while (ancestors.length && ancestors.at(-1) !== this) {
+						ancestors.pop();
+					}
+					if (ancestors.includes(nestedValue)) return "[Circular]";
+					ancestors.push(nestedValue);
 				}
 				return nestedValue;
 			},

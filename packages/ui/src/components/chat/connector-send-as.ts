@@ -8,7 +8,7 @@
  * Framework-free so it unit-tests without the React graph; consumed by
  * `AccountRequiredCard`, `ConnectorAccountPicker`, and the composer.
  */
-import type { ConnectorAccountRecord } from "../../api/client-agent";
+import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
 
 export const CONNECTOR_SEND_AS_METADATA_KEY = "connectorSendAs";
 
@@ -135,17 +135,6 @@ export function buildConnectorSendAsMetadata(
     accountId: account.id,
     source: normalized.source,
     ...(normalized.channel ? { channel: normalized.channel } : {}),
-  };
-}
-
-export function mergeConnectorSendAsMetadata(
-  metadata: Record<string, unknown> | undefined,
-  sendAsMetadata: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  if (!sendAsMetadata) return metadata;
-  return {
-    ...(metadata ?? {}),
-    ...sendAsMetadata,
   };
 }
 

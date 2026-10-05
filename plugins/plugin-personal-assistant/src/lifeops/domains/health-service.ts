@@ -4,6 +4,27 @@
  * `@elizaos/plugin-health` into assistant DTOs. All health/circadian domain
  * logic lives in the health plugin; this is a thin owner-access wrapper.
  */
+
+import type {
+  DisconnectLifeOpsHealthConnectorRequest,
+  GetLifeOpsHealthSummaryRequest,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsHealthConnectorCapability,
+  LifeOpsHealthConnectorProvider,
+  LifeOpsHealthConnectorStatus,
+  LifeOpsHealthDailySummary,
+  LifeOpsHealthMetric,
+  LifeOpsHealthMetricSample,
+  LifeOpsHealthSummaryResponse,
+  StartLifeOpsHealthConnectorRequest,
+  StartLifeOpsHealthConnectorResponse,
+  SyncLifeOpsHealthConnectorRequest,
+} from "@elizaos/contracts";
+import {
+  LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
+  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
+} from "@elizaos/contracts";
 import {
   completeHealthConnectorOAuth,
   deleteStoredHealthToken,
@@ -22,26 +43,6 @@ import {
   startHealthConnectorOAuth,
   syncHealthConnectorData,
 } from "@elizaos/plugin-health";
-import type {
-  DisconnectLifeOpsHealthConnectorRequest,
-  GetLifeOpsHealthSummaryRequest,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsHealthConnectorCapability,
-  LifeOpsHealthConnectorProvider,
-  LifeOpsHealthConnectorStatus,
-  LifeOpsHealthDailySummary,
-  LifeOpsHealthMetric,
-  LifeOpsHealthMetricSample,
-  LifeOpsHealthSummaryResponse,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsHealthConnectorResponse,
-  SyncLifeOpsHealthConnectorRequest,
-} from "../../contracts/index.js";
-import {
-  LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
-  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
-} from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   createLifeOpsConnectorGrant,
@@ -57,6 +58,7 @@ import {
   normalizeOptionalConnectorSide,
 } from "../service-normalize-connector.js";
 import { LifeOpsServiceError } from "../service-types.js";
+import { parseLocalDateKey } from "../time.js";
 import {
   getHealthDataConnectorStatus,
   getHealthDataConnectorStatuses,
@@ -140,13 +142,12 @@ function normalizeDateOnly(value: unknown, field: string): string | null {
   if (value === undefined || value === null || value === "") {
     return null;
   }
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+  if (typeof value !== "string") {
     fail(400, `${field} must be a YYYY-MM-DD date`);
   }
   const normalized = value.trim();
-  const parsed = Date.parse(`${normalized}T00:00:00.000Z`);
-  if (!Number.isFinite(parsed)) {
-    fail(400, `${field} must be a valid date`);
+  if (parseLocalDateKey(normalized) === null) {
+    fail(400, `${field} must be a valid YYYY-MM-DD calendar date`);
   }
   return normalized;
 }
@@ -730,29 +731,50 @@ export class HealthDomain {
     };
   }
 
-  async getHealthDailySummary(date: string): Promise<HealthDailySummary> {
+  async getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary> {
     try {
-      return await getDailySummary(date, resolveHealthConfig());
+      // `date` is the owner's local calendar day; the bridge bounds it in the
+      // same zone, as getHealthTrend does for its window.
+      return await getDailySummary(date, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }
   }
 
-  async getHealthTrend(days: number): Promise<HealthDailySummary[]> {
+  async getHealthTrend(
+    days: number,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary[]> {
     try {
-      return await getRecentSummaries(days, resolveHealthConfig());
+      return await getRecentSummaries(days, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }
   }
 
-  async getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]> {
+  async getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]> {
     try {
-      return await getDataPoints(opts, resolveHealthConfig());
+      // Sleep series are per local calendar day in the owner's zone.
+      return await getDataPoints(opts, {
+        ...resolveHealthConfig(),
+        timeZone: window.timeZone,
+      });
     } catch (error) {
       translateHealthError(error);
     }

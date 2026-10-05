@@ -6,17 +6,15 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { logger } from "@elizaos/logger";
-import {
-  invokeDesktopBridgeRequest,
-  isElectrobunRuntime,
-} from "@elizaos/ui/bridge";
+import type { TranscriptEventStream } from "@elizaos/contracts";
 import {
   acceptNativeTranscriptViewModel,
+  invokeDesktopBridgeRequest,
+  isElectrobunRuntime,
+  logger,
   NATIVE_TRANSCRIPT_RENDERER_EVENT,
   type NativeTranscriptViewSource,
-  type TranscriptEventStream,
-} from "@elizaos/ui/native-transcript";
+} from "@elizaos/ui";
 
 interface NativeTranscriptPlugin {
   publishStream(

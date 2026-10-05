@@ -1,0 +1,64 @@
+{
+  "id": "H1-concurrent-merge",
+  "category": "H",
+  "interruptionType": "addition",
+  "weight": 4,
+  "description": "Two active threads cover overlapping work. The user asks the agent to merge them. Final state: one thread surviving with consolidated instructions, the other absorbed.",
+  "setup": {
+    "agentId": "agent-test",
+    "rooms": [{ "id": "dm-alice", "kind": "dm", "owner": "alice" }],
+    "users": [{ "id": "alice", "role": "OWNER" }],
+    "openThreads": [
+      {
+        "id": "thread-promo-A",
+        "owner": "alice",
+        "status": "active",
+        "instruction": "draft Black Friday email blast",
+        "roomId": "dm-alice"
+      },
+      {
+        "id": "thread-promo-B",
+        "owner": "alice",
+        "status": "active",
+        "instruction": "design Black Friday landing page",
+        "roomId": "dm-alice"
+      }
+    ],
+    "scheduledTasks": [],
+    "memory": []
+  },
+  "script": [
+    {
+      "t": 0,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "merge the two black friday tasks into one — handle email + landing page together"
+    }
+  ],
+  "quiesceAfterMs": 3000,
+  "expectedFinalState": {
+    "threads": [
+      {
+        "ownerEq": "alice",
+        "statusEq": "active",
+        "count": 1,
+        "instructionContains": ["email", "landing"]
+      }
+    ],
+    "scheduledTasks": [],
+    "repliesByChannel": {
+      "dm-alice": { "count": { "min": 0, "max": 1 } }
+    }
+  },
+  "expectedTrace": {
+    "stage1Calls": { "min": 1, "max": 1 },
+    "plannerCalls": { "min": 0, "max": 1 },
+    "boundaryViolations": 0,
+    "intent": "RESPOND",
+    "threadOpsContains": ["merge"]
+  },
+  "responseRubric": {
+    "judgePrompt": "Did the agent merge the two Black Friday threads into one consolidated thread covering both the email blast and the landing page?",
+    "passRequiredForBonus": true
+  }
+}

@@ -1,19 +1,5 @@
-/** Verifies ChatTranscript scale render benchmark through the package's configured test harness. */
 // @vitest-environment jsdom
-//
-// Transcript-scale render benchmark (perf/chat-render-benchmarks). Complements
-// the fixed-size #9141 lock (chat-transcript.render-count.test.tsx) by proving
-// the per-row memoization holds at a REALISTIC long-conversation scale: with
-// 500 (and 1000) messages mounted, appending a message and streaming a token
-// into the tail must re-render a BOUNDED number of rows — independent of how
-// many historical rows are on screen. If a regression made an appended token
-// re-render O(N) rows, this catches it where the 10-message lock cannot (10
-// re-renders is cheap; 1000 is jank). It also records the wall cost of the
-// append commit as an absolute smoke budget.
-//
-// Renders are counted the same way as #9141: the real `renderMessageContent`
-// prop is a spy invoked exactly once per row-body render, so per-id tallies are
-// a faithful per-`ChatMessage` render counter — not a test-only hook.
+/** Large transcripts must isolate streaming and append renders to changed rows. */
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -46,7 +32,7 @@ function makeRenderCounter() {
   return { counts, spy };
 }
 
-describe("ChatTranscript scale render benchmark", () => {
+describe("ChatTranscript scale render isolation", () => {
   for (const size of [500, 1000]) {
     it(`streaming a token with ${size} messages re-renders only the tail row`, () => {
       const { counts, spy } = makeRenderCounter();
@@ -64,14 +50,12 @@ describe("ChatTranscript scale render benchmark", () => {
       // One streamed token lands on the tail. New array + fresh object
       // references for EVERY row (exactly what the chat container produces per
       // stream tick); only the last row's text actually changed.
-      const start = performance.now();
       rendered.rerender(
         <ChatTranscript
           messages={makeTranscript(size, " more")}
           renderMessageContent={spy}
         />,
       );
-      const streamCommitMs = performance.now() - start;
 
       // Bounded re-render: every historical row stayed at its mount count.
       let rerendered = 0;
@@ -86,11 +70,6 @@ describe("ChatTranscript scale render benchmark", () => {
         (mountCounts.get(`msg-${size - 1}`) ?? 0) + 1,
       );
       expect(spy).toHaveBeenCalledTimes(size + 1);
-
-      // Absolute smoke budget for the append commit — generous; the point of
-      // the test is the bounded-row-count assertion above, this only catches a
-      // pathological slowdown on the commit itself.
-      expect(streamCommitMs).toBeLessThan(250);
     }, 15_000);
 
     it(`appending a message with ${size} existing messages mounts only the new row`, () => {

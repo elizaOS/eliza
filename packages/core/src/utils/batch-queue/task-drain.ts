@@ -3,7 +3,7 @@
  * `tags: ["queue", "repeat"]`, merge scheduling metadata, optionally register a task worker.
  *
  * **Why `skipRegisterWorker`:** `BATCHER_DRAIN` is executed by a **single** worker registered in
- * `TaskService` that dispatches by `metadata.affinityKey`. Per-affinity `TaskDrain` instances only
+ * the assistant plugin, which dispatches by `metadata.affinityKey`. Per-affinity `TaskDrain` instances only
  * create/update/delete tasks; registering another worker with the same name would overwrite the
  * global handler.
  *
@@ -25,18 +25,32 @@ export interface TaskDrainOptions {
 	taskMetadata?: Record<string, unknown>;
 	/**
 	 * When true, does not call `runtime.registerTaskWorker` — use when a global worker
-	 * already handles this task name (e.g. `BATCHER_DRAIN` in TaskService).
+	 * already handles this task name (e.g. `BATCHER_DRAIN` in the assistant plugin).
 	 */
 	skipRegisterWorker?: boolean;
-	/** Required unless `skipRegisterWorker` is true. Invoked when the repeat task fires. */
-	onDrain?: (runtime: IAgentRuntime) => Promise<void>;
+	/**
+	 * Required unless `skipRegisterWorker` is true. Invoked when the repeat task
+	 * fires; may return how many items it processed so an idle queue can back off.
+	 */
+	onDrain?: (
+		runtime: IAgentRuntime,
+	) => Promise<void> | Promise<number | undefined>;
+	/**
+	 * Cadence while the last drain processed nothing. EMBEDDING_DRAIN and
+	 * PII_SCRUB_DRAIN rewrote public.tasks every second around the clock while
+	 * idle (audit 2026-09-13); the next non-empty drain restores `intervalMs`.
+	 */
+	idleIntervalMs?: number;
 }
 
 export class TaskDrain {
 	private readonly taskName: string;
 	private readonly taskMetadata: Record<string, unknown>;
 	private readonly skipRegisterWorker: boolean;
-	private readonly onDrain?: (runtime: IAgentRuntime) => Promise<void>;
+	private readonly onDrain?: (
+		runtime: IAgentRuntime,
+	) => Promise<void> | Promise<number | undefined>;
+	private readonly idleIntervalMs?: number;
 	private intervalMs: number;
 	private taskId: UUID | null = null;
 	private workerRegistered = false;
@@ -51,6 +65,7 @@ export class TaskDrain {
 		this.taskMetadata = { ...(options.taskMetadata ?? {}) };
 		this.skipRegisterWorker = options.skipRegisterWorker ?? false;
 		this.onDrain = options.onDrain;
+		this.idleIntervalMs = options.idleIntervalMs;
 		this.intervalMs = initialIntervalMs ?? options.intervalMs;
 	}
 
@@ -79,8 +94,16 @@ export class TaskDrain {
 					_options: Record<string, JsonValue | object>,
 					_task: Task,
 				) => {
-					await onDrain(rt);
-					return undefined;
+					const processed = await onDrain(rt);
+					if (
+						this.idleIntervalMs === undefined ||
+						typeof processed !== "number"
+					) {
+						return undefined;
+					}
+					return {
+						nextInterval: processed > 0 ? this.intervalMs : this.idleIntervalMs,
+					};
 				},
 			});
 			this.workerRegistered = true;

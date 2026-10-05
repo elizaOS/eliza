@@ -22,12 +22,12 @@ import { act, fireEvent, render, renderHook } from "@testing-library/react";
 import { useRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
-  CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
-} from "../../../api";
-import type { LoadConversationMessagesResult } from "../../../state/internal";
+} from "../../../api/client-types-chat";
+import type { CodingAgentSession } from "../../../api/client-types-cloud";
+import type { LoadConversationMessagesResult } from "../../../state/types";
 import { type UseChatSendDeps, useChatSend } from "../../../state/useChatSend";
 import { ChatComposer, type ChatComposerVoiceState } from "./chat-composer";
 
@@ -42,7 +42,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../../api", () => ({ client: mocks.client }));
+vi.mock("../../../api/client", () => ({ client: mocks.client }));
 
 const idleVoice: ChatComposerVoiceState = {
   assistantTtsQuality: "standard",

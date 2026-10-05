@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.repair_hf_eliza1_bundle_integrity import plan_repair  # noqa: E402
+from eliza_training.manifest.repair_hf_eliza1_bundle_integrity import plan_repair  # noqa: E402
 
 
 @dataclass

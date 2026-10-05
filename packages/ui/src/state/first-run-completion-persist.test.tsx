@@ -3,7 +3,10 @@
 
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
+import {
+  DEFAULT_BOOT_CONFIG,
+  setBootConfig,
+} from "../config/boot-config-store";
 import {
   hydratePersistedFirstRunCompleteFromNativeStore,
   loadPersistedFirstRunComplete,

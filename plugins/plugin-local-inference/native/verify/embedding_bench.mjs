@@ -231,7 +231,7 @@ async function main() {
       ...baseReport,
       status: "skipped",
       reason: !bin
-        ? "no llama-server binary found (build one: node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cpu)"
+        ? "no llama-server binary found (build one: node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cpu)"
         : "no embedding GGUF found (point --model at an embedding/ GGUF or an Eliza-1 pooled-text backbone such as eliza-1-2b)",
       resolved: { bin, model },
     };

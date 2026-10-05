@@ -11,17 +11,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "training"))
 
-from compare_served_models import (
+from eliza_training.rl.compare_served_models import (
     DEFAULT_SYSTEM_PROMPT,
     aggregate_variant_suites,
     build_suite_configs,
@@ -32,8 +29,8 @@ from compare_served_models import (
     score_response_text,
     summarize_results,
 )
-from deterministic_eval import ACTION_REASON_ASSISTANT_PREFIX
-from local_inference import BackendName, LocalTextGenerator
+from eliza_training.rl.deterministic_eval import ACTION_REASON_ASSISTANT_PREFIX
+from eliza_training.rl.local_inference import BackendName, LocalTextGenerator
 
 
 def load_manifest(manifest_path: Path) -> tuple[str, str, BackendName]:

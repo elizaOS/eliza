@@ -10,7 +10,8 @@ import type {
   DownloadJob,
   HardwareProbe,
   InstalledModel,
-} from "../../api/client-local-inference";
+} from "@elizaos/contracts";
+import { catalogDownloadSizeGb } from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -87,7 +88,8 @@ export function ModelCard({
             {displayModelName(model)}
           </div>
           <div className="text-xs text-muted-foreground truncate">
-            {parameterLabel} · {model.quant} · {model.sizeGb.toFixed(1)} GB
+            {parameterLabel} · {model.quant} ·{" "}
+            {catalogDownloadSizeGb(model).toFixed(1)} GB
           </div>
           <div
             className="mt-1 inline-flex w-fit rounded-full border border-border/60 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground"

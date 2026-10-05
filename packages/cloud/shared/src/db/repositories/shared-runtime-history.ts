@@ -50,6 +50,32 @@ export class SharedRuntimeHistoryRepository {
   }
 
   /**
+   * Recently active `(agentId, channelId)` rooms since `since`, most recent
+   * first, capped. Rowless Personal Shared identities are warmed per room: the
+   * conversation Durable Object is addressed by agent AND room, and those ids
+   * have no agent_sandboxes row to derive a canonical room from.
+   */
+  async listRecentlyActiveRooms(
+    since: Date,
+    limit: number,
+  ): Promise<Array<{ agentId: string; channelId: string }>> {
+    const rows = await dbRead
+      .select({
+        agentId: sharedRuntimeHistory.agent_id,
+        channelId: sharedRuntimeHistory.channel_id,
+      })
+      .from(sharedRuntimeHistory)
+      .where(gt(sharedRuntimeHistory.updated_at, since))
+      .orderBy(
+        desc(sharedRuntimeHistory.updated_at),
+        asc(sharedRuntimeHistory.agent_id),
+        asc(sharedRuntimeHistory.channel_id),
+      )
+      .limit(limit);
+    return rows;
+  }
+
+  /**
    * List all channel IDs for an agent's shared-runtime history. Used during
    * agent deletion to identify which Durable Object rooms need purging.
    */

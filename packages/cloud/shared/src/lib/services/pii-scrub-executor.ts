@@ -13,7 +13,12 @@
  *      residue) go to an injected {@link PiiScrubEscalationHandler} — the plug
  *      point for the server compute lanes (Cerebras passthrough / vllm
  *      container; sibling slices of #14808). The rails never hardcode a model.
- *   3. **Throw-never-fabricate.** Residue with NO escalation handler throws
+ *   3. **Inspection scope.** `declared_candidates` judges only the caller's
+ *      candidate spans (tier-0 may short-circuit). `server_discovery` requires
+ *      the escalation handler to inspect the FULL content: it never takes the
+ *      tier-0 shortcut, and with no handler it fails closed even when the
+ *      caller declared no candidates.
+ *   4. **Throw-never-fabricate.** Residue with NO escalation handler throws
  *      `PiiScrubFabricationError` (un-inspected content is never passed as
  *      clean), and every escalation result is structurally validated with the
  *      seam's own `assertValidScrubResult` — a fabricated/mismatched "all
@@ -26,10 +31,13 @@
 import {
   assertValidScrubResult,
   detectPii,
-  type PiiMatch,
   PiiScrubFabricationError,
   type PiiScrubResult,
+  partitionScrubCandidates,
 } from "@elizaos/core";
+import type { PiiScrubInspectionScope } from "../../db/schemas/pii-scrub-markers";
+
+export type { PiiScrubInspectionScope };
 
 /** Marker `model_id` recorded when tier-0 fully covered an item. */
 export const PII_SCRUB_TIER0_MODEL_ID = "tier0";
@@ -50,6 +58,8 @@ export interface PiiScrubExecutorInput {
   contextPack?: string;
   /** Active ruleset version (threaded into escalation + result validation). */
   rulesetVersion: string;
+  /** How thoroughly the item must be inspected. Defaults to `declared_candidates`. */
+  inspectionScope?: PiiScrubInspectionScope;
 }
 
 /** Outcome of a successfully scrubbed item (what the done-marker records). */
@@ -62,6 +72,8 @@ export interface PiiScrubExecutorOutcome {
   tier0SpanCount: number;
   /** Number of residue candidates escalated (0 when tier-0 covered all). */
   escalatedSpanCount: number;
+  /** Scope the item was actually inspected under (recorded on the marker). */
+  inspectionScope: PiiScrubInspectionScope;
 }
 
 /**
@@ -77,6 +89,8 @@ export type PiiScrubEscalationHandler = (params: {
   candidateSpans: readonly string[];
   contextPack?: string;
   rulesetVersion: string;
+  /** `server_discovery` means: discover PII over the full `text`, not just the candidates. */
+  inspectionScope: PiiScrubInspectionScope;
 }) => Promise<PiiScrubResult>;
 
 /** Executes one scrub item; the job runner drains items through this. */
@@ -85,19 +99,13 @@ export interface PiiScrubItemExecutor {
 }
 
 /**
- * True when `candidate` is already covered by a deterministic tier-0 span —
- * the same containment rule as the seam's `coveredByTier0`
- * (`packages/core/src/security/pii-scrub-seam.ts`): equal to a matched span or
- * a substring contained inside one. Covered candidates never cost a model call.
+ * The escalation handler the cloud drain registers. None exists yet (the
+ * server compute lanes are sibling slices of #14808), so `server_discovery`
+ * jobs are refused at enqueue and fail closed at drain. Both the cron route and
+ * the enqueue route read this single source.
  */
-function coveredByTier0(candidate: string, tier0: readonly PiiMatch[]): boolean {
-  const needle = candidate.trim();
-  if (needle.length === 0) return true;
-  for (const match of tier0) {
-    if (match.value === needle) return true;
-    if (match.value.includes(needle)) return true;
-  }
-  return false;
+export function resolveCloudPiiScrubEscalationHandler(): PiiScrubEscalationHandler | undefined {
+  return undefined;
 }
 
 /**
@@ -111,25 +119,34 @@ export function createPiiScrubItemExecutor(
   const { escalate } = options;
   return {
     async scrubItem(input: PiiScrubExecutorInput): Promise<PiiScrubExecutorOutcome> {
+      const inspectionScope = input.inspectionScope ?? "declared_candidates";
       const tier0 = detectPii(input.content);
-      const residue = input.candidateSpans.filter((c) => !coveredByTier0(c, tier0));
+      const { residue } = partitionScrubCandidates(
+        input.candidateSpans,
+        tier0.map((match) => match.value),
+      );
 
-      // Tier-0 short-circuit: nothing left for a model to judge.
-      if (residue.length === 0) {
+      // Tier-0 short-circuit: nothing left for a model to judge. Only valid
+      // when the job asked to judge declared candidates — server discovery
+      // must always inspect the full content.
+      if (residue.length === 0 && inspectionScope === "declared_candidates") {
         return {
           tier0Only: true,
           modelId: PII_SCRUB_TIER0_MODEL_ID,
           tier0SpanCount: tier0.length,
           escalatedSpanCount: 0,
+          inspectionScope,
         };
       }
 
-      // Residue with no handler is fail-closed: we cannot judge it, so we
-      // cannot declare it clean — throw so the runner quarantines the item
-      // (no done-marker, bounded retries, loud failure).
+      // No handler is fail-closed: we cannot judge the residue (or discover
+      // over the full content), so we cannot declare it clean — throw so the
+      // runner quarantines the item (no done-marker, bounded retries).
       if (!escalate) {
         throw new PiiScrubFabricationError(
-          `no PII scrub escalation handler registered but ${residue.length} candidate span(s) require escalation; refusing to pass un-inspected content (itemRef=${input.itemRef})`,
+          inspectionScope === "server_discovery"
+            ? `no PII scrub escalation handler registered but server_discovery requires full-content inspection; refusing to pass un-inspected content (itemRef=${input.itemRef})`
+            : `no PII scrub escalation handler registered but ${residue.length} candidate span(s) require escalation; refusing to pass un-inspected content (itemRef=${input.itemRef})`,
         );
       }
 
@@ -142,6 +159,7 @@ export function createPiiScrubItemExecutor(
         candidateSpans: residue,
         contextPack: input.contextPack,
         rulesetVersion: input.rulesetVersion,
+        inspectionScope,
       });
 
       // Structural fail-closed check (the seam's own validator): rejects a
@@ -158,6 +176,7 @@ export function createPiiScrubItemExecutor(
         modelId: result.modelId,
         tier0SpanCount: tier0.length,
         escalatedSpanCount: residue.length,
+        inspectionScope,
       };
     },
   };

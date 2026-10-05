@@ -10,6 +10,7 @@ const CALENDAR_DETAIL_STRING_KEYS = [
   "calendarId",
   "calendarid",
   "calendar_id",
+  "endDate",
   "timeMin",
   "timemin",
   "time_min",
@@ -100,6 +101,7 @@ const CALENDAR_DETAIL_BOOLEAN_KEYS = [
   "force_sync",
   "notifyAttendees",
   "allowPast",
+  "includeHiddenCalendars",
 ] as const;
 
 const CALENDAR_DETAIL_RECURRENCE_KEYS = [
@@ -127,6 +129,8 @@ const EVENT_ID_DESCRIPTION =
 const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_STRING_KEYS)[number], string>
 > = {
+  grantId:
+    "Exact grantId from a Calendar result for the user-selected connected account. Omit only when using the default built-in Eliza calendar. If the user requests Google or another connected provider, read the Calendar feed to resolve its accounts first; ask which account when more than one matches, before creating an event. Never substitute the built-in calendar for an explicitly requested provider.",
   ...Object.fromEntries(
     ["calendarId", "calendarid", "calendar_id"].map((key) => [
       key,
@@ -154,9 +158,12 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
     "Event end in the same local wall-clock format as startAt; omit it to use durationMinutes.",
   end: "Event end in the same local wall-clock format as start; omit it to use durationMinutes.",
   timeMin: `Window start as ${LOCAL_WALL_TIME_FORMAT}, or RFC 3339 with an explicit numeric offset.`,
-  timeMax: "Window end (exclusive) in the same format as timeMin.",
+  timeMax:
+    "Window end (exclusive) in the same format as timeMin. For a full day or month, use midnight at the start of the following day or month in the requested timezone, not midnight at the start of its last day.",
   timeZone:
     "IANA timezone for the supplied wall-clock times (e.g. America/New_York): use the user's configured timezone unless they name another. Include it for updates so an existing event's different timezone does not reinterpret the requested new time.",
+  endDate:
+    "Final included YYYY-MM-DD date for feed/search_events whole-day reads, used with date as the first day. Not a mutation timestamp.",
   date: "Local calendar date YYYY-MM-DD that the TARGET event is on NOW, for update_event/delete_event lookups when the user named that current day. Never the destination day of a move or reschedule: the new time belongs in start/startAt (and end/endAt). A bare weekday name means its next upcoming occurrence from today, never a past date; when the user did not name the target's current day, omit date and let query locate the event. Use start/startAt, not date, for create_event.",
   oldTitle:
     "Existing event title to locate for update_event; keep separate from the replacement title in newTitle.",
@@ -168,6 +175,8 @@ const CALENDAR_DETAIL_STRING_DESCRIPTIONS: Partial<
 const CALENDAR_DETAIL_BOOLEAN_DESCRIPTIONS: Partial<
   Record<(typeof CALENDAR_DETAIL_BOOLEAN_KEYS)[number], string>
 > = {
+  includeHiddenCalendars:
+    "Agenda/feed reads default to the calendars selected in the Calendar view. Set true only when explicitly asked to include hidden or all connected calendars. Event searches include hidden calendars by default; set false to search only the selected feed. Hidden search results are not necessarily visible in the Calendar view.",
   allowPast:
     "Set true only when the user explicitly wants an event at a time that has already passed (recording a past event, or confirming the past time after being asked); otherwise omit it and the action asks before creating in the past.",
 };
@@ -218,10 +227,23 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
       type: "array",
       items: { type: "string" },
     },
+    sourceNote: {
+      type: "object",
+      description:
+        "Only when the user is creating an event from a saved note, copy the complete sourceNote reference from the exact Notes read. Otherwise omit this entire optional field. Never use unknown, empty, or placeholder values. Retain a real reference through confirmation; never invent or refresh only its hash.",
+      properties: {
+        agentId: { type: "string" },
+        noteId: { type: "string" },
+        contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      },
+      required: ["agentId", "noteId", "contentHash"],
+      additionalProperties: false,
+    },
     attendees: {
       type: "array",
+      description:
+        "Only guests the user requested, using their supplied email addresses. Omit when no guests were requested; the owner is not an attendee. Never invent addresses or add empty placeholders.",
       items: {
-        type: "object",
         anyOf: [
           { type: "string" },
           {
@@ -240,3 +262,220 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
   },
   additionalProperties: false,
 };
+
+/** Creation advertises one spelling per field and no existing-event selectors.
+ * The umbrella schema and runtime normalizer retain legacy aliases. All source
+ * dialogue remains available; this changes argument syntax, not user context. */
+export const CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
+  type: "object",
+  properties: Object.fromEntries(
+    Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+      ([key]) =>
+        [
+          "calendarId",
+          "timeZone",
+          "start",
+          "end",
+          "durationMinutes",
+          "windowPreset",
+          "description",
+          "location",
+          "mode",
+          "side",
+          "grantId",
+          "travelOriginAddress",
+          "allowPast",
+          "notifyAttendees",
+          "recurrence",
+          "attendees",
+          "sourceNote",
+        ].includes(key),
+    ),
+  ),
+  additionalProperties: false,
+};
+
+/** The next-event reader consumes only calendar selection and timezone.
+ * Keep every accepted spelling of those fields; mutation and range arguments
+ * remain on the complete CALENDAR contract and their corresponding operations. */
+export const CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema =
+  {
+    type: "object",
+    properties: Object.fromEntries(
+      Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+        ([key]) =>
+          [
+            "calendarId",
+            "calendarid",
+            "calendar_id",
+            "timeZone",
+            "timezone",
+            "time_zone",
+          ].includes(key),
+      ),
+    ),
+    additionalProperties: false,
+  };
+
+// Feed/search consume the same window and connector scope. Keep every accepted
+// spelling; event edits, recurrence and travel creation belong to other actions.
+const CALENDAR_READ_DETAIL_KEYS = [
+  "calendarId",
+  "calendarid",
+  "calendar_id",
+  "timeMin",
+  "timemin",
+  "time_min",
+  "timeMax",
+  "timemax",
+  "time_max",
+  "timeZone",
+  "timezone",
+  "time_zone",
+  "forceSync",
+  "forcesync",
+  "force_sync",
+  "windowDays",
+  "windowdays",
+  "window_days",
+  "label",
+  "mode",
+  "side",
+  "grantId",
+  "includeHiddenCalendars",
+] as const;
+
+export const CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
+  type: "object",
+  properties: {
+    date: {
+      type: "string",
+      description:
+        "For whole-day reads, use the first local YYYY-MM-DD date and timeZone. For multiple days, also set endDate to the final included date. Code calculates midnight boundaries and DST. Omit timeMin/timeMax and windowDays; use those only for partial-day reads.",
+    },
+    endDate: {
+      type: "string",
+      description:
+        "Final included YYYY-MM-DD date for a whole-day range beginning at date. Omit for a single day. Requires date; never combine with timeMin/timeMax or windowDays.",
+    },
+    ...Object.fromEntries(
+      Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+        ([key]) => CALENDAR_READ_DETAIL_KEYS.some((name) => name === key),
+      ),
+    ),
+    ...Object.fromEntries(
+      ["calendarId", "calendarid", "calendar_id"].map((key) => [
+        key,
+        {
+          type: "string",
+          description:
+            "Optional exact calendar ID from a Calendar result. Omit unless restricting to that calendar; never invent an ID or derive it from a title.",
+        },
+      ]),
+    ),
+    timeZone: {
+      type: "string",
+      description:
+        "IANA timezone for the supplied wall-clock bounds. Use the configured timezone unless the user names another.",
+    },
+    mode: {
+      type: "string",
+      enum: ["local", "remote", "cloud_managed"],
+      description:
+        "Optional connector deployment mode from a Calendar result, not the requested operation. Omit unless restricting to that known connector scope.",
+    },
+    side: {
+      type: "string",
+      enum: ["owner", "agent"],
+      description:
+        "Optional connector ownership side from a Calendar result. Omit unless restricting to that known connector scope.",
+    },
+    grantId: {
+      type: "string",
+      description:
+        "Optional exact connector grant ID from a Calendar result. Omit unless restricting to that connector; never invent a grant ID.",
+    },
+    includeHiddenCalendars: {
+      type: "boolean",
+      description:
+        "Omit to use calendars selected in the Calendar view. Set true only when explicitly asked to include hidden or all connected calendars.",
+    },
+  },
+  additionalProperties: false,
+};
+
+export const CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
+  type: "object",
+  properties: {
+    ...CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA.properties,
+    includeHiddenCalendars: {
+      type: "boolean",
+      description:
+        "Omit to search all connected calendars, including hidden ones. Set false only when the user restricts the search to calendars selected in the Calendar view.",
+    },
+    ...Object.fromEntries(
+      Object.entries(CALENDAR_DETAILS_PARAMETER_SCHEMA.properties ?? {}).filter(
+        ([key]) =>
+          ["query", "queries", "oldTitle", "oldtitle", "old_title"].includes(
+            key,
+          ),
+      ),
+    ),
+  },
+  additionalProperties: false,
+};
+
+/** Historical argument spellings normalized at the calendar handler boundary. */
+export const CALENDAR_DETAIL_ALIASES = {
+  calendarId: ["calendarid", "calendar_id"],
+  timeMin: ["timemin", "time_min"],
+  timeMax: ["timemax", "time_max"],
+  timeZone: ["timezone", "time_zone"],
+  forceSync: ["forcesync", "force_sync"],
+  windowDays: ["windowdays", "window_days"],
+  startAt: ["startat", "start_at", "start", "start_time", "starttime"],
+  endAt: ["endat", "end_at", "end", "end_time", "endtime"],
+  durationMinutes: ["durationminutes", "duration_minutes"],
+  windowPreset: ["windowpreset", "window_preset"],
+  eventId: [
+    "eventid",
+    "event_id",
+    "externaleventid",
+    "external_event_id",
+    "googleeventid",
+    "google_event_id",
+  ],
+  newTitle: ["newtitle", "new_title", "renameto", "rename_to"],
+  oldTitle: ["oldtitle", "old_title"],
+  description: ["desc", "summary", "body"],
+  location: ["place", "venue"],
+  recurrence: [
+    "rrule",
+    "recurrencerule",
+    "recurrence_rule",
+    "repeat",
+    "repeats",
+    "repeatrule",
+    "repeat_rule",
+  ],
+  recurrenceScope: [
+    "recurrencescope",
+    "recurrence_scope",
+    "applyto",
+    "apply_to",
+    "editscope",
+    "edit_scope",
+  ],
+  travelOriginAddress: [
+    "traveloriginaddress",
+    "travel_origin_address",
+    "travelorigin",
+    "travel_origin",
+    "originaddress",
+    "origin_address",
+    "departureaddress",
+    "departure_address",
+    "fromaddress",
+    "from_address",
+  ],
+} as const;

@@ -1,0 +1,46 @@
+#!/bin/sh
+
+set -eu
+
+fail() {
+	code="$1"
+	type="$2"
+	message="$3"
+	printf '%s: %s\n' "$type" "$message" >&2
+	exit "$code"
+}
+
+if [ "$(id -u)" -eq 0 ]; then
+	fail 77 ELIZAOS_AUTOSTART_OWNER_REQUIRED \
+		"run this command as the desktop owner, not root"
+fi
+
+if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -S "${XDG_RUNTIME_DIR}/bus" ]; then
+	fail 69 ELIZAOS_AUTOSTART_SESSION_UNAVAILABLE \
+		"no live user D-Bus session is available"
+fi
+
+case "${1:-}" in
+	enable)
+		exec /usr/bin/systemctl --user enable --now elizaos-session.target
+		;;
+	disable)
+		exec /usr/bin/systemctl --user disable --now elizaos-session.target
+		;;
+	status)
+		enabled="$(/usr/bin/systemctl --user is-enabled elizaos-session.target 2>/dev/null || true)"
+		active="$(/usr/bin/systemctl --user is-active elizaos-session.target 2>/dev/null || true)"
+		printf 'enabled=%s active=%s\n' "${enabled:-unknown}" "${active:-unknown}"
+		if [ "$enabled" = enabled ] && [ "$active" = active ]; then
+			exit 0
+		fi
+		if [ "$enabled" = disabled ] || [ "$active" = inactive ]; then
+			exit 3
+		fi
+		exit 1
+		;;
+	*)
+		fail 64 ELIZAOS_AUTOSTART_USAGE \
+			"usage: eliza-autostart enable|disable|status"
+		;;
+esac

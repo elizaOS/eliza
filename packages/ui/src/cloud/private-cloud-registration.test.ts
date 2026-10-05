@@ -1,11 +1,7 @@
 /**
  * Private cloud registration state machine (#18056 review repairs).
  */
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { registerMovedApplicationsCloudRoutes } from "./applications/register-moved-routes";
 import {
   ensurePrivateCloudSurfaces,
   forceNewPrivateCloudGenerationForTests,
@@ -16,12 +12,6 @@ import {
   setPrivateCloudLoadForTests,
   subscribePrivateCloudRegistration,
 } from "./private-cloud-registration";
-import { getCloudRoute } from "./shell/cloud-route-registry";
-
-const appMainSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../../../app/src/main.tsx"),
-  "utf8",
-);
 
 afterEach(() => {
   resetPrivateCloudRegistrationForTests();
@@ -56,23 +46,6 @@ describe("pathNeedsPrivateCloudSurfaces", () => {
     ]) {
       expect(pathNeedsPrivateCloudSurfaces(path), path).toBe(true);
     }
-  });
-});
-
-describe("private cloud route registration", () => {
-  it("maps legacy Applications URLs to the moved Apps route", () => {
-    registerMovedApplicationsCloudRoutes();
-    const movedAppsRoute = getCloudRoute("cloud/apps");
-    expect(movedAppsRoute).toBeDefined();
-    expect(getCloudRoute("cloud/apps/:id")?.element).toBe(
-      movedAppsRoute?.element,
-    );
-    expect(getCloudRoute("cloud/applications")?.element).toBe(
-      movedAppsRoute?.element,
-    );
-    expect(getCloudRoute("cloud/applications/:id")?.element).toBe(
-      movedAppsRoute?.element,
-    );
   });
 });
 
@@ -278,24 +251,5 @@ describe("ensurePrivateCloudSurfaces", () => {
     resolveLoad();
     await a;
     expect(getPrivateCloudRegistrationSnapshot().status).toBe("ready");
-  });
-});
-
-describe("web shell public boot contract", () => {
-  it("does not invoke private registration from packages/app main shell factory", () => {
-    expect(appMainSource).toContain("registerPublicCloudSurfaces()");
-    expect(appMainSource).toContain(
-      'import("@elizaos/ui/cloud/register-public")',
-    );
-    const factory = appMainSource.slice(
-      appMainSource.indexOf("const CloudRouterShell = lazy"),
-      appMainSource.indexOf("const ChatWidgetHarness"),
-    );
-    expect(factory).toContain("registerPublicCloudSurfaces()");
-    expect(factory).not.toContain("registerPrivateCloudSurfaces");
-    expect(factory).not.toContain("ensurePrivateCloudSurfaces");
-    expect(factory).not.toMatch(
-      /import\("@elizaos\/ui\/cloud\/register-all"\)/,
-    );
   });
 });

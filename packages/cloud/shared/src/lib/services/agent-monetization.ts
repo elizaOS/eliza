@@ -22,6 +22,7 @@ import { dbRead, dbWrite } from "../../db/client";
 import { userCharacters } from "../../db/schemas/user-characters";
 import { calculateCost, estimateRequestCost, getProviderFromModel } from "../pricing";
 import { logger } from "../utils/logger";
+import { CreatorMonetizationRetiredError } from "./creator-monetization-retirement";
 import { creditsService } from "./credits";
 import { redeemableEarningsService } from "./redeemable-earnings";
 
@@ -227,6 +228,13 @@ class AgentMonetizationService {
   async recordCreatorEarnings(
     params: RecordEarningsParams,
   ): Promise<{ success: boolean; error?: string }> {
+    // Creator monetization is retired (#22961): migration 0500 disabled every
+    // agent markup and settings refuse to re-enable it, so reaching this with a
+    // positive amount means stored state bypassed that fence. Refuse loudly
+    // instead of accruing an earning nobody can be paid.
+    if (params.earnings > 0) {
+      throw new CreatorMonetizationRetiredError("agent_inference_markup");
+    }
     const { agentId, agentName, ownerId, earnings, consumerOrgId, model, tokens, protocol } =
       params;
 
@@ -397,6 +405,14 @@ class AgentMonetizationService {
       payoutWalletAddress?: string;
     },
   ): Promise<{ success: boolean; error?: string }> {
+    // A positive markup is the retired surcharge too: storing one would show a
+    // price that A2A/MCP no longer charge.
+    if (
+      settings.monetizationEnabled === true ||
+      (settings.markupPercentage !== undefined && settings.markupPercentage > 0)
+    ) {
+      throw new CreatorMonetizationRetiredError("agent_inference_markup");
+    }
     // Verify ownership
     const agent = await dbRead.query.userCharacters.findFirst({
       where: eq(userCharacters.id, agentId),

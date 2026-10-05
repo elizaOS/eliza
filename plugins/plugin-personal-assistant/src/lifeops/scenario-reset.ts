@@ -9,7 +9,9 @@
  * future `now` (persona packs tick days ahead) persists a `sleeping` circadian
  * state and leaves scheduled-task rows behind; a LATER scenario running at its
  * own earlier wall clock then reads that state as authoritative and suppresses
- * its reminders as "probable_sleep". Owner facts (timezone, windows, quiet
+ * its reminders as "probable_sleep". Reminder definitions, occurrences, and
+ * delivery plans also survive and can invoke a model during an unrelated
+ * scenario's future tick. Owner facts (timezone, windows, quiet
  * hours, active travel) leak the same way. Clearing both here makes each
  * scenario independent of run order without weakening any assertion.
  *

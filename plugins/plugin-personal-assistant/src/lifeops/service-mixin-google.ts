@@ -10,7 +10,7 @@ import type {
   LifeOpsGoogleConnectorStatus,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 
 export interface LifeOpsGoogleService {
   getGoogleConnectorStatus(

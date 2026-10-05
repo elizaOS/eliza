@@ -10,7 +10,8 @@
  * reproduce the page-reload reality: ONLY a persisted JWT, no Steward provider.
  */
 
-import { renderHook } from "@testing-library/react";
+import { createMemoryStorage } from "@elizaos/testing/browser-mocks";
+import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuthenticatedQueryGate } from "../../lib/auth-query";
@@ -27,24 +28,6 @@ function makeJwt(payload: Record<string, unknown>): string {
   return `${b64url({ alg: "HS256", typ: "JWT" })}.${b64url(payload)}.sig`;
 }
 
-function createMemoryStorage(): Storage {
-  const store = new Map<string, string>();
-  return {
-    get length() {
-      return store.size;
-    },
-    clear: () => store.clear(),
-    getItem: (key: string) => store.get(key) ?? null,
-    key: (index: number) => [...store.keys()][index] ?? null,
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-    setItem: (key: string, value: string) => {
-      store.set(key, String(value));
-    },
-  };
-}
-
 let storage: Storage;
 
 beforeEach(() => {
@@ -57,6 +40,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 

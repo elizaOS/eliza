@@ -19,7 +19,10 @@ export const AUDIT_ACTIONS = [
   "oidc.authorize.denied",
   "oidc.token",
 
-  // api keys
+  // api keys (create/rotate were emitted by the key routes but never
+  // registered, so the dispatcher rejected them before any sink saw them)
+  "api_key.create",
+  "api_key.rotate",
   "api_key.revoke",
   "api_key.use",
 
@@ -50,6 +53,10 @@ export const AUDIT_ACTIONS = [
   // data subject rights
   "data.export",
   "data.delete_request",
+
+  // consent ledger (server-recorded; never client-asserted)
+  "consent.granted",
+  "consent.revoked",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

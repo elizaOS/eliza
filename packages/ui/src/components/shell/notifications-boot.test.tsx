@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   init: vi.fn(),
   localTap: vi.fn(async () => undefined),
-  push: vi.fn(async () => undefined),
+  push: vi.fn(async (): Promise<void> => undefined),
   refreshPush: vi.fn(async () => undefined),
   unsubscribeBase: vi.fn(),
   onBaseUrlChange: vi.fn(),
@@ -21,13 +21,13 @@ vi.mock("../../api/client", () => ({
   client: { onBaseUrlChange: mocks.onBaseUrlChange },
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: typeof appState) => unknown) =>
     selector(appState),
 }));
 vi.mock("../../state/shell-surface-store", () => ({ goHome: mocks.goHome }));
-vi.mock("@elizaos/logger", () => ({
-  logger: { error: mocks.loggerError, warn: vi.fn() },
+vi.mock("../../logger.ts", () => ({
+  logger: { error: mocks.loggerError, warn: vi.fn(), info: vi.fn() },
 }));
 vi.mock("../../bridge/native-notifications", () => ({
   initLocalNotificationTapRouting: mocks.localTap,
@@ -41,15 +41,22 @@ vi.mock("../../state/notifications/push-registration", () => ({
   refreshPushRegistrationAuthority: mocks.refreshPush,
 }));
 
-import { dispatchOpenNotificationCenter } from "../../events";
+import type { PushRegistrationToken } from "../../bridge/native-plugins";
+import { APP_RESUME_EVENT, dispatchOpenNotificationCenter } from "../../events";
 import {
   acknowledgeNotificationCenterOpenRequest,
   peekNotificationCenterOpenRequest,
-} from "./notification-center-open-request";
+} from "../../state/notifications/notification-center-open-request";
 import {
   NotificationsDataBoot,
   NotificationsShellBoot,
 } from "./notifications-boot";
+
+// Collect the real module before timing the permission/resume behavior. A cold
+// transform of its dependency graph must not consume the behavioral deadline.
+const registration = await vi.importActual<
+  typeof import("../../state/notifications/push-registration")
+>("../../state/notifications/push-registration");
 
 afterEach(() => {
   cleanup();
@@ -156,6 +163,85 @@ describe("notification boot boundaries", () => {
         "[push-registration] native registration unavailable",
       ),
     );
+  });
+
+  it("registers once after an external permission grant on resume without prompting", async () => {
+    registration.__resetPushRegistrationForTests();
+    let permission: "denied" | "granted" = "denied";
+    let onRegistered: ((token: PushRegistrationToken) => void) | undefined;
+    const registerToken = vi.fn(async () => undefined);
+    const unregisterToken = vi.fn(async () => undefined);
+    const plugin = {
+      checkPermissions: vi.fn(async () => ({ receive: permission })),
+      requestPermissions: vi.fn(async () => ({ receive: permission })),
+      addListener: vi.fn(async (eventName: string, listener: unknown) => {
+        if (eventName === "registration") {
+          onRegistered = listener as (token: PushRegistrationToken) => void;
+        }
+        return { remove: vi.fn(async () => undefined) };
+      }),
+      register: vi.fn(async () => {
+        onRegistered?.({ value: "qa-device-token" });
+      }),
+    };
+    mocks.push.mockImplementation(() =>
+      registration.initPushRegistration({
+        getPlatform: () => "android",
+        isRemotePushEnabled: () => true,
+        getPlugin: () => plugin,
+        registerToken,
+        unregisterToken,
+        navigate: vi.fn(),
+        captureAuthority: () => ({
+          key: "owner-a",
+          registerToken,
+          unregisterToken,
+        }),
+      }),
+    );
+    const view = render(<NotificationsShellBoot />);
+    try {
+      await act(async () => {
+        await mocks.push.mock.results[0]?.value;
+      });
+      expect(plugin.register).not.toHaveBeenCalled();
+
+      // A resume while permission is still denied remains non-interactive.
+      await act(async () => {
+        document.dispatchEvent(new Event(APP_RESUME_EVENT));
+        await mocks.push.mock.results[1]?.value;
+      });
+      expect(plugin.register).not.toHaveBeenCalled();
+
+      permission = "granted";
+      await act(async () => {
+        document.dispatchEvent(new Event(APP_RESUME_EVENT));
+        await mocks.push.mock.results[2]?.value;
+      });
+      await waitFor(() =>
+        expect(registerToken).toHaveBeenCalledWith(
+          "android",
+          "qa-device-token",
+        ),
+      );
+
+      await act(async () => {
+        document.dispatchEvent(new Event(APP_RESUME_EVENT));
+        document.dispatchEvent(new Event(APP_RESUME_EVENT));
+      });
+      expect(plugin.register).toHaveBeenCalledOnce();
+      expect(registerToken).toHaveBeenCalledOnce();
+      expect(plugin.requestPermissions).not.toHaveBeenCalled();
+      expect(mocks.refreshPush).not.toHaveBeenCalled();
+
+      view.unmount();
+      mocks.push.mockClear();
+      document.dispatchEvent(new Event(APP_RESUME_EVENT));
+      expect(mocks.push).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      registration.__resetPushRegistrationForTests();
+    }
   });
 
   it("retains a cold-launch tap replayed before the signed-in shell mounts", async () => {

@@ -48,6 +48,9 @@ export const emailMessages: EmailMessages = {
   containerShutdownWarning: {
     subject: '🚨 긴급: 컨테이너 "{{containerName}}"이(가) 48시간 안에 꺼져요',
   },
+  agentRetentionDeletionNotice: {
+    subject: '에이전트 "{{agentName}}"이(가) {{daysRemaining}}일 후 삭제됩니다',
+  },
   footer: {
     copyright: "© {{year}} Eliza Cloud. All rights reserved.",
   },

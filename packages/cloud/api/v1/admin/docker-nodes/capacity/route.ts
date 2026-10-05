@@ -1,7 +1,7 @@
 // Handles admin cloud API v1 admin docker nodes capacity route traffic with privileged auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Admin: container pool capacity report + autoscaler decision.
@@ -12,10 +12,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * autoscaler would decide on the next tick.
  */
 
-import { requireAdmin } from "@/lib/auth";
-import { isHetznerCloudConfigured } from "@/lib/services/containers/hetzner-cloud-api";
-import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
-import { logger } from "@/lib/utils/logger";
+import { requireAdmin } from "@elizaos/cloud-shared/lib/auth";
+import { isHetznerCloudConfigured } from "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api";
+import { getNodeAutoscaler } from "@elizaos/cloud-shared/lib/services/containers/node-autoscaler";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 async function __hono_GET(request: Request) {
   const { role } = await requireAdmin(request);

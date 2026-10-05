@@ -30,75 +30,101 @@ const calculateRevenueSplits = mock(async () => ({ splits: [] }));
 const createInvoice = mock(async () => undefined);
 
 // Terminal authority has independent real-DB consumer coverage; these fixtures own purchased-credit dispatch.
-mock.module("@/lib/services/stripe-scheduled-cancellation-lifecycle", () => ({
-  reconcileStripeScheduledCancellationLifecycle: async () => {
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-scheduled-cancellation-lifecycle",
+  () => ({
+    reconcileStripeScheduledCancellationLifecycle: async () => {
+      throw new Error(
+        "Scheduled subscription lifecycle unavailable in legacy fixture",
+      );
+    },
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/services/subscription-checkout", () => ({
+  reconcileSubscriptionCheckout: async () => {
     throw new Error(
-      "Scheduled subscription lifecycle unavailable in legacy fixture",
+      "Subscription checkout authority unavailable in purchased-credit fixture",
     );
   },
 }));
-mock.module("@/lib/services/stripe-terminal-lifecycle", () => ({
-  reconcileStripeTerminalLifecycle: async () => {
-    throw new Error("Subscription lifecycle unavailable in legacy fixture");
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-terminal-lifecycle",
+  () => ({
+    reconcileStripeTerminalLifecycle: async () => {
+      throw new Error("Subscription lifecycle unavailable in legacy fixture");
+    },
+  }),
+);
+mock.module("@elizaos/cloud-shared/db/helpers", () => ({ dbRead: {} }));
+mock.module("@elizaos/cloud-shared/lib/services/billing-hold", () => ({
+  billingHoldService: {
+    settleOutstandingShortfalls: async () => ({
+      appliedUsd: "0.000000",
+      outstandingUsd: "0.000000",
+      releasedHoldIds: [],
+      repaymentTransactionId: null,
+    }),
+    getState: async () => ({ status: "clear" }),
   },
 }));
-mock.module("@/db/helpers", () => ({ dbRead: {} }));
-mock.module("@/db/repositories/organizations", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/organizations", () => ({
   organizationsRepository: {
     findById: mock(async () => ({ name: "Authoritative" })),
   },
 }));
-mock.module("@/db/repositories/users", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/users", () => ({
   usersRepository: { findById: mock(async () => ({ name: "Buyer" })) },
 }));
-mock.module("@/db/schemas/agent-sandboxes", () => ({ agentSandboxes: {} }));
-mock.module("@/lib/security/safe-fetch", () => ({
+mock.module("@elizaos/cloud-shared/db/schemas/agent-sandboxes", () => ({
+  agentSandboxes: {},
+}));
+mock.module("@elizaos/cloud-shared/lib/security/safe-fetch", () => ({
   safeFetch: mock(async () => Response.json({})),
 }));
-mock.module("@/lib/services/app-charge-callbacks", () => ({
-  appChargeCallbacksService: {},
+mock.module("@elizaos/cloud-shared/lib/services/auto-top-up", () => ({
+  autoTopUpService: {},
 }));
-mock.module("@/lib/services/app-charge-settlement", () => ({
-  appChargeSettlementService: {},
-}));
-mock.module("@/lib/services/app-credits", () => ({ appCreditsService: {} }));
-mock.module("@/lib/services/auto-top-up", () => ({ autoTopUpService: {} }));
-mock.module("@/lib/services/credits", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({
   creditsService: {
     addCredits,
     getTransactionByStripePaymentIntent: mock(async () => null),
   },
 }));
-mock.module("@/lib/services/discord", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/discord", () => ({
   discordService: { logPaymentReceived: mock(async () => undefined) },
 }));
-mock.module("@/lib/services/invoices", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/invoices", () => ({
   invoicesService: {
     getByStripeInvoiceId: mock(async () => null),
     create: createInvoice,
   },
 }));
-mock.module("@/lib/services/org-rate-limits", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/org-rate-limits", () => ({
   invalidateOrgTierCache: mock(async () => undefined),
 }));
-mock.module("@/lib/services/provisioning-jobs", () => ({
+mock.module("@elizaos/cloud-shared/agents", () => ({
   CONTAINER_BACKED_TARGET_REJECTION_REASON:
     "agent_job_target_not_container_backed",
   provisioningJobService: {},
 }));
-mock.module("@/lib/services/redeemable-earnings", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/redeemable-earnings", () => ({
   redeemableEarningsService: {
     addEarnings: mock(async () => ({ success: true })),
   },
 }));
-mock.module("@/lib/services/referrals", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/referrals", () => ({
   referralsService: { calculateRevenueSplits },
 }));
-mock.module("@/lib/services/stripe-checkout-orders", () => ({
-  stripeCheckoutOrdersService: { settle, settleLegacy },
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-checkout-orders",
+  () => ({
+    stripeCheckoutOrdersService: { settle, settleLegacy },
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/stripe", () => ({
+  requireStripe: () => ({}),
 }));
-mock.module("@/lib/stripe", () => ({ requireStripe: () => ({}) }));
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: {
     debug: mock(() => undefined),
     info: mock(() => undefined),
@@ -124,6 +150,7 @@ function checkoutDelivery(metadata: Record<string, string>) {
           object: {
             id: "cs_authoritative",
             client_reference_id: metadata.checkout_order_id ?? null,
+            mode: "payment",
             payment_status: "paid",
             amount_total: 500,
             currency: "usd",
@@ -146,6 +173,18 @@ beforeEach(() => {
 });
 
 describe("Stripe Checkout queue authority", () => {
+  test("subscription Checkout cannot settle one-time credits even when marked paid", async () => {
+    const item = checkoutDelivery({
+      checkout_order_id: "30000000-0000-4000-8000-000000000001",
+    });
+    const session = item.body.event.data
+      .object as import("stripe").default.Checkout.Session;
+    session.mode = "subscription";
+    expect(await processStripeEvent(item)).toBe("retry");
+    expect(settle).not.toHaveBeenCalled();
+    expect(settleLegacy).not.toHaveBeenCalled();
+    expect(addCredits).not.toHaveBeenCalled();
+  });
   test("ignores hostile amount and tenant metadata after durable lookup", async () => {
     const delivery = checkoutDelivery({
       checkout_order_id: "30000000-0000-4000-8000-000000000001",

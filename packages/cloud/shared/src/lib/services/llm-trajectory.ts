@@ -1,14 +1,19 @@
 /**
  * LLM trajectory logging service for Eliza Cloud.
  *
- * Records every LLM call that passes through Cloud for training data collection.
- * Integrates with the existing ai-billing flow — called from recordUsageAnalytics().
+ * Records LLM calls that pass through Cloud for training data collection when
+ * the deployment capture policy allows it (see `config/llm-trajectory-policy`).
+ * Called from ai-billing's `recordUsageAnalytics()`.
  *
- * When R2 is configured (`LLM_TRAJECTORY_STORAGE` unset + credentials, or `r2`),
- * prompt/response bodies are stored as JSON in R2; Postgres holds metadata + pointer only.
+ * Prompt/response bodies are encrypted at rest with the organization's field
+ * key, bound to `llm_trajectories|<row id>|<column>`. They live in a dedicated
+ * private object store when one is configured, otherwise inline in Postgres.
+ * Rows written before encryption hold plaintext bodies; reads return those
+ * as-is (see `decodeTrajectoryBody`).
  */
 
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import {
@@ -17,11 +22,20 @@ import {
   type NewLlmTrajectory,
 } from "../../db/schemas/llm-trajectories";
 import { logger } from "../utils/logger";
+import { fieldEncryption } from "./field-encryption";
 import {
+  deleteTrajectoryPayload,
   getTrajectoryPayload,
+  privateTrajectoryStoreConfigured,
   putTrajectoryPayload,
-  shouldUseR2ForTrajectoryPayloads,
+  type TrajectoryInlinePayload,
+  type TrajectoryPayloadStorage,
 } from "./trajectory-object-storage";
+
+export const LLM_TRAJECTORIES_TABLE = "llm_trajectories";
+
+const BODY_COLUMNS = ["system_prompt", "user_prompt", "response_text"] as const;
+type BodyColumn = (typeof BODY_COLUMNS)[number];
 
 export interface LogCallParams {
   organizationId: string;
@@ -62,28 +76,87 @@ export interface TrajectoryExportOptions {
   limit?: number;
 }
 
-async function hydrateTrajectory(row: LlmTrajectory): Promise<LlmTrajectory> {
-  if (row.trajectory_payload_storage !== "r2" || !row.trajectory_payload_key) {
-    return row;
-  }
-  const payload = await getTrajectoryPayload(row.trajectory_payload_key);
-  if (!payload) {
-    logger.warn("[llm-trajectory] Missing R2 trajectory payload", {
-      key: row.trajectory_payload_key,
-    });
-    return row;
-  }
-  return {
-    ...row,
-    system_prompt: payload.system_prompt,
-    user_prompt: payload.user_prompt,
-    response_text: payload.response_text,
+function bodyCoords(rowId: string, column: BodyColumn) {
+  return { table: LLM_TRAJECTORIES_TABLE, rowId, column };
+}
+
+async function encryptBodies(
+  organizationId: string,
+  rowId: string,
+  body: TrajectoryInlinePayload,
+): Promise<TrajectoryInlinePayload> {
+  const out: TrajectoryInlinePayload = {
+    system_prompt: null,
+    user_prompt: null,
+    response_text: null,
   };
+  for (const column of BODY_COLUMNS) {
+    const value = body[column];
+    out[column] =
+      value === null
+        ? null
+        : await fieldEncryption.encrypt(organizationId, value, bodyCoords(rowId, column));
+  }
+  return out;
+}
+
+/**
+ * Decode one stored body. Encrypted values are decrypted against their row
+ * coordinates (a relocated ciphertext fails). Rows captured before at-rest
+ * encryption hold plaintext; those are returned unchanged and age out through
+ * the retention purge.
+ */
+export async function decodeTrajectoryBody(
+  value: string | null,
+  rowId: string,
+  column: BodyColumn,
+): Promise<string | null> {
+  if (value === null) return null;
+  if (!fieldEncryption.isEncrypted(value)) return value;
+  return fieldEncryption.decrypt(value, bodyCoords(rowId, column));
+}
+
+async function decodeBodies(
+  rowId: string,
+  body: TrajectoryInlinePayload,
+): Promise<TrajectoryInlinePayload> {
+  return {
+    system_prompt: await decodeTrajectoryBody(body.system_prompt, rowId, "system_prompt"),
+    user_prompt: await decodeTrajectoryBody(body.user_prompt, rowId, "user_prompt"),
+    response_text: await decodeTrajectoryBody(body.response_text, rowId, "response_text"),
+  };
+}
+
+function isObjectStorage(storage: string): storage is Exclude<TrajectoryPayloadStorage, "inline"> {
+  return storage === "private_object" || storage === "r2";
+}
+
+async function hydrateTrajectory(row: LlmTrajectory): Promise<LlmTrajectory> {
+  const storage = row.trajectory_payload_storage;
+  if (storage === "inline") {
+    return { ...row, ...(await decodeBodies(row.id, row)) };
+  }
+  if (!isObjectStorage(storage) || !row.trajectory_payload_key) {
+    throw new ElizaError("Trajectory payload reference is invalid", {
+      code: "TRAJECTORY_PAYLOAD_INVALID",
+      context: { trajectoryId: row.id, storage },
+    });
+  }
+  const payload = await getTrajectoryPayload(storage, row.trajectory_payload_key);
+  if (!payload) {
+    throw new ElizaError("Trajectory payload object is missing", {
+      code: "TRAJECTORY_PAYLOAD_MISSING",
+      context: { trajectoryId: row.id, storage },
+    });
+  }
+  return { ...row, ...(await decodeBodies(row.id, payload)) };
 }
 
 class LlmTrajectoryService {
   /**
-   * Log a single LLM call trajectory.
+   * Record one LLM call. Callers check the deployment capture policy first.
+   * Bodies are encrypted before they leave this process; a failed write
+   * throws (after removing any payload object it already stored).
    */
   async logCall(params: LogCallParams): Promise<void> {
     const totalTokens = (params.inputTokens ?? 0) + (params.outputTokens ?? 0);
@@ -91,32 +164,29 @@ class LlmTrajectoryService {
     const id = randomUUID();
     const createdAt = new Date();
 
-    const bodyTexts =
-      (params.systemPrompt ?? "") !== "" ||
-      (params.userPrompt ?? "") !== "" ||
-      (params.responseText ?? "") !== "";
+    const plainBodies: TrajectoryInlinePayload = {
+      system_prompt: params.systemPrompt ?? null,
+      user_prompt: params.userPrompt ?? null,
+      response_text: params.responseText ?? null,
+    };
+    const hasBodies = BODY_COLUMNS.some((column) => (plainBodies[column] ?? "") !== "");
+    const encrypted = hasBodies
+      ? await encryptBodies(params.organizationId, id, plainBodies)
+      : plainBodies;
 
-    let trajectory_payload_storage: "inline" | "r2" = "inline";
+    let trajectory_payload_storage: TrajectoryPayloadStorage = "inline";
     let trajectory_payload_key: string | null = null;
-    let system_prompt: string | null = params.systemPrompt ?? null;
-    let user_prompt: string | null = params.userPrompt ?? null;
-    let response_text: string | null = params.responseText ?? null;
+    let inlineBodies = encrypted;
 
-    if (shouldUseR2ForTrajectoryPayloads() && bodyTexts) {
-      trajectory_payload_storage = "r2";
+    if (hasBodies && privateTrajectoryStoreConfigured()) {
+      trajectory_payload_storage = "private_object";
       trajectory_payload_key = await putTrajectoryPayload({
         organizationId: params.organizationId,
         trajectoryId: id,
         createdAt,
-        body: {
-          system_prompt: params.systemPrompt ?? null,
-          user_prompt: params.userPrompt ?? null,
-          response_text: params.responseText ?? null,
-        },
+        body: encrypted,
       });
-      system_prompt = null;
-      user_prompt = null;
-      response_text = null;
+      inlineBodies = { system_prompt: null, user_prompt: null, response_text: null };
     }
 
     const record: NewLlmTrajectory = {
@@ -128,9 +198,7 @@ class LlmTrajectoryService {
       provider: params.provider,
       purpose: params.purpose ?? null,
       request_id: params.requestId ?? null,
-      system_prompt,
-      user_prompt,
-      response_text,
+      ...inlineBodies,
       trajectory_payload_storage,
       trajectory_payload_key,
       input_tokens: params.inputTokens ?? 0,
@@ -146,12 +214,21 @@ class LlmTrajectoryService {
       created_at: createdAt,
     };
 
-    await db
-      .insert(llmTrajectories)
-      .values(record)
-      .catch((err: Error) => {
-        logger.error("[llm-trajectory] Failed to log call:", err);
-      });
+    try {
+      await db.insert(llmTrajectories).values(record);
+    } catch (error) {
+      if (trajectory_payload_key) {
+        await deleteTrajectoryPayload("private_object", trajectory_payload_key).catch(
+          (cleanupError: unknown) => {
+            logger.error("[llm-trajectory] Failed to remove orphaned payload", {
+              key: trajectory_payload_key,
+              error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+            });
+          },
+        );
+      }
+      throw error;
+    }
   }
 
   /**

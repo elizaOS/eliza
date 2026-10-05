@@ -20,29 +20,58 @@ import {
 } from "@elizaos/ui";
 import {
   CalendarSync,
-  Check,
   FileCheck2,
   GraduationCap,
   RefreshCw,
   ShieldCheck,
   UsersRound,
-  X,
 } from "lucide-react";
 import {
   type ChangeEvent,
   type ReactNode,
   useCallback,
   useEffect,
-  useMemo,
+  useRef,
   useState,
 } from "react";
+import type { FamilyPacketSection } from "../../lifeops/family-coordination/index.js";
 import { nextFamilyPacketPeriod } from "../../lifeops/family-workflows/period.js";
+import type { FamilyMonthlyScheduleView } from "../../lifeops/family-workflows/runtime.js";
+import { AgreementGuestAccessPanel } from "./AgreementGuestAccessPanel.js";
+import { AgreementObligationReview } from "./AgreementObligationReview.js";
+import { AgreementProposalEditor } from "./AgreementProposalEditor.js";
+import { AgreementReviewPanel } from "./AgreementReviewPanel.js";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
+import type { FamilyDeletionAdapter } from "./deletion-adapter.js";
+import { FamilyDeletionPanel } from "./FamilyDeletionPanel.js";
+import { FamilyIntakePanel } from "./FamilyIntakePanel.js";
+import {
+  defaultFamilyIntakeAdapter,
+  type FamilyIntakeAdapter,
+} from "./intake-adapter.js";
+import { MonthlyScheduleEditor } from "./MonthlyScheduleEditor.js";
 import { PacketDraftEditor } from "./PacketDraftEditor.js";
+import { RecipientSetup } from "./RecipientSetup.js";
 import type {
   FamilyOperationsAdapter,
   FamilyOperationsSnapshot,
+  Loadable,
+  SchoolWorkflowView,
 } from "./types.js";
+
+const packetSectionLabels: Record<FamilyPacketSection, string> = {
+  custody_calendar: "Parenting schedule",
+  school: "School",
+  approved_obligations: "Agreement obligations",
+  travel_consent_health: "Travel, consent and health",
+  unanswered: "Unanswered requests",
+};
+
+const packetStatusLabels = {
+  complete: "Source material available for every section",
+  missing: "Some sections need source material",
+  contradictory: "Conflicting sources need review",
+};
 
 type Tab = "agreements" | "calendar" | "school" | "packets";
 
@@ -156,6 +185,8 @@ function AgreementUploadCard({
       setFile(null);
       await refresh();
     } catch (cause) {
+      // error-policy:J1 Show the failed upload without retaining active progress.
+      setProgress(null);
       setError(cause instanceof Error ? cause.message : "Upload failed");
     }
   };
@@ -163,7 +194,7 @@ function AgreementUploadCard({
   return (
     <Card
       title="Upload signed agreement"
-      detail="Signed PDFs upload in resumable chunks. Eliza reads every page and derives the citation page count."
+      detail="Upload your signed PDF, then review the extracted obligations and their source pages."
     >
       <Button variant="outline" onClick={() => setExpanded((value) => !value)}>
         {expanded ? "Close PDF form" : "Choose a signed PDF"}
@@ -243,21 +274,22 @@ function AgreementPanel({
   state,
   adapter,
   refresh,
+  refreshReview,
 }: {
   state: FamilyOperationsSnapshot["agreements"];
   adapter: FamilyOperationsAdapter;
   refresh: () => Promise<void>;
+  refreshReview: () => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState("");
-  const [reason, setReason] = useState("");
+  const [downloading, setDownloading] = useState<"original" | "export" | null>(
+    null,
+  );
   const [targetType, setTargetType] = useState<"agent" | "chat">("agent");
   const [targetId, setTargetId] = useState("");
-  const [principalEntityId, setPrincipalEntityId] = useState("");
-  const [householdGrantId, setHouseholdGrantId] = useState("");
-  const [revokeGrantId, setRevokeGrantId] = useState("");
-  const [revokeReason, setRevokeReason] = useState("");
-  const [preview, setPreview] = useState<Awaited<
-    ReturnType<FamilyOperationsAdapter["previewGrant"]>
+  const pinLoadRequest = useRef(0);
+  const [targets, setTargets] = useState<Loadable<
+    Awaited<ReturnType<FamilyOperationsAdapter["listPinTargets"]>>
   > | null>(null);
   const [pins, setPins] = useState<
     Awaited<ReturnType<FamilyOperationsAdapter["listPins"]>>
@@ -269,18 +301,57 @@ function AgreementPanel({
     agreements.find((item) => item.artifact.id === selectedId) ?? agreements[0];
   const selectedArtifactId = selected?.artifact.id;
 
-  useEffect(() => {
+  const loadPinTargets = useCallback(async () => {
     if (!selectedArtifactId) return;
+    const requestId = ++pinLoadRequest.current;
     setSelectedId(selectedArtifactId);
-    adapter
-      .listPins(selectedArtifactId)
-      .then(setPins)
-      .catch((cause) =>
-        setError(
-          cause instanceof Error ? cause.message : "Pins could not load",
-        ),
-      );
+    setTargets(null);
+    setPins([]);
+    try {
+      const [loadedPins, loadedTargets] = await Promise.all([
+        adapter.listPins(selectedArtifactId),
+        adapter.listPinTargets(),
+      ]);
+      if (requestId !== pinLoadRequest.current) return;
+      setPins(loadedPins);
+      setTargets({ status: "ready", data: loadedTargets });
+    } catch (cause) {
+      // error-policy:J1 display loading failures without accepting a stale destination.
+      if (requestId === pinLoadRequest.current)
+        setTargets({
+          status: "unavailable",
+          message:
+            cause instanceof Error
+              ? cause.message
+              : "Pin destinations could not load",
+        });
+    }
   }, [adapter, selectedArtifactId]);
+
+  useEffect(() => {
+    void loadPinTargets();
+    return () => {
+      pinLoadRequest.current += 1;
+    };
+  }, [loadPinTargets]);
+
+  const pinTarget =
+    targets?.status === "ready"
+      ? targetType === "agent"
+        ? targets.data.agent.id
+        : targets.data.chats.find((chat) => chat.id === targetId)?.id
+      : undefined;
+  const pinLabel = (pin: (typeof pins)[number]): string => {
+    if (targets?.status !== "ready") return "Unavailable destination";
+    if (pin.targetType === "agent")
+      return pin.targetId === targets.data.agent.id
+        ? `This agent: ${targets.data.agent.name ?? "Unnamed agent"}`
+        : "Unavailable agent";
+    const chat = targets.data.chats.find((item) => item.id === pin.targetId);
+    return chat
+      ? `${chat.name ?? "Unnamed conversation"} · ${chat.source}`
+      : "Unavailable conversation";
+  };
 
   const act = async (operation: () => Promise<unknown>, success: string) => {
     setError(null);
@@ -291,6 +362,41 @@ function AgreementPanel({
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The request failed");
+    }
+  };
+
+  const download = async (format: "original" | "export") => {
+    if (!selected || downloading) return;
+    setDownloading(format);
+    setError(null);
+    setNotice(null);
+    try {
+      const blob = await adapter.downloadAgreement(
+        selected.artifact.id,
+        format,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        format === "original"
+          ? selected.artifact.originalFilename
+          : `agreement-${selected.artifact.id}-v${selected.artifact.version}.zip`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      // Allow the browser to consume the object URL before releasing it.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setNotice(
+        format === "original"
+          ? "Original PDF download started."
+          : "Agreement export download started. The archive includes the original, provenance, and checksums.",
+      );
+    } catch (cause) {
+      // error-policy:J1 Download failures remain visible in the owner workspace.
+      setError(cause instanceof Error ? cause.message : "Download failed");
+    } finally {
+      setDownloading(null);
     }
   };
 
@@ -356,100 +462,60 @@ function AgreementPanel({
             </dd>
           </div>
         </dl>
+        <div
+          style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}
+        >
+          <Button
+            className="min-h-11"
+            variant="accentDarkHover"
+            disabled={downloading !== null}
+            onClick={() => void download("original")}
+          >
+            {downloading === "original"
+              ? "Preparing PDF…"
+              : "Download original PDF"}
+          </Button>
+          <Button
+            className="min-h-11"
+            variant="accentDarkHover"
+            disabled={downloading !== null}
+            onClick={() => void download("export")}
+          >
+            {downloading === "export"
+              ? "Preparing export…"
+              : "Export agreement"}
+          </Button>
+        </div>
       </Card>
 
       <Card
         title="Reviewed obligations"
         detail="Proposals do not become active until you approve them against the cited PDF pages."
       >
+        <AgreementReviewPanel
+          key={selected.artifact.id}
+          artifactId={selected.artifact.id}
+          adapter={adapter}
+          onPrepared={refreshReview}
+        />
+        <AgreementProposalEditor
+          key={selected.artifact.id}
+          artifactId={selected.artifact.id}
+          pageCount={selected.artifact.pageCount}
+          adapter={adapter}
+          onSaved={refreshReview}
+        />
         {selected.obligations.length === 0 ? (
           <Empty>No reviewed obligations yet.</Empty>
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
             {selected.obligations.map((obligation) => (
-              <article
+              <AgreementObligationReview
                 key={obligation.id}
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  padding: 14,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <strong>{obligation.title}</strong>
-                  <span>{obligation.status}</span>
-                </div>
-                <p>{obligation.obligationText}</p>
-                <blockquote
-                  style={{
-                    margin: "10px 0",
-                    paddingLeft: 12,
-                    borderLeft: "3px solid var(--accent)",
-                    color: "var(--muted)",
-                  }}
-                >
-                  Pages {obligation.pageStart}–{obligation.pageEnd}:{" "}
-                  {obligation.citationText}
-                </blockquote>
-                {obligation.status === "proposed" ? (
-                  <div style={{ display: "grid", gap: 9 }}>
-                    <label htmlFor={`decision-reason-${obligation.id}`}>
-                      <span style={{ display: "block", marginBottom: 6 }}>
-                        Decision reason
-                      </span>
-                      <Input
-                        id={`decision-reason-${obligation.id}`}
-                        value={reason}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setReason(event.target.value)
-                        }
-                      />
-                    </label>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <Button
-                        disabled={!reason.trim()}
-                        onClick={() =>
-                          void act(
-                            () =>
-                              adapter.decideObligation(
-                                obligation,
-                                "approve",
-                                reason,
-                              ),
-                            "Obligation approved.",
-                          )
-                        }
-                      >
-                        <Check size={16} /> Approve
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={!reason.trim()}
-                        onClick={() =>
-                          void act(
-                            () =>
-                              adapter.decideObligation(
-                                obligation,
-                                "reject",
-                                reason,
-                              ),
-                            "Obligation rejected.",
-                          )
-                        }
-                      >
-                        <X size={16} /> Reject
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-              </article>
+                obligation={obligation}
+                adapter={adapter}
+                onDecided={refreshReview}
+              />
             ))}
           </div>
         )}
@@ -475,36 +541,74 @@ function AgreementPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="agent">Agent</SelectItem>
+              <SelectItem value="agent">This agent</SelectItem>
               <SelectItem value="chat">Chat</SelectItem>
             </SelectContent>
           </Select>
-          <Input
-            aria-label="Pin target ID"
-            placeholder={
-              targetType === "agent" ? "Agent ID" : "Chat or room ID"
-            }
-            value={targetId}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              setTargetId(event.target.value)
-            }
-          />
+          {targets === null ? (
+            <p role="status">Loading destinations…</p>
+          ) : targets.status === "unavailable" ? (
+            <Unavailable message={targets.message} />
+          ) : targetType === "agent" ? (
+            <p>{targets.data.agent.name ?? "Unnamed agent"}</p>
+          ) : targets.data.chats.length === 0 ? (
+            <p>
+              No conversations are available. Start a chat, then refresh
+              destinations.
+            </p>
+          ) : (
+            <Select value={pinTarget ?? ""} onValueChange={setTargetId}>
+              <SelectTrigger aria-label="Pin conversation" className="min-h-11">
+                <SelectValue placeholder="Choose a conversation" />
+              </SelectTrigger>
+              <SelectContent>
+                {targets.data.chats.map((chat) => (
+                  <SelectItem key={chat.id} value={chat.id}>
+                    {chat.name ?? "Unnamed conversation"} · {chat.source}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button
-            disabled={!targetId.trim()}
+            className="min-h-11"
+            disabled={!pinTarget}
             onClick={() =>
               void act(async () => {
-                await adapter.pin({
+                if (!pinTarget)
+                  throw new Error("Choose an available pin destination.");
+                const pin = await adapter.pin({
                   artifactId: selected.artifact.id,
                   targetType,
-                  targetId,
+                  targetId: pinTarget,
                 });
-                setPins(await adapter.listPins(selected.artifact.id));
+                const storedPins = await adapter.listPins(selected.artifact.id);
+                setPins(storedPins);
+                if (
+                  !storedPins.some(
+                    (stored) =>
+                      stored.id === pin.id &&
+                      stored.targetType === targetType &&
+                      stored.targetId === pinTarget &&
+                      stored.unpinnedAt === null,
+                  )
+                )
+                  throw new Error(
+                    "The pin could not be confirmed. Refresh destinations before retrying.",
+                  );
               }, "Pin saved.")
             }
           >
             Pin
           </Button>
         </div>
+        <Button
+          className="min-h-11 mt-3"
+          variant="outline"
+          onClick={() => void loadPinTargets()}
+        >
+          Refresh destinations
+        </Button>
         <ul style={{ padding: 0, listStyle: "none", display: "grid", gap: 8 }}>
           {pins.map((pin) => (
             <li
@@ -516,10 +620,9 @@ function AgreementPanel({
                 gap: 8,
               }}
             >
-              <span>
-                {pin.targetType}: {pin.targetId}
-              </span>
+              <span>{pinLabel(pin)}</span>
               <Button
+                className="min-h-11"
                 variant="outline"
                 size="sm"
                 onClick={() =>
@@ -538,134 +641,13 @@ function AgreementPanel({
 
       <Card
         title="Guest access"
-        detail="Preview the exact effects before issuing a bounded read grant to a verified guest."
+        detail="Choose a verified guest and preview the limited access before enabling it."
       >
-        <div style={{ display: "grid", gap: 9 }}>
-          <label htmlFor="family-guest-entity-id">
-            <span>Guest entity ID</span>
-            <Input
-              id="family-guest-entity-id"
-              value={principalEntityId}
-              onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                setPrincipalEntityId(event.target.value)
-              }
-            />
-          </label>
-          <label htmlFor="family-household-grant-id">
-            <span>Household grant ID</span>
-            <Input
-              id="family-household-grant-id"
-              value={householdGrantId}
-              onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                setHouseholdGrantId(event.target.value)
-              }
-            />
-          </label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button
-              variant="outline"
-              disabled={!principalEntityId || !householdGrantId}
-              onClick={() =>
-                void act(
-                  async () =>
-                    setPreview(
-                      await adapter.previewGrant({
-                        artifactId: selected.artifact.id,
-                        principalEntityId,
-                        householdGrantId,
-                      }),
-                    ),
-                  "Preview ready.",
-                )
-              }
-            >
-              Preview permission
-            </Button>
-            <Button
-              disabled={!preview?.allowed}
-              onClick={() =>
-                void act(
-                  () =>
-                    adapter.issueGrant({
-                      artifactId: selected.artifact.id,
-                      principalEntityId,
-                      householdGrantId,
-                    }),
-                  "Guest grant issued.",
-                )
-              }
-            >
-              Issue grant
-            </Button>
-          </div>
-          {preview ? (
-            <div
-              role="status"
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: 12,
-              }}
-            >
-              <strong>
-                {preview.allowed ? "Ready to grant" : "Cannot grant"}
-              </strong>
-              <p>
-                {preview.denial?.message ??
-                  "Guest can read artifact metadata and approved obligations only."}
-              </p>
-              <small>
-                Pins do not grant access. Proposed and rejected obligations
-                remain private.
-              </small>
-            </div>
-          ) : null}
-          <div
-            style={{
-              borderTop: "1px solid var(--border)",
-              display: "grid",
-              gap: 9,
-              marginTop: 8,
-              paddingTop: 16,
-            }}
-          >
-            <strong>Revoke an existing grant</strong>
-            <label htmlFor="family-revoke-grant-id">
-              <span>Grant ID</span>
-              <Input
-                id="family-revoke-grant-id"
-                value={revokeGrantId}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setRevokeGrantId(event.target.value)
-                }
-              />
-            </label>
-            <label htmlFor="family-revoke-reason">
-              <span>Revocation reason</span>
-              <Input
-                id="family-revoke-reason"
-                value={revokeReason}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setRevokeReason(event.target.value)
-                }
-              />
-            </label>
-            <div>
-              <Button
-                variant="outline"
-                disabled={!revokeGrantId.trim() || !revokeReason.trim()}
-                onClick={() =>
-                  void act(
-                    () => adapter.revokeGrant(revokeGrantId, revokeReason),
-                    "Guest grant revoked.",
-                  )
-                }
-              >
-                Revoke grant
-              </Button>
-            </div>
-          </div>
-        </div>
+        <AgreementGuestAccessPanel
+          key={selected.artifact.id}
+          artifactId={selected.artifact.id}
+          adapter={adapter}
+        />
       </Card>
       {error ? <Unavailable message={error} /> : null}
       {notice ? <p role="status">{notice}</p> : null}
@@ -708,12 +690,25 @@ function CalendarPanel({
       {state.data.map((link) => (
         <Card
           key={link.id}
-          title={`Event ${link.localEventId}`}
-          detail={`Google calendar ${link.providerCalendarId} · updated ${date(link.updatedAt)}`}
+          title={
+            link.event
+              ? link.event.title || "Untitled event"
+              : "Event details unavailable"
+          }
+          detail={`Google sync · updated ${date(link.updatedAt)}`}
         >
           <p>
             <strong>Status:</strong> {link.state}
           </p>
+          <details>
+            <summary>Connection details</summary>
+            <p style={{ overflowWrap: "anywhere" }}>
+              Event ID: {link.localEventId}
+            </p>
+            <p style={{ overflowWrap: "anywhere" }}>
+              Google calendar: {link.providerCalendarId}
+            </p>
+          </details>
           {link.state === "conflicted" ? (
             <div>
               <p role="alert">
@@ -721,6 +716,7 @@ function CalendarPanel({
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <Button
+                  className="min-h-11"
                   onClick={() =>
                     void run(() =>
                       adapter.resolveCalendarConflict(
@@ -734,6 +730,7 @@ function CalendarPanel({
                   Keep Eliza
                 </Button>
                 <Button
+                  className="min-h-11"
                   variant="outline"
                   onClick={() =>
                     void run(() =>
@@ -751,6 +748,7 @@ function CalendarPanel({
             </div>
           ) : null}
           <Button
+            className="min-h-11"
             variant="outline"
             onClick={() =>
               void run(() =>
@@ -767,6 +765,28 @@ function CalendarPanel({
   );
 }
 
+const schoolStatusLabels: Record<SchoolWorkflowView["state"], string> = {
+  never_run: "Not checked yet",
+  running: "Checking",
+  unchanged: "No changes",
+  awaiting_approval: "Ready for review",
+  applied: "Updated",
+  failed: "Check failed",
+};
+const monthlyScheduleStatusLabels: Record<
+  FamilyMonthlyScheduleView["status"],
+  string
+> = {
+  scheduled: "Scheduled",
+  fired: "Last run started",
+  acknowledged: "Acknowledged",
+  completed: "Completed",
+  skipped: "Skipped",
+  expired: "Expired",
+  failed: "Failed",
+  dismissed: "Stopped",
+};
+
 function SchoolPanel({
   state,
   adapter,
@@ -777,6 +797,9 @@ function SchoolPanel({
   refresh: () => Promise<void>;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [errorTarget, setErrorTarget] = useState<"school" | "schedule">(
+    "school",
+  );
   const [busy, setBusy] = useState(false);
   const [schoolLevel, setSchoolLevel] = useState<"all" | "elementary">(
     "elementary",
@@ -793,10 +816,14 @@ function SchoolPanel({
   if (state.status === "unavailable")
     return <Unavailable message={state.message} />;
   const workflow = state.data;
-  const run = async (op: () => Promise<void>) => {
+  const run = async (
+    op: () => Promise<void>,
+    target: "school" | "schedule" = "school",
+  ) => {
     try {
       setBusy(true);
       setError(null);
+      setErrorTarget(target);
       await op();
       await refresh();
     } catch (cause) {
@@ -823,7 +850,7 @@ function SchoolPanel({
               setSchoolLevel(value === "elementary" ? "elementary" : "all")
             }
           >
-            <SelectTrigger id="school-level">
+            <SelectTrigger id="school-level" className="min-h-12">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -843,7 +870,7 @@ function SchoolPanel({
               setUpdateMode(value === "automatic" ? "automatic" : "review")
             }
           >
-            <SelectTrigger id="school-update-mode">
+            <SelectTrigger id="school-update-mode" className="min-h-12">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -855,10 +882,15 @@ function SchoolPanel({
           </Select>
         </div>
         <p>
-          Checks monthly. Unchanged files add no events. Unclear dates stop for
-          review; changes apply only to events managed by this school source.
+          Saving creates a monthly school check and packet preparation task if
+          one does not exist. The default is the first day of each month at 9:00
+          AM America/New_York; an existing schedule and its status are
+          preserved. It never sends email automatically. Unchanged files add no
+          events. Unclear dates stop for review; changes apply only to events
+          managed by this school source.
         </p>
         <Button
+          className="min-h-12"
           onClick={() =>
             void run(() => adapter.configureSchool({ schoolLevel, updateMode }))
           }
@@ -866,8 +898,55 @@ function SchoolPanel({
           Save school settings
         </Button>
       </fieldset>
+      <section
+        aria-label="Saved family schedule"
+        style={{ display: "grid", gap: 8, marginTop: 20, marginBottom: 20 }}
+      >
+        <h3 style={{ fontWeight: 700 }}>Saved family schedule</h3>
+        {workflow.monthlySchedule.status === "unavailable" ? (
+          <Unavailable message={workflow.monthlySchedule.message} />
+        ) : workflow.monthlySchedule.data === null ? (
+          <p>
+            Not scheduled yet. Save school settings to enable monthly
+            preparation.
+          </p>
+        ) : (
+          <>
+            <p>
+              Status:{" "}
+              {
+                monthlyScheduleStatusLabels[
+                  workflow.monthlySchedule.data.status
+                ]
+              }
+            </p>
+            <MonthlyScheduleEditor
+              key={workflow.monthlySchedule.data.taskId}
+              schedule={workflow.monthlySchedule.data}
+              busy={busy}
+              save={(input) =>
+                run(() => adapter.updateMonthlySchedule(input), "schedule")
+              }
+              error={
+                errorTarget === "schedule" && error ? (
+                  <Unavailable message={error} />
+                ) : null
+              }
+            />
+            <p>
+              Last recorded start:{" "}
+              {date(workflow.monthlySchedule.data.lastFiredAt)}
+            </p>
+            <p>
+              Checks school dates and prepares an owner-review packet. Email
+              still requires your approval.
+            </p>
+          </>
+        )}
+        <a href="/automations">Review scheduled tasks</a>
+      </section>
       <p>
-        <strong>Status:</strong> {workflow.state} · checked{" "}
+        <strong>Status:</strong> {schoolStatusLabels[workflow.state]} · checked{" "}
         {date(workflow.lastCheckedAt)}
       </p>
       {workflow.changes?.length ? (
@@ -883,6 +962,7 @@ function SchoolPanel({
       )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
         <Button
+          className="min-h-12"
           disabled={busy}
           onClick={() => void run(() => adapter.runSchoolWorkflow())}
         >
@@ -890,6 +970,7 @@ function SchoolPanel({
         </Button>
         {workflow.state === "awaiting_approval" && workflow.runId ? (
           <Button
+            className="min-h-12"
             disabled={busy}
             variant="outline"
             onClick={() =>
@@ -902,7 +983,9 @@ function SchoolPanel({
           </Button>
         ) : null}
       </div>
-      {error ? <Unavailable message={error} /> : null}
+      {errorTarget === "school" && error ? (
+        <Unavailable message={error} />
+      ) : null}
     </Card>
   );
 }
@@ -912,16 +995,24 @@ function PacketPanel({
   emailOptions,
   adapter,
   refresh,
+  intakeAdapter,
 }: {
   state: FamilyOperationsSnapshot["packets"];
   emailOptions: FamilyOperationsSnapshot["emailOptions"];
   adapter: FamilyOperationsAdapter;
   refresh: () => Promise<void>;
+  intakeAdapter: FamilyIntakeAdapter;
 }) {
-  const currentPeriod = useMemo(
+  const [currentPeriod, setCurrentPeriod] = useState(
     () => nextFamilyPacketPeriod(new Date()).key,
-    [],
   );
+  const [requestedPeriod, setRequestedPeriod] = useState(currentPeriod);
+  const [confirmMonthChange, setConfirmMonthChange] = useState(false);
+  const [intakeEditState, setIntakeEditState] = useState({
+    busy: false,
+    unsaved: false,
+  });
+  const [generating, setGenerating] = useState(false);
   const [recipientKey, setRecipientKey] = useState("");
   const [senderGrantId, setSenderGrantId] = useState("");
   const [subject, setSubject] = useState(
@@ -947,18 +1038,56 @@ function PacketPanel({
   const [error, setError] = useState<string | null>(null);
   if (state.status === "unavailable")
     return <Unavailable message={state.message} />;
+  const selectedPackets = state.data.filter(
+    (packet) => packet.periodKey === currentPeriod,
+  );
+  const latestPacket = selectedPackets.reduce<
+    (typeof selectedPackets)[number] | undefined
+  >(
+    (latest, packet) =>
+      !latest || packet.version > latest.version ? packet : latest,
+    undefined,
+  );
+  const missingSections = latestPacket
+    ? latestPacket.sections
+        .filter((section) => section.state === "missing")
+        .map((section) => section.section)
+    : ["custody_calendar", "school", "travel_consent_health", "unanswered"];
+  const validRequestedPeriod = /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(
+    requestedPeriod,
+  );
+  const openMonth = () => {
+    if (!validRequestedPeriod || intakeEditState.busy || generating) return;
+    setSubject((value) =>
+      value === `Family coordination for ${currentPeriod}`
+        ? `Family coordination for ${requestedPeriod}`
+        : value,
+    );
+    setCurrentPeriod(requestedPeriod);
+    setIntakeEditState({ busy: false, unsaved: false });
+    setConfirmMonthChange(false);
+    setError(null);
+    setNotice(null);
+  };
   const generate = async () => {
+    setGenerating(true);
     try {
       setError(null);
       await adapter.generatePacket(currentPeriod);
       await refresh();
     } catch (cause) {
+      // error-policy:J4 Generation failure remains visible and does not replace saved packets.
       setError(
         cause instanceof Error ? cause.message : "Packet generation failed",
       );
+    } finally {
+      setGenerating(false);
     }
   };
-  const createDraft = async (packetId: string) => {
+  const createDraft = async (
+    packetId: string,
+    expectedPacketVersion: number,
+  ) => {
     try {
       setError(null);
       setNotice(null);
@@ -966,6 +1095,7 @@ function PacketPanel({
         throw new Error("Choose a connected sender and a verified recipient.");
       await adapter.createPacketDraft({
         packetId,
+        expectedPacketVersion,
         recipient: recipient.address,
         recipientEntityId: recipient.entityId,
         calendarPrivacyMode,
@@ -995,10 +1125,87 @@ function PacketPanel({
   const canCreateDraft = Boolean(recipient && sender && subject.trim());
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <div>
-        <Button onClick={() => void generate()}>
-          Generate {currentPeriod} packet
+      <section aria-label="Packet month" className="space-y-3">
+        <label className="grid gap-2" htmlFor="family-packet-month">
+          Month to prepare
+          <Input
+            id="family-packet-month"
+            type="month"
+            value={requestedPeriod}
+            disabled={intakeEditState.busy || generating}
+            onChange={(event) => {
+              setRequestedPeriod(event.target.value);
+              setConfirmMonthChange(false);
+            }}
+          />
+        </label>
+        <Button
+          variant="accentDarkHover"
+          disabled={
+            !validRequestedPeriod ||
+            requestedPeriod === currentPeriod ||
+            intakeEditState.busy ||
+            generating
+          }
+          onClick={() =>
+            intakeEditState.unsaved ? setConfirmMonthChange(true) : openMonth()
+          }
+        >
+          Open month
         </Button>
+        {confirmMonthChange ? (
+          <div role="alert" className="space-y-3">
+            <p>
+              Opening {requestedPeriod} will discard unsaved correspondence and
+              fact edits. Saved source reviews remain in {currentPeriod}.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setConfirmMonthChange(false);
+                  setRequestedPeriod(currentPeriod);
+                }}
+              >
+                Keep editing
+              </Button>
+              <Button
+                variant="accentDarkHover"
+                disabled={intakeEditState.busy || generating}
+                onClick={openMonth}
+              >
+                Discard edits and open month
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </section>
+      <FamilyIntakePanel
+        key={currentPeriod}
+        period={currentPeriod}
+        adapter={intakeAdapter}
+        emailOptions={emailOptions}
+        onChanged={refresh}
+        onEditStateChange={setIntakeEditState}
+        missingSections={missingSections}
+      />
+      <div>
+        <Button
+          variant="accentDarkHover"
+          disabled={
+            generating || intakeEditState.busy || intakeEditState.unsaved
+          }
+          onClick={() => void generate()}
+        >
+          {generating
+            ? "Generating packet…"
+            : `Generate ${currentPeriod} packet`}
+        </Button>
+        {intakeEditState.unsaved ? (
+          <p>
+            Save or discard correspondence edits before generating the packet.
+          </p>
+        ) : null}
       </div>
       {emailOptions.status === "unavailable" ? (
         <Unavailable message={emailOptions.message} />
@@ -1013,6 +1220,16 @@ function PacketPanel({
           external draft.
         </p>
       ) : null}
+      <RecipientSetup
+        adapter={adapter}
+        onConfirmed={async (contact) => {
+          await refresh();
+          setRecipientKey(JSON.stringify([contact.entityId, contact.address]));
+          setNotice(
+            "Recipient confirmed. Review a new draft before approving email delivery.",
+          );
+        }}
+      />
       <Card
         title="Monthly email"
         detail="Choose your sending account and a verified recipient. Review the exact email before approving delivery."
@@ -1110,27 +1327,72 @@ function PacketPanel({
           </label>
         </div>
       </Card>
-      {state.data.length === 0 ? (
-        <Empty>No monthly packets have been generated.</Empty>
+      {selectedPackets.length === 0 ? (
+        <Empty>No packet has been generated for {currentPeriod}.</Empty>
       ) : (
-        state.data.map((packet) => (
+        selectedPackets.map((packet) => (
           <Card
             key={`${packet.packetId}:${packet.version}`}
             title={`${packet.periodKey} · version ${packet.version}`}
-            detail={`Built ${date(packet.createdAt)} · ${packet.status}`}
+            detail={`Built ${date(packet.createdAt)} · ${packetStatusLabels[packet.status]}`}
           >
-            <ul>
-              {packet.claims.map((claim) => (
-                <li key={claim.id}>
-                  <strong>{claim.section}:</strong> {claim.text}
-                </li>
+            {packet.sections
+              .filter((section) => section.state !== "complete")
+              .map((section) => (
+                <section
+                  key={section.section}
+                  aria-label={`${packetSectionLabels[section.section]} review`}
+                >
+                  <h3>{packetSectionLabels[section.section]}</h3>
+                  {section.state === "missing" ? (
+                    <p>
+                      No source material is recorded for this section. Add the
+                      relevant information before regenerating the packet; an
+                      empty section does not confirm there is nothing to report.
+                    </p>
+                  ) : (
+                    <>
+                      <p>
+                        These sources disagree. Review and correct the
+                        underlying information before regenerating the packet.
+                      </p>
+                      <ul>
+                        {packet.claims
+                          .filter((claim) =>
+                            section.claimIds.includes(claim.id),
+                          )
+                          .map((claim) => (
+                            <li key={claim.id}>{claim.text}</li>
+                          ))}
+                      </ul>
+                    </>
+                  )}
+                </section>
               ))}
+            <ul>
+              {packet.claims
+                .filter(
+                  (claim) =>
+                    !packet.sections.some(
+                      (section) =>
+                        section.state === "contradictory" &&
+                        section.claimIds.includes(claim.id),
+                    ),
+                )
+                .map((claim) => (
+                  <li key={claim.id}>
+                    <strong>{packetSectionLabels[claim.section]}:</strong>{" "}
+                    {claim.text}
+                  </li>
+                ))}
             </ul>
             <div style={{ marginBottom: 12 }}>
               <Button
                 variant="outline"
                 disabled={!canCreateDraft}
-                onClick={() => void createDraft(packet.packetId)}
+                onClick={() =>
+                  void createDraft(packet.packetId, packet.version)
+                }
               >
                 Create privacy-filtered draft
               </Button>
@@ -1159,11 +1421,6 @@ function PacketPanel({
                 <pre style={{ whiteSpace: "pre-wrap", font: "inherit" }}>
                   {packet.draft.body}
                 </pre>
-                <p>
-                  {packet.draft.approvalId
-                    ? "Submitted to the shared approvals queue. Check its result for delivery status."
-                    : "Draft has not been submitted for approval."}
-                </p>
                 <p>
                   <a
                     download={`family-packet-${packet.periodKey}-draft-${packet.draft.draftVersion}.json`}
@@ -1209,11 +1466,15 @@ function PacketPanel({
 }
 
 export interface FamilyOperationsViewProps {
+  intakeAdapter?: FamilyIntakeAdapter;
   adapter?: FamilyOperationsAdapter;
+  deletionAdapter?: FamilyDeletionAdapter;
 }
 
 export function FamilyOperationsView({
   adapter = defaultFamilyOperationsAdapter,
+  intakeAdapter = defaultFamilyIntakeAdapter,
+  deletionAdapter,
 }: FamilyOperationsViewProps) {
   const [tab, setTab] = useState<Tab>("agreements");
   const [snapshot, setSnapshot] = useState<FamilyOperationsSnapshot | null>(
@@ -1221,21 +1482,57 @@ export function FamilyOperationsView({
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const exportWorkspace = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError(null);
+    setExportNotice(null);
     try {
-      setSnapshot(await adapter.load());
+      const blob = await adapter.downloadWorkspace();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "family-workspace.zip";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExportNotice("Workspace download started.");
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Family Operations could not load",
+      // error-policy:J1 A failed export remains visible and can be retried.
+      setExportError(
+        cause instanceof Error ? cause.message : "Workspace export failed",
       );
     } finally {
-      setLoading(false);
+      setExporting(false);
     }
-  }, [adapter]);
+  };
+  const refresh = useCallback(
+    async (requireAgreementReview = false) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const next = await adapter.load();
+        if (requireAgreementReview && next.agreements.status === "unavailable")
+          throw new Error(next.agreements.message);
+        setSnapshot(next);
+      } catch (cause) {
+        // error-policy:J4 Keep the prior view with an explicit refresh failure; review preparation must also observe the failure.
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Family Operations could not load",
+        );
+        if (requireAgreementReview) throw cause;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [adapter],
+  );
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -1243,14 +1540,26 @@ export function FamilyOperationsView({
   return (
     <main
       style={{
+        ...{
+          "--accent": "var(--brand-orange)",
+          "--accent-foreground": "#140c07",
+          "--accent-hover": "#e65a10",
+          "--accent-muted": "#c94400",
+          "--accent-subtle": "rgba(255,106,31,0.08)",
+          "--inverse": "#fdfaf7",
+        },
         width: "100%",
-        height: "100%",
+        // This fullscreen plugin owns its scroller; keep interactive rows above
+        // the shell's measured resting composer rather than behind its overlay.
+        height: "calc(100% - var(--eliza-chat-clearance, 5.25rem))",
         minHeight: 0,
         overflowY: "auto",
         color: "var(--txt)",
         background:
           "radial-gradient(circle at 8% 0%, var(--accent-subtle), transparent 35%), var(--bg)",
         padding: "clamp(14px, 3vw, 28px)",
+        paddingBottom:
+          "calc(clamp(14px, 3vw, 28px) + var(--eliza-chat-clearance, 5.25rem))",
       }}
     >
       <div
@@ -1282,6 +1591,17 @@ export function FamilyOperationsView({
             Review the parenting agreement, calendar synchronization, school
             dates, and monthly coordination email.
           </p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading || exporting}
+            onClick={() => void exportWorkspace()}
+            style={{ marginTop: 12 }}
+          >
+            {exporting ? "Preparing workspace export…" : "Export workspace"}
+          </Button>
+          {exportError ? <Unavailable message={exportError} /> : null}
+          {exportNotice ? <p role="status">{exportNotice}</p> : null}
         </header>
         <nav
           aria-label="Family Operations sections"
@@ -1317,6 +1637,7 @@ export function FamilyOperationsView({
                 state={snapshot.agreements}
                 adapter={adapter}
                 refresh={refresh}
+                refreshReview={() => refresh(true)}
               />
             ) : tab === "calendar" ? (
               <CalendarPanel
@@ -1332,6 +1653,7 @@ export function FamilyOperationsView({
               />
             ) : (
               <PacketPanel
+                intakeAdapter={intakeAdapter}
                 state={snapshot.packets}
                 emailOptions={snapshot.emailOptions}
                 adapter={adapter}
@@ -1340,6 +1662,7 @@ export function FamilyOperationsView({
             )}
           </div>
         ) : null}
+        <FamilyDeletionPanel adapter={deletionAdapter} onChange={refresh} />
       </div>
     </main>
   );

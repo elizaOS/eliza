@@ -18,12 +18,12 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Button,
-  Input,
-  Textarea,
-} from "../../../../components/primitives";
+} from "../../../../components/ui/alert";
+import { Button } from "../../../../components/ui/button";
+import { Input } from "../../../../components/ui/input";
+import { Textarea } from "../../../../components/ui/textarea";
 import { ApiError, api } from "../../../lib/api-client";
-import { usePageTitle } from "../../lib/use-page-title";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 
 type SensitiveRequestStatus =
   | "pending"
@@ -210,7 +210,7 @@ export default function SensitiveRequestPage() {
   // is held in controlled state keyed by field name. #8910
   const [fileValues, setFileValues] = useState<Record<string, string>>({});
 
-  usePageTitle("Sensitive Request | Eliza Cloud");
+  useDocumentTitle("Sensitive Request | Eliza Cloud");
 
   const requestBasePath = useMemo(() => {
     if (!requestId) return null;

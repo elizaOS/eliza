@@ -23,23 +23,10 @@ SCRIPT = (
     REPO_ROOT / "packages" / "training" / "scripts" / "append_voice_model_version.py"
 )
 
-VOICE_MODELS_TS_TEMPLATE = dedent(
-    """\
-    export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
-      {
-        id: "kokoro",
-        version: "0.1.0",
-        publishedToHfAt: "2026-05-14T00:00:00Z",
-        hfRepo: "elizaos/eliza-1-voice-kokoro-same",
-        hfRevision: "main",
-        ggufAssets: [],
-        evalDeltas: { netImprovement: true },
-        changelogEntry: "Initial release.",
-        minBundleVersion: "0.0.0",
-      },
-    ];
-    """
-)
+VOICE_MODELS_TS_TEMPLATE = json.dumps([{
+    "id": "kokoro", "version": "0.1.0", "ggufAssets": [],
+    "hfRepo": "elizaos/eliza-1", "hfRevision": "main",
+}])
 
 CHANGELOG_MD_TEMPLATE = dedent(
     """\
@@ -55,7 +42,7 @@ CHANGELOG_MD_TEMPLATE = dedent(
 
 
 def _setup_workspace(tmp_path: Path) -> tuple[Path, Path]:
-    ts_path = tmp_path / "voice-models.ts"
+    ts_path = tmp_path / "voice-model-versions.json"
     md_path = tmp_path / "CHANGELOG.md"
     ts_path.write_text(VOICE_MODELS_TS_TEMPLATE, encoding="utf-8")
     md_path.write_text(CHANGELOG_MD_TEMPLATE, encoding="utf-8")
@@ -87,7 +74,7 @@ def test_unknown_id_rejected(tmp_path: Path) -> None:
         "0.0.0",
         "--changelog-entry",
         "hi",
-        "--voice-models-ts",
+        "--registry",
         str(ts_path),
     )
     assert res.returncode != 0
@@ -109,7 +96,7 @@ def test_invalid_semver_rejected(tmp_path: Path) -> None:
         "0.0.0",
         "--changelog-entry",
         "hi",
-        "--voice-models-ts",
+        "--registry",
         str(ts_path),
     )
     assert res.returncode == 2
@@ -132,7 +119,7 @@ def test_bad_asset_rejected(tmp_path: Path) -> None:
         "0.0.0",
         "--changelog-entry",
         "hi",
-        "--voice-models-ts",
+        "--registry",
         str(ts_path),
     )
     assert res.returncode != 0
@@ -163,23 +150,17 @@ def test_writes_new_version_block(tmp_path: Path) -> None:
         "0.12",
         "--changelog-entry",
         "sam clone v2 (lower RTF, higher MOS).",
-        "--voice-models-ts",
+        "--registry",
         str(ts_path),
     )
     assert res.returncode == 0, res.stderr
-    contents = ts_path.read_text(encoding="utf-8")
-    assert 'id: "kokoro"' in contents
-    assert 'version: "0.2.0"' in contents
-    assert 'parentVersion: "0.1.0"' in contents
-    assert "sha256: " + json.dumps("a" * 64) in contents
-    assert "quant: " + json.dumps("onnx-fp16") in contents
-    # The new entry must appear before the existing 0.1.0 entry (reverse-chrono).
-    idx_new = contents.find('version: "0.2.0"')
-    idx_old = contents.find('version: "0.1.0"')
-    assert idx_new < idx_old
-    assert "rtfDelta: -0.05" in contents
-    assert "mosDelta: 0.12" in contents
-    assert "netImprovement: true" in contents
+    versions = json.loads(ts_path.read_text(encoding="utf-8"))
+    assert [row["version"] for row in versions] == ["0.2.0", "0.1.0"]
+    newest = versions[0]
+    assert newest["id"] == "kokoro"
+    assert newest["parentVersion"] == "0.1.0"
+    assert newest["ggufAssets"] == [{"filename": "kokoro.onnx", "sha256": "a" * 64, "sizeBytes": 2048, "quant": "onnx-fp16"}]
+    assert newest["evalDeltas"] == {"rtfDelta": -0.05, "mosDelta": 0.12, "netImprovement": True}
 
 
 def test_idempotent_rerun(tmp_path: Path) -> None:
@@ -203,7 +184,7 @@ def test_idempotent_rerun(tmp_path: Path) -> None:
         "true",
         "--changelog-entry",
         "sam v2.",
-        "--voice-models-ts",
+        "--registry",
         str(ts_path),
     ]
     res1 = _run(*common)
@@ -215,7 +196,7 @@ def test_idempotent_rerun(tmp_path: Path) -> None:
     # Second run leaves the file unchanged.
     assert contents1 == contents2
     # The version literal appears exactly once.
-    assert contents2.count('version: "0.2.0"') == 1
+    assert sum(row["version"] == "0.2.0" for row in json.loads(contents2)) == 1
 
 
 def test_append_changelog_inserts_h3(tmp_path: Path) -> None:
@@ -239,7 +220,7 @@ def test_append_changelog_inserts_h3(tmp_path: Path) -> None:
         "true",
         "--changelog-entry",
         "sam v2 with lower RTF.",
-        "--voice-models-ts",
+        "--registry",
         str(ts_path),
         "--changelog-md",
         str(md_path),
@@ -278,7 +259,7 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
         "true",
         "--changelog-entry",
         "sam v2.",
-        "--voice-models-ts",
+        "--registry",
         str(ts_path),
         "--changelog-md",
         str(md_path),
@@ -307,7 +288,7 @@ def test_successor_requires_net_improvement(tmp_path: Path) -> None:
         "0.1.0",
         "--changelog-entry",
         "sam v2.",
-        "--voice-models-ts",
+        "--registry",
         str(ts_path),
     )
     assert res.returncode == 2

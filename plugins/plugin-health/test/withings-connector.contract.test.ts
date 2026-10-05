@@ -134,6 +134,10 @@ describe("Withings connector — recorded real API contract", () => {
     // total_sleep_time 27360 s -> 7.6 h.
     expect(sleepHours?.value).toBe(27360 / 3600);
     expect(sleepHours?.unit).toBe("h");
+    // Overnight sleep starts 2026-04-30T23:48Z; Withings `date` (and the
+    // episode) is the wake date 2026-05-01. Daily summaries group by localDate.
+    expect(sleepHours?.startAt).toBe("2026-04-30T23:48:00.000Z");
+    expect(sleepHours?.localDate).toBe("2026-05-01");
 
     expect(payload.sleepEpisodes).toHaveLength(1);
     const ep = payload.sleepEpisodes[0];
@@ -230,7 +234,11 @@ describe("Withings connector — recorded real API contract", () => {
       expect(typeof s.value).toBe("number");
       expect(Number.isFinite(s.value)).toBe(true);
       expect(typeof s.startAt).toBe("string");
-      expect(s.localDate).toBe(s.startAt.slice(0, 10));
+      if (s.metric === "sleep_hours") {
+        expect(s.localDate).toBe("2026-05-01");
+      } else {
+        expect(s.localDate).toBe(s.startAt.slice(0, 10));
+      }
     }
   });
 });

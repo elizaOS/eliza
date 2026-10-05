@@ -152,7 +152,14 @@ function redactValue(
     if (seen.has(value)) return "[Circular]";
     seen.add(value);
     // Arrays use the parent key for redaction context (e.g. `toList: [...]`).
-    return value.map((entry) => redactValue(rawKey, entry, opts, seen));
+    // `seen` holds the CURRENT path's ancestors (removed after the walk), so a
+    // shared non-cyclic array referenced twice is redacted both times instead
+    // of being collapsed to "[Circular]" (#31004).
+    const redacted = value.map((entry) =>
+      redactValue(rawKey, entry, opts, seen),
+    );
+    seen.delete(value);
+    return redacted;
   }
   if (typeof value === "object") {
     const obj = value as Record<string, unknown>;
@@ -162,6 +169,9 @@ function redactValue(
     for (const [k, v] of Object.entries(obj)) {
       out[k] = redactValue(k, v, opts, seen);
     }
+    // Drop the node once its subtree is walked: a DAG that references the same
+    // object from two branches must be redacted in both, not marked circular.
+    seen.delete(obj);
     return out;
   }
   // numbers / booleans / bigint / symbol — pass through unchanged.

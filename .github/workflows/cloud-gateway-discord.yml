@@ -9,6 +9,7 @@ name: Cloud Gateway Discord
 
 on:
   workflow_call:
+  workflow_dispatch:
 
 concurrency:
   group: cloud-gateway-discord-${{ github.ref }}
@@ -19,7 +20,7 @@ defaults:
     working-directory: packages/cloud/shared
 
 env:
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "1.4.2"
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -47,16 +48,12 @@ jobs:
 
       - name: Verify source-only workflow contract
         working-directory: .
-        run: bun test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs
-
-      - name: Generate source keyword modules
-        working-directory: .
-        run: bun run --cwd packages/shared build:i18n
+        run: bun test packages/cloud/scripts/shared/messaging-gateway-preflight.test.ts
 
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord
         # The gateway imports source-form workspace subpaths such as
-        # @elizaos/shared/discord-dm-policy. Match the package-owned test
+        # @elizaos/core/discord-dm-policy. Match the package-owned test
         # script's export condition so a clean runner never falls through to
         # an unbuilt dist/ entry.
         run: bun --conditions=eliza-source test tests/ --timeout 60000

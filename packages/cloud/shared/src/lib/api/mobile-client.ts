@@ -299,7 +299,6 @@ export const endpoints = {
 
   // Billing
   billing: {
-    creditPacks: "/api/stripe/credit-packs",
     checkout: "/api/stripe/create-checkout-session",
   },
 

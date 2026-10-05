@@ -5,11 +5,14 @@
  * so promises spoken in a meeting land in the same durable ledger as sent
  * mail and chat. Only segments attributed to the owner's entity are read —
  * other speakers' promises are their own — and hedged speech is rejected by
- * the extractor's speculative guard.
+ * the extractor's speculative guard. Relative due dates resolve on the owner's
+ * calendar day in the owner's effective zone at the transcript instant — the
+ * same zone the meeting-ghost consumer resolves for the same finalized event.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { MeetingTranscriptFinalizedPayload } from "@elizaos/shared";
+import type { MeetingTranscriptFinalizedPayload } from "@elizaos/core/protocol";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import { LifeOpsRepository } from "../repository.js";
 import {
   extractCommitmentLedgerRecords,
@@ -24,12 +27,14 @@ function hasSqlAdapter(runtime: IAgentRuntime): boolean {
 /**
  * Pure projection: owner-attributed transcript segments → ledger rows.
  * Exported separately so tests can prove the attribution and speculative
- * guards without a database.
+ * guards without a database. `timeZone` is the owner's zone; without it
+ * relative due dates resolve on the UTC calendar.
  */
 export function commitmentRecordsFromTranscript(args: {
   agentId: string;
   ownerEntityId: string;
   payload: MeetingTranscriptFinalizedPayload;
+  timeZone?: string;
 }): LifeOpsCommitmentLedgerRecord[] {
   const { transcript } = args.payload;
   const records: LifeOpsCommitmentLedgerRecord[] = [];
@@ -45,6 +50,7 @@ export function commitmentRecordsFromTranscript(args: {
         sourceKey: `${transcript.id}:${segment.id}`,
         text: segment.text,
         observedAt,
+        ...(args.timeZone ? { timeZone: args.timeZone } : {}),
         metadata: {
           transcriptId: transcript.id,
           transcriptTitle: transcript.title,
@@ -75,10 +81,18 @@ export async function projectFinalizedTranscriptCommitments(
     );
     return 0;
   }
+  // Evaluated at the transcript instant so an active travel window covers the
+  // meeting — the same instant `runMeetingGhostForTranscript` resolves.
+  const transcriptInstant = new Date(payload.transcript.createdAt);
+  const timeZone = await resolveOwnerTimeZone(
+    runtime,
+    Number.isNaN(transcriptInstant.getTime()) ? new Date() : transcriptInstant,
+  );
   const records = commitmentRecordsFromTranscript({
     agentId: String(runtime.agentId),
     ownerEntityId,
     payload,
+    timeZone,
   });
   if (records.length === 0) return 0;
   const repository = new LifeOpsRepository(runtime);

@@ -10,10 +10,9 @@ assignees: ""
 
 <!-- What user-visible or maintainer-visible state should be true when this epic is done? -->
 
-## Design doc
+## Design
 
-<!-- Link the design doc under packages/docs/ongoing-development/ that this
-     epic implements. Non-trivial epics should have one; write it first. -->
+<!-- Summarize the approach here or link a design discussion. -->
 
 ## Scope
 

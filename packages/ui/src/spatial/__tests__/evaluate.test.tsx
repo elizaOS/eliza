@@ -3,16 +3,9 @@
  * to the layout IR. Pure, no renderer.
  */
 import { describe, expect, it } from "vitest";
-import {
-  Button,
-  evaluateToSpatialTree,
-  HStack,
-  List,
-  Stack,
-  Text,
-  useSpatialState,
-} from "../index.ts";
+import { evaluateToSpatialTree, useSpatialState } from "../evaluate";
 import type { SpatialBoxNode } from "../ir.ts";
+import { Button, HStack, List, Stack, Text } from "../primitives";
 import { createSpatialTuiComponent } from "../tui/index.ts";
 
 describe("evaluate — React tree → IR", () => {

@@ -7,6 +7,7 @@
  */
 
 import type { AgentContext } from "../types/contexts";
+import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 
 export interface DirectActionRoutingRule {
@@ -40,8 +41,11 @@ export interface DirectActionRoutingRule {
 		/** Honest user-facing reply; must not claim that an action ran. */
 		readonly reply: string;
 	};
-	/** True only for a current-turn request owned by this route. */
-	matches(messageText: string): boolean;
+	/**
+	 * True only for a current-turn request owned by this route. The optional
+	 * message exposes typed control metadata for routing, never effect authority.
+	 */
+	matches(messageText: string, message?: Memory): boolean;
 }
 
 const rules = new WeakMap<IAgentRuntime, DirectActionRoutingRule[]>();

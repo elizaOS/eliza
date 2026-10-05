@@ -155,14 +155,3 @@ export function toWorkbenchTask(task: Task): WorkbenchTaskView | null {
     ...(updatedAt !== undefined ? { updatedAt } : {}),
   };
 }
-
-export function normalizeTags(
-  value: unknown,
-  required: string[] = [],
-): string[] {
-  const next = new Set<string>([
-    ...normalizeStringArray(value),
-    ...required.map((tag) => tag.trim()).filter((tag) => tag.length > 0),
-  ]);
-  return [...next];
-}

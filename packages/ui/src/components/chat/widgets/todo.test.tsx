@@ -89,14 +89,14 @@ function ownerTodo(over: {
   return { title: `Todo ${over.id}`, status: "pending", ...over };
 }
 
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: {
     getBaseUrl: getBaseUrlMock,
     listWorkbenchTodos: listWorkbenchTodosMock,
   },
 }));
 
-vi.mock("../../../hooks", () => ({
+vi.mock("../../../hooks/useDocumentVisibility", () => ({
   useIntervalWhenDocumentVisible: (callback: () => void) => {
     intervalCallbacks.push(callback);
   },
@@ -109,7 +109,7 @@ vi.mock("../../../hooks/useRole", () => ({
   useRole: () => ({ isOwner: true }),
 }));
 
-vi.mock("../../../state", () => ({
+vi.mock("../../../state/app-store", () => ({
   useAppSelectorShallow: <T,>(selector: (state: typeof mockState) => T): T =>
     selector(mockState),
 }));

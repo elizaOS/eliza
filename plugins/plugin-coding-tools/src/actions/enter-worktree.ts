@@ -21,6 +21,7 @@ import {
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { resolveRealPath } from "../lib/path-utils.js";
 import { runGitCommand } from "../lib/run-git-command.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
@@ -72,7 +73,7 @@ async function resolveWorktreePath(params: {
   if (!params.explicitPath) {
     return {
       ok: true,
-      worktreePath: path.resolve(generateWorktreePath(params.name)),
+      worktreePath: await resolveRealPath(generateWorktreePath(params.name)),
     };
   }
   const validation = await params.sandbox.validatePath(

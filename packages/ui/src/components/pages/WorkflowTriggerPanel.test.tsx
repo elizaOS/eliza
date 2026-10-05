@@ -9,10 +9,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { WorkflowTriggerPanel } from "./WorkflowTriggerPanel";
 
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     createTrigger: vi.fn(),
     deleteTrigger: vi.fn(),

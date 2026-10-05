@@ -20,8 +20,8 @@ const clientMock = vi.hoisted(() => ({
   getLocalInferenceRouting: vi.fn(),
 }));
 
-vi.mock("../../api", () => ({ client: clientMock }));
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../api/client", () => ({ client: clientMock }));
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ agentProps: {}, ref: { current: null } }),
 }));
 vi.mock("../../hooks/useDocumentVisibility", () => ({

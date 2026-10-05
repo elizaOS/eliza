@@ -4,21 +4,24 @@
  * Uploads a user profile image to R2 and updates `users.avatar`.
  */
 
-import { and, eq } from "drizzle-orm";
-import { Hono } from "hono";
-import { readRequestWithinMultipartBudget } from "@/api/_lib/multipart-body-budget";
-import { dbWrite } from "@/db/helpers";
-import { orgStorageQuotaRepository } from "@/db/repositories/org-storage-quota";
-import { users } from "@/db/schemas/users";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { orgStorageQuotaRepository } from "@elizaos/cloud-shared/db/repositories/org-storage-quota";
+import { users } from "@elizaos/cloud-shared/db/schemas/users";
+import {
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { putPublicObject } from "@/lib/storage/r2-public-object";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { putPublicObject } from "@elizaos/cloud-shared/lib/storage/r2-public-object";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { and, eq } from "drizzle-orm";
+import { Hono } from "hono";
+import { readRequestWithinMultipartBudget } from "@/api/_lib/multipart-body-budget";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 // The multipart envelope — boundaries, part headers, any additional fields —

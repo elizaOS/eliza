@@ -15,15 +15,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "../../../scripts/lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../../../scripts/lib/spawn-sync-captured.ts";
 import {
   buildWorkerSecrets,
   createWorkerSecretsFile,
   removeWorkerSecretsFile,
-} from "../worker-secrets-file.mjs";
+} from "../worker-secrets-file.ts";
 
 const temporaryDirectories: string[] = [];
-const scriptPath = new URL("../worker-secrets-file.mjs", import.meta.url)
+const scriptPath = new URL("../worker-secrets-file.ts", import.meta.url)
   .pathname;
 
 function makeTemporaryDirectory(): string {

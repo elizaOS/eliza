@@ -28,6 +28,10 @@ async function seedOrg(balance: string): Promise<void> {
   await dbWrite.execute(
     `INSERT INTO organizations (id, credit_balance) VALUES ('${ORG_ID}', '${balance}');`,
   );
+  await dbWrite.execute(
+    `INSERT INTO organization_subscription_authorities (organization_id) VALUES ('${ORG_ID}')
+     ON CONFLICT (organization_id) DO NOTHING;`,
+  );
 }
 
 async function balance(): Promise<number> {
@@ -118,6 +122,45 @@ beforeAll(async () => {
     )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS credit_transactions_stripe_payment_intent_idx
       ON credit_transactions (stripe_payment_intent_id)`,
+    // Funding-policy inputs: this organization has no subscription, so meeting
+    // holds take the purchased-credit lane chosen by the allowance-first router.
+    `CREATE TABLE IF NOT EXISTS billing_subscriptions (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS organization_subscription_authorities (
+      policy_generation bigint NOT NULL DEFAULT 0,
+      organization_id uuid PRIMARY KEY,
+      subscription_id uuid,
+      state text NOT NULL DEFAULT 'none'
+    )`,
+    `CREATE TABLE IF NOT EXISTS org_rate_limit_overrides (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL,
+      completions_rpm integer, embeddings_rpm integer, standard_rpm integer, strict_rpm integer
+    )`,
+    `CREATE TABLE IF NOT EXISTS organization_config (
+      organization_id uuid PRIMARY KEY, settings jsonb NOT NULL DEFAULT '{}'
+    )`,
+    `CREATE TABLE IF NOT EXISTS org_storage_quota (
+      organization_id uuid PRIMARY KEY, bytes_limit bigint NOT NULL,
+      limit_override_authorized boolean NOT NULL DEFAULT false
+    )`,
+    // Paid reservations fail closed on an active payment-reversal hold (#22930).
+    `CREATE TABLE IF NOT EXISTS organization_payment_reversal_holds (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL,
+      reason text NOT NULL,
+      stripe_dispute_id text,
+      clawback_transaction_id uuid UNIQUE,
+      shortfall_usd numeric(16,6),
+      outstanding_usd numeric(16,6),
+      stripe_charge_id text,
+      stripe_payment_intent_id text,
+      amount_cents bigint,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      released_at timestamptz,
+      released_by text,
+      release_reason text
+    )`,
   ];
   for (const statement of ddl) {
     await dbWrite.execute(statement);

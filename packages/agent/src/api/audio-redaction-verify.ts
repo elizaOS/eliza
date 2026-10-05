@@ -2,7 +2,7 @@
  * Audio PII redaction — verifier transcriber adapters (#14807).
  *
  * The verifier CONTRACT (and the pure PII-absence / sentinel-presence
- * judgment) lives in `@elizaos/shared/audio-redaction-verify`, deliberately
+ * judgment) lives in `@elizaos/core`, deliberately
  * separable from the span producer so verification can run on a different
  * ASR backend. This module supplies the concrete backends the agent host can
  * offer:
@@ -15,13 +15,6 @@
  *    `/v1/audio/transcriptions` endpoint (faster-whisper, FunASR, SenseVoice,
  *    the voice-whisper-stt cloud sibling). This is the independent-verifier
  *    lane from the #14807 acceptance note.
- *  - {@link energyFixtureTranscriber} — a deterministic, model-free stand-in
- *    for environments with no reachable ASR: it "transcribes" a PCM16 WAV by
- *    measuring real signal energy in each expected word's window (RMS floor
- *    for mute, 1 kHz Goertzel dominance for bleep) and emitting only words
- *    whose original audio is still audible. It grounds the verify in the
- *    actual redacted bytes, but it is a FIXTURE verifier — it needs the
- *    expected word list and never replaces a real ASR pass in evidence.
  */
 
 import { Buffer } from "node:buffer";
@@ -30,21 +23,16 @@ import {
   fetchWithSsrfGuard,
   type IAgentRuntime,
   ModelType,
+  type RedactionTranscribeInput,
+  type RedactionTranscriber,
+  type RedactionTranscript,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import type {
-  RedactionTranscribeInput,
-  RedactionTranscriber,
-  RedactionTranscript,
-} from "@elizaos/shared/audio-redaction-verify";
-import type { TranscriptWord } from "@elizaos/shared/transcripts";
-import { BLEEP_FREQUENCY_HZ, parseWavPcm16 } from "./audio-redaction.ts";
 
 // ---------------------------------------------------------------------------
 // Runtime TRANSCRIPTION adapter
 // ---------------------------------------------------------------------------
-
 /**
  * Verify through the runtime's registered TRANSCRIPTION model (interim
  * purpose — a verify pass is pipeline-internal, never a billable user
@@ -76,11 +64,9 @@ export function runtimeTranscriptionTranscriber(
     },
   };
 }
-
 // ---------------------------------------------------------------------------
 // OpenAI-compatible STT adapter (independent verifier lane)
 // ---------------------------------------------------------------------------
-
 /** Config for an OpenAI-compatible `/v1/audio/transcriptions` verifier. */
 export interface OpenAiCompatSttOptions {
   /** Endpoint base, e.g. `https://stt.internal` (no trailing path). */
@@ -96,7 +82,6 @@ export interface OpenAiCompatSttOptions {
     init?: RequestInit,
   ) => Promise<Response>;
 }
-
 /**
  * Verifier backend over any self-hosted OpenAI-compatible STT server —
  * multipart `file` + `model` to `/v1/audio/transcriptions`, `{text}` back.
@@ -143,7 +128,7 @@ export function openAiCompatSttTranscriber(
         guarded = await fetchWithSsrfGuard({
           url: endpoint.toString(),
           fetchImpl: options.fetchImpl,
-          timeoutMs: options.timeoutMs ?? 120_000,
+          timeoutMs: options.timeoutMs ?? 120000,
           // Audio and bearer credentials must never cross an origin boundary.
           // A redirect is therefore a typed failure, not an automatic replay.
           maxRedirects: 0,
@@ -185,7 +170,11 @@ export function openAiCompatSttTranscriber(
             cause: error,
           });
         }
-        const text = (body as { text?: unknown }).text;
+        const text = (
+          body as {
+            text?: unknown;
+          }
+        ).text;
         if (typeof text !== "string" || !text.trim()) {
           throw new ElizaError("STT verifier returned no transcript text", {
             code: "AUDIO_REDACTION_VERIFY_EMPTY_TRANSCRIPT",
@@ -198,7 +187,6 @@ export function openAiCompatSttTranscriber(
     },
   };
 }
-
 async function readResponseTextLimited(
   response: Response,
   maxBytes: number,
@@ -240,95 +228,4 @@ async function readResponseTextLimited(
   } finally {
     reader.releaseLock();
   }
-}
-
-// ---------------------------------------------------------------------------
-// Deterministic energy-fixture verifier (no-ASR environments)
-// ---------------------------------------------------------------------------
-
-/** A word window is "silenced" below this RMS fraction of full scale (~−52 dB). */
-const SILENCE_RMS_FLOOR = 0.0025;
-/** A word window is "bleeped" when ≥ this fraction of its energy is the tone. */
-const TONE_DOMINANCE_FLOOR = 0.8;
-
-/** Goertzel power of one frequency over a PCM16 window, plus total power. */
-function windowPowers(
-  samples: Int16Array,
-  sampleRate: number,
-  frequencyHz: number,
-): { tonePower: number; totalPower: number } {
-  const n = samples.length;
-  if (n === 0) return { tonePower: 0, totalPower: 0 };
-  const k = Math.round((n * frequencyHz) / sampleRate);
-  const omega = (2 * Math.PI * k) / n;
-  const coeff = 2 * Math.cos(omega);
-  let s0 = 0;
-  let s1 = 0;
-  let s2 = 0;
-  let totalPower = 0;
-  for (let i = 0; i < n; i += 1) {
-    const x = samples[i] / 32768;
-    totalPower += x * x;
-    s0 = x + coeff * s1 - s2;
-    s2 = s1;
-    s1 = s0;
-  }
-  const tonePower =
-    (s1 * s1 + s2 * s2 - coeff * s1 * s2) / Math.max(1, n * n * 0.25);
-  return { tonePower, totalPower: totalPower / n };
-}
-
-/**
- * Deterministic fixture verifier for PCM16 WAV: given the words expected in
- * the ORIGINAL audio, it emits only those whose window still carries audible
- * original signal in the redacted bytes — a zeroed window (RMS under the
- * silence floor) or a tone-dominated window (1 kHz Goertzel share over the
- * dominance floor) drops the word. Model-free and grounded in the real bytes;
- * clearly a fixture (requires the expected word list), for environments where
- * no live ASR is reachable.
- */
-export function energyFixtureTranscriber(
-  expectedWords: readonly TranscriptWord[],
-): RedactionTranscriber {
-  return {
-    id: "energy-fixture",
-    transcribe(input: RedactionTranscribeInput): Promise<RedactionTranscript> {
-      const bytes = Buffer.from(input.audio);
-      const info = parseWavPcm16(bytes);
-      const audible: TranscriptWord[] = [];
-      for (const word of expectedWords) {
-        const startFrame = Math.max(
-          0,
-          Math.floor((word.startMs / 1000) * info.sampleRate),
-        );
-        const endFrame = Math.min(
-          info.frameCount,
-          Math.ceil((word.endMs / 1000) * info.sampleRate),
-        );
-        if (endFrame <= startFrame) continue;
-        // First channel is representative — redaction writes every channel.
-        const samples = new Int16Array(endFrame - startFrame);
-        const bytesPerFrame = 2 * info.channels;
-        for (let frame = startFrame; frame < endFrame; frame += 1) {
-          samples[frame - startFrame] = bytes.readInt16LE(
-            info.dataOffset + frame * bytesPerFrame,
-          );
-        }
-        const { tonePower, totalPower } = windowPowers(
-          samples,
-          info.sampleRate,
-          BLEEP_FREQUENCY_HZ,
-        );
-        const rms = Math.sqrt(totalPower);
-        const toneShare = totalPower > 0 ? tonePower / totalPower : 0;
-        const silenced = rms < SILENCE_RMS_FLOOR;
-        const bleeped = toneShare >= TONE_DOMINANCE_FLOOR;
-        if (!silenced && !bleeped) audible.push(word);
-      }
-      return Promise.resolve({
-        text: audible.map((word) => word.text).join(" "),
-        words: audible,
-      });
-    },
-  };
 }

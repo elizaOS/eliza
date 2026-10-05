@@ -7,7 +7,8 @@ import {
   render,
   renderHook,
   screen,
-} from "@testing-library/react";
+  waitFor,
+} from "@testing-library/react/pure";
 import { Toaster } from "sonner";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -28,8 +29,15 @@ beforeEach(() => {
   deliver.mockReset();
   sink.mockReturnValue(null);
 });
-afterEach(() => {
-  toast.dismiss();
+afterEach(async () => {
+  // Sonner removes dismissed toasts after its exit animation. Keep the real
+  // Toaster mounted until that callback settles before releasing jsdom.
+  await act(async () => {
+    toast.dismiss();
+  });
+  await waitFor(() => {
+    expect(document.querySelector("[data-sonner-toast]")).toBeNull();
+  });
   cleanup();
 });
 
@@ -63,6 +71,9 @@ it("keeps an Undo action executable in the app instead of losing it in an OS ale
   fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
   expect(undo).toHaveBeenCalledTimes(1);
   expect(deliver).not.toHaveBeenCalled();
+  await waitFor(() => {
+    expect(screen.queryByText("Removed item")).toBeNull();
+  });
 });
 
 it("does not display a dismissed fallback when the OS request settles late", async () => {

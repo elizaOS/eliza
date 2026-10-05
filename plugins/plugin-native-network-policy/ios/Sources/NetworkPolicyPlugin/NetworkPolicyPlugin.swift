@@ -60,6 +60,14 @@ public class ElizaNetworkPolicyPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func getPathHints(_ call: CAPPluginCall) {
         startIfNeeded()
         let path = monitor.currentPath
+        guard path.status == .satisfied else {
+            call.resolve([
+                "isExpensive": NSNull(),
+                "isConstrained": NSNull(),
+                "source": "nw-path-monitor",
+            ])
+            return
+        }
         let response: [String: Any] = [
             "isExpensive": path.isExpensive,
             "isConstrained": path.isConstrained,

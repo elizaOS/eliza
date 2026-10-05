@@ -7,7 +7,7 @@
  * before moving anything. The owner's turns stay vague on purpose — the pass
  * criteria live only in the judge rubrics.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

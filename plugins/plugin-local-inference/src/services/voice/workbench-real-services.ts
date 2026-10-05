@@ -14,16 +14,15 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { NlmsEchoCanceller } from "@elizaos/shared/voice/aec";
-import {
-	type OwnerObservation,
-	resolveOwnerCandidate,
-} from "@elizaos/shared/voice/owner-inference";
 import {
 	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
 	buildVoiceTurnSignal,
-} from "@elizaos/shared/voice/respond-gate";
-import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
+	computeFarActiveErle,
+	NlmsEchoCanceller,
+	type OwnerObservation,
+	resolveOwnerCandidate,
+	scoreEndOfTurnHeuristic,
+} from "@elizaos/voice";
 import { resolveFusedLibraryPath } from "../desktop-fused-ffi-backend-runtime";
 import { OnlineSpeakerClusterer } from "./acoustic-speaker-attribution";
 import type {
@@ -31,7 +30,6 @@ import type {
 	CorpusTtsSynthesizer,
 	GeneratedVoiceCorpus,
 } from "./corpus-generator";
-import { computeFarActiveErle } from "./echo-metrics";
 import { createKokoroTtsBackend } from "./engine-bridge";
 import {
 	type ElizaInferenceContextHandle,

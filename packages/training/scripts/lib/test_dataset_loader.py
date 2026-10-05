@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import sys
 import textwrap
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lib.dataset_loader import (  # noqa: E402
+from eliza_training.lib.dataset_loader import (  # noqa: E402
     DatasetConsentError,
     consent_records_to_manifest,
     load_registry,

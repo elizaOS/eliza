@@ -1,9 +1,10 @@
 /**
  * Unit tests for lifeops service helper sort comparators and reminder builders.
  */
+
+import type { LifeOpsOccurrenceView } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import { sortOverviewOccurrences } from "../service-helpers-misc.js";
-import type { LifeOpsOccurrenceView } from "../types.js";
 
 describe("LifeOps service helpers sorting", () => {
   it("maintains strict total ordering when relevanceStartAt contains invalid dates", () => {

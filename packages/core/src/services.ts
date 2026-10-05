@@ -7,8 +7,9 @@
  * are pinned via `Object.defineProperty` to match the base `ServiceClass` shape
  * from `types/plugin.ts`, which stays the canonical definition.
  */
-import type { IAgentRuntime, ServiceTypeName } from "./types";
-import { Service } from "./types";
+import type { IAgentRuntime } from "./types/runtime.js";
+import type { ServiceTypeName } from "./types/service.js";
+import { Service } from "./types/service.js";
 
 // ServiceClass is exported from ./types/plugin.ts - don't re-define here
 // to avoid duplicate export errors. The generic version is defined below.

@@ -1,19 +1,4 @@
-/**
- * `trigger.kind: "after_task"` chain-after-terminal contract.
- *
- * An `after_task` trigger is declared on the CHILD task and fires it when the
- * referenced parent reaches a terminal outcome — covering all five terminal
- * states, unlike `pipeline.on*` refs (declared on the PARENT, propagating only
- * completed/skipped/failed). The runner fires matching children on the parent's
- * terminal transition (`settleTerminal` / `fireAfterTaskChildren` in runner.ts),
- * race-safe via the store's atomic fire claim.
- *
- * These tests lock the contract: structural acceptance, auto-fire on the
- * matching outcome, no fire on mismatched outcome/parent, and the global-pause
- * exception (pause suppresses chaining). Deterministic in-memory runner, no live
- * model.
- */
-
+/** Exercises parent-to-child terminal chaining through the real in-memory runner and a no-op dispatcher. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -43,9 +28,8 @@ import type { GlobalPauseView, ScheduledTask, TerminalState } from "./types.js";
 
 function makeRunner(opts: { pauseActive?: boolean } = {}): {
   runner: ScheduledTaskRunnerHandle;
-  setNow: (iso: string) => void;
 } {
-  let nowIso = "2026-05-09T12:00:00.000Z";
+  const nowIso = "2026-05-09T12:00:00.000Z";
   const gates = createTaskGateRegistry();
   registerBuiltInGates(gates);
   const completionChecks = createCompletionCheckRegistry();
@@ -77,9 +61,6 @@ function makeRunner(opts: { pauseActive?: boolean } = {}): {
   });
   return {
     runner,
-    setNow: (iso) => {
-      nowIso = iso;
-    },
   };
 }
 
@@ -138,28 +119,6 @@ const TERMINAL_OUTCOMES: TerminalState[] = [
   "failed",
 ];
 
-describe("ScheduledTaskRunner — after_task trigger structural acceptance (A9)", () => {
-  for (const outcome of TERMINAL_OUTCOMES) {
-    it(`accepts a child trigger after_task<${outcome}> and persists the parent linkage`, async () => {
-      const { runner } = makeRunner();
-      const parent = await runner.schedule(baseInput());
-      const child = await runner.schedule(
-        baseInput({
-          promptInstructions: `chain after ${outcome}`,
-          trigger: { kind: "after_task", taskId: parent.taskId, outcome },
-        }),
-      );
-      expect(child.state.status).toBe("scheduled");
-      expect(child.trigger.kind).toBe("after_task");
-      if (child.trigger.kind !== "after_task") {
-        throw new Error("trigger kind narrowing failed");
-      }
-      expect(child.trigger.taskId).toBe(parent.taskId);
-      expect(child.trigger.outcome).toBe(outcome);
-    });
-  }
-});
-
 describe("ScheduledTaskRunner — after_task children fire on the parent's terminal transition", () => {
   for (const outcome of TERMINAL_OUTCOMES) {
     it(`auto-fires the child when the parent reaches ${outcome}`, async () => {
@@ -172,6 +131,12 @@ describe("ScheduledTaskRunner — after_task children fire on the parent's termi
         }),
       );
 
+      expect(child.state.status).toBe("scheduled");
+      expect(child.trigger).toEqual({
+        kind: "after_task",
+        taskId: parent.taskId,
+        outcome,
+      });
       await forceParentTerminal(runner, parent.taskId, outcome);
 
       expect((await getTask(runner, parent.taskId)).state.status).toBe(outcome);

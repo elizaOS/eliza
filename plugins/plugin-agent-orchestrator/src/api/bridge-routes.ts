@@ -27,7 +27,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE } from "@elizaos/core";
+import { SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE } from "@elizaos/plugin-assistant";
 import {
   CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
   matchesCredentialBridgeToken,
@@ -66,7 +66,7 @@ const KNOWN_CREDENTIAL_REJECTION_CODES: ReadonlySet<string> = new Set([
 
 /**
  * Adapter surface the bridge routes need from the parent runtime. The
- * concrete implementation lives in app-core (`CredentialTunnelService`) and
+ * concrete implementation lives in app (`CredentialTunnelService`) and
  * is registered into the parent runtime out-of-band; the route layer never
  * imports it directly.
  */

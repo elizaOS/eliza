@@ -34,7 +34,7 @@ import {
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { refreshCloudStewardSession } from "../api/client-cloud";
 
 /** Bounded so the recovery gate can never hang on a slow refresh. */

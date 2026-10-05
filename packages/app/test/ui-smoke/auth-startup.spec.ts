@@ -84,6 +84,7 @@ test("remote auth requirement renders pairing instead of password sign-in", asyn
       reason: "remote_auth_required",
       access: {
         mode: "remote",
+        role: "GUEST",
         passwordConfigured: true,
         ownerConfigured: true,
       },

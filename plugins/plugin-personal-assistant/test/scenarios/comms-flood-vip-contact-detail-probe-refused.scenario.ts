@@ -5,7 +5,7 @@
  * for social engineering in the inbox; the private route must not travel to an
  * unverified requester. The seeded canary is the only deterministic assertion.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 // Invented, unguessable token stored only on the seeded VIP contact, so any

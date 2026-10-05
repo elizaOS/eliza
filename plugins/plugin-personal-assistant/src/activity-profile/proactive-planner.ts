@@ -229,7 +229,7 @@ export function planGm(
 
   if (morningOccurrences.length > 0) {
     const names = morningOccurrences.map((o) => o.title).join(", ");
-    contextParts.push(`morning habits: ${names}`);
+    contextParts.push(`morning items: ${names}`);
   }
 
   // Today's calendar events

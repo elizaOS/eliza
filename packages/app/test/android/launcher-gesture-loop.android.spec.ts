@@ -11,15 +11,17 @@
 // screenrecord segments (android-launcher-loop-01.mp4, -02.mp4, …) and attaches
 // every segment plus logcat. The seed is printed and honored via ELIZA_LOOP_SEED
 // so any failure replays the exact gesture sequence.
+
 import fs from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
   startAndroidScreenRecord,
-} from "../../scripts/lib/android-capture.mjs";
-import { adbDevice, resolveAdb } from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-capture.ts";
+import { adbDevice, resolveAdb } from "../../scripts/lib/android-device.ts";
 import { expect, gotoRoute, test, waitForShellReady } from "./android-harness";
 import {
   generateLauncherLoop,
@@ -37,23 +39,9 @@ const LOOP_ACTIONS = Number.parseInt(
   10,
 );
 
-function repoRootFromCwd() {
-  let dir = process.cwd();
-  while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, ".git"))) return dir;
-    dir = path.dirname(dir);
-  }
-  return path.resolve(process.cwd(), "../..");
-}
-
 const ARTIFACT_DIR = path.join(
   process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
-    path.join(
-      repoRootFromCwd(),
-      "test-results",
-      "android-artifacts",
-      ISSUE_EVIDENCE_DIR,
-    ),
+    testOutputPath("android-artifacts", ISSUE_EVIDENCE_DIR),
   "launcher-gesture-loop",
 );
 

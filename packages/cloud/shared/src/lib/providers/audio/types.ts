@@ -52,5 +52,10 @@ export type GeneratedAudio =
 
 export interface AudioProvider {
   billingSource: PricingBillingSource;
+  /**
+   * True when results come back as bytes that the route stores in Cloud R2,
+   * so they count toward the organization storage quota (#20956).
+   */
+  storesOutputInCloud?: boolean;
   generate(req: AudioGenRequest): Promise<GeneratedAudio>;
 }

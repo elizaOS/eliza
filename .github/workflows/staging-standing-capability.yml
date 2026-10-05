@@ -40,7 +40,7 @@ jobs:
           node-version: "24.15.0"
 
       - name: Verify preflight boundaries
-        run: node --test packages/cloud/scripts/staging-standing-capability.test.mjs
+        run: node --test packages/cloud/scripts/staging-standing-capability.test.ts
 
       - name: Inspect bounded staging capability
         shell: bash
@@ -48,7 +48,7 @@ jobs:
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/staging-standing-capability.mjs \
+          node packages/cloud/scripts/staging-standing-capability.ts \
             --expected-deploy-sha "$EXPECTED_DEPLOY_SHA" \
             --source-sha "$GITHUB_SHA" \
             --source-ref "$GITHUB_REF" \

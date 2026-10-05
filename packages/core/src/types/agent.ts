@@ -36,8 +36,6 @@ export interface CharacterSettings {
 	shouldRespondModel?: string;
 	useMultiStep?: boolean;
 	maxMultistepIterations?: number;
-	basicCapabilitiesDefllmoff?: boolean;
-	basicCapabilitiesKeepResp?: boolean;
 	providersTotalTimeoutMs?: number;
 	maxWorkingMemoryEntries?: number;
 	alwaysRespondChannels?: string;
@@ -46,14 +44,10 @@ export interface CharacterSettings {
 	defaultMaxTokens?: number;
 	defaultFrequencyPenalty?: number;
 	defaultPresencePenalty?: number;
-	disableBasicCapabilities?: boolean;
-	enableExtendedCapabilities?: boolean;
 	extra?: JsonObject;
 	enableRelationships?: boolean;
 	enableTrajectories?: boolean;
 	ENABLE_AUTONOMY?: boolean | string;
-	DISABLE_BASIC_CAPABILITIES?: boolean | string;
-	ENABLE_EXTENDED_CAPABILITIES?: boolean | string;
 	ADVANCED_CAPABILITIES?: boolean | string;
 	ENABLE_TRUST?: boolean | string;
 	ENABLE_SECRETS_MANAGER?: boolean | string;

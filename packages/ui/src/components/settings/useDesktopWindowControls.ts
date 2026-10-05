@@ -6,9 +6,9 @@
  * the passed snapshot to pick the RPC method.
  */
 
+import type { TranslateFn } from "@elizaos/contracts";
 import { useMemo } from "react";
-import { invokeDesktopBridgeRequest } from "../../bridge";
-import type { TranslateFn } from "../../types";
+import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import type { DesktopWorkspaceSnapshot } from "../../utils/desktop-workspace";
 
 export interface DesktopWindowControls {

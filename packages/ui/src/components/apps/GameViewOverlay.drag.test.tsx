@@ -19,7 +19,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedAppValue } from "../../state/app-store";
-import type { AppContextValue } from "../../state/internal";
+import type { AppContextValue } from "../../state/types";
 import { GameViewOverlay } from "./GameViewOverlay";
 
 const noop = new Proxy(() => noop, { get: () => noop });

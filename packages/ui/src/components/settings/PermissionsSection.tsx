@@ -6,26 +6,27 @@
  * bridge. Also hosts the permission-priming card.
  */
 
+import type { PermissionId, PermissionState } from "@elizaos/core/protocol";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { PermissionId, PermissionState } from "../../api";
 import {
   getMobileSignalsPlugin,
   type MobileSignalsPermissionStatus,
   type MobileSignalsSetupAction,
 } from "../../bridge/native-plugins";
 import { useBootConfig } from "../../config/boot-config-react.hooks";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
+import { appNameInterpolationVars } from "../../config/branding-base";
+import { useBranding } from "../../config/branding-react.hooks";
 import {
   isDesktopPlatform,
   isNative,
   isWebPlatform,
   platform as runtimePlatform,
-} from "../../platform";
+} from "../../platform/init";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
 import { resolvePrimingSet } from "../permissions/permission-priming";
 import { StreamingPermissionsSettingsView } from "../permissions/StreamingPermissions";

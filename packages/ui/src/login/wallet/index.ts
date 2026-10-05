@@ -35,8 +35,8 @@ export type {
   CreateDefaultWagmiConfigOptions,
   DefaultWagmiChains,
   EVMWalletProviderProps,
-  SolanaWalletProviderProps,
-} from "../providers/WalletProviders.js";
+} from "../providers/EVMProvider";
+export type { SolanaWalletProviderProps } from "../providers/SolanaProvider";
 export {
   createDefaultWagmiConfig,
   EVMWalletProvider,

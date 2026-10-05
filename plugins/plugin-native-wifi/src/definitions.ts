@@ -1,5 +1,5 @@
 /**
- * Type definitions for the @elizaos/capacitor-wifi bridge.
+ * Type definitions for the @elizaos/plugin-native-wifi/bridge bridge.
  *
  * The native side is implemented in Kotlin under
  * android/src/main/java/ai/eliza/plugins/wifi/WiFiPlugin.kt and is registered

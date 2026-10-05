@@ -1,17 +1,19 @@
-// Android companion to `scripts/audit-views-soak.mjs` for #10196.
+// Android companion to `scripts/audit-views-soak.ts` for #10196.
 //
 // This drives the real installed Capacitor WebView against the deterministic
 // host agent (`ELIZA_ANDROID_BACKEND=host`), enumerates the live `/api/views`
 // catalog, activates each view through the app's `eliza:navigate:view` channel,
 // then drains the real view-runtime and module-cache telemetry rings.
+
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   captureAndroidLogcat,
   startAndroidScreenRecord,
-} from "../../scripts/lib/android-capture.mjs";
-import { resolveAdb } from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-capture.ts";
+import { resolveAdb } from "../../scripts/lib/android-device.ts";
 import { expect, ORIGIN, test, waitForShellReady } from "./android-harness";
 
 const API = process.env.API ?? "http://127.0.0.1:31337";
@@ -22,14 +24,7 @@ const FIRST_RUN_REMOTE_DEEPLINK = `elizaos://first-run/runtime/remote?api=${enco
 )}`;
 const ARTIFACT_DIR = path.resolve(
   process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
-    path.join(
-      process.cwd(),
-      "..",
-      "..",
-      "test-results",
-      "android-artifacts",
-      "10196-views-state",
-    ),
+    testOutputPath("android-artifacts", "10196-views-state"),
   "view-runtime-soak",
 );
 

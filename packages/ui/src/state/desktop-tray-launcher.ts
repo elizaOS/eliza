@@ -9,8 +9,8 @@ import { useSyncExternalStore } from "react";
  * Runtime registry for the desktop tray-popover launcher rows (#12184).
  *
  * The launcher catalog's single source of truth is `DESKTOP_VIEW_WINDOWS` in
- * `@elizaos/app-core` (`runtime/desktop/tray-menu.ts`). `@elizaos/ui` cannot
- * import `@elizaos/app-core` (that package depends on this one — importing it
+ * `@elizaos/app` (`runtime/desktop/tray-menu.ts`). `@elizaos/ui` cannot
+ * import `@elizaos/app` (that package depends on this one — importing it
  * back would be a cycle), so the desktop host registers the resolved,
  * localized rows here at runtime and the presentational `TrayLauncher`
  * (rendered inside `TrayPopoverShell`) reads them. Same pattern as

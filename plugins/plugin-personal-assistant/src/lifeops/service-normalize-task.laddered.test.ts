@@ -3,8 +3,9 @@
  * No runtime graph: exercises `normalizeProgressionRule` directly, asserting it
  * accepts a well-formed ladder and fails fast (no silent default) on bad input.
  */
+
+import type { LifeOpsProgressionRule } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
-import type { LifeOpsProgressionRule } from "../contracts/index.js";
 import { normalizeProgressionRule } from "./service-normalize-task.ts";
 
 describe("normalizeProgressionRule — laddered", () => {

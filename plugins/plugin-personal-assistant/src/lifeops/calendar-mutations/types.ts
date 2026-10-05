@@ -4,8 +4,9 @@
  * success authority after a restart; an unknown provider outcome remains
  * quarantined until a human reconciles it.
  */
+
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import type {
   ApprovalRequest,
   CalendarCancellationMode,

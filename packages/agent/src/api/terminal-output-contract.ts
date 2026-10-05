@@ -54,3 +54,48 @@ export function capturedTerminalOutputIsSafe(
       MAX_TERMINAL_CAPTURE_BYTES
   );
 }
+
+/** Safe pre-dispatch failures. Messages never contain submitted commands or credentials. */
+export const TERMINAL_REJECTIONS = {
+  TERMINAL_COMMAND_REQUIRED: {
+    status: 400,
+    message: "A non-empty shell command is required.",
+    retryable: true,
+  },
+  TERMINAL_COMMAND_TOO_LONG: {
+    status: 400,
+    message:
+      "Command exceeds maximum length (4096 characters). Use the coding tools for longer scripts.",
+    retryable: true,
+  },
+  TERMINAL_COMMAND_SINGLE_LINE_REQUIRED: {
+    status: 400,
+    message:
+      "Command must be a single line without literal newline, carriage return or NUL characters. Use escaped newlines inside a single-line command, or the coding tools for scripts.",
+    retryable: true,
+  },
+  TERMINAL_AUTHORIZATION_REQUIRED: {
+    status: 403,
+    message:
+      "Terminal authorization is required. Ask the owner to authorize terminal access; do not bypass this restriction.",
+    retryable: false,
+  },
+  TERMINAL_SHELL_DISABLED: {
+    status: 403,
+    message:
+      "Shell execution is disabled by host policy. Do not bypass this restriction.",
+    retryable: false,
+  },
+} as const;
+export type TerminalRejectionCode = keyof typeof TERMINAL_REJECTIONS;
+
+export function terminalRejectionResponse(code: TerminalRejectionCode) {
+  const definition = TERMINAL_REJECTIONS[code];
+  return {
+    error: definition.message,
+    code,
+    acceptance: "rejected" as const,
+    executionStatus: "not_started" as const,
+    retryable: definition.retryable,
+  };
+}

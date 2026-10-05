@@ -16,6 +16,7 @@
  * admin engagement dashboard.
  */
 
+import { memoryTable, roomTable } from "@elizaos/plugin-sql";
 import {
   and,
   count,
@@ -35,7 +36,6 @@ import {
   dailyMetrics,
   type MetricsPlatform,
 } from "../../db/schemas/daily-metrics";
-import { memoryTable, roomTable } from "../../db/schemas/eliza";
 import { platformCredentials } from "../../db/schemas/platform-credentials";
 import { type RetentionCohort, retentionCohorts } from "../../db/schemas/retention-cohorts";
 import { userIdentities } from "../../db/schemas/user-identities";

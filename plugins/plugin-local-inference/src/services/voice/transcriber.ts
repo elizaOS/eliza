@@ -9,7 +9,7 @@
  *
  *   1. `FfiStreamingTranscriber` — the FINAL path. Drives the fused
  *      `libelizainference` streaming ASR ABI (`eliza_inference_asr_stream_*`,
- *      ABI v2 — declared in `packages/app-core/scripts/omnivoice-fuse/ffi.h`,
+ *      ABI v2 — declared in `packages/app/scripts/omnivoice-fuse/ffi.h`,
  *      bound in `voice/ffi-bindings.ts`). The C side is W7's job; until the
  *      real fused build advertises streaming ASR the binding's `mmap`/`asr`
  *      calls return `ELIZA_ERR_NOT_IMPLEMENTED`, which surfaces as a thrown

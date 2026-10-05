@@ -1,6 +1,6 @@
 /** Renders the confirmation and status flow for permanent account-deletion requests. */
 
-import type { AccountDeletionStatusDto } from "@elizaos/cloud-shared/types/account-lifecycle";
+import type { AccountDeletionStatusDto } from "@elizaos/cloud-sdk/browser-contracts/account-lifecycle";
 import { useState } from "react";
 import {
   AlertDialog,

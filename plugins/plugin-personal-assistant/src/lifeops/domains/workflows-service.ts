@@ -4,7 +4,7 @@
  * registry and whose cron/relative schedules compute the next run instant. Runs
  * and audit events are persisted for owner review.
  */
-import { computeNextCronRunAtMs } from "@elizaos/agent";
+
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsAuditEvent,
@@ -16,8 +16,9 @@ import type {
   LifeOpsWorkflowRun,
   LifeOpsWorkflowSchedule,
   UpdateLifeOpsWorkflowRequest,
-} from "../../contracts/index.js";
-import { LIFEOPS_WORKFLOW_STATUSES } from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { LIFEOPS_WORKFLOW_STATUSES } from "@elizaos/contracts";
+import { computeNextCronRunAtMs } from "@elizaos/core";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   type AnyWorkflowStepContribution,

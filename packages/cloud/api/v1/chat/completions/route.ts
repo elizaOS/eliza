@@ -1,12 +1,13 @@
 /** Implements the OpenAI-compatible chat-completions boundary and its streaming accounting. */
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * OpenAI-compatible chat completions endpoint.
@@ -18,24 +19,14 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * IMPORTANT: Do NOT call provider APIs directly. Always use AI SDK.
  */
 
-import {
-  APICallError,
-  generateText,
-  jsonSchema,
-  type ModelMessage,
-  RetryError,
-  type StepResult,
-  streamText,
-  type ToolSet,
-} from "ai";
-import { getErrorStatusCode } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { createPreflightResponse } from "@/lib/middleware/cors-apps";
+import { getErrorStatusCode } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { createPreflightResponse } from "@elizaos/cloud-shared/lib/middleware/cors-apps";
 import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
-} from "@/lib/middleware/rate-limit";
-import { recordCloudStreamMilestones } from "@/lib/observability/cloud-backend-observability";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit";
+import { recordCloudStreamMilestones } from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
 import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
@@ -45,7 +36,7 @@ import {
   snapshotGatewayPreforwardTiming,
   withGatewayPreforwardTelemetry,
   withInferenceAuthTelemetry,
-} from "@/lib/observability/http-telemetry";
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
 import {
   calculateCost,
   estimateTokens,
@@ -53,16 +44,16 @@ import {
   getSafeModelParams,
   modelUsesReasoningTokens,
   normalizeModelName,
-} from "@/lib/pricing";
+} from "@elizaos/cloud-shared/lib/pricing";
 import {
   mergeAnthropicCotProviderOptions,
   resolveAnthropicThinkingBudgetTokens,
-} from "@/lib/providers/anthropic-thinking";
+} from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
 import {
   ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER,
   buildProviderNativeWebSearchTools,
   isAnthropicWebSearchEnabled,
-} from "@/lib/providers/anthropic-web-search";
+} from "@elizaos/cloud-shared/lib/providers/anthropic-web-search";
 import {
   canonicalizeCerebrasModelId,
   getAiProviderConfigurationError,
@@ -73,60 +64,71 @@ import {
   resolveAiProviderSource,
   resolvePassthroughUpstreamForModel,
   resolvePooledDirectProviderForModel,
-} from "@/lib/providers/language-model";
+} from "@elizaos/cloud-shared/lib/providers/language-model";
 import {
-  type AIUsage,
   type BillingContext,
+  type BillingResult,
   billUsage,
   estimateInputTokens,
   InsufficientCreditsError,
-  recordUsageAnalytics,
-} from "@/lib/services/ai-billing";
-import { aiBillingRecordsService } from "@/lib/services/ai-billing-records";
+  type recordUsageAnalytics,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { recordSettledInferenceBilling } from "@elizaos/cloud-shared/lib/services/ai-billing-settled";
 import {
   AiPricingCacheUnavailableError,
   AiPricingCacheWarmingError,
-} from "@/lib/services/ai-pricing/cache";
-import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions";
-import { appCreditsService } from "@/lib/services/app-credits";
+} from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
+import type { PricingBillingSource } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import {
   admitAppInferenceCacheOnly,
   assertInferenceAppAffiliateSupported,
   InferenceAppAffiliateUnsupportedError,
-} from "@/lib/services/app-inference-admission";
-import { appsService } from "@/lib/services/apps";
-import { contentModerationService } from "@/lib/services/content-moderation";
+} from "@elizaos/cloud-shared/lib/services/app-inference-admission";
+import {
+  type AppInferenceDelegatedActor,
+  admitAppSubscriptionInference,
+  appInferenceDeveloperScope,
+  appInferenceErrorResponse,
+} from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { BillingHoldActiveError } from "@elizaos/cloud-shared/lib/services/billing-hold";
+import { contentModerationService } from "@elizaos/cloud-shared/lib/services/content-moderation";
 import type {
   CreditReconciliationResult,
   CreditReservation,
-} from "@/lib/services/credits";
-import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+} from "@elizaos/cloud-shared/lib/services/credits";
+import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
   type InferenceAuthTelemetry,
   resolveInferenceAuthContext,
-} from "@/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
+} from "@elizaos/cloud-shared/lib/services/inference-auth-context";
+import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
 import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
   isInferenceStrongRevocationEnabled,
-} from "@/lib/services/inference-credential-revocation";
+} from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import {
   createPassthroughStreamMeter,
   isPassthroughStreamingEnabled,
   type PassthroughStreamTail,
-} from "@/lib/services/inference-passthrough";
+} from "@elizaos/cloud-shared/lib/services/inference-passthrough";
 import {
   isKnownUnacceptedProviderError,
   isKnownUnacceptedProviderStatus,
-} from "@/lib/services/inference-provider-outcome";
+} from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
   getCachedGatewayModelById,
   getGatewayModelByIdCacheOnly,
-} from "@/lib/services/model-catalog";
+} from "@elizaos/cloud-shared/lib/services/model-catalog";
+import {
+  nativeApplicationInferenceErrorResponse,
+  prepareNativeApplicationInference,
+} from "@elizaos/cloud-shared/lib/services/native-application-inference";
 import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
@@ -134,15 +136,69 @@ import {
   InferenceAffiliateCacheWarmingError,
   InferencePricingCacheUnavailableError,
   InferencePricingCacheWarmingError,
-} from "@/lib/services/organization-inference-admission";
+} from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import {
   getTeamPoolRegistry,
   type SelectedPooledCredential,
-} from "@/lib/services/team-credential-pool";
-import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
-import { logger } from "@/lib/utils/logger";
-import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
-import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
+} from "@elizaos/cloud-shared/lib/services/team-credential-pool";
+import { createCreditReservationSettler } from "@elizaos/cloud-shared/lib/utils/credit-reservation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { getRouteTimeoutMs } from "@elizaos/cloud-shared/lib/utils/request-timeout";
+import { settleOffResponsePath } from "@elizaos/cloud-shared/lib/utils/settle-off-response-path";
+import {
+  APICallError,
+  generateText,
+  jsonSchema,
+  type ModelMessage,
+  RetryError,
+  type StepResult,
+  streamText,
+  type ToolSet,
+} from "ai";
+import {
+  firstNumber,
+  modelNotAvailableMessage,
+  summarizeFinishedStepUsage,
+} from "@/api-app/lib/inference-usage";
+
+/**
+ * Write the durable billing ledger row for one settled inference. Credits are
+ * settled before this runs, so the row must exist even when the usage
+ * analytics insert fails (#31112); `recordSettledInferenceBilling` carries that
+ * failure into the row as an explicit marker. A ledger write failure is logged
+ * as before: the response is already delivered and settlement is not rolled
+ * back.
+ */
+async function recordChatBillingLedgerRow(args: {
+  billingContext: BillingContext;
+  billing: BillingResult;
+  reconciliation: CreditReconciliationResult | null;
+  idempotencyKey: string;
+  analytics: Parameters<typeof recordUsageAnalytics>[2];
+}): Promise<void> {
+  try {
+    await recordSettledInferenceBilling({
+      context: args.billingContext,
+      billing: args.billing,
+      reconciliation: args.reconciliation,
+      idempotencyKey: args.idempotencyKey,
+      analytics: args.analytics,
+    });
+  } catch (auditError) {
+    // error-policy:J7 diagnostics must not kill the loop: the failed ledger
+    // write is logged with the idempotency key so it can be replayed.
+    logger.error("[Chat Completions] audit record failed (non-fatal)", {
+      idempotencyKey: args.idempotencyKey,
+      error:
+        auditError instanceof Error ? auditError.message : String(auditError),
+      cause:
+        auditError instanceof Error && auditError.cause
+          ? String((auditError.cause as Error).message ?? auditError.cause)
+          : undefined,
+    });
+  }
+}
 
 const ROUTE_MAX_DURATION = 800;
 
@@ -903,17 +959,6 @@ function hasReportedUsageTokens(usage: unknown): boolean {
   );
 }
 
-function firstNumber(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim().length > 0) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return undefined;
-}
-
 function getMessageContent(msg: ChatMessage): string {
   if (msg.content == null) return "";
   if (typeof msg.content === "string") return msg.content;
@@ -961,6 +1006,17 @@ function unwrapProviderError(error: unknown): unknown {
   return error;
 }
 
+// Provider billing text can trigger a client add-credits prompt even with HTTP 503.
+const PROVIDER_PAYMENT_UNAVAILABLE_MESSAGE =
+  "The AI service is temporarily unavailable. Please try again later.";
+
+function isProviderPaymentError(error: unknown): boolean {
+  const providerError = unwrapProviderError(error);
+  return (
+    APICallError.isInstance(providerError) && providerError.statusCode === 402
+  );
+}
+
 function getProviderCallerFaultStatus(error: unknown): number | null {
   if (!(error instanceof Error)) {
     return null;
@@ -991,6 +1047,12 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
   }
 
   if (APICallError.isInstance(providerError)) {
+    if (providerError.statusCode === 402) {
+      // HTTP 402 identifies platform funding even if its body says quota exceeded.
+      // It is not the caller's Cloud credit balance.
+      return 503;
+    }
+
     const providerCode =
       getProviderErrorCode(providerError.data) ??
       getProviderErrorCode(parseJsonObject(providerError.responseBody));
@@ -1006,10 +1068,6 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
       message.includes("insufficient_quota")
     ) {
       return 429;
-    }
-
-    if (providerError.statusCode === 402) {
-      return 402;
     }
 
     // A provider 400 is the CALLER's fault (invalid parameters / a response
@@ -1166,6 +1224,8 @@ function shouldUsePooledNoopReservation(params: {
 // ============================================================================
 
 interface ChatCompletionsHandlerOptions {
+  /** Registered delegated app customer; this path uses paired funding and no legacy app-credit markup. */
+  appFundingActor?: AppInferenceDelegatedActor;
   skipOrgRateLimit?: boolean;
   /** Require this app scope and bill through its app accounting policy. */
   requiredAppId?: string;
@@ -1210,6 +1270,17 @@ export async function handleChatCompletionsPOST(
   req: Request,
   options: ChatCompletionsHandlerOptions = {},
 ) {
+  if (req.headers.has("X-Eliza-Application-Slot"))
+    return Response.json(
+      {
+        error: {
+          code: "APP_INFERENCE_NATIVE_AUTH_REQUIRED",
+          message:
+            "Native product selection requires the authenticated application route",
+        },
+      },
+      { status: 403 },
+    );
   const startTime = Date.now();
   const telemetryStartedAt = performance.now();
   const traceId = options.traceId ?? resolveElizaTraceId(req.headers);
@@ -1415,6 +1486,7 @@ export async function handleChatCompletionsPOST(
             cacheOnly: Boolean(options.executionCtx),
             executionCtx: options.executionCtx,
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+            apiKeyId: apiKey?.id,
           })
         : Promise.resolve(null),
     );
@@ -1466,7 +1538,9 @@ export async function handleChatCompletionsPOST(
     }
 
     // 2. Prepare app monetization lookup
-    const requestedAppId = options.requiredAppId ?? req.headers.get("X-App-Id");
+    const requestedAppId = options.appFundingActor
+      ? null
+      : (options.requiredAppId ?? req.headers.get("X-App-Id"));
     if (requestedAppId && appScopeId && appScopeId !== requestedAppId) {
       return addCorsHeaders(
         Response.json(
@@ -1789,14 +1863,56 @@ export async function handleChatCompletionsPOST(
       ) + (webSearchActive ? ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER : 0);
     const estimatedOutputTokens =
       effectiveMaxTokens ?? request.max_tokens ?? 500;
-    const affiliateCode = req.headers.get("X-Affiliate-Code");
+    const affiliateCode = options.appFundingActor
+      ? null
+      : req.headers.get("X-Affiliate-Code");
 
     const tBeforeReserve = performance.now();
     const useMonetizedAppBilling = Boolean(
       useAppCredits && appId && monetizedApp,
     );
     try {
-      if (
+      if (options.appFundingActor) {
+        const { totalCost } = await calculateCost(
+          normalizedModel,
+          provider,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          billingSource,
+        );
+        const admission = await admitAppSubscriptionInference({
+          actor: options.appFundingActor,
+          developerOrganizationId: user.organization_id,
+          developerAppScopeId: await appInferenceDeveloperScope(
+            apiKey?.id ?? null,
+          ),
+          logicalOperationId: req.headers.get("idempotency-key") ?? "",
+          requestDigest: settlementDigest({
+            request,
+            model: normalizedModel,
+            provider,
+            billingSource,
+            estimatedOutputTokens,
+          }),
+          estimatedCostUsd: totalCost,
+          revalidateDeveloperCredential: async () => {
+            if (!apiKey)
+              throw new Error("App infrastructure credential is unavailable");
+            await assertInferenceCredentialActive(
+              user.organization_id,
+              admissionCredential ?? {
+                kind: "api_key",
+                credentialId: apiKey.id,
+                userId: user.id,
+              },
+            );
+          },
+        });
+        appId = options.appFundingActor.appId;
+        settleReservation = admission.settle;
+        settleUnknown = admission.settleUnknown;
+        markProviderDispatched = admission.markProviderDispatched;
+      } else if (
         shouldUsePooledNoopReservation({
           pooledCredential,
           useMonetizedAppBilling,
@@ -1896,6 +2012,9 @@ export async function handleChatCompletionsPOST(
         billingReservation = admission.reservation;
       }
     } catch (error) {
+      // error-policy:J1 Typed app funding failures stay explicit at the inference HTTP boundary.
+      const appFundingFailure = appInferenceErrorResponse(error);
+      if (appFundingFailure) return addCorsHeaders(appFundingFailure);
       const failedAt = performance.now();
       preforwardTiming ??= snapshotGatewayPreforwardTiming({
         authMs: tAuth - telemetryStartedAt,
@@ -1943,6 +2062,20 @@ export async function handleChatCompletionsPOST(
               },
             },
             { status: 400 },
+          ),
+        );
+      }
+      if (error instanceof BillingHoldActiveError) {
+        return addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: error.message,
+                type: "insufficient_quota",
+                code: error.code,
+              },
+            },
+            { status: 402 },
           ),
         );
       }
@@ -2181,6 +2314,8 @@ export async function handleChatCompletionsPOST(
         await settleReservation?.(0);
       }
     });
+    const appFundingFailure = appInferenceErrorResponse(error);
+    if (appFundingFailure) return addCorsHeaders(appFundingFailure);
     const credentialDenial = resolveInferenceCredentialAdmissionDenial(error, {
       route: "chat_completions",
       traceId,
@@ -2278,15 +2413,21 @@ export async function handleChatCompletionsPOST(
       rawMessage.startsWith("Failed query:") ||
       rawMessage.includes("insert into") ||
       rawMessage.includes("select from");
-    const errorMessage = isDbError ? "Internal server error" : rawMessage;
+    const errorMessage = isDbError
+      ? "Internal server error"
+      : isProviderPaymentError(error)
+        ? PROVIDER_PAYMENT_UNAVAILABLE_MESSAGE
+        : rawMessage;
 
+    const providerStatus = getRecoverableProviderErrorStatus(error);
     const isInsufficientCredits =
       error instanceof InsufficientCreditsError ||
-      errorMessage.includes("Insufficient") ||
-      errorMessage.includes("credits");
+      (providerStatus === null &&
+        (errorMessage.includes("Insufficient") ||
+          errorMessage.includes("credits")));
     const status = isInsufficientCredits
       ? 402
-      : (getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error));
+      : (providerStatus ?? getErrorStatusCode(error));
     const errorType = openAiErrorTypeForStatus(status);
 
     return attachPreforwardTelemetry(
@@ -2306,15 +2447,6 @@ export async function handleChatCompletionsPOST(
 }
 
 /**
- * Client-facing message for a provider-configuration failure. The requested
- * model id is the only detail safe to echo back — the underlying errors name
- * internal env vars and setup steps, which stay in server logs only.
- */
-function modelNotAvailableMessage(model: string): string {
-  return `model '${model}' is not available on this deployment`;
-}
-
-/**
  * OpenAI-compatible `error.type` for an HTTP status. Single mapping shared by
  * the non-streaming error response and the terminal streaming error chunk so
  * the two paths can never disagree about what a status means.
@@ -2326,58 +2458,6 @@ function openAiErrorTypeForStatus(status: number): string {
   if (status === 503) return "service_unavailable";
   if (status === 400 || status === 404) return "invalid_request_error";
   return "api_error";
-}
-
-function summarizeFinishedStepUsage(
-  steps: readonly StepResult<ToolSet>[],
-): AIUsage | null {
-  let sawUsage = false;
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let totalTokens = 0;
-  let cacheReadInputTokens = 0;
-  let cacheWriteInputTokens = 0;
-
-  for (const step of steps) {
-    const usage = step.usage;
-    const stepInputTokens = firstNumber(usage.inputTokens) ?? 0;
-    const stepOutputTokens = firstNumber(usage.outputTokens) ?? 0;
-    const stepTotalTokens =
-      firstNumber(usage.totalTokens) ?? stepInputTokens + stepOutputTokens;
-    const stepCacheReadTokens =
-      firstNumber(
-        usage.inputTokenDetails?.cacheReadTokens,
-        usage.cachedInputTokens,
-      ) ?? 0;
-    const stepCacheWriteTokens =
-      firstNumber(usage.inputTokenDetails?.cacheWriteTokens) ?? 0;
-
-    if (
-      stepInputTokens > 0 ||
-      stepOutputTokens > 0 ||
-      stepTotalTokens > 0 ||
-      stepCacheReadTokens > 0 ||
-      stepCacheWriteTokens > 0
-    ) {
-      sawUsage = true;
-    }
-
-    inputTokens += stepInputTokens;
-    outputTokens += stepOutputTokens;
-    totalTokens += stepTotalTokens;
-    cacheReadInputTokens += stepCacheReadTokens;
-    cacheWriteInputTokens += stepCacheWriteTokens;
-  }
-
-  if (!sawUsage) return null;
-
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-    cacheReadInputTokens,
-    cacheWriteInputTokens,
-  };
 }
 
 async function settleStreamingAbortReservation(params: {
@@ -2441,37 +2521,21 @@ async function settleStreamingAbortReservation(params: {
       params.billingReservation,
     );
     const reconciliation = await params.settleReservation(billing.totalCost);
-    const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-      type: "chat",
-      isSuccessful: false,
-      errorMessage: "client_aborted_stream",
-      content: params.deliveredText,
-      systemPrompt: params.systemPrompt,
-      prompt: params.prompt,
-      latencyMs: Date.now() - params.startTime,
+    await recordChatBillingLedgerRow({
+      billingContext,
+      billing,
+      reconciliation,
+      idempotencyKey: params.idempotencyKey,
+      analytics: {
+        type: "chat",
+        isSuccessful: false,
+        errorMessage: "client_aborted_stream",
+        content: params.deliveredText,
+        systemPrompt: params.systemPrompt,
+        prompt: params.prompt,
+        latencyMs: Date.now() - params.startTime,
+      },
     });
-    if (usageRecord) {
-      try {
-        await aiBillingRecordsService.record({
-          context: billingContext,
-          billing,
-          usageRecord,
-          idempotencyKey: params.idempotencyKey,
-          reconciliation,
-        });
-      } catch (auditError) {
-        logger.error("[Chat Completions] audit record failed (non-fatal)", {
-          error:
-            auditError instanceof Error
-              ? auditError.message
-              : String(auditError),
-          cause:
-            auditError instanceof Error && auditError.cause
-              ? String((auditError.cause as Error).message ?? auditError.cause)
-              : undefined,
-        });
-      }
-    }
 
     logger.info(
       "[Chat Completions] Stream aborted; reservation partially settled",
@@ -2539,12 +2603,12 @@ function qualifiesForPassthroughStreaming(request: ChatRequest): boolean {
 /**
  * Client-facing status for a pass-through upstream error response — the same
  * classification getRecoverableProviderErrorStatus applies to AI-SDK errors:
- * caller-fault statuses pass through; 401/403 are OUR provider-key state
+ * caller-fault statuses pass through; 401/402/403 are OUR provider-account state
  * (never the caller's fault) and everything else means the upstream is
  * unavailable, both surfaced as 503.
  */
 function mapPassthroughUpstreamStatus(status: number): number {
-  if (status === 400 || status === 402 || status === 404 || status === 429) {
+  if (status === 400 || status === 404 || status === 429) {
     return status;
   }
   return 503;
@@ -2873,35 +2937,19 @@ async function tryPassthroughStreamingRequest(params: {
           params.billingReservation,
         );
         const reconciliation = await settleReservation(billing.totalCost);
-        const usageRecord = await recordUsageAnalytics(
+        await recordChatBillingLedgerRow({
           billingContext,
           billing,
-          {
+          reconciliation,
+          idempotencyKey: params.idempotencyKey,
+          analytics: {
             type: "chat",
             content: tail.deliveredText,
             systemPrompt: params.systemPrompt,
             prompt: billingPrompt,
             latencyMs: Date.now() - params.startTime,
           },
-        );
-        if (usageRecord) {
-          try {
-            await aiBillingRecordsService.record({
-              context: billingContext,
-              billing,
-              usageRecord,
-              idempotencyKey: params.idempotencyKey,
-              reconciliation,
-            });
-          } catch (auditError) {
-            logger.error("[Chat Completions] audit record failed (non-fatal)", {
-              error:
-                auditError instanceof Error
-                  ? auditError.message
-                  : String(auditError),
-            });
-          }
-        }
+        });
         logger.info("[Chat Completions] Passthrough streaming complete", {
           model,
           durationMs: Date.now() - params.startTime,
@@ -3277,45 +3325,19 @@ async function handleStreamingRequest(
             executionCtx,
           );
 
-          const usageRecord = await recordUsageAnalytics(
+          await recordChatBillingLedgerRow({
             billingContext,
             billing,
-            {
+            reconciliation,
+            idempotencyKey: idempotencyKey,
+            analytics: {
               type: "chat",
               content: text,
               systemPrompt,
               prompt: billingPrompt,
               latencyMs: Date.now() - startTime,
             },
-          );
-          if (usageRecord) {
-            try {
-              await aiBillingRecordsService.record({
-                context: billingContext,
-                billing,
-                usageRecord,
-                idempotencyKey,
-                reconciliation,
-              });
-            } catch (auditError) {
-              logger.error(
-                "[Chat Completions] audit record failed (non-fatal)",
-                {
-                  error:
-                    auditError instanceof Error
-                      ? auditError.message
-                      : String(auditError),
-                  cause:
-                    auditError instanceof Error && auditError.cause
-                      ? String(
-                          (auditError.cause as Error).message ??
-                            auditError.cause,
-                        )
-                      : undefined,
-                },
-              );
-            }
-          }
+          });
 
           logger.info("[Chat Completions] Streaming complete", {
             durationMs: Date.now() - startTime,
@@ -3674,10 +3696,12 @@ async function handleStreamingRequest(
             error: {
               message: isConfigError
                 ? modelNotAvailableMessage(model)
-                : redactPromptCacheKey(
-                    error instanceof Error ? error.message : String(error),
-                    promptCacheKey,
-                  ),
+                : isProviderPaymentError(error)
+                  ? PROVIDER_PAYMENT_UNAVAILABLE_MESSAGE
+                  : redactPromptCacheKey(
+                      error instanceof Error ? error.message : String(error),
+                      promptCacheKey,
+                    ),
               // Same status→type mapping as the non-streaming path — a
               // hardcoded "rate_limit_error" here mislabeled every mid-stream
               // provider failure (schema 400s, upstream 5xx) as rate limiting,
@@ -3849,41 +3873,19 @@ async function handleNonStreamingRequest(
           executionCtx,
         );
 
-        const usageRecord = await recordUsageAnalytics(
+        await recordChatBillingLedgerRow({
           billingContext,
           billing,
-          {
+          reconciliation,
+          idempotencyKey: idempotencyKey,
+          analytics: {
             type: "chat",
             content: result.text,
             systemPrompt,
             prompt: billingPrompt,
             latencyMs: responseLatencyMs,
           },
-        );
-        if (usageRecord) {
-          try {
-            await aiBillingRecordsService.record({
-              context: billingContext,
-              billing,
-              usageRecord,
-              idempotencyKey,
-              reconciliation,
-            });
-          } catch (auditError) {
-            logger.error("[Chat Completions] audit record failed (non-fatal)", {
-              error:
-                auditError instanceof Error
-                  ? auditError.message
-                  : String(auditError),
-              cause:
-                auditError instanceof Error && auditError.cause
-                  ? String(
-                      (auditError.cause as Error).message ?? auditError.cause,
-                    )
-                  : undefined,
-            });
-          }
-        }
+        });
 
         logger.info("[Chat Completions] Non-streaming complete", {
           durationMs: Date.now() - startTime,
@@ -4014,12 +4016,16 @@ honoRouter.options("/", async (c) => {
 });
 honoRouter.post("/", async (c) => {
   try {
-    return await handleChatCompletionsPOST(c.req.raw, {
+    const native = await prepareNativeApplicationInference(c);
+    return await handleChatCompletionsPOST(native.request, {
+      appFundingActor: native.actor,
       executionCtx: c.executionCtx,
       traceId: c.get("traceId"),
     });
   } catch (error) {
     // error-policy:J1 route boundary — every catch in v1/chat/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty completion). Credit reservations are released before rethrow on the streaming paths above.
+    const nativeError = nativeApplicationInferenceErrorResponse(error);
+    if (nativeError) return nativeError;
     return failureResponse(c, error);
   }
 });

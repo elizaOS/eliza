@@ -4,14 +4,10 @@
       "profile": "strict-es2022",
       "packages": [
         "plugin-native-appblocker",
-        "plugin-native-contacts",
         "plugin-native-location",
-        "plugin-native-messages",
         "plugin-native-network-policy",
-        "plugin-native-phone",
         "plugin-native-system",
-        "plugin-native-websiteblocker",
-        "plugin-native-wifi"
+        "plugin-native-websiteblocker"
       ]
     },
     {
@@ -19,15 +15,16 @@
       "packages": [
         "plugin-native-canvas",
         "plugin-native-eliza-tasks",
-        "plugin-native-mlkit-text",
         "plugin-native-mobile-signals",
-        "plugin-native-screencapture",
         "plugin-native-swabble"
       ]
     }
   ],
   "rollupPackages": [
-    { "packageName": "plugin-native-agent", "globalName": "capacitorAgent" },
+    {
+      "packageName": "plugin-native-agent",
+      "globalName": "capacitorAgent"
+    },
     {
       "packageName": "plugin-native-appblocker",
       "globalName": "capacitorAppBlocker"
@@ -56,10 +53,6 @@
       "nodeResolve": true
     },
     {
-      "packageName": "plugin-native-contacts",
-      "globalName": "capacitorContacts"
-    },
-    {
       "packageName": "plugin-native-desktop",
       "globalName": "capacitorDesktop",
       "nodeResolve": true
@@ -78,19 +71,6 @@
       "globalName": "capacitorLocation"
     },
     {
-      "packageName": "plugin-native-messages",
-      "globalName": "capacitorMessages",
-      "nodeResolve": true
-    },
-    {
-      "packageName": "plugin-native-mlkit-text",
-      "globalName": "capacitorMlKitText"
-    },
-    {
-      "packageName": "plugin-native-mobile-agent-bridge",
-      "globalName": "capacitorMobileAgentBridge"
-    },
-    {
       "packageName": "plugin-native-mobile-signals",
       "globalName": "capacitorElizaMobileSignals",
       "nodeResolve": true
@@ -99,17 +79,14 @@
       "packageName": "plugin-native-network-policy",
       "globalName": "capacitorNetworkPolicy"
     },
-    { "packageName": "plugin-native-phone", "globalName": "capacitorPhone" },
-    {
-      "packageName": "plugin-native-screencapture",
-      "globalName": "capacitorScreenCapture",
-      "nodeResolve": true
-    },
     {
       "packageName": "plugin-native-secure-store",
       "globalName": "capacitorElizaSecureStore"
     },
-    { "packageName": "plugin-native-system", "globalName": "capacitorSystem" },
+    {
+      "packageName": "plugin-native-system",
+      "globalName": "capacitorSystem"
+    },
     {
       "packageName": "plugin-native-talkmode",
       "globalName": "capacitorTalkMode"
@@ -117,7 +94,6 @@
     {
       "packageName": "plugin-native-websiteblocker",
       "globalName": "capacitorWebsiteBlocker"
-    },
-    { "packageName": "plugin-native-wifi", "globalName": "capacitorWifi" }
+    }
   ]
 }

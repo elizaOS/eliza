@@ -1,6 +1,7 @@
 // Exercises LifeOps owner workflows, connector boundaries, and scheduled-task behavior.
+
+import type { LifeOpsOccurrence } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
-import type { LifeOpsOccurrence } from "../src/contracts/index.js";
 import {
   buildPerformanceWindow,
   computeOccurrenceStreaks,

@@ -10,7 +10,7 @@
  *     readiness payload the device read returns).
  *
  * The model-heavy path (real ggml VAD/encoder/diarizer) is covered by the
- * host smoke harness (`packages/app-core/scripts/voice-attribution-smoke.ts`),
+ * host smoke harness (`packages/app/scripts/voice-attribution-smoke.ts`),
  * which exercises the same AudioFrameConsumer with real models.
  */
 

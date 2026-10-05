@@ -34,9 +34,9 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from training.tokenization import tokenize_with_explicit_limit
+from eliza_training.training.tokenization import tokenize_with_explicit_limit
 
-from lib.generation_integrity import (
+from eliza_training.lib.generation_integrity import (
     model_context_tokens,
     remaining_model_context_tokens,
     require_complete_generated_tokens,

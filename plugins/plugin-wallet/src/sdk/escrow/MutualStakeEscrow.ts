@@ -5,7 +5,9 @@
  * resolve) keyed by `TaskStatus`. Verifier addresses and encoding are
  * delegated to `verifiers.ts`.
  */
-import type { Address, Hex, PublicClient, WalletClient } from "viem";
+import { ElizaError } from "@elizaos/core";
+import type { Address, Hash, Hex, Log, PublicClient, WalletClient } from "viem";
+import { parseEventLogs } from "viem";
 import type {
   CreateEscrowParams,
   EscrowCreated,
@@ -225,28 +227,57 @@ export class MutualStakeEscrow {
       chain: this.walletClient.chain,
     });
 
-    await this.publicClient.waitForTransactionReceipt({ hash: txHash });
+    const receipt = await this.publicClient.waitForTransactionReceipt({
+      hash: txHash,
+    });
 
-    // Read vault address from return data via simulation.
-    const vaultAddress = (await this.publicClient.readContract({
-      address: this.factoryAddress,
-      abi: StakeVaultFactoryAbi,
-      functionName: "createEscrow",
-      args: [
-        account.address,
-        params.seller,
-        token,
-        params.paymentAmount,
-        params.buyerStake,
-        params.sellerStake,
-        verifierAddress,
-        verifierData,
-        BigInt(params.deadline),
-        BigInt(params.challengeWindow),
-      ],
-    })) as Address;
+    // The authoritative vault address is emitted by the factory's VaultCreated
+    // event on the mined transaction. Decode it from the receipt logs rather
+    // than re-running createEscrow via eth_call: a post-mine simulation runs
+    // against the ALREADY-advanced factory state and returns the address the
+    // NEXT deployment would produce, not the vault this transaction created.
+    // Restrict decoding to logs emitted by this factory so an unrelated
+    // contract cannot spoof a VaultCreated event into the result.
+    const vaultAddress = this.extractVaultAddress(receipt.logs, txHash);
 
     return { address: vaultAddress, txHash };
+  }
+
+  /**
+   * Decode the deployed vault address from a factory transaction's receipt
+   * logs. Only `VaultCreated` events emitted by this factory are considered.
+   * Throws a typed error when no such event is present instead of falling
+   * back to a misleading re-simulation.
+   */
+  private extractVaultAddress(logs: Log[], txHash: Hash): Address {
+    const factoryAddress = this.factoryAddress.toLowerCase();
+    const factoryLogs = logs.filter(
+      (log) => log.address.toLowerCase() === factoryAddress,
+    );
+
+    const events = parseEventLogs({
+      abi: StakeVaultFactoryAbi,
+      eventName: "VaultCreated",
+      logs: factoryLogs,
+    });
+
+    const created = events[0];
+    if (!created?.args.vault) {
+      throw new ElizaError(
+        "Factory transaction mined without a VaultCreated event; the deployed vault address is unknown",
+        {
+          code: "ESCROW_VAULT_CREATED_EVENT_MISSING",
+          context: {
+            factoryAddress: this.factoryAddress,
+            txHash,
+            factoryLogCount: factoryLogs.length,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+
+    return created.args.vault;
   }
 
   /**

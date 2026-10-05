@@ -1,8 +1,10 @@
 /** Configures the cloud E2E Playwright project to boot a serial mock-backed local cloud stack. */
+
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 // Load cloud/shared/.env into process.env (without overriding an explicit shell
 // value) so provider keys placed there — e.g. CEREBRAS_API_KEY for the real-LLM
@@ -76,5 +78,5 @@ export default defineConfig({
         import.meta.dirname,
         "../../../e2e-recordings/cloud-e2e/test-results",
       )
-    : "./test-results",
+    : testOutputPath("cloud-e2e"),
 });

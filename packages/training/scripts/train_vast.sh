@@ -327,7 +327,7 @@ VAST_DISK_GB="${VAST_DISK_GB:-2048}"
 # Fallback is the original literal default if the registry import fails (e.g.
 # when running this script outside `uv run`); the literal still references
 # only quants whose apply.py exists.
-DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.model_registry import get; print(','.join(get('${REGISTRY_KEY}').quantization_after))" 2>/dev/null || echo "polarquant,fused_turboquant,qjl,gguf-q4_k_m")"
+DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from eliza_training.training.model_registry import get; print(','.join(get('${REGISTRY_KEY}').quantization_after))" 2>/dev/null || echo "polarquant,fused_turboquant,qjl,gguf-q4_k_m")"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-${DEFAULT_QUANTIZE_AFTER}}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 
@@ -415,7 +415,7 @@ require_instance_id() {
 
 ssh_endpoint() {
   # Prints "USER HOST PORT" — split with `read user host port < <(...)`.
-  ( cd "$ROOT" && python3 -m scripts.lib.vast ssh "$VAST_INSTANCE_ID" )
+  ( cd "$ROOT" && python3 -m eliza_training.lib.vast ssh "$VAST_INSTANCE_ID" )
 }
 
 ssh_run() {
@@ -451,7 +451,7 @@ rsync_remote() {
 
 search_offers() {
   echo "[train_vast] [search] target=$VAST_GPU_TARGET — top offers:"
-  ( cd "$ROOT" && python3 -m scripts.lib.vast list "$VAST_GPU_TARGET" --limit 12 )
+  ( cd "$ROOT" && python3 -m eliza_training.lib.vast list "$VAST_GPU_TARGET" --limit 12 )
 }
 
 preflight_gate() {
@@ -525,7 +525,7 @@ provision() {
     local existing_id
     existing_id="$(cat "$INSTANCE_ID_FILE")"
     if [ -n "$existing_id" ] && \
-       ( cd "$ROOT" && python3 -m scripts.lib.vast alive "$existing_id" ) 2>/dev/null; then
+       ( cd "$ROOT" && python3 -m eliza_training.lib.vast alive "$existing_id" ) 2>/dev/null; then
       echo "[train_vast] [provision] instance $existing_id already alive — skipping create."
       echo "[train_vast] [provision] set FORCE_REPROVISION=1 to spin up a new one anyway,"
       echo "[train_vast] [provision] or 'bash scripts/train_vast.sh teardown --yes' first."
@@ -536,8 +536,8 @@ provision() {
 
   if [ -z "${VAST_OFFER_ID:-}" ]; then
     echo "[train_vast] [provision] picking cheapest offer for $VAST_GPU_TARGET"
-    # `python -m scripts.lib.vast pick` emits KEY=VAL lines safe to eval.
-    eval "$(cd "$ROOT" && python3 -m scripts.lib.vast pick "$VAST_GPU_TARGET")"
+    # `python -m eliza_training.lib.vast pick` emits KEY=VAL lines safe to eval.
+    eval "$(cd "$ROOT" && python3 -m eliza_training.lib.vast pick "$VAST_GPU_TARGET")"
     VAST_OFFER_ID="$ID"
     echo "[train_vast] [provision] picked offer $VAST_OFFER_ID — $GPU_NAME ×$NUM_GPUS, ${GPU_TOTAL_RAM_GB}GB total, \$${DPH_TOTAL}/hr in $GEOLOCATION"
   else
@@ -581,7 +581,7 @@ provision() {
   vastai attach ssh "$new_id" "$(cat "$SSH_KEY")"
 
   echo "[train_vast] [provision] waiting for instance to reach 'running'"
-  ( cd "$ROOT" && python3 -m scripts.lib.vast wait "$new_id" --timeout 1200 )
+  ( cd "$ROOT" && python3 -m eliza_training.lib.vast wait "$new_id" --timeout 1200 )
 
   echo "[train_vast] [provision] installing system deps over ssh"
   ssh_run 'set -euo pipefail
@@ -804,11 +804,16 @@ quantize_remote() {
   IFS=',' read -ra qs <<< "$QUANTIZE_AFTER"
   for q in "${qs[@]}"; do
     echo "  -> $q"
+    case "$q" in
+      gguf-q3_k_m|gguf-q4_k_m|gguf-q5_k_m|gguf-q6_k|gguf-q8_0)
+        quant_command="-m eliza_training.quantization.gguf_profile --profile $(printf '%s' "${q#gguf-}" | tr '[:lower:]' '[:upper:]')" ;;
+      *) quant_command="scripts/quantization/${q}_apply.py" ;;
+    esac
     ssh_run "bash -lc '
       set -euo pipefail
       cd $REMOTE_TRAIN_DIR
       export PATH=\$HOME/.local/bin:\$PATH
-      uv run --extra train python scripts/quantization/${q}_apply.py \\
+      uv run --extra train python $quant_command \\
         --model checkpoints/$RUN_NAME/final \\
         --output checkpoints/$RUN_NAME/final-${q} \\
         --calibration data/final/val.jsonl \\
@@ -828,12 +833,12 @@ bench_remote() {
     set -euo pipefail
     cd $REMOTE_TRAIN_DIR
     export PATH=\$HOME/.local/bin:\$PATH
-    base_id=\$(uv run --extra train python -c \"from scripts.training.model_registry import get; print(get(\\\"$REGISTRY_KEY\\\").hf_id)\")
-    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
+    base_id=\$(uv run --extra train python -c \"from eliza_training.training.model_registry import get; print(get(\\\"$REGISTRY_KEY\\\").hf_id)\")
+    uv run --extra train python scripts/eval/native_tool_call_bench.py \\
         --model \$base_id \\
         --out-dir benchmarks/$RUN_NAME/base \\
         --max-per-bucket $BENCH_MAX_PER_BUCKET
-    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
+    uv run --extra train python scripts/eval/native_tool_call_bench.py \\
         --model checkpoints/$RUN_NAME/final \\
         --out-dir benchmarks/$RUN_NAME/finetuned \\
         --max-per-bucket $BENCH_MAX_PER_BUCKET
@@ -845,7 +850,7 @@ bench_remote() {
       cd $REMOTE_TRAIN_DIR
       export PATH=\$HOME/.local/bin:\$PATH
       if [ -d checkpoints/$RUN_NAME/final-${q} ]; then
-        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
+        uv run --extra train python scripts/eval/native_tool_call_bench.py \\
           --model checkpoints/$RUN_NAME/final-${q} \\
           --out-dir benchmarks/$RUN_NAME/${q} \\
           --max-per-bucket $BENCH_MAX_PER_BUCKET
@@ -879,7 +884,7 @@ publish_remote() {
     if [ -n \"\${HUGGING_FACE_HUB_TOKEN:-}\" ]; then
       uv run hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
     fi
-    uv run --extra train python -m scripts.publish.publish_model \\
+    uv run --extra train python -m eliza_training.publish.publish_model \\
       --mode bundle \\
       --bundle-dir $bundle_dir \\
       --tier $tier
@@ -1122,7 +1127,7 @@ status() {
   log "status: instance_id=$VAST_INSTANCE_ID pipeline=$pipeline_type"
 
   # alive? If the instance has been destroyed, vastai returns nothing useful.
-  if ! ( cd "$ROOT" && python3 -m scripts.lib.vast alive "$VAST_INSTANCE_ID" ) >/dev/null 2>&1; then
+  if ! ( cd "$ROOT" && python3 -m eliza_training.lib.vast alive "$VAST_INSTANCE_ID" ) >/dev/null 2>&1; then
     log_warn "status: instance $VAST_INSTANCE_ID is NOT alive (destroyed, paused, or unreachable)"
     return 1
   fi
@@ -1134,7 +1139,7 @@ status() {
   local cost_summary
   cost_summary="$( cd "$ROOT" && \
     REGISTRY_KEY="$REGISTRY_KEY" RUN_NAME="$RUN_NAME" \
-    python3 -m scripts.lib.vast_budget snapshot "$VAST_INSTANCE_ID" 2>/dev/null )"
+    python3 -m eliza_training.lib.vast_budget snapshot "$VAST_INSTANCE_ID" 2>/dev/null )"
   if [ -n "$cost_summary" ]; then
     log "status: $cost_summary"
   else

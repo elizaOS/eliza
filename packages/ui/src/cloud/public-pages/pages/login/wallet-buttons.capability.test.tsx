@@ -1,7 +1,7 @@
 /** Verifies wallet-chain capability gating with deterministic vendor hook doubles. */
 // @vitest-environment jsdom
 
-import type { LoginAuth } from "@elizaos/login";
+import type { LoginAuth } from "@elizaos/auth";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

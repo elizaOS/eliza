@@ -1,0 +1,24 @@
+// Soong modules for the privileged-permission whitelist and default
+// runtime-permission grants used by the ElizaOS product. The product
+// makefile lists these names in PRODUCT_PACKAGES; without these modules,
+// `m` fails with "module not defined".
+//
+// `default-permissions-*.xml` lands in /system/etc/default-permissions/ and
+// is read by PermissionController to grant runtime permissions on first
+// boot. `privapp-permissions-*.xml` lands in /system/etc/permissions/ and
+// is read by PackageManager to whitelist signature|privileged permissions
+// that priv-apps in /system/priv-app/ are allowed to request.
+
+prebuilt_etc {
+    name: "default-permissions-ai.elizaos.app.xml",
+    src: "default-permissions-ai.elizaos.app.xml",
+    sub_dir: "default-permissions",
+    filename_from_src: true,
+}
+
+prebuilt_etc {
+    name: "privapp-permissions-ai.elizaos.app.xml",
+    src: "privapp-permissions-ai.elizaos.app.xml",
+    sub_dir: "permissions",
+    filename_from_src: true,
+}

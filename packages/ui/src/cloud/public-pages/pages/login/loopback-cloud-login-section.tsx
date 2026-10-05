@@ -38,7 +38,7 @@ export default function LoopbackCloudLoginSection() {
         clearCloudPairApiToken();
         savePersistedFirstRunComplete(false);
       }
-      const { client } = await import("../../../../api");
+      const { client } = await import("../../../../api/client");
       const { resolveDirectCloudWebBase } = await import(
         "../../../../api/client-cloud"
       );
@@ -74,6 +74,15 @@ export default function LoopbackCloudLoginSection() {
         returnTo.pathname = "/settings";
         returnTo.search = "";
         returnTo.hash = "cloud-overview";
+      }
+      // The account route's auth gate runs before the app callback consumer.
+      // Claim the one-time CLI credential on an ordinary app route first.
+      if (/^\/cloud(?:\/|$)/.test(returnTo.pathname)) {
+        const accountPath = returnTo.pathname + returnTo.search + returnTo.hash;
+        returnTo.pathname = "/settings";
+        returnTo.search = "";
+        returnTo.hash = "cloud-overview";
+        returnTo.searchParams.set("elizaCloudLoginReturnTo", accountPath);
       }
       returnTo.searchParams.set("elizaCloudLogin", "complete");
       returnTo.searchParams.set("elizaCloudLoginSession", session.sessionId);

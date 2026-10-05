@@ -13,6 +13,7 @@
  * no restart.
  */
 
+import type { AppLaunchResult } from "@elizaos/core/protocol";
 import {
   useCallback,
   useEffect,
@@ -21,8 +22,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { type AppLaunchResult, client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
 import { getActiveViewModality } from "../platform/platform-guards";
 import { useAppSelector } from "../state/app-store";
@@ -206,7 +207,11 @@ function useAuthorityScopedFetcher<T>(
   return { fetch, state };
 }
 
-export function useViewCatalog(): UseViewCatalogResult {
+export function useViewCatalog({
+  includeApps = true,
+}: {
+  includeApps?: boolean;
+} = {}): UseViewCatalogResult {
   const authority = useActiveAgentAuthority();
   const readyGeneration = useAppSelector((state) =>
     state.agentStatus?.state === "running"
@@ -223,7 +228,9 @@ export function useViewCatalog(): UseViewCatalogResult {
   const activeModality = useMemo(() => getActiveViewModality(), []);
   const viewsNetworkEnabled = useDefaultViewsNetworkEnabled();
   const appShellRoutesSupported =
-    viewsNetworkEnabled && supportsFullAppShellRoutes(client.getBaseUrl());
+    includeApps &&
+    viewsNetworkEnabled &&
+    supportsFullAppShellRoutes(client.getBaseUrl());
   const catalogCacheKey = `${CATALOG_CACHE_KEY}:${authority}`;
   const installedCacheKey = `${INSTALLED_CACHE_KEY}:${authority}`;
 
@@ -279,8 +286,14 @@ export function useViewCatalog(): UseViewCatalogResult {
   const pending =
     pendingState.authority === authority ? pendingState.entries : {};
 
-  const catalog = catalogRes.status === "success" ? catalogRes.data : [];
-  const installed = installedRes.status === "success" ? installedRes.data : [];
+  const catalog =
+    appShellRoutesSupported && catalogRes.status === "success"
+      ? catalogRes.data
+      : [];
+  const installed =
+    appShellRoutesSupported && installedRes.status === "success"
+      ? installedRes.data
+      : [];
   const catalogError =
     catalogFetch.state.status === "error" ? catalogFetch.state.error : null;
   const installedError =

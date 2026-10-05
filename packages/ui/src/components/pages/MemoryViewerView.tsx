@@ -18,7 +18,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import type {
   MemoryBrowseItem,
@@ -40,12 +40,12 @@ import {
   FramedPage,
   FramedPageBody,
   FramedPageHeader,
-} from "../../layouts/framed-page";
-import { WorkspaceLayout } from "../../layouts/workspace-layout";
+} from "../../layouts/framed-page/framed-page";
+import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import { useWorkspaceMobileSidebarHeader } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import { WorkspaceMobileSidebarScope } from "../../layouts/workspace-layout/workspace-mobile-sidebar-scope";
 import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -439,6 +439,11 @@ function MemoryFeedPanel({
   const [error, setError] = useState<MemoryIssue | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const loadingMore = useRef(false);
+  // Raw server-page tail for keyset paging. With two or more types selected the
+  // server filter is dropped and the page is filtered here, so the cursor must
+  // come from the unfiltered page: a page holding none of the selected types
+  // would otherwise leave the cursor where it was and stall "Load older".
+  const feedCursor = useRef<{ createdAt: number; id: string } | null>(null);
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
@@ -465,6 +470,12 @@ function MemoryFeedPanel({
           }),
         );
         const memories = filterMemoriesByTypes(result.memories, typeFilter);
+        const rawTail = result.memories[result.memories.length - 1];
+        if (rawTail) {
+          feedCursor.current = { createdAt: rawTail.createdAt, id: rawTail.id };
+        } else if (!before) {
+          feedCursor.current = null;
+        }
         if (before) {
           // Cap retained items so a long pagination session can't grow the
           // feed unboundedly. 500 covers many pages of scrollback while
@@ -510,7 +521,10 @@ function MemoryFeedPanel({
 
   const loadMore = () => {
     const last = feed[feed.length - 1];
-    if (last) void loadFeed({ createdAt: last.createdAt, id: last.id });
+    const cursor =
+      feedCursor.current ??
+      (last ? { createdAt: last.createdAt, id: last.id } : null);
+    if (cursor) void loadFeed(cursor);
   };
 
   if (loading && feed.length === 0) {

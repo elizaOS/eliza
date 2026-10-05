@@ -7,7 +7,16 @@
  * PostgreSQL index each dimension separately.
  */
 import { relations, sql } from "drizzle-orm";
-import { check, foreignKey, index, pgTable, timestamp, uuid, vector } from "drizzle-orm/pg-core";
+import {
+  check,
+  foreignKey,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  vector,
+} from "drizzle-orm/pg-core";
 import { memoryTable } from "./memory";
 
 export const VECTOR_DIMS = {
@@ -40,6 +49,8 @@ export const embeddingTable = pgTable(
     memoryId: uuid("memory_id").references(() => memoryTable.id, {
       onDelete: "cascade",
     }),
+    spaceId: text("space_id"),
+    writeNonce: uuid("write_nonce"),
     createdAt: timestamp("created_at").default(sql`now()`).notNull(),
     dim384: vector("dim_384", { dimensions: VECTOR_DIMS.SMALL }),
     dim512: vector("dim_512", { dimensions: VECTOR_DIMS.MEDIUM }),
@@ -50,6 +61,7 @@ export const embeddingTable = pgTable(
     dim3072: vector("dim_3072", { dimensions: VECTOR_DIMS.XXXL }),
   },
   (table) => [
+    check("embedding_space_write_check", sql`"space_id" IS NULL OR "write_nonce" IS NOT NULL`),
     check("embedding_source_check", sql`"memory_id" IS NOT NULL`),
     index("idx_embedding_memory").on(table.memoryId),
     foreignKey({

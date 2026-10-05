@@ -11,7 +11,15 @@ import { settleBriefEngagementReward } from "./engagement-reward.js";
 export async function handleBriefMessageMutation(
   payload: MessageMutationPayload,
 ): Promise<void> {
-  if (payload.messageSource !== "gmail") return;
+  const prefix = `${payload.runtime.agentId}:`;
+  // Legacy ids have no account provenance. Retain their records, but do not
+  // guess an account or reward an unscoped/mismatched-runtime mutation.
+  if (
+    payload.messageSource !== "gmail" ||
+    !payload.messageId.startsWith(prefix) ||
+    payload.messageId.indexOf(":gmail:", prefix.length) <= prefix.length
+  )
+    return;
   const eventType = payload.operation === "mark_read" ? "opened" : "replied";
   const weight = payload.operation === "mark_read" ? 0.25 : 1;
   const repository = new LifeOpsRepository(payload.runtime);

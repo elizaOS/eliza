@@ -13,7 +13,7 @@ import {
 } from "@elizaos/core";
 import { getNotesService, type NotesService } from "./service.js";
 import type { NotesSnapshot, StickyNote } from "./types.js";
-import { isRecord, parseNoteContent } from "./validation.js";
+import { isRecord } from "./validation.js";
 
 export interface NotesInteractResult {
   success: boolean;
@@ -29,6 +29,8 @@ export interface NotesInteractResult {
 }
 
 const EXPECTED_FAILURE_CODES = new Set([
+  "NOTES_EDIT_REVISION_REQUIRED",
+  "NOTES_EDIT_CONFLICT",
   "NOTES_VALIDATION_FAILED",
   "NOTES_NOT_FOUND",
   "NOTES_AMBIGUOUS_NOTE",
@@ -201,14 +203,14 @@ function parseLookupTarget(
 }
 
 function success(
-  service: NotesService,
+  snapshot: NotesSnapshot,
   text: string,
   data?: unknown,
 ): NotesInteractResult {
   const result: NotesInteractResult = {
     success: true,
     text,
-    state: service.snapshot(),
+    state: snapshot,
   };
   if (data !== undefined) result.data = data;
   return result;
@@ -269,10 +271,14 @@ async function dispatchCapability(
       Object.keys(params).length === 0
         ? null
         : parseLookupTarget(params, capability, ["query"]);
+    const snapshot = service.snapshot();
     const notes = target
-      ? [service.getNoteByLookup("query", target.value)]
-      : service.listNotes();
-    return success(service, summarizeNotes(notes), { notes });
+      ? [service.getNoteByLookup("query", target.value, snapshot)]
+      : snapshot.notes;
+    return success(snapshot, summarizeNotes(notes), {
+      notes,
+      notesRevision: snapshot.revision,
+    });
   }
   if (capability === "get-note") {
     assertOnlyParams(params, ["id", "title", "query"]);
@@ -281,16 +287,20 @@ async function dispatchCapability(
       "title",
       "query",
     ]);
+    const snapshot = service.snapshot();
     const note =
       target.selector === "id"
-        ? service.getNote(target.value)
-        : service.getNoteByLookup(target.selector, target.value);
-    return success(service, sentence(noteSummary(note)), { note });
+        ? service.getNote(target.value, snapshot)
+        : service.getNoteByLookup(target.selector, target.value, snapshot);
+    return success(snapshot, sentence(noteSummary(note)), {
+      note,
+      notesRevision: snapshot.revision,
+    });
   }
   if (capability === "create-note") {
     assertOnlyParams(params, ["content", "color"]);
     const input = {
-      ...parseNoteContent(params.content),
+      content: params.content,
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
     };
     const {
@@ -310,25 +320,35 @@ async function dispatchCapability(
     );
   }
   if (capability === "update-note") {
-    assertOnlyParams(params, ["id", "title", "query", "content", "color"]);
+    assertOnlyParams(params, [
+      "id",
+      "title",
+      "query",
+      "content",
+      "color",
+      "expectedRevision",
+    ]);
     const target = parseLookupTarget(params, capability, [
       "id",
       "title",
       "query",
     ]);
     const patch: Record<string, unknown> = {
-      ...(Object.hasOwn(params, "content")
-        ? parseNoteContent(params.content)
-        : {}),
+      ...(Object.hasOwn(params, "content") ? { content: params.content } : {}),
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
     };
     const updated =
       target.selector === "id"
-        ? await service.updateNoteWithCommit(target.value, patch)
+        ? await service.updateNoteWithCommit(
+            target.value,
+            patch,
+            params.expectedRevision,
+          )
         : await service.updateNoteByLookupWithCommit(
             target.selector,
             target.value,
             patch,
+            params.expectedRevision,
           );
     const { value: note, snapshot, consolidatedIds } = updated;
     return mutationSuccess(

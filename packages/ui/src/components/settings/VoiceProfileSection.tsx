@@ -18,7 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import * as React from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import type {
   VoiceProfile,
   VoiceProfilesClient,

@@ -54,7 +54,6 @@ VAL_JSONL = ROOT / "data" / "final" / "val.jsonl"
 
 # Make the vendored fused_turboquant importable as
 # ``quantization.fused_turboquant_vendored`` regardless of the caller's CWD.
-sys.path.insert(0, str(ROOT / "scripts"))
 
 
 def load_payload_message_handler_prompts(n: int) -> list[dict]:
@@ -226,7 +225,7 @@ def _try_fused(
     the fused path without crashing the whole test.
     """
     try:
-        from quantization.fused_turboquant_vendored.hf import patch_model
+        from eliza_training.quantization.fused_turboquant_vendored.hf import patch_model
     except Exception as exc:
         return None, (
             "import quantization.fused_turboquant_vendored.hf failed: "
@@ -283,7 +282,7 @@ def run_one_model(
 
     # 0. Compatibility check (always run; tells us whether the fused path
     #    even applies before we sink time into the runs).
-    from quantization.fused_turboquant_vendored.hf import (
+    from eliza_training.quantization.fused_turboquant_vendored.hf import (
         check_model_compatibility,
     )
 
@@ -320,7 +319,7 @@ def run_one_model(
     # 2. Pure-PyTorch turbokv (turboquant import name)
     log.info("--- path 2/3: pure-PyTorch turbokv (TurboQuantCache) ---")
     try:
-        from turboquant import TurboQuantCache
+        from eliza_training.rl.turboquant import TurboQuantCache
     except Exception as exc:
         log.warning("turbokv import failed: %r — skipping pure-PyTorch path", exc)
         turbokv_res = {"label": "turbokv_pyt", "error": repr(exc)}
@@ -352,7 +351,7 @@ def run_one_model(
         }
         log.warning("skipping fused path: %s", fused_res["error"])
     else:
-        from quantization.fused_turboquant_vendored.hf import (
+        from eliza_training.quantization.fused_turboquant_vendored.hf import (
             patch_model,
             unpatch_model,
         )
@@ -510,7 +509,7 @@ def main() -> int:
                 device_map="cuda",
                 trust_remote_code=True,
             )
-            from quantization.fused_turboquant_vendored.hf import (
+            from eliza_training.quantization.fused_turboquant_vendored.hf import (
                 check_model_compatibility,
             )
 

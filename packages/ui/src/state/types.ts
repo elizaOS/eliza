@@ -3,18 +3,8 @@
  * status, and the many request/response DTOs threaded through the shell.
  * Imported broadly, so keep it type-only.
  */
+
 import type {
-  WalletChainKind,
-  WalletEntry,
-  WalletPrimaryMap,
-  WalletSource,
-} from "@elizaos/shared";
-import type { Dispatch, SetStateAction } from "react";
-import type {
-  AgentStatus,
-  AppRunSummary,
-  AppSessionState,
-  AppViewerAuthMessage,
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -23,71 +13,85 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
-  CharacterData,
-  ChatTokenUsage,
-  CodingAgentSession,
-  Conversation,
-  ConversationChannelType,
-  ConversationMessage,
-  CreateTriggerRequest,
   DropStatus,
-  ExtensionStatus,
-  FirstRunOptions,
-  ImageAttachment,
-  LogEntry,
-  McpMarketplaceResult,
-  McpRegistryServerDetail,
-  McpServerConfig,
-  McpServerStatus,
   MintResult,
-  PluginInfo,
-  RegistryPlugin,
-  RegistryStatus,
   ReleaseChannel,
-  SkillInfo,
-  SkillScanReportSummary,
-  StewardApprovalActionResponse,
   StewardBalanceResponse,
-  StewardHistoryResponse,
-  StewardPendingResponse,
-  StewardStatusResponse,
   StewardTokenBalancesResponse,
   StewardWalletAddressesResponse,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-  StreamEventEnvelope,
-  TriggerHealthSnapshot,
-  TriggerRunRecord,
-  TriggerSummary,
-  UpdateStatus,
-  UpdateTriggerRequest,
   WalletAddresses,
   WalletBalancesResponse,
+  WalletChainKind,
   WalletConfigStatus,
   WalletConfigUpdateRequest,
-  WalletExportResult,
+  WalletEntry,
   WalletNftsResponse,
+  WalletPrimaryMap,
+  WalletSource,
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-  WhitelistStatus,
-  WorkbenchOverview,
-} from "../api/client";
-import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
-import type { UiLanguage } from "../i18n";
-import type { Tab } from "../navigation";
-import type { AgentProfile } from "./agent-profile-types";
+} from "@elizaos/contracts";
+import type { TriggerRunRecord } from "@elizaos/core";
 import type {
-  BackgroundConfig,
-  UiShellMode,
-  UiTheme,
-  UiThemeMode,
-} from "./ui-preferences";
+  AppRunSummary,
+  AppSessionState,
+  AppViewerAuthMessage,
+  UiLanguage,
+} from "@elizaos/core/protocol";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
+import type { Dispatch, SetStateAction } from "react";
+import type {
+  ChatTokenUsage,
+  Conversation,
+  ConversationChannelType,
+  ConversationMessage,
+  ImageAttachment,
+  McpMarketplaceResult,
+  McpRegistryServerDetail,
+  McpServerConfig,
+  McpServerStatus,
+} from "../api/client-types-chat";
+import type {
+  CodingAgentSession,
+  RegistryStatus,
+  WhitelistStatus,
+} from "../api/client-types-cloud";
+import type {
+  CharacterData,
+  PluginInfo,
+  RegistryPlugin,
+  SkillInfo,
+  SkillScanReportSummary,
+  UpdateStatus,
+  WalletExportResult,
+  WorkbenchOverview,
+} from "../api/client-types-config";
+import type {
+  AgentStatus,
+  CreateTriggerRequest,
+  LogEntry,
+  StreamEventEnvelope,
+  TriggerHealthSnapshot,
+  TriggerSummary,
+  UpdateTriggerRequest,
+} from "../api/client-types-core";
+import type {
+  StewardApprovalActionResponse,
+  StewardHistoryResponse,
+  StewardPendingResponse,
+  StewardStatusResponse,
+} from "../api/client-types-steward";
+import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
+import type { Tab } from "../navigation";
+import type { ActionNotice, ActionTone } from "./action-notice";
+import type { AgentProfile } from "./agent-profile-types";
+import type { BackgroundConfig, UiShellMode, UiTheme } from "./ui-preferences";
 
 export type { UiShellMode } from "./ui-preferences";
-
 export type ShellView = "character" | "desktop";
-
 /**
  * Controls which cloud-auth authority a login caller needs. Most settings
  * surfaces only require the connected server session; onboarding additionally
@@ -102,7 +106,6 @@ export interface CloudLoginOptions {
    */
   forceReauth?: boolean;
 }
-
 /** Deferred work scheduling for multi-step navigation. */
 export interface NavigationEventsApi {
   /**
@@ -112,13 +115,8 @@ export interface NavigationEventsApi {
    */
   scheduleAfterTabCommit: (fn: () => void) => void;
 }
-
-import type { ActionNotice, ActionTone } from "./action-notice";
-
 export type { ActionNotice, ActionTone };
-
 export type LifecycleAction = "start" | "stop" | "restart" | "reset";
-
 export const LIFECYCLE_MESSAGES: Record<
   LifecycleAction,
   {
@@ -140,7 +138,6 @@ export const LIFECYCLE_MESSAGES: Record<
     success: "Agent stopped.",
     verb: "stop",
   },
-
   restart: {
     inProgress: "restarting",
     progress: "Restarting agent...",
@@ -155,9 +152,7 @@ export const LIFECYCLE_MESSAGES: Record<
     verb: "reset",
   },
 };
-
 export type GamePostMessageAuthPayload = AppViewerAuthMessage;
-
 export const AGENT_STATES: ReadonlySet<AgentStatus["state"]> = new Set([
   "not_started",
   "starting",
@@ -166,7 +161,6 @@ export const AGENT_STATES: ReadonlySet<AgentStatus["state"]> = new Set([
   "restarting",
   "error",
 ]);
-
 /**
  * Single source for "first-turn capability is online" — the agent can actually
  * answer, so the chat composer can go live and any queued sends can flush. This
@@ -188,7 +182,6 @@ export function deriveAgentReady(agentStatus: AgentStatus | null): boolean {
     (agentStatus.state === "running" && Boolean(agentStatus.model))
   );
 }
-
 /**
  * Whether the chat lifecycle should keep polling agent status to clear the
  * "waking up" banner (#8777). Poll while the agent is NOT ready
@@ -209,14 +202,7 @@ export function shouldAwaitAgentReadiness(
     state !== "not_started"
   );
 }
-
-export type SlashCommandInput = {
-  name: string;
-  argsRaw: string;
-};
-
 export type StartupPhase = "starting-backend" | "initializing-agent" | "ready";
-
 export type StartupErrorReason =
   | "backend-timeout"
   | "backend-unreachable"
@@ -225,7 +211,6 @@ export type StartupErrorReason =
   | "agent-stopped"
   | "asset-missing"
   | "unknown";
-
 export interface StartupErrorState {
   reason: StartupErrorReason;
   phase: StartupPhase;
@@ -237,7 +222,6 @@ export interface StartupErrorState {
   cloudManagementUrl?: string;
   cloudAgentId?: string;
 }
-
 export interface StartupCoordinatorView {
   state: {
     phase:
@@ -280,7 +264,6 @@ export interface StartupCoordinatorView {
   target: "embedded-local" | "remote-backend" | "cloud-managed" | null;
   phase: StartupCoordinatorView["state"]["phase"];
 }
-
 export interface ApiLikeError {
   kind?: string;
   code?: string;
@@ -289,13 +272,10 @@ export interface ApiLikeError {
   message?: string;
   data?: unknown;
 }
-
 export interface ChatTurnUsage extends ChatTokenUsage {
   updatedAt: number;
 }
-
 // ── Context value type ─────────────────────────────────────────────────
-
 /** One toggle per primary chain in the wallet inventory filter strip. */
 export type InventoryChainFilters = {
   ethereum: boolean;
@@ -304,7 +284,6 @@ export type InventoryChainFilters = {
   avax: boolean;
   solana: boolean;
 };
-
 /** Independent lifecycle for a wallet feed; optional feeds can be unsupported without poisoning core balances. */
 export type WalletResourceStatus =
   | "idle"
@@ -312,14 +291,12 @@ export type WalletResourceStatus =
   | "ready"
   | "unavailable"
   | "error";
-
 export interface AppState {
   // Core
   tab: Tab;
   uiShellMode: UiShellMode;
   uiLanguage: UiLanguage;
   uiTheme: UiTheme;
-  uiThemeMode: UiThemeMode;
   /** The unified home/app background, shared across the home and every view. */
   backgroundConfig: BackgroundConfig;
   /** True when there is a previous background config to undo to. */
@@ -343,12 +320,10 @@ export interface AppState {
   actionNotice: ActionNotice | null;
   lifecycleBusy: boolean;
   lifecycleAction: LifecycleAction | null;
-
   // Deferred restart
   pendingRestart: boolean;
   pendingRestartReasons: string[];
   restartBannerDismissed: boolean;
-
   // Backend connection state (for crash handling)
   backendConnection: {
     state: "connected" | "disconnected" | "reconnecting" | "failed";
@@ -358,14 +333,12 @@ export interface AppState {
   };
   // System warnings
   systemWarnings: string[];
-
   // Pairing
   pairingEnabled: boolean;
   pairingExpiresAt: number | null;
   pairingCodeInput: string;
   pairingError: string | null;
   pairingBusy: boolean;
-
   // Chat
   chatInput: string;
   chatSending: boolean;
@@ -385,7 +358,6 @@ export interface AppState {
   ptySessions: CodingAgentSession[];
   /** Conversation IDs with unread proactive messages from the agent. */
   unreadConversations: Set<string>;
-
   // Triggers
   triggers: TriggerSummary[];
   triggersLoaded: boolean;
@@ -394,7 +366,6 @@ export interface AppState {
   triggerRunsById: Record<string, TriggerRunRecord[]>;
   triggerHealth: TriggerHealthSnapshot | null;
   triggerError: string | null;
-
   // Plugins
   plugins: PluginInfo[];
   pluginFilter: "all" | "ai-provider" | "connector" | "feature" | "streaming";
@@ -407,7 +378,6 @@ export interface AppState {
   isLoadingPlugins: boolean;
   pluginsLoadError: string | null;
   pluginsLoaded: boolean;
-
   // Skills
   skills: SkillInfo[];
   skillsSubTab: "my" | "browse";
@@ -422,7 +392,6 @@ export interface AppState {
   skillInstallError: string;
   skillInstallAction: string;
   skillInstallGithubUrl: string;
-
   // Logs
   logs: LogEntry[];
   logSources: string[];
@@ -431,11 +400,9 @@ export interface AppState {
   logLevelFilter: string;
   logSourceFilter: string;
   logLoadError: string | null;
-
   // Capabilities (feature toggles)
   browserEnabled: boolean;
   computerUseEnabled: boolean;
-
   // Wallet / Inventory
   walletEnabled: boolean;
   walletAddresses: WalletAddresses | null;
@@ -464,13 +431,11 @@ export interface AppState {
   walletPrimaryRestarting: Partial<Record<WalletChainKind, boolean>>;
   walletPrimaryPending: Partial<Record<WalletChainKind, boolean>>;
   cloudRefreshing: boolean;
-
   // ERC-8004 Registry
   registryStatus: RegistryStatus | null;
   registryLoading: boolean;
   registryRegistering: boolean;
   registryError: string | null;
-
   // Drop / Mint
   dropStatus: DropStatus | null;
   dropLoading: boolean;
@@ -478,10 +443,8 @@ export interface AppState {
   mintResult: MintResult | null;
   mintError: string | null;
   mintShiny: boolean;
-
   whitelistStatus: WhitelistStatus | null;
   whitelistLoading: boolean;
-
   // Character
   characterData: CharacterData | null;
   characterLoading: boolean;
@@ -501,7 +464,6 @@ export interface AppState {
   customVoicePresetId: string;
   /** Custom companion world URL from content pack (overrides day/night default). */
   customWorldUrl: string;
-
   // Eliza Cloud
   elizaCloudEnabled: boolean;
   elizaCloudVoiceProxyAvailable: boolean;
@@ -519,6 +481,9 @@ export interface AppState {
   /** Last `reason` from GET /api/cloud/status (e.g. API-key-only vs OAuth). */
   elizaCloudStatusReason: string | null;
   cloudDashboardView: "overview" | "billing";
+  elizaCloudStatusLoading: boolean;
+  elizaCloudStatusUnavailable: boolean;
+  refreshCloudStatus: () => Promise<boolean>;
   elizaCloudLoginBusy: boolean;
   elizaCloudLoginError: string | null;
   /**
@@ -534,19 +499,13 @@ export interface AppState {
    */
   elizaCloudLoginFallbackUrl: string | null;
   elizaCloudDisconnecting: boolean;
-
   // Multi-agent profiles
   activeAgentProfile: AgentProfile | null;
-
   // Updates
   updateStatus: UpdateStatus | null;
   updateLoading: boolean;
   updateChannelSaving: boolean;
-
   // Extension
-  extensionStatus: ExtensionStatus | null;
-  extensionChecking: boolean;
-
   // Store
   storePlugins: RegistryPlugin[];
   storeSearch: string;
@@ -557,14 +516,11 @@ export interface AppState {
   storeError: string | null;
   storeDetailPlugin: RegistryPlugin | null;
   storeSubTab: "plugins" | "skills";
-
   // Workbench
   workbenchLoading: boolean;
   workbench: WorkbenchOverview | null;
-  workbenchTasksAvailable: boolean;
   workbenchTriggersAvailable: boolean;
   workbenchTodosAvailable: boolean;
-
   // Agent export/import
   exportBusy: boolean;
   exportPassword: string;
@@ -576,7 +532,6 @@ export interface AppState {
   importFile: File | null;
   importError: string | null;
   importSuccess: string | null;
-
   // First-run (the in-chat conductor owns flow state; these are the surviving
   // cross-surface fields: finish-port + CONNECT_EVENT writes, content-pack and
   // character-editor reads, and the cloud-provisioned skip guard)
@@ -593,19 +548,15 @@ export interface AppState {
   firstRunRemoteError: string | null;
   firstRunRemoteConnected: boolean;
   firstRunCloudProvisionedContainer: boolean;
-
   // Command palette
   commandPaletteOpen: boolean;
   commandQuery: string;
   commandActiveIndex: number;
   closeCommandPalette: () => void;
-
   // Analysis Mode
   analysisMode: boolean;
-
   // Emote picker
   emotePickerOpen: boolean;
-
   // MCP
   mcpConfiguredServers: Record<string, McpServerConfig>;
   mcpServerStatuses: McpServerStatus[];
@@ -617,14 +568,11 @@ export interface AppState {
   mcpAddingResult: McpMarketplaceResult | null;
   mcpEnvInputs: Record<string, string>;
   mcpHeaderInputs: Record<string, string>;
-
   // Share ingest
   droppedFiles: string[];
   shareIngestNotice: string;
-
   // Chat image attachments queued for the next message
   chatPendingImages: ImageAttachment[];
-
   // Game
   appRuns: AppRunSummary[];
   activeGameRunId: string;
@@ -635,13 +583,10 @@ export interface AppState {
   activeGamePostMessageAuth: boolean;
   activeGamePostMessagePayload: GamePostMessageAuthPayload | null;
   activeGameSession: AppSessionState | null;
-
   /** When true, the game iframe persists as a floating overlay across all tabs. */
   gameOverlayEnabled: boolean;
-
   /** Name of the active full-screen overlay app, or null if none. */
   activeOverlayApp: string | null;
-
   /**
    * Currently-selected connector chat in the messages sidebar.
    * When non-null, the Chat view swaps its main panel out for a
@@ -658,7 +603,6 @@ export interface AppState {
     worldId?: string;
     worldLabel?: string;
   } | null;
-
   /**
    * Currently-selected PTY session in the Terminal channel. When
    * non-null, ChatView renders a full-window terminal bound to this
@@ -666,36 +610,34 @@ export interface AppState {
    * dashboard conversation.
    */
   activeTerminalSessionId: string | null;
-
   // Sub-tabs
   appsSubTab: "browse" | "running" | "games";
   agentSubTab: "character" | "inventory" | "documents";
   pluginsSubTab: "features" | "connectors" | "plugins";
   databaseSubTab: "tables" | "media" | "vectors";
-
   // Favorite apps
   favoriteApps: string[];
-
   // Recently launched apps, most recent first (capped)
   recentApps: string[];
-
   // Config text
   configRaw: Record<string, unknown>;
   configText: string;
 }
-
 export type LoadConversationMessagesResult =
-  | { ok: true }
-  | { ok: false; status?: number; message: string };
-
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      status?: number;
+      message: string;
+    };
 export const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
-export const AGENT_READY_TIMEOUT_MS = 120_000;
-
+export const AGENT_READY_TIMEOUT_MS = 120000;
 export interface SetTabOptions {
   /** Preserve an exact route already owned by the caller instead of pushing the tab's canonical path. */
   history?: "push" | "preserve";
 }
-
 export interface AppActions {
   // Navigation
   setTab: (tab: Tab, options?: SetTabOptions) => void;
@@ -704,8 +646,6 @@ export interface AppActions {
   switchShellView: (view: ShellView) => void;
   navigation: NavigationEventsApi;
   setUiLanguage: (language: UiLanguage) => void;
-  setUiTheme: (theme: UiTheme) => void;
-  setUiThemeMode: (mode: UiThemeMode) => void;
   setBackgroundConfig: (config: BackgroundConfig) => void;
   /** Restore the most recent previous background config (no-op when empty). */
   undoBackgroundConfig: () => void;
@@ -714,11 +654,9 @@ export interface AppActions {
   setHomeTimeWidgetHidden: (hidden: boolean) => void;
   /** Choose the app accent color by preset id (applies live + persists). */
   setUiAccent: (id: string) => void;
-
   // Lifecycle
   handleStart: () => Promise<void>;
   handleStop: () => Promise<void>;
-
   handleRestart: () => Promise<void>;
   handleReset: () => Promise<void>;
   /** After main-process app-menu reset (Electrobun): sync local React state + client. */
@@ -731,11 +669,12 @@ export interface AppActions {
   retryBackendConnection: () => void;
   restartBackend: () => Promise<void>;
   dismissSystemWarning: (message: string) => void;
-
   // Chat
   handleChatSend: (
     channelType?: ConversationChannelType,
-    options?: { metadata?: Record<string, unknown> },
+    options?: {
+      metadata?: Record<string, unknown>;
+    },
   ) => Promise<void>;
   handleChatStop: () => void;
   /**
@@ -745,7 +684,7 @@ export interface AppActions {
    * coding-agent PTY sessions, so it is safe to fire on a voice barge-in.
    */
   interruptActiveChatPipeline: () => void;
-  handleChatRetry: (assistantMsgId: string) => void;
+  handleChatRetry: (assistantMsgId: string) => Promise<void>;
   handleChatEdit: (messageId: string, text: string) => Promise<boolean>;
   /** Persistently delete a single message (#13533): server DELETE + optimistic
    *  UI removal with rollback on failure. Resolves false when the delete failed
@@ -757,7 +696,10 @@ export interface AppActions {
   /** Restore the active personal conversation; null means recovery is unavailable. */
   ensureActiveConversation: () => Promise<string | null>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
-  handleSelectConversation: (id: string) => Promise<void>;
+  handleSelectConversation: (
+    id: string,
+    options?: { onRejected: () => void },
+  ) => Promise<void>;
   /**
    * Replace the active thread with a window CENTERED on `messageId` so a
    * keyword-search jump can scroll to a hit older than the most-recent window
@@ -767,13 +709,19 @@ export interface AppActions {
   loadConversationMessagesAround: (
     conversationId: string,
     messageId: string,
+    options?: {
+      onMessages: (messages: readonly ConversationMessage[]) => void;
+    },
   ) => Promise<boolean>;
   handleDeleteConversation: (id: string) => Promise<void>;
   handleRenameConversation: (id: string, title: string) => Promise<void>;
   /** LLM title from recent messages; persists on the server and updates local list. */
   suggestConversationTitle: (id: string) => Promise<string | null>;
   /** Send a programmatic message (e.g. from a UiSpec action) without touching chatInput. */
-  sendActionMessage: (text: string) => Promise<void>;
+  sendActionMessage: (
+    text: string,
+    options?: { metadata?: Record<string, unknown> },
+  ) => Promise<void>;
   /** Send a chat message with optional metadata (e.g. task creation intent). */
   sendChatText: (
     rawInput: string,
@@ -782,9 +730,10 @@ export interface AppActions {
       conversationId?: string | null;
       images?: ImageAttachment[];
       metadata?: Record<string, unknown>;
+      /** Stable identity for a programmatically relayed logical turn. */
+      clientMessageId?: string;
     },
   ) => Promise<void>;
-
   // Triggers
   loadTriggers: (options?: { silent?: boolean }) => Promise<void>;
   ensureTriggersLoaded: () => Promise<void>;
@@ -799,10 +748,8 @@ export interface AppActions {
   runTriggerNow: (id: string) => Promise<boolean>;
   loadTriggerRuns: (id: string) => Promise<void>;
   loadTriggerHealth: () => Promise<void>;
-
   // Pairing
   handlePairingSubmit: () => Promise<void>;
-
   // Plugins
   loadPlugins: (options?: { silent?: boolean }) => Promise<void>;
   ensurePluginsLoaded: () => Promise<void>;
@@ -812,7 +759,6 @@ export interface AppActions {
     pluginId: string,
     config: Record<string, string>,
   ) => Promise<boolean>;
-
   // Skills
   loadSkills: () => Promise<void>;
   refreshSkills: () => Promise<void>;
@@ -823,10 +769,8 @@ export interface AppActions {
   handleReviewSkill: (skillId: string) => Promise<void>;
   handleAcknowledgeSkill: (skillId: string) => Promise<void>;
   installSkillFromGithubUrl: () => Promise<void>;
-
   // Logs
   loadLogs: () => Promise<void>;
-
   // Inventory
   loadInventory: () => Promise<void>;
   loadWalletConfig: () => Promise<void>;
@@ -882,7 +826,6 @@ export interface AppActions {
   ) => Promise<void>;
   refreshCloudWallets: () => Promise<void>;
   handleExportKeys: () => Promise<void>;
-
   // Registry / Drop
   loadRegistryStatus: () => Promise<void>;
   registerOnChain: () => Promise<void>;
@@ -890,7 +833,6 @@ export interface AppActions {
   loadDropStatus: () => Promise<void>;
   mintFromDrop: (shiny: boolean) => Promise<void>;
   loadWhitelistStatus: () => Promise<void>;
-
   // Character
   loadCharacter: () => Promise<void>;
   handleSaveCharacter: () => Promise<void>;
@@ -907,7 +849,6 @@ export interface AppActions {
     value: string,
   ) => void;
   handleCharacterMessageExamplesInput: (value: string) => void;
-
   // First-run
   /**
    * Finalize first-run without running the chat handoff.
@@ -917,7 +858,6 @@ export interface AppActions {
    * The full first-run flow passes an explicit landing tab when needed.
    */
   completeFirstRun: (landingTab?: Tab) => void;
-
   // Cloud
   /**
    * Deliberate same-tab recovery entry point (boot-recovery conductor,
@@ -940,28 +880,20 @@ export interface AppActions {
     skipConfirmation?: boolean;
   }) => Promise<void>;
   handleCloudSignOut: () => Promise<void>;
-
   // Multi-agent
   switchAgentProfile: (profileId: string) => void;
-
   // Updates
   loadUpdateStatus: (force?: boolean) => Promise<void>;
   handleChannelChange: (channel: ReleaseChannel) => Promise<void>;
-
   // Extension
-  checkExtensionStatus: () => Promise<void>;
-
   // Emote picker
   openEmotePicker: () => void;
   closeEmotePicker: () => void;
-
   // Workbench
   loadWorkbench: () => Promise<void>;
-
   // Agent export/import
   handleAgentExport: () => Promise<void>;
   handleAgentImport: () => Promise<void>;
-
   // Action notice
   setActionNotice: (
     text: string,
@@ -970,17 +902,23 @@ export interface AppActions {
     once?: boolean,
     busy?: boolean,
   ) => void;
-
   // Generic state setter
   setState: <K extends keyof AppState>(key: K, value: AppState[K]) => void;
-
   setAnalysisMode: (mode: boolean) => void;
-
   // Clipboard
   copyToClipboard: (text: string) => Promise<void>;
-
   // Translations
   t: (key: string, values?: Record<string, unknown>) => string;
 }
-
-export type AppContextValue = AppState & AppActions;
+export type AppContextValue = Omit<
+  AppState,
+  | "autonomousEvents"
+  | "autonomousLatestEventId"
+  | "autonomousRunHealthByRunId"
+  | "chatInput"
+  | "chatPendingImages"
+  | "chatSending"
+  | "conversationMessages"
+  | "ptySessions"
+> &
+  AppActions;

@@ -2,7 +2,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   resetDevCloudEnvAuthorityForTests,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveSolanaCloudProxyTuple, SolanaService } from "./service";
 

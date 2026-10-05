@@ -18,7 +18,6 @@ Environment=PATH=/home/deploy/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:
 # Defaults bound the preflight below 7m30s; retain teardown headroom while
 # keeping crash/reboot activation independent of the manager-wide default.
 TimeoutStartSec=8min
-ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh
 # The deploy workflow checks before its intentional restart, while this guard
 # also covers systemd recovery after a crash or host reboot. A worker must never
 # load job-interruption readers against an unverified catalog or migration hash.
@@ -28,7 +27,7 @@ ExecStartPre=/usr/bin/env bun --conditions=eliza-source /opt/eliza/packages/clou
 # wait behind live table locks while an agent_delete is already leased, preventing
 # teardown metadata resolution before the job budget expires.
 Environment=SKIP_AGENT_SANDBOX_ENSURE=1
-ExecStart=/opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/cloud/scripts/admin/daemons/provisioning-worker.ts
+ExecStart=/opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/cloud/services/provisioning-worker/src/index.ts
 
 Restart=always
 RestartSec=5

@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   runJoinFlow: vi.fn(),
 }));
 
-vi.mock("../../api", () => ({ client: {} }));
+vi.mock("../../api/client", () => ({ client: {} }));
 vi.mock("../../state/persistence", () => ({
   savePersistedActiveServer: vi.fn(),
   savePersistedFirstRunComplete: vi.fn(),

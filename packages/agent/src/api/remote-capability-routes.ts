@@ -15,16 +15,18 @@ import net from "node:net";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
+  decodeUrlPathComponent,
   type ElizaCapabilityRouter,
+  ElizaError,
   type IAgentRuntime,
   isLoopbackHost,
   isPrivateIpAddress,
   type JsonObject,
+  logger,
   normalizeHostLike,
-  type RouteHelpers,
-  type RouteRequestMeta,
 } from "@elizaos/core";
-import { decodeUrlPathComponent } from "@elizaos/shared";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
+
 import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,
@@ -41,6 +43,21 @@ import {
 } from "../services/remote-capability-endpoint-provider.ts";
 import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
 import {
+  assertCapabilityRouterEndpointIdAllowed,
+  CAPABILITY_ROUTER_ALLOWED_MODULES_SETTING,
+  CAPABILITY_ROUTER_TRUST_POLICY_SETTING,
+  CAPABILITY_ROUTER_URLS_SETTING,
+  type CapabilityRouterModuleAllowlistSetting,
+  CapabilityRouterReservedEndpointIdError,
+  CapabilityRouterSettingError,
+  type CapabilityRouterTrustPolicySetting,
+  parseCapabilityRouterEndpointsSetting,
+  parseCapabilityRouterModuleAllowlistSetting,
+  parseCapabilityRouterTrustPolicySetting,
+  serializeCapabilityRouterModuleAllowlistSetting,
+  serializeCapabilityRouterTrustPolicySetting,
+} from "../services/remote-capability-router-settings.ts";
+import {
   desktopCompanionCapabilityEndpointProvider,
   homeMachineCapabilityEndpointProvider,
   mobileCompanionCapabilityEndpointProvider,
@@ -55,12 +72,40 @@ import {
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
 
+/**
+ * A persisted capability-router config value (endpoints, module allowlists,
+ * trust policies or the trust audit trail) exists but cannot be parsed. The
+ * connect handler refuses to persist rather than rewriting the value as empty,
+ * which would silently erase every stored endpoint, policy and audit record.
+ */
+export class CapabilityRouterPersistedStateError extends ElizaError {
+  override readonly name = "CapabilityRouterPersistedStateError";
+  readonly key: string;
+
+  constructor(key: string, reason: string, options?: { cause?: unknown }) {
+    super(
+      `Persisted ${key} is unreadable (${reason}); refusing to overwrite it. Repair or remove ${key} and retry.`,
+      {
+        code: "CAPABILITY_ROUTER_PERSISTED_STATE_CORRUPT",
+        cause: options?.cause,
+        context: { key, reason },
+        severity: "fatal",
+      },
+    );
+    this.key = key;
+  }
+}
+const ENDPOINTS_KEY = CAPABILITY_ROUTER_URLS_SETTING;
+const ALLOWED_MODULES_KEY = CAPABILITY_ROUTER_ALLOWED_MODULES_SETTING;
+const TRUST_POLICY_KEY = CAPABILITY_ROUTER_TRUST_POLICY_SETTING;
+const TRUST_AUDIT_KEY = "ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT";
 type JsonBodyReader = <T = Record<string, unknown>>(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  options?: { requireObject?: boolean },
+  options?: {
+    requireObject?: boolean;
+  },
 ) => Promise<T | null>;
-
 export interface RemoteCapabilityRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "error"> {
@@ -78,7 +123,6 @@ export interface RemoteCapabilityRouteContext
     options: ConnectCloudCapabilitySandboxOptions,
   ) => Promise<ConnectCloudCapabilitySandboxResult>;
 }
-
 type ConnectBody = {
   endpoint?: unknown;
   cloud?: unknown;
@@ -89,29 +133,24 @@ type ConnectBody = {
   allowedModuleIds?: unknown;
   trustPolicy?: unknown;
 };
-
 type DirectEndpointBody = {
   id?: unknown;
   baseUrl?: unknown;
   token?: unknown;
 };
-
 type EndpointProviderMode =
   | "direct"
   | "home-machine"
   | "mobile-companion"
   | "desktop-companion";
-
 type DirectEndpointProviderOptions = {
   endpoint: RemoteCapabilityEndpointConfig;
   allowedModuleIds?: string[];
   trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions;
 };
-
 type EndpointProviderOptions =
   | DirectEndpointProviderOptions
   | UrlRemoteCapabilityEndpointProviderOptions;
-
 type CloudBody = {
   cloudApiBase?: unknown;
   authToken?: unknown;
@@ -124,13 +163,11 @@ type CloudBody = {
   allowedModuleIds?: unknown;
   trustPolicy?: unknown;
 };
-
 export async function handleRemoteCapabilityRoutes(
   ctx: RemoteCapabilityRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, runtime, readJsonBody, json, error } =
     ctx;
-
   if (pathname.startsWith("/api/capability-router/assets/")) {
     if (!runtime) {
       error(res, "Agent runtime unavailable", 503);
@@ -159,28 +196,23 @@ export async function handleRemoteCapabilityRoutes(
     }
     return true;
   }
-
   if (pathname !== "/api/capability-router/connect") {
     return false;
   }
-
   if (method !== "POST") {
     error(res, "Method not allowed", 405);
     return true;
   }
-
   if (!runtime) {
     error(res, "Agent runtime unavailable", 503);
     return true;
   }
-
   const body = await readJsonBody<ConnectBody>(req, res, {
     requireObject: true,
   });
   if (body === null) {
     return true;
   }
-
   try {
     const unloadMissing =
       typeof body.unloadMissing === "boolean" ? body.unloadMissing : true;
@@ -209,7 +241,11 @@ export async function handleRemoteCapabilityRoutes(
       );
       return true;
     }
-
+    if (persist && ctx.config) {
+      // Fail before connecting (and mutating runtime plugins) when the stored
+      // state cannot be merged; persisting would otherwise erase it.
+      readPersistedCapabilityRouterState(ctx.config.env?.vars ?? {});
+    }
     if (body.endpoint !== undefined) {
       const providerMode = parseEndpointProviderMode(body.provider);
       const endpoint = parseDirectEndpoint(body.endpoint);
@@ -224,7 +260,7 @@ export async function handleRemoteCapabilityRoutes(
           allowedModuleIds,
         ),
         unloadMissing,
-        requestTimeoutMs: requestTimeoutMs ?? 60_000,
+        requestTimeoutMs: requestTimeoutMs ?? 60000,
         ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
         ...(trustPolicy === undefined ? {} : { trustPolicy }),
       });
@@ -254,7 +290,6 @@ export async function handleRemoteCapabilityRoutes(
       });
       return true;
     }
-
     if (body.cloud !== undefined) {
       const cloud = parseCloudOptions(body.cloud);
       if (trustPolicy !== undefined && cloud.trustPolicy !== undefined) {
@@ -289,7 +324,7 @@ export async function handleRemoteCapabilityRoutes(
         ...(cloudTrustPolicy === undefined
           ? {}
           : { trustPolicy: cloudTrustPolicy }),
-        requestTimeoutMs: requestTimeoutMs ?? 60_000,
+        requestTimeoutMs: requestTimeoutMs ?? 60000,
       });
       if (persist) {
         await persistEndpoint(
@@ -317,10 +352,26 @@ export async function handleRemoteCapabilityRoutes(
       });
       return true;
     }
-
     error(res, "Request body must include either 'endpoint' or 'cloud'.", 400);
     return true;
   } catch (err) {
+    if (err instanceof CapabilityRouterReservedEndpointIdError) {
+      error(res, err.message, 400);
+      return true;
+    }
+    if (err instanceof CapabilityRouterPersistedStateError) {
+      logger.error(
+        {
+          src: "remote-capability-routes",
+          code: err.code,
+          key: err.key,
+          error: err,
+        },
+        "[capability-router] Refusing to persist over unreadable stored state",
+      );
+      error(res, err.message, 500);
+      return true;
+    }
     error(
       res,
       err instanceof Error
@@ -331,7 +382,6 @@ export async function handleRemoteCapabilityRoutes(
     return true;
   }
 }
-
 async function serveCapabilityRouterAssetProxy(
   ctx: RemoteCapabilityRouteContext,
   runtime: IAgentRuntime,
@@ -370,7 +420,6 @@ async function serveCapabilityRouterAssetProxy(
   }
   response.end?.(method === "HEAD" ? undefined : body);
 }
-
 function parseAssetProxyPath(pathname: string): {
   endpointId: string;
   moduleId: string;
@@ -412,7 +461,6 @@ function parseAssetProxyPath(pathname: string): {
   }
   return { endpointId, moduleId, assetPath };
 }
-
 function getRuntimeCapabilityRouter(
   runtime: IAgentRuntime,
 ): ElizaCapabilityRouter {
@@ -424,7 +472,6 @@ function getRuntimeCapabilityRouter(
   }
   return router;
 }
-
 type CapabilityRouterPersistConfig = {
   env?: {
     vars?: Record<string, string>;
@@ -432,7 +479,6 @@ type CapabilityRouterPersistConfig = {
   };
   [key: string]: unknown;
 };
-
 function persistEndpoint(
   ctx: Pick<
     RemoteCapabilityRouteContext,
@@ -459,7 +505,6 @@ function persistEndpoint(
     audit,
   );
 }
-
 async function persistEndpointInner(
   ctx: {
     config: CapabilityRouterPersistConfig;
@@ -471,28 +516,22 @@ async function persistEndpointInner(
   trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions,
   audit?: CapabilityRouterTrustAuditInput,
 ): Promise<void> {
+  // A provider may assign its own id; never persist one that would be read
+  // back as a global trust-policy option.
+  assertCapabilityRouterEndpointIdAllowed(endpoint.id, "endpoint.id");
   const env = ctx.config.env ?? {};
   const vars = { ...(env.vars ?? {}) };
-  const endpoints = mergePersistedEndpoints(
-    readPersistedEndpoints(
-      process.env.ELIZA_CAPABILITY_ROUTER_URLS ??
-        vars.ELIZA_CAPABILITY_ROUTER_URLS,
-    ),
-    endpoint,
-  );
+  // Read (and validate) every persisted value before the first write so a
+  // corrupt value aborts the whole save instead of being overwritten.
+  const persisted = readPersistedCapabilityRouterState(vars);
+  const endpoints = mergePersistedEndpoints(persisted.endpoints, endpoint);
   const moduleAllowlists = mergePersistedModuleAllowlists(
-    readPersistedModuleAllowlists(
-      process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES ??
-        vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES,
-    ),
+    persisted.moduleAllowlists,
     endpoint.id,
     allowedModuleIds,
   );
   const persistedTrustPolicy = mergePersistedTrustPolicies(
-    readPersistedTrustPolicies(
-      process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY ??
-        vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY,
-    ),
+    persisted.trustPolicies,
     endpoint.id,
     trustPolicy,
   );
@@ -506,31 +545,27 @@ async function persistEndpointInner(
   );
   vars.ELIZA_CAPABILITY_ROUTER_ENABLED = "true";
   vars.ELIZA_CAPABILITY_ROUTER_URLS = JSON.stringify(sanitizedEndpoints);
-  if (Object.keys(moduleAllowlists).length > 0) {
-    vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
-      JSON.stringify(moduleAllowlists);
+  const serializedModuleAllowlists =
+    serializeCapabilityRouterModuleAllowlistSetting(moduleAllowlists);
+  if (serializedModuleAllowlists !== undefined) {
+    vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES = serializedModuleAllowlists;
   } else {
     delete vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
   }
-  if (Object.keys(persistedTrustPolicy).length > 0) {
+  const serializedTrustPolicy =
+    serializeCapabilityRouterTrustPolicySetting(persistedTrustPolicy);
+  if (serializedTrustPolicy !== undefined) {
     await ctx.persistConfigEnv(
       "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
-      JSON.stringify(persistedTrustPolicy),
+      serializedTrustPolicy,
     );
-    vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY =
-      JSON.stringify(persistedTrustPolicy);
+    vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY = serializedTrustPolicy;
   } else {
     delete vars.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
   }
   if (audit !== undefined) {
     vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT = JSON.stringify(
-      appendTrustAuditRecord(
-        readTrustAuditRecords(
-          process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT ??
-            vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT,
-        ),
-        audit,
-      ),
+      appendTrustAuditRecord(persisted.trustAudit, audit),
     );
   }
   ctx.config.env = {
@@ -539,7 +574,6 @@ async function persistEndpointInner(
   };
   ctx.saveConfig(ctx.config);
 }
-
 type CapabilityRouterTrustAuditInput = {
   mode: string;
   provider: string;
@@ -547,7 +581,6 @@ type CapabilityRouterTrustAuditInput = {
   allowedModuleIds?: string[];
   sync: RemotePluginSyncResult;
 };
-
 type CapabilityRouterTrustAuditRecord = {
   recordedAt: string;
   mode: string;
@@ -559,20 +592,90 @@ type CapabilityRouterTrustAuditRecord = {
   unloaded: string[];
   trustDecisions: RemotePluginSyncResult["trustDecisions"];
 };
-
+type PersistedCapabilityRouterState = {
+  endpoints: RemoteCapabilityEndpointConfig[];
+  moduleAllowlists: CapabilityRouterModuleAllowlistSetting;
+  trustPolicies: CapabilityRouterTrustPolicySetting;
+  trustAudit: CapabilityRouterTrustAuditRecord[];
+};
+/**
+ * Reads every persisted capability-router value. An absent/blank value is
+ * empty; a present value that cannot be parsed throws
+ * {@link CapabilityRouterPersistedStateError}.
+ */
+function readPersistedCapabilityRouterState(
+  vars: Record<string, string>,
+): PersistedCapabilityRouterState {
+  return {
+    endpoints: readPersistedSetting(() =>
+      parseCapabilityRouterEndpointsSetting(
+        process.env[ENDPOINTS_KEY] ?? vars[ENDPOINTS_KEY],
+      ),
+    ),
+    moduleAllowlists: readPersistedSetting(
+      () =>
+        parseCapabilityRouterModuleAllowlistSetting(
+          process.env[ALLOWED_MODULES_KEY] ?? vars[ALLOWED_MODULES_KEY],
+        ) ?? { kind: "endpoints", endpoints: {} },
+    ),
+    trustPolicies: readPersistedSetting(
+      () =>
+        parseCapabilityRouterTrustPolicySetting(
+          process.env[TRUST_POLICY_KEY] ?? vars[TRUST_POLICY_KEY],
+        ) ?? { global: {}, endpoints: {} },
+    ),
+    trustAudit: readTrustAuditRecords(
+      process.env[TRUST_AUDIT_KEY] ?? vars[TRUST_AUDIT_KEY],
+    ),
+  };
+}
+/**
+ * Runs a shared capability-router setting parser, reporting a malformed value
+ * as {@link CapabilityRouterPersistedStateError} so the connect handler refuses
+ * to overwrite it.
+ */
+function readPersistedSetting<T>(parse: () => T): T {
+  try {
+    return parse();
+  } catch (err) {
+    if (err instanceof CapabilityRouterSettingError) {
+      throw new CapabilityRouterPersistedStateError(err.key, err.reason, {
+        cause: err,
+      });
+    }
+    throw err;
+  }
+}
+function parsePersistedJson(key: string, value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch (err) {
+    throw new CapabilityRouterPersistedStateError(key, "invalid JSON", {
+      cause: err,
+    });
+  }
+}
 function readTrustAuditRecords(
   value: string | undefined,
 ): CapabilityRouterTrustAuditRecord[] {
   if (!value?.trim()) return [];
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isTrustAuditRecord);
-  } catch {
-    return [];
+  const parsed = parsePersistedJson(TRUST_AUDIT_KEY, value);
+  if (!Array.isArray(parsed)) {
+    throw new CapabilityRouterPersistedStateError(
+      TRUST_AUDIT_KEY,
+      "expected an array",
+    );
   }
+  return parsed.map((record, index) => {
+    if (!isTrustAuditRecord(record)) {
+      throw new CapabilityRouterPersistedStateError(
+        TRUST_AUDIT_KEY,
+        `entry ${index} is not a trust audit record`,
+      );
+    }
+    return record;
+  });
 }
-
 function appendTrustAuditRecord(
   existing: CapabilityRouterTrustAuditRecord[],
   audit: CapabilityRouterTrustAuditInput,
@@ -594,7 +697,6 @@ function appendTrustAuditRecord(
     },
   ];
 }
-
 function isTrustAuditRecord(
   value: unknown,
 ): value is CapabilityRouterTrustAuditRecord {
@@ -615,127 +717,52 @@ function isTrustAuditRecord(
     Array.isArray(record.trustDecisions)
   );
 }
-
-function readPersistedModuleAllowlists(
-  value: string | undefined,
-): Record<string, string[]> {
-  if (!value?.trim()) return {};
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    const result: Record<string, string[]> = {};
-    for (const [endpointId, moduleIds] of Object.entries(parsed)) {
-      if (!endpointId.trim() || !Array.isArray(moduleIds)) continue;
-      const normalized = normalizeStringList(moduleIds);
-      if (normalized.length > 0) {
-        result[endpointId.trim()] = normalized;
-      }
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
+/**
+ * Records this endpoint's allowlist. A stored global array stays global (the
+ * runtime unions allowlists across endpoints), extended with any modules this
+ * connect allows; per-endpoint entries are replaced or removed.
+ */
 function mergePersistedModuleAllowlists(
-  existing: Record<string, string[]>,
+  existing: CapabilityRouterModuleAllowlistSetting,
   endpointId: string,
   allowedModuleIds: string[] | undefined,
-): Record<string, string[]> {
-  const next = { ...existing };
-  if (allowedModuleIds === undefined) {
-    delete next[endpointId];
-    return next;
+): CapabilityRouterModuleAllowlistSetting {
+  const normalized = normalizeStringList(allowedModuleIds ?? []);
+  if (existing.kind === "global") {
+    return {
+      kind: "global",
+      moduleIds: normalizeStringList([...existing.moduleIds, ...normalized]),
+    };
   }
-  const normalized = normalizeStringList(allowedModuleIds);
+  const next: typeof existing.endpoints = Object.assign(
+    Object.create(null),
+    existing.endpoints,
+  );
   if (normalized.length === 0) {
     delete next[endpointId];
   } else {
     next[endpointId] = normalized;
   }
-  return next;
+  return { kind: "endpoints", endpoints: next };
 }
-
-function readPersistedTrustPolicies(
-  value: string | undefined,
-): Record<string, RemoteCapabilityEndpointTrustPolicyOptions> {
-  if (!value?.trim()) return {};
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    const result: Record<string, RemoteCapabilityEndpointTrustPolicyOptions> =
-      {};
-    for (const [endpointId, candidate] of Object.entries(parsed)) {
-      if (!endpointId.trim()) continue;
-      const trustPolicy = parseOptionalEndpointTrustPolicy(
-        candidate,
-        `ELIZA_CAPABILITY_ROUTER_TRUST_POLICY.${endpointId}`,
-      );
-      if (trustPolicy && Object.keys(trustPolicy).length > 0) {
-        result[endpointId.trim()] = trustPolicy;
-      }
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
+/** Replaces this endpoint's trust policy; global policy keys are kept as-is. */
 function mergePersistedTrustPolicies(
-  existing: Record<string, RemoteCapabilityEndpointTrustPolicyOptions>,
+  existing: CapabilityRouterTrustPolicySetting,
   endpointId: string,
   trustPolicy: RemoteCapabilityEndpointTrustPolicyOptions | undefined,
-): Record<string, RemoteCapabilityEndpointTrustPolicyOptions> {
-  const next = { ...existing };
+): CapabilityRouterTrustPolicySetting {
+  const next: typeof existing.endpoints = Object.assign(
+    Object.create(null),
+    existing.endpoints,
+  );
   const normalized = normalizeEndpointTrustPolicyOptions(trustPolicy);
   if (Object.keys(normalized).length === 0) {
     delete next[endpointId];
   } else {
     next[endpointId] = normalized;
   }
-  return next;
+  return { global: existing.global, endpoints: next };
 }
-
-function readPersistedEndpoints(
-  value: string | undefined,
-): RemoteCapabilityEndpointConfig[] {
-  if (!value?.trim()) return [];
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item, index): RemoteCapabilityEndpointConfig | null => {
-        if (!item || typeof item !== "object" || Array.isArray(item)) {
-          return null;
-        }
-        const record = item as Record<string, unknown>;
-        if (typeof record.baseUrl !== "string" || !record.baseUrl.trim()) {
-          return null;
-        }
-        return {
-          id:
-            typeof record.id === "string" && record.id.trim()
-              ? record.id.trim()
-              : `remote-${index + 1}`,
-          baseUrl: record.baseUrl.trim().replace(/\/+$/, ""),
-          ...(typeof record.token === "string" && record.token.trim()
-            ? { token: record.token.trim() }
-            : {}),
-        };
-      })
-      .filter(
-        (endpoint): endpoint is RemoteCapabilityEndpointConfig =>
-          endpoint !== null,
-      );
-  } catch {
-    return [];
-  }
-}
-
 function mergePersistedEndpoints(
   existing: RemoteCapabilityEndpointConfig[],
   next: RemoteCapabilityEndpointConfig,
@@ -755,16 +782,16 @@ function mergePersistedEndpoints(
   byKey.set(normalizedNext.id || normalizedNext.baseUrl, normalizedNext);
   return [...byKey.values()];
 }
-
 function parseDirectEndpoint(value: unknown): RemoteCapabilityEndpointConfig {
   const body = requireObject(value, "endpoint") as DirectEndpointBody;
+  const id = optionalNonEmptyString(body.id, "endpoint.id") ?? "default";
+  assertCapabilityRouterEndpointIdAllowed(id, "endpoint.id");
   return {
-    id: optionalNonEmptyString(body.id, "endpoint.id") ?? "default",
+    id,
     baseUrl: requireHttpUrl(body.baseUrl, "endpoint.baseUrl"),
     ...optionalToken(body.token, "endpoint.token"),
   };
 }
-
 function parseEndpointProviderMode(value: unknown): EndpointProviderMode {
   if (value === undefined || value === null || value === "") return "direct";
   const provider = requireNonEmptyString(value, "provider");
@@ -780,7 +807,6 @@ function parseEndpointProviderMode(value: unknown): EndpointProviderMode {
     `provider must be one of direct, home-machine, mobile-companion, or desktop-companion.`,
   );
 }
-
 function getEndpointProvider(
   providerMode: EndpointProviderMode,
 ): RemoteCapabilityEndpointProvider<EndpointProviderOptions> {
@@ -795,7 +821,6 @@ function getEndpointProvider(
       return desktopCompanionCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
   }
 }
-
 function buildEndpointProvisionOptions(
   providerMode: EndpointProviderMode,
   endpoint: RemoteCapabilityEndpointConfig,
@@ -814,7 +839,6 @@ function buildEndpointProvisionOptions(
     ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
   };
 }
-
 function parseCloudOptions(
   value: unknown,
 ): Omit<
@@ -835,6 +859,9 @@ function parseCloudOptions(
     body.endpointId,
     "cloud.endpointId",
   );
+  if (endpointId !== undefined) {
+    assertCapabilityRouterEndpointIdAllowed(endpointId, "cloud.endpointId");
+  }
   const timeoutMs = optionalPositiveInteger(body.timeoutMs, "cloud.timeoutMs");
   if (timeoutMs instanceof Error) throw timeoutMs;
   const pollIntervalMs = optionalPositiveInteger(
@@ -842,7 +869,6 @@ function parseCloudOptions(
     "cloud.pollIntervalMs",
   );
   if (pollIntervalMs instanceof Error) throw pollIntervalMs;
-
   return {
     cloudApiBase: requireHttpUrl(body.cloudApiBase, "cloud.cloudApiBase"),
     authToken: requireNonEmptyString(body.authToken, "cloud.authToken"),
@@ -856,7 +882,6 @@ function parseCloudOptions(
     ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
   };
 }
-
 function serializeSyncResult(sync: RemotePluginSyncResult): JsonObject {
   return {
     registered: sync.registered.map((plugin) => plugin.name),
@@ -865,7 +890,6 @@ function serializeSyncResult(sync: RemotePluginSyncResult): JsonObject {
     trustDecisions: sync.trustDecisions,
   };
 }
-
 function redactEndpoint(endpoint: RemoteCapabilityEndpointConfig): JsonObject {
   return {
     id: endpoint.id,
@@ -873,21 +897,18 @@ function redactEndpoint(endpoint: RemoteCapabilityEndpointConfig): JsonObject {
     hasToken: typeof endpoint.token === "string" && endpoint.token.length > 0,
   };
 }
-
 function requireObject(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${field} must be an object.`);
   }
   return value as Record<string, unknown>;
 }
-
 function requireNonEmptyString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`${field} must be a non-empty string.`);
   }
   return value.trim();
 }
-
 function optionalNonEmptyString(
   value: unknown,
   field: string,
@@ -895,7 +916,6 @@ function optionalNonEmptyString(
   if (value === undefined) return undefined;
   return requireNonEmptyString(value, field);
 }
-
 function requireHttpUrl(value: unknown, field: string): string {
   const text = requireNonEmptyString(value, field).replace(/\/+$/, "");
   let parsed: URL;
@@ -935,12 +955,15 @@ function requireHttpUrl(value: unknown, field: string): string {
   parsed.search = "";
   return parsed.toString().replace(/\/+$/, "");
 }
-
-function optionalToken(value: unknown, field: string): { token?: string } {
+function optionalToken(
+  value: unknown,
+  field: string,
+): {
+  token?: string;
+} {
   const token = optionalNonEmptyString(value, field);
   return token === undefined ? {} : { token };
 }
-
 function optionalPositiveInteger(
   value: unknown,
   field: string,
@@ -951,7 +974,6 @@ function optionalPositiveInteger(
   }
   return value;
 }
-
 function parseOptionalStringArray(
   value: unknown,
   field: string,
@@ -962,7 +984,6 @@ function parseOptionalStringArray(
   }
   return normalizeStringList(value);
 }
-
 function parseOptionalEndpointTrustPolicy(
   value: unknown,
   field: string,
@@ -1002,7 +1023,6 @@ function parseOptionalEndpointTrustPolicy(
   });
   return Object.keys(trustPolicy).length === 0 ? undefined : trustPolicy;
 }
-
 function optionalBooleanField<TKey extends keyof RemotePluginTrustPolicy>(
   value: unknown,
   field: string,
@@ -1016,14 +1036,13 @@ function optionalBooleanField<TKey extends keyof RemotePluginTrustPolicy>(
     ? ({ [key]: true } as Partial<Pick<RemotePluginTrustPolicy, TKey>>)
     : {};
 }
-
 function parseOptionalStringRecord(
   value: unknown,
   field: string,
 ): Record<string, string> | undefined {
   if (value === undefined) return undefined;
   const body = requireObject(value, field);
-  const result: Record<string, string> = {};
+  const result: Record<string, string> = Object.create(null);
   for (const [key, entry] of Object.entries(body)) {
     if (typeof entry !== "string") {
       throw new Error(`${field}.${key} must be a string.`);
@@ -1036,7 +1055,6 @@ function parseOptionalStringRecord(
   }
   return result;
 }
-
 function normalizeStringList(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }

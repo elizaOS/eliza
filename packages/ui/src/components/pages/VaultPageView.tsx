@@ -8,7 +8,7 @@ import {
   FramedPage,
   FramedPageBody,
   FramedPageHeader,
-} from "../../layouts/framed-page";
+} from "../../layouts/framed-page/framed-page";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { VaultWorkspace } from "../settings/SecretsManagerSection";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";

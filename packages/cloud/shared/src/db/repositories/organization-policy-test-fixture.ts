@@ -1,5 +1,6 @@
 /** Adds real subscription authority migrations to isolated legacy resource fixtures without replacing the resource under test. */
 import { readFile } from "node:fs/promises";
+import { installOrganizationBillingScopeTestColumns } from "./organization-billing-scope-test-fixture";
 export async function installOrganizationPolicyTestSchema(
   execute: (query: string) => Promise<unknown>,
 ): Promise<void> {
@@ -15,6 +16,7 @@ export async function installOrganizationPolicyTestSchema(
     ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS amount numeric(16,6);
     ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS type text;
     ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS metadata jsonb;
+    ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS stripe_payment_intent_id text;
     CREATE UNIQUE INDEX IF NOT EXISTS policy_fixture_credit_identity ON credit_transactions(id,organization_id);
     CREATE TABLE IF NOT EXISTS organization_config(organization_id uuid PRIMARY KEY REFERENCES organizations(id),settings jsonb NOT NULL DEFAULT '{}');
     CREATE TABLE IF NOT EXISTS org_rate_limit_overrides(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid UNIQUE REFERENCES organizations(id),completions_rpm integer,embeddings_rpm integer,standard_rpm integer,strict_rpm integer,note text,created_at timestamp DEFAULT now(),updated_at timestamp DEFAULT now());
@@ -36,5 +38,21 @@ export async function installOrganizationPolicyTestSchema(
     const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await execute(statement);
+  }
+  await installOrganizationBillingScopeTestColumns(execute);
+  await execute(
+    "CREATE UNIQUE INDEX IF NOT EXISTS policy_fixture_agent_identity ON agent_sandboxes(id,organization_id)",
+  );
+  for (const name of [
+    "0387_agent_compute_funding.sql",
+    "0389_agent_compute_stop_receipts.sql",
+    "0390_agent_compute_runtime_readiness.sql",
+    "0392_agent_compute_retirement_backup.sql",
+    "0393_agent_compute_activation_minimum.sql",
+  ]) {
+    const migration = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
+    // The fixture's connection search_path owns all of its tables. Generated
+    // public-qualified foreign keys must resolve there too, including self references.
+    await execute(migration.replaceAll('"public".', ""));
   }
 }

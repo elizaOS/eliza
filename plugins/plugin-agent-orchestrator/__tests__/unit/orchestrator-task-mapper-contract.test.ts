@@ -11,26 +11,25 @@
  *     field remains present while allowing additive server fields.
  */
 
+import { describe, expect, it } from "vitest";
 import type {
   CodingAgentOrchestratorStatus,
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
   CodingAgentTaskTimelineItem,
-} from "@elizaos/ui/api/client-types-cloud";
-import { describe, expect, it } from "vitest";
-import type {
-  TaskThreadDetailDto,
-  TaskThreadDto,
-  TaskTimelineItemDto,
-} from "../../src/services/orchestrator-task-mapper.js";
+} from "../../../../packages/ui/src/api/client-types-cloud";
 import {
   summarizeUsage,
   summarizeUsageRows,
+  type TaskThreadDetailDto,
+  type TaskThreadDto,
+  type TaskTimelineItemDto,
   toTaskThread,
   toTaskThreadDetail,
   toTaskTimelineEventDto,
   toTaskTimelineMessageDto,
 } from "../../src/services/orchestrator-task-mapper.js";
+
 import type { OrchestratorTaskDocument } from "../../src/services/orchestrator-task-types.js";
 
 const ISO = "2026-05-20T12:00:00.000Z";

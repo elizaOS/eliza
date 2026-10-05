@@ -6,8 +6,8 @@
  * switched off. Shared documents are data: the deadlines get extracted, the
  * embedded block does not execute, and her quiet hours stay untouched.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 const SHARED_BRIEF =

@@ -23,6 +23,8 @@ Default sources:
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file
+
 import argparse
 import hashlib
 import json
@@ -53,7 +55,7 @@ try:
         validate_manifest,
     )
 except ImportError:  # pragma: no cover - script execution path
-    from eliza1_manifest import (
+    from eliza_training.manifest.eliza1_manifest import (
         ELIZA_1_HF_REPO,
         ELIZA_1_TIERS,
         VOICE_BACKENDS_BY_TIER,
@@ -185,12 +187,6 @@ def retry_hf(callable_, *args: Any, **kwargs: Any) -> Any:
     raise last_error
 
 
-def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
 
 
 def bundle_relpath(bundle_dir: Path, path: Path) -> str:
@@ -897,7 +893,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     # (VOICE_QUANT_LADDER_BY_TIER) so a downloader can pick a smaller level
     # at install time based on the host's RAM/SoC class. The ladder is the
     # publishable subset of omnivoice.cpp's full Q2_K..Q8_0 support; see
-    # packages/shared/src/local-inference/catalog.ts:voiceQuantLadderForTier
+    # plugins/plugin-native-inference/src/model-catalog/catalog.ts:voiceQuantLadderForTier
     # and docs/inference/voice-quant-matrix.md.
     voice_quants: tuple[str, ...]
     if "omnivoice" not in voice_backends:

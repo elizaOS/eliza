@@ -1,12 +1,13 @@
 // Handles cloud API training vertex models route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { vertexModelRegistryService } from "@/lib/services/vertex-model-registry";
+
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { vertexModelRegistryService } from "@elizaos/cloud-shared/lib/services/vertex-model-registry";
 import type {
   VertexTuningScope,
   VertexTuningSlot,
-} from "@/lib/services/vertex-tuning";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/vertex-tuning";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const VERTEX_TUNING_SLOTS = [
   "should_respond",

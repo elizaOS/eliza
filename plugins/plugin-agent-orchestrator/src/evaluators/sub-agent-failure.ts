@@ -13,9 +13,9 @@ import {
   type Memory,
   type MessageHandlerResult,
   type ResponseHandlerEvaluator,
-  SIMPLE_CONTEXT_ID,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { SIMPLE_CONTEXT_ID } from "@elizaos/plugin-assistant";
 import {
   completionHasVerificationFailure,
   verifiedUrlsExcludingDead,

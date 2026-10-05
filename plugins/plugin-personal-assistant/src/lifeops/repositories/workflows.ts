@@ -1,9 +1,10 @@
 /** Owns workflow definitions and atomic idempotency claims for workflow runs. */
-import { ElizaError } from "@elizaos/core";
+
 import type {
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import type { LifeOpsDatabaseContext } from "../sql.js";
 import { executeRawSql, sqlJson, sqlQuote, sqlText } from "../sql.js";
 import {

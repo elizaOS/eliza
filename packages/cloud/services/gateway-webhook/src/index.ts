@@ -6,6 +6,7 @@ import { twilioAdapter } from "./adapters/twilio";
 import type { Platform, PlatformAdapter } from "./adapters/types";
 import { whatsappAdapter } from "./adapters/whatsapp";
 import { getAuthHeader, initAuth, shutdownAuth } from "./auth";
+import { drainCutoverHolds } from "./cutover-hold";
 import { registerForwarderAuthReadinessRoute } from "./forwarder-auth-readiness";
 import {
   enforceForwarderSecret,
@@ -26,9 +27,16 @@ import {
   getSharedWhatsAppVerifyToken,
   resolveWebhookConfig,
 } from "./webhook-config";
-import { handleWebhook } from "./webhook-handler";
+import {
+  handleWebhook,
+  redeliverHeldWebhook,
+  releaseExpiredHeldWebhook,
+} from "./webhook-handler";
 
 const PORT = Number(process.env.PORT ?? 3000);
+// Held connector turns (#22934) are redelivered on this cadence; each hold
+// carries its own next-attempt time, so this only bounds pickup latency.
+const CUTOVER_HOLD_DRAIN_INTERVAL_MS = 2_000;
 const POD_NAME =
   process.env.POD_NAME ?? process.env.HOSTNAME ?? "webhook-local";
 
@@ -225,6 +233,7 @@ async function start() {
     port: PORT,
     fetch: app.fetch,
   });
+  startCutoverHoldDrain();
 
   if (!process.env.GATEWAY_INTERNAL_SECRET) {
     logger.warn(
@@ -233,6 +242,46 @@ async function start() {
   }
 
   logger.info("Webhook gateway listening", { port: PORT });
+}
+
+let cutoverHoldDrain: Promise<void> | null = null;
+
+function startCutoverHoldDrain(): void {
+  const deliveryDeps = {
+    redis,
+    cloudBaseUrl: ELIZA_CLOUD_URL,
+    deliveryAuthoritySecret: process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET ?? "",
+    getAuthHeader,
+  };
+  setInterval(() => {
+    if (draining || cutoverHoldDrain) return;
+    cutoverHoldDrain = drainCutoverHolds(redis, {
+      redeliver: (held) =>
+        redeliverHeldWebhook(held, adapters[held.platform], deliveryDeps),
+      release: (held) => releaseExpiredHeldWebhook(held, redis),
+    })
+      .then((stats) => {
+        if (
+          stats.delivered +
+            stats.rescheduled +
+            stats.released +
+            stats.expired +
+            stats.stale >
+          0
+        ) {
+          logger.info("Cutover hold drain completed", { ...stats });
+        }
+      })
+      .catch((error) => {
+        // error-policy:J7 holds stay indexed; the next interval retries them.
+        logger.error("Cutover hold drain failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        cutoverHoldDrain = null;
+      });
+  }, CUTOVER_HOLD_DRAIN_INTERVAL_MS);
 }
 
 function shutdown(signal: string) {

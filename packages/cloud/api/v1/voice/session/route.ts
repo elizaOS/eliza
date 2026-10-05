@@ -1,29 +1,32 @@
 /** Handles flag-gated v1 Cloud realtime voice-session mint traffic. */
-import { Hono } from "hono";
-import { z } from "zod";
 
-import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { userCharactersRepository } from "@/db/repositories/characters";
-import { conversationsRepository } from "@/db/repositories/conversations";
-import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
+import { conversationsRepository } from "@elizaos/cloud-shared/db/repositories/conversations";
+import { findActivePersonalDedicatedTarget } from "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target";
 import {
   isPersonalSharedAgentId,
   personalSharedAgentId,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
   isVoiceRealtimeWsEnabled,
   type VoiceRealtimeEnv,
-} from "@/lib/voice-session/config";
-import { consumeConsentNonce } from "@/lib/voice-session/consent-nonce";
+} from "@elizaos/cloud-shared/lib/voice-session/config";
+import { consumeConsentNonce } from "@elizaos/cloud-shared/lib/voice-session/consent-nonce";
 import {
   isVoiceSessionJwtConfigured,
   mintVoiceSessionToken,
   recordVoiceSessionJti,
   VoiceSessionTokenError,
-} from "@/lib/voice-session/jwt";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/voice-session/jwt";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
+import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";
 
 /**
  * POST /api/v1/voice/session — mint a scoped voice-session token (contract §7.1).

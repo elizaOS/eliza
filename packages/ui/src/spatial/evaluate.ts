@@ -48,18 +48,6 @@ export interface SpatialStateStore {
   set(key: string, value: unknown): void;
 }
 
-/** A plain Map-backed store. */
-export function createSpatialStateStore(): SpatialStateStore {
-  const map = new Map<string, unknown>();
-  return {
-    has: (k) => map.has(k),
-    get: (k) => map.get(k),
-    set: (k, v) => {
-      map.set(k, v);
-    },
-  };
-}
-
 interface EvalFrame {
   path: string;
   hookIndex: number;
@@ -328,9 +316,4 @@ export function useSpatialRef<T>(initial: T): { current: T } {
   return (
     (store?.get(key) as { current: T } | undefined) ?? { current: initial }
   );
-}
-
-/** True while the current call stack is inside an IR evaluation. */
-export function isEvaluatingToIR(): boolean {
-  return currentFrame !== null;
 }

@@ -1,7 +1,10 @@
 /**
  * User MCP Proxy Endpoint
  *
- * Proxies requests to user-created MCPs and handles monetization.
+ * Proxies requests to user-created MCPs. Paid MCP listings are retired
+ * (#22961): every listing is free, so a call charges nothing, admits no credit
+ * reservation and records usage at zero. The caller's credential is still
+ * checked before the upstream call.
  *
  * POST /api/mcp/proxy/[mcpId] - Proxy MCP request
  * GET /api/mcp/proxy/[mcpId] - Get MCP info
@@ -12,6 +15,7 @@
  * never-settling lookup or caller abort still settles as a typed 504.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   calculateCreditMarkup,
   DEFAULT_PLATFORM_FEE_RATE,
@@ -19,26 +23,31 @@ import {
   mcpUsageChargeReceiptFromLegacyPoints,
   ORGANIZATION_CREDIT_UNIT,
 } from "@elizaos/cloud-shared/billing";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  CORS_ALLOW_HEADERS,
+  CORS_ALLOW_METHODS,
+} from "@elizaos/cloud-shared/lib/cors-constants";
+import { assertSafeOutboundUrl } from "@elizaos/cloud-shared/lib/security/outbound-url";
+import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
+import { affiliatesService } from "@elizaos/cloud-shared/lib/services/affiliates";
+import { containersService } from "@elizaos/cloud-shared/lib/services/containers";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { assertInferenceCredentialActive } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import {
+  RETIRED_MCP_LISTING_PRICE_POINTS,
+  userMcpsService,
+} from "@elizaos/cloud-shared/lib/services/user-mcps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-
 import {
   admitFlatGenerativeOperation,
   asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
-import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
-import { safeFetch } from "@/lib/security/safe-fetch";
-import { affiliatesService } from "@/lib/services/affiliates";
-import { containersService } from "@/lib/services/containers";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { userMcpsService } from "@/lib/services/user-mcps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   createMcpProxyHopDeadline,
   isMcpProxyHopDeadline,
@@ -147,7 +156,7 @@ export function resolveMcpProxyView(params: {
 /**
  * Byte budgets for the two bodies this route buffers into the isolate.
  *
- * The numbers are not new: `@/lib/services/oauth/credential-broker.ts` — the
+ * The numbers are not new: `@elizaos/cloud-shared/lib/services/oauth` — the
  * platform's other "proxy one call to a caller-supplied host" service — caps
  * the request body it accepts at 1 MB and derives its response budget from that
  * cap so the two halves cannot drift (#23900). Same shape of hop, same numbers,
@@ -325,7 +334,10 @@ app.post("/", async (c) => {
       return c.json({ error: "MCP not found" }, 404);
     }
 
-    const creditsRequired = Number(mcp.credits_per_request || "1");
+    // Paid listings are retired (#22961): the listing price is never charged,
+    // whatever a stale row stores. Only an affiliate surcharge on a positive
+    // base could apply, and the base is zero, so the whole call is free.
+    const creditsRequired = RETIRED_MCP_LISTING_PRICE_POINTS;
     let affiliateOwnerId: string | undefined;
     let affiliateCodeId: string | undefined;
 
@@ -542,52 +554,66 @@ app.post("/", async (c) => {
       };
 
       try {
-        admission = await admitFlatGenerativeOperation({
-          c,
-          context: {
-            organizationId: user.organization_id,
-            userId: user.id,
-            apiKeyId: caller.apiKeyId,
-            model: `mcp/${mcp.id}`,
-            provider: "mcp",
-            billingSource: "selfhosted",
-            requestId,
-            description: `MCP: ${mcp.name}`,
-            metadata: {
-              mcp_id: mcp.id,
-              mcp_name: mcp.name,
-              base_credits: creditsRequired.toFixed(4),
-              affiliate_fee: affiliateFeeCredits.toFixed(4),
-              platform_fee: platformFeeCredits.toFixed(4),
-              total_credits_charged: totalCreditsRequired.toFixed(4),
-              base_amount_usd: formatOrganizationCreditUsd(
-                chargeReceipt.baseAmountUsd,
-              ),
-              affiliate_fee_usd: formatOrganizationCreditUsd(
-                chargeReceipt.affiliateFeeUsd,
-              ),
-              platform_fee_usd: formatOrganizationCreditUsd(
-                chargeReceipt.platformFeeUsd,
-              ),
-              total_amount_usd: formatOrganizationCreditUsd(
-                chargeReceipt.totalAmountUsd,
-              ),
-              credit_unit: ORGANIZATION_CREDIT_UNIT,
-              ...(affiliateOwnerId && { affiliate_owner_id: affiliateOwnerId }),
-              ...(affiliateCodeId && { affiliate_code_id: affiliateCodeId }),
+        if (chargeReceipt.totalAmountUsd <= 0) {
+          // Nothing to reserve. Run the deferred strong credential check now,
+          // before the upstream call, instead of at disposal.
+          const credential = credentialGuard.credentialForAdmission();
+          if (credential) {
+            await assertInferenceCredentialActive(
+              user.organization_id,
+              credential,
+            );
+          }
+        } else {
+          admission = await admitFlatGenerativeOperation({
+            c,
+            context: {
+              organizationId: user.organization_id,
+              userId: user.id,
+              apiKeyId: caller.apiKeyId,
+              model: `mcp/${mcp.id}`,
+              provider: "mcp",
+              billingSource: "selfhosted",
+              requestId,
+              description: `MCP: ${mcp.name}`,
+              metadata: {
+                mcp_id: mcp.id,
+                mcp_name: mcp.name,
+                base_credits: creditsRequired.toFixed(4),
+                affiliate_fee: affiliateFeeCredits.toFixed(4),
+                platform_fee: platformFeeCredits.toFixed(4),
+                total_credits_charged: totalCreditsRequired.toFixed(4),
+                base_amount_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.baseAmountUsd,
+                ),
+                affiliate_fee_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.affiliateFeeUsd,
+                ),
+                platform_fee_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.platformFeeUsd,
+                ),
+                total_amount_usd: formatOrganizationCreditUsd(
+                  chargeReceipt.totalAmountUsd,
+                ),
+                credit_unit: ORGANIZATION_CREDIT_UNIT,
+                ...(affiliateOwnerId && {
+                  affiliate_owner_id: affiliateOwnerId,
+                }),
+                ...(affiliateCodeId && { affiliate_code_id: affiliateCodeId }),
+              },
             },
-          },
-          apiKeyId: caller.apiKeyId,
-          admissionSnapshot: caller.admissionSnapshot,
-          credential: credentialGuard.credentialForAdmission(),
-          atomicProviderBoundary: true,
-          cost: {
-            baseTotalCost: chargeReceipt.baseAmountUsd,
-            platformMarkup:
-              chargeReceipt.totalAmountUsd - chargeReceipt.baseAmountUsd,
-            totalCost: chargeReceipt.totalAmountUsd,
-          },
-        });
+            apiKeyId: caller.apiKeyId,
+            admissionSnapshot: caller.admissionSnapshot,
+            credential: credentialGuard.credentialForAdmission(),
+            atomicProviderBoundary: true,
+            cost: {
+              baseTotalCost: chargeReceipt.baseAmountUsd,
+              platformMarkup:
+                chargeReceipt.totalAmountUsd - chargeReceipt.baseAmountUsd,
+              totalCost: chargeReceipt.totalAmountUsd,
+            },
+          });
+        }
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return c.json(
@@ -615,7 +641,7 @@ app.post("/", async (c) => {
 
       let mcpResponse: Response;
       try {
-        await activeAdmission.markProviderDispatched?.();
+        await activeAdmission?.markProviderDispatched?.();
         providerDispatchStarted = true;
         if (isExternalEndpoint) {
           // safeFetch validates + IP-pins the request and (redirect: "error")
@@ -778,9 +804,9 @@ app.post("/", async (c) => {
       const rpcErrored = mcpResponse.ok && isJsonRpcErrorResponse(responseBody);
       if (mcpResponse.ok && !rpcErrored) {
         const accountingTask = (async () => {
-          const reconciliation = await activeAdmission.settle(
-            chargeReceipt.totalAmountUsd,
-          );
+          const reconciliation = activeAdmission
+            ? await activeAdmission.settle(chargeReceipt.totalAmountUsd)
+            : null;
           if (reconciliation?.adjustmentType === "uncollected_overage") {
             logger.error("[MCP Proxy] Final charge was not collected", {
               mcpId,
@@ -806,7 +832,7 @@ app.post("/", async (c) => {
               responseTime: Date.now() - startTime,
               success: true,
               preChargeTransactionId:
-                activeAdmission.reservation?.reservationTransactionId ??
+                activeAdmission?.reservation?.reservationTransactionId ??
                 requestId,
               totalCreditsCharged: totalCreditsRequired,
               affiliateFeeCredits,

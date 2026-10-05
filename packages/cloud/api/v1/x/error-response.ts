@@ -9,9 +9,9 @@
  * the Worker bundle stays fetch-native via `failureResponse`.
  */
 
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { XServiceError } from "@elizaos/cloud-shared/lib/services/x";
 import type { Context } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { XServiceError } from "@/lib/services/x";
 
 type ErrorWithStatus = Error & { status: number };
 

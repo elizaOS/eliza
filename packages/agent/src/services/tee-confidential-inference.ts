@@ -4,8 +4,8 @@
  * weights — single-blob or streaming per-shard — in process memory for the
  * in-domain model runtime. Every seam fails closed (policy gates, digest
  * bindings, GCM auth tags), and plaintext weights/key material are zeroized and
- * never touch disk, env, or the logger. See the block below for the hardware
- * boundary: real TDX/CoVE quote verification is not yet enforced on this path.
+ * never touch disk, env, or the logger. See the block below for where trust in
+ * the released key comes from.
  */
 import {
   createCipheriv,
@@ -19,7 +19,10 @@ import type {
   TeeKeyReleaseClient,
   TeeKeyReleaseResult,
 } from "./tee-key-release.ts";
-import type { TeeEvidencePolicy } from "./tee-policy.ts";
+import {
+  policyAdmitsOnlyDstackTdx,
+  type TeeEvidencePolicy,
+} from "./tee-policy.ts";
 
 /**
  * Confidential-inference unseal path (plan §2.2 steps 4–7).
@@ -29,13 +32,12 @@ import type { TeeEvidencePolicy } from "./tee-policy.ts";
  * memory and hands the plaintext to the in-domain model runtime. The plaintext
  * weights and the model key never touch disk, env, or the structured logger.
  *
- * HARDWARE BOUNDARY (fail-closed): real TDX/CoVE quote-signature verification
- * is BLOCKED on hardware (plan Phase B2/C1). This path verifies a normalized
- * evidence document + nonce binding + measurement match only. It must not be
- * presented as hardware-verified trust until B2/C1 land. If the key-release
- * client rejects the evidence, no key is returned, the ciphertext stays sealed,
- * and unseal throws — the negative path is enforced by data unavailability,
- * not by a software flag that could be patched out.
+ * TRUST SOURCE: the key-release client appraises its own freshly collected,
+ * nonce-bound evidence against the policy before a key is used; for dstack TDX
+ * that is the pinned verifier plus in-repo raw quote checks. If the evidence is
+ * rejected, no key is returned, the ciphertext stays sealed, and unseal throws
+ * — the negative path is enforced by data unavailability, not by a software
+ * flag that could be patched out.
  */
 
 export const MODEL_KEY_ID = "model-key" as const;
@@ -50,8 +52,17 @@ export const MODEL_KEY_ID = "model-key" as const;
  * - `cloud`: weights decrypt inside a remote dstack CVM behind a confidential
  *   H100 GPU. The policy MUST gate `claims.gpuProtected === true` and a
  *   `measurements.gpuFirmware` golden digest instead.
+ * - `tdx-cpu`: weights decrypt and run on the CPU inside the agent's own
+ *   dstack Intel TDX CVM; no accelerator leaves the TD boundary. The policy MUST
+ *   admit only dstack TDX evidence, require `claims.debugDisabled === true`,
+ *   and gate the verifier-bound `app`, `compose` and `os` measurements. No
+ *   GPU/NPU claim is required because no GPU/NPU sees plaintext.
  */
-export type InferenceTopology = "local" | "cloud";
+export type InferenceTopology = "local" | "cloud" | "tdx-cpu";
+
+/** Measurements a `tdx-cpu` model-key policy must gate. */
+export const TDX_CPU_WEIGHTS_REQUIRED_MEASUREMENTS: readonly TeeMeasurementName[] =
+  ["app", "compose", "os"] as const;
 
 const DEFAULT_INFERENCE_TOPOLOGY: InferenceTopology = "local";
 
@@ -65,17 +76,38 @@ const DEFAULT_INFERENCE_TOPOLOGY: InferenceTopology = "local";
  *   - `requiredMeasurements.npuFirmware` is a non-empty golden digest.
  *
  * For the cloud topology it enforces the H100 confidential-GPU equivalent
- * (`gpuProtected` + `gpuFirmware`). This is an explicit, reusable assertion so
+ * (`gpuProtected` + `gpuFirmware`); GPU trust stays claim-based and must come
+ * from a GPU attestation verifier. The `tdx-cpu` topology instead requires a
+ * dstack-TDX-only policy with the deployment identity gated. This is an explicit, reusable assertion so
  * "no NPU/GPU confidential-I/O attestation ⇒ no private inference" is enforced
  * at the unseal seam, not left as an implicit production-profile default a
  * caller could forget. It checks that the *policy itself* will demand these
  * gates; `evaluateTeeEvidencePolicy` then enforces them against the evidence at
  * release time. It throws (fails closed) on any gap.
  */
-export function assertNpuPrivateInferenceAllowed(
+export function assertConfidentialInferenceTopologyAllowed(
   policy: TeeEvidencePolicy,
   topology: InferenceTopology = DEFAULT_INFERENCE_TOPOLOGY,
 ): void {
+  if (topology === "tdx-cpu") {
+    if (!policyAdmitsOnlyDstackTdx(policy))
+      throw new Error(
+        "private inference (tdx-cpu) requires a policy admitting only dstack TDX evidence.",
+      );
+    if (policy.requiredClaims?.debugDisabled !== true)
+      throw new Error(
+        'private inference (tdx-cpu) requires the policy to gate claim "debugDisabled" === true.',
+      );
+    const missing = TDX_CPU_WEIGHTS_REQUIRED_MEASUREMENTS.filter((name) => {
+      const digest = policy.requiredMeasurements?.[name];
+      return typeof digest !== "string" || digest.trim() === "";
+    });
+    if (missing.length > 0)
+      throw new Error(
+        `private inference (tdx-cpu) requires the policy to gate measurements: ${missing.join(", ")}.`,
+      );
+    return;
+  }
   const claim = topology === "local" ? "npuProtected" : "gpuProtected";
   const firmware: TeeMeasurementName =
     topology === "local" ? "npuFirmware" : "gpuFirmware";
@@ -176,7 +208,7 @@ export type ModelKeyUnsealResult = {
 export async function unsealModelWeights(
   config: ModelKeyUnsealConfig,
 ): Promise<ModelKeyUnsealResult> {
-  assertNpuPrivateInferenceAllowed(
+  assertConfidentialInferenceTopologyAllowed(
     config.policy,
     config.topology ?? DEFAULT_INFERENCE_TOPOLOGY,
   );
@@ -271,7 +303,7 @@ export async function unsealModelWeightsStreaming(
   config: StreamingUnsealConfig,
   onShard: ShardSink,
 ): Promise<StreamingUnsealResult> {
-  assertNpuPrivateInferenceAllowed(
+  assertConfidentialInferenceTopologyAllowed(
     config.policy,
     config.topology ?? DEFAULT_INFERENCE_TOPOLOGY,
   );

@@ -94,15 +94,6 @@ export function trackTimer(viewId: string): () => void {
   return makeDisposer(viewId, "pendingTimers");
 }
 
-/** Register a live heavy resource (WebGL/audio/video) for `viewId`. */
-export function trackMedia(
-  viewId: string,
-  kind: HeavyResourceKind,
-): () => void {
-  countersFor(viewId)[kind] += 1;
-  return makeDisposer(viewId, kind);
-}
-
 /** Current live-resource snapshot for `viewId` (all zeros if never tracked). */
 export function snapshotResourceCounters(
   viewId: string,
@@ -128,17 +119,6 @@ export function totalLiveResources(snapshot: ResourceCountersSnapshot): number {
     snapshot.heavyResources.audio +
     snapshot.heavyResources.video
   );
-}
-
-/** All view ids that currently hold at least one live resource. */
-export function viewsWithLiveResources(): string[] {
-  const ids: string[] = [];
-  for (const [viewId] of countersByView) {
-    if (totalLiveResources(snapshotResourceCounters(viewId)) > 0) {
-      ids.push(viewId);
-    }
-  }
-  return ids;
 }
 
 /** Test-only: wipe all counters so suites start from a clean registry. */

@@ -4,20 +4,20 @@
  * `eliza-anon-session` cookie. Public endpoint.
  */
 
-import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
-import { nanoid } from "nanoid";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   getIpKey,
   getRequestIp,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { createAnonymousUserAndSession } from "@/lib/services/anonymous-session-creator";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { createAnonymousUserAndSession } from "@elizaos/cloud-shared/lib/services/anonymous-session-creator";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { setCookie } from "hono/cookie";
+import { nanoid } from "nanoid";
+import { z } from "zod";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
 

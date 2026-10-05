@@ -52,10 +52,8 @@ import sys
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.eliza1_manifest import (  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import (  # noqa: E402
     Eliza1ManifestError,
     merge_kernel_manifest_fragments,
 )
@@ -68,7 +66,7 @@ log = logging.getLogger("gguf_eliza1_apply")
 
 
 # Source-of-truth slot numbers for the Eliza-added GGML types. Mirrors
-# packages/app-core/scripts/aosp/compile-libllama.mjs (preamble) and the
+# packages/app/scripts/aosp/compile-libllama.ts (preamble) and the
 # elizaOS/llama.cpp fork's gguf-py/gguf/constants.py.
 ELIZA1_GGML_TYPES = {
     "TBQ3_0": 43,

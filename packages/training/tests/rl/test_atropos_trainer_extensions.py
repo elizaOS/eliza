@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from src.training.atropos_trainer import (
+from eliza_training.rl.atropos_trainer import (
     AtroposTrainingConfig,
     _build_apollo_param_groups,
     _create_optimizer,

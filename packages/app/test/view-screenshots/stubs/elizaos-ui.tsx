@@ -1,16 +1,13 @@
-/**
- * Stub for `@elizaos/ui` — the giant renderer barrel — used by the view
- * screenshot harness. Aliased in place of the real package via vite
- * `resolve.alias`. Mirrors exactly the surface the views' own jsdom tests mock:
- *
- * - `client.getBaseUrl()` / `client.sendChatMessage()` — touched only by the
- *   views' default fetcher seams, which the harness always overrides; provided
- *   so the module-level affordances (Connect / Add / Set-goal buttons) don't
- *   throw on render.
- * - `useApp()` / `useMediaQuery()` — used by CalendarView + CalendarSection.
- * - `Button` / `Spinner` / `Popover*` / `SegmentedControl` — Calendar UI
- *   primitives, stubbed to plain DOM exactly like CalendarSection.test.tsx.
- */
+// Preserve the public UI surface; only the explicit fixture seams below differ.
+export * from "../../../../ui/src/index.ts";
+export { useAgentElement } from "./elizaos-ui-agent-surface";
+export {
+  dispatchFocusConnector,
+  dispatchNavigateViewEvent,
+  useViewEvent,
+  VIEW_EVENTS,
+} from "./elizaos-ui-events";
+export { useAppSelector } from "./elizaos-ui-state";
 
 import type {
   ButtonHTMLAttributes,
@@ -27,7 +24,6 @@ export class ElizaClient {
 
 export const client = {
   getBaseUrl: () => "http://test.local",
-  sendChatMessage: (..._args: unknown[]) => {},
   // Real hook calls this when useCalendarWeek is NOT stubbed; the harness
   // always stubs useCalendarWeek, so this is a never-resolving guard.
   getLifeOpsCalendarFeed: (..._args: unknown[]) => new Promise<never>(() => {}),

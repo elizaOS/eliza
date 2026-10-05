@@ -1,7 +1,8 @@
 /** Proxies the first-party login service with signed mutations and bounded public discovery. */
+
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { MiddlewareHandler } from "hono";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const REQUEST_TTL_SECONDS = 60;
@@ -745,7 +746,7 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
       {
         success: false,
         error: "steward_upstream_not_configured",
-        message: "Set LOGIN_API_URL to the owned @elizaos/login service.",
+        message: "Set LOGIN_API_URL to the owned @elizaos/auth service.",
       },
       503,
     );

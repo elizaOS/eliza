@@ -23,17 +23,3 @@ export const WALLPAPER_TEXT = {
   danger: "text-red-200/90",
   warning: "text-amber-200/80",
 } as const;
-
-/** Dark-glass recipes used by wallpaper-mounted shell chrome. */
-export const WALLPAPER_GLASS = {
-  notificationCenter:
-    "border border-white/55 bg-black/35 text-white backdrop-blur-md supports-[backdrop-filter]:bg-black/30",
-  menuPanel: "border border-white/14 bg-black/85",
-  menuStatus: "border border-white/12 bg-black/85",
-  menuWarning: "border border-amber-400/25 bg-black/85",
-  // Chat-native: message text floats directly on the overlay's shared panel
-  // glass — no per-message fill and no hairline box; row alignment + the float
-  // shadow carry the user/assistant distinction (#13560 de-slop).
-  messageBubble: "text-white",
-  floatingControl: "bg-black/55 text-white hover:bg-black/70",
-} as const;

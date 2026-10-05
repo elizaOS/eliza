@@ -77,7 +77,7 @@ function viewKindBadge(entry: ViewEntry): {
       title: `${entry.label} is marked preview`,
     };
   }
-  if (entry.viewKind === "developer" || entry.developerOnly === true) {
+  if (entry.viewKind === "developer") {
     return {
       label: "Dev",
       title: `${entry.label} is marked developer`,

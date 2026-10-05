@@ -4,8 +4,9 @@
  * these records capture who may see or change household plans and what every
  * affected adult actually approved.
  */
+
+import { isValidTimeZone } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import { isValidTimeZone } from "@elizaos/shared";
 
 export const HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID =
   "household.schedule.proposal.approval" as const;

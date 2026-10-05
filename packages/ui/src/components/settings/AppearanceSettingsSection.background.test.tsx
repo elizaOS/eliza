@@ -27,8 +27,6 @@ function seed(opts: { setBackgroundConfig?: (config: unknown) => void } = {}) {
       opts?.defaultValue ?? _key,
     uiLanguage: "en",
     setUiLanguage: vi.fn(),
-    uiThemeMode: "system",
-    setUiThemeMode: vi.fn(),
     backgroundConfig: { mode: "shader", color: "#ef5a1f" },
     setBackgroundConfig: opts.setBackgroundConfig ?? vi.fn(),
     undoBackgroundConfig: vi.fn(),

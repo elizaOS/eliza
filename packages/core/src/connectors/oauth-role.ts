@@ -14,7 +14,7 @@
  */
 
 import { logger } from "../logger";
-import type { ConnectorAccountRole } from "./account-manager";
+import type { ConnectorAccountRole } from "../types/connector-account-policy";
 
 const CANONICAL_ROLES = new Set<ConnectorAccountRole>([
 	"OWNER",

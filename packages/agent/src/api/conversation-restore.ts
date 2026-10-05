@@ -14,7 +14,12 @@
  * from optimistic client state. Callers run this as a background boot task and
  * decide how to surface failures at that boundary.
  */
-import { type AgentRuntime, stringToUuid, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  type Room,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import type { ConversationMeta } from "./server-types.ts";
 
@@ -59,29 +64,11 @@ export async function restoreConversationsFromDb(
     if (!convId || conversations.has(convId)) continue;
     if (deletedConversationIds.has(convId)) continue;
 
-    const msgs = await rt.getMemories({
-      roomId: room.id as UUID,
-      tableName: "messages",
-      limit: 1,
-    });
-    const updatedAt =
-      msgs.length > 0 && msgs[0].createdAt
-        ? new Date(msgs[0].createdAt).toISOString()
-        : new Date().toISOString();
-
-    const conversationMetadata = await extractConversationMetadataFromRoom(
-      room,
-      convId,
-    );
-
-    conversations.set(convId, {
-      id: convId,
-      title: room.name || "Chat",
-      roomId: room.id as UUID,
-      ...(conversationMetadata ? { metadata: conversationMetadata } : {}),
-      createdAt: updatedAt,
-      updatedAt,
-    });
+    const conv = await conversationMetaFromRoom(rt, room, convId);
+    // A delete or another restore can land while the room is read back.
+    if (deletedConversationIds.has(convId) || conversations.has(convId))
+      continue;
+    conversations.set(convId, conv);
     restored++;
   }
 
@@ -89,4 +76,62 @@ export async function restoreConversationsFromDb(
     log?.(`Restored ${restored} conversation(s) from database`);
   }
   return restored;
+}
+
+async function conversationMetaFromRoom(
+  rt: AgentRuntime,
+  room: Room,
+  convId: string,
+): Promise<ConversationMeta> {
+  const msgs = await rt.getMemories({
+    roomId: room.id as UUID,
+    tableName: "messages",
+    limit: 1,
+  });
+  const updatedAt =
+    msgs.length > 0 && msgs[0].createdAt
+      ? new Date(msgs[0].createdAt).toISOString()
+      : new Date().toISOString();
+
+  const conversationMetadata = await extractConversationMetadataFromRoom(
+    room,
+    convId,
+  );
+
+  return {
+    id: convId,
+    title: room.name || "Chat",
+    roomId: room.id as UUID,
+    ...(conversationMetadata ? { metadata: conversationMetadata } : {}),
+    createdAt: updatedAt,
+    updatedAt,
+  };
+}
+
+export async function restoreConversationFromDb(
+  rt: AgentRuntime,
+  target: ConversationRestoreTarget,
+  convId: string,
+): Promise<ConversationMeta | undefined> {
+  const existing = target.conversations.get(convId);
+  if (existing) return existing;
+  if (target.deletedConversationIds.has(convId)) return undefined;
+  const room = await rt.getRoom(
+    stringToUuid(`${WEB_CONVERSATION_CHANNEL_PREFIX}${convId}`),
+  );
+  if (
+    !room ||
+    room.worldId !== webChatWorldId(rt.character.name ?? "Eliza") ||
+    room.channelId !== `${WEB_CONVERSATION_CHANNEL_PREFIX}${convId}`
+  ) {
+    return undefined;
+  }
+  const conv = await conversationMetaFromRoom(rt, room, convId);
+  // Re-check after the reads: a DELETE tombstones the id meanwhile, and a
+  // concurrent restore of the same id must share one registered object.
+  if (target.deletedConversationIds.has(convId)) return undefined;
+  const registered = target.conversations.get(convId);
+  if (registered) return registered;
+  target.conversations.set(convId, conv);
+  return conv;
 }

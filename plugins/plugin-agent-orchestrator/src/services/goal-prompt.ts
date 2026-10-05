@@ -54,7 +54,7 @@ export const ECONOMICS_GOAL_CAPABILITIES: readonly string[] = [
   "create & configure Eliza Cloud apps (apps.create, apps.update, apps.monetization.update)",
   "deploy app containers and read container quota/billing (containers.create, containers.quota)",
   "search, buy, and attach domains (domains.search, domains.check, domains.buy, domains.attach)",
-  "create app charges & x402 payment requests (apps.charges.*, x402.requests.*)",
+  "create x402 payment requests (x402.requests.*)",
   "read credits, earnings, and redemption balances (credits.*, redemptions.*)",
 ];
 

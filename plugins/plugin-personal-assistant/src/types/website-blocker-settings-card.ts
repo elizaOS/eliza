@@ -2,4 +2,4 @@
 export type {
   WebsiteBlockerSettingsCardProps,
   WebsiteBlockerSettingsMode,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";

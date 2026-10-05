@@ -1,7 +1,7 @@
 /**
  * Canonical metadata for the built-in settings sections: id, English label, and
  * top-level group. Pure data (no React, no icons) so non-renderer consumers —
- * notably app-core's `dev-route-catalog` parity test — can import it and assert
+ * notably app's `dev-route-catalog` parity test — can import it and assert
  * the QA catalog never drifts from the UI without pulling the renderer graph.
  *
  * The React registry (`settings-sections.ts`) reads this list and attaches the
@@ -20,8 +20,7 @@ export interface SettingsSectionMeta {
   /**
    * Extra friendly tokens a user can type to jump here via `/settings <token>`,
    * beyond the `id` itself (which is always a token). This is the single source
-   * of truth for a section's aliases; `settings-section-tokens.ts` derives the
-   * token map from this field so the two never drift. Owner-declared, so a
+   * of truth for a section's aliases. Owner-declared, so a
    * plugin-registered section carries its own aliases (see the `aliases` field
    * on {@link SettingsSectionDef}) instead of needing a host edit to a central
    * literal.
@@ -141,7 +140,7 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
 ];
 
 /**
- * Built-in settings sections that intentionally stay out of the app-core route
+ * Built-in settings sections that intentionally stay out of the app route
  * catalog but still register in Settings. Action-side audits consume this list
  * so chat-write coverage for late-registered sections cannot drift silently.
  */

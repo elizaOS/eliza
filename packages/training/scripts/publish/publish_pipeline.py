@@ -21,8 +21,6 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve()
 _TRAINING_ROOT = _HERE.parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
 logging.basicConfig(
     level=logging.INFO,

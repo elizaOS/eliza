@@ -13,9 +13,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib.native_record import validate_native_record
+from eliza_training.lib.native_record import validate_native_record
 
 TROPE_STARTS = (
     "Certainly!",

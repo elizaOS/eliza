@@ -12,8 +12,8 @@
 import type {
   AppRunSummary,
   AppViewerAuthMessage,
-} from "../../api/client-types-cloud";
-import { resolveApiUrl } from "../../utils";
+} from "@elizaos/core/protocol";
+import { resolveApiUrl } from "../../utils/asset-url";
 
 function normalizeEmbedFlag(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === "true";

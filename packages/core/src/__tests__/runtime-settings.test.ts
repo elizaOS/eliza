@@ -4,11 +4,13 @@
  * prompt-batcher construction. Deterministic: real runtime over the in-memory
  * adapter, no model calls.
  */
+
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
-import type { Character } from "../types";
+import type { Character } from "../types/agent.js";
+import { stringToUuid as sqliteTestAgentId } from "../utils.js";
 
 describe("AgentRuntime.getSetting", () => {
 	it.each([false, true])(
@@ -156,6 +158,23 @@ describe("AgentRuntime.getSetting", () => {
 		expect(runtime.getSetting("DISCORD_APPLICATION_ID")).toBeNull();
 	});
 
+	it("updates and clears a boot-loaded secret through a non-secret write", () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "non-secret-write-over-secret-test",
+				secrets: { SOLANA_RPC_URL: "https://old-rpc.example" },
+			} as Character,
+		});
+
+		runtime.setSetting("SOLANA_RPC_URL", "https://new-rpc.example", false);
+		expect(runtime.getSetting("SOLANA_RPC_URL")).toBe(
+			"https://new-rpc.example",
+		);
+
+		runtime.setSetting("SOLANA_RPC_URL", null, false);
+		expect(runtime.getSetting("SOLANA_RPC_URL")).toBeNull();
+	});
+
 	it("replaces and revokes a boot-copied nested secret", () => {
 		const runtime = new AgentRuntime({
 			character: {
@@ -173,7 +192,10 @@ describe("AgentRuntime.getSetting", () => {
 	});
 
 	it("uses fresh constructor settings over DB-persisted agent settings on restart", async () => {
-		const adapter = new InMemoryDatabaseAdapter();
+		const adapter = SQLiteDatabaseAdapter.create(
+			":memory:",
+			sqliteTestAgentId("runtime-settings-restart-test"),
+		);
 		const characterName = "runtime-settings-restart-test";
 		const firstRuntime = new AgentRuntime({
 			character: {
@@ -218,26 +240,6 @@ describe("AgentRuntime.getSetting", () => {
 		} finally {
 			await firstRuntime.stop({ fast: true });
 			await secondRuntime?.stop({ fast: true });
-			firstRuntime.promptBatcher.dispose();
-			secondRuntime?.promptBatcher.dispose();
 		}
-	});
-});
-
-describe("AgentRuntime prompt batcher", () => {
-	it("creates a prompt batcher for production autonomy drains", () => {
-		const runtime = new AgentRuntime({
-			character: {
-				name: "prompt-batcher-runtime-test",
-			} as Character,
-		});
-
-		expect(runtime.promptBatcher).toBeDefined();
-		expect(runtime.promptBatcher.getStats()).toMatchObject({
-			totalDrains: 0,
-			totalCalls: 0,
-		});
-
-		runtime.promptBatcher.dispose();
 	});
 });

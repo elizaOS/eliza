@@ -18,7 +18,7 @@ export interface CachedPhraseAudio {
  * the cache and writes audio to the ring buffer on the same tick.
  *
  * Used by:
- *   - the preset generator (`scripts/voice-preset/build-default-voice-preset.mjs`),
+ *   - the preset generator (`scripts/voice-preset/build-default-voice-preset.ts`),
  *     which synthesizes these against a real OmniVoice TTS backend and writes
  *     the PCM into `cache/voice-preset-default.bin` — the seeded source of truth.
  *   - `EngineVoiceBridge.start()` indirectly: the bundle's preset ships these

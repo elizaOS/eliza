@@ -46,11 +46,11 @@ GPU targets, mirroring the launcher's ``VAST_GPU_TARGET`` env var:
 
 Usage from the shell:
 
-    python -m scripts.lib.vast pick blackwell6000-2x      # cheapest matching offer id
-    python -m scripts.lib.vast pick blackwell6000-2x --json
-    python -m scripts.lib.vast list  blackwell6000-2x     # human table
-    python -m scripts.lib.vast ssh   <instance_id>        # ssh user@host:port
-    python -m scripts.lib.vast wait  <instance_id>        # block until 'running'
+    python -m eliza_training.lib.vast pick blackwell6000-2x      # cheapest matching offer id
+    python -m eliza_training.lib.vast pick blackwell6000-2x --json
+    python -m eliza_training.lib.vast list  blackwell6000-2x     # human table
+    python -m eliza_training.lib.vast ssh   <instance_id>        # ssh user@host:port
+    python -m eliza_training.lib.vast wait  <instance_id>        # block until 'running'
 
 The module never reads or writes the API key — it relies on the ``vastai``
 CLI's own credential store (``~/.config/vastai/vast_api_key`` or
@@ -393,10 +393,8 @@ def is_alive(instance_id: int) -> bool:
     Used by the launcher's ``provision`` to refuse spinning up a duplicate
     when ``.vast_instance_id`` already points at a healthy instance.
     """
-    try:
-        info = show_instance(instance_id)
-    except subprocess.CalledProcessError:
-        return False
+    # A failed status request must abort provisioning, not authorize a duplicate rental.
+    info = show_instance(instance_id)
     if not info:
         return False
     status = info.get("actual_status") or info.get("intended_status") or ""
@@ -439,7 +437,7 @@ def _emit_offer(offer: Offer, *, as_json: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="scripts.lib.vast")
+    parser = argparse.ArgumentParser(prog="eliza_training.lib.vast")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_pick = sub.add_parser("pick", help="cheapest matching offer (KEY=VAL or --json)")

@@ -25,3 +25,16 @@ type StringEnv = Record<string, string | undefined>;
 export function isDeferredAdmissionEnabled(env: StringEnv = getCloudAwareEnv()): boolean {
   return (env.INFERENCE_DEFERRED_ADMISSION ?? "").trim() === "true";
 }
+
+/**
+ * Snapshot admission (`INFERENCE_SNAPSHOT_ADMISSION_ENABLED="true"`, default
+ * OFF) serves warm Worker admission from the published admission snapshot and
+ * the organization Durable Object, with no database work before dispatch. It
+ * only extends the deferred lane, so it also requires deferred admission.
+ */
+export function isSnapshotAdmissionEnabled(env: StringEnv = getCloudAwareEnv()): boolean {
+  return (
+    (env.INFERENCE_SNAPSHOT_ADMISSION_ENABLED ?? "").trim() === "true" &&
+    isDeferredAdmissionEnabled(env)
+  );
+}

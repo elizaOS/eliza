@@ -3,84 +3,28 @@
  * policies so the app shell does not maintain parallel routing tables.
  */
 
+import type {
+  AppShellBackgroundPolicy,
+  PageLayoutManifest,
+  ResolvedSurfaceManifest,
+} from "@elizaos/core";
 import {
-  type AppShellBackgroundPolicy,
-  type PageLayoutManifest,
-  type ResolvedSurfaceManifest,
   resolveSurfaceBackgroundPolicy,
   resolveSurfaceManifest,
-} from "@elizaos/core";
+} from "@elizaos/core/protocol";
 import {
   BUILTIN_ROUTE_IDS,
   type BuiltinRouteSurfaceDeclaration,
   resolveBuiltinRouteDescriptor,
 } from "./navigation/builtin-route-descriptors";
 
-/**
- * Declarative registry for the app's builtin (host-owned) tab surfaces.
- *
- * Historically `App.tsx` routed builtin surfaces through TWO parallel,
- * hand-maintained name-keyed enumerations that could silently drift:
- *
- *  1. `renderStaticViewRouterTab` — a `directViews` object literal plus a chain
- *     of `if (tab === "...")` branches deciding which component + wrapper each
- *     builtin tab renders (App.tsx item #34, target line ~1218).
- *  2. `builtinRouteBackgroundPolicy` — a second `if (tab === "...")` chain
- *     deciding each builtin tab's screen background policy (target line ~770).
- *
- * A tab present in one chain but absent (or aliased differently) in the other
- * was an unobservable drift bug: e.g. a builtin surface that renders fine but
- * paints the wrong background layer, or an alias honored by the router but not
- * the background resolver.
- *
- * This module is the single source of truth for builtin-tab METADATA: the
- * canonical id, any legacy aliases that resolve onto it, and its background
- * policy declaration. Both the router and the background resolver in `App.tsx`
- * derive from it, so adding/renaming a builtin surface is a one-line data edit
- * that both consumers pick up — no second list to keep in sync.
- *
- * The React render functions themselves stay co-located in `App.tsx` (they
- * close over many local view components), but they are keyed off the canonical
- * ids declared here, and alias resolution is owned here too.
- */
-
-/**
- * How a builtin tab declares its surface manifest across its routes.
- *
- *  - A single {@link SurfaceManifest} — one manifest for every route under the
- *    tab (e.g. chat/background always paint the shared wallpaper).
- *  - `{ shared: (path) => boolean }` — the tab paints the shared wallpaper only
- *    when the live navigation path satisfies the predicate (e.g. the launcher
- *    root of a tab that owns opaque sub-routes), otherwise it falls through to
- *    the caller's downstream resolution. Matches the two path-conditional
- *    surfaces (`views`, `apps`) whose launcher root is immersive but whose
- *    sub-routes are opaque.
- *
- * Either form is resolved through the grant-gated {@link resolveSurfaceManifest}
- * so a builtin tab paints the wallpaper only when its manifest explicitly grants
- * `wallpaper` — the same accidental-opt-in guard the per-view manifest enforces
- * (#13452). A tab with no `surface` field declares no builtin-level policy and
- * falls through to the caller's downstream resolution (registered views etc.).
- */
 export type BuiltinTabSurfaceDecl = BuiltinRouteSurfaceDeclaration;
 
 export interface BuiltinTabMetadata {
   /** Canonical builtin tab id (the id the render map is keyed by). */
   readonly id: string;
-  /**
-   * Legacy tab ids that resolve onto this canonical id. Kept as an explicit,
-   * tested host-owned alias table (e.g. `triggers` -> `automations`) rather
-   * than duplicated if-branches.
-   */
-  readonly aliases?: readonly string[];
   /** Semantic page topology consumed by canonical shell implementations. */
   readonly layout: PageLayoutManifest;
-  /**
-   * Retired browser paths that still resolve to this tab before the shell
-   * replaces them with the tab's canonical `TAB_PATHS` route. Path aliases
-   * belong here with the builtin owner instead of in renderer/platform code.
-   */
-  readonly pathAliases?: readonly string[];
   /**
    * Builtin-level surface manifest (or path predicate for tabs whose launcher
    * root differs from their sub-routes). Omitted = no builtin policy (fall
@@ -89,106 +33,26 @@ export interface BuiltinTabMetadata {
   readonly surface?: BuiltinTabSurfaceDecl;
 }
 
-/**
- * The canonical builtin-tab table. IDs here are the keys the `App.tsx` render
- * map uses; aliases and surface manifests are consumed by the resolvers below.
- *
- * Every canonical route is represented because layout classification is
- * exhaustive. Optional aliases and surface policies are folded in from the
- * same React-free route descriptor authority.
- */
-const BUILTIN_ALIAS_IDS_BY_CANONICAL = new Map<string, string[]>();
-for (const id of BUILTIN_ROUTE_IDS) {
-  const descriptor = resolveBuiltinRouteDescriptor(id);
-  if (descriptor && descriptor.canonicalId !== id) {
-    const aliases = BUILTIN_ALIAS_IDS_BY_CANONICAL.get(descriptor.canonicalId);
-    if (aliases) aliases.push(id);
-    else BUILTIN_ALIAS_IDS_BY_CANONICAL.set(descriptor.canonicalId, [id]);
-  }
-}
-
-/**
- * Canonical built-in metadata derived from the route descriptors. Alias rows
- * are folded into their owner so every resolver inherits one classification.
- */
 export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] =
-  BUILTIN_ROUTE_IDS.flatMap((id) => {
+  BUILTIN_ROUTE_IDS.map((id) => {
     const descriptor = resolveBuiltinRouteDescriptor(id);
-    if (!descriptor || descriptor.canonicalId !== id) return [];
-
-    const aliases = BUILTIN_ALIAS_IDS_BY_CANONICAL.get(id);
-    const surface = descriptor.surface;
-    const pathAliases = descriptor.legacyPaths;
-    const metadata: BuiltinTabMetadata = {
+    if (!descriptor) throw new Error(`Builtin tab "${id}" has no descriptor`);
+    return {
       id,
       layout: descriptor.layout,
-      ...(aliases ? { aliases } : {}),
-      ...(pathAliases ? { pathAliases } : {}),
-      ...(surface ? { surface } : {}),
+      ...(descriptor.surface ? { surface: descriptor.surface } : {}),
     };
-    return [metadata];
   });
 
-/** Fast id -> metadata lookup, including alias ids. */
-const BUILTIN_TAB_BY_ID: ReadonlyMap<string, BuiltinTabMetadata> = (() => {
-  const map = new Map<string, BuiltinTabMetadata>();
-  for (const entry of BUILTIN_TAB_METADATA) {
-    if (map.has(entry.id)) {
-      throw new Error(
-        `Duplicate builtin tab id "${entry.id}" in BUILTIN_TAB_METADATA`,
-      );
-    }
-    map.set(entry.id, entry);
-    for (const alias of entry.aliases ?? []) {
-      if (map.has(alias)) {
-        throw new Error(
-          `Builtin tab alias "${alias}" (of "${entry.id}") collides with an existing id/alias`,
-        );
-      }
-      map.set(alias, entry);
-    }
-  }
-  return map;
-})();
+const BUILTIN_TAB_BY_ID = new Map(
+  BUILTIN_TAB_METADATA.map((entry) => [entry.id, entry]),
+);
 
-/** Fast retired-path -> canonical builtin metadata lookup. */
-const BUILTIN_TAB_BY_PATH_ALIAS: ReadonlyMap<string, BuiltinTabMetadata> =
-  (() => {
-    const map = new Map<string, BuiltinTabMetadata>();
-    for (const entry of BUILTIN_TAB_METADATA) {
-      for (const pathAlias of entry.pathAliases ?? []) {
-        if (map.has(pathAlias)) {
-          throw new Error(
-            `Builtin path alias "${pathAlias}" is claimed by more than one tab`,
-          );
-        }
-        map.set(pathAlias, entry);
-      }
-    }
-    return map;
-  })();
-
-/**
- * Resolve a (possibly aliased) tab id to its canonical builtin id. Tabs that
- * are not declared builtin aliases are returned unchanged, so plugin/dynamic
- * tabs pass straight through.
- */
-export function resolveBuiltinTabId(tab: string): string {
-  return resolveBuiltinRouteDescriptor(tab)?.canonicalId ?? tab;
-}
-
-/** The semantic page layout for a built-in tab, inherited through aliases. */
+/** The semantic page layout for a built-in tab. */
 export function resolveBuiltinPageLayout(
   tab: string,
 ): PageLayoutManifest | null {
   return resolveBuiltinRouteDescriptor(tab)?.layout ?? null;
-}
-
-/** Resolve a normalized retired browser path to its canonical builtin tab. */
-export function resolveBuiltinTabIdForPathAlias(
-  normalizedPath: string,
-): string | null {
-  return BUILTIN_TAB_BY_PATH_ALIAS.get(normalizedPath)?.id ?? null;
 }
 
 /**

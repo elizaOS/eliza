@@ -32,6 +32,14 @@ import {
   organizationLifecycleAllowsNewWork,
   readOrganizationLifecycleAuthority,
 } from "./account-lifecycle-authority";
+import {
+  AUTO_TOP_UP_AFFILIATE_MAX_MARKUP_PERCENT,
+  AUTO_TOP_UP_AFFILIATE_PLATFORM_FEE_PERCENT,
+  type AutoTopUpChargeBreakdown,
+  autoTopUpChargeBreakdownFromCents,
+  computeAutoTopUpChargeCents,
+} from "./auto-top-up-charge-breakdown";
+import { CreatorMonetizationRetiredError } from "./creator-monetization-retirement";
 import { emailService } from "./email";
 import { invalidateOrgTierCache } from "./org-rate-limits";
 import { acquireProviderAdmission, releaseProviderAdmission } from "./provider-admission";
@@ -58,8 +66,8 @@ const AUTO_TOP_UP_CONTROL_PAUSED_MESSAGE =
   "Auto top-up charging is paused until durable cutover is activated";
 const AUTO_TOP_UP_LEGACY_RECONCILIATION_MESSAGE =
   "An earlier card payment requires reconciliation before auto top-up can continue";
-const AFFILIATE_PLATFORM_PERCENT = new Decimal(20);
-const AFFILIATE_MAX_PERCENT = new Decimal(1000);
+const AFFILIATE_PLATFORM_PERCENT = AUTO_TOP_UP_AFFILIATE_PLATFORM_FEE_PERCENT;
+const AFFILIATE_MAX_PERCENT = AUTO_TOP_UP_AFFILIATE_MAX_MARKUP_PERCENT;
 const CLAIM_DISABLED_REASONS = new Set<AutoTopUpNotEligibleReason>([
   "invalid_balance",
   "invalid_threshold",
@@ -219,6 +227,14 @@ function exactUsdCents(raw: string | undefined): number | null {
   const [whole, fraction] = raw.split(".");
   const cents = BigInt(whole) * 100n + BigInt(fraction);
   return cents <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(cents) : null;
+}
+
+function parseAffiliateMarkupPercent(raw: unknown): Decimal {
+  const percent = new Decimal(String(raw));
+  if (!percent.isFinite() || percent.isNegative() || percent.gt(AFFILIATE_MAX_PERCENT)) {
+    throw new CorruptAutoTopUpNumberError("markup_percent", raw);
+  }
+  return percent;
 }
 
 function canonicalBalanceNumber(raw: string): number {
@@ -1140,20 +1156,12 @@ export class AutoTopUpService {
       userId = attribution.userId;
       const referrer = attribution.affiliateCode;
       if (referrer) {
-        const percent = new Decimal(referrer.markup_percent);
-        if (!percent.isFinite() || percent.isNegative() || percent.gt(AFFILIATE_MAX_PERCENT)) {
-          throw new CorruptAutoTopUpNumberError("markup_percent", referrer.markup_percent);
-        }
-        affiliateFeeCents = new Decimal(attempt.creditAmountCents)
-          .mul(percent)
-          .div(100)
-          .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-          .toNumber();
-        platformFeeCents = new Decimal(attempt.creditAmountCents)
-          .mul(AFFILIATE_PLATFORM_PERCENT)
-          .div(100)
-          .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-          .toNumber();
+        const charge = computeAutoTopUpChargeCents(
+          attempt.creditAmountCents,
+          parseAffiliateMarkupPercent(referrer.markup_percent),
+        );
+        affiliateFeeCents = charge.affiliateFeeCents;
+        platformFeeCents = charge.platformFeeCents;
         affiliateOwnerId = referrer.user_id;
         affiliateCodeId = referrer.id;
       }
@@ -1558,6 +1566,52 @@ export class AutoTopUpService {
     return users.find((user) => user.email)?.email ?? null;
   }
 
+  /**
+   * Pre-save disclosure (#23020): what a card auto top-up of `amountUsd` would
+   * charge right now, using the same attribution lookup and formula as the
+   * durable charge. `attribution` is `unavailable` when the lookup fails; the
+   * durable charge then drops the optional surcharge, so the preview shows the
+   * base only and says so. Attribution is re-read at charge time, and the
+   * receipt carries the amounts actually charged.
+   */
+  async previewCharge(
+    organizationId: string,
+    amountUsd: number,
+  ): Promise<{
+    attribution: "none" | "affiliate" | "unavailable";
+    breakdown: AutoTopUpChargeBreakdown;
+  }> {
+    const creditAmountCents = new Decimal(amountUsd)
+      .mul(100)
+      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+      .toNumber();
+    let markupPercent: Decimal | null = null;
+    let attribution: "none" | "affiliate" | "unavailable" = "none";
+    try {
+      const { affiliateCode } =
+        await affiliatesRepository.getBillingAttributionForOrganization(organizationId);
+      if (affiliateCode) {
+        markupPercent = parseAffiliateMarkupPercent(affiliateCode.markup_percent);
+        attribution = "affiliate";
+      }
+    } catch (error) {
+      // error-policy:J4 mirrors the durable charge: an unavailable lookup or a
+      // corrupt markup drops the optional surcharge. The preview says so.
+      logger.warn("[AutoTopUp] Charge preview could not resolve affiliate attribution", {
+        organizationId,
+        error: safeErrorMessage(error),
+      });
+      markupPercent = null;
+      attribution = "unavailable";
+    }
+    return {
+      attribution,
+      breakdown: autoTopUpChargeBreakdownFromCents(
+        computeAutoTopUpChargeCents(creditAmountCents, markupPercent),
+      ),
+    };
+  }
+
   async getSettings(organizationId: string): Promise<{
     enabled: boolean;
     amount: number | null;
@@ -1593,6 +1647,11 @@ export class AutoTopUpService {
     },
     authorizeMutation: () => Promise<void>,
   ): Promise<void> {
+    // Creator earnings are frozen (#22961 / #23022). Funding hosting from them
+    // would be an automatic payout, so the toggle can only stay off.
+    if (settings.payAsYouGoFromEarnings === true) {
+      throw new CreatorMonetizationRetiredError("earnings_funded_hosting");
+    }
     const organization = await organizationsRepository.findById(organizationId);
     if (!organization) {
       throw new AutoTopUpSettingsUnavailableError(organizationId);

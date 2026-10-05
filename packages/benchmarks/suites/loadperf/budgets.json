@@ -1,0 +1,30 @@
+{
+  "_comment": "KPI budgets for the loadperf harness. Each KPI script compares measured values against these and exits non-zero when a hard budget is exceeded. Sizes are brotli-compressed bytes unless noted. Tune as optimizations land; the goal is monotonic improvement, so prefer ratcheting these down over time.",
+  "bundle": {
+    "initialEntryBrotliBytes": 3260000,
+    "totalAssetsBrotliBytes": 6000000,
+    "largestChunkBrotliBytes": 1600000,
+    "maxDuplicateLibBytes": 25000,
+    "perChunkWarnBrotliBytes": 600000,
+    "eagerGraphBrotliBytes": 3330000
+  },
+  "boot": {
+    "coldReadyMs": 25000,
+    "warmReadyMs": 12000,
+    "peakRssMb": 1600,
+    "steadyRssMb": 1500
+  },
+  "frontend": {
+    "fcpMs": 2500,
+    "lcpMs": 4000,
+    "ttiMs": 6000,
+    "jsTransferredBytes": 3500000,
+    "requestCount": 120,
+    "longTasksMs": 2000
+  },
+  "statesync": {
+    "broadcastP95Ms": 400,
+    "reconnectMs": 6000,
+    "maxDesyncEvents": 0
+  }
+}

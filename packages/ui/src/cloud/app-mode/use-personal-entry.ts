@@ -16,7 +16,7 @@
  */
 
 import { type UseQueryResult, useQuery } from "@tanstack/react-query";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import {
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
@@ -50,11 +50,6 @@ function takePersonalEntryHandoff(authToken: string): JoinFlowResult | null {
   const pending = pendingPersonalEntryHandoff;
   pendingPersonalEntryHandoff = null;
   return pending?.authToken === authToken ? pending.result : null;
-}
-
-/** The persisted-active-server id a resolved personal Eliza binds under. */
-export function personalEntryBindingId(result: JoinFlowResult): string {
-  return `cloud:${result.agentId}`;
 }
 
 /**

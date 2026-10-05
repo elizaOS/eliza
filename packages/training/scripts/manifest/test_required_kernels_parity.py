@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from scripts.manifest.eliza1_manifest import (
+from eliza_training.manifest.eliza1_manifest import (
     ELIZA_1_TIERS,
     RECIPE_TARGETS_BY_REQUIRED_KERNEL,
     REQUIRED_KERNELS_BY_TIER,

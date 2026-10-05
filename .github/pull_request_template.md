@@ -1,93 +1,29 @@
-<!-- Fill every visible section. Keep every evidence row visible; use N/A with a concrete reason when a row does not apply. -->
-
 # Relates to
 
-<!--
-Link the issue, ticket, or Project card. For agent/kanban work, follow
-CONTRIBUTING.md and keep the Project item status current.
--->
+<!-- Link the issue or explain the problem. -->
 
-Definition of Done: full standard in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+# Change
 
-- [ ] This PR targets `develop` and is rebased onto the latest `origin/develop`
-      with zero conflicts (`git fetch origin && git rebase origin/develop`).
-- [ ] `bun install` and `bun run verify` were run after sync, or any failure is
-      recorded below with the exact unrelated blocker.
-- [ ] A reviewer can confirm the change works without reading the code, from the
-      evidence attached below.
-
-# Sync with develop
-
-- [ ] Rebased/merged onto the latest `origin/develop`; zero conflicts.
-- [ ] `bun run verify` passes post-sync, or the exact unrelated blocker is
-      documented in **Known gaps / failures** below.
-
-<!-- This risks section must be filled out before the final review and merge. -->
-
-# Risks
-
-<!--
-Low, medium, large. List what kind of risks and what could be affected.
--->
-
-# Background
-
-## What does this PR do?
-
-## What kind of change is this?
-
-<!--
-Bug fixes (non-breaking change which fixes an issue)
-Improvements (misc. changes to existing features)
-Features (non-breaking change which adds functionality)
-Updates (new versions of included code)
--->
-
-<!-- This "Why" section is most relevant if there are no linked issues explaining why. If there is a related issue, it might make sense to skip this why section. -->
-<!--
-## Why are we doing this? Any context or related work?
--->
-
-# Documentation changes needed?
-
-<!--
-My changes do not require a change to the project documentation.
-My changes require a change to the project documentation.
-If documentation change is needed: I have updated the documentation accordingly.
--->
-
-<!-- Please show how you tested the PR. This will really help if the PR needs to be retested and probably help the PR get merged quicker. -->
+<!-- Describe the resulting behavior and any material risks. -->
 
 # Testing
 
-## Where should a reviewer start?
+<!-- List commands and results. Include reproduction or review steps when needed. -->
 
-## Detailed testing steps
-
-<!--
-None: Automated tests are acceptable.
--->
-
-<!--
-- As [anon/admin], go to [link]
-  - [do action]
-  - verify [result]
--->
+- [ ] Targets `develop` and has no conflicts with the latest `origin/develop`.
+- [ ] Ran `bun install` and `bun run verify` after syncing; record blockers below.
+- [ ] Updated relevant documentation.
 
 # Evidence Gate
 
-Evidence must match the exact commit reviewed. `scripts/pr-evidence.mjs rows`
-sets this marker from the live PR head; rerun it after every push.
+Evidence must match the reviewed commit. `packages/scripts/pr-evidence.ts rows`
+sets the marker from the live PR head; rerun after each push.
 <!-- evidence-head:replace-with-current-40-character-head-sha -->
 
-Any change testable on the frontend is not mergeable without a video walkthrough,
-before/after screenshots, and logs. If you did not attach them, say why.
-
-Attach each applicable artifact **inline in this PR** (drag-and-drop into the
-description or a comment), or write `N/A - <reason>` on the row. Do not leave
-evidence rows blank. Videos must be **MP4** (GitHub renders them inline);
-prefer **JPG over PNG** for screenshots. Do not commit evidence files to the
-repo.
+Keep every row. Attach artifacts inline or write `N/A - <reason>` where
+inapplicable. UI changes require desktop/mobile before-and-after screenshots,
+a walkthrough, logs, and OCR review. Use MP4 videos and preferably JPG images.
+Keep generated artifacts out of source control.
 
 <!-- evidence-row:before-screenshots -->
 - [ ] Before full-page screenshots are attached for every affected UI surface
@@ -117,107 +53,20 @@ repo.
 
 # Evidence Details
 
-## Real LLM-call trajectory
+<!-- Link artifacts or paste transcripts in <details> blocks or fenced code blocks.
+For agent behavior changes, include a real-model trajectory. For voice changes,
+include captured audio. Explain how the evidence exercises the changed behavior. -->
 
-For agent/action/provider/prompt/model changes, use a real live-model run, not
-the deterministic proxy. Produce with:
-
-```bash
-  packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out.json>
-```
-
-Link the JSON report, run viewer, native jsonl, or write `N/A - <reason>`.
-
-## Backend + frontend logs
-
-Backend: structured logger lines ([ClassName] …) showing the code path firing end to end.
-Frontend: console + network trace showing the request/response and state change.
-Paste here inline (wrap long output in a `<details>` block), or write
-`N/A - <reason>`.
-
-## Screenshots (before / after) + video walkthrough
-
-Full-page before AND after screenshots are required for any UI change. Include a
-video click-through of the flow.
-
-```bash
-  bun run evidence:doctor                 (check capture tools; prints fixes for any missing)
-  bun run test:e2e:record                 (general E2E recordings)
-  bun run test:matrix:review              (capture into one verified evidence bundle)
-  bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>
-                                          (re-open the exact matrix run)
-  bun run --cwd packages/app audit:app    (app + cloud UI — REQUIRED for UI changes)
-```
-
-The matrix command creates and verifies one named bundle, then passes that
-exact run to the reviewer. Do not replace the `--bundle` path with raw producer
-directories; `--source` is only for explicit archived/ad-hoc compatibility.
-
-A UI-touching diff (rendered `.tsx`/`.css`/`.svg` under `packages/app`,
-`packages/ui`, `apps/app`, …) MUST attach real screenshot/video/OCR artifacts —
-the CI evidence gate rejects `N/A` on those rows for such diffs, label or not.
-If a capture tool is missing, `evidence:doctor` prints the install command;
-install it rather than marking evidence `N/A`.
-
-### Before
-
-### After
-
-### Walkthrough video
-
-Or write `N/A - <reason>`.
-
-## Audio / voice walkthrough
-
-For voice / transcript / TTS / STT / omnivoice changes, attach captured audio of
-the real round-trip plus a narrated walkthrough. Or write `N/A - <reason>`.
+For app UI changes, run `bun run --cwd packages/app audit:app` and inspect the
+captures. `bun run test:matrix:review` produces and reviews a verified bundle;
+use the bundle path printed by the command to revisit that same run.
 
 ## Known gaps / failures
 
-List any command failure, missing artifact, unavailable device, unavailable live
-service, or evidence row marked N/A. Include the exact reason and why it is not a
-blocker for this PR.
+<!-- Record failed commands, missing evidence, unavailable services/devices,
+and remaining validation. For unavailable CI, include the checked commit,
+run URLs, local results, and why the failures are outside this change. -->
 
-## Maintainer CI exception record
+## Deployment
 
-Write `N/A - no exception requested` unless a maintainer is invoking the narrow
-[Maintainer CI exception](../CONTRIBUTING.md#maintainer-ci-exception). When it
-applies, preserve every field below and link the exact evidence.
-
-- PR head SHA: `N/A - no exception requested`
-- Validated `origin/develop` SHA: `N/A - no exception requested`
-- Live ruleset readback and named bypass eligibility:
-  `N/A - no exception requested`
-- Queued or failing checks and run URLs: `N/A - no exception requested`
-- Infrastructure-only or unrelated-failure proof: `N/A - no exception requested`
-- Exact-head commands, exit status, and artifacts: `N/A - no exception requested`
-- Exact-head security, secret-scan, and provenance results:
-  `N/A - no exception requested`
-- Conflict-free and affected-path failure attestation:
-  `N/A - no exception requested`
-- Independent approving reviewer: `N/A - no exception requested`
-- Bypass authorizer: `N/A - no exception requested`
-- Merge method: `N/A - no exception requested`
-- Rollback owner: `N/A - no exception requested`
-- Post-merge `develop` validation: `N/A - no exception requested`
-
-<!-- If there is anything about the deployment, please make a note. -->
-<!--
-# Deploy Notes
--->
-
-<!--  Copy and paste command line output. -->
-<!--
-## Database changes
--->
-
-<!--  Please specify deploy instructions if there is something more than the automated steps. -->
-<!--
-## Deployment instructions
--->
-
-<!-- If you are on Discord, please join https://discord.gg/ai16z and state your Discord username here for the contributor role and join us in #development-feed -->
-<!--
-## Discord username
-
--->
+<!-- Include migration or rollout steps only when needed. -->

@@ -6,6 +6,11 @@
  * against the cloud-api worker.
  */
 
+import {
+  DEDICATED_COMPUTE_PRICE_HEADER,
+  getDedicatedComputePriceAcceptance,
+} from "@elizaos/cloud-sdk/browser-contracts";
+
 import { expect } from "@playwright/test";
 import { retrySharedRuntimeWarming } from "./shared-runtime";
 
@@ -138,7 +143,10 @@ export async function startAgentProvisioning(
     `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/provision`,
     {
       method: "POST",
-      headers: authHeaders(apiKey),
+      headers: {
+        ...authHeaders(apiKey),
+        [DEDICATED_COMPUTE_PRICE_HEADER]: getDedicatedComputePriceAcceptance(),
+      },
     },
   );
   expect(
@@ -199,7 +207,15 @@ export async function agentLifecycleAction(
     `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/${action}`,
     {
       method: "POST",
-      headers: authHeaders(apiKey),
+      headers: {
+        ...authHeaders(apiKey),
+        ...(action === "wake" || action === "resume"
+          ? {
+              [DEDICATED_COMPUTE_PRICE_HEADER]:
+                getDedicatedComputePriceAcceptance(),
+            }
+          : {}),
+      },
     },
   );
   const text = await res.text();
@@ -307,17 +323,17 @@ export async function runScheduledBackups(
   endpoints: ProvisioningEndpoints,
   opts: { intervalMs?: number } = {},
 ): Promise<{ scanned: number; enqueued: number }> {
-  const intervalMs = opts.intervalMs ?? 0;
-  const res = await fetch(
-    `${endpoints.apiUrl}/api/v1/cron/agent-backups?intervalMs=${intervalMs}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${CRON_SECRET}`,
-        "Content-Type": "application/json",
-      },
+  const url = new URL(`${endpoints.apiUrl}/api/v1/cron/agent-backups`);
+  if (opts.intervalMs !== undefined) {
+    url.searchParams.set("intervalMs", String(opts.intervalMs));
+  }
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${CRON_SECRET}`,
+      "Content-Type": "application/json",
     },
-  );
+  });
   expect(
     res.status,
     `scheduled backups cron returned ${res.status}: ${await res.clone().text()}`,

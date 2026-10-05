@@ -7,9 +7,9 @@
  * exempts the control from the home-screen pan gesture.
  */
 
+import type { UiLanguage } from "@elizaos/core/protocol";
 import { Check, ChevronDown } from "lucide-react";
 import { useState } from "react";
-import type { UiLanguage } from "../../i18n/messages";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,

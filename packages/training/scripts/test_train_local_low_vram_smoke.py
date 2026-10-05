@@ -20,10 +20,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
 
-train_local = importlib.import_module("train_local")
+train_local = importlib.import_module("eliza_training.train_local")
 
 
 class _FakeParam:

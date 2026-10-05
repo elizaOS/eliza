@@ -13,10 +13,10 @@
  */
 
 import { resolveClientChatAdminEntityId } from "@elizaos/agent/api/client-chat-admin";
-import { resolveFallbackOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
 import {
   deterministicOwnerEntityId,
   type IAgentRuntime,
+  resolveFallbackOwnerEntityId,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";

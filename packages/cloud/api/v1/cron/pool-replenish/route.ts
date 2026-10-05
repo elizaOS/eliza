@@ -1,7 +1,11 @@
 // Handles v1 cloud API v1 cron pool replenish route traffic with route-local auth expectations.
+
+import { verifyCronSecret } from "@elizaos/cloud-shared/lib/auth/cron";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { verifyCronSecret } from "@/lib/auth/cron";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { cronSupersededByDaemon } from "../../_container-control-plane-forward";
 
 /**

@@ -1,9 +1,5 @@
-/** Verifies MessageContent slash-command bolding through the package's configured test harness. */
+/** Verifies slash-prefixed chat text renders without command formatting. */
 // @vitest-environment jsdom
-//
-// A user message that is a slash command renders the leading `/command` token
-// in bold (so the transcript mirrors the composer's inline autocomplete);
-// assistant text and plain user prose render without the bold token.
 
 import { cleanup, render, screen } from "@testing-library/react";
 import type * as React from "react";
@@ -40,27 +36,20 @@ function withApp(node: React.ReactElement) {
   );
 }
 
-describe("MessageContent slash-command bolding", () => {
+describe("MessageContent slash-prefixed literal text", () => {
   afterEach(() => {
     cleanup();
     __setAppValueForTests(null);
   });
 
-  it("renders the leading slash token in bold for a user command", () => {
-    withApp(<MessageContent message={message("user", "/imagine a cat")} />);
-    const token = screen.getByTestId("slash-command-token");
-    expect(token.textContent).toBe("/imagine");
-    expect(token.className).toContain("font-bold");
-    // The argument remainder stays in the surrounding (non-bold) text.
-    expect(screen.getByText(/a cat/)).toBeTruthy();
-  });
-
-  it("bolds a bare command with no arguments", () => {
-    withApp(<MessageContent message={message("user", "/settings")} />);
-    expect(screen.getByTestId("slash-command-token").textContent).toBe(
-      "/settings",
-    );
-  });
+  it.each(["/imagine a cat", "/settings"])(
+    "renders %s as ordinary user text",
+    (text) => {
+      withApp(<MessageContent message={message("user", text)} />);
+      expect(screen.getByText(text)).toBeTruthy();
+      expect(screen.queryByTestId("slash-command-token")).toBeNull();
+    },
+  );
 
   it("does not bold a leading slash in assistant text", () => {
     withApp(

@@ -1,8 +1,10 @@
+/** Composes SDK transport from the current endpoint, purchaser credential and explicit native product selection. */
 import { CloudApiClient, ElizaCloudClient } from "@elizaos/cloud-sdk";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   type CloudSdkAuthorityTuple,
   getAppId,
+  getNativeApplicationSlot,
   resolveCloudSdkAuthorityTuple,
 } from "./config";
 
@@ -36,6 +38,7 @@ function assertOutboundAllowed(tuple: CloudSdkAuthorityTuple): void {
 function appAttributionHeaders(
   runtime: IAgentRuntime,
 ): Record<string, string> | undefined {
+  if (getNativeApplicationSlot(runtime)) return undefined;
   const appId = getAppId(runtime);
   return appId ? { "X-App-Id": appId } : undefined;
 }
@@ -47,6 +50,7 @@ export function createCloudApiClient(runtime: IAgentRuntime, embedding = false):
     apiBaseUrl: trimTrailingSlash(tuple.apiBaseUrl),
     baseUrl: apiBaseToSiteBaseUrl(tuple.apiBaseUrl),
     apiKey: tuple.apiKey,
+    nativeApplicationSlot: getNativeApplicationSlot(runtime),
     defaultHeaders: appAttributionHeaders(runtime),
   }).v1;
 }
@@ -59,6 +63,7 @@ export function createElizaCloudClient(runtime: IAgentRuntime): ElizaCloudClient
     apiBaseUrl,
     baseUrl: apiBaseToSiteBaseUrl(apiBaseUrl),
     apiKey: tuple.apiKey,
+    nativeApplicationSlot: getNativeApplicationSlot(runtime),
     defaultHeaders: appAttributionHeaders(runtime),
   });
 }

@@ -24,8 +24,7 @@ for (const routeCase of ROUTE_CASES) {
   }) => {
     await openAppPath(page, routeCase.path);
     await expect(page).toHaveURL(
-      routeCase.expectedUrl ??
-        new RegExp(`${escapeRegExp(routeCase.path)}$`),
+      routeCase.expectedUrl ?? new RegExp(`${escapeRegExp(routeCase.path)}$`),
     );
     if ("readyChecks" in routeCase) {
       await assertReadyChecks(

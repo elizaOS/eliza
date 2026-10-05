@@ -8,6 +8,9 @@
 
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
+import { and, eq } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
+import { apiKeys } from "../../db/schemas/api-keys";
 import type { RouteParams } from "../api/hono-next-style-params";
 import {
   consumeInferenceRateLimit,
@@ -447,9 +450,36 @@ function rateLimitUnavailableResponse(): Response {
   );
 }
 
+const API_KEY_RATE_LIMIT_WINDOW_MS = 60_000;
+
+/**
+ * Reads the presenting key's own cap (`api_keys.rate_limit`, requests per
+ * minute across every endpoint) inside the policy transaction. The cap only
+ * narrows the plan tier: it is returned only when it can bind, i.e. when it is
+ * below the plan's combined per-minute tier across all endpoints.
+ */
+export async function readApiKeyRateLimit(
+  tx: DbTransaction,
+  organizationId: string,
+  apiKeyId: string,
+  tier: ReturnType<typeof requireOrganizationRateTier>,
+): Promise<{ id: string; maxRequests: number } | null | "missing"> {
+  const [row] = await tx
+    .select({ rateLimit: apiKeys.rate_limit })
+    .from(apiKeys)
+    .where(and(eq(apiKeys.id, apiKeyId), eq(apiKeys.organization_id, organizationId)));
+  if (!row) return "missing";
+  const planCeiling = tier.completionsRpm + tier.embeddingsRpm + tier.standardRpm + tier.strictRpm;
+  if (!Number.isSafeInteger(row.rateLimit) || row.rateLimit <= 0) return "missing";
+  return row.rateLimit < planCeiling ? { id: apiKeyId, maxRequests: row.rateLimit } : null;
+}
+
 /**
  * Per-org tier-based rate limit. Returns a 429 `Response` when denied, or `null` when allowed.
  * Call INSIDE the handler AFTER auth — same pattern as enforceMcpOrganizationRateLimit.
+ *
+ * With `apiKeyId`, the key's own `rate_limit` (requests per minute across all
+ * endpoints) is enforced as a cap under the plan tier in the same decision.
  */
 export async function enforceOrgRateLimit(
   organizationId: string,
@@ -459,6 +489,8 @@ export async function enforceOrgRateLimit(
     executionCtx?: OrgTierCacheExecutionContext;
     /** Config carried by the combined inference decision; avoids a tier KV read. */
     config?: OrgRateLimitConfig;
+    /** Presenting API key; its `rate_limit` caps requests under the plan tier. */
+    apiKeyId?: string | null;
   } = {},
 ): Promise<Response | null> {
   try {
@@ -468,12 +500,23 @@ export async function enforceOrgRateLimit(
     return await admitOrganizationPolicy(
       organizationId,
       options.config?.authority,
-      async (policy) => {
+      async (policy, tx) => {
         const authoritativeConfig: OrgRateLimitConfig = {
           windowMs: 60_000,
           maxRequests: requireOrganizationRateTier(policy)[`${endpointType}Rpm`],
           authority: policy.authority,
         };
+        const apiKeyCap = options.apiKeyId
+          ? await readApiKeyRateLimit(
+              tx,
+              organizationId,
+              options.apiKeyId,
+              requireOrganizationRateTier(policy),
+            )
+          : null;
+        // The key authenticated this request but is gone from the primary
+        // (revoked or deleted mid-flight): refuse rather than drop its cap.
+        if (apiKeyCap === "missing") return rateLimitUnavailableResponse();
         if (options.cacheOnly) {
           // A supplied observation must still agree with current authority.
           // With no observation, the locked primary read already owns the
@@ -493,9 +536,15 @@ export async function enforceOrgRateLimit(
               endpointType,
               windowMs,
               maxRequests,
+              ...(apiKeyCap && { apiKey: apiKeyCap }),
             });
             if (result.allowed) return null;
-            return rateLimitExceededResponse(result, maxRequests, windowMs, "durable-object");
+            return rateLimitExceededResponse(
+              result,
+              apiKeyCap ? Math.min(maxRequests, apiKeyCap.maxRequests) : maxRequests,
+              windowMs,
+              "durable-object",
+            );
           } catch (error) {
             // error-policy:J4 inference requests fail closed with a distinct
             // retryable response when the authoritative Worker limiter is down.
@@ -513,6 +562,21 @@ export async function enforceOrgRateLimit(
 
         // Mirror withRateLimit: skip when Redis is not configured (dev/staging)
         if (process.env.REDIS_RATE_LIMITING !== "true") return null;
+
+        if (apiKeyCap) {
+          const keyResult = await checkRateLimitRedis(
+            `apikey:${apiKeyCap.id}:rpm`,
+            API_KEY_RATE_LIMIT_WINDOW_MS,
+            apiKeyCap.maxRequests,
+          );
+          if (!keyResult.allowed)
+            return rateLimitExceededResponse(
+              keyResult,
+              apiKeyCap.maxRequests,
+              API_KEY_RATE_LIMIT_WINDOW_MS,
+              "redis",
+            );
+        }
 
         const leaseEnabled = isHotPathCachesEnabled();
         const leaseKey = `${organizationId}:${endpointType}`;

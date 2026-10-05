@@ -1,7 +1,6 @@
 /** Scenario fixture for selfcontrol nighttime wind down; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 
-import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoActionCalled, scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -13,7 +12,7 @@ export default scenario({
     "A nightly wind-down block request without specific apps should prompt for which apps to include.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

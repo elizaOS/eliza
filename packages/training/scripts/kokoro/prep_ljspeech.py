@@ -25,7 +25,7 @@ What this does:
    16-bit PCM mono into wavs_norm/. Loudness-normalizes to -23 LUFS.
 4. Phonemizes the normalized text via misaki[en] (Kokoro's first-party
    phonemizer). Falls back to a raw-text passthrough only with --no-phonemize
-   for smoke tests; that mode is rejected by finetune_kokoro.py.
+   for smoke tests; that mode is rejected by finetune_kokoro_full.py.
 5. Splits 95/5 train/val (configurable; seeded by config.seed).
 6. Emits prep_manifest.json with: clip count, total duration, sha256 of
    metadata.csv, phonemizer version, tool versions.
@@ -42,21 +42,17 @@ Usage:
     python3 scripts/kokoro/prep_ljspeech.py \\
         --data-dir /path/to/LJSpeech-1.1 \\
         --run-dir /tmp/kokoro-run \\
-        --config configs/kokoro_lora_ljspeech.yaml
+        --config configs/kokoro_full_ljspeech.yaml
 
-    # CI smoke (no audio libs needed):
-    python3 scripts/kokoro/prep_ljspeech.py --synthetic-smoke --run-dir /tmp/smoke
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import logging
 import random
-import sys
 import wave
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -64,8 +60,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-from _config import load_config  # noqa: E402
+from eliza_training.kokoro._config import load_config  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("kokoro.prep")
@@ -79,12 +74,7 @@ class ClipRecord:
     norm_text: str
 
 
-def _sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+from eliza_training.lib.file_integrity import sha256_file as _sha256_file
 
 
 def _read_metadata(metadata_path: Path) -> list[ClipRecord]:
@@ -115,7 +105,7 @@ def _read_metadata(metadata_path: Path) -> list[ClipRecord]:
 
 def _probe_wav_stdlib(path: Path) -> tuple[int, int, float]:
     """Return (sample_rate, n_channels, duration_seconds) using the stdlib `wave`
-    module. Used in --synthetic-smoke / no-librosa paths."""
+    module. Used when audio processing is explicitly disabled."""
     with wave.open(str(path), "rb") as wf:
         sr = wf.getframerate()
         ch = wf.getnchannels()
@@ -137,7 +127,7 @@ def _validate_and_resample(
 
     Returns one stat record per kept clip.
 
-    When `no_audio_libs=True` (synthetic-smoke), uses only the stdlib `wave`
+    When `no_audio_libs=True`, uses only the stdlib `wave`
     module and copies the file as-is. This is enough to exercise the pipeline
     shape end-to-end in CI without installing librosa/soundfile/pyloudnorm.
     """
@@ -284,7 +274,7 @@ def _emit_manifest(
         "schemaVersion": 1,
         "kind": "kokoro-prep-manifest",
         "generatedAt": datetime.now(timezone.utc).isoformat(),
-        "synthetic": bool(args.synthetic_smoke),
+        "synthetic": False,
         "input": {
             "dataDir": str(args.data_dir) if args.data_dir else None,
             "metadataSha256": metadata_sha256,
@@ -334,25 +324,6 @@ def _hard_validations(*, records: list[ClipRecord], stats: list[dict[str, Any]],
         raise ValueError(f"train/val overlap: {sorted(overlap)[:5]}")
 
 
-def _materialize_synthetic_dataset(target: Path, *, n_clips: int, sample_rate: int) -> None:
-    """Drop a tiny LJSpeech-format dataset into `target` for smoke runs."""
-    wavs = target / "wavs"
-    wavs.mkdir(parents=True, exist_ok=True)
-    metadata = target / "metadata.csv"
-    n_frames = sample_rate * 6  # 6 seconds per clip, clearing the 60s hard gate.
-    lines = []
-    for i in range(n_clips):
-        clip_id = f"SMOKE-{i:04d}"
-        wav_path = wavs / f"{clip_id}.wav"
-        with wave.open(str(wav_path), "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(sample_rate)
-            wf.writeframes(b"\x00\x00" * n_frames)
-        lines.append(f"{clip_id}|sample {i}|sample {i}")
-    metadata.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -363,29 +334,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--config",
         type=str,
-        default="kokoro_lora_ljspeech.yaml",
+        default="kokoro_full_ljspeech.yaml",
         help="YAML config (path or bare name resolved in configs/).",
     )
     p.add_argument(
         "--no-phonemize",
         action="store_true",
-        help="Skip phonemization (smoke only; finetune_kokoro.py will reject this).",
+        help="Skip phonemization (smoke only; finetune_kokoro_full.py will reject this).",
     )
     p.add_argument(
         "--no-audio-libs",
         action="store_true",
         help="Skip librosa/soundfile/pyloudnorm (smoke only; copies wavs unchanged).",
-    )
-    p.add_argument(
-        "--synthetic-smoke",
-        action="store_true",
-        help="Synthesize a tiny fixture dataset and run the full prep pipeline on it.",
-    )
-    p.add_argument(
-        "--synthetic-clips",
-        type=int,
-        default=12,
-        help="Number of synthetic clips (only with --synthetic-smoke).",
     )
     p.add_argument(
         "--speaker-id", default="0", help="Speaker id written into the train/val lists."
@@ -402,19 +362,9 @@ def main(argv: list[str] | None = None) -> int:
     processed = run_dir / "processed"
     processed.mkdir(parents=True, exist_ok=True)
 
-    if args.synthetic_smoke:
-        if args.data_dir is None:
-            args.data_dir = run_dir / "synthetic_input"
-        _materialize_synthetic_dataset(
-            args.data_dir,
-            n_clips=args.synthetic_clips,
-            sample_rate=cfg["sample_rate"],
-        )
-        args.no_audio_libs = True
-        args.no_phonemize = True
 
     if args.data_dir is None:
-        log.error("--data-dir is required (or use --synthetic-smoke)")
+        log.error("--data-dir is required")
         return 2
 
     metadata_path = args.data_dir / "metadata.csv"

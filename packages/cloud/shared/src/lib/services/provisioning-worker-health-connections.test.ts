@@ -1,3 +1,4 @@
+/** Verifies heartbeat Redis connection ownership using a real local TCP transport. */
 import { describe, expect, test } from "bun:test";
 import { createServer, type Socket } from "node:net";
 import { SocketRedis } from "../cache/socket-redis";

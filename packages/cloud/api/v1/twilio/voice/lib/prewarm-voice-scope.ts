@@ -3,9 +3,9 @@
  * cold database work overlaps call setup, the greeting, and caller speech.
  */
 
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
-import { logger } from "@/lib/utils/logger";
-import type { Bindings } from "@/types/cloud-worker-env";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { Bindings } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "../../../voice/session/lib/internal-eliza-conversation-fetch";
 
 interface VoicePrewarmExecutionContext {

@@ -68,7 +68,7 @@ export const seoMessages: SeoMessages = {
     billing: {
       title: "Facturación y créditos",
       description:
-        "Gestiona tus créditos, revisa tu uso y compra paquetes. Precios transparentes para todas las operaciones de IA.",
+        "Suscríbete a Plus o Pro para obtener una asignación mensual, o recarga créditos de pago por uso de $5 a $1000. Precios transparentes para todas las operaciones de IA.",
     },
     apiKeys: {
       title: "Claves de API",

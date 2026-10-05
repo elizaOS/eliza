@@ -11,8 +11,8 @@ import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
 import { Textarea } from "../../../../components/ui/textarea";
 import { ApiError, api } from "../../../lib/api-client";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { usePageTitle } from "../../lib/use-page-title";
 
 type TFn = ReturnType<typeof useCloudT>;
 
@@ -93,7 +93,7 @@ export default function BallotPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
 
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.ballot.metaTitle", { defaultValue: "Ballot | Eliza Cloud" }),
   );
 

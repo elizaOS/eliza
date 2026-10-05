@@ -3,8 +3,8 @@
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 import { seedScreenTimeSessions } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({
@@ -17,7 +17,7 @@ export default scenario({
     "User asks which social sites took the most time. Seeded website sessions must surface through the screen-time query path.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

@@ -11,7 +11,7 @@
  * toggling, the app must restart to pick up the new state.
  */
 
-import type { PermissionState, Prober } from "../contracts.js";
+import type { PermissionState, Prober } from "@elizaos/core";
 import {
   buildState,
   getNativeDylib,

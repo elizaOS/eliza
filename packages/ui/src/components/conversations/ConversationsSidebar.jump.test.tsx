@@ -30,8 +30,8 @@ type AppState = Record<string, unknown>;
 
 const appMock = vi.hoisted(() => ({ value: {} as AppState }));
 
-vi.mock("../../state", () => ({
-  useApp: () => appMock.value,
+vi.mock("../../state/useApp", () => ({ useApp: () => appMock.value }));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: AppState) => unknown) => sel(appMock.value),
   useAppSelectorShallow: (sel: (value: AppState) => unknown) =>
     sel(appMock.value),
@@ -72,9 +72,7 @@ const clientMock = vi.hoisted(() => ({
   spawnShellSession: vi.fn(async () => ({ sessionId: "term-1" })),
 }));
 
-vi.mock("../../api", () => ({
-  client: clientMock,
-}));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 
 import { ConversationsSidebar } from "./ConversationsSidebar";
 

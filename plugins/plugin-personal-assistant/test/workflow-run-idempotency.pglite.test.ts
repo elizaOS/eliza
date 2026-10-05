@@ -4,10 +4,10 @@
  * production must add/backfill/index the column before repository claims run.
  */
 import { PGlite } from "@electric-sql/pglite";
+import type { LifeOpsWorkflowRun } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LifeOpsWorkflowRun } from "../src/contracts/index.ts";
 import { LifeOpsRepository } from "../src/lifeops/repository.ts";
 
 const AGENT_A = "agent-a";

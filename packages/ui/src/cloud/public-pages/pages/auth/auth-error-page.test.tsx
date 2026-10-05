@@ -43,7 +43,9 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     options?.defaultValue ?? _key,
 }));
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
 import AuthErrorPage, { AuthErrorPageForHost } from "./auth-error-page";
 

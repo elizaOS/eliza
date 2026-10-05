@@ -24,19 +24,25 @@ import {
   ElevenLabsError,
   ElevenLabsTimeoutError,
 } from "@elevenlabs/elevenlabs-js";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  getErrorStatusCode,
+  nextJsonFromCaughtError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { getElevenLabsService } from "@elizaos/cloud-shared/lib/services/elevenlabs";
+import { runFlatProviderOperation } from "@elizaos/cloud-shared/lib/services/generative-operation";
+import { voiceCloningService } from "@elizaos/cloud-shared/lib/services/voice-cloning";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   asGenerativeCacheApiError,
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { getErrorStatusCode, nextJsonFromCaughtError } from "@/lib/api/errors";
-import { getElevenLabsService } from "@/lib/services/elevenlabs";
-import { runFlatProviderOperation } from "@/lib/services/generative-operation";
-import { voiceCloningService } from "@/lib/services/voice-cloning";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * An ElevenLabs lookup that 404s means the voice row exists in our DB but the

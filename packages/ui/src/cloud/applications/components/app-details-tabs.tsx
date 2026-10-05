@@ -12,7 +12,6 @@ import {
   Megaphone,
   Rocket,
   Settings,
-  TrendingUp,
   Users,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -20,10 +19,9 @@ import { Button } from "../../../components/ui/button";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
 import { AppAnalytics } from "./app-analytics";
+import { AppConnectionsSettings } from "./app-connections-settings";
 import { AppDomains } from "./app-domains";
-import { AppEarningsDashboard } from "./app-earnings-dashboard";
 import { AppFrontendHosting } from "./app-frontend-hosting";
-import { AppMonetizationSettings } from "./app-monetization-settings";
 import { AppOverview } from "./app-overview";
 import { AppPromote } from "./app-promote";
 import { AppSettings } from "./app-settings";
@@ -40,7 +38,6 @@ type TabValue =
   | "domains"
   | "promote"
   | "analytics"
-  | "earnings"
   | "monetization"
   | "users"
   | "settings";
@@ -61,11 +58,6 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
       value: "monetization",
       label: t("cloud.apps.tab.monetize", { defaultValue: "Monetize" }),
       icon: DollarSign,
-    },
-    {
-      value: "earnings",
-      label: t("cloud.apps.tab.earnings", { defaultValue: "Earnings" }),
-      icon: TrendingUp,
     },
     {
       value: "hosting",
@@ -114,7 +106,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
   return (
     <div className="space-y-3 sm:space-y-6">
       {/* Tabs */}
-      <div className="grid grid-cols-2 gap-1 rounded-sm border border-border bg-bg-accent p-1 sm:grid-cols-3 xl:grid-cols-9">
+      <div className="grid grid-cols-2 gap-1 rounded-sm border border-border bg-bg-accent p-1 sm:grid-cols-3 xl:grid-cols-8">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -143,8 +135,9 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
         {activeTab === "domains" && <AppDomains appId={app.id} />}
         {activeTab === "promote" && <AppPromote app={app} />}
         {activeTab === "analytics" && <AppAnalytics appId={app.id} />}
-        {activeTab === "earnings" && <AppEarningsDashboard appId={app.id} />}
-        {activeTab === "monetization" && <AppMonetizationSettings app={app} />}
+        {activeTab === "monetization" && (
+          <AppConnectionsSettings appId={app.id} appName={app.name} />
+        )}
         {activeTab === "users" && <AppUsers appId={app.id} />}
         {activeTab === "settings" && <AppSettings app={app} />}
       </div>

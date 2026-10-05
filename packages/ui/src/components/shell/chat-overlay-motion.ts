@@ -45,3 +45,8 @@ export function sheetBlackoutProgress(
   const reveal = halfDetentPx > 0 ? clamp01(threadHeightPx / halfDetentPx) : 0;
   return Math.max(reveal, clamp01(fullBleedProgress));
 }
+
+/** Shared opacity easing for sheet content and composer controls. */
+export const OVERLAY_EASE: [number, number, number, number] = [
+  0.22, 1, 0.36, 1,
+];

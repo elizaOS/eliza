@@ -15,5 +15,3 @@ Inspect:
 ```bash
 bun run --cwd packages/cloud/e2e domains:ledger
 ```
-
-Full semantics: [`../docs/domain-purchase-live.md`](../docs/domain-purchase-live.md).

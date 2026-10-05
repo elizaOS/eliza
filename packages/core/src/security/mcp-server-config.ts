@@ -5,7 +5,11 @@
 
 import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
-import { isPrivateIpAddress, normalizeHostLike } from "../network/ssrf.ts";
+import {
+	isBlockedHostname,
+	isPrivateIpAddress,
+	normalizeHostLike,
+} from "../network/ssrf.ts";
 import {
 	BLOCKED_SPAWN_ENV_KEYS,
 	BLOCKED_SPAWN_ENV_PREFIXES,
@@ -137,10 +141,6 @@ const BLOCKED_DENO_FLAGS = new Set([
 	"--no-prompt",
 ]);
 const BLOCKED_DENO_FLAG_PREFIXES = ["--unstable"] as const;
-const BLOCKED_MCP_REMOTE_HOST_LITERALS = new Set([
-	"localhost",
-	"metadata.google.internal",
-]);
 
 function blockedMcpEnvPrefix(upperKey: string): string | null {
 	for (const prefix of BLOCKED_SPAWN_ENV_PREFIXES) {
@@ -255,11 +255,9 @@ async function resolveMcpRemoteUrlRejection(
 	const hostname = normalizeHostLike(parsed.hostname);
 	if (!hostname) return "URL hostname is required";
 
-	if (
-		BLOCKED_MCP_REMOTE_HOST_LITERALS.has(hostname) ||
-		hostname.endsWith(".localhost") ||
-		hostname.endsWith(".local")
-	) {
+	// The shared SSRF hostname policy is the single denylist; blocked names are
+	// rejected before any DNS resolution.
+	if (isBlockedHostname(hostname)) {
 		return `URL host "${hostname}" is blocked for security reasons`;
 	}
 

@@ -101,7 +101,7 @@ export interface VoiceProfileArtifact {
 	provenance: {
 		createdAt: string | null;
 		deterministic: true;
-		generator: "app-core.voice-profile-artifact";
+		generator: "app.voice-profile-artifact";
 	};
 }
 
@@ -425,7 +425,7 @@ export function createVoiceProfileArtifact(args: {
 		provenance: {
 			createdAt: args.createdAt ?? null,
 			deterministic: true,
-			generator: "app-core.voice-profile-artifact",
+			generator: "app.voice-profile-artifact",
 		},
 	};
 

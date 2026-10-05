@@ -12,18 +12,17 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import { EntityStore, RelationshipStore } from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
-import { EntityStore } from "../src/lifeops/entities/store";
+} from "../../../packages/app/test/helpers/real-runtime.ts";
 import { SELF_ENTITY_ID } from "../src/lifeops/entities/types";
 import {
   applyExtractedEdges,
   managerOfAtCompany,
 } from "../src/lifeops/relationships/extraction";
-import { RelationshipStore } from "../src/lifeops/relationships/store";
 import { LifeOpsRepository } from "../src/lifeops/repository";
 
 describe("RelationshipStore — real PGLite", () => {

@@ -13,37 +13,27 @@ import {
   type BackgroundHistoryState,
 } from "./background-history";
 import {
+  applyAppTheme,
   applyUiAccent,
-  applyUiTheme,
   loadBackgroundConfig,
   loadBackgroundHistory,
   loadBackgroundRedo,
   loadHomeTimeWidgetHidden,
   loadUiAccentId,
-  loadUiThemeMode,
   normalizeBackgroundConfig,
-  normalizeUiThemeMode,
-  resolveUiTheme,
   saveBackgroundConfig,
   saveBackgroundHistory,
   saveBackgroundRedo,
   saveHomeTimeWidgetHidden,
   saveUiAccentId,
-  saveUiTheme,
-  saveUiThemeMode,
 } from "./persistence";
 import {
   type BackgroundConfig,
   normalizeAccentId,
   resolveAccentColor,
-  type UiTheme,
-  type UiThemeMode,
 } from "./ui-preferences";
 
 export function useDisplayPreferences() {
-  const [uiThemeMode, setUiThemeModeState] =
-    useState<UiThemeMode>(loadUiThemeMode);
-  const uiTheme: UiTheme = resolveUiTheme(uiThemeMode);
   const [backgroundConfig, setBackgroundConfigState] =
     useState<BackgroundConfig>(loadBackgroundConfig);
   // Bounded undo stack: the previous configs, most-recent last. Refs mirror the
@@ -73,13 +63,6 @@ export function useDisplayPreferences() {
   backgroundHistoryRef.current = backgroundHistory;
   const backgroundRedoRef = useRef(backgroundRedo);
   backgroundRedoRef.current = backgroundRedo;
-
-  // Normalize + persist wrappers
-  const setUiThemeMode = useCallback((mode: UiThemeMode) => {
-    setUiThemeModeState(normalizeUiThemeMode(mode));
-  }, []);
-
-  const setUiTheme = setUiThemeMode;
 
   const setHomeTimeWidgetHidden = useCallback((hidden: boolean) => {
     setHomeTimeWidgetHiddenState(hidden);
@@ -122,15 +105,9 @@ export function useDisplayPreferences() {
     applyHistoryState(applyBackgroundRedo(snapshot()));
   }, [applyHistoryState, snapshot]);
 
-  // Persist effects
   useEffect(() => {
-    saveUiThemeMode(uiThemeMode);
-  }, [uiThemeMode]);
-
-  useEffect(() => {
-    saveUiTheme(uiTheme);
-    applyUiTheme(uiTheme);
-  }, [uiTheme]);
+    applyAppTheme();
+  }, []);
 
   useEffect(() => {
     saveBackgroundConfig(backgroundConfig);
@@ -157,16 +134,13 @@ export function useDisplayPreferences() {
 
   return {
     state: {
-      uiTheme,
-      uiThemeMode,
+      uiTheme: "dark" as const,
       backgroundConfig,
       canUndoBackground: backgroundHistory.length > 0,
       canRedoBackground: backgroundRedo.length > 0,
       homeTimeWidgetHidden,
       uiAccentId,
     },
-    setUiTheme,
-    setUiThemeMode,
     setBackgroundConfig,
     undoBackgroundConfig,
     redoBackgroundConfig,

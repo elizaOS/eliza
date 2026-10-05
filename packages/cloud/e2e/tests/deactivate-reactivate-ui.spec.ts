@@ -8,7 +8,7 @@
  * state with an explicit $0.00/hr cost, and "Reactivate Agent" fires the real
  * `POST /wake` job that restores the agent until its container endpoint serves
  * again. Serving state is witnessed on the dedicated path (the cloud-api DTO's
- * `bridgeUrl` plus that endpoint itself), never on the shared JSON-RPC bridge —
+ * status plus the persisted endpoint itself), never on the shared JSON-RPC bridge —
  * see the comment on the deactivated assertion.
  * A second test covers the same lifecycle from the agents list (row actions).
  */
@@ -76,8 +76,43 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
     );
 
     await page.goto(`${stack.urls.frontend}/dashboard/agents/${sandboxId}`);
-    await expect(page.getByText("running").first()).toBeVisible({
+    await expect(
+      page
+        .getByText("running", { exact: true })
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible({
       timeout: 30_000,
+    });
+
+    for (const control of [
+      page.getByRole("heading", { name: "e2e-deactivate-ui-detail" }),
+      page.getByRole("button", { name: "Open Web UI", exact: true }),
+    ]) {
+      const bounds = await control.boundingBox();
+      const viewportWidth = await page.evaluate(() => window.innerWidth);
+      expect(
+        bounds,
+        "agent heading and handoff control are laid out",
+      ).not.toBeNull();
+      if (!bounds) throw new Error("Agent detail control has no layout bounds");
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(
+        bounds.x + bounds.width,
+        "agent details fit the viewport",
+      ).toBeLessThanOrEqual(viewportWidth);
+    }
+
+    await page.screenshot({
+      path: test.info().outputPath("agent-management-rest.png"),
+      fullPage: true,
+    });
+    await page
+      .getByRole("button", { name: "Deactivate Agent", exact: true })
+      .hover();
+    await page.screenshot({
+      path: test.info().outputPath("agent-management-hover.png"),
+      fullPage: true,
     });
 
     // ── Open the deactivate dialog and verify the billing-transparency copy ──
@@ -88,9 +123,19 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("stops consuming hourly credits");
     await expect(dialog).toContainText(
-      "saved in an encrypted backup — nothing is deleted",
+      "retains your agent data during deactivation",
     );
-    await expect(dialog).toContainText("reactivate it anytime");
+    await expect(dialog).toContainText(
+      "agent stays running and billing continues",
+    );
+    await expect(dialog).toContainText(
+      "remaining activation minimum is charged",
+    );
+    await expect(dialog).toContainText("requires available credits");
+    await page.screenshot({
+      path: test.info().outputPath("deactivate-dialog.png"),
+      fullPage: true,
+    });
 
     // ── Cancel is a real exit: nothing fired, agent still running ──
     await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -118,7 +163,7 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
     // In-between job state: the page shows deactivation progress while the
     // sleep job is pending.
     await expect(
-      page.getByText(/Deactivating — saving an encrypted backup/),
+      page.getByText(/Deactivating — retaining your agent data/),
     ).toBeVisible();
 
     // Drive the real job pipeline to completion; the page's 5s job poll then
@@ -135,8 +180,18 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
 
     // Designed deactivated state, not an error: sleeping badge, explicit
     // zero-cost display, and a Reactivate affordance.
-    await expect(page.getByText("sleeping").first()).toBeVisible();
-    await expect(page.getByText("$0.00/hr").first()).toBeVisible();
+    await expect(
+      page
+        .getByText("sleeping", { exact: true })
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByText("$0.00/hr", { exact: true })
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
     await expect(page.getByText("Deactivated — no hourly cost")).toBeVisible();
     const reactivateButton = page.getByRole("button", {
       name: "Reactivate Agent",
@@ -150,24 +205,28 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
       backups.length,
       "deactivate must leave at least one restore point",
     ).toBeGreaterThanOrEqual(1);
-    // "Stopped serving" is asserted at the boundary that actually distinguishes
-    // it for a DEDICATED agent: the cloud-api DTO. A deactivated agent exposes
-    // no container endpoint at all (`bridgeUrl: null`) — the exact inverse of
-    // the post-wake assertion below, which requires one back. The shared
-    // JSON-RPC bridge (`/agents/:id/bridge`) is deliberately NOT used here: it
-    // serves shared-tier agents only and rejects a dedicated agent with 404
-    // "Not a shared-runtime agent" in EVERY state, running included, so it
-    // cannot witness deactivation.
+    // Public agent detail intentionally hides internal bridge coordinates.
+    // Observe serving state through its public status plus the tenant-scoped
+    // persisted endpoint and the mock container's actual HTTP response.
+    const { agentSandboxesRepository } = await import(
+      "@elizaos/cloud-shared/db/repositories/agent-sandboxes"
+    );
+    const readEndpoint = async () => {
+      const row = await agentSandboxesRepository.findByIdAndOrg(
+        sandboxId,
+        seededUser.organizationId,
+      );
+      if (!row) throw new Error("Missing lifecycle sandbox");
+      return row.bridge_url;
+    };
     const { status: sleepingStatus, body: sleepingBody } =
       await getSandboxState(api, seededUser.apiKey, sandboxId);
     expect(sleepingStatus).toBe(200);
-    const deactivated = (
-      sleepingBody as { data?: { status?: string; bridgeUrl?: string | null } }
-    ).data;
+    const deactivated = (sleepingBody as { data?: { status?: string } }).data;
     expect(deactivated?.status).toBe("sleeping");
     expect(
-      deactivated?.bridgeUrl,
-      "a deactivated agent must expose no container endpoint",
+      await readEndpoint(),
+      "a deactivated agent must have no serving container endpoint",
     ).toBeNull();
 
     // ── Reactivate: the UI fires POST /wake (202) and the agent runs again ──
@@ -178,13 +237,20 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
         response.request().method() === "POST",
     );
     await reactivateButton.click();
+    const startDialog = page.getByRole("alertdialog");
+    await expect(startDialog).toContainText(
+      "Minimum charge per successful start",
+    );
+    await startDialog
+      .getByRole("button", { name: "Start Dedicated", exact: true })
+      .click();
     const wakeResponse = await wakeResponsePromise;
     expect(wakeResponse.status()).toBe(202);
 
     // In-between job state: reactivation progress (it can take minutes on
     // real infra, so the copy must say so).
     await expect(
-      page.getByText(/Reactivating — restoring your agent from its backup/),
+      page.getByText(/Reactivating — restoring your agent data/),
     ).toBeVisible();
 
     await pollSandboxStatus(api, seededUser.apiKey, sandboxId, "running", {
@@ -196,38 +262,37 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
         page.getByRole("button", { name: "Deactivate Agent", exact: true }),
       ).toBeVisible({ timeout: 2_000 });
     });
-    await expect(page.getByText("running").first()).toBeVisible();
+    await expect(
+      page
+        .getByText("running", { exact: true })
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
 
-    // The reactivated agent serves again. The Worker's own bridge hop routes
-    // dedicated-agent traffic via the per-agent public subdomain, which does
-    // not resolve in the local mock stack — so assert restoration at the two
-    // boundaries the stack genuinely exercises: the cloud-api DTO (running,
-    // with a re-provisioned container endpoint) and the restored container
-    // endpoint itself (root + conversation/chat surface serving 200 again,
-    // where during sleep there was no container at all).
+    // Wake must restore both the public running status and a serving endpoint.
     const { status: stateStatus, body: stateBody } = await getSandboxState(
       api,
       seededUser.apiKey,
       sandboxId,
     );
     expect(stateStatus).toBe(200);
-    const restored = (
-      stateBody as { data?: { status?: string; bridgeUrl?: string | null } }
-    ).data;
+    const restored = (stateBody as { data?: { status?: string } }).data;
     expect(restored?.status).toBe("running");
+    const restoredEndpoint = await readEndpoint();
     expect(
-      restored?.bridgeUrl,
+      restoredEndpoint,
       "wake must restore a reachable container endpoint",
     ).toBeTruthy();
-
-    const bridgeRoot = await fetch(String(restored?.bridgeUrl));
+    if (!restoredEndpoint)
+      throw new Error("Wake did not restore the container endpoint");
+    const bridgeRoot = await fetch(restoredEndpoint);
     expect(
       bridgeRoot.status,
       "reactivated container endpoint must serve again",
     ).toBe(200);
 
     const chatSurface = await fetch(
-      `${restored?.bridgeUrl}/api/conversations/${encodeURIComponent(sandboxId)}/messages`,
+      `${restoredEndpoint}/api/conversations/${encodeURIComponent(sandboxId)}/messages`,
     );
     expect(
       chatSurface.status,
@@ -275,10 +340,20 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
 
     // The sleeping state renders as a designed muted badge with the zero-cost
     // indicator — visibly not an error row.
-    await expect(page.getByText("sleeping").first()).toBeVisible({
+    await expect(
+      page
+        .getByText("sleeping", { exact: true })
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText("$0.00/hr").first()).toBeVisible();
+    await expect(
+      page
+        .getByText("$0.00/hr", { exact: true })
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
 
     // Row action: Reactivate fires the real wake job.
     const wakeResponsePromise = page.waitForResponse(
@@ -291,6 +366,13 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
       .getByRole("button", { name: "Reactivate agent", exact: true })
       .first()
       .click();
+    const startDialog = page.getByRole("alertdialog");
+    await expect(startDialog).toContainText(
+      "Minimum charge per successful start",
+    );
+    await startDialog
+      .getByRole("button", { name: "Start Dedicated", exact: true })
+      .click();
     const wakeResponse = await wakeResponsePromise;
     expect(wakeResponse.status()).toBe(202);
 
@@ -301,7 +383,12 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
     // The table's job poll + refresh converge on the running badge without a
     // manual reload.
     await expectUiWithJobDrain(processJobs, async () => {
-      await expect(page.getByText("running").first()).toBeVisible({
+      await expect(
+        page
+          .getByText("running", { exact: true })
+          .filter({ visible: true })
+          .first(),
+      ).toBeVisible({
         timeout: 2_000,
       });
     });

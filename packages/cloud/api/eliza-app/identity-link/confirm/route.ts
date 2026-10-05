@@ -6,13 +6,17 @@
  * Every non-linked outcome is a distinct typed status so the gateway can reply
  * with the right user-facing message and never fabricate success.
  */
+
+import { providerForPlatform } from "@elizaos/cloud-shared/db/repositories/users";
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { confirmIdentityLink } from "@elizaos/cloud-shared/lib/services/eliza-app/identity-link";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { providerForPlatform } from "@/db/repositories/users";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { confirmIdentityLink } from "@/lib/services/eliza-app/identity-link";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../internal/_auth";
 
 const confirmSchema = z.object({

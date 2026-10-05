@@ -25,15 +25,13 @@ import time
 from pathlib import Path
 from typing import cast
 
-# Make ``scripts.lib.backends.*`` importable when this file is run as a
+# Make ``eliza_training.lib.backends.*`` importable when this file is run as a
 # script (``python3 scripts/cloud_run.py ...``) — the repo root must be
-# on sys.path. When invoked as ``python3 -m scripts.cloud_run`` this is
+# on sys.path. When invoked as ``python3 -m eliza_training.cloud_run`` this is
 # already true, so the guarded insert leaves sys.path unchanged.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts.lib.backends.base import (  # noqa: E402  (after sys.path tweak)
+from eliza_training.lib.backends.base import (  # noqa: E402  (after sys.path tweak)
     BACKEND_REGISTRY,
     BackendAdapter,
     BackendError,
@@ -46,7 +44,7 @@ from scripts.lib.backends.base import (  # noqa: E402  (after sys.path tweak)
 # Importing each backend module triggers its ``@register_backend`` side
 # effect. Add new backends here as they land.
 _BACKEND_MODULES = (
-    "scripts.lib.backends.vast",
+    "eliza_training.lib.backends.vast",
 )
 
 

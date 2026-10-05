@@ -54,6 +54,7 @@ function makeRunner(
   renderReply: CreateScreenTimeActionRunnerOptions["renderReply"] = async ({
     fallback,
   }) => ({ kind: "model", text: fallback }),
+  overrides: Partial<CreateScreenTimeActionRunnerOptions> = {},
 ) {
   return createScreenTimeActionRunner({
     hasAccess: async () => true,
@@ -61,6 +62,7 @@ function makeRunner(
     messageText: (input) =>
       typeof input.content.text === "string" ? input.content.text : "",
     renderReply,
+    resolveTimeZone: () => "UTC",
     resolveActionArgs: async <TSubaction extends string, TParams>(input: {
       defaultSubaction?: TSubaction;
       options?: {
@@ -83,6 +85,7 @@ function makeRunner(
     getTimeOnApp: vi.fn(),
     getBrowserDomainActivity: vi.fn(),
     getBrowserActivitySnapshot: vi.fn(),
+    ...overrides,
   });
 }
 
@@ -123,6 +126,41 @@ describe("screen-time action runner", () => {
     expect(callback).not.toHaveBeenCalled();
     expect(renderReply).toHaveBeenCalledOnce();
     expect(service.getScreenTimeDaily).toHaveBeenCalledOnce();
+  });
+
+  it("anchors today and day windows to the owner's local calendar day", async () => {
+    // 22:30Z on Sep 13 is already Sep 14 in Tokyo; the UTC day would be wrong.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-13T22:30:00.000Z"));
+    try {
+      const service = makeService();
+      const runner = makeRunner(service, undefined, {
+        resolveTimeZone: () => "Asia/Tokyo",
+        resolveActionArgs: (async (input: {
+          options?: { parameters?: Record<string, unknown> };
+        }) => {
+          const { subaction, ...params } = input.options?.parameters ?? {};
+          return { ok: true as const, subaction, params };
+        }) as CreateScreenTimeActionRunnerOptions["resolveActionArgs"],
+      });
+
+      await runner(runtime, message, undefined, {
+        parameters: { subaction: "today" },
+      });
+      expect(service.getScreenTimeDaily).toHaveBeenCalledWith(
+        expect.objectContaining({ date: "2026-09-14" }),
+      );
+
+      await runner(runtime, message, undefined, {
+        parameters: { subaction: "weekly", days: 7 },
+      });
+      // Seven Tokyo days ending Sep 14 start at Sep 8 00:00 JST (15:00Z Sep 7).
+      expect(service.getScreenTimeSummary).toHaveBeenCalledWith(
+        expect.objectContaining({ since: "2026-09-07T15:00:00.000Z" }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("requests the complete screen-time summary when no pagination is supplied", async () => {
@@ -199,6 +237,7 @@ describe("screen-time action runner", () => {
   it("denies access → PERMISSION_DENIED before resolving args (#8795)", async () => {
     const resolveActionArgs = vi.fn();
     const runner = createScreenTimeActionRunner({
+      resolveTimeZone: () => "UTC",
       hasAccess: async () => false,
       createService: () => makeService(),
       messageText: (input) =>
@@ -231,6 +270,7 @@ describe("screen-time action runner", () => {
 
   it("resolveActionArgs ok:false → INVALID_SUBACTION (#8795)", async () => {
     const runner = createScreenTimeActionRunner({
+      resolveTimeZone: () => "UTC",
       hasAccess: async () => true,
       createService: () => makeService(),
       messageText: (input) =>
@@ -267,6 +307,7 @@ describe("screen-time action runner", () => {
   it("time_on_app with empty app id → MISSING_APP (#8795)", async () => {
     const getTimeOnApp = vi.fn();
     const runner = createScreenTimeActionRunner({
+      resolveTimeZone: () => "UTC",
       hasAccess: async () => true,
       createService: () => makeService(),
       messageText: (input) =>
@@ -303,6 +344,7 @@ describe("screen-time action runner", () => {
   it("time_on_site with un-parseable domain → MISSING_DOMAIN (#8795)", async () => {
     const getBrowserDomainActivity = vi.fn();
     const runner = createScreenTimeActionRunner({
+      resolveTimeZone: () => "UTC",
       hasAccess: async () => true,
       createService: () => makeService(),
       messageText: (input) =>
@@ -342,6 +384,7 @@ describe("screen-time action runner", () => {
       domains: [],
     }));
     const runner = createScreenTimeActionRunner({
+      resolveTimeZone: () => "UTC",
       hasAccess: async () => true,
       createService: () => makeService(),
       messageText: (input) =>
@@ -396,6 +439,7 @@ describe("screen-time action runner", () => {
       apps,
     }));
     const runner = createScreenTimeActionRunner({
+      resolveTimeZone: () => "UTC",
       hasAccess: async () => true,
       createService: () => makeService(),
       messageText: (input) =>

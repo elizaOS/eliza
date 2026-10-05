@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import push_voice_to_hf  # type: ignore  # noqa: E402
+from eliza_training.kokoro import push_voice_to_hf  # type: ignore  # noqa: E402
 
 
 def _materialize_release(

@@ -70,12 +70,16 @@ export function installProcessSignalHandlers(options: {
   const shutdown = (): void => {
     if (shutdownStarted) return;
     shutdownStarted = true;
-    void options.lifecycle
-      .dispose("signal shutdown")
-      .catch((error) => {
-        options.onError(error);
-      })
-      .then(() => exit(0));
+    void options.lifecycle.dispose("signal shutdown").then(
+      () => exit(0),
+      (error) => {
+        try {
+          options.onError(error);
+        } finally {
+          exit(1);
+        }
+      },
+    );
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);

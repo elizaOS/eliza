@@ -3,7 +3,7 @@
  * interaction-focused render states.
  */
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
-import { client } from "../../../api";
+import { client } from "../../../api/client";
 import type {
   WorkbenchOverview,
   WorkbenchTodo,
@@ -36,7 +36,7 @@ function todo(
 }
 
 function workbench(todos: WorkbenchTodo[]): WorkbenchOverview {
-  return { tasks: [], triggers: [], todos };
+  return { triggers: [], todos };
 }
 
 /** Seed the app store with a workbench AND stub the refresh fetch to match. */

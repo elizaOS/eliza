@@ -6,6 +6,7 @@
  * Hono route at `apps/api/auth/anonymous-session`.
  */
 
+import { participantTable } from "@elizaos/plugin-sql";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import type { AnonymousSession } from "../../db/schemas";
@@ -17,7 +18,6 @@ import {
   userCharacters,
   users,
 } from "../../db/schemas";
-import { participantTable } from "../../db/schemas/eliza";
 import { organizationConfig } from "../../db/schemas/organization-config";
 import { userIdentities } from "../../db/schemas/user-identities";
 import { anonymousSessionsService } from "../services/anonymous-sessions";

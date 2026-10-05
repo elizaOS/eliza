@@ -2,15 +2,19 @@
  * Authenticated gateway boundary for managed Discord guild-voice ownership and
  * public-room Shared Eliza turns.
  */
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
+
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   authorizeManagedDiscordGuildVoice,
   runManagedDiscordGuildVoiceTurn,
-} from "@/lib/services/managed-discord-guild-voice";
-import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/managed-discord-guild-voice";
+import { resolveSharedRuntimeWorkerRequestContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { requireInternalAuth } from "../../../_auth";
 
 const snowflake = z

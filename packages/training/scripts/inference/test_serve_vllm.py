@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.inference import serve_vllm as S  # noqa: E402
-from scripts.training.model_registry import get as registry_get  # noqa: E402
+from eliza_training.inference import serve_vllm as S  # noqa: E402
+from eliza_training.training.model_registry import get as registry_get  # noqa: E402
 
 
 def _args(**overrides):

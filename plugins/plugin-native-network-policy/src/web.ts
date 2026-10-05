@@ -32,8 +32,8 @@ export class NetworkPolicyWeb extends WebPlugin implements NetworkPolicyPlugin {
   async getPathHints(): Promise<PathHints> {
     const saveData = readNavigatorSaveData();
     return {
-      isExpensive: saveData === true,
-      isConstrained: saveData === true,
+      isExpensive: saveData === true ? true : null,
+      isConstrained: saveData === true ? true : null,
       source: "nw-path-monitor",
     };
   }

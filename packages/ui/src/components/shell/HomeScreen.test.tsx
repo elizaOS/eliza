@@ -20,7 +20,7 @@ vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
   ...(await orig()),
   navigateDeepLink,
 }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: typeof appState) => unknown) =>
     selector(appState),
 }));
@@ -53,6 +53,11 @@ vi.mock("../../widgets/WidgetHost", () => ({
 
 import type { AgentNotification } from "@elizaos/core";
 import {
+  acknowledgeNotificationCenterOpenRequest,
+  peekNotificationCenterOpenRequest,
+  requestNotificationCenterOpen,
+} from "../../state/notifications/notification-center-open-request";
+import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
   __setHydratedForTests,
@@ -66,11 +71,6 @@ import { __resetHomeDismissalsForTests } from "../../widgets/home-dismissal-stor
 import { HomeLauncherSurface } from "./HomeLauncherSurface";
 import { HomeScreen } from "./HomeScreen";
 import { PULL_COMMIT_PX } from "./NotificationsHomeCenter";
-import {
-  acknowledgeNotificationCenterOpenRequest,
-  peekNotificationCenterOpenRequest,
-  requestNotificationCenterOpen,
-} from "./notification-center-open-request";
 
 beforeEach(() => {
   vi.useFakeTimers();

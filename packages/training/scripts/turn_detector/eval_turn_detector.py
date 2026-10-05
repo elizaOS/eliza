@@ -29,10 +29,8 @@ from pathlib import Path
 from typing import Any, Final, Iterable
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
 
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
 
 F1_GATE: Final[float] = 0.85
 MEAN_LATENCY_MS_GATE: Final[float] = 30.0

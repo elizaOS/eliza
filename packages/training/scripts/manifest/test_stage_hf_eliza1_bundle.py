@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.stage_hf_eliza1_bundle import plan_tier_files, total_size  # noqa: E402
+from eliza_training.manifest.stage_hf_eliza1_bundle import plan_tier_files, total_size  # noqa: E402
 
 
 @dataclass

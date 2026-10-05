@@ -5,8 +5,8 @@
  * view and passed in as props.
  */
 import { CheckCircle2 } from "lucide-react";
-import { useAgentElement } from "../../agent-surface";
-import type { PluginInfo } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import type { PluginInfo } from "../../api/client-types-config";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { AdminDialog } from "../ui/admin-dialog";
 import { Avatar, AvatarImage } from "../ui/avatar";

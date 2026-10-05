@@ -19,7 +19,7 @@
  * loopback URL so requests reach the on-device agent over IPC.
  */
 
-import { ElizaClient } from "../api";
+import { ElizaClient } from "../api/client";
 import type {
   TalkModeAudioFrameEvent,
   TalkModePluginLike,

@@ -8,17 +8,20 @@
  * still exercise the real body shape.
  */
 
-import { AGENT_PRICING } from "../constants/agent-pricing";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
 import { logger } from "../utils/logger";
 import type { CreditGateResult } from "./agent-billing-gate";
 import type { SignupGrantWithheldReason } from "./signup-grant-guard";
 
 export interface InsufficientCreditsBody {
   success: false;
-  code: "insufficient_credits";
+  /** `billing_hold_active`: an underfunding payment reversal holds paid admission (#22930). */
+  code: "insufficient_credits" | "billing_hold_active";
   error: string;
   requiredBalance: number;
   currentBalance: number;
+  /** USD still owed on the reversal shortfall when `code` is `billing_hold_active`. */
+  outstandingUsd?: string;
   welcomeBonusWithheld?: boolean;
   welcomeBonusWithheldReason?: SignupGrantWithheldReason;
 }
@@ -46,10 +49,25 @@ export interface InsufficientCreditsContext {
 export function insufficientCreditsBody(
   creditCheck: Pick<
     CreditGateResult,
-    "balance" | "error" | "welcomeBonusWithheldReason" | "welcomeBonusWithheldMessage"
+    | "balance"
+    | "error"
+    | "welcomeBonusWithheldReason"
+    | "welcomeBonusWithheldMessage"
+    | "paymentReversalHold"
+    | "paymentReversalOutstandingUsd"
   >,
   context: InsufficientCreditsContext = {},
 ): InsufficientCreditsBody {
+  if (creditCheck.paymentReversalHold) {
+    return {
+      success: false,
+      code: "billing_hold_active",
+      error: creditCheck.error ?? "Paid usage is on hold because of a reversed payment.",
+      requiredBalance: context.requiredBalance ?? AGENT_PRICING.MINIMUM_DEPOSIT,
+      currentBalance: creditCheck.balance,
+      outstandingUsd: creditCheck.paymentReversalOutstandingUsd ?? "0.000000",
+    };
+  }
   const withheldReason =
     context.welcomeBonusWithheldReason ?? creditCheck.welcomeBonusWithheldReason;
   const withheldMessage =
@@ -84,7 +102,12 @@ export function insufficientCreditsBody(
 export function insufficientCredits402(
   creditCheck: Pick<
     CreditGateResult,
-    "balance" | "error" | "welcomeBonusWithheldReason" | "welcomeBonusWithheldMessage"
+    | "balance"
+    | "error"
+    | "welcomeBonusWithheldReason"
+    | "welcomeBonusWithheldMessage"
+    | "paymentReversalHold"
+    | "paymentReversalOutstandingUsd"
   >,
   warn: string,
   logContext: Record<string, unknown>,

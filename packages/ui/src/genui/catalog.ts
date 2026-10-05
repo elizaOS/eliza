@@ -45,9 +45,6 @@ export const ELIZA_GENUI_ALLOWED_COMPONENTS = [
 export type ElizaGenUiPrimitiveComponent =
   (typeof ELIZA_GENUI_PRIMITIVE_COMPONENTS)[number];
 
-export type ElizaGenUiDomainComponent =
-  (typeof ELIZA_GENUI_DOMAIN_COMPONENTS)[number];
-
 export type ElizaGenUiKnownComponent =
   (typeof ELIZA_GENUI_ALLOWED_COMPONENTS)[number];
 

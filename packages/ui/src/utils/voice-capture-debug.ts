@@ -63,11 +63,6 @@ function voiceDebugEnabled(): boolean {
   return false;
 }
 
-/** Same predicate as {@link voiceCaptureDebug}. */
-export function isVoiceCaptureDebugEnabled(): boolean {
-  return voiceDebugEnabled();
-}
-
 // ── On-screen breadcrumb ring (device HUD) ───────────────────────────
 //
 // The console breadcrumbs above are invisible on an installed iPhone PWA (no

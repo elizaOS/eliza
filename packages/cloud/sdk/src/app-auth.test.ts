@@ -1,6 +1,6 @@
 /** Unit tests for `buildAppAuthorizeUrl` — asserts the canonical app-authorize URL shape and query params. Pure, no network. */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { APP_AUTHORIZE_PATH, buildAppAuthorizeUrl } from "./app-auth.js";
 
 describe("buildAppAuthorizeUrl", () => {
@@ -34,5 +34,28 @@ describe("buildAppAuthorizeUrl", () => {
 
     expect(url.origin).toBe("https://elizacloud.ai");
     expect(url.pathname).toBe(APP_AUTHORIZE_PATH);
+  });
+  it("requires caller-bound state for delegated authorization", () => {
+    expect(() =>
+      buildAppAuthorizeUrl({
+        appId: "app_123",
+        redirectUri: "https://example.app/callback",
+        delegation: { clientId: "client_123", scopes: ["identity"] },
+      }),
+    ).toThrow("state");
+    const url = new URL(
+      buildAppAuthorizeUrl({
+        appId: "app_123",
+        redirectUri: "https://example.app/callback",
+        state: "session-bound-nonce",
+        delegation: {
+          clientId: "client_123",
+          scopes: ["identity", "billing:read"],
+        },
+      }),
+    );
+    expect(url.searchParams.get("state")).toBe("session-bound-nonce");
+    expect(url.searchParams.get("flow")).toBe("app_delegation");
+    expect(url.searchParams.get("scopes")).toBe("identity billing:read");
   });
 });

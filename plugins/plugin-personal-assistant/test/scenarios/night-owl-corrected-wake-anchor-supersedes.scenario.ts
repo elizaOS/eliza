@@ -6,7 +6,7 @@
  * nondeterministically. The correction must supersede in place; she never says
  * so, and the requirement lives only in the rubrics.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

@@ -341,6 +341,12 @@ describe("SCHEDULED_TASK action", () => {
     const ownerId = crypto.randomUUID() as UUID;
     const roomId = crypto.randomUUID() as UUID;
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId);
+    await runtime.createWorld({
+      id: runtime.agentId,
+      name: "Connector scheduling test",
+      agentId: runtime.agentId,
+      serverId: "telegram-scheduling-test",
+    });
     await runtime.createEntity({
       id: ownerId,
       names: ["Owner"],
@@ -382,7 +388,7 @@ describe("SCHEDULED_TASK action", () => {
         },
       },
     );
-    expect(result.success).toBe(true);
+    expect(result.success, JSON.stringify(result)).toBe(true);
     const task = (result.data as { task?: ScheduledTask } | undefined)?.task;
     expect(task?.output).toEqual({
       destination: "channel",

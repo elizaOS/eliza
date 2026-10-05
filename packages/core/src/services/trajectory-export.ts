@@ -7,14 +7,8 @@
  * export so corrupt diagnostics are never presented as a valid empty run.
  */
 import { ElizaError } from "../errors.ts";
-import { textFromChatMessageContent } from "../runtime/system-prompt";
-
-export {
-	type TrajectoryPlaintextOptions,
-	trajectoryToPlaintext,
-} from "../activity-plaintext";
-
-import { parseTrajectorySemanticStages } from "./trajectory-semantic-stage";
+import { textFromChatMessageContent } from "../runtime/system-prompt.ts";
+import { parseTrajectorySemanticStages } from "./trajectory-semantic-stage.ts";
 import type {
 	ElizaNativeModelBoundary,
 	ElizaNativeModelRequestRecord,
@@ -29,8 +23,8 @@ import type {
 	TrajectoryLlmCallRecord,
 	TrajectoryStepRecord,
 	TrajectoryUsageTotalsRecord,
-} from "./trajectory-types";
-import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types";
+} from "./trajectory-types.ts";
+import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "./trajectory-types.ts";
 
 type TrajectoryArtMessage = {
 	role: "system" | "user" | "assistant";
@@ -331,8 +325,8 @@ export function iterateTrajectoryLlmCalls(
 				stepKind: step.kind,
 				callIndex,
 				timestamp:
-					toFiniteNumber(call.timestamp, Number.NaN) ||
-					toFiniteNumber(step.timestamp) ||
+					toOptionalFiniteNumber(call.timestamp) ??
+					toOptionalFiniteNumber(step.timestamp) ??
 					trajectory.startTime,
 				tags: normalizeTags(call.tags),
 				promptTokens: toFiniteNumber(call.promptTokens),

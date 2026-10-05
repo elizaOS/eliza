@@ -8,29 +8,29 @@
  * DELETE — delete sandbox + cleanup linked character.
  */
 
-import { eq } from "drizzle-orm";
-import { Hono } from "hono";
-import { z } from "zod";
-import { db } from "@/db/client";
-import { userCharactersRepository } from "@/db/repositories/characters";
-import { agentServerWallets } from "@/db/schemas/agent-server-wallets";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
-import { adminService } from "@/lib/services/admin";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { publicJobErrorSummary } from "@/lib/services/job-error-text";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
-import { getStewardAgent } from "@/lib/services/steward-client";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { db } from "@elizaos/cloud-shared/db/client";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
+import { agentServerWallets } from "@elizaos/cloud-shared/db/schemas/agent-server-wallets";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@elizaos/cloud-shared/lib/eliza-agent-web-ui";
+import { adminService } from "@elizaos/cloud-shared/lib/services/admin";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { publicJobErrorSummary } from "@elizaos/cloud-shared/lib/services/job-error-text";
+import { isPersonalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { getStewardAgent } from "@elizaos/cloud-shared/lib/services/steward-client";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type {
   AgentAdminDetailsDto,
   AgentDetailDto,
   AgentResponse,
   AgentWalletStatus,
-} from "@/lib/types/cloud-api";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/types";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { eq } from "drizzle-orm";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const app = new Hono<AppEnv>();
 

@@ -8,7 +8,7 @@ import type {
   LifeOpsReminderAttempt,
   LifeOpsReminderChannel,
   LifeOpsReminderUrgency,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import { isReminderChannelAllowedForUrgency } from "./service-helpers-misc.js";
 import {
   isReminderChannel,

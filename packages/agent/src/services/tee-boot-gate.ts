@@ -6,7 +6,10 @@
  * still allowing a degraded, secret-less boot. See the TeeBootGate type below
  * for the decision fields and the fail-closed invariant it carries.
  */
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
+import { isDstackEvidenceProvider } from "./tee-dstack-evidence.ts";
+import { mergeDstackCpuProductionProfile } from "./tee-dstack-production-profile.ts";
+import { resolveDstackEvidenceConfiguration } from "./tee-dstack-release.ts";
 import type { TeeEvidenceProvider } from "./tee-evidence.ts";
 import {
   evaluateTeeEvidencePolicy,
@@ -66,7 +69,22 @@ export async function evaluateTeeBootGate(
     ...(options.nowMs === undefined ? {} : { nowMs: options.nowMs }),
     ...(options.resolveOptions ?? {}),
   });
-  const useProductionProfile = env.ELIZA_TEE_PRODUCTION_PROFILE === "true";
+  const useDstackCpuProfile = env.ELIZA_TEE_PRODUCTION_PROFILE === "dstack-cpu";
+  const useProductionProfile =
+    env.ELIZA_TEE_PRODUCTION_PROFILE === "true" || useDstackCpuProfile;
+  if (
+    useDstackCpuProfile &&
+    options.evidenceProvider &&
+    !isDstackEvidenceProvider(
+      options.evidenceProvider,
+      resolveDstackEvidenceConfiguration(env),
+    )
+  ) {
+    throw new ElizaError(
+      "Dstack CPU profile requires the pinned dstack evidence adapter",
+      { code: "TEE_DSTACK_PROVIDER_REQUIRED" },
+    );
+  }
 
   if (resolved === undefined && !useProductionProfile) {
     return {
@@ -78,9 +96,11 @@ export async function evaluateTeeBootGate(
     };
   }
 
-  const policy = useProductionProfile
-    ? mergeTeeProductionProfile(resolved, options.profileOptions ?? {})
-    : resolved;
+  const policy = useDstackCpuProfile
+    ? mergeDstackCpuProductionProfile(resolved, env)
+    : useProductionProfile
+      ? mergeTeeProductionProfile(resolved, options.profileOptions ?? {})
+      : resolved;
   const required = policy?.required === true;
 
   if (!required) {

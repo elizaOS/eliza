@@ -6,12 +6,12 @@
  */
 
 import { createHash } from "node:crypto";
+import type { LifeOpsCalendarFeed } from "@elizaos/contracts";
 import {
   type EffectResourceRef,
   ElizaError,
   stableStringify,
 } from "@elizaos/core";
-import type { LifeOpsCalendarFeed } from "@elizaos/shared";
 
 export interface CalendarSnapshotEffectProof {
   readonly resource: EffectResourceRef;

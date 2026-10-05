@@ -6,11 +6,11 @@
  * Owned effects may instead join real settlement before cancellation wins.
  */
 
-import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   type AgentBackupRestoreV3OperationControl as AgentBackupRestoreV3OperationControlContract,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
 
 export const AGENT_BACKUP_RESTORE_V3_CLEANUP_DEADLINE_MS = 5_000;

@@ -1,10 +1,15 @@
 /** Main barrel for `@elizaos/cloud-sdk`: re-exports the client, HTTP layer, errors, types, and generated public-route surface. */
 
+export type {
+  ApiRouteMetaDto,
+  DiscoveredApiRouteDto,
+} from "./api-explorer/endpoint-discovery.js";
 export {
   APP_AUTHORIZE_PATH,
   type BuildAppAuthorizeUrlOptions,
   buildAppAuthorizeUrl,
 } from "./app-auth.js";
+export * from "./app-billing.js";
 export type {
   AppBillingAccountDto,
   AppBillingAccountResponse,
@@ -12,6 +17,10 @@ export type {
   AppBillingRegistrationDto,
   AppBillingRegistrationResponse,
 } from "./app-billing-account.js";
+export * from "./app-billing-membership.js";
+export * from "./app-delegation.js";
+export * from "./app-inference.js";
+export * from "./app-notifications.js";
 export { isCliLoginSessionId } from "./cli-login.js";
 export { createElizaCloudClient, ElizaCloudClient } from "./client.js";
 export {
@@ -20,6 +29,10 @@ export {
   ElizaCloudHttpClient,
   InsufficientCreditsError,
 } from "./http.js";
+export {
+  applyNativeApplicationInferenceHeaders,
+  NativeApplicationInferenceError,
+} from "./native-application-inference.js";
 export type {
   PublicRouteBaseCallOptions,
   PublicRouteCallOptions,

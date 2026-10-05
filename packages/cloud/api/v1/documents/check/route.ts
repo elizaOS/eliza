@@ -5,15 +5,15 @@
  * Direct DB query — no runtime spin-up.
  */
 
-import { Hono } from "hono";
-import { memoriesRepository } from "@/db/repositories/agents/memories";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKey } from "@elizaos/cloud-shared/auth";
+import { memoriesRepository } from "@elizaos/cloud-shared/db/repositories/agents/memories";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { resolveDocumentScope } from "../_worker-documents";
 
 const app = new Hono<AppEnv>();

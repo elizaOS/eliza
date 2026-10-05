@@ -1,17 +1,6 @@
 /**
- * Voice Workbench entrypoint (#8785).
- *
- * One call that generates the corpus for a scenario matrix, runs them headless
- * through the (injected) voice services, and rolls the result into the single
- * JSON + Markdown benchmark report. The CLI (`voice:workbench`) and the CI lane
- * are thin shells over this:
- *   - mocked lane (always): pass `groundTruthMockServices()` → runs + passes,
- *     exercising corpus → runner → scorers → report end-to-end with no model;
- *   - real lane (where provisioned): pass a real services adapter; absent
- *     backend → `services: null` → every scenario `skipped` (never `pass`).
- *
- * Pure orchestration over the already-tested pieces, so it is unit-testable
- * without a model or a browser.
+ * Generates scenario audio, runs the supplied voice backend, and writes the
+ * workbench report. An absent backend produces skipped results.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";

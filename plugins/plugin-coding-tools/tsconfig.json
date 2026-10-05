@@ -6,7 +6,6 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "outDir": "./dist",
     "rootDir": "../..",
     "strict": true,
     "noImplicitAny": true,
@@ -23,13 +22,13 @@
     "exactOptionalPropertyTypes": false,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
-      "@elizaos/logger/*": ["../../packages/logger/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"]
-    }
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/testing/progressive-content-target": [
+        "../../packages/testing/src/progressive-content-target.ts"
+      ],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
+    },
+    "customConditions": ["eliza-source"]
   },
   "include": ["./**/*"],
   "exclude": [

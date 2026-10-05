@@ -1,6 +1,8 @@
 /**
  * Crypto payment configuration and constants.
  */
+
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-sdk/browser-contracts";
 import Decimal from "decimal.js";
 
 /**
@@ -127,14 +129,13 @@ export const PAYMENT_EXPIRATION_MS = 30 * 60 * 1000;
 export const PAYMENT_EXPIRATION_SECONDS = PAYMENT_EXPIRATION_MS / 1000;
 
 /**
- * Minimum payment amount in USD ($1).
+ * Crypto top-ups use the same pay-as-you-go bounds as card checkout (#22963):
+ * $5 minimum and $1,000 maximum per payment.
  */
-export const MIN_PAYMENT_AMOUNT = new Decimal("1");
+export const MIN_PAYMENT_AMOUNT = new Decimal(ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd);
 
-/**
- * Maximum payment amount in USD ($10,000).
- */
-export const MAX_PAYMENT_AMOUNT = new Decimal("10000");
+/** Maximum crypto top-up per payment, shared with card checkout. */
+export const MAX_PAYMENT_AMOUNT = new Decimal(ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd);
 
 /**
  * Network-specific configurations
@@ -226,16 +227,29 @@ export function calculateTolerance(amount: Decimal, network: OxaPayNetwork): Dec
   return amount.times(toleranceMultiplier);
 }
 
+/** Why `validatePaymentAmount` rejected an amount; callers map it to their own error codes. */
+export type PaymentAmountRejection = "not_whole_cents" | "below_minimum" | "above_maximum";
+
+export type PaymentAmountValidation =
+  | { valid: true }
+  | { valid: false; reason: PaymentAmountRejection; error: string };
+
 /**
- * Validate that an amount is within acceptable range.
+ * Validate that an amount is a finite whole-cent USD value within the checkout range.
+ * `error` is display text; branch on `reason`.
  */
-export function validatePaymentAmount(amount: Decimal): {
-  valid: boolean;
-  error?: string;
-} {
+export function validatePaymentAmount(amount: Decimal): PaymentAmountValidation {
+  if (!amount.isFinite() || amount.decimalPlaces() > 2) {
+    return {
+      valid: false,
+      reason: "not_whole_cents",
+      error: "Amount must be a finite USD amount in whole cents",
+    };
+  }
   if (amount.lessThan(MIN_PAYMENT_AMOUNT)) {
     return {
       valid: false,
+      reason: "below_minimum",
       error: `Amount must be at least $${MIN_PAYMENT_AMOUNT.toString()}`,
     };
   }
@@ -243,6 +257,7 @@ export function validatePaymentAmount(amount: Decimal): {
   if (amount.greaterThan(MAX_PAYMENT_AMOUNT)) {
     return {
       valid: false,
+      reason: "above_maximum",
       error: `Amount must not exceed $${MAX_PAYMENT_AMOUNT.toString()}`,
     };
   }

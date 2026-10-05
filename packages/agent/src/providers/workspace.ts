@@ -168,47 +168,6 @@ build up over time through conversations.
 `,
 };
 
-const LEGACY_WORKSPACE_TEMPLATES: Partial<Record<string, string[]>> = {
-  [DEFAULT_AGENTS_FILENAME]: [
-    `# Agents
-
-Autonomous agent powered by elizaOS.
-
-## Capabilities
-
-- Respond to user messages conversationally
-- Execute actions and use available tools
-- Access and manage knowledge from your workspace
-- Maintain context across conversations
-
-## Guidelines
-
-- Be helpful, concise, and accurate
-- Ask for clarification when instructions are ambiguous
-- Use tools when they would help accomplish the user's goal
-- Respect the user's preferences and communication style
-`,
-  ],
-  [DEFAULT_TOOLS_FILENAME]: [
-    `# Tools
-
-Available tools and capabilities for the agent.
-
-## Built-in Tools
-
-The agent has access to tools provided by enabled plugins.
-Each plugin may register actions, providers, and evaluators
-that extend the agent's capabilities.
-
-## Usage
-
-Tools are invoked automatically when the agent determines
-they would help accomplish the user's goal. No manual
-configuration is required.
-`,
-  ],
-};
-
 export type WorkspaceInitFileName =
   | typeof DEFAULT_AGENTS_FILENAME
   | typeof DEFAULT_TOOLS_FILENAME
@@ -240,14 +199,10 @@ function normalizeBoilerplateText(value: string): string {
  * Used to skip injecting generic boilerplate docs into the prompt.
  */
 export function isDefaultBoilerplate(name: string, content: string): boolean {
-  const templates = [
-    WORKSPACE_TEMPLATES[name],
-    ...(LEGACY_WORKSPACE_TEMPLATES[name] ?? []),
-  ].filter((template): template is string => typeof template === "string");
-  if (templates.length === 0) return false;
-  const normalizedContent = normalizeBoilerplateText(content);
-  return templates.some(
-    (template) => normalizeBoilerplateText(template) === normalizedContent,
+  const template = WORKSPACE_TEMPLATES[name];
+  return (
+    typeof template === "string" &&
+    normalizeBoilerplateText(template) === normalizeBoilerplateText(content)
   );
 }
 

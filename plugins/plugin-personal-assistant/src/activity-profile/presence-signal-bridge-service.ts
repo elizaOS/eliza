@@ -5,6 +5,7 @@
  * device contributes to the owner's activity/presence profile.
  */
 import crypto from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type ActionEventPayload,
   type ComposerActivityPayload,
@@ -15,7 +16,6 @@ import {
   type UUID,
   type ViewSwitchedPayload,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { getDeviceId } from "../lifeops/device-identity.js";
 import {
   contactEdgeId,

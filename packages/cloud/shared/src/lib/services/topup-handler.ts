@@ -9,6 +9,7 @@ import { getStripeProductMessages } from "../stripe-products/messages";
 import type { UserWithOrganization } from "../types";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
+import { CRYPTO_REFUND_POLICY } from "./crypto-payment-refunds";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { referralsService } from "./referrals";
 import { findOrCreateUserByWalletAddress } from "./wallet-signup";
@@ -267,7 +268,8 @@ async function createPaymentRequirements(
     amount: amountBaseUnits,
     maxAmountRequired: amountBaseUnits,
     resource: req.url,
-    description: productMessages.topupDescription(amount),
+    // Crypto and x402 payments are refundable only as Cloud credits (#22968).
+    description: `${productMessages.topupDescription(amount)}. ${productMessages.cryptoRefundPolicy}`,
     mimeType: "application/json",
     payTo,
     maxTimeoutSeconds: 300,
@@ -276,6 +278,10 @@ async function createPaymentRequirements(
       version: "1",
       amountUsd: amount,
       endpoint: new URL(req.url).pathname,
+      refundPolicy: {
+        destination: CRYPTO_REFUND_POLICY.x402,
+        statement: productMessages.cryptoRefundPolicy,
+      },
       ...(facilitatorCaller && {
         fee: {
           caller: facilitatorCaller,

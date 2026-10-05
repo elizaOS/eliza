@@ -21,8 +21,8 @@ import type {
 	MessageEventData,
 	ProviderEventData,
 } from "../types/agentEvent.ts";
-import type { IAgentRuntime } from "../types/index.ts";
 import type { UUID } from "../types/primitives.ts";
+import type { IAgentRuntime } from "../types/runtime.js";
 import { Service, ServiceType } from "../types/service.ts";
 
 /**

@@ -4,11 +4,15 @@
  * Runtime call sites reach native sharp through dynamic import so Android
  * bun-musl does not evaluate libvips at module load. Hosts without native sharp
  * receive a Jimp-backed shim for the exact operations covered in
- * `sharp-compat.test.ts`.
+ * `sharp-compat.test.ts`. jimp is imported as a namespace and validated when
+ * the fallback is constructed because its browser condition publishes an
+ * intentionally empty module: the iOS JSC bundle must fail with an explicit
+ * unsupported-capability error instead of offering a backend that cannot
+ * decode or encode.
  */
 
 import { deflateSync } from "node:zlib";
-import { Jimp, JimpMime } from "jimp";
+import * as jimpModule from "jimp";
 
 /** Raw-pixel input descriptor (mirrors `sharp.SharpOptions["raw"]`). */
 export interface SharpRawInput {
@@ -109,7 +113,9 @@ let cached: SharpFactory | null = null;
 /**
  * Resolve the image backend. Tries native `sharp` first (dynamic import so the
  * native addon is never touched at module-eval); on any failure falls back to
- * the pure-JS jimp shim. The result is cached for the process lifetime.
+ * the pure-JS jimp shim, which throws the explicit no-backend error when jimp
+ * resolves to a module without image exports. The result is cached for the
+ * process lifetime.
  */
 export async function getSharp(): Promise<SharpFactory> {
   if (cached) return cached;
@@ -124,7 +130,61 @@ export async function getSharp(): Promise<SharpFactory> {
 
 // --- pure-JS shim ----------------------------------------------------------
 
-type JimpImage = Awaited<ReturnType<typeof Jimp.read>>;
+/**
+ * The `jimp` module surface the shim needs. Browser-condition builds of jimp
+ * publish an intentionally empty module, so this shape is verified at backend
+ * resolution rather than trusted from the static import.
+ */
+interface JimpBackend {
+  Jimp: {
+    read(data: Buffer): Promise<JimpImage>;
+    fromBitmap(bitmap: {
+      data: Buffer;
+      width: number;
+      height: number;
+    }): JimpImage;
+  };
+  JimpMime: { jpeg: string };
+}
+
+/** The `jimp` image surface the shim uses. */
+interface JimpImage {
+  bitmap: { data: Uint8Array; width: number; height: number };
+  resize(options: { w: number; h: number }): unknown;
+  getBuffer(mime: string): Promise<Uint8Array>;
+}
+
+const NO_IMAGE_BACKEND_MESSAGE =
+  "[sharp-compat] no image backend is available on this target: native sharp could not be loaded and the resolved jimp module exposes no image exports (jimp browser builds are intentionally empty)";
+
+function isJimpBackend(value: unknown): value is JimpBackend {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { Jimp?: unknown; JimpMime?: unknown };
+  if (typeof candidate.Jimp !== "function") return false;
+  const jimpClass = candidate.Jimp as { read?: unknown; fromBitmap?: unknown };
+  if (
+    typeof jimpClass.read !== "function" ||
+    typeof jimpClass.fromBitmap !== "function"
+  ) {
+    return false;
+  }
+  const mime = candidate.JimpMime;
+  if (typeof mime !== "object" || mime === null) return false;
+  return typeof (mime as { jpeg?: unknown }).jpeg === "string";
+}
+
+/**
+ * Resolve the pure-JS backend or fail the capability boundary explicitly.
+ * Nothing here may fabricate pixels, so a target whose jimp resolution is
+ * empty receives this error instead of a non-functional backend.
+ */
+function resolveJimpBackend(): JimpBackend {
+  const candidate: unknown = jimpModule;
+  if (!isJimpBackend(candidate)) {
+    throw new Error(NO_IMAGE_BACKEND_MESSAGE);
+  }
+  return candidate;
+}
 
 /** A jimp bitmap is always row-major RGBA. */
 interface Bitmap {
@@ -142,12 +202,14 @@ type OutputFormat = "raw" | "png" | "jpeg";
  * only at the terminal raw output to match sharp's channel semantics.
  */
 class JimpSharpInstance implements SharpInstance {
+  private backend: JimpBackend;
   private load: () => Promise<Bitmap>;
   private outputFormat: OutputFormat = "png";
   // null = no explicit alpha op; affects only `.raw()`/`.toBuffer({raw})`.
   private alphaMode: "remove" | "ensure" | null = null;
 
-  constructor(load: () => Promise<Bitmap>) {
+  constructor(backend: JimpBackend, load: () => Promise<Bitmap>) {
+    this.backend = backend;
     this.load = load;
   }
 
@@ -174,7 +236,7 @@ class JimpSharpInstance implements SharpInstance {
       );
     }
     return this.chain((b) => {
-      const img = bitmapToJimp(b);
+      const img = bitmapToJimp(this.backend, b);
       img.resize({ w: width, h: height });
       return jimpToBitmap(img);
     });
@@ -211,7 +273,7 @@ class JimpSharpInstance implements SharpInstance {
 
   clone(): this {
     const prev = this.load;
-    const clone = new JimpSharpInstance(async () => {
+    const clone = new JimpSharpInstance(this.backend, async () => {
       const b = await prev();
       return { data: Buffer.from(b.data), width: b.width, height: b.height };
     });
@@ -259,8 +321,8 @@ class JimpSharpInstance implements SharpInstance {
     let data: Buffer;
     if (this.outputFormat === "jpeg") {
       // jimp's JPEG encoder is correct on both Node and bun; JPEG has no alpha.
-      const img = bitmapToJimp(bitmap);
-      const encoded = await img.getBuffer(JimpMime.jpeg);
+      const img = bitmapToJimp(this.backend, bitmap);
+      const encoded = await img.getBuffer(this.backend.JimpMime.jpeg);
       data = Buffer.isBuffer(encoded) ? encoded : Buffer.from(encoded);
     } else {
       // jimp's PNG encoder is broken under Node 24/25 (pngjs deflate), so encode
@@ -292,9 +354,13 @@ class JimpSharpInstance implements SharpInstance {
 /**
  * Construct the pure-JS shim factory directly. Exposed so the compat test can
  * diff the shim against native `sharp` without depending on which backend
- * `getSharp()` happens to resolve on the host.
+ * `getSharp()` happens to resolve on the host. Throws the explicit
+ * unsupported-capability error when the resolved jimp module exposes no image
+ * exports (browser-condition bundles), so callers never receive a backend that
+ * cannot process images.
  */
 export function createJimpShim(): SharpFactory {
+  const backend = resolveJimpBackend();
   return (input, options) => {
     if (options?.raw) {
       if (!input) {
@@ -302,7 +368,7 @@ export function createJimpShim(): SharpFactory {
       }
       const { width, height, channels } = options.raw;
       const rgba = rawToRgba(toBuffer(input), width, height, channels);
-      return new JimpSharpInstance(async () => ({
+      return new JimpSharpInstance(backend, async () => ({
         data: rgba,
         width,
         height,
@@ -312,8 +378,8 @@ export function createJimpShim(): SharpFactory {
       throw new Error("[sharp-compat] an input buffer is required");
     }
     const encoded = toBuffer(input);
-    return new JimpSharpInstance(async () => {
-      const img = await Jimp.read(encoded);
+    return new JimpSharpInstance(backend, async () => {
+      const img = await backend.Jimp.read(encoded);
       return jimpToBitmap(img);
     });
   };
@@ -323,8 +389,8 @@ function toBuffer(input: Buffer | Uint8Array): Buffer {
   return Buffer.isBuffer(input) ? input : Buffer.from(input);
 }
 
-function bitmapToJimp(bitmap: Bitmap): JimpImage {
-  return Jimp.fromBitmap({
+function bitmapToJimp(backend: JimpBackend, bitmap: Bitmap): JimpImage {
+  return backend.Jimp.fromBitmap({
     data: bitmap.data,
     width: bitmap.width,
     height: bitmap.height,

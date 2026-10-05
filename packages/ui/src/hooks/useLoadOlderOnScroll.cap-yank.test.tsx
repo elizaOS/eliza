@@ -16,7 +16,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { useLayoutEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 import { useChatState } from "../state/useChatState";
 import { useLoadOlderOnScroll } from "./useLoadOlderOnScroll";
 

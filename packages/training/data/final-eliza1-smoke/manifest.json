@@ -2,7 +2,7 @@
   "generator": {
     "path": "scripts/build_eliza1_smoke_corpus.py",
     "revision": 3,
-    "sha256": "380f4354657ff41abf8421081876fe44fde4f447d42efe319ce6344643761485"
+    "sha256": "782fcc8ef0a8160b0f3e1173adb2286a60e7fa854eea4793877d556ba77ea9d9"
   },
   "purpose": "Tiny synthetic fixture for exercising corpus formatting and the end-to-end SFT pipeline; it is not a quality-training corpus.",
   "schema": "eliza.eliza1_smoke_corpus_manifest.v2",
@@ -73,12 +73,12 @@
   "transforms": {
     "formatter": {
       "path": "scripts/format_for_training.py",
-      "sha256": "03808f4c078e1e0a7335e0bf0326f0eccd0678bac04082ba047eadd798d21276"
+      "sha256": "395483b6e1f75fa015eefe03b073fb795bbfa3a9c7aadfb8a2483f4859e7d159"
     },
     "privacy_filter": {
       "applied": true,
       "path": "scripts/privacy_filter_trajectories.py",
-      "sha256": "354cf5fa4ae75a05f09e8a6a72c80f6d8e5583a2366fe28c11bd79b49a78b920"
+      "sha256": "d634ca47018404002aa74a7cca65f1cf76324c973353412d096df66075476b19"
     }
   }
 }

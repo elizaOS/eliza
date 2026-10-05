@@ -16,7 +16,8 @@ const appHooks = vi.hoisted(() => ({
   useApp: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: walletClient,
   useActivityEvents: () => ({ events: [] }),
   useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>

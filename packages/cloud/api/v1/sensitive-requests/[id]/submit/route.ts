@@ -15,20 +15,23 @@
  * required and the service rejects an unauthenticated caller.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   type SensitiveRequestActor,
   sensitiveRequestsService,
-} from "@/lib/services/sensitive-requests";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv, AuthedUser } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/sensitive-requests";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppEnv,
+  AuthedUser,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const SubmitSensitiveRequestSchema = z.object({
   token: z.string().trim().min(1).optional(),

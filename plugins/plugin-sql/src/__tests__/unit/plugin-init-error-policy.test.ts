@@ -7,9 +7,7 @@ import type { IAgentRuntime, Plugin, UUID } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it, vi } from "vitest";
-import { plugin as defaultPlugin } from "../../index";
-import { plugin as browserPlugin } from "../../index.browser";
-import { plugin as nodePlugin } from "../../index.node";
+import { plugin as nodePlugin } from "../../index";
 
 type RuntimeStub = IAgentRuntime & {
   getDatabaseAdapter?: () => never;
@@ -56,16 +54,6 @@ async function expectInitReadinessError(plugin: Plugin, runtime: RuntimeStub): P
 }
 
 describe("plugin-sql init error policy", () => {
-  it("throws unexpected default entry adapter detection failures", async () => {
-    const runtime = createRuntimeStub(new Error("adapter registry unavailable"));
-
-    await expectInitReadinessError(defaultPlugin, runtime);
-    expect(runtime.logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ error: "adapter registry unavailable" }),
-      "Database adapter detection failed"
-    );
-  });
-
   it("throws unexpected node entry adapter readiness failures", async () => {
     const runtime = createRuntimeStub(new Error("adapter health probe exploded"));
 
@@ -74,11 +62,5 @@ describe("plugin-sql init error policy", () => {
       expect.objectContaining({ error: "adapter health probe exploded" }),
       "Database adapter readiness check failed"
     );
-  });
-
-  it("throws unexpected browser entry adapter readiness failures", async () => {
-    const runtime = createRuntimeStub(new Error("browser adapter probe exploded"));
-
-    await expectInitReadinessError(browserPlugin, runtime);
   });
 });

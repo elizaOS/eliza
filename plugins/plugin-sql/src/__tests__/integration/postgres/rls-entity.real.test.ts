@@ -237,8 +237,11 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
          ($1, $3, $3, $4, '{"text": "Document in room1"}', 'documents',
           '{"type":"document","timestamp":1000,"scope":"global"}'::jsonb, NOW()),
          ($2, $3, $3, $5, '{"text": "Document in room2"}', 'documents',
-          '{"type":"document","timestamp":1000,"scope":"global"}'::jsonb, NOW())`,
-      [room1DocumentId, room2DocumentId, agentId, room1Id, room2Id]
+          jsonb_build_object(
+            'type', 'document', 'timestamp', 1000, 'scope', 'global',
+            'directGrantEntityIds', jsonb_build_array($6::text)
+          ), NOW())`,
+      [room1DocumentId, room2DocumentId, agentId, room1Id, room2Id, charlieId]
     );
     try {
       const adapter = new PgDatabaseAdapter(agentId as UUID, manager);
@@ -260,6 +263,11 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
         ...base,
         requesterEntityId: bobId as UUID,
         requesterRoomIds: [room1Id as UUID, room2Id as UUID],
+      });
+      const charlie = await adapter.queryDocuments({
+        ...base,
+        requesterEntityId: charlieId as UUID,
+        requesterRoomIds: [],
       });
       const aliceOwner = await adapter.queryDocuments({
         ...base,
@@ -284,6 +292,7 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
       expect(bob.documents.map((memory) => memory.id).sort()).toEqual(
         [room1DocumentId, room2DocumentId].sort()
       );
+      expect(charlie.documents.map((memory) => memory.id)).toEqual([room2DocumentId]);
       expect(aliceOwner.documents.map((memory) => memory.id).sort()).toEqual(
         [room1DocumentId, room2DocumentId].sort()
       );
@@ -297,6 +306,7 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
       expect(bobRooms.sort()).toEqual([room1Id, room2Id].sort());
       expect(alice.totalVisible).toBe(1);
       expect(bob.totalVisible).toBe(2);
+      expect(charlie.totalVisible).toBe(1);
       expect(aliceOwner.totalVisible).toBe(2);
       expect(runtime.totalVisible).toBe(2);
       expect(agent.totalVisible).toBe(2);

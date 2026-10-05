@@ -26,6 +26,8 @@ import { calendarAction } from "../src/actions/calendar.js";
  * Matches only the deleted scripted reply (both variants said "too tight" and
  * named a JFK arrival), not legitimate data-derived conflict answers.
  */
+const OWNER_ID = "00000000-0000-4000-8000-000000000003" as UUID;
+
 const CANNED_TEMPLATE = /too tight|jfk arrival|rebook to an arrival/i;
 
 /**
@@ -39,7 +41,7 @@ const FLIGHT_CONFLICT_TEXT =
 function makeMessage(text: string): Memory {
   return {
     id: "msg-flight-1" as UUID,
-    entityId: "owner-1" as UUID,
+    entityId: OWNER_ID,
     roomId: "room-flight-1" as UUID,
     createdAt: Date.parse("2026-07-08T10:00:00.000Z"),
     content: { text, source: "test" },
@@ -69,6 +71,8 @@ describe("CALENDAR — fabricated flight-conflict template removed", () => {
     const useModel = vi.fn(async () => "");
     const runtime = {
       agentId: "agent-flight-test" as UUID,
+      getSetting: (key: string) =>
+        key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER_ID : undefined,
       logger: makeLogger(),
       useModel,
       getService: () => null,
@@ -173,6 +177,8 @@ describe("CALENDAR — fabricated flight-conflict template removed", () => {
     }));
     const runtime = {
       agentId: "agent-flight-test" as UUID,
+      getSetting: (key: string) =>
+        key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER_ID : undefined,
       logger: makeLogger(),
       getService: () => ({ getCalendarFeed }),
     } as unknown as IAgentRuntime;

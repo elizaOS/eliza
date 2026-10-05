@@ -1,7 +1,7 @@
 /**
  * `KNOWLEDGE_GRAPH` action — unit tests.
  *
- * Mocks the agent access and knowledge-graph subpaths so the suite exercises
+ * Mocks core role access and the local graph service so the suite exercises
  * the action's op dispatch against a fake
  * EntityStore/RelationshipStore without a DB. Asserts create / read / list /
  * log_interaction / set_relationship dispatch onto the right store method,
@@ -9,13 +9,21 @@
  * graph mutation.
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
+import type {
+  KnowledgeGraphEntity as Entity,
+  KnowledgeGraphRelationship as Relationship,
+} from "@elizaos/contracts";
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
 } from "@elizaos/core";
-import type { Entity, Relationship } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -23,11 +31,7 @@ const mocks = vi.hoisted(() => ({
   resolveKnowledgeGraphService: vi.fn(),
 }));
 
-vi.mock("@elizaos/agent/security/access", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
-}));
-
-vi.mock("@elizaos/agent/services/knowledge-graph", () => ({
+vi.mock("../src/knowledge-graph/service.js", () => ({
   resolveKnowledgeGraphService: mocks.resolveKnowledgeGraphService,
 }));
 
@@ -76,6 +80,7 @@ type FakeStores = {
   };
   relationshipStore: {
     upsert: ReturnType<typeof vi.fn>;
+    assertEdge: ReturnType<typeof vi.fn>;
     list: ReturnType<typeof vi.fn>;
   };
 };
@@ -94,6 +99,9 @@ function makeStores(): FakeStores {
     },
     relationshipStore: {
       upsert: vi.fn(async (input: Record<string, unknown>) =>
+        makeRelationship(input as Partial<Relationship>),
+      ),
+      assertEdge: vi.fn(async (input: Record<string, unknown>) =>
         makeRelationship(input as Partial<Relationship>),
       ),
       list: vi.fn(async () => [makeRelationship()]),
@@ -298,14 +306,14 @@ describe("KNOWLEDGE_GRAPH action", () => {
     expect(stores.entityStore.upsert).not.toHaveBeenCalled();
   });
 
-  it("set_relationship upserts a typed edge, defaulting from to self", async () => {
+  it("set_relationship asserts a typed edge, defaulting from to self", async () => {
     const result = await call({
       op: "set_relationship",
       toEntityId: "ent_1",
       relationshipType: "manages",
     });
     expect(result?.success).toBe(true);
-    expect(stores.relationshipStore.upsert).toHaveBeenCalledWith(
+    expect(stores.relationshipStore.assertEdge).toHaveBeenCalledWith(
       expect.objectContaining({
         fromEntityId: "self",
         toEntityId: "ent_1",
@@ -323,7 +331,7 @@ describe("KNOWLEDGE_GRAPH action", () => {
       toEntityId: "ent_1",
       relationshipType: "works_at",
     });
-    expect(stores.relationshipStore.upsert).toHaveBeenCalledWith(
+    expect(stores.relationshipStore.assertEdge).toHaveBeenCalledWith(
       expect.objectContaining({ fromEntityId: "ent_2", toEntityId: "ent_1" }),
     );
   });
@@ -332,6 +340,7 @@ describe("KNOWLEDGE_GRAPH action", () => {
     const result = await call({ op: "set_relationship", toEntityId: "ent_1" });
     expect(result?.success).toBe(false);
     expect(result?.data).toMatchObject({ error: "MISSING_FIELDS" });
+    expect(stores.relationshipStore.assertEdge).not.toHaveBeenCalled();
     expect(stores.relationshipStore.upsert).not.toHaveBeenCalled();
   });
 

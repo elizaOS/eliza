@@ -28,7 +28,7 @@ export default function WalletLoginSolana({
     }
     if (!ctx.signInWithSolana) {
       const err = new Error(
-        "solana sign-in unavailable. upgrade @elizaos/login to >= 0.8.0",
+        "solana sign-in unavailable. upgrade @elizaos/auth to >= 0.8.0",
       );
       setError(err.message);
       onError?.(err, "solana");

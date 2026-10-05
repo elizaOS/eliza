@@ -20,14 +20,14 @@ const appMock = vi.hoisted(() => ({
   value: {} as Record<string, unknown>,
 }));
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({
     ref: vi.fn(),
     agentProps: {},
   }),
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
 }));

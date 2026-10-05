@@ -27,13 +27,11 @@ export interface ServiceTypeRegistry {
 	PDF: "pdf";
 	REMOTE_FILES: "aws_s3";
 	TUNNEL: "tunnel";
-	CLOUD_AUTH: "CLOUD_AUTH";
 	WEB_SEARCH: "web_search";
 	EMAIL: "email";
 	TEE: "tee";
 	TASK: "task";
 	APPROVAL: "approval";
-	TOOL_POLICY: "tool_policy";
 	WALLET: "wallet";
 	LP_POOL: "lp_pool";
 	TOKEN_DATA: "token_data";
@@ -133,13 +131,11 @@ export const ServiceType = {
 	PDF: "pdf",
 	REMOTE_FILES: "aws_s3",
 	TUNNEL: "tunnel",
-	CLOUD_AUTH: "CLOUD_AUTH",
 	WEB_SEARCH: "web_search",
 	EMAIL: "email",
 	TEE: "tee",
 	TASK: "task",
 	APPROVAL: "approval",
-	TOOL_POLICY: "tool_policy",
 	WALLET: "wallet",
 	LP_POOL: "lp_pool",
 	TOKEN_DATA: "token_data",

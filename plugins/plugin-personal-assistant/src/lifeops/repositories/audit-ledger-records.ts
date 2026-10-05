@@ -1,7 +1,7 @@
 /** Defines and parses audit ledger records for the LifeOps persistence boundary, preserving public factory and row contracts. */
 
 import crypto from "node:crypto";
-import type { LifeOpsAuditEvent } from "../../contracts/index.js";
+import type { LifeOpsAuditEvent } from "@elizaos/contracts";
 import type {
   LifeOpsCommitmentKind,
   LifeOpsCommitmentLedgerRecord,

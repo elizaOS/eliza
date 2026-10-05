@@ -4,6 +4,11 @@
  * pin set contributes no agreement instructions.
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { agreementPinsProvider } from "./agreement-pins.js";
@@ -12,7 +17,6 @@ const mocks = vi.hoisted(() => ({ hasOwnerAccess: vi.fn() }));
 
 vi.mock("@elizaos/agent", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/agent")>()),
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 function runtimeWithViews(views: unknown[]) {

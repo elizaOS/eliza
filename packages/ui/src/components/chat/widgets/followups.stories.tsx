@@ -1,6 +1,6 @@
 /** Storybook + story-gate visual states for the FollowupsWidget chips. */
 import type { Meta, StoryObj } from "@storybook/react";
-import type { FollowupOption } from "./followups";
+import type { FollowupOption } from "../message-followups-parser";
 import { FollowupsWidget } from "./followups";
 
 const mixedOptions: FollowupOption[] = [

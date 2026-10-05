@@ -4,20 +4,31 @@
  * Scope authorization and conversation execution are cache-only through the
  * shared Durable Object; cold hydration returns retryable unavailability.
  */
-import { Hono } from "hono";
-import { InsufficientCreditsError, RateLimitError } from "@/lib/api/errors";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+
+import {
+  InsufficientCreditsError,
+  RateLimitError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import {
+  personalDirectChatRefusalResponse,
+  resolveSharedSurfaceTarget,
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestMessageSend,
   sharedRestMessagesGet,
-} from "@/lib/services/shared-runtime/shared-rest-adapter";
-import { sharedTurnClientMessageId } from "@/lib/services/shared-runtime/shared-runtime-chat";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
+import { sharedTurnClientMessageId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { proxyLocalDedicatedOrNext } from "../../../_local-dedicated-proxy";
 
 /**
@@ -81,10 +92,29 @@ app.get("/", async (c) => {
     );
   }
   const conversationId = c.req.param("conversationId") ?? r.agentId;
+  // The personal identity follows its entitlement route (#25146): a withdrawn
+  // Dedicated reads the scoped fallback journal, never the canonical room.
+  const target = await resolveSharedSurfaceTarget({
+    agent: r.agent,
+    personal: "agentKind" in r,
+    conversationId,
+    namespace: worker.namespace,
+  });
+  if (!target.ok) {
+    const refusal = personalDirectChatRefusalResponse(target.refusal);
+    return applyCorsHeaders(
+      Response.json(refusal.body, {
+        status: refusal.status,
+        headers: refusal.headers,
+      }),
+      CORS_METHODS,
+      origin,
+    );
+  }
   try {
     const body = await sharedRestMessagesGet(
       r.agentId,
-      conversationId,
+      target.roomId,
       worker.namespace,
     );
     return applyCorsHeaders(Response.json(body), CORS_METHODS, origin);
@@ -173,11 +203,28 @@ app.post("/", async (c) => {
       origin,
     );
   }
+  const target = await resolveSharedSurfaceTarget({
+    agent: r.agent,
+    personal: "agentKind" in r,
+    conversationId,
+    namespace: worker.namespace,
+  });
+  if (!target.ok) {
+    const refusal = personalDirectChatRefusalResponse(target.refusal);
+    return applyCorsHeaders(
+      Response.json(refusal.body, {
+        status: refusal.status,
+        headers: refusal.headers,
+      }),
+      CORS_METHODS,
+      origin,
+    );
+  }
   let result: { text: string; agentName: string };
   try {
     result = await sharedRestMessageSend(
       r.agent,
-      conversationId,
+      target.roomId,
       text,
       r.agentName,
       worker.executionCtx,
@@ -186,6 +233,8 @@ app.post("/", async (c) => {
       "agentKind" in r ? "platform" : "organization-credits",
       undefined,
       text,
+      undefined,
+      target.accountState,
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.

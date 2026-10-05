@@ -136,6 +136,11 @@ async function clusterDatabaseCount(host: string): Promise<number> {
 // `describe`/`describe.skip` selection requires the decision before the suite is
 // registered, so the container boot happens here and stops in afterAll.
 pg = await acquireEphemeralPostgres();
+if (!pg && process.env.APPS_TENANT_DB_EPHEMERAL === "1") {
+  throw new Error(
+    "Tenant isolation verification requires Docker or APPS_TENANT_DB_TEST_DSN pointing to a disposable PostgreSQL database.",
+  );
+}
 const RUN = pg !== null;
 if (RUN && pg) {
   ADMIN_DSN = pg.dsn;
@@ -256,6 +261,23 @@ d("tenant-db provisioning over real Postgres", () => {
     // 1) Each app reaches its OWN database.
     expect(await connectAndPing(localize(r1.dsn))).toBe(1);
     expect(await connectAndPing(localize(r2.dsn))).toBe(1);
+
+    const tenant = new Client({ connectionString: localize(r1.dsn) });
+    const deniedDatabase = `isolation_denied_${app1.replaceAll("-", "")}`;
+    await tenant.connect();
+    try {
+      await tenant.query("CREATE TABLE isolation_probe (value integer)");
+      await tenant.query("INSERT INTO isolation_probe VALUES (1)");
+      expect((await tenant.query("SELECT value FROM isolation_probe")).rows).toEqual([
+        { value: 1 },
+      ]);
+      await expect(tenant.query(`CREATE DATABASE "${deniedDatabase}"`)).rejects.toMatchObject({
+        code: "42501",
+      });
+    } finally {
+      await tenant.end();
+      await adminExec(`DROP DATABASE IF EXISTS "${deniedDatabase}" WITH (FORCE)`);
+    }
 
     // 2) Cross-tenant is rejected at the database CONNECT boundary: app2's role
     //    cannot open app1's database (REVOKE CONNECT ... FROM PUBLIC).

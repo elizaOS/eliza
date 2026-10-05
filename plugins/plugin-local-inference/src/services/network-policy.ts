@@ -1,7 +1,7 @@
 /**
  * NetworkPolicy bridge for `plugin-local-inference` (R5-versioning §4).
  *
- * The shared module `@elizaos/shared/local-inference/network-policy` defines
+ * The shared module `@elizaos/plugin-native-inference/model-catalog/network-policy` defines
  * the platform-agnostic classifier + decision rule. This module wires the
  * platform-specific probes:
  *
@@ -33,6 +33,8 @@
  * Spec: `.swarm/research/R5-versioning.md` §4.
  */
 
+import { logger } from "@elizaos/core";
+import { probeBionicNetworkPolicy } from "@elizaos/plugin-native-inference/bionic-network-policy";
 import {
 	applyNetworkPolicy,
 	classifyNetwork,
@@ -41,7 +43,7 @@ import {
 	type NetworkPolicyDecision,
 	type NetworkPolicyPreferences,
 	type RawNetworkState,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/network-policy";
 
 /**
  * Platform probe — produces a `RawNetworkState` from whatever OS API is
@@ -51,6 +53,7 @@ import {
 export interface NetworkProbe {
 	readonly id:
 		| "node-default"
+		| "android-host"
 		| "capacitor-android"
 		| "capacitor-ios"
 		| "electron-darwin"
@@ -170,11 +173,7 @@ export function capacitorIosProbe(): NetworkProbe {
 						: status?.connectionType === "none"
 							? "none"
 							: "unknown";
-			const hints = await readIosPathHintsShim();
-			const metered =
-				hints === null
-					? null
-					: Boolean(hints.isExpensive) || Boolean(hints.isConstrained);
+			const metered = await readIosMeteredShim();
 			return { connectionType: ctype, metered };
 		},
 	};
@@ -233,9 +232,9 @@ interface AndroidMeteredShim {
 }
 interface IosPathHintsShim {
 	getPathHints?: () => Promise<{
-		isExpensive?: boolean;
-		isConstrained?: boolean;
-	}>;
+		isExpensive?: unknown;
+		isConstrained?: unknown;
+	} | null>;
 }
 
 async function readAndroidMeteredShim(): Promise<boolean | null> {
@@ -252,19 +251,17 @@ async function readAndroidMeteredShim(): Promise<boolean | null> {
 	}
 }
 
-async function readIosPathHintsShim(): Promise<{
-	isExpensive: boolean;
-	isConstrained: boolean;
-} | null> {
+async function readIosMeteredShim(): Promise<boolean | null> {
 	const g = globalThis as { ElizaNetworkPolicy?: IosPathHintsShim };
 	const fn = g.ElizaNetworkPolicy?.getPathHints;
 	if (typeof fn !== "function") return null;
 	try {
 		const res = await fn();
-		return {
-			isExpensive: Boolean(res.isExpensive),
-			isConstrained: Boolean(res.isConstrained),
-		};
+		if (res?.isExpensive === true || res?.isConstrained === true) return true;
+		// Unknown or malformed fields cannot establish an unmetered path.
+		return res?.isExpensive === false && res?.isConstrained === false
+			? false
+			: null;
 	} catch {
 		return null;
 	}
@@ -288,14 +285,38 @@ function readGlobalDesktopBridge(): DesktopBridge | null {
 /**
  * Pick the active probe based on platform heuristics. Order:
  *
- * 1. `ELIZA_NETWORK_POLICY=headless` (or CI / no-TTY-no-DISPLAY) → headless.
- * 2. Capacitor android bridge present → Android probe.
- * 3. Capacitor iOS bridge present → iOS probe (`process.platform` !==
+ * 1. A delegated Android host supplies OS state unless headless/CI is explicit.
+ * 2. Headless configuration or remaining no-TTY-no-DISPLAY hosts → headless.
+ * 3. Capacitor android bridge present → Android probe.
+ * 4. Capacitor iOS bridge present → iOS probe (`process.platform` !==
  *    `android` and a `Capacitor` global exists).
- * 4. Desktop bridge present → desktop probe.
- * 5. Otherwise → node-default (returns `unknown`).
+ * 5. Desktop bridge present → desktop probe.
+ * 6. Otherwise → node-default (returns `unknown`).
  */
 export function pickActiveProbe(): NetworkProbe {
+	const socketName = process.env.ELIZA_BIONIC_INFERENCE_SOCK?.trim();
+	if (
+		process.env.ELIZA_BIONIC_HOST_DELEGATED === "1" &&
+		socketName &&
+		process.env.ELIZA_NETWORK_POLICY !== "headless" &&
+		process.env.ELIZA_HEADLESS !== "1" &&
+		(process.env.CI === undefined || process.env.CI === "false")
+	) {
+		return {
+			id: "android-host",
+			async probe() {
+				try {
+					return await probeBionicNetworkPolicy(socketName);
+				} catch (error) {
+					logger.warn(
+						{ error },
+						"[network-policy] Android host state unavailable; download requires confirmation",
+					);
+					return { connectionType: "unknown", metered: null };
+				}
+			},
+		};
+	}
 	if (isHeadlessRuntime()) return HEADLESS_PROBE;
 	const g = globalThis as {
 		Capacitor?: { getPlatform?: () => string };

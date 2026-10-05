@@ -25,7 +25,6 @@ import argparse
 import asyncio
 import json
 import logging
-import sys
 import time
 from pathlib import Path
 
@@ -33,9 +32,8 @@ import torch
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
-sys.path.insert(0, str(PYTHON_ROOT))
 
-from src.training.team_rl import (
+from eliza_training.rl.team_rl import (
     AGENT_NAMES,
     TeamConfig,
     TeamModel,
@@ -48,8 +46,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("kondo-compare")
 
 # Import the mock bridge from run_team_rl
-sys.path.insert(0, str(SCRIPT_DIR))
-from run_team_rl import MockTeamBridge
+from eliza_training.rl.run_team_rl import MockTeamBridge
 
 
 async def run_experiment(

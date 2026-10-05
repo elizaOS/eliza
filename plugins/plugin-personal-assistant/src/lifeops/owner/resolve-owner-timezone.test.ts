@@ -61,6 +61,38 @@ describe("resolveOwnerTimeZone (#13509)", () => {
     expect(tz).toBe(resolveDefaultTimeZone());
   });
 
+  it("falls back to the agent's configured TIMEZONE setting before the host zone when no fact is stored (#31022)", async () => {
+    // Live 2026-09-16: a UTC container with TIMEZONE=America/New_York
+    // configured seeded and fired the owner's daily routines on UTC.
+    const runtime = makeRuntimeWithStore();
+    (runtime as { getSetting?: (key: string) => unknown }).getSetting = (
+      key,
+    ) => (key === "TIMEZONE" ? "America/New_York" : undefined);
+    expect(await resolveOwnerTimeZone(runtime, NOW)).toBe("America/New_York");
+  });
+
+  it("ignores a TIMEZONE setting that is not a valid IANA zone and keeps the host default", async () => {
+    const runtime = makeRuntimeWithStore();
+    (runtime as { getSetting?: (key: string) => unknown }).getSetting = (
+      key,
+    ) => (key === "TIMEZONE" ? "Eastern-ish" : undefined);
+    expect(await resolveOwnerTimeZone(runtime, NOW)).toBe(
+      resolveDefaultTimeZone(),
+    );
+  });
+
+  it("prefers the stored owner timezone fact over the configured TIMEZONE setting", async () => {
+    const runtime = makeRuntimeWithStore();
+    (runtime as { getSetting?: (key: string) => unknown }).getSetting = (
+      key,
+    ) => (key === "TIMEZONE" ? "America/New_York" : undefined);
+    await resolveOwnerFactStore(runtime).update(
+      { timezone: "America/Chicago" },
+      provenance,
+    );
+    expect(await resolveOwnerTimeZone(runtime, NOW)).toBe("America/Chicago");
+  });
+
   it("returns the owner's stored timezone fact over the host default", async () => {
     const runtime = makeRuntimeWithStore();
     await resolveOwnerFactStore(runtime).update(

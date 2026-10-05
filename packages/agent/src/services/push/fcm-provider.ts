@@ -17,6 +17,7 @@
 
 import { createPrivateKey, createSign, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { validateUuid } from "@elizaos/core";
 import {
   type PushMessage,
   type PushProvider,
@@ -151,16 +152,72 @@ export class FcmProvider implements PushProvider {
     const body: {
       message: {
         token: string;
-        notification: { title: string; body?: string };
+        notification?: { title: string; body?: string };
         data?: Record<string, string>;
+        android?: { priority: "HIGH" | "NORMAL" };
       };
     } = { message: { token, notification } };
+    if (message.priority !== undefined) {
+      // FCM NORMAL may wait through Doze. Due reminders are time-sensitive
+      // even at the normal UI tier; an explicit low priority stays deferrable.
+      // Transport priority does not override notification channels or consent.
+      body.message.android = {
+        priority:
+          message.priority === "high" ||
+          message.priority === "urgent" ||
+          (message.priority === "normal" &&
+            message.data?.category === "reminder")
+            ? "HIGH"
+            : "NORMAL",
+      };
+    }
     if (message.data) {
       const data: Record<string, string> = {};
       for (const [key, value] of Object.entries(message.data)) {
         data[key] = typeof value === "string" ? value : JSON.stringify(value);
       }
       body.message.data = data;
+    }
+    if (
+      message.androidReminderDataNotifications === true &&
+      message.data?.category === "reminder" &&
+      typeof message.data.notificationId === "string" &&
+      message.data.notificationId.length === 36 &&
+      message.data.notificationId.trim() === message.data.notificationId &&
+      validateUuid(message.data.notificationId) &&
+      typeof message.title === "string" &&
+      message.title.trim().length > 0 &&
+      message.title.length <= 512 &&
+      !message.title.includes("\0") &&
+      (message.body === undefined ||
+        (typeof message.body === "string" &&
+          message.body.length <= 4096 &&
+          !message.body.includes("\0"))) &&
+      (message.priority === undefined ||
+        ["urgent", "high", "normal", "low"].includes(message.priority)) &&
+      (message.data.deepLink === undefined ||
+        (typeof message.data.deepLink === "string" &&
+          message.data.deepLink.length <= 2048 &&
+          Array.from(message.data.deepLink).every((character) => {
+            const code = character.charCodeAt(0);
+            return (
+              code >= 32 && !(code >= 127 && code <= 159) && character !== "\\"
+            );
+          })))
+    ) {
+      // Notification messages always collapse in FCM even with collapse_key.
+      // Only a device advertising our cold native receiver gets data-only.
+      delete body.message.notification;
+      body.message.android = {
+        priority: message.priority === "low" ? "NORMAL" : "HIGH",
+      };
+      body.message.data = {
+        ...body.message.data,
+        elizaReminderData: "1",
+        title: message.title,
+        body: message.body ?? "",
+        priority: message.priority ?? "normal",
+      };
     }
     return JSON.stringify(body);
   }

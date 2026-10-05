@@ -1,7 +1,7 @@
 /** Applies legacy host defaults when creating canonical calendar sync-state records. */
-import type { LifeOpsCalendarSyncState } from "@elizaos/plugin-calendar/service/CalendarRepository";
+import type { LifeOpsCalendarSyncState } from "@elizaos/plugin-calendar";
 
-export type { LifeOpsCalendarSyncState } from "@elizaos/plugin-calendar/service/CalendarRepository";
+export type { LifeOpsCalendarSyncState } from "@elizaos/plugin-calendar";
 
 import { isoNow } from "./record-values.js";
 

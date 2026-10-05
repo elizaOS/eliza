@@ -14,17 +14,22 @@ import {
   test,
 } from "bun:test";
 import { runInNewContext } from "node:vm";
-import { hasDbCacheContext } from "@/db/client";
-import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
-import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
-import * as authActual from "@/lib/auth";
-import { mobileApiKeyIngressRateLimitKey } from "@/lib/auth/mobile-api-key";
-import * as cloudBindingsActual from "@/lib/runtime/cloud-bindings";
-import * as billingGateActual from "@/lib/services/agent-billing-gate";
-import * as pairingTokenActual from "@/lib/services/pairing-token";
-import * as provisioningJobsActual from "@/lib/services/provisioning-jobs";
-import * as workerHealthActual from "@/lib/services/provisioning-worker-health";
-import * as loggerActual from "@/lib/utils/logger";
+import * as provisioningJobsActual from "@elizaos/cloud-shared/agents";
+import { hasDbCacheContext } from "@elizaos/cloud-shared/db/client";
+import * as agentSandboxesActual from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import {
+  AuthenticationError,
+  ForbiddenError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import * as authActual from "@elizaos/cloud-shared/lib/auth";
+import { mobileApiKeyIngressRateLimitKey } from "@elizaos/cloud-shared/lib/auth/mobile-api-key";
+import * as cloudBindingsActual from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import * as billingGateActual from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import * as pairingTokenActual from "@elizaos/cloud-shared/lib/services/pairing-token";
+import type { ProvisioningWorkerHealth } from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import * as workerHealthActual from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import * as loggerActual from "@elizaos/cloud-shared/lib/utils/logger";
+import { Hono } from "hono";
 
 let authResult:
   | { user: { id: string; organization_id: string } }
@@ -38,6 +43,14 @@ let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
   balance: 100,
 };
 let enqueueCalls = 0;
+const wakeCalls: Record<string, unknown>[] = [];
+let wakeCreated = true;
+let wakeJobId: string | undefined = "wake-1";
+let enqueueError: Error | null = null;
+let workerHealthResult: ProvisioningWorkerHealth = {
+  ok: true,
+  required: false,
+};
 let wasStoppedByUser = false;
 type BrowserClaim =
   | {
@@ -60,11 +73,11 @@ const sandboxDbCacheContexts: boolean[] = [];
 const warnCalls: Array<{ message: string; context: unknown }> = [];
 const errorCalls: Array<{ message: string; context: unknown }> = [];
 
-mock.module("@/lib/runtime/cloud-bindings", () => ({
+mock.module("@elizaos/cloud-shared/lib/runtime/cloud-bindings", () => ({
   ...cloudBindingsActual,
   runWithCloudBindingsAsync: (_b: unknown, fn: () => Promise<unknown>) => fn(),
 }));
-mock.module("@/lib/auth", () => ({
+mock.module("@elizaos/cloud-shared/lib/auth", () => ({
   ...authActual,
   requireAuthOrApiKeyWithOrg: async (request: Request) => {
     authRequests.push(request);
@@ -75,7 +88,7 @@ mock.module("@/lib/auth", () => ({
     return authResult;
   },
 }));
-mock.module("@/db/repositories/agent-sandboxes", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/agent-sandboxes", () => ({
   ...agentSandboxesActual,
   agentSandboxesRepository: {
     ...agentSandboxesActual.agentSandboxesRepository,
@@ -87,12 +100,18 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
     },
   },
 }));
-mock.module("@/lib/services/provisioning-jobs", () => ({
+mock.module("@elizaos/cloud-shared/agents", () => ({
   ...provisioningJobsActual,
   provisioningJobService: {
     ...provisioningJobsActual.provisioningJobService,
+    enqueueAgentWakeOnce: async (params: Record<string, unknown>) => {
+      wakeCalls.push(params);
+      if (enqueueError) throw enqueueError;
+      return { job: { id: wakeJobId }, created: wakeCreated };
+    },
     enqueueAgentProvisionOnce: async () => {
       enqueueCalls++;
+      if (enqueueError) throw enqueueError;
       return {
         job: { id: "job-1" },
         created: true,
@@ -100,15 +119,18 @@ mock.module("@/lib/services/provisioning-jobs", () => ({
     },
   },
 }));
-mock.module("@/lib/services/provisioning-worker-health", () => ({
-  ...workerHealthActual,
-  checkProvisioningWorkerHealth: async () => ({ ok: true }),
-}));
-mock.module("@/lib/services/agent-billing-gate", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/services/provisioning-worker-health",
+  () => ({
+    ...workerHealthActual,
+    checkProvisioningWorkerHealth: async () => workerHealthResult,
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/services/agent-billing-gate", () => ({
   ...billingGateActual,
   checkAgentCreditGate: async () => creditGateResult,
 }));
-mock.module("@/lib/services/pairing-token", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/pairing-token", () => ({
   ...pairingTokenActual,
   getPairingTokenService: () => ({
     claimBrowserToken: async (
@@ -121,7 +143,7 @@ mock.module("@/lib/services/pairing-token", () => ({
     },
   }),
 }));
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   ...loggerActual,
   logger: {
     ...loggerActual.logger,
@@ -152,17 +174,29 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 }) as typeof fetch;
 afterAll(() => {
   globalThis.fetch = originalFetch;
-  mock.module("@/lib/runtime/cloud-bindings", () => cloudBindingsActual);
-  mock.module("@/lib/auth", () => authActual);
-  mock.module("@/db/repositories/agent-sandboxes", () => agentSandboxesActual);
-  mock.module("@/lib/services/agent-billing-gate", () => billingGateActual);
-  mock.module("@/lib/services/pairing-token", () => pairingTokenActual);
-  mock.module("@/lib/services/provisioning-jobs", () => provisioningJobsActual);
   mock.module(
-    "@/lib/services/provisioning-worker-health",
+    "@elizaos/cloud-shared/lib/runtime/cloud-bindings",
+    () => cloudBindingsActual,
+  );
+  mock.module("@elizaos/cloud-shared/lib/auth", () => authActual);
+  mock.module(
+    "@elizaos/cloud-shared/db/repositories/agent-sandboxes",
+    () => agentSandboxesActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/agent-billing-gate",
+    () => billingGateActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/pairing-token",
+    () => pairingTokenActual,
+  );
+  mock.module("@elizaos/cloud-shared/agents", () => provisioningJobsActual);
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/provisioning-worker-health",
     () => workerHealthActual,
   );
-  mock.module("@/lib/utils/logger", () => loggerActual);
+  mock.module("@elizaos/cloud-shared/lib/utils/logger", () => loggerActual);
 });
 
 const {
@@ -259,6 +293,11 @@ beforeEach(() => {
   sandboxLookupError = null;
   creditGateResult = { allowed: true, balance: 100 };
   enqueueCalls = 0;
+  wakeCalls.length = 0;
+  wakeCreated = true;
+  wakeJobId = "wake-1";
+  enqueueError = null;
+  workerHealthResult = { ok: true, required: false };
   wasStoppedByUser = false;
   browserClaimResult = { status: "invalid" };
   browserClaimError = null;
@@ -1378,7 +1417,107 @@ describe("dedicated-agent-proxy — unified auth", () => {
     const r = makeRequest("cloud-token");
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({
+      success: true,
+      data: { status: "starting", jobId: "job-1", alreadyInProgress: false },
+    });
     expect(enqueueCalls).toBe(1); // paying org is not blocked
+  });
+
+  test("owner sees worker-health failure instead of a false queued resume", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    workerHealthResult = {
+      ok: false,
+      required: true,
+      status: 503,
+      code: "PROVISIONING_WORKER_UNHEALTHY",
+      error:
+        "Provisioning worker has not reported a heartbeat in the last 60 seconds.",
+    };
+    const request = makeRequest(
+      "cloud-token",
+      "https://app-staging.elizacloud.ai",
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "PROVISIONING_WORKER_UNHEALTHY",
+      error: workerHealthResult.error,
+      retryable: true,
+    });
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
+    expect(enqueueCalls).toBe(0);
+    expect(captured).toBeNull();
+  });
+
+  test("owner sees unreachable-worker 502 instead of a false queued resume", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    workerHealthResult = {
+      ok: false,
+      required: true,
+      status: 502,
+      code: "PROVISIONING_WORKER_UNREACHABLE",
+      error: "Failed to read provisioning worker heartbeat from Redis.",
+    };
+    const request = makeRequest("cloud-token");
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "PROVISIONING_WORKER_UNREACHABLE",
+      retryable: true,
+    });
+    expect(enqueueCalls).toBe(0);
+    expect(captured).toBeNull();
+  });
+
+  test("owner sees enqueue failure instead of a false queued resume", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, status: "stopped" };
+    enqueueError = new Error("database unavailable");
+    const request = makeRequest(
+      "cloud-token",
+      "https://app-staging.elizacloud.ai",
+    );
+
+    const response = await handleDedicatedAgentProxy(
+      request,
+      ENV,
+      urlOf(request),
+      AGENT,
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "PROVISIONING_ENQUEUE_FAILED",
+      error: "Failed to start agent resume. Retry in a moment.",
+      retryable: true,
+    });
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
+    expect(enqueueCalls).toBe(1);
+    expect(captured).toBeNull();
   });
 
   test("owner of a SUSPENDED / zero-balance agent → 402 and NO re-provision (free-compute suspension bypass closed, #11583)", async () => {
@@ -1582,9 +1721,19 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
 
   test("OPTIONS preflight → 204 + reflected CORS, no auth/DB/proxy work", async () => {
     authResult = "throw"; // even a total auth failure must not reach here
+    const deviceHeaders = [
+      "x-eliza-device-id",
+      "x-eliza-device-key",
+      "x-eliza-device-capabilities",
+      "x-eliza-phone-protocol",
+    ];
     const r = new Request(`https://${AGENT}.elizacloud.ai/api/status`, {
       method: "OPTIONS",
-      headers: { origin: ORIGIN },
+      headers: {
+        origin: ORIGIN,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": deviceHeaders.join(","),
+      },
     });
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(res.status).toBe(204);
@@ -1600,6 +1749,12 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(res.headers.get("access-control-expose-headers")).toContain(
       "x-eliza-trace-id",
     );
+    const allowedHeaders = res.headers
+      .get("access-control-allow-headers")
+      ?.split(",");
+    for (const header of deviceHeaders)
+      expect(allowedHeaders).toContain(header);
+    expect(allowedHeaders).not.toContain("x-eliza-cloud-owner-proof");
     expect(res.headers.get("access-control-max-age")).toBe("600");
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(captured).toBeNull(); // preflight is answered at the edge
@@ -1894,3 +2049,115 @@ describe("dedicated-agent-proxy — workflow origin timeout budgets", () => {
     ).toBe(30_000);
   });
 });
+
+// Exercise both real HTTP entrypoints against the same cold-retirement contract.
+const { default: pairingRoute } = await import(
+  "../v1/eliza/agents/[agentId]/pairing-token/route"
+);
+const pairingApp = new Hono().route(
+  "/agents/:agentId/pairing-token",
+  pairingRoute,
+);
+for (const surface of ["proxy", "pairing"] as const) {
+  describe(`${surface} cold-retirement recovery`, () => {
+    beforeEach(() => {
+      authResult = { user: { id: "u1", organization_id: "org1" } };
+      sandboxResult = {
+        ...runningDedicated,
+        status: "sleeping",
+        lifecycle_revision: 19,
+      };
+    });
+    const requestRecovery = () => {
+      if (surface === "pairing")
+        return pairingApp.request(
+          `/agents/${AGENT}/pairing-token`,
+          { method: "POST", headers: { authorization: "Bearer cloud-token" } },
+          ENV,
+        );
+      const request = makeRequest("cloud-token");
+      return handleDedicatedAgentProxy(request, ENV, urlOf(request), AGENT);
+    };
+    test("a user shutdown stays stopped without scheduling work", async () => {
+      wasStoppedByUser = true;
+      const response = await requestRecovery();
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: "agent_stopped",
+        data: { status: "sleeping" },
+      });
+      expect(wakeCalls).toHaveLength(0);
+      expect(enqueueCalls).toBe(0);
+    });
+    for (const created of [true, false]) {
+      test(`billing recovery admits a verified wake with created=${created}`, async () => {
+        wakeCreated = created;
+        const response = await requestRecovery();
+        expect(response.status).toBe(202);
+        expect(await response.json()).toMatchObject({
+          success: true,
+          data: {
+            status: "starting",
+            jobId: "wake-1",
+            alreadyInProgress: !created,
+          },
+        });
+        expect(wakeCalls).toEqual([
+          {
+            agentId: AGENT,
+            organizationId: "org1",
+            userId: "u1",
+            expectedLifecycleRevision: 19,
+          },
+        ]);
+        expect(enqueueCalls).toBe(0);
+        expect(captured).toBeNull();
+      });
+    }
+    test("credit denial cannot schedule a cold wake", async () => {
+      creditGateResult = { allowed: false, balance: 0 };
+      const response = await requestRecovery();
+      expect(response.status).toBe(402);
+      expect(wakeCalls).toHaveLength(0);
+      expect(enqueueCalls).toBe(0);
+    });
+    test("offline worker cannot be reported as an admitted wake", async () => {
+      workerHealthResult = {
+        ok: false,
+        required: true,
+        status: 503,
+        code: "PROVISIONING_WORKER_UNHEALTHY",
+        error: "Worker offline",
+      };
+      const response = await requestRecovery();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        code: "PROVISIONING_WORKER_UNHEALTHY",
+      });
+      expect(wakeCalls).toHaveLength(0);
+      expect(enqueueCalls).toBe(0);
+    });
+    test("changed lifecycle authority returns a retryable admission failure", async () => {
+      enqueueError = new Error("Agent state changed while waking");
+      const response = await requestRecovery();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: "PROVISIONING_ENQUEUE_FAILED",
+        retryable: true,
+      });
+      expect(wakeCalls).toHaveLength(1);
+      expect(enqueueCalls).toBe(0);
+    });
+    test("missing durable job identity never reports queued success", async () => {
+      wakeJobId = undefined;
+      const response = await requestRecovery();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: "PROVISIONING_ENQUEUE_FAILED",
+      });
+      expect(enqueueCalls).toBe(0);
+    });
+  });
+}

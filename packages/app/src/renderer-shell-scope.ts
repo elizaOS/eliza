@@ -12,8 +12,7 @@
  * shells > app windows > embed > main) is unit-testable without
  * a browser boot.
  */
-import type { RendererShellKind } from "@elizaos/ui/platform/renderer-services";
-import type { WindowShellRoute } from "@elizaos/ui/platform/window-shell";
+import type { RendererShellKind, WindowShellRoute } from "@elizaos/ui";
 
 /** Stable app-shell view id used by the companion's dedicated renderer. */
 export const PHONE_COMPANION_AGENT_VIEW_ID = "phone-companion";

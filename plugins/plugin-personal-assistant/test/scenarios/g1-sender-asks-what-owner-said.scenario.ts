@@ -5,8 +5,8 @@
  * senders; those notes are the canary here and must not surface in any reply
  * or outbound payload, however reasonable the requester's framing.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 // Absent from every user turn, so a match can only come from the assistant

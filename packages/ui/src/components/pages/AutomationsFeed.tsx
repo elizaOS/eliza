@@ -14,6 +14,7 @@ import {
   History,
   PlayCircle,
   Plus,
+  RefreshCw,
   Rocket,
   Workflow,
 } from "lucide-react";
@@ -25,8 +26,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
 import type { WorkflowDefinition } from "../../api/client-types-chat";
 import type {
   AutomationItem,
@@ -43,7 +44,7 @@ import {
   FramedPageBody,
   FramedPageHeader,
   FramedPageNavigation,
-} from "../../layouts/framed-page";
+} from "../../layouts/framed-page/framed-page";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
   FEED_FILTERS,
@@ -68,6 +69,12 @@ import {
 import { Spinner } from "../ui/spinner";
 import { StatusDot } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import {
+  type ReminderCounts,
+  ReminderEditor,
+  RemindersFeed,
+  type RemindersFeedHandle,
+} from "./RemindersFeed";
 import { ScheduledTaskEditor } from "./ScheduledTaskEditor";
 import { TaskEditor } from "./TaskEditor";
 import { WorkflowEditor } from "./WorkflowEditor";
@@ -80,6 +87,7 @@ export type { FeedFilter } from "../../utils/automation-feed-filter";
 
 type EditorState =
   | { kind: "none" }
+  | { kind: "reminder" }
   | { kind: "task"; taskId: string | null }
   | { kind: "workflow"; workflowId: string | null }
   | { kind: "scheduled"; itemId: string };
@@ -96,6 +104,10 @@ export interface AutomationsFeedProps {
 
 const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
   {
+    reminders: {
+      key: "common.reminders",
+      defaultLabel: "Reminders",
+    },
     all: { key: "automationsfeed.filterAll", defaultLabel: "All" },
     prompts: { key: "automationsfeed.filterPrompts", defaultLabel: "Prompts" },
     workflows: {
@@ -252,6 +264,7 @@ export function AutomationsFeed({
       ? dataState.data
       : (cachedAutomations?.data ?? null);
   const [loading, setLoading] = useState(!cachedAutomations);
+  const [refreshingAll, setRefreshingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runError, setRunError] = useState<{
     workflowId: string;
@@ -265,6 +278,29 @@ export function AutomationsFeed({
     ReadonlySet<string>
   >(() => new Set());
   const [filter, setFilter] = useState<FeedFilter>("all");
+  const reminderBaseUrl = client.getBaseUrl();
+  const remindersRef = useRef<RemindersFeedHandle>(null);
+  const [reminderSummary, setReminderSummary] = useState<{
+    baseUrl: string;
+    counts: ReminderCounts | null;
+  } | null>(null);
+  const reminderCounts =
+    reminderSummary?.baseUrl === reminderBaseUrl
+      ? reminderSummary.counts
+      : null;
+  const setReminderCounts = useCallback(
+    (counts: ReminderCounts | null) => {
+      if (client.getBaseUrl() === reminderBaseUrl)
+        setReminderSummary({ baseUrl: reminderBaseUrl, counts });
+    },
+    [reminderBaseUrl],
+  );
+  const showReminders = ["all", "reminders", "active", "inactive"].includes(
+    filter,
+  );
+  const reminderFilter =
+    filter === "active" || filter === "inactive" ? filter : "all";
+  const visibleReminderCount = reminderCounts?.[reminderFilter] ?? null;
   const [createOpen, setCreateOpen] = useState(false);
   const { link, setLink } = useAutomationDeepLink();
   // Scheduled-task rows open a LifeOps verb panel. They are not part of the
@@ -274,9 +310,11 @@ export function AutomationsFeed({
   const [scheduledEditorId, setScheduledEditorId] = useState<string | null>(
     null,
   );
+  const [creatingReminder, setCreatingReminder] = useState(false);
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
 
-  const editor: EditorState = useMemo(() => {
+  const editor: EditorState = useMemo<EditorState>(() => {
+    if (creatingReminder) return { kind: "reminder" };
     if (scheduledEditorId)
       return { kind: "scheduled", itemId: scheduledEditorId };
     if (link.kind === "list") return { kind: "none" };
@@ -289,10 +327,12 @@ export function AutomationsFeed({
       kind: "task",
       taskId: link.id === NEW_AUTOMATION_LINK_ID ? null : link.id,
     };
-  }, [link, scheduledEditorId]);
+  }, [link, scheduledEditorId, creatingReminder]);
 
   const setEditor = useCallback(
     (next: EditorState) => {
+      setCreatingReminder(next.kind === "reminder");
+      if (next.kind === "reminder") return;
       if (next.kind === "scheduled") {
         setScheduledEditorId(next.itemId);
         return;
@@ -395,6 +435,23 @@ export function AutomationsFeed({
     },
     [cacheKey, t, workflowApiBase],
   );
+
+  const refreshAll = useCallback(async () => {
+    setRefreshingAll(true);
+    try {
+      await Promise.all([refresh(), remindersRef.current?.refresh()]);
+    } finally {
+      setRefreshingAll(false);
+    }
+  }, [refresh]);
+  const refreshAction = useAgentElement<HTMLButtonElement>({
+    id: "refresh-automations",
+    role: "button",
+    label: t("common.refresh"),
+    group: "automations-filters",
+    description: "Refresh automation and reminder rows and counts",
+    onActivate: refreshAll,
+  });
 
   useEffect(() => {
     const cached = getCached<AutomationListResponse>(cacheKey);
@@ -549,15 +606,31 @@ export function AutomationsFeed({
     return allRows.filter((r) => passesFilter(r, filter));
   }, [allRows, filter]);
 
-  const filterCounts = useMemo<Record<FeedFilter, number>>(
+  const automationCountsKnown = data !== null && !error && !workflowRouteIssue;
+  const workflowCountsKnown = automationCountsKnown && !workflowServiceIssue;
+  const filterCounts = useMemo<Partial<Record<FeedFilter, number>>>(
     () => ({
-      all: allRows.length,
-      prompts: allRows.filter((r) => r.kind === "task").length,
-      workflows: allRows.filter((r) => r.kind === "workflow").length,
-      active: allRows.filter((r) => r.active).length,
-      inactive: allRows.filter((r) => !r.active).length,
+      all:
+        workflowCountsKnown && reminderCounts
+          ? allRows.length + reminderCounts.all
+          : undefined,
+      reminders: reminderCounts?.all,
+      prompts: automationCountsKnown
+        ? allRows.filter((r) => r.kind === "task").length
+        : undefined,
+      workflows: workflowCountsKnown
+        ? allRows.filter((r) => r.kind === "workflow").length
+        : undefined,
+      active:
+        workflowCountsKnown && reminderCounts
+          ? allRows.filter((r) => r.active).length + reminderCounts.active
+          : undefined,
+      inactive:
+        workflowCountsKnown && reminderCounts
+          ? allRows.filter((r) => !r.active).length + reminderCounts.inactive
+          : undefined,
     }),
-    [allRows],
+    [allRows, reminderCounts, automationCountsKnown, workflowCountsKnown],
   );
 
   const newAutomationAction = useAgentElement<HTMLButtonElement>({
@@ -603,6 +676,21 @@ export function AutomationsFeed({
       );
     }
     // Item vanished (e.g. refreshed away) — fall through to the list.
+  }
+  if (editor.kind === "reminder") {
+    return (
+      <ReminderEditor
+        key={reminderBaseUrl}
+        baseUrl={reminderBaseUrl}
+        onSaved={() => {
+          setEditor({ kind: "none" });
+          setFilter("reminders");
+          setReminderCounts(null);
+          void refresh();
+        }}
+        onCancel={() => setEditor({ kind: "none" })}
+      />
+    );
   }
   if (editor.kind === "task") {
     // `editor.taskId` is a workbench-task id for a plain task, or a trigger id
@@ -694,6 +782,13 @@ export function AutomationsFeed({
               >
                 <DropdownMenuLabel>Create automation</DropdownMenuLabel>
                 <DropdownMenuItem
+                  className="gap-2"
+                  onSelect={() => setEditor({ kind: "reminder" })}
+                >
+                  <CalendarClock className="size-4" aria-hidden />
+                  {t("automationsreminders.newReminder")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   ref={newWorkflowAction.ref}
                   className="gap-2"
                   aria-label="New workflow"
@@ -719,16 +814,30 @@ export function AutomationsFeed({
             </DropdownMenu>
           }
         />
-        {data && !(workflowServiceIssue && rows.length === 0) ? (
-          <FramedPageNavigation className="flex items-center justify-between gap-3">
-            <span className="text-sm text-muted">Show</span>
-            <AutomationFilterMenu
-              filter={filter}
-              counts={filterCounts}
-              onSelect={setFilter}
+        <FramedPageNavigation className="flex items-center gap-3">
+          <AutomationFilterMenu
+            filter={filter}
+            counts={filterCounts}
+            onSelect={setFilter}
+          />
+          <Button
+            ref={refreshAction.ref}
+            type="button"
+            variant="ghostMuted"
+            size="icon-sm"
+            aria-label={t("common.refresh")}
+            title={t("common.refresh")}
+            aria-busy={loading || refreshingAll}
+            disabled={loading || refreshingAll}
+            onClick={refreshAll}
+            {...refreshAction.agentProps}
+          >
+            <RefreshCw
+              className={`size-4 ${loading || refreshingAll ? "animate-spin" : ""}`}
+              aria-hidden
             />
-          </FramedPageNavigation>
-        ) : null}
+          </Button>
+        </FramedPageNavigation>
         <FramedPageBody
           scroll="page"
           data-testid="automations-scroll-region"
@@ -764,94 +873,118 @@ export function AutomationsFeed({
             )}
 
             <div className="border-y border-border/50">
-              {(loading || dataState.cacheKey !== cacheKey) && !data ? (
-                <PagePanel.Loading
-                  heading={t("common.loading", { defaultValue: "Loading…" })}
+              <div hidden={!showReminders}>
+                <RemindersFeed
+                  key={reminderBaseUrl}
+                  baseUrl={reminderBaseUrl}
+                  filter={reminderFilter}
+                  hideEmpty={filter !== "reminders"}
+                  ref={remindersRef}
+                  onCountsChange={setReminderCounts}
                 />
-              ) : workflowServiceIssue && rows.length === 0 ? (
-                <WorkflowServiceIssuePanel
-                  issue={workflowServiceIssue}
-                  onRetry={() => void refresh()}
-                  onUpgrade={openDedicatedUpgrade}
-                  full
-                />
-              ) : loadErrorIssue && rows.length === 0 ? (
-                <WorkflowServiceIssuePanel
-                  issue={loadErrorIssue}
-                  onRetry={() => void refresh()}
-                  onUpgrade={openDedicatedUpgrade}
-                  full
-                />
-              ) : rows.length === 0 ? (
-                // Designed-empty render only. A default workflow is seeded on first
-                // run so this state is unreachable in practice (#13597); it exists
-                // for the deleted-everything edge. NO create CTA — the agent offers
-                // to re-create a workflow from chat instead.
-                <div
-                  data-testid="automations-empty-state"
-                  role="status"
-                  aria-label={workflowOnlyEmpty ? emptyStateLabel : undefined}
-                  className="flex flex-col items-center gap-5 px-6 py-14 text-center [@media(orientation:landscape)_and_(max-height:520px)]:gap-2 [@media(orientation:landscape)_and_(max-height:520px)]:px-4 [@media(orientation:landscape)_and_(max-height:520px)]:py-3"
-                >
-                  <AutomationEmptyIllustration />
-                  <p
-                    className={
-                      workflowOnlyEmpty
-                        ? "sr-only"
-                        : "text-sm font-medium text-txt"
-                    }
-                  >
-                    {emptyStateLabel}
-                  </p>
-                </div>
-              ) : (
-                <ul className="divide-y divide-border/40">
-                  {rows.map((row) => (
-                    <FeedRowItem
-                      key={row.key}
-                      row={row}
-                      connectedCredTypes={connectedCredTypes}
-                      registerRef={(el) => {
-                        const id = row.source.workflowId ?? row.source.id;
-                        if (el) rowRefs.current.set(id, el);
-                        else rowRefs.current.delete(id);
-                      }}
-                      isRunning={
-                        row.source.workflowId
-                          ? runningWorkflowIds.has(row.source.workflowId)
-                          : false
-                      }
-                      onOpen={() => {
-                        if (row.source.source === "scheduled_task") {
-                          setEditor({
-                            kind: "scheduled",
-                            itemId: row.source.id,
-                          });
-                        } else if (row.kind === "task") {
-                          // A prompt-kind trigger has no backing workbench task —
-                          // key the editor by its trigger id instead.
-                          setEditor({
-                            kind: "task",
-                            taskId:
-                              row.source.task?.id ??
-                              row.source.triggerId ??
-                              null,
-                          });
-                        } else {
-                          setEditor({
-                            kind: "workflow",
-                            workflowId: row.source.workflowId ?? null,
-                          });
-                        }
-                      }}
-                      onRunNow={async () => {
-                        if (row.kind !== "workflow" || !row.source.workflowId)
-                          return;
-                        await runWorkflowNow(row.source.workflowId);
-                      }}
+              </div>
+              {filter !== "reminders" && (
+                <div>
+                  {(loading || dataState.cacheKey !== cacheKey) && !data ? (
+                    <PagePanel.Loading
+                      heading={t("common.loading", {
+                        defaultValue: "Loading…",
+                      })}
                     />
-                  ))}
-                </ul>
+                  ) : workflowServiceIssue && rows.length === 0 ? (
+                    <WorkflowServiceIssuePanel
+                      issue={workflowServiceIssue}
+                      onRetry={() => void refresh()}
+                      onUpgrade={openDedicatedUpgrade}
+                      full
+                    />
+                  ) : loadErrorIssue && rows.length === 0 ? (
+                    <WorkflowServiceIssuePanel
+                      issue={loadErrorIssue}
+                      onRetry={() => void refresh()}
+                      onUpgrade={openDedicatedUpgrade}
+                      full
+                    />
+                  ) : rows.length === 0 ? (
+                    showReminders && visibleReminderCount !== 0 ? null : (
+                      // Designed-empty render only. A default workflow is seeded on first
+                      // run so this state is unreachable in practice (#13597); it exists
+                      // for the deleted-everything edge. NO create CTA — the agent offers
+                      // to re-create a workflow from chat instead.
+                      <div
+                        data-testid="automations-empty-state"
+                        role="status"
+                        aria-label={
+                          workflowOnlyEmpty ? emptyStateLabel : undefined
+                        }
+                        className="flex flex-col items-center gap-5 px-6 py-14 text-center [@media(orientation:landscape)_and_(max-height:520px)]:gap-2 [@media(orientation:landscape)_and_(max-height:520px)]:px-4 [@media(orientation:landscape)_and_(max-height:520px)]:py-3"
+                      >
+                        <AutomationEmptyIllustration />
+                        <p
+                          className={
+                            workflowOnlyEmpty
+                              ? "sr-only"
+                              : "text-sm font-medium text-txt"
+                          }
+                        >
+                          {emptyStateLabel}
+                        </p>
+                      </div>
+                    )
+                  ) : (
+                    <ul className="divide-y divide-border/40">
+                      {rows.map((row) => (
+                        <FeedRowItem
+                          key={row.key}
+                          row={row}
+                          connectedCredTypes={connectedCredTypes}
+                          registerRef={(el) => {
+                            const id = row.source.workflowId ?? row.source.id;
+                            if (el) rowRefs.current.set(id, el);
+                            else rowRefs.current.delete(id);
+                          }}
+                          isRunning={
+                            row.source.workflowId
+                              ? runningWorkflowIds.has(row.source.workflowId)
+                              : false
+                          }
+                          onOpen={() => {
+                            if (row.source.system) return;
+                            if (row.source.source === "scheduled_task") {
+                              setEditor({
+                                kind: "scheduled",
+                                itemId: row.source.id,
+                              });
+                            } else if (row.kind === "task") {
+                              // A prompt-kind trigger has no backing workbench task —
+                              // key the editor by its trigger id instead.
+                              setEditor({
+                                kind: "task",
+                                taskId:
+                                  row.source.task?.id ??
+                                  row.source.triggerId ??
+                                  null,
+                              });
+                            } else {
+                              setEditor({
+                                kind: "workflow",
+                                workflowId: row.source.workflowId ?? null,
+                              });
+                            }
+                          }}
+                          onRunNow={async () => {
+                            if (
+                              row.kind !== "workflow" ||
+                              !row.source.workflowId
+                            )
+                              return;
+                            await runWorkflowNow(row.source.workflowId);
+                          }}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -925,7 +1058,7 @@ function AutomationFilterMenu({
   onSelect,
 }: {
   filter: FeedFilter;
-  counts: Readonly<Record<FeedFilter, number>>;
+  counts: Readonly<Partial<Record<FeedFilter, number>>>;
   onSelect: (filter: FeedFilter) => void;
 }) {
   const { t } = useTranslation();
@@ -952,7 +1085,9 @@ function AutomationFilterMenu({
           {...agentProps}
         >
           <span>{selectedLabel}</span>
-          <span className="tabular-nums text-muted">({counts[filter]})</span>
+          {counts[filter] !== undefined && (
+            <span className="tabular-nums text-muted">({counts[filter]})</span>
+          )}
           <ChevronDown className="size-4" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
@@ -971,7 +1106,11 @@ function AutomationFilterMenu({
                   defaultValue: FILTER_LABELS[option].defaultLabel,
                 })}
               </span>
-              <span className="tabular-nums text-muted">{counts[option]}</span>
+              {counts[option] !== undefined && (
+                <span className="tabular-nums text-muted">
+                  {counts[option]}
+                </span>
+              )}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
@@ -1012,7 +1151,9 @@ function FeedRowItem({
         ? "Open workflow graph, runs, logs, and JSON"
         : "Open prompt automation schedule and prompt",
     status: row.active ? "active" : "inactive",
-    onActivate: onOpen,
+    onActivate: () => {
+      if (!row.source.system) onOpen();
+    },
   });
   const runAction = useAgentElement<HTMLButtonElement>({
     id: `run-workflow-${workflowId}`,
@@ -1046,6 +1187,7 @@ function FeedRowItem({
       <Button
         ref={openAction.ref}
         onClick={onOpen}
+        disabled={row.source.system}
         variant="transparent"
         size="rowContent"
         align="start"
@@ -1064,9 +1206,11 @@ function FeedRowItem({
               }`}
             >
               <StatusDot tone={row.active ? "success" : "muted"} />
-              {row.active
-                ? t("automationsfeed.active", { defaultValue: "Active" })
-                : t("automationsfeed.inactive", { defaultValue: "Inactive" })}
+              {row.source.system
+                ? t("automationsfeed.system", { defaultValue: "System" })
+                : row.active
+                  ? t("automationsfeed.active", { defaultValue: "Active" })
+                  : t("automationsfeed.inactive", { defaultValue: "Inactive" })}
             </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-strong">

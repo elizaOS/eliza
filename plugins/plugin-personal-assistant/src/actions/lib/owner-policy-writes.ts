@@ -5,14 +5,14 @@
  * single source of truth for reminder intensity + escalation rules.
  */
 
-import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
 import type {
   LifeOpsDefinitionRecord,
   LifeOpsDomain,
   LifeOpsReminderStep,
   SetLifeOpsReminderPreferenceRequest,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import {
   type OwnerFactProvenance,
   type ReminderIntensity,

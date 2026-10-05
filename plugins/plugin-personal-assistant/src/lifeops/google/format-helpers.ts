@@ -2,13 +2,7 @@
  * Formatting helpers that render Google calendar/Gmail feed DTOs into the text
  * projections the assistant's providers inject into the model prompt.
  */
-import type { IAgentRuntime, Memory, ProviderDataRecord } from "@elizaos/core";
-import {
-  assertActiveTrajectoryForLlmCall,
-  ModelType,
-  parseJsonModelRecord,
-  runWithTrajectoryPurpose,
-} from "@elizaos/core";
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsGmailBatchReplyDraftsFeed,
@@ -20,8 +14,25 @@ import type {
   LifeOpsGmailTriageFeed,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
-} from "../../contracts/index.js";
-import { getLocalDateKey, getZonedDateParts } from "../time.js";
+} from "@elizaos/contracts";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  Memory,
+  ProviderDataRecord,
+} from "@elizaos/core";
+import {
+  assertActiveTrajectoryForLlmCall,
+  ModelType,
+  parseJsonModelRecord,
+  runWithTrajectoryPurpose,
+} from "@elizaos/core";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getLocalDateKey,
+  getZonedDateParts,
+} from "../time.js";
 
 // Build a "Display Name <email@host>" string when both are available, or
 // fall back to whichever field is set. Without explicit email rendering the
@@ -68,6 +79,8 @@ type LifeOpsModelCallArgs = {
   source: string;
   modelType?: LifeOpsModelType;
   purpose?: string;
+  temperature?: number;
+  responseSchema?: GenerateTextParams["responseSchema"];
 };
 
 export type LifeOpsJsonModelResult<
@@ -103,9 +116,24 @@ export async function runLifeOpsTextModel(
       () =>
         args.runtime.useModel(modelType, {
           prompt: args.prompt,
+          ...(args.responseSchema
+            ? { responseSchema: args.responseSchema }
+            : {}),
+          ...(args.temperature !== undefined
+            ? { temperature: args.temperature }
+            : {}),
         }),
     );
-    return typeof result === "string" ? result : "";
+    // Native structured-output requests return the text in a result envelope.
+    // Preserve that text just as we do for legacy string-only providers.
+    return typeof result === "string"
+      ? result
+      : result !== null &&
+          typeof result === "object" &&
+          "text" in result &&
+          typeof result.text === "string"
+        ? result.text
+        : "";
   } catch (error) {
     args.runtime.logger.warn(
       {
@@ -178,13 +206,28 @@ export function detailArray(
   return Array.isArray(value) ? value : undefined;
 }
 
-export function dayRange(offset: number) {
-  const base = new Date();
-  base.setHours(0, 0, 0, 0);
-  const start = new Date(base.getTime() + offset * 86_400_000);
+/**
+ * The owner's local calendar day `offset` days from `now` in `timeZone`, as an
+ * instant range from local midnight to the next local midnight (23 or 25 hours
+ * on DST days). The host clock's midnight is not the owner's on a shared or
+ * UTC server.
+ */
+export function dayRange(
+  offset: number,
+  timeZone: string,
+  now: Date = new Date(),
+) {
+  const today = getZonedDateParts(now, timeZone);
+  const midnight = { hour: 0, minute: 0, second: 0 };
   return {
-    timeMin: start.toISOString(),
-    timeMax: new Date(start.getTime() + 86_400_000).toISOString(),
+    timeMin: buildUtcDateFromLocalParts(timeZone, {
+      ...addDaysToLocalDate(today, offset),
+      ...midnight,
+    }).toISOString(),
+    timeMax: buildUtcDateFromLocalParts(timeZone, {
+      ...addDaysToLocalDate(today, offset + 1),
+      ...midnight,
+    }).toISOString(),
   };
 }
 

@@ -10,7 +10,7 @@ import {
   ORGANIZATION_CREDIT_UNIT,
   RETRIEVE_MEMORIES_PRICE_USD,
   SAVE_MEMORY_PRICE_USD,
-} from "./organization-credits.js";
+} from "@elizaos/cloud-sdk/browser-contracts";
 
 export const MCP_FREE_COST_LABEL = "Free" as const;
 export const MCP_USAGE_BASED_COST_LABEL = "Usage-based cloud credits" as const;

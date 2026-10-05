@@ -30,6 +30,7 @@ import {
   shouldWarnTestStripeKeyInProduction,
 } from "./config/deployment-environment";
 import { getCloudAwareEnv } from "./runtime/cloud-bindings";
+import { STRIPE_API_VERSION as PINNED_STRIPE_API_VERSION } from "./stripe-api-version";
 import { type CloudE2EStripeEndpoint, resolveCloudE2EStripeEndpoint } from "./stripe-cloud-e2e";
 import { createStripeRecoveryFetch } from "./stripe-recovery-transport";
 import { logger } from "./utils/logger";
@@ -37,7 +38,7 @@ import { logger } from "./utils/logger";
 type PinnedStripeApiVersion = Stripe.WebhookEndpointCreateParams.ApiVersion;
 type StripeConstructorConfig = NonNullable<ConstructorParameters<typeof Stripe>[1]>;
 
-const STRIPE_API_VERSION: PinnedStripeApiVersion = "2024-11-20.acacia";
+const STRIPE_API_VERSION: PinnedStripeApiVersion = PINNED_STRIPE_API_VERSION;
 
 let stripeInstance: Stripe | null = null;
 let stripeInitError: Error | null = null;

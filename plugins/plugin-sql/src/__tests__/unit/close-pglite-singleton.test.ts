@@ -6,7 +6,7 @@
  * instance is created.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { closePgliteSingleton, getPgliteSingletonCache } from "../../index.node";
+import { closePgliteSingleton, getPgliteSingletonCache } from "../../index";
 import { pgliteManagerCacheKey } from "../../pglite/manager-cache";
 
 describe("closePgliteSingleton", () => {

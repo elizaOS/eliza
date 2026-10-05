@@ -1,7 +1,7 @@
 /** Storybook stories for HardwareBadge — Apple Silicon, CUDA, CPU-only, Vulkan, and OS-fallback-warning hardware profiles. */
 
+import type { HardwareProbe } from "@elizaos/contracts";
 import type { Meta, StoryObj } from "@storybook/react";
-import type { HardwareProbe } from "../../api/client-local-inference";
 import { TranslationProvider } from "../../state/TranslationProvider";
 import { HardwareBadge } from "./HardwareBadge";
 

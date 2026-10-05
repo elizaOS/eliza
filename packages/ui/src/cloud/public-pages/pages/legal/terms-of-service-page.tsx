@@ -5,8 +5,8 @@
 
 import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { usePageTitle } from "../../lib/use-page-title";
 
 type TFn = ReturnType<typeof useCloudT>;
 
@@ -170,7 +170,7 @@ function buildSections(
 
 export default function TermsOfServicePage() {
   const t = useCloudT();
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.terms.metaTitle", {
       defaultValue: "Terms of Service | Eliza Cloud",
     }),

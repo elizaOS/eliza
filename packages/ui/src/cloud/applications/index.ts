@@ -43,13 +43,8 @@ export {
 } from "./lib/apps";
 export {
   APPLICATIONS_DETAIL_ROUTE_PATH,
-  APPLICATIONS_LEGACY_DETAIL_ROUTE_PATH,
-  APPLICATIONS_LEGACY_LIST_ROUTE_PATH,
   APPLICATIONS_LIST_ROUTE_PATH,
 } from "./register-moved-routes";
-
-/** Stable surface label + URL path slugs for the Applications surface. */
-export const APPLICATIONS_SURFACE_LABEL = "Applications";
 
 /** Lazy route elements (code-split) for the Applications surfaces. */
 const ApplicationsRouteLazy = lazy(() => import("./ApplicationsPage"));

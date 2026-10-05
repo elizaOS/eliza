@@ -48,6 +48,8 @@ export async function handleImageDescription(
       ? DEFAULT_IMAGE_DESCRIPTION_PROMPT
       : (params.prompt ?? DEFAULT_IMAGE_DESCRIPTION_PROMPT);
   const operationName = `${ModelType.IMAGE_DESCRIPTION} request using ${modelName}`;
+  // The caller's cancellation ends the provider request and is never retried.
+  const signal = typeof params === "string" ? undefined : params.signal;
 
   if (!imageUrl || imageUrl.trim().length === 0) {
     throw new Error("[Anthropic] IMAGE_DESCRIPTION requires a valid image URL.");
@@ -56,20 +58,25 @@ export async function handleImageDescription(
   logger.log(`[Anthropic] Using ${ModelType.IMAGE_DESCRIPTION} model: ${modelName}`);
 
   try {
-    const response = await executeWithRetry(operationName, () =>
-      generateText({
-        model: anthropic(modelName),
-        messages: [
-          {
-            role: "user" as const,
-            content: [
-              { type: "text" as const, text: promptText },
-              { type: "image" as const, image: imageUrl },
-            ],
-          },
-        ],
-        maxOutputTokens: resolveAnthropicMaxOutputTokens(runtime, modelName),
-      })
+    const response = await executeWithRetry(
+      operationName,
+      () =>
+        generateText({
+          model: anthropic(modelName),
+          messages: [
+            {
+              role: "user" as const,
+              content: [
+                { type: "text" as const, text: promptText },
+                { type: "image" as const, image: imageUrl },
+              ],
+            },
+          ],
+          maxOutputTokens: resolveAnthropicMaxOutputTokens(runtime, modelName),
+          ...(signal ? { abortSignal: signal } : {}),
+        }),
+      undefined,
+      signal
     );
     assertModelOutputComplete({
       finishReason: response.finishReason,

@@ -6,6 +6,11 @@
  * failures or empty inputs.
  */
 
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: mocks.hasOwnerAccess,
+}));
+
 import type {
   HandlerOptions,
   IAgentRuntime,
@@ -19,10 +24,6 @@ const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
   createWorkThreadStore: vi.fn(),
   createApprovalQueue: vi.fn(),
-}));
-
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
 vi.mock("../src/lifeops/work-threads/index.js", () => ({
@@ -43,6 +44,7 @@ function makeRuntime(
   options: {
     useModel?: (modelType: string, args: { prompt: string }) => Promise<string>;
     services?: Record<string, unknown>;
+    reportError?: (...args: unknown[]) => void;
   } = {},
 ): IAgentRuntime {
   const services = options.services ?? {};
@@ -54,6 +56,7 @@ function makeRuntime(
       error: () => undefined,
       debug: () => undefined,
     },
+    reportError: options.reportError ?? (() => undefined),
     getService: (name: string) => services[name] ?? null,
     useModel:
       options.useModel ??
@@ -261,6 +264,44 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
         title: "Sending partner proposal",
         dueAt: "2026-07-01T09:00:00.000Z",
       });
+    });
+
+    it("surfaces a todo store failure instead of reporting an empty list", async () => {
+      const reportError = vi.fn();
+      const runtime = makeRuntime({
+        reportError,
+        services: {
+          todos: {
+            list: async () => {
+              throw new Error("SQLITE_BUSY: database is locked");
+            },
+          },
+        },
+      });
+
+      const result = await callPrioritize(runtime, makeMessage(), {
+        subaction: "rank_todos",
+      });
+
+      expect(result).toMatchObject({
+        success: false,
+        text: "I couldn't load your todos to rank. Please try again.",
+        data: {
+          subaction: "rank_todos",
+          subject: "todos",
+          error: "PRIORITIZE_SOURCE_LOAD_FAILED",
+        },
+      });
+      expect(reportError).toHaveBeenCalledWith(
+        "Prioritize.loadItems",
+        expect.objectContaining({
+          code: "PRIORITIZE_SOURCE_LOAD_FAILED",
+          cause: expect.objectContaining({
+            message: "SQLITE_BUSY: database is locked",
+          }),
+        }),
+        { subaction: "rank_todos", subject: "todos" },
+      );
     });
 
     it("respects topN by truncating the model's ranked list", async () => {

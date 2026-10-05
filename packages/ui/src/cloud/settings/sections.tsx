@@ -20,7 +20,7 @@
  */
 
 import { useCallback } from "react";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { AccountSurface } from "../account-security/AccountSurface";
 import { PermissionsSurface } from "../account-security/PermissionsSurface";

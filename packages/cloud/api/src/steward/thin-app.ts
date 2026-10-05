@@ -14,30 +14,33 @@
  * uses the full app.
  */
 
-import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
-import { logger as honoLogger } from "hono/logger";
-import { requestId } from "hono/request-id";
-import { secureHeaders } from "hono/secure-headers";
-import { runWithDbCacheAsync } from "@/db/client";
-import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import { hasRedisConfig } from "@/lib/cache/redis-factory";
-import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
+import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
+import {
+  ApiError,
+  failureResponse,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { hasRedisConfig } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
 import {
   getIpKey,
   getRequestIp,
   rateLimit,
   rateLimitConfigVerdict,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
-import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
-import { httpTelemetryMiddleware } from "@/lib/observability/http-telemetry-hono";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import { runWithRequestContext } from "@/lib/runtime/request-context";
-import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
-import { logger } from "@/lib/utils/logger";
-import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { observeCloudRequest } from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
+import { resolveElizaTraceId } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { httpTelemetryMiddleware } from "@elizaos/cloud-shared/lib/observability/http-telemetry-hono";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { runWithRequestContext } from "@elizaos/cloud-shared/lib/runtime/request-context";
+import { setRuntimeR2Bucket } from "@elizaos/cloud-shared/lib/storage/r2-runtime-binding";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { describeUnhandledError } from "@elizaos/cloud-shared/lib/utils/unhandled-error-detail";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
+import { logger as honoLogger } from "hono/logger";
+import { requestId } from "hono/request-id";
+import { secureHeaders } from "hono/secure-headers";
 import { embeddedStewardHandler } from "./embedded";
 
 export function createStewardThinApp(): Hono<AppEnv> {

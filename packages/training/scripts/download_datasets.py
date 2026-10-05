@@ -36,9 +36,8 @@ RAW_DIR = ROOT / "data" / "raw"
 REGISTRY = ROOT / "datasets.yaml"
 DOWNLOAD_MANIFEST = RAW_DIR / "download_manifest.json"
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.local_path_source import LocalPathSource  # noqa: E402
-from lib.dataset_loader import (  # noqa: E402
+from eliza_training.lib.local_path_source import LocalPathSource  # noqa: E402
+from eliza_training.lib.dataset_loader import (  # noqa: E402
     DatasetConsentError,
     load_registry,
 )

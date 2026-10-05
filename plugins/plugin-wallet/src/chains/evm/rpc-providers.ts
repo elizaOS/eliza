@@ -2,7 +2,10 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/shared";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 
 function hasStringSetting(runtime: IAgentRuntime, key: string): boolean {
   const value = runtime.getSetting(key);

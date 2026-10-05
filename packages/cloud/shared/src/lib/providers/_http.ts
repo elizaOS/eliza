@@ -13,8 +13,8 @@
  * preserve those provider-specific identifiers verbatim for callers
  * that switch on them.
  */
-import type { ResponseReplayPolicy } from "@elizaos/cloud-services-common/response-attempts";
-import { computeBackoffMs, sleepWithAbort } from "@elizaos/cloud-services-common/retry";
+import type { ResponseReplayPolicy } from "@elizaos/cloud-services-common/transport";
+import { computeBackoffMs, sleepWithAbort } from "@elizaos/cloud-services-common/transport";
 import type { ProviderHttpError } from "./types";
 
 export interface ProviderLabel {

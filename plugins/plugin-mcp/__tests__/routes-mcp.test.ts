@@ -323,16 +323,13 @@ describe("handleMcpRoutes", () => {
     expect(ctx.saveElizaConfig).not.toHaveBeenCalled();
   });
 
-  it("persists sanitized config and still returns success when config save fails", async () => {
+  it("persists sanitized server config before exposing it in the live config", async () => {
     const ctx = makeCtx("POST", "/api/mcp/config/server", {
       body: {
         name: "remote",
         config: JSON.parse(
           '{"type":"http","url":"https://example.com","headers":{"authorization":"token","constructor":{"polluted":true}}}'
         ),
-      },
-      saveElizaConfig: () => {
-        throw new Error("disk full");
       },
     });
 
@@ -347,7 +344,60 @@ describe("handleMcpRoutes", () => {
       url: "https://example.com",
       headers: { authorization: "token" },
     });
+    expect(ctx.saveElizaConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ mcp: ctx.state.config.mcp })
+    );
   });
+
+  it.each([
+    {
+      operation: "add",
+      method: "POST",
+      pathname: "/api/mcp/config/server",
+      body: {
+        name: "new-server",
+        config: { type: "http", url: "https://new.example.com" },
+      },
+      config: { mcp: { servers: { existing: { type: "http", url: "https://old.example.com" } } } },
+    },
+    {
+      operation: "delete",
+      method: "DELETE",
+      pathname: "/api/mcp/config/server/existing",
+      body: null,
+      config: { mcp: { servers: { existing: { type: "http", url: "https://old.example.com" } } } },
+    },
+    {
+      operation: "replace",
+      method: "PUT",
+      pathname: "/api/mcp/config",
+      body: {
+        servers: { replacement: { type: "http", url: "https://new.example.com" } },
+      },
+      config: { mcp: { servers: { existing: { type: "http", url: "https://old.example.com" } } } },
+    },
+  ])(
+    "returns failure and preserves the live config when $operation cannot be persisted",
+    async ({ method, pathname, body, config }) => {
+      const before = structuredClone(config);
+      const ctx = makeCtx(method, pathname, {
+        body,
+        config,
+        saveElizaConfig: () => {
+          throw new Error("disk full");
+        },
+      });
+
+      await expect(handleMcpRoutes(ctx)).resolves.toBe(true);
+
+      expect(ctx.response).toEqual({
+        status: 500,
+        body: { ok: false, error: "MCP configuration could not be persisted" },
+      });
+      expect(ctx.state.config).toEqual(before);
+      expect(ctx.saveElizaConfig).toHaveBeenCalledOnce();
+    }
+  );
 
   it("treats malformed path params as handled without deleting config", async () => {
     const config = { mcp: { servers: { remote: { type: "http", url: "https://example.com" } } } };

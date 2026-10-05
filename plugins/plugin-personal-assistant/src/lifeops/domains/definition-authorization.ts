@@ -9,7 +9,7 @@ import type {
   LifeOpsOccurrence,
   LifeOpsOccurrenceView,
   LifeOpsTaskDefinition,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import type {
   LifeOpsDefinitionScope,

@@ -1,0 +1,20 @@
+id: idl_drift_001
+level: 0
+name: Drift Protocol IDL
+description: 'Level 0 foundational test: Drift Protocol IDL'
+category: idl
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_idl_drift_001
+  type: query
+  parameters:
+    program: dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH
+    action: parse_idl
+  timeout_ms: 10000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

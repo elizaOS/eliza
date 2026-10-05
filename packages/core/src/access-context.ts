@@ -11,7 +11,9 @@ import {
 	resolveEntityRole,
 	resolveWorldForMessage,
 } from "./roles";
-import type { AccessContext, IAgentRuntime, Memory } from "./types";
+import type { AccessContext } from "./types/access-context.js";
+import type { Memory } from "./types/memory.js";
+import type { IAgentRuntime } from "./types/runtime.js";
 
 /**
  * Build the {@link AccessContext} for a message-driven read: who is asking, in

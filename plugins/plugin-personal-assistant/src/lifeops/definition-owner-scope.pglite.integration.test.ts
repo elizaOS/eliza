@@ -6,13 +6,15 @@
  * The harness is a real AgentRuntime with the personal-assistant plugin's
  * schema migrated into PGlite — no mocked repository.
  */
+
+import type { LifeOpsTaskDefinition } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
-import type { LifeOpsTaskDefinition } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
+import { resolveOwnerFactStore } from "./owner/fact-store.js";
 import {
   createLifeOpsTaskDefinition,
   LifeOpsRepository,
@@ -367,6 +369,188 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     });
   });
 
+  it.each([
+    [
+      "America/Los_Angeles",
+      "2026-10-04T06:14:13.975Z",
+      "2026-10-03T07:00:00.000Z",
+    ],
+    ["Asia/Tokyo", "2026-10-03T14:14:13.975Z", "2026-10-02T15:00:00.000Z"],
+  ])(
+    "dates completions by their actual instant in %s",
+    async (timezone, nowIso, startIso) => {
+      const now = new Date(nowIso);
+      const store = resolveOwnerFactStore(runtimeResult.runtime);
+      const previous = await store.read();
+      await store.update(
+        { timezone },
+        { source: "first_run", recordedAt: nowIso },
+      );
+      const definition = makeDefinition(agentId, ownerA, "completion clock");
+      await repository.createDefinition(definition);
+      try {
+        const [base] = await service.refreshDefinitionOccurrences(
+          definition,
+          now,
+        );
+        if (!base) throw new Error("expected occurrence");
+        const start = Date.parse(startIso);
+        const fixtures = [
+          {
+            key: "prior-day-refreshed",
+            payload: { completedAt: new Date(start - 1).toISOString() },
+            updatedAt: nowIso,
+          },
+          {
+            key: "day-start",
+            payload: { completedAt: startIso },
+            updatedAt: new Date(start - 1).toISOString(),
+          },
+          {
+            key: "today",
+            payload: { completedAt: new Date(start + 60_000).toISOString() },
+            updatedAt: new Date(start - 1).toISOString(),
+          },
+          {
+            key: "old-completion-live-reproduction",
+            payload: { completedAt: "2026-10-03T04:12:14.140Z" },
+            updatedAt: nowIso,
+          },
+          { key: "missing", payload: null, updatedAt: nowIso },
+          { key: "empty", payload: {}, updatedAt: nowIso },
+          {
+            key: "invalid",
+            payload: { completedAt: "invalid" },
+            updatedAt: nowIso,
+          },
+          {
+            key: "relative-date",
+            payload: { completedAt: "today" },
+            updatedAt: nowIso,
+          },
+          {
+            key: "wrong-type",
+            payload: { completedAt: 42 },
+            updatedAt: nowIso,
+          },
+          {
+            key: "future",
+            payload: {
+              completedAt: new Date(now.getTime() + 60_000).toISOString(),
+            },
+            updatedAt: nowIso,
+          },
+        ];
+        for (const item of fixtures)
+          await repository.upsertOccurrence({
+            ...base,
+            id: crypto.randomUUID(),
+            occurrenceKey: item.key,
+            state: "completed",
+            completionPayload: item.payload,
+            updatedAt: item.updatedAt,
+          });
+        const before = await repository.listOccurrencesForDefinition(
+          agentId,
+          definition.id,
+        );
+        const completed = await service.listOwnerOccurrencesCompletedToday(now);
+        const own = completed.filter(
+          (item) => item.definitionId === definition.id,
+        );
+        expect(own.map((item) => item.occurrenceKey)).toEqual(
+          timezone === "Asia/Tokyo"
+            ? ["old-completion-live-reproduction", "today", "day-start"]
+            : ["today", "day-start"],
+        );
+        expect(
+          await repository.listOccurrencesForDefinition(agentId, definition.id),
+        ).toEqual(before);
+        expect(
+          (await repository.getDefinition(agentId, definition.id))?.timezone,
+        ).toBe("UTC");
+      } finally {
+        await repository.deleteDefinition(agentId, definition.id);
+        await store.update(
+          { timezone: previous.timezone?.value ?? null },
+          { source: "first_run", recordedAt: nowIso },
+        );
+      }
+    },
+  );
+
+  it("keeps a real completion when more than the scan limit have future completion timestamps", async () => {
+    const now = new Date("2026-10-04T06:14:13.975Z");
+    const store = resolveOwnerFactStore(runtimeResult.runtime);
+    const previous = await store.read();
+    await store.update(
+      { timezone: "America/Los_Angeles" },
+      { source: "first_run", recordedAt: now.toISOString() },
+    );
+    const definition = makeDefinition(
+      agentId,
+      ownerA,
+      "bounded completion clock",
+    );
+    await repository.createDefinition(definition);
+    try {
+      const [base] = await service.refreshDefinitionOccurrences(
+        definition,
+        now,
+      );
+      if (!base) throw new Error("expected occurrence");
+      for (let index = 0; index <= 201; index++) {
+        await repository.upsertOccurrence({
+          ...base,
+          id: crypto.randomUUID(),
+          occurrenceKey: index === 0 ? "actual-today" : `future-${index}`,
+          state: "completed",
+          completionPayload: {
+            completedAt: new Date(
+              now.getTime() + (index === 0 ? -60_000 : index * 60_000),
+            ).toISOString(),
+          },
+          updatedAt: now.toISOString(),
+        });
+      }
+      const before = await repository.listOccurrencesForDefinition(
+        agentId,
+        definition.id,
+      );
+      // The optional upper bound must not change existing since-only callers.
+      const sinceOnly = await repository.listCompletedOccurrenceViewsSince(
+        agentId,
+        "2026-10-03T07:00:00.000Z",
+        {
+          definitionScopes: [
+            { domain: "user_lifeops", subjectType: "owner", subjectId: ownerA },
+          ],
+          subjectType: "owner",
+          limit: 200,
+        },
+      );
+      expect(sinceOnly).toHaveLength(200);
+      expect(
+        sinceOnly.every((item) => item.occurrenceKey.startsWith("future-")),
+      ).toBe(true);
+      const completed = await service.listOwnerOccurrencesCompletedToday(now);
+      expect(
+        completed
+          .filter((item) => item.definitionId === definition.id)
+          .map((item) => item.occurrenceKey),
+      ).toEqual(["actual-today"]);
+      expect(
+        await repository.listOccurrencesForDefinition(agentId, definition.id),
+      ).toEqual(before);
+    } finally {
+      await repository.deleteDefinition(agentId, definition.id);
+      await store.update(
+        { timezone: previous.timezone?.value ?? null },
+        { source: "first_run", recordedAt: now.toISOString() },
+      );
+    }
+  });
+
   it("keeps another owner's completed items out of owner recaps", async () => {
     const now = new Date("2027-01-05T10:00:00.000Z");
     const ownDefinition = makeDefinition(agentId, ownerA, "owner A completed");
@@ -392,11 +576,13 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     await repository.updateOccurrence({
       ...ownOccurrence,
       state: "completed",
+      completionPayload: { completedAt: now.toISOString() },
       updatedAt: now.toISOString(),
     });
     await repository.updateOccurrence({
       ...foreignOccurrence,
       state: "completed",
+      completionPayload: { completedAt: now.toISOString() },
       updatedAt: now.toISOString(),
     });
 

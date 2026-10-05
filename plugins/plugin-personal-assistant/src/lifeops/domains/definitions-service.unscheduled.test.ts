@@ -4,8 +4,9 @@
  * repository collaborators so validation and persisted request shape remain
  * observable without a database runtime.
  */
+
+import type { CreateLifeOpsDefinitionRequest } from "@elizaos/contracts";
 import { describe, expect, it, vi } from "vitest";
-import type { CreateLifeOpsDefinitionRequest } from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   type DefinitionsDeps,

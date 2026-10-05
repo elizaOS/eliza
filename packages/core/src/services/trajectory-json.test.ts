@@ -1,17 +1,26 @@
-/** Exercises lossless trajectory JSON normalization for large prompt evidence. */
-
 import { describe, expect, it } from "vitest";
-import { sanitizeTrajectoryJsonObject } from "./trajectory-json";
+import { sanitizeTrajectoryJsonValue } from "./trajectory-json";
 
-describe("trajectory JSON normalization", () => {
-	it("preserves strings and collections beyond the former capture limits", () => {
-		const prompt = `${"p".repeat(1_100_000)}🦊tail`;
-		const messages = Array.from(
-			{ length: 300 },
-			(_, index) => `message-${index}`,
+describe("sanitizeTrajectoryJsonValue own __proto__ entries", () => {
+	it.each([
+		["a parsed object", JSON.parse('{"a":1,"__proto__":{"polluted":true}}')],
+		[
+			"a Map",
+			new Map<string, unknown>([
+				["a", 1],
+				["__proto__", { polluted: true }],
+			]),
+		],
+	])("keeps the entry as data for %s", (_label, input) => {
+		const sanitized = sanitizeTrajectoryJsonValue(input) as Record<
+			string,
+			unknown
+		>;
+		expect(Object.getPrototypeOf(sanitized)).toBe(Object.prototype);
+		expect(Object.hasOwn(sanitized, "__proto__")).toBe(true);
+		expect((sanitized as { polluted?: unknown }).polluted).toBeUndefined();
+		expect(JSON.stringify(sanitized)).toBe(
+			'{"a":1,"__proto__":{"polluted":true}}',
 		);
-		const sanitized = sanitizeTrajectoryJsonObject({ prompt, messages });
-		expect(sanitized?.prompt).toBe(prompt);
-		expect(sanitized?.messages).toEqual(messages);
 	});
 });

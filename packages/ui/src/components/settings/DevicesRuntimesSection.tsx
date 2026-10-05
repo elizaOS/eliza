@@ -82,7 +82,9 @@ export interface LinuxRemoteTargetView {
   running: boolean;
   activeSessions: number;
   lastErrorCode: string | null;
-  platform: "macos" | "windows" | "linux";
+  platform: "macos" | "windows" | "linux" | "android";
+  browserProfileId?: string | null;
+  browserProfileError?: string | null;
 }
 
 export interface DevicesRuntimesSectionProps {
@@ -107,7 +109,15 @@ export interface DevicesRuntimesSectionProps {
   onConnectSsh: (input: SshConnectInput) => void | Promise<void>;
   onEnrollLinuxTarget?: (managedNetwork: boolean) => void | Promise<void>;
   onCreateTargetPairing?: () => void | Promise<void>;
-  onConfirmTargetPairing?: (sessionId: string) => void | Promise<void>;
+  onConfirmTargetPairing?: (
+    sessionId: string,
+    browserProfileId?: string,
+  ) => void | Promise<void>;
+  onApproveTargetPairing?: (input: {
+    sessionId: string;
+    code: string;
+    browserProfileId?: string;
+  }) => void | Promise<void>;
   onDenyTargetPairing?: (sessionId: string) => void | Promise<void>;
   onSetLinuxTargetRunning?: (running: boolean) => void | Promise<void>;
   onRevokeLinuxTarget?: () => void | Promise<void>;
@@ -122,6 +132,7 @@ function DesktopTargetPanel({
   onCreatePairing,
   onConfirmPairing,
   onDenyPairing,
+  onApprovePairing,
   onSetRunning,
   onRevoke,
 }: {
@@ -130,24 +141,38 @@ function DesktopTargetPanel({
   busy: boolean;
   onEnroll?: (managedNetwork: boolean) => void | Promise<void>;
   onCreatePairing?: () => void | Promise<void>;
-  onConfirmPairing?: (sessionId: string) => void | Promise<void>;
+  onConfirmPairing?: (
+    sessionId: string,
+    browserProfileId?: string,
+  ) => void | Promise<void>;
+  onApprovePairing?: DevicesRuntimesSectionProps["onApproveTargetPairing"];
   onDenyPairing?: (sessionId: string) => void | Promise<void>;
   onSetRunning?: (running: boolean) => void | Promise<void>;
   onRevoke?: () => void | Promise<void>;
 }) {
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
   const [managedNetwork, setManagedNetwork] = useState(false);
+  const [approvalSession, setApprovalSession] = useState("");
+  const [approvalCode, setApprovalCode] = useState("");
+  const [approveBrowser, setApproveBrowser] = useState(false);
+  const [browserGrant, setBrowserGrant] = useState<string | null>(null);
   const localPairing = pairing?.hostId === target.hostId ? pairing : null;
+  const grantKey =
+    localPairing && target.browserProfileId
+      ? `${localPairing.sessionId}:${localPairing.controller?.keyId ?? ""}:${target.browserProfileId}`
+      : null;
   const platformLabel =
     target.platform === "macos"
       ? "Mac"
       : target.platform === "windows"
         ? "Windows PC"
-        : "Linux computer";
+        : target.platform === "android"
+          ? "Android device"
+          : "Linux computer";
   return (
     <SettingsGroup
       title={`Share this ${platformLabel}`}
-      description="This computer creates the one-use challenge. A signed-in phone claims it, then this computer shows the exact controller identity for confirmation."
+      description="This device creates the one-use challenge. A signed-in controller claims it, then this device shows the exact identity for confirmation."
       footer="The host token and target private keys stay in the native OS credential store."
       bare
     >
@@ -190,7 +215,8 @@ function DesktopTargetPanel({
                   disabled={busy || !onCreatePairing}
                   onClick={() => void onCreatePairing?.()}
                 >
-                  <Link2 className="mr-1.5 size-4" aria-hidden /> Pair an iPhone
+                  <Link2 className="mr-1.5 size-4" aria-hidden /> Pair a
+                  controller
                 </Button>
               ) : null}
               {!confirmingRevoke ? (
@@ -266,6 +292,79 @@ function DesktopTargetPanel({
             inspect desktop logs.
           </p>
         ) : null}
+        {target.enrolled && onApprovePairing && !localPairing ? (
+          <details className="mt-4 border-t border-border pt-3">
+            <summary className="min-h-11 cursor-pointer font-medium">
+              Approve a code from another agent
+            </summary>
+            <div className="grid gap-3 pt-2">
+              <p className="text-xs text-muted">
+                Enter the session and one-use code displayed by the agent you
+                want to allow on this device.
+              </p>
+              <Input
+                aria-label="Agent pairing session"
+                value={approvalSession}
+                disabled={busy}
+                onChange={(event) => {
+                  setApprovalSession(event.target.value);
+                  setApproveBrowser(false);
+                }}
+              />
+              <Input
+                aria-label="Agent pairing code"
+                inputMode="numeric"
+                value={approvalCode}
+                disabled={busy}
+                onChange={(event) => {
+                  setApprovalCode(event.target.value);
+                  setApproveBrowser(false);
+                }}
+              />
+              {target.browserProfileId ? (
+                <label className="flex min-h-11 items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1 accent-orange-500"
+                    checked={approveBrowser}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setApproveBrowser(event.target.checked)
+                    }
+                  />
+                  <span>
+                    Allow this agent to use Chromium profile{" "}
+                    <code className="break-all">{target.browserProfileId}</code>
+                    , including signed-in websites.
+                  </span>
+                </label>
+              ) : (
+                <p className="text-xs text-muted">
+                  {target.browserProfileError ??
+                    "No connected Chromium profile. Approval will not include browser access."}
+                </p>
+              )}
+              <Button
+                disabled={
+                  busy ||
+                  !approvalSession.trim() ||
+                  !/^\d{6}$/.test(approvalCode.trim())
+                }
+                onClick={() =>
+                  void onApprovePairing({
+                    sessionId: approvalSession.trim(),
+                    code: approvalCode.trim(),
+                    ...(approveBrowser && target.browserProfileId
+                      ? { browserProfileId: target.browserProfileId }
+                      : {}),
+                  })
+                }
+              >
+                Approve agent on this device
+              </Button>
+            </div>
+          </details>
+        ) : null}
         {localPairing ? (
           <div className="mt-4 grid gap-3 border-t border-border pt-4">
             {localPairing.status === "claimed" && localPairing.controller ? (
@@ -291,13 +390,44 @@ function DesktopTargetPanel({
                     {localPairing.capabilities.join(", ")}
                   </p>
                 </div>
+                {target.browserProfileId && grantKey ? (
+                  <label className="flex min-h-11 items-start gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-1 accent-orange-500"
+                      disabled={busy}
+                      checked={browserGrant === grantKey}
+                      onChange={(event) =>
+                        setBrowserGrant(event.target.checked ? grantKey : null)
+                      }
+                    />
+                    <span>
+                      Allow this controller to use Chromium profile{" "}
+                      <code className="break-all">
+                        {target.browserProfileId}
+                      </code>
+                      , including its signed-in websites. This permission
+                      applies only to this pairing.
+                    </span>
+                  </label>
+                ) : (
+                  <p className="text-xs text-muted">
+                    {target.browserProfileError ??
+                      "No connected Chromium profile. This pairing will not grant browser access."}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     size="touch"
                     disabled={busy || !onConfirmPairing}
                     onClick={() =>
-                      void onConfirmPairing?.(localPairing.sessionId)
+                      void onConfirmPairing?.(
+                        localPairing.sessionId,
+                        grantKey && browserGrant === grantKey
+                          ? (target.browserProfileId ?? undefined)
+                          : undefined,
+                      )
                     }
                   >
                     Confirm controller on this {platformLabel}
@@ -315,9 +445,9 @@ function DesktopTargetPanel({
               </div>
             ) : (
               <p className="text-xs leading-relaxed text-muted" role="status">
-                Waiting for a signed-in iPhone to scan or enter this Mac's
-                one-use code. No controller has authority until this computer
-                confirms its exact identity.
+                Waiting for a signed-in controller to scan or enter this
+                device’s one-use code. No controller has authority until this
+                device confirms its exact identity.
               </p>
             )}
           </div>
@@ -393,7 +523,7 @@ function PairingPanel({ pairing }: { pairing: DevicePairingView }) {
       <div className="min-w-0">
         <div className="flex items-center gap-2 text-sm font-semibold text-txt-strong">
           <ShieldCheck className="size-4 text-accent" aria-hidden />
-          Pair an iPhone with {pairing.hostLabel}
+          Pair a controller with {pairing.hostLabel}
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted">
           On the signed-in iPhone, scan this QR or select this Mac and enter the
@@ -896,6 +1026,7 @@ export function DevicesRuntimesSection({
   onCreateTargetPairing,
   onConfirmTargetPairing,
   onDenyTargetPairing,
+  onApproveTargetPairing,
   onSetLinuxTargetRunning,
   onRevokeLinuxTarget,
   className,
@@ -981,6 +1112,7 @@ export function DevicesRuntimesSection({
       </SettingsGroup>
       {linuxTarget ? (
         <DesktopTargetPanel
+          key={`${linuxTarget.hostId}:${pairing?.sessionId ?? ""}:${pairing?.controller?.keyId ?? ""}:${linuxTarget.browserProfileId ?? ""}`}
           target={linuxTarget}
           pairing={pairing}
           busy={busy}
@@ -988,6 +1120,7 @@ export function DevicesRuntimesSection({
           onCreatePairing={onCreateTargetPairing}
           onConfirmPairing={onConfirmTargetPairing}
           onDenyPairing={onDenyTargetPairing}
+          onApprovePairing={onApproveTargetPairing}
           onSetRunning={onSetLinuxTargetRunning}
           onRevoke={onRevokeLinuxTarget}
         />

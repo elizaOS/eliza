@@ -2,13 +2,14 @@
  * Serves authenticated training-trajectory exports for one organization.
  * Query and JSON-body limits are validated before the export service can read rows.
  */
-import { Hono } from "hono";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   llmTrajectoryService,
   type TrajectoryExportOptions,
-} from "@/lib/services/llm-trajectory";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/llm-trajectory";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const MAX_EXPORT_LIMIT = 10_000;
 

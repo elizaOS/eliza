@@ -5,8 +5,8 @@
  * app plugins call `registerTaskCoordinatorSlots` at boot to supply their
  * implementations.
  *
- * See `task-coordinator-slots.tsx` for the architectural note on why app-core
- * does not import from @elizaos/plugin-task-coordinator directly.
+ * See `task-coordinator-slots.tsx` for the architectural note on why app
+ * does not import from @elizaos/plugin-agent-orchestrator directly.
  */
 
 import type { ComponentType } from "react";

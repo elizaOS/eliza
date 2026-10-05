@@ -31,7 +31,7 @@ const invokeDesktopBridgeRequest = vi.fn(
     params?: unknown;
   }) => ({ success: true }),
 );
-vi.mock("../../bridge", () => ({
+vi.mock("../../bridge/electrobun-rpc", () => ({
   invokeDesktopBridgeRequest: (options: {
     rpcMethod: string;
     ipcChannel: string;

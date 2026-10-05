@@ -2,7 +2,7 @@
  * Decides which conversation messages render in the consumer transcript while
  * retaining internal action output in transport and diagnostic state.
  */
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 
 function normalizeCallbackHistory(history: readonly string[]): string {
   const normalized: string[] = [];

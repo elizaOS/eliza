@@ -1,29 +1,19 @@
-/**
- * Feature-flag probes for optional AgentRuntime capabilities that only some
- * elizaOS runtime builds expose (trajectory recording, document ingestion). Each
- * helper confirms the method exists before calling it, so callers can gate
- * behavior without depending on a specific runtime type version.
- */
+/** Optional features are owned by registered services, not removed core flags. */
 import type { AgentRuntime } from "@elizaos/core";
 
-/** Optional methods on some elizaOS AgentRuntime builds (not in all type versions). */
-type AgentRuntimeFeatureFlags = {
-  isTrajectoriesEnabled?: () => boolean;
-  isDocumentsEnabled?: () => boolean;
-};
+function serviceSelected(
+  runtime: AgentRuntime,
+  serviceType: "trajectories" | "documents",
+): boolean {
+  if (runtime.getService(serviceType)) return true;
+  const status = runtime.getServiceRegistrationStatus(serviceType);
+  return status === "pending" || status === "registering";
+}
 
 export function runtimeTrajectoriesEnabled(runtime: AgentRuntime): boolean {
-  const runtimeWithFlags = runtime as AgentRuntime & AgentRuntimeFeatureFlags;
-  return (
-    typeof runtimeWithFlags.isTrajectoriesEnabled === "function" &&
-    runtimeWithFlags.isTrajectoriesEnabled()
-  );
+  return serviceSelected(runtime, "trajectories");
 }
 
 export function runtimeDocumentsEnabled(runtime: AgentRuntime): boolean {
-  const runtimeWithFlags = runtime as AgentRuntime & AgentRuntimeFeatureFlags;
-  return (
-    typeof runtimeWithFlags.isDocumentsEnabled === "function" &&
-    runtimeWithFlags.isDocumentsEnabled()
-  );
+  return serviceSelected(runtime, "documents");
 }

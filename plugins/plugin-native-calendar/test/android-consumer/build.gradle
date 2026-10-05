@@ -1,0 +1,20 @@
+buildscript {
+ repositories { google(); mavenCentral() }
+ dependencies { classpath 'com.android.tools.build:gradle:8.13.0' }
+}
+allprojects { repositories { google(); mavenCentral() } }
+ext { compileSdkVersion = 36; targetSdkVersion = 35; minSdkVersion = 26 }
+apply plugin: 'com.android.application'
+android {
+ namespace 'example.calendar'
+ compileSdk 36
+ defaultConfig { applicationId 'example.calendar.consumer'; minSdk 26; targetSdk 35; versionCode 1; versionName '1'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+dependencies {
+ implementation project(':calendar')
+ implementation project(':capacitor-android')
+ implementation 'androidx.appcompat:appcompat:1.7.1'
+ androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+ androidTestImplementation 'androidx.test:runner:1.6.2'
+}

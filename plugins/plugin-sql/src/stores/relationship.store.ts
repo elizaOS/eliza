@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError, type Metadata, type Relationship, type UUID } from "@elizaos/core";
 import { and, eq, type SQL, sql } from "drizzle-orm";
-import { relationshipTable } from "../schema/index";
+import { relationshipTable } from "../schema/relationship";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 

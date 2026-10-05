@@ -7,6 +7,7 @@
  * `@elizaos/ui` `AppProvider` translation context. They are independent.
  */
 
+import type { UiLanguage } from "@elizaos/core/protocol";
 import {
   createContext,
   type ReactNode,
@@ -19,7 +20,6 @@ import {
   createTranslator,
   DEFAULT_UI_LANGUAGE,
   normalizeLanguage,
-  type UiLanguage,
 } from "../../i18n/index";
 import { ensureLanguageLoaded } from "../../i18n/messages";
 import { detectClientLanguage } from "../../i18n/region";

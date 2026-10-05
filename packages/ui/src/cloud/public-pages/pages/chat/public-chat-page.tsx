@@ -13,8 +13,8 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../../lib/api-client";
+import { useDocumentTitle, useMetaTag } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { useMetaTag, usePageTitle } from "../../lib/use-page-title";
 
 interface PublicCharacterInfo {
   id: string;
@@ -103,7 +103,7 @@ export default function PublicChatPage() {
     [character, t],
   );
 
-  usePageTitle(
+  useDocumentTitle(
     loading || character
       ? title
       : t("cloud.publicChat.notFoundTitle", {

@@ -4,7 +4,7 @@
  * Builds context from API endpoint discovery for inclusion in generation prompts
  */
 
-import { API_ENDPOINTS, type ApiEndpoint } from "../swagger/endpoint-discovery";
+import { API_ENDPOINTS, type ApiEndpoint } from "@elizaos/cloud-sdk/api-explorer";
 
 export interface ApiContextOptions {
   categories?: string[];

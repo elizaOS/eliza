@@ -17,14 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Mapping
 
-try:
-    from scripts.manifest.audit_hf_eliza1_release import audit_hf_release
-    from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS
-    from scripts.manifest.eliza1_platform_plan import build_plan, text_artifact_name
-except ImportError:  # pragma: no cover - script execution path
-    from audit_hf_eliza1_release import audit_hf_release  # type: ignore
-    from eliza1_manifest import ELIZA_1_TIERS  # type: ignore
-    from eliza1_platform_plan import build_plan, text_artifact_name  # type: ignore
+from eliza_training.manifest.audit_hf_eliza1_release import audit_hf_release
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_TIERS
+from eliza_training.manifest.eliza1_platform_plan import build_plan, text_artifact_name
 
 TIER_ORDER: tuple[str, ...] = ELIZA_1_TIERS
 BACKEND_ORDER: tuple[str, ...] = ("cpu", "metal", "vulkan", "cuda", "rocm")
@@ -136,7 +131,7 @@ def _eval_suite_command(eval_python: str, bundle: str, tier: str, *extra: str) -
         "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0",
         eval_python,
         "-m",
-        "scripts.eval.eliza1_eval_suite",
+        "eliza_training.eval.eliza1_eval_suite",
         "--bundle-dir",
         bundle,
         "--tier",
@@ -165,28 +160,28 @@ def _backend_command(bundle_root: str, verify_dir: str, tier: str, backend: str,
     if backend == "metal":
         return _guarded(
             eval_python,
-            "node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal && "
+            "node packages/app/scripts/build-llama-cpp-mtp.ts --target darwin-arm64-metal && "
             f"make -C {verify_dir} metal-verify dispatch-smoke && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'metal')}",
         )
     if backend == "vulkan":
         return _guarded(
             eval_python,
-            "node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-vulkan && "
+            "node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-vulkan && "
             f"make -C {verify_dir} vulkan_verify vulkan-dispatch-smoke && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'vulkan')}",
         )
     if backend == "cuda":
         return _guarded(
             eval_python,
-            "node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda && "
+            "node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-cuda && "
             f"{verify_dir}/cuda_runner.sh && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cuda')}",
         )
     if backend == "rocm":
         return _guarded(
             eval_python,
-            "node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-rocm && "
+            "node packages/app/scripts/build-llama-cpp-mtp.ts --target linux-x64-rocm && "
             f"make -C {verify_dir} rocm_verify rocm-dispatch-smoke && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'rocm')}",
         )
@@ -197,7 +192,7 @@ def _imagegen_command(accelerator: str, eval_python: str) -> str:
     return _guarded(
         eval_python,
         f"ELIZA_IMAGEGEN_ACCELERATOR={accelerator} "
-        "node plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs --json "
+        "node packages/scripts/plugins/plugin-local-inference/probe-sd-cpp.ts --json "
         f"| python3 -c \"import json,sys; p=json.load(sys.stdin); "
         f"assert p.get('available') is True, p; "
         f"assert p.get('requiredAccelerator') == '{accelerator}', p; "
@@ -256,7 +251,7 @@ def _finetune_command(eval_python: str, tier: str = FINE_TUNE_TIER) -> str:
         f"--val-file /tmp/eliza-1-training/sft/{tier}/val.jsonl "
         f"--test-file /tmp/eliza-1-training/sft/{tier}/test.jsonl "
         f"--epochs 1 --run-name eliza-1-{tier}-finetuned-v2 && "
-        "uv run --extra train python scripts/benchmark/native_tool_call_bench.py "
+        "uv run --extra train python scripts/eval/native_tool_call_bench.py "
         f"--model checkpoints/eliza-1-{tier}-finetuned-v2/final "
         f"--test-file /tmp/eliza-1-training/sft/{tier}/test.jsonl "
         "--out-dir /tmp/eliza-1-finetune-native-tool-call && "

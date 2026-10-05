@@ -6,13 +6,16 @@
  * containers, apps, MCP, A2A, and admin capability contracts.
  */
 
-import { Hono } from "hono";
 import {
   getPlatformAgentCard,
   handlePlatformA2aJsonRpc,
-} from "@/lib/api/a2a/platform-cloud";
-import { A2AErrorCodes, jsonRpcError } from "@/lib/types/a2a";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/api/a2a/platform-cloud";
+import {
+  A2AErrorCodes,
+  jsonRpcError,
+} from "@elizaos/cloud-shared/lib/types/a2a";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

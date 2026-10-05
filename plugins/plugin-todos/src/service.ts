@@ -1,7 +1,7 @@
 /**
  * AgentRuntime lifecycle adapter for the canonical tenant-scoped TodoStore.
  * Dedicated hosts obtain the Drizzle connection from plugin-sql while Worker
- * hosts construct the same store directly through the edge export.
+ * hosts construct the same store through the package root factory.
  */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -62,37 +62,6 @@ export class TodosService extends Service implements TodoStore {
     logger.info(`${TODOS_LOG_PREFIX} stopping TodosService`);
   }
 }
-
-export {
-  createTodosSqlStore,
-  deserializeTodoMutationRecord,
-  importTodoMutationRecordsInTransaction,
-  serializeTodoMutationRecord,
-} from "./sql-store.js";
-export {
-  type CreateTodoInput,
-  findDuplicateTodoId,
-  isValidTodoListLimit,
-  TODO_DUPLICATE_ID_ERROR_CODE,
-  TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE,
-  TODO_INVALID_PARENT_ERROR_CODE,
-  TODO_LIST_LIMIT_ERROR_CODE,
-  TODO_PARENT_CYCLE_ERROR_CODE,
-  type TodoCutoverState,
-  type TodoFilter,
-  type TodoMutation,
-  type TodoMutationExecution,
-  type TodoMutationImportInput,
-  type TodoMutationImportResult,
-  type TodoMutationInput,
-  type TodoMutationRecord,
-  type TodoMutationRecordWire,
-  type TodoMutationResult,
-  type TodoScope,
-  type TodoStore,
-  type UpdateTodoInput,
-  type WriteTodoListInput,
-} from "./store.js";
 
 export function getTodosService(runtime: IAgentRuntime): TodosService {
   const service = runtime.getService<TodosService>(TODOS_SERVICE_TYPE);

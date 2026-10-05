@@ -8,6 +8,7 @@
  * blocked.
  */
 import type { AgentRuntime, UUID } from "@elizaos/core";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { Collection, ChannelType as DiscordChannelType } from "discord.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -15,7 +16,6 @@ import {
 	type DiscordAccountClientState,
 } from "../account-client-pool.ts";
 import { DiscordService } from "../service.ts";
-import { createTestRuntime } from "../test/helpers/pglite-runtime.ts";
 
 type MutableDiscordService = DiscordService & {
 	accountPool: DiscordAccountClientPool;

@@ -11,10 +11,10 @@
  * same paymentId and resumes polling — no orphaned payments due to closed tabs.
  */
 
-import { Button } from "@elizaos/ui/cloud-ui";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ExternalLink, Loader2, XCircle } from "lucide-react";
 import { useEffect } from "react";
+import { Button } from "../../../components/ui/button";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 

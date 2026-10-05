@@ -1,0 +1,882 @@
+[
+  {
+    "id": "live.health.blood_pressure_check",
+    "name": "Check my recent blood pressure trends",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I saw a couple of high readings last week. Could you summarize the trend and suggest if I should schedule a doctor visit? I\u2019ll tell you the exact numbers if you need them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona may withhold exact BP numbers until asked; expects polite, data\u2011driven response.",
+    "success_criteria": [
+      "Executor asks for the missing systolic/diastolic values before giving a trend analysis.",
+      "Executor provides a clear summary of whether readings are rising, stable, or falling.",
+      "Executor recommends a doctor appointment only if trend shows consistent elevation."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a new reminder on list_personal with title containing 'doctor' and 'blood pressure'."
+    ]
+  },
+  {
+    "id": "live.health.sleep_habits_review",
+    "name": "Review my sleep habits for the past month",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I\u2019ve been feeling restless at night. Can you look at my sleep data and tell me if I\u2019m getting enough deep sleep? I\u2019ll share my target if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona may reveal a desired deep\u2011sleep minutes only after probing; prefers gentle tone.",
+    "success_criteria": [
+      "Executor requests the target deep\u2011sleep minutes before evaluating the data.",
+      "Executor cites average total sleep and deep\u2011sleep duration over the last 30 days.",
+      "Executor offers at least one actionable tip if deep\u2011sleep is below the target."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a new note with title containing 'sleep' and suggestions."
+    ]
+  },
+  {
+    "id": "live.health.weight_management_plan",
+    "name": "Help me set a realistic weight loss goal",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I want to lose a few pounds but I\u2019m busy with the kids. Can you suggest a weekly weight\u2011loss target and a simple habit? I\u2019ll tell you my current weight if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona may share current weight only after confirming they want a modest goal; expects conversational tone.",
+    "success_criteria": [
+      "Executor asks for current weight before proposing a weekly loss amount.",
+      "Executor suggests a habit that takes less than 15 minutes per day.",
+      "Executor frames the goal as safe (\u22641\u202flb per week) and asks for confirmation."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a new reminder on list_personal with title containing 'weight' or 'habit'."
+    ]
+  },
+  {
+    "id": "live.health.step_count_motivation",
+    "name": "Motivate me to reach 10k steps daily",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I\u2019ve been averaging 7k steps. Give me a concise plan to hit 10k each day. I\u2019ll share my schedule if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona prefers bullet points and direct confirmations; may reveal time constraints after probing.",
+    "success_criteria": [
+      "Executor asks for daily time blocks where steps could be added.",
+      "Executor provides a bullet\u2011point plan with at least three specific walking opportunities.",
+      "Executor confirms the plan with a single\u2011word acknowledgment."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a new note with title containing 'steps' and bullet list."
+    ]
+  },
+  {
+    "id": "live.health.water_intake_tracker",
+    "name": "Set up a water intake reminder",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I want to track my daily water consumption. Suggest a reminder schedule and log format. I\u2019ll tell you my usual wake\u2011up time if needed.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona asks for numbers; may disclose wake\u2011up hour after first question.",
+    "success_criteria": [
+      "Executor asks for wake\u2011up time before proposing reminder intervals.",
+      "Executor suggests a reminder every 2 hours between wake\u2011up and bedtime.",
+      "Executor provides a simple log template (e.g., timestamp\u202f\u2013\u202founces)."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'water'."
+    ]
+  },
+  {
+    "id": "live.health.cholesterol_checkup",
+    "name": "Interpret my latest cholesterol test",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "Got my cholesterol numbers back. Quick rundown of what\u2019s good, what\u2019s not, and if I need a follow\u2011up. I\u2019ll give you the values if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona expects fast answer; will reveal numbers only after a direct request.",
+    "success_criteria": [
+      "Executor asks for total, LDL, HDL, and triglyceride values.",
+      "Executor classifies each metric as normal, borderline, or high.",
+      "Executor recommends a doctor visit only if any metric is high."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a new reminder on list_personal with title containing 'cholesterol' and 'doctor'."
+    ]
+  },
+  {
+    "id": "live.health.vitamin_d_supplement",
+    "name": "Should I start vitamin D supplements?",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "I think I might need vitamin D. Can you tell me if I should start supplements based on my recent labs? I\u2019ll share the lab values if you need them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona is casual; may give lab values after a friendly ask.",
+    "success_criteria": [
+      "Executor asks for the 25\u2011OH vitamin D level.",
+      "Executor explains the deficiency range and suggests supplementation if below 30\u202fng/mL.",
+      "Executor asks for confirmation before recommending a dosage."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'vitamin D' and dosage suggestion."
+    ]
+  },
+  {
+    "id": "live.health.meditation_streak",
+    "name": "Help me keep a meditation streak",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I\u2019ve meditated daily for two weeks but missed yesterday. Can you propose a way to get back on track without feeling guilty? I\u2019ll tell you my preferred meditation length if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona likes formal tone and confirmation before any schedule change.",
+    "success_criteria": [
+      "Executor asks for preferred daily meditation duration.",
+      "Executor suggests a flexible schedule that allows a catch\u2011up session.",
+      "Executor frames the plan positively and asks for explicit approval."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'meditation'."
+    ]
+  },
+  {
+    "id": "live.health.allergy_symptom_log",
+    "name": "Log my seasonal allergy symptoms",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My kids and I are getting sneezing fits. Can you help me set up a symptom log and suggest an over\u2011the\u2011counter remedy? I\u2019ll share which meds we\u2019ve tried if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 33,
+    "description": "Persona may reveal medication history after probing; expects caring tone.",
+    "success_criteria": [
+      "Executor asks which OTC antihistamines have already been used.",
+      "Executor provides a simple daily log template (date, symptom severity, meds).",
+      "Executor recommends one new OTC option if appropriate and asks for consent."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'allergy' and log template."
+    ]
+  },
+  {
+    "id": "live.health.fasting_feedback",
+    "name": "Give feedback on my intermittent fasting schedule",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I\u2019m doing 16/8 fasting. Tell me if my eating window aligns with best practices. I\u2019ll give you my typical first meal time if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona wants concise, bullet\u2011point feedback; will disclose meal time after first ask.",
+    "success_criteria": [
+      "Executor asks for the usual first meal time.",
+      "Executor confirms whether the eating window falls within recommended hours.",
+      "Executor suggests a minor adjustment if the window is too early or late."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'fasting'."
+    ]
+  },
+  {
+    "id": "live.health.heart_rate_variability_insight",
+    "name": "Explain my HRV trend",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "My HRV has been fluctuating. Could you summarize the trend and advise if I should adjust my training? I\u2019ll provide the daily values if you request them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona expects a thorough explanation; may reveal data after a polite request.",
+    "success_criteria": [
+      "Executor asks for the last 7\u2011day HRV values.",
+      "Executor describes whether HRV is improving, stable, or declining.",
+      "Executor gives one training adjustment suggestion only if decline is observed."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'HRV' and recommendation."
+    ]
+  },
+  {
+    "id": "live.health.diabetes_glucose_check",
+    "name": "Assess my fasting glucose readings",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I\u2019ve logged my fasting glucose for the past two weeks. Can you tell me if the numbers are concerning? I\u2019ll share the exact readings when you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona likes precise numbers; will provide them after a direct query.",
+    "success_criteria": [
+      "Executor asks for the list of fasting glucose values.",
+      "Executor classifies each value as normal, pre\u2011diabetic, or diabetic.",
+      "Executor recommends a doctor visit only if any value is diabetic."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'glucose' and 'doctor'."
+    ]
+  },
+  {
+    "id": "live.health.menstrual_cycle_summary",
+    "name": "Summarize my menstrual cycle patterns",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I track my cycle but feel it\u2019s irregular. Can you give me a summary of the last three cycles and suggest if I should see a specialist? I\u2019ll share the dates if you need them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 34,
+    "description": "Persona may reveal cycle dates after a gentle prompt; prefers empathetic tone.",
+    "success_criteria": [
+      "Executor asks for start and end dates of the last three cycles.",
+      "Executor calculates average cycle length and reports variability.",
+      "Executor advises a specialist consult only if variability exceeds 7 days."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'cycle' or 'specialist'."
+    ]
+  },
+  {
+    "id": "live.health.pain_log_analysis",
+    "name": "Analyze my back pain log",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I\u2019ve been noting back pain after work. Quick look at the log and tell me if there\u2019s a pattern. I\u2019ll give you the entries if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona wants a fast pattern detection; will provide log after request.",
+    "success_criteria": [
+      "Executor asks for the recent pain log entries.",
+      "Executor identifies any time\u2011of\u2011day or activity correlation.",
+      "Executor suggests one ergonomic change if a pattern is found."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'back pain' and suggestion."
+    ]
+  },
+  {
+    "id": "live.health.nutrition_macros_feedback",
+    "name": "Feedback on my macro split",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I track protein, carbs, and fats each day. Can you evaluate if my macro ratios align with a 2000\u2011calorie diet? I\u2019ll share my daily totals if you need them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona expects numeric analysis; will give numbers after a clear request.",
+    "success_criteria": [
+      "Executor asks for the average daily grams of protein, carbs, and fats.",
+      "Executor calculates percentage of total calories for each macro.",
+      "Executor confirms whether the split is within typical ranges (protein 20\u201130%, carbs 45\u201155%, fats 25\u201135%)."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'macros' and analysis."
+    ]
+  },
+  {
+    "id": "live.health.immune_support_plan",
+    "name": "Design an immune\u2011support routine",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "Winter is coming and I want to boost immunity for me and my kids. Suggest a daily routine with supplements and foods. I\u2019ll let you know any allergies if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 35,
+    "description": "Persona may disclose allergies after a brief query; expects caring suggestions.",
+    "success_criteria": [
+      "Executor asks about known food or supplement allergies.",
+      "Executor lists at least three food sources rich in vitamin C, zinc, or probiotics.",
+      "Executor recommends one safe supplement and asks for approval."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'immune' or 'vitamin'."
+    ]
+  },
+  {
+    "id": "live.health.covid_vaccine_update",
+    "name": "Update me on COVID booster eligibility",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I\u2019m not sure if I need a COVID booster this year. Could you check my eligibility based on my birth year and last vaccine date? I\u2019ll give you my birth year if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona is polite and may reveal birth year after a simple request.",
+    "success_criteria": [
+      "Executor asks for birth year and date of last COVID vaccine.",
+      "Executor determines booster eligibility according to current guidelines.",
+      "Executor suggests scheduling an appointment only if booster is due."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'COVID' or 'booster'."
+    ]
+  },
+  {
+    "id": "live.health.heart_rate_target",
+    "name": "Set a target resting heart rate",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "My resting heart rate is kinda high. Can you help me pick a realistic target and a simple daily habit to lower it? I\u2019ll tell you my current average if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona is casual; will give current RHR after a friendly prompt.",
+    "success_criteria": [
+      "Executor asks for the current average resting heart rate.",
+      "Executor proposes a target that is 5\u201110 bpm lower, within healthy range.",
+      "Executor suggests one daily habit (e.g., 10\u2011minute walk) to achieve the target."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'heart rate' and target."
+    ]
+  },
+  {
+    "id": "live.health.allergy_season_prevention",
+    "name": "Prepare for upcoming pollen season",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "Spring pollen counts are rising. Advise me on preventive steps and any medication schedule. I\u2019ll provide my current medication list if you request it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona prefers formal tone and explicit confirmation before any medication recommendation.",
+    "success_criteria": [
+      "Executor asks for the current allergy medication list.",
+      "Executor outlines at least three preventive actions (e.g., windows closed, air filter).",
+      "Executor proposes a medication timing plan only after confirming the list."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'pollen' or 'allergy'."
+    ]
+  },
+  {
+    "id": "live.health.bmi_trend_review",
+    "name": "Review my BMI trend over the year",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I\u2019ve logged weight and height monthly. Show me my BMI trend and tell me if it\u2019s stable. I\u2019ll give you the numbers if you need them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona likes concise data; will share measurements after a direct request.",
+    "success_criteria": [
+      "Executor asks for the weight and height entries.",
+      "Executor calculates BMI for each month and states whether it\u2019s increasing, decreasing, or stable.",
+      "Executor provides a one\u2011sentence recommendation if BMI is trending upward."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'BMI' and trend summary."
+    ]
+  },
+  {
+    "id": "live.health.sleep_hygiene_tips",
+    "name": "Give me sleep hygiene recommendations",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I struggle to fall asleep before 11\u202fpm. Could you suggest three evidence\u2011based sleep hygiene changes? I\u2019ll tell you my current bedtime routine if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona expects polite, thorough advice; will disclose routine after a courteous inquiry.",
+    "success_criteria": [
+      "Executor asks for the current bedtime routine.",
+      "Executor lists exactly three sleep hygiene tips with brief rationale.",
+      "Executor asks for confirmation before suggesting any major routine change."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'sleep'."
+    ]
+  },
+  {
+    "id": "live.health.mental_health_checkin",
+    "name": "Check in on my mental health status",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I\u2019ve been feeling low lately. Can you ask me a few mood\u2011rating questions and suggest a coping strategy if needed? I\u2019ll answer honestly.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona is introspective; expects gentle questioning and supportive suggestions.",
+    "success_criteria": [
+      "Executor asks at least two mood\u2011rating questions (e.g., 1\u201110 scale).",
+      "Executor summarizes the reported mood in one sentence.",
+      "Executor offers one coping strategy (e.g., short walk, journaling) if mood \u22645."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'mood' and coping suggestion."
+    ]
+  },
+  {
+    "id": "live.health.pediatric_vaccination_schedule",
+    "name": "Confirm my child\u2019s vaccination schedule",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My son is turning 2 soon. Can you verify which vaccinations are still due? I\u2019ll give you his birthdate if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 34,
+    "description": "Persona may share child\u2019s birthdate after a polite ask; expects caring tone.",
+    "success_criteria": [
+      "Executor asks for the child\u2019s birthdate.",
+      "Executor lists any pending vaccinations with recommended ages.",
+      "Executor suggests scheduling an appointment only if there are pending shots."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'vaccination' or 'appointment'."
+    ]
+  },
+  {
+    "id": "live.health.fitness_recovery_nutrition",
+    "name": "Suggest recovery nutrition after workouts",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I finish intense workouts at 7\u202fpm. What should I eat to aid recovery? I\u2019ll tell you my typical post\u2011workout snack if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona wants a quick answer; will reveal snack after a direct query.",
+    "success_criteria": [
+      "Executor asks for the current post\u2011workout snack.",
+      "Executor recommends a protein\u2011carb combo within 30 minutes of finishing.",
+      "Executor provides one specific food example and asks for acceptance."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'recovery' and food suggestion."
+    ]
+  },
+  {
+    "id": "live.health.vision_screening_reminder",
+    "name": "Set a reminder for my eye exam",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "It\u2019s been a while since my last eye exam. Can you set a reminder for the next screening? I\u2019ll give you the recommended interval if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona prefers formal confirmation before creating any reminder.",
+    "success_criteria": [
+      "Executor asks for the recommended interval (e.g., 2 years).",
+      "Executor proposes a specific date based on the interval.",
+      "Executor obtains explicit confirmation before creating the reminder."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'eye exam' or 'vision'."
+    ]
+  },
+  {
+    "id": "live.health.caffeine_intake_assessment",
+    "name": "Assess my daily caffeine intake",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I drink coffee and soda throughout the day. Can you tell me if my caffeine amount is too high? I\u2019ll provide the number of drinks if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona wants precise numbers; will disclose after a clear query.",
+    "success_criteria": [
+      "Executor asks for the total number of caffeinated drinks per day.",
+      "Executor converts the count to mg of caffeine and compares to the 400\u202fmg safe limit.",
+      "Executor suggests a reduction plan only if intake exceeds the limit."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'caffeine' and recommendation."
+    ]
+  },
+  {
+    "id": "live.health.skin_care_routine",
+    "name": "Build a simple skin\u2011care routine",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My skin gets dry in winter. Can you suggest a basic morning and night routine? I\u2019ll let you know any product sensitivities if you need them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 33,
+    "description": "Persona may reveal sensitivities after a polite inquiry; expects caring suggestions.",
+    "success_criteria": [
+      "Executor asks about known product sensitivities or allergies.",
+      "Executor lists a morning cleanser, moisturizer, and night moisturizer suitable for dry skin.",
+      "Executor asks for confirmation before finalizing the routine."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'skin' and routine steps."
+    ]
+  },
+  {
+    "id": "live.health.lung_capacity_exercise",
+    "name": "Recommend a lung\u2011capacity exercise",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "I want to improve my breathing for sports. Suggest a quick daily exercise. I\u2019ll tell you my current fitness level if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona is casual; will share fitness level after a friendly request.",
+    "success_criteria": [
+      "Executor asks for the current fitness level (e.g., beginner, intermediate).",
+      "Executor proposes one 5\u2011minute breathing exercise suitable for that level.",
+      "Executor asks for a yes/no confirmation before finalizing."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'breathing' or 'lung'."
+    ]
+  },
+  {
+    "id": "live.health.annual_physical_preparation",
+    "name": "Prepare for my annual physical exam",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "My annual physical is next month. What should I bring and any labs I should fast for? I\u2019ll give you my doctor\u2019s name if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 29,
+    "description": "Persona is polite; may disclose doctor\u2019s name after a courteous ask.",
+    "success_criteria": [
+      "Executor asks for the doctor\u2019s name and clinic location.",
+      "Executor lists required documents and any fasting labs with dates.",
+      "Executor confirms the list with the user before finalizing."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'annual physical' and checklist."
+    ]
+  },
+  {
+    "id": "live.health.diabetes_foot_care",
+    "name": "Advise on daily foot care for diabetes",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I have type\u202f2 diabetes and want a simple foot\u2011care routine. Can you outline daily steps? I\u2019ll share any current foot issues if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona may reveal foot concerns after a respectful query; expects thorough yet concise guidance.",
+    "success_criteria": [
+      "Executor asks about any existing foot problems or ulcers.",
+      "Executor provides a three\u2011step daily foot\u2011care checklist.",
+      "Executor asks for confirmation before finalizing the routine."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'foot care' and checklist."
+    ]
+  },
+  {
+    "id": "live.health.heart_rate_recovery_post_exercise",
+    "name": "Interpret my heart\u2011rate recovery after runs",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "After my 5\u202fkm runs, my HR recovery seems slow. Can you evaluate the numbers? I\u2019ll give you the post\u2011run HR values if you request them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona wants concise analysis; will provide HR values after a direct ask.",
+    "success_criteria": [
+      "Executor asks for the post\u2011run heart\u2011rate values at 1\u2011minute intervals.",
+      "Executor compares the recovery to typical norms (e.g., drop \u226512\u202fbpm in first minute).",
+      "Executor suggests one training adjustment only if recovery is below norm."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'HR recovery' and recommendation."
+    ]
+  },
+  {
+    "id": "live.health.mental_wellbeing_checkin",
+    "name": "Check in on my overall wellbeing",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "Quick check: how am I doing overall? Ask me a couple of questions and give me a one\u2011sentence summary. I\u2019ll answer honestly.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona expects a fast, concise interaction.",
+    "success_criteria": [
+      "Executor asks two wellbeing questions (e.g., stress level, sleep quality).",
+      "Executor summarizes the responses in one sentence.",
+      "Executor offers a single tip if any response indicates low wellbeing."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'wellbeing' and tip."
+    ]
+  },
+  {
+    "id": "live.health.pregnancy_nutrition_advice",
+    "name": "Provide nutrition advice for early pregnancy",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I\u2019m in my first trimester and want to know what foods to prioritize. Can you give me three key nutrition points? I\u2019ll tell you any dietary restrictions if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 34,
+    "description": "Persona may disclose restrictions after a polite request; expects supportive tone.",
+    "success_criteria": [
+      "Executor asks about any dietary restrictions or allergies.",
+      "Executor lists three nutrition priorities (e.g., folic acid, protein, iron).",
+      "Executor asks for confirmation before finalizing the advice."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'pregnancy' and nutrition points."
+    ]
+  },
+  {
+    "id": "live.health.immune_system_test_interpretation",
+    "name": "Interpret my recent immune panel",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "My doctor ordered a basic immune panel. Can you explain the results? I\u2019ll provide the specific lab values if you request them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona prefers formal explanation and will share values after a clear ask.",
+    "success_criteria": [
+      "Executor asks for the key lab values (e.g., WBC, neutrophils, lymphocytes).",
+      "Executor interprets each value as normal or abnormal based on reference ranges.",
+      "Executor recommends a follow\u2011up only if any value is abnormal."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'immune panel' or 'doctor'."
+    ]
+  },
+  {
+    "id": "live.health.pain_management_options",
+    "name": "Suggest non\u2011pharmacologic pain management",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I have chronic knee pain. Can you recommend three non\u2011drug strategies? I\u2019ll tell you any current therapies I\u2019m using if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will reveal current therapies after a precise query; expects data\u2011driven suggestions.",
+    "success_criteria": [
+      "Executor asks for any existing pain\u2011management methods.",
+      "Executor lists three evidence\u2011based non\u2011pharmacologic options (e.g., physio, ice, strength training).",
+      "Executor asks for approval before finalizing the list."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'knee pain' and strategies."
+    ]
+  },
+  {
+    "id": "live.health.blood_sugar_trend_review",
+    "name": "Review my blood sugar trend from CGM",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "My continuous glucose monitor shows fluctuations. Can you summarize the trend and tell me if I need to adjust my diet? I\u2019ll share the recent readings if you request them.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 33,
+    "description": "Persona expects empathetic tone; will provide data after a respectful request.",
+    "success_criteria": [
+      "Executor asks for the recent CGM glucose values.",
+      "Executor describes whether average glucose is within target range (70\u2011180\u202fmg/dL).",
+      "Executor suggests one dietary tweak only if average is consistently above target."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'CGM' or 'blood sugar' and suggestion."
+    ]
+  },
+  {
+    "id": "live.health.annual_vaccination_review",
+    "name": "Check which adult vaccines I need this year",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I want to stay up to date on adult vaccines. Can you tell me which ones I should get this year? I\u2019ll give you my age if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona is polite; will disclose age after a courteous ask.",
+    "success_criteria": [
+      "Executor asks for the user\u2019s age.",
+      "Executor lists any recommended vaccines for that age group (e.g., flu, shingles).",
+      "Executor asks whether the user wants a reminder to schedule the shots."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'vaccine' or 'shot'."
+    ]
+  },
+  {
+    "id": "live.health.hearing_checkup_reminder",
+    "name": "Set a reminder for my hearing checkup",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "It\u2019s been three years since my last hearing test. Please set a reminder to book one. I\u2019ll tell you the preferred month if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona prefers formal confirmation before creating any reminder.",
+    "success_criteria": [
+      "Executor asks for the preferred month for the appointment.",
+      "Executor proposes a specific date in that month.",
+      "Executor obtains explicit confirmation before creating the reminder."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'hearing' or 'test'."
+    ]
+  },
+  {
+    "id": "live.health.ergonomic_workstation_setup",
+    "name": "Advise on an ergonomic workstation",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I work at a desk all day and get neck pain. Can you recommend three ergonomic adjustments? I\u2019ll share my current chair type if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will disclose chair type after a precise request; expects data\u2011driven advice.",
+    "success_criteria": [
+      "Executor asks for the current chair model or type.",
+      "Executor suggests three ergonomic changes (e.g., monitor height, lumbar support, keyboard angle).",
+      "Executor asks for confirmation before finalizing suggestions."
+    ],
+    "world_assertions": [
+      "If executor creates a note: a note with title containing 'ergonomic' and adjustments."
+    ]
+  },
+  {
+    "id": "live.health.dental_cleaning_schedule",
+    "name": "Plan my next dental cleaning",
+    "domain": "health",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "It\u2019s been 8 months since my last dental cleaning. Can you help me pick a date and set a reminder? I\u2019ll give you my preferred dental office if you need it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona may reveal preferred office after a courteous inquiry; expects caring tone.",
+    "success_criteria": [
+      "Executor asks for the preferred dental office location.",
+      "Executor proposes a date within the next month.",
+      "Executor obtains explicit consent before creating the reminder."
+    ],
+    "world_assertions": [
+      "If executor creates a reminder: a reminder on list_personal with title containing 'dental' or 'cleaning'."
+    ]
+  }
+]

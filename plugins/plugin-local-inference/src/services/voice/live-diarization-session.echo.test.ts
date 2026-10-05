@@ -9,9 +9,9 @@
  * fused VAD/encoder/diarizer) is covered by the host smoke harness.
  */
 
+import { platformPlaybackDelaySamples } from "@elizaos/voice";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AudioFrameEvent } from "./audio-frame-consumer.js";
-import { platformPlaybackDelaySamples } from "./echo-delay.js";
 import {
 	LiveDiarizationSession,
 	type RuntimeEventSink,

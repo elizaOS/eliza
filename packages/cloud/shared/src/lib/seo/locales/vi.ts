@@ -68,7 +68,7 @@ export const seoMessages: SeoMessages = {
     billing: {
       title: "Billing và Credits",
       description:
-        "Quản lý credit, xem mức sử dụng và mua credit pack. Giá minh bạch cho mọi tác vụ AI.",
+        "Đăng ký Plus hoặc Pro để nhận hạn mức hằng tháng, hoặc nạp credit trả theo mức dùng từ $5 đến $1.000. Giá minh bạch cho mọi tác vụ AI.",
     },
     apiKeys: {
       title: "API Keys",

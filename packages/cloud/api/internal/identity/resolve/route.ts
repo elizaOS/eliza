@@ -1,19 +1,23 @@
 // Handles internal cloud API internal identity resolve route traffic with service-to-service auth.
-import { desc, eq } from "drizzle-orm";
-import { Hono } from "hono";
-import { z } from "zod";
-import { dbRead } from "@/db/helpers";
+
+import { dbRead } from "@elizaos/cloud-shared/db/helpers";
 import {
   type IdentityProvider,
   providerForPlatform,
   usersRepository,
-} from "@/db/repositories/users";
-import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
-import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/db/repositories/users";
+import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { findActivePersonalDedicatedTarget } from "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target";
+import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { desc, eq } from "drizzle-orm";
+import { Hono } from "hono";
+import { z } from "zod";
 import { requireInternalAuth } from "../../_auth";
 
 const identityProviderSchema = z.enum([

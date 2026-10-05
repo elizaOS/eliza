@@ -1,7 +1,7 @@
 // Exercises tests test task pool.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 import {
   createSerialPackageResolver,
@@ -14,7 +14,7 @@ import {
   runPool,
   serialPackages,
   taskBelongsToShard,
-} from "../lib/test-task-pool.mjs";
+} from "../lib/test-task-pool.ts";
 
 test("serial package discovery is lazy and memoized", () => {
   let calls = 0;
@@ -283,8 +283,8 @@ describe("taskBelongsToShard", () => {
 
   test("membership is deterministic for the same key + config", () => {
     const cfg = { index: 2, total: 5 };
-    const a = taskBelongsToShard("packages/app-core", cfg);
-    const b = taskBelongsToShard("packages/app-core", cfg);
+    const a = taskBelongsToShard("packages/app", cfg);
+    const b = taskBelongsToShard("packages/app", cfg);
     expect(a).toBe(b);
   });
 
@@ -342,7 +342,7 @@ describe("plugin test command contract", () => {
 
   test("root test:plugins uses the shard-aware cross-package runner", () => {
     const script = rootPackageJson.scripts["test:plugins"];
-    expect(script).toContain("run-all-tests.mjs");
+    expect(script).toContain("run-all-tests.ts");
     expect(script).toContain("TEST_PACKAGE_FILTER='\\(plugins/'");
     expect(script).toContain("TEST_SCRIPT_FILTER='^test$'");
     expect(script).toContain("--only=test");
@@ -352,7 +352,7 @@ describe("plugin test command contract", () => {
 });
 
 describe("run-all-tests plan mode", () => {
-  const runnerPath = new URL("../run-all-tests.mjs", import.meta.url);
+  const runnerPath = new URL("../run-all-tests.ts", import.meta.url);
 
   function runPlan(args: string[], env: Record<string, string> = {}) {
     return spawnSync(process.execPath, [runnerPath.pathname, ...args], {
@@ -397,13 +397,13 @@ describe("run-all-tests plan mode", () => {
       cloudStep: false,
     });
     expect(plan.tasks).toEqual([
-      {
+      expect.objectContaining({
         packageName: "@elizaos/core",
         relativeDir: "packages/core",
         scriptName: "test",
         label: "@elizaos/core (packages/core)#test",
         parallelSafe: true,
-      },
+      }),
     ]);
     expect(plan.cloudStep).toBeNull();
   });
@@ -416,14 +416,14 @@ describe("run-all-tests plan mode", () => {
       path.join = (...parts) => {
         const joined = nativeJoin(...parts);
         const repoPath = parts.join("/");
-        return repoPath === "packages/cloud/e2e" || repoPath === "packages/homepage"
+        return repoPath === "packages/cloud/e2e"
           ? joined.replaceAll("/", "\\")
           : joined;
       };
       path.relative = (from, to) => {
         const relativePath = nativeRelative(from, to);
         const caller = (new Error().stack ?? "").split("\n")[2] ?? "";
-        if (caller.includes("run-all-tests.mjs")) {
+        if (caller.includes("run-all-tests.ts")) {
           return relativePath.replaceAll("/", "\\");
         }
         return relativePath;
@@ -469,21 +469,6 @@ describe("run-all-tests plan mode", () => {
         label: "@elizaos/core (packages/core)#test",
       }),
     ]);
-    const skippedResult = runWindowsPlan(
-      "--plan=json",
-      "--only=e2e",
-      "--no-cloud",
-    );
-    expect(skippedResult.stderr).toBe("");
-    expect(skippedResult.status).toBe(0);
-    expect(JSON.parse(skippedResult.stdout).skipped).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          relativeDir: "packages/homepage",
-          reason: "operator-run visual harness excluded from the pr lane",
-        }),
-      ]),
-    );
   });
 
   test("warns and preserves the unsharded plan for a partially numeric TEST_SHARD", () => {
@@ -510,16 +495,6 @@ describe("run-all-tests plan mode", () => {
         scriptName: "test",
       }),
     ]);
-  });
-
-  test("keeps the source-only homepage visual harness out of root PR smoke", () => {
-    const prResult = runPlan([
-      "--plan=json",
-      "--only=e2e",
-      "--filter=^@elizaos/homepage-source \\(packages/homepage\\)#test:e2e$",
-    ]);
-    expect(prResult.status).toBe(0);
-    expect(JSON.parse(prResult.stdout).tasks).toEqual([]);
   });
 
   test("bare --plan prints text and keeps the cloud step visible", () => {

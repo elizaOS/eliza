@@ -5,12 +5,12 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { resolveSafeRedirectTarget } from "@elizaos/cloud-shared/lib/security/redirect-validation";
+import { discordAutomationService } from "@elizaos/cloud-shared/lib/services/discord-automation";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { resolveSafeRedirectTarget } from "@/lib/security/redirect-validation";
-import { discordAutomationService } from "@/lib/services/discord-automation";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -24,7 +24,7 @@ app.get("/", async (c) => {
     }
 
     const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const defaultReturnPath = "/cloud/settings?tab=connections";
+    const defaultReturnPath = "/cloud/connectors";
     const safeReturnTarget = resolveSafeRedirectTarget(
       c.req.query("returnUrl"),
       baseUrl,

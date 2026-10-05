@@ -3,7 +3,7 @@
  * and assignment UIs — a user-facing label and description per ModelType slot.
  */
 
-import type { AgentModelSlot } from "../../api/client-local-inference";
+import type { AgentModelSlot } from "@elizaos/contracts";
 
 export type LocalInferenceSlotDescriptor = {
   slot: AgentModelSlot;

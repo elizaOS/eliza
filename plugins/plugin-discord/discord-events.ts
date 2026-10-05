@@ -8,9 +8,9 @@ import {
 	createUniqueUuid,
 	type ChannelType as ElizaChannelType,
 	type EventPayload,
-	resolveEffectiveMuteState,
 	type UUID,
 } from "@elizaos/core";
+import { resolveEffectiveMuteState } from "@elizaos/plugin-assistant";
 import {
 	AuditLogEvent,
 	type Channel,

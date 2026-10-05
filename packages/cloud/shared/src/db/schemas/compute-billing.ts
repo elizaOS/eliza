@@ -1,5 +1,5 @@
 /**
- * Defines immutable managed-agent debit receipts and durable billing-run envelopes.
+ * Defines immutable managed-agent usage receipts and durable billing-run envelopes.
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
@@ -18,6 +18,8 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { agentComputeFunding } from "./agent-compute-funding";
+import { billingFundingReservations } from "./billing-funding-reservations";
 import { creditTransactions } from "./credit-transactions";
 import { organizations } from "./organizations";
 
@@ -34,6 +36,10 @@ export const agentBillingRecords = pgTable(
     billing_period_end: timestamp("billing_period_end", { withTimezone: true }).notNull(),
     hourly_rate: numeric("hourly_rate", { precision: 16, scale: 6 }).notNull(),
     amount: numeric("amount", { precision: 16, scale: 6 }).notNull(),
+    /** Portion of the total due to the activation minimum, separate from metered rate segments. */
+    minimum_charge_amount: numeric("minimum_charge_amount", { precision: 16, scale: 6 })
+      .notNull()
+      .default("0.000000"),
     rate_segments: jsonb("rate_segments")
       .$type<
         Array<{
@@ -46,10 +52,42 @@ export const agentBillingRecords = pgTable(
       >()
       .default([])
       .notNull(),
-    credit_transaction_id: uuid("credit_transaction_id").notNull(),
+    credit_transaction_id: uuid("credit_transaction_id"),
+    compute_funding_id: uuid("compute_funding_id"),
+    /** Finalized allowance-first funding for a subscriber's legacy hourly charge. */
+    funding_reservation_id: uuid("funding_reservation_id"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    minimum_charge_check: check(
+      "agent_billing_records_minimum_charge_check",
+      sql`${table.minimum_charge_amount} >= 0 AND ${table.minimum_charge_amount} <= ${table.amount}
+        AND ${table.minimum_charge_amount} <> 'NaN'::numeric`,
+    ),
+    compute_funding_tenant_fk: foreignKey({
+      columns: [table.compute_funding_id, table.sandbox_id, table.organization_id],
+      foreignColumns: [
+        agentComputeFunding.id,
+        agentComputeFunding.agent_id,
+        agentComputeFunding.organization_id,
+      ],
+      name: "agent_billing_records_compute_funding_tenant_fk",
+    }).onDelete("restrict"),
+    compute_funding_unique: uniqueIndex("agent_billing_records_compute_funding_idx")
+      .on(table.compute_funding_id)
+      .where(sql`${table.compute_funding_id} IS NOT NULL`),
+    funding_source_check: check(
+      "agent_billing_records_funding_source_check",
+      sql`num_nonnulls(${table.credit_transaction_id}, ${table.compute_funding_id}, ${table.funding_reservation_id}) = 1`,
+    ),
+    funding_reservation_tenant_fk: foreignKey({
+      columns: [table.funding_reservation_id, table.organization_id],
+      foreignColumns: [billingFundingReservations.id, billingFundingReservations.organization_id],
+      name: "agent_billing_records_funding_reservation_tenant_fk",
+    }).onDelete("restrict"),
+    funding_reservation_unique: uniqueIndex("agent_billing_records_funding_reservation_idx")
+      .on(table.funding_reservation_id)
+      .where(sql`${table.funding_reservation_id} IS NOT NULL`),
     credit_transaction_tenant_fk: foreignKey({
       columns: [table.credit_transaction_id, table.organization_id],
       foreignColumns: [creditTransactions.id, creditTransactions.organization_id],

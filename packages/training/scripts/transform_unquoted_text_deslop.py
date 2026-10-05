@@ -9,25 +9,22 @@ This missed ~80,433 reply records where the text value is unquoted:
 This pass walks all reply records, finds unquoted text values, and applies
 the same casual + task deslop rules to them.
 
-Operates in-place on data/final/train_final.jsonl.
+Requires explicit input and output paths; use --in-place to replace the input.
 """
 from __future__ import annotations
 
+from eliza_training.lib.jsonl_transform import transform_cli
+
 import json
-import os
 import re
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "data" / "final" / "train_final.jsonl"
 
-sys.path.insert(0, str(ROOT / "scripts"))
-from transform_casual_reply_shorten import (  # noqa: E402
+from eliza_training.transform_casual_reply_shorten import (  # noqa: E402
     shorten_casual,
     is_casual,
 )
-from transform_task_reply_deslop import deslop_task_text  # noqa: E402
+from eliza_training.transform_task_reply_deslop import deslop_task_text  # noqa: E402
 
 # Unquoted native JSON text: value extends to end of line (or next \n).
 UNQUOTED_TEXT_RE = re.compile(
@@ -70,27 +67,7 @@ def transform_record(rec: dict, idx: int, stats: dict) -> dict:
 
 
 def main() -> int:
-    if not SRC.exists():
-        print(f"error: {SRC} missing", file=sys.stderr)
-        return 2
-    tmp = SRC.with_suffix(".jsonl.tmp")
-    stats: dict = {"total": 0, "decode_errors": 0, "records_changed": 0}
-    with SRC.open() as fin, tmp.open("w") as fout:
-        for idx, line in enumerate(fin):
-            stats["total"] += 1
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                stats["decode_errors"] += 1
-                fout.write(line)
-                continue
-            rec = transform_record(rec, idx, stats)
-            fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            if stats["total"] % 200000 == 0:
-                print(f"[{stats['total']}] changed={stats['records_changed']}", file=sys.stderr)
-    os.replace(tmp, SRC)
-    print(json.dumps(stats, indent=2), file=sys.stderr)
-    return 0
+    return transform_cli(transform_record)
 
 
 if __name__ == "__main__":

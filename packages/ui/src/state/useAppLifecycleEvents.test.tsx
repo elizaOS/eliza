@@ -5,18 +5,18 @@
  * @vitest-environment jsdom
  */
 
+import type { NavigateViewDetail } from "@elizaos/core/protocol";
 import { cleanup, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
   NETWORK_STATUS_CHANGE_EVENT,
 } from "../events";
-import type { LoadConversationMessagesResult } from "./internal";
+import type { LoadConversationMessagesResult } from "./types";
 import {
   RESUME_DEBOUNCE_MS,
   useAppLifecycleEvents,
@@ -51,9 +51,7 @@ const mocks = vi.hoisted(() => ({
   androidCloudBuild: vi.fn(() => false),
 }));
 
-vi.mock("../api", () => ({
-  client: mocks.client,
-}));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 
 vi.mock("../api/csrf-client", () => ({
   fetchWithCsrf: mocks.fetchCurrentView,
@@ -222,6 +220,21 @@ describe("useAppLifecycleEvents", () => {
 
     expect(mocks.client.resetConnection).toHaveBeenCalledTimes(1);
     expect(loadConversationMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays only the conversation that is active when the resume runs", () => {
+    // A resume observed for conv-before must not replay its tail after the
+    // user switched to conv-after inside the debounce window.
+    const { activeConversationIdRef, loadConversationMessages } = setup({
+      activeId: "conv-before",
+    });
+
+    dispatchResume();
+    activeConversationIdRef.current = "conv-after";
+    vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
+
+    expect(loadConversationMessages).toHaveBeenCalledTimes(1);
+    expect(loadConversationMessages).toHaveBeenCalledWith("conv-after");
   });
 
   it("treats a persisted pageshow (bfcache restore) as a resume (D3)", () => {

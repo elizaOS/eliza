@@ -2,8 +2,9 @@
  * Embeds an app-run viewer iframe and coordinates the origin-pinned
  * postMessage authentication handshake for hosted app surfaces.
  */
+
+import type { AppViewerAuthMessage } from "@elizaos/core/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AppViewerAuthMessage } from "../../api/client-types-cloud";
 import {
   resolveEmbeddedViewerUrl,
   resolvePostMessageTargetOrigin,

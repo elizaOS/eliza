@@ -2,11 +2,27 @@
 
 import { ContextRegistry, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { formatAvailableContextsForPrompt } from "../../../packages/core/src/services/message.js";
-import { notesAction } from "./action.js";
+import { formatAvailableContextsForPrompt } from "../../plugin-assistant/src/services/message.ts";
 import { notesPlugin } from "./plugin.js";
 
 describe("notesPlugin", () => {
+  it("requires a snapshot revision for PATCH while retaining atomic UPDATE substitutions", () => {
+    const patch = notesPlugin.actions?.find(
+      (action) => action.name === "NOTES_PATCH",
+    );
+    const update = notesPlugin.actions?.find(
+      (action) => action.name === "NOTES_UPDATE",
+    );
+    expect(
+      patch?.parameters?.find((p) => p.name === "expectedRevision")?.required,
+    ).toBe(true);
+    expect(
+      update?.parameters?.find((p) => p.name === "expectedRevision")?.required,
+    ).toBe(false);
+    expect(
+      update?.parameters?.find((p) => p.name === "textEdit"),
+    ).toBeDefined();
+  });
   it("registers an owner-only Stage 1 notes context during plugin init", async () => {
     const contexts = new ContextRegistry([]);
     await notesPlugin.init?.({}, { contexts } as IAgentRuntime);
@@ -28,10 +44,10 @@ describe("notesPlugin", () => {
     const nonOwnerCatalog = formatAvailableContextsForPrompt(
       contexts.listAvailable(["USER"]),
     );
+    expect(ownerCatalog).toContain("notes: Saved notes.");
+    expect(nonOwnerCatalog).not.toContain("notes");
     for (const action of notesPlugin.actions ?? []) {
-      if (action === notesAction) continue;
-      expect(ownerCatalog).toContain(action.name);
-      expect(nonOwnerCatalog).not.toContain(action.name);
+      expect(ownerCatalog).not.toContain(action.name);
     }
   });
 });

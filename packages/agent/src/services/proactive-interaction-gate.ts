@@ -2,7 +2,7 @@
  * Proactive-interaction UX governance gate (#8792).
  *
  * The "not annoying" core: turns a stream of UI interactions (view switches,
- * slash commands, shortcuts) into AT MOST a trickle of proactive comments. Pure
+ * keyboard shortcuts) into AT MOST a trickle of proactive comments. Pure
  * and deterministic — `now` is injected, all state is in-memory — so every rule
  * (kill-switch, global cooldown, per-surface cooldown, daily cap, textual dedup,
  * burst debounce) is unit-testable without a runtime or a clock.

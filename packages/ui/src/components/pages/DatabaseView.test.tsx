@@ -26,9 +26,7 @@ const clientMock = vi.hoisted(() => ({
   executeDatabaseQuery: vi.fn(),
 }));
 
-vi.mock("../../api", () => ({
-  client: clientMock,
-}));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 
 // DatabaseView reads only the translator. It now sources `t` from
 // useTranslation() (a narrower subscription than useApp()), so mock that to the

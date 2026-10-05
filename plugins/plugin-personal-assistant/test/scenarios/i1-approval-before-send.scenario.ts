@@ -3,7 +3,7 @@
  * a MESSAGE draft action with `requiresConfirmation`, and the outcome check
  * proves no external connector delivered anything.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

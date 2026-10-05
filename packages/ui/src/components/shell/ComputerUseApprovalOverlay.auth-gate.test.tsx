@@ -45,7 +45,7 @@ vi.mock("../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: <T,>(selector: (state: typeof mockState) => T): T =>
     selector(mockState),
 }));

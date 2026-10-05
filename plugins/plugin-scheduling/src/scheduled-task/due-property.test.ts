@@ -258,7 +258,7 @@ describe("due properties: never due before the trigger time", () => {
     );
   });
 
-  it("relative_to_anchor: due exactly from anchor+offset (independent UTC arithmetic)", async () => {
+  it("relative_to_anchor: due exactly from the occurrence landing on today (independent UTC arithmetic)", async () => {
     await fc.assert(
       fc.asyncProperty(
         arbStartMinute,
@@ -276,15 +276,19 @@ describe("due properties: never due before the trigger time", () => {
           };
           const nowMs = msAt(nowMin);
           const now = new Date(nowMs);
-          // Independent expectation: today's (UTC) window start + offset.
+          // Independent expectation: the occurrence landing on today's (UTC)
+          // date is the window start plus offset wrapped into the day —
+          // yesterday's anchor supplies it when the sum crosses midnight
+          // forward, tomorrow's when it crosses backward.
+          const minuteOfToday =
+            (((windowStartMinuteOfDay + offsetMinutes) % 1440) + 1440) % 1440;
           const expectedMs =
             Date.UTC(
               now.getUTCFullYear(),
               now.getUTCMonth(),
               now.getUTCDate(),
             ) +
-            windowStartMinuteOfDay * MINUTE_MS +
-            offsetMinutes * MINUTE_MS;
+            minuteOfToday * MINUTE_MS;
           const task = makeTask({
             trigger: {
               kind: "relative_to_anchor",

@@ -9,11 +9,11 @@
  */
 
 import type { Agent } from "@elizaos/core";
+import { agentTable } from "@elizaos/plugin-sql";
 import { eq, inArray } from "drizzle-orm";
 import { logger } from "../../../lib/utils/logger";
 import type { DbTransaction } from "../../client";
 import { dbRead, dbWrite } from "../../helpers";
-import { agentTable } from "../../schemas/eliza";
 
 const toDate = (value: Date | string | number | bigint | null | undefined): Date => {
   if (value instanceof Date) {

@@ -1,5 +1,6 @@
 /** Owns replacement identity, durable cleanup fences, and retirement reconciliation. Lifecycle locks and the single provider instance are supplied by the host, preserving transaction and cutover authority. */
 
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../../../db/client";
 import { dbWrite } from "../../../../db/helpers";
@@ -12,6 +13,8 @@ import {
 import { dockerNodes } from "../../../../db/schemas/docker-nodes";
 import { jobs } from "../../../../db/schemas/jobs";
 import { logger } from "../../../utils/logger";
+import { settleReplacementComputeInTransaction } from "../../agent-compute-provision";
+import { creditsService } from "../../credits";
 import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES } from "../../provisioning-job-types";
 import { type SandboxHandle, type SandboxProvider } from "../../sandbox-provider";
 import { SandboxReplacementCleanupUnresolvedError } from "../../sandbox-provider-types";
@@ -560,6 +563,90 @@ export class SandboxReplacementCleanup {
   }
 
   /**
+   * Re-establishes the durable cleanup fence for a Docker candidate that was
+   * already adopted onto the primary row before its provision failed. Adoption
+   * cleared the fence, so a later failure would otherwise have only the
+   * reusable container name. The fence carries the exact node, immutable
+   * container ID, replacement attempt label and VPN identity, and the adoption
+   * already owns the node slot, so retirement releases it exactly once.
+   * Incomplete Docker identity fails closed instead of degrading to name-based
+   * teardown that could resolve a healthy same-name successor (#29678).
+   */
+  async fenceAdoptedProvisionForCleanup(
+    agentId: string,
+    orgId: string,
+    handle: SandboxHandle,
+    expectedEnvironmentRevision: number,
+  ): Promise<void> {
+    let incoming: Omit<ReplacementCleanupLocator, "createdAt">;
+    try {
+      incoming = this.replacementLocatorFromHandle(handle);
+    } catch (error) {
+      throw new ElizaError("Failed provision has incomplete exact Docker cleanup identity", {
+        code: "PROVISION_CLEANUP_IDENTITY_INCOMPLETE",
+        cause: error,
+        context: { agentId, sandboxId: handle.sandboxId },
+      });
+    }
+    if (incoming.containerId === null) {
+      throw new ElizaError("Failed provision has no immutable Docker container ID", {
+        code: "PROVISION_CLEANUP_IDENTITY_INCOMPLETE",
+        context: {
+          agentId,
+          sandboxId: handle.sandboxId,
+          replacementAttemptId: incoming.replacementAttemptId,
+        },
+      });
+    }
+    await dbWrite.transaction(async (tx) => {
+      await this.host.lockLifecycle(tx, agentId, orgId);
+      const current = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current) throw new Error("Agent disappeared before failed provision cleanup");
+      const tierRejection = containerBackedServiceRejection(current, "replacement");
+      if (tierRejection) throw new Error(tierRejection);
+      const existing = this.getReplacementCleanupLocator(current);
+      if (existing) {
+        this.assertSameReplacementIdentity(existing, incoming);
+        if (existing.containerId !== incoming.containerId) {
+          throw new Error("Failed provision container identity changed");
+        }
+        return;
+      }
+      const persisted = await tx.execute<{ id: string }>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          replacement_cleanup_sandbox_id = ${incoming.sandboxId},
+          replacement_cleanup_node_id = ${incoming.nodeId},
+          replacement_cleanup_container_name = ${incoming.containerName},
+          replacement_cleanup_attempt_id = ${incoming.replacementAttemptId},
+          replacement_cleanup_container_id = ${incoming.containerId},
+          replacement_cleanup_vpn_node_id = ${incoming.vpnNodeId},
+          replacement_cleanup_vpn_node_name = ${incoming.vpnNodeName},
+          replacement_cleanup_preserved_vpn_node_id = ${incoming.previousVpnNodeId},
+          replacement_cleanup_vpn_registration_started_at = ${incoming.vpnRegistrationStartedAt},
+          replacement_cleanup_allocation_counted = ${incoming.allocationCounted},
+          replacement_cleanup_created_at = date_trunc('milliseconds', NOW()),
+          updated_at = NOW()
+        WHERE id = ${agentId}
+          AND organization_id = ${orgId}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
+          AND status = 'provisioning'
+          AND environment_revision = ${expectedEnvironmentRevision}
+          AND sandbox_id = ${incoming.sandboxId}
+          AND node_id = ${incoming.nodeId}
+          AND container_name = ${incoming.containerName}
+          AND deletion_attempt_id IS NULL
+          AND replacement_cleanup_sandbox_id IS NULL
+          AND lifecycle_revision = ${current.lifecycle_revision}
+        RETURNING id
+      `);
+      if (persisted.rows.length !== 1) {
+        throw new Error("Failed provision no longer owns the adopted container");
+      }
+    });
+  }
+
+  /**
    * Snapshot the cleanup identity, prove the exact remote resources absent
    * without holding a database transaction open, then re-lock and atomically
    * release its node allocation and fence. A changed identity invalidates the
@@ -600,6 +687,7 @@ export class SandboxReplacementCleanup {
     expectation?: AdminCanaryCleanupExpectation,
     onConvergedInTx?: (tx: DbTransaction) => Promise<void>,
     source: "lifecycle" | "background-reconcile" | "admin-converge" = "lifecycle",
+    expectedReplacement?: SandboxHandle,
   ): Promise<"missing" | "clean" | "deferred" | "retired"> {
     const startedAt = Date.now();
     logger.info("[agent-sandbox] Replacement cleanup started", {
@@ -607,6 +695,7 @@ export class SandboxReplacementCleanup {
       organizationId: orgId,
       source,
     });
+    const provider = await this.host.getProvider();
     const snapshot = await dbWrite.transaction(async (tx) => {
       await this.host.lockLifecycle(tx, agentId, orgId);
       const current = await this.host.getAgentForLifecycleMutation(tx, agentId, orgId);
@@ -614,6 +703,13 @@ export class SandboxReplacementCleanup {
       const tierRejection = containerBackedServiceRejection(current, "replacement");
       if (tierRejection) throw new Error(tierRejection);
       const locator = this.getReplacementCleanupLocator(current);
+      if (expectedReplacement) {
+        if (!locator) throw new Error("Failed provision replacement ownership changed");
+        const expected = this.replacementLocatorFromHandle(expectedReplacement);
+        this.assertSameReplacementIdentity(locator, expected);
+        if (locator.containerId !== expected.containerId)
+          throw new Error("Failed provision container identity changed");
+      }
       if (expectation) {
         this.assertAdminCanaryCleanupExpectation(current, locator, expectation);
       }
@@ -630,13 +726,20 @@ export class SandboxReplacementCleanup {
       ) {
         return { state: "deferred" as const };
       }
-      if (locator) return { state: "pending" as const, locator };
+      if (locator) {
+        const funding =
+          provider.computeFundingCapability === "host-lease-v1"
+            ? await settleReplacementComputeInTransaction(tx, current, locator)
+            : null;
+        return { state: "pending" as const, locator, funding };
+      }
       if (onConvergedInTx) await onConvergedInTx(tx);
       return { state: "clean" as const };
     });
     if (snapshot.state !== "pending") return snapshot.state;
+    if (snapshot.funding?.purchasedCreditRefunded)
+      await creditsService.invalidateCreditCaches(orgId);
 
-    const provider = await this.host.getProvider();
     if (!provider.stopOnSpecificNodeForReplacement) {
       throw new Error("Sandbox provider cannot prove a persisted replacement absent");
     }

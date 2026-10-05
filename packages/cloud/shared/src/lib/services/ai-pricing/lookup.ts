@@ -520,9 +520,11 @@ export async function calculateTextCostFromCatalog(params: {
   cache?: PricingCacheReadOptions;
 }): Promise<TokenCostBreakdown> {
   const canonicalModel = canonicalModelId(params.model, params.provider);
-  const productFamily: PricingProductFamily = params.model.includes("embedding")
-    ? "embedding"
-    : "language";
+  const productFamily: PricingProductFamily =
+    params.model.includes("embedding") ||
+    /^(?:(?:cloudflare|selfhosted)\/)?bge-small-en-v1\.5$/.test(params.model)
+      ? "embedding"
+      : "language";
   assertBillableQuantity({
     quantity: params.inputTokens,
     scope: "inputTokens",

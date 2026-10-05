@@ -8,6 +8,6 @@ export default defineConfig({
     ...baseConfig.test,
     root: import.meta.dirname,
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
-    environment: "jsdom",
+    environment: "node",
   },
 });

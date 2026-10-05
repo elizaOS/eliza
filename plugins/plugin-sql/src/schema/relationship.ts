@@ -35,6 +35,7 @@ export const relationshipTable = pgTable(
       .references(() => agentTable.id, { onDelete: "cascade" }),
     tags: text("tags").array(),
     metadata: jsonb("metadata"),
+    extractionEvidence: jsonb("extraction_evidence"),
   },
   (table) => [
     index("idx_relationships_users").on(table.sourceEntityId, table.targetEntityId),

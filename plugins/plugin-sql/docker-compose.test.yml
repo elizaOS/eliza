@@ -14,4 +14,4 @@ services:
       timeout: 5s
       retries: 5
     volumes:
-      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ../../packages/scripts/plugins/plugin-sql/init-test-db.sql:/docker-entrypoint-initdb.d/init.sql:ro

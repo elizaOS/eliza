@@ -7,21 +7,21 @@
  * `load-apps-catalog.ts` instead.
  */
 
-import { client, type RegistryAppInfo } from "../../api";
-import { fetchAvailableViews } from "../../hooks/useAvailableViews";
-import { isHiddenFromAppsView } from "./helpers";
-import { getInternalToolApps } from "./internal-tool-apps";
+import type { RegistryAppInfo } from "@elizaos/core/protocol";
+import { client } from "../../api/client";
 import {
   getAllOverlayApps,
   getAvailableOverlayApps,
   isAospAndroid,
   overlayAppToRegistryInfo,
-} from "./overlay-app-registry";
+} from "../../apps/overlay-app-registry.js";
+import { fetchAvailableViews } from "../../hooks/useAvailableViews";
+import { isHiddenFromAppsView } from "./helpers";
+import { getInternalToolApps } from "./internal-tool-apps";
 
 interface LoadMergedCatalogAppsOptions {
   includeHiddenApps?: boolean;
 }
-
 export async function loadMergedCatalogApps({
   includeHiddenApps = false,
 }: LoadMergedCatalogAppsOptions = {}): Promise<RegistryAppInfo[]> {
@@ -31,7 +31,6 @@ export async function loadMergedCatalogApps({
       client.listApps(),
       fetchAvailableViews(),
     ]);
-
   const catalogApps =
     catalogAppsResult.status === "fulfilled" ? catalogAppsResult.value : [];
   const installedApps =
@@ -50,7 +49,6 @@ export async function loadMergedCatalogApps({
       (app) => !installedApps.some((candidate) => candidate.name === app.name),
     )
     .map(overlayAppToRegistryInfo);
-
   // Keep the FIRST occurrence so internal-tool apps (which carry hero images
   // and the canonical catalog metadata) win over duplicate `installedApps`
   // entries that lack heroImage/category etc.
@@ -62,7 +60,6 @@ export async function loadMergedCatalogApps({
       return true;
     },
   );
-
   // The same AOSP-only gate applied to overlayApps must also strip
   // `androidOnly` apps that arrived through `staticApps` or `installedApps`.
   // The agent's plugin-resolver returns the runtime halves of the phone /
@@ -79,7 +76,6 @@ export async function loadMergedCatalogApps({
   const platformFilteredApps = aospOnly
     ? mergedApps
     : mergedApps.filter((app) => !androidOnlyAppNames.has(app.name));
-
   return includeHiddenApps
     ? platformFilteredApps
     : platformFilteredApps.filter((app) => !isHiddenFromAppsView(app.name));

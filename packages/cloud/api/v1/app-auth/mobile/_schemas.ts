@@ -1,6 +1,7 @@
 /** Request schemas shared by the first-party mobile App Auth routes. */
+
+import { MOBILE_APP_AUTH_DEVICE_NAME_MAX_LENGTH } from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
 import { z } from "zod";
-import { MOBILE_APP_AUTH_DEVICE_NAME_MAX_LENGTH } from "@/lib/services/mobile-app-auth";
 
 const deviceNameSchema = z
   .string()

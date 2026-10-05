@@ -14,28 +14,17 @@
 
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  compileTailwindTheme,
-  createAssertGate,
-  createSnapper,
-  finishRun,
-  renameRecordedVideo,
-  stubElizaCore,
-  stubNodeBuiltins,
-  writeFixturePage,
-} from "../../../testing/e2e-runner/index.ts";
+import { compileTailwindTheme, writeFixturePage } from "../../../testing/e2e-runner/fixture-bundle";
+import { createAssertGate, createSnapper, finishRun, renameRecordedVideo } from "../../../testing/e2e-runner/browser-harness";
+import { stubElizaCore, stubNodeBuiltins } from "../../../testing/e2e-runner/esbuild-stubs";
 import { chromium } from "playwright";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiRoot = resolve(here, "../../../..");
 const repoRoot = resolve(uiRoot, "../..");
-const require = createRequire(import.meta.url);
-const localInferenceRoot = dirname(
-  require.resolve("@elizaos/plugin-local-inference/package.json"),
-);
+const localInferenceRoot = join(repoRoot, "plugins/plugin-local-inference");
 
 const CLIP = join(
   localInferenceRoot,
@@ -65,7 +54,7 @@ process.env.ELIZA_FUSED_WAKE_MIC_ARGV = [
 
 // Import the REAL desktop producer (resolves through the alias above).
 const { FusedWakeManager } = await import(
-  join(repoRoot, "packages/app-core/platforms/electrobun/src/native/fused-wake.ts")
+  join(repoRoot, "packages/app/platforms/electrobun/src/native/fused-wake.ts")
 );
 
 const outDir = join(here, "output-fused-wake-integration");

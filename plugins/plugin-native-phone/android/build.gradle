@@ -40,6 +40,8 @@ dependencies {
     implementation project(':capacitor-android')
 
     // Instrumented test deps (issue #9967 — on-device dialer status read).
+    androidTestImplementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    androidTestImplementation "androidx.test:rules:1.5.0"
     androidTestImplementation "androidx.test:core:1.5.0"
     androidTestImplementation "androidx.test:runner:1.5.2"
     androidTestImplementation "androidx.test.ext:junit:1.1.5"

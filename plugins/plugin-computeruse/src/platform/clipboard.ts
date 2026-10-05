@@ -16,6 +16,15 @@
  * `ClipboardUnavailableError` with the install hint embedded in `.message`.
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import {
+  closeSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { commandExists, currentPlatform } from "./helpers.js";
 import { psHostAvailable, runPsHost } from "./ps-host.js";
 import { psSpawnTimeoutMs } from "./windows-timeouts.js";
@@ -63,21 +72,36 @@ function runClipboardWrite(
   args: readonly string[],
   input?: string,
 ): void {
-  const result = spawnSync(command, [...args], {
-    ...(input === undefined ? {} : { input }),
-    timeout: clipboardTimeoutMs(),
-    encoding: "utf-8",
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    // encoding: "utf-8" forces stderr to string when present.
-    const stderr = result.stderr ?? "";
-    throw new Error(
-      `Clipboard write failed (${command} exit ${result.status}): ${stderr.trim()}`,
-    );
+  // X11/Wayland writers fork a selection owner that outlives the launcher.
+  // Pipes inherited by that child keep spawnSync waiting until its timeout.
+  // A private regular file preserves startup diagnostics without that pipe.
+  const backgroundOwner = command === "xclip" || command === "wl-copy";
+  const diagnosticDir = backgroundOwner
+    ? mkdtempSync(join(tmpdir(), "eliza-clipboard-"))
+    : undefined;
+  let diagnosticFd: number | undefined;
+  try {
+    if (diagnosticDir)
+      diagnosticFd = openSync(join(diagnosticDir, "stderr"), "wx+", 0o600);
+    const result = spawnSync(command, [...args], {
+      ...(input === undefined ? {} : { input }),
+      timeout: clipboardTimeoutMs(),
+      encoding: "utf-8",
+      stdio: ["pipe", "ignore", diagnosticFd ?? "pipe"],
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      const stderr =
+        diagnosticDir === undefined
+          ? (result.stderr ?? "")
+          : readFileSync(join(diagnosticDir, "stderr"), "utf8");
+      throw new Error(
+        `Clipboard write failed (${command} exit ${result.status}): ${stderr.trim()}`,
+      );
+    }
+  } finally {
+    if (diagnosticFd !== undefined) closeSync(diagnosticFd);
+    if (diagnosticDir) rmSync(diagnosticDir, { recursive: true, force: true });
   }
 }
 

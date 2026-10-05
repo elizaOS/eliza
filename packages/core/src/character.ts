@@ -15,11 +15,11 @@ import { validateCharacter } from "./schemas/character";
 import type {
 	Character,
 	CharacterSettings,
-	DocumentSourceItem,
 	MessageExample,
 	MessageExampleGroup,
 	TemplateType,
-} from "./types";
+} from "./types/agent.js";
+import type { DocumentSourceItem } from "./types/documents.js";
 import { isObjectRecord as isRecord } from "./utils/type-guards";
 
 type CharacterDocumentItem =

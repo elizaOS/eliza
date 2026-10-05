@@ -9,6 +9,10 @@
  */
 
 import type {
+  LifeOpsCalendarSourceAdministrationEntry,
+  LifeOpsCalendarSourceAdministrationSnapshot,
+} from "@elizaos/contracts";
+import type {
   IAgentRuntime,
   Memory,
   Provider,
@@ -16,10 +20,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { hasOwnerAccess } from "@elizaos/core";
-import type {
-  LifeOpsCalendarSourceAdministrationEntry,
-  LifeOpsCalendarSourceAdministrationSnapshot,
-} from "@elizaos/shared";
 import { listCalendarSourceAdministration } from "../source-administration/adapter.js";
 
 const OWNER_ONLY_EMPTY: ProviderResult = {

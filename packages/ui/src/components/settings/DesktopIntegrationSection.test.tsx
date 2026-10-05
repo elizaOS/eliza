@@ -17,11 +17,11 @@ import { DesktopIntegrationSection } from "./DesktopIntegrationSection";
 
 const bridge = vi.hoisted(() => ({ request: vi.fn() }));
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: null, agentProps: {} }),
 }));
 
-vi.mock("../../bridge", () => ({
+vi.mock("../../bridge/electrobun-rpc", () => ({
   invokeDesktopBridgeRequest: bridge.request,
 }));
 

@@ -1,0 +1,28 @@
+{
+  "brand": "eliza",
+  "appName": "Eliza",
+  "distroName": "elizaOS E1 Cuttlefish",
+  "packageName": "ai.elizaos.app",
+  "classPrefix": "Eliza",
+  "productName": "eliza_cf_riscv64_e1_phone",
+  "lunchTarget": "eliza_cf_riscv64_e1_phone-trunk_staging-userdebug",
+  "aospLockProfile": "cuttlefish",
+  "aospDeviceTreePaths": [
+    "device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk",
+    "device/eliza/cuttlefish_e1/eliza_e1_cuttlefish.mk"
+  ],
+  "aospDeviceOverlay": "android/cuttlefish-e1.lock.json",
+  "envPrefix": "ELIZA",
+  "propertyPrefix": "elizaos",
+  "vendorDir": "android/vendor/eliza",
+  "initRcName": "init.eliza.rc",
+  "commonMakefile": "eliza_common.mk",
+  "cuttlefishMakefile": "eliza_cf_riscv64_e1_phone.mk",
+  "buildAndroidSystemCmd": [
+    "bun",
+    "run",
+    "--cwd",
+    "packages/app",
+    "build:android:system"
+  ]
+}

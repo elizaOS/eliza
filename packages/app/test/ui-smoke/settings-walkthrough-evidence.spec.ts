@@ -1,4 +1,4 @@
-/** Records the real Settings section navigation and rendered content. */
+/** Records real Settings section navigation at desktop and mobile sizes using deterministic API fixtures. */
 import { expect, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -7,24 +7,30 @@ import {
   seedAppStorage,
 } from "./helpers";
 
-test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
-
-test("settings surface walkthrough (PR evidence)", async ({ page }) => {
-  // Background and App Permissions are advanced sections.
-  await seedAppStorage(page, { "eliza:developerMode": "1" });
-  await installDefaultAppRoutes(page);
-  await openAppPath(page, "/settings");
-  const shell = page.getByTestId("settings-shell");
-  await expect(shell).toBeVisible();
-  for (const [id, label] of [
-    ["identity", /^Basics\b/],
-    ["background", /^Background\b/],
-    ["app-permissions", /^App Permissions\b/],
-  ] as const) {
-    await test.step(id, async () => {
-      await openSettingsSection(page, label);
-      await expect(shell.locator(`[id="${id}"]`)).toBeVisible();
-      await expect(page.getByTestId("settings-section-error")).toHaveCount(0);
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "mobile", width: 390, height: 844 },
+]) {
+  test(`settings section walkthrough at ${viewport.name}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    await openAppPath(page, "/settings");
+    await openSettingsSection(page, "Voice");
+    await expect(
+      page.getByRole("heading", { name: "Voice selection", exact: true }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath("settings-voice.png"),
+      fullPage: true,
     });
-  }
-});
+    await openSettingsSection(page, "General");
+    await expect(page.getByTestId("background-catalog-gallery")).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath("settings-general.png"),
+      fullPage: true,
+    });
+  });
+}

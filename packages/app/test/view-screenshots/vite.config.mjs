@@ -2,18 +2,18 @@
  * Vite config for the view screenshot harness that renders app views for
  * visual evidence.
  */
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../../../..");
-
 const calendarHookStub = path.join(here, "stubs/useCalendarWeek.ts");
 const calendarSourcesHookStub = path.join(here, "stubs/useCalendarSources.ts");
 const calendarDrawerStub = path.join(here, "stubs/EventEditorDrawer.tsx");
-
 /**
  * The calendar components reference their data hook + event drawer with
  * relative `.js` specifiers (`../hooks/useCalendarWeek.js`,
@@ -41,7 +41,6 @@ function calendarSeamStubPlugin() {
     },
   };
 }
-
 export default defineConfig({
   root: here,
   // Self-contained: do not load packages/app/postcss/tailwind/etc.
@@ -65,10 +64,6 @@ export default defineConfig({
       // The spatial primitives are pure React (no network, no renderer
       // barrel) — resolve them for real so spatial views (Inbox, Focus)
       // screenshot their actual layout instead of a stub.
-      {
-        find: /^@elizaos\/ui\/spatial$/,
-        replacement: path.join(elizaRoot, "packages/ui/src/spatial/index.ts"),
-      },
       {
         find: /^@elizaos\/ui\/state$/,
         replacement: path.join(here, "stubs/elizaos-ui-state.ts"),
@@ -141,11 +136,11 @@ export default defineConfig({
     ],
   },
   build: {
-    outDir: path.join(here, "dist"),
+    outDir: testOutputPath("view-screenshots-build"),
     emptyOutDir: true,
     chunkSizeWarningLimit: 4000,
   },
-  // @elizaos/shared (calendar type import) is type-only; no runtime resolution
+  // @elizaos/core (calendar type import) is type-only; no runtime resolution
   // needed. Keep optimizeDeps from trying to crawl the workspace.
   optimizeDeps: { entries: [path.join(here, "entry.tsx")] },
 });

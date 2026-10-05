@@ -8,6 +8,7 @@
  * the responsibility of the runner (`compose: "all" | "any" | "first_deny"`).
  */
 
+import { resolveLocalHHMMToIso } from "./local-time.js";
 import type {
   GateDecision,
   GateEvaluationContext,
@@ -213,9 +214,14 @@ const quietHoursGate: TaskGateContribution = {
     if (!start || !end) {
       return { kind: "allow" };
     }
+    // The zone that answers for "now" also places the window's end, so the
+    // two never disagree: the quiet-hours zone, else the owner's, else UTC.
+    const zone =
+      [quietHours.tz, context.ownerFacts.timezone ?? "UTC", "UTC"].find(
+        (tz) => localPartsAtTz(context.nowIso, tz) !== null,
+      ) ?? "UTC";
     const local =
-      localPartsAtTz(context.nowIso, quietHours.tz) ??
-      localPartsForContext(context);
+      localPartsAtTz(context.nowIso, zone) ?? localPartsForContext(context);
     const nowMinutes = local.hours * 60 + local.minutes;
     const startMinutes = start.hours * 60 + start.minutes;
     const endMinutes = end.hours * 60 + end.minutes;
@@ -230,7 +236,25 @@ const quietHoursGate: TaskGateContribution = {
     if (!inWindow) {
       return { kind: "allow" };
     }
-    // Defer to the next allowed window for low/medium tasks.
+    // Defer to the next allowed window for low/medium tasks. The end is an
+    // instant resolved in the zone, not a wall-clock minute count: a DST
+    // change inside the window would otherwise move the refire an hour off
+    // (late on spring-forward nights, still-quiet on fall-back nights).
+    const endsTomorrow =
+      startMinutes > endMinutes && nowMinutes >= startMinutes;
+    const atIso = resolveLocalHHMMToIso(
+      new Date(context.nowIso),
+      quietHours.end,
+      zone,
+      endsTomorrow ? 1 : 0,
+    );
+    if (atIso !== null && Date.parse(atIso) > Date.parse(context.nowIso)) {
+      return {
+        kind: "defer",
+        until: { atIso },
+        reason: `quiet_hours: deferring until ${quietHours.end} (${atIso})`,
+      };
+    }
     const minutesUntilEnd =
       startMinutes <= endMinutes
         ? endMinutes - nowMinutes

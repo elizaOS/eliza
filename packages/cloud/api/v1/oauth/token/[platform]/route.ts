@@ -1,7 +1,7 @@
 // Handles v1 cloud API v1 oauth token platform route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * GET /api/v1/oauth/token/:platform

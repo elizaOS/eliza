@@ -12,8 +12,12 @@
  */
 
 import type http from "node:http";
-import { type AgentRuntime, ModelType } from "@elizaos/core";
-import { ttsDebug, ttsDebugTextPreview } from "@elizaos/shared";
+import {
+	type AgentRuntime,
+	ModelType,
+	ttsDebug,
+	ttsDebugTextPreview,
+} from "@elizaos/core";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,
@@ -143,20 +147,18 @@ function isClosed(res: http.ServerResponse): boolean {
 	return res.destroyed || res.writableEnded;
 }
 
-/**
- * True when the runtime has a TEXT_TO_SPEECH handler registered — the same
- * signal the ASR status route uses for TRANSCRIPTION. The POST path
- * (`useLocalInferenceTts`) then resolves the concrete on-device provider from
- * `LOCAL_TTS_PROVIDER_IDS`; readiness only needs to know a synthesizer exists.
- * The client TTS default-resolver probes this so a box without a staged Kokoro
- * voice degrades to Eliza Cloud / ElevenLabs / browser SpeechSynthesis instead
- * of picking `local-inference` and 503-ing on the first utterance.
- */
+/** Report a registered provider the POST route can actually dispatch to. */
 function hasLocalInferenceTtsHandler(state: CompatRuntimeState): boolean {
-	const getModel = state.current?.getModel;
 	return (
-		typeof getModel === "function" &&
-		Boolean(getModel.call(state.current, ModelType.TEXT_TO_SPEECH))
+		state.current
+			?.getModelRegistrations?.()
+			.some(
+				(entry) =>
+					entry.modelType === ModelType.TEXT_TO_SPEECH &&
+					LOCAL_TTS_PROVIDER_IDS.some(
+						(provider) => provider === entry.provider,
+					),
+			) ?? false
 	);
 }
 

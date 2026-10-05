@@ -1,6 +1,6 @@
 /** Transaction-local deadline controls for restore-v3 candidate repositories. */
 
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/shared";
+import { type AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import { sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { isTransientDbError } from "../retry-transient";

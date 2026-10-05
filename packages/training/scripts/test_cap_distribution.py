@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from scripts.transform_cap_distribution import (
+from eliza_training.transform_cap_distribution import (
     ELIZA_TIER_WHITELIST,
     apply_caps,
     primary_action,

@@ -5,7 +5,7 @@
  * provides stableStringify — key-order-independent JSON for stable hashing/IDs.
  */
 
-import { EXAMPLE_NAMES } from "./example-names";
+import { EXAMPLE_NAMES } from "./example-names.js";
 
 const UINT32_MAX = 0x100000000;
 

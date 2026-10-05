@@ -1,0 +1,20 @@
+id: priority_fee_001
+level: 2
+name: Priority Fee Optimization 1
+description: Balance speed via priority fee vs cost 1/5
+category: optimization
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_1
+  type: transfer
+  parameters:
+    action: optimize_fee
+    urgency: high
+  timeout_ms: 30000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

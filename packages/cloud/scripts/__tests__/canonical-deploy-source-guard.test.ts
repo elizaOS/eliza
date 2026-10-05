@@ -9,19 +9,19 @@ import { fileURLToPath } from "node:url";
 import {
   execFileSync,
   spawnSync,
-} from "../../../scripts/lib/spawn-sync-captured.mjs";
+} from "../../../scripts/lib/spawn-sync-captured.ts";
 import {
   decideCanonicalDeploySource,
   hasEligibleSuccessorReleaseRun,
   parseCanonicalRemoteHead,
   proveSuccessorReleaseRun,
-} from "../canonical-deploy-source-guard.mjs";
+} from "../canonical-deploy-source-guard.ts";
 
 const RUN = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const HEAD = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const SCRIPT = join(
   dirname(fileURLToPath(import.meta.url)),
-  "../canonical-deploy-source-guard.mjs",
+  "../canonical-deploy-source-guard.ts",
 );
 
 describe("canonical deploy source decision", () => {

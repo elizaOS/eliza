@@ -9,29 +9,23 @@
  * current platform at all.
  */
 
+import type { CatalogModel, InstalledModel } from "@elizaos/contracts";
 import {
   classifyCatalogModelRuntimeClass,
   classifyInstalledModelRuntimeClass,
   type RuntimeClass,
-} from "@elizaos/shared/local-inference";
-import type {
-  CatalogModel,
-  InstalledModel,
-} from "../../api/client-local-inference";
+} from "@elizaos/plugin-native-inference/model-catalog/runtime-class";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 
 export type { RuntimeClass };
-
 /** Resolve the runtime class for an installed model (reads the field; backfills). */
 export function installedRuntimeClass(model: InstalledModel): RuntimeClass {
   return classifyInstalledModelRuntimeClass(model);
 }
-
 /** Resolve the runtime class for a catalog/search model (reads the field). */
 export function catalogRuntimeClass(model: CatalogModel): RuntimeClass {
   return model.runtimeClass ?? classifyCatalogModelRuntimeClass(model);
 }
-
 /**
  * Short badge label for a runtime class. Fused Eliza-1 runs the full local
  * pipeline (MTP, fork KV kernels, fused voice/vision); generic is a single
@@ -40,14 +34,12 @@ export function catalogRuntimeClass(model: CatalogModel): RuntimeClass {
 export function runtimeClassBadge(runtimeClass: RuntimeClass): string {
   return runtimeClass === "fused-eliza1" ? "eliza-1" : "generic";
 }
-
 /** Longer descriptor used in tooltips / option suffixes. */
 export function runtimeClassDescription(runtimeClass: RuntimeClass): string {
   return runtimeClass === "fused-eliza1"
     ? "eliza-1 — full pipeline"
     : "generic — reduced optimizations";
 }
-
 /**
  * Whether the current platform can serve a model of this runtime class.
  *
@@ -65,7 +57,6 @@ export function canServeRuntimeClassOnPlatform(
   const platform = getFrontendPlatform();
   return platform === "ios" || platform === "android";
 }
-
 /**
  * Human-readable reason a runtime class can't run on the current platform, or
  * `null` when it is servable. Drives the disabled annotation in the model

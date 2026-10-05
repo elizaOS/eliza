@@ -74,6 +74,8 @@ export interface WorkflowDefinition {
 }
 
 export interface WorkflowDefinitionResponse extends WorkflowDefinition {
+  removed?: boolean;
+  triggerCleanup?: 'pending' | 'complete';
   id: string;
   createdAt: string;
   updatedAt: string;
@@ -154,6 +156,8 @@ export interface WorkflowApproval {
 }
 
 export interface WorkflowExecution {
+  /** Durable best-effort cancellation intent; terminal status remains authoritative. */
+  cancellationRequestedAt?: string;
   id: string;
   workflowId: string;
   workflowVersionId: string;
@@ -165,7 +169,20 @@ export interface WorkflowExecution {
   stoppedAt?: string | null;
   input: Record<string, unknown>;
   output?: unknown;
-  error?: { message: string; stack?: string };
+  error?: {
+    message: string;
+    stack?: string;
+    workerTermination?: {
+      exitCode: number | null;
+      signal: string | null;
+      identity?: { pid: number; uid: number; startedAt: number };
+    };
+  };
+  /** Host process reconciliation; never a replacement for canonical Smithers receipts. */
+  reconciliation?: {
+    state: 'worker-running' | 'outcome-unknown';
+    message: string;
+  };
   parentRunId?: string | null;
   nextRunId?: string;
   events?: WorkflowRunEvent[];
@@ -173,6 +190,12 @@ export interface WorkflowExecution {
   idempotencyKey?: string;
   /** Internal ancestry carried across native workflow-trigger executions. */
   triggerChainDepth?: number;
+}
+
+/** Request provenance captured under the execution row lock, separate from terminal outcome. */
+export interface WorkflowCancellationResult {
+  execution: WorkflowExecution;
+  request: { requestedAt: string; replayed: boolean } | null;
 }
 
 export interface WorkflowCreationResult {

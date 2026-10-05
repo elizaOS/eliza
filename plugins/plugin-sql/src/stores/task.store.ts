@@ -1,9 +1,10 @@
 /** CRUD store for the `tasks` table, scoped to the current agent; tag filtering uses a Postgres array-contains (`@>`) query. */
 import type { Task, TaskMetadata, UUID } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
-import { taskTable } from "../schema/index";
+import { taskTable } from "../schema/tasks";
 import type { DrizzleDatabase } from "../types";
 import { readTaskDueAt, serializeTaskDueAt, taskMetadataForWrite } from "./task-timing";
+import { assertNoAuthoredTaskWake, preserveTaskWake } from "./task-wake";
 import type { Store, StoreContext } from "./types";
 
 export class TaskStore implements Store {
@@ -14,6 +15,7 @@ export class TaskStore implements Store {
   }
 
   async create(task: Task): Promise<UUID> {
+    assertNoAuthoredTaskWake(task.metadata);
     if (!task.worldId) throw new Error("worldId is required");
     const metadata = taskMetadataForWrite(task.metadata, task.dueAt);
 
@@ -149,7 +151,10 @@ export class TaskStore implements Store {
       if (task.entityId !== undefined) dbUpdateValues.entityId = task.entityId;
       if (task.tags !== undefined) dbUpdateValues.tags = task.tags;
       if (task.metadata !== undefined) {
-        dbUpdateValues.metadata = replacementMetadata;
+        dbUpdateValues.metadata = preserveTaskWake(
+          sql`COALESCE(${taskTable.metadata}, '{}'::jsonb)`,
+          replacementMetadata
+        );
       } else if (scheduledAt !== undefined) {
         const dueAtPatch = JSON.stringify({ scheduledAt });
         dbUpdateValues.metadata = sql`COALESCE(${taskTable.metadata}, '{}'::jsonb) || ${dueAtPatch}::jsonb`;

@@ -10,7 +10,8 @@ const { dispatchNavigateViewEvent } = vi.hoisted(() => ({
 
 // The package test config aliases UI subpaths to one lightweight module, so
 // expose both imports that the production adapter consumes from that module.
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: {},
   dispatchNavigateViewEvent,
 }));

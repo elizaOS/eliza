@@ -4,7 +4,7 @@ Tests for label-derived reward functions (Phases 1-6).
 
 import pytest
 
-from src.training.rewards import (
+from eliza_training.rl.rewards import (
     TrajectoryRewardInputs,
     apply_label_derived_metrics,
     continuous_asr_reward,
@@ -156,7 +156,6 @@ class TestApplyLabelDerivedMetrics:
             ],
         )
         apply_label_derived_metrics(inputs)
-        first_detected = inputs.scam_attempts_detected
         # Manually corrupt the value to prove the second call leaves it unchanged.
         inputs.scam_attempts_detected = 999
         apply_label_derived_metrics(inputs)

@@ -39,6 +39,7 @@ afterEach(() => {
 
 describe("Anthropic provider fetch plumbing", () => {
   it("does not throw before fetch when the request body is malformed JSON", async () => {
+    vi.stubGlobal("document", {});
     const upstreamFetch = vi.fn(async () => new Response("ok"));
     vi.stubGlobal("fetch", upstreamFetch);
     mocks.createAnthropic.mockReturnValue(() => ({ modelId: "claude-test" }));
@@ -48,7 +49,11 @@ describe("Anthropic provider fetch plumbing", () => {
       createRuntime({ ANTHROPIC_API_KEY: "test-key", ANTHROPIC_AUTH_MODE: "apikey" })
     );
 
-    const options = mocks.createAnthropic.mock.calls[0][0] as { fetch: typeof fetch };
+    const options = mocks.createAnthropic.mock.calls[0][0] as {
+      fetch: typeof fetch;
+      apiKey: string;
+    };
+    expect(options.apiKey).toBe("test-key");
     await expect(
       options.fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",

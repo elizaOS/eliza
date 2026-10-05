@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import type {
   LifeOpsChannelPolicy,
   LifeOpsConnectorGrant,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   deriveConnectorAccountIdFromGrant,
   type LifeOpsConnectorAccountPrivacyPolicy,

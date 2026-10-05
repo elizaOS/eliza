@@ -16,7 +16,8 @@ import type {
 } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, gte, lte, type SQL, sql } from "drizzle-orm";
-import { logTable, roomTable } from "../schema";
+import { logTable } from "../schema/log";
+import { roomTable } from "../schema/room";
 import { sanitizeJsonObject } from "../utils";
 import type { Store, StoreContext } from "./types";
 

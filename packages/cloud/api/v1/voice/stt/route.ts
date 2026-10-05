@@ -3,9 +3,12 @@
  * body is size-gated before auth and multipart parsing so rejected uploads do
  * not spend provider, billing, or signature-parsing work.
  */
-import { Hono } from "hono";
 
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Voice STT API (v1)
@@ -31,6 +34,20 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * - Credit reservation before processing ensures payment
  */
 
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  type BillingContext,
+  billFlatUsage,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import { calculateSTTCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import {
+  type CreditReservation,
+  InsufficientCreditsError,
+} from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { getElevenLabsService } from "@elizaos/cloud-shared/lib/services/elevenlabs";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { fileTypeFromBuffer } from "file-type";
 import { parseBuffer } from "music-metadata";
 import {
@@ -40,17 +57,6 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { ApiError } from "@/lib/api/cloud-worker-errors";
-import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
-import { calculateSTTCostFromCatalog } from "@/lib/services/ai-pricing";
-import {
-  type CreditReservation,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { getElevenLabsService } from "@/lib/services/elevenlabs";
-import { usageService } from "@/lib/services/usage";
-import { logger } from "@/lib/utils/logger";
 import {
   calculateCartesiaSttCost,
   parseCartesiaUsdPerCredit,

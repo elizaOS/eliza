@@ -4,16 +4,19 @@
  * Auth: session only (no API key) — see proxy session-only path list.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { ERRORS, redeemSignupCode } from "@/lib/services/signup-code";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  ERRORS,
+  redeemSignupCode,
+} from "@elizaos/cloud-shared/lib/services/signup-code";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const NO_CACHE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",

@@ -1,25 +1,31 @@
 // Defines the PII scrub done-marker Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 /**
  * Content-addressed done-markers for the CLOUD lane of the async PII scrub
  * rails (#14808).
  *
- * One row per completed scrub item, keyed by the SAME marker-key shape the
- * LOCAL lane uses (`packages/core/src/security/pii-scrub-markers.ts`):
+ * Full-content inspection uses `pii:<sha256(content)>:v<rulesetVersion>`.
+ * Declared-candidate inspection appends `:declared:<sha256(inputs)>`, binding
+ * the exact candidate list and context without retaining their raw PII.
  *
- *     pii:<sha256(content)>:v<rulesetVersion>
- *
- * so work never duplicates across lanes or across re-enqueued jobs. Two
- * properties the job runner relies on:
- *
- *   1. **Content-addressed idempotency.** The key derives only from the
- *      content bytes + ruleset version. Re-enqueuing the SAME content under
- *      the SAME ruleset resolves to the SAME row, so a re-scrub no-ops before
- *      any model call. Changed content (new sha) or a bumped ruleset (new
- *      `v<...>`) produces a new key and is re-scrubbed.
+ *   1. **Inspection-bound idempotency.** Re-enqueuing the same content,
+ *      ruleset, and declared inputs resumes the same work. New candidates or
+ *      context require a new partial inspection; a full-content inspection
+ *      can satisfy a declared-candidate request for that content/ruleset.
  *
  *   2. **Crash-and-rerun with zero cursor state.** Markers are durable DB
  *      rows written ONLY after an item's scrub fully succeeded. A worker that
@@ -33,7 +39,16 @@ import { organizations } from "./organizations";
  * Rows intentionally NEVER store the scrubbed content or any raw span — that
  * would re-introduce the PII the scrub exists to remove (mirrors the LOCAL
  * marker doc). Fields beyond the key are audit metadata only.
+ *
+ * A marker is an INSPECTION record, never a release authorization: it says a
+ * job under `inspection_scope` processed the content without structural
+ * failure. `declared_candidates` only judged caller-supplied candidate spans;
+ * `server_discovery` required server-side discovery over the full content. A
+ * weaker marker never satisfies a stronger job (one row per scope).
  */
+export const PII_SCRUB_INSPECTION_SCOPES = ["declared_candidates", "server_discovery"] as const;
+export type PiiScrubInspectionScope = (typeof PII_SCRUB_INSPECTION_SCOPES)[number];
+
 export const piiScrubMarkers = pgTable(
   "pii_scrub_markers",
   {
@@ -41,7 +56,7 @@ export const piiScrubMarkers = pgTable(
     organization_id: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    /** Full marker key `pii:<sha256(content)>:v<rulesetVersion>`. */
+    /** Content/ruleset key, plus hashed declaration inputs for partial inspection. */
     marker_key: text("marker_key").notNull(),
     /** Hex sha256 of the exact content that was scrubbed. */
     content_hash: text("content_hash").notNull(),
@@ -51,14 +66,26 @@ export const piiScrubMarkers = pgTable(
     model_id: text("model_id").notNull(),
     /** True when tier-0 detectors fully covered the item (zero model calls). */
     tier0_only: boolean("tier0_only").notNull(),
+    /** How thoroughly the content was inspected (see table doc). */
+    inspection_scope: text("inspection_scope")
+      .$type<PiiScrubInspectionScope>()
+      .notNull()
+      .default("declared_candidates"),
+    /** Caller-declared candidate spans the item carried (observability). */
+    candidate_count: integer("candidate_count").notNull().default(0),
     /** The `jobs` row that completed this item (audit; not a FK — jobs may be pruned). */
     job_id: uuid("job_id"),
     created_at: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    org_key_unique: uniqueIndex("pii_scrub_markers_org_key_idx").on(
+    org_key_scope_unique: uniqueIndex("pii_scrub_markers_org_key_scope_idx").on(
       table.organization_id,
       table.marker_key,
+      table.inspection_scope,
+    ),
+    inspection_scope_check: check(
+      "pii_scrub_markers_inspection_scope_check",
+      sql`${table.inspection_scope} IN ('declared_candidates', 'server_discovery')`,
     ),
     org_idx: index("pii_scrub_markers_org_idx").on(table.organization_id),
     org_ruleset_idx: index("pii_scrub_markers_org_ruleset_idx").on(

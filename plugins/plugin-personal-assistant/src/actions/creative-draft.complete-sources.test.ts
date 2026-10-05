@@ -1,6 +1,7 @@
 /** Tests complete owner-voice source traversal at the prompt boundary. */
 
-import type { DocumentService, Memory } from "@elizaos/core";
+import type { Memory } from "@elizaos/core";
+import type { DocumentService } from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
 import { resolveOwnerVoiceSources } from "./creative-draft.js";
 

@@ -6,10 +6,10 @@
  * state.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 import * as React from "react";
-import { invokeDesktopBridgeRequest } from "../../bridge";
-import { useAppSelector } from "../../state";
+import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
+import { useAppSelector } from "../../state/app-store";
 import { ChatHotkeySettingsGroup } from "./ChatHotkeySettingsGroup";
 import { DesktopShortcutsSection } from "./DesktopShortcutsSection";
 import { SettingsSwitchRow } from "./settings-agent-rows";

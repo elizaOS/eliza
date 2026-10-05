@@ -4,18 +4,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest import stage_eliza1_bundle_assets as stage  # noqa: E402
-from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
+from eliza_training.manifest import stage_eliza1_bundle_assets as stage  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
 
 
 class FakeHfApi:

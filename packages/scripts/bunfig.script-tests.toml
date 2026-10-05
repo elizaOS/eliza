@@ -3,4 +3,3 @@
 
 [test]
 coverage = false
-timeout = 60000

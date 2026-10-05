@@ -23,16 +23,14 @@ import asyncio
 import json
 import logging
 import random
-import sys
 from pathlib import Path
 
 import torch
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
-sys.path.insert(0, str(PYTHON_ROOT))
 
-from src.training.simulation_bridge import (
+from eliza_training.rl.simulation_bridge import (
     ActionOutcome,
     MarketState,
     NewsItem,
@@ -43,12 +41,12 @@ from src.training.simulation_bridge import (
     SocialContext,
     TickResult,
 )
-from src.training.team_rl import (
+from eliza_training.rl.team_rl import (
     TeamConfig,
     TeamRLConfig,
     run_team_training,
 )
-from src.training.verifiable_game import VerifiableGameBridge
+from eliza_training.rl.verifiable_game import VerifiableGameBridge
 
 logging.basicConfig(
     level=logging.INFO,

@@ -10,7 +10,7 @@
 
 import { CheckCircle2 } from "lucide-react";
 import type { ComponentType } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 

@@ -4,13 +4,13 @@
  * DTOs. Read-only counterpart to the write-side x-service.
  */
 import crypto from "node:crypto";
-import type { Memory } from "@elizaos/core";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { Memory } from "@elizaos/core";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   fetchXDirectMessagesWithRuntimeService,

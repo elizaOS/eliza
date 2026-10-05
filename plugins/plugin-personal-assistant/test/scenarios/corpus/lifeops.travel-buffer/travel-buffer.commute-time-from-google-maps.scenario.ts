@@ -8,11 +8,7 @@
  * trip OR the agent should explain that it doesn't have a maps integration.
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 import {
   seedCalendarCache,
   seedMeetingPreferences,
@@ -43,7 +39,7 @@ export default scenario({
   domain: "lifeops.travel-buffer",
   tags: ["lifeops", "travel-buffer", "maps", "needs-richer-fixtures"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   mockoon: ["calendar"],
   rooms: [
     {

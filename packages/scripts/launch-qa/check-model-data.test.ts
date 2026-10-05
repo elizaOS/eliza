@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkModelData } from "./check-model-data.mjs";
+import { checkModelData } from "./check-model-data.ts";
 
 const tempRoots: string[] = [];
 

@@ -1,0 +1,265 @@
+/**
+ * Verifies the committed Android entry points all delegate periodic wake work
+ * to the single schedule/cancel authority instead of enqueuing independently.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "vitest";
+import { ensureElizaBootReceiverManifest } from "./run-mobile-build.ts";
+
+const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+const javaRoot = path.resolve(
+  scriptsDir,
+  "../platforms/android/app/src/main/java/ai/elizaos/app",
+);
+const androidManifest = path.resolve(
+  scriptsDir,
+  "../platforms/android/app/src/main/AndroidManifest.xml",
+);
+
+function source(name) {
+  return fs.readFileSync(path.join(javaRoot, name), "utf8");
+}
+
+describe("Android periodic wake reconciliation (#17874)", () => {
+  it("routes activity and boot/package entry points through reconcile", () => {
+    const activity = source("MainActivity.java");
+    const bootReceiver = source("ElizaBootReceiver.java");
+
+    expect(activity).toContain(
+      "ElizaWorkScheduler.reconcile(getApplicationContext())",
+    );
+    expect(bootReceiver).toContain("ElizaWorkScheduler.reconcile(context)");
+    expect(fs.readFileSync(androidManifest, "utf8")).toContain(
+      "android.intent.action.MY_PACKAGE_REPLACED",
+    );
+    expect(activity).not.toContain("ElizaWorkScheduler.enqueuePeriodic");
+    expect(bootReceiver).not.toContain("ElizaWorkScheduler.enqueuePeriodic");
+    expect(bootReceiver).toMatch(
+      /if \(!shouldHandleAction\(action\)\) \{\s*return;\s*\}[\s\S]*ElizaWorkScheduler\.reconcile\(context\)/,
+    );
+    expect(bootReceiver).toMatch(
+      /shouldHandleAction\(String action\)[\s\S]*MY_PACKAGE_REPLACED/,
+    );
+  });
+
+  it("preserves package replacement in the post-overlay receiver manifest", () => {
+    const input = `
+      <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+        <application>
+          <receiver android:name="ai.elizaos.app.ElizaBootReceiver">
+            <intent-filter>
+              <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+          </receiver>
+        </application>
+      </manifest>`;
+
+    const overlaid = ensureElizaBootReceiverManifest(input, "ai.elizaos.app");
+
+    expect(overlaid).toContain("android.intent.action.LOCKED_BOOT_COMPLETED");
+    expect(overlaid).toContain("android.intent.action.BOOT_COMPLETED");
+    expect(overlaid).toContain("android.intent.action.MY_PACKAGE_REPLACED");
+    expect(overlaid.match(/ElizaBootReceiver/g)).toHaveLength(1);
+  });
+
+  it("reconciles runtime/background preference changes while the app is alive", () => {
+    const activity = source("MainActivity.java");
+
+    expect(activity).toContain("registerOnSharedPreferenceChangeListener");
+    expect(activity).toContain(
+      "ElizaWorkScheduler.RUNTIME_MODE_KEY.equals(key)",
+    );
+    expect(activity).toContain(
+      "ElizaWorkScheduler.BACKGROUND_ENABLED_KEY.equals(key)",
+    );
+    expect(activity).toContain("unregisterOnSharedPreferenceChangeListener");
+  });
+
+  it("starts the gateway before foreground-service eligibility is lost", () => {
+    const activity = source("MainActivity.java");
+    const gateway = source("GatewayConnectionService.java");
+    const onPauseBody = activity.match(
+      /public void onPause\(\) \{([\s\S]*?)\n {4}\}/,
+    )?.[1];
+    const onStopBody = activity.match(
+      /public void onStop\(\) \{([\s\S]*?)\n {4}\}/,
+    )?.[1];
+
+    expect(onPauseBody).toBeDefined();
+    expect(onPauseBody).toContain("GatewayConnectionService.start(this)");
+    expect(
+      onPauseBody.indexOf("GatewayConnectionService.start(this)"),
+    ).toBeLessThan(onPauseBody.indexOf("super.onPause()"));
+    expect(onStopBody).toBeUndefined();
+    expect(gateway).toContain("context.startForegroundService(intent)");
+    expect(gateway).not.toContain(
+      "context.startService(intent);\n            return;",
+    );
+  });
+
+  it("does not claim a disconnected transport before gateway status is observed", () => {
+    const gateway = source("GatewayConnectionService.java");
+    expect(gateway).toContain(
+      "private volatile String currentStatus = STATUS_UNKNOWN;",
+    );
+    expect(gateway).toMatch(
+      /default:\s*title = "Eliza Gateway";\s*text = "Background service running";/,
+    );
+    expect(gateway).toMatch(
+      /case STATUS_DISCONNECTED:\s*title = "Eliza Gateway";\s*text = "Disconnected";/,
+    );
+  });
+
+  it("preserves explicit gateway states and the native status update contract", () => {
+    const gateway = source("GatewayConnectionService.java");
+    for (const [name, value] of [
+      ["CONNECTED", "connected"],
+      ["DISCONNECTED", "disconnected"],
+      ["RECONNECTING", "reconnecting"],
+    ]) {
+      expect(gateway).toContain(
+        `public static final String STATUS_${name} = "${value}";`,
+      );
+      expect(gateway).toContain(`case STATUS_${name}:`);
+    }
+    expect(gateway).toContain(
+      "public static void updateStatus(Context context, String status)",
+    );
+    expect(gateway).toContain('"app.eliza.action.UPDATE_STATUS"');
+    expect(gateway).toContain(
+      'private static final String EXTRA_STATUS = "status";',
+    );
+    expect(gateway).toMatch(
+      /if \(status != null\) \{\s*currentStatus = status;\s*updateNotification\(\);/,
+    );
+  });
+
+  it("reconciles native token provisioning and removal", () => {
+    const service = source("ElizaAgentService.java");
+    const scheduler = source("ElizaWorkScheduler.java");
+
+    expect(service).toMatch(
+      /writeLocalAgentTokenFile\(token\);\s*ElizaWorkScheduler\.credentialProvisioned/,
+    );
+    expect(scheduler).toContain("putBoolean(RUNTIME_STOPPED_KEY, true)");
+    expect(scheduler).toMatch(
+      /ElizaAgentService\.localAgentToken\(context\),\s*ownershipPrefs\(context\)\.getBoolean\(RUNTIME_STOPPED_KEY, false\)/,
+    );
+    expect(service).toMatch(
+      /if \(restartFirst && !stopAgentProcessOrPreserve\(false\)\) \{[\s\S]*?currentStatus = "stop-failed";\s*updateNotification\(\);\s*return;\s*\}\s*startAgentProcess\(!restartFirst\)/,
+    );
+    expect(service).toMatch(
+      /ElizaWorkScheduler\.runtimeStopped\(getApplicationContext\(\)\);[\s\S]*?deleteLocalAgentTokenFile\(\)/,
+    );
+    expect(service).toMatch(
+      /if \(allowAdoption && isLocalAgentSocketListening\(\)\) \{[\s\S]*restoreAdoptedRuntimeOwnership\(\);[\s\S]*return;/,
+    );
+    expect(service).toMatch(
+      /restoreAdoptedRuntimeOwnership\(\)[\s\S]*localAgentToken\(context\)[\s\S]*ElizaWorkScheduler\.credentialProvisioned\(context\)/,
+    );
+    expect(service).toMatch(
+      /if \(stopAgentProcessOrPreserve\(false\)\) \{\s*scheduleRestart\(true\);\s*\} else \{\s*currentStatus = "stop-failed";/,
+    );
+  });
+
+  it("serializes decisions and bounds socket retries by one deadline", () => {
+    const scheduler = source("ElizaWorkScheduler.java");
+    const service = source("ElizaAgentService.java");
+
+    expect(scheduler).toContain("static synchronized void reconcile");
+    expect(scheduler).toContain(
+      "static synchronized void credentialProvisioned",
+    );
+    expect(scheduler).toContain("static synchronized void runtimeStopped");
+    expect(service).toMatch(
+      /readFrameLine\([\s\S]*?socket\.setSoTimeout\(remainingSocketTimeout\(deadlineElapsedMs\)\)[\s\S]*?beforeRead\.run\(\);[\s\S]*?int b = in\.read\(\)/,
+    );
+    expect(service).toMatch(
+      /for \([\s\S]*readFrameLine\(socket, in, deadlineElapsedMs\)[\s\S]*line = readFrameLine\(socket, in, deadlineElapsedMs\)/,
+    );
+    expect(service).toContain("Math.min(250L * (attempt + 1), remainingMs)");
+  });
+
+  it("keeps the worker on authenticated app-owned IPC", () => {
+    const worker = source("ElizaTasksWorker.java");
+
+    expect(worker).toContain("ElizaWorkScheduler.readDecision(context)");
+    expect(worker).toContain(
+      'headers.put("Authorization", "Bearer " + deviceSecret)',
+    );
+    expect(worker).toContain("ElizaAgentService.requestLocalAgent");
+    expect(worker).not.toContain('"eliza:device-secret"');
+    expect(worker).not.toContain('"eliza:agent-base"');
+  });
+
+  it("binds Android runtime identity validation to app-owned data", () => {
+    const service = source("ElizaAgentService.java");
+    const environmentBody = service.match(
+      /Map<String, String> agentEnv = new LinkedHashMap<>\(\);([\s\S]*?)env\.putAll\(agentEnv\);/,
+    )?.[1];
+
+    expect(environmentBody).toBeDefined();
+    expect(environmentBody).toContain(
+      'agentEnv.put("ELIZA_STATE_DIR", canonicalStateDir)',
+    );
+    expect(environmentBody).toContain(
+      'agentEnv.put("ELIZA_PLATFORM", "android")',
+    );
+    expect(environmentBody).toMatch(
+      /agentEnv\.put\(\s*"ELIZA_ANDROID_APP_DATA_DIR",\s*canonicalAppDataDir\s*\)/,
+    );
+  });
+
+  it("returns repeated service starts before the cold-boot process lock", () => {
+    const service = source("ElizaAgentService.java");
+    const requestStartBody = service.match(
+      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n {4}\}\n\n {4}private void startAgentProcess/,
+    )?.[1];
+
+    expect(service).toContain("private volatile Thread startWorker");
+    expect(requestStartBody).toBeDefined();
+    expect(requestStartBody).toMatch(
+      /Thread activeStartWorker = startWorker;[\s\S]*activeStartWorker != null[\s\S]*activeStartWorker\.isAlive\(\)[\s\S]*return;[\s\S]*synchronized \(processLock\)/,
+    );
+  });
+
+  it("revalidates detached liveness off the main thread on an ordinary start", () => {
+    const service = source("ElizaAgentService.java");
+    const requestStartBody = service.match(
+      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n {4}\}\n\n {4}private void startAgentProcess/,
+    )?.[1];
+    expect(requestStartBody).toBeDefined();
+    expect(requestStartBody).not.toContain("&& detachedAgentMode");
+    expect(requestStartBody).not.toContain("isLocalAgentSocketListening()");
+    expect(requestStartBody).toMatch(
+      /new Thread\([\s\S]*startAgentProcess\(!restartFirst\)/,
+    );
+    expect(service).toContain(
+      "if (allowAdoption && isLocalAgentSocketListening())",
+    );
+    expect(service).toContain("if (coldBootStampTrustworthy(");
+  });
+
+  it("enters foreground without PendingIntent binder work on the main thread", () => {
+    for (const name of [
+      "ElizaAgentService.java",
+      "GatewayConnectionService.java",
+    ]) {
+      const service = source(name);
+      const onCreateBody = service.match(
+        /public void onCreate\(\) \{([\s\S]*?)\n {4}\}\n\n {4}@Override\n {4}public int onStartCommand/,
+      )?.[1];
+      const bootstrapBody = service.match(
+        /private Notification buildBootstrapNotification\([\s\S]*?\) \{([\s\S]*?)\n {4}\}/,
+      )?.[1];
+
+      expect(onCreateBody).toContain("buildBootstrapNotification");
+      expect(onCreateBody).not.toContain("buildNotification(");
+      expect(bootstrapBody).toBeDefined();
+      expect(bootstrapBody).not.toContain("PendingIntent");
+    }
+  });
+});

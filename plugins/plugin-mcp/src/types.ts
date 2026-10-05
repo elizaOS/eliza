@@ -41,6 +41,14 @@ export interface ConnectionState {
   lastConnected?: Date;
   lastError?: Error;
   consecutivePingFailures: number;
+  /**
+   * The JSON-serialized server config this connection reconnects with. Persisted
+   * on the state (not read back off the live `McpConnection`) so the reconnect
+   * ladder survives `initializeConnection`'s leading `deleteConnection`: when a
+   * retry's transport build throws before the connection is re-added, the map
+   * lookup would be undefined and the ladder would die after one attempt.
+   */
+  config: string;
 }
 
 export interface StdioMcpServerConfig {

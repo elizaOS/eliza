@@ -1,4 +1,5 @@
 // Coordinates cloud service pricing behavior behind route handlers.
+import { ElizaError } from "@elizaos/core";
 import { servicePricingRepository } from "../../../db/repositories";
 import { cache } from "../../cache/client";
 import { logger } from "../../utils/logger";
@@ -85,6 +86,25 @@ export async function getServiceMethodCost(serviceId: string, method: string): P
   const cost = Number.parseFloat(costStr);
   if (!Number.isFinite(cost)) {
     throw new Error(`Invalid pricing for ${serviceId}.${method}: ${costStr}`);
+  }
+  return cost;
+}
+
+/** Required mixed-unit prices must never use a per-call fallback. */
+export async function requireServiceMethodCost(serviceId: string, method: string): Promise<number> {
+  const pricingMap = await loadPricingMap(serviceId);
+  const costStr = pricingMap[method];
+
+  if (!costStr) {
+    throw new PricingNotFoundError(serviceId, method);
+  }
+
+  const cost = Number(costStr);
+  // PostgreSQL numeric(18,12) is a decimal string; reject corrupt cached rows too.
+  if (!/^\d+(?:\.\d+)?$/.test(costStr) || !Number.isFinite(cost) || cost < 0) {
+    throw new ElizaError(`Invalid pricing for ${serviceId}.${method}`, {
+      code: "INVALID_SERVICE_PRICING",
+    });
   }
   return cost;
 }

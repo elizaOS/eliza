@@ -13,18 +13,18 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+  type CodingAgentBackend,
+} from "@elizaos/contracts";
+import {
   ElizaError,
   getElizaNamespace,
   type IAgentRuntime,
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import {
-  CODING_AGENT_BACKEND_PREFLIGHTS,
-  CODING_AGENT_BACKENDS,
-  type CodingAgentBackend,
-  readAliasedEnv,
-} from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import {
   isSubscriptionCodingAdapter,

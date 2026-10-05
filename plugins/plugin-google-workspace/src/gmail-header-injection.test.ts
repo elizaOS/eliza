@@ -52,6 +52,7 @@ describe("gmail raw message header injection", () => {
       to: ["friend@example.com\r\nBcc: attacker@evil.com"],
       subject: "Re: hello\r\nX-Injected: 1",
       bodyText: "reply",
+      threadId: "t1",
       inReplyTo: "<id@x>\r\nX-Also-Injected: 1",
       references: "<id@x>",
     });
@@ -59,5 +60,62 @@ describe("gmail raw message header injection", () => {
     expect(headerLines).not.toContain("Bcc: attacker@evil.com");
     expect(headerLines.some((line) => line.startsWith("X-Injected"))).toBe(false);
     expect(headerLines.some((line) => line.startsWith("X-Also-Injected"))).toBe(false);
+  });
+
+  it("puts the original Gmail threadId on users.messages.send for replies", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValue({ data: { id: "m1", threadId: "thread-abc", labelIds: [] } });
+    const factory = {
+      gmail: vi.fn().mockResolvedValue({ users: { messages: { send } } }),
+    } as unknown as GoogleApiClientFactory;
+    const client = new GoogleGmailClient(factory);
+
+    await client.sendGmailReply({
+      ...account,
+      to: ["friend@example.com"],
+      subject: "Re: hello",
+      bodyText: "reply",
+      inReplyTo: "<id@x>",
+      references: "<id@x>",
+      threadId: "thread-abc",
+    });
+
+    expect(send).toHaveBeenCalledWith({
+      userId: "me",
+      requestBody: {
+        raw: expect.any(String),
+        threadId: "thread-abc",
+      },
+    });
+
+    await client.sendGmailMessage({
+      ...account,
+      to: ["friend@example.com"],
+      subject: "new",
+      bodyText: "hello",
+    });
+    expect(send.mock.calls[1]?.[0]?.requestBody).toEqual({ raw: expect.any(String) });
+  });
+
+  it("refuses a reply with a blank threadId before calling users.messages.send", async () => {
+    const send = vi.fn();
+    const factory = {
+      gmail: vi.fn().mockResolvedValue({ users: { messages: { send } } }),
+    } as unknown as GoogleApiClientFactory;
+    const client = new GoogleGmailClient(factory);
+
+    await expect(
+      client.sendGmailReply({
+        ...account,
+        to: ["friend@example.com"],
+        subject: "Re: hello",
+        bodyText: "reply",
+        threadId: "   ",
+        inReplyTo: "<id@x>",
+        references: "<id@x>",
+      })
+    ).rejects.toMatchObject({ code: "GOOGLE_GMAIL_REPLY_THREAD_REQUIRED" });
+    expect(send).not.toHaveBeenCalled();
   });
 });

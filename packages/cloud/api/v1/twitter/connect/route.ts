@@ -2,19 +2,20 @@
  * Starts organization-scoped X OAuth connections after validating the caller's
  * requested connection role and post-authentication redirect.
  */
-import { type Context, Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { cache } from "@/lib/cache/client";
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import {
   getDefaultPlatformRedirectOrigins,
   LOOPBACK_REDIRECT_ORIGINS,
   resolveOAuthSuccessRedirectUrl,
-} from "@/lib/security/redirect-validation";
-import { twitterAutomationService } from "@/lib/services/twitter-automation";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/security/redirect-validation";
+import { twitterAutomationService } from "@elizaos/cloud-shared/lib/services/twitter-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { type Context, Hono } from "hono";
+import { z } from "zod";
 
 const app = new Hono<AppEnv>();
 
@@ -86,7 +87,7 @@ app.post("/", async (c) => {
       c.env?.NEXT_PUBLIC_APP_URL ||
       process.env.NEXT_PUBLIC_APP_URL ||
       "https://cloud.eliza.app";
-    const defaultRedirectPath = "/cloud/settings?tab=connections";
+    const defaultRedirectPath = "/cloud/connectors";
     const { target: safeRedirectTarget, rejected } =
       resolveOAuthSuccessRedirectUrl({
         value:

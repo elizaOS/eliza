@@ -6,7 +6,13 @@
 // pickers, inline forms). Mirrors the story inputs in MessageContent.stories so
 // the story-gate screenshots have a fast unit guard that they render at all.
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api/client-types-chat";
@@ -32,21 +38,53 @@ function assistant(over: Partial<ConversationMessage>): ConversationMessage {
 }
 
 function withApp(node: React.ReactElement) {
+  const sendActionMessage = vi.fn();
   const appValue = {
     t: (key: string, vars?: Record<string, unknown>) =>
       String(vars?.defaultValue ?? key),
-    sendActionMessage: vi.fn(),
+    sendActionMessage,
   } as never;
   __setAppValueForTests(appValue);
-  return render(
+  const view = render(
     <AppContext.Provider value={appValue}>{node}</AppContext.Provider>,
   );
+  return { ...view, sendActionMessage };
 }
 
 describe("MessageContent non-bytes interaction rendering", () => {
   afterEach(() => {
     cleanup();
     __setAppValueForTests(null);
+  });
+
+  it("binds a reminder choice to its source message without changing ordinary choices", () => {
+    const id = "20f881d4-6d80-4f1e-8ea6-dc207d89ddb9";
+    const view = withApp(
+      <MessageContent
+        message={assistant({
+          id,
+          text: "Reminder\n\n[CHOICE:lifeops-reminder id=reminder-380aaddfa298]\ndone=Done\n[/CHOICE]",
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(view.sendActionMessage).toHaveBeenCalledWith("done", {
+      metadata: {
+        replyToMessageId: id,
+        reminderChoiceId: "reminder-380aaddfa298",
+      },
+    });
+    view.unmount();
+    const ordinary = withApp(
+      <MessageContent
+        message={assistant({
+          id,
+          text: "[CHOICE:ordinary id=c1]\nyes=Yes\n[/CHOICE]",
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    expect(ordinary.sendActionMessage).toHaveBeenCalledWith("yes");
   });
 
   it("renders the visible reply alongside a reasoning/thinking block", () => {
@@ -196,6 +234,50 @@ describe("MessageContent non-bytes interaction rendering", () => {
     expect(setTab).toHaveBeenCalledWith("settings");
   });
 
+  it("offers reply regeneration for a durable terminal failure and holds repeated clicks", async () => {
+    let finish!: () => void;
+    const handleChatRetry = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const appValue = {
+      t: (key: string) => key,
+      sendActionMessage: vi.fn(),
+      handleChatRetry,
+    } as never;
+    __setAppValueForTests(appValue);
+    render(
+      <AppContext.Provider value={appValue}>
+        <MessageContent
+          message={assistant({
+            id: "saved-failure",
+            text: "Reply failed after saving the note.",
+            failureKind: "provider_issue",
+            replyRecoveryAvailable: true,
+            terminalFailure: {
+              kind: "provider_issue",
+              transient: false,
+              message: "Reply failed.",
+            },
+          })}
+        />
+      </AppContext.Provider>,
+    );
+    const control = screen.getByRole("button", { name: "Regenerate reply" });
+    fireEvent.click(control);
+    fireEvent.click(control);
+    expect(handleChatRetry).toHaveBeenCalledTimes(1);
+    expect(handleChatRetry).toHaveBeenCalledWith("saved-failure");
+    expect((control as HTMLButtonElement).disabled).toBe(true);
+    expect(control.textContent).toContain("Regenerating reply…");
+    await act(async () => {
+      finish();
+    });
+    expect((control as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("renders Retry for planner exhaustion and invokes the canonical retry handler", () => {
     const handleChatRetry = vi.fn();
     const appValue = {
@@ -219,5 +301,17 @@ describe("MessageContent non-bytes interaction rendering", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(handleChatRetry).toHaveBeenCalledWith("planner-failure");
+  });
+
+  it("suppresses only old reminder-source panels without changing history bytes", () => {
+    const message = assistant({
+      source: "reminder",
+      text: "Reminder: Take your meds.\n\n[CHOICE:lifeops-reminder id=history]\ndone=Done\nskip=Skip\n[/CHOICE]",
+    });
+    const before = JSON.stringify(message);
+    withApp(<MessageContent message={message} />);
+    expect(screen.getByText(/Reminder: Take your meds/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+    expect(JSON.stringify(message)).toBe(before);
   });
 });

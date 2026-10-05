@@ -1,23 +1,16 @@
 /**
- * Tests for the Tier-3 semantic EOT classifier:
- *
- *   1. HeuristicEotClassifier — punctuation, conjunctions, short utterances, etc.
- *   2. State machine integration — P≥0.9 commits early, P<0.4 extends hangover.
- *   3. Interface contract — heuristic and fail-closed remote classifiers
- *      satisfy EotClassifier without synthetic fallbacks.
+ * Exercises real end-of-turn adapters and voice state transitions with an
+ * in-memory checkpoint manager and injected classifier probabilities. Shared
+ * voice-eot tests own the scoring rules; this suite owns their voice consumer.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import { MockCheckpointManager } from "../checkpoint-manager";
 import {
 	EOT_COMMIT_SILENCE_MS,
-	EOT_COMMIT_THRESHOLD,
 	EOT_FUSED_COMMIT_THRESHOLD,
 	EOT_HANGOVER_EXTENSION_MS,
-	EOT_HEURISTIC_COMMIT_THRESHOLD,
-	EOT_MID_CLAUSE_THRESHOLD,
 	EOT_TENTATIVE_SILENCE_MS,
-	EOT_TENTATIVE_THRESHOLD,
 	type EotClassifier,
 	HeuristicEotClassifier,
 	RemoteEotClassifier,
@@ -28,10 +21,6 @@ import {
 	type StartDrafterFn,
 	VoiceStateMachine,
 } from "../voice-state-machine";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeDrafter(): {
 	fn: StartDrafterFn;
@@ -74,123 +63,25 @@ function makeMachine(eotClassifier?: EotClassifier, pauseHangoverMs = 200) {
 	return { machine, mock, drafter, commits, eotScores };
 }
 
-// ---------------------------------------------------------------------------
-// 1. HeuristicEotClassifier
-// ---------------------------------------------------------------------------
-
-describe("HeuristicEotClassifier — rule coverage", () => {
-	const clf = new HeuristicEotClassifier();
-
-	it("sentence-final period → P=0.95", async () => {
-		expect(await clf.score("I'd like some bread.")).toBe(0.95);
-	});
-
-	it("sentence-final exclamation → P=0.95", async () => {
-		expect(await clf.score("That's amazing!")).toBe(0.95);
-	});
-
-	it("sentence-final question mark → P=0.95", async () => {
-		expect(await clf.score("Can you help me?")).toBe(0.95);
-	});
-
-	// Question-tag words that include a trailing "?" are also caught by rule 1
-	// (sentence-final punctuation → 0.95). To exercise rule 2 in isolation, use
-	// the without-punctuation forms ("right", "yeah", "correct").
-	it("question tag 'right' suffix (no trailing ?) → P=0.85", async () => {
-		expect(await clf.score("That's correct right")).toBe(0.85);
-	});
-
-	it("question tag 'yeah' suffix (no trailing ?) → P=0.85", async () => {
-		expect(await clf.score("It is ready yeah")).toBe(0.85);
-	});
-
-	it("question tag 'correct' suffix (no trailing ?) → P=0.85", async () => {
-		expect(await clf.score("That makes sense correct")).toBe(0.85);
-	});
-
-	it("question tag 'right?' with trailing ? is caught by rule 1 → P=0.95", async () => {
-		// Sentence-final punctuation fires before the tag check.
-		expect(await clf.score("That's correct, right?")).toBe(0.95);
-	});
-
-	it("short utterance (1 word) → P=0.70", async () => {
-		expect(await clf.score("Yes")).toBe(0.7);
-	});
-
-	it("short utterance (2 words) → P=0.70", async () => {
-		expect(await clf.score("No thanks")).toBe(0.7);
-	});
-
-	it("trailing conjunction 'and' → P=0.15", async () => {
-		expect(await clf.score("I want to go to the store and")).toBe(0.15);
-	});
-
-	it("trailing conjunction 'but' → P=0.15", async () => {
-		expect(await clf.score("I was going to say something but")).toBe(0.15);
-	});
-
-	it("trailing conjunction 'because' → P=0.15", async () => {
-		expect(await clf.score("I can't do that because")).toBe(0.15);
-	});
-
-	it("trailing preposition 'to' → P=0.20", async () => {
-		expect(await clf.score("I want to go to")).toBe(0.2);
-	});
-
-	it("trailing article 'the' → P=0.20", async () => {
-		expect(await clf.score("Can you bring me the")).toBe(0.2);
-	});
-
-	it("trailing article 'a' → P=0.20", async () => {
-		expect(await clf.score("I need a")).toBe(0.2);
-	});
-
-	it("trailing filler plus pause cue → P=0.20", async () => {
-		expect(await clf.score("Let me think um")).toBe(0.2);
-		expect(await clf.score("I was going to say uh")).toBe(0.2);
-	});
-
-	it("mid-clause dangling modal/auxiliary → P=0.20", async () => {
-		expect(await clf.score("I was thinking we could")).toBe(0.2);
-		expect(await clf.score("The reason is")).toBe(0.2);
-	});
-
-	it("sentence-final filler/modals still commit when punctuated", async () => {
-		expect(await clf.score("Let me think um.")).toBe(0.95);
-		expect(await clf.score("We could do that.")).toBe(0.95);
-	});
-
-	it("no signal (neutral content) → P=0.50", async () => {
-		expect(await clf.score("Tell me about the weather in London")).toBe(0.5);
-	});
-
-	it("empty string → P=0.50", async () => {
-		expect(await clf.score("")).toBe(0.5);
-	});
-
-	it("whitespace only → P=0.50", async () => {
-		expect(await clf.score("   ")).toBe(0.5);
-	});
-
-	it("P ≥ EOT_COMMIT_THRESHOLD for sentence-final punct", async () => {
-		const p = await clf.score("Done.");
-		expect(p).toBeGreaterThanOrEqual(EOT_COMMIT_THRESHOLD);
-	});
-
-	it("P < EOT_MID_CLAUSE_THRESHOLD for trailing conjunction", async () => {
-		const p = await clf.score("We should probably and");
-		expect(p).toBeLessThan(EOT_MID_CLAUSE_THRESHOLD);
-	});
-
-	it("P ≥ EOT_TENTATIVE_THRESHOLD for question tag", async () => {
-		const p = await clf.score("That works right?");
-		expect(p).toBeGreaterThanOrEqual(EOT_TENTATIVE_THRESHOLD);
-	});
+describe("HeuristicEotClassifier adapter", () => {
+	it.each([
+		["  Done.  ", 0.95, "agent", true],
+		["  going to  ", 0.2, "user", false],
+		["   ", 0.5, "unknown", null],
+	] as const)(
+		"emits a structured turn signal for %j",
+		async (text, probability, nextSpeaker, agentShouldSpeak) => {
+			expect(await new HeuristicEotClassifier().signal(text)).toEqual({
+				endOfTurnProbability: probability,
+				nextSpeaker,
+				agentShouldSpeak,
+				transcript: text.trim(),
+				source: "heuristic",
+				model: "heuristic-v1",
+			});
+		},
+	);
 });
-
-// ---------------------------------------------------------------------------
-// 2. State machine integration
-// ---------------------------------------------------------------------------
 
 describe("VoiceStateMachine — EOT classifier integration", () => {
 	it("P≥0.9 AND silence≥50ms while LISTENING → commits immediately", async () => {
@@ -476,67 +367,12 @@ describe("VoiceStateMachine — EOT classifier integration", () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// 3. Interface contract
-// ---------------------------------------------------------------------------
-
-describe("EotClassifier interface contract", () => {
-	it("HeuristicEotClassifier satisfies EotClassifier", () => {
-		const clf: EotClassifier = new HeuristicEotClassifier();
-		expect(typeof clf.score).toBe("function");
-	});
-
-	it("RemoteEotClassifier satisfies EotClassifier without a unit-test network call", () => {
-		const clf: EotClassifier = new RemoteEotClassifier({
-			endpoint: "http://localhost:9999/eot",
-		});
-		expect(typeof clf.score).toBe("function");
-	});
-
-	it("injected classifiers satisfy EotClassifier for controller tests", () => {
-		const testClf: EotClassifier = {
-			score: async (_text: string) => 0.5,
-		};
-		expect(typeof testClf.score).toBe("function");
-	});
-
-	it("RemoteEotClassifier throws on network error instead of manufacturing a score", async () => {
+describe("RemoteEotClassifier", () => {
+	it("throws on network error instead of manufacturing a score", async () => {
 		const clf = new RemoteEotClassifier({
 			endpoint: "http://127.0.0.1:1/nonexistent",
 			timeoutMs: 50,
 		});
 		await expect(clf.score("will this error?")).rejects.toThrow();
-	});
-
-	it("score() always returns a value in [0, 1] for heuristic classifier", async () => {
-		const clf = new HeuristicEotClassifier();
-		const inputs = [
-			"",
-			"hello",
-			"I want to",
-			"Done!",
-			"We should go and",
-			"Tell me about the history of AI in the modern era",
-		];
-		for (const input of inputs) {
-			const p = await clf.score(input);
-			expect(p).toBeGreaterThanOrEqual(0);
-			expect(p).toBeLessThanOrEqual(1);
-		}
-	});
-
-	it("EOT_COMMIT_THRESHOLD > EOT_TENTATIVE_THRESHOLD > EOT_MID_CLAUSE_THRESHOLD", () => {
-		expect(EOT_COMMIT_THRESHOLD).toBe(EOT_HEURISTIC_COMMIT_THRESHOLD);
-		expect(EOT_COMMIT_THRESHOLD).toBeGreaterThan(EOT_TENTATIVE_THRESHOLD);
-		expect(EOT_TENTATIVE_THRESHOLD).toBeGreaterThan(EOT_MID_CLAUSE_THRESHOLD);
-	});
-
-	it("fused commit threshold is lower than heuristic-only commit threshold", () => {
-		expect(EOT_FUSED_COMMIT_THRESHOLD).toBe(0.7);
-		expect(EOT_HEURISTIC_COMMIT_THRESHOLD).toBe(0.9);
-	});
-
-	it("EOT_COMMIT_SILENCE_MS > EOT_TENTATIVE_SILENCE_MS", () => {
-		expect(EOT_COMMIT_SILENCE_MS).toBeGreaterThan(EOT_TENTATIVE_SILENCE_MS);
 	});
 });

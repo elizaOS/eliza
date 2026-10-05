@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Deletion Notice</title>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.6;
+        color: #1f2937;
+        background: #f3f4f6;
+        margin: 0;
+        padding: 40px 20px;
+      }
+      .email-wrapper {
+        max-width: 600px;
+        margin: 0 auto;
+        background: #ffffff;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .header-banner {
+        background: #b45309;
+        padding: 32px 40px;
+        color: #ffffff;
+      }
+      .header-banner h1 {
+        font-size: 24px;
+        margin: 0 0 8px;
+      }
+      .header-banner p {
+        margin: 0;
+      }
+      .content {
+        padding: 32px 40px;
+      }
+      .content p {
+        margin: 0 0 16px;
+      }
+      .facts {
+        border-left: 4px solid #b45309;
+        background: #fffbeb;
+        padding: 16px 20px;
+        margin: 0 0 24px;
+      }
+      .facts li {
+        margin: 4px 0;
+      }
+      .cta {
+        display: inline-block;
+        background: #111827;
+        color: #ffffff;
+        text-decoration: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+      }
+      .footer {
+        padding: 24px 40px;
+        font-size: 13px;
+        color: #6b7280;
+        border-top: 1px solid #e5e7eb;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-wrapper">
+      <div class="header-banner">
+        <h1>Your agent will be deleted in {{daysRemaining}} day(s)</h1>
+        <p>{{organizationName}}</p>
+      </div>
+      <div class="content">
+        <p>
+          Your agent <strong>{{agentName}}</strong> has been paused since
+          {{suspendedAt}} because {{reasonText}}.
+        </p>
+        <p>
+          We keep a paused agent's container for 30 days. On
+          <strong>{{deleteAfter}}</strong> the container will be deleted.
+        </p>
+        <ul class="facts">
+          <li>The agent's container is deleted on {{deleteAfter}}.</li>
+          <li>
+            The latest backup of the agent is kept for 90 more days, until
+            {{backupRetainUntil}}.
+          </li>
+          <li>
+            Pay before {{deleteAfter}} and the same agent resumes where it left
+            off.
+          </li>
+        </ul>
+        <p><a class="cta" href="{{billingUrl}}">Keep my agent</a></p>
+      </div>
+      <div class="footer">
+        Questions? Reply to this email or open
+        <a href="{{dashboardUrl}}">Eliza Cloud</a>.<br />
+        © {{currentYear}} Eliza Cloud. All rights reserved.
+      </div>
+    </div>
+  </body>
+</html>

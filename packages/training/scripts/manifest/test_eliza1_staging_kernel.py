@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.manifest.eliza1_staging_kernel import (
+from eliza_training.manifest.eliza1_staging_kernel import (
     StagingProfile,
     ensure_release_dirs,
     stage_file,

@@ -5,7 +5,7 @@
  */
 
 import { Activity, Grid3x3, TrendingUp, Users } from "lucide-react";
-import { DashboardStatCard } from "../../cloud-ui/components/brand";
+import { DashboardStatCard } from "../../cloud-ui/components/brand/dashboard-stat-card";
 import {
   AppsEmptyState,
   AppsPageWrapper,
@@ -15,7 +15,7 @@ import { DashboardErrorState } from "../../cloud-ui/components/dashboard/route-p
 import {
   DashboardPageContainer,
   DashboardStatGrid,
-} from "../../cloud-ui/components/layout";
+} from "../../cloud-ui/components/layout/dashboard-page";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AppsTable } from "./components/apps-table";

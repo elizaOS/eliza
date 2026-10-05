@@ -9,8 +9,10 @@
 import { WebPlugin } from "@capacitor/core";
 
 import type {
+  BrowserDockState,
   CreateSurfaceOptions,
   ElizaSurfaceManagerPlugin,
+  NativePageRead,
   NavigateOptions,
   PresentSurfaceOptions,
   ReconcileOwnerOptions,
@@ -29,6 +31,59 @@ export class BrowserSurfaceWeb
   extends WebPlugin
   implements ElizaSurfaceManagerPlugin
 {
+  async getBrowserHelperEntryState(): Promise<{
+    permissionGranted: boolean;
+    visible: boolean;
+    fullScreen: boolean;
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async requestBrowserHelperEntryPermission(): Promise<{
+    status: "dispatched";
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async hideBrowserDockWithEntry(_options: {
+    label: string;
+    description: string;
+  }): Promise<{ status: "requested" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async restoreBrowserDockFromEntry(): Promise<{ status: "requested" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async setBrowserDockVisible(_options: {
+    visible: boolean;
+  }): Promise<{ status: "requested" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+
+  async openDockedBrowser(_options: {
+    url: string;
+    panelWidthDp?: number;
+  }): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+    status: "dispatched";
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async getBrowserDockState(): Promise<BrowserDockState> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async presentBrowser(): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+
+  async openBrowser(_options: { url: string }): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+    engine: "chromium";
+    surface: "custom-tab";
+  }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+
   async createSurface(_options: CreateSurfaceOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
@@ -42,6 +97,14 @@ export class BrowserSurfaceWeb
     throw this.unavailable(UNAVAILABLE);
   }
   async reloadSurface(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async goBack(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async readPage(
+    _options: SurfaceIdOptions & { selector?: string },
+  ): Promise<NativePageRead> {
     throw this.unavailable(UNAVAILABLE);
   }
   async presentSurface(_options: PresentSurfaceOptions): Promise<void> {

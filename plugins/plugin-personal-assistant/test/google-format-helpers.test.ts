@@ -1,6 +1,11 @@
 // Exercises LifeOps owner workflows, connector boundaries, and scheduled-task behavior.
-import type { Memory } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import {
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   detailArray,
   detailBoolean,
@@ -11,6 +16,7 @@ import {
   messageSource,
   messageText,
   parseLifeOpsJsonRecord,
+  runLifeOpsJsonModel,
   toActionData,
 } from "../src/lifeops/google/format-helpers.js";
 
@@ -78,3 +84,52 @@ describe("toActionData", () => {
     expect(toActionData({ a: 1, b: "x" })).toEqual({ a: 1, b: "x" });
   });
 });
+
+it.each([
+  { temperature: undefined, native: false },
+  { temperature: 0, native: false },
+  { temperature: 0.4, native: false },
+  { temperature: 0, native: true },
+])(
+  "preserves extraction options and parses provider output ($temperature, native=$native)",
+  async ({ temperature, native }) => {
+    const responseSchema = {
+      type: "object" as const,
+      properties: { title: { type: "string" as const } },
+      required: ["title"],
+      additionalProperties: false,
+    };
+    const useModel = vi.fn(async () =>
+      native
+        ? { text: '{"title":"Renamed"}', toolCalls: [], finishReason: "stop" }
+        : '{"title":"Renamed"}',
+    );
+    const runtime = {
+      useModel,
+      logger: { warn: vi.fn() },
+    } as unknown as IAgentRuntime;
+    const result = await runWithTrajectoryContext(
+      {
+        trajectoryId: "calendar-extraction",
+        trajectoryStepId: "extract",
+        purpose: "action",
+      },
+      () =>
+        runLifeOpsJsonModel({
+          runtime,
+          prompt: "Extract the proposed title",
+          responseSchema,
+          actionType: "lifeops.calendar.extract_update_event",
+          failureMessage: "Extraction failed",
+          source: "action:calendar",
+          ...(temperature === undefined ? {} : { temperature }),
+        }),
+    );
+    expect(result?.parsed).toEqual({ title: "Renamed" });
+    expect(useModel).toHaveBeenCalledExactlyOnceWith(ModelType.TEXT_LARGE, {
+      prompt: "Extract the proposed title",
+      responseSchema,
+      ...(temperature === undefined ? {} : { temperature }),
+    });
+  },
+);

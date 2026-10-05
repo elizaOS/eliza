@@ -12,6 +12,7 @@ import type {
   LifeOpsHealthSleepStage,
   LifeOpsHealthWorkout,
 } from "../contracts/health.js";
+import { buildUtcDateFromLocalParts, getZonedDateParts } from "../util/time.js";
 import type { StoredHealthConnectorToken } from "./health-oauth.js";
 import { requireHealthProviderSpec } from "./health-provider-registry.js";
 import {
@@ -271,6 +272,7 @@ function sample(args: {
   unit: string;
   startAt: string | null;
   endAt?: string | null;
+  localDate?: string;
   sourceExternalId: string;
   metadata?: Record<string, unknown>;
 }): LifeOpsHealthMetricSample | null {
@@ -286,7 +288,7 @@ function sample(args: {
     unit: args.unit,
     startAt: args.startAt,
     endAt: args.endAt ?? args.startAt,
-    localDate: localDateFromIso(args.startAt),
+    localDate: args.localDate ?? localDateFromIso(args.startAt),
     sourceExternalId: args.sourceExternalId,
     metadata: args.metadata ?? {},
   });
@@ -450,6 +452,69 @@ function fitbitWeightKg(weight: number, weightUnit: string | null): number {
   return weight;
 }
 
+const FITBIT_WALL_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+
+/**
+ * Fitbit's profile IANA zone, or null when the profile lacks a usable one. The
+ * sync continues without it: wall times then keep the host-zone parse.
+ */
+function resolveFitbitTimeZone(
+  profileUser: Record<string, unknown> | null,
+  agentId: string,
+): string | null {
+  const timeZone = profileUser ? getText(profileUser, "timezone") : null;
+  if (timeZone) {
+    try {
+      getZonedDateParts(new Date(), timeZone);
+      return timeZone;
+    } catch {
+      // Fall through to the logged host-zone fallback below.
+    }
+  }
+  logger.warn(
+    {
+      boundary: "lifeops",
+      operation: "health_connector_sync",
+      provider: "fitbit",
+      agentId,
+      timezone: timeZone,
+    },
+    "[lifeops] Fitbit profile has no usable timezone; parsing wall times in the host zone",
+  );
+  return null;
+}
+
+/**
+ * Fitbit sleep and weight timestamps are zoneless wall times in the account's
+ * profile zone, so resolve them there instead of in the host zone.
+ */
+function fitbitWallTimeToIso(
+  value: string | null,
+  timeZone: string | null,
+): string | null {
+  const match = value ? FITBIT_WALL_TIME.exec(value) : null;
+  if (!timeZone || !match) {
+    return normalizeIso(value);
+  }
+  let instant: Date;
+  try {
+    instant = buildUtcDateFromLocalParts(timeZone, {
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3]),
+      hour: Number(match[4]),
+      minute: Number(match[5]),
+      second: Number(match[6] ?? "0"),
+    });
+  } catch {
+    // An impossible wall time is unparseable, same as normalizeIso's null.
+    return null;
+  }
+  const millis = Number((match[7] ?? "0").padEnd(3, "0"));
+  return new Date(instant.getTime() + millis).toISOString();
+}
+
 async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   const dates = dateRange(args.startDate, args.endDate);
   const identityJson = await fetchHealthJson({
@@ -461,6 +526,7 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
     ? getText(profileUser, "distanceUnit")
     : null;
   const weightUnit = profileUser ? getText(profileUser, "weightUnit") : null;
+  const timeZone = resolveFitbitTimeZone(profileUser, args.token.agentId);
   const samples: LifeOpsHealthMetricSample[] = [];
   const sleepEpisodes: LifeOpsHealthSleepEpisode[] = [];
   const workouts: LifeOpsHealthWorkout[] = [];
@@ -585,8 +651,11 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
       const logId =
         getText(sleepLog, "logId") ??
         `${date}:${getText(sleepLog, "startTime") ?? "sleep"}`;
-      const startAt = normalizeIso(getText(sleepLog, "startTime"));
-      const endAt = normalizeIso(getText(sleepLog, "endTime"));
+      const startAt = fitbitWallTimeToIso(
+        getText(sleepLog, "startTime"),
+        timeZone,
+      );
+      const endAt = fitbitWallTimeToIso(getText(sleepLog, "endTime"), timeZone);
       if (!startAt || !endAt) {
         continue;
       }
@@ -597,7 +666,7 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           grantId: args.grantId,
           sourceExternalId: logId,
           localDate: date,
-          timezone: null,
+          timezone: timeZone,
           startAt,
           endAt,
           isMainSleep: getBoolean(sleepLog, "isMainSleep") ?? false,
@@ -630,15 +699,16 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           averageHrvMs: null,
           respiratoryRate: null,
           bloodOxygenPercent: null,
-          stageSamples: fitbitStageSamples(sleepLog),
+          stageSamples: fitbitStageSamples(sleepLog, timeZone),
           metadata: { rawDateOfSleep: getText(sleepLog, "dateOfSleep") },
         }),
       );
     }
 
     for (const log of getArray(weight, "weight")) {
-      const loggedAt = normalizeIso(
+      const loggedAt = fitbitWallTimeToIso(
         `${getText(log, "date") ?? date}T${getText(log, "time") ?? "12:00:00"}`,
+        timeZone,
       );
       const rawWeight = getNumber(log, "weight");
       samples.push(
@@ -675,12 +745,13 @@ async function syncFitbit(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
 
 function fitbitStageSamples(
   sleepLog: Record<string, unknown>,
+  timeZone: string | null,
 ): LifeOpsHealthSleepEpisode["stageSamples"] {
   const levels = getRecord(sleepLog, "levels");
   const data = levels ? getArray(levels, "data") : [];
   const samples: LifeOpsHealthSleepEpisode["stageSamples"] = [];
   for (const entry of data) {
-    const startAt = normalizeIso(getText(entry, "dateTime"));
+    const startAt = fitbitWallTimeToIso(getText(entry, "dateTime"), timeZone);
     const seconds = getNumber(entry, "seconds");
     if (!startAt || seconds === null || seconds <= 0) {
       continue;
@@ -876,6 +947,7 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           unit: "h",
           startAt,
           endAt,
+          localDate: date,
           sourceExternalId: `${id}:sleep_hours`,
         }),
         sample({
@@ -886,6 +958,7 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           unit: "score",
           startAt,
           endAt,
+          localDate: date,
           sourceExternalId: `${id}:sleep_score`,
         }),
       ]),
@@ -1123,6 +1196,7 @@ async function syncWithings(
           unit: "h",
           startAt,
           endAt,
+          localDate: date,
           sourceExternalId: `${externalId}:sleep_hours`,
         }),
       ]),

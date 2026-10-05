@@ -1,4 +1,5 @@
 ext {
+    androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.1'
     junitVersion = project.hasProperty('junitVersion') ? rootProject.ext.junitVersion : '4.13.2'
 }
 
@@ -34,9 +35,11 @@ repositories {
 }
 
 dependencies {
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
     implementation project(':capacitor-android')
 
     // Instrumented test deps (issue #9967 — on-device contacts round-trip).
+    androidTestImplementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     androidTestImplementation "androidx.test:core:1.5.0"
     androidTestImplementation "androidx.test:runner:1.5.2"
     androidTestImplementation "androidx.test:rules:1.5.0"

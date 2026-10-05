@@ -1,14 +1,14 @@
 // Handles v1 cloud API v1 apps id public route traffic with route-local auth expectations.
 import { Hono } from "hono";
-import { appsRepository } from "@/db/repositories/apps";
+import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { isAllowedOrigin } from "@/lib/security/origin-validation";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { isAllowedOrigin } from "@elizaos/cloud-shared/lib/security/origin-validation";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 // CORS headers - fully open, security via auth tokens
 const CORS_HEADERS = {

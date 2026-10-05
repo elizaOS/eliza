@@ -1,17 +1,13 @@
+/** Exercises real web input validation and unavailable states with a stubbed HTTP transport. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WebsiteBlockerWeb } from "./web";
 
 function setWindow(overrides: Partial<Window> = {}): void {
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    value: {
-      location: { protocol: "https:" },
-      sessionStorage: {
-        getItem: vi.fn(() => "stored-token"),
-      },
-      ...overrides,
-    },
+  vi.stubGlobal("window", {
+    location: { protocol: "https:" },
+    sessionStorage: { getItem: vi.fn(() => "stored-token") },
+    ...overrides,
   });
 }
 
@@ -89,13 +85,7 @@ describe("WebsiteBlockerWeb fallback", () => {
   );
 
   it("returns an unavailable open-settings result when the runtime API is unreachable", async () => {
-    Object.defineProperty(globalThis, "window", {
-      configurable: true,
-      value: {
-        location: { protocol: "file:" },
-        sessionStorage: { getItem: vi.fn() },
-      },
-    });
+    setWindow({ location: { protocol: "file:" } } as Partial<Window>);
 
     await expect(new WebsiteBlockerWeb().openSettings()).resolves.toEqual({
       opened: false,

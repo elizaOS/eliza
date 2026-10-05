@@ -11,6 +11,8 @@ import {
   MCP_USAGE_BASED_COST_LABEL,
   PLATFORM_MCP_TOOL_PRICING,
 } from "@elizaos/cloud-shared/billing";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "@elizaos/cloud-shared/lib/models/catalog";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   INTEGRATION_TRUST,
@@ -18,8 +20,6 @@ import {
   plannerVisibleFeatures,
   resolveIntegrationAvailability,
 } from "@/api-app/lib/mcp/integration-catalog";
-import { CEREBRAS_DEFAULT_TEXT_MODEL } from "@/lib/models/catalog";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 // MCP definitions with their tools and schemas
 const mcpDefinitions = [

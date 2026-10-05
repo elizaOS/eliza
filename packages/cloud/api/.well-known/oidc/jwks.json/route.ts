@@ -14,15 +14,18 @@
  * so tokens signed by the outgoing key must stay verifiable until they expire.
  */
 
-import { Hono } from "hono";
 import {
   describeOidcConfigFailure,
   isOidcEnabled,
   resolveOidcConfig,
-} from "@/lib/oidc/config";
-import { getOidcPublicJwks, isOidcSigningConfigured } from "@/lib/oidc/keys";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/oidc/config";
+import {
+  getOidcPublicJwks,
+  isOidcSigningConfigured,
+} from "@elizaos/cloud-shared/lib/oidc/keys";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

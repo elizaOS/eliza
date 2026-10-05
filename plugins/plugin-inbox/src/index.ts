@@ -4,6 +4,7 @@ export {
   type InboxDegradedPlatform,
   type InboxFetcher,
   type InboxFetchers,
+  type InboxItem as InboxActionItem,
   type InboxPlatform,
   inboxAction,
   setInboxFetchers,
@@ -27,9 +28,6 @@ export {
   lifeInboxTriageEntries,
   lifeInboxTriageExamples,
 } from "./db/schema.ts";
-// Cross-channel inbox aggregation domain (builders, request resolver, cached
-// read-through InboxDomain). Also consumable via the narrow subpath
-// `@elizaos/plugin-inbox/inbox/aggregate`.
 export {
   buildInbox,
   buildInboxFromMessages,
@@ -49,10 +47,6 @@ export {
   toInboxMessage,
   toInboxMessages,
 } from "./inbox/aggregate.ts";
-// Email-curation decision engine. Pure (email + context → save/archive/delete/
-// review with evidence and citations); takes injected identity/policy hooks.
-// Also consumable via the narrow subpath
-// `@elizaos/plugin-inbox/inbox/email-curation`.
 export * from "./inbox/email-curation.ts";
 export type {
   EmailSubscriptionScanResult,
@@ -65,30 +59,30 @@ export type {
   EmailUnsubscribeScanRequest,
   EmailUnsubscribeStatus,
 } from "./inbox/email-unsubscribe-types.ts";
-// Gmail-domain normalization primitives. Pure; consumable via the narrow
-// subpath `@elizaos/plugin-inbox/inbox/gmail-normalize` (avoids pulling the
-// React view / plugin definition into service-layer callers).
 export * from "./inbox/gmail-normalize.ts";
 export {
   createInboxGmailGateway,
   type InboxGmailGateway,
 } from "./inbox/google-gmail-seam.ts";
-// Per-source health projection (LifeOpsInboxSourceStatus producers) used by
-// the aggregate's pull and cache paths.
 export {
+  fetchAllMessages,
+  fetchChatMessages,
+  fetchGmailMessages,
+  fetchXDmMessages,
+  type GmailInboxSource,
   gmailSourceStatusFromConnector,
   type InboxFetchResult,
   type InboxSourceFetchResult,
   probeSourceStatuses,
+  type XDmInboxSource,
   xDmSourceStatusFromConnector,
 } from "./inbox/message-fetcher.ts";
 export {
   INBOX_MIGRATION_SERVICE_TYPE,
   InboxMigrationService,
   MIGRATED_INBOX_TABLES,
+  migrateInboxTables,
 } from "./inbox/migration.ts";
-// LLM inbox priority scorer (batched, cached, concurrency-capped). Also at
-// `@elizaos/plugin-inbox/inbox/priority-scoring`.
 export {
   __resetPriorityScoringCacheForTests,
   type PriorityCategory,
@@ -105,7 +99,11 @@ export {
   type TriageRunResult,
 } from "./inbox/service.ts";
 export type {
+  DeferredInboxDraft,
   InboundMessage,
+  InboxAutoReplyConfig,
+  InboxTriageConfig,
+  InboxTriageRules,
   OwnerAction,
   TriageClassification,
   TriageEntry,

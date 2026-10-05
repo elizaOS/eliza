@@ -69,7 +69,6 @@ function isNativeEvmToken(value: string | undefined, chain: Chain): boolean {
   const normalized = value.toLowerCase();
   return (
     normalized === "native" ||
-    normalized === "eth" ||
     normalized === chain.nativeCurrency.symbol.toLowerCase() ||
     normalized === NATIVE_TOKEN_ADDRESS.toLowerCase()
   );

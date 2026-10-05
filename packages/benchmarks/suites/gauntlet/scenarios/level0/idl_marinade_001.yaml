@@ -1,0 +1,20 @@
+id: idl_marinade_001
+level: 0
+name: Marinade Finance IDL
+description: 'Level 0 foundational test: Marinade Finance IDL'
+category: idl
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_idl_marinade_001
+  type: query
+  parameters:
+    program: MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD
+    action: parse_idl
+  timeout_ms: 10000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

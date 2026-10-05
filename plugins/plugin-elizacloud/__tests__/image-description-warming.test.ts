@@ -53,14 +53,104 @@ function warming503(): Response {
 }
 
 function ok(description: string): Response {
-  return new Response(JSON.stringify({ choices: [{ message: { content: description } }] }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ choices: [{ message: { content: description }, finish_reason: "stop" }] }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
 }
 
 describe("handleImageDescription warming-503 retry", () => {
   afterEach(() => postRaw.mockReset());
+
+  it("does not dispatch a description after cancellation", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled"));
+    await expect(
+      handleImageDescription(runtime(), {
+        imageUrl: "data:image/png;base64,cGFnZQ==",
+        signal: controller.signal,
+      })
+    ).rejects.toThrow("cancelled");
+    expect(postRaw).not.toHaveBeenCalled();
+  });
+
+  it("forwards cancellation and discards a late successful response", async () => {
+    const controller = new AbortController();
+    postRaw.mockImplementationOnce(async (options) => {
+      expect(options.signal).toBe(controller.signal);
+      controller.abort(new Error("cancelled"));
+      return ok("late transcription");
+    });
+    await expect(
+      handleImageDescription(runtime(), {
+        imageUrl: "data:image/png;base64,cGFnZQ==",
+        signal: controller.signal,
+      })
+    ).rejects.toThrow("cancelled");
+    expect(postRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancellation interrupts a warming delay without retrying", async () => {
+    const controller = new AbortController();
+    postRaw.mockResolvedValueOnce(warming503());
+    const reason = new Error("Task cancelled during warming");
+    const timer = setTimeout(() => controller.abort(reason), 20);
+    try {
+      await expect(
+        handleImageDescription(runtime(), {
+          imageUrl: "data:image/png;base64,cGFnZQ==",
+          signal: controller.signal,
+        })
+      ).rejects.toBe(reason);
+      expect(postRaw).toHaveBeenCalledTimes(1);
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  it.each([
+    "Non-text visual information: a white page with a centered orange title and a black footer.",
+    "Title: Parenting agreement\n\nPreserve this visible document heading and every clause.\n",
+    "  Transcription:\nFirst page.\n\nSecond page: ORANGE-ORCHARD-SECOND-PAGE.  \n",
+  ])("preserves the complete provider transcription: %s", async (description) => {
+    postRaw.mockResolvedValueOnce(ok(description));
+    const result = await handleImageDescription(runtime(), {
+      imageUrl: "https://example.com/agreement-page.png",
+      prompt: "Transcribe every visible word and describe non-text information.",
+    });
+    expect(result.description).toBe(description);
+  });
+
+  it.each(["length", "content_filter", "tool_calls", "function_call", null, "", undefined])(
+    "rejects a partial transcription ending with %s",
+    async (finishReason) => {
+      postRaw.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: { content: "The agreement requires pickup at" },
+                finish_reason: finishReason,
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      );
+      await expect(
+        handleImageDescription(runtime(), {
+          imageUrl: "https://example.com/agreement-page.png",
+          prompt: "Transcribe the complete page.",
+        })
+      ).rejects.toMatchObject({
+        code: "MODEL_INCOMPLETE_OUTPUT",
+        context: { finishReason },
+      });
+    }
+  );
 
   it("rides through a cold-cache warming 503 and returns the description", async () => {
     postRaw.mockResolvedValueOnce(warming503()).mockResolvedValueOnce(ok("A red square."));

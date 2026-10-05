@@ -4,8 +4,9 @@
  * service that failed to start is never offered to the planner. Deps are
  * deterministic doubles; no database.
  */
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { createFamilyCommunicationsAction } from "./action.js";
 import type { FamilyCommunicationsService } from "./service.js";

@@ -9,6 +9,7 @@
  *   - Windows → PowerShell Get-Clipboard / Set-Clipboard
  *   - Linux without xclip / wl-clipboard → ClipboardUnavailableError
  */
+import { writeSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const execFileSyncMock = vi.fn();
@@ -168,6 +169,22 @@ describe("clipboard — Linux X11", () => {
     expect(cmd).toBe("xclip");
     expect(args).toEqual(["-selection", "clipboard", "-i"]);
     expect((options as { input: string }).input).toBe("hello x11");
+  });
+
+  it("keeps the selection owner off capture pipes and preserves startup errors", async () => {
+    setPlatform("linux");
+    setLinuxToolset({ wayland: false, xclip: true });
+    spawnSyncMock.mockImplementation((_command, _args, options) => {
+      expect(options.stdio[0]).toBe("pipe");
+      expect(options.stdio[1]).toBe("ignore");
+      expect(typeof options.stdio[2]).toBe("number");
+      writeSync(options.stdio[2], "cannot open display");
+      return { status: 1, stderr: null };
+    });
+    const { writeClipboard } = await importClipboard();
+    await expect(writeClipboard("exact payload")).rejects.toThrow(
+      "Clipboard write failed (xclip exit 1): cannot open display",
+    );
   });
 
   it("throws ClipboardUnavailableError when xclip is missing", async () => {

@@ -9,7 +9,9 @@ import { registerPlugin } from "@capacitor/core";
 
 import type { ElizaSurfaceManagerPlugin } from "./definitions";
 
+export * from "./address-input";
 export * from "./definitions";
+export * from "./submitted-navigation";
 
 const loadWeb = () => import("./web").then((m) => new m.BrowserSurfaceWeb());
 

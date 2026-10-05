@@ -12,8 +12,9 @@ will replace or add promoted bundle revisions after the APOLLO SFT gates pass.
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file as _sha256_file
+
 import argparse
-import hashlib
 import json
 import os
 import shlex
@@ -26,11 +27,9 @@ from typing import Any, Iterable, Sequence
 
 _HERE = Path(__file__).resolve()
 _TRAINING_ROOT = _HERE.parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest import eliza1_manifest as M  # noqa: E402
-from scripts.manifest.eliza1_platform_plan import required_files_for_tier  # noqa: E402
+from eliza_training.manifest import eliza1_manifest as M  # noqa: E402
+from eliza_training.manifest.eliza1_platform_plan import required_files_for_tier  # noqa: E402
 
 TIERS: tuple[str, ...] = tuple(M.ELIZA_1_TIERS)
 DEFAULT_REPO_ID = M.ELIZA_1_HF_REPO
@@ -213,12 +212,6 @@ def _safe_bundle_child(bundle_dir: Path, rel: str) -> Path:
     return target
 
 
-def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
 
 
 def _parse_checksum_manifest(path: Path) -> tuple[dict[str, str], list[str]]:

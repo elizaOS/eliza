@@ -2,15 +2,19 @@
  * Accepts authenticated DM turns from an organization's agent-role X account
  * and routes the verified sender to personal Shared or Dedicated Eliza.
  */
+
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { findOrCreateXPersonalAccount } from "@elizaos/cloud-shared/lib/services/eliza-app/x-personal-identity";
+import { deliverPersonalTextMessage } from "@elizaos/cloud-shared/lib/services/personal-message-delivery";
+import { resolveSharedRuntimeWorkerRequestContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import { twitterAutomationService } from "@elizaos/cloud-shared/lib/services/twitter-automation";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { findOrCreateXPersonalAccount } from "@/lib/services/eliza-app/x-personal-identity";
-import { deliverPersonalTextMessage } from "@/lib/services/personal-message-delivery";
-import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
-import { twitterAutomationService } from "@/lib/services/twitter-automation";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const inputSchema = z.object({
   recipientTwitterUserId: z

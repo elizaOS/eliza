@@ -39,16 +39,26 @@ const { bridge, state } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../bridge", () => ({ isElectrobunRuntime: () => true }));
-vi.mock("../../utils", () => bridge);
-vi.mock("../../hooks", () => ({ useBugReport: () => ({ open: vi.fn() }) }));
+vi.mock("../../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: () => true,
+}));
+vi.mock("../../utils/desktop-workspace", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/desktop-workspace")>()),
+  openDesktopWorkspaceWindow: bridge.openDesktopWorkspaceWindow,
+  openDesktopSettingsWindow: bridge.openDesktopSettingsWindow,
+  openDesktopSurfaceWindow: bridge.openDesktopSurfaceWindow,
+  requestDesktopBridge: bridge.requestDesktopBridge,
+}));
+vi.mock("../../hooks/useBugReport.hooks", () => ({
+  useBugReport: () => ({ open: vi.fn() }),
+}));
 vi.mock("../../hooks/useAvailableViews", () => ({
   useAvailableViews: () => ({ views: [] }),
 }));
 vi.mock("../../state/useViewKinds", () => ({
   useEnabledViewKinds: () => new Set<string>(),
 }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: <T,>(selector: (s: typeof state) => T): T =>
     selector(state),
 }));

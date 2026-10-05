@@ -1,16 +1,16 @@
 /** Coordinates fail-closed account-deletion requests and fenced worker claims. */
 
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
-import { accountDeletionRequestsRepository } from "../../db/repositories/account-deletion-requests";
-import type { AccountDeletionExport } from "../../db/schemas/account-deletion-exports";
-import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";
 import type {
   AccountDeletionAcceptedDto,
   AccountDeletionNextAction,
   AccountDeletionStatus,
   AccountDeletionStatusDto,
-} from "../../types/account-lifecycle";
+} from "@elizaos/cloud-sdk/browser-contracts";
+import { ElizaError } from "@elizaos/core";
+import { accountDeletionRequestsRepository } from "../../db/repositories/account-deletion-requests";
+import type { AccountDeletionExport } from "../../db/schemas/account-deletion-exports";
+import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { logger } from "../utils/logger";
 import {
@@ -435,6 +435,9 @@ export async function activateAccountDeletion(
   }
 
   const request = activation.request;
+  if (request.organization_id) {
+    await closePendingSubscriptionCheckouts(request.organization_id);
+  }
   if ((request.status === "reserved" || request.status === "recovery") && request.steward_user_id) {
     await attemptImmediateStewardDeactivation({
       requestId: request.id,
@@ -444,6 +447,25 @@ export async function activateAccountDeletion(
   }
   const latest = await accountDeletionRequestsRepository.findById(request.id);
   return toAccountDeletionRequestDto(latest ?? request);
+}
+
+/**
+ * The paid-work fence is committed; a still-payable subscription checkout would now capture a
+ * payment that finalization must refuse. Close them best-effort; the checkout sweep retries.
+ */
+async function closePendingSubscriptionCheckouts(organizationId: string): Promise<void> {
+  try {
+    const { expirePendingSubscriptionCheckoutsForOrganization } = await import(
+      "./subscription-checkout"
+    );
+    await expirePendingSubscriptionCheckoutsForOrganization(organizationId);
+  } catch (error) {
+    // error-policy:J4 Deletion activation is already durable; checkout recovery retries the close.
+    logger.error("[AccountDeletion] Could not close pending subscription checkouts", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function attemptImmediateStewardDeactivation(input: {

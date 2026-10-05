@@ -13,8 +13,14 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { __setAppValueForTests } from "../../state/app-store";
+
+// This standalone page fixture has no connected runtime view installation.
+// Catalog binding and reporting are exercised by the shell/catalog integration tests.
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: [] }),
+}));
 
 vi.mock("./background-image", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./background-image")>();

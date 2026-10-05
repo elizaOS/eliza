@@ -4,48 +4,48 @@
  */
 
 import {
-  type StewardSessionErrorCode,
-  type StewardSessionRequest,
-  type StewardSessionResponse,
-  type StewardTelegramClaimConfirmationRequest,
-  sanitizeTelegramAccountClaimContinuation,
-} from "@elizaos/shared/steward-session-client";
-import { type Context, Hono } from "hono";
-import { deleteCookie, setCookie } from "hono/cookie";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import {
   checkElizaMutatingRequestOrigin,
   hasElizaNonSimpleRequestMarker,
-} from "@/lib/auth/browser-origin-policy";
-import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
-import { primeVerifiedUserSessionCache } from "@/lib/auth/session-user-cache";
-import { loadVerifiedStagingSessionUser } from "@/lib/auth/staging-session-binding";
+} from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
+import { cookieDomainForHost } from "@elizaos/cloud-shared/lib/auth/cookie-domain";
+import { primeVerifiedUserSessionCache } from "@elizaos/cloud-shared/lib/auth/session-user-cache";
+import { loadVerifiedStagingSessionUser } from "@elizaos/cloud-shared/lib/auth/staging-session-binding";
 import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
-} from "@/lib/auth/steward-client";
-import { stewardCookieNames } from "@/lib/auth/steward-cookies";
+} from "@elizaos/cloud-shared/lib/auth/steward-client";
+import { stewardCookieNames } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
 import {
   getIpKey,
   getRequestIp,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { isBlockedBySsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { isBlockedBySsoBridgeLogout } from "@elizaos/cloud-shared/lib/services/sso-bridge-codes";
 import {
   StewardPhoneOwnershipError,
   verifyStewardBearerPhone,
-} from "@/lib/services/steward-client";
+} from "@elizaos/cloud-shared/lib/services/steward-client";
 import {
   describeSyncError,
   StewardPhoneAccountConflictError,
   type StewardSyncExecutionContext,
   StewardTelegramAccountClaimError,
   syncUserFromSteward,
-} from "@/lib/steward-sync";
-import { logger } from "@/lib/utils/logger";
-import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/steward-sync";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { settleOffResponsePath } from "@elizaos/cloud-shared/lib/utils/settle-off-response-path";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import {
+  type StewardSessionErrorCode,
+  type StewardSessionRequest,
+  type StewardSessionResponse,
+  type StewardTelegramClaimConfirmationRequest,
+  sanitizeTelegramAccountClaimContinuation,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
+import { type Context, Hono } from "hono";
+import { deleteCookie, setCookie } from "hono/cookie";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
   return Boolean(env.STEWARD_SESSION_SECRET || env.STEWARD_JWT_SECRET);

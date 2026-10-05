@@ -12,16 +12,21 @@
  * `persistFirstRun` helper, so a completed onboarding posts exactly once.
  */
 
-import { client } from "../api";
+import type { UiLanguage } from "@elizaos/core/protocol";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
-import type { DedicatedAdoptionConfirmationRequester } from "../api/client-cloud";
+import { client } from "../api/client";
 import {
+  type DedicatedAdoptionConfirmationRequester,
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
+
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import type { DedicatedActivationConfirmationRequester } from "../api/dedicated-activation-confirmation";
-import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
+import {
+  getDesktopRuntimeMode,
+  invokeDesktopBridgeRequest,
+} from "../bridge/electrobun-rpc";
 import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import {
   clearPendingCloudHandoff,
@@ -32,8 +37,7 @@ import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-hando
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { runJoinFlow } from "../cloud/join/lib/run-join-flow";
-import { getBootConfig } from "../config/boot-config";
-import type { UiLanguage } from "../i18n";
+import { getBootConfig } from "../config/boot-config-store";
 import { clearForceFreshFirstRun } from "../platform/first-run-reset";
 import {
   isAndroid,
@@ -41,18 +45,16 @@ import {
   isIOS,
   isNative,
 } from "../platform/init";
+import { addAgentProfile, removeAgentProfile } from "../state/agent-profiles";
+import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import {
-  addAgentProfile,
   createPersistedActiveServer,
-  loadPersistedActiveServer,
-  removeAgentProfile,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
-} from "../state";
-import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
+} from "../state/persistence";
 import type { CloudLoginOptions } from "../state/types";
-import { isCloudStatusAuthenticated } from "../utils";
 import { isPersonalSharedElizaId } from "../utils/cloud-agent-base";
+import { isCloudStatusAuthenticated } from "../utils/cloud-status";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
@@ -154,7 +156,6 @@ export type FirstRunFinishOutcome =
   | { kind: "done" }
   | { kind: "handoff-started" }
   | { kind: "needs-cloud-login"; fallbackUrl?: string }
-  | { kind: "pick-cloud-agent"; agents: CloudCompatAgent[] }
   | { kind: "error"; message: string };
 
 // ── Exactly-once POST funnel ─────────────────────────────────────────────────
@@ -431,7 +432,7 @@ async function finishLocal(
       Boolean(cloudStatus?.connected),
       cloudStatus?.reason,
     );
-    if (!cloudConnectedForFinish && getCloudAuthToken(client)) {
+    if (!cloudConnectedForFinish && getCloudAuthToken()) {
       cloudConnectedForFinish = true;
     }
     if (!cloudConnectedForFinish) {
@@ -805,7 +806,10 @@ export async function listOrAutoProvisionCloudAgent(
     firstRunRuntimeTarget("cloud"),
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
-  if (!getCloudAuthToken(client)) {
+  // A backend session is independent of Cloud identity. In particular, a
+  // canceled desktop sign-in must not promote its local API credential into
+  // a successful Cloud login.
+  if (!getCloudAuthToken()) {
     if (ports.allowInteractiveCloudLogin === false) {
       return { kind: "needs-cloud-login" };
     }
@@ -816,7 +820,7 @@ export async function listOrAutoProvisionCloudAgent(
     ports.onInteractiveLoginComplete?.();
     ports.signal?.throwIfAborted();
   }
-  const authToken = getCloudAuthToken(client) ?? "";
+  const authToken = getCloudAuthToken() ?? "";
   if (!authToken) {
     return { kind: "needs-cloud-login" };
   }
@@ -901,14 +905,4 @@ export async function runFirstRunFinish(
       message: err instanceof Error ? err.message : "First-run setup failed.",
     };
   }
-}
-
-/** Re-read the active cloud agent id (for the picker's "already bound" guard). */
-export function readActiveCloudAgentId(): string | null {
-  const active = loadPersistedActiveServer();
-  if (active?.kind !== "cloud") return null;
-  const id = active.id?.startsWith("cloud:")
-    ? active.id.slice("cloud:".length)
-    : "";
-  return id && !id.includes("/") ? id : null;
 }

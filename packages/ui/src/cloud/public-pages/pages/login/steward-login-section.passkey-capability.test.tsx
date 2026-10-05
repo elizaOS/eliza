@@ -56,18 +56,21 @@ const sessionSpies = vi.hoisted(() => ({
   hasCookie: false,
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@elizaos/shared/steward-session-client")
-    >();
-  return {
-    ...actual,
-    hasStewardAuthedCookie: () => sessionSpies.hasCookie,
-  };
-});
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+      >();
+    return {
+      ...actual,
+      hasStewardAuthedCookie: () => sessionSpies.hasCookie,
+    };
+  },
+);
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginApiError: class LoginApiError extends Error {
     status: number;
     data: unknown;
@@ -135,7 +138,7 @@ vi.mock("../../lib/login-return-to", () => ({
   storePendingOAuthReturnTo: () => undefined,
 }));
 
-import { LoginApiError } from "@elizaos/login";
+import { LoginApiError } from "@elizaos/auth";
 import StewardLoginSection from "./steward-login-section";
 
 function renderSection() {
@@ -809,10 +812,16 @@ describe("StewardLoginSection passkey capability gating", () => {
       name: /Magic Link/i,
     });
     fireEvent.click(magicLink);
-    expect(await screen.findByText("Enter your email")).toBeTruthy();
+    const message = await screen.findByText("Enter your email");
     expect(emailLoginSpies.start).not.toHaveBeenCalled();
 
+    // #27241: the email field owns its validation message and focus.
     const input = screen.getByPlaceholderText("you@example.com");
+    expect(message.getAttribute("role")).toBe("alert");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")).toBe(message.id);
+    expect(document.activeElement).toBe(input);
+
     fireEvent.change(input, { target: { value: "person@example.com" } });
     fireEvent.click(magicLink);
     expect(await screen.findByText("SMTP unavailable")).toBeTruthy();

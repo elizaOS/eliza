@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sys
 from pathlib import Path
+from typing import Any
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.publish import publish_eliza1_model_repo as P  # noqa: E402
+from eliza_training.publish import publish_eliza1_model_repo as P  # noqa: E402
 
 
 def _sha(data: bytes) -> str:
@@ -67,7 +65,7 @@ def _write_bundle(
         ),
         encoding="utf-8",
     )
-    manifest_files = {
+    manifest_files: dict[str, list[dict[str, Any]]] = {
         root: [
             {"path": rel, "sha256": _sha(blob)}
             for rel, blob in sorted(files.items())

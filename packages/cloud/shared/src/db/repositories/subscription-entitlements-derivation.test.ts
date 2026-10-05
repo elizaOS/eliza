@@ -1,10 +1,16 @@
-/** Proves entitlement projection derives lifecycle authority while preserving unresolved ceilings. */
+/** Proves entitlement projection derives lifecycle authority and never grants paid plans less than Free. */
 
 import { describe, expect, test } from "bun:test";
 import type { BillingSubscriptionRevision } from "../schemas/billing-subscriptions";
 import { deriveSubscriptionEntitlementValues } from "./subscription-entitlements";
 
 const revision = {
+  billing_scope_id: null,
+  merchant_key: "platform",
+  plan_revision_id: null,
+  trial_start: null,
+  trial_end: null,
+  quantity: 1,
   id: "10000000-0000-4000-8000-000000000001",
   organization_id: "10000000-0000-4000-8000-000000000002",
   subscription_id: "10000000-0000-4000-8000-000000000003",
@@ -37,11 +43,11 @@ const catalogValues = {
   embeddings_rpm: 200,
   standard_rpm: 60,
   strict_rpm: 10,
-  cloud_characters_ceiling: null,
-  agent_sandboxes_ceiling: null,
-  containers_ceiling: null,
-  storage_gib_ceiling: null,
-  apps_ceiling: null,
+  cloud_characters_ceiling: 5,
+  agent_sandboxes_ceiling: 5,
+  containers_ceiling: 1,
+  storage_gib_ceiling: 5,
+  apps_ceiling: 25,
 };
 
 describe("subscription entitlement derivation", () => {
@@ -86,10 +92,41 @@ describe("subscription entitlement derivation", () => {
     ).toMatchObject({ plan_key: "free", state: "free" });
   });
 
-  test("keeps unknown paid resource ceilings nullable and rejects unapproved catalogs", () => {
-    expect(deriveSubscriptionEntitlementValues(revision).apps_ceiling).toBeNull();
+  test("grants every paid plan at least the Free resource ceilings and rejects unapproved catalogs", () => {
+    const free = deriveSubscriptionEntitlementValues({ ...revision, status: "canceled" });
+    for (const plan_key of ["plus_monthly", "pro_monthly"] as const) {
+      const paid = deriveSubscriptionEntitlementValues({ ...revision, plan_key });
+      for (const ceiling of [
+        "cloud_characters_ceiling",
+        "agent_sandboxes_ceiling",
+        "containers_ceiling",
+        "storage_gib_ceiling",
+        "apps_ceiling",
+      ] as const) {
+        expect(paid[ceiling]).not.toBeNull();
+        expect(paid[ceiling]!).toBeGreaterThanOrEqual(free[ceiling]!);
+      }
+    }
     expect(() =>
       deriveSubscriptionEntitlementValues({ ...revision, catalog_version: "unapproved" }),
     ).toThrow("not present in the immutable catalog");
+  });
+
+  test("the catalog rejects a paid plan below the Free ceilings", async () => {
+    const { __buildSubscriptionCatalogForTests, __publicSubscriptionPlansForTests } = await import(
+      "../../lib/services/subscription-catalog"
+    );
+    const plans = __publicSubscriptionPlansForTests().plans.map((plan) => ({
+      ...plan,
+      allowance: { ...plan.allowance },
+      fundingClasses: [...plan.fundingClasses],
+      rateLimits: { ...plan.rateLimits },
+      resourceCeilings: { ...plan.resourceCeilings },
+    }));
+    expect(() => __buildSubscriptionCatalogForTests(plans)).not.toThrow();
+    plans[0]!.resourceCeilings.containers = 0;
+    expect(() => __buildSubscriptionCatalogForTests(plans)).toThrow(
+      "cannot grant less than the Free resource ceiling",
+    );
   });
 });

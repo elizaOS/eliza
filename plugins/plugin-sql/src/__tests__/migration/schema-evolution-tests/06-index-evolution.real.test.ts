@@ -221,7 +221,9 @@ describe("Schema Evolution Test: Index Evolution", () => {
       console.log("  ✅ No data loss for index modifications");
       if (check.warnings.length > 0) {
         console.log("  ℹ️ Index changes detected:");
-        check.warnings.forEach((w) => console.log(`    - ${w}`));
+        check.warnings.forEach((w) => {
+          console.log(`    - ${w}`);
+        });
       }
     }
 
@@ -239,7 +241,9 @@ describe("Schema Evolution Test: Index Evolution", () => {
 
     const indexNames = indexes.rows.map((r) => (r as { indexname: string }).indexname);
     console.log("\n📊 Final indexes:");
-    indexNames.forEach((name) => console.log(`  - ${name}`));
+    indexNames.forEach((name) => {
+      console.log(`  - ${name}`);
+    });
 
     expect(indexNames).not.toContain("idx_col1"); // Should be dropped
     expect(indexNames).toContain("idx_col2"); // Should remain

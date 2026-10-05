@@ -29,24 +29,27 @@ const sessionSpies = vi.hoisted(() => ({
   sync: vi.fn(),
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
-  ...(await importOriginal()),
-  hasStewardAuthedCookie: () => false,
-  readStoredStewardToken: () => sessionSpies.storedToken,
-  writeStoredStewardToken: (token: string) => {
-    sessionSpies.storedToken = token;
-    sessionSpies.write(token);
-  },
-  StewardSessionError: class StewardSessionError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-      super(message);
-      this.status = status;
-    }
-  },
-}));
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => ({
+    ...(await importOriginal()),
+    hasStewardAuthedCookie: () => false,
+    readStoredStewardToken: () => sessionSpies.storedToken,
+    writeStoredStewardToken: (token: string) => {
+      sessionSpies.storedToken = token;
+      sessionSpies.write(token);
+    },
+    StewardSessionError: class StewardSessionError extends Error {
+      status: number;
+      constructor(message: string, status: number) {
+        super(message);
+        this.status = status;
+      }
+    },
+  }),
+);
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     getSession() {
       return null;

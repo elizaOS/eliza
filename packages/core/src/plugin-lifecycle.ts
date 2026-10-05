@@ -3,9 +3,9 @@
  * reconfigure) onto an {@link IAgentRuntime}. {@link installRuntimePluginLifecycle}
  * wraps the runtime's `register*` methods so that, during a `registerPlugin`
  * call, every action, provider, evaluator, route, event, model, service,
- * shortcut, send-handler, and database adapter the plugin contributes is
+ * send-handler, and database adapter the plugin contributes is
  * attributed to it — captured through async-context storage
- * (`AsyncLocalStorage` on Node, a stack fallback elsewhere) rather than by name.
+ * (`AsyncLocalStorage`) rather than by name.
  * The resulting {@link PluginOwnership} record is the reverse index that makes
  * teardown possible.
  *
@@ -24,6 +24,7 @@
  * module-level snapshot would silently collapse a stricter gate to USER — a
  * permission bypass, #12089).
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { unregisterConnectorSourceMetadataOwner } from "./connectors";
 import { roleRank } from "./runtime/context-gates";
 import type { ContextRegistry } from "./runtime/context-registry";
@@ -39,7 +40,6 @@ import type {
 } from "./types/plugin";
 import type { IAgentRuntime } from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
-import type { ShortcutDefinition } from "./types/shortcut";
 import {
 	lookupProviderCatalogContexts,
 	resolveActionContexts,
@@ -49,13 +49,18 @@ import {
 type RuntimeAction = NonNullable<Plugin["actions"]>[number];
 type RuntimeProvider = NonNullable<Plugin["providers"]>[number];
 type RuntimeEvaluator = RegisteredEvaluator;
-type RuntimeRoute = NonNullable<Plugin["routes"]>[number];
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
 type RuntimeEventHandler = PluginEventRegistration["handler"];
+type RuntimeChatPreHandler = NonNullable<Plugin["chatPreHandlers"]>[number];
+type RuntimeResponseHandlerEvaluator = NonNullable<
+	Plugin["responseHandlerEvaluators"]
+>[number];
+type RuntimeResponseHandlerFieldEvaluator = NonNullable<
+	Plugin["responseHandlerFieldEvaluators"]
+>[number];
 type RuntimeEventRegistration = PluginEventRegistration;
 type RuntimeModelRegistration = PluginModelRegistration;
 type RuntimeServiceRegistration = PluginServiceRegistration;
-type RuntimeShortcut = ShortcutDefinition;
 
 type RuntimeSendHandler = (
 	runtime: unknown,
@@ -106,15 +111,13 @@ type RuntimePluginServiceStartCapture = {
 	pluginName: string;
 };
 
-type AsyncContextStorage<T> = {
-	run<R>(store: T, callback: () => R): R;
-	getStore(): T | undefined;
-};
-
 type RuntimeWithPluginLifecycle = IAgentRuntime &
 	RuntimePrivateState & {
 		__elizaPluginLifecycleInstalled?: boolean;
 		__elizaPluginOwnership?: Map<string, PluginOwnership>;
+		// The concrete runtime owns the chat pre-handler registry; the lifecycle
+		// wrapper only needs to know whether an id is already registered.
+		chatPreHandlerRegistry?: { has(id: string): boolean };
 		registerDatabaseAdapter: (adapter: IAgentRuntime["adapter"]) => void;
 		unloadPlugin?: (pluginName: string) => Promise<PluginOwnership | null>;
 		reloadPlugin?: (plugin: Plugin) => Promise<void>;
@@ -148,59 +151,10 @@ type RuntimePrivateState = {
 	registerSendHandler?: (source: string, handler: RuntimeSendHandler) => void;
 };
 
-class StackAsyncContextStorage<T> implements AsyncContextStorage<T> {
-	private readonly stack: T[] = [];
-
-	run<R>(store: T, callback: () => R): R {
-		this.stack.push(store);
-		try {
-			return callback();
-		} finally {
-			this.stack.pop();
-		}
-	}
-
-	getStore(): T | undefined {
-		return this.stack.length > 0
-			? this.stack[this.stack.length - 1]
-			: undefined;
-	}
-}
-
-function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
-	if (
-		typeof process !== "undefined" &&
-		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined" &&
-		typeof process.getBuiltinModule === "function"
-	) {
-		try {
-			const { AsyncLocalStorage } = process.getBuiltinModule(
-				"node:async_hooks",
-			) as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<T>();
-			return {
-				run<R>(store: T, callback: () => R): R {
-					return storage.run(store, callback);
-				},
-				getStore(): T | undefined {
-					return storage.getStore();
-				},
-			};
-		} catch {
-			// error-policy:J4 AsyncLocalStorage is optional in constrained
-			// runtimes; the scoped stack is the explicit degraded implementation.
-			// AsyncLocalStorage unavailable — fall back to stack storage.
-		}
-	}
-
-	return new StackAsyncContextStorage<T>();
-}
-
 const pluginRegistrationContext =
-	createAsyncContextStorage<RuntimePluginRegistrationCapture>();
+	new AsyncLocalStorage<RuntimePluginRegistrationCapture>();
 const pluginServiceStartContext =
-	createAsyncContextStorage<RuntimePluginServiceStartCapture>();
+	new AsyncLocalStorage<RuntimePluginServiceStartCapture>();
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
 
 function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
@@ -533,13 +487,14 @@ function createEmptyOwnership(plugin: Plugin): PluginOwnership {
 		actions: [],
 		providers: [],
 		evaluators: [],
-		routes: [],
 		events: [],
 		models: [],
 		services: [],
-		shortcuts: [],
 		sendHandlerSources: [],
 		hasAdapter: false,
+		chatPreHandlerIds: [],
+		responseHandlerEvaluatorNames: [],
+		responseHandlerFieldEvaluatorNames: [],
 		registeredAt: Date.now(),
 	};
 }
@@ -701,14 +656,6 @@ function removeOwnedEvents(
 	}
 }
 
-function removeOwnedRoutes(
-	runtime: RuntimeWithPluginLifecycle,
-	ownership: PluginOwnership,
-): void {
-	if (ownership.routes.length === 0 || runtime.routes.length === 0) return;
-	removeArrayItemsByReference(runtime.routes, ownership.routes);
-}
-
 function removeOwnedPlugins(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
@@ -750,8 +697,14 @@ function removeOwnedComponents(
 	removeArrayItemsByReference(runtime.actions, ownership.actions);
 	removeArrayItemsByReference(runtime.providers, ownership.providers);
 	removeArrayItemsByReference(runtime.evaluators, ownership.evaluators);
-	for (const shortcutId of ownership.shortcuts) {
-		runtime.unregisterShortcut?.(shortcutId);
+	for (const id of ownership.chatPreHandlerIds) {
+		runtime.unregisterChatPreHandler(id);
+	}
+	for (const name of ownership.responseHandlerEvaluatorNames) {
+		runtime.unregisterResponseHandlerEvaluator(name);
+	}
+	for (const name of ownership.responseHandlerFieldEvaluatorNames) {
+		runtime.unregisterResponseHandlerFieldEvaluator(name);
 	}
 }
 
@@ -822,7 +775,6 @@ async function teardownPluginOwnership(
 
 	try {
 		removeOwnedEvents(runtime, ownership);
-		removeOwnedRoutes(runtime, ownership);
 		removeOwnedModels(privateState, ownership);
 		removeOwnedConnectorSources(ownership);
 		removeOwnedComponents(runtime, ownership);
@@ -853,22 +805,15 @@ async function teardownPluginOwnership(
 	}
 }
 
-function trackRoutesAndPluginRef(
+function trackPluginRef(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
 	pluginsBefore: Set<Plugin>,
-	routesBefore: Set<RuntimeRoute>,
 ): void {
 	for (const plugin of runtime.plugins) {
 		if (!pluginsBefore.has(plugin) && plugin.name === ownership.pluginName) {
 			ownership.registeredPlugin = plugin;
 			break;
-		}
-	}
-
-	for (const route of runtime.routes) {
-		if (!routesBefore.has(route)) {
-			pushUniqueRef(ownership.routes, route);
 		}
 	}
 }
@@ -888,8 +833,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		runtimeWithLifecycle.registerProvider.bind(runtimeWithLifecycle);
 	const originalRegisterEvaluator =
 		runtimeWithLifecycle.registerEvaluator.bind(runtimeWithLifecycle);
-	const originalRegisterShortcut =
-		runtimeWithLifecycle.registerShortcut.bind(runtimeWithLifecycle);
 	const originalRegisterModel =
 		runtimeWithLifecycle.registerModel.bind(runtimeWithLifecycle);
 	const originalRegisterEvent =
@@ -898,6 +841,16 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		runtimeWithLifecycle.registerService.bind(runtimeWithLifecycle);
 	const originalRegisterDatabaseAdapter =
 		runtimeWithLifecycle.registerDatabaseAdapter.bind(runtimeWithLifecycle);
+	const originalRegisterChatPreHandler =
+		runtimeWithLifecycle.registerChatPreHandler.bind(runtimeWithLifecycle);
+	const originalRegisterResponseHandlerEvaluator =
+		runtimeWithLifecycle.registerResponseHandlerEvaluator.bind(
+			runtimeWithLifecycle,
+		);
+	const originalRegisterResponseHandlerFieldEvaluator =
+		runtimeWithLifecycle.registerResponseHandlerFieldEvaluator.bind(
+			runtimeWithLifecycle,
+		);
 	const originalRegisterSendHandler =
 		typeof privateState.registerSendHandler === "function"
 			? privateState.registerSendHandler.bind(runtimeWithLifecycle)
@@ -963,13 +916,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		}
 	}) as typeof runtimeWithLifecycle.registerEvaluator;
 
-	runtimeWithLifecycle.registerShortcut = ((shortcut: RuntimeShortcut) => {
-		const capture = pluginRegistrationContext.getStore();
-		originalRegisterShortcut(shortcut);
-		if (!capture) return;
-		pushUniqueString(capture.ownership.shortcuts, shortcut.id);
-	}) as typeof runtimeWithLifecycle.registerShortcut;
-
 	runtimeWithLifecycle.registerModel = ((
 		modelType,
 		handler,
@@ -979,11 +925,12 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	) => {
 		const capture = pluginRegistrationContext.getStore();
 		const modelKey = String(modelType);
-		const modelsBefore = privateState.models.get(modelKey)?.length ?? 0;
+		const modelsBefore = new Set(privateState.models.get(modelKey) ?? []);
 		originalRegisterModel(modelType, handler, provider, priority, metadata);
 		if (!capture) return;
 		const nextModels = privateState.models.get(modelKey) ?? [];
-		for (const registeredModel of nextModels.slice(modelsBefore)) {
+		for (const registeredModel of nextModels) {
+			if (modelsBefore.has(registeredModel)) continue;
 			pushUniqueModel(capture.ownership.models, {
 				modelType: modelKey,
 				handler: registeredModel.handler as RuntimeModelRegistration["handler"],
@@ -1052,6 +999,80 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		}
 	}) as typeof runtimeWithLifecycle.registerDatabaseAdapter;
 
+	runtimeWithLifecycle.registerChatPreHandler = ((
+		handler: RuntimeChatPreHandler,
+	) => {
+		const capture = pluginRegistrationContext.getStore();
+		if (!capture) {
+			originalRegisterChatPreHandler(handler);
+			return;
+		}
+		// register() is an id-keyed upsert. Across plugin boundaries that would
+		// displace another owner's handler, which teardown cannot restore
+		// (#12658), so plugin registration is first-wins like actions/providers/
+		// evaluators. Re-registering an id this plugin already owns stays safe.
+		if (
+			runtimeWithLifecycle.chatPreHandlerRegistry?.has(handler.id) &&
+			!capture.ownership.chatPreHandlerIds.includes(handler.id)
+		) {
+			runtimeWithLifecycle.logger.warn(
+				{
+					src: "agent",
+					agentId: runtimeWithLifecycle.agentId,
+					plugin: capture.ownership.pluginName,
+					preHandler: handler.id,
+				},
+				"Chat pre-handler id already registered; keeping the existing handler",
+			);
+			return;
+		}
+		originalRegisterChatPreHandler(handler);
+		pushUniqueString(capture.ownership.chatPreHandlerIds, handler.id);
+	}) as typeof runtimeWithLifecycle.registerChatPreHandler;
+
+	runtimeWithLifecycle.registerResponseHandlerEvaluator = ((
+		evaluator: RuntimeResponseHandlerEvaluator,
+	) => {
+		const capture = pluginRegistrationContext.getStore();
+		const countBefore = runtimeWithLifecycle.responseHandlerEvaluators.length;
+		originalRegisterResponseHandlerEvaluator(evaluator);
+		if (
+			!capture ||
+			runtimeWithLifecycle.responseHandlerEvaluators.length <= countBefore
+		)
+			return;
+		for (const registered of runtimeWithLifecycle.responseHandlerEvaluators.slice(
+			countBefore,
+		)) {
+			pushUniqueString(
+				capture.ownership.responseHandlerEvaluatorNames,
+				registered.name,
+			);
+		}
+	}) as typeof runtimeWithLifecycle.registerResponseHandlerEvaluator;
+
+	runtimeWithLifecycle.registerResponseHandlerFieldEvaluator = ((
+		evaluator: RuntimeResponseHandlerFieldEvaluator,
+	) => {
+		const capture = pluginRegistrationContext.getStore();
+		const countBefore =
+			runtimeWithLifecycle.responseHandlerFieldEvaluators.length;
+		originalRegisterResponseHandlerFieldEvaluator(evaluator);
+		if (
+			!capture ||
+			runtimeWithLifecycle.responseHandlerFieldEvaluators.length <= countBefore
+		)
+			return;
+		for (const registered of runtimeWithLifecycle.responseHandlerFieldEvaluators.slice(
+			countBefore,
+		)) {
+			pushUniqueString(
+				capture.ownership.responseHandlerFieldEvaluatorNames,
+				registered.name,
+			);
+		}
+	}) as typeof runtimeWithLifecycle.registerResponseHandlerFieldEvaluator;
+
 	if (originalRegisterSendHandler) {
 		privateState.registerSendHandler = ((source, handler) => {
 			const hadSourceAlready = privateState.sendHandlers.has(source);
@@ -1086,7 +1107,6 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 
 	runtimeWithLifecycle.registerPlugin = (async (plugin: Plugin) => {
 		const pluginsBefore = new Set(runtimeWithLifecycle.plugins);
-		const routesBefore = new Set(runtimeWithLifecycle.routes);
 		const serviceClassCountsBefore = new Map<RuntimeServiceClass, number>();
 		for (const classes of privateState.serviceTypes.values()) {
 			for (const serviceClass of classes) {
@@ -1123,24 +1143,20 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			await pluginRegistrationContext.run(capture, async () => {
 				await originalRegisterPlugin(plugin);
 			});
-			trackRoutesAndPluginRef(
-				runtimeWithLifecycle,
-				capture.ownership,
-				pluginsBefore,
-				routesBefore,
-			);
+			trackPluginRef(runtimeWithLifecycle, capture.ownership, pluginsBefore);
 			captureDeclaredServices();
 			if (
 				capture.ownership.registeredPlugin ||
 				capture.ownership.actions.length > 0 ||
 				capture.ownership.providers.length > 0 ||
 				capture.ownership.evaluators.length > 0 ||
-				capture.ownership.routes.length > 0 ||
 				capture.ownership.events.length > 0 ||
 				capture.ownership.models.length > 0 ||
 				capture.ownership.services.length > 0 ||
-				capture.ownership.shortcuts.length > 0 ||
 				capture.ownership.sendHandlerSources.length > 0 ||
+				capture.ownership.chatPreHandlerIds.length > 0 ||
+				capture.ownership.responseHandlerEvaluatorNames.length > 0 ||
+				capture.ownership.responseHandlerFieldEvaluatorNames.length > 0 ||
 				capture.ownership.hasAdapter
 			) {
 				getPluginOwnershipStore(runtimeWithLifecycle).set(
@@ -1151,12 +1167,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		} catch (error) {
 			// error-policy:J2 Roll back partial plugin ownership before preserving
 			// the original registration failure.
-			trackRoutesAndPluginRef(
-				runtimeWithLifecycle,
-				capture.ownership,
-				pluginsBefore,
-				routesBefore,
-			);
+			trackPluginRef(runtimeWithLifecycle, capture.ownership, pluginsBefore);
 			captureDeclaredServices();
 			await teardownPluginOwnership(runtimeWithLifecycle, capture.ownership, {
 				allowAdapterUnload: true,

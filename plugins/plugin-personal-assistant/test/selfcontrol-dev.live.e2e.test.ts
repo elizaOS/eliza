@@ -2,15 +2,15 @@
  * Live e2e driving the SelfControl blocker against a spawned dev stack. Gated on
  * ELIZA_LIVE_TEST.
  */
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { getFreePort, waitForChildExit } from "@elizaos/testing/fixtures";
+import { req } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
-import { req } from "../../../packages/app-core/test/helpers/http";
+import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
 
 const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
@@ -22,56 +22,6 @@ type StartedDevStack = {
   hostsFilePath: string;
   uiPort: number;
 };
-
-async function getFreePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close();
-        reject(new Error("Could not allocate a loopback port"));
-        return;
-      }
-
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(address.port);
-      });
-    });
-  });
-}
-
-async function waitForChildExit(
-  child: ChildProcessWithoutNullStreams,
-  timeoutMs: number,
-): Promise<boolean> {
-  if (child.exitCode != null) {
-    return true;
-  }
-
-  return await new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve(false);
-    }, timeoutMs);
-
-    const handleExit = () => {
-      cleanup();
-      resolve(true);
-    };
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.off("exit", handleExit);
-      child.off("close", handleExit);
-    };
-
-    child.once("exit", handleExit);
-    child.once("close", handleExit);
-  });
-}
 
 async function waitForJsonPredicate<T>(
   url: string,

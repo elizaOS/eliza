@@ -9,7 +9,6 @@
     "dev": "bun --watch run src/index.ts",
     "start": "bun run src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
@@ -18,11 +17,11 @@
   },
   "dependencies": {
     "@elizaos/cloud-shared": "workspace:*",
-    "hono": "4.13.1"
+    "hono": "4.13.8"
   },
   "devDependencies": {
     "@types/node": "22.19.2",
-    "bun-types": "1.3.14",
+    "bun-types": "1.4.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   }

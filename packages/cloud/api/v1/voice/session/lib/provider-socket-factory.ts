@@ -16,11 +16,11 @@
 import type {
   CartesiaWebSocketFactory,
   CartesiaWebSocketLike,
-} from "@/lib/services/cartesia-sonic-tts";
+} from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
 import type {
   FishAudioWebSocketFactory,
   FishAudioWebSocketLike,
-} from "@/lib/services/fish-audio-tts";
+} from "@elizaos/cloud-shared/lib/services/fish-audio-tts";
 import type {
   CartesiaInkWebSocket,
   CartesiaInkWebSocketFactory,

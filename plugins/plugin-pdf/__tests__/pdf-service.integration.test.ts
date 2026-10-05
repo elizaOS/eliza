@@ -4,7 +4,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { PdfService } from "../services/pdf";
+import { PdfService } from "../index";
 
 function buildPdf(text: string, infoDict: string): Buffer {
 	const objects = [

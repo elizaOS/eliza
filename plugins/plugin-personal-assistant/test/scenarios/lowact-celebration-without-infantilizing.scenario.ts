@@ -16,7 +16,7 @@
  * OUTCOME (not echo): the judge grades the load-bearing behavior — genuine,
  * proportional acknowledgment; not infantilizing, not dismissive.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

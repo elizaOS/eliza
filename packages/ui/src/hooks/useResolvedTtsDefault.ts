@@ -20,13 +20,13 @@
  */
 
 import { useEffect, useState } from "react";
+import type { VoiceProvider } from "../api/client-types-config";
 import { isLocalInferenceTtsReady } from "../voice/local-tts-status";
 import {
   type PresetPlatform,
   type PresetRuntimeMode,
   resolveDefaultTtsProvider,
   type VoiceCapabilitySnapshot,
-  type VoiceProvider,
 } from "../voice/voice-provider-defaults";
 import {
   type UseDefaultProviderPresetsOptions,

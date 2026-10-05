@@ -3,13 +3,7 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "./src",
-    "types": ["node"],
-    "typeRoots": [
-      "./node_modules/@types",
-      "../../node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types"
-    ]
+    "types": ["node"]
   },
   "include": ["src"],
   "exclude": [

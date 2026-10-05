@@ -1,10 +1,10 @@
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   BaseMessageAdapter,
   getDefaultTriageService,
-  type IAgentRuntime,
   type MessageAdapterCapabilities,
   type MessageSource,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 
 /**
  * iMessage triage adapter. Availability hinges on the native macOS Messages

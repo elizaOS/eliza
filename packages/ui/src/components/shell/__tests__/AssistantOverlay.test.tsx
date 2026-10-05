@@ -180,4 +180,39 @@ describe("AssistantOverlay", () => {
       screen.getByRole("button", { name: /close assistant/i }),
     );
   });
+  it("keeps focus stable across callback changes and closes only the top dialog", () => {
+    const originalClose = vi.fn();
+    const updatedClose = vi.fn();
+    const upperClose = vi.fn();
+    const lower = render(
+      <AssistantOverlay phase="summoned" onClose={originalClose}>
+        <button type="button">lower action</button>
+      </AssistantOverlay>,
+    );
+    const lowerAction = screen.getByRole("button", { name: "lower action" });
+    lowerAction.focus();
+    lower.rerender(
+      <AssistantOverlay phase="summoned" onClose={updatedClose}>
+        <button type="button">lower action</button>
+      </AssistantOverlay>,
+    );
+    expect(document.activeElement).toBe(lowerAction);
+    const upper = render(
+      <AssistantOverlay phase="summoned" onClose={upperClose}>
+        <button type="button">upper action</button>
+      </AssistantOverlay>,
+    );
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "upper action" }),
+    );
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(upperClose).toHaveBeenCalledTimes(1);
+    expect(updatedClose).not.toHaveBeenCalled();
+    upper.unmount();
+    expect(document.activeElement).toBe(lowerAction);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(updatedClose).toHaveBeenCalledTimes(1);
+    expect(originalClose).not.toHaveBeenCalled();
+  });
 });

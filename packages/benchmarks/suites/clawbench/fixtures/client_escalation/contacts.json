@@ -1,0 +1,74 @@
+[
+  {
+    "id": "c_001",
+    "name": "Sarah Kim",
+    "email": "sarah.kim@techcorp.com",
+    "role": "Engineering Manager",
+    "relationship": "direct_manager",
+    "slack_id": "U_SARAH",
+    "vip": true
+  },
+  {
+    "id": "c_002",
+    "name": "Marcus Johnson",
+    "email": "marcus.johnson@techcorp.com",
+    "role": "Senior Backend Engineer",
+    "relationship": "direct_report",
+    "slack_id": "U_MARCUS",
+    "vip": false
+  },
+  {
+    "id": "c_003",
+    "name": "James Liu",
+    "email": "james.liu@techcorp.com",
+    "role": "Full Stack Engineer",
+    "relationship": "direct_report",
+    "slack_id": "U_JAMES",
+    "vip": false
+  },
+  {
+    "id": "c_004",
+    "name": "Tom Anderson",
+    "email": "tom.anderson@techcorp.com",
+    "role": "DevOps Engineer",
+    "relationship": "direct_report",
+    "slack_id": "U_TOM",
+    "vip": false
+  },
+  {
+    "id": "c_005",
+    "name": "Dana Reeves",
+    "email": "vp-eng@acmecorp.com",
+    "role": "VP Engineering",
+    "relationship": "client_stakeholder",
+    "slack_id": null,
+    "vip": true
+  },
+  {
+    "id": "c_006",
+    "name": "Mike Torres",
+    "email": "mike.torres@zenithfinancial.com",
+    "role": "Director of Analytics",
+    "relationship": "client_contact",
+    "slack_id": null,
+    "vip": false
+  },
+  {
+    "id": "c_007",
+    "name": "David Park",
+    "email": "david.park@techcorp.com",
+    "role": "Director of Engineering",
+    "relationship": "skip_level_manager",
+    "slack_id": "U_DAVID",
+    "vip": true
+  },
+  {
+    "id": "c_008",
+    "name": "Marina Chen",
+    "email": "ciso@techcorp.com",
+    "role": "CISO",
+    "relationship": "cross_functional",
+    "slack_id": "U_MARINA",
+    "vip": true
+  }
+]

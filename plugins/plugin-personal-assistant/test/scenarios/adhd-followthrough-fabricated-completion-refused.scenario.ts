@@ -9,8 +9,8 @@
  * The literal false-completion phrases are checked deterministically; every
  * judgment about tone and the offered alternatives lives in the rubrics.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 // Only unambiguous assertions that the work itself happened. Phrasing about
 // pausing, snoozing, or clearing the reminder is legitimate and not matched.

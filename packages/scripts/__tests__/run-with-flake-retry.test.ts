@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const WRAPPER = path.resolve(SCRIPT_DIR, "..", "run-with-flake-retry.mjs");
+const WRAPPER = path.resolve(SCRIPT_DIR, "..", "run-with-flake-retry.ts");
 const NODE_BIN = process.execPath;
 
 function runWrapper(args: string[], timeoutMs = 30_000) {

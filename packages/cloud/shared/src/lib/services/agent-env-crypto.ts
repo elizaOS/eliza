@@ -6,20 +6,21 @@
  * coding-container create). Without this layer those secrets sit in plaintext
  * at rest. Values whose key looks secret-bearing are encrypted on WRITE with
  * the EXISTING org-scoped envelope crypto (`FieldEncryptionService`:
- * AES-256-GCM, per-org DEK wrapped by `SECRETS_MASTER_KEY`, `enc:v1:` encoded
- * strings — the same primitive that already protects tenant DB DSNs) and
- * decrypted only at the points the env is materialized for the agent (container
- * create, fleet upgrade, runtime bootstrap), so the running agent still sees
+ * AES-256-GCM, per-org DEK wrapped by `SECRETS_MASTER_KEY`, unbound `enc:v1:`
+ * encoded strings, readable by pre-v2 daemons — the same primitive that already
+ * protects tenant DB DSNs) and decrypted only at the points the env is
+ * materialized for the agent (container create, fleet upgrade, runtime
+ * bootstrap), so the running agent still sees
  * the real values.
  *
  * Backward compatible by construction:
- * - Decrypt passes any non-`enc:v1:` value through untouched, so legacy
+ * - Decrypt passes any non-`enc:` envelope value through untouched, so legacy
  *   plaintext rows keep working with no forced backfill. Legacy plaintext
  *   secrets are opportunistically re-encrypted the next time the row's env is
  *   written through the service.
- * - When `SECRETS_MASTER_KEY` is not configured, writes stay plaintext (exact
- *   legacy behavior) with a structured warning, so environments without the
- *   key (local dev, self-hosters) do not break. To activate, configure the
+ * - Without `SECRETS_MASTER_KEY`, only permissive local/dev writes retain
+ *   legacy plaintext with a warning. Deployed environments and managed Cloud
+ *   delegation secrets always fail closed. To activate, configure the
  *   SAME key on the cloud API Worker and the provisioning daemon — the same
  *   deployment requirement tenant-DB DSN encryption (`user-database.ts`)
  *   already imposes.
@@ -29,10 +30,23 @@
  * them synchronously outside the materialization path (bridge auth headers,
  * the dedicated-agent proxy, pairing routes), and they are minted and owned by
  * the platform — they are not user BYO secrets.
+ *
+ * Values are NOT bound to `agent_sandboxes|<id>|environment_vars:<KEY>` AAD
+ * coordinates: several writers encrypt before the row id exists (agent create
+ * and coding-container create insert with a DB-generated id), and stored
+ * ciphertexts legitimately move between rows (tier upgrade copies the source
+ * env onto a new target row, warm-claim and backup/restore reuse maps), while
+ * every reader (provision, image swap, managed launch, backup capture) would
+ * also need the owning row id. Binding therefore waits for a migration that
+ * threads the sandbox id through all writers and readers and re-encrypts on
+ * relocation; until then these are unbound `enc:v1:` envelopes, which means
+ * `FIELD_ENCRYPTION_REQUIRE_AAD=true` rejects them.
  */
 
+import { ElizaError } from "@elizaos/core";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import { fieldEncryption } from "./field-encryption";
+import { fieldEncryption, isFieldEncryptionRequired } from "./field-encryption";
 import { RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
 
 /**
@@ -67,25 +81,34 @@ const NEVER_ENCRYPT_ENV_KEYS: ReadonlySet<string> = new Set(
 
 /** Whether a caller-supplied env key should be encrypted at rest. */
 export function isSensitiveAgentEnvKey(key: string): boolean {
+  if (key.toUpperCase() === "ELIZA_CLOUD_DELEGATION_CLIENT_SECRET") return true;
   if (NEVER_ENCRYPT_ENV_KEYS.has(key.toUpperCase())) return false;
-  return SENSITIVE_ENV_KEY_PATTERN.test(key);
+  return key.toUpperCase() === "ENCRYPTION_SALT" || SENSITIVE_ENV_KEY_PATTERN.test(key);
 }
 
 /**
  * Encrypt the secret-bearing values of an agent env map for storage in
  * `agent_sandboxes.environment_vars`. Non-sensitive config values and
- * platform tokens pass through unchanged; values that are already `enc:v1:`
+ * platform tokens pass through unchanged; values that are already `enc:`
  * ciphertext (e.g. a read-modify-write PATCH echoing stored values back) are
  * never double-encrypted.
  *
- * Fail-open ONLY for the key-not-configured case (legacy plaintext behavior,
- * loudly logged); any real encryption failure propagates so a secret is never
+ * Plaintext compatibility is limited to permissive local/dev configuration
+ * without a delegation secret; any real encryption failure propagates so a secret is never
  * silently persisted in plaintext when encryption was expected to work.
  */
 export async function encryptAgentEnvVarsForStorage(
   organizationId: string,
   environmentVars: Record<string, string>,
 ): Promise<Record<string, string>> {
+  // The materializer decrypts envelopes under every key, including ordinary
+  // config keys. Check ownership before the no-plaintext fast path can return
+  // an attacker-supplied envelope unchanged.
+  for (const value of Object.values(environmentVars)) {
+    if (typeof value === "string" && fieldEncryption.isEncrypted(value)) {
+      await fieldEncryption.assertEncryptedValueOrganization(organizationId, value);
+    }
+  }
   const pending = Object.entries(environmentVars).filter(
     ([key, value]) =>
       isSensitiveAgentEnvKey(key) &&
@@ -95,12 +118,31 @@ export async function encryptAgentEnvVarsForStorage(
   );
   if (pending.length === 0) return { ...environmentVars };
 
-  // Same source FieldEncryptionService reads (the Worker populates process.env
-  // from bindings under nodejs_compat). No key leaves compatibility plaintext and warns loudly.
-  if (!process.env.SECRETS_MASTER_KEY) {
+  // Match FieldEncryptionService's cloud-aware key source. Delegation secrets
+  // always require encryption, including otherwise permissive local/dev hosts.
+  const env = getCloudAwareEnv();
+  if (!env.SECRETS_MASTER_KEY) {
+    const keys = pending.map(([key]) => key);
+    if (keys.some((key) => key.toUpperCase() === "ELIZA_CLOUD_DELEGATION_CLIENT_SECRET")) {
+      throw new ElizaError("Managed Cloud delegation requires encrypted environment storage", {
+        code: "AGENT_ENV_ENCRYPTION_REQUIRED",
+        severity: "fatal",
+        context: { organizationId, keys },
+      });
+    }
+    if (isFieldEncryptionRequired(env)) {
+      throw new ElizaError(
+        "SECRETS_MASTER_KEY is required to store agent environment secrets in this environment",
+        {
+          code: "AGENT_ENV_ENCRYPTION_REQUIRED",
+          severity: "fatal",
+          context: { organizationId, keys },
+        },
+      );
+    }
     logger.warn(
       "[agent-env-crypto] SECRETS_MASTER_KEY not configured — storing agent environment secrets as PLAINTEXT (legacy behavior). Configure the key on the cloud API and provisioning daemon to encrypt at rest.",
-      { organizationId, keys: pending.map(([key]) => key) },
+      { organizationId, keys },
     );
     return { ...environmentVars };
   }
@@ -113,7 +155,7 @@ export async function encryptAgentEnvVarsForStorage(
 }
 
 /**
- * Materialize a stored agent env map back to real values. `enc:v1:` values are
+ * Materialize a stored agent env map back to real values. `enc:` values are
  * decrypted; everything else (legacy plaintext rows, non-sensitive config)
  * passes through untouched. Decrypt failures fail CLOSED with the key name —
  * handing ciphertext to a container as if it were the secret would be a silent

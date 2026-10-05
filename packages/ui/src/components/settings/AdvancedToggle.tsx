@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { Switch } from "../ui/switch";
 import {
   advancedToggleListeners,
@@ -60,7 +60,7 @@ export function AdvancedToggle(props: AdvancedToggleProps) {
     <label
       className={
         className ??
-        "inline-flex min-h-8 cursor-pointer items-center gap-2 text-xs font-medium text-muted"
+        "inline-flex min-h-8 cursor-pointer items-center gap-2 text-xs font-medium text-muted-strong"
       }
     >
       <span>{label}</span>

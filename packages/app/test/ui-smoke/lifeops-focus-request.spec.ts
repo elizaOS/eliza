@@ -67,7 +67,7 @@ for (const viewport of [
         );
       },
     );
-    for (const view of ["finances", "goals", "health", "inbox", "todos"]) {
+    for (const view of ["goals", "health", "inbox", "todos"]) {
       await openAppPath(page, `/${view}`);
       const control =
         view === "inbox"

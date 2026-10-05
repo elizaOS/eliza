@@ -10,12 +10,16 @@ import {
   useNativeBackdropActive,
 } from "../glass/native-backdrop";
 import { resetNativeGlassHost } from "../glass/native-bridge";
-import type { ShaderConfig } from "../state/ui-preferences";
-import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
+import {
+  DEFAULT_BACKGROUND_COLOR,
+  type ShaderConfig,
+} from "../state/ui-preferences";
+
 import { useBackgroundConfig } from "../state/useBackgroundConfig";
+import { resolveWallpaperUrl } from "../utils/asset-url";
 import { useVoiceSettingsApplyChannel } from "../voice/useVoiceSettingsApplyChannel";
 import { applyRootCanvasPaint } from "./html-canvas-paint";
-import { ImageBackground, resolveWallpaperUrl } from "./ImageBackground";
+import { ImageBackground } from "./ImageBackground";
 import { ShaderBackground } from "./ShaderBackground";
 import { useAppearanceApplyChannel } from "./useAppearanceApplyChannel";
 import { useBackgroundApplyChannel } from "./useBackgroundApplyChannel";

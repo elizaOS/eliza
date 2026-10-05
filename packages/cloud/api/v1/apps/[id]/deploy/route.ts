@@ -12,16 +12,17 @@
  * attach domain → poll GET /deploy/status until READY or ERROR.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { containersRepository } from "@elizaos/cloud-shared/db/repositories/containers";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { appDeploymentsService } from "@elizaos/cloud-shared/lib/services/app-deployments";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { appsDeployOrganizationDecision } from "@/api-app/lib/apps-deploy-gate";
-import { containersRepository } from "@/db/repositories/containers";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appDeploymentsService } from "@/lib/services/app-deployments";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { DeployBodySchema } from "./schema";
 
 const app = new Hono<AppEnv>();
@@ -81,9 +82,11 @@ app.post("/", async (c) => {
       );
     }
 
-    // Body is fully optional — accept an empty/absent body as `{}`.
-    const rawBody: unknown = await c.req.json().catch(() => ({}));
-    const parsed = DeployBodySchema.safeParse(rawBody);
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const parsed = DeployBodySchema.safeParse(decodedBody.value);
     if (!parsed.success) {
       return c.json(
         {

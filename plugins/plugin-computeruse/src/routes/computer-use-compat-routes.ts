@@ -9,7 +9,8 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { ModelType, resolveAliasedEnvValue } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import type { AppDescriptor, AppState } from "../app-control/types.js";
 import { ComputerUseSessionError } from "../sessions/session-manager.js";
 import type {

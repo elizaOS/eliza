@@ -16,22 +16,6 @@ export const DEFAULT_THEME: TenantTheme = {
   colorScheme: "dark",
 };
 
-export function themeToCSS(theme: TenantTheme): Record<string, string> {
-  return {
-    "--stwd-primary": theme.primaryColor,
-    "--stwd-accent": theme.accentColor,
-    "--stwd-bg": theme.backgroundColor,
-    "--stwd-surface": theme.surfaceColor,
-    "--stwd-text": theme.textColor,
-    "--stwd-muted": theme.mutedColor,
-    "--stwd-success": theme.successColor,
-    "--stwd-error": theme.errorColor,
-    "--stwd-warning": theme.warningColor,
-    "--stwd-radius": `${theme.borderRadius}px`,
-    "--stwd-font": theme.fontFamily || "Inter, system-ui, sans-serif",
-  };
-}
-
 export function mergeTheme(
   base: TenantTheme,
   overrides?: Partial<TenantTheme>,

@@ -4,9 +4,8 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { detectMcpModelProvider, transformMcpToolSchema } from "@elizaos/shared/mcp";
-import type { JSONSchema7 } from "json-schema";
-
+import { detectMcpModelProvider } from "../protocol-utils/model-provider.js";
+import { McpSchemaCompatibility } from "../protocol-utils/tool-schema-compatibility.js";
 export interface StringConstraints {
   minLength?: number;
   maxLength?: number;
@@ -43,52 +42,10 @@ export interface ModelInfo {
   readonly supportsStructuredOutputs?: boolean;
   readonly isReasoningModel?: boolean;
 }
-
-export abstract class McpToolCompatibility {
-  protected readonly modelInfo: ModelInfo;
-
-  constructor(modelInfo: ModelInfo) {
-    this.modelInfo = modelInfo;
-  }
-
-  abstract shouldApply(): boolean;
-
-  transformToolSchema(toolSchema: JSONSchema7): JSONSchema7 {
-    return transformMcpToolSchema(toolSchema as Record<string, unknown>, {
-      applies: this.shouldApply(),
-      unsupportedFor: (type) => this.unsupportedFor(type),
-      describe: (original, constraints) =>
-        this.mergeDescription(original, constraints as SchemaConstraints),
-    }) as JSONSchema7;
-  }
-
-  private unsupportedFor(type: string | undefined): readonly string[] {
-    switch (type) {
-      case "string":
-        return this.getUnsupportedStringProperties();
-      case "number":
-      case "integer":
-        return this.getUnsupportedNumberProperties();
-      case "array":
-        return this.getUnsupportedArrayProperties();
-      case "object":
-        return this.getUnsupportedObjectProperties();
-      default:
-        return [];
-    }
-  }
-
-  protected mergeDescription(original: string | undefined, constraints: SchemaConstraints): string {
-    const serialized = JSON.stringify(constraints);
-    return original ? `${original}\n${serialized}` : serialized;
-  }
-
-  protected abstract getUnsupportedStringProperties(): readonly string[];
-  protected abstract getUnsupportedNumberProperties(): readonly string[];
-  protected abstract getUnsupportedArrayProperties(): readonly string[];
-  protected abstract getUnsupportedObjectProperties(): readonly string[];
-}
-
+export abstract class McpToolCompatibility extends McpSchemaCompatibility<
+  ModelInfo,
+  SchemaConstraints
+> {}
 export function detectModelProvider(runtime: IAgentRuntime): ModelInfo {
   const detected = detectMcpModelProvider(runtime);
   return {

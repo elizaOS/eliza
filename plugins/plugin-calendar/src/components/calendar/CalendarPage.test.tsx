@@ -4,8 +4,8 @@
  * @vitest-environment jsdom
  */
 
-import { render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CalendarPage } from "./CalendarPage.tsx";
 
 vi.mock("./SimpleCalendarView.tsx", () => ({
@@ -13,6 +13,10 @@ vi.mock("./SimpleCalendarView.tsx", () => ({
 }));
 
 describe("CalendarPage", () => {
+  afterEach(async () => {
+    await act(async () => cleanup());
+  });
+
   it("keeps its fullscreen header below the native safe area", () => {
     const { container } = render(<CalendarPage />);
 

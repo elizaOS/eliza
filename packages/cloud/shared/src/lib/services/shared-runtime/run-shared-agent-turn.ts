@@ -28,14 +28,14 @@ import {
   replaceNameTokens,
   stableStringify,
   type UUID,
-} from "@elizaos/core/edge";
+} from "@elizaos/core";
 import {
   isSharedGroupReminderDelivery,
   type ScheduledTaskRunner,
   type SharedReminderDelivery,
-} from "@elizaos/plugin-scheduling/edge";
-import type { TodoStore } from "@elizaos/plugin-todos/edge";
-import { runWebSearchEdge } from "@elizaos/plugin-web-search/edge";
+} from "@elizaos/plugin-scheduling";
+import type { TodoStore } from "@elizaos/plugin-todos";
+import { runWebSearchEdge } from "@elizaos/plugin-web-search";
 import type {
   SharedRuntimePublicGrounding,
   SharedRuntimeReminderActionProvenance,
@@ -433,6 +433,7 @@ function requiredActionForTurn(
   const intentText = input.capabilityText ?? input.message;
   if (
     actionsEnabled &&
+    input.execution?.authenticatedPersonalSharedUser === true &&
     input.execution?.media &&
     isExplicitSharedMediaGenerationRequest(intentText)
   ) {
@@ -777,7 +778,7 @@ function isShortReminderClearConfirmation(text: string): boolean {
   );
 }
 
-function isExplicitReminderCreationIntent(text: string): boolean {
+function isExplicitReminderCreationIntent(text: string, groupDelivery = false): boolean {
   if (hasTrailingSharedActionCancellation(text)) return false;
   const normalized = normalizedReminderOperationCommand(primaryReminderCommandClause(text));
   if (!normalized) return false;
@@ -790,9 +791,12 @@ function isExplicitReminderCreationIntent(text: string): boolean {
     return true;
   }
   const scheduleCue =
-    /\b(?:today|tomorrow|tonight|noon|midnight|next (?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in (?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) (?:minute|minutes|hour|hours|day|days|week|weeks)|at \d{1,2}(?: \d{2})?(?: am| pm)?|\d{1,2}(?: \d{2})? (?:am|pm)|every (?:day|weekday|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d+ (?:minute|minutes|hour|hours|day|days|week|weeks))|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|(?:january|february|march|april|may|june|july|august|september|october|november|december) \d{1,2}(?: \d{4})?|\d{1,2}(?: \d{1,2})?))\b/iu;
+    /\b(?:today|tomorrow|tonight|noon|midnight|next (?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in (?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) (?:second|seconds|minute|minutes|hour|hours|day|days|week|weeks)|at \d{1,2}(?: \d{2})?(?: am| pm)?|\d{1,2}(?: \d{2})? (?:am|pm)|every (?:day|weekday|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d+ (?:second|seconds|minute|minutes|hour|hours|day|days|week|weeks))|on (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|(?:january|february|march|april|may|june|july|august|september|october|november|december) \d{1,2}(?: \d{4})?|\d{1,2}(?: \d{1,2})?))\b/iu;
   if (!scheduleCue.test(normalized)) return false;
-  return new RegExp(`^${POSITIVE_REMINDER_COMMAND_PREFIX}remind me\\b.+$`, "iu").test(normalized);
+  const recipient = groupDelivery ? "(?:me|us|this group|the group)" : "me";
+  return new RegExp(`^${POSITIVE_REMINDER_COMMAND_PREFIX}remind ${recipient}\\b.+$`, "iu").test(
+    normalized,
+  );
 }
 
 function isExplicitReminderUpdateIntent(text: string): boolean {
@@ -864,11 +868,22 @@ function snoozeTargetBeforeDuration(value: string | undefined): string | undefin
   return match?.[1]?.trim() || value;
 }
 
-function trustedReminderOperationIntent(text: string): TrustedReminderIntent | undefined {
+function trustedReminderOperationIntent(
+  text: string,
+  groupAgentName?: string,
+): TrustedReminderIntent | undefined {
   if (hasTrailingSharedActionCancellation(text)) return undefined;
+  // Group commands can address this agent by name; arbitrary speakers or quoted
+  // commands must not acquire reminder authority from that prefix.
+  if (groupAgentName) {
+    const escapedName = groupAgentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text.replace(new RegExp(`^@?${escapedName}(?:\\s*[:,]\\s*|\\s+)`, "iu"), "");
+  }
+  if (groupAgentName !== undefined && /^["'“‘`]/u.test(text.trimStart())) return undefined;
   const normalized = normalizedReminderOperationCommand(primaryReminderCommandClause(text));
   if (!normalized || isExplicitReminderClearAllIntent(text)) return undefined;
-  if (isExplicitReminderCreationIntent(text)) return { operation: "create" };
+  if (isExplicitReminderCreationIntent(text, groupAgentName !== undefined))
+    return { operation: "create" };
   if (
     /^(?:(?:can|could|would) you (?:please )?|please )?(?:(?:list|show)(?: me)?(?: all)?(?: (?:the|my))? reminders?|what reminders do i have|do i have any reminders)(?: please)?$/iu.test(
       normalized,
@@ -1113,7 +1128,12 @@ export async function runSharedAgentTurn(
   const reminderClearAllIntent =
     isExplicitReminderClearAllIntent(reminderIntentText) ||
     (reminderClearConfirmationChallenge && isShortReminderClearConfirmation(reminderIntentText));
-  const trustedReminderIntent = trustedReminderOperationIntent(reminderIntentText);
+  const trustedReminderIntent = trustedReminderOperationIntent(
+    reminderIntentText,
+    input.execution?.reminders && isSharedGroupReminderDelivery(input.execution.reminders.delivery)
+      ? input.character.name
+      : undefined,
+  );
   const trustedPredecessor = trustedReminderPredecessor(
     input.history,
     input.execution?.reminders?.delivery,
@@ -1199,7 +1219,10 @@ export async function runSharedAgentTurn(
               webSearch: Boolean(realtimeRequirement),
               reminders: remindersEnabled,
               todos: todosEnabled,
-              media: actionsEnabled && Boolean(execution.media),
+              media:
+                actionsEnabled &&
+                execution.authenticatedPersonalSharedUser === true &&
+                Boolean(execution.media),
               transport: sharedCapabilityTransportForSource(
                 execution.channel.source,
                 execution.channel.type,
@@ -1353,7 +1376,12 @@ export async function runSharedAgentTurnStream(
   const reminderClearAllIntent =
     isExplicitReminderClearAllIntent(reminderIntentText) ||
     (reminderClearConfirmationChallenge && isShortReminderClearConfirmation(reminderIntentText));
-  const trustedReminderIntent = trustedReminderOperationIntent(reminderIntentText);
+  const trustedReminderIntent = trustedReminderOperationIntent(
+    reminderIntentText,
+    input.execution?.reminders && isSharedGroupReminderDelivery(input.execution.reminders.delivery)
+      ? input.character.name
+      : undefined,
+  );
   const trustedPredecessor = trustedReminderPredecessor(
     input.history,
     input.execution?.reminders?.delivery,
@@ -1432,7 +1460,10 @@ export async function runSharedAgentTurnStream(
             webSearch: false,
             reminders: remindersEnabled,
             todos: todosEnabled,
-            media: actionsEnabled && Boolean(execution.media),
+            media:
+              actionsEnabled &&
+              execution.authenticatedPersonalSharedUser === true &&
+              Boolean(execution.media),
             transport: sharedCapabilityTransportForSource(
               execution.channel.source,
               execution.channel.type,

@@ -1,7 +1,7 @@
 /** Verifies useCloudState — backend-backed (unlocked) Cloud account sign-out through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
- * On a backend-backed session (local app-core / agent runtime, runtime NOT
+ * On a backend-backed session (local app / agent runtime, runtime NOT
  * locked) the Cloud account is also persisted server-side and re-reported by
  * /api/cloud/status. Signing out there must clear the backend session, not just
  * the renderer/Steward token — otherwise the Settings affordance reports
@@ -25,7 +25,7 @@ const clearStaleStewardSessionMock = vi.hoisted(() => vi.fn());
 const clearCloudPairApiTokenMock = vi.hoisted(() => vi.fn());
 const clearStoredStewardTokenMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: {
     getBaseUrl: vi.fn(() => "https://api.elizacloud.ai"),
     getRestAuthToken: vi.fn(() => "token"),
@@ -39,12 +39,15 @@ vi.mock("../cloud/shell/StewardProviderShared", () => ({
   clearStaleStewardSession: clearStaleStewardSessionMock,
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@elizaos/shared/steward-session-client")
-  >()),
-  clearStoredStewardToken: clearStoredStewardTokenMock,
-}));
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+    >()),
+    clearStoredStewardToken: clearStoredStewardTokenMock,
+  }),
+);
 
 vi.mock("./cloud-pair-token", () => ({
   clearCloudPairApiToken: clearCloudPairApiTokenMock,

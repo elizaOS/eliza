@@ -1,4 +1,4 @@
-/** Generated public route contracts. Regenerate with scripts/generate-public-routes.mjs. */
+/** Generated public route contracts. Regenerate with scripts/generate-public-routes.ts. */
 import type { CloudRequestOptions } from "../types.js";
 import type { ELIZA_CLOUD_PUBLIC_ENDPOINTS } from "./descriptors.generated.js";
 export type PublicRouteKey = keyof typeof ELIZA_CLOUD_PUBLIC_ENDPOINTS;
@@ -40,8 +40,13 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/api-keys/{id}": { id: string | number };
   "DELETE /api/v1/api-keys/current": Record<never, never>;
   "DELETE /api/v1/apis/storage/objects/_": Record<never, never>;
+  "DELETE /api/v1/app-auth/delegations/consent": Record<never, never>;
   "DELETE /api/v1/app-auth/mobile/credentials/{id}": { id: string | number };
   "DELETE /api/v1/apps/{id}": { id: string | number };
+  "DELETE /api/v1/apps/{id}/delegation-clients/{clientId}": {
+    id: string | number;
+    clientId: string | number;
+  };
   "DELETE /api/v1/apps/{id}/discord-automation": { id: string | number };
   "DELETE /api/v1/apps/{id}/domains": { id: string | number };
   "DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": {
@@ -142,11 +147,13 @@ export interface PublicRoutePathParams {
   };
   "GET /api/v1/apis/storage/list": Record<never, never>;
   "GET /api/v1/apis/storage/objects/_": Record<never, never>;
+  "GET /api/v1/app-auth/delegations/google/connections": Record<never, never>;
+  "GET /api/v1/app-auth/delegations/identity": Record<never, never>;
+  "GET /api/v1/app-auth/delegations/registration": Record<never, never>;
   "GET /api/v1/app-auth/mobile/config": Record<never, never>;
   "GET /api/v1/app-auth/mobile/credentials": Record<never, never>;
   "GET /api/v1/app-auth/session": Record<never, never>;
   "GET /api/v1/app-credits/balance": Record<never, never>;
-  "GET /api/v1/app-credits/verify": Record<never, never>;
   "GET /api/v1/approval-requests": Record<never, never>;
   "GET /api/v1/approval-requests/{id}": { id: string | number };
   "GET /api/v1/apps": Record<never, never>;
@@ -156,13 +163,12 @@ export interface PublicRoutePathParams {
   "GET /api/v1/apps/{id}/analytics/requests": { id: string | number };
   "GET /api/v1/apps/{id}/backup": { id: string | number };
   "GET /api/v1/apps/{id}/billing/account": { id: string | number };
+  "GET /api/v1/apps/{id}/billing/admin": { id: string | number };
+  "GET /api/v1/apps/{id}/billing/admin/notifications": { id: string | number };
+  "GET /api/v1/apps/{id}/billing/admin/paid-periods": { id: string | number };
   "GET /api/v1/apps/{id}/characters": { id: string | number };
-  "GET /api/v1/apps/{id}/charges": { id: string | number };
-  "GET /api/v1/apps/{id}/charges/{chargeId}": {
-    id: string | number;
-    chargeId: string | number;
-  };
   "GET /api/v1/apps/{id}/database": { id: string | number };
+  "GET /api/v1/apps/{id}/delegation-clients": { id: string | number };
   "GET /api/v1/apps/{id}/deploy/status": { id: string | number };
   "GET /api/v1/apps/{id}/discord-automation": { id: string | number };
   "GET /api/v1/apps/{id}/domains": { id: string | number };
@@ -198,6 +204,10 @@ export interface PublicRoutePathParams {
   "GET /api/v1/ballots": Record<never, never>;
   "GET /api/v1/ballots/{id}": { id: string | number };
   "GET /api/v1/billing/active": Record<never, never>;
+  "GET /api/v1/billing/application-slots/{slotKey}": {
+    slotKey: string | number;
+  };
+  "GET /api/v1/billing/hold": Record<never, never>;
   "GET /api/v1/billing/ledger": Record<never, never>;
   "GET /api/v1/billing/limits": Record<never, never>;
   "GET /api/v1/billing/resources/{id}/cancel": { id: string | number };
@@ -244,6 +254,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/documents/check": Record<never, never>;
   "GET /api/v1/domains": Record<never, never>;
   "GET /api/v1/domains/resolve": Record<never, never>;
+  "GET /api/v1/earnings/statement": Record<never, never>;
   "GET /api/v1/eliza/agents": Record<never, never>;
   "GET /api/v1/eliza/agents/{agentId}": { agentId: string | number };
   "GET /api/v1/eliza/agents/{agentId}/api/{path}": {
@@ -291,6 +302,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/eliza/google/accounts": Record<never, never>;
   "GET /api/v1/eliza/google/calendar/calendars": Record<never, never>;
   "GET /api/v1/eliza/google/calendar/feed": Record<never, never>;
+  "GET /api/v1/eliza/google/gmail/inbox-v1": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/read": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/search": Record<never, never>;
   "GET /api/v1/eliza/google/gmail/subscription-headers": Record<never, never>;
@@ -303,6 +315,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/eliza/paypal/popup-callback": Record<never, never>;
   "GET /api/v1/eliza/paypal/status": Record<never, never>;
   "GET /api/v1/eliza/personal": Record<never, never>;
+  "GET /api/v1/eliza/personal/recovery/{token}": { token: string | number };
   "GET /api/v1/eliza/plaid/status": Record<never, never>;
   "GET /api/v1/files": Record<never, never>;
   "GET /api/v1/files/{id}": { id: string | number };
@@ -366,6 +379,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/mcps": Record<never, never>;
   "GET /api/v1/mcps/{mcpId}": { mcpId: string | number };
   "GET /api/v1/me/account-deletion": Record<never, never>;
+  "GET /api/v1/me/consents": Record<never, never>;
   "GET /api/v1/me/mfa": Record<never, never>;
   "GET /api/v1/models": Record<never, never>;
   "GET /api/v1/models/{model}": {
@@ -385,7 +399,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/oauth/status": Record<never, never>;
   "GET /api/v1/oauth/success-proof/verify": Record<never, never>;
   "GET /api/v1/oauth/token/{platform}": { platform: string | number };
-  "GET /api/v1/outreachr": Record<never, never>;
   "GET /api/v1/payment-requests": Record<never, never>;
   "GET /api/v1/payment-requests/{id}": { id: string | number };
   "GET /api/v1/pii-scrub/jobs/{id}": { id: string | number };
@@ -420,6 +433,8 @@ export interface PublicRoutePathParams {
   "GET /api/v1/subscriptions/cancel/undo/{commandId}": {
     commandId: string | number;
   };
+  "GET /api/v1/subscriptions/cancel/undo/review": Record<never, never>;
+  "GET /api/v1/subscriptions/checkout/payer": Record<never, never>;
   "GET /api/v1/subscriptions/commands": Record<never, never>;
   "GET /api/v1/subscriptions/plans": Record<never, never>;
   "GET /api/v1/telegram/chats": Record<never, never>;
@@ -528,22 +543,55 @@ export interface PublicRoutePathParams {
   "POST /api/v1/apis/storage/presign": Record<never, never>;
   "POST /api/v1/apis/tunnels/tailscale/auth-key": Record<never, never>;
   "POST /api/v1/app-auth/connect": Record<never, never>;
+  "POST /api/v1/app-auth/delegations/google/connect": Record<never, never>;
+  "POST /api/v1/app-auth/delegations/google/request": Record<never, never>;
+  "POST /api/v1/app-auth/delegations/revoke": Record<never, never>;
+  "POST /api/v1/app-auth/delegations/token": Record<never, never>;
   "POST /api/v1/app-auth/mobile/ack": Record<never, never>;
   "POST /api/v1/app-auth/mobile/token": Record<never, never>;
-  "POST /api/v1/app-credits/checkout": Record<never, never>;
   "POST /api/v1/app/agents": Record<never, never>;
   "POST /api/v1/approval-requests": Record<never, never>;
   "POST /api/v1/approval-requests/{id}/approve": { id: string | number };
   "POST /api/v1/approval-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/approval-requests/{id}/deny": { id: string | number };
   "POST /api/v1/apps": Record<never, never>;
-  "POST /api/v1/apps/{id}/billing/registration": { id: string | number };
-  "POST /api/v1/apps/{id}/charges": { id: string | number };
-  "POST /api/v1/apps/{id}/charges/{chargeId}/checkout": {
+  "POST /api/v1/apps/{id}/billing/admin/merchants": { id: string | number };
+  "POST /api/v1/apps/{id}/billing/admin/merchants/disconnect": {
     id: string | number;
-    chargeId: string | number;
   };
+  "POST /api/v1/apps/{id}/billing/admin/merchants/onboarding": {
+    id: string | number;
+  };
+  "POST /api/v1/apps/{id}/billing/admin/merchants/refresh": {
+    id: string | number;
+  };
+  "POST /api/v1/apps/{id}/billing/admin/notifications": { id: string | number };
+  "POST /api/v1/apps/{id}/billing/admin/notifications/keys/activate": {
+    id: string | number;
+  };
+  "POST /api/v1/apps/{id}/billing/admin/notifications/keys/prepare": {
+    id: string | number;
+  };
+  "POST /api/v1/apps/{id}/billing/admin/operations/{commandId}/recover": {
+    id: string | number;
+    commandId: string | number;
+  };
+  "POST /api/v1/apps/{id}/billing/admin/plans": { id: string | number };
+  "POST /api/v1/apps/{id}/billing/admin/plans/adopt": { id: string | number };
+  "POST /api/v1/apps/{id}/billing/admin/plans/publish": { id: string | number };
+  "POST /api/v1/apps/{id}/billing/admin/plans/retire": { id: string | number };
+  "POST /api/v1/apps/{id}/billing/admin/plans/verify": { id: string | number };
+  "POST /api/v1/apps/{id}/billing/admin/refunds": { id: string | number };
+  "POST /api/v1/apps/{id}/billing/admin/refunds/preview": {
+    id: string | number;
+  };
+  "POST /api/v1/apps/{id}/billing/registration": { id: string | number };
   "POST /api/v1/apps/{id}/chat": { id: string | number };
+  "POST /api/v1/apps/{id}/delegation-clients": { id: string | number };
+  "POST /api/v1/apps/{id}/delegation-clients/{clientId}/rotate": {
+    id: string | number;
+    clientId: string | number;
+  };
   "POST /api/v1/apps/{id}/deploy": { id: string | number };
   "POST /api/v1/apps/{id}/discord-automation": { id: string | number };
   "POST /api/v1/apps/{id}/discord-automation/post": { id: string | number };
@@ -564,6 +612,7 @@ export interface PublicRoutePathParams {
     deploymentId: string | number;
   };
   "POST /api/v1/apps/{id}/generate-image": { id: string | number };
+  "POST /api/v1/apps/{id}/inference/chat/completions": { id: string | number };
   "POST /api/v1/apps/{id}/promote": { id: string | number };
   "POST /api/v1/apps/{id}/promote/assets": { id: string | number };
   "POST /api/v1/apps/{id}/promote/preview": { id: string | number };
@@ -580,6 +629,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/ballots/{id}/distribute": { id: string | number };
   "POST /api/v1/ballots/{id}/tally": { id: string | number };
   "POST /api/v1/ballots/{id}/vote": { id: string | number };
+  "POST /api/v1/billing/hold": Record<never, never>;
   "POST /api/v1/billing/resources/{id}/cancel": { id: string | number };
   "POST /api/v1/blooio/connect": Record<never, never>;
   "POST /api/v1/blooio/disconnect": Record<never, never>;
@@ -734,6 +784,8 @@ export interface PublicRoutePathParams {
   "POST /api/v1/mcps": Record<never, never>;
   "POST /api/v1/mcps/{mcpId}/publish": { mcpId: string | number };
   "POST /api/v1/me/account-deletion": Record<never, never>;
+  "POST /api/v1/me/consents": Record<never, never>;
+  "POST /api/v1/me/data-export": Record<never, never>;
   "POST /api/v1/messages": Record<never, never>;
   "POST /api/v1/models/status": Record<never, never>;
   "POST /api/v1/oauth-intents": Record<never, never>;
@@ -742,7 +794,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/oauth/callback/{provider}": { provider: string | number };
   "POST /api/v1/oauth/connect": Record<never, never>;
   "POST /api/v1/oauth/initiate": Record<never, never>;
-  "POST /api/v1/outreachr": Record<never, never>;
   "POST /api/v1/payment-requests": Record<never, never>;
   "POST /api/v1/payment-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/payment-requests/{id}/expire": { id: string | number };
@@ -787,6 +838,11 @@ export interface PublicRoutePathParams {
   "POST /api/v1/stripe/checkout": Record<never, never>;
   "POST /api/v1/subscriptions/cancel": Record<never, never>;
   "POST /api/v1/subscriptions/cancel/undo": Record<never, never>;
+  "POST /api/v1/subscriptions/cancel/undo/confirm": Record<never, never>;
+  "POST /api/v1/subscriptions/checkout": Record<never, never>;
+  "POST /api/v1/subscriptions/checkout/confirm": Record<never, never>;
+  "POST /api/v1/subscriptions/portal": Record<never, never>;
+  "POST /api/v1/subscriptions/upgrade/review": Record<never, never>;
   "POST /api/v1/telegram/connect": Record<never, never>;
   "POST /api/v1/telegram/scan-chats": Record<never, never>;
   "POST /api/v1/topup/10": Record<never, never>;
@@ -869,8 +925,10 @@ export interface PublicRouteHeaders {
     "Idempotency-Key": string;
     "Content-Type"?: string;
   };
+  "DELETE /api/v1/app-auth/delegations/consent": never;
   "DELETE /api/v1/app-auth/mobile/credentials/{id}": never;
   "DELETE /api/v1/apps/{id}": never;
+  "DELETE /api/v1/apps/{id}/delegation-clients/{clientId}": never;
   "DELETE /api/v1/apps/{id}/discord-automation": never;
   "DELETE /api/v1/apps/{id}/domains": never;
   "DELETE /api/v1/apps/{id}/domains/{domain}/dns/{recordId}": never;
@@ -950,11 +1008,13 @@ export interface PublicRouteHeaders {
     "Idempotency-Key": string;
     "Content-Type"?: string;
   };
+  "GET /api/v1/app-auth/delegations/google/connections": never;
+  "GET /api/v1/app-auth/delegations/identity": never;
+  "GET /api/v1/app-auth/delegations/registration": never;
   "GET /api/v1/app-auth/mobile/config": never;
   "GET /api/v1/app-auth/mobile/credentials": never;
   "GET /api/v1/app-auth/session": never;
   "GET /api/v1/app-credits/balance": never;
-  "GET /api/v1/app-credits/verify": never;
   "GET /api/v1/approval-requests": never;
   "GET /api/v1/approval-requests/{id}": never;
   "GET /api/v1/apps": never;
@@ -964,10 +1024,12 @@ export interface PublicRouteHeaders {
   "GET /api/v1/apps/{id}/analytics/requests": never;
   "GET /api/v1/apps/{id}/backup": never;
   "GET /api/v1/apps/{id}/billing/account": never;
+  "GET /api/v1/apps/{id}/billing/admin": never;
+  "GET /api/v1/apps/{id}/billing/admin/notifications": never;
+  "GET /api/v1/apps/{id}/billing/admin/paid-periods": never;
   "GET /api/v1/apps/{id}/characters": never;
-  "GET /api/v1/apps/{id}/charges": never;
-  "GET /api/v1/apps/{id}/charges/{chargeId}": never;
   "GET /api/v1/apps/{id}/database": never;
+  "GET /api/v1/apps/{id}/delegation-clients": never;
   "GET /api/v1/apps/{id}/deploy/status": never;
   "GET /api/v1/apps/{id}/discord-automation": never;
   "GET /api/v1/apps/{id}/domains": never;
@@ -990,6 +1052,8 @@ export interface PublicRouteHeaders {
   "GET /api/v1/ballots": never;
   "GET /api/v1/ballots/{id}": never;
   "GET /api/v1/billing/active": never;
+  "GET /api/v1/billing/application-slots/{slotKey}": never;
+  "GET /api/v1/billing/hold": never;
   "GET /api/v1/billing/ledger": never;
   "GET /api/v1/billing/limits": never;
   "GET /api/v1/billing/resources/{id}/cancel": never;
@@ -1023,6 +1087,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/documents/check": never;
   "GET /api/v1/domains": never;
   "GET /api/v1/domains/resolve": never;
+  "GET /api/v1/earnings/statement": never;
   "GET /api/v1/eliza/agents": never;
   "GET /api/v1/eliza/agents/{agentId}": never;
   "GET /api/v1/eliza/agents/{agentId}/api/{path}": never;
@@ -1045,6 +1110,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/eliza/google/accounts": never;
   "GET /api/v1/eliza/google/calendar/calendars": never;
   "GET /api/v1/eliza/google/calendar/feed": never;
+  "GET /api/v1/eliza/google/gmail/inbox-v1": never;
   "GET /api/v1/eliza/google/gmail/read": never;
   "GET /api/v1/eliza/google/gmail/search": never;
   "GET /api/v1/eliza/google/gmail/subscription-headers": never;
@@ -1055,6 +1121,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/eliza/paypal/popup-callback": never;
   "GET /api/v1/eliza/paypal/status": never;
   "GET /api/v1/eliza/personal": never;
+  "GET /api/v1/eliza/personal/recovery/{token}": never;
   "GET /api/v1/eliza/plaid/status": never;
   "GET /api/v1/files": never;
   "GET /api/v1/files/{id}": never;
@@ -1086,6 +1153,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/mcps": never;
   "GET /api/v1/mcps/{mcpId}": never;
   "GET /api/v1/me/account-deletion": never;
+  "GET /api/v1/me/consents": never;
   "GET /api/v1/me/mfa": never;
   "GET /api/v1/models": never;
   "GET /api/v1/models/{model}": never;
@@ -1103,7 +1171,6 @@ export interface PublicRouteHeaders {
   "GET /api/v1/oauth/status": never;
   "GET /api/v1/oauth/success-proof/verify": never;
   "GET /api/v1/oauth/token/{platform}": never;
-  "GET /api/v1/outreachr": never;
   "GET /api/v1/payment-requests": never;
   "GET /api/v1/payment-requests/{id}": never;
   "GET /api/v1/pii-scrub/jobs/{id}": never;
@@ -1129,6 +1196,8 @@ export interface PublicRouteHeaders {
   "GET /api/v1/steward/tenants/credentials": never;
   "GET /api/v1/subscriptions/cancel/{commandId}": never;
   "GET /api/v1/subscriptions/cancel/undo/{commandId}": never;
+  "GET /api/v1/subscriptions/cancel/undo/review": never;
+  "GET /api/v1/subscriptions/checkout/payer": never;
   "GET /api/v1/subscriptions/commands": never;
   "GET /api/v1/subscriptions/plans": never;
   "GET /api/v1/telegram/chats": never;
@@ -1220,19 +1289,37 @@ export interface PublicRouteHeaders {
   };
   "POST /api/v1/apis/tunnels/tailscale/auth-key": never;
   "POST /api/v1/app-auth/connect": never;
+  "POST /api/v1/app-auth/delegations/google/connect": never;
+  "POST /api/v1/app-auth/delegations/google/request": never;
+  "POST /api/v1/app-auth/delegations/revoke": never;
+  "POST /api/v1/app-auth/delegations/token": never;
   "POST /api/v1/app-auth/mobile/ack": never;
   "POST /api/v1/app-auth/mobile/token": never;
-  "POST /api/v1/app-credits/checkout": never;
   "POST /api/v1/app/agents": never;
   "POST /api/v1/approval-requests": never;
   "POST /api/v1/approval-requests/{id}/approve": never;
   "POST /api/v1/approval-requests/{id}/cancel": never;
   "POST /api/v1/approval-requests/{id}/deny": never;
   "POST /api/v1/apps": never;
+  "POST /api/v1/apps/{id}/billing/admin/merchants": never;
+  "POST /api/v1/apps/{id}/billing/admin/merchants/disconnect": never;
+  "POST /api/v1/apps/{id}/billing/admin/merchants/onboarding": never;
+  "POST /api/v1/apps/{id}/billing/admin/merchants/refresh": never;
+  "POST /api/v1/apps/{id}/billing/admin/notifications": never;
+  "POST /api/v1/apps/{id}/billing/admin/notifications/keys/activate": never;
+  "POST /api/v1/apps/{id}/billing/admin/notifications/keys/prepare": never;
+  "POST /api/v1/apps/{id}/billing/admin/operations/{commandId}/recover": never;
+  "POST /api/v1/apps/{id}/billing/admin/plans": never;
+  "POST /api/v1/apps/{id}/billing/admin/plans/adopt": never;
+  "POST /api/v1/apps/{id}/billing/admin/plans/publish": never;
+  "POST /api/v1/apps/{id}/billing/admin/plans/retire": never;
+  "POST /api/v1/apps/{id}/billing/admin/plans/verify": never;
+  "POST /api/v1/apps/{id}/billing/admin/refunds": never;
+  "POST /api/v1/apps/{id}/billing/admin/refunds/preview": never;
   "POST /api/v1/apps/{id}/billing/registration": never;
-  "POST /api/v1/apps/{id}/charges": never;
-  "POST /api/v1/apps/{id}/charges/{chargeId}/checkout": never;
   "POST /api/v1/apps/{id}/chat": never;
+  "POST /api/v1/apps/{id}/delegation-clients": never;
+  "POST /api/v1/apps/{id}/delegation-clients/{clientId}/rotate": never;
   "POST /api/v1/apps/{id}/deploy": never;
   "POST /api/v1/apps/{id}/discord-automation": never;
   "POST /api/v1/apps/{id}/discord-automation/post": never;
@@ -1247,6 +1334,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/apps/{id}/frontend": never;
   "POST /api/v1/apps/{id}/frontend/{deploymentId}/activate": never;
   "POST /api/v1/apps/{id}/generate-image": never;
+  "POST /api/v1/apps/{id}/inference/chat/completions": never;
   "POST /api/v1/apps/{id}/promote": never;
   "POST /api/v1/apps/{id}/promote/assets": never;
   "POST /api/v1/apps/{id}/promote/preview": never;
@@ -1263,6 +1351,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/ballots/{id}/distribute": never;
   "POST /api/v1/ballots/{id}/tally": never;
   "POST /api/v1/ballots/{id}/vote": never;
+  "POST /api/v1/billing/hold": never;
   "POST /api/v1/billing/resources/{id}/cancel": never;
   "POST /api/v1/blooio/connect": never;
   "POST /api/v1/blooio/disconnect": never;
@@ -1362,6 +1451,8 @@ export interface PublicRouteHeaders {
   "POST /api/v1/mcps": never;
   "POST /api/v1/mcps/{mcpId}/publish": never;
   "POST /api/v1/me/account-deletion": never;
+  "POST /api/v1/me/consents": never;
+  "POST /api/v1/me/data-export": never;
   "POST /api/v1/messages": never;
   "POST /api/v1/models/status": never;
   "POST /api/v1/oauth-intents": never;
@@ -1370,7 +1461,6 @@ export interface PublicRouteHeaders {
   "POST /api/v1/oauth/callback/{provider}": never;
   "POST /api/v1/oauth/connect": never;
   "POST /api/v1/oauth/initiate": never;
-  "POST /api/v1/outreachr": never;
   "POST /api/v1/payment-requests": never;
   "POST /api/v1/payment-requests/{id}/cancel": never;
   "POST /api/v1/payment-requests/{id}/expire": never;
@@ -1405,6 +1495,11 @@ export interface PublicRouteHeaders {
   "POST /api/v1/stripe/checkout": never;
   "POST /api/v1/subscriptions/cancel": never;
   "POST /api/v1/subscriptions/cancel/undo": never;
+  "POST /api/v1/subscriptions/cancel/undo/confirm": never;
+  "POST /api/v1/subscriptions/checkout": never;
+  "POST /api/v1/subscriptions/checkout/confirm": never;
+  "POST /api/v1/subscriptions/portal": never;
+  "POST /api/v1/subscriptions/upgrade/review": never;
   "POST /api/v1/telegram/connect": never;
   "POST /api/v1/telegram/scan-chats": never;
   "POST /api/v1/topup/10": never;

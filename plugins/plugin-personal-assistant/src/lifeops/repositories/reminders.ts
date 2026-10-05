@@ -1,10 +1,10 @@
 /** Adapts LifeOps reminders persistence to canonical domain records. Preserves existing agent scoping, transaction handles, and conditional mutation contracts. */
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsReminderAttempt,
   LifeOpsReminderPlan,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   sqlInteger,
@@ -154,6 +154,35 @@ export class ReminderRepository {
           ${ownerIdClause}
           ${planIdClause}
         ORDER BY scheduled_for ASC, step_index ASC, attempted_at ASC`,
+    );
+    return rows.map(parseReminderAttempt);
+  }
+
+  /** Projection only: retain history, but read one latest attempt per displayed occurrence. */
+  async listLatestReminderAttemptsForOccurrences(
+    agentId: string,
+    occurrenceIds: string[],
+  ): Promise<LifeOpsReminderAttempt[]> {
+    if (occurrenceIds.length === 0) return [];
+    const ownerList = [...new Set(occurrenceIds)]
+      .map((id) => sqlQuote(id))
+      .join(", ");
+    const rows = await executeRawSql(
+      this.runtime,
+      `
+      SELECT * FROM (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY owner_id
+          ORDER BY COALESCE(attempted_at, scheduled_for)::timestamptz DESC,
+                   scheduled_for ASC, step_index ASC, id ASC
+        ) AS occurrence_attempt_rank
+        FROM app_reminders.life_reminder_attempts
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND owner_type = 'occurrence'
+          AND owner_id IN (${ownerList})
+      ) AS ranked_attempts
+      WHERE occurrence_attempt_rank = 1
+    `,
     );
     return rows.map(parseReminderAttempt);
   }

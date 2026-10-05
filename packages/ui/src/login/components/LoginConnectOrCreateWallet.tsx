@@ -4,7 +4,7 @@ import type {
   LoginClient,
   LoginMfaRequiredResult,
   UserWalletCreateResult,
-} from "@elizaos/login";
+} from "@elizaos/auth";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../hooks/useAuth.js";

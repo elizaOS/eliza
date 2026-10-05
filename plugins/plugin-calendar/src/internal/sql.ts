@@ -7,7 +7,7 @@ import {
   executeSql,
   type RuntimeDb,
   type TransactionalDb,
-} from "@elizaos/shared/db/raw-sql";
+} from "@elizaos/plugin-sql";
 
 export {
   extractRows,
@@ -23,7 +23,7 @@ export {
   toBoolean,
   toNumber,
   toText,
-} from "@elizaos/shared/db/raw-sql";
+} from "@elizaos/plugin-sql";
 
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
   const db = runtime.adapter.db as RuntimeDb | undefined;

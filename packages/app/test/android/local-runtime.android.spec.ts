@@ -3,7 +3,7 @@
 // loaded, and the chat surface is interactive. The full SSE chat round-trip is
 // covered by mobile-local-chat-smoke (test:sim:local-chat:android:live); this
 // spec asserts the UI-visible side of the same live backend.
-import { AGENT_API_PORT } from "../../scripts/lib/android-device.mjs";
+import { AGENT_API_PORT } from "../../scripts/lib/android-device.ts";
 import { expect, gotoRoute, test, waitForShellReady } from "./android-harness";
 
 test.describe

@@ -14,16 +14,16 @@
  */
 
 import type {
-  IosLocalAgentNativeRequestOptions,
-  IosLocalAgentNativeRequestResult,
-} from "../api/ios-local-agent-transport";
+  NativeAgentHttpRequest,
+  NativeAgentHttpResponse,
+} from "../api/host-transport";
 import type { invokeViewInteract } from "../components/views/view-interact-registry";
 
 export interface ElizaWindowBridgeCapabilities {
   /** iOS native host → in-page local-agent request dispatch (ITTP transport). */
   iosLocalAgentRequest: (
-    options: IosLocalAgentNativeRequestOptions,
-  ) => Promise<IosLocalAgentNativeRequestResult>;
+    options: NativeAgentHttpRequest,
+  ) => Promise<NativeAgentHttpResponse>;
   /** Agent / devtools / e2e → invoke a mounted view's interact handler. */
   viewInteract: typeof invokeViewInteract;
 }

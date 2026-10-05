@@ -6,19 +6,21 @@
  */
 
 import { type ComponentType, createElement } from "react";
+import type {
+  OverlayApp,
+  OverlayAppContext,
+} from "../../apps/overlay-app-api.js";
 import { RetainedLazyComponent } from "../../retained-lazy";
 import {
   navigateToViews,
   ViewErrorState,
   ViewLoadingSkeleton,
 } from "../views/ViewStatusStates";
-import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
 
 const lazyComponentCache = new WeakMap<
   NonNullable<OverlayApp["loader"]>,
   ComponentType<OverlayAppContext>
 >();
-
 export function getOverlayAppLazyComponent(
   app: OverlayApp,
 ): ComponentType<OverlayAppContext> | null {

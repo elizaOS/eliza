@@ -1,12 +1,12 @@
 /** Handles app analytics summaries with shared date-range validation. */
-import { Hono } from "hono";
 
-import { parseDateRangeParams } from "@/lib/api/date-range-params";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { appsService } from "@/lib/services/apps";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { parseDateRangeParams } from "@elizaos/cloud-shared/lib/api/date-range-params";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * GET /api/v1/apps/[id]/analytics

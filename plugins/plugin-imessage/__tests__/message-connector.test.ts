@@ -101,7 +101,7 @@ describe("iMessage message connector registration", () => {
       getChats: vi.fn(async () => []),
       getRecentMessages: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
-      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+      sendMessage: vi.fn(async () => ({ success: true, localEffectIds: ["local-completion-1"] })),
     } as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);
@@ -160,7 +160,7 @@ describe("iMessage message connector registration", () => {
           hasAttachments: false,
         },
       ]),
-      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+      sendMessage: vi.fn(async () => ({ success: true, localEffectIds: ["local-completion-1"] })),
     } as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);
@@ -173,6 +173,41 @@ describe("iMessage message connector registration", () => {
     );
   });
 
+  it("searches the whole chat before keeping the requested number of matches", async () => {
+    const registrations: MessageConnectorRegistration[] = [];
+    const runtime = makeRuntime(registrations);
+    // chat.db order: oldest first; only the oldest message mentions dinner.
+    const chat = Array.from({ length: 10 }, (_, index) => ({
+      id: String(index + 1),
+      text: index === 0 ? "dinner at 7?" : `message ${index + 1}`,
+      handle: "+14155552671",
+      chatId: "iMessage;-;+14155552671",
+      timestamp: 100 + index,
+      isFromMe: false,
+      hasAttachments: false,
+    }));
+    const getMessages = vi.fn(async (options: { limit?: number } = {}) =>
+      // Like the chat.db reader: a limit keeps the newest rows.
+      options.limit === undefined ? chat : chat.slice(-options.limit)
+    );
+    const service = {
+      getStatus: vi.fn(makeStatus),
+      getContacts: vi.fn(() => new Map()),
+      getChats: vi.fn(async () => []),
+      getRecentMessages: vi.fn(async () => []),
+      getMessages,
+      sendMessage: vi.fn(async () => ({ success: true, localEffectIds: ["local-completion-1"] })),
+    } as unknown as IMessageService;
+
+    IMessageService.registerSendHandlers(runtime, service);
+    const matches = await registrations[0].searchMessages?.(
+      { runtime },
+      { query: "dinner", limit: 1 }
+    );
+
+    expect(matches?.map((memory) => memory.content.text)).toEqual(["dinner at 7?"]);
+  });
+
   it("rejects non-default account ids at the connector boundary", async () => {
     const registrations: MessageConnectorRegistration[] = [];
     const runtime = makeRuntime(registrations);
@@ -182,7 +217,7 @@ describe("iMessage message connector registration", () => {
       getChats: vi.fn(async () => []),
       getRecentMessages: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
-      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+      sendMessage: vi.fn(async () => ({ success: true, localEffectIds: ["local-completion-1"] })),
     } as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);

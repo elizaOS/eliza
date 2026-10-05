@@ -5,21 +5,21 @@
  * Connections link a Discord bot to a character for AI responses.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   discordConnectionsRepository,
   userCharactersRepository,
-} from "@/db/repositories";
+} from "@elizaos/cloud-shared/db/repositories";
 import {
   DISCORD_DEFAULT_INTENTS,
   DiscordConnectionMetadataSchema,
-} from "@/db/schemas/discord-connections";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/db/schemas/discord-connections";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const app = new Hono<AppEnv>();
 

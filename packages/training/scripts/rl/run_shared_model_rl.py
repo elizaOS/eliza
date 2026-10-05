@@ -25,22 +25,19 @@ import asyncio
 import json
 import logging
 import random
-import sys
 from pathlib import Path
 
 # Add parent paths — use the python package root, not src/
 _script_dir = Path(__file__).resolve().parent
 _pkg_root = _script_dir.parent
-if str(_pkg_root) not in sys.path:
-    sys.path.insert(0, str(_pkg_root))
 
-from src.training.shared_model_rl import (
+from eliza_training.rl.shared_model_rl import (
     FeedCRLConfig,
     SharedModelConfig,
     run_feed_crl,
     run_shared_model_training,
 )
-from src.training.simulation_bridge import (
+from eliza_training.rl.simulation_bridge import (
     ActionOutcome,
     MarketState,
     PerpMarket,
@@ -338,12 +335,6 @@ async def main_async(args: argparse.Namespace) -> None:
     # Save results
     output_path = args.output
     with open(output_path, "w") as f:
-        # Convert non-serializable values
-        def serialize(obj):
-            if isinstance(obj, (float,)) and (obj != obj):  # NaN
-                return None
-            return obj
-
         json.dump(results, f, indent=2, default=str)
     print(f"\nResults saved to: {output_path}")
 

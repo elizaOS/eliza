@@ -5,7 +5,7 @@ import { type BinaryLike, createHash, Hash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import fs, { type FileHandle } from "node:fs/promises";
 import { types as utilTypes } from "node:util";
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/shared";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import {
   type AgentBackupRestoreV3CandidateFsControl,
   AgentBackupRestoreV3CandidateFsError,

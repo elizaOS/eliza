@@ -23,14 +23,15 @@ import path from "node:path";
 import process from "node:process";
 import { sanitizeSpawnEnv } from "@elizaos/core";
 import {
+  applyHostExecutionBaseline,
+  resolveHostExecutable,
+} from "@elizaos/host";
+import {
   isIosMobile,
   type RuntimeExecutionMode,
   resolveRuntimeExecutionMode,
-} from "@elizaos/shared";
-import {
-  applyHostExecutionBaseline,
-  resolveHostExecutable,
-} from "@elizaos/shared/host-execution-env";
+} from "@elizaos/host/protocol";
+
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
 import {

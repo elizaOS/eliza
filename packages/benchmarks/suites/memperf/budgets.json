@@ -1,0 +1,14 @@
+{
+  "_comment": "Memory-benchmark budgets for the memperf harness (#8809). The harness compares MEASURED rows against these and exits non-zero when a hard budget is exceeded. A skipped (model-absent) row never fails a budget. Per-tier peakRssMb is the resident ceiling for a single-tier text load+run on desktop/server; ratchet down as the LRU fit-path + dynamic context selection land. coResidency.maxEvictions gates the REAL co-residency sequence on a known-fitting set; coResidency.selfCheckMinEvictions is the floor the synthetic wiring self-check must hit to prove the arbiter eviction telemetry counts (it can never satisfy the real gate).",
+  "tiers": {
+    "eliza-1-2b": { "peakRssMb": 6000 },
+    "eliza-1-4b": { "peakRssMb": 9000 },
+    "eliza-1-9b": { "peakRssMb": 16000 },
+    "eliza-1-27b": { "peakRssMb": 40000 },
+    "eliza-1-27b-256k": { "peakRssMb": 48000 }
+  },
+  "coResidency": {
+    "maxEvictions": 4,
+    "selfCheckMinEvictions": 1
+  }
+}

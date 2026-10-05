@@ -21,5 +21,3 @@ export const VIEW_EVENTS = {
   /** A plugin was hot-reloaded into the running runtime. */
   PLUGIN_RELOADED: "plugin_reloaded",
 } as const;
-
-export type ViewEventType = (typeof VIEW_EVENTS)[keyof typeof VIEW_EVENTS];

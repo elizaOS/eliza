@@ -19,7 +19,7 @@ import {
   BulkSelectionBar,
   runBulkDelete,
 } from "../../../cloud-ui/components/bulk/bulk-select";
-import { AppsListView } from "../../../cloud-ui/components/data-list";
+import { AppsListView } from "../../../cloud-ui/components/data-list/apps-list-view";
 import { copyTextToClipboard } from "../../../utils/clipboard";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { APPS_QUERY_KEY, type App, deleteApp } from "../lib/apps";

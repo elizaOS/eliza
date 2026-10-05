@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS  # noqa: E402
-from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS  # noqa: E402
+from eliza_training.manifest.eliza1_platform_plan import (  # noqa: E402
     build_plan,
     missing_files,
     plan_to_json,

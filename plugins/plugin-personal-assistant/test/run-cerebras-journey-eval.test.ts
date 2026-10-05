@@ -14,7 +14,7 @@ import {
   resolveJourneyEvalPaths,
   runCerebrasJourneyEval,
   waitForChild,
-} from "../scripts/run-cerebras-journey-eval.mjs";
+} from "../../../packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.ts";
 
 const temporaryDirectories: string[] = [];
 
@@ -36,7 +36,7 @@ describe("Cerebras journey eval runner", () => {
   it("resolves the repository and package environment candidates", () => {
     const paths = resolveJourneyEvalPaths(
       new URL(
-        "file:///workspace/eliza/plugins/plugin-personal-assistant/scripts/run.mjs",
+        "file:///workspace/eliza/packages/scripts/plugins/plugin-personal-assistant/run.mjs",
       ),
     );
 
@@ -137,9 +137,9 @@ describe("Cerebras journey eval runner", () => {
       "eliza/plugins/plugin-personal-assistant/test/journey-cerebras-eval.live.e2e.test.ts",
     ]);
 
-    const moduleUrl = new URL("file:///workspace/runner.mjs");
+    const moduleUrl = new URL("file:///workspace/runner.ts");
     expect(
-      isDirectInvocation(["node", "/workspace/runner.mjs"], moduleUrl),
+      isDirectInvocation(["node", "/workspace/runner.ts"], moduleUrl),
     ).toBe(true);
     expect(
       isDirectInvocation(["node", "/workspace/other.mjs"], moduleUrl),

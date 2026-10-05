@@ -92,48 +92,10 @@ const h = vi.hoisted(() => {
   };
 });
 
-// The @elizaos/ui subpath specifiers (/api, /auth-status, /bridge, /browser,
-// /events)
-// all alias to the same stub file under this package's vitest config, so each
-// mock returns the same combined shape: client + error classifiers + ElizaClient
-// (/api), isElectrobunRuntime (/bridge), loadDesktopWorkspaceSnapshot
-// (/browser), lifecycle event names (/events). The object literal is inlined
-// per call and reads only the hoisted `h` — any module-scope const would sit
-// in its TDZ when the hoisted `vi.mock` and source import run.
-vi.mock("@elizaos/ui/api", () => ({
-  isApiError: h.isApiError,
-  isCloudAgentGoneError: h.isCloudAgentGoneError,
-  ElizaClient: h.ElizaClient,
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  getAuthStatusSnapshot: () => h.authState,
-  isAuthenticatedNow: () => h.authState.phase === "authenticated",
-  subscribeAuthStatus: (listener: (state: { phase: string }) => void) => {
-    h.authSubscribers.add(listener);
-    return () => h.authSubscribers.delete(listener);
-  },
-  client: {
-    getBaseUrl: () => h.apiBase,
-    getAuthorityRevision: () => h.authorityRevision,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-}));
-vi.mock("@elizaos/ui/auth-status", () => ({
-  getAuthStatusSnapshot: () => h.authState,
-  isAuthenticatedNow: () => h.authState.phase === "authenticated",
-  subscribeAuthStatus: (listener: (state: typeof h.authState) => void) => {
-    h.authSubscribers.add(listener);
-    return () => h.authSubscribers.delete(listener);
-  },
-}));
-vi.mock("@elizaos/ui/bridge", () => ({
+// The public UI mock shares one client and lifecycle event source.
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
@@ -156,56 +118,6 @@ vi.mock("@elizaos/ui/bridge", () => ({
   subscribeAuthStatus: (listener: (state: { phase: string }) => void) => {
     h.authSubscribers.add(listener);
     return () => h.authSubscribers.delete(listener);
-  },
-}));
-vi.mock("@elizaos/ui/events", () => ({
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  client: {
-    getBaseUrl: () => h.apiBase,
-    getAuthorityRevision: () => h.authorityRevision,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  isApiError: h.isApiError,
-  isCloudAgentGoneError: h.isCloudAgentGoneError,
-  ElizaClient: h.ElizaClient,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-  getAuthStatusSnapshot: () => h.authState,
-  isAuthenticatedNow: () => h.authState.phase === "authenticated",
-  subscribeAuthStatus: (listener: (state: { phase: string }) => void) => {
-    h.authSubscribers.add(listener);
-    return () => h.authSubscribers.delete(listener);
-  },
-}));
-vi.mock("@elizaos/ui/browser", () => ({
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  isApiError: h.isApiError,
-  isCloudAgentGoneError: h.isCloudAgentGoneError,
-  ElizaClient: h.ElizaClient,
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  getAuthStatusSnapshot: () => h.authState,
-  isAuthenticatedNow: () => h.authState.phase === "authenticated",
-  subscribeAuthStatus: (listener: (state: { phase: string }) => void) => {
-    h.authSubscribers.add(listener);
-    return () => h.authSubscribers.delete(listener);
-  },
-  client: {
-    getBaseUrl: () => h.apiBase,
-    getAuthorityRevision: () => h.authorityRevision,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
 }));
 
@@ -451,6 +363,46 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.getStatus).toHaveBeenCalledTimes(1);
     expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["hidden", true, "background"],
+    ["visible", false, "background"],
+    ["visible", true, "active"],
+  ] as const)(
+    "reports startup presence for %s with focus=%s",
+    async (visibility, focused, state) => {
+      const visibilityBefore = Object.getOwnPropertyDescriptor(
+        document,
+        "visibilityState",
+      );
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: visibility,
+      });
+      const focus = vi.spyOn(document, "hasFocus").mockReturnValue(focused);
+      try {
+        stop = startLifeOpsActivitySignalCapture(true);
+        await settle();
+        for (const source of ["app_lifecycle", "page_visibility"]) {
+          expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledWith(
+            expect.objectContaining({ source, state }),
+          );
+        }
+        if (state === "background") {
+          expect(
+            h.captureLifeOpsActivitySignal.mock.calls.some(
+              ([signal]) => signal.state === "active",
+            ),
+          ).toBe(false);
+        }
+      } finally {
+        focus.mockRestore();
+        if (visibilityBefore)
+          Object.defineProperty(document, "visibilityState", visibilityBefore);
+        else Reflect.deleteProperty(document, "visibilityState");
+      }
+    },
+  );
 
   it("posts the current web presence once the runtime reports running", async () => {
     stop = startLifeOpsActivitySignalCapture(true);

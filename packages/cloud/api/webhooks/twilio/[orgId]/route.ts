@@ -9,24 +9,27 @@ import {
   calculateTwilioSmsBilling,
   resolveTwilioSmsCostPerSegment,
 } from "@elizaos/cloud-shared/billing";
-import { Hono } from "hono";
-import { ZodError } from "zod";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { phoneErrorDiagnostic } from "@/lib/services/phone-error-diagnostics";
-import { twilioAutomationService } from "@/lib/services/twilio-automation";
-import { usageService } from "@/lib/services/usage";
-import { isAlreadyProcessed, markAsProcessed } from "@/lib/utils/idempotency";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { phoneErrorDiagnostic } from "@elizaos/cloud-shared/lib/services/phone-error-diagnostics";
+import { twilioAutomationService } from "@elizaos/cloud-shared/lib/services/twilio-automation";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { processOnce } from "@elizaos/cloud-shared/lib/utils/idempotency";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
   extractMediaUrls,
   parseTwilioWebhookEvent,
   type TwilioWebhookEvent,
   verifyTwilioSignature,
-} from "@/lib/utils/twilio-api";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/utils/twilio-api";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { ZodError } from "zod";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -143,28 +146,24 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
       }
     }
 
-    const idempotencyKey = `twilio:${event.MessageSid}`;
-    if (await isAlreadyProcessed(idempotencyKey)) {
-      logger.info("[TwilioWebhook] Duplicate message, skipping", {
-        orgId,
-      });
-      return c.body(
-        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-        200,
-        {
-          "Content-Type": "application/xml",
-        },
-      );
-    }
-
     logger.info("[TwilioWebhook] Received SMS", {
       orgId,
       hasBody: !!event.Body,
       numMedia: extractMediaUrls(event).length,
     });
 
-    await handleIncomingMessage(c, orgId, event);
-    await markAsProcessed(idempotencyKey, "twilio");
+    // Claim the MessageSid before any inference or outbound send so an
+    // overlapping redelivery cannot be processed a second time (#31768).
+    const outcome = await processOnce(
+      `twilio:${event.MessageSid}`,
+      "twilio",
+      () => handleIncomingMessage(c, orgId, event),
+    );
+    if (outcome.status === "duplicate") {
+      logger.info("[TwilioWebhook] Duplicate message, skipping", {
+        orgId,
+      });
+    }
 
     return c.body(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
@@ -198,8 +197,8 @@ async function handleIncomingMessage(
 ): Promise<void> {
   const [{ messageRouterService }, { agentGatewayRouterService }] =
     await Promise.all([
-      import("@/lib/services/message-router"),
-      import("@/lib/services/agent-gateway-router"),
+      import("@elizaos/cloud-shared/lib/services/message-router"),
+      import("@elizaos/cloud-shared/lib/services/agent-gateway-router"),
     ]);
 
   const from = event.From;

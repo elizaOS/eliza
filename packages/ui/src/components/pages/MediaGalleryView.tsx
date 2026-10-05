@@ -6,16 +6,25 @@
  * the Database page surface.
  */
 
+import type { TranslateFn } from "@elizaos/contracts";
 import { Download, Share2 } from "lucide-react";
-import type { ReactNode } from "react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client, type QueryResult } from "../../api";
+import {
+  memo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { QueryResult } from "../../api/client-types-core";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import type { TranslateFn } from "../../types";
-import { resolveAppAssetUrl } from "../../utils";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
 import {
   canShareFiles,
   downloadAttachment,

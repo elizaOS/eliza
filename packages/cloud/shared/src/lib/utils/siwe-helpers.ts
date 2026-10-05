@@ -25,6 +25,7 @@ const SIWE_NONCE_INVALID = "SIWE nonce invalid or already used";
 const SIWE_SIGNATURE_INVALID = "SIWE signature invalid";
 const SIWE_EXPIRED = "SIWE message has expired";
 const SIWE_NOT_YET_VALID = "SIWE message not yet valid";
+const SIWE_TIMESTAMP_INVALID = "SIWE message timestamp is not a valid date";
 
 const NONCE_BYTES = 16;
 
@@ -156,6 +157,16 @@ export async function validateSIWEMessage(
   }
 
   const now = Date.now();
+  // `parseSiweMessage` returns an Invalid Date (truthy, NaN time) for a present
+  // but unparseable timestamp. Both comparisons below are false for NaN, so
+  // without this guard a malformed Expiration Time would never expire and a
+  // malformed Not Before would always be already-valid. Fail closed instead.
+  if (parsed.expirationTime && Number.isNaN(parsed.expirationTime.getTime())) {
+    throw new Error(`${SIWE_TIMESTAMP_INVALID}: Expiration Time`);
+  }
+  if (parsed.notBefore && Number.isNaN(parsed.notBefore.getTime())) {
+    throw new Error(`${SIWE_TIMESTAMP_INVALID}: Not Before`);
+  }
   if (parsed.expirationTime && parsed.expirationTime.getTime() <= now) {
     throw new Error(SIWE_EXPIRED);
   }

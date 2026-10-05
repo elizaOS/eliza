@@ -16,11 +16,6 @@
  * Only TEXT_SMALL is a deterministic handler (the LLM boundary).
  */
 
-import {
-  type AgentRuntime,
-  ModelType,
-  type ModelTypeName,
-} from "@elizaos/core";
 import type {
   GetLifeOpsGmailTriageRequest,
   LifeOpsGmailMessageSummary,
@@ -30,12 +25,17 @@ import type {
   LifeOpsInboxMessage,
   LifeOpsXConnectorStatus,
   LifeOpsXDm,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import {
+  type AgentRuntime,
+  ModelType,
+  type ModelTypeName,
+} from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../../packages/app/test/helpers/real-runtime.ts";
 import {
   buildInbox,
   type CachedInboxMessage,

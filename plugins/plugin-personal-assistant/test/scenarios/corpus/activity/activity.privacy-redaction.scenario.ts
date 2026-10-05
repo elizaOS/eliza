@@ -4,8 +4,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 import { seedBrowserExtensionTelemetry } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({
@@ -18,7 +18,7 @@ export default scenario({
     "User asks for browsing detail; the activity surface must not expose query-string secrets or user identifiers from seeded URLs.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

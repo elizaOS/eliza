@@ -8,7 +8,7 @@
  */
 
 import { type AgentRuntime, ModelType } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const MAPS_SAVE = "MAPS_SAVE";
 const LATITUDE = 47.6097;

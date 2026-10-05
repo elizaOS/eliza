@@ -13,20 +13,28 @@
  *      the verified OWNER/ADMIN principal.
  *   3. Install that token on the ElizaClient (`client.setToken`) so every
  *      subsequent agent API call carries it as a bearer — the credential the
- *      auth boundary now accepts (see app-core embed-session-token wiring).
+ *      auth boundary now accepts (see app embed-session-token wiring).
  *
  * The handshake is dependency-injected (window / fetch / client) so it is unit
  * testable without the iframe runtime or the ElizaClient singleton. It never
- * throws: a failure returns a `failed` outcome and the app still mounts (in its
- * unauthenticated state) rather than white-screening.
+ * throws: a failure returns a `failed` outcome, is logged as a structured error
+ * (reason + platform-neutral detail) through the app logger, and the app still
+ * mounts (in its unauthenticated state) rather than white-screening.
  */
+
+import { logger as appLogger } from "@elizaos/ui";
 
 export type EmbedPlatform = "telegram" | "discord";
 
 export type EmbedAuthOutcome =
   | { status: "not-embed" }
   | { status: "authenticated"; role: string; adminMode: boolean }
-  | { status: "failed"; reason: string };
+  | { status: "failed"; reason: string; detail?: string };
+
+/** The logger surface the handshake reports failures through. */
+export interface EmbedHandshakeLogger {
+  error(context: Record<string, unknown>, message: string): void;
+}
 
 /** The subset of the ElizaClient this bootstrap needs. */
 export interface EmbedClient {
@@ -45,6 +53,7 @@ interface EmbedHandshakeDeps {
   fetchImpl?: typeof fetch;
   client?: EmbedClient;
   timeoutMs?: number;
+  log?: EmbedHandshakeLogger;
 }
 
 const DEFAULT_EMBED_AUTH_TIMEOUT_MS = 10_000;
@@ -103,10 +112,29 @@ function readDiscordOAuthState(params: URLSearchParams): string | null {
 /**
  * Run the embed-launch handshake if the current location is the `/embed` route.
  * Returns `{ status: "not-embed" }` (a no-op) otherwise so callers can invoke it
- * unconditionally at boot.
+ * unconditionally at boot. Every `failed` outcome is reported through the app
+ * logger before it is returned, so an embed auth failure (expired initData,
+ * timeout, malformed response) is never silent.
  */
 export async function runEmbedHandshake(
   deps: EmbedHandshakeDeps = {},
+): Promise<EmbedAuthOutcome> {
+  const outcome = await authenticateEmbedLaunch(deps);
+  if (outcome.status === "failed") {
+    (deps.log ?? appLogger).error(
+      {
+        src: "app:embed-bootstrap",
+        reason: outcome.reason,
+        ...(outcome.detail ? { detail: outcome.detail } : {}),
+      },
+      `Embed launch authentication failed (${outcome.reason}); the app continues unauthenticated`,
+    );
+  }
+  return outcome;
+}
+
+async function authenticateEmbedLaunch(
+  deps: EmbedHandshakeDeps,
 ): Promise<EmbedAuthOutcome> {
   const win = deps.win ?? window;
   if (!isEmbedPath(win.location.pathname)) {
@@ -163,10 +191,14 @@ export async function runEmbedHandshake(
       return { status: "failed", reason: "network_timeout" };
     }
     response = result;
-  } catch {
-    // error-policy:J1 auth boundary — structured failure the embed shell
-    // renders
-    return { status: "failed", reason: "network_error" };
+  } catch (error) {
+    // error-policy:J1 auth boundary — structured failure that
+    // runEmbedHandshake logs with the underlying cause
+    return {
+      status: "failed",
+      reason: "network_error",
+      detail: error instanceof Error ? error.message : String(error),
+    };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
   }
@@ -184,14 +216,20 @@ export async function runEmbedHandshake(
     return { status: "failed", reason: "bad_response" };
   }
 
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return { status: "failed", reason: "bad_response" };
+  }
   if (typeof body.token !== "string" || body.token.length === 0) {
     return { status: "failed", reason: "no_token" };
   }
 
+  if (typeof body.role !== "string" || typeof body.adminMode !== "boolean") {
+    return { status: "failed", reason: "bad_response" };
+  }
   embedClient.setToken(body.token);
   return {
     status: "authenticated",
-    role: typeof body.role === "string" ? body.role : "ADMIN",
+    role: body.role,
     adminMode: body.adminMode === true,
   };
 }

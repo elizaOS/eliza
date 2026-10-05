@@ -1,16 +1,31 @@
+import {
+  AGENT_TRANSFER_MAX_PASSWORD_BYTES,
+  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
+  agentTransferPasswordByteLength,
+} from "@elizaos/contracts";
+import { getHostRequestTransport } from "./host-transport";
+import { nativeJsonRequestData as directCloudBodyData } from "./native-http-codec";
 /**
  * Cloud domain methods — cloud billing, compat agents, sandbox,
  * export/import, direct cloud auth, bug reports.
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
+import {
+  DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
+  DEFAULT_DIRECT_CLOUD_BASE_URL,
+  DIRECT_ELIZA_CLOUD_API_BY_HOST,
+  resolveDirectCloudAuthApiBase,
+  resolveDirectCloudWebBase,
+  stripTrailingSlashes,
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   type AgentReadinessProbe,
@@ -18,7 +33,8 @@ import {
   startCloudConversationHandoff,
 } from "../cloud/handoff/cloud-handoff-supervisor";
 import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
+import { isMobileLocalAgentUrl } from "../first-run/mobile-runtime-mode";
 import { isLoopbackStagingStewardDevelopment } from "../state/loopback-steward-development";
 import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";
 import {
@@ -31,7 +47,6 @@ import {
 } from "../utils/cloud-agent-base";
 import { ElizaClient } from "./client-base";
 import type {
-  ApiError,
   CloudApiKeySummary,
   CloudApiKeys,
   CloudBillingCheckoutRequest,
@@ -61,27 +76,25 @@ import type {
   CloudStatus,
   CloudTwitterOAuthInitiateResponse,
   LocalAgentBackupMetadata,
+} from "./client-types-cloud";
+import type {
+  ApiError,
   SandboxBrowserEndpoints,
   SandboxPlatformStatus,
   SandboxScreenshotPayload,
   SandboxScreenshotRegion,
   SandboxStartResponse,
   SandboxWindowInfo,
-} from "./client-types";
+} from "./client-types-core";
 import {
   confirmDedicatedActivation,
   type DedicatedActivationConfirmationRequester,
   parseDedicatedActivationConfirmationQuote,
 } from "./dedicated-activation-confirmation";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import {
-  DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
-  DEFAULT_DIRECT_CLOUD_BASE_URL,
-  DIRECT_ELIZA_CLOUD_API_BY_HOST,
-  resolveDirectCloudAuthApiBase,
-  resolveDirectCloudWebBase,
-  stripTrailingSlashes,
-} from "./direct-cloud-endpoints";
+  type PersonalFallbackAccountState,
+  parsePersonalFallbackAccountState,
+} from "./personal-fallback";
 import { createTimeoutSignal, isTimeoutAbortError } from "./timeout-signal";
 import { fetchAgentTransport } from "./transport";
 
@@ -89,7 +102,6 @@ import { fetchAgentTransport } from "./transport";
 // Module-level constants
 // ---------------------------------------------------------------------------
 
-const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
 // Cloud account reads can legitimately take longer than 15 seconds on a cold
 // regional worker. Keep the request bounded, but leave enough room for the
 // billing/credits response the desktop dashboard depends on.
@@ -571,11 +583,16 @@ function throwIfDirectCloudDispatchDeadlineElapsed(
 async function directCloudFetch(
   url: string,
   init?: RequestInit,
+  timeoutMs?: number,
 ): Promise<Response> {
   throwIfDirectCloudDispatchDeadlineElapsed(init?.signal);
-  const transport = desktopHttpTransportForUrl(url);
+  const transport = await getHostRequestTransport(url, "cloud");
   if (transport) {
-    return transport.request(url, init ?? {}, undefined);
+    return transport.request(
+      url,
+      init ?? {},
+      timeoutMs === undefined ? undefined : { timeoutMs },
+    );
   }
   return fetchAgentTransport.request(url, init ?? {}, undefined);
 }
@@ -591,7 +608,7 @@ export {
   resolveDirectCloudAppBase,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
-} from "./direct-cloud-endpoints";
+} from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 
 function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   const baseUrl = client.getBaseUrl().trim();
@@ -663,6 +680,11 @@ export function hasDirectCloudAccountTransport(client: ElizaClient): boolean {
 export function getCloudAuthToken(client?: ElizaClient): string | null {
   const stewardToken = readStoredStewardToken()?.trim();
   if (stewardToken) return stewardToken;
+
+  // The native IPC/loopback bearer authenticates only the on-device agent.
+  // Treating it as a Cloud session skips interactive login and sends that
+  // unrelated credential to the Cloud control plane.
+  if (client && isMobileLocalAgentUrl(client.getBaseUrl())) return null;
 
   const clientToken = client?.getRestAuthToken()?.trim();
   return clientToken || null;
@@ -912,18 +934,6 @@ function directCloudResponseText(data: unknown): string {
   }
 }
 
-function directCloudBodyData(body: BodyInit | null | undefined): unknown {
-  if (body == null) return undefined;
-  if (typeof body !== "string") return body;
-  const trimmed = body.trim();
-  if (!trimmed) return undefined;
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return body;
-  }
-}
-
 async function withDirectCloudHttpTimeout<T>(
   request: Promise<T>,
   args: { method: string; url: string },
@@ -1015,7 +1025,11 @@ async function fetchDirectCloudWithTimeout<T>(
 
   try {
     response = await Promise.race([
-      directCloudFetch(url, { ...init, signal: controller.signal }),
+      directCloudFetch(
+        url,
+        { ...init, signal: controller.signal },
+        DIRECT_CLOUD_HTTP_TIMEOUT_MS,
+      ),
       aborted,
     ]);
     // Keep the same request deadline alive until the body is fully consumed.
@@ -1715,7 +1729,7 @@ function toCloudCompatJob(input: DirectCloudJob): CloudCompatJob {
 // Declaration merging
 // ---------------------------------------------------------------------------
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getCloudStatus(): Promise<CloudStatus>;
     getCloudCredits(): Promise<CloudCredits>;
@@ -1963,7 +1977,11 @@ declare module "./client-base" {
       data: CloudCompatJob;
       error?: string;
     }>;
-    exportAgent(password: string, includeLogs?: boolean): Promise<Response>;
+    exportAgent(
+      password: string,
+      includeLogs?: boolean,
+      excludeSecrets?: boolean,
+    ): Promise<Response>;
     getExportEstimate(): Promise<{
       estimatedBytes: number;
       memoriesCount: number;
@@ -2042,6 +2060,11 @@ declare module "./client-base" {
       agentName: string;
       apiBase: string;
       runtime: "shared" | "dedicated";
+      /**
+       * Present only on Shared while Dedicated access is withdrawn (#25146):
+       * the typed state, reason, retention deadline and pay action.
+       */
+      accountState?: PersonalFallbackAccountState;
     }>;
     /**
      * Resolve the signed-in account's stable personal identity and guarantee
@@ -2234,8 +2257,19 @@ declare module "./client-base" {
 ElizaClient.prototype.getCloudStatus = async function (this: ElizaClient) {
   const directBase = resolveDirectCloudClientApiBase(this);
   if (directBase) {
+    const slotKey = getBootConfig().applicationBillingSlot?.trim();
+    const applicationBilling: import("@elizaos/cloud-sdk/app-billing").NativeApplicationBillingSelection =
+      !slotKey
+        ? { kind: "unconfigured" }
+        : /^[a-z][a-z0-9_-]{0,99}$/.test(slotKey)
+          ? { kind: "configured", slotKey }
+          : {
+              kind: "unavailable",
+              reason: "The host's application billing product is invalid.",
+            };
     if (!readDirectCloudToken(this)) {
       return {
+        applicationBilling,
         connected: false,
         enabled: true,
         hasApiKey: false,
@@ -2253,6 +2287,7 @@ ElizaClient.prototype.getCloudStatus = async function (this: ElizaClient) {
           ? (user.data as Record<string, unknown>)
           : user;
       return {
+        applicationBilling,
         connected: true,
         enabled: true,
         hasApiKey: true,
@@ -2267,6 +2302,7 @@ ElizaClient.prototype.getCloudStatus = async function (this: ElizaClient) {
     } catch (err) {
       if (isDirectCloudAuthError(err)) {
         return {
+          applicationBilling,
           connected: false,
           enabled: true,
           hasApiKey: true,
@@ -3380,10 +3416,19 @@ ElizaClient.prototype.exportAgent = async function (
   this: ElizaClient,
   password,
   includeLogs = false,
+  excludeSecrets = false,
 ) {
   if (password.length < AGENT_TRANSFER_MIN_PASSWORD_LENGTH) {
     throw new Error(
       `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
+    );
+  }
+  if (
+    agentTransferPasswordByteLength(password) >
+    AGENT_TRANSFER_MAX_PASSWORD_BYTES
+  ) {
+    throw new Error(
+      `Password must be at most ${AGENT_TRANSFER_MAX_PASSWORD_BYTES} bytes when UTF-8 encoded.`,
     );
   }
   return this.rawRequest("/api/agent/export", {
@@ -3391,7 +3436,7 @@ ElizaClient.prototype.exportAgent = async function (
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ password, includeLogs }),
+    body: JSON.stringify({ password, includeLogs, excludeSecrets }),
   });
 };
 
@@ -3407,6 +3452,14 @@ ElizaClient.prototype.importAgent = async function (
   if (password.length < AGENT_TRANSFER_MIN_PASSWORD_LENGTH) {
     throw new Error(
       `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
+    );
+  }
+  if (
+    agentTransferPasswordByteLength(password) >
+    AGENT_TRANSFER_MAX_PASSWORD_BYTES
+  ) {
+    throw new Error(
+      `Password must be at most ${AGENT_TRANSFER_MAX_PASSWORD_BYTES} bytes when UTF-8 encoded.`,
     );
   }
   const passwordBytes = new TextEncoder().encode(password);
@@ -3552,18 +3605,27 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       };
     }
 
-    const res = await directCloudFetch(
-      resolveBrowserCloudApiRequestUrl(`${authApiBase}/api/auth/cli-session`),
+    const url = resolveBrowserCloudApiRequestUrl(
+      `${authApiBase}/api/auth/cli-session`,
+    );
+    const result = await fetchDirectCloudWithTimeout(
+      url,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: requestSessionId }),
       },
+      { method: "POST", url },
+      async (response) => ({
+        ok: response.ok,
+        status: response.status,
+        data: response.ok ? recordOrNull(await response.json()) : null,
+      }),
     );
-    if (!res.ok) {
-      return { ok: false, error: `Login failed (${res.status})` };
+    if (!result.ok) {
+      return { ok: false, error: `Login failed (${result.status})` };
     }
-    const responseData = recordOrNull(await res.json());
+    const responseData = result.data;
     const sessionId = cloudLoginSessionIdOrNull(responseData?.sessionId);
     if (!sessionId) {
       return {
@@ -4558,6 +4620,9 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
     },
     ...(options.signal ? { signal: options.signal } : {}),
   });
+  if (response.status === 401) {
+    await clearStoredStewardTokenIfCurrent(options.authToken);
+  }
   if (!response.ok) {
     throw Object.assign(
       new Error(
@@ -4611,6 +4676,16 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
   if (identity?.runtime !== "shared") {
     throw new Error("Eliza Cloud returned an unknown personal Eliza runtime.");
   }
+  let accountState: PersonalFallbackAccountState | undefined;
+  if (identity.accountState !== undefined) {
+    const parsed = parsePersonalFallbackAccountState(identity.accountState);
+    if (!parsed) {
+      throw new Error(
+        "Eliza Cloud returned an invalid account state for this personal Eliza.",
+      );
+    }
+    accountState = parsed;
+  }
   return {
     personalElizaId,
     agentId: personalElizaId,
@@ -4618,6 +4693,7 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
     agentName,
     apiBase: buildCloudSharedAgentApiBase(cloudApiBase, personalElizaId),
     runtime: "shared",
+    ...(accountState ? { accountState } : {}),
   };
 };
 
@@ -4674,6 +4750,7 @@ export interface DedicatedAdoptionConfirmationQuote {
   status: string;
   startsCompute: boolean;
   hourlyRateUsd: number;
+  minimumActivationChargeUsd: number;
   dailyRateUsd: number;
   minimumBalanceUsd: number;
   minimumRunwayDays: number;
@@ -4734,6 +4811,9 @@ function parseDedicatedAdoptionQuote(
   const adoptionState = firstString(quote?.adoptionState);
   const status = firstString(quote?.status);
   const hourlyRateUsd = finiteNumber(quote?.hourlyRateUsd);
+  const minimumActivationChargeUsd = finiteNumber(
+    quote?.minimumActivationChargeUsd,
+  );
   const dailyRateUsd = finiteNumber(quote?.dailyRateUsd);
   const minimumBalanceUsd = finiteNumber(quote?.minimumBalanceUsd);
   const minimumRunwayDays = finiteNumber(quote?.minimumRunwayDays);
@@ -4748,6 +4828,8 @@ function parseDedicatedAdoptionQuote(
     !status ||
     typeof quote?.startsCompute !== "boolean" ||
     hourlyRateUsd === null ||
+    minimumActivationChargeUsd === null ||
+    minimumActivationChargeUsd < 0 ||
     dailyRateUsd === null ||
     minimumBalanceUsd === null ||
     minimumRunwayDays === null ||
@@ -4770,6 +4852,7 @@ function parseDedicatedAdoptionQuote(
     status,
     startsCompute: quote.startsCompute,
     hourlyRateUsd,
+    minimumActivationChargeUsd,
     dailyRateUsd,
     minimumBalanceUsd,
     minimumRunwayDays,
@@ -4925,7 +5008,10 @@ async function adoptSelectedPersonalDedicatedEliza(
           "Content-Type": "application/json",
           Authorization: `Bearer ${options.authToken}`,
         },
-        body: JSON.stringify(confirmation),
+        body: JSON.stringify({
+          ...confirmation,
+          minimumActivationChargeUsd: quote.minimumActivationChargeUsd,
+        }),
         ...(options.signal ? { signal: options.signal } : {}),
       },
     );
@@ -5228,7 +5314,11 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
           "Content-Type": "application/json",
           Authorization: `Bearer ${options.authToken}`,
         },
-        body: JSON.stringify({ action: "activate_dedicated", quoteId }),
+        body: JSON.stringify({
+          action: "activate_dedicated",
+          quoteId,
+          minimumActivationChargeUsd: reviewedQuote.minimumActivationChargeUsd,
+        }),
         ...(options.signal ? { signal: options.signal } : {}),
       },
     );

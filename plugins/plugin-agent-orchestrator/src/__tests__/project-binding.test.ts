@@ -7,16 +7,13 @@
 import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
+import { logger, projectWorldId, stringToUuid, type UUID } from "@elizaos/core";
 import {
   getProjectById,
-  logger,
-  projectWorldId,
   setActiveProject,
-  stringToUuid,
-  type UUID,
   upsertProject,
   writeWorkspaceFolderConfig,
-} from "@elizaos/core";
+} from "@elizaos/host";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   assertProjectIdRegistered,

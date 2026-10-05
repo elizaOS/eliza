@@ -16,7 +16,7 @@ selects which head to bind by name (e.g. `"hey-eliza"`).
 
 This script is the upstream→GGUF migration tool:
 
-  uv run python -m scripts.wakeword.convert_openwakeword_to_gguf \
+  uv run python -m eliza_training.wakeword.convert_openwakeword_to_gguf \
       --melspectrogram /path/to/melspectrogram.onnx \
       --embedding-model /path/to/embedding_model.onnx \
       --head hey-eliza:/path/to/hey-eliza.onnx \

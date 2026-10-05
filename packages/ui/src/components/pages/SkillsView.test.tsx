@@ -15,7 +15,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SkillInfo } from "../../api";
+import type { SkillInfo } from "../../api/client-types-config";
 import { getViewChatBinding } from "../../state/view-chat-binding";
 import { SkillsView } from "./SkillsView";
 
@@ -28,8 +28,8 @@ const appMock = vi.hoisted(() => ({
 }));
 const mediaMock = vi.hoisted(() => ({ wideWorkspace: false }));
 
-vi.mock("../../state", () => ({
-  useApp: () => appMock.value,
+vi.mock("../../state/useApp", () => ({ useApp: () => appMock.value }));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
@@ -52,6 +52,7 @@ function makeContext(
   return {
     skills: [] as SkillInfo[],
     skillCreateFormOpen: false,
+    startupCoordinator: { target: null },
     skillCreateName: "",
     skillCreateDescription: "",
     skillCreating: false,

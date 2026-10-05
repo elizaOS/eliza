@@ -70,15 +70,15 @@ const cloudPairTokenMock = vi.hoisted(() => ({
   clearStalePairCredentialsForAgent: vi.fn(),
 }));
 
-vi.mock("../../state", () => ({
-  useApp: () => appMock.value,
+vi.mock("../../state/useApp", () => ({ useApp: () => appMock.value }));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: typeof appMock.value) => unknown) =>
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: typeof appMock.value) => unknown) =>
     sel(appMock.value),
 }));
 
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: clientMock,
   ElizaClient: vi.fn(function MockElizaClient() {
     return targetClientMock;
@@ -91,11 +91,11 @@ vi.mock("../../api/client-cloud", () => ({
   getCloudAuthToken: () => cloudAuthMock.token,
 }));
 
-vi.mock("../../config/boot-config", () => ({
+vi.mock("../../config/boot-config-store", () => ({
   getBootConfig: () => ({ cloudApiBase: "https://elizacloud.ai" }),
 }));
 
-vi.mock("../../config/branding", () => ({
+vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({ appName: "Eliza" }),
 }));
 

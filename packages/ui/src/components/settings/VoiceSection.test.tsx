@@ -167,7 +167,7 @@ describe("VoiceSection", () => {
     });
   });
 
-  it("falls back to GOOD tier when null is supplied", () => {
+  it("does not invent a hardware assessment when none is supplied", () => {
     render(
       <VoiceSection
         {...baseProps}
@@ -176,8 +176,6 @@ describe("VoiceSection", () => {
         onPrefsChange={() => {}}
       />,
     );
-    expect(
-      screen.getByTestId("voice-tier-banner").getAttribute("data-tier"),
-    ).toBe("GOOD");
+    expect(screen.queryByTestId("voice-tier-banner")).toBeNull();
   });
 });

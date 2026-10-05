@@ -4,21 +4,21 @@
  * List all OAuth connections for the authenticated organization.
  */
 
-import { Hono } from "hono";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   failureResponse,
   ApiError as WorkerApiError,
-} from "@/lib/api/cloud-worker-errors";
-import { ApiError } from "@/lib/api/errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
 import {
   internalErrorResponse,
   OAuthError,
   oauthService,
-} from "@/lib/services/oauth";
-import { getProvider } from "@/lib/services/oauth/provider-registry";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth";
+import { getProvider } from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 

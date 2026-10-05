@@ -46,7 +46,11 @@ function TestButton({
   children,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement>): ReactNode {
-  return createElement("button", { ...props, type: "button" }, children);
+  return createElement(
+    "button",
+    { ...props, type: props.type ?? "button" },
+    children,
+  );
 }
 
 function TestCheckbox({
@@ -170,6 +174,9 @@ export const Checkbox = TestCheckbox;
 export const Input = (
   props: InputHTMLAttributes<HTMLInputElement>,
 ): ReactNode => createElement("input", props);
+export const NativeSelect = (
+  props: SelectHTMLAttributes<HTMLSelectElement>,
+): ReactNode => createElement("select", props);
 export const PagePanel = PassthroughComponent;
 export const Select = TestSelect;
 export const SelectContent = PassthroughComponent;
@@ -212,10 +219,16 @@ export function registerBuiltinWidgetDeclarations(): void {}
 
 export function registerBuiltinWidgets(): void {}
 
-export function registerAppShellPage(): void {}
+export { registerAppShellPage } from "../../../../packages/ui/src/app-shell-registry";
+export { registerRendererService } from "../../../../packages/ui/src/platform/renderer-services";
 
 export function registerOverlayApp(): void {}
 
 export function getAppBlockerPlugin(): Record<string, unknown> {
   return {};
 }
+
+export {
+  RadioGroup,
+  RadioGroupItem,
+} from "../../../../packages/ui/src/components/ui/radio-group";

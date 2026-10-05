@@ -1,11 +1,11 @@
 /** Constructs and parses workflow definitions and runs with validated idempotency keys. */
 
 import crypto from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import type {
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { DEFAULT_WORKFLOW_PERMISSION_POLICY } from "../service-constants.js";
 import { parseJsonRecord, parseJsonValue, toText } from "../sql.js";
 import { isoNow, parseOwnershipFields } from "./record-values.js";

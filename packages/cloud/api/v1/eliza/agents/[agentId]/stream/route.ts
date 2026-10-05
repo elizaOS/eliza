@@ -4,23 +4,34 @@
  * Worker bindings and cache-authorized agent scope are mandatory; the route
  * never falls through to a repository-backed sandbox stream.
  */
-import { Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse, ValidationError } from "@/lib/api/errors";
-import { chatSseFrame } from "@/lib/services/chat-sse-frames";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { coordinateSharedStream } from "@/lib/services/shared-runtime/conversation-coordinator";
+
+import {
+  errorToResponse,
+  ValidationError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
+import type { BridgeRequest } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import {
+  personalDirectChatRefusalResponse,
+  resolveSharedSurfaceTarget,
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { coordinateSharedStream } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
-import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
+import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import type {
   AppEnv,
   RuntimeDurableObjectNamespace,
-} from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 // Streaming responses can be long-running
 
@@ -90,7 +101,44 @@ async function __hono_POST(
       );
     }
 
-    const rpcRequest = parsed.data as BridgeRequest;
+    let rpcRequest = parsed.data as BridgeRequest;
+    // A personal turn follows its entitlement route (#25146): Dedicated
+    // ownership is refused with its agent id, and a withdrawn Dedicated is
+    // answered in the scoped fallback journal with the account state.
+    let trustedAccountState:
+      | Extract<
+          Awaited<ReturnType<typeof resolveSharedSurfaceTarget>>,
+          { ok: true }
+        >["accountState"]
+      | undefined;
+    if (resolved.agentKind === "personal") {
+      const requestedRoom = parsed.data.params.roomId;
+      const target = await resolveSharedSurfaceTarget({
+        agent: resolved.agent,
+        personal: true,
+        conversationId: requestedRoom?.trim()
+          ? requestedRoom
+          : resolved.agent.id,
+        namespace: resolved.namespace,
+      });
+      if (!target.ok) {
+        const refusal = personalDirectChatRefusalResponse(target.refusal);
+        return applyCorsHeaders(
+          Response.json(refusal.body, {
+            status: refusal.status,
+            headers: refusal.headers,
+          }),
+          CORS_METHODS,
+        );
+      }
+      if (target.accountState) {
+        trustedAccountState = target.accountState;
+        rpcRequest = {
+          ...rpcRequest,
+          params: { ...rpcRequest.params, roomId: target.roomId },
+        };
+      }
+    }
 
     const upstreamResponse = await coordinateSharedStream(
       resolved.agent,
@@ -101,6 +149,7 @@ async function __hono_POST(
         namespace: resolved.namespace,
         agentKind: resolved.agentKind,
         trustedUserUtterance: parsed.data.params.text,
+        ...(trustedAccountState ? { trustedAccountState } : {}),
       },
     );
 

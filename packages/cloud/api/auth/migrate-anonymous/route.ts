@@ -11,18 +11,18 @@
  * type) so a cross-origin simple request cannot drive it.
  */
 
-import { Hono } from "hono";
-import { deleteCookie, getCookie } from "hono/cookie";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { requireUser } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   checkElizaMutatingRequestOrigin,
   hasElizaNonSimpleRequestMarker,
-} from "@/lib/auth/browser-origin-policy";
-import { requireUser } from "@/lib/auth/workers-hono-auth";
-import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
-import { migrateAnonymousSession } from "@/lib/session";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
+import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
+import { migrateAnonymousSession } from "@elizaos/cloud-shared/lib/session";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { deleteCookie, getCookie } from "hono/cookie";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
 

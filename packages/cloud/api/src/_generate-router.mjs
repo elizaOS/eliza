@@ -261,7 +261,7 @@ export async function generateRouter() {
     "// biome-ignore-all assist/source/organizeImports: generated imports are ordered by route codegen.",
     "",
     'import type { Hono } from "hono";',
-    'import type { AppEnv } from "@/types/cloud-worker-env";',
+    'import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";',
     "",
   ].join("\n");
 

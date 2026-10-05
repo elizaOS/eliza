@@ -4,7 +4,11 @@
  * credentials and provider-specific request payloads never cross the boundary.
  */
 
-import { sha256 } from "@noble/hashes/sha2.js";
+import { createHash } from "node:crypto";
+
+const sha256 = (input: Uint8Array): Uint8Array =>
+	createHash("sha256").update(input).digest();
+
 import { ElizaError } from "../errors";
 import { type EffectReceipt, normalizeEffectReceipt } from "./effects";
 

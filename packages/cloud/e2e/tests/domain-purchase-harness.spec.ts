@@ -12,7 +12,8 @@
  *   - every domain quotes 1099¢ wholesale (margin added by the routes),
  *     registers instantly, status "active"
  *   - `taken-` prefix  → unavailable          → the 409 path
- *   - `fail-`  prefix  → register throws      → the debit→refund→502 path
+ *   - `fail-`  prefix  → register throws, reconciliation reports failed
+ *     → held debit / 409, then one refund / 502
  *     (the one negative that is NOT deterministically reachable live)
  *
  * The mock ledger is written to the per-test Playwright output dir — the
@@ -270,28 +271,66 @@ test.describe("domain purchase harness logic (mock registrar stub)", () => {
     }
   });
 
-  test("registrar failure after debit → 502 with full refund", async ({
+  test("ambiguous registrar failure holds the debit until reconciliation refunds once", async ({
     stack,
     seededUser,
   }) => {
-    // This is the negative the LIVE lane cannot reach deterministically (no way
-    // to inject a Cloudflare failure mid-purchase on staging) — the stub's
-    // `fail-` prefix throws from registerDomain AFTER the debit, driving the
-    // real refund seam in the buy route.
     const authed = authedClient(stack.urls.api, seededUser.apiKey);
     const balanceBefore = await getBalanceUsd(authed);
-
+    const domain = `fail-${newRunId()}.xyz`;
     let appId: string | undefined;
     try {
-      appId = await createApp(authed, `Harness 502 ${newRunId()}`);
-      const buy = await buyDomain(authed, appId, `fail-${newRunId()}.xyz`);
-      expect(buy.status, JSON.stringify(buy.json)).toBe(502);
-      expect(buy.json.success).toBe(false);
+      appId = await createApp(authed, `Harness reconciliation ${newRunId()}`);
+      const pending = await buyDomain(authed, appId, domain);
+      expect(pending.status, JSON.stringify(pending.json)).toBe(409);
+      expect(pending.json.code).toBe("registration_in_progress");
+      const heldBalance = await getBalanceUsd(authed);
+      expect(heldBalance).toBeLessThan(balanceBefore);
 
-      const balanceAfter = await getBalanceUsd(authed);
+      const pendingReplay = await buyDomain(authed, appId, domain);
+      expect(pendingReplay.status).toBe(409);
       expect(
-        Math.abs(balanceAfter - balanceBefore),
-        "debit is fully refunded on registrar failure",
+        Math.abs((await getBalanceUsd(authed)) - heldBalance),
+      ).toBeLessThan(0.005);
+
+      const { dbWrite } = await import("@elizaos/cloud-shared/db/client");
+      const { domainPurchaseIdempotency } = await import(
+        "@elizaos/cloud-shared/db/schemas/domain-purchase-idempotency"
+      );
+      const { and, eq } = await import("drizzle-orm");
+      // Advance only this purchase's reconciliation lease; the real buy route
+      // must query the registrar and perform the idempotent credit refund.
+      const past = new Date(Date.now() - 1_000);
+      const expired = await dbWrite
+        .update(domainPurchaseIdempotency)
+        .set({
+          expires_at: past,
+          next_reconcile_at: past,
+        })
+        .where(
+          and(
+            eq(
+              domainPurchaseIdempotency.organization_id,
+              seededUser.organizationId,
+            ),
+            eq(domainPurchaseIdempotency.app_id, appId),
+            eq(domainPurchaseIdempotency.domain, domain),
+            eq(domainPurchaseIdempotency.status, "provider_ambiguous"),
+          ),
+        )
+        .returning();
+      expect(expired).toHaveLength(1);
+
+      const refunded = await buyDomain(authed, appId, domain);
+      expect(refunded.status, JSON.stringify(refunded.json)).toBe(502);
+      expect(refunded.json.success).toBe(false);
+      expect(
+        Math.abs((await getBalanceUsd(authed)) - balanceBefore),
+      ).toBeLessThan(0.005);
+      const refundReplay = await buyDomain(authed, appId, domain);
+      expect(refundReplay).toEqual(refunded);
+      expect(
+        Math.abs((await getBalanceUsd(authed)) - balanceBefore),
       ).toBeLessThan(0.005);
     } finally {
       if (appId) await deleteApp(authed, appId);

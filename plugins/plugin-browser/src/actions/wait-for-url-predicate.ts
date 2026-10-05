@@ -27,7 +27,13 @@ const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/i;
 
 function compileRegex(source: string, flags: string): RegExp | null {
   try {
-    return new RegExp(source, flags);
+    // The predicate is a stateless `test(url)` contract: `wait_for_url` polls it
+    // repeatedly against the same tab URL. Stateful flags (`g` for `lastIndex`
+    // advance, `y` for sticky anchoring) would make consecutive calls alternate
+    // between true and false on a matching URL, so they are stripped. Matching a
+    // URL is inherently unanchored, so `y` has no meaningful semantics here.
+    const statelessFlags = flags.replace(/[gy]/g, "");
+    return new RegExp(source, statelessFlags);
   } catch {
     return null;
   }

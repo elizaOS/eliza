@@ -48,6 +48,7 @@ export interface HabitSummary {
 }
 
 export type CheckinBriefingSectionKey =
+  | "x"
   | "x_dms"
   | "x_timeline"
   | "x_mentions"
@@ -86,10 +87,13 @@ export interface CheckinBriefingSection {
   readonly title: string;
   readonly summary: string;
   readonly items: readonly CheckinBriefingItem[];
+  /** Some selected accounts were checked; error diagnostics still describe the others. */
+  readonly coverage?: "partial";
   readonly error: string | null;
 }
 
 export interface CheckinCollectorErrors {
+  readonly habitSummaries: string | null;
   readonly overdueTodos: string | null;
   readonly todaysMeetings: string | null;
   readonly yesterdaysWins: string | null;
@@ -117,6 +121,8 @@ export interface CheckinReport {
   readonly reportId: string;
   readonly kind: CheckinKind;
   readonly generatedAt: string;
+  /** Collector timezone; absent on reports saved before this field existed. */
+  readonly timezone?: string;
   readonly escalationLevel: EscalationLevel;
   readonly overdueTodos: readonly OverdueTodo[];
   readonly todaysMeetings: readonly MeetingEntry[];

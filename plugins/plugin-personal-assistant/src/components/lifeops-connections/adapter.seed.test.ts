@@ -15,7 +15,8 @@ const { client } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client,
   dispatchNavigateViewEvent: vi.fn(),
 }));

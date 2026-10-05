@@ -30,69 +30,8 @@ export interface ExemptEntry {
 
 export type ManifestEntry = CoverageEntry | ExemptEntry;
 
-/**
- * Slash-command coverage is collective: the real-server route test and the
- * deterministic scenario both assert the served catalog is exactly
- * `getConnectorCommands("gui")`, so every command is covered as one contract;
- * the Playwright + overlay specs exercise navigate/client/agent dispatch.
- */
-export const COMMAND_COVERAGE: CoverageEntry = {
-  status: "covered",
-  artifacts: [
-    "packages/agent/src/api/commands-routes.real-server.test.ts",
-    "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
-    "packages/app/test/ui-smoke/slash-commands.spec.ts",
-    "packages/ui/src/components/shell/ChatOverlay.slash.test.tsx",
-  ],
-  // The full-catalog contract appears in the real-server test + the scenario;
-  // the menu-dispatch path appears in the Playwright + overlay specs.
-  signals: ["getConnectorCommands", "slash-command-menu"],
-  note: "Served catalog asserted == getConnectorCommands; navigate/client/agent dispatch exercised end to end.",
-};
-
-/**
- * Shape-only tests that drive a handler with mocked `json`/`error` functions
- * and never open a socket or call the real dispatcher — they do not count as
- * e2e coverage (issue §6 larp-detection).
- */
-export const LARP_TEST_ARTIFACTS: ReadonlySet<string> = new Set([
-  "packages/agent/src/api/commands-routes.test.ts",
-]);
-
-/**
- * Candidate source paths for the #8791 pre-LLM shortcut registry. None exist
- * today, so the shortcut surface is empty and advisory; when #8791 lands at one
- * of these the inventory lights the surface up and the gate requires coverage.
- */
-export const SHORTCUT_REGISTRY_HINTS: readonly string[] = [
-  "packages/core/src/runtime/shortcut-registry.ts",
-  "packages/core/src/shortcuts/index.ts",
-  "packages/core/src/runtime/shortcuts/index.ts",
-  "plugins/plugin-commands/src/shortcuts.ts",
-];
-
-/**
- * Coverage for the #8791 pre-LLM shortcut registry. The slash-command shortcuts
- * (`createCommandShortcuts` → `<KEY>_COMMAND` action targets) are exercised
- * end-to-end against a real `AgentRuntime`: the commands plugin's
- * `Plugin.shortcuts` wire into `runtime.shortcutRegistry`, and `runShortcutGate`
- * resolves deterministic replies through the real pre-LLM gate with no model
- * call. `command-actions.test.ts` snapshots every concrete
- * `<shortcut-id>:<alias>-><action>` signature; inventory.ts adds the relevant
- * signature as a per-shortcut signal so the matrix cannot collapse all shortcuts
- * into one generic covered row.
- */
-export const SHORTCUT_COVERAGE: CoverageEntry = {
-  status: "covered",
-  artifacts: [
-    "plugins/plugin-commands/__tests__/command-actions.test.ts",
-    "packages/agent/src/services/commands-shortcut-runtime.test.ts",
-    "packages/core/src/services/message.shortcut-gate.test.ts",
-    "packages/core/src/runtime/shortcut-registry.test.ts",
-  ],
-  signals: ["runShortcutGate", "shortcutRegistry"],
-  note: "createCommandShortcuts → runtime.shortcutRegistry; runShortcutGate resolves slash shortcuts deterministically through the real gate (no model).",
-};
+/** Known shape-only artifacts cannot satisfy route coverage. */
+export const LARP_TEST_ARTIFACTS: ReadonlySet<string> = new Set();
 
 /** New keyless route tests boot the real handler via this prod entry point. */
 const REAL_DISPATCH_SIGNAL = "tryHandleRuntimePluginRoute";
@@ -116,6 +55,9 @@ function existing(artifact: string): CoverageEntry {
  * scan — a newly route-wiring plugin with no entry here fails the gate.
  */
 export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
+  "plugin-assistant": covered(
+    "plugins/plugin-assistant/src/routes-e2e.test.ts",
+  ),
   // ── Dedicated route tests ──
   "plugin-agent-orchestrator": existing(
     "plugins/plugin-agent-orchestrator/__tests__/unit/agent-routes-goal-wrapper.test.ts",
@@ -126,7 +68,7 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-calendar": existing(
     "plugins/plugin-calendar/test/calendar-routes.test.ts",
   ),
-  "plugin-documents": existing("plugins/plugin-documents/test/routes.test.ts"),
+  "plugin-knowledge": existing("plugins/plugin-knowledge/test/routes.test.ts"),
   "plugin-elizacloud": existing(
     "plugins/plugin-elizacloud/__tests__/cloud-billing-routes.test.ts",
   ),
@@ -177,7 +119,7 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
     reason:
       "app-control's HTTP routes are exercised end to end by the deterministic-app-control-actions and deterministic-generated-app-routes api-turn scenarios in the PR lane (real route dispatch over the scenario loopback server).",
     artifacts: [
-      "packages/scenario-runner/test/scenarios/deterministic-app-control-actions.scenario.ts",
+      "packages/testing/scenario-runner/test/scenarios/deterministic-app-control-actions.scenario.ts",
     ],
   },
   "plugin-personal-assistant": {

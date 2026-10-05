@@ -149,31 +149,6 @@ export interface AnchorSample {
 }
 
 /**
- * Certify that a prepend/append did NOT shove the reader's viewport: the
- * anchored element's on-screen offset must be within {@link MAX_ANCHOR_JUMP_PX}
- * of where it was. A prepend that grows the scroller upward without restoring
- * `scrollTop` moves the anchor down by the whole grown height — the classic
- * "scroll-up loads history and yanks you" bug.
- */
-export function certifyAnchorPreserved(
-  s: AnchorSample,
-  target?: string,
-): Violation[] {
-  const jump = Math.abs(s.anchorOffsetAfter - s.anchorOffsetBefore);
-  if (jump > MAX_ANCHOR_JUMP_PX) {
-    return [
-      {
-        dimension: "scroll",
-        code: `scroll/anchor-jump-on-${s.kind}`,
-        message: `${s.kind} moved the reader's anchor by ${jump.toFixed(1)}px (offset ${s.anchorOffsetBefore.toFixed(1)} → ${s.anchorOffsetAfter.toFixed(1)}); anchor preservation caps the jump at ${MAX_ANCHOR_JUMP_PX}px`,
-        target,
-      },
-    ];
-  }
-  return [];
-}
-
-/**
  * Certify overscroll containment: an INNER scroller that reaches its top/bottom
  * edge must not chain the scroll to an ANCESTOR (the page / the sheet), which on
  * touch reads as "the whole app moved when I tried to scroll the list". A
@@ -377,42 +352,4 @@ export interface CertRun {
   total: number;
   failed: number;
   reports: WidgetCertReport[];
-}
-
-/** Fold per-widget reports into a run summary (JSON evidence artifact). */
-export function summarizeRun(reports: readonly WidgetCertReport[]): CertRun {
-  const failed = reports.filter((r) => !r.passed).length;
-  return {
-    runAt: new Date().toISOString(),
-    passed: failed === 0,
-    total: reports.length,
-    failed,
-    reports: [...reports],
-  };
-}
-
-/** Render a run summary as a human-readable text block for the evidence dir. */
-export function renderRunSummary(run: CertRun): string {
-  const lines: string[] = [];
-  lines.push(
-    `UI scroll + tap-target certification — ${run.passed ? "PASS" : "FAIL"}`,
-  );
-  lines.push(
-    `${run.total - run.failed}/${run.total} widgets certified (${run.failed} failing) @ ${run.runAt}`,
-  );
-  lines.push("");
-  for (const r of run.reports) {
-    lines.push(
-      `${r.passed ? "\u2713" : "\u2717"} ${r.widget}  [${r.dimensions.join(", ")}]`,
-    );
-    for (const viol of r.violations) {
-      lines.push(
-        `    \u2717 (${viol.dimension}) ${viol.code}${viol.target ? ` @ ${viol.target}` : ""}: ${viol.message}`,
-      );
-    }
-    if (r.artifacts?.length) {
-      for (const a of r.artifacts) lines.push(`    \u2192 ${a}`);
-    }
-  }
-  return lines.join("\n");
 }

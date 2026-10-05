@@ -15,8 +15,8 @@
  *   GOALS_LLM_LIVE_TEST=1 bun run --cwd plugins/plugin-goals test goals.live-llm
  */
 
+import type { LifeOpsGoalDefinition } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsGoalDefinition } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { evaluateGoalProgressWithLlm } from "../src/goal-semantic-evaluator.ts";
 

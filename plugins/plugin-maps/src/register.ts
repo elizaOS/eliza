@@ -1,21 +1,21 @@
-/** Registers Maps as a signed app-shell page for native and offline clients. */
+import { registerAppShellPage } from "@elizaos/ui";
 
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-
-registerAppShellPage({
-  id: "maps",
-  pluginId: "@elizaos/plugin-maps",
-  label: "Maps",
-  icon: "Map",
-  path: "/maps",
-  order: 925,
-  viewKind: "release",
-  surface: {
-    header: "fullscreen",
-    capabilities: ["agent-surface"],
-  },
-  loader: () =>
-    import("./components/MapsPage.tsx").then((module) => ({
-      default: module.MapsPage,
-    })),
-});
+export function registerApp(): void {
+  registerAppShellPage({
+    id: "maps",
+    pluginId: "@elizaos/plugin-maps",
+    label: "Maps",
+    icon: "Map",
+    path: "/maps",
+    order: 925,
+    viewKind: "release",
+    surface: {
+      header: "fullscreen",
+      capabilities: ["agent-surface"],
+    },
+    loader: () =>
+      import("./components/MapsPage.tsx").then((module) => ({
+        default: module.MapsPage,
+      })),
+  });
+}

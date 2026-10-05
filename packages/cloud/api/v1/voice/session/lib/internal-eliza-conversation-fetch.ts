@@ -8,32 +8,32 @@
  * contract cannot select the legacy database-backed bridge.
  */
 
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
-import { timingSafeEqualSecret } from "@/lib/auth/cron";
-import { cache } from "@/lib/cache/client";
-import { CacheKeys } from "@/lib/cache/keys";
-import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
+import { timingSafeEqualSecret } from "@elizaos/cloud-shared/lib/auth/cron";
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
+import { CacheKeys } from "@elizaos/cloud-shared/lib/cache/keys";
+import { resolveElizaTraceId } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
 import {
   hasCloudBindingsContext,
   runWithCloudBindingsAsync,
-} from "@/lib/runtime/cloud-bindings";
-import { handleCanonicalScopedAgentStream } from "@/lib/services/shared-runtime/canonical-scoped-stream";
+} from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { handleCanonicalScopedAgentStream } from "@elizaos/cloud-shared/lib/services/shared-runtime/canonical-scoped-stream";
 import {
   coordinateSharedConversationPrewarm,
   coordinateSharedLifecycleEvent,
   type SharedConversationLifecycleEvent,
-} from "@/lib/services/shared-runtime/conversation-coordinator";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
 import {
   isPersonalSharedAgentId,
   personalSharedAgent,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
-import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
+import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type {
   Bindings,
   RuntimeDurableObjectNamespace,
-} from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 
 export interface InternalElizaConversationFetchClaims {
   agentId: string;

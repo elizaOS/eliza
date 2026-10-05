@@ -21,7 +21,7 @@ const appState = vi.hoisted(() => ({
 }));
 const claimCloudLoginWindow = vi.hoisted(() => vi.fn());
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (
     selector: (state: {
       elizaCloudLoginBusy: boolean;

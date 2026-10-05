@@ -4,9 +4,8 @@
  * Lightweight health check endpoint for load balancers and uptime checks.
  */
 
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

@@ -1,23 +1,28 @@
+import {
+  projectLegacyStripeCheckoutReceipt,
+  projectStripeCheckoutReceipt,
+} from "@elizaos/cloud-shared/lib/services/stripe-checkout-receipt";
+
 /**
  * GET /api/v1/credits/verify?session_id=...
  * Verify a completed Stripe checkout session belongs to this org/user.
  */
 
-import { Hono } from "hono";
-import type Stripe from "stripe";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   StripeCheckoutAuthorityError,
   stripeCheckoutOrdersService,
-} from "@/lib/services/stripe-checkout-orders";
-import { requireStripe } from "@/lib/stripe";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import type Stripe from "stripe";
 
 const app = new Hono<AppEnv>();
 
@@ -59,43 +64,17 @@ app.get("/", async (c) => {
     if (!paymentIntentId) {
       return c.json({ success: false, error: "No payment intent found" }, 400);
     }
-    const customerId =
-      typeof session.customer === "string"
-        ? session.customer
-        : (session.customer?.id ?? null);
     const orderId = metadata.checkout_order_id;
     const settlement = orderId
       ? await stripeCheckoutOrdersService.settle(
-          {
-            checkoutOrderId: orderId,
-            clientReferenceId: session.client_reference_id,
-            metadataOrderId: metadata.checkout_order_id ?? null,
-            checkoutSessionId: session.id,
-            paymentIntentId,
-            paymentStatus: session.payment_status,
-            amountTotal: session.amount_total,
-            currency: session.currency,
-            customerId,
-          },
+          projectStripeCheckoutReceipt(session, paymentIntentId, orderId),
           {
             callerOrganizationId: user.organization_id,
             callerUserId: user.id,
           },
         )
       : await stripeCheckoutOrdersService.settleLegacy(
-          {
-            checkoutSessionId: session.id,
-            paymentIntentId,
-            paymentStatus: session.payment_status,
-            amountTotal: session.amount_total,
-            currency: session.currency,
-            customerId,
-            organizationId: metadata.organization_id ?? null,
-            initiatedByUserId: metadata.user_id ?? null,
-            purchaseType: metadata.type ?? null,
-            creditPackId: metadata.credit_pack_id ?? null,
-            claimedCredits: metadata.credits ?? null,
-          },
+          projectLegacyStripeCheckoutReceipt(session, paymentIntentId),
           {
             callerOrganizationId: user.organization_id,
             callerUserId: user.id,

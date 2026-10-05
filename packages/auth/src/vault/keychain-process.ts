@@ -1,0 +1,137 @@
+/**
+ * Isolates native Keychain operations behind a bounded child-process boundary.
+ * Key material travels only through a private pipe; failures never include child
+ * output. A blocked OS prompt cannot indefinitely stall a synchronous caller.
+ */
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { isAbsolute } from "node:path";
+
+const require = createRequire(import.meta.url);
+const TIMEOUT_MS = 5_000;
+
+// The child owns the complete read/create/verify operation. In particular, a
+// failed read must never be interpreted as an absent key and overwrite it.
+const WORKER = `
+import { createRequire } from "node:module";
+import { randomBytes } from "node:crypto";
+const [binding, service, account, requiredRuntime] = process.argv.slice(1);
+if (requiredRuntime === "node" &&
+    (process.versions.bun || Number(process.versions.node.split(".")[0]) < 24)) {
+  process.exit(2);
+}
+let phase = "binding";
+try {
+  const { Entry } = createRequire(binding)(binding);
+  const entry = new Entry(service, account);
+  phase = "read";
+  let encoded = entry.getPassword();
+  if (encoded === null) {
+    encoded = randomBytes(32).toString("base64");
+    phase = "write";
+    entry.setPassword(encoded);
+    phase = "verify";
+    if (entry.getPassword() !== encoded) throw new Error("read-back mismatch");
+  }
+  if (typeof encoded !== "string" || Buffer.from(encoded, "base64").length !== 32 ||
+      Buffer.from(encoded, "base64").toString("base64") !== encoded) {
+    phase = "invalid-key";
+    throw new Error("invalid key");
+  }
+  // A native binding can retain event-loop handles after a completed read.
+  // Flush the private protocol before terminating this single-operation worker.
+  process.stdout.write(JSON.stringify({ key: encoded }), () => process.exit(0));
+} catch {
+  process.stdout.write(JSON.stringify({ error: phase }), () => process.exit(1));
+}
+`;
+
+export interface KeychainProcessOptions {
+  /** The native binding path; injectable for real subprocess contract tests. */
+  binding?: string;
+  timeoutMs?: number;
+}
+
+function argumentsFor(
+  service: string,
+  account: string,
+  binding?: string,
+  requireNode = false,
+) {
+  return [
+    "--input-type=module",
+    "--eval",
+    WORKER,
+    binding ?? require.resolve("@napi-rs/keyring"),
+    service,
+    account,
+    requireNode ? "node" : "",
+  ];
+}
+
+function unavailable(): Error {
+  return new Error(
+    "OS Keychain did not complete a verified key read within its deadline. Unlock the login Keychain and approve the app's existing Keychain access, then retry. No replacement key was returned.",
+  );
+}
+
+function decode(output: string): Buffer {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output);
+  } catch {
+    // error-policy:J3 Only the fixed, validated key protocol may cross the pipe.
+    throw unavailable();
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("key" in parsed) ||
+    typeof parsed.key !== "string" ||
+    Buffer.from(parsed.key, "base64").length !== 32 ||
+    Buffer.from(parsed.key, "base64").toString("base64") !== parsed.key
+  ) {
+    throw unavailable();
+  }
+  return Buffer.from(parsed.key, "base64");
+}
+
+export function readKeychainKeySync(
+  service: string,
+  account: string,
+  options: KeychainProcessOptions = {},
+): Buffer {
+  // The host's explicit Node selection applies only to this native worker.
+  // Choose before dispatch; never retry denied Keychain access in another runtime.
+  const configuredNode = process.versions.bun
+    ? process.env.ELIZA_NODE_PATH?.trim()
+    : undefined;
+  const invalidNode = () =>
+    new Error(
+      "Invalid ELIZA_NODE_PATH for the Keychain worker; configure an absolute standard Node.js 24+ executable. No alternate worker or replacement key was used.",
+    );
+  if (configuredNode && !isAbsolute(configuredNode)) throw invalidNode();
+  const result = spawnSync(
+    configuredNode || process.execPath,
+    argumentsFor(service, account, options.binding, Boolean(configuredNode)),
+    {
+      encoding: "utf8",
+      timeout: options.timeoutMs ?? TIMEOUT_MS,
+      killSignal: "SIGKILL",
+      maxBuffer: 1024,
+      // Native diagnostics are not part of the key protocol. Discard them so
+      // stderr cannot exhaust the stdout budget or expose native error data.
+      stdio: ["ignore", "pipe", "ignore"],
+    },
+  );
+  if (
+    configuredNode &&
+    (result.status === 2 ||
+      (result.error &&
+        ("code" in result.error ? result.error.code : undefined) !==
+          "ETIMEDOUT"))
+  )
+    throw invalidNode();
+  if (result.error || result.status !== 0) throw unavailable();
+  return decode(result.stdout);
+}

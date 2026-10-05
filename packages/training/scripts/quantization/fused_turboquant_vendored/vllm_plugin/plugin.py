@@ -22,7 +22,7 @@ def register_backend() -> None:
     --attention-backend FUSED_TURBOQUANT or AttentionConfig(backend="FUSED_TURBOQUANT").
     """
     try:
-        from quantization.fused_turboquant_vendored.vllm_plugin.backend import FusedTurboQuantBackend
+        from eliza_training.quantization.fused_turboquant_vendored.vllm_plugin.backend import FusedTurboQuantBackend
     except Exception as e:
         logger.warning("Failed to import FusedTurboQuantBackend: %s", e)
         return

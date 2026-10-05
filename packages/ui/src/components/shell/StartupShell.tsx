@@ -84,7 +84,7 @@ export function StartupShell({ view, onRetry }: StartupShellProps) {
   // Unconditional mount checkpoint: unlike the gated first-paint mark below,
   // this fires as soon as the shell mounts (any view, including a fast boot
   // that never paints the splash), so the boot-trace harness
-  // (capture-startup-trace.mjs) always has a reachable renderer-only mark.
+  // (capture-startup-trace.ts) always has a reachable renderer-only mark.
   // markStartup dedupes by name, so re-renders keep it single.
   useEffect(() => {
     markStartup("startup-shell:mounted", { view: view.kind });

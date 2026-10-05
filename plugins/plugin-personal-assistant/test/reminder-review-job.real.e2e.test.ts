@@ -5,6 +5,7 @@
  * runtime.
  */
 import crypto from "node:crypto";
+import type { LifeOpsOccurrence } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   ChannelType,
@@ -13,8 +14,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../packages/app-core/test/helpers/real-runtime.ts";
-import type { LifeOpsOccurrence } from "../src/contracts/index.js";
+import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
 import {
   createLifeOpsReminderAttempt,
   createLifeOpsReminderPlan,

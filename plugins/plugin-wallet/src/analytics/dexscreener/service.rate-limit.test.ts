@@ -4,20 +4,8 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { DexScreenerService } from "./service";
-
-vi.mock("@elizaos/core", () => ({
-  formatError: (error: unknown) =>
-    error instanceof Error ? error.message : String(error),
-  Service: class Service {
-    runtime: unknown;
-
-    constructor(runtime: unknown) {
-      this.runtime = runtime;
-    }
-  },
-}));
 
 function runtimeWithDelay(delay: unknown): IAgentRuntime {
   return {

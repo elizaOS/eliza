@@ -11,7 +11,7 @@
  */
 
 import { createContext, useContext } from "react";
-import type { CodingAgentSession } from "../api/client";
+import type { CodingAgentSession } from "../api/client-types-cloud";
 
 export interface PtySessionsValue {
   ptySessions: CodingAgentSession[];

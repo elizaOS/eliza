@@ -1,22 +1,16 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "customConditions": [],
     "noEmit": false,
-    "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
     "rootDir": "./src",
-    "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
-    "paths": {
-      "@elizaos/core": ["../core/dist/index.d.ts"],
-      "@elizaos/core/atomic-json": ["../core/dist/atomic-json.d.ts"],
-      "@elizaos/shared": ["../shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../shared/dist/*"],
-      "@elizaos/vault": ["../vault/dist/index.d.ts"]
-    }
+    "paths": {},
+    "types": ["node", "bun"]
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/__tests__/**", "test/**/*"]
 }

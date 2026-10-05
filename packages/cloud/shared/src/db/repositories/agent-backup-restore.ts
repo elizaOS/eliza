@@ -5,6 +5,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import {
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
@@ -15,7 +16,7 @@ import {
   canonicalizeAgentBackupManifestV3,
   canonicalizeAgentBackupOperationKeyBundleContext,
   parseAgentBackupManifestV3,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import { and, eq } from "drizzle-orm";
 import { isValidUUID } from "../../lib/utils/validation";
 import { dbWrite } from "../helpers";
@@ -40,6 +41,11 @@ import {
   AgentBackupRestoreAuthorityError,
   hasAgentBackupRestoreAuthority,
 } from "./agent-backup-restore-authority";
+import {
+  applyAgentBackupRestoreV3TransactionDeadline,
+  assertAgentBackupRestoreV3OperationControl,
+  snapshotAgentBackupRestoreV3OperationControl,
+} from "./agent-backup-restore-v3-candidate-database-control";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const UINT64_MAX = 18_446_744_073_709_551_615n;
@@ -282,9 +288,14 @@ function validateInput(input: Readonly<AgentBackupRestoreSourceV3Input>): {
  */
 export async function loadAgentBackupRestoreSourceV3(
   input: Readonly<AgentBackupRestoreSourceV3Input>,
+  controlInput?: Readonly<AgentBackupRestoreV3OperationControl>,
 ): Promise<AgentBackupRestoreSourceV3> {
   const validated = validateInput(input);
+  const control = controlInput && snapshotAgentBackupRestoreV3OperationControl(controlInput);
+  if (control) assertAgentBackupRestoreV3OperationControl(control, "Restore source load");
   return dbWrite.transaction(async (tx) => {
+    if (control)
+      await applyAgentBackupRestoreV3TransactionDeadline(tx, control, "Restore source load");
     const [backup] = await tx
       .select()
       .from(agentSandboxBackups)
@@ -541,6 +552,7 @@ export async function loadAgentBackupRestoreSourceV3(
       );
     }
     const finalDatabaseNow = await readPostLockDatabaseNow(tx);
+    if (control) assertAgentBackupRestoreV3OperationControl(control, "Restore source load");
     if (lease.released_at !== null || lease.expires_at.getTime() <= finalDatabaseNow.getTime()) {
       throw new AgentBackupCatalogConflictError(
         "Restore source lease expired during manifest and inventory validation",

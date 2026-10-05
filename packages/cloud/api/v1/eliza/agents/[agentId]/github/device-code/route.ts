@@ -1,17 +1,21 @@
 // Handles v1 cloud API v1 eliza agents agentid github device code route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { managedAgentGithubService } from "@/lib/services/agent-managed-github";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { managedAgentGithubService } from "@elizaos/cloud-shared/lib/services/agent-managed-github";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   getProvider,
   isProviderConfigured,
-} from "@/lib/services/oauth/provider-registry";
-import { initiateOAuth2 } from "@/lib/services/oauth/providers";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import { initiateOAuth2 } from "@elizaos/cloud-shared/lib/services/oauth/providers";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import {
   GITHUB_DEVICE_CONNECT_EXPIRES_IN_SECONDS,
   GITHUB_DEVICE_CONNECT_POLL_INTERVAL_SECONDS,

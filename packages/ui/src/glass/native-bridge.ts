@@ -2,9 +2,9 @@
  * TS side of the `GlassBridge` Capacitor plugin: attaches REAL native material
  * behind anchored regions of the webview — iOS 26 `UIGlassEffect` on a
  * `UIVisualEffectView` (Swift half:
- * `packages/app-core/platforms/ios/App/App/GlassBridge.swift`) and the
+ * `packages/app/platforms/ios/App/App/GlassBridge.swift`) and the
  * Material dynamic-palette panel on Android 12+ (Java half:
- * `packages/app-core/platforms/android/.../GlassBridgePlugin.java`). The JS
+ * `packages/app/platforms/android/.../GlassBridgePlugin.java`). The JS
  * API and rect contract are identical on both platforms. Below iOS 26 /
  * Android 12 (or off-Capacitor) every call resolves as a no-op and callers
  * stay on the CSS tier.

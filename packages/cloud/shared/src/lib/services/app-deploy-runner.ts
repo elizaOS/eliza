@@ -6,27 +6,10 @@
  * runs the orchestration: ensure isolated tenant DB -> create container row
  * carrying that DSN -> enqueue CONTAINER_PROVISION -> link container to app.
  *
- * ── THE RUNTIME SPLIT (load-bearing) ─────────────────────────────────────────
- * `deployApp.ensureTenantDb` must run `CREATE DATABASE`/`CREATE ROLE` DDL, which
- * goes through `DirectPgExecutor` (node-`pg`). The cloud-api deploy route runs on
- * Cloudflare Workers (workerd) where `pg` does NOT load. So there are two ways to
- * wire `ensureTenantDb`, and the factory picks the right one by runtime:
- *
- *   (A) NODE runtime (the provisioning-worker daemon, or any node host of the
- *       deploy path): `ensureTenantDb` runs the real isolated provision inline
- *       via `userDatabaseService.provisionDatabase` backed by the injected
- *       `SqlTenantDbProvisioning` (DirectPgExecutor). Returns the per-tenant DSN.
- *
- *   (B) WORKER runtime (cloud-api): `ensureTenantDb` must NOT touch `pg`. The
- *       Worker-safe factory provisions in SHARED-DB fallback mode at request time
- *       (no DDL — just returns the shared DATABASE_URL the legacy path used), OR,
- *       once the daemon owns tenant-DB DDL, returns a placeholder the daemon
- *       overwrites before the container boots. Today's foundation keeps the
- *       isolated DDL on the node side, so the Worker factory uses the shared-DB
- *       provision (still isolated by app/agent UUID via plugin-sql) and leaves
- *       a TODO to move DDL into the CONTAINER_PROVISION executor when the daemon
- *       gains an ensure-tenant-db step. Either way the deploy route never calls
- *       `pg`, satisfying the workerd constraint.
+ * Tenant database provisioning runs on the Node provisioning worker through
+ * the injected isolated-database provisioner. Worker routes enqueue deployment;
+ * this runner fails closed when no provisioner is installed. It never substitutes
+ * the shared agent DATABASE_URL for a tenant database.
  *
  * The image is resolved from the app deploy source. `resolveImage` reads, in
  * order:

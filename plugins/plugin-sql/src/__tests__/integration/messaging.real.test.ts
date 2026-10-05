@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
+import { messageTable } from "../../schema/message";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Messaging Integration Tests", () => {
@@ -232,6 +233,83 @@ describe("Messaging Integration Tests", () => {
         "server memory 2",
         "server memory 1",
       ]);
+    });
+  });
+
+  describe("getMessagesForChannel pagination ties", () => {
+    it("orders same-millisecond messages deterministically by descending UUID", async () => {
+      const channel = await adapter.createChannel(
+        {
+          messageServerId: messageServerId,
+          name: "tie-order-channel",
+          type: ChannelType.GROUP,
+        },
+        []
+      );
+      const tie = new Date("2026-01-15T12:00:00.000Z");
+      const ids = Array.from({ length: 12 }, () => uuidv4() as UUID);
+      await adapter.db.insert(messageTable).values(
+        ids.map((id, index) => ({
+          id,
+          channelId: channel.id,
+          authorId: testAgentId,
+          content: `tie-${index}`,
+          createdAt: tie,
+          updatedAt: tie,
+        }))
+      );
+
+      const first = await adapter.getMessagesForChannel(channel.id, 50);
+      const second = await adapter.getMessagesForChannel(channel.id, 50);
+
+      expect(first.map((message) => message.id)).toEqual([...ids].sort().reverse());
+      expect(second.map((message) => message.id)).toEqual(first.map((message) => message.id));
+    });
+
+    it("continues a same-millisecond cursor without losing or repeating rows", async () => {
+      const channel = await adapter.createChannel(
+        {
+          messageServerId: messageServerId,
+          name: "tie-cursor-channel",
+          type: ChannelType.GROUP,
+        },
+        []
+      );
+      const tie = new Date("2026-01-15T13:00:00.000Z");
+      const older = new Date(tie.getTime() - 1000);
+      const tieIds = Array.from({ length: 12 }, () => uuidv4() as UUID);
+      const olderIds = [uuidv4() as UUID, uuidv4() as UUID];
+      await adapter.db.insert(messageTable).values([
+        ...tieIds.map((id, index) => ({
+          id,
+          channelId: channel.id,
+          authorId: testAgentId,
+          content: `tie-${index}`,
+          createdAt: tie,
+          updatedAt: tie,
+        })),
+        ...olderIds.map((id, index) => ({
+          id,
+          channelId: channel.id,
+          authorId: testAgentId,
+          content: `older-${index}`,
+          createdAt: older,
+          updatedAt: older,
+        })),
+      ]);
+      const allIds = [...tieIds, ...olderIds].sort();
+
+      // Page 1 with a limit inside the tie group.
+      const page1 = await adapter.getMessagesForChannel(channel.id, 6);
+      expect(page1).toHaveLength(6);
+      const last = page1[page1.length - 1];
+
+      // The documented cursor position: continue after the last seen row.
+      const page2 = await adapter.getMessagesForChannel(channel.id, 50, last.createdAt, last.id);
+
+      const seen = [...page1, ...page2].map((message) => message.id);
+      expect(new Set(seen).size).toBe(seen.length);
+      expect([...seen].sort()).toEqual(allIds);
     });
   });
 });

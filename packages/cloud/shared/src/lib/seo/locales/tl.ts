@@ -68,7 +68,7 @@ export const seoMessages: SeoMessages = {
     billing: {
       title: "Billing at Credits",
       description:
-        "I-manage ang credits mo, tingnan ang usage, at bumili ng credit packs. Transparent pricing sa lahat ng AI operations.",
+        "Mag-subscribe sa Plus o Pro para sa buwanang allowance, o mag-top up ng pay-as-you-go credits mula $5 hanggang $1,000. Transparent pricing sa lahat ng AI operations.",
     },
     apiKeys: {
       title: "API Keys",

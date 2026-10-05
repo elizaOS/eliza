@@ -1,3 +1,4 @@
+/** Reads complete SMS provider records unless the caller explicitly supplies a limit. */
 package ai.eliza.plugins.messages
 
 import android.content.Context
@@ -29,7 +30,8 @@ class MessagesReader(private val context: Context) {
 
     /** @throws IllegalStateException if the provider returns no cursor (matches
      *  the plugin's reject). */
-    fun listMessages(threadId: String?, limit: Int): List<SmsRecord> {
+    fun listMessages(threadId: String?, limit: Int? = null): List<SmsRecord> {
+        require(limit == null || limit > 0) { "limit must be positive" }
         val normalizedThread = threadId?.trim()
         val selection =
             if (normalizedThread.isNullOrEmpty()) null else "${Telephony.Sms.THREAD_ID} = ?"
@@ -62,7 +64,7 @@ class MessagesReader(private val context: Context) {
             val typeCol = cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE)
             val readCol = cursor.getColumnIndexOrThrow(Telephony.Sms.READ)
             var count = 0
-            while (cursor.moveToNext() && count < limit) {
+            while ((limit == null || count < limit) && cursor.moveToNext()) {
                 results.add(
                     SmsRecord(
                         id = cursor.getString(idCol),

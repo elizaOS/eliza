@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { resetDevCloudEnvAuthorityForTests } from "@elizaos/shared";
+import { resetDevCloudEnvAuthorityForTests } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CloudManagedGatewayRelayService } from "../../src/services/cloud-managed-gateway-relay";
 

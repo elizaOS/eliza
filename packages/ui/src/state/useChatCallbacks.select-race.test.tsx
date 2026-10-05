@@ -25,20 +25,20 @@
 // getConversationMessages resolves on command — reproducing the exact race.
 
 import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
-  CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
-} from "../api";
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
 import { CLOUD_HANDOFF_PHASE_EVENT } from "../events";
+import { logger } from "../logger.ts";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
 import { readChatDraft } from "./ChatComposerContext.hooks";
-import type { LifecycleAction } from "./internal";
+import type { LifecycleAction } from "./types";
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
 
 const mocks = vi.hoisted(() => ({
@@ -46,6 +46,8 @@ const mocks = vi.hoisted(() => ({
     (phase: "before" | "after") => void
   >(),
   client: {
+    // This fixture keeps one stable runtime authority throughout each scenario.
+    onAuthorityChange: vi.fn(() => () => {}),
     getConversationMessages: vi.fn(),
     listConversations: vi.fn(),
     createConversation: vi.fn(),
@@ -64,7 +66,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 vi.mock("./switch-runtime", () => ({
   subscribeRuntimeAuthoritySwitch: (
     listener: (phase: "before" | "after") => void,
@@ -143,6 +145,7 @@ interface Harness {
     | "isConversationMessagesOwnershipCurrent"
     | "getConversationMessagesOwnershipGeneration"
     | "registerConversationMessageOverlay"
+    | "reconcileRestoredConversationMessages"
     | "applyConversationMessageOverlayModification"
     | "removeConversationMessageStateMessages"
     | "discardConversationMessageState"
@@ -416,6 +419,8 @@ function mountChat(h: Harness) {
         loaders.getConversationMessagesOwnershipGeneration,
       registerConversationMessageOverlay:
         loaders.registerConversationMessageOverlay,
+      reconcileRestoredConversationMessages:
+        loaders.reconcileRestoredConversationMessages,
       applyConversationMessageOverlayModification:
         loaders.applyConversationMessageOverlayModification,
       removeConversationMessageStateMessages:
@@ -1300,3 +1305,29 @@ describe("rapid conversation switching must never delete a real conversation", (
     });
   });
 });
+
+it.each([404, 403, 500])(
+  "propagates only authoritative selection rejection from the production loader (%s)",
+  async (status) => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+    mocks.client.getConversationMessages.mockImplementation(
+      async (id: string) => {
+        if (id === "foreign-conversation")
+          throw Object.assign(Error("read failed"), { status });
+        return { messages: realHistory(id) };
+      },
+    );
+    const rejected = vi.fn();
+    await act(async () => {
+      await result.current.callbacks.handleSelectConversation(
+        "foreign-conversation",
+        { onRejected: rejected },
+      );
+    });
+    expect(rejected).toHaveBeenCalledTimes(
+      status === 404 || status === 403 ? 1 : 0,
+    );
+    expect(h.deletedConversationIds()).toEqual([]);
+  },
+);

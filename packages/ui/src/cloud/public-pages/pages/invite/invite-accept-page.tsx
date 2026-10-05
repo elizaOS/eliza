@@ -28,17 +28,16 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "../../../../bridge/toast";
+import { Alert, AlertDescription } from "../../../../components/ui/alert";
+import { Badge } from "../../../../components/ui/badge";
+import { Button } from "../../../../components/ui/button";
 import {
-  Alert,
-  AlertDescription,
-  Badge,
-  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../../../../components/primitives";
+} from "../../../../components/ui/card";
 import { ApiError, api } from "../../../lib/api-client";
 import { useSessionAuth } from "../../../lib/use-session-auth";
 import { useCloudT } from "../../../shell/CloudI18nProvider";

@@ -1,10 +1,11 @@
 /** Creates an unconfigured app billing registration from authenticated app-owner provenance; accepts no provider identities. */
+
+import { appBillingAccountsRepository } from "@elizaos/cloud-shared/db/repositories/app-billing-accounts";
+import { checkCookieMutationGuard } from "@elizaos/cloud-shared/lib/auth/cookie-mutation-guard";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { appBillingAccountsRepository } from "@/db/repositories/app-billing-accounts";
-import { checkCookieMutationGuard } from "@/lib/auth/cookie-mutation-guard";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   appBillingEnvironment,
   appBillingFailure,

@@ -18,6 +18,23 @@ function weekdayOf(parts: { year: number; month: number; day: number }) {
 }
 
 describe("parseExplicitLocalDate numeric branch (#21941)", () => {
+  it("anchors relative weekdays and dates to the supplied request time", () => {
+    const requestedAt = new Date("2026-09-15T22:00:00.000Z");
+    expect(parseExplicitLocalDate("friday", TZ, requestedAt)).toEqual({
+      year: 2026,
+      month: 9,
+      day: 18,
+    });
+    expect(parseExplicitLocalDate("tomorrow", TZ, requestedAt)).toEqual({
+      year: 2026,
+      month: 9,
+      day: 16,
+    });
+    expect(
+      parseExplicitLocalDate("friday", TZ, new Date("2026-09-21T12:00:00Z")),
+    ).toEqual({ year: 2026, month: 9, day: 25 });
+  });
+
   it("resolves 'friday 3-5' via the weekday branch, not as March 5", () => {
     const result = parseExplicitLocalDate("schedule review friday 3-5", TZ);
     expect(result).toEqual(parseExplicitLocalDate("friday", TZ));

@@ -6,7 +6,7 @@
  * provider and dedicated-agent propagation is tracked separately.
  */
 
-import { ElizaError, isInferenceTraceId, mintInferenceTraceId } from "@elizaos/core";
+import { ElizaError, isInferenceTraceId, mintInferenceTraceId } from "@elizaos/core/protocol";
 import type { InferenceAuthTelemetry } from "../services/inference-auth-context";
 
 export const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
@@ -174,8 +174,7 @@ function inferenceAuthTimingMetrics(telemetry: InferenceAuthTelemetry): ServerTi
   const optional = [
     ["auth_cache_available", telemetry.timings.cacheAvailabilityMs],
     ["auth_cache_read", telemetry.timings.cacheReadMs],
-    ["auth_key_lookup", telemetry.timings.keyLookupMs],
-    ["auth_user_org", telemetry.timings.userOrgLookupMs],
+    ["auth_identity", telemetry.timings.identityLookupMs],
     ["auth_moderation", telemetry.timings.moderationMs],
     ["auth_cache_write", telemetry.timings.cacheWriteMs],
   ] as const;

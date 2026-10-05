@@ -2,7 +2,7 @@
 import {
   executeResponseAttempts,
   type ResponseReplayPolicy,
-} from "@elizaos/cloud-services-common/response-attempts";
+} from "@elizaos/cloud-services-common/transport";
 import { logger } from "../../utils/logger";
 
 export interface RetryFetchOptions {

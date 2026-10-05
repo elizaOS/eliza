@@ -374,22 +374,25 @@ function isDurableRetryJob(type: string): boolean {
   return type === JOB_TYPES.APP_CACHE_INVALIDATE;
 }
 
-export async function hydrateJob(job: Job): Promise<Job> {
+export async function hydrateJob(job: Job, options: { strict?: boolean } = {}): Promise<Job> {
   const [data, result, error] = await Promise.all([
     hydrateJsonField<Record<string, unknown>>({
       storage: job.data_storage,
       key: job.data_key,
       inlineValue: job.data,
+      strict: options.strict,
     }),
     hydrateJsonField<Record<string, unknown>>({
       storage: job.result_storage,
       key: job.result_key,
       inlineValue: job.result ?? null,
+      strict: options.strict,
     }),
     hydrateTextField({
       storage: job.error_storage,
       key: job.error_key,
       inlineValue: job.error,
+      strict: options.strict,
     }),
   ]);
 
@@ -590,7 +593,7 @@ export class JobsRepository {
       .from(jobs)
       .where(and(eq(jobs.type, type), sql`${jobs.data}->>'rolloutId' = ${rolloutId}`))
       .orderBy(jobs.created_at);
-    return await Promise.all(rows.map(hydrateJob));
+    return await Promise.all(rows.map((job) => hydrateJob(job)));
   }
 
   /**
@@ -613,7 +616,7 @@ export class JobsRepository {
         ),
       )
       .orderBy(jobs.created_at, jobs.id);
-    return await Promise.all(rows.map(hydrateJob));
+    return await Promise.all(rows.map((job) => hydrateJob(job)));
   }
 
   /**
@@ -648,7 +651,7 @@ export class JobsRepository {
     const rows = await (conditions.length > 0 ? query.where(and(...conditions)) : query)
       .limit(filters.limit ?? 1000)
       .orderBy(filters.orderBy === "desc" ? desc(jobs.created_at) : jobs.created_at);
-    return await Promise.all(rows.map(hydrateJob));
+    return await Promise.all(rows.map((job) => hydrateJob(job)));
   }
 
   /**
@@ -702,7 +705,7 @@ export class JobsRepository {
         ),
       )
       .orderBy(desc(jobs.created_at));
-    return await Promise.all(rows.map(hydrateJob));
+    return await Promise.all(rows.map((job) => hydrateJob(job)));
   }
 
   /**
@@ -761,7 +764,7 @@ export class JobsRepository {
         ),
       )
       .orderBy(filters.orderBy === "desc" ? desc(jobs.created_at) : jobs.created_at);
-    return await Promise.all(rows.map(hydrateJob));
+    return await Promise.all(rows.map((job) => hydrateJob(job)));
   }
 
   // ============================================================================
@@ -854,7 +857,7 @@ export class JobsRepository {
       return claimedRows;
     });
 
-    return await Promise.all(rows.map(hydrateJob));
+    return await Promise.all(rows.map((job) => hydrateJob(job)));
   }
 
   /**
@@ -924,7 +927,7 @@ export class JobsRepository {
       }
       return rows;
     });
-    return await Promise.all(rows.map(hydrateJob));
+    return await Promise.all(rows.map((job) => hydrateJob(job)));
   }
 
   private async installExecutionLeases(

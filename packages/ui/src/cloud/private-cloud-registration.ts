@@ -90,7 +90,7 @@ async function loadPrivateCloudDomains(): Promise<void> {
     import("./api-explorer"),
     import("./approvals"),
     import("./mcps"),
-    import("./settings"),
+    import("./settings/register-cloud-settings"),
   ]);
 
   registerApiExplorerCloudRoute();

@@ -9,12 +9,15 @@
  */
 
 import {
+  clearStoredStewardToken,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
   type StewardSessionChangeDetail,
-} from "@elizaos/shared/steward-session-client";
+  writeStoredStewardToken,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
+import { createMemoryStorage } from "@elizaos/testing/browser-mocks";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useContext } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearPendingOnboardingSession,
@@ -24,7 +27,11 @@ import {
 } from "../join/lib/onboarding-continuation";
 import { consumeStewardServerCookieSynced } from "../lib/steward-session-cookie-sync-marker";
 import { syncStewardSessionCookie } from "../public-pages/lib/steward-session";
-import { clearStaleStewardSession } from "./StewardProviderShared";
+import {
+  clearStaleStewardSession,
+  LocalStewardAuthContext,
+  type LocalStewardAuthValue,
+} from "./StewardProviderShared";
 
 // AuthTokenSync's 401 handling is the load-bearing fix for the re-login loop:
 // a 401 from session-sync or refresh must NOT wipe a still-valid token (a
@@ -38,8 +45,10 @@ const stewardAuthState = vi.hoisted(() => ({
   user: null as { id: string } | null,
 }));
 
-vi.mock("../../login/index", () => ({
+vi.mock("../../login/provider", () => ({
   LoginProvider: ({ children }: { children: ReactNode }) => children,
+}));
+vi.mock("../../login/hooks/useAuth", () => ({
   useAuth: () => ({
     isAuthenticated: stewardAuthState.isAuthenticated,
     isLoading: false,
@@ -50,7 +59,7 @@ vi.mock("../../login/index", () => ({
     verifyEmailCallback: async () => ({ token: "" }),
   }),
 }));
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginClient: class {},
 }));
 
@@ -73,23 +82,6 @@ let calls: RecordedCall[] = [];
 // this vitest setup even window.localStorage resolves to it. The code under
 // test reads via both the bare global and window.localStorage, so install one
 // in-memory Storage on both access paths.
-function createMemoryStorage(): Storage {
-  const store = new Map<string, string>();
-  return {
-    get length() {
-      return store.size;
-    },
-    clear: () => store.clear(),
-    getItem: (key: string) => store.get(key) ?? null,
-    key: (index: number) => [...store.keys()][index] ?? null,
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-    setItem: (key: string, value: string) => {
-      store.set(key, String(value));
-    },
-  };
-}
 
 let storage: Storage = createMemoryStorage();
 
@@ -167,6 +159,130 @@ afterEach(() => {
 });
 
 describe("AuthTokenSync", () => {
+  function configureLoopback() {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        protocol: "http:",
+        hostname: "127.0.0.1",
+        origin: "http://127.0.0.1:21486",
+        href: "http://127.0.0.1:21486/cloud/billing",
+        pathname: "/cloud/billing",
+      },
+    });
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+  }
+
+  function mountAccount() {
+    const observed: { current: LocalStewardAuthValue | null } = {
+      current: null,
+    };
+    function AccountProbe() {
+      observed.current = useContext(LocalStewardAuthContext);
+      return null;
+    }
+    render(
+      <StewardAuthRuntimeProvider apiUrl="https://staging.eliza.app/steward">
+        <AccountProbe />
+      </StewardAuthRuntimeProvider>,
+    );
+    return observed;
+  }
+
+  it("opens localhost account pages only after Cloud verifies the CLI key, without JWT refresh or repeated identity reads", async () => {
+    configureLoopback();
+    await writeStoredStewardToken("eliza_loopback_test_key");
+    let finish!: (response: Response) => void;
+    const request = vi.fn(
+      (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", request);
+    const observed = mountAccount();
+    expect(observed.current?.isAuthenticated).toBe(false);
+    expect(observed.current?.isLoading).toBe(true);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0][0]).toBe(
+      "https://api-staging.eliza.app/api/v1/user",
+    );
+    await act(async () =>
+      finish(
+        new Response(
+          JSON.stringify({ id: "verified-owner", email: "owner@example.test" }),
+        ),
+      ),
+    );
+    await waitFor(() =>
+      expect(observed.current?.user?.id).toBe("verified-owner"),
+    );
+    expect(observed.current?.isAuthenticated).toBe(true);
+    expect(observed.current?.user?.email).toBe("owner@example.test");
+    act(() => {
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new Event("steward-token-sync"));
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(observed.current?.getToken()).toBe("eliza_loopback_test_key");
+  });
+
+  it.each([401, 403, 503])(
+    "keeps a key-shaped localhost credential signed out when account verification returns %s",
+    async (status) => {
+      configureLoopback();
+      await writeStoredStewardToken("eliza_rejected_test_key");
+      stewardAuthState.isAuthenticated = true;
+      stewardAuthState.user = { id: "previous-sdk-owner" };
+      const request = vi.fn(async () => new Response("{}", { status }));
+      vi.stubGlobal("fetch", request);
+      const observed = mountAccount();
+      await waitFor(() => expect(observed.current?.isLoading).toBe(false));
+      expect(observed.current?.isAuthenticated).toBe(false);
+      expect(observed.current?.user).toBeNull();
+      expect(request).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("cannot restore a localhost session from a validation response that arrives after logout", async () => {
+    configureLoopback();
+    await writeStoredStewardToken("eliza_old_test_key");
+    let finish!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    );
+    const observed = mountAccount();
+    await act(async () => {
+      await clearStoredStewardToken();
+    });
+    await act(async () =>
+      finish(
+        new Response(
+          JSON.stringify({ id: "old-owner", email: "old@example.test" }),
+        ),
+      ),
+    );
+    expect(observed.current?.isAuthenticated).toBe(false);
+    expect(observed.current?.user).toBeNull();
+  });
+
+  it("does not send web or local-agent credentials through the localhost CLI verifier", async () => {
+    configureLoopback();
+    await writeStoredStewardToken("local-agent-bearer");
+    mountAccount();
+    await waitFor(() =>
+      expect(postsTo("steward-refresh").length).toBeGreaterThan(0),
+    );
+    expect(calls.some((call) => call.url.endsWith("/api/v1/user"))).toBe(false);
+  });
+
   it("dedupes a direct-map explicit sync only at the identical endpoint", async () => {
     const token = makeJwt({
       sub: "u1",
@@ -552,5 +668,47 @@ describe("AuthTokenSync", () => {
     }
 
     expect(transitions.map(({ state }) => state)).toEqual(["present"]);
+  });
+
+  it("does not resurrect a session when a refresh response lands after sign-out", async () => {
+    const currentToken = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    const rotatedToken = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    storage.setItem(STEWARD_TOKEN_KEY, currentToken);
+    let releaseRefresh!: () => void;
+    const refreshHeld = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        calls.push({ url, method });
+        if (url.includes("steward-refresh")) {
+          await refreshHeld;
+          return new Response(JSON.stringify({ token: rotatedToken }), {
+            status: 200,
+          });
+        }
+        return new Response(JSON.stringify({}), { status: 401 });
+      }),
+    );
+
+    mount();
+    await waitFor(() =>
+      expect(postsTo("steward-refresh").length).toBeGreaterThan(0),
+    );
+    // Explicit sign-out ends the session while the refresh is in flight.
+    await clearStoredStewardToken();
+    releaseRefresh();
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(storage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 });

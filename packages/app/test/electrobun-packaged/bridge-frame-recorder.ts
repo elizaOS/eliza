@@ -14,7 +14,7 @@
  * The one seam the bridge already exposes is `/main-window/screenshot` (base64
  * PNG). This recorder polls that seam at a fixed target rate, timestamps each
  * captured frame, and stitches the frames into a real-time MP4 with ffmpeg —
- * reusing the PNG->MP4 stitch approach already proven in `walkthrough-e2e.mjs`,
+ * reusing the PNG->MP4 stitch approach already proven in `walkthrough-e2e.ts`,
  * but preserving the true (non-uniform) capture intervals via the ffmpeg concat
  * demuxer's per-frame `duration` directives so playback runs at wall-clock speed.
  */

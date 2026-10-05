@@ -5,8 +5,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { client } from "../../api";
-import { useAppSelector } from "../../state";
+import { client } from "../../api/client";
+import { useAppSelector } from "../../state/app-store";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

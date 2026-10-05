@@ -92,22 +92,24 @@ const voiceCapture = vi.hoisted(() => ({
   handleCount: 0,
 }));
 
-vi.mock("../../../state", () => ({
-  useApp: () => appMock.value,
+vi.mock("../../../state/useApp", () => ({ useApp: () => appMock.value }));
+vi.mock("../../../state/app-store", () => ({
   useAppSelectorShallow: useAppSelectorShallowMock,
+}));
+vi.mock("../../../state/ConversationMessagesContext.hooks", () => ({
   useConversationMessages: () => ({
     conversationMessages: appMock.value.conversationMessages,
     removeConversationMessage: vi.fn(),
   }),
+}));
+vi.mock("../../../state/ChatComposerContext.hooks", () => ({
   useChatComposer: () => composerMock.value,
+}));
+vi.mock("../../../state/ChatTurnStatusContext.hooks", () => ({
   useChatTurnStatus: () => ({
     serverTurnStatus: appMock.serverTurnStatus,
     setServerTurnStatus: vi.fn(),
   }),
-}));
-
-vi.mock("../../../state/app-store", () => ({
-  useAppSelectorShallow: useAppSelectorShallowMock,
 }));
 
 vi.mock("../../local-inference/useHomeModelStatus", () => ({

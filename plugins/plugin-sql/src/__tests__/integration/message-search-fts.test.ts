@@ -19,7 +19,7 @@ import { v4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { memoryTable } from "../../schema";
+import { memoryTable } from "../../schema/memory";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 

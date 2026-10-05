@@ -45,7 +45,7 @@
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseTcpPort } from "../../../scripts/lib/cli-numbers.mjs";
+import { parseTcpPort } from "../../../scripts/lib/cli-numbers.ts";
 
 async function loadDeps() {
   const [{ dockerNodesRepository }, { DockerSSHClient }, diskMgr] =
@@ -211,21 +211,9 @@ function isMainModule(): boolean {
 }
 
 if (isMainModule()) {
-  // Load the daemon's env the same way the daemons do, so CONTAINERS_SSH_KEY and
-  // DATABASE_URL resolve from /opt/eliza/cloud/.env.local without re-export.
-  //
-  // `loadLocalEnv` resolves the project root as ../../.. from the dir of the URL
-  // it's given. The daemons live in `.../cloud/scripts/admin/daemons/<f>.ts` and
-  // resolve to `packages/cloud` (where the deployed `.env.local` is loaded
-  // from). This script lives one dir up (`.../cloud/scripts/admin/`), so handing
-  // load-env `import.meta.url` directly would resolve to `packages/` — one level
-  // too high. Point it at a real file INSIDE the daemons dir so the project-root
-  // resolution is byte-for-byte the same as the daemon's.
-  import("./daemons/shared/load-env")
-    .then(({ loadLocalEnv }) => {
-      loadLocalEnv(
-        new URL("./daemons/provisioning-worker.ts", import.meta.url).href,
-      );
+  import("@elizaos/cloud-services-common/node")
+    .then(({ loadCloudLocalEnv }) => {
+      loadCloudLocalEnv(fileURLToPath(new URL("../../", import.meta.url)));
     })
     .catch(() => {
       // load-env is best-effort: if the layout differs, env may already be set

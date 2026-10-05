@@ -1,23 +1,23 @@
 // Handles compatibility cloud API compat agents id resume route traffic through route-local auth checks.
-import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * POST /api/compat/agents/[id]/resume
  */
 
-import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
 import {
   envelope,
   errorEnvelope,
   toCompatOpResult,
-} from "@/lib/api/compat-envelope";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { requireCompatAuth } from "../../../_lib/auth";
 import { handleCompatCorsOptions, withCompatCors } from "../../../_lib/cors";
 import { handleCompatError } from "../../../_lib/error-handler";

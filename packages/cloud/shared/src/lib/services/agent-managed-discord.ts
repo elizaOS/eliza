@@ -29,7 +29,7 @@ import {
   elizaAgentCreateAdvisoryLockSql,
 } from "./eliza-provision-lock";
 import { assertOrgAgentQuota } from "./eliza-sandbox";
-import { provisioningJobService } from "./provisioning-jobs";
+import { provisioningJobService } from "./provisioning-job-queue";
 
 const DISCORD_OWNER_USER_IDS_ENV_KEY = "AGENT_DISCORD_OWNER_USER_IDS_JSON";
 export const DISCORD_DEVELOPER_PORTAL_URL = "https://discord.com/developers/applications";

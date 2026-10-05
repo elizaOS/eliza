@@ -197,7 +197,10 @@ jobs:
       - name: Setup credential-free workspace
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14"
+          setup-python: "true"
+          install-protoc: "true"
+          install-native-deps: "true"
+          bun-version: "1.4.2"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
           run-postinstall: "false"
@@ -205,7 +208,7 @@ jobs:
       - name: Validate explicit release identity
         id: release_inputs
         run: >-
-          node packages/scripts/release-candidate.mjs inputs
+          node packages/scripts/release-candidate.ts inputs
           --repository "${{ github.repository }}"
           --source-ref "${{ inputs.source_ref }}"
           --source-sha "${{ inputs.source_sha }}"
@@ -225,7 +228,7 @@ jobs:
 
       - name: Bind source ref and repository
         run: >-
-          node packages/scripts/release-candidate.mjs source
+          node packages/scripts/release-candidate.ts source
           --repository "${{ steps.release_inputs.outputs.repository }}"
           --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
           --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
@@ -261,7 +264,7 @@ jobs:
       - name: Rebind source immediately before pack
         if: inputs.candidate_run_id == 0
         run: >-
-          node packages/scripts/release-candidate.mjs source
+          node packages/scripts/release-candidate.ts source
           --repository "${{ steps.release_inputs.outputs.repository }}"
           --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
           --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
@@ -276,7 +279,7 @@ jobs:
         env:
           RUN_TURBO_CONCURRENCY: "3"
         run: >-
-          node packages/scripts/release-candidate.mjs candidate
+          node packages/scripts/release-candidate.ts candidate
           --cohort packages/scripts/release-cohort.json
           --candidate "${{ runner.temp }}/release-candidate"
           --version "${{ steps.release_inputs.outputs.version }}"
@@ -294,7 +297,7 @@ jobs:
       - name: Rebind source after pack
         if: inputs.candidate_run_id == 0
         run: >-
-          node packages/scripts/release-candidate.mjs source
+          node packages/scripts/release-candidate.ts source
           --repository "${{ steps.release_inputs.outputs.repository }}"
           --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
           --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
@@ -307,7 +310,7 @@ jobs:
       - name: Verify immutable candidate bytes
         id: candidate_verify
         run: >-
-          node packages/scripts/release-candidate.mjs verify
+          node packages/scripts/release-candidate.ts verify
           --candidate "${{ runner.temp }}/release-candidate"
           --repository "${{ steps.release_inputs.outputs.repository }}"
           --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
@@ -357,7 +360,7 @@ jobs:
       - name: Setup publication verifier
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
           setup-python: "false"
           install-protoc: "false"
           install-native-deps: "false"
@@ -371,7 +374,7 @@ jobs:
 
       - name: Verify downloaded candidate
         run: >-
-          node packages/scripts/release-candidate.mjs verify
+          node packages/scripts/release-candidate.ts verify
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
           --repository "${{ needs.candidate.outputs.repository }}"
@@ -390,7 +393,7 @@ jobs:
         run: |
           printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$NPM_CONFIG_USERCONFIG"
           chmod 600 "$NPM_CONFIG_USERCONFIG"
-          node packages/scripts/release-candidate.mjs publish \
+          node packages/scripts/release-candidate.ts publish \
             --repo-root "${{ github.workspace }}/release-source" \
             --candidate "${{ runner.temp }}/release-candidate" \
             --repository "${{ needs.candidate.outputs.repository }}" \
@@ -455,7 +458,7 @@ jobs:
       - name: Setup final verifier
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
           setup-python: "false"
           install-protoc: "false"
           install-native-deps: "false"
@@ -469,7 +472,7 @@ jobs:
 
       - name: Reverify every npm version and public channel
         run: >-
-          node packages/scripts/release-candidate.mjs verify-promoted
+          node packages/scripts/release-candidate.ts verify-promoted
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
           --repository "${{ needs.candidate.outputs.repository }}"
@@ -484,7 +487,7 @@ jobs:
 
       - name: Push only the exact planned Git tag
         run: >-
-          node packages/scripts/release-candidate.mjs push-tag
+          node packages/scripts/release-candidate.ts push-tag
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
           --remote origin
@@ -502,7 +505,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
-          node packages/scripts/release-candidate.mjs publish-release
+          node packages/scripts/release-candidate.ts publish-release
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
           --repository "${{ github.repository }}"

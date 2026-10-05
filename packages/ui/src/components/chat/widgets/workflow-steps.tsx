@@ -14,7 +14,7 @@ import {
   Square,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
-import { client } from "../../../api";
+import { client } from "../../../api/client";
 import type { WorkflowExecution } from "../../../api/client-types-chat";
 import { dispatchVisualizeWorkflow } from "../../pages/workflow-graph-events";
 import { Button } from "../../ui/button";

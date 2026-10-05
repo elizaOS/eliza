@@ -102,8 +102,38 @@ export function escapeSlackMrkdwn(text: string): string {
     .join("\n");
 }
 
+// Both sentinels are delimited by a control character, and both delimiters are
+// stripped from the input at entry, so caller text can never forge either one.
+//
+// They use DIFFERENT delimiters deliberately. Sharing one meant `convertItalic`'s
+// global BOLD_SENTINEL -> "*" replace could match ACROSS a code token's closing
+// delimiter whenever the literal word "BOLD" sat between them. The code token was
+// eaten, its body never came back, and a raw control character reached Slack --
+// "```\nkeep me\n```BOLD**z**" lost the whole code body that way.
+const BOLD_DELIM = "\u0000";
+const CODE_DELIM = "\u0001";
+
 // Sentinel used during conversion to prevent bold from being matched as italic.
-const BOLD_SENTINEL = "\u0000BOLD\u0000";
+const BOLD_SENTINEL = `${BOLD_DELIM}BOLD${BOLD_DELIM}`;
+// Fenced bodies are lifted out behind this sentinel before the link/heading/
+// style passes run, because those passes are regex-based and cannot see fence
+// state: a `# comment` line became bold, `a * b` became `a _ b`, and a literal
+// `[text](url)` became a Slack link. The sibling Telegram converter
+// (plugins/plugin-telegram/src/utils.ts) already substitutes code this way.
+const CODE_SENTINEL_PREFIX = `${CODE_DELIM}CODE`;
+const CODE_SENTINEL_SUFFIX = CODE_DELIM;
+
+/**
+ * Drops the control characters the sentinels are built from. Slack renders
+ * neither, so nothing the sender can see is lost, and no text arriving from a
+ * tool, a user, or an echoed document can forge a sentinel.
+ */
+function stripSentinelDelimiters(text: string): string {
+  if (!text.includes(BOLD_DELIM) && !text.includes(CODE_DELIM)) {
+    return text;
+  }
+  return text.split(BOLD_DELIM).join("").split(CODE_DELIM).join("");
+}
 
 /**
  * Converts markdown bold to Slack mrkdwn
@@ -136,7 +166,7 @@ function convertStrikethrough(text: string): string {
 /**
  * Converts markdown code blocks to Slack mrkdwn
  */
-function convertCodeBlocks(text: string): string {
+function convertCodeBlocks(text: string, codeSink: string[]): string {
   // Slack code blocks don't support language hints in the same way
   const out: string[] = [];
   let cursor = 0;
@@ -156,13 +186,28 @@ function convertCodeBlocks(text: string): string {
     }
     if (text[bodyStart] === "\n") bodyStart += 1;
     const closer = text.indexOf("```", bodyStart);
-    if (closer < 0) break;
-    out.push(
-      text.slice(cursor, opener),
-      "```\n",
-      text.slice(bodyStart, closer),
-      "```",
+    if (closer < 0) {
+      // An unmatched opener is what a truncated or streamed message produces,
+      // and the rest of it is still code the user reads and copies. Pushing it
+      // raw left every style pass on it, so a `#` comment came out bold and a
+      // markdown link became a Slack link -- the corruption this whole change
+      // exists to stop. Hold it aside like a closed body. No closer is
+      // invented: the output keeps the input's fence parity.
+      const tailToken = `${CODE_SENTINEL_PREFIX}${codeSink.length}${CODE_SENTINEL_SUFFIX}`;
+      codeSink.push(
+        `\`\`\`\n${escapeSlackMrkdwnSegment(text.slice(bodyStart))}`,
+      );
+      out.push(text.slice(cursor, opener), tailToken);
+      cursor = text.length;
+      break;
+    }
+    // Escape the body here: `escapeSlackMrkdwn` runs after restoration and can
+    // no longer reach it, but Slack still renders raw &, < and > inside a fence.
+    const token = `${CODE_SENTINEL_PREFIX}${codeSink.length}${CODE_SENTINEL_SUFFIX}`;
+    codeSink.push(
+      `\`\`\`\n${escapeSlackMrkdwnSegment(text.slice(bodyStart, closer))}\`\`\``,
     );
+    out.push(text.slice(cursor, opener), token);
     cursor = closer + 3;
   }
   out.push(text.slice(cursor));
@@ -199,6 +244,32 @@ function convertHeadings(text: string): string {
 }
 
 /**
+ * Puts the held-aside fenced bodies back, after every style pass has run.
+ */
+function restoreCodeBlocks(text: string, codeSink: string[]): string {
+  if (codeSink.length === 0) return text;
+  // Single left-to-right pass: a restored body is never rescanned, so a body
+  // that happens to contain a later sentinel cannot splice that block into it.
+  // (An indexOf scan rather than a regex: biome rejects a control character
+  // inside a regex literal via lint/suspicious/noControlCharactersInRegex.)
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = text.indexOf(CODE_SENTINEL_PREFIX, cursor);
+    if (start < 0) break;
+    const digitsStart = start + CODE_SENTINEL_PREFIX.length;
+    const end = text.indexOf(CODE_SENTINEL_SUFFIX, digitsStart);
+    if (end < 0) break;
+    const digits = text.slice(digitsStart, end);
+    const body = /^[0-9]+$/.test(digits) ? codeSink[Number(digits)] : undefined;
+    out.push(text.slice(cursor, start), body ?? text.slice(start, end + 1));
+    cursor = end + 1;
+  }
+  out.push(text.slice(cursor));
+  return out.join("");
+}
+
+/**
  * Converts markdown to Slack mrkdwn format
  */
 export function markdownToSlackMrkdwn(markdown: string): string {
@@ -206,14 +277,17 @@ export function markdownToSlackMrkdwn(markdown: string): string {
     return "";
   }
 
-  // Process in order: code blocks -> links -> headings -> text styles -> escape
-  let result = convertCodeBlocks(markdown);
+  // Process in order: code blocks -> links -> headings -> text styles -> escape.
+  // Fenced bodies are held aside for the whole pipeline and restored last.
+  const codeSink: string[] = [];
+  let result = convertCodeBlocks(stripSentinelDelimiters(markdown), codeSink);
   result = convertLinks(result);
   result = convertHeadings(result);
   result = convertBold(result);
   result = convertItalic(result);
   result = convertStrikethrough(result);
   result = escapeSlackMrkdwn(result);
+  result = restoreCodeBlocks(result, codeSink);
 
   return result;
 }

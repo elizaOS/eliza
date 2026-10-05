@@ -23,7 +23,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { isValidTimeZone, resolveDefaultTimeZone } from "../defaults.js";
+import { isValidTimeZone, resolveConfiguredTimeZone } from "../defaults.js";
 import {
   type LifeOpsOwnerProfilePatch,
   persistConfiguredOwnerName,
@@ -1024,7 +1024,7 @@ export function ownerFactsToView(
 
 /**
  * Resolve the owner's effective IANA time zone for a given instant, falling
- * back to the host zone (`resolveDefaultTimeZone()`) only when no owner fact is
+ * back to the configured zone, then the host zone, when no valid owner fact is
  * stored.
  *
  * This is the canonical resolver for any lane that anchors owner-local wall
@@ -1062,20 +1062,39 @@ export async function resolveOwnerTimeZone(
     if (view.timezone) {
       logger.warn(
         { src: "lifeops:owner:resolve-timezone", storedZone: view.timezone },
-        "Owner timezone fact is not a valid IANA zone; falling back to host zone for time resolution.",
+        "Owner timezone fact is not a valid IANA zone; falling back to the configured zone for time resolution.",
       );
     }
-    return resolveDefaultTimeZone();
+    return resolveConfiguredTimeZone(runtime);
   } catch (error) {
     // error-policy:J4 — a fact-store read failure (missing/unavailable cache
-    // backend) must not break time resolution. Degrade to the host zone, the
+    // backend) must not break time resolution. Degrade to the configured zone, the
     // same honest best-effort default used when no owner fact exists, and
     // surface the failure so the operator can see the store is unreachable
     // rather than silently anchoring to the wrong zone with no signal.
     logger.warn(
       { src: "lifeops:owner:resolve-timezone", error },
-      "Failed to read owner timezone fact; falling back to host zone for time resolution.",
+      "Failed to read owner timezone fact; falling back to the configured zone for time resolution.",
     );
-    return resolveDefaultTimeZone();
+    return resolveConfiguredTimeZone(runtime);
   }
+}
+
+/**
+ * Strict owner-zone resolver for the shared calendar time zone owner
+ * (`registerCalendarTimeZoneResolver`). Unlike {@link resolveOwnerTimeZone},
+ * it never substitutes the host zone: a fact-store read failure propagates so
+ * the shared resolver fails closed, an invalid stored zone is returned as-is
+ * for the shared resolver to reject, and "no owner zone configured" is `null`
+ * so the caller can distinguish absent configuration from a failed read.
+ * Calendar judgments (bill dueness, day boundaries) must not be made in a
+ * silently substituted zone.
+ */
+export async function resolveConfiguredOwnerTimeZone(
+  runtime: IAgentRuntime,
+  now: Date,
+): Promise<string | null> {
+  const facts = await resolveOwnerFactStore(runtime).read();
+  const view = ownerFactsToView(facts, now);
+  return view.timezone ?? null;
 }

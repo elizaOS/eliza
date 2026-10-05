@@ -15,11 +15,11 @@ import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { sanitizeSpawnEnv } from "@elizaos/core";
-import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import {
   applyHostExecutionBaseline,
   resolveHostExecutable,
-} from "@elizaos/shared/host-execution-env";
+} from "@elizaos/host";
+import { resolveRuntimeExecutionMode } from "@elizaos/host/protocol";
 
 // ============================================================================
 // Command Lanes

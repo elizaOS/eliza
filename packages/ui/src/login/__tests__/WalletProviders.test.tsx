@@ -151,9 +151,10 @@ vi.doMock("wagmi", () => ({
     React.createElement(React.Fragment, null, children),
 }));
 
-const { createDefaultWagmiConfig, SolanaWalletProvider } = await import(
-  "../providers/WalletProviders.js"
+const { createDefaultWagmiConfig } = await import(
+  "../providers/EVMProvider.js"
 );
+const { SolanaWalletProvider } = await import("../providers/SolanaProvider.js");
 
 describe("Wallet provider helpers", () => {
   beforeEach(() => {

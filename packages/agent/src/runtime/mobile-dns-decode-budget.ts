@@ -5,7 +5,7 @@
 
 import { type Readable, Transform } from "node:stream";
 import zlib from "node:zlib";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 
 export const MAX_MOBILE_DNS_DECODED_BYTES = 64 * 1024 * 1024;
 

@@ -23,27 +23,19 @@ function vectorOf(length: number): number[] {
 }
 
 function mockEmbeddingsResponse(vectors: number[][]): Response {
-  return {
-    ok: true,
-    status: 200,
-    statusText: "OK",
-    json: async () => ({
+  return Response.json(
+    {
       object: "list",
       data: vectors.map((embedding, index) => ({ object: "embedding", embedding, index })),
       model: "text-embedding-3-small",
       usage: { prompt_tokens: 3, total_tokens: 3 },
-    }),
-    text: async () => "",
-  } as unknown as Response;
+    },
+    { statusText: "OK" }
+  );
 }
 
 function mockHttpError(status: number, statusText: string, body: string): Response {
-  return {
-    ok: false,
-    status,
-    statusText,
-    text: async () => body,
-  } as unknown as Response;
+  return new Response(body, { status: status, statusText: statusText });
 }
 
 afterEach(() => {
@@ -265,12 +257,9 @@ describe("plugin-embeddings handleTextEmbedding", () => {
   });
 
   it("throws on a non-OK HTTP response instead of returning a fabricated vector", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: false,
-      status: 502,
-      statusText: "Bad Gateway",
-      text: async () => "upstream down",
-    }));
+    const fetchMock = vi.fn(
+      async () => new Response("upstream down", { status: 502, statusText: "Bad Gateway" })
+    );
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
     await expect(handleTextEmbedding(createRuntime(), { text: "hi" })).rejects.toThrow(/502/);
@@ -326,22 +315,18 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
   it("throws when the response repeats an index (a hole must never be returned)", async () => {
     // Count check alone passes (2 items for 2 inputs) but slot 1 stays unfilled;
     // returning [B, undefined] would silently persist a corrupt vector.
-    const fetchMock = vi.fn(
-      async () =>
-        ({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: async () => ({
-            object: "list",
-            data: [
-              { object: "embedding", embedding: vectorOf(1536), index: 0 },
-              { object: "embedding", embedding: vectorOf(1536), index: 0 },
-            ],
-            model: "text-embedding-3-small",
-          }),
-          text: async () => "",
-        }) as unknown as Response
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        {
+          object: "list",
+          data: [
+            { object: "embedding", embedding: vectorOf(1536), index: 0 },
+            { object: "embedding", embedding: vectorOf(1536), index: 0 },
+          ],
+          model: "text-embedding-3-small",
+        },
+        { statusText: "OK" }
+      )
     );
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 
@@ -351,22 +336,18 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
   });
 
   it("throws when the response index is not an integer", async () => {
-    const fetchMock = vi.fn(
-      async () =>
-        ({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: async () => ({
-            object: "list",
-            data: [
-              { object: "embedding", embedding: vectorOf(1536), index: 0.5 },
-              { object: "embedding", embedding: vectorOf(1536), index: 1 },
-            ],
-            model: "text-embedding-3-small",
-          }),
-          text: async () => "",
-        }) as unknown as Response
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        {
+          object: "list",
+          data: [
+            { object: "embedding", embedding: vectorOf(1536), index: 0.5 },
+            { object: "embedding", embedding: vectorOf(1536), index: 1 },
+          ],
+          model: "text-embedding-3-small",
+        },
+        { statusText: "OK" }
+      )
     );
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
 

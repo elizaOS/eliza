@@ -5,9 +5,9 @@
  * format tag that the export helpers and training pipelines consume.
  */
 
-import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provider-attribution";
+import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provider-attribution.ts";
 import type { JsonValue } from "../types/primitives.ts";
-import type { TrajectorySemanticStageRecord } from "./trajectory-semantic-stage";
+import type { TrajectorySemanticStageRecord } from "./trajectory-semantic-stage.ts";
 
 // Re-export the canonical retrieval-funnel shapes from `trajectory-recorder`
 // so external consumers depend on the services-layer surface instead of
@@ -38,6 +38,8 @@ export type TrajectoryStatus =
 	| "terminated";
 
 export interface TrajectoryListOptions {
+	/** Exact recorded room ownership, independent of free-text search. */
+	roomId?: string;
 	limit?: number;
 	offset?: number;
 	source?: string;

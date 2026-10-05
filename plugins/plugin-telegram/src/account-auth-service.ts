@@ -6,12 +6,16 @@
  * Consumed by `account-setup-routes.ts`.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/core";
-import { decrypt, encrypt, loadDefaultMasterKeySync } from "@elizaos/vault";
+import {
+  decrypt,
+  encrypt,
+  loadDefaultMasterKeySync,
+} from "@elizaos/auth/vault";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 
@@ -52,6 +56,7 @@ export interface TelegramAccountConnectorConfig {
   deviceModel: string;
   systemVersion: string;
   enabled: true;
+  subjectId?: string;
 }
 
 export interface TelegramAccountAuthSessionLike {
@@ -113,26 +118,60 @@ const TELEGRAM_ACCOUNT_AUTH_STATUSES = new Set<TelegramAccountAuthStatus>([
   "error",
 ]);
 
-function resolveTelegramAccountSessionDir(): string {
-  const sessionDir = path.join(resolveStateDir(), "telegram-account");
+export interface TelegramAccountSessionScope {
+  agentId: string;
+  accountId: string;
+}
+
+function scopeKey(scope: TelegramAccountSessionScope): string {
+  if (!scope.agentId || !scope.accountId)
+    throw new ElizaError(
+      "Telegram session requires agent and account identity.",
+      { code: "TELEGRAM_SESSION_SCOPE_INVALID" },
+    );
+  return JSON.stringify([scope.agentId, scope.accountId]);
+}
+
+function scopedAad(aad: string, scope?: TelegramAccountSessionScope): string {
+  return scope ? `${aad}:${scopeKey(scope)}` : aad;
+}
+
+function resolveTelegramAccountSessionDir(
+  scope?: TelegramAccountSessionScope,
+): string {
+  const root = path.join(resolveStateDir(), "telegram-account");
+  const sessionDir = scope
+    ? path.join(
+        root,
+        createHash("sha256").update(scopeKey(scope)).digest("hex"),
+      )
+    : root;
   fs.mkdirSync(sessionDir, { recursive: true });
   return sessionDir;
 }
 
-export function resolveTelegramAccountSessionFile(): string {
-  return path.join(resolveTelegramAccountSessionDir(), "session.enc");
+export function resolveTelegramAccountSessionFile(
+  scope?: TelegramAccountSessionScope,
+): string {
+  return path.join(resolveTelegramAccountSessionDir(scope), "session.enc");
 }
 
-function resolveLegacyTelegramAccountSessionFile(): string {
-  return path.join(resolveTelegramAccountSessionDir(), "session.txt");
+function resolveLegacyTelegramAccountSessionFile(
+  scope?: TelegramAccountSessionScope,
+): string {
+  return path.join(resolveTelegramAccountSessionDir(scope), "session.txt");
 }
 
-function resolveTelegramAccountAuthStateFile(): string {
-  return path.join(resolveTelegramAccountSessionDir(), "auth-state.enc");
+function resolveTelegramAccountAuthStateFile(
+  scope?: TelegramAccountSessionScope,
+): string {
+  return path.join(resolveTelegramAccountSessionDir(scope), "auth-state.enc");
 }
 
-function resolveLegacyTelegramAccountAuthStateFile(): string {
-  return path.join(resolveTelegramAccountSessionDir(), "auth-state.json");
+function resolveLegacyTelegramAccountAuthStateFile(
+  scope?: TelegramAccountSessionScope,
+): string {
+  return path.join(resolveTelegramAccountSessionDir(scope), "auth-state.json");
 }
 
 const TELEGRAM_SESSION_AAD = "telegram-account.session.v1";
@@ -191,31 +230,40 @@ function readEncryptedOrMigrate(
   return legacy;
 }
 
-export function loadTelegramAccountSessionString(): string {
+export function loadTelegramAccountSessionString(
+  scope?: TelegramAccountSessionScope,
+): string {
   return readEncryptedOrMigrate(
-    resolveTelegramAccountSessionFile(),
-    resolveLegacyTelegramAccountSessionFile(),
-    TELEGRAM_SESSION_AAD,
+    resolveTelegramAccountSessionFile(scope),
+    resolveLegacyTelegramAccountSessionFile(scope),
+    scopedAad(TELEGRAM_SESSION_AAD, scope),
   );
 }
 
-export function saveTelegramAccountSessionString(session: string): void {
+export function saveTelegramAccountSessionString(
+  session: string,
+  scope?: TelegramAccountSessionScope,
+): void {
   writeEncryptedFile(
-    resolveTelegramAccountSessionFile(),
+    resolveTelegramAccountSessionFile(scope),
     session,
-    TELEGRAM_SESSION_AAD,
+    scopedAad(TELEGRAM_SESSION_AAD, scope),
   );
 }
 
-export function clearTelegramAccountSession(): void {
-  fs.rmSync(resolveTelegramAccountSessionFile(), { force: true });
-  fs.rmSync(resolveLegacyTelegramAccountSessionFile(), { force: true });
+export function clearTelegramAccountSession(
+  scope?: TelegramAccountSessionScope,
+): void {
+  fs.rmSync(resolveTelegramAccountSessionFile(scope), { force: true });
+  fs.rmSync(resolveLegacyTelegramAccountSessionFile(scope), { force: true });
 }
 
-export function telegramAccountSessionExists(): boolean {
+export function telegramAccountSessionExists(
+  scope?: TelegramAccountSessionScope,
+): boolean {
   return [
-    resolveTelegramAccountSessionFile(),
-    resolveLegacyTelegramAccountSessionFile(),
+    resolveTelegramAccountSessionFile(scope),
+    resolveLegacyTelegramAccountSessionFile(scope),
   ].some(
     (filePath) => fs.existsSync(filePath) && fs.statSync(filePath).size > 0,
   );
@@ -318,14 +366,17 @@ function readPersistedConnectorConfig(
     deviceModel,
     systemVersion,
     enabled: true,
+    subjectId: readTrimmedString(record.subjectId) ?? undefined,
   };
 }
 
-function loadTelegramAccountAuthState(): PersistedTelegramAccountAuthState | null {
+function loadTelegramAccountAuthState(
+  scope?: TelegramAccountSessionScope,
+): PersistedTelegramAccountAuthState | null {
   const raw = readEncryptedOrMigrate(
-    resolveTelegramAccountAuthStateFile(),
-    resolveLegacyTelegramAccountAuthStateFile(),
-    TELEGRAM_AUTH_STATE_AAD,
+    resolveTelegramAccountAuthStateFile(scope),
+    resolveLegacyTelegramAccountAuthStateFile(scope),
+    scopedAad(TELEGRAM_AUTH_STATE_AAD, scope),
   );
   if (!raw) {
     return null;
@@ -355,23 +406,28 @@ function loadTelegramAccountAuthState(): PersistedTelegramAccountAuthState | nul
 
 function saveTelegramAccountAuthState(
   state: PersistedTelegramAccountAuthState,
+  scope?: TelegramAccountSessionScope,
 ): void {
   writeEncryptedFile(
-    resolveTelegramAccountAuthStateFile(),
+    resolveTelegramAccountAuthStateFile(scope),
     JSON.stringify(state),
-    TELEGRAM_AUTH_STATE_AAD,
+    scopedAad(TELEGRAM_AUTH_STATE_AAD, scope),
   );
 }
 
-export function clearTelegramAccountAuthState(): void {
-  fs.rmSync(resolveTelegramAccountAuthStateFile(), { force: true });
-  fs.rmSync(resolveLegacyTelegramAccountAuthStateFile(), { force: true });
+export function clearTelegramAccountAuthState(
+  scope?: TelegramAccountSessionScope,
+): void {
+  fs.rmSync(resolveTelegramAccountAuthStateFile(scope), { force: true });
+  fs.rmSync(resolveLegacyTelegramAccountAuthStateFile(scope), { force: true });
 }
 
-export function telegramAccountAuthStateExists(): boolean {
+export function telegramAccountAuthStateExists(
+  scope?: TelegramAccountSessionScope,
+): boolean {
   return [
-    resolveTelegramAccountAuthStateFile(),
-    resolveLegacyTelegramAccountAuthStateFile(),
+    resolveTelegramAccountAuthStateFile(scope),
+    resolveLegacyTelegramAccountAuthStateFile(scope),
   ].some(
     (filePath) => fs.existsSync(filePath) && fs.statSync(filePath).size > 0,
   );
@@ -616,6 +672,7 @@ export class TelegramAccountAuthSession
   private connectorConfig: TelegramAccountConnectorConfig | null = null;
   private provisioningRandomHash: string | null = null;
   private phoneCodeHash: string | null = null;
+  private readonly scope?: TelegramAccountSessionScope;
   private readonly deviceModel: string;
   private readonly systemVersion: string;
   private readonly deps: Required<TelegramAccountAuthDeps>;
@@ -624,9 +681,11 @@ export class TelegramAccountAuthSession
     options: {
       deviceModel?: string;
       systemVersion?: string;
+      scope?: TelegramAccountSessionScope;
     } = {},
     deps: TelegramAccountAuthDeps = {},
   ) {
+    this.scope = options.scope;
     this.deviceModel =
       options.deviceModel?.trim() || defaultTelegramAccountDeviceModel();
     this.systemVersion =
@@ -640,7 +699,7 @@ export class TelegramAccountAuthSession
         deps.getOrCreateProvisionedApp ?? getOrCreateProvisionedApp,
     };
 
-    const persisted = loadTelegramAccountAuthState();
+    const persisted = loadTelegramAccountAuthState(this.scope);
     if (persisted) {
       this.snapshot = persisted.snapshot;
       this.credentials = persisted.credentials;
@@ -668,8 +727,8 @@ export class TelegramAccountAuthSession
     }
 
     await this.disconnectClient();
-    clearTelegramAccountSession();
-    clearTelegramAccountAuthState();
+    clearTelegramAccountSession(this.scope);
+    clearTelegramAccountAuthState(this.scope);
     this.snapshot = {
       status: "idle",
       phone,
@@ -755,7 +814,7 @@ export class TelegramAccountAuthSession
       isCodeViaApp: false,
       account: null,
     };
-    clearTelegramAccountAuthState();
+    clearTelegramAccountAuthState(this.scope);
   }
 
   private async beginTelegramLogin(): Promise<void> {
@@ -763,7 +822,9 @@ export class TelegramAccountAuthSession
       throw new Error("Telegram login credentials are partial");
     }
 
-    const session = new StringSession(loadTelegramAccountSessionString());
+    const session = new StringSession(
+      loadTelegramAccountSessionString(this.scope),
+    );
     this.client = this.deps.createTelegramClient(
       session,
       this.credentials,
@@ -853,7 +914,7 @@ export class TelegramAccountAuthSession
     if (!this.snapshot.phone || !this.credentials || !this.client) {
       throw new Error("Telegram authorization finished without session state");
     }
-    saveTelegramAccountSessionString(serializeSession(this.client));
+    saveTelegramAccountSessionString(serializeSession(this.client), this.scope);
     this.connectorConfig = {
       phone: this.snapshot.phone,
       appId: String(this.credentials.apiId),
@@ -861,6 +922,7 @@ export class TelegramAccountAuthSession
       deviceModel: this.deviceModel,
       systemVersion: this.systemVersion,
       enabled: true,
+      subjectId: user.id.toString(),
     };
     this.snapshot = {
       status: "configured",
@@ -869,7 +931,7 @@ export class TelegramAccountAuthSession
       isCodeViaApp: false,
       account: mapTelegramAccount(user),
     };
-    clearTelegramAccountAuthState();
+    clearTelegramAccountAuthState(this.scope);
     await this.disconnectClient();
   }
 
@@ -879,18 +941,21 @@ export class TelegramAccountAuthSession
     }
     const session = serializeSession(this.client);
     if (session.trim().length > 0) {
-      saveTelegramAccountSessionString(session);
+      saveTelegramAccountSessionString(session, this.scope);
     }
   }
 
   private persistAuthState(): void {
-    saveTelegramAccountAuthState({
-      snapshot: this.snapshot,
-      credentials: this.credentials,
-      connectorConfig: this.connectorConfig,
-      provisioningRandomHash: this.provisioningRandomHash,
-      phoneCodeHash: this.phoneCodeHash,
-    });
+    saveTelegramAccountAuthState(
+      {
+        snapshot: this.snapshot,
+        credentials: this.credentials,
+        connectorConfig: this.connectorConfig,
+        provisioningRandomHash: this.provisioningRandomHash,
+        phoneCodeHash: this.phoneCodeHash,
+      },
+      this.scope,
+    );
   }
 
   private async disconnectClient(): Promise<void> {
@@ -911,7 +976,7 @@ export class TelegramAccountAuthSession
     if (!this.credentials) {
       throw new Error("Telegram login session is missing credentials");
     }
-    const sessionString = loadTelegramAccountSessionString();
+    const sessionString = loadTelegramAccountSessionString(this.scope);
     if (!sessionString.trim()) {
       throw new Error(
         "Telegram login session is missing persisted session data",

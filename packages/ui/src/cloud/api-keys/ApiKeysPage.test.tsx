@@ -10,7 +10,8 @@
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { PageHeaderProvider, usePageHeader } from "../../cloud-ui";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
+import { usePageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 
 vi.mock("../shell/CloudI18nProvider", () => ({
   useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
@@ -18,8 +19,9 @@ vi.mock("../shell/CloudI18nProvider", () => ({
 }));
 
 vi.mock("./ApiKeysSurface", async () => {
-  const { useSetPageHeader } =
-    await vi.importActual<typeof import("../../cloud-ui")>("../../cloud-ui");
+  const { useSetPageHeader } = await vi.importActual<
+    typeof import("../../cloud-ui/components/layout/page-header-context.hooks")
+  >("../../cloud-ui/components/layout/page-header-context.hooks");
   return {
     ApiKeysSurface: () => {
       useSetPageHeader({ title: "API Keys" });

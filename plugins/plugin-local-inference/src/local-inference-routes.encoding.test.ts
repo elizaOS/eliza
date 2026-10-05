@@ -56,7 +56,7 @@ describe("local-inference model path encoding", () => {
 		});
 	});
 
-	test("canonical download id still cancels", async () => {
+	test("canonical download id is decoded and reaches the downloader", async () => {
 		const res = makeRes();
 		await expect(
 			handleLocalInferenceRoutes(
@@ -64,7 +64,8 @@ describe("local-inference model path encoding", () => {
 				res,
 			),
 		).resolves.toBe(true);
-		expect(res.statusCode).toBe(200);
-		expect(res.json()).toEqual({ cancelled: true });
+		// No download for that id is in flight, so nothing was cancelled.
+		expect(res.statusCode).toBe(404);
+		expect(res.json()).toEqual({ cancelled: false });
 	});
 });

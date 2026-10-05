@@ -12,7 +12,6 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../..",
 );
-
 // Always-in-the-full-app-module-graph source files by dependency depth. The point of the
 // suite is to prove an edit made at each depth — the app itself, workspace UI,
 // shared code, and every visual-matrix plugin GUI view package — propagates to
@@ -20,7 +19,7 @@ const repoRoot = path.resolve(
 // architecture's reliance on `src/` (not `dist/`) resolution plus
 // workspace-source watching.
 const LEVELS = [
-  { name: "app (packages/app)", file: "packages/app/src/entry.ts" },
+  { name: "app (packages/app)", file: "packages/app/src/renderer-entry.ts" },
   // The chat harness deliberately skips the full App component. Target an
   // eager UI provider imported directly by main.tsx so this level is guaranteed
   // in both harness and normal full-app graphs.
@@ -31,12 +30,12 @@ const LEVELS = [
   // entry.ts reaches this shared hostname contract synchronously through
   // web-entry-policy.ts, so it is present before any renderer branch is chosen.
   {
-    name: "@elizaos/shared",
-    file: "packages/shared/src/elizacloud/domain-contract.ts",
+    name: "@elizaos/plugin-elizacloud/cloud-config",
+    file: "plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts",
   },
   {
     name: "plugin view contacts",
-    file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
+    file: "plugins/plugin-native-contacts/src/components/ContactsAppView.tsx",
   },
   {
     // The /cloud launcher view (Eliza Cloud account at a glance), served as
@@ -49,7 +48,7 @@ const LEVELS = [
     // view container (wires the presentational @elizaos/ui CockpitView to the
     // live orchestrator client), so it is the source guaranteed in the view graph.
     name: "plugin view cockpit",
-    file: "plugins/plugin-task-coordinator/src/CockpitRoute.tsx",
+    file: "plugins/plugin-agent-orchestrator/src/ui/CockpitRoute.tsx",
   },
   {
     name: "plugin view focus",
@@ -61,11 +60,7 @@ const LEVELS = [
   },
   {
     name: "plugin view documents",
-    file: "plugins/plugin-documents/src/components/documents/DocumentsView.tsx",
-  },
-  {
-    name: "plugin view finances",
-    file: "plugins/plugin-finances/src/components/finances/FinancesView.tsx",
+    file: "plugins/plugin-knowledge/src/components/documents/DocumentsView.tsx",
   },
   {
     name: "plugin view goals",
@@ -93,7 +88,7 @@ const LEVELS = [
   },
   {
     name: "plugin view messages",
-    file: "plugins/plugin-messages/src/components/MessagesView.tsx",
+    file: "plugins/plugin-native-messages/src/components/MessagesView.tsx",
   },
   {
     name: "plugin view maps",
@@ -101,38 +96,32 @@ const LEVELS = [
   },
   {
     name: "plugin view phone",
-    file: "plugins/plugin-phone/src/components/PhoneView.tsx",
+    file: "plugins/plugin-native-phone/src/components/PhoneView.tsx",
   },
   {
     name: "plugin view wallet",
     file: "plugins/plugin-wallet/src/ui/InventoryView.tsx",
   },
   {
-    name: "plugin view manager",
-    file: "plugins/plugin-app-control/src/views/ViewManagerView.tsx",
-  },
-  {
     name: "plugin view notes",
-    file: "plugins/plugin-notes/src/views/NotesView.tsx",
+    file: "plugins/plugin-notes/src/components/NotesView.tsx",
   },
   {
     name: "plugin view task coordinator",
-    file: "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx",
+    file: "plugins/plugin-agent-orchestrator/src/ui/CodingAgentTasksPanel.tsx",
   },
   {
     name: "plugin view orchestrator",
-    file: "plugins/plugin-task-coordinator/src/OrchestratorWorkbench.tsx",
+    file: "plugins/plugin-agent-orchestrator/src/ui/OrchestratorWorkbench.tsx",
   },
   {
     name: "plugin view trajectory logger",
     file: "plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.tsx",
   },
 ] as const;
-
 // Vite's client logs these to the page console when it processes a change.
 const VITE_UPDATE =
   /\[vite\].*(hot updated|hmr update|page reload|invalidate)/i;
-
 function collectViteEvents(page: Page): string[] {
   const events: string[] = [];
   page.on("console", (msg) => {
@@ -141,7 +130,6 @@ function collectViteEvents(page: Page): string[] {
   });
   return events;
 }
-
 async function waitForViteClient(page: Page): Promise<void> {
   // The Vite client connects its HMR socket shortly after load, and the app
   // pulls its view modules into the graph via fire-and-forget loaders. Wait for
@@ -154,7 +142,6 @@ async function waitForViteClient(page: Page): Promise<void> {
     .catch(() => undefined);
   await page.waitForTimeout(2000);
 }
-
 async function withinLocalOrigin<T>(
   page: Page,
   expectedOrigin: string,
@@ -182,13 +169,12 @@ async function withinLocalOrigin<T>(
     page.off("framenavigated", inspect);
   }
 }
-
 // Most plugin GUI views are NOT reachable in the dev client's module graph from
 // the "/chat" route: they are served as standalone agent-built bundles loaded by
 // DynamicViewLoader (a separate module graph the app's Vite dev server never
 // transforms), or lazy()-split out of an eagerly-loaded register.ts. Vite never
 // transforms their source from "/chat", so an edit emits no HMR event — the same
-// limitation the @elizaos/shared note above describes. Eager-loading every view
+// limitation the @elizaos/plugin-elizacloud/cloud-config note above describes. Eager-loading every view
 // at dev boot to fold them in would regress startup (the app-load-perf work
 // deliberately defers them); they are HMR-validated when the view is actually
 // rendered, and a follow-up may add a dev-only graph warmup.
@@ -202,16 +188,13 @@ const PLUGIN_VIEWS_IN_ROOT_GRAPH = new Set<string>([
   // root graph. Keep this allowlist explicit so a future eager route can opt in
   // together with a real source-file assertion in hmr-coverage.test.ts.
 ]);
-
 function isNotInRootGraph(name: string): boolean {
   return (
     name.startsWith("plugin view ") && !PLUGIN_VIEWS_IN_ROOT_GRAPH.has(name)
   );
 }
-
 test.describe("HMR propagation across package dependency levels", () => {
   test.describe.configure({ mode: "serial" });
-
   test("reports an unexpected main-frame origin immediately", async ({
     page,
     baseURL,
@@ -226,7 +209,6 @@ test.describe("HMR propagation across package dependency levels", () => {
       `HMR fixture left its local origin ${expectedOrigin}: data:text/html,hmr-origin-guard`,
     );
   });
-
   test("rejects an already departed page before running an operation", async ({
     page,
     baseURL,
@@ -241,7 +223,6 @@ test.describe("HMR propagation across package dependency levels", () => {
     ).rejects.toThrow("HMR fixture left its local origin");
     expect(operated).toBe(false);
   });
-
   for (const level of LEVELS) {
     const defineTest = isNotInRootGraph(level.name) ? test.skip : test;
     defineTest(
@@ -256,7 +237,6 @@ test.describe("HMR propagation across package dependency levels", () => {
         ).toBe(true);
         const original = fs.readFileSync(abs, "utf8");
         const marker = `HMR_PROBE_${level.name.replace(/[^a-z0-9]/gi, "_")}_${Date.now()}`;
-
         const events = collectViteEvents(page);
         // The hosted root can select the lightweight marketing entry, which
         // intentionally excludes main.tsx and @elizaos/ui. Use a full-app route
@@ -265,13 +245,11 @@ test.describe("HMR propagation across package dependency levels", () => {
         await withinLocalOrigin(page, expectedOrigin, () =>
           waitForViteClient(page),
         );
-
         // Clear the execution marker before editing. The changed module sets it
         // again when Vite propagates either an HMR update or a full reload.
         await page.evaluate((m) => {
           (window as unknown as Record<string, unknown>).__elizaHmrProbe = m;
         }, null);
-
         events.length = 0;
         try {
           // The probe must survive transformation and execute in the browser.
@@ -296,7 +274,7 @@ test.describe("HMR propagation across package dependency levels", () => {
                     )
                     .catch(() => undefined),
                 {
-                  timeout: 30_000,
+                  timeout: 30000,
                   message: `Expected the edited module ${level.file} to execute in the browser. Captured Vite events: ${JSON.stringify(events)}`,
                 },
               )

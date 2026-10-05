@@ -1,10 +1,7 @@
 import dns from "node:dns";
 import net from "node:net";
 import { promisify } from "node:util";
-import {
-  resolveDevCloudAuthorityEnvValue,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
 
 const dnsLookupAll = promisify(dns.lookup);
 

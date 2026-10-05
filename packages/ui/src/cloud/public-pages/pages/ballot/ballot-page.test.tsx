@@ -53,7 +53,9 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     },
 }));
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
 vi.mock("../../../lib/api-client", () => {
   class ApiError extends Error {

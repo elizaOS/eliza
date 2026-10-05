@@ -1,11 +1,11 @@
 /** Updates and deletes managed Google Calendar events. */
 
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import { agentGoogleRouteDeps } from "@elizaos/cloud-shared/lib/services/agent-google-route-deps";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
-import { agentGoogleRouteDeps } from "@/lib/services/agent-google-route-deps";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const attendeeSchema = z.object({
   email: z.string().email(),

@@ -9,5 +9,5 @@ export default createViewBundleConfig({
   entry: "./src/components/todos/todos-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "TodosView",
-  additionalExternals: ["@elizaos/app-core"],
+  additionalExternals: ["@elizaos/app"],
 });

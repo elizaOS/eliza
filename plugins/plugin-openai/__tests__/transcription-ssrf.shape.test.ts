@@ -17,38 +17,20 @@ const mocks = vi.hoisted(() => ({
   realFetchRemoteMedia: null as null | ((...args: unknown[]) => Promise<unknown>),
 }));
 
-// The handler imports logger/recordLlmCall from `@elizaos/core`; the Node
-// URL fetcher (models/transcription-url.node.ts) loads `fetchRemoteMedia`
-// lazily from `@elizaos/core/node` so the browser bundle never pulls it in.
-// Under Node both specifiers resolve to the same module file, so both mocks
-// must expose the same full mocked surface.
-const coreMockFactory = vi.hoisted(
-  () => async (importActual: () => Promise<Record<string, unknown>>) => {
-    const actual = await importActual();
-    mocks.realFetchRemoteMedia = actual.fetchRemoteMedia as (
-      ...args: unknown[]
-    ) => Promise<unknown>;
-    return {
-      ...actual,
-      logger: {
-        debug: vi.fn(),
-        error: vi.fn(),
-        log: vi.fn(),
-        warn: vi.fn(),
-      },
-      recordLlmCall: mocks.recordLlmCall,
-      fetchRemoteMedia: (...args: unknown[]) => {
-        if (mocks.useRealFetchRemoteMedia && mocks.realFetchRemoteMedia) {
-          return mocks.realFetchRemoteMedia(...args);
-        }
-        return mocks.fetchRemoteMedia(...args);
-      },
-    };
-  }
-);
-
-vi.mock("@elizaos/core", coreMockFactory);
-vi.mock("@elizaos/core/node", coreMockFactory);
+// Replace only the media boundary; SSRF cases exercise its real implementation.
+vi.mock("@elizaos/core", async (importActual) => {
+  const actual = await importActual<typeof import("@elizaos/core")>();
+  mocks.realFetchRemoteMedia = actual.fetchRemoteMedia as (...args: unknown[]) => Promise<unknown>;
+  return {
+    ...actual,
+    recordLlmCall: mocks.recordLlmCall,
+    fetchRemoteMedia: (...args: unknown[]) => {
+      if (mocks.useRealFetchRemoteMedia && mocks.realFetchRemoteMedia)
+        return mocks.realFetchRemoteMedia(...args);
+      return mocks.fetchRemoteMedia(...args);
+    },
+  };
+});
 
 vi.mock("../utils/config", () => ({
   getAuthHeader: mocks.getAuthHeader,
@@ -60,11 +42,6 @@ vi.mock("../utils/config", () => ({
 }));
 
 import { handleTranscription } from "../models/audio";
-import { installNodeTranscriptionUrlFetcher } from "../models/transcription-url.node";
-
-// The Node entrypoint installs this in production; tests import models
-// directly, so install the same guarded fetcher here.
-installNodeTranscriptionUrlFetcher();
 
 function createRuntime(): IAgentRuntime {
   return {
@@ -194,5 +171,36 @@ describe("OpenAI transcription audio URL happy path (mocked remote media)", () =
         maxBytes: 25 * 1024 * 1024,
       })
     );
+  });
+
+  it("cancels the guarded audio download before the provider request starts", async () => {
+    const caller = new AbortController();
+    mocks.fetchRemoteMedia.mockImplementation(
+      ({ signal }: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          if (!signal) {
+            reject(new Error("audio download did not receive the caller signal"));
+            return;
+          }
+          const rejectWithReason = () => reject(signal.reason);
+          if (signal.aborted) {
+            rejectWithReason();
+            return;
+          }
+          signal.addEventListener("abort", rejectWithReason, { once: true });
+        })
+    );
+
+    const pending = handleTranscription(createRuntime(), {
+      audioUrl: "https://cdn.example.com/slow.webm",
+      signal: caller.signal,
+    });
+    caller.abort(new DOMException("Cancelled", "AbortError"));
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(mocks.fetchRemoteMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: caller.signal })
+    );
+    expect(mocks.recordLlmCall).not.toHaveBeenCalled();
   });
 });

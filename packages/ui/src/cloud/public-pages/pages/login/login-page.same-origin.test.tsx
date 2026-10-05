@@ -28,7 +28,7 @@ vi.mock("./passkey-capability", () => ({
     Promise.resolve({ usable: false, reason: "native-without-bridge" }),
 }));
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     getProviders() {
       return Promise.resolve({
@@ -52,15 +52,18 @@ vi.mock("@elizaos/login", () => ({
   },
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@elizaos/shared/steward-session-client")
-  >()),
-  hasStewardAuthedCookie: () => false,
-  readStoredStewardToken: () => null,
-  writeStoredStewardToken: () => undefined,
-  StewardSessionError: class extends Error {},
-}));
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+    >()),
+    hasStewardAuthedCookie: () => false,
+    readStoredStewardToken: () => null,
+    writeStoredStewardToken: () => undefined,
+    StewardSessionError: class extends Error {},
+  }),
+);
 
 vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: () => null,
@@ -87,7 +90,9 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
 // The managed-cloud branch only shows itself when a handoff is actually
 // available; with the real `shouldAutoBridgeToSso` it short-circuits back to

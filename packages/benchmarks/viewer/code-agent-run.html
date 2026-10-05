@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Code Agent Matrix Run Viewer</title>
+  <style>
+    :root { --bg:#f7f8f5; --panel:#fff; --ink:#182018; --muted:#5d665c; --line:#d8ded2; --accent:#116b5b; --bad:#a12222; --ok:#17633a; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    header { padding:18px 22px 10px; border-bottom:1px solid var(--line); background:#fff; position:sticky; top:0; z-index:2; }
+    h1 { margin:0 0 6px; font-size:22px; letter-spacing:0; }
+    .muted { color:var(--muted); }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; padding:14px 22px; }
+    .card, .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+    .card { padding:10px; }
+    .card b { display:block; font-size:20px; margin-top:3px; }
+    .layout { display:grid; grid-template-columns:320px 1fr; gap:12px; padding:0 22px 22px; }
+    aside, section { min-width:0; }
+    .panel { margin-bottom:12px; overflow:hidden; }
+    .panel h2 { margin:0; padding:10px 12px; font-size:14px; border-bottom:1px solid var(--line); background:#f2f5ef; }
+    .controls { display:grid; gap:8px; padding:10px; }
+    input, select { width:100%; border:1px solid var(--line); border-radius:6px; padding:7px 8px; background:#fff; color:var(--ink); }
+    .bench-list { max-height:62vh; overflow:auto; }
+    .bench-item { width:100%; text-align:left; border:0; border-bottom:1px solid var(--line); background:#fff; padding:10px; cursor:pointer; }
+    .bench-item:hover, .bench-item.active { background:#eef6f2; }
+    .pill { display:inline-block; padding:1px 6px; border:1px solid var(--line); border-radius:999px; margin:2px 3px 0 0; font-size:11px; color:var(--muted); }
+    .status-succeeded, .pass { color:var(--ok); font-weight:600; }
+    .status-failed, .fail { color:var(--bad); font-weight:600; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid var(--line); padding:7px; text-align:left; vertical-align:top; }
+    th { background:#f7faf4; position:sticky; top:65px; }
+    details { border-top:1px solid var(--line); }
+    summary { cursor:pointer; padding:9px 12px; background:#fff; }
+    pre { margin:0; padding:10px 12px; overflow:auto; white-space:pre-wrap; word-break:break-word; background:#101510; color:#eef7ea; max-height:520px; }
+    .trajectory-step { border-top:1px solid var(--line); padding:10px 12px; }
+    .trajectory-step h3 { margin:0 0 6px; font-size:13px; }
+    .split { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    @media (max-width: 900px) { .layout { grid-template-columns:1fr; } th { top:0; } .split { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Code Agent Matrix Run Viewer</h1>
+    <div id="run-meta" class="muted"></div>
+  </header>
+  <div class="cards" id="cards"></div>
+  <main class="layout">
+    <aside class="panel">
+      <h2>Benchmarks</h2>
+      <div class="controls">
+        <input id="search" type="search" placeholder="Search benchmark, adapter, status..." />
+        <select id="status"><option value="">all statuses</option></select>
+      </div>
+      <div id="bench-list" class="bench-list"></div>
+    </aside>
+    <section>
+      <div class="panel">
+        <h2 id="detail-title">Run Detail</h2>
+        <div id="detail"></div>
+      </div>
+    </section>
+  </main>
+  <script src="./data.js"></script>
+  <script>
+    const data = window.BENCHMARK_RUN_DATA || { cells: [], summary: {} };
+    let activeBenchmark = "";
+    const text = (v) => v === null || v === undefined ? "" : String(v);
+    const esc = (v) => text(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const json = (v) => esc(JSON.stringify(v, null, 2));
+    const pct = (v) => typeof v === "number" ? v.toFixed(2) + "%" : "";
+    function grouped() {
+      const q = document.getElementById("search").value.toLowerCase();
+      const st = document.getElementById("status").value;
+      const groups = new Map();
+      for (const c of data.cells) {
+        const hay = [c.benchmark, c.adapter, c.status, c.failure_class, c.notes?.join(" ")].map(text).join(" ").toLowerCase();
+        if (q && !hay.includes(q)) continue;
+        if (st && c.status !== st) continue;
+        if (!groups.has(c.benchmark)) groups.set(c.benchmark, []);
+        groups.get(c.benchmark).push(c);
+      }
+      return [...groups.entries()].sort((a,b) => a[0].localeCompare(b[0]));
+    }
+    function renderCards() {
+      const s = data.summary || {};
+      const token = s.token_by_adapter || {};
+      document.getElementById("run-meta").textContent = `${data.run_root || ""} · generated ${data.generated_at || s.generated_at || ""}`;
+      const items = [
+        ["Cells", data.cells.length],
+        ["Benchmarks", new Set(data.cells.map(c => c.benchmark)).size],
+        ["Succeeded", data.cells.filter(c => c.status === "succeeded").length],
+        ["Failed", data.cells.filter(c => c.status === "failed").length],
+        ["Eliza tokens", token.elizaos?.total_tokens ?? ""],
+        ["OpenCode tokens", token.opencode?.total_tokens ?? ""],
+      ];
+      document.getElementById("cards").innerHTML = items.map(([k,v]) => `<div class="card"><span class="muted">${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+    }
+    function renderFilters() {
+      const statuses = [...new Set(data.cells.map(c => c.status).filter(Boolean))].sort();
+      document.getElementById("status").innerHTML = `<option value="">all statuses</option>` + statuses.map(s => `<option>${esc(s)}</option>`).join("");
+    }
+    function renderList() {
+      const groups = grouped();
+      if (!activeBenchmark && groups.length) activeBenchmark = groups[0][0];
+      if (!groups.some(([b]) => b === activeBenchmark) && groups.length) activeBenchmark = groups[0][0];
+      document.getElementById("bench-list").innerHTML = groups.map(([b,cells]) => {
+        const status = cells.map(c => `<span class="pill ${c.status === "succeeded" ? "status-succeeded" : "status-failed"}">${esc(c.adapter)} ${esc(c.status)}</span>`).join("");
+        return `<button class="bench-item ${b === activeBenchmark ? "active" : ""}" data-bench="${esc(b)}"><strong>${esc(b)}</strong><br>${status}</button>`;
+      }).join("");
+      renderDetail();
+    }
+    function metricTable(cells) {
+      return `<table><thead><tr><th>adapter</th><th>status</th><th>right/wrong/total</th><th>accuracy</th><th>input</th><th>output</th><th>total</th><th>cached</th><th>cache %</th><th>calls</th></tr></thead><tbody>` +
+        cells.map(c => {
+          const o = c.outcome_metrics || {}, t = c.token_metrics || {};
+          return `<tr><td>${esc(c.adapter)}</td><td class="status-${esc(c.status)}">${esc(c.status)}</td><td>${esc(o.right)}/${esc(o.wrong)}/${esc(o.total)}</td><td>${esc(o.accuracy)}</td><td>${esc(t.input_tokens)}</td><td>${esc(t.output_tokens)}</td><td>${esc(t.total_tokens)}</td><td>${esc(t.cached_tokens)}</td><td>${esc(pct(t.cached_token_percent))}</td><td>${esc(t.llm_call_count)}</td></tr>`;
+        }).join("") + `</tbody></table>`;
+    }
+    function trajectoryHtml(file) {
+      const entries = Array.isArray(file.entries) ? file.entries : [];
+      if (!entries.length) return `<pre>${json(file.payload)}</pre>`;
+      return entries.map((e, i) => {
+        const req = e.request || e.prompt || e.prompt_text || e.input || e.input_text || e.messages || e.model_input || e;
+        const res = e.response || e.response_text || e.output || e.output_text || e.completion || e.completion_text || e.result || {};
+        const usage = e.usage || e.response?.usage || e.token_metrics || e.tokenMetrics || e.cacheStats || e.trajectoryTotals || {};
+        return `<div class="trajectory-step"><h3>${esc(file.path)} · step ${i}</h3><div class="split"><div><strong>input/request</strong><pre>${json(req)}</pre></div><div><strong>output/response</strong><pre>${json(res)}</pre></div></div><details><summary>usage/cache/raw</summary><pre>${json({ usage, raw: e })}</pre></details></div>`;
+      }).join("");
+    }
+    function taskDiagnosticsHtml(c) {
+      const rows = c.task_diagnostics || [];
+      if (!rows.length) return '<div class="trajectory-step muted">No per-task result rows found.</div>';
+      return `<table><thead><tr><th>task</th><th>status</th><th>score</th><th>error</th><th>trajectory matches</th><th>usage</th><th>raw</th></tr></thead><tbody>` +
+        rows.map(r => `<tr>
+          <td>${esc(r.task_id)}</td>
+          <td>${esc(r.status)}</td>
+          <td>${esc(r.score)}</td>
+          <td>${esc(r.error)}</td>
+          <td>${esc(r.trajectory_match_count)}<br>${(r.trajectory_files || []).map(f => `<span class="pill">${esc(f)}</span>`).join("")}</td>
+          <td>prompt ${esc(r.usage?.prompt_tokens)}<br>completion ${esc(r.usage?.completion_tokens)}<br>total ${esc(r.usage?.total_tokens)}<br>cached ${esc(r.usage?.cached_tokens)}</td>
+          <td><details><summary>raw</summary><pre>${json(r.raw)}</pre></details></td>
+        </tr>`).join("") + `</tbody></table>`;
+    }
+    function renderCell(c) {
+      return `<details open><summary><strong>${esc(c.adapter)}</strong> <span class="status-${esc(c.status)}">${esc(c.status)}</span> ${esc(c.failure_class || "")}</summary>
+        <details><summary>Command</summary><pre>${json(c.command)}</pre></details>
+        <details open><summary>Task Diagnostics (${(c.task_diagnostics || []).length})</summary>${taskDiagnosticsHtml(c)}</details>
+        <details><summary>Result JSON</summary><pre>${json(c.result_payload)}</pre></details>
+        <details><summary>Trajectories (${(c.trajectory_files || []).length})</summary>${(c.trajectory_files || []).map(trajectoryHtml).join("") || '<div class="trajectory-step muted">No trajectory files found.</div>'}</details>
+        <details><summary>Output Artifacts (${(c.output_artifacts || []).length})</summary>${(c.output_artifacts || []).map(a => `<details><summary>${esc(a.path)} (${esc(a.size_bytes)} bytes)</summary><pre>${a.payload !== undefined ? json(a.payload) : a.text !== undefined ? esc(a.text) : esc("[binary or unsupported preview]")}</pre></details>`).join("")}</details>
+        <details><summary>stdout</summary><pre>${esc(c.stdout_tail)}</pre></details>
+        <details><summary>stderr</summary><pre>${esc(c.stderr_tail)}</pre></details>
+      </details>`;
+    }
+    function renderDetail() {
+      const cells = data.cells.filter(c => c.benchmark === activeBenchmark);
+      document.getElementById("detail-title").textContent = activeBenchmark || "Run Detail";
+      document.getElementById("detail").innerHTML = cells.length ? metricTable(cells) + cells.map(renderCell).join("") : '<div class="trajectory-step muted">No matching cells.</div>';
+    }
+    document.addEventListener("click", e => {
+      const btn = e.target.closest(".bench-item");
+      if (btn) { activeBenchmark = btn.dataset.bench; renderList(); }
+    });
+    document.getElementById("search").addEventListener("input", renderList);
+    document.getElementById("status").addEventListener("change", renderList);
+    renderCards(); renderFilters(); renderList();
+  </script>
+</body>
+</html>

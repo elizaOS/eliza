@@ -9,7 +9,7 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
-import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
+import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __testing } from "../src/apple-calendar.js";

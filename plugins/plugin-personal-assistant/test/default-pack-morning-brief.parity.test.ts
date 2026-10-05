@@ -70,6 +70,7 @@ function buildFixtureReport(): Omit<CheckinReport, "summaryText"> {
     ],
     sleepRecap: null,
     collectorErrors: {
+      habitSummaries: null,
       overdueTodos: null,
       todaysMeetings: null,
       yesterdaysWins: null,

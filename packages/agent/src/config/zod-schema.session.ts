@@ -4,15 +4,13 @@
  * reset triggers and schedules (daily/idle, per chat-type, per channel), typing
  * behavior, send policy, and agent-to-agent ping-pong bounds. `MessagesSchema`
  * covers message/response prefixes, group chat, the inbound queue and debounce,
- * ack reactions, and TTS; `CommandsSchema` toggles the built-in slash/native
- * command set.
+ * ack reactions, and TTS.
  */
 import * as zod from "zod";
 import {
   GroupChatSchema,
   InboundDebounceSchema,
   MessagePolicySchema,
-  NativeCommandsSettingSchema,
   QueueSchema,
   TtsConfigSchema,
 } from "./zod-schema.core.ts";
@@ -91,19 +89,3 @@ export const MessagesSchema = z
   })
   .strict()
   .optional();
-
-export const CommandsSchema = z
-  .object({
-    native: NativeCommandsSettingSchema.optional().default("auto"),
-    nativeSkills: NativeCommandsSettingSchema.optional().default("auto"),
-    text: z.boolean().optional(),
-    bash: z.boolean().optional(),
-    bashForegroundMs: z.number().int().min(0).max(30_000).optional(),
-    config: z.boolean().optional(),
-    debug: z.boolean().optional(),
-    restart: z.boolean().optional(),
-    useAccessGroups: z.boolean().optional(),
-  })
-  .strict()
-  .optional()
-  .default({ native: "auto", nativeSkills: "auto" });

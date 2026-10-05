@@ -133,8 +133,6 @@ export const SHADER_PRESETS: readonly ShaderPreset[] = [
   },
 ];
 
-export const DEFAULT_SHADER_PRESET_ID = "aurora";
-
 /** Resolve a preset by id (case-insensitive). Returns undefined if unknown. */
 export function getShaderPreset(
   id: string | undefined,

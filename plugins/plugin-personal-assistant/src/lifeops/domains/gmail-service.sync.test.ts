@@ -79,11 +79,20 @@ function harness(args: {
         References: "<earlier-message@example.com>",
       },
     })),
+    sendEmail: vi.fn(async () => ({
+      id: "sent-1",
+      threadId: "thread-message-1",
+    })),
     createGmailDraft: vi.fn(async () => ({
       draftId: "draft-1",
       messageId: "draft-message-1",
       threadId: "thread-message-1",
       labelIds: ["DRAFT"],
+    })),
+    sendGmailReply: vi.fn(async () => ({
+      messageId: "sent-1",
+      threadId: "thread-message-1",
+      labelIds: ["SENT"],
     })),
     modifyGmailMessages: vi.fn(
       async ({ messageIds }: { messageIds: string[] }) => ({
@@ -114,11 +123,13 @@ function harness(args: {
     deleteGmailSyncState: vi.fn(async () => undefined),
     upsertGmailSyncState,
     publishGmailSeed,
+    attributeBriefItemEngagement: vi.fn(async () => null),
   };
   const domain = new GmailDomain(
     {
       runtime: {
         getService: (name: string) => (name === "google" ? google : null),
+        reportError: vi.fn(),
       },
       agentId: () => "agent-1",
       repository,
@@ -643,7 +654,108 @@ describe("LifeOps Gmail provider draft", () => {
         accountId: "account-1",
         threadId: "thread-message-1",
         inReplyTo: "<provider-message@example.com>",
-        references: "<earlier-message@example.com>",
+        references:
+          "<earlier-message@example.com> <provider-message@example.com>",
+      }),
+    );
+  });
+
+  it("sends a reply through sendGmailReply with threadId and RFC headers", async () => {
+    const { domain, google, repository } = harness({});
+
+    await domain.sendGmailReply(new URL("http://127.0.0.1/"), {
+      messageId: "message-1",
+      bodyText: "Tomorrow works.",
+      confirmSend: true,
+    });
+
+    expect(google.sendGmailReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "account-1",
+        to: ["sender@example.com"],
+        threadId: "thread-message-1",
+        inReplyTo: "<provider-message@example.com>",
+        references:
+          "<earlier-message@example.com> <provider-message@example.com>",
+      }),
+    );
+    expect(repository.attributeBriefItemEngagement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-1",
+        sourceId: "agent-1:account-1:gmail:message-1",
+        eventType: "replied",
+      }),
+    );
+  });
+});
+
+describe("LifeOps Gmail committed read attribution", () => {
+  it("uses the actual mutation account in the brief source identity", async () => {
+    const { domain, google, repository } = harness({});
+    await domain.manageGmailMessages(new URL("http://127.0.0.1/"), {
+      operation: "mark_read",
+      messageIds: ["message-1"],
+      executionMode: "execute",
+      confirmAction: true,
+    });
+    expect(google.modifyGmailMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "account-1",
+        messageIds: ["message-1"],
+      }),
+    );
+    expect(repository.attributeBriefItemEngagement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-1",
+        sourceId: "agent-1:account-1:gmail:message-1",
+        eventType: "opened",
+      }),
+    );
+  });
+});
+
+describe("LifeOps Gmail reply send subject", () => {
+  it("keeps a single Re: prefix when the original subject already has one", async () => {
+    const { domain, google } = harness({});
+
+    await domain.sendGmailReply(new URL("http://127.0.0.1/"), {
+      messageId: "message-1",
+      bodyText: "Tomorrow works.",
+      confirmSend: true,
+    });
+
+    expect(google.sendGmailReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: "Re: Review",
+      }),
+    );
+  });
+
+  it("adds Re: once when the original subject has no reply prefix", async () => {
+    const { domain, google } = harness({});
+    google.getMessage = vi.fn(async ({ messageId }: { messageId: string }) => ({
+      id: messageId,
+      threadId: `thread-${messageId}`,
+      subject: "Quarterly review",
+      from: { email: "sender@example.com", name: "Sender" },
+      to: [{ email: "owner@example.com" }],
+      receivedAt: "2026-08-22T07:00:00.000Z",
+      labelIds: ["INBOX"],
+      headers: {
+        "Message-Id": "<provider-message@example.com>",
+        References: "<earlier-message@example.com>",
+      },
+    }));
+
+    await domain.sendGmailReply(new URL("http://127.0.0.1/"), {
+      messageId: "message-1",
+      bodyText: "Tomorrow works.",
+      confirmSend: true,
+    });
+
+    expect(google.sendGmailReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: "Re: Quarterly review",
       }),
     );
   });

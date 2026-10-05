@@ -1,15 +1,5 @@
-/** Verifies free-rest release bands + detent magnetism (matrix: FREE / slow drag rows) through the package's configured test harness. */
 // @vitest-environment jsdom
-//
-// State-matrix gap coverage for the continuous chat sheet — the rows of
-// __e2e__/CHAT_SHEET_STATE_MATRIX.md that had no direct unit/e2e assertion:
-// free-rest release bands and their ±64px detent-magnet edges, the restore
-// drag's HALF/FREE landings, flick-down stepping from a free rest, the
-// bottom-band INPUT-vs-PILL split, mid-band pill-drag releases, the maximize
-// commit hysteresis, the one-haptic-per-detent invariant, and stale-state
-// checks across consecutive gestures. Drives the real overlay in jsdom with
-// the API client mocked; gesture velocity is controlled by mocking
-// performance.now (jsdom otherwise reads every move as a flick).
+/** Drives real chat-sheet release bands, detents, haptics, and consecutive gestures. */
 
 import {
   act,
@@ -151,11 +141,23 @@ async function slowDrag(
   }
 }
 
-/** A fast flick (synchronous events → huge velocity). */
+/** A fast flick with fixed sample times, independent of test-runner load. */
 function flick(el: Element, fromY: number, toY: number, pointerId = 42): void {
-  fireEvent.pointerDown(el, { clientY: fromY, pointerId });
-  fireEvent.pointerMove(el, { clientY: toY, pointerId });
-  fireEvent.pointerUp(el, { clientY: toY, pointerId });
+  const now = vi.spyOn(performance, "now");
+  const ts = vi
+    .spyOn(Event.prototype, "timeStamp", "get")
+    .mockImplementation(() => performance.now());
+  try {
+    now.mockReturnValue(1000);
+    fireEvent.pointerDown(el, { clientY: fromY, pointerId });
+    now.mockReturnValue(1016);
+    fireEvent.pointerMove(el, { clientY: toY, pointerId });
+    now.mockReturnValue(1032);
+    fireEvent.pointerUp(el, { clientY: toY, pointerId });
+  } finally {
+    ts.mockRestore();
+    now.mockRestore();
+  }
 }
 
 /**

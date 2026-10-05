@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=elizaOS
+Comment=Work with your personal Eliza agent
+Exec=eliza-desktop %u
+Icon=ai.elizaos.app
+Terminal=false
+Categories=Utility;
+MimeType=x-scheme-handler/elizaos;
+StartupNotify=true
+X-GNOME-UsesNotifications=true

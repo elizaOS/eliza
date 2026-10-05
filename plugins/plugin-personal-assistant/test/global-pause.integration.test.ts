@@ -17,8 +17,8 @@
  * it red.
  */
 
+import { createGlobalPauseStore } from "@elizaos/plugin-assistant";
 import { afterEach, describe, expect, it } from "vitest";
-import { createGlobalPauseStore } from "../src/lifeops/global-pause/store.ts";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import type { ScheduledTask } from "../src/lifeops/scheduled-task/index.js";
 import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.js";

@@ -11,7 +11,7 @@
  * word the prompt never used) and the two-phase commit.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -21,7 +21,7 @@ export default scenario({
   tags: ["lifeops", "hygiene", "habits", "colloquial"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

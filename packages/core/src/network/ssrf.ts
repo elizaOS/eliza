@@ -318,6 +318,16 @@ function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
 	return null;
 }
 
+/**
+ * NAT64 local-use prefix 64:ff9b:1::/48 (RFC 8215). Site translators carve
+ * /48-/96 network-specific prefixes from it, each embedding the IPv4 at a
+ * different offset, so the literal does not identify the reached IPv4. The
+ * range is not globally routable, so every address in it is internal.
+ */
+function isNat64LocalUsePrefix(hextets: number[]): boolean {
+	return hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets[2] === 0x1;
+}
+
 function isPrivateIpv6(address: string): boolean {
 	if (address === "::" || address === "::1") return true;
 	const firstHextet = /^([0-9a-f]{1,4})(?=:|$)/i.exec(address)?.[1];
@@ -338,6 +348,7 @@ function isPrivateIpv6(address: string): boolean {
 	// also covers leading-"::" spellings the first-hextet scan above can't see.
 	const hextets = parseIpv6Hextets(address);
 	if (hextets) {
+		if (isNat64LocalUsePrefix(hextets)) return true;
 		const embedded = embeddedIpv4ForPolicy(hextets);
 		if (embedded && isPrivateIpv4(embedded)) {
 			return true;

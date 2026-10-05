@@ -17,31 +17,38 @@
  * CORS_HEADERS from the Next version are intentionally dropped.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { appsRepository } from "@/db/repositories/apps";
+import {
+  requireUserOrApiKey,
+  requireUserWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
 import {
   ApiError,
   failureResponse,
   NotFoundError,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { checkCookieMutationGuard } from "@/lib/auth/cookie-mutation-guard";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { checkCookieMutationGuard } from "@elizaos/cloud-shared/lib/auth/cookie-mutation-guard";
+import { isAllowedOrigin } from "@elizaos/cloud-shared/lib/security/origin-validation";
+import { issueAppAuthCode } from "@elizaos/cloud-shared/lib/services/app-auth-codes";
 import {
-  requireUserOrApiKey,
-  requireUserWithOrg,
-} from "@/lib/auth/workers-hono-auth";
-import { isAllowedOrigin } from "@/lib/security/origin-validation";
-import { issueAppAuthCode } from "@/lib/services/app-auth-codes";
-import { appsService } from "@/lib/services/apps";
+  AppDelegationError,
+  appDelegationBindingSchema,
+} from "@elizaos/cloud-shared/lib/services/app-delegation";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import {
   issueMobileAppAuthCode,
   MobileAppAuthProtocolError,
   validateMobileAppAuthPkceBinding,
-} from "@/lib/services/mobile-app-auth";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/mobile-app-auth";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { runMobileAppAuthGrantAdmission } from "../mobile/_rate-limit";
 import { requireRegisteredMobileApp } from "../mobile/_registration";
 import { mobileAppAuthErrorResponse } from "../mobile/_response";
@@ -55,6 +62,16 @@ const ConnectSchema = z.object({
 const MobileConnectSchema = mobileAppAuthPkceBindingSchema.extend({
   flow: z.literal("mobile_pkce"),
 });
+
+const DelegationConnectSchema = z
+  .object({
+    appId: z.string().uuid(),
+    flow: z.literal("app_delegation"),
+    clientId: z.string().uuid(),
+    redirectUri: z.string().url(),
+    scopes: z.array(z.string()),
+  })
+  .strict();
 
 function isMobileFlowBody(body: unknown): boolean {
   return (
@@ -152,6 +169,54 @@ app.post("/", async (c) => {
       return await handleMobileConnect(c, mobileParsed.data);
     }
 
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "flow" in body &&
+      body.flow === "app_delegation"
+    ) {
+      const { appDelegationService } = await import(
+        "@elizaos/cloud-shared/lib/services/app-delegation-adapter"
+      );
+      const { requireUser } = await import("@elizaos/cloud-shared/auth");
+      const input = DelegationConnectSchema.parse(body);
+      const binding = appDelegationBindingSchema.parse({
+        clientId: input.clientId,
+        redirectUri: input.redirectUri,
+        scopes: input.scopes,
+      });
+      const user = await requireUser(c);
+      if (
+        c.get("authMethod") !== "session" ||
+        user.is_anonymous ||
+        c.req.header("X-API-Key")
+      )
+        throw new AppDelegationError(
+          401,
+          "APP_SESSION_REQUIRED",
+          "Sign in to explicitly authorize this application",
+        );
+      await appDelegationService.validateConsent(input.appId, binding);
+      await connectUserToApp(c, { appId: input.appId, userId: user.id });
+      const delegation = await appDelegationService.consentBinding(
+        input.appId,
+        user.id,
+        binding,
+      );
+      const authCode = await issueAppAuthCode({
+        appId: input.appId,
+        userId: user.id,
+        delegation,
+      });
+      return c.json({
+        success: true,
+        code: authCode.code,
+        codeType: "app_delegation_code",
+        expiresAt: authCode.expiresAt,
+        expiresIn: authCode.expiresIn,
+      });
+    }
+
     const user = await requireUserOrApiKey(c);
     const parsed = ConnectSchema.safeParse(body);
 
@@ -208,6 +273,16 @@ app.post("/", async (c) => {
       if (error instanceof ApiError) return failureResponse(c, error);
       return mobileAppAuthErrorResponse(c, error, "connect");
     }
+    if (error instanceof AppDelegationError)
+      return c.json(
+        { success: false, error: error.message, code: error.code },
+        error.status,
+      );
+    if (error instanceof z.ZodError)
+      return c.json(
+        { success: false, error: "Invalid application consent request" },
+        400,
+      );
     logger.error("App auth connect error:", error);
     return failureResponse(c, error);
   }

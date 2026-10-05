@@ -8,7 +8,7 @@ import type {
   LifeOpsMessageChannel,
   LifeOpsRelationship,
   LifeOpsRelationshipInteraction,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 export interface LifeOpsRelationshipService {
   upsertRelationship(
     input: Omit<

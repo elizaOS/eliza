@@ -20,7 +20,7 @@ import {
   type LayoutShiftSample,
   type StabilitySummary,
   summarizeStability,
-} from "./layout-stability.ts";
+} from "../perf/layout-stability.ts";
 
 declare global {
   interface Window {

@@ -10,7 +10,7 @@
  * is set. State is persisted via `MigrationTracker` (hash + timestamp),
  * `JournalStorage` (Drizzle-compatible journal), and `SnapshotStorage`.
  */
-import { logger } from "@elizaos/core";
+import { isExactTrueEnvFlag, logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { getRow } from "../types";
 import { stringToBigInt } from "./crypto-utils";
@@ -509,7 +509,7 @@ export class RuntimeMigrator {
         const allowDestructive =
           options.force ||
           options.allowDataLoss ||
-          process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
+          isExactTrueEnvFlag(process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS);
 
         if (!allowDestructive) {
           logger.error(

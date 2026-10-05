@@ -1,5 +1,5 @@
 /** Exposes session step-up operations and the current MFA verification state. */
-import { isLoginMfaRequiredError } from "@elizaos/login";
+import { isLoginMfaRequiredError } from "@elizaos/auth";
 import { useCallback } from "react";
 import { useAuth } from "./useAuth.js";
 
@@ -14,15 +14,15 @@ export interface UseMfaStepUpResult {
   isMfaRequiredError: typeof isLoginMfaRequiredError;
   stepUpWithTotp: (
     code: string,
-  ) => Promise<import("@elizaos/login").LoginAuthResult>;
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
   stepUpWithRecoveryCode: (
     recoveryCode: string,
-  ) => Promise<import("@elizaos/login").LoginAuthResult>;
-  sendSmsCode: () => Promise<import("@elizaos/login").LoginSmsMfaEnrollResult>;
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
+  sendSmsCode: () => Promise<import("@elizaos/auth").LoginSmsMfaEnrollResult>;
   stepUpWithSms: (
     code: string,
-  ) => Promise<import("@elizaos/login").LoginAuthResult>;
-  stepUpWithPasskey: () => Promise<import("@elizaos/login").LoginAuthResult>;
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
+  stepUpWithPasskey: () => Promise<import("@elizaos/auth").LoginAuthResult>;
 }
 
 /**

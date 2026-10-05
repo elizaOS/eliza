@@ -4,11 +4,13 @@
  *
  * @vitest-environment jsdom
  */
+
+import type { FirstRunOptions } from "@elizaos/host/protocol";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { Conversation, FirstRunOptions, ImageAttachment } from "../api";
-import type { AppState, LifecycleAction } from "./internal";
+import type { Conversation, ImageAttachment } from "../api/client-types-chat";
+import type { AppState, LifecycleAction } from "./types";
 import {
   type UseChatLifecycleDeps,
   useChatLifecycle,

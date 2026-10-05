@@ -11,13 +11,17 @@
  * is re-checked per request, cookies and Cloud credentials are stripped, and
  * the runtime's own `ELIZA_API_TOKEN` is swapped in as the bearer.
  */
-import type { Context, Next } from "hono";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   dedicatedAgentTransportToken,
   personalDedicatedAgentApiBase,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { Context, Next } from "hono";
 
 const CORS_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
 const DEDICATED_AGENT_ID =
@@ -63,8 +67,8 @@ export async function proxyLocalDedicatedOrNext(
   // this middleware do not pull the database client into their module graph.
   const [{ requireUserOrApiKeyWithOrg }, { agentSandboxesRepository }] =
     await Promise.all([
-      import("@/lib/auth/workers-hono-auth"),
-      import("@/db/repositories/agent-sandboxes"),
+      import("@elizaos/cloud-shared/auth"),
+      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes"),
     ]);
   const user = await requireUserOrApiKeyWithOrg(c);
   const sandbox = await agentSandboxesRepository.findByIdAndOrg(

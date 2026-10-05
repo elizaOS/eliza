@@ -14,7 +14,10 @@ const walletClient = vi.hoisted(() => ({
   getWalletTradingProfile: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui/api", () => ({ client: walletClient }));
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  client: walletClient,
+}));
 
 import { interact } from "./InventoryView.interact";
 

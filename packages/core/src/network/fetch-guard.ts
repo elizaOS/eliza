@@ -429,7 +429,11 @@ export async function fetchWithSsrfGuard(
 				if (redirectCount > maxRedirects) {
 					cancelResponseBody(response);
 					await release();
-					throw new Error(`Too many redirects (limit: ${maxRedirects})`);
+					// Redirect budget and loop violations are policy blocks, not
+					// transient transport failures: retrying cannot succeed.
+					throw new SsrfBlockedError(
+						`Too many redirects (limit: ${maxRedirects})`,
+					);
 				}
 				// No redirect response body is consumed by this guard. Dispose it
 				// before parsing or validating the next hop so malformed Location
@@ -439,7 +443,7 @@ export async function fetchWithSsrfGuard(
 				const nextUrl = nextParsedUrl.toString();
 				if (visited.has(nextUrl)) {
 					await release();
-					throw new Error("Redirect loop detected");
+					throw new SsrfBlockedError("Redirect loop detected");
 				}
 				visited.add(nextUrl);
 				// 301/302 on a POST, and any 303, are rewritten to a bodyless GET

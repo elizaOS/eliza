@@ -1,18 +1,18 @@
-// Handles v1 cloud API v1 earnings payout stripe connect onboard route traffic with route-local auth expectations.
+import { affiliatesRepository } from "@elizaos/cloud-shared/db/repositories/affiliates";
 import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
-import { createConnectOnboarding } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { nextJsonFromCaughtError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { nextJsonFromCaughtError } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { requireStripe } from "@/lib/stripe";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { createConnectOnboarding } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
+import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { toConnectClient } from "../_stripe-connect-client";
 
 const OnboardSchema = z.object({
@@ -24,6 +24,9 @@ const OnboardSchema = z.object({
  * POST /api/v1/earnings/payout/stripe-connect/onboard (#8922)
  * Create (or reuse) the caller's Stripe Connect Express account and return a
  * one-time onboarding URL. Persists the linkage on first creation.
+ *
+ * Creator payouts are retired (#23022); Stripe Connect now only pays affiliate
+ * earnings, so onboarding is limited to users with an affiliate code.
  */
 async function handlePOST(request: Request) {
   try {
@@ -46,6 +49,21 @@ async function handlePOST(request: Request) {
           error: parsed.error.issues[0]?.message ?? "Invalid request",
         },
         { status: 400 },
+      );
+    }
+
+    const affiliateCode = await affiliatesRepository.getAffiliateCodeByUserId(
+      user.id,
+    );
+    if (!affiliateCode) {
+      return Response.json(
+        {
+          success: false,
+          error:
+            "Stripe Connect payouts are only available to affiliates. Creator payouts have been retired.",
+          code: "access_denied",
+        },
+        { status: 403 },
       );
     }
 

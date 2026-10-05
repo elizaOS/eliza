@@ -15,6 +15,7 @@ import {
   type ConnectorAccount,
   type ConnectorAccountManager,
   type ConnectorAccountStorage,
+  ElizaError,
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
@@ -445,6 +446,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
     vaultRef: string,
     credentialType: string
   ): Promise<string | undefined> {
+    await this.ensureRegisteredCredentialStore();
     const readers = this.resolveSecretReaders();
     if (readers.length === 0) {
       throw new Error(
@@ -469,6 +471,33 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
       `Google connector credential ${credentialType} could not be read from ${vaultRef}.` +
         (errors.length ? ` Last errors: ${errors.slice(-3).join("; ")}` : "")
     );
+  }
+
+  private async ensureRegisteredCredentialStore(): Promise<void> {
+    const runtime = this.runtime;
+    if (
+      this.credentialStore ||
+      this.vault ||
+      !runtime ||
+      typeof runtime.hasService !== "function"
+    ) {
+      return;
+    }
+    for (const serviceType of CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES) {
+      if (safelyGetService(runtime, serviceType)) return;
+      if (!runtime.hasService(serviceType)) continue;
+      try {
+        await runtime.getServiceLoadPromise(serviceType);
+      } catch (cause) {
+        // error-policy:J2 Preserve the registered store startup failure for the caller.
+        throw new ElizaError("Google credential store could not start.", {
+          code: "GOOGLE_CREDENTIAL_STORE_START_FAILED",
+          context: { serviceType },
+          cause,
+        });
+      }
+      return;
+    }
   }
 
   private resolveSecretReaders(): unknown[] {

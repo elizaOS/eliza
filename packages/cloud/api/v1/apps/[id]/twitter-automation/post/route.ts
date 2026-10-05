@@ -1,4 +1,15 @@
 // Handles v1 cloud API v1 apps id twitter automation post route traffic with route-local auth expectations.
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import {
+  type GenerativeOperationContext,
+  isGenerativeOperationAdmissionError,
+} from "@elizaos/cloud-shared/lib/services/generative-operation";
+import { twitterAppAutomationService } from "@elizaos/cloud-shared/lib/services/twitter-automation/app-automation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -6,16 +17,6 @@ import {
   getGenerativeOperationContext,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import {
-  type GenerativeOperationContext,
-  isGenerativeOperationAdmissionError,
-} from "@/lib/services/generative-operation";
-import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const PostTweetSchema = z.object({
   text: z.string().max(280).optional(),

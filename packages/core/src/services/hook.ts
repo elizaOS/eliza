@@ -41,9 +41,7 @@ function hasBinary(_bin: string): boolean {
  * Get the current platform name
  */
 function getCurrentPlatform(): string {
-	return typeof process !== "undefined" && process.platform
-		? process.platform
-		: "unknown";
+	return process.platform;
 }
 
 /**

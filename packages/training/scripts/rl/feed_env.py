@@ -39,7 +39,7 @@ from atroposlib.envs.base import (
 from dotenv import load_dotenv
 from pydantic import Field
 
-from lib.generation_integrity import (
+from eliza_training.lib.generation_integrity import (
     IncompleteGenerationError,
     require_complete_generation,
 )
@@ -66,7 +66,7 @@ from .tokenization_utils import remaining_context_tokens, tokenize_for_trainer
 
 # Optional Tinker support
 if TYPE_CHECKING:
-    from .tinker_client import FeedTinkerClient
+    from .tinker.tinker_client import FeedTinkerClient
 
 logger = logging.getLogger("feed_env")
 
@@ -363,174 +363,30 @@ class FeedRLAIFEnv(BaseEnv):
         await self._load_trajectories_from_db()
 
     async def _setup_huggingface_source(self):
-        """Initialize HuggingFace dataset reader and load trajectories."""
+        """Load the explicitly selected complete trajectory split."""
         if not self.config.hf_trajectory_dataset:
-            raise ValueError(
-                "HF_TRAJECTORY_DATASET not set. Required when TRAJECTORY_SOURCE=huggingface"
-            )
+            raise ValueError("HF_TRAJECTORY_DATASET is required for the Hugging Face source")
+        from datasets import load_dataset
 
-        from ..data_bridge.hf_reader import HFReaderConfig, HuggingFaceTrajectoryReader
-
-        logger.info(f"Loading from HuggingFace: {self.config.hf_trajectory_dataset}")
-        logger.info(f"  Split: {self.config.hf_trajectory_split}")
-
-        config = HFReaderConfig(
-            dataset_id=self.config.hf_trajectory_dataset,
+        rows = load_dataset(
+            self.config.hf_trajectory_dataset,
             split=self.config.hf_trajectory_split,
-            min_actions=self.config.min_actions_per_trajectory,
         )
-
-        reader = HuggingFaceTrajectoryReader(config)
-        await reader.connect()
-
-        # Get trajectory groups in the same format as database loading
-        # RL sampling generates multiple completions from a single prompt, so
-        # export/HF corpora with mostly singleton windows remain usable here.
-        self.trajectory_cache = reader.get_trajectory_groups(min_agents_per_window=1)
-
-        # Log stats
-        stats = reader.get_stats()
-        logger.info("HuggingFace dataset stats:")
-        logger.info(f"  Total trajectories: {stats['total_trajectories']}")
-        logger.info(f"  Total windows: {stats['total_windows']}")
-        logger.info(f"  Avg P&L: ${stats['avg_pnl']:.2f}")
-        logger.info(f"  Archetypes: {stats['archetypes']}")
-
-        # Shuffle for variety
-        import random
-
-        random.shuffle(self.trajectory_cache)
+        self._load_export_trajectories(rows)
 
     async def _setup_local_export_source(self):
-        """Load trajectories from a local Feed export directory."""
+        from .trajectory_source import local_trajectories
+
         source_dir = str(self.config.local_export_dir or "").strip()
         if not source_dir:
-            raise ValueError(
-                "LOCAL_EXPORT_DIR not set. Required when TRAJECTORY_SOURCE=local_export"
-            )
+            raise ValueError("LOCAL_EXPORT_DIR is required for the local export source")
+        self._load_export_trajectories(local_trajectories(source_dir))
 
-        from ..data_bridge.reader import JsonTrajectoryReader, has_minimum_usable_action_steps
+    def _load_export_trajectories(self, trajectories):
+        from .trajectory_source import group_trajectories
 
-        reader = JsonTrajectoryReader(source_dir)
-        groups: dict[str, list[dict]] = {}
-        selected_trajectories = 0
-
-        for window_id in sorted(reader.get_window_ids()):
-            for trajectory_data in reader.get_trajectories_by_window(window_id):
-                steps = trajectory_data.get("steps", trajectory_data.get("stepsJson", []))
-                if isinstance(steps, str):
-                    try:
-                        steps = json.loads(steps or "[]")
-                    except json.JSONDecodeError as exc:
-                        logger.warning(
-                            "Malformed local-export steps for trajectory %s: %s",
-                            trajectory_data.get("trajectoryId")
-                            or trajectory_data.get("trajectory_id")
-                            or "unknown",
-                            exc,
-                        )
-                        continue
-                if not isinstance(steps, list):
-                    continue
-
-                has_enough_steps, valid_step_count = has_minimum_usable_action_steps(
-                    steps,
-                    min_actions=self.config.min_actions_per_trajectory,
-                )
-                if not has_enough_steps:
-                    logger.debug(
-                        "Skipping local-export trajectory %s: only %s usable action-bearing steps",
-                        trajectory_data.get("trajectoryId")
-                        or trajectory_data.get("trajectory_id")
-                        or "unknown",
-                        valid_step_count,
-                    )
-                    continue
-
-                metadata = (
-                    trajectory_data.get("metadata") or trajectory_data.get("metadataJson") or {}
-                )
-                if isinstance(metadata, str):
-                    try:
-                        metadata = json.loads(metadata) if metadata else {}
-                    except json.JSONDecodeError:
-                        metadata = {}
-                if not isinstance(metadata, dict):
-                    metadata = {}
-
-                scenario_id = trajectory_data.get("scenarioId") or trajectory_data.get(
-                    "scenario_id"
-                )
-                group_key = f"{window_id}_{scenario_id or 'default'}"
-                final_pnl = float(
-                    trajectory_data.get("finalPnL") or trajectory_data.get("final_pnl") or 0.0
-                )
-                raw_final_balance = trajectory_data.get("finalBalance") or trajectory_data.get(
-                    "final_balance"
-                )
-                final_balance: float | None = None
-                starting_balance: float | None = None
-                if raw_final_balance is not None:
-                    try:
-                        final_balance = float(raw_final_balance)
-                        starting_balance = final_balance - final_pnl
-                    except (TypeError, ValueError):
-                        final_balance = None
-                        starting_balance = None
-
-                agent_id = (
-                    trajectory_data.get("agentId")
-                    or trajectory_data.get("agent_id")
-                    or trajectory_data.get("userId")
-                    or f"{window_id}:{selected_trajectories}"
-                )
-                agent_name = (
-                    metadata.get("username") or metadata.get("displayName") or str(agent_id)[:8]
-                )
-                archetype = (
-                    trajectory_data.get("archetype") or metadata.get("archetype") or "default"
-                )
-
-                groups.setdefault(group_key, []).append(
-                    {
-                        "trajectory_id": trajectory_data.get("trajectoryId")
-                        or trajectory_data.get("trajectory_id")
-                        or trajectory_data.get("id")
-                        or f"{window_id}:{selected_trajectories}",
-                        "agent_id": agent_id,
-                        "agent_name": agent_name,
-                        "window_id": window_id,
-                        "scenario_id": scenario_id,
-                        "archetype": archetype,
-                        "metadata": metadata,
-                        "steps": steps,
-                        "final_pnl": final_pnl,
-                        "final_balance": final_balance,
-                        "starting_balance": starting_balance,
-                        "episode_length": int(
-                            trajectory_data.get("episodeLength")
-                            or trajectory_data.get("episode_length")
-                            or len(steps)
-                        ),
-                        "total_reward": float(
-                            trajectory_data.get("totalReward")
-                            or trajectory_data.get("total_reward")
-                            or 0.0
-                        ),
-                    }
-                )
-                selected_trajectories += 1
-        self.trajectory_cache = [
-            {"group_key": key, "trajectories": trajectories}
-            for key, trajectories in groups.items()
-            if len(trajectories) >= 1
-        ]
-
-        random.shuffle(self.trajectory_cache)
-        logger.info(
-            "Loaded %s local-export trajectories across %s comparable groups",
-            selected_trajectories,
-            len(self.trajectory_cache),
+        self.trajectory_cache = group_trajectories(
+            trajectories, min_actions=self.config.min_actions_per_trajectory
         )
 
     async def _load_trajectories_from_db(self):

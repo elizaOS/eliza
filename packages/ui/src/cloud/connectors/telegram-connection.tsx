@@ -1,3 +1,7 @@
+"use client";
+
+import { ApiError, api, apiErrorMessage } from "../lib/api-client";
+
 /**
  * Telegram Bot cloud connector (token-credential).
  *
@@ -5,8 +9,6 @@
  * client so the steward Bearer token is injected on native targets. The
  * "Next: Start chatting" callout `tone="blue"` is fixed to neutral `tone="muted"`.
  */
-
-"use client";
 
 import { ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -27,7 +29,7 @@ import { CodeBlock } from "../../components/ui/code-block";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { TextLink } from "../../components/ui/text-link";
-import { ApiError, api } from "../lib/api-client";
+
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
 
@@ -43,18 +45,6 @@ interface TelegramConnectResponse {
   success?: boolean;
   botUsername?: string;
   error?: string;
-}
-
-function apiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const body = error.body;
-    if (body && typeof body === "object" && "error" in body) {
-      const apiError = (body as { error?: unknown }).error;
-      if (typeof apiError === "string" && apiError) return apiError;
-    }
-    return error.message || fallback;
-  }
-  return fallback;
 }
 
 export function TelegramConnection() {

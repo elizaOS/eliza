@@ -1,8 +1,4 @@
-/**
- * Wire types for the Chrome, Firefox, and Safari browser-companion bridge: tracking mode,
- * site-access mode, connection state, and workspace tab shapes shared by the
- * client and the desktop bridge.
- */
+/** Browser workspace wire types and legacy LifeOps browser-history records. Companion enrollment and execution are retired. */
 export type BrowserBridgeKind = "chrome" | "firefox" | "safari";
 
 export type BrowserBridgeTrackingMode = "off" | "current_tab" | "active_tabs";
@@ -158,54 +154,6 @@ export interface SyncBrowserBridgeStateRequest {
     capturedAt?: string;
     metadata?: Record<string, unknown>;
   }>;
-}
-
-export interface BrowserBridgeCompanionReleaseAsset {
-  fileName: string;
-  downloadUrl: string | null;
-  sha256: string | null;
-}
-
-export interface BrowserBridgeCompanionReleaseTarget {
-  installKind:
-    | "chrome_web_store"
-    | "firefox_addons"
-    | "firefox_unsigned_submission"
-    | "apple_app_store"
-    | "github_release"
-    | "local_download";
-  installUrl: string | null;
-  storeListingUrl: string | null;
-  asset: BrowserBridgeCompanionReleaseAsset;
-}
-
-export interface BrowserBridgeCompanionReleaseManifest {
-  schema: "browser_bridge_release_v2";
-  releaseTag: string;
-  releaseVersion: string;
-  repository: string | null;
-  releasePageUrl: string | null;
-  chromeVersion: string;
-  chromeVersionName: string;
-  firefoxVersion: string;
-  safariMarketingVersion: string;
-  safariBuildVersion: string;
-  chrome: BrowserBridgeCompanionReleaseTarget;
-  firefox: BrowserBridgeCompanionReleaseTarget;
-  safari: BrowserBridgeCompanionReleaseTarget;
-  generatedAt: string;
-}
-
-export interface BrowserBridgeCompanionPackageStatus {
-  extensionPath: string | null;
-  chromeBuildPath: string | null;
-  chromePackagePath: string | null;
-  firefoxBuildPath: string | null;
-  firefoxPackagePath: string | null;
-  safariWebExtensionPath: string | null;
-  safariAppPath: string | null;
-  safariPackagePath: string | null;
-  releaseManifest: BrowserBridgeCompanionReleaseManifest | null;
 }
 
 export type BrowserWorkspaceMode = "cloud" | "desktop" | "web";

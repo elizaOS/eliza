@@ -8,7 +8,7 @@
 import type {
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSourceStatus,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import type { CalendarSurfaceStatus } from "../../hooks/useCalendarWeek.js";
 
 export type CalendarSourceTone = "success" | "warning" | "danger" | "muted";

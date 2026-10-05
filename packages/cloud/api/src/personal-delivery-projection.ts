@@ -15,20 +15,20 @@
  * `PersonalDeliveryAccountResolutionError`.
  */
 
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   PERSONAL_DELIVERY_PROJECTION_FENCE_PATH,
   PERSONAL_DELIVERY_PROJECTION_INVALIDATE_PATH,
   PERSONAL_DELIVERY_PROJECTION_RELEASE_PATH,
   PERSONAL_DELIVERY_PROJECTION_RESOLVE_PATH,
   personalDeliveryProjectionObjectName,
-} from "@/lib/services/eliza-app/personal-delivery-projection-contract";
+} from "@elizaos/cloud-shared/lib/services/eliza-app/personal-delivery-projection-contract";
 import type {
   PersonalDeliveryInput,
   PersonalDeliveryResult,
-} from "@/lib/services/eliza-app/user-service";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/eliza-app/user-service";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const CACHE_KEY = "shared-account";
 const MUTATION_FENCES_KEY = "mutation-fences";
@@ -336,8 +336,11 @@ export class PersonalDeliveryProjection {
     return runWithCloudBindingsAsync(this.env, async () => {
       const resolver =
         this.resolver ??
-        (await import("@/lib/services/eliza-app/user-service"))
-          .elizaAppUserService;
+        (
+          await import(
+            "@elizaos/cloud-shared/lib/services/eliza-app/user-service"
+          )
+        ).elizaAppUserService;
       return resolver.resolvePersonalDelivery(input);
     });
   }

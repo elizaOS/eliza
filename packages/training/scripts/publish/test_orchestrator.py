@@ -12,10 +12,10 @@ Coverage map (matches the brief):
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -23,27 +23,10 @@ import pytest
 
 # Ensure the `scripts/` parent (training/) is importable as ``scripts``.
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.publish.orchestrator import (  # noqa: E402
-    DEFAULT_RAM_BUDGET_MB,
-    ELIZA_1_HF_REPO,
-    EXIT_BUNDLE_LAYOUT_FAIL,
-    EXIT_EVAL_GATE_FAIL,
-    EXIT_KERNEL_VERIFY_FAIL,
-    EXIT_MISSING_FILE,
-    EXIT_OK,
-    EXIT_HF_AUDIT_FAIL,
-    EXIT_RELEASE_EVIDENCE_FAIL,
-    EXIT_USAGE,
-    OrchestratorError,
-    PublishContext,
-    TIER_TAGLINES,
-    _git_short_sha,
-    run,
-    validate_bundle_layout,
-)
+from eliza_training.publish.context import DEFAULT_RAM_BUDGET_MB, EXIT_BUNDLE_LAYOUT_FAIL, EXIT_EVAL_GATE_FAIL, EXIT_KERNEL_VERIFY_FAIL, EXIT_MISSING_FILE, EXIT_OK, EXIT_HF_AUDIT_FAIL, EXIT_RELEASE_EVIDENCE_FAIL, EXIT_USAGE, OrchestratorError, PublishContext, TIER_TAGLINES, _git_short_sha
+from eliza_training.publish.orchestrator import ELIZA_1_HF_REPO, run
+from eliza_training.publish.layout import validate_bundle_layout
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +198,7 @@ def _build_fixture_bundle(
     # Licenses — written with the real attestation generator so the
     # bundle ships verbatim upstream SPDX text + the license-manifest.json
     # sidecar (the orchestrator refuses anything less).
-    from scripts.manifest.eliza1_licenses import write_bundle_licenses
+    from eliza_training.manifest.eliza1_licenses import write_bundle_licenses
 
     write_bundle_licenses(
         bundle / "licenses",
@@ -656,7 +639,7 @@ def _ctx(
 
 
 def _disable_mtp_for_tier(bundle: Path, tier: str) -> None:
-    from scripts.manifest.eliza1_licenses import write_bundle_licenses
+    from eliza_training.manifest.eliza1_licenses import write_bundle_licenses
 
     drafter = bundle / "mtp" / f"drafter-{tier}.gguf"
     drafter.unlink(missing_ok=True)
@@ -950,7 +933,7 @@ def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     metal = _metal_report(tmp_path)
     ctx = _ctx("4b", bundle, metal=metal, dry_run=True)
-    bad = PublishContext(**{**ctx.__dict__, "repo_id": "someoneelse/eliza-1-4b"})
+    bad = replace(ctx, repo_id="someoneelse/eliza-1-4b")
     rc = run(bad)
     assert rc == EXIT_USAGE
 
@@ -1297,10 +1280,7 @@ def test_upload_evidence_paths_must_cover_payload_commit(tmp_path: Path) -> None
 
 
 def test_upload_list_includes_nested_evidence(tmp_path: Path) -> None:
-    from scripts.publish.orchestrator import (  # noqa: PLC0415
-        _build_upload_list,
-        validate_bundle_layout,
-    )
+    from eliza_training.publish.layout import _build_upload_list, validate_bundle_layout
 
     bundle = _build_fixture_bundle(tmp_path)
     ctx = _ctx("4b", bundle, metal=_metal_report(tmp_path), dry_run=True)
@@ -1313,7 +1293,7 @@ def test_upload_list_includes_nested_evidence(tmp_path: Path) -> None:
 def test_real_publish_finalizes_and_uploads_hf_evidence(
     tmp_path: Path, monkeypatch
 ) -> None:
-    import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
+    import eliza_training.publish.orchestrator as orchestrator  # noqa: PLC0415
 
     bundle = _build_fixture_bundle(tmp_path)
     metal = _metal_report(tmp_path)
@@ -1382,11 +1362,8 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
 def test_finalize_release_evidence_sets_size_first_from_upload_evidence(
     tmp_path: Path,
 ) -> None:
-    from scripts.publish.orchestrator import (  # noqa: PLC0415
-        _build_upload_list,
-        finalize_release_evidence,
-        validate_bundle_layout,
-    )
+    from eliza_training.publish.layout import _build_upload_list, validate_bundle_layout
+    from eliza_training.publish.upload import finalize_release_evidence
 
     bundle = _build_fixture_bundle(tmp_path)
     release_path = bundle / "evidence" / "release.json"
@@ -1420,7 +1397,7 @@ def test_finalize_release_evidence_sets_size_first_from_upload_evidence(
 def test_real_base_v1_publish_rejects_retired_qwen_asr_provenance(
     tmp_path: Path, monkeypatch
 ) -> None:
-    import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
+    import eliza_training.publish.orchestrator as orchestrator  # noqa: PLC0415
 
     bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
     metal = _metal_report(tmp_path)
@@ -1460,7 +1437,7 @@ def test_real_base_v1_publish_rejects_retired_qwen_asr_provenance(
 def test_real_publish_blocks_when_hf_release_audit_fails(
     tmp_path: Path, monkeypatch
 ) -> None:
-    import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
+    import eliza_training.publish.orchestrator as orchestrator  # noqa: PLC0415
 
     bundle = _build_fixture_bundle(tmp_path)
     metal = _metal_report(tmp_path)
@@ -1611,12 +1588,10 @@ def test_red_gate_prevents_default_eligible(tmp_path: Path) -> None:
     We exercise this directly via ``assemble_manifest`` so the test
     fails on the *manifest* contract independently of stage 3 raising.
     """
-    from scripts.publish.orchestrator import (  # noqa: PLC0415
-        assemble_manifest,
-        validate_bundle_layout,
-    )
-    from benchmarks.eliza1_gates import apply_gates  # noqa: PLC0415
-    from scripts.manifest.eliza1_manifest import (  # noqa: PLC0415
+    from eliza_training.publish.manifest import assemble_manifest
+    from eliza_training.publish.layout import validate_bundle_layout
+    from eliza_training.release.gates import apply_gates  # noqa: PLC0415
+    from eliza_training.manifest.eliza1_manifest import (  # noqa: PLC0415
         KernelVerification,
     )
 
@@ -1703,7 +1678,7 @@ def test_missing_e2e_loop_ok_blocks_publish(tmp_path: Path, monkeypatch) -> None
 
 
 def test_cli_help(monkeypatch, capsys) -> None:
-    from scripts.publish.orchestrator import main  # noqa: PLC0415
+    from eliza_training.publish.orchestrator import main
 
     with pytest.raises(SystemExit) as excinfo:
         main(["--help"])

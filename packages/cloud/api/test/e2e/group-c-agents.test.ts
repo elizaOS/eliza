@@ -338,7 +338,30 @@ describeE2E("/api/agents/:id/a2a", () => {
     });
     createdCharacterIds.push(agentId);
 
-    const response = await api.get(`/api/agents/${agentId}/a2a`);
+    const requestPath = `/api/agents/${agentId}/a2a`;
+    const response = await api.get(requestPath);
+    if (response.status !== 200) {
+      console.error(
+        "[group-c-agents] Public A2A card request failed",
+        JSON.stringify({
+          at: new Date().toISOString(),
+          agentId,
+          method: "GET",
+          path: requestPath,
+          status: response.status,
+          headers: Object.fromEntries(
+            [
+              "content-type",
+              "x-request-id",
+              "x-trace-id",
+              "traceparent",
+              "cf-ray",
+            ].map((name) => [name, response.headers.get(name)]),
+          ),
+          body: await response.clone().text(),
+        }),
+      );
+    }
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       name: agentName,

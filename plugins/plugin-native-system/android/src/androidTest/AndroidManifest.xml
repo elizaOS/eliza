@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <activity android:name="ai.eliza.plugins.system.SystemFlashlightTestActivity"
+            android:exported="true" android:theme="@style/AppTheme.NoActionBar" />
         <!-- Test-only showcase activity for #9967 on-device screenshot/recording
              evidence; renders the live SystemDeviceReader output. Exported so it
              can be launched via `am start`; showWhenLocked so it captures even on

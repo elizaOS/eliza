@@ -5,8 +5,9 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import { type IAgentRuntime, SECRETS_SERVICE_TYPE } from "@elizaos/core";
-import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
+import type { IAgentRuntime } from "@elizaos/core";
+import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
+import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,

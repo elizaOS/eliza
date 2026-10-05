@@ -33,9 +33,9 @@
  * `weekday_only` allows and `weekend_only` denies deterministically.
  */
 
+import type { InboundMessage } from "@elizaos/plugin-inbox";
 import type { DispatchResult, ScheduledTask } from "@elizaos/plugin-scheduling";
 import { describe, expect, it } from "vitest";
-import type { InboundMessage } from "../src/inbox/types.js";
 import { toInboxMessages } from "../src/lifeops/domains/inbox-service.js";
 import {
   createLifeOpsScheduledTaskSimulationHarness,
