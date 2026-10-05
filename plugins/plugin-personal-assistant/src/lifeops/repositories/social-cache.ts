@@ -62,7 +62,7 @@ export class SocialCacheRepository {
 
   async listXDms(
     agentId: string,
-    opts: { conversationId?: string; limit?: number } = {},
+    opts: { conversationId?: string; limit?: number; inbound?: boolean } = {},
   ): Promise<LifeOpsXDm[]> {
     const limitClause =
       opts.limit !== undefined && Number.isFinite(opts.limit)
@@ -71,12 +71,19 @@ export class SocialCacheRepository {
     const conversationClause = opts.conversationId
       ? `AND conversation_id = ${sqlQuote(opts.conversationId)}`
       : "";
+    // Direction is filtered before LIMIT: the cache also holds the account's
+    // own outbound DMs, which would otherwise fill an inbound-only window.
+    const directionClause =
+      opts.inbound === undefined
+        ? ""
+        : `AND is_inbound = ${opts.inbound ? "TRUE" : "FALSE"}`;
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
          FROM app_lifeops.life_x_dms
         WHERE agent_id = ${sqlQuote(agentId)}
           ${conversationClause}
+          ${directionClause}
         ORDER BY received_at DESC
         ${limitClause}`,
     );

@@ -509,8 +509,13 @@ describe("LifeOps messaging mixin runtime delegation", () => {
         stored.push(dm);
       }
     });
+    // Mirrors the repository: direction filters before the limit.
     service.repository.listXDms = vi.fn(async (_agentId, opts = {}) =>
-      stored.slice(0, opts.limit ?? stored.length),
+      stored
+        .filter(
+          (dm) => opts.inbound === undefined || dm.isInbound === opts.inbound,
+        )
+        .slice(0, opts.limit ?? stored.length),
     );
 
     await expect(service.syncXDms({ limit: 10 })).resolves.toEqual({
