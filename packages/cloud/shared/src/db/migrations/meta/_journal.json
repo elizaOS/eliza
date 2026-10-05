@@ -3508,6 +3508,13 @@
       "when": 1796083200148,
       "tag": "0530_subscription_invoice_event_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 501,
+      "version": "7",
+      "when": 1796083200149,
+      "tag": "0531_subscription_invoice_observations",
+      "breakpoints": true
     }
   ]
 }
