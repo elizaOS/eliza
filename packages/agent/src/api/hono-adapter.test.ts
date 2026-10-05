@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AccessContext, UUID } from "@elizaos/core";
 import { getHttpRuntime } from "@elizaos/host/protocol";
+import {
+  autonomyCapabilities,
+  createAssistantBehavior,
+} from "@elizaos/plugin-assistant";
 import { dispatchBufferedRequest } from "@elizaos/plugin-native-inference/android/dispatch";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -373,5 +377,66 @@ it("cancels Android buffered dispatch and refuses a pre-aborted request", async 
   } finally {
     controller.abort(reason);
     unregister();
+  }
+});
+
+it("serves the consolidated assistant routes through authenticated HTTP", async () => {
+  getHttpRuntime(fixture.runtime).routes.push(
+    ...(createAssistantBehavior().routes ?? []),
+    ...autonomyCapabilities.routes,
+  );
+  resetHonoMountCache();
+  const headers = {
+    Authorization: `Bearer ${tokens[0]}`,
+    "content-type": "application/json",
+  };
+  const roomId = randomUUID();
+  const statusUrl = new URL(`/api/turns/${roomId}`, base);
+  const denied = await fetch(statusUrl);
+  expect(denied.status).toBe(401);
+  const pending = fixture.runtime.turnControllers.runWith(
+    roomId,
+    (signal) =>
+      new Promise<unknown>((resolve) => {
+        signal.addEventListener("abort", () => resolve(signal.reason), {
+          once: true,
+        });
+      }),
+  );
+  try {
+    const active = await fetch(statusUrl, { headers });
+    expect(await active.json()).toEqual({
+      roomId,
+      active: true,
+      hasSignal: true,
+    });
+    const abort = await fetch(`${statusUrl}/abort`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ reason: "http-stop" }),
+    });
+    expect(await abort.json()).toEqual({
+      roomId,
+      aborted: true,
+      reason: "http-stop",
+    });
+    expect(await pending).toMatchObject({ reason: "http-stop" });
+    const idle = await fetch(statusUrl, { headers });
+    expect(await idle.json()).toEqual({
+      roomId,
+      active: false,
+      hasSignal: false,
+    });
+    for (const path of [
+      "/api/channel-topics/search?q=billing",
+      "/autonomy/status",
+    ]) {
+      const response = await fetch(new URL(path, base), { headers });
+      expect(response.status).toBe(503);
+      await response.arrayBuffer();
+    }
+  } finally {
+    fixture.runtime.turnControllers.abortTurn(roomId, "test-cleanup");
+    await pending;
   }
 });

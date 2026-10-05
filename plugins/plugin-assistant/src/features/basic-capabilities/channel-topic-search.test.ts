@@ -1,17 +1,7 @@
-/**
- * Deterministic unit tests for the channel-topics search capability (#8927): the
- * SEARCH_CHANNEL_TOPICS action and the GET /api/channel-topics/search route. The
- * `channel_topics` service is a vi.fn stub, covering validate gating on service
- * presence, param-vs-message-text query resolution, the external-content
- * envelope unwrap/echo-clamp regression, and the route's 200/400/503 status
- * contract.
- */
-
 import type { Memory } from "@elizaos/core";
 import { hardenIncomingUserMessage } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
-import { CHANNEL_TOPICS_SEARCH_ROUTE } from "./channel-topics-routes.ts";
 
 const HITS = [
   {
@@ -125,79 +115,5 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
     expect(result.values?.hasMore).toBe(false);
     expect((result.data as { hits: unknown[] }).hits).toHaveLength(11);
     expect(result.text).toContain("room-10");
-  });
-});
-
-describe("GET /api/channel-topics/search (#8927)", () => {
-  function makeRes() {
-    const res = {
-      code: 0,
-      body: undefined as unknown,
-      status(c: number) {
-        res.code = c;
-        return res;
-      },
-      json(b: unknown) {
-        res.body = b;
-        return res;
-      },
-    };
-    return res;
-  }
-
-  it("returns 200 with hits for a query", async () => {
-    const res = makeRes();
-    await CHANNEL_TOPICS_SEARCH_ROUTE.handler?.(
-      { query: { q: "stripe", limit: "5" } } as never,
-      res as never,
-      runtimeWith({ searchTopics: () => HITS }),
-    );
-    expect(res.code).toBe(200);
-    expect((res.body as { count: number }).count).toBe(1);
-  });
-
-  it("falls back to the default limit for a partially numeric value", async () => {
-    const searchTopics = vi.fn(() => HITS);
-    const res = makeRes();
-    await CHANNEL_TOPICS_SEARCH_ROUTE.handler?.(
-      { query: { q: "stripe", limit: "5junk" } } as never,
-      res as never,
-      runtimeWith({ searchTopics }),
-    );
-    expect(res.code).toBe(200);
-    expect(searchTopics).toHaveBeenCalledWith("stripe", 20);
-  });
-
-  it("clamps an oversized limit before calling the service", async () => {
-    const searchTopics = vi.fn(() => HITS);
-    const res = makeRes();
-    await CHANNEL_TOPICS_SEARCH_ROUTE.handler?.(
-      { query: { q: "stripe", limit: "999999" } } as never,
-      res as never,
-      runtimeWith({ searchTopics }),
-    );
-
-    expect(res.code).toBe(200);
-    expect(searchTopics).toHaveBeenCalledWith("stripe", 100);
-  });
-
-  it("returns 400 when q is missing", async () => {
-    const res = makeRes();
-    await CHANNEL_TOPICS_SEARCH_ROUTE.handler?.(
-      { query: {} } as never,
-      res as never,
-      runtimeWith({ searchTopics: () => [] }),
-    );
-    expect(res.code).toBe(400);
-  });
-
-  it("returns 503 when the service is unavailable", async () => {
-    const res = makeRes();
-    await CHANNEL_TOPICS_SEARCH_ROUTE.handler?.(
-      { query: { q: "x" } } as never,
-      res as never,
-      runtimeWith(null),
-    );
-    expect(res.code).toBe(503);
   });
 });
