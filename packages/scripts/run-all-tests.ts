@@ -91,6 +91,7 @@ import {
   formatCapturedTestOutput,
   retainedCapturedTestOutput,
 } from "./lib/captured-test-output.ts";
+import { readCompoundTestEvidence } from "./lib/compound-test-evidence.ts";
 import { MAX_JUNIT_BYTES, parseJunitSummary } from "./lib/junit-summary.ts";
 import {
   computeRealLiveAccounting,
@@ -1099,6 +1100,8 @@ function nextEvidencePath() {
 const resultLedger = new Map();
 
 function readTestEvidence(evidence) {
+  if (evidence.kind === "directory")
+    return readCompoundTestEvidence(evidence.path);
   const size = fs.statSync(evidence.path).size;
   if (size > MAX_JUNIT_BYTES) {
     throw new Error(
@@ -1231,9 +1234,10 @@ function runScript(
     const evidenceKind = requireWork
       ? structuredEvidenceKind(scriptName, scripts)
       : null;
-    const evidence = evidenceKind
-      ? { kind: evidenceKind, path: nextEvidencePath() }
+    const evidence = requireWork
+      ? { kind: evidenceKind ?? "directory", path: nextEvidencePath() }
       : null;
+    if (evidence?.kind === "directory") fs.mkdirSync(evidence.path);
     const forwardedArgs = buildForwardedScriptArgs(
       scriptName,
       scripts,
@@ -1255,6 +1259,10 @@ function runScript(
           ELIZA_LIVE_TEST: process.env.ELIZA_LIVE_TEST || liveTestDefault,
           PWD: cwd,
           ...extraEnv,
+          ELIZA_TEST_EVIDENCE_DIR:
+            evidence?.kind === "directory" ? evidence.path : undefined,
+          ELIZA_TEST_EVIDENCE_CWD:
+            evidence?.kind === "directory" ? cwd : undefined,
         },
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -1350,6 +1358,10 @@ function runScript(
         }
         try {
           const summary = readTestEvidence(evidence);
+          if (!summary) {
+            resolve({ skipped: false, evidence: null, exitCode: 0 });
+            return;
+          }
           if (summary.failures > 0 || summary.errors > 0) {
             throw new Error(
               `report contains ${summary.failures} failure(s) and ${summary.errors} error(s) despite a successful child exit`,
