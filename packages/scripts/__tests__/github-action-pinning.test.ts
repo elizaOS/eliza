@@ -373,13 +373,19 @@ describe("GitHub action supply-chain references", () => {
       ),
     ).toThrow("Smoke must install the browser engines it launches");
 
+    // Client tests also install this package's Chromium. Mutate the owning
+    // job, not the first matching command anywhere in the workflow.
+    const missingLaneBrowser = Bun.YAML.parse(source) as {
+      jobs: { smoke_lanes: { steps: WorkflowStep[] } };
+    };
+    const laneInstall = missingLaneBrowser.jobs.smoke_lanes.steps.find(
+      (step) => step.run === smokeLanesBrowserInstallCommand,
+    );
+    expect(laneInstall).toBeDefined();
+    if (!laneInstall) throw new Error("Smoke lane browser step is missing");
+    laneInstall.run = "echo lanes-browser-install-removed";
     expect(() =>
-      assertSmokeE2eBrowserBootstrap(
-        source.replace(
-          smokeLanesBrowserInstallCommand,
-          "echo lanes-browser-install-removed",
-        ),
-      ),
+      assertSmokeE2eBrowserBootstrap(Bun.YAML.stringify(missingLaneBrowser)),
     ).toThrow("Smoke lanes must install the browser engines it launches");
 
     const installStep = `      - name: Install Playwright browsers
