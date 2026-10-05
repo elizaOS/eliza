@@ -2167,11 +2167,14 @@ export class RuntimeModelDispatch {
 						get text() {
 							return Promise.resolve(
 								runInModelCallRecordingScope(recordingState, async () => {
+									throwIfAborted();
 									const t = await streamResult.text;
+									throwIfAborted();
 									await checkedFinishReason;
 									accumulatedChunks.length = 0;
 									accumulatedChunks.push(t);
 									await recordOnce();
+									throwIfAborted();
 									return t;
 								}),
 							);
