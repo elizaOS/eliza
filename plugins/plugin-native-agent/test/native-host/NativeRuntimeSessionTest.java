@@ -49,8 +49,8 @@ public final class NativeRuntimeSessionTest {
             NativeRuntimeSession.Snapshot first = session.snapshot();
             check(first.processes.size() == 2 && first.instance != null);
             until(() -> { try { return Files.readString(dir.resolve("runtime.log")).contains("ready"); } catch (IOException missing) { return false; } });
-            check("ok".equals(session.request(active::get, () -> { requests.incrementAndGet(); return "ok"; }, "unavailable", "cancelled")));
-            Future<String> pending = worker.submit(() -> session.request(active::get, () -> {
+            check("ok".equals(session.request(first, active::get, () -> { requests.incrementAndGet(); return "ok"; }, "unavailable", "cancelled")));
+            Future<String> pending = worker.submit(() -> session.request(first, active::get, () -> {
                 requests.incrementAndGet(); entered.countDown(); release.await(); return "late";
             }, "unavailable", "cancelled"));
             check(entered.await(5, TimeUnit.SECONDS));
@@ -61,6 +61,9 @@ public final class NativeRuntimeSessionTest {
             try { pending.get(5, TimeUnit.SECONDS); throw new AssertionError(); }
             catch (ExecutionException failure) { check(failure.getCause() instanceof NativeProcessSupervisor.LifecycleException); }
             check(requests.get() == 2 && released.get() == 1);
+            try { session.request(first, active::get, () -> { throw new AssertionError("Stale selected endpoint dispatched"); }, "unavailable", "cancelled"); throw new AssertionError("Old capture admitted after restart"); }
+            catch (NativeProcessSupervisor.LifecycleException expected) { check("unavailable".equals(expected.getMessage())); }
+            check("current".equals(session.request(session.snapshot(), active::get, () -> "current", "unavailable", "cancelled")));
             rejected(session, active::get, () -> { active.set(false); return "retired host"; }, "cancelled");
             rejected(session, active::get, () -> { throw new AssertionError("Inactive host called transport"); }, "unavailable");
             active.set(true);

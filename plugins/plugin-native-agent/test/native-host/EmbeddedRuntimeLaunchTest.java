@@ -29,13 +29,14 @@ public final class EmbeddedRuntimeLaunchTest {
     try { launch.agent(bundle.resolve("agent.js"),state.resolve("config"),0,token,Map.of()); throw new AssertionError(); } catch (IllegalArgumentException expected) { checks++; }
     try { launch.agent(bundle.resolve("agent.js"),state.resolve("config"),port,"line\nbreak",Map.of()); throw new AssertionError(); } catch (IllegalArgumentException expected) { checks++; }
     // Real child observes only its selected environment, without loading fixture binaries.
-    gateway.command(Path.of(System.getProperty("java.home"),"bin/java").toString(),"-cp",System.getProperty("java.class.path"),Child.class.getName());
     check(gateway.environment().get("LD_LIBRARY_PATH").equals(root.resolve("aliases")+":"+installed));
-    // This substitute is the host JVM, not the Android loader whose dummy libraries we assert above.
+    gateway.command(Path.of(System.getProperty("java.home"),"bin/java").toString(),"-cp",System.getProperty("java.class.path"),Child.class.getName());
+    // The host JVM needs its host libraries, not the placeholder Android .so files.
     gateway.environment().remove("LD_LIBRARY_PATH");
     gateway.redirectErrorStream(true); Process child=gateway.start();
     String output=new String(child.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
-    int exit=child.waitFor(); if(exit!=0)throw new AssertionError("Host JVM child failed: "+output); check(exit==0); check(output.equals(state.toString()));
+    if(child.waitFor()!=0)throw new AssertionError("Host JVM probe failed: "+output);
+    check(output.equals(state.toString()));
     Files.delete(state.resolve("tmp")); Files.createSymbolicLink(state.resolve("tmp"), bundle);
     try { new EmbeddedRuntimeLaunch(bundle,installed,root.resolve("aliases"),state,"example.host",root.toString()); throw new AssertionError(); } catch (java.io.IOException expected) { checks++; }
     System.out.println("EmbeddedRuntimeLaunch: " + checks + " checks passed");
