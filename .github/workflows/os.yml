@@ -188,6 +188,13 @@ jobs:
 
       - name: Install unprivileged VM tools
         run: |
+          # These tools come from Ubuntu. An unrelated hosted-image Microsoft
+          # feed can return 403 and prevent apt from refreshing Ubuntu indexes.
+          while IFS= read -r source_file; do
+            [[ "${source_file}" == *.disabled ]] && continue
+            echo "Disabling unrelated Microsoft apt source: ${source_file}"
+            sudo mv "${source_file}" "${source_file}.disabled"
+          done < <(grep -RIl "packages.microsoft.com" /etc/apt/sources.list.d 2>/dev/null || true)
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils genisoimage fdisk
 
