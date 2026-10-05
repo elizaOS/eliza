@@ -27,7 +27,15 @@ describe("resolveKokoroTtfaBudgetMs", () => {
 	});
 
 	it("throws on a present-but-invalid value instead of gating silently", () => {
-		for (const raw of ["0", "-5", "abc", "NaN"]) {
+		for (const raw of [
+			"0",
+			"-5",
+			"abc",
+			"NaN",
+			"12.5",
+			"1e4",
+			"12abc",
+		]) {
 			expect(() =>
 				resolveKokoroTtfaBudgetMs({ KOKORO_SMOKE_TTFA_BUDGET_MS: raw }),
 			).toThrow(/positive integer/);
