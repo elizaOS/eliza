@@ -829,6 +829,8 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     expect((await (await publication())(f.identity, f.claim)).command.status).toBe("APPLIED");
     expect(provider.updates()).toBe(1);
   });
+  // The real database clock must cross the five-second renewal boundary
+  // before publication, rollback and replay assertions can execute.
   for (const dunning of ["none", "webhook", "cron"] as const)
     test(`paid first target atomically settles with dunning=${dunning}`, async () => {
       const boundary = Math.floor(Date.now() / 1000) + 5;
@@ -1121,5 +1123,5 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
       await deliverAgain();
       expect(await state(f)).toEqual(beforeLaterReplay);
       expect(invoiceReads).toBe(2);
-    });
+    }, 30_000);
 });
