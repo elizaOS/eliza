@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { detectExistingFirstRunConnection } from "./first-run-bootstrap";
+import {
+  detectExistingFirstRunConnection,
+  ExistingFirstRunProbeTimeoutError,
+} from "./first-run-bootstrap";
 
 describe("detectExistingFirstRunConnection", () => {
   it("surfaces config faults for a committed on-device runtime", async () => {
@@ -34,5 +37,29 @@ describe("detectExistingFirstRunConnection", () => {
     });
 
     expect(result).toBeNull();
+  });
+
+  it("surfaces a committed-runtime timeout before a late config fault", async () => {
+    const pending = detectExistingFirstRunConnection({
+      client: {
+        apiAvailable: true,
+        getFirstRunStatus: vi.fn(async () => ({ complete: false })),
+        getConfig: vi.fn(
+          () =>
+            new Promise<Record<string, unknown> | null | undefined>(
+              (_, reject) => {
+                setTimeout(() => reject(new Error("late config failure")), 20);
+              },
+            ),
+        ),
+      },
+      timeoutMs: 5,
+      waitForBootingAgent: true,
+    });
+
+    await expect(pending).rejects.toBeInstanceOf(
+      ExistingFirstRunProbeTimeoutError,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 25));
   });
 });
