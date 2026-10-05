@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowWebView;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 36)
+@Config(sdk = {26, 29, 36})
 public class PushPluginHeaderTest {
     @Before public void availableWebView() {
         PackageInfo info = new PackageInfo();
@@ -92,6 +92,7 @@ public class PushPluginHeaderTest {
         @Override public void resolve(com.getcapacitor.JSObject result) { this.result = result; }
         @Override public void reject(String message) { throw new AssertionError(message); }
     }
+    @Config(sdk = {29, 36})
     @Test public void foregroundSelectorPreservesGroupAndReportsBlockedState() throws Exception {
         InitialActivity activity = Robolectric.buildActivity(InitialActivity.class).create().get();
         android.app.NotificationManager manager = activity.getSystemService(android.app.NotificationManager.class);

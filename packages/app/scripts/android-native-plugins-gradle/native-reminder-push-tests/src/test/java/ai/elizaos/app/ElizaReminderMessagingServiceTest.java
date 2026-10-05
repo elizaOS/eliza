@@ -34,7 +34,7 @@ import org.robolectric.annotation.Config;
 
 /** Executes the production receiver in Android's host framework, without a device/WebView/Google send. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 36, application = android.app.Application.class)
+@Config(sdk = {26, 29, 36}, application = android.app.Application.class)
 public class ElizaReminderMessagingServiceTest {
     private static final String A = "11111111-1111-4111-8111-111111111111";
     private static final String B = "22222222-2222-4222-8222-222222222222";
@@ -168,6 +168,7 @@ public class ElizaReminderMessagingServiceTest {
         assertEquals("cold-launch", tap.getStringExtra("google.message_id"));
         assertEquals("/chat", tap.getStringExtra("deepLink"));
     }
+    @Config(sdk = 36) // POST_NOTIFICATIONS is a runtime permission from API 33.
     @Test public void deniedNotificationPermissionDoesNotPostOrConsumeReceipt() {
         shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(Manifest.permission.POST_NOTIFICATIONS);
         receiver().onMessageReceived(message(data(A), "denied"));
@@ -257,7 +258,7 @@ public class ElizaReminderMessagingServiceTest {
         manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT));
         Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
         receiver().onMessageReceived(message(occurrence, "occurrence-default"));
-        assertEquals("eliza_notifications", reminderChildren()[0].getNotification().getChannelId());
+        assertEquals(android.os.Build.VERSION.SDK_INT < 30 ? "eliza_updates" : "eliza_notifications", reminderChildren()[0].getNotification().getChannelId());
     }
     @Test public void calendarHighDoesNotInheritOccurrenceLegacyChoice() {
         manager.createNotificationChannel(new NotificationChannel("eliza_updates", "Quiet", NotificationManager.IMPORTANCE_LOW));
@@ -287,6 +288,7 @@ public class ElizaReminderMessagingServiceTest {
         assertEquals("reminders", manager.getNotificationChannel("eliza_updates").getGroup());
         assertNull(manager.getNotificationChannel("eliza_notifications"));
     }
+    @Config(sdk = {29, 36})
     @Test public void blockedGroupDoesNotConsumeReceiptAndCanLaterDeliver() {
         android.app.NotificationChannelGroup group = new android.app.NotificationChannelGroup("muted-reminders", "Muted reminders");
         org.robolectric.util.ReflectionHelpers.setField(group, "mBlocked", true);
