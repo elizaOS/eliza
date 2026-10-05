@@ -585,3 +585,90 @@ test("a JSON-null saved pending sign-in stays benign across cloud routes", async
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("native speech rendering validates context and confirms exact provider speed", async () => {
+  const calls = [];
+  const screened = [];
+  let speedHeader = "0.8";
+  const routes = createCloudRoutes({
+    hostPolicy: {
+      ...policy,
+      requireNonSensitiveText(text) {
+        screened.push(text);
+        if (text.includes("PRIVATE"))
+          throw new Error("Sensitive speech rejected");
+      },
+    },
+    speechVoice: { voiceId: "independentVoice", modelId: "independentModel" },
+    initialApiKey: "synthetic-test-key",
+    fetchImpl: async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return new Response(new Uint8Array([1, 2]), {
+        headers: {
+          "Content-Type": "audio/mpeg",
+          ...(speedHeader === null ? {} : { "X-Eliza-TTS-Speed": speedHeader }),
+        },
+      });
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const post = (input) =>
+    fetch(`http://127.0.0.1:${server.address().port}/voice/tts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  try {
+    const input = {
+      text: "Hello.",
+      speed: 0.8,
+      previousText: "Before.",
+      nextText: "After.",
+      applyTextNormalization: "on",
+      voiceId: "untrustedVoice",
+    };
+    const response = await post(input);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).renderedSpeed, 0.8);
+    assert.deepEqual(calls[0].body, {
+      ...input,
+      voiceId: "independentVoice",
+      modelId: "independentModel",
+    });
+    assert.deepEqual(screened, ["Hello.", "Before.", "After."]);
+    speedHeader = null;
+    assert.equal((await (await post(input)).json()).renderedSpeed, null);
+    for (const value of ["1", "0.80evil", "", "NaN", "0x0"]) {
+      speedHeader = value;
+      assert.equal((await post(input)).status, 502);
+    }
+    const count = calls.length;
+    for (const controls of [
+      { speed: "0.8" },
+      { speed: null },
+      { speed: 1.21 },
+      { speed: 0.69 },
+      { previousText: 1 },
+      { nextText: "x".repeat(5001) },
+      { applyTextNormalization: "yes" },
+    ]) {
+      assert.equal((await post({ text: "Hello.", ...controls })).status, 400);
+    }
+    for (const field of ["text", "previousText", "nextText"]) {
+      assert.notEqual(
+        (await post({ text: "Hello.", [field]: "PRIVATE" })).status,
+        200,
+      );
+    }
+    assert.equal(calls.length, count);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+});
