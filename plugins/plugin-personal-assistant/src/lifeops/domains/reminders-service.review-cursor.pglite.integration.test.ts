@@ -587,8 +587,8 @@ it("retries an unavailable semantic verdict without consuming it or later eviden
   });
 });
 
-it.each(["semantic_unavailable", "foreground_pending"])(
-  "keeps %s due review open through processReminders and retries it after restart",
+it.each(["semantic_unavailable", "foreground_pending", "archived", "paused"])(
+  "preserves due review ownership for %s through processReminders",
   async (mode) => {
     const isolated = await createLifeOpsTestRuntime({ withLLM: false });
     await TaskService.stop(isolated.runtime);
@@ -686,6 +686,22 @@ it.each(["semantic_unavailable", "foreground_pending"])(
         },
       } as Memory;
       await isolated.runtime.createMemory(reply, "messages");
+      const inactiveStatus =
+        mode === "archived" || mode === "paused" ? mode : null;
+      if (inactiveStatus)
+        await local.updateDefinition(created.definition.id, {
+          status: inactiveStatus,
+        });
+      const beforeOccurrence = await local.repository.getOccurrence(
+        isolated.runtime.agentId,
+        occurrence.id,
+      );
+      const emit = vi.spyOn(
+        local.remindersDomain as unknown as {
+          emitInAppReminderNudge: (args: unknown) => Promise<void>;
+        },
+        "emitInAppReminderNudge",
+      );
       const unavailable = vi
         .spyOn(
           local.remindersDomain,
@@ -701,7 +717,7 @@ it.each(["semantic_unavailable", "foreground_pending"])(
         scope: "definitions",
       });
       expect(first.attempts).toHaveLength(0);
-      if (mode === "foreground_pending")
+      if (mode === "foreground_pending" || inactiveStatus)
         expect(unavailable).not.toHaveBeenCalled();
       else expect(unavailable).toHaveBeenCalled();
       await lease?.release();
@@ -709,6 +725,69 @@ it.each(["semantic_unavailable", "foreground_pending"])(
         isolated.runtime.agentId,
         { ownerType: "occurrence", ownerId: occurrence.id },
       );
+      if (inactiveStatus) {
+        expect(after).toMatchObject({
+          outcome: "delivered",
+          reviewStatus: "resolved",
+          deliveryMetadata: {
+            reminderReviewDecision: "no_response",
+            reminderReviewReason: "definition_inactive",
+            reviewReason: `definition_${inactiveStatus}`,
+          },
+        });
+        expect(
+          await local.repository.getOccurrence(
+            isolated.runtime.agentId,
+            occurrence.id,
+          ),
+        ).toEqual(beforeOccurrence);
+        expect(emit).not.toHaveBeenCalled();
+        // An active-looking cached attempt must still read current cancellation
+        // before semantic interpretation, not trust the earlier snapshot.
+        const review = await local.reviewOwnerResponseAfterReminderAttempt({
+          subjectType: "owner",
+          attempt,
+          now: new Date("2026-10-03T06:08:00.000Z"),
+        });
+        expect(review).toMatchObject({
+          decision: "no_response",
+          reason: "definition_inactive",
+        });
+        // Likewise a previously prepared normal delivery cannot override cancel.
+        const blocked = await local.remindersDomain.dispatchReminderAttempt({
+          plan: created.reminderPlan,
+          ownerType: "occurrence",
+          ownerId: occurrence.id,
+          occurrenceId: occurrence.id,
+          subjectType: "owner",
+          title: occurrence.title,
+          channel: "in_app",
+          stepIndex: 0,
+          scheduledFor: attemptedAt,
+          dueAt: occurrence.dueAt,
+          urgency: "high",
+          quietHours: {},
+          acknowledged: false,
+          attemptedAt: "2026-10-03T06:08:00.000Z",
+          timezone: "UTC",
+          definition: created.definition,
+          bodyOverride: "Stale prepared reminder",
+        });
+        expect(blocked).toMatchObject({
+          outcome: "blocked_policy",
+          deliveryMetadata: { reason: "definition_inactive" },
+        });
+        expect(unavailable).not.toHaveBeenCalled();
+        expect(emit).not.toHaveBeenCalled();
+        expect(network).not.toHaveBeenCalled();
+        expect(
+          await local.repository.getOccurrence(
+            isolated.runtime.agentId,
+            occurrence.id,
+          ),
+        ).toEqual(beforeOccurrence);
+        return;
+      }
       expect(after.deliveryMetadata).toEqual(priorMetadata);
       expect(after.reviewStatus).toBe("unrelated");
       expect(
@@ -1088,3 +1167,47 @@ it.each([
     } else expect(judge).toHaveBeenCalled();
   },
 );
+
+it("keeps normal delivery admitted for a freshly active definition", async () => {
+  const f = await reviewFixture("Unrelated current request");
+  if (!f.original.reminderPlan) throw Error("Missing plan");
+  const emit = vi
+    .spyOn(
+      service.remindersDomain as unknown as {
+        emitInAppReminderNudge: (args: unknown) => Promise<void>;
+      },
+      "emitInAppReminderNudge",
+    )
+    .mockResolvedValue(undefined);
+  const before = await service.repository.getOccurrence(
+    fixture.runtime.agentId,
+    f.occurrence.id,
+  );
+  const delivered = await service.remindersDomain.dispatchReminderAttempt({
+    plan: f.original.reminderPlan,
+    ownerType: "occurrence",
+    ownerId: f.occurrence.id,
+    occurrenceId: f.occurrence.id,
+    subjectType: "owner",
+    title: f.occurrence.title,
+    channel: "in_app",
+    stepIndex: 0,
+    scheduledFor: f.attempt.scheduledFor,
+    dueAt: f.occurrence.dueAt,
+    urgency: "high",
+    quietHours: {},
+    acknowledged: false,
+    attemptedAt: f.now.toISOString(),
+    timezone: "UTC",
+    definition: f.original.definition,
+    bodyOverride: "Admitted active reminder",
+  });
+  expect(delivered.outcome).toBe("delivered");
+  expect(emit).toHaveBeenCalledTimes(1);
+  expect(
+    await service.repository.getOccurrence(
+      fixture.runtime.agentId,
+      f.occurrence.id,
+    ),
+  ).toEqual(before);
+});
