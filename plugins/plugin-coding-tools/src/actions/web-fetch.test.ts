@@ -400,6 +400,11 @@ describe("coding-tools WEB_FETCH", () => {
       "A A & < >",
     );
     expect(htmlToReadableText("<p>&quot;&apos;&nbsp;x</p>")).toBe("\"' x");
+    expect(
+      htmlToReadableText(
+        "<p>&mdash; &copy; &rsquo; &euro; &hellip; &trade;</p>",
+      ),
+    ).toBe("— © ’ € … ™");
   });
 
   it("removes browser-tokenized and unclosed script/style blocks", () => {
