@@ -4987,9 +4987,7 @@ export class RemindersDomain {
             },
           };
           const acceptRuntimeSendResult = (
-            result: Awaited<
-              ReturnType<typeof this.ctx.runtime.sendMessageToTarget>
-            >,
+            result: Awaited<ReturnType<IAgentRuntime["sendMessageToTarget"]>>,
           ): boolean => {
             const disposition = inspectSendHandlerResult(result);
             if (
