@@ -98,9 +98,11 @@ proves the retained original schedule terms and compatible lifecycle before atom
 the paid lower plan and allowance. Later renewals retain its reviewed price through the
 paid target revision and original grant. Distinct deliveries of an already-funded invoice
 acknowledge immutable payment records without changing current source, entitlement or
-spendable balances. This path currently supports full-price captured payments; retained
-adjustments, delayed settlement and public orchestration remain
-required before product adoption.
+spendable balances. Positive captured renewals reconcile invoice/item discount allocations
+and inclusive/exclusive tax against the original catalog base and exact captured total.
+Adjustment attribution is included in immutable grant proof; unadjusted grant digests remain
+compatible. Customer balances, credit notes and zero-due settlements remain unsupported
+and require separate settlement authority before product adoption.
 
 Failed owned target invoices now use the existing dunning lifecycle through webhook and
 missed-event recovery. Publication rechecks original configured lineage, target schedule,

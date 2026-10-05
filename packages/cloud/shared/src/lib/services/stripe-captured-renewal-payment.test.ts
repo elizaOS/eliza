@@ -289,3 +289,232 @@ for (const [name, change] of changes)
     change(input);
     expect(() => prove(input)).toThrow();
   });
+
+function adjusted(item = false, inclusive = false) {
+  const f = fixture();
+  const discount = { amount: 300, discount: "di_retained" };
+  const tax = { amount: 270, inclusive, tax_rate: "txr_retained" };
+  const total = inclusive ? 2700 : 2970;
+  return {
+    ...f,
+    invoice: {
+      ...f.invoice,
+      subtotal: item ? 2700 : 3000,
+      total,
+      amount_due: total,
+      amount_paid: total,
+      discounts: item ? ([] as string[]) : [discount.discount],
+      discount: null as string | null,
+      total_discount_amounts: [discount],
+      tax: 270,
+      total_tax_amounts: [tax],
+      automatic_tax: { enabled: true, status: "complete", liability: { type: "self" } },
+      lines: {
+        ...f.invoice.lines,
+        data: [
+          {
+            ...f.invoice.lines.data[0]!,
+            discounts: item ? [discount.discount] : ([] as string[]),
+            discount_amounts: [discount],
+            tax_amounts: [tax],
+          },
+        ],
+      },
+    },
+    paymentIntent: { ...f.paymentIntent, amount: total, amount_received: total },
+    charge: { ...f.charge, amount: total, amount_captured: total },
+  };
+}
+for (const item of [false, true])
+  for (const inclusive of [false, true])
+    test(`reconciles ${item ? "item" : "invoice"} discount and ${inclusive ? "inclusive" : "exclusive"} tax`, () => {
+      const input = adjusted(item, inclusive),
+        before = structuredClone(input);
+      expect(prove(input).adjustmentDigest).toMatch(/^[a-f0-9]{64}$/);
+      expect(input).toEqual(before);
+      expect(prove(fixture()).adjustmentDigest).toBeUndefined();
+    });
+test("reconciles stacked item and invoice discounts with mixed tax and order-independent digest", () => {
+  const f = adjusted(true, true);
+  f.invoice.discounts.push("di_invoice");
+  f.invoice.discount = "di_invoice";
+  f.invoice.total_discount_amounts.push({ discount: "di_invoice", amount: 100 });
+  const line = f.invoice.lines.data[0]!;
+  line.discount_amounts = structuredClone(f.invoice.total_discount_amounts);
+  line.tax_amounts.push({ amount: 100, inclusive: false, tax_rate: "txr_exclusive" });
+  f.invoice.total_tax_amounts = structuredClone(line.tax_amounts);
+  f.invoice.tax = 370;
+  const digest = prove(f).adjustmentDigest;
+  f.invoice.total_discount_amounts.reverse();
+  f.invoice.total_tax_amounts.reverse();
+  expect(prove(f).adjustmentDigest).toBe(digest);
+});
+const adjustmentChanges: Array<[string, (f: ReturnType<typeof adjusted>) => void]> = [
+  [
+    "incorrect subtotal",
+    (f) => {
+      f.invoice.subtotal--;
+    },
+  ],
+  [
+    "incorrect total",
+    (f) => {
+      f.invoice.total--;
+    },
+  ],
+  [
+    "missing tax",
+    (f) => {
+      f.invoice.tax = 0;
+    },
+  ],
+  [
+    "missing aggregate",
+    (f) => {
+      f.invoice.total_discount_amounts = [];
+    },
+  ],
+  [
+    "foreign aggregate discount",
+    (f) => {
+      f.invoice.total_discount_amounts = [{ amount: 300, discount: "di_foreign" }];
+    },
+  ],
+  [
+    "unattributed discount",
+    (f) => {
+      f.invoice.discounts = [];
+    },
+  ],
+  [
+    "duplicate discount",
+    (f) => {
+      f.invoice.discounts.push("di_retained");
+    },
+  ],
+  [
+    "ambiguous discount owner",
+    (f) => {
+      f.invoice.lines.data[0]!.discounts.push("di_retained");
+    },
+  ],
+  [
+    "foreign legacy discount",
+    (f) => {
+      f.invoice.discount = "di_foreign";
+    },
+  ],
+  [
+    "foreign tax rate",
+    (f) => {
+      f.invoice.total_tax_amounts = [{ amount: 270, inclusive: false, tax_rate: "txr_foreign" }];
+    },
+  ],
+  [
+    "duplicate tax",
+    (f) => {
+      f.invoice.total_tax_amounts.push(f.invoice.total_tax_amounts[0]!);
+    },
+  ],
+  [
+    "unfinished automatic tax",
+    (f) => {
+      f.invoice.automatic_tax.status = "requires_location_inputs";
+    },
+  ],
+  [
+    "foreign tax liability",
+    (f) => {
+      f.invoice.automatic_tax.liability.type = "account";
+    },
+  ],
+  [
+    "partial capture",
+    (f) => {
+      f.charge.amount_captured--;
+    },
+  ],
+  [
+    "credit balance",
+    (f) => {
+      f.invoice.starting_balance = -1;
+    },
+  ],
+  [
+    "credit note",
+    (f) => {
+      f.invoice.post_payment_credit_notes_amount = 1;
+    },
+  ],
+  [
+    "zero due",
+    (f) => {
+      f.invoice.amount_due = 0;
+    },
+  ],
+  [
+    "unsafe adjustment",
+    (f) => {
+      f.invoice.total_discount_amounts[0]!.amount = Number.MAX_SAFE_INTEGER + 1;
+    },
+  ],
+  [
+    "discount above base",
+    (f) => {
+      f.invoice.total_discount_amounts[0]!.amount = 3001;
+    },
+  ],
+  [
+    "inclusive tax above discounted base",
+    (f) => {
+      const t = f.invoice.total_tax_amounts[0]!;
+      t.inclusive = true;
+      t.amount = 3000;
+    },
+  ],
+];
+for (const [name, change] of adjustmentChanges)
+  test(`rejects adjusted invoice with ${name}`, () => {
+    const f = adjusted();
+    change(f);
+    expect(() => prove(f)).toThrow();
+  });
+test("supports tax without discounts and discounts without tax", () => {
+  const taxed = adjusted();
+  taxed.invoice.discounts = [];
+  taxed.invoice.total_discount_amounts = [];
+  taxed.invoice.lines.data[0]!.discount_amounts = [];
+  taxed.invoice.total = taxed.invoice.amount_due = taxed.invoice.amount_paid = 3270;
+  taxed.paymentIntent.amount = taxed.paymentIntent.amount_received = 3270;
+  taxed.charge.amount = taxed.charge.amount_captured = 3270;
+  expect(prove(taxed).adjustmentDigest).toBeDefined();
+  const discounted = adjusted();
+  discounted.invoice.tax = 0;
+  discounted.invoice.total_tax_amounts = [];
+  discounted.invoice.lines.data[0]!.tax_amounts = [];
+  discounted.invoice.total = discounted.invoice.amount_due = discounted.invoice.amount_paid = 2700;
+  discounted.paymentIntent.amount = discounted.paymentIntent.amount_received = 2700;
+  discounted.charge.amount = discounted.charge.amount_captured = 2700;
+  expect(prove(discounted).adjustmentDigest).toBeDefined();
+});
+test("normalizes expanded discount references and binds allocation changes", () => {
+  const f = adjusted();
+  const expanded = { ...f, invoice: { ...f.invoice, discounts: [{ id: "di_retained" }] } };
+  expect(prove(expanded).adjustmentDigest).toBe(prove(f).adjustmentDigest);
+  const other = structuredClone(f);
+  other.invoice.discounts = ["di_other"];
+  other.invoice.total_discount_amounts[0]!.discount = "di_other";
+  other.invoice.lines.data[0]!.discount_amounts[0]!.discount = "di_other";
+  expect(prove(other).adjustmentDigest).not.toBe(prove(f).adjustmentDigest);
+});
+test("uses exact integer sums even when individually safe taxes overflow the safe range", () => {
+  const f = adjusted();
+  const taxes = ["txr_one", "txr_two"].map((tax_rate) => ({
+    amount: Number.MAX_SAFE_INTEGER,
+    inclusive: false,
+    tax_rate,
+  }));
+  f.invoice.total_tax_amounts = taxes;
+  f.invoice.lines.data[0]!.tax_amounts = structuredClone(taxes);
+  expect(() => prove(f)).toThrow();
+});
