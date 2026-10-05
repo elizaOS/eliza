@@ -12,7 +12,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { createStripeRecoveryClient } from "../stripe";
 import { logger } from "../utils/logger";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
-import { validateStripeDunningObservation } from "./stripe-dunning-lifecycle";
+import { retrieveStripeDunningObservation } from "./stripe-dunning-objects";
 import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
 import {
   validateCancellationCustomer,
@@ -82,7 +82,12 @@ export async function recoverMissedSubscriptionEvents() {
           : raw.status === "past_due" || raw.status === "unpaid"
             ? await finalizeSubscriptionReconciliation(claim, {
                 kind: "dunning",
-                observation: validateStripeDunningObservation(raw, claim.source, environment),
+                observation: await retrieveStripeDunningObservation(
+                  claim.source,
+                  raw,
+                  stripe,
+                  customer,
+                ),
               })
             : await (async () => {
                 const period = z
