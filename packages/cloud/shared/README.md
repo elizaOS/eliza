@@ -29,3 +29,9 @@ and polling, and `/node` for provisioning execution. Public client DTOs belong
 to `@elizaos/cloud-sdk/contracts`; Node execution must not enter the agents graph.
 Shared exports are explicit. Leaf entries preserve lazy loading and schema ownership;
 do not add wildcard exports or consumer aliases that bypass the export map.
+
+Organization plan-change admission atomically consumes the original actor-owned
+quote and retains one command across retry keys. Downgrade admission is internal:
+it does not dispatch a provider effect or publish a scheduled plan. Expiry can
+retire only provably unstarted intents without a live lease; uncertain effects
+remain pending until the original outcome is reconciled.
