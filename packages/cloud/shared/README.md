@@ -292,3 +292,14 @@ capture reads; later provider pointers cannot promote a deferred original.
 Capture failures remain retryable incidents and never fall back to balance-only
 success. Complete captured payment evidence does not allocate historic debt or
 authorize allowance; allocation proof and policy remain open.
+
+The private `traceOriginalInvoiceDebt` calculation traces full-debit carry chains
+through retained originals and complete ledger movements. It preserves each
+invoice's net new contribution, subscription and original period; a carried
+starting balance is never counted as new debt. Repeated equivalent events do not
+duplicate components. Missing/conflicting originals, reversed or partial
+applications, unsupported credit movements and broken arithmetic fail explicitly.
+This is provenance evidence only: provider-shape qualification, fresh capture and
+original-invoice observations, durable attribution, source fencing and allowance
+policy remain required before financial publication. No maintenance lane calls
+this calculation yet.
