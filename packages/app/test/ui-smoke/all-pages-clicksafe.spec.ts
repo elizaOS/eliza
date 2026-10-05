@@ -186,8 +186,14 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     name: "browser",
     path: "/browser",
     readyChecks: [
-      { selector: '[data-testid="browser-workspace-address-input"]' },
-      { selector: '[data-testid="browser-workspace-surface-panel"]' },
+      {
+        selector:
+          'section[aria-label="Browser"] input[aria-label="Website or search"]',
+      },
+      {
+        selector:
+          'section[aria-label="Browser"] button[type="submit"]:has-text("Go")',
+      },
     ],
     mode: "all",
     timeoutMs: 60_000,
