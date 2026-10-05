@@ -485,6 +485,63 @@ async function count(organizationId: string) {
       ).rows[0].organization_upgrade_dispatch_state,
     ).toBe("ready");
   });
+  for (const fence of ["revoked actor", "fenced organization"] as const) {
+    for (const started of [false, true])
+      test(`original lease cleanup survives ${fence}, started=${started}`, async () => {
+        const f = await executionCandidate();
+        const claim = (await execution.claimOrganizationUpgrade(f.identity))!;
+        if (started) await execution.markOrganizationUpgradeDispatch(f.identity, claim);
+        if (fence === "revoked actor")
+          await db.query("UPDATE users SET role='member' WHERE id=$1", [f.input.actorId]);
+        else
+          await db.query(
+            "UPDATE organizations SET paid_work_fenced_at=clock_timestamp() WHERE id=$1",
+            [f.input.organizationId],
+          );
+        await expect(
+          execution.readOrganizationUpgradeDispatchSource(f.identity, claim),
+        ).rejects.toThrow();
+        await expect(
+          execution.markOrganizationUpgradeDispatch(f.identity, claim),
+        ).rejects.toThrow();
+        if (started) {
+          await expect(
+            execution.failOrganizationUpgradeBeforeDispatch(f.identity, claim),
+          ).rejects.toThrow();
+          await execution.releaseOrganizationUpgrade(f.identity, claim);
+        } else await execution.failOrganizationUpgradeBeforeDispatch(f.identity, claim);
+        const result = (
+          await db.query(
+            "SELECT status,organization_upgrade_dispatch_state AS dispatch,lease_token FROM billing_subscription_commands WHERE id=$1",
+            [f.identity.commandId],
+          )
+        ).rows[0];
+        expect(result).toEqual({
+          status: started ? "OUTCOME_UNKNOWN" : "FAILED",
+          dispatch: started ? "started" : "ready",
+          lease_token: null,
+        });
+      });
+  }
+  test("cleanup never transfers the original actor or tenant authority", async () => {
+    const f = await executionCandidate();
+    const claim = (await execution.claimOrganizationUpgrade(f.identity))!;
+    for (const identity of [
+      { ...f.identity, actorId: randomUUID() },
+      { ...f.identity, organizationId: randomUUID() },
+    ]) {
+      await expect(
+        execution.failOrganizationUpgradeBeforeDispatch(identity, claim),
+      ).rejects.toThrow();
+      await expect(execution.releaseOrganizationUpgrade(identity, claim)).rejects.toThrow();
+    }
+    const result = (
+      await db.query("SELECT status,lease_token FROM billing_subscription_commands WHERE id=$1", [
+        f.identity.commandId,
+      ])
+    ).rows[0];
+    expect(result).toEqual({ status: "OUTCOME_UNKNOWN", lease_token: claim.command.lease_token });
+  });
   test("a current manager can review after an expired unstarted intent's actor is revoked", async () => {
     const f = await seed();
     const expiry = new Date(Date.now() + 2000);
