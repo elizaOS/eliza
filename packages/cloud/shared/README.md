@@ -185,4 +185,10 @@ Cancellation, reviewed resumption and cancellation-event reconciliation resolve 
 retained purchased/current paid-plan binding instead of newly configured catalog IDs.
 Purchased account identity is retrieved before provider work and checked again against
 locked retained authority at publication. Legacy subscriptions keep catalog validation;
-this does not enable cancellation of a still-configured pending plan schedule.
+configured pending-plan cancellation additionally reconstructs immutable downgrade evidence.
+It sends one idempotent schedule update preserving the paid phase, removes the future
+phase, and clears the pending plan only after canonical verification. Lost responses
+remain read-only recovery. Resume requires a fresh schedule preview and preserves
+the current plan without restoring the discarded downgrade. Webhook and active-period
+cron observations validate the same retained schedule; provider and device qualification
+remain separate from controlled integration tests.

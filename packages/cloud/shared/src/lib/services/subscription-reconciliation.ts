@@ -1,6 +1,8 @@
 /** Runs bounded missed-event recovery using read-only provider requests on the existing cron lane; every claimed outcome is retained with primary lease and retry ownership, and policy failures open the same incident as the webhook owner. */
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
+import { writeTransaction } from "../../db/helpers";
+import { readConfiguredCancellationAuthority } from "../../db/repositories/configured-schedule-cancellation-authority";
 import { findSubscriptionRenewalBinding } from "../../db/repositories/subscription-purchased-binding";
 import {
   claimSubscriptionReconciliation,
@@ -11,6 +13,7 @@ import {
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { createStripeRecoveryClient } from "../stripe";
 import { logger } from "../utils/logger";
+import { observeConfiguredCancellation } from "./configured-schedule-cancellation";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import { retrieveStripeDunningObservation } from "./stripe-dunning-objects";
 import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
@@ -158,7 +161,12 @@ export async function recoverMissedSubscriptionEvents() {
                   });
                 }
                 // Out-of-band plan or schedule changes are not ours to adopt.
-                const drift = unownedObservationDrift(raw, claim.source, environment);
+                const authority = await writeTransaction((tx) =>
+                  readConfiguredCancellationAuthority(tx, claim.source),
+                );
+                const drift = authority
+                  ? null
+                  : unownedObservationDrift(raw, claim.source, environment);
                 if (
                   drift &&
                   (drift !== "cancellation_not_owned" ||
@@ -168,15 +176,25 @@ export async function recoverMissedSubscriptionEvents() {
                     code: "SUBSCRIPTION_LIFECYCLE_UNSUPPORTED",
                     context: { reason: drift },
                   });
-                const value = validatePeriodEndCancellationObservation({
-                  raw,
-                  source: claim.source,
-                  organizationCustomerId: claim.organizationCustomerId,
-                  environment,
-                  observedAt: new Date(),
-                  requireScheduled: claim.source.cancel_at_period_end,
-                  allowRetainedCanceledAt: claim.source.canceled_at,
-                });
+                const value = authority
+                  ? observeConfiguredCancellation({
+                      authority,
+                      source: claim.source,
+                      rawSubscription: raw,
+                      rawSchedule: await stripe.subscriptionSchedules.retrieve(
+                        authority.scheduleId,
+                      ),
+                      observedAt: new Date(),
+                    })
+                  : validatePeriodEndCancellationObservation({
+                      raw,
+                      source: claim.source,
+                      organizationCustomerId: claim.organizationCustomerId,
+                      environment,
+                      observedAt: new Date(),
+                      requireScheduled: claim.source.cancel_at_period_end,
+                      allowRetainedCanceledAt: claim.source.canceled_at,
+                    });
                 return finalizeSubscriptionReconciliation(claim, {
                   kind: "owned_schedule",
                   scheduled: value.scheduled,
