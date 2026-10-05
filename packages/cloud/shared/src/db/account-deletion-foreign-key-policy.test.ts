@@ -41,3 +41,15 @@ test("organization upgrade invoice origins retain anonymized financial provenanc
   expect(receipts).toHaveLength(1);
   expect(classifyAccountDeletionForeignKey(receipts[0]!)).toBe("anonymize_retained_record");
 });
+
+for (const table of [
+  "organization_upgrade_historical_targets",
+  "organization_schedule_effects",
+  "organization_schedule_quote_terms",
+]) {
+  test(`${table} retains anonymized original billing evidence`, () => {
+    const references = listAccountDeletionForeignKeys().filter((d) => d.sourceTable === table);
+    expect(references).toHaveLength(1);
+    expect(classifyAccountDeletionForeignKey(references[0]!)).toBe("anonymize_retained_record");
+  });
+}

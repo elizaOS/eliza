@@ -588,9 +588,9 @@ await writeFile(
       failures,
       screenshots: shot,
       managementPages: managementPages.map(([from, to]) => ({ from, to })),
-      redirectCases: redirectCases.map(([from, to]) => ({ from, to })),
-      settingsHashSections: hashCases.map(([from, section]) => ({
+      settingsHashSections: hashCases.map(([from, to, section]) => ({
         from,
+        to,
         section,
       })),
       ranAt: new Date().toISOString(),
