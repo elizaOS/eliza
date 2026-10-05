@@ -311,14 +311,13 @@ export interface WalletRouteDependencies {
   isCloudWalletEnabled: () => boolean;
   persistConfigEnv: (key: string, value: string) => Promise<void>;
   /**
-   * Durably stores a local wallet private key wherever `saveConfig` will not
-   * (OS-store mode strips keys from disk config). Rejects when no durable
-   * store can hold it.
+   * Durably stores local wallet private keys wherever `saveConfig` will not
+   * (OS-store mode strips keys from disk config). All-or-nothing: rejects,
+   * with prior stored keys restored, when any key cannot be stored.
    */
-  persistWalletPrivateKey: (
+  persistWalletPrivateKeys: (
     config: ElizaConfig,
-    key: "EVM_PRIVATE_KEY" | "SOLANA_PRIVATE_KEY",
-    value: string,
+    keys: Partial<Record<"EVM_PRIVATE_KEY" | "SOLANA_PRIVATE_KEY", string>>,
   ) => Promise<void>;
   createIntegrationTelemetrySpan: (
     args: CreateIntegrationTelemetrySpanArgs,
@@ -1059,11 +1058,9 @@ export async function handleWalletRoutes(
     }
     const envKey = chain === "evm" ? "EVM_PRIVATE_KEY" : "SOLANA_PRIVATE_KEY";
     try {
-      await deps.persistWalletPrivateKey(
-        config,
-        envKey,
-        process.env[envKey] ?? "",
-      );
+      await deps.persistWalletPrivateKeys(config, {
+        [envKey]: process.env[envKey] ?? "",
+      });
     } catch (err) {
       for (const [name, value] of Object.entries(envBeforeImport)) {
         if (value === undefined) delete process.env[name];
@@ -1273,20 +1270,12 @@ export async function handleWalletRoutes(
         ? deps.generateWalletForChain("solana")
         : null;
     try {
-      if (evmWallet) {
-        await deps.persistWalletPrivateKey(
-          config,
-          "EVM_PRIVATE_KEY",
-          evmWallet.privateKey,
-        );
-      }
-      if (solanaWallet) {
-        await deps.persistWalletPrivateKey(
-          config,
-          "SOLANA_PRIVATE_KEY",
-          solanaWallet.privateKey,
-        );
-      }
+      await deps.persistWalletPrivateKeys(config, {
+        ...(evmWallet ? { EVM_PRIVATE_KEY: evmWallet.privateKey } : {}),
+        ...(solanaWallet
+          ? { SOLANA_PRIVATE_KEY: solanaWallet.privateKey }
+          : {}),
+      });
     } catch (err) {
       error(res, `Failed to store generated wallet key: ${String(err)}`, 500);
       return true;

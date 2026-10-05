@@ -132,13 +132,21 @@ it.each([
 );
 
 it.each([
-  { osStore: "1", vault: true, route: "generate", status: 200 },
-  { osStore: "1", vault: false, route: "generate", status: 500 },
-  { osStore: "1", vault: false, route: "import", status: 500 },
-  { osStore: "0", vault: false, route: "generate", status: 200 },
-])(
-  "keeps a local wallet key restorable after $route with ELIZA_WALLET_OS_STORE=$osStore (vault: $vault)",
-  async ({ osStore, vault, route, status }) => {
+  { osStore: "1", vault: "ok", route: "generate", chain: "both", status: 200 },
+  { osStore: "1", vault: "ok", route: "import", chain: "evm", status: 200 },
+  { osStore: "1", vault: "none", route: "generate", chain: "evm", status: 500 },
+  { osStore: "1", vault: "none", route: "import", chain: "evm", status: 500 },
+  {
+    osStore: "1",
+    vault: "rejects-solana",
+    route: "generate",
+    chain: "both",
+    status: 500,
+  },
+  { osStore: "0", vault: "none", route: "generate", chain: "evm", status: 200 },
+] as const)(
+  "keeps local wallet keys restorable: $route $chain, ELIZA_WALLET_OS_STORE=$osStore, vault $vault",
+  async ({ osStore, vault, route, chain, status }) => {
     const directory = await mkdtemp(join(tmpdir(), "wallet-key-store-http-"));
     const savedBridge = getAgentHostBridge();
     let testVault: TestVault | undefined;
@@ -166,9 +174,34 @@ it.each([
         "WALLET_PUBLIC_KEY",
       ])
         vi.stubEnv(key, undefined);
-      if (vault) {
+      const previousEvmKey = generateWalletForChain("evm").privateKey;
+      if (vault !== "none") {
         testVault = await createTestVault();
-        const sharedVault = testVault.vault;
+        const realVault = testVault.vault;
+        await realVault.set("EVM_PRIVATE_KEY", previousEvmKey, {
+          sensitive: true,
+        });
+        const sharedVault =
+          vault === "rejects-solana"
+            ? new Proxy(realVault, {
+                get(target, property) {
+                  if (property === "set") {
+                    return async (key: string, ...rest: unknown[]) => {
+                      if (key === "SOLANA_PRIVATE_KEY") {
+                        throw new Error("keychain denied");
+                      }
+                      return (
+                        target.set as (...args: unknown[]) => Promise<void>
+                      )(key, ...rest);
+                    };
+                  }
+                  const value = Reflect.get(target, property, target);
+                  return typeof value === "function"
+                    ? value.bind(target)
+                    : value;
+                },
+              })
+            : realVault;
         setAgentHostBridge({ ...savedBridge, sharedVault: () => sharedVault });
       }
       await writeFile(
@@ -191,8 +224,8 @@ it.each([
           },
           body: JSON.stringify(
             route === "import"
-              ? { chain: "evm", privateKey: importedKey }
-              : { chain: "evm", source: "local" },
+              ? { chain, privateKey: importedKey }
+              : { chain, source: "local" },
           ),
         },
       );
@@ -200,18 +233,37 @@ it.each([
       const persisted = JSON.parse(await readFile(filename, "utf8"));
       if (status !== 200) {
         expect(await response.json()).toMatchObject({
-          error: expect.stringContaining("WALLET_OS_STORE"),
+          error: expect.stringContaining(
+            vault === "none" ? "WALLET_OS_STORE" : "keychain denied",
+          ),
         });
         expect(process.env.EVM_PRIVATE_KEY).toBeUndefined();
+        expect(process.env.SOLANA_PRIVATE_KEY).toBeUndefined();
         expect(persisted.env.EVM_PRIVATE_KEY).toBeUndefined();
+        if (testVault) {
+          expect(await testVault.vault.reveal("EVM_PRIVATE_KEY")).toBe(
+            previousEvmKey,
+          );
+          expect(await testVault.vault.has("SOLANA_PRIVATE_KEY")).toBe(false);
+        }
         return;
       }
       const activeKey = process.env.EVM_PRIVATE_KEY;
       expect(activeKey).toMatch(/^0x[0-9a-fA-F]{64}$/);
-      const restorable = testVault
-        ? await testVault.vault.reveal("EVM_PRIVATE_KEY")
-        : persisted.env.EVM_PRIVATE_KEY;
-      expect(restorable).toBe(activeKey);
+      if (route === "import") expect(activeKey).toBe(importedKey);
+      if (!testVault) {
+        expect(persisted.env.EVM_PRIVATE_KEY).toBe(activeKey);
+        return;
+      }
+      expect(persisted.env.EVM_PRIVATE_KEY).toBeUndefined();
+      expect(persisted.env.SOLANA_PRIVATE_KEY).toBeUndefined();
+      expect(await testVault.vault.reveal("EVM_PRIVATE_KEY")).toBe(activeKey);
+      if (chain === "both") {
+        expect(process.env.SOLANA_PRIVATE_KEY).toBeTruthy();
+        expect(await testVault.vault.reveal("SOLANA_PRIVATE_KEY")).toBe(
+          process.env.SOLANA_PRIVATE_KEY,
+        );
+      }
     } finally {
       setAgentHostBridge(savedBridge);
       await server?.close();
