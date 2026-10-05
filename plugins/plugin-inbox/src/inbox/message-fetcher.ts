@@ -55,7 +55,7 @@ export interface GmailInboxSource {
 export interface XDmInboxSource {
   getXConnectorStatus(): Promise<LifeOpsXConnectorStatus>;
   syncXDms(opts?: { limit?: number }): Promise<{ synced: number }>;
-  getXDms(opts?: { limit?: number }): Promise<LifeOpsXDm[]>;
+  getXDms(opts?: { limit?: number; inbound?: boolean }): Promise<LifeOpsXDm[]>;
 }
 
 /** Messages from one connector-backed source plus that source's health. */
@@ -654,7 +654,7 @@ export async function fetchXDmMessages(
   try {
     const page = limit === undefined ? undefined : { limit };
     await source.syncXDms(page);
-    dms = await source.getXDms(page);
+    dms = await source.getXDms({ ...page, inbound: true });
   } catch (error) {
     logger.warn(
       `[InboxMessageFetcher] x_dm sync/read failed: ${errorMessage(error)}`,

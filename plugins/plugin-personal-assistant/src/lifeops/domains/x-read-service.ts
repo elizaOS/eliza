@@ -329,7 +329,7 @@ export class XReadDomain {
   }
 
   async getXDms(
-    opts: { conversationId?: string; limit?: number } = {},
+    opts: { conversationId?: string; limit?: number; inbound?: boolean } = {},
   ): Promise<LifeOpsXDm[]> {
     return this.ctx.repository.listXDms(this.ctx.agentId(), opts);
   }
@@ -347,8 +347,10 @@ export class XReadDomain {
 
   async readXInboundDms(opts: { limit?: number } = {}): Promise<LifeOpsXDm[]> {
     await this.syncXDms(opts);
-    const all = await this.ctx.repository.listXDms(this.ctx.agentId(), opts);
-    return all.filter((dm) => dm.isInbound);
+    return this.ctx.repository.listXDms(this.ctx.agentId(), {
+      ...opts,
+      inbound: true,
+    });
   }
 
   private async hasCachedXDms(opts: XReadOpts): Promise<boolean> {
