@@ -302,3 +302,17 @@ default. Hosts whose test APK declares other runners must list their class names
 in `additionalInstrumentationRunners`; every declaration must target the same
 application package, with no missing, duplicate, or undeclared runners. This
 changes APK admission only: instrumentation still executes the selected `runner`.
+
+For installed upgrades, each `variants[]` entry and its `upgrade` artifact may
+set `additionalInstrumentationRunners` independently. Omission inherits the
+campaign default; an explicit empty list admits only the selected runner.
+Every artifact must match its own exact declaration set before any APK installs.
+This supports historical test APKs without admitting undeclared candidate runners.
+
+Scenario hooks can call `context.instrumentPhase(name, runnerArgs)` after both
+owned APKs are installed. Each phase keeps the campaign's exact test selection,
+APK hash checks, user, timeout and strict result parser. Names must be unique
+letters/digits/underscores/hyphens starting with a letter. Results are recorded in
+`variants[].phases` and output in `<variant>-phase-<name>.log`. Runner extras
+cannot override test selection. Cleanup hooks may run a final fixture phase even
+after cancellation; failed or partial installs do not expose this function.
