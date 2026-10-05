@@ -391,6 +391,16 @@ export class SubscriptionAllowanceRepository {
       idempotency_key: `renewal:${source.provider_environment}:${input.invoiceId}`,
       occurred_at: input.databaseNow,
     });
+    // Historical invoice settlement must record funding without briefly publishing
+    // an open balance. Use the existing expiry journal in this same transaction.
+    if (period.expires_at <= (await readPostLockDatabaseNow(tx))) {
+      const retired = await this.retirePeriodInTransaction(tx, {
+        organizationId: source.organization_id,
+        periodId: period.id,
+        reason: "period_ended",
+      });
+      return { period: retired.period, replayed: false };
+    }
     return { period, replayed: false };
   }
 

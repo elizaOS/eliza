@@ -831,7 +831,7 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
   });
   // The real database clock must cross the five-second renewal boundary
   // before publication, rollback and replay assertions can execute.
-  for (const dunning of ["none", "webhook", "cron"] as const)
+  for (const dunning of ["none", "webhook", "cron", "released"] as const)
     test(`paid first target atomically settles with dunning=${dunning}`, async () => {
       const boundary = Math.floor(Date.now() / 1000) + 5;
       const f = await configured(true, true, {
@@ -877,8 +877,23 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
         { start: boundary, end: target.end_date },
       );
       objects.invoice.status_transitions.paid_at = boundary;
-      const subscription = { ...objects.subscription, schedule: snapshot.id };
-      if (dunning !== "none") {
+      const observedSchedule =
+        dunning === "released"
+          ? {
+              ...snapshot,
+              status: "released",
+              subscription: null,
+              released_subscription: source.stripe_subscription_id,
+              released_at: boundary,
+              completed_at: null,
+              current_phase: null,
+            }
+          : snapshot;
+      const subscription = {
+        ...objects.subscription,
+        schedule: dunning === "released" ? null : snapshot.id,
+      };
+      if (dunning === "webhook" || dunning === "cron") {
         const failed = {
           ...objects.invoice,
           status: "open",
@@ -994,7 +1009,7 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
       const input = {
         ...objects,
         subscription,
-        scheduledSchedule: snapshot,
+        scheduledSchedule: observedSchedule,
         organizationId: source.organization_id,
         subscriptionId: source.id,
         invoiceId: objects.invoice.id,

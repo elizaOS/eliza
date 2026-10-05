@@ -29,7 +29,7 @@ export function observeScheduledTargetSubscription(
   const sub = organizationSubscriptionObservationSchema
     .extend({
       status: z.literal(expectedStatus),
-      schedule: z.literal(phase.scheduleId),
+      schedule: phase.state === "active" ? z.literal(phase.scheduleId) : z.null(),
       latest_invoice: z.string().regex(/^in_[A-Za-z0-9]+$/),
       trial_start: z.null(),
       trial_end: z.null(),

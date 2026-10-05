@@ -4,10 +4,8 @@ import type { BillingSubscription } from "../../db/schemas/billing-subscriptions
 import type { BillingSubscriptionCommand } from "../../db/schemas/subscription-billing-operations";
 import { organizationDowngradeReviewSchema } from "./organization-downgrade-review";
 import { organizationPlanChangeProviderBindingSchema } from "./organization-plan-change-provider-binding";
-import {
-  proveRetainedScheduleTargetPhase,
-  readRetainedScheduleTarget,
-} from "./organization-schedule-target-phase";
+import { proveRetainedScheduleTargetLifecycle } from "./organization-schedule-target-lifecycle";
+import { readRetainedScheduleTarget } from "./organization-schedule-target-phase";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import { settlementDigest } from "./settlement-digest";
 import { resolveSubscriptionPlanDefinition } from "./subscription-catalog";
@@ -143,7 +141,7 @@ export function proveOriginalConfiguredTarget(
 ) {
   const authority = proveOriginalConfiguredAuthority(input);
   const proof = input.command.organization_schedule_configuration_evidence!;
-  const phase = proveRetainedScheduleTargetPhase({
+  const phase = proveRetainedScheduleTargetLifecycle({
     originalSnapshot: input.command.organization_schedule_configuration_snapshot,
     originalSnapshotDigest: proof.snapshotDigest,
     scheduleId: proof.scheduleId,
