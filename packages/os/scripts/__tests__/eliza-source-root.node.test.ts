@@ -31,7 +31,7 @@ function app(root) {
 
 test("AOSP smoke loads configuration code from the selected application checkout", (t) => {
   const root = app(fixture(t));
-  const library = path.join(root, "packages/app/scripts/aosp/lib");
+  const library = path.join(root, "packages/app/scripts/aosp");
   mkdirSync(library, { recursive: true });
   writeFileSync(
     path.join(library, "load-variant-config.ts"),

@@ -8,7 +8,6 @@
 import { AgentSurfaceProvider, getViewRegistry } from "@elizaos/ui";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleAgentSurfaceCapability } from "../../../../packages/ui/src/agent-surface/capabilities";
 import { WorkbenchHeader } from "./OrchestratorWorkbench";
 
 afterEach(cleanup);
@@ -33,11 +32,7 @@ describe("WorkbenchHeader agent surface", () => {
 
     const registry = getViewRegistry("orchestrator", "gui");
     if (!registry) throw new Error("orchestrator registry missing");
-    const elements = handleAgentSurfaceCapability(
-      registry,
-      "list-elements",
-      undefined,
-    ) as Array<{ id: string; role: string; status?: string }>;
+    const elements = registry.snapshot().elements;
     expect(elements).toContainEqual(
       expect.objectContaining({
         id: "header-accounts-toggle",
@@ -46,9 +41,7 @@ describe("WorkbenchHeader agent surface", () => {
       }),
     );
 
-    handleAgentSurfaceCapability(registry, "agent-click", {
-      id: "header-accounts-toggle",
-    });
+    expect(registry.click("header-accounts-toggle").ok).toBe(true);
     expect(onToggleAccounts).toHaveBeenCalledOnce();
   });
 });

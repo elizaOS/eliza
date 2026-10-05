@@ -1,19 +1,3 @@
-/**
- * Shared fixtures + a parameterized driver for the Voice Workbench scenario-player
- * e2e specs (#8785).
- *
- * Each `voice-workbench-*.spec.ts` declares a small WorkbenchScenario for one
- * browser wiring case and calls {@link runWorkbenchScenarioSpec}. The driver
- * mocks the ASR / agent / TTS backends (none are provisioned in CI), navigates
- * to the `?shellMode=voice-workbench` screen, drives the REAL client player via
- * `window.__voiceWorkbench(scenario)`, and asserts the per-turn DOM verdicts.
- *
- * The backends are mocked but every CLIENT step is real: corpus WAV load,
- * transcript propagation, streamed response/no-response handling, TTS decode,
- * and DOM mirroring. Model-quality scoring (ASR accuracy, diarization,
- * voice/entity recognition) belongs to the tier-2/tier-3 lanes with real signals.
- */
-
 import { expect, type Page, test } from "@playwright/test";
 import { installDefaultAppRoutes, seedAppStorage } from "./helpers";
 import { tinyWav } from "./helpers/wav-fixture";
@@ -180,15 +164,12 @@ interface WorkbenchReport {
  * PASS; skipped cases are failures in this keyless lane.
  */
 export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
-  test.beforeEach(async ({ page }) => {
-    await seedAppStorage(page);
-    await installDefaultAppRoutes(page);
-    await installScenarioMocks(page, scenario);
-  });
-
   test(`voice workbench browser wiring [${scenario.classes.join(",")}] case ${scenario.id} round-trips mocked backend turns`, async ({
     page,
   }) => {
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    await installScenarioMocks(page, scenario);
     await page.goto("/?shellMode=voice-workbench", {
       waitUntil: "domcontentloaded",
     });

@@ -303,11 +303,6 @@ cleanup with the existing process-group drain. It never adopts or restarts a
 process. Hosts choose commands, environments, readiness and diagnostics; call
 `dispose` in finally. `waitForClose` remains valid after an early close event.
 
-`native-host/research-statistics.mjs` supplies Wilson 95% binomial intervals and
-deterministic nearest-rank percentile bootstrap intervals for a mean. Hosts own
-sampling units, cohorts, confidence labels, resample/seed/work budgets and
-interpretation; these calculations do not certify independence or causal effects.
-
 `scripts/mobile/android/build-consumer.mjs` runs an external consumer's admission and
 sync commands, assembles selected app distributions (debug, unsigned release and
 instrumentation), runs lint and product APK verification, then archives only the
