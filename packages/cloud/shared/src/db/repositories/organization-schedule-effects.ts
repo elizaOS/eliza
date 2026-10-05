@@ -948,3 +948,39 @@ export async function lockOrganizationScheduleConfiguredAuthority(
   };
   return { source, projection, command: locked.command, proof };
 }
+
+/** Read-only original command context. A terminal result can replay without current provider reads. */
+export async function readOrganizationSchedulePublicationSource(input: Identity, claim: Claim) {
+  return writeTransaction(async (tx) => {
+    const locked = await lockOriginal(tx, input, false);
+    if (
+      locked.command.status === "APPLIED" &&
+      locked.command.organization_schedule_configuration_evidence !== null
+    )
+      return { kind: "terminal" as const, command: locked.command };
+    const existing = await rows(tx, input);
+    const create = existing.find((e) => e.kind === "schedule_create"),
+      configuration = existing.find((e) => e.kind === "schedule_configure");
+    if (
+      !create ||
+      create.state !== "observed" ||
+      !create.receipt ||
+      !create.started_at ||
+      !configuration ||
+      configuration.state === "ready" ||
+      !configuration.started_at ||
+      configuration.predecessor_id !== create.id ||
+      existing.some((e) => e.kind === "schedule_release")
+    )
+      reject("original_configuration_attempt_required");
+    scope(locked, create, undefined);
+    scope(locked, configuration, create);
+    assertLease(input, locked, claim, await readPostLockDatabaseNow(tx));
+    return {
+      kind: "observe" as const,
+      create,
+      configuration,
+      apiVersion: locked.binding.apiVersion,
+    };
+  });
+}
