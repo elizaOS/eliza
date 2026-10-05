@@ -287,3 +287,9 @@ process. Hosts choose commands, environments, readiness and diagnostics; call
 deterministic nearest-rank percentile bootstrap intervals for a mean. Hosts own
 sampling units, cohorts, confidence labels, resample/seed/work budgets and
 interpretation; these calculations do not certify independence or causal effects.
+
+Consumer `runIsolatedAndroidTest` campaigns admit exactly the selected runner by
+default. Hosts whose test APK declares other runners must list their class names
+in `additionalInstrumentationRunners`; every declaration must target the same
+application package, with no missing, duplicate, or undeclared runners. This
+changes APK admission only: instrumentation still executes the selected `runner`.
