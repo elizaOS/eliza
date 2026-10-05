@@ -988,8 +988,9 @@ function receivedAtFromGmailMessage(
   // Mailbox time is `internalDate` (epoch ms). The sender Date header is
   // untrusted; an unparsable value used to throw and abort inbox search.
   const fromInternal = message.internalDate ? Number(message.internalDate) : Number.NaN;
-  if (Number.isFinite(fromInternal)) {
-    return new Date(fromInternal).toISOString();
+  const internalDate = new Date(fromInternal);
+  if (Number.isFinite(internalDate.getTime())) {
+    return internalDate.toISOString();
   }
   if (!dateHeader) {
     return undefined;

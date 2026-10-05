@@ -64,6 +64,25 @@ describe("Gmail inbox receivedAt mapping", () => {
     expect(msg.receivedAt).toBe(MAILBOX_ISO);
   });
 
+  it.each(["8640000000000001", "1e100", "not-a-timestamp"])(
+    "falls back to the sender date when internalDate %s cannot represent a Date",
+    async (internalDate) => {
+      const client = clientReturning(
+        payload({ internalDate, dateHeader: "Thu, 07 May 2026 12:00:00 GMT" })
+      );
+      expect((await client.getMessage({ accountId: "a1", messageId: "m1" })).receivedAt).toBe(
+        "2026-05-07T12:00:00.000Z"
+      );
+    }
+  );
+
+  it("keeps an undated message when neither date can be represented", async () => {
+    const client = clientReturning(payload({ internalDate: "1e100", dateHeader: "not-a-date" }));
+    expect(
+      (await client.getMessage({ accountId: "a1", messageId: "m1" })).receivedAt
+    ).toBeUndefined();
+  });
+
   it("returns the rest of a search page when one message has a garbage Date", async () => {
     const get = vi.fn(async ({ id }: { id: string }) => ({
       data:
