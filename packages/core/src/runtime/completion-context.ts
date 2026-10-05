@@ -138,7 +138,7 @@ export function parseCompletionContextSelection(
 	if (!value || typeof value !== "object" || Array.isArray(value))
 		return undefined;
 	const record = value as Record<string, unknown>;
-	// Keep the stored/runtime contract and legacy model responses unchanged.
+
 	const mode =
 		record.mode === "relevant_prior_dialogue"
 			? "selected"

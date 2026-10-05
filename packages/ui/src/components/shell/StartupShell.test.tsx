@@ -29,7 +29,7 @@ vi.mock("../setup/BootstrapStep", () => ({
 vi.mock("../../config/boot-config-store", () => ({
   getBootConfig: () => ({}),
 }));
-vi.mock("../brand/eliza-mark", () => ({
+vi.mock("../eliza-mark", () => ({
   ElizaMark: () => <svg data-testid="eliza-mark" />,
 }));
 

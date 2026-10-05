@@ -124,6 +124,7 @@ import {
   writePendingFirstRunText,
 } from "@elizaos/ui";
 import * as React from "react";
+import { dedicatedHostingReadinessText } from "./dedicated-hosting-readiness-text";
 
 const GREETING = `${FIRST_RUN_GREETING} First, where should your agent run?`;
 
@@ -355,6 +356,7 @@ function dedicatedAdoptionConfirmationText(
       `Hosting costs $${quote.dailyRateUsd.toFixed(2)}/day ($${quote.hourlyRateUsd.toFixed(2)}/hour).`,
       `Minimum charge per successful start: $${quote.minimumActivationChargeUsd.toFixed(2)}. Applies again after stopping and restarting.`,
       `Your balance is $${quote.balanceUsd.toFixed(2)}. You need at least $${quote.minimumBalanceUsd.toFixed(2)} to start.`,
+      ...dedicatedHostingReadinessText(quote),
       "",
       "[CHOICE:first-run id=dedicated-adoption]",
       `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:confirm=Start Dedicated`,
@@ -382,6 +384,7 @@ function dedicatedAdoptionConfirmationText(
         ]
       : []),
     `Balance: $${quote.balanceUsd.toFixed(2)}; $${quote.minimumBalanceUsd.toFixed(2)} required.`,
+    ...dedicatedHostingReadinessText(quote),
     ...(quote.deficitUsd > 0
       ? [`Add $${quote.deficitUsd.toFixed(2)} to start.`]
       : []),

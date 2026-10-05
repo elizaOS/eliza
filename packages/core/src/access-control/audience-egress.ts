@@ -1,38 +1,8 @@
 /**
- * Egress-seam glue for min-over-members audience admission (#split-disclosure).
- *
- * The pure policy core (`resolveAudienceAdmission`, PR1) answers "given a
- * disclosure subject and an attested audience, what does the audience AS A
- * WHOLE admit?" — but it takes a caller-supplied per-viewer resolver. This
- * module is the ONE place the egress path builds that resolver, so the
- * delivery seam never hand-rolls the per-member AccessContext and can never
- * diverge from the artifact tier order.
- *
- * The resolver is derived PURELY from the attested audience evidence
- * (`TrustedDeliveryAudience`) — no room reads, no entity-role I/O in the hot
- * delivery path. Membership/role facts the attestation already carries:
- *
- *  - the AGENT (`agentEntityId`) never appears in the census the policy core
- *    iterates, so it needs no resolver branch;
- *  - the canonical OWNER (`canonicalOwnerEntityId`) resolves as role `OWNER`
- *    (`isOwner: true`) — tier 2 of `resolveArtifactDisclosure`, unconditional
- *    `full`;
- *  - every other participant resolves as the least-privileged `USER` tier with
- *    NO role and NO ownership, so the artifact scope ladder applies: a `full`
- *    grant elevates them, a `redacted` grant narrows them, and the
- *    `owner-private` default fails closed to `none`.
- *
- * This is deliberately the fail-closed floor: attestation proves who is in the
- * room, not what elevated world-role a non-owner participant might hold, so a
- * non-owner is admitted only what an explicit grant or an open scope allows.
- * A later PR that wants to honor ADMIN-rank participants must feed resolved
- * roles in explicitly; until then egress never widens past owner+grants, which
- * is the safe direction.
- *
- * Pure and clock-free. Attestation freshness / membership drift is the egress
- * caller's contract (revalidate via `revalidateOwnerExclusiveDisclosure`-style
- * checks BEFORE computing admission); this module only maps verified evidence
- * onto the policy core.
+ * Derives per-viewer disclosure from an authenticated audience without I/O. The canonical
+ * owner receives OWNER authority; other members receive USER authority plus explicit grants.
+ * Membership alone does not establish elevated roles. Callers revalidate evidence before
+ * egress.
  */
 
 import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience";

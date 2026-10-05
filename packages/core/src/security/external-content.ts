@@ -14,7 +14,7 @@ import {
 /**
  * Check if content contains suspicious patterns that may indicate injection.
  *
- * Draws entirely from the shared injection-primitives bank (issue #9949): the
+ * Draws entirely from the shared injection-primitives bank: the
  * prompt-injection phrasing in `INJECTION_PATTERNS`, the external-content
  * dangerous-command / forged-delimiter indicators in
  * `EXTERNAL_CONTENT_RISK_PATTERNS`, and obfuscation-aware keyword matching over
@@ -200,9 +200,9 @@ export type WrapExternalContentOptions = {
  * @example
  * ```ts
  * const safeContent = wrapExternalContent(emailBody, {
- *   source: "email",
- *   sender: "user@example.com",
- *   subject: "Help request"
+ * source: "email",
+ * sender: "user@example.com",
+ * subject: "Help request"
  * });
  * // Pass safeContent to LLM instead of raw emailBody
  * ```
@@ -422,7 +422,7 @@ export function containsExternalEnvelopeMaterial(text: string): boolean {
  * envelope is still recoverable and authored text that merely quotes the
  * warning is untouched (a start marker can never occur inside a payload:
  * `replaceMarkers` neutralises it). For an envelope the result equals
- * `wrapExternalContent(payload, { ...options, includeWarning: false })`.
+ * `wrapExternalContent(payload, {...options, includeWarning: false })`.
  * Text without that adjacency is returned unchanged, including unterminated
  * or malformed markers.
  *

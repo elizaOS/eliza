@@ -185,7 +185,7 @@ export interface TrajectoryActionAttemptRecord {
 }
 
 /**
- * Legacy loss marker persisted in historical per-skill invocation records.
+ * Loss marker in persisted per-skill invocation records.
  */
 export interface TrajectorySkillInvocationTruncationMarker {
 	field: "args" | "result";
@@ -228,7 +228,7 @@ export interface TrajectorySkillInvocationRecord {
 	success: boolean;
 	/** ms-epoch when the invocation started. */
 	startedAt: number;
-	/** Legacy loss markers read from historical rows; new captures omit them. */
+	/** Loss markers in imported rows; captures retain complete input. */
 	truncated?: TrajectorySkillInvocationTruncationMarker[];
 }
 
@@ -297,7 +297,7 @@ export interface TrajectoryDetailRecord {
 	steps?: TrajectoryStepRecord[];
 	metrics?: Record<string, JsonValue | undefined> & {
 		finalStatus?: string;
-		/** Step count at last persist; required by Core validators (#17730). */
+		/** Step count at last persist; required by Core validators. */
 		episodeLength?: number;
 	};
 	/** Plain JSON-like bag; values are not validated as {@link JsonValue} at the boundary. */

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AwarenessRegistry } from "../awareness/registry";
+import { AwarenessRegistry } from "../awareness";
 import type { IAgentRuntime } from "../types/runtime";
 
 function runtime(agentId: string): IAgentRuntime {

@@ -141,6 +141,7 @@ import {
 	buildMemoryFromMessage as buildMemoryFromMessageExtracted,
 	fetchChannelHistory as fetchChannelHistoryExtracted,
 	type HistoryServiceInternals,
+	resolveHistoryAuthorEntityId,
 } from "./discord-history";
 import {
 	handleInteractionCreate as handleInteractionCreateExtracted,
@@ -2948,13 +2949,19 @@ export class DiscordService extends Service implements IDiscordService {
 		// is simply empty.
 		const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
 		const cached = channelRecord.messages?.cache;
+		const historyService = this.createAccountServiceFacade(
+			this.getAccountState(accountId),
+		);
 		if (cached) {
 			for (const message of cached.values()) {
 				if (!message.content.trim()) {
 					continue;
 				}
 				recentMessages.push({
-					entityId: this.resolveDiscordEntityId(message.author.id),
+					entityId: resolveHistoryAuthorEntityId(
+						historyService,
+						message.author.id,
+					),
 					name:
 						message.member?.displayName ||
 						message.author.globalName ||

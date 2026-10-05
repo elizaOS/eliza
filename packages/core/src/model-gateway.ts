@@ -1,35 +1,7 @@
 /**
- * Vendor-neutral model-gateway resolution (issue #11536, phase E1).
- *
- * A credential broker can front all OpenAI-compatible model traffic behind a
- * single gateway so that raw provider keys never reach the model client. When
- * `ELIZA_MODEL_GATEWAY_URL` is set it takes precedence as the effective base
- * URL for every consumer that currently reads `OPENAI_BASE_URL`, and
- * `ELIZA_MODEL_GATEWAY_TOKEN` becomes the effective api key in place of
- * `OPENAI_API_KEY`. This is deliberately vendor-neutral: the gateway only has
- * to be OpenAI-compatible, it is NOT bound to any specific broker.
- *
- * Two behaviours matter for security:
- *
- * 1. When gateway mode is on, raw provider keys are SCRUBBED from the resolved
- *    OpenAI-compatible client config rather than carried alongside the gateway
- *    token. A gateway that receives a request should never also be handed the
- *    upstream key.
- * 2. In strict mode (`ELIZA_MODEL_GATEWAY_STRICT` truthy) the presence of any
- *    raw provider key is treated as a misconfiguration and we FAIL CLOSED with
- *    an error naming the offending variable. This prevents an operator from
- *    silently bypassing the broker by leaving a raw key in the environment.
- *
- * Exported through the Node runtime barrel for host and provider assembly.
- *
- * SIBLING LAYER (#11536 E2): plugins/plugin-agent-orchestrator/src/services/
- * model-gateway.ts (PR #11651, merged) covers the SPAWNED SUB-AGENT env path
- * (rewrites a child process env so Codex/Claude-Code point at the gateway).
- * This module is the CORE-RUNTIME resolution layer (documents config, llm.ts,
- * inference-provider) and is intentionally independent: packages/core must not
- * depend on a plugin, so the two shared env-var-name constants are DUPLICATED
- * here on purpose rather than imported. The env var NAMES are the canonical
- * contract shared across both layers and MUST stay identical.
+ * Resolves vendor-neutral model gateway configuration. Gateway mode routes compatible model
+ * traffic through its endpoint and credential, with strict admission for conflicting
+ * provider keys.
  */
 
 import { isTruthyEnvValue } from "./env-utils.ts";
@@ -39,7 +11,7 @@ import { isTruthyEnvValue } from "./env-utils.ts";
  * all model traffic when broker/gateway mode is enabled.
  *
  * Canonical name mirrors `MODEL_GATEWAY_URL_KEY` in the sibling E2 module
- * (plugins/plugin-agent-orchestrator, #11651) for cross-layer greppability.
+ * for cross-layer greppability.
  * Duplicated (not imported) to keep the packages/core -> plugin dependency
  * direction clean.
  */
@@ -62,7 +34,7 @@ export const MODEL_GATEWAY_STRICT_KEY = "ELIZA_MODEL_GATEWAY_STRICT";
 
 /**
  * Backwards-compatible aliases (kept so existing importers/tests keep working).
- * Prefer the `*_KEY` names above, which mirror the sibling E2 module (#11651).
+ * Prefer the `*_KEY` names above, which mirror the sibling E2 module.
  */
 export const ELIZA_MODEL_GATEWAY_URL = MODEL_GATEWAY_URL_KEY;
 export const ELIZA_MODEL_GATEWAY_TOKEN = MODEL_GATEWAY_TOKEN_KEY;
@@ -75,7 +47,7 @@ export const ELIZA_MODEL_GATEWAY_STRICT = MODEL_GATEWAY_STRICT_KEY;
  *
  * This is the CORE-RUNTIME subset relevant to the OpenAI-compatible client
  * paths here. The sibling E2 module maintains a broader
- * `MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS` list (#11651) because a spawned
+ * `MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS` list because a spawned
  * sub-agent env can carry additional credential sources (CODEX_API_KEY,
  * CLAUDE_CODE_OAUTH_TOKEN, ELIZA_-prefixed keys, etc.) that don't apply to the
  * in-process model client resolved here.
@@ -136,7 +108,7 @@ export class ModelGatewayStrictError extends Error {
  * Resolve model-gateway settings from a getSetting accessor.
  *
  * @throws ModelGatewayStrictError when strict mode is on, gateway mode is on,
- *   and one or more raw provider keys are present.
+ * and one or more raw provider keys are present.
  */
 export function resolveModelGateway(
 	getSetting: GetSettingFn,
@@ -187,10 +159,10 @@ export interface OpenAiCompatibleCreds {
  * Apply gateway resolution to a raw OpenAI-compatible base URL / api key pair.
  *
  * When gateway mode is on:
- *   - the gateway URL overrides the base URL,
- *   - the gateway token overrides the api key,
- *   - the incoming raw api key is scrubbed (dropped) so it never travels with
- *     the gateway request.
+ * - the gateway URL overrides the base URL,
+ * - the gateway token overrides the api key,
+ * - the incoming raw api key is scrubbed (dropped) so it never travels with
+ * the gateway request.
  *
  * When gateway mode is off, the inputs are returned unchanged.
  */

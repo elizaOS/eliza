@@ -141,19 +141,7 @@ export function describeModelCallError(error: unknown): string {
 	return String(error);
 }
 
-/**
- * Detect provider rate-limit / 429 failures so the user-facing failure reply
- * can say "I'm being rate-limited, try again shortly" instead of the opaque
- * generic "something went wrong".
- *
- * The structural check runs FIRST and is the canonical signal: the AI SDK
- * carries the upstream HTTP status on `APICallError.statusCode` (wrapped by
- * `RetryError` when retries are exhausted), so we unwrap the retry envelope and
- * read `statusCode === 429` directly — mirroring cloud-shared `aiSdkErrorStatus`.
- * The message substring scan is only a status-less fallback for errors that do
- * not surface a structured status (e.g. raw text), and the legacy `.status`
- * duck-type covers raw OpenAI-SDK errors that expose `.status` instead.
- */
+/** Recognizes rate limits from structured provider status, including retry envelopes. Status-less errors use message matching; status and statusCode are both supported. */
 export function isRateLimitError(error: unknown): boolean {
 	const unwrapped = unwrapRetryError(error);
 	if (hasHttpStatus(unwrapped, [429])) {
@@ -282,7 +270,7 @@ export function isAuthError(error: unknown): boolean {
  * a voice swap is not a transient-recoverable condition, and a Kokoro
  * model-download failure surfaces as `fetch failed`, which would otherwise match
  * the transient heuristics below and silently rotate to a different voice engine
- * (#12253). TTS fails closed — the configured voice errors loudly instead.
+ *. TTS fails closed — the configured voice errors loudly instead.
  */
 export function isModelProviderFallbackError(
 	error: unknown,
@@ -361,21 +349,21 @@ export function isModelProviderFallbackError(
 
 /**
  * Why the turn ended on the structured-failure path, classified from the
- * error that killed the runtime (#17027 AC6). Distinguishable causes get
+ * error that killed the runtime. Distinguishable causes get
  * distinguishable user-facing replies instead of one generic
  * "something flaked" template:
  *
  * - `missing_capability` — the planner requested a tool which was not
- *   registered or otherwise invocable in this runtime. Retrying cannot help;
- *   the honest reply names the gap.
+ * registered or otherwise invocable in this runtime. Retrying cannot help;
+ * the honest reply names the gap.
  * - `planner_exhaustion` — the planner ran out of budget (tool calls,
- *   repeated failures, token budget) before finishing. Retrying may help.
+ * repeated failures, token budget) before finishing. Retrying may help.
  * - `context_overflow` — the provider rejected the model call at its
- *   documented context limit and the planner terminated without rewriting
- *   completed results. Retrying the identical request cannot help; the
- *   honest reply asks for a smaller range or narrower request.
+ * documented context limit and the planner terminated without rewriting
+ * completed results. Retrying the identical request cannot help; the
+ * honest reply asks for a smaller range or narrower request.
  * - `transient` — a model/provider/infrastructure error; the pre-existing
- *   generic path.
+ * generic path.
  */
 export type StructuredFailureCause =
 	| "missing_capability"

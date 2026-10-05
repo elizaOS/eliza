@@ -1,15 +1,6 @@
 /**
- * The correlation header that joins the three otherwise-disjoint trace stores —
- * the file `RecordedTrajectory` (trajectory-recorder.ts), the DB
- * `TrajectoriesService`, and the orchestrator's `OrchestratorTaskDocument`
- * (#13775). The schemas are NOT merged (different consumers); each carries this
- * additive envelope so a parent turn, its DB row, and any sub-agent trajectory
- * it spawned can be stitched back together on a single `traceId`.
- *
- * `traceId` is minted at the root turn (message.ts) and propagated to spawned
- * sub-agents through the env vars below; a sub-agent's own recorder reads them
- * back via {@link resolveTraceCorrelationFromEnv} so its inner model
- * prompts/responses land under the parent's trace.
+ * Shared trace-correlation header and identifier format for local spans, persisted
+ * trajectories, and gateway requests.
  */
 
 export interface TraceCorrelation {

@@ -6,7 +6,7 @@
 
 import { isPassiveConnectorSource } from "../connectors.ts";
 import { logger } from "../logger.ts";
-import type { MessageEventData } from "../types/agentEvent.ts";
+import type { MessageEventData } from "../types/agent-event.ts";
 import type {
 	ActionEventPayload,
 	EvaluatorEventPayload,
@@ -18,7 +18,7 @@ import type { JsonValue } from "../types/primitives.ts";
 import { ChannelType } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { ServiceType } from "../types/service.ts";
-import type { AgentEventService } from "./agentEvent.ts";
+import type { AgentEventService } from "./agent-event.ts";
 
 interface NotificationServiceLike {
 	notify: (input: NotificationInput) => Promise<unknown> | unknown;

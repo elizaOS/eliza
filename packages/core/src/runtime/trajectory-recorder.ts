@@ -25,9 +25,7 @@ export {
 	type RecordedStageKind,
 } from "./trajectory-stage-kind";
 
-// ---------------------------------------------------------------------------
 // Schema (mirrors PLAN.md §18.1)
-// ---------------------------------------------------------------------------
 
 export interface RecordedUsage {
 	promptTokens?: number;
@@ -67,11 +65,7 @@ export interface RecordedModelCall {
 	 * field so unknown spend cannot be mistaken for free inference.
 	 */
 	costUsd?: number;
-	/**
-	 * Snapshot identifier of the price table used to compute `costUsd`.
-	 * Closes M40 / W1-X1. Bumped whenever any rate in the canonical
-	 * pricing table at `features/trajectories/pricing.ts` changes.
-	 */
+	/** Price-table snapshot identifier used to compute costUsd. */
 	priceTableId?: string;
 	/** Provider order selected for the composeState call that fed this model input. */
 	providerOrder?: string[];
@@ -85,7 +79,7 @@ export interface RecordedModelCall {
 	providerAttributions?: TrajectoryProviderAttribution[];
 }
 
-/** Legacy marker retained so historical trajectory rows remain readable. */
+/** Loss marker in persisted trajectory rows. */
 export interface RecordedTruncationMarker {
 	field: "input" | "output" | "error" | "args" | "result";
 	originalBytes: number;
@@ -122,9 +116,7 @@ export interface RecordedToolStage {
 	 * for backwards compatibility with existing readers.
 	 */
 	errorText?: string;
-	/**
-	 * Legacy loss markers read from historical rows; new captures omit them.
-	 */
+	/** Loss markers in imported rows; captures preserve complete input. */
 	truncated?: RecordedTruncationMarker[];
 }
 
@@ -285,7 +277,7 @@ export interface RecordedTrajectory {
 	roomId?: string;
 	runId?: string;
 	scenarioId?: string;
-	// Correlation header (#13775) joining this file trajectory to the DB row and
+	// Correlation header joining this file trajectory to the DB row and
 	// any orchestrator task. `traceId` is minted at the root turn or inherited
 	// from a spawning parent; the rest are set when the recorder runs inside a
 	// sub-agent. Optional because pre-rollout trajectories carry none.
@@ -305,9 +297,7 @@ export interface RecordedTrajectory {
 	metrics: RecordedTrajectoryMetrics;
 }
 
-// ---------------------------------------------------------------------------
 // TrajectoryRecorder interface (PLAN.md §18.2)
-// ---------------------------------------------------------------------------
 
 export interface StartTrajectoryInput {
 	agentId: string;
@@ -319,7 +309,7 @@ export interface StartTrajectoryInput {
 	// group trajectories per scenario without inferring from filesystem layout.
 	runId?: string;
 	scenarioId?: string;
-	// Correlation header (#13775). `traceId` is passed from the root turn
+	// Correlation header. `traceId` is passed from the root turn
 	// (message.ts); when absent the recorder falls back to env, then mints one.
 	// The rest are inherited from a spawning parent's env when this recorder
 	// runs inside a sub-agent.
@@ -351,9 +341,7 @@ export interface TrajectoryRecorder {
 	list(opts?: ListTrajectoriesOptions): Promise<RecordedTrajectory[]>;
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 export interface RecorderLogger {
 	warn?: (context: unknown, message?: string) => void;
@@ -361,12 +349,7 @@ export interface RecorderLogger {
 	error?: (context: unknown, message?: string) => void;
 }
 
-/**
- * Whether the file recorder is enabled. Delegates to the single gate resolver
- * (trajectory-gate.ts) so the file recorder and the DB logger can no longer
- * disagree (#13775). Prod is now opt-in and test is off — the prior
- * always-on-unless-`=0` default is retired in favor of the SOC2 O-5 policy.
- */
+/** Uses the shared trajectory-persistence gate for file recording. */
 export function isTrajectoryRecordingEnabled(): boolean {
 	return resolveTrajectoryGate().enabled;
 }
@@ -544,11 +527,9 @@ export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
 	return out;
 }
 
-// ---------------------------------------------------------------------------
 // Skill invocation I/O capture (W1-T5 / M13)
 //
 // Mirrors `captureToolStageIO` at the skill (USE_SKILL) seam.
-// ---------------------------------------------------------------------------
 
 export interface SkillInvocationIOInput {
 	args?: unknown;
@@ -670,9 +651,7 @@ export function projectRecordedStageToolDiagnostics(
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Trajectory finalization guard
-// ---------------------------------------------------------------------------
 
 export interface FinalizeTrajectoryRecordingOptions {
 	recorder: TrajectoryRecorder;

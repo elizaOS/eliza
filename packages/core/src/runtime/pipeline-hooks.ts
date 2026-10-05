@@ -21,7 +21,7 @@ import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	isUnavailableLocalModel,
 	TEXT_GENERATION_MODEL_KEYS,
-} from "./model-dispatch/policy.js";
+} from "./model-policy.js";
 
 export function coerceOutgoingMessageText(text: unknown): string {
 	if (text === null || text === undefined) {
@@ -391,7 +391,7 @@ export class RuntimePipelineHooks {
 					);
 				}
 				// Mandatory outbound hygiene, hooks or none: strip leaked model
-				// machine syntax (#15888), redact secrets, then fail-closed block
+				// machine syntax, redact secrets, then fail-closed block
 				// any security-envelope echo. Runs before the content is
 				// persisted, so stored outbound memories carry the same text the
 				// connector delivers.

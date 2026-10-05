@@ -19,8 +19,8 @@ import { useCloudT as useT } from "../shell/CloudI18nProvider";
 import { ElizaAgentActions } from "./components/agent-actions";
 import { ElizaAgentPricingBanner } from "./components/eliza-agent-pricing-banner";
 import { ElizaAgentsTable } from "./components/eliza-agents-table";
-import { useCreditsBalance } from "./lib/data/credits";
-import { useAgents, usePersonalElizaIdentity } from "./lib/data/eliza-agents";
+import { useCreditsBalance } from "./lib/credits";
+import { useAgents, usePersonalElizaIdentity } from "./lib/eliza-agents";
 
 export default function AgentsPage() {
   const t = useT();

@@ -171,14 +171,7 @@ function readHttpStatus(node: object): number | undefined {
 	return undefined;
 }
 
-/**
- * HTTP status carried by a model/provider error, or undefined when the error
- * carries none. Mirrors the canonical structural signal in
- * `services/message/fallback-reply.ts`: the AI SDK records the upstream status
- * on `APICallError.statusCode` (a `RetryError` wraps it on `.lastError` /
- * `.errors` once retries exhaust); legacy OpenAI-style SDK errors expose
- * `.status`. Read the status, never scan the message text.
- */
+/** Reads provider HTTP status through cause and retry envelopes, accepting statusCode and status. Returns undefined when no status is present. */
 export function modelProviderErrorStatus(error: unknown): number | undefined {
 	for (const node of modelErrorChain(error)) {
 		const status = readHttpStatus(node);
@@ -341,12 +334,12 @@ export const PROVIDER_CONTEXT_OVERFLOW = "PROVIDER_CONTEXT_OVERFLOW";
 // Deliberately conservative — only clear length-rejection shapes, never
 // generic 400s, schema complaints, or rate limits:
 // - Cerebras/OpenAI-compat: "Please reduce the length of the messages or
-//   completion. Current length is 202427 while limit is 131072" (live
-//   incident, 2026-08 recap turn).
+// completion. Current length is 202427 while limit is 131072" (live
+// incident, 2026-08 recap turn).
 // - OpenAI: "This model's maximum context length is 128000 tokens..." and the
-//   structural `code: "context_length_exceeded"` echoed in the body text.
+// structural `code: "context_length_exceeded"` echoed in the body text.
 // - Anthropic: "prompt is too long: 210021 tokens > 204698 maximum" and
-//   "input length and `max_tokens` exceed context limit".
+// "input length and `max_tokens` exceed context limit".
 const PROVIDER_CONTEXT_OVERFLOW_PATTERNS: readonly RegExp[] = [
 	/reduce the length of the (?:messages|prompt|completion|input)/i,
 	/context_length_exceeded/i,

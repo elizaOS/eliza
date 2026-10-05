@@ -25,9 +25,8 @@ import {
   logger,
   MAX_CHAT_MEDIA_BASE64_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
+  resolveStateDir,
 } from "@elizaos/core";
-
-import { resolveStateDir } from "../config/paths.ts";
 import { isProtectedProfileSelected } from "../security/protected-profile-state.ts";
 import { generateThumbnailBytes } from "./media-thumbnail.ts";
 

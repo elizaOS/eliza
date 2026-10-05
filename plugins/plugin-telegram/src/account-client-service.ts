@@ -629,10 +629,16 @@ export class TelegramAccountService extends Service {
     message: Api.TypeMessage,
   ): Promise<Memory> {
     const deleted = message instanceof Api.MessageEmpty;
-    const senderId =
-      !deleted && message.fromId
-        ? getPeerId(message.fromId)
-        : `service:${peerId}`;
+    // Since layer 119 incoming private messages omit from_id; their sender can
+    // only be the peer. GramJS's Message resolves senderId the same way, but
+    // raw GetHistory rows skip that wrapper.
+    const sender = deleted
+      ? undefined
+      : (message.fromId ??
+        (!message.out && message.peerId instanceof Api.PeerUser
+          ? message.peerId
+          : undefined));
+    const senderId = sender ? getPeerId(sender) : `service:${peerId}`;
     return {
       id: createUniqueUuid(
         this.runtime,
@@ -640,11 +646,11 @@ export class TelegramAccountService extends Service {
       ),
       agentId: this.runtime.agentId,
       entityId:
-        !deleted && message.fromId instanceof Api.PeerUser
+        sender instanceof Api.PeerUser
           ? await resolveTelegramRuntimeEntityId(
               this.runtime,
               accountId,
-              message.fromId.userId.toString(),
+              sender.userId.toString(),
             )
           : createUniqueUuid(
               this.runtime,

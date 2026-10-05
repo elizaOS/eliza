@@ -796,8 +796,12 @@ describe("measured-control OCR recovery through the real CLI", () => {
     const rescued = run(row);
     expect(rescued.status).toBe(0);
     expect(rescued.report.entries[0].ocrVerdict).toBe("verified");
-    expect(rescued.report.entries[0].positiveSegments).toContain(
-      "Connect in Settings",
+    // OCR segmentation and whitespace vary by platform. Require the complete
+    // label inside one pixel-derived segment; never join separate controls.
+    expect(rescued.report.entries[0].positiveSegments).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/\bConnect\s+in\s+Settings\b/i),
+      ]),
     );
   });
 

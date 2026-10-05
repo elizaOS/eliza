@@ -727,12 +727,10 @@ export function collectPlannerTools(
       );
     definitions.set(action.name, action);
   }
-  const tierAParents = readTierAParentsFromContext(context);
   const wireActions = options.canonicalFamilies
     ? collectCanonicalPlannerActions(actions, options.directActionNames)
     : actions;
   const actionTools = buildPlannerToolsFromTieredActions(wireActions, {
-    tierAParents,
     expandSubActions: options.canonicalFamilies
       ? false
       : options.expandSubActions,
@@ -1207,31 +1205,6 @@ export function collectBudgetedStageOneCandidateActions(args: {
   return args.actions.filter((action) =>
     selectedNames.has(normalizeActionIdentifier(action.name)),
   );
-}
-
-/**
- * Read the historical tier-A metadata for telemetry compatibility. Tool
- * construction ignores it and expands every authorized parent and child.
- */
-export function readTierAParentsFromContext(
-  context: ContextObject,
-): Set<string> {
-  const surface = (context.metadata as { actionSurface?: unknown } | undefined)
-    ?.actionSurface;
-  if (!surface || typeof surface !== "object") {
-    return new Set<string>();
-  }
-  const tierAParents = (surface as { tierAParents?: unknown }).tierAParents;
-  if (!Array.isArray(tierAParents)) {
-    return new Set<string>();
-  }
-  const set = new Set<string>();
-  for (const value of tierAParents) {
-    if (typeof value === "string" && value.trim().length > 0) {
-      set.add(value);
-    }
-  }
-  return set;
 }
 
 /**

@@ -10,8 +10,10 @@ import { AgentRuntime } from "./runtime";
 import type { Character } from "./types/agent.js";
 import type { World } from "./types/environment.js";
 import type { UUID } from "./types/primitives.js";
-import { stringToUuid } from "./utils";
-import { stringToUuid as sqliteTestAgentId } from "./utils.js";
+import {
+	stringToUuid as sqliteTestAgentId,
+	stringToUuid,
+} from "./utils/string-to-uuid.js";
 
 describe("AgentRuntime.ensureWorldExists", () => {
 	it("rereads and merges after a concurrent creator wins the unique insert", async () => {

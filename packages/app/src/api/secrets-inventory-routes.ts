@@ -37,7 +37,6 @@
 
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
 import {
   listVaultInventory,
   profileStorageKey,
@@ -53,7 +52,7 @@ import {
   type VaultEntryProfile,
   writeRoutingConfig,
 } from "@elizaos/auth/vault";
-import { logger } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import { listConnectorSecretFindings } from "../services/connector-secret-inventory";
 import { sharedVault } from "../services/vault-mirror";
 import {

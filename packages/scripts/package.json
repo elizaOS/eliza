@@ -20,7 +20,8 @@
   "devDependencies": {
     "elizaos-benchmarks": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
-    "@elizaos/voice": "workspace:*"
+    "@elizaos/voice": "workspace:*",
+    "ts-morph": "28.0.0"
   },
   "scripts": {
     "test:real-llm:attachment": "node provider-smokes/real-llm-attachment-smoke.ts",

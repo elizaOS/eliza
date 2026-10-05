@@ -1,5 +1,5 @@
 /**
- * Storybook layouts for the Knowledge hub across full-page, modal, standalone,
+ * Storybook layouts for the Knowledge hub across full-page, modal,
  * external-file-input, and controlled-selection surfaces.
  */
 
@@ -48,16 +48,6 @@ export const Default: Story = {};
 export const InModal: Story = {
   args: {
     inModal: true,
-  },
-};
-
-/**
- * Standalone variant renders its own ViewHeader; the default (non-standalone)
- * mode is headerless, embedded under another view's chrome.
- */
-export const Standalone: Story = {
-  args: {
-    standalone: true,
   },
 };
 

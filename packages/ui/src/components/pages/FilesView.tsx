@@ -36,7 +36,7 @@ import {
   FramedPageBody,
   FramedPageHeader,
   FramedPageNavigation,
-} from "../../layouts/framed-page/framed-page";
+} from "../../layouts/framed-page";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { resolveAppAssetUrl } from "../../utils/asset-url";
@@ -531,9 +531,7 @@ function FilesViewBody() {
       data-testid="files-view"
       aria-busy={loading}
     >
-      <FramedPageHeader
-        title={t("filesview.title", { defaultValue: "Files" })}
-      />
+      <FramedPageHeader />
       {!loading && !restricted && files.length > 0 ? (
         <FramedPageNavigation className="flex items-center justify-between gap-3">
           <span className="text-sm text-muted">Show</span>

@@ -16,11 +16,8 @@ export const ROLE_RANK: Record<RoleName, number> = {
 };
 
 /**
- * True iff `role` ranks at least `minRole` on {@link CANONICAL_ROLE_RANK}. The
- * rank-aware replacement for the scattered `isAdminRank(role)`
- * string comparisons (#12087 Item 31) — those silently miss any tier added between
- * ADMIN and OWNER and don't recognize the MEMBER/USER aliasing. Unknown/empty roles
- * fall to the NONE floor (rank 0), so the predicate fails closed.
+ * Compares role ranks, including MEMBER/USER equivalence. Unknown or empty roles resolve to
+ * NONE.
  */
 export function hasAtLeastRole(
 	role: string | undefined | null,
@@ -33,7 +30,7 @@ export function hasAtLeastRole(
 	return rank >= CANONICAL_ROLE_RANK[minRole];
 }
 
-/** True iff `role` is ADMIN-rank or higher (ADMIN or OWNER). #12087 Item 31. */
+/** True iff `role` is ADMIN-rank or higher (ADMIN or OWNER).. */
 export function isAdminRank(role: string | undefined | null): boolean {
 	return hasAtLeastRole(role, "ADMIN");
 }
@@ -52,7 +49,7 @@ export interface RoleGate {
 	/** Caller must have at least this role by rank. */
 	minRole?: RoleGateRole;
 }
-// #9948: single source of truth for role ranking — delegates to CANONICAL_ROLE_RANK.
+//: single source of truth for role ranking — delegates to CANONICAL_ROLE_RANK.
 const GATE_ROLE_RANK: Record<string, number> = CANONICAL_ROLE_RANK;
 
 export function normalizeGateRole(role: RoleGateRole): RoleGateRole {

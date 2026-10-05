@@ -118,9 +118,7 @@ export function isSensitiveLogKey(key: string): boolean {
 	return false;
 }
 
-// ----------------------------------------------------------------------------
 // Credential-shape text scanning (string values, headlines, Error messages)
-// ----------------------------------------------------------------------------
 
 // RFC 9110 grammar fragments shared by all Authorization redaction.
 const HTTP_TOKEN_PATTERN = "[!#$%&'*+\\-.^_`|~0-9A-Za-z]+";
@@ -277,35 +275,7 @@ export function redactSensitiveLogText(text: string): string {
 	return next;
 }
 
-/**
- * Deep-clone a log argument, masking every value under a credential-named key
- * at any depth. The clone is what gets logged, so redaction never mutates the
- * caller's live objects (previously a shallow copy let the redactor overwrite
- * nested credentials in place, corrupting e.g. a provider config mid-use).
- * String values are pattern-scrubbed for credential shapes at every depth.
- * Function-valued properties are dropped from the clone: they are executable
- * serializer hooks (toJSON/valueOf/toString), and a copied hook re-runs when a
- * sink JSON-stringifies the clone, able to reconstitute the very secrets the
- * walk just masked — JSON.stringify drops function props anyway, so omission
- * matches serialization semantics. `seen` holds only the current ancestor
- * path, so a true cycle collapses to "[Circular]" while an object referenced
- * from two places is cloned at both; over-depth payloads and shared objects
- * beyond the re-expansion budget collapse to a marker instead. Buffer/TypedArray/DataView/
- * ArrayBuffer values collapse to a size-only marker — JSON would otherwise
- * serialize the raw bytes verbatim
- * (`{"type":"Buffer","data":[...]}`) under an innocent-looking key. Error
- * instances keep their name/message/stack shape (Adze renders
- * it) with message and stack scrubbed — thrown errors routinely interpolate
- * the offending secret — and their own enumerable properties (axios-style
- * `err.config.headers`) are walked and masked.
- *
- * Clone targets stay plain objects: `__proto__`
- * protection comes from defineSafeProperty (Object.defineProperty creates an
- * own data property without invoking the inherited setter), while a
- * null-prototype target throws on String()/template coercion ("Cannot convert
- * object to primitive value") and crashes any sink that coerces log args
- * (e.g. React DevTools' patched console methods during startup logging).
- */
+/** Clones and redacts log arguments without mutating live objects. Drops executable serialization hooks; masks binary values; scrubs Error details; and marks cycles, depth limits, and expansion limits. Plain clone targets use safe property definition to prevent __proto__ setters. */
 function createRedactClone(): Record<string, unknown> {
 	return {};
 }

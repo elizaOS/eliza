@@ -14,6 +14,7 @@
 import type http from "node:http";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
+  type ElizaConfig,
   isElizaSettingsDebugEnabled,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
@@ -22,8 +23,6 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/host/protocol";
-
-import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,

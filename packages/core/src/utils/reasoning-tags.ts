@@ -34,7 +34,7 @@ export interface TagMatch {
  *
  * The terminating `>` is located with `indexOf` instead of a `[^>]*>`
  * regex quantifier — a maintainer benchmarked the regex form going
- * quadratic on malformed residue (many `<tag ...` candidates with no
+ * quadratic on malformed residue (many `<tag...` candidates with no
  * reachable `>`: each one independently re-triggers the same
  * greedy-then-backtrack terminator search over the rest of the string).
  * If `indexOf` finds no `>` anywhere after this candidate's tag name, no
@@ -160,19 +160,8 @@ export function stripUnclosedTagSuffix(
 
 const REASONING_OPEN_PREFIX_SOURCE = `<\\s*(?:${REASONING_TAG_ALTERNATION})(?=[\\s/>])`;
 const REASONING_CLOSE_PREFIX_SOURCE = `<\\s*\\/\\s*(?:${REASONING_TAG_ALTERNATION})(?=[\\s>])`;
-// Deliberately non-global: `RegExp.prototype.test` on a global regex advances
-// and retains `lastIndex`, so identical input alternates true/false across
-// calls. Residue detection must be stateless — do not add the `g` flag here.
-//
-// Deliberately no `[^>]*>` / `\s*>` terminator requirement either: the gate
-// denies on the tag PREFIX alone (`<reasoning`, `</think`, ...), so a
-// malformed/unterminated tag is residue too. Requiring a terminator here was
-// the fail-open half of the same defect the DoS fix addresses on the
-// stripping paths — a tag missing its `>` used to sail through this gate as
-// "no residue found" while `[^>]*>` backtracked toward a timeout looking for
-// one. The prefix alone is sufficient evidence of markup residue and is
-// immune to the terminator-search backtrack entirely (no `[^>]*` / `\s*`
-// bridges a match to an ambiguous, possibly-absent terminator).
+// Keep residue detection stateless and match tag prefixes without requiring a terminator.
+// Malformed tags are residue too.
 const REASONING_TAG_PREFIX_TEST_RE = new RegExp(
 	`${REASONING_OPEN_PREFIX_SOURCE}|${REASONING_CLOSE_PREFIX_SOURCE}`,
 	"i",
@@ -205,9 +194,9 @@ export function stripReasoningPrefixes(text: string): string {
  *
  * - `userSafeFinalMessage` — the success leg (~15 call sites).
  * - `userSafeFailureReport` — the `evaluator.success === false` leg, which
- *   deliberately prefers the evaluator's diagnosis, so it is the input most
- *   likely to carry residue; it gates with `isUnsafeUserVisibleText` before
- *   any of its other screens.
+ * deliberately prefers the evaluator's diagnosis, so it is the input most
+ * likely to carry residue; it gates with `isUnsafeUserVisibleText` before
+ * any of its other screens.
  *
  * Parse strips, egress gates: a future third egress leg must call this gate
  * too — verifying only one of the legs above cannot reveal the other.

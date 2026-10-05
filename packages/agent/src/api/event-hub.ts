@@ -14,8 +14,7 @@
  * tracked socket on an interval and terminates the ones that did not answer,
  * which covers peers that stall without traffic.
  */
-import { logger } from "@elizaos/core";
-import type { StreamEventEnvelope } from "./server-types.ts";
+import { logger, type StreamEventEnvelope } from "@elizaos/core";
 
 export interface EventSocket {
   readonly readyState: number;

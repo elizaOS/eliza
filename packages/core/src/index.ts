@@ -2,11 +2,6 @@
 
 export * from "./access-context";
 export * from "./access-control/provenance-envelope";
-export {
-	hasAdminAccess,
-	hasOwnerAccess,
-	type SecurityDeps,
-} from "./access-control/role-access.ts";
 export * from "./actions";
 export {
 	bindTaskExtractionContext,
@@ -116,6 +111,7 @@ export {
 	type IntegrationTelemetrySpan,
 } from "./integration-observability.ts";
 export {
+	__loggerTestHooks,
 	addLogListener,
 	type ChatInLogParams,
 	type ChatOutLogParams,
@@ -136,16 +132,22 @@ export {
 	recentLogs,
 	removeLogListener,
 } from "./logger";
-export { __loggerTestHooks } from "./logger.js";
+
 // Shared media boundary: fetching, attachment decoding, MIME detection, and cache.
 export * from "./media/attachments.js";
 export * from "./media/fetch.js";
 export * from "./media/image-description-cache.js";
 export * from "./media/local-store.js";
 export * from "./media/mime.js";
-export * from "./media/mime-sniffer.js";
 export * from "./media/outbound.js";
-export * from "./messaging/interactions";
+export * from "./messaging/interaction-dashboard-markers";
+export * from "./messaging/interaction-host";
+export * from "./messaging/interaction-layout";
+export * from "./messaging/interaction-parse";
+export * from "./messaging/interaction-profile-catalog";
+export * from "./messaging/interaction-profiles";
+export * from "./messaging/interaction-serialize";
+export * from "./messaging/interaction-sessions";
 export * from "./messaging/manage-server-authorization";
 // Export network utilities (SSRF protection, secure fetch)
 export {
@@ -173,40 +175,41 @@ export {
 export {
 	_resetBuildVariantForTests,
 	BUILD_VARIANTS,
+	buildStoreVariantBlockedMessage,
 	DEFAULT_BUILD_VARIANT,
 	getBuildVariant,
 	getDirectDownloadUrl,
 	isDirectBuild,
+	isLocalCodeExecutionAllowed,
 	isStoreBuild,
 } from "./platform/build-variant.js";
 export {
 	nativeLibraryPolicyInternalsForTest,
 	resolveNativeLibraryCandidate,
 } from "./platform/native-library-policy.js";
-export {
-	buildStoreVariantBlockedMessage,
-	isLocalCodeExecutionAllowed,
-} from "./platform/sandbox-policy.js";
 export * from "./plugin";
 export * from "./protocol.js";
-// Export recent-errors provider (#12263)
-export * from "./providers/recent-errors";
 // Provisioning (migrations, agent/entity/room, embedding dimension) - node only
 export * from "./provisioning";
 export * from "./roles";
+
 export * from "./runtime";
-export { actionGateRejection } from "./runtime/action-gate";
 export {
 	actionGateFailure,
 	actionGateNeedsCallerRoles,
+	actionGateRejection,
 	canActionRun,
 	resolveActionCallerRoles,
 	resolveActionGateFailure,
-} from "./runtime/action-gate.ts";
+} from "./runtime/action-gate";
+
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
-export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
-export { resolveActionRolePolicyRole } from "./runtime/action-role-policy.ts";
+export {
+	resolveActionRolePolicyRole,
+	warnOnUnmatchedActionRolePolicyKeys,
+} from "./runtime/action-role-policy";
+
 export { runWithActionRoutingContext } from "./runtime/action-routing-context.ts";
 export {
 	COMPLETION_CONTEXT_SCHEMA,
@@ -234,6 +237,8 @@ export {
 	providerReviewSources,
 	withProviderReviewSchema,
 } from "./runtime/provider-context.ts";
+// Export recent-errors provider
+export * from "./runtime/recent-errors-provider";
 export * from "./runtime/response-grammar";
 export * from "./runtime/room-handler-queue";
 export * from "./runtime/trace-correlation";
@@ -376,14 +381,7 @@ export {
 	type ProcessingScope,
 } from "./security/processing-policy.js";
 export * from "./security/secret-swap";
-export {
-	parseSecretSwapExemptValues,
-	SECRET_SWAP_ENABLED_SETTING,
-	SECRET_SWAP_EXEMPT_VALUES_SETTING,
-	type SecretSwapEntry,
-	SecretSwapSession,
-	SecretSwapUnresolvedPlaceholderError,
-} from "./security/secret-swap.js";
+
 export {
 	attestAuthenticatedApiDeliveryAudience,
 	attestDeliveryAudienceFromCanonicalRoom,
@@ -421,8 +419,8 @@ export {
 	type EnsureAgentVoiceOptions,
 	ensureAgentVoice,
 } from "./security/voice-gate.ts";
+export * from "./services/agent-event";
 export * from "./services/agent-event-bridge";
-export * from "./services/agentEvent";
 export * from "./services/approval";
 export * from "./services/channel-topics";
 export { EmbeddingGenerationService } from "./services/embedding.ts";
@@ -474,24 +472,22 @@ export * from "./types/action-reply.js";
 export * from "./types/provider-integrations.js";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
-export { addHeader, parseKeyValueXml, parseToonKeyValue } from "./utils";
+
 export {
 	readJsonFile,
 	writeJsonAtomic,
 	writeJsonAtomicSync,
 } from "./utils/atomic-json.ts";
-export { BatchProcessor } from "./utils/batch-queue/batch-processor.js";
 export {
+	BatchProcessor,
 	BatchQueue,
 	type BatchQueueOptions,
 	type DrainStats,
-} from "./utils/batch-queue/index.js";
-export {
 	PriorityQueue,
 	type PriorityQueueOptions,
 	type PriorityQueueStats,
 	type QueuePriority,
-} from "./utils/batch-queue/priority-queue.js";
+} from "./utils/batch-queue.js";
 export * from "./utils/buffer";
 // Unified two-phase confirmation helper for destructive actions.
 export {
@@ -501,6 +497,29 @@ export {
 	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";
+export {
+	resolveActionContexts,
+	resolveProviderContexts,
+} from "./utils/context-catalog";
+export {
+	AVAILABLE_CONTEXTS_STATE_KEY,
+	attachAvailableContexts,
+	CONTEXT_ROUTING_METADATA_KEY,
+	CONTEXT_ROUTING_STATE_KEY,
+	type ContextRoutingDecision,
+	deriveAvailableContexts,
+	getActiveRoutingContexts,
+	getActiveRoutingContextsForTurn,
+	getContextRoutingFromMessage,
+	getContextRoutingFromState,
+	inferContextRoutingFromMessage,
+	inferContextRoutingFromText,
+	mergeContextRouting,
+	parseContextList,
+	parseContextRoutingMetadata,
+	setContextRoutingMetadata,
+	shouldIncludeByContext,
+} from "./utils/context-routing";
 export { createHash } from "./utils/crypto-compat.ts";
 export {
 	isEnvDisabled,
@@ -526,6 +545,14 @@ export {
 export * from "./utils/inference-priority-gate";
 export { getLogPrefix } from "./utils/log-prefix.js";
 export {
+	extractUserText,
+	getUserMessageText,
+	hasDocumentAugmentationEnvelope,
+	normalizeUserMessageText,
+	stripAugmentationForPersistence,
+} from "./utils/message-text";
+export { getLocalServerUrl } from "./utils/node";
+export {
 	getMacPermissionDeepLink,
 	openPermissionSettings,
 } from "./utils/permission-deep-links.js";
@@ -535,8 +562,15 @@ export * from "./utils/read-env";
 export * from "./utils/resolve-setting";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";
+export { stringToUuid } from "./utils/string-to-uuid.js";
+export {
+	isSyntheticConversationArtifactMemory,
+	isSyntheticConversationArtifactText,
+} from "./utils/synthetic-conversation-artifact";
+export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
 export {
 	isTtsDebugEnabled,
 	ttsDebug,
 	ttsDebugTextPreview,
 } from "./utils/tts-debug.js";
+export { validateUuid } from "./utils/uuid.js";

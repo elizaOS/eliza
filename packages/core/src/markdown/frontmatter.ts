@@ -1,10 +1,4 @@
-/**
- * Canonical bounded YAML-frontmatter parser for Markdown documents.
- *
- * It preserves the complete body, distinguishes absent from malformed input,
- * rejects NULs and excessive nesting before YAML traversal, and exposes legacy
- * string coercion only as an explicit adapter.
- */
+/** Parses bounded YAML frontmatter without losing document content. Rejects NULs and excessive nesting; string coercion is explicit. */
 import YAML from "yaml";
 
 export const DEFAULT_FRONTMATTER_MAX_DEPTH = 32;
@@ -124,7 +118,7 @@ export function parseFrontmatterDocument(
 	return { kind: "parsed", frontmatter: parsed, body, raw };
 }
 
-/** Legacy Markdown metadata representation with explicitly coerced values. */
+/** Markdown metadata with explicitly string-coerced values. */
 export type ParsedFrontmatter = Record<string, string>;
 
 function coerceFrontmatterValue(value: unknown): string | undefined {

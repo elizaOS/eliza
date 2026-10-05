@@ -18,7 +18,7 @@ import {
   BulkDeleteDialog,
   BulkSelectionBar,
   runBulkDelete,
-} from "../../../cloud-ui/components/bulk/bulk-select";
+} from "../../../cloud-ui/components/bulk-select";
 import { AppsListView } from "../../../cloud-ui/components/data-list/apps-list-view";
 import { copyTextToClipboard } from "../../../utils/clipboard";
 import { useCloudT } from "../../shell/CloudI18nProvider";

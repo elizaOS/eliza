@@ -109,7 +109,7 @@ function isUnreadableAttachmentDescription(value: string): boolean {
 	].includes(value.trim());
 }
 
-/** Exact text historically exposed by ATTACHMENT reads, without fallback prose. */
+/** Exact text exposed by ATTACHMENT reads, without fallback prose. */
 export function canonicalAttachmentText(attachment: Media): string {
 	return [attachment.text, attachment.description]
 		.filter(

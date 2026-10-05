@@ -145,6 +145,7 @@ const turbo = readJson(path.join(repoRoot, "turbo.json"));
 const tasks = turbo.tasks ?? {};
 
 const phantomTaskOverrides = [];
+const missingCacheOutputs = [];
 const phantoms = [];
 const undeclared = [];
 const redundant = [];
@@ -252,6 +253,15 @@ for (const [taskName, def] of Object.entries(tasks)) {
   if (separator !== -1) {
     const owner = taskName.slice(0, separator);
     const scriptName = taskName.slice(separator + 1);
+    if (
+      tasks[scriptName]?.outputs?.length > 0 &&
+      def.cache !== false &&
+      !Object.hasOwn(def, "outputs")
+    ) {
+      missingCacheOutputs.push(
+        `${taskName} must explicitly declare cache outputs; package overrides do not inherit the generic task's outputs`,
+      );
+    }
     const ownerDir = resolvePackageDir(owner);
     if (!ownerDir) {
       phantomTaskOverrides.push(
@@ -371,6 +381,11 @@ if (phantomTaskOverrides.length) {
   );
   process.exit(1);
 }
+if (missingCacheOutputs.length) {
+  for (const problem of missingCacheOutputs) console.error(`  ✗ ${problem}`);
+  process.exit(1);
+}
+console.log("[audit-turbo-build-deps] ✓ no implicit cache output omissions");
 console.log("[audit-turbo-build-deps] ✓ no phantom #build dependency edges");
 console.log("[audit-turbo-build-deps] ✓ no phantom pkg#task overrides");
 console.log("[audit-turbo-build-deps] ✓ no workspace package cycles");

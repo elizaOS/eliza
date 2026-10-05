@@ -44,11 +44,9 @@ vi.mock("../../shell/CloudI18nProvider", () => ({
     options?.defaultValue ?? key,
 }));
 
-vi.mock("../lib/clipboard", async () => {
+vi.mock("../clipboard", async () => {
   const actual =
-    await vi.importActual<typeof import("../lib/clipboard")>(
-      "../lib/clipboard",
-    );
+    await vi.importActual<typeof import("../clipboard")>("../clipboard");
   return {
     ...actual,
     copyTextToClipboard: copyMock,

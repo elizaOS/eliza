@@ -76,7 +76,7 @@ export interface ExecutePlannedToolCallContext {
 	responses?: Memory[];
 	/**
 	 * Explicit per-turn alias grants for redaction placeholders in tool args
-	 * (#20091). When absent, the executor mints the map itself via
+	 *. When absent, the executor mints the map itself via
 	 * `buildTurnEntityAliases` from the composed state, resolved roles, and
 	 * canonical owner context; supplying it lets a planner boundary pass a
 	 * pre-authorized capability map. Never sourced from ambient settings.
@@ -643,8 +643,8 @@ export async function executePlannedToolCall(
 		}
 	}
 
-	// Provider adapters own wire-format parsing. The executor accepts only the
-	// declared argument object; guessing legacy envelopes can change an effect.
+	// Provider adapters parse wire formats. Execution accepts only declared argument objects;
+	// guessing envelopes can change effects.
 	if (
 		"args" in toolCall ||
 		"arguments" in toolCall ||
@@ -664,7 +664,7 @@ export async function executePlannedToolCall(
 		toolCall.params ?? {},
 	);
 	// Prompt-side redaction placeholders (matrix F16) resolve ONLY through the
-	// per-turn alias capability map (#20091): aliases the composed state proves
+	// per-turn alias capability map: aliases the composed state proves
 	// redaction emitted, on an owner-authorized turn, with values derived from
 	// canonical owner resolution — never an ambient getSetting keyed by
 	// model-authored text. Recorded tool calls keep the placeholder; this
@@ -905,7 +905,7 @@ export async function executePlannedToolCall(
 							if (currentGateFailure)
 								return failureResult(action.name, currentGateFailure);
 							options.abortSignal?.throwIfAborted();
-							// Egress (#10469): this is the true execution boundary. Restore real
+							// Egress: this is the true execution boundary. Restore real
 							// secrets into the handler args ONLY here — the model, transcripts, logs,
 							// and trajectory upstream kept the placeholders. Fail loud if the model
 							// emitted a this-turn placeholder we cannot resolve, so a placeholder is
@@ -922,7 +922,7 @@ export async function executePlannedToolCall(
 									{ failOnUnresolved: true },
 								);
 							}
-							// Egress (#10469 / #7007): restore real named-entity PII here too —
+							// Egress: restore real named-entity PII here too —
 							// including the REPLY action's own text, so the tool call runs against the
 							// real recipient and the user sees their real contacts, while the model,
 							// trajectory, and logs kept the surrogates. Best-effort (no failOnUnresolved):

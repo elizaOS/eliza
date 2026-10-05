@@ -79,7 +79,7 @@ import {
 import { ApiError, api } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { useAdminGate } from "./data/use-admin-gate";
+import { useAdminGate } from "./use-admin-gate";
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message;

@@ -1,21 +1,6 @@
 /**
- * The trajectory subsystem's canonical type system: the rich in-memory shapes a
- * recorded agent episode is captured in and the derived shapes it is exported
- * or persisted as.
- *
- * `Trajectory` is the top-level episode — an ordered list of `TrajectoryStep`s,
- * each pairing an `EnvironmentState` observation with the agent's cognition
- * (`LLMCall[]`, `ProviderAccess[]`) and the `ActionAttempt` it took, plus reward
- * signals. `TrajectoryRecord` is the flattened database row (JSON columns +
- * indexed scalars) that `TrajectoriesService` reads and writes. `ARTTrajectory`
- * / `ChatMessage` / `TrajectoryGroup` / `TrainingBatch` are the RL-training
- * (RULER/OpenPipe ART) projection produced by `art-format`, and the
- * `Reward*`/`ContextObjectTrajectoryExport` types describe the AI-judge scoring
- * request/response and the v5 context-object export envelope.
- *
- * These interfaces are the shared vocabulary across the whole feature (service,
- * exporters, read routes, rewards); widen additively so on-disk rows and the
- * viewer wire shapes stay backward-compatible.
+ * Shared trajectory, persisted-record, training-export, and reward contracts. Missing usage
+ * remains distinguishable from measured zero.
  */
 
 import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provider-attribution.ts";
@@ -102,7 +87,7 @@ export interface LLMCall {
 	/**
 	 * Hidden reasoning tokens reported inside the completion budget by
 	 * reasoning models (Cerebras zai-glm-4.7, OpenAI o-series, gpt-oss).
-	 * Surfaced so a tail-latency burst is attributable per call (#16394).
+	 * Surfaced so a tail-latency burst is attributable per call.
 	 * Missing stays missing — never zero — so an unattributed burst is
 	 * distinguishable from a confirmed-none call.
 	 */
@@ -221,11 +206,11 @@ export interface TrajectoryStep {
 	reasoning?: string;
 
 	// Action taken. Optional: Agent-bridge LLM-only captures have no action and
-	// must not fabricate one (#17730 / #17762). ART and other readers must guard.
+	// must not fabricate one. ART and other readers must guard.
 	action?: ActionAttempt;
 
 	// Stage-1/planner/tool/evaluation decision envelopes mirrored from the
-	// per-turn runtime recorder (#17030). Bounded and pre-validated by the
+	// per-turn runtime recorder. Bounded and pre-validated by the
 	// shared semantic-stage module; absent on rows written before the fan-out.
 	semanticStages?: TrajectorySemanticStageRecord[];
 

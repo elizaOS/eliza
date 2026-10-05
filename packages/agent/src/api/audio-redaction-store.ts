@@ -28,9 +28,8 @@ import {
   ElizaError,
   logger,
   type RedactionVerifyResult,
+  resolveStateDir,
 } from "@elizaos/core";
-
-import { resolveStateDir } from "../config/paths.ts";
 import {
   type AudioRedactionMode,
   redactAudioBytes,

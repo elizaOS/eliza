@@ -17,7 +17,7 @@ vi.doMock("../hooks/useAuth.js", () => ({
   }),
 }));
 
-vi.doMock("../hooks/useLogin.js", () => ({
+vi.doMock("../provider.js", () => ({
   useLogin: () => ({
     client: {
       listUserAccounts: async () => ({

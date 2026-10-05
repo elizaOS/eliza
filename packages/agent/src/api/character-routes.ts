@@ -66,9 +66,7 @@ interface AgentConfigLike {
   postExamples?: string[];
 }
 
-import type { AutonomousConfigLike } from "../types/config-like.ts";
-
-export interface CharacterAutonomousConfigLike extends AutonomousConfigLike {
+export interface CharacterAutonomousConfigLike extends Record<string, unknown> {
   agents?: {
     list?: AgentConfigLike[];
   };

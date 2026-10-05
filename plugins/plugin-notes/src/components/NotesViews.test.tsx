@@ -117,11 +117,11 @@ afterEach(() => {
 });
 
 describe("Notes state labels", () => {
-  it("keeps standalone Notes accessible without a repeated title or launcher button", () => {
+  it("keeps Notes accessible without a repeated title or launcher button", () => {
     const notesSnapshot = snapshot(4);
     notesSnapshot.notes = [stickyNote()];
     stateHook.mockReturnValue(hookState({ snapshot: notesSnapshot }));
-    const notes = render(<NotesView standalone />);
+    const notes = render(<NotesView />);
     expect(
       screen.getByRole("main", {
         name: "Notes. 1 note.",

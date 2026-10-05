@@ -41,7 +41,7 @@ import { useAppSelectorShallow } from "../../state/app-store";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { emitViewEvent } from "../../views/view-event-bus";
-import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
+import { MessageSearchPanel } from "../chat/MessageSearchPanel";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
 import { getChatMessageAnchorId } from "../composites/chat/chat-message";
 import { ChatSourceIcon } from "../composites/chat/chat-source";

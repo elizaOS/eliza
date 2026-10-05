@@ -15,7 +15,7 @@ import {
 import { logger } from "@elizaos/core";
 import { readRequestBody } from "@elizaos/host";
 
-import type { ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import {
   type AgentBackupV2CaptureComponentSource,
   AgentBackupV2CaptureError,

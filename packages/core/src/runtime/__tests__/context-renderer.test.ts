@@ -371,7 +371,7 @@ describe("context renderer", () => {
 
 	it("does not emit synthetic tool-text segments alongside native tools", () => {
 		// Native tools are sent on the wire, so `renderPrefixTool` must not also
-		// emit a `tool: NAME\ndescription: ...` text segment in the system
+		// emit a `tool: NAME\ndescription:...` text segment in the system
 		// prompt: a text duplicate inflates prompt tokens and gives the model two
 		// representations of the same surface to reconcile.
 		const context: ContextObject = {

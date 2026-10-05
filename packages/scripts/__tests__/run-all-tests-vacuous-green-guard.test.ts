@@ -656,3 +656,79 @@ describe("run-all-tests no-test-skip failure-swallow guard (#13620)", () => {
     SPAWN_TIMEOUT_MS,
   );
 });
+
+for (const mode of ["pass", "skip", "fail"] as const) {
+  test(
+    `compound Vitest scripts reconcile separate runs (${mode})`,
+    () => {
+      const fixture = join(
+        repoRoot,
+        "packages",
+        `__compound_evidence_${process.pid}_${mode}`,
+      );
+      const packageName = `@elizaos/compound-evidence-${process.pid}-${mode}`;
+      mkdirSync(fixture, { recursive: true });
+      try {
+        writeFileSync(
+          join(fixture, "package.json"),
+          JSON.stringify({
+            name: packageName,
+            private: true,
+            type: "module",
+            scripts: {
+              test: "bun run test:first && bun run test:second",
+              "test:first":
+                "node ../scripts/run-vitest.ts run --config first.config.ts",
+              "test:second":
+                "node ../scripts/run-vitest.ts run --config second.config.ts",
+            },
+          }),
+        );
+        for (const name of ["first", "second"]) {
+          writeFileSync(
+            join(fixture, `${name}.config.ts`),
+            `
+          import { compoundVitestEvidence } from '../scripts/lib/compound-test-evidence.ts';
+          export default { test: { ...compoundVitestEvidence(), include: ['${name}.test.ts'] } };
+        `,
+          );
+          writeFileSync(
+            join(fixture, `${name}.test.ts`),
+            `
+          import { test, expect } from 'vitest';
+          test${mode === "skip" ? ".skip" : ""}('${name}', () => {
+            expect(process.env.ELIZA_TEST_EVIDENCE_DIR).toBeUndefined();
+            expect(process.env.ELIZA_TEST_EVIDENCE_CWD).toBeUndefined();
+            expect(1).toBe(${mode === "fail" && name === "second" ? 2 : 1});
+          });
+        `,
+          );
+        }
+        const result = run([
+          "--no-cloud",
+          "--only=test",
+          `--filter=${packageName} `,
+          "--require-work",
+        ]);
+        // Match the package name within the root runner's complete task label.
+        if (result.stdout.includes("lane matched 0 runnable tasks"))
+          throw new Error(result.stdout);
+        expect(result.status).toBe(
+          mode === "pass" ? 0 : mode === "skip" ? 3 : 1,
+        );
+        const records = result.stdout
+          .split("\n")
+          .filter((line) => line.startsWith("[eliza-test] RESULT "))
+          .map((line) => JSON.parse(line.slice("[eliza-test] RESULT ".length)));
+        expect(records).toHaveLength(1);
+        expect(records[0].observed).toBe(true);
+        expect(records[0].counts.tests).toBe(2);
+        expect(records[0].counts.executed).toBe(mode === "skip" ? 0 : 2);
+        if (mode === "fail") expect(records[0].counts.failures).toBe(1);
+      } finally {
+        rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+}

@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
 import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
 import { discoverScriptTestLanes } from "./scripts/lib/script-test-lanes.ts";
 
@@ -25,6 +26,7 @@ const reactDomPkg = path.dirname(_require.resolve("react-dom/package.json"));
  */
 export default defineConfig({
   test: {
+    ...compoundVitestEvidence(),
     include: [
       "src/connectors/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/config/**/*.{test,spec}.?(c|m)[jt]s?(x)",

@@ -1,18 +1,5 @@
 /** Verifies TasksPageView through the package's configured test harness. */
 // @vitest-environment jsdom
-//
-// Structural tests for the consolidated Projects surface (#13565 views-redesign
-// epic, #17031 My Apps consolidation): the Projects nav tab hosts the
-// coding-agent tasks panel AND the app inventory behind one segmented control
-// under the shared, uniform `ViewHeader`. We assert (a) the shell `ViewHeader`
-// renders with the centered "Projects" title and its icon-only back button,
-// (b) the tasks panel is mounted in `fullPage` mode so it suppresses its own
-// internal title row, (c) the Apps segment renders the reused app-management
-// surface plus the cloud-gated Cloud Applications studio row, and (d) retired
-// My Apps deep links pre-select the Apps segment. The panel + shell surface are
-// mocked to isolate the host's composition from the panel's data behavior; the
-// app catalog client is mocked to empty so renders are deterministic.
-
 import {
   act,
   cleanup,
@@ -185,4 +172,21 @@ describe("TasksPageView", () => {
     expect(initialProjectsSegmentForPath("/")).toBe("tasks");
     expect(initialProjectsSegmentForPath("")).toBe("tasks");
   });
+});
+
+const slots = await vi.importActual<
+  typeof import("../../slots/task-coordinator-slots.js")
+>("../../slots/task-coordinator-slots.js");
+
+it("mounts the task panel when its plugin registers after the page", () => {
+  render(<slots.CodingAgentTasksPanel fullPage />);
+  expect(screen.queryByText("Registered tasks")).toBeNull();
+  act(() =>
+    slots.registerTaskCoordinatorSlots({
+      CodingAgentTasksPanel: ({ fullPage }) => (
+        <div>{fullPage ? "Registered tasks" : "Embedded tasks"}</div>
+      ),
+    }),
+  );
+  expect(screen.getByText("Registered tasks")).toBeTruthy();
 });

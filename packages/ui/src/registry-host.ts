@@ -1,25 +1,9 @@
-/**
- * UI registry host — the pluggable store backing module-scope UI registries
- * (overlay apps, app-shell pages, settings sections). Registries call
- * `getUiRegistryStore(key, create)` to obtain a stable per-key store; hosts can
- * swap the backing implementation (SSR isolation, test reset) via
- * `provideUiRegistryHost`.
- *
- * Lives in `@elizaos/ui/registry-host` so both the React `@elizaos/ui` package and Node
- * code (app registration surfaces) reference one canonical store singleton
- * without loading React or the UI barrel.
- */
+/** Shared registry storage with host-provided isolation. */
 export interface UiRegistryHost {
   getStore<T>(key: string, create: () => T): T;
 }
 
-// The store map lives on globalThis, not module scope: production chunk
-// graphs can evaluate more than one copy of this module (an app entry graph
-// and a lazily-imported plugin register chunk each bundling @elizaos/ui/registry-host),
-// and a module-scope map would give each copy its own "singleton" — plugin
-// registrations would land in a dead registry the shell never reads. Keying
-// off globalThis makes every copy converge on one store set, which is the
-// registries' intent (they are process-global).
+// Lazy chunks can evaluate multiple module copies; they must share registrations.
 const GLOBAL_STORES_KEY = "__ELIZA_UI_REGISTRY_STORES__";
 
 function globalStores(): Map<string, unknown> {

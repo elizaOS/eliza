@@ -12,6 +12,7 @@ import {
   readDeviceLease,
 } from "./device-lease.ts";
 import { runIsolatedAndroidTest } from "./isolated-android-test.mjs";
+import { runIsolatedAndroidUserTest } from "./isolated-android-user-test.mjs";
 
 function fixture(t, mode = "") {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "isolated-android-"));
@@ -40,6 +41,10 @@ if(args.includes('get-current-user'))console.log(state.foreground||0);
 if(args.includes('create-user')){state.userExists=true;fs.writeFileSync(file,JSON.stringify(state));console.log('Success: created user id 10');}
 if(args.includes('switch-user')){state.foreground=Number(args.at(-1));fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('get-started-user-state'))console.log('RUNNING_UNLOCKED');
+if(args.includes('set-home-activity'))console.log('Success');
+if(args.includes('is-user-stopped'))console.log('true');
+if(args.slice(0,4).join(' ')==='shell pm list users')console.log('UserInfo{0:Owner:13}'+(state.userExists?' UserInfo{10:Fixture:10}':''));
+if(args.slice(0,4).join(' ')==='shell dumpsys activity activities')console.log('topResumedActivity=ActivityRecord u'+(state.foreground||0)+' org.stock.home/.Home');
 if(args.includes('remove-user')){state.userExists=false;fs.writeFileSync(file,JSON.stringify(state));console.log('Success');}
 
 if(args[0]==='emu')console.log('owned-test-fixture\\nOK');
@@ -48,7 +53,7 @@ if(args.includes('ro.product.cpu.abi'))console.log('x86_64');
 if(args.includes('getenforce'))console.log(mode==='permissive'?'Permissive':'Enforcing');
 if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;if(state.reads===2)state.packages.push('org.example.consumer');fs.writeFileSync(file,JSON.stringify(state));}
 if(args.includes('packages'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
-if(args.includes('resolve-activity'))console.log(state.home);
+if(args.includes('resolve-activity'))console.log(args.includes('-p')?'org.stock.home/.Home':state.home);
 if(args[0]==='install'){const id=args.at(-1).includes('companion.apk')?'org.example.companion':args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages=[...new Set([...state.packages,id])];(state.files??={})[id]=file+'.'+id+'.apk';fs.copyFileSync(args.at(-1),state.files[id]);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);console.log('Success');}
 if(args.slice(0,3).join(' ')==='shell pm path')console.log('package:/data/'+args.at(-1)+'.apk');
 if(args[0]==='pull'){const id=args[1].slice('/data/'.length,-4);fs.copyFileSync(state.files[id],args[2]);}
@@ -83,6 +88,7 @@ if(args.includes('instrument')){
 const args=process.argv.slice(2);const wrong=${JSON.stringify(mode === "wrong-apk")}||(${JSON.stringify(mode === "wrong-upgrade")}&&args[2].includes('candidate'));
 if(args[1]==='badging')console.log("package: name='"+(wrong?'org.unrelated.app':args[2].includes('companion.apk')?'org.example.companion':args[2].includes('test.apk')?'org.example.consumer.test':'org.example.consumer')+"'");
 else console.log('E: manifest\\n  E: instrumentation\\n    A: android:name="androidx.test.runner.AndroidJUnitRunner"\\n    A: android:targetPackage="${mode === "wrong-target" ? "org.unrelated.app" : "org.example.consumer"}"');
+if(args[1]!=='badging'&&(${JSON.stringify(mode.startsWith("extra-runner"))}||(${JSON.stringify(mode === "upgrade-extra-runner")}&&args[2].includes('candidate'))))console.log('  E: instrumentation\\n    A: android:name="org.example.consumer.ProcessRunner"\\n    A: android:targetPackage="${mode === "extra-runner-wrong-target" ? "org.unrelated.app" : "org.example.consumer"}"');
 `.replaceAll("org.example.consumer", fixturePackage),
     { mode: 0o700 },
   );
@@ -958,4 +964,329 @@ test("packages appearing during scenario admission remain unowned", async (t) =>
   assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, [
     f.options.packageName,
   ]);
+});
+
+test("explicit additional runner is admitted without selecting it for execution", async (t) => {
+  const f = fixture(t, "extra-runner");
+  const report = await runIsolatedAndroidTest({
+    ...f.options,
+    additionalInstrumentationRunners: [
+      `${f.options.packageName}.ProcessRunner`,
+    ],
+  });
+  assert.equal(report.cleaned, true);
+  const calls = f.commands().filter((c) => c.includes("instrument"));
+  assert.equal(calls.length, 2);
+  assert.ok(
+    calls.every((c) =>
+      c.at(-1).endsWith("/androidx.test.runner.AndroidJUnitRunner"),
+    ),
+  );
+});
+for (const mode of ["extra-runner", "extra-runner-wrong-target"])
+  test(`${mode} requires exact declaration admission before installation`, async (t) => {
+    const f = fixture(t, mode);
+    await assert.rejects(
+      runIsolatedAndroidTest({
+        ...f.options,
+        ...(mode.endsWith("wrong-target")
+          ? {
+              additionalInstrumentationRunners: [
+                `${f.options.packageName}.ProcessRunner`,
+              ],
+            }
+          : {}),
+      }),
+    );
+    assert.ok(!f.commands().some((c) => c[0] === "install"));
+  });
+for (const extras of [
+  ["androidx.test.runner.AndroidJUnitRunner"],
+  ["invalid"],
+  "not-an-array",
+])
+  test(`invalid additional runner list ${JSON.stringify(extras)} is rejected`, async (t) => {
+    const f = fixture(t);
+    await assert.rejects(
+      runIsolatedAndroidTest({
+        ...f.options,
+        additionalInstrumentationRunners: extras,
+      }),
+    );
+    assert.equal(f.commands().length, 0);
+  });
+
+test("declared additional runner must actually appear in the APK", async (t) => {
+  const f = fixture(t);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      additionalInstrumentationRunners: [
+        `${f.options.packageName}.ProcessRunner`,
+      ],
+    }),
+  );
+  assert.ok(!f.commands().some((c) => c[0] === "install"));
+});
+
+for (const baselineOverride of [false, true])
+  test(`upgrade admits separate exact runner declarations, baseline override=${baselineOverride}`, async (t) => {
+    const f = upgradeFixture(t, "upgrade-extra-runner");
+    const extra = [`${f.options.packageName}.ProcessRunner`];
+    if (baselineOverride) {
+      f.options.additionalInstrumentationRunners = extra;
+      f.options.variants[0].additionalInstrumentationRunners = [];
+    } else
+      f.options.variants[0].upgrade.additionalInstrumentationRunners = extra;
+    const report = await runIsolatedAndroidTest(f.options);
+    assert.equal(report.cleaned, true);
+    const calls = f.commands().filter((c) => c.includes("instrument"));
+    assert.equal(calls.length, 2);
+    assert.ok(
+      calls.every((c) =>
+        c.at(-1).endsWith("/androidx.test.runner.AndroidJUnitRunner"),
+      ),
+    );
+  });
+
+test("an undeclared upgrade runner rejects both APK pairs before installation", async (t) => {
+  const f = upgradeFixture(t, "upgrade-extra-runner");
+  await assert.rejects(
+    runIsolatedAndroidTest(f.options),
+    /Instrumentation target or runner mismatch/,
+  );
+  assert.ok(!f.commands().some((c) => c[0] === "install"));
+});
+
+for (const target of ["baseline", "upgrade"])
+  for (const extras of [
+    null,
+    "invalid",
+    ["invalid"],
+    ["androidx.test.runner.AndroidJUnitRunner"],
+  ])
+    test(`invalid ${target} runner declaration ${JSON.stringify(extras)} cannot touch the device`, async (t) => {
+      const f = upgradeFixture(t);
+      const artifact =
+        target === "upgrade"
+          ? f.options.variants[0].upgrade
+          : f.options.variants[0];
+      artifact.additionalInstrumentationRunners = extras;
+      await assert.rejects(runIsolatedAndroidTest(f.options));
+      assert.equal(f.commands().length, 0);
+    });
+
+test("scenario phases retain exact instrumentation evidence and run cleanup after failure", async (t) => {
+  const f = fixture(t);
+  f.options.variants = f.options.variants.slice(0, 1);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      collectVariant: async ({ instrumentPhase }) => {
+        assert.equal(
+          (await instrumentPhase("restore", ["-e", "phase", "restore"]))
+            .totalTests,
+          1,
+        );
+        throw new Error("product PID check failed");
+      },
+      cleanupVariant: async ({ instrumentPhase }) => {
+        await instrumentPhase("cleanup", ["-e", "phase", "cleanup"]);
+      },
+    }),
+    /product PID check failed/,
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.deepEqual(
+    report.variants[0].phases.map((p) => [p.name, p.passed]),
+    [
+      ["restore", true],
+      ["cleanup", true],
+    ],
+  );
+  assert.equal(report.cleaned, true);
+  assert.equal(f.commands().filter((a) => a.includes("instrument")).length, 3);
+});
+
+for (const [name, args, message] of [
+  ["../escape", [], /match/],
+  ["override", ["-e", "class", "org.example.Other"], /selection/],
+  ["unsafe", ["-e", "phase", "a b"], /shell-safe/],
+])
+  test(`phase rejects ${name} before executing instrumentation`, async (t) => {
+    const f = fixture(t);
+    await assert.rejects(
+      runIsolatedAndroidTest({
+        ...f.options,
+        collectVariant: ({ instrumentPhase }) => instrumentPhase(name, args),
+      }),
+      message,
+    );
+    assert.equal(
+      f.commands().filter((a) => a.includes("instrument")).length,
+      1,
+    );
+    assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+  });
+
+test("phase refuses duplicate log names and calls after package cleanup", async (t) => {
+  const f = fixture(t);
+  f.options.variants = f.options.variants.slice(0, 1);
+  let phase;
+  await runIsolatedAndroidTest({
+    ...f.options,
+    collectVariant: async ({ instrumentPhase }) => {
+      phase = instrumentPhase;
+      await phase("restore");
+      await assert.rejects(phase("restore"), /Duplicate/);
+    },
+  });
+  await assert.rejects(phase("late"), /owned packages/);
+  assert.equal(f.commands().filter((a) => a.includes("instrument")).length, 2);
+});
+
+test("phase authenticates installed bytes again before invocation", async (t) => {
+  const f = fixture(t);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      collectVariant: async ({ instrumentPhase }) => {
+        const state = JSON.parse(fs.readFileSync(f.state));
+        fs.appendFileSync(state.files["org.example.consumer"], "changed");
+        await instrumentPhase("restore");
+      },
+    }),
+    /Installed APK changed/,
+  );
+  assert.equal(f.commands().filter((a) => a.includes("instrument")).length, 1);
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.variants[0].phases[0].passed, false);
+  assert.equal(report.cleanupDeferred, true);
+});
+
+test("cancelled campaign permits its bounded cleanup instrumentation phase", async (t) => {
+  const f = fixture(t);
+  const cancellation = new AbortController();
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      signal: cancellation.signal,
+      collectVariant: () => cancellation.abort(),
+      cleanupVariant: async ({ instrumentPhase }) => instrumentPhase("cleanup"),
+    }),
+    /abort/i,
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.variants[0].phases[0].passed, true);
+  assert.equal(report.cleaned, true);
+});
+
+test("phase closes after deferred cleanup even when APKs remain installed", async (t) => {
+  const f = fixture(t, "stop-failure-test");
+  let phase;
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      collectVariant: ({ instrumentPhase }) => {
+        phase = instrumentPhase;
+        throw new Error("scenario failed");
+      },
+    }),
+    /scenario failed/,
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.cleanupDeferred, true);
+  assert.equal(JSON.parse(fs.readFileSync(f.state)).packages.length, 2);
+  const commands = f.commands().length;
+  await assert.rejects(phase("late"), /active variant/);
+  assert.equal(f.commands().length, commands);
+});
+
+function userOptions(f) {
+  const { androidUser, ...options } = f.options;
+  return {
+    ...options,
+    homePackage: "org.stock.home",
+    userName: "owned-test",
+    commandTimeoutMs: 10000,
+    cleanupTimeoutMs: 10000,
+  };
+}
+
+test("composed user test holds one lease through package cleanup and owner restoration", async (t) => {
+  const f = fixture(t);
+  const report = await runIsolatedAndroidUserTest(userOptions(f));
+  assert.equal(report.passed, true);
+  assert.equal(report.userLifecycle.removed, true);
+  assert.equal(report.userLifecycle.ownerRestored, true);
+  assert.equal(report.androidUser, 10);
+  const calls = f.commands();
+  assert.ok(
+    calls
+      .filter((c) => c[0] === "install")
+      .every((c) => c[c.indexOf("--user") + 1] === "10"),
+  );
+  assert.ok(
+    calls.findIndex((c) => c.includes("remove-user")) >
+      calls.findLastIndex((c) => c[0] === "uninstall"),
+  );
+  assert.equal(
+    readDeviceLease(`android:${f.options.serial}`, {
+      stateDir: deviceLeaseStateDir(f.options.env),
+    }),
+    null,
+  );
+});
+
+for (const mode of ["partial", "cleanup-failure", "wrong-apk"])
+  test(`composed user test preserves failure and requires cleanup proof: ${mode}`, async (t) => {
+    const f = fixture(t, mode);
+    await assert.rejects(runIsolatedAndroidUserTest(userOptions(f)));
+    const report = JSON.parse(
+      fs.readFileSync(path.join(f.options.directory, "user-verification.json")),
+    );
+    assert.equal(report.passed, false);
+    assert.equal(report.userLifecycle.ownerRestored, true);
+    assert.equal(report.userLifecycle.removed, mode === "partial");
+    assert.equal(report.userLifecycle.cleanupDeferred, mode !== "partial");
+    assert.ok(report.error);
+  });
+
+test("composed user test rejects existing evidence and packages before creating a user", async (t) => {
+  const f = fixture(t, "existing");
+  await assert.rejects(
+    runIsolatedAndroidUserTest(userOptions(f)),
+    /Existing package/,
+  );
+  assert.ok(!f.commands().some((c) => c.includes("create-user")));
+  const before = f.commands().length;
+  await assert.rejects(runIsolatedAndroidUserTest(userOptions(f)), /EEXIST/);
+  assert.equal(f.commands().length, before);
+});
+
+test("composed user test cleans packages and restores owner after cancellation", async (t) => {
+  const f = fixture(t),
+    controller = new AbortController();
+  await assert.rejects(
+    runIsolatedAndroidUserTest({
+      ...userOptions(f),
+      signal: controller.signal,
+      prepareVariant: () => controller.abort(),
+    }),
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "user-verification.json")),
+  );
+  assert.equal(report.passed, false);
+  assert.equal(report.userLifecycle.removed, true);
+  assert.equal(report.userLifecycle.ownerRestored, true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
 });

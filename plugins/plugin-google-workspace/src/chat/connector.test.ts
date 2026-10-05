@@ -352,6 +352,28 @@ describe("Google Chat message connector", () => {
     );
   });
 
+  it("lists spaces from every spaces.list page", async () => {
+    const urls: string[] = [];
+    const service = serviceWithFetch(async (input) => {
+      const url = new URL(String(input));
+      urls.push(url.toString());
+      return url.searchParams.get("pageToken") === "page-2"
+        ? Response.json({ spaces: [{ name: "spaces/BBB", displayName: "Second" }] })
+        : Response.json({
+            spaces: [{ name: "spaces/AAA", displayName: "First" }],
+            nextPageToken: "page-2",
+          });
+    });
+
+    const spaces = await service.getSpaces("workspace");
+
+    expect(spaces.map((space) => space.name)).toEqual(["spaces/AAA", "spaces/BBB"]);
+    expect(urls).toEqual([
+      "https://chat.googleapis.com/v1/spaces",
+      "https://chat.googleapis.com/v1/spaces?pageToken=page-2",
+    ]);
+  });
+
   it("sends long text chunks in order with thread metadata and one attachment", async () => {
     const requests: Array<Record<string, unknown>> = [];
     const service = serviceWithFetch(async (_input, init) => {

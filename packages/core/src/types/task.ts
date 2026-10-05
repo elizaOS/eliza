@@ -184,12 +184,12 @@ export interface TaskRunStatus {
  * What kind of user response a {@link PendingUserAction} is waiting on. Drives
  * how the canonical "needs your response" surface routes the user back to the
  * handler:
- *  - `approval`   — a yes/no or pick-an-option decision (ApprovalService task).
- *  - `prompt`     — a free-text answer the agent asked for.
- *  - `credential` — a secret/OAuth/QR the agent needs (the credential bridge).
- *  - `clarifying` — a disambiguation question (which X did you mean?).
+ * - `approval` — a yes/no or pick-an-option decision (ApprovalService task).
+ * - `prompt` — a free-text answer the agent asked for.
+ * - `credential` — a secret/OAuth/QR the agent needs (the credential bridge).
+ * - `clarifying` — a disambiguation question (which X did you mean?).
  *
- * This pass (#9449 PILLAR C) wires only the `approval` path end-to-end; the
+ * This pass wires only the `approval` path end-to-end; the
  * other kinds are part of the type so the prompt/credential/clarifying stores
  * can be folded into the same surface later without a contract change.
  */
@@ -213,7 +213,7 @@ export interface PendingUserActionOption {
 
 /**
  * A single action that is blocked waiting on the user — the canonical transport
- * DTO behind the one "needs your response" surface (#9449 PILLAR C).
+ * DTO behind the one "needs your response" surface.
  *
  * It is a read-model projection (computed in the route/use-case, rendered by
  * the client) over whatever store actually holds the pending request — for the

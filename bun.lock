@@ -1283,6 +1283,7 @@
         "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/voice": "workspace:*",
         "elizaos-benchmarks": "workspace:*",
+        "ts-morph": "28.0.0",
       },
     },
     "packages/testing": {

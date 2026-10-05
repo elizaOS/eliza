@@ -20,6 +20,7 @@ import {
   shortIdPluginMap,
 } from "@elizaos/core";
 import {
+  type ElizaConfig,
   getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
@@ -33,8 +34,6 @@ import {
   resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
 } from "@elizaos/host/protocol";
-
-import type { ElizaConfig } from "../config/config.ts";
 import {
   applyDevCloudConfigAuthority,
   createDevCloudConfigAuthorityView,

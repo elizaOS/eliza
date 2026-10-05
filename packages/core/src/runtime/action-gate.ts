@@ -68,15 +68,15 @@ export interface ActionGateRejection {
 
 /**
  * The single role/context/policy gate deciding whether `action` may run for
- * `ctx` (#12087 Item 9). Composes, in order:
+ * `ctx`. Composes, in order:
  *
- *   1. the private-action gate (unless `skipPrivateGate`),
- *   2. the non-overridable destination disclosure gate,
- *   3. the operator `ACTION_ROLE_POLICY` override — when set for this action it
- *      **replaces** the declared gates and access is decided solely by the
- *      policy role,
- *   4. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
- *   5. the top-level roleGate.
+ * 1. the private-action gate (unless `skipPrivateGate`),
+ * 2. the non-overridable destination disclosure gate,
+ * 3. the operator `ACTION_ROLE_POLICY` override — when set for this action it
+ * **replaces** the declared gates and access is decided solely by the
+ * policy role,
+ * 4. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
+ * 5. the top-level roleGate.
  *
  * Returns a human-readable failure reason, or `undefined` when the action is
  * allowed. Every exposure and execution path — planner selection, sub-planner

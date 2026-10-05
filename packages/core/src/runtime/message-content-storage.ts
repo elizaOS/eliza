@@ -123,7 +123,7 @@ export async function persistIncomingMessageMemory(
 			existing.entityId !== memory.entityId
 		)
 			throw conflict();
-		// Legacy createMemory redacts text; native publication also redacts attachment text.
+		// createMemory redacts body text; native publication also redacts attachment text.
 		const textRedacted = {
 			...memory.content,
 			...(typeof memory.content.text === "string"

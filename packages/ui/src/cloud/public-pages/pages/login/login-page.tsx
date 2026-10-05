@@ -23,7 +23,7 @@ import {
   hasCloudAuthCompleted,
   isCloudAuthHandoffSurface,
   subscribeCloudAuthComplete,
-} from "../../../auth/cloud-auth-complete-signal";
+} from "../../../cloud-auth-complete-signal";
 import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";

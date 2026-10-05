@@ -20,18 +20,24 @@ import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { ElizaError, formatError, logger, type Plugin } from "@elizaos/core";
 import {
+  ElizaError,
+  formatError,
+  logger,
+  type Plugin,
+  resolveStateDir,
+  resolveUserPath,
+} from "@elizaos/core";
+import {
+  type ElizaConfig,
   isMobilePlatform,
   type PluginInstallRecord,
 } from "@elizaos/host/protocol";
-
-import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudConfigAuthorityView,
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
-import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 import {
   type AppManifestBlock,
   applyAppManifestDefaults,

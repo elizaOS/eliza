@@ -8,7 +8,6 @@ import {
   isApiError,
   PagePanel,
   useAgentElement,
-  ViewHeader,
 } from "@elizaos/ui";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { type CSSProperties, useEffect } from "react";
@@ -447,8 +446,6 @@ export interface NotesSurfaceProps {
   loading: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
-  /** Render the shared route header. Every caller must declare its chrome context. */
-  standalone: boolean;
 }
 
 export function NotesSurface({
@@ -456,7 +453,6 @@ export function NotesSurface({
   loading,
   error,
   refresh,
-  standalone,
   sourceNoteTarget,
 }: NotesSurfaceProps) {
   const notes = snapshot?.notes ?? [];
@@ -475,7 +471,6 @@ export function NotesSurface({
       data-testid="simple-notes-view"
       className="relative flex-col overflow-hidden text-txt"
     >
-      {standalone ? <ViewHeader title="Notes" /> : null}
       <PagePanel.ContentArea data-testid="simple-notes-scroll-region">
         <PagePanel.ContentRail
           width="wide"

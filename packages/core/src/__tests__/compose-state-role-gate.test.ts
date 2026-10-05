@@ -16,7 +16,7 @@ import type { Provider } from "../types/components.js";
 import type { Memory } from "../types/memory.js";
 import type { UUID } from "../types/primitives.js";
 import { ChannelType } from "../types/primitives.js";
-import { stringToUuid as sqliteTestAgentId } from "../utils.js";
+import { stringToUuid as sqliteTestAgentId } from "../utils/string-to-uuid.js";
 import { createInitializedRuntime } from "./initialized-runtime";
 
 const WORLD_ID = "11111111-1111-1111-1111-111111111110" as UUID;

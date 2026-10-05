@@ -37,6 +37,7 @@ export async function runIsolatedAndroidTest({
   packageName,
   testPackage = `${packageName}.test`,
   runner = "androidx.test.runner.AndroidJUnitRunner",
+  additionalInstrumentationRunners = [],
   testClass,
   testClasses,
   testMethod,
@@ -63,6 +64,26 @@ export async function runIsolatedAndroidTest({
   cleanupVariant,
 }) {
   assert.match(serial ?? "", /^emulator-\d+$/);
+  const runnerEvidenceFor = (additionalRunners) => {
+    assert.ok(
+      Array.isArray(additionalRunners),
+      "Explicit additional runner list required",
+    );
+    const admittedRunners = [runner, ...additionalRunners];
+    assert.equal(
+      new Set(admittedRunners).size,
+      admittedRunners.length,
+      "Duplicate instrumentation runner",
+    );
+    for (const name of admittedRunners)
+      assert.match(name ?? "", packagePattern);
+    return admittedRunners
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ name, targetPackage: packageName }));
+  };
+  const defaultRunnerEvidence = runnerEvidenceFor(
+    additionalInstrumentationRunners,
+  );
   assert.ok(
     testClasses === undefined || testClass === undefined,
     "Choose testClass or testClasses",
@@ -114,6 +135,23 @@ export async function runIsolatedAndroidTest({
     );
   signal?.throwIfAborted();
   assert.ok(Array.isArray(variants) && variants.length > 0);
+  // Freeze each artifact's exact declaration set before any asynchronous device work.
+  // Historical instrumentation can differ from its replacement without widening either set.
+  const artifactRunnerEvidence = new Map();
+  for (const variant of variants) {
+    for (const artifacts of [
+      variant,
+      ...(variant.upgrade ? [variant.upgrade] : []),
+    ]) {
+      artifactRunnerEvidence.set(
+        artifacts,
+        artifacts.additionalInstrumentationRunners === undefined
+          ? defaultRunnerEvidence
+          : runnerEvidenceFor(artifacts.additionalInstrumentationRunners),
+      );
+    }
+  }
+
   assert.ok(
     path.isAbsolute(directory),
     "Explicit absolute report directory required",
@@ -249,8 +287,8 @@ export async function runIsolatedAndroidTest({
             signal,
             timeout: commandTimeoutMs,
           }),
-        ),
-        [{ name: runner, targetPackage: packageName }],
+        ).sort((a, b) => a.name.localeCompare(b.name)),
+        artifactRunnerEvidence.get(artifacts),
         "Instrumentation target or runner mismatch",
       );
     }
@@ -357,6 +395,7 @@ export async function runIsolatedAndroidTest({
     variants: [],
   };
   let admitted = false,
+    campaignFinished = false,
     previousHome,
     failure,
     activeContext,
@@ -496,8 +535,6 @@ export async function runIsolatedAndroidTest({
       for (const item of companions)
         await install(item.apk, item.packageName, item.sha256);
       signal?.throwIfAborted();
-      await prepareVariant?.(context);
-      signal?.throwIfAborted();
       const instrument = async (args, label) => {
         for (const [name, expected] of owned)
           assert.equal(
@@ -554,6 +591,35 @@ export async function runIsolatedAndroidTest({
           );
         return instrumentation;
       };
+      const phaseNames = new Set();
+      context.instrumentPhase = async (name, args = []) => {
+        assert.match(name, /^[A-Za-z][A-Za-z0-9_-]*$/);
+        assert.ok(!phaseNames.has(name), "Duplicate instrumentation phase");
+        validateRunnerArgs(args);
+        const copiedArgs = [...args];
+        assert.ok(
+          !campaignFinished &&
+            record === report.variants.at(-1) &&
+            !record.passed &&
+            owned.has(packageName) &&
+            owned.has(testPackage),
+          "Instrumentation requires both owned packages in the active variant",
+        );
+        phaseNames.add(name);
+        const phase = { name, passed: false };
+        record.phases ??= [];
+        record.phases.push(phase);
+        try {
+          phase.instrumentation = await instrument(copiedArgs, `phase-${name}`);
+          phase.passed = true;
+          return phase.instrumentation;
+        } catch (error) {
+          phase.error = error.message;
+          throw error;
+        }
+      };
+      await prepareVariant?.(context);
+      signal?.throwIfAborted();
       record.instrumentation = await instrument(
         runnerArgs,
         variant.upgrade ? "baseline" : "",
@@ -583,6 +649,10 @@ export async function runIsolatedAndroidTest({
       await collectVariant?.(context);
       signal?.throwIfAborted();
       await restoreScenario();
+      assert.ok(
+        record.phases?.every((phase) => phase.passed) ?? true,
+        "Instrumentation phase failed",
+      );
       record.finalInstalledHashes = {};
       for (const name of owned.keys()) {
         const hash = await installedHash(name);
@@ -676,6 +746,8 @@ export async function runIsolatedAndroidTest({
           );
       }
     } finally {
+      // Revoke saved phase callbacks even when cleanup retains the installed APKs.
+      campaignFinished = true;
       if (!deviceLease) lease.release();
     }
   }

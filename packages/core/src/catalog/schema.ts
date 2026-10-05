@@ -1,30 +1,11 @@
-/**
- * Registry source-of-truth Zod schemas and inferred types for apps, plugins,
- * and connectors — config fields, render hints, per-account auth, the
- * discriminated `registryEntrySchema` union, and the runtime overlay/view.
- *
- * Replaces the fragmented surface of:
- *   - plugins.json (97 entries, 5 categories)
- *   - PluginInfo (api/client-types-config.ts)
- *   - ConfigUiHint (types/index.ts)
- *   - RegistryAppInfo (shared/contracts/apps.ts)
- *   - VISIBLE_CONNECTOR_IDS / DEFAULT_ICONS / FEATURE_SUBGROUP / SUBGROUP_DISPLAY_ORDER
- *     (components/pages/plugin-list-utils.ts)
- *   - paramsToSchema() heuristics (PORT/TIMEOUT/MODEL guessing)
- *
- * Static registry only. Runtime overlay (enabled, configured, isActive,
- * validationErrors) lives in RegistryRuntimeOverlay and is merged at API read
- * time — never in the registry files themselves.
- */
+/** Zod schemas and inferred types for first-party apps, plugins, connectors, account authentication, and runtime catalog views. */
 
 import * as zod from "zod";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
-// ---------------------------------------------------------------------------
 // Config field schema — replaces PluginParamDef + ConfigUiHint.
 // One field, one place. UI hints are co-located with type info.
-// ---------------------------------------------------------------------------
 
 const configFieldType = z.enum([
 	"string",
@@ -94,20 +75,18 @@ export const configFieldSchema = z.object({
 
 export type ConfigField = zod.infer<typeof configFieldSchema>;
 
-// ---------------------------------------------------------------------------
 // Render hints — replaces VISIBLE_CONNECTOR_IDS / DEFAULT_ICONS /
 // FEATURE_SUBGROUP / SUBGROUP_DISPLAY_ORDER.
 //
 // Surface mapping is implicit:
-//   kind: "connector" → ConnectorsView (primary)
-//   kind: "app"       → AppsView       (primary)
-//   kind: "plugin"    → PluginsView    (primary)
+// kind: "connector" → ConnectorsView (primary)
+// kind: "app" → AppsView (primary)
+// kind: "plugin" → PluginsView (primary)
 // Every entry shows in its primary surface unless `visible: false`.
 //
 // Use `pinTo` to ALSO surface an item somewhere it wouldn't appear by default
 // (e.g. promoting an app into the chat quick-launcher). Opt-in only — keeps
 // the common case zero-config.
-// ---------------------------------------------------------------------------
 
 const renderActionSchema = z.enum([
 	"enable",
@@ -148,9 +127,7 @@ export const renderSchema = z.object({
 export type RenderHints = zod.infer<typeof renderSchema>;
 export type SecondarySurface = zod.infer<typeof secondarySurfaceSchema>;
 
-// ---------------------------------------------------------------------------
 // External resources (already in plugins.json today).
-// ---------------------------------------------------------------------------
 
 export const resourcesSchema = z.object({
 	homepage: z.string().url().optional(),
@@ -160,9 +137,7 @@ export const resourcesSchema = z.object({
 
 export type Resources = zod.infer<typeof resourcesSchema>;
 
-// ---------------------------------------------------------------------------
 // App-only: launch + viewer + session (mirrors RegistryAppInfo).
-// ---------------------------------------------------------------------------
 
 const appViewerSchema = z.object({
 	url: z.string(),
@@ -259,9 +234,7 @@ export const appLaunchSchema = z.object({
 
 export type AppLaunch = zod.infer<typeof appLaunchSchema>;
 
-// ---------------------------------------------------------------------------
 // Common fields shared by every entry.
-// ---------------------------------------------------------------------------
 
 const commonFields = {
 	id: z
@@ -305,9 +278,7 @@ const commonFields = {
 		.optional(),
 } as const;
 
-// ---------------------------------------------------------------------------
 // Discriminated union — three kinds, each with their own constraints.
-// ---------------------------------------------------------------------------
 
 const pluginSubtype = z.enum([
 	"ai-provider",
@@ -348,7 +319,6 @@ export const pluginEntrySchema = z.object({
 	defaultTextToSpeech: z.boolean().optional(),
 });
 
-// ---------------------------------------------------------------------------
 // Per-account auth config. Connectors can declare an OWNER side (the user's
 // own platform account — e.g. user's Gmail, user's Discord) and/or an AGENT
 // side (a separate identity the agent operates — e.g. a bot Gmail, a Discord
@@ -356,7 +326,6 @@ export const pluginEntrySchema = z.object({
 //
 // Purely additive over `auth`. When a manifest only declares `auth`, the
 // loader auto-maps it to `accounts.agent` (see loader.ts:normalizeConnectorAuth).
-// ---------------------------------------------------------------------------
 
 const accountAuthKind = z.enum([
 	"oauth-cloud", // "Log in with X" routed through Eliza Cloud
@@ -422,9 +391,7 @@ export type AppEntry = zod.infer<typeof appEntrySchema>;
 export type RegistryEntry = zod.infer<typeof registryEntrySchema>;
 export type RegistryKind = RegistryEntry["kind"];
 
-// ---------------------------------------------------------------------------
 // Runtime overlay — never in registry files. Merged at API read time.
-// ---------------------------------------------------------------------------
 
 export const registryRuntimeOverlaySchema = z.object({
 	id: z.string(),
@@ -446,8 +413,6 @@ export type RegistryRuntimeOverlay = zod.infer<
 	typeof registryRuntimeOverlaySchema
 >;
 
-// ---------------------------------------------------------------------------
 // Combined view — what the API hands to the UI.
-// ---------------------------------------------------------------------------
 
 export type RegistryView = RegistryEntry & RegistryRuntimeOverlay;

@@ -1,45 +1,4 @@
-/**
- * Shared outbound text sanitizer: strips model reasoning/thinking tags
- * (`<thinking>`, `<reasoning>`, …), end-of-turn sentinels (`<|im_end|>`,
- * `<STOP/>`, …), and native model tool-call syntax (`<tool_call>`,
- * `<function_call>`) from agent-generated text before it leaves the runtime
- * toward any connector, while preserving fenced code blocks and inline code
- * spans.
- *
- * A model that drifts out of the eliza response grammar mid-turn emits its
- * native machine syntax as visible prose (observed live on a cerebras
- * zai-glm-4.7 planner turn: "…Let me try the weather action.<tool_call>
- * get_weather" delivered verbatim — #15812). Sanitizing per-connector left
- * every surface except Discord exposed, so the sanitizer lives at the shared
- * post-model, pre-channel boundaries instead (#15888): the per-turn visible
- * callback wrap in `services/message.ts`, the mandatory
- * `outgoing_before_deliver` pipeline phase, and `sendMessageToTarget` — every
- * text connector receives sanitized prose without carrying its own copy.
- *
- * The behavior is the Discord sanitizer's, moved verbatim except for four
- * deliberate deltas fixed at the promotion moment (each carried the same bug
- * byte-for-byte in the original, and each is covered by a dedicated test):
- *   1. the quick pre-filter recognizes `eot_id`, so a lone `<|eot_id|>` /
- *      `<eot_id>` sentinel no longer bypasses sanitization;
- *   2. code-block restoration uses a function replacement, so `$$`/`$&`-style
- *      replacement patterns inside saved code are restored literally instead
- *      of being interpreted (the original corrupted `kill -9 $$` and could
- *      leak a raw sentinel via `$&`);
- *   3. the cosmetic `\n{3,}` collapse runs BEFORE code blocks are restored,
- *      so intentional blank-line spacing inside fences survives;
- *   4. inline single/multi-backtick code spans are protected like fences, so
- *      a coding answer such as "the `<tool_call>` tag …" is no longer
- *      truncated at the span.
- * Known pass-through shared with the original and left as-is: `<|im_start|>`
- * framing tokens are not stripped.
- *
- * This is a delivery-boundary catch-all, distinct from the model-output parse
- * helpers (`stripReasoningBlocks` in `./fallback-reply.ts`,
- * `stripReasoningArtifacts` in `../../runtime/planner-loop.ts`) that clean
- * specific model calls. Structured planner tool calls are never routed through
- * here — the planner consumes `GenerateTextResult.toolCalls` directly, so
- * sanitizing delivered prose cannot delete a valid machine action.
- */
+/** Sanitizes reasoning tags, end-of-turn sentinels, and model tool syntax at text-delivery boundaries. Fenced and inline code retain literal bytes and spacing. Structured tool calls are handled separately; im_start framing passes through. */
 import {
 	REASONING_TAG_NAMES,
 	stripPairedTagBlocks,

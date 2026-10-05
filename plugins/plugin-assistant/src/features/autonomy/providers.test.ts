@@ -2,12 +2,13 @@
  * Deterministic unit coverage for the autonomy context providers. The tests
  * drive each provider's real `get` implementation with typed runtime and
  * service stand-ins, covering room/service gates, history rendering, status
- * states, interval bounds, and explicit unavailable results without a model or
- * database.
+ * states, interval bounds, and explicit unavailable results without a model.
+ * One case reads admin history back from an in-memory SQLite store.
  */
 
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, test, vi } from "vitest";
 import { adminChatProvider, autonomyStatusProvider } from "./providers.ts";
@@ -156,7 +157,7 @@ describe("adminChatProvider", () => {
         orderBy: "createdAt",
         orderDirection: "desc",
         unique: false,
-        tableName: "memories",
+        tableName: "messages",
       });
       expect(getMemories).toHaveBeenCalledTimes(1);
     },
@@ -232,7 +233,7 @@ describe("adminChatProvider", () => {
       orderBy: "createdAt",
       orderDirection: "desc",
       unique: false,
-      tableName: "memories",
+      tableName: "messages",
     });
     for (let index = 1; index <= 5; index += 1) {
       expect(result.text).not.toContain(`Admin: admin message ${index}\n`);
@@ -286,6 +287,36 @@ describe("adminChatProvider", () => {
         excludeRoomIds: [ROOM_ID],
       }),
     );
+  });
+
+  test("reads admin turns from the stored messages table", async () => {
+    const adapter = SQLiteDatabaseAdapter.create(":memory:", AGENT_ID);
+    await adapter.createRoomParticipants([ADMIN_ID, AGENT_ID], ADMIN_ROOM_ID);
+    await adapter.createMemories([
+      {
+        memory: historyMemory(ADMIN_ID, "ship the release notes", 1_000),
+        tableName: "messages",
+      },
+      {
+        memory: historyMemory(AGENT_ID, "drafting them now", 2_000),
+        tableName: "messages",
+      },
+      {
+        memory: historyMemory(AGENT_ID, "autonomous thought", 3_000, ROOM_ID),
+        tableName: "memories",
+      },
+    ]);
+    const runtime = runtimeWithService(autonomyService(), {
+      getSetting: () => ADMIN_USER_ID,
+      getMemories: (params) => adapter.getMemories(params),
+    });
+
+    const result = await adminChatProvider.get(runtime, message());
+
+    expect(result.text).toContain("Admin: ship the release notes");
+    expect(result.text).toContain("Agent: drafting them now");
+    expect(result.text).not.toContain("autonomous thought");
+    expect(result.values).toMatchObject({ adminHistoryCount: 2 });
   });
 
   test("marks old history inactive and renders an empty last admin message as N/A", async () => {

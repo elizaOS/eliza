@@ -1,22 +1,7 @@
 /**
- * Connector-account service: the runtime-side registry and policy engine for
- * external-account connectors (chat/social/OAuth providers). The
- * `ConnectorAccountManager` Service holds registered `ConnectorAccountProvider`s,
- * brokers their OAuth start/complete flows, and persists accounts + flow state
- * through a `ConnectorAccountStorage` backend — the in-memory fallback, or the
- * `DatabaseConnectorAccountStorage` bridge when a compatible database adapter is
- * installed on the runtime.
- *
- * `evaluateConnectorAccountPolicies` gates actions that carry a
- * `connectorAccountPolicy`: an action runs only when a stored or
- * provider-listed account satisfies the required status, role, purpose, and
- * access-gate. Role strings collapse to the canonical OWNER / AGENT / TEAM
- * triad (`types/connector-account-policy`); privacy levels live alongside in
- * `privacy.ts`.
- *
- * OAuth PKCE code verifiers are never persisted — they are held in a
- * process-local map and referenced by an opaque `codeVerifierRef` written to
- * flow metadata, so stored rows never carry the raw secret.
+ * Registers connector account providers, brokers OAuth flows, and persists account/flow
+ * state. Backend selection and fallback-to-durable handoff are serialized; credentials
+ * remain bound to their originating flow.
  */
 import { compareMemoryIds } from "../database";
 import { ElizaError } from "../errors";
@@ -1273,7 +1258,7 @@ export class ConnectorAccountManager extends Service {
 	/**
 	 * Serializes the full backend-selection + operation-invocation sequence so
 	 * that concurrent facade calls cannot interleave across the fallback→durable
-	 * transition (#18110). Without this, a write queued on the fallback backend
+	 * transition. Without this, a write queued on the fallback backend
 	 * can land after a concurrent read has already selected the durable backend,
 	 * stranding the write in a soon-to-be-cleared fallback.
 	 */
@@ -1414,7 +1399,7 @@ export class ConnectorAccountManager extends Service {
 	private createStorageFacade(): ConnectorAccountStorage {
 		/**
 		 * Run a storage operation through the serialized operation queue so that
-		 * backend resolution + invocation are atomic (#18110). Each operation
+		 * backend resolution + invocation are atomic. Each operation
 		 * resolves its backend and executes the call within the same queue
 		 * boundary — no concurrent operation can interleave between selection
 		 * and invocation.

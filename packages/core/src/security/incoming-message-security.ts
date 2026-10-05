@@ -65,7 +65,7 @@ export type IncomingMessageSecurityMetadata = {
 const AUTONOMY_INTERNAL_SOURCE = "autonomy-service";
 
 /**
- * #12087 Item 7: `content.metadata.isAutonomous` is a runtime-internal marker
+ *: `content.metadata.isAutonomous` is a runtime-internal marker
  * that unlocks private (autonomy-only) actions via the private-action gate. Only
  * the autonomy service should set it, on messages sourced `AUTONOMY_INTERNAL_SOURCE`.
  * A connector that forwards client-supplied `content.metadata` would otherwise let
@@ -194,7 +194,7 @@ function stripForgedSecurityStamps(message: Memory): void {
 export function hardenIncomingUserMessage(message: Memory): void {
 	// Runs before the empty-text guard: an external message must never keep a
 	// forged autonomy marker or forged security stamps regardless of its text
-	// (#12087 Item 7).
+	//.
 	stripUntrustedAutonomyMarker(message);
 	stripForgedSecurityStamps(message);
 
@@ -248,20 +248,7 @@ export function scrubIncomingMessageTextForStorage(text: string): string {
 		.replaceAll("[redacted credential]", "***");
 }
 
-/**
- * Shared resolution: the retained `metadata.userPayloadText` stamp (the
- * trusted copy taken before wrapping). The inbound hook may promote a
- * connector's raw `content.currentMessageText` into that stamp only after
- * binding it to the rendered text; connector-only callers get the same bound
- * fallback before the hook runs. Otherwise, ONLY when the
- * `externalContentWrapped` stamp attests the envelope came from this module, a
- * marker parse of `content.text` (legacy messages persisted before the
- * retained field existed); otherwise the raw text. Unstamped marker-shaped
- * text is never parsed — the stamp is the authenticity proof, and extracting a
- * "payload" from an unauthenticated envelope would let injected marker text
- * place attacker-chosen words (e.g. a "yes" for a destructive confirm) where
- * consumers read the user's words.
- */
+/** Reads the authenticated user-payload stamp, then a connector payload bound to rendered text. Marker extraction requires this module’s externalContentWrapped stamp; untrusted marker-shaped text never establishes payload authority. */
 function resolveRetainedCandidate(message: Memory): string {
 	const text =
 		typeof message.content?.text === "string" ? message.content.text : "";

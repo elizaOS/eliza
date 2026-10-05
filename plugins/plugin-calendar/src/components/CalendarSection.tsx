@@ -534,7 +534,7 @@ function TimedEventButton({
         onSelectEvent(event);
       }}
       aria-pressed={isSelected}
-      className="group absolute overflow-hidden"
+      className="group absolute flex-col items-start justify-start gap-0 overflow-hidden text-left"
       layoutStyle={{
         top: `calc(${position.topPct}% + 0.1rem)`,
         height: `calc(${position.heightPct}% - 0.2rem)`,
@@ -549,10 +549,10 @@ function TimedEventButton({
       }}
       {...eventControl.agentProps}
     >
-      <div className="truncate text-[11px] font-semibold leading-tight">
+      <div className="w-full min-w-0 truncate text-[11px] font-semibold leading-tight">
         {event.title}
       </div>
-      <div className="mt-0.5 truncate text-[10px] leading-tight opacity-90">
+      <div className="mt-0.5 w-full min-w-0 truncate text-[10px] leading-tight opacity-90">
         <span>{formatTimeOfDay(event.startAt)}</span>
         {event.location ? (
           <>

@@ -575,6 +575,7 @@ describe("ChatOverlay first-run gating", () => {
   it("renders the established greeting and sign-in bubbles if onboarding opens before the conductor seeds messages", () => {
     vi.useFakeTimers();
     seedAppStoreWithActionSpy();
+    setViewChatBinding({ placeholder: "Search plugins…", onQuery: vi.fn() });
     try {
       render(<ChatOverlay controller={makeController()} firstRunOpen />);
 

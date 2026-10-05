@@ -8,8 +8,13 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
+import {
+  logger,
+  type PluginParamDef,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.ts";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
 import {
@@ -88,15 +93,7 @@ function findPluginsManifestRoot(startDir: string): string {
   return manifestRoot ?? findOwnPackageRoot(startDir);
 }
 
-export type {
-  AgentLogEntry as LogEntry,
-  AgentStreamEventType as StreamEventType,
-  SkillEntry,
-  StreamEventEnvelope,
-} from "@elizaos/core";
-export type { PluginEntry, PluginParamDef } from "./server-types.ts";
-
-import type { PluginEntry, PluginParamDef } from "./server-types.ts";
+import type { PluginEntry } from "./server-types.ts";
 
 export function getReleaseBundledPluginIds(): Set<string> {
   const packageRoot = findOwnPackageRoot(import.meta.dirname);

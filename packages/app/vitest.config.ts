@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import baseConfig from "../../packages/scripts/vitest/default.config";
+import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -107,6 +108,7 @@ export default defineConfig({
   },
   test: {
     ...baseConfig.test,
+    ...compoundVitestEvidence(),
     environment: "jsdom",
     setupFiles: [path.join(here, "test/setup.ts")],
     include: [

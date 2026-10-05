@@ -4,7 +4,6 @@
  * survives interruption before file and backup cleanup. Shared records are retained.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
 import {
   purgeAdmittedRetiredLocalAgentBackups,
   type RetiredLocalAgentBackup,
@@ -16,6 +15,7 @@ import {
   ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
+  resolveStateDir,
   ServiceType,
 } from "@elizaos/core";
 import { z } from "zod";

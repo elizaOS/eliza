@@ -16,15 +16,15 @@ import {
 import { createCharacter } from "../character.ts";
 import { ElizaError } from "../errors.js";
 import { AgentRuntime } from "../runtime.ts";
-import type { AgentEventPayload } from "../types/agentEvent.ts";
+import type { AgentEventPayload } from "../types/agent-event.ts";
 import {
 	type AgentNotification,
 	NOTIFICATION_STREAM,
 } from "../types/notification.ts";
 import type { Plugin } from "../types/plugin.ts";
 import { ServiceType } from "../types/service.ts";
-import { stringToUuid as sqliteTestAgentId } from "../utils.js";
-import { AgentEventService } from "./agentEvent.ts";
+import { stringToUuid as sqliteTestAgentId } from "../utils/string-to-uuid.js";
+import { AgentEventService } from "./agent-event.ts";
 import { NotificationService } from "./notification.ts";
 
 async function createRuntime(

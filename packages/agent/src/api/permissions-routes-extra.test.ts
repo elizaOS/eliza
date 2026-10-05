@@ -1,6 +1,6 @@
 import type http from "node:http";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { describe, expect, it, vi } from "vitest";
-import type { ElizaConfig } from "../config/config.ts";
 import {
   handlePermissionsExtraRoutes,
   type PermissionsExtraRouteContext,

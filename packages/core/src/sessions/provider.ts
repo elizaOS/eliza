@@ -6,9 +6,7 @@ import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state.js";
 import type { SessionEntry } from "./types.js";
 
-// ============================================================================
 // Session Context Extraction
-// ============================================================================
 
 /**
  * Extract session context from a memory object.
@@ -52,9 +50,7 @@ export function extractSessionContext(memory: Memory): {
 	};
 }
 
-// ============================================================================
 // Session Provider
-// ============================================================================
 
 /**
  * Create a session provider that exposes session context.
@@ -145,9 +141,7 @@ export function createSessionProvider(options?: {
 	};
 }
 
-// ============================================================================
 // Session Skills Provider
-// ============================================================================
 
 /**
  * Create a provider that exposes session skills.
@@ -215,9 +209,7 @@ export function createSessionSkillsProvider(options?: {
 	};
 }
 
-// ============================================================================
 // Send Policy Provider
-// ============================================================================
 
 /**
  * Create a provider that enforces session send policy.
@@ -297,9 +289,7 @@ export function createSendPolicyProvider(options?: {
 	};
 }
 
-// ============================================================================
 // Default Session Providers
-// ============================================================================
 
 /**
  * Get all default session providers.

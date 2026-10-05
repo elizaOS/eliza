@@ -61,14 +61,12 @@ export { registerTaskWidget } from "../../components/chat/widgets/task-widget.js
 export { CockpitTierToggle } from "../../components/cockpit/CockpitTierToggle.js";
 export { CockpitView } from "../../components/cockpit/CockpitView.js";
 export { ELIZA_CLOUD_TIER_MODEL } from "../../components/cockpit/cockpit-modes.js";
-export { DiffReviewPanel } from "../../components/composites/code/DiffReviewPanel.js";
 export {
   PageLoadingState,
   PagePanel,
 } from "../../components/composites/page-panel/index.js";
 export { CustomActionEditor } from "../../components/custom-actions/CustomActionEditor.js";
 export { CustomActionsPanel } from "../../components/custom-actions/CustomActionsPanel.js";
-export { DesktopTabBar } from "../../components/desktop/DesktopTabBar.js";
 export { TaskChoice } from "../../components/interactive-task/TaskChoice.js";
 export { AppsPageView } from "../../components/pages/AppsPageView.js";
 export { LauncherSurface } from "../../components/pages/LauncherSurface.js";
@@ -429,8 +427,8 @@ export { createTranslator } from "../../i18n/index.js";
 export {
   FramedPage,
   FramedPageBody,
-} from "../../layouts/framed-page/framed-page.js";
-export { PageFrame } from "../../layouts/page-frame/page-frame.js";
+} from "../../layouts/framed-page.js";
+export { PageFrame } from "../../layouts/page-frame.js";
 export { cn } from "../../lib/utils.js";
 export { LoginAuthGuard } from "../../login/components/LoginAuthGuard.js";
 export { LoginEmailCallback } from "../../login/components/LoginEmailCallback.js";
@@ -446,10 +444,9 @@ export { LoginTenantPicker } from "../../login/components/LoginTenantPicker.js";
 export { LoginUserButton } from "../../login/components/LoginUserButton.js";
 export { PasskeyEnrollmentPrompt } from "../../login/components/PasskeyEnrollmentPrompt.js";
 export { useAuth } from "../../login/hooks/useAuth.js";
-export { useLogin } from "../../login/hooks/useLogin.js";
 export { useMfaStepUp } from "../../login/hooks/useMfaStepUp.js";
 export { DiscordIcon, GoogleIcon } from "../../login/icons/index.js";
-export { LoginProvider } from "../../login/provider.js";
+export { LoginProvider, useLogin } from "../../login/provider.js";
 export {
   createDefaultWagmiConfig,
   EVMWalletProvider,
@@ -503,3 +500,5 @@ export { formatByteSize } from "../../utils/format.js";
 export { openExternalUrl } from "../../utils/openExternalUrl.js";
 export { registerBuiltinWidgets } from "../../widgets/registry.js";
 export { WidgetHost } from "../../widgets/WidgetHost.js";
+export { DiffReviewPanel } from "../composites/DiffReviewPanel.js";
+export { DesktopTabBar } from "../DesktopTabBar.js";

@@ -1,15 +1,6 @@
-/**
- * Shared channel configuration types for Eliza plugins.
- *
- * These types define the common configuration patterns used across
- * all communication channel plugins (Discord, Telegram, WhatsApp, etc.).
- */
-
 import type { NormalizedChatType } from "../utils/channel-utils.js";
 
-// ============================================================
 // Base Policy Types
-// ============================================================
 
 /** Reply mode for message responses. */
 export type ReplyMode = "text" | "command";
@@ -47,9 +38,7 @@ export type GroupPolicy = "open" | "disabled" | "allowlist";
  */
 export type DmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 
-// ============================================================
 // Retry and Network Configuration
-// ============================================================
 
 /** Retry policy for outbound API calls. */
 export type OutboundRetryConfig = {
@@ -63,9 +52,7 @@ export type OutboundRetryConfig = {
 	jitter?: number;
 };
 
-// ============================================================
 // Streaming Configuration
-// ============================================================
 
 /** Block streaming coalescing configuration. */
 export type BlockStreamingCoalesceConfig = {
@@ -81,9 +68,7 @@ export type BlockStreamingChunkConfig = {
 	breakPreference?: "paragraph" | "newline" | "sentence";
 };
 
-// ============================================================
 // Markdown Configuration
-// ============================================================
 
 /** Transport formatting preference; rendering belongs to the host. */
 export type MarkdownTableMode = "off" | "bullets" | "code";
@@ -94,9 +79,7 @@ export type MarkdownConfig = {
 	tables?: MarkdownTableMode;
 };
 
-// ============================================================
 // Human Delay Configuration
-// ============================================================
 
 /** Human-like delay configuration for responses. */
 export type HumanDelayConfig = {
@@ -108,9 +91,7 @@ export type HumanDelayConfig = {
 	maxMs?: number;
 };
 
-// ============================================================
 // Session Configuration
-// ============================================================
 
 export type SessionSendPolicyAction = "allow" | "deny";
 
@@ -169,9 +150,7 @@ export type SessionConfig = {
 	};
 };
 
-// ============================================================
 // Heartbeat Configuration
-// ============================================================
 
 export type ChannelHeartbeatVisibilityConfig = {
 	/** Show HEARTBEAT_OK acknowledgments in chat (default: false). */
@@ -182,9 +161,7 @@ export type ChannelHeartbeatVisibilityConfig = {
 	useIndicator?: boolean;
 };
 
-// ============================================================
 // Identity Configuration
-// ============================================================
 
 export type IdentityConfig = {
 	name?: string;
@@ -194,9 +171,7 @@ export type IdentityConfig = {
 	avatar?: string;
 };
 
-// ============================================================
 // Tool Policy Configuration
-// ============================================================
 
 export type ToolProfileId = "minimal" | "coding" | "messaging" | "full";
 
@@ -220,9 +195,7 @@ export type GroupToolPolicyBySenderConfig = Record<
 	GroupToolPolicyConfig
 >;
 
-// ============================================================
 // Message Configuration
-// ============================================================
 
 export type GroupChatConfig = {
 	mentionPatterns?: string[];
@@ -242,11 +215,13 @@ export type ProviderCommandsConfig = {
 	nativeSkills?: NativeCommandsSetting;
 };
 
-// ============================================================
 // Provider docking configuration
-// ============================================================
 
 /** Allowlists keyed by provider id (and internal "webchat"). */
 export type AgentElevatedAllowFromConfig = Partial<
 	Record<string, Array<string | number>>
 >;
+
+/** Tool-permission config contracts shared by channel and agent configuration. */
+
+// Re-export from channel-config to avoid duplication

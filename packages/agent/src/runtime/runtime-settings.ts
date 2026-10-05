@@ -11,13 +11,12 @@ import {
 import type { ServiceRouteConfig } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type ElizaConfig,
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
   resolveServiceRoutingInConfig,
 } from "@elizaos/host/protocol";
-
 import { isProcessOnlyEnvKey } from "../config/blocked-env-keys.ts";
-import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
   isDevCloudInternalEnvKey,

@@ -105,7 +105,7 @@ export class PermissionRegistry
     const instance = new PermissionRegistry(runtime);
     instance.hydrate();
     const { registerAllProbers } = await import(
-      "./permissions/register-probers.js"
+      "./permissions/probers/index.js"
     );
     registerAllProbers(instance);
     return instance;

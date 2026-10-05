@@ -1,42 +1,9 @@
 /**
- * Context-retrieval pass for the PII scrub pipeline (#14805).
- *
- * Stage position: between candidate-mining and the LLM-pass. A scrubber that
- * sees only the chunk cannot classify: is "Paris" a person or a city? does
- * "Dr. K" corefer with an entity already pseudonymized elsewhere? Before the
- * LLM-pass judges a chunk, this pass gathers related memories, knowledge,
- * conversations, and resolved-entity candidates so the verdict is
- * context-aware, and extracts the per-chunk pseudonym-assignment slice so the
- * rewrite is consistent with the corpus-wide map
- * ({@link ./pii-pseudonym-map | CorpusPseudonymMap}).
- *
- * Retrieval sources (all existing infra — this module builds none):
- * - **Entity resolution** — the alias backbone. The structural
- *   {@link PiiEntityResolverStore} seam matches `EntityStore.resolve`
- *   (`packages/agent/src/services/knowledge-graph/entity-store.ts`) exactly, so
- *   the pipeline wires `entityResolverFromStore(kg.getEntityStore())` with zero
- *   adaptation; standalone/batch callers construct the store with just
- *   `{agentId, adapter.db.execute}` per the issue. Identity merges keep going
- *   through the merge engine — this pass only READS resolution candidates.
- * - **Knowledge** — `DocumentService.searchDocuments` (hybrid vector+BM25).
- * - **Memories** — `runtime.searchMemories` with the caller-supplied embedding
- *   from `runtime.useModel(TEXT_EMBEDDING)`; the embeddings doctrine holds
- *   (a failure THROWS — never fabricate). When no embedding model is
- *   registered the source is structurally absent (a configuration fact,
- *   recorded in `sourcesQueried`), not silently empty.
- * - **Conversations** — `adapter.searchMessages` FTS; requires explicit
- *   `roomIds` (enumerate via `getRoomsByWorld` / `getRoomsForParticipant`).
- *
- * Failure doctrine: an ABSENT source is skipped and audited; a PRESENT source
- * that throws propagates (fail-closed — the scrub rails retry the item;
- * degraded context silently producing a wrong verdict is the failure mode this
- * pass exists to prevent).
- *
- * Secrecy: the assembled pack text contains retrieved corpus fragments (they
- * flow only to the PII_SCRUB model seam, local-first by registration priority)
- * but NEVER the pseudonym map — assignments travel separately as the
- * `{entityClusterId, surrogate, kind}` slice for exactly the clusters relevant
- * to this chunk, never the whole secret artifact and never a real alias.
+ * Retrieves complete authorized context before PII classification and selects relevant
+ * pseudonym assignments. Absent sources are recorded; failures from configured sources
+ * propagate. Conversation search requires explicit room IDs. Retrieved fragments go only to
+ * the PII scrub model; the secret alias map never enters the prompt, and assignments contain
+ * only cluster ID, surrogate, and kind.
  */
 
 import { ElizaError } from "../errors.js";
@@ -190,10 +157,6 @@ export interface AssembleContextPackRequest {
 	 * and leave fuzzy ones to the model.
 	 */
 	readonly minEntityConfidence?: number;
-	/** @deprecated Retained for source compatibility; every fragment is included. */
-	readonly maxFragments?: number;
-	/** @deprecated Retained for source compatibility; pack text is never clipped. */
-	readonly maxChars?: number;
 }
 
 const DEFAULT_MIN_ENTITY_CONFIDENCE = 0.6;
@@ -362,8 +325,6 @@ export async function assembleContextPack(
 		map,
 		rulesetVersion,
 		minEntityConfidence = DEFAULT_MIN_ENTITY_CONFIDENCE,
-		maxFragments: _maxFragments,
-		maxChars: _maxChars,
 	} = request;
 
 	const sourcesQueried: string[] = [];
@@ -520,8 +481,6 @@ export interface RuntimeContextSourceOptions {
 	 * When omitted, the messages source is structurally absent.
 	 */
 	readonly roomIds?: readonly UUID[];
-	/** @deprecated Retained for compatibility; complete source traversal ignores it. */
-	readonly limit?: number;
 	/**
 	 * The entity resolver, wired by the pipeline from the knowledge-graph
 	 * service (`entityResolverFromStore(kg.getEntityStore())`). Core does not
@@ -583,7 +542,7 @@ export function sourcesFromRuntime(
 	if (runtime.getModel(ModelType.TEXT_EMBEDDING)) {
 		sources.searchMemories = async (query) => {
 			const params: TextEmbeddingParams = { text: query };
-			// Embeddings doctrine: a failure here THROWS (#9324) — the pass never
+			// Embeddings doctrine: a failure here THROWS — the pass never
 			// degrades to a fabricated empty context for a wired source.
 			const embedding = await runtime.useModel(
 				ModelType.TEXT_EMBEDDING,

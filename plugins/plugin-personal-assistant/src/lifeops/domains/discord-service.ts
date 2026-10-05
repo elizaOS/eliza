@@ -235,7 +235,7 @@ function selectedDiscordChannelIdFromStatus(
   return null;
 }
 
-function memoryToDiscordMessageSearchResult(
+export function memoryToDiscordMessageSearchResult(
   memory: unknown,
 ): DiscordMessageSearchResult {
   const record =
@@ -256,12 +256,17 @@ function memoryToDiscordMessageSearchResult(
       : {};
   const createdAt = Number(record.createdAt);
   return {
+    // The Discord connector stamps the snowflake as discordMessageId /
+    // messageIdFull and the guild as discordServerId (discord-history.ts);
+    // record.id is only the runtime memory UUID.
     id:
-      typeof metadata.messageId === "string"
-        ? metadata.messageId
-        : typeof record.id === "string"
-          ? record.id
-          : null,
+      typeof metadata.discordMessageId === "string"
+        ? metadata.discordMessageId
+        : typeof metadata.messageIdFull === "string"
+          ? metadata.messageIdFull
+          : typeof record.id === "string"
+            ? record.id
+            : null,
     content: typeof content.text === "string" ? content.text : "",
     authorName:
       typeof content.name === "string"
@@ -270,8 +275,8 @@ function memoryToDiscordMessageSearchResult(
           ? sender.username
           : null,
     guildId:
-      typeof metadata.discordGuildId === "string"
-        ? metadata.discordGuildId
+      typeof metadata.discordServerId === "string"
+        ? metadata.discordServerId
         : null,
     channelId:
       typeof metadata.discordChannelId === "string"

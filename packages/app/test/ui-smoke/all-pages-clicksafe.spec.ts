@@ -15,7 +15,10 @@ import {
   openSettingsSection,
   seedAppStorage,
 } from "./helpers";
-import { clickViewBackControl } from "./helpers/view-header";
+import {
+  assertHeaderlessViewChrome,
+  clickViewBackControl,
+} from "./helpers/view-header";
 
 type ReadyCheck =
   | { selector: string; text?: never }
@@ -28,6 +31,9 @@ type RouteProbe = {
   readyChecks: readonly ReadyCheck[];
   mode?: "any" | "all";
   timeoutMs?: number;
+  /** Route readiness and controls stay visible without duplicate view chrome. */
+  headerless?: boolean;
+  viewWithin?: string;
 };
 
 type ViewportProbe = {
@@ -153,22 +159,45 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     // Retired My Apps deep link (#17031): lands on the consolidated Projects
     // surface with the Apps segment pre-selected. The launcher grid remains
     // available at `/views`.
-    readyChecks: [{ text: "No apps installed yet" }],
+    readyChecks: [
+      { text: "No apps installed yet" },
+      { selector: '[aria-label="Create new app"]' },
+      {
+        selector:
+          '[role="tablist"][aria-label="Projects sections"] [role="tab"][aria-selected="true"]:has-text("Apps")',
+      },
+    ],
+    mode: "all",
     timeoutMs: 60_000,
+    headerless: true,
   },
   {
     name: "automations",
     path: "/automations",
-    readyChecks: [{ selector: '[data-testid="automations-shell"]' }],
+    readyChecks: [
+      { selector: '[data-testid="automations-shell"]' },
+      { selector: 'button[aria-label="New automation"]' },
+    ],
+    mode: "all",
     timeoutMs: 60_000,
+    headerless: true,
   },
   {
     name: "browser",
     path: "/browser",
+    // Linux desktop hosts open Websites; web hosts open the tab workspace.
+    // Require the address control and its matching surface in either host.
     readyChecks: [
-      { selector: '[data-testid="browser-workspace-address-input"]' },
-      { selector: '[data-testid="browser-workspace-open-home"]' },
+      {
+        selector:
+          '[data-testid="browser-workspace-address-input"], section[aria-label="Browser"] input[aria-label="Website or search"]',
+      },
+      {
+        selector:
+          '[data-testid="browser-workspace-surface-panel"], section[aria-label="Browser"] button[type="submit"]:has-text("Go")',
+      },
     ],
+    mode: "all",
     timeoutMs: 60_000,
   },
   {
@@ -188,6 +217,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     path: "/wallet",
     readyChecks: [{ selector: '[data-testid="wallet-shell"]' }],
     timeoutMs: 60_000,
+    headerless: true,
   },
   {
     name: "stream",
@@ -263,30 +293,35 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     path: "/character/documents",
     readyChecks: [{ selector: '[data-testid="documents-view"]' }],
     timeoutMs: 60_000,
+    headerless: true,
+    viewWithin: '[data-testid="documents-view"]',
   },
   {
+    // Each Character deep link must select its own section in the shared nav.
     name: "character skills deep link",
     path: "/character/skills",
     readyChecks: [
-      { selector: '[data-testid="section-nav-character"]' },
       {
-        selector: '[data-testid="section-nav-character"] [aria-current="page"]',
+        selector:
+          '[data-testid="section-nav-character"] button[aria-current="page"]:has-text("Skills")',
       },
     ],
     mode: "all",
     timeoutMs: 60_000,
+    headerless: true,
   },
   {
     name: "character experience deep link",
     path: "/character/experience",
     readyChecks: [
-      { selector: '[data-testid="section-nav-character"]' },
       {
-        selector: '[data-testid="section-nav-character"] [aria-current="page"]',
+        selector:
+          '[data-testid="section-nav-character"] button[aria-current="page"]:has-text("Experience")',
       },
     ],
     mode: "all",
     timeoutMs: 60_000,
+    headerless: true,
   },
   {
     // installDesktopPermissionsBridge injects __ELIZA_ELECTROBUN_RPC__, so
@@ -807,6 +842,9 @@ async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
     route.timeoutMs,
   );
   await expectMainShell(page, route);
+  if (route.headerless) {
+    await assertHeaderlessViewChrome(page, { within: route.viewWithin });
+  }
 }
 
 async function openRouteAndExpectUrl(
@@ -1006,6 +1044,42 @@ test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   }
 
   await clickSafeAllowlist(page, issues);
+});
+
+test("stale inventory link opens the canonical wallet without crashing", async ({
+  page,
+}) => {
+  const issues = installPageIssueGuards(page);
+  await openAppPath(page, "/apps/inventory");
+  const recovery = page.getByTestId("app-route-not-found");
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toContainText("/apps/inventory");
+  await recovery
+    .getByRole("button", { name: "Open Wallet", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/wallet(?:[?#]|$)/);
+  await expect(page.getByTestId("wallet-shell")).toBeVisible();
+  await expect(recovery).toHaveCount(0);
+  await expectNoPageIssues(issues, "stale inventory link recovery");
+});
+
+test("browser history returns from Wallet to the launcher without crashing", async ({
+  page,
+}) => {
+  const issues = installPageIssueGuards(page);
+  await page.setViewportSize(DESKTOP_PROBE.size);
+  const launcher = coreRouteProbe("views catalog deep link");
+  await probeRoute(page, launcher);
+  await probeRoute(page, coreRouteProbe("wallet"));
+  await page.goBack();
+  await expect(page).toHaveURL(/\/views$/);
+  await assertReadyChecks(
+    page,
+    launcher.name,
+    launcher.readyChecks,
+    launcher.mode ?? "any",
+  );
+  await expectNoPageIssues(issues, "wallet browser back");
 });
 
 test("mobile Settings back control returns to the settings hub without crashing", async ({

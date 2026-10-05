@@ -188,6 +188,33 @@ try {
     if (!valid) assert.match(result.stderr, /phantom #build edge/);
   }
 
+  // A package override replaces the generic task, including its cache outputs.
+  for (const [override, valid] of [
+    [{ dependsOn: ["^build"] }, false],
+    [{ outputs: ["dist/**"] }, true],
+    [{ outputs: [] }, true],
+    [{ cache: false }, true],
+  ]) {
+    writeJson(path.join(tempRoot, "turbo.json"), {
+      tasks: {
+        build: { outputs: ["dist/**"] },
+        "@fixture/foo#build": override,
+      },
+    });
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: tempRoot,
+      env: { ...process.env, AUDIT_TURBO_REPO_ROOT: tempRoot },
+      encoding: "utf8",
+    });
+    assert.equal(
+      result.status === 0,
+      valid,
+      `${result.stdout}\n${result.stderr}`,
+    );
+    if (!valid)
+      assert.match(result.stderr, /must explicitly declare cache outputs/);
+  }
+
   console.log("audit-turbo-build-deps self-test passed");
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });

@@ -4,29 +4,22 @@
  * reading operator-declared policy over a conservative default that only lets
  * admins spawn or drive agents from third-party connectors.
  */
-import fs from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 import {
+  checkSenderRole,
   type IAgentRuntime,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
+  normalizeRole,
+  ROLE_RANK,
+  type RoleCheckResult,
+  type RoleName,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 
-type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 type TaskAgentAbility = "create" | "interact";
 type ConnectorPolicy = Partial<Record<TaskAgentAbility, RoleName>>;
 type TaskAgentPolicyConfig = {
   default?: RoleName | ConnectorPolicy;
   connectors?: Record<string, RoleName | ConnectorPolicy>;
-};
-
-const ROLE_RANK: Record<RoleName, number> = {
-  GUEST: 0,
-  USER: 1,
-  ADMIN: 2,
-  OWNER: 3,
 };
 
 const DEFAULT_POLICY: TaskAgentPolicyConfig = {
@@ -39,28 +32,8 @@ const DEFAULT_POLICY: TaskAgentPolicyConfig = {
   },
 };
 
-type RoleCheckResult = {
-  role: RoleName;
-  isAdmin: boolean;
-  isOwner: boolean;
-};
-
-const LOCAL_ROLES_MODULE_CANDIDATES = [
-  path.resolve(process.cwd(), "packages/plugin-roles/src/index.ts"),
-  path.resolve(process.cwd(), "packages/plugin-roles/dist/index.js"),
-  path.resolve(process.cwd(), "packages/agent/src/runtime/roles/src/index.ts"),
-];
-
-function normalizeRole(value: unknown): RoleName {
-  const upper = typeof value === "string" ? value.trim().toUpperCase() : "";
-  switch (upper) {
-    case "OWNER":
-    case "ADMIN":
-    case "USER":
-      return upper;
-    default:
-      return "GUEST";
-  }
+function normalizeConfiguredRole(value: unknown): RoleName {
+  return normalizeRole(typeof value === "string" ? value.trim() : undefined);
 }
 
 function normalizeConnectorPolicy(
@@ -68,15 +41,17 @@ function normalizeConnectorPolicy(
 ): ConnectorPolicy {
   if (!value) return {};
   if (typeof value === "string") {
-    const role = normalizeRole(value);
+    const role = normalizeConfiguredRole(value);
     return {
       create: role,
       interact: role,
     };
   }
   return {
-    ...(value.create ? { create: normalizeRole(value.create) } : {}),
-    ...(value.interact ? { interact: normalizeRole(value.interact) } : {}),
+    ...(value.create ? { create: normalizeConfiguredRole(value.create) } : {}),
+    ...(value.interact
+      ? { interact: normalizeConfiguredRole(value.interact) }
+      : {}),
   };
 }
 
@@ -203,46 +178,14 @@ async function resolveSenderRole(
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<RoleCheckResult | null> {
-  if (readAliasedEnv("ELIZA_SKIP_LOCAL_PLUGIN_ROLES") !== "1") {
-    for (const candidate of LOCAL_ROLES_MODULE_CANDIDATES) {
-      if (!fs.existsSync(candidate)) {
-        continue;
-      }
-
-      try {
-        const localRolesModule = (await import(
-          pathToFileURL(candidate).href
-        )) as {
-          checkSenderRole?: (
-            runtime: IAgentRuntime,
-            message: Memory,
-          ) => Promise<RoleCheckResult | null>;
-        };
-        if (typeof localRolesModule.checkSenderRole === "function") {
-          return await localRolesModule.checkSenderRole(runtime, message);
-        }
-      } catch {
-        // error-policy:J4 optional local roles module unresolvable here → fall through to the installed @elizaos/core import below
-        // fall through to the installed package import below
-      }
-    }
-  }
-
   try {
-    const rolesModule = (await import("@elizaos/core")) as {
-      checkSenderRole?: (
-        runtime: IAgentRuntime,
-        message: Memory,
-      ) => Promise<RoleCheckResult | null>;
-    };
-    if (typeof rolesModule.checkSenderRole === "function") {
-      return await rolesModule.checkSenderRole(runtime, message);
-    }
-  } catch {
-    // error-policy:J4 roles package unavailable (standalone tests) → null role → caller denies any non-GUEST requirement (fails closed)
-    // Package not available in standalone tests.
+    return await checkSenderRole(runtime, message);
+  } catch (error) {
+    runtime.reportError("task-policy.resolveSenderRole", error, {
+      roomId: message.roomId,
+    });
+    return null;
   }
-  return null;
 }
 
 export async function requireTaskAgentAccess(

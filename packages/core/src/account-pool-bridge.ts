@@ -93,7 +93,7 @@ export type CodingAccountStrategy =
 	| "quota-aware"
 	// Reset-timestamp-aware selection. Coordination note: the runtime
 	// consumer of this strategy in the coding bridge lives in
-	// plugin-cli-inference (#16203). The type accepts it here so the
+	// plugin-cli-inference. The type accepts it here so the
 	// settings picker can persist it; the actual reset-soonest ordering is
 	// implemented in AccountPool.applyStrategy (app).
 	| "reset-soonest"

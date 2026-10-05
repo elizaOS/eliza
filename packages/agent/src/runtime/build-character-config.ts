@@ -15,13 +15,12 @@ import {
   normalizeCharacterLanguage,
 } from "@elizaos/core";
 import {
+  type ElizaConfig,
   getDefaultStylePreset,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
 } from "@elizaos/host/protocol";
-
-import type { ElizaConfig } from "../config/config.ts";
 import { assertNoRetiredCharacterToolRestrictions } from "../config/retired-tool-policy.ts";
 import {
   applyAdvancedCapabilitySettings,

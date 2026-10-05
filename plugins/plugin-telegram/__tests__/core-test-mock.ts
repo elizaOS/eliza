@@ -9,11 +9,23 @@ import { vi } from "vitest";
 vi.mock("@elizaos/core", async () => {
   const { createHash } = await import("node:crypto");
 
-  // The interaction protocol (parse/serialize/layout/callback/normalize) is
-  // pure — types-only imports, no runtime deps — so the mock uses the real
-  // implementation rather than re-stubbing it.
-  const interactions = await import(
-    "../../../packages/core/src/messaging/interactions/index"
+  // Load the real interaction implementations from their defining modules.
+  const interactions = Object.assign(
+    {},
+    ...(await Promise.all([
+      import(
+        "../../../packages/core/src/messaging/interaction-dashboard-markers"
+      ),
+      import("../../../packages/core/src/messaging/interaction-host"),
+      import("../../../packages/core/src/messaging/interaction-layout"),
+      import("../../../packages/core/src/messaging/interaction-parse"),
+      import(
+        "../../../packages/core/src/messaging/interaction-profile-catalog"
+      ),
+      import("../../../packages/core/src/messaging/interaction-profiles"),
+      import("../../../packages/core/src/messaging/interaction-serialize"),
+      import("../../../packages/core/src/messaging/interaction-sessions"),
+    ])),
   );
 
   // The LifeOps passive-connectors gate is pure env/settings inspection; the
@@ -43,7 +55,7 @@ vi.mock("@elizaos/core", async () => {
   );
 
   const { createSensitiveRequestDispatchRegistry } = await import(
-    "../../../packages/core/src/sensitive-requests/dispatch-registry.ts"
+    "../../../packages/core/src/sensitive-request-dispatch.ts"
   );
 
   const logger = {

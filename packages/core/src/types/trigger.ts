@@ -15,8 +15,8 @@ export type TriggerLastStatus = "success" | "error" | "skipped";
 /**
  * A trigger's target: what fires when the schedule/event condition is met.
  * - `workflow` — dispatch the referenced workflow via WORKFLOW_DISPATCH.
- * - `prompt`   — inject the trigger's `instructions` as an agent turn (a
- *                "prompt automation"), via the prompt-runner / autonomy path.
+ * - `prompt` — inject the trigger's `instructions` as an agent turn (a
+ * "prompt automation"), via the prompt-runner / autonomy path.
  */
 export type TriggerKind = "workflow" | "prompt";
 

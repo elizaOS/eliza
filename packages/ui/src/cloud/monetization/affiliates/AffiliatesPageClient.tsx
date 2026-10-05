@@ -38,7 +38,7 @@ import {
   buildReferralInviteLoginUrl,
   copyTextToClipboard,
   useCopyFeedback,
-} from "../lib/clipboard";
+} from "../clipboard";
 import { useDashboardReferralMe } from "./use-dashboard-referral-me";
 
 interface AffiliateData {

@@ -34,9 +34,8 @@ import {
 import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
-import type { AutonomousConfigLike } from "../types/config-like.ts";
 
-interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
+interface PermissionAutonomousConfigLike extends Record<string, unknown> {
   features?: {
     shellEnabled?: boolean;
   };

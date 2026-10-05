@@ -4,11 +4,19 @@
  */
 import { PanelLeftOpen } from "lucide-react";
 import * as React from "react";
-
+import type { SidebarProps } from "../../components/composites/sidebar/sidebar-types";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
 import { useWorkspaceMobileSidebarControls } from "../workspace-layout/workspace-mobile-sidebar-controls.hooks";
-import type { PageLayoutMobileDrawerProps } from "./page-layout-types";
+
+interface PageLayoutMobileDrawerProps {
+  isDesktop: boolean;
+  mobileSidebarLabel?: React.ReactNode;
+  mobileSidebarOpen: boolean;
+  mobileSidebarTriggerClassName?: string;
+  onMobileSidebarOpenChange: (open: boolean) => void;
+  sidebar: React.ReactElement<SidebarProps>;
+}
 
 export function PageLayoutMobileDrawer({
   isDesktop,

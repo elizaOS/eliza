@@ -6,12 +6,12 @@
  * internals, keeping the agent buildable without an `@elizaos/ui` dependency.
  *
  * The flow:
- *   1. Agent POSTs to /api/views/:id/interact with a ViewInteractRequest body.
- *   2. Server broadcasts a WS message {type:"view:interact", ...} to all clients.
- *   3. DynamicViewLoader receives the WS message, calls the view module's
- *      interact(capability, params) export (or a standard capability handler).
- *   4. Frontend sends {type:"view:interact:result", ...} back over WS.
- *   5. Server resolves the pending request and returns the result to the agent.
+ * 1. Agent POSTs to /api/views/:id/interact with a ViewInteractRequest body.
+ * 2. Server broadcasts a WS message {type:"view:interact",...} to all clients.
+ * 3. DynamicViewLoader receives the WS message, calls the view module's
+ * interact(capability, params) export (or a standard capability handler).
+ * 4. Frontend sends {type:"view:interact:result",...} back over WS.
+ * 5. Server resolves the pending request and returns the result to the agent.
  */
 
 export interface ViewInteractRequest {
@@ -68,10 +68,10 @@ export const STANDARD_CAPABILITIES = {
 	/** Returns the visible text content of the view container. */
 	GET_TEXT: "get-text",
 	/** Clicks an element by CSS selector or name attribute. Dispatched generically
-	 *  by DynamicViewLoader / ShellViewAgentSurface for every loaded view. */
+	 * by DynamicViewLoader / ShellViewAgentSurface for every loaded view. */
 	CLICK_ELEMENT: "click-element",
 	/** Sets the value of an input by selector/name. Dispatched generically by
-	 *  DynamicViewLoader / ShellViewAgentSurface for every loaded view. */
+	 * DynamicViewLoader / ShellViewAgentSurface for every loaded view. */
 	FILL_INPUT: "fill-input",
 } as const;
 
