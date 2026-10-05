@@ -2,9 +2,8 @@
  * Playwright UI-smoke spec for the Apps Session app flow using the real
  * renderer fixture.
  */
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
-  assertReadyChecks,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -15,32 +14,23 @@ test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
 });
 
-test("apps view can route into internal tool pages and survive a reload", async ({
+test("apps view preserves its selected tab and create action after a reload", async ({
   page,
 }) => {
   await openAppPath(page, "/apps");
-  await assertReadyChecks(
-    page,
-    "apps-view",
-    [
-      { text: "Projects" },
-      { selector: '[data-testid="projects-apps-segment"]' },
-    ],
-    "all",
-    90_000,
-  );
+  const apps = page.getByTestId("projects-apps-segment");
+  await expect(apps).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: "Apps", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("button", { name: "Create new app" }),
+  ).toBeVisible();
 
-  // Reload from root and re-navigate — Vite preview lacks SPA fallback
-  await openAppPath(page, "/");
-  await openAppPath(page, "/apps");
-  await assertReadyChecks(
-    page,
-    "apps-view-reload",
-    [
-      { text: "Projects" },
-      { selector: '[data-testid="projects-apps-segment"]' },
-    ],
-    "all",
-    90_000,
-  );
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(apps).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create new app" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/apps(?:[?#]|$)/);
 });
