@@ -452,11 +452,17 @@ export class XDomain {
       fail(409, "X is not connected.");
     }
     const now = new Date().toISOString();
+    // Requested ids must target their exact cache rows: the cache retains the
+    // full DM history, so a newest-rows window would silently skip requested
+    // messages and report the partial curation as success. Without ids the
+    // operation keeps its designed meaning of curating the newest window.
+    const requestedIds = request.messageIds ?? [];
     const messages = await this.ctx.repository.listXDms(this.ctx.agentId(), {
       conversationId: request.conversationId,
-      limit: Math.max(request.messageIds?.length ?? 0, 25),
+      ids: requestedIds.length > 0 ? requestedIds : undefined,
+      limit: requestedIds.length > 0 ? undefined : 25,
     });
-    const ids = new Set(request.messageIds ?? []);
+    const ids = new Set(requestedIds);
     let curated = 0;
     for (const dm of messages) {
       if (ids.size > 0 && !ids.has(dm.id)) {

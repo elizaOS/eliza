@@ -62,7 +62,12 @@ export class SocialCacheRepository {
 
   async listXDms(
     agentId: string,
-    opts: { conversationId?: string; limit?: number; inbound?: boolean } = {},
+    opts: {
+      conversationId?: string;
+      limit?: number;
+      inbound?: boolean;
+      ids?: string[];
+    } = {},
   ): Promise<LifeOpsXDm[]> {
     const limitClause =
       opts.limit !== undefined && Number.isFinite(opts.limit)
@@ -77,6 +82,13 @@ export class SocialCacheRepository {
       opts.inbound === undefined
         ? ""
         : `AND is_inbound = ${opts.inbound ? "TRUE" : "FALSE"}`;
+    // Exact row ids are matched in SQL, never through a recency window: the
+    // cache retains the full history, so a requested id can be arbitrarily
+    // older than the newest rows a LIMIT clause would return.
+    const idClause =
+      opts.ids && opts.ids.length > 0
+        ? `AND id IN (${opts.ids.map((id) => sqlQuote(id)).join(", ")})`
+        : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -84,6 +96,7 @@ export class SocialCacheRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           ${conversationClause}
           ${directionClause}
+          ${idClause}
         ORDER BY received_at DESC
         ${limitClause}`,
     );
