@@ -302,3 +302,9 @@ default. Hosts whose test APK declares other runners must list their class names
 in `additionalInstrumentationRunners`; every declaration must target the same
 application package, with no missing, duplicate, or undeclared runners. This
 changes APK admission only: instrumentation still executes the selected `runner`.
+
+For installed upgrades, each `variants[]` entry and its `upgrade` artifact may
+set `additionalInstrumentationRunners` independently. Omission inherits the
+campaign default; an explicit empty list admits only the selected runner.
+Every artifact must match its own exact declaration set before any APK installs.
+This supports historical test APKs without admitting undeclared candidate runners.

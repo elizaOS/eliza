@@ -64,20 +64,26 @@ export async function runIsolatedAndroidTest({
   cleanupVariant,
 }) {
   assert.match(serial ?? "", /^emulator-\d+$/);
-  assert.ok(
-    Array.isArray(additionalInstrumentationRunners),
-    "Explicit additional runner list required",
+  const runnerEvidenceFor = (additionalRunners) => {
+    assert.ok(
+      Array.isArray(additionalRunners),
+      "Explicit additional runner list required",
+    );
+    const admittedRunners = [runner, ...additionalRunners];
+    assert.equal(
+      new Set(admittedRunners).size,
+      admittedRunners.length,
+      "Duplicate instrumentation runner",
+    );
+    for (const name of admittedRunners)
+      assert.match(name ?? "", packagePattern);
+    return admittedRunners
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ name, targetPackage: packageName }));
+  };
+  const defaultRunnerEvidence = runnerEvidenceFor(
+    additionalInstrumentationRunners,
   );
-  const admittedRunners = [runner, ...additionalInstrumentationRunners];
-  assert.equal(
-    new Set(admittedRunners).size,
-    admittedRunners.length,
-    "Duplicate instrumentation runner",
-  );
-  for (const name of admittedRunners) assert.match(name ?? "", packagePattern);
-  const runnerEvidence = admittedRunners
-    .sort((a, b) => a.localeCompare(b))
-    .map((name) => ({ name, targetPackage: packageName }));
   assert.ok(
     testClasses === undefined || testClass === undefined,
     "Choose testClass or testClasses",
@@ -129,6 +135,23 @@ export async function runIsolatedAndroidTest({
     );
   signal?.throwIfAborted();
   assert.ok(Array.isArray(variants) && variants.length > 0);
+  // Freeze each artifact's exact declaration set before any asynchronous device work.
+  // Historical instrumentation can differ from its replacement without widening either set.
+  const artifactRunnerEvidence = new Map();
+  for (const variant of variants) {
+    for (const artifacts of [
+      variant,
+      ...(variant.upgrade ? [variant.upgrade] : []),
+    ]) {
+      artifactRunnerEvidence.set(
+        artifacts,
+        artifacts.additionalInstrumentationRunners === undefined
+          ? defaultRunnerEvidence
+          : runnerEvidenceFor(artifacts.additionalInstrumentationRunners),
+      );
+    }
+  }
+
   assert.ok(
     path.isAbsolute(directory),
     "Explicit absolute report directory required",
@@ -265,7 +288,7 @@ export async function runIsolatedAndroidTest({
             timeout: commandTimeoutMs,
           }),
         ).sort((a, b) => a.name.localeCompare(b.name)),
-        runnerEvidence,
+        artifactRunnerEvidence.get(artifacts),
         "Instrumentation target or runner mismatch",
       );
     }
