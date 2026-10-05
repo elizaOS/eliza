@@ -11,10 +11,15 @@ function reject(reason: string): never {
     context: { reason },
   });
 }
-export function observeScheduledTargetLiveSubscription(
+/** Identity/catalog/period compatibility only; callers independently prove original authority. */
+export function observeRetainedScheduleTargetLiveSubscription(
   input: {
-    source: Parameters<typeof proveOriginalConfiguredTarget>[0]["source"];
-    authority: ReturnType<typeof proveOriginalConfiguredTarget>;
+    subscriptionId: string;
+    customerId: string;
+    providerEnvironment: string;
+    binding: ReturnType<typeof proveOriginalConfiguredTarget>["binding"];
+    phase: ReturnType<typeof proveOriginalConfiguredTarget>["phase"];
+    targetAmountCents: number;
     organizationCustomerId: string | null;
     rawSubscription: unknown;
     rawCustomer: unknown;
@@ -23,8 +28,7 @@ export function observeScheduledTargetLiveSubscription(
   },
   expectedStatus: "active" | "past_due" | "unpaid" = "active",
 ) {
-  const { source, authority } = input,
-    { binding, phase } = authority;
+  const { binding, phase } = input;
   const sub = organizationSubscriptionObservationSchema
     .extend({
       status: z.literal(expectedStatus),
@@ -56,15 +60,13 @@ export function observeScheduledTargetLiveSubscription(
     !Number.isFinite(periodStart.getTime()) ||
     !Number.isFinite(periodEnd.getTime()) ||
     phase.start.getTime() > now ||
-    authority.currentSubscriptionRevision !== source.lifecycle_revision ||
-    authority.targetPlanKey !== source.pending_plan_key ||
-    observed.id !== source.stripe_subscription_id ||
-    observed.customer !== source.stripe_customer_id ||
-    input.organizationCustomerId !== source.stripe_customer_id ||
-    customer.data.id !== source.stripe_customer_id ||
+    observed.id !== input.subscriptionId ||
+    observed.customer !== input.customerId ||
+    input.organizationCustomerId !== input.customerId ||
+    customer.data.id !== input.customerId ||
     observed.livemode !== binding.livemode ||
     customer.data.livemode !== binding.livemode ||
-    (source.provider_environment === "live") !== binding.livemode ||
+    input.providerEnvironment !== (binding.livemode ? "live" : "test") ||
     observed.current_period_start * 1000 > now ||
     observed.current_period_end * 1000 <= now ||
     observed.current_period_start >= observed.current_period_end ||
@@ -78,7 +80,7 @@ export function observeScheduledTargetLiveSubscription(
     item.price.id !== binding.targetPriceId ||
     item.price.product !== binding.targetProductId ||
     item.price.livemode !== binding.livemode ||
-    item.price.unit_amount !== authority.targetAmountCents
+    item.price.unit_amount !== input.targetAmountCents
   )
     reject("target_identity_period_or_catalog_changed");
   // This proves live compatibility only. Neither active status nor latest_invoice
@@ -92,6 +94,39 @@ export function observeScheduledTargetLiveSubscription(
     invoiceId: observed.latest_invoice,
     providerObjectDigest: settlementDigest(input.rawSubscription),
   };
+}
+
+/** Published pending targets additionally require their current source revision and plan. */
+export function observeScheduledTargetLiveSubscription(
+  input: {
+    source: Parameters<typeof proveOriginalConfiguredTarget>[0]["source"];
+    authority: ReturnType<typeof proveOriginalConfiguredTarget>;
+    organizationCustomerId: string | null;
+    rawSubscription: unknown;
+    rawCustomer: unknown;
+    observedAt: Date;
+    retainedCanceledAt: Date | null;
+  },
+  expectedStatus: "active" | "past_due" | "unpaid" = "active",
+) {
+  const { source, authority } = input;
+  if (
+    authority.currentSubscriptionRevision !== source.lifecycle_revision ||
+    authority.targetPlanKey !== source.pending_plan_key
+  )
+    reject("target_identity_period_or_catalog_changed");
+  return observeRetainedScheduleTargetLiveSubscription(
+    {
+      ...input,
+      subscriptionId: source.stripe_subscription_id,
+      customerId: source.stripe_customer_id,
+      providerEnvironment: source.provider_environment,
+      binding: authority.binding,
+      phase: authority.phase,
+      targetAmountCents: authority.targetAmountCents,
+    },
+    expectedStatus,
+  );
 }
 
 /** Original-period settlement requires both the original interval and its current invoice.

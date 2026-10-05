@@ -2,7 +2,6 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import { z } from "zod";
 import { organizationDowngradeIntentDigest } from "../../lib/services/organization-downgrade-intent";
 import { organizationDowngradeReviewSchema } from "../../lib/services/organization-downgrade-review";
 import { organizationPlanChangeProviderBindingSchema } from "../../lib/services/organization-plan-change-provider-binding";
@@ -17,8 +16,8 @@ import {
   projectAuthenticatedScheduleEvent,
   projectOriginalScheduleResponse,
 } from "../../lib/services/organization-schedule-effect-origin";
+import { proveOrganizationSchedulePublication } from "../../lib/services/organization-schedule-publication-proof";
 import { proveOrganizationScheduleRelease } from "../../lib/services/organization-schedule-release-proof";
-import { proveReviewedOrganizationScheduleConfiguration } from "../../lib/services/organization-schedule-reviewed-configuration";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
@@ -910,8 +909,9 @@ export async function lockOrganizationScheduleConfiguredAuthority(
     livemode: effect.livemode,
     startedAt: effect.started_at!,
   });
-  const verified = proveReviewedOrganizationScheduleConfiguration({
+  const { configuredSnapshot, ...verified } = proveOrganizationSchedulePublication({
     source,
+    organizationCustomerId: org.customer,
     review: locked.quote.review,
     providerBinding: locked.binding,
     originalTerms: locked.retained.snapshot,
@@ -947,12 +947,7 @@ export async function lockOrganizationScheduleConfiguredAuthority(
     configurationReceiptDigest: configured.receipt_digest!,
     observedAt: now.toISOString(),
   };
-  // The full snapshot has just been authenticated and compared with the original
-  // configuration. Retain unknown wire fields; SDK transport metadata is not state.
-  const { lastResponse: _transport, ...wireSnapshot } = z
-    .record(z.string(), z.unknown())
-    .parse(input.rawCurrentSchedule);
-  const configuredSnapshot = structuredClone(wireSnapshot);
+  // Persist the authenticated original snapshot, never the later mutable live schedule.
   if (settlementDigest(configuredSnapshot) !== proof.snapshotDigest)
     reject("configured_snapshot_changed");
   return { source, projection, command: locked.command, proof, configuredSnapshot };
