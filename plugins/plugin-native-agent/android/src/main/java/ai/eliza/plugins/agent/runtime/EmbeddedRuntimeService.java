@@ -53,9 +53,10 @@ public abstract class EmbeddedRuntimeService extends Service {
   }
   protected static JSONObject requestFor(Class<? extends EmbeddedRuntimeService> type,EndpointRequest request,String unavailable,String cancelled)throws Exception {
     EmbeddedRuntimeService service=current.get(type);
+    NativeRuntimeSession.Snapshot binding=service==null?null:service.supervisor.snapshot();
     EmbeddedRuntimeGroup.Endpoint endpoint=service==null||service.group==null?null:service.group.gateway();
     if(endpoint==null)throw new IOException(unavailable);
-    return service.supervisor.request(()->current.get(type)==service,()->request.execute(endpoint.port,endpoint.token),unavailable,cancelled);
+    return service.supervisor.request(binding,()->current.get(type)==service,()->request.execute(endpoint.port,endpoint.token),unavailable,cancelled);
   }
   protected static void prepareRestartFor(Class<? extends EmbeddedRuntimeService> type) {
     EmbeddedRuntimeService service=current.get(type);
