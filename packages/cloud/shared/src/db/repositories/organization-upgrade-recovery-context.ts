@@ -42,7 +42,9 @@ export async function readOrganizationUpgradeRecoveryContext(
     !command ||
     command.kind !== "upgrade" ||
     command.merchant_key !== "platform" ||
-    (command.status !== "OUTCOME_UNKNOWN" && command.status !== "APPLIED") ||
+    (command.status !== "OUTCOME_UNKNOWN" &&
+      command.status !== "APPLIED" &&
+      !(command.status === "FAILED" && command.organization_upgrade_failure_evidence !== null)) ||
     command.organization_upgrade_dispatch_state !== "started" ||
     !command.subscription_id ||
     command.expected_subscription_revision === null
