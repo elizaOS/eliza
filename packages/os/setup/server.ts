@@ -9,8 +9,8 @@ import type {
   FlashStepId,
   FlashStepStatus,
 } from "./src/backend/types";
-import { DependencyManager } from "./src/dependencies/dep-manager";
-import type { DependencyId } from "./src/dependencies/types";
+import { DependencyManager } from "./src/backend/dependencies";
+import type { DependencyId } from "./src/backend/types";
 
 const VALID_DEP_IDS: DependencyId[] = [
   "adb",

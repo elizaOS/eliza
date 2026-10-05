@@ -707,15 +707,15 @@ test("signed discovery authenticates complete metadata without installation file
 test("packaged executor binds the reviewed digest before admitting device execution", (t) => {
   const f = fixture(t);
   const root = path.join(f.directory, "packaged");
-  fs.mkdirSync(path.join(root, "scripts/aosp/lib"), { recursive: true });
+  fs.mkdirSync(path.join(root, "scripts/android/lib"), { recursive: true });
   fs.cpSync(
     new URL("../android", import.meta.url),
     path.join(root, "scripts/android"),
     { recursive: true },
   );
   fs.copyFileSync(
-    new URL("../aosp/lib/android-socket-fetch.ts", import.meta.url),
-    path.join(root, "scripts/aosp/lib/android-socket-fetch.ts"),
+    new URL("../android/android-socket-fetch.ts", import.meta.url),
+    path.join(root, "scripts/android/android-socket-fetch.ts"),
   );
   fs.mkdirSync(path.join(root, "android"));
   fs.writeFileSync(

@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-LINUX_DIR = ROOT / "linux/elizaos"
+LINUX_DIR = ROOT / "linux"
 SCRIPT = ROOT / "scripts/linux/stage-agent-artifacts.sh"
 MUSL_RUNTIME = LINUX_DIR / "artifacts/riscv64/elizaos-app/musl-runtime"
 

@@ -10,20 +10,20 @@ setup:
 
 
 build:
-    make -C elizaos build ARCH="${ELIZAOS_ARCH:-amd64}" PROFILE="${ELIZAOS_PROFILE:-gui}"
+    make build ARCH="${ELIZAOS_ARCH:-amd64}" PROFILE="${ELIZAOS_PROFILE:-gui}"
 
 config:
-    make -C elizaos lint
+    make lint
 
 static-smoke:
-    make -C elizaos lint
+    make lint
 
 lint:
-    make -C elizaos lint
+    make lint
 
 
 test:
-    make -C elizaos lint
+    make lint
 
 clean:
-    node ../../scripts/rm-path-recursive.ts elizaos/out
+    node ../../scripts/rm-path-recursive.ts out

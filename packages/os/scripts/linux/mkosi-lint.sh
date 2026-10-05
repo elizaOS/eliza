@@ -2,7 +2,7 @@
 # Static validation for the canonical mkosi workstation definition.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../linux/elizaos" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../linux" && pwd)"
 MKOSI_DIR="${ROOT}/mkosi"
 fail=0
 
@@ -39,7 +39,7 @@ require_text 'Format=disk' "${MKOSI_DIR}/mkosi.conf"
 if grep -Eq '^[[:space:]]*ToolsTree=' "${MKOSI_DIR}/mkosi.conf"; then
     bad "native multiarch builds must use host tools; mkosi 25.3 default tools tree pulls grub-pc-bin on arm64"
 fi
-require_text 'BuildSources=../..' "${MKOSI_DIR}/mkosi.conf"
+grep -Fxq 'BuildSources=../..' "${MKOSI_DIR}/mkosi.conf" || bad "BuildSources must resolve to the OS package root"
 require_text 'Checksum=yes' "${MKOSI_DIR}/mkosi.conf"
 require_text '    python3-cryptography' "${MKOSI_DIR}/mkosi.conf"
 require_text '    gdisk' "${MKOSI_DIR}/mkosi.conf"
@@ -158,16 +158,16 @@ require_text 'systemctl enable eliza-control-broker.socket' "${MKOSI_DIR}/mkosi.
 require_text 'systemctl enable elizaos-grow-persistent.service' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'systemctl enable elizaos-recovery-verify.service' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'control_source="${source_root}/linux/control"' "${MKOSI_DIR}/mkosi.postinst.chroot"
-require_text 'eliza_control/installer.py' "${MKOSI_DIR}/../../control-inputs.list"
-require_text 'eliza_control/provision.py' "${MKOSI_DIR}/../../control-inputs.list"
-require_text 'systemd/eliza-control-provision.service' "${MKOSI_DIR}/../../control-inputs.list"
-require_text 'protocol/installer-execution.schema.json' "${MKOSI_DIR}/../../control-inputs.list"
+require_text 'eliza_control/installer.py' "${MKOSI_DIR}/../control-inputs.list"
+require_text 'eliza_control/provision.py' "${MKOSI_DIR}/../control-inputs.list"
+require_text 'systemd/eliza-control-provision.service' "${MKOSI_DIR}/../control-inputs.list"
+require_text 'protocol/installer-execution.schema.json' "${MKOSI_DIR}/../control-inputs.list"
 require_text '/etc/sudoers.d/010-elizaos-agent' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'ELIZAOS_BUILD_MODE=development' "${MKOSI_DIR}/mkosi.conf"
 require_text 'desktop-artifact-manifest.json' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256' "${MKOSI_DIR}/mkosi.postinst.chroot"
 require_text 'verify-desktop-artifact.py' "${MKOSI_DIR}/mkosi.postinst.chroot"
-verifier="${ROOT}/../../scripts/linux/verify-desktop-artifact.py"
+verifier="${ROOT}/../scripts/linux/verify-desktop-artifact.py"
 require_file "$verifier"
 require_text 'Ed25519PublicKey' "$verifier"
 require_text 'public_key.verify(signature' "$verifier"
@@ -185,78 +185,78 @@ require_text 'archive digest does not match manifest' "$verifier"
 require_text 'entrypoints must be archive-relative bin/* paths' "$verifier"
 require_text '--extract-to /opt/elizaos' "${MKOSI_DIR}/mkosi.postinst.chroot"
 for qualification_script in mkosi-linux-build.py mkosi-qemu-qualify.py mkosi-persistence-qualify.py mkosi-reproducibility-qualify.py generate-mkosi-sbom.sh; do
-    require_file "${ROOT}/../../scripts/linux/${qualification_script}"
-    [ -x "${ROOT}/../../scripts/linux/${qualification_script}" ] || bad "${qualification_script} is not executable"
+    require_file "${ROOT}/../scripts/linux/${qualification_script}"
+    [ -x "${ROOT}/../scripts/linux/${qualification_script}" ] || bad "${qualification_script} is not executable"
 done
-require_file "${ROOT}/../../scripts/linux/mkosi-macos-lima.sh"
-[ -x "${ROOT}/../../scripts/linux/mkosi-macos-lima.sh" ] || bad "mkosi-macos-lima.sh is not executable"
-require_text 'ELIZAOS_LIMA_VM_TYPE' "${ROOT}/../../scripts/linux/mkosi-macos-lima.sh"
-require_text '--arch=aarch64' "${ROOT}/../../scripts/linux/mkosi-macos-lima.sh"
-require_text '--mount-only="$repo_root"' "${ROOT}/../../scripts/linux/mkosi-macos-lima.sh"
-require_text '--allow-dirty-development' "${ROOT}/../../scripts/linux/mkosi-macos-lima.sh"
-if grep -Eq 'limactl (delete|remove)' "${ROOT}/../../scripts/linux/mkosi-macos-lima.sh"; then
+require_file "${ROOT}/../scripts/linux/mkosi-macos-lima.sh"
+[ -x "${ROOT}/../scripts/linux/mkosi-macos-lima.sh" ] || bad "mkosi-macos-lima.sh is not executable"
+require_text 'ELIZAOS_LIMA_VM_TYPE' "${ROOT}/../scripts/linux/mkosi-macos-lima.sh"
+require_text '--arch=aarch64' "${ROOT}/../scripts/linux/mkosi-macos-lima.sh"
+require_text '--mount-only="$repo_root"' "${ROOT}/../scripts/linux/mkosi-macos-lima.sh"
+require_text '--allow-dirty-development' "${ROOT}/../scripts/linux/mkosi-macos-lima.sh"
+if grep -Eq 'limactl (delete|remove)' "${ROOT}/../scripts/linux/mkosi-macos-lima.sh"; then
     bad "Mac Lima harness must not delete VMs"
 fi
 require_text 'mkosi_disk_assembly_only_no_boot_or_hardware_claim' \
-    "${ROOT}/../../scripts/linux/mkosi-linux-build.py"
+    "${ROOT}/../scripts/linux/mkosi-linux-build.py"
 require_text 'release builds require a dated snapshot.debian.org archive URL' \
-    "${ROOT}/../../scripts/linux/mkosi-linux-build.py"
-require_text 'configurationSha256' "${ROOT}/../../scripts/linux/mkosi-linux-build.py"
-require_text '--extra-tree=' "${ROOT}/../../scripts/linux/mkosi-linux-build.py"
-require_text 'desktopArtifactInputs' "${ROOT}/../../scripts/linux/mkosi-linux-build.py"
-require_text '"profile": args.profile' "${ROOT}/../../scripts/linux/mkosi-linux-build.py"
-require_text 'source identity changed during mkosi build' "${ROOT}/../../scripts/linux/mkosi-linux-build.py"
-require_text 'mkosi configuration changed during build' "${ROOT}/../../scripts/linux/mkosi-linux-build.py"
-require_text 'desktop artifact inputs changed during mkosi build' "${ROOT}/../../scripts/linux/mkosi-linux-build.py"
+    "${ROOT}/../scripts/linux/mkosi-linux-build.py"
+require_text 'configurationSha256' "${ROOT}/../scripts/linux/mkosi-linux-build.py"
+require_text '--extra-tree=' "${ROOT}/../scripts/linux/mkosi-linux-build.py"
+require_text 'desktopArtifactInputs' "${ROOT}/../scripts/linux/mkosi-linux-build.py"
+require_text '"profile": args.profile' "${ROOT}/../scripts/linux/mkosi-linux-build.py"
+require_text 'source identity changed during mkosi build' "${ROOT}/../scripts/linux/mkosi-linux-build.py"
+require_text 'mkosi configuration changed during build' "${ROOT}/../scripts/linux/mkosi-linux-build.py"
+require_text 'desktop artifact inputs changed during mkosi build' "${ROOT}/../scripts/linux/mkosi-linux-build.py"
 require_text 'qemu_graphical_target_only_no_login_agent_computer_control_or_hardware_claim' \
-    "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text 'required boot markers' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
+require_text 'required boot markers' "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
 require_text '--bios cannot be combined with pflash firmware mode' \
-    "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
 require_text 'choices=("usb", "virtio"), default="usb"' \
-    "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text 'terminationReason' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text '"firmwareMode": args.firmware_mode' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text '"version": version_line' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text 'virt,accel=hvf,gic-version=max' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text 'Started gdm.service - GNOME Display Manager' "${ROOT}/../../scripts/linux/mkosi_console.py"
-require_text 'Reached target Graphical Interface' "${ROOT}/../../scripts/linux/mkosi_console.py"
-require_text 'choices=("graphical", "recovery")' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
+require_text 'terminationReason' "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
+require_text '"firmwareMode": args.firmware_mode' "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
+require_text '"version": version_line' "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
+require_text 'virt,accel=hvf,gic-version=max' "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
+require_text 'Started gdm.service - GNOME Display Manager' "${ROOT}/../scripts/linux/mkosi_console.py"
+require_text 'Reached target Graphical Interface' "${ROOT}/../scripts/linux/mkosi_console.py"
+require_text 'choices=("graphical", "recovery")' "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
 require_text 'qemu_recovery_selection_and_service_unavailability_only' \
-    "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text 'tempfile.NamedTemporaryFile' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text 'os.link(temporary_path, path)' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
-require_text 'recovery hotkey was never accepted' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
+require_text 'tempfile.NamedTemporaryFile' "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
+require_text 'os.link(temporary_path, path)' "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
+require_text 'recovery hotkey was never accepted' "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"
 require_text 'two_boot_home_persistence' \
-    "${ROOT}/../../scripts/linux/mkosi-persistence-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-persistence-qualify.py"
 require_text 'virtual USB expanded-byte readback digest mismatch' \
-    "${ROOT}/../../scripts/linux/mkosi-persistence-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-persistence-qualify.py"
 require_text 'home sentinel did not survive the second boot' \
-    "${ROOT}/../../scripts/linux/mkosi-persistence-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-persistence-qualify.py"
 require_text 'from mkosi_console import' \
-    "${ROOT}/../../scripts/linux/mkosi-persistence-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-persistence-qualify.py"
 require_text 'work image must not already exist' \
-    "${ROOT}/../../scripts/linux/mkosi-persistence-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-persistence-qualify.py"
 require_text 'two_build_root_partition_reproducibility_only' \
-    "${ROOT}/../../scripts/linux/mkosi-reproducibility-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-reproducibility-qualify.py"
 require_text 'expanded image does not match its compressed build artifact' \
-    "${ROOT}/../../scripts/linux/mkosi-reproducibility-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-reproducibility-qualify.py"
 require_text 'isolated builds have different discoverable root partition geometry' \
-    "${ROOT}/../../scripts/linux/mkosi-reproducibility-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-reproducibility-qualify.py"
 require_text 'discoverable root partition' \
-    "${ROOT}/../../scripts/linux/mkosi-reproducibility-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-reproducibility-qualify.py"
 require_text 'diffoscope did not produce a regular report' \
-    "${ROOT}/../../scripts/linux/mkosi-reproducibility-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-reproducibility-qualify.py"
 require_text 'all input and output paths must be distinct' \
-    "${ROOT}/../../scripts/linux/mkosi-reproducibility-qualify.py"
+    "${ROOT}/../scripts/linux/mkosi-reproducibility-qualify.py"
 require_text 'document.get("returnCode") != 0' \
-    "${ROOT}/../../scripts/linux/mkosi-reproducibility-qualify.py"
-require_text 'elizaos-system' "${ROOT}/../../scripts/linux/generate-mkosi-sbom.sh"
+    "${ROOT}/../scripts/linux/mkosi-reproducibility-qualify.py"
+require_text 'elizaos-system' "${ROOT}/../scripts/linux/generate-mkosi-sbom.sh"
 require_text 'mount --read-only --options noload' \
-    "${ROOT}/../../scripts/linux/generate-mkosi-sbom.sh"
+    "${ROOT}/../scripts/linux/generate-mkosi-sbom.sh"
 require_text 'document.packages.length === 0' \
-    "${ROOT}/../../scripts/linux/generate-mkosi-sbom.sh"
-if grep -Fq '"-cpu", "max"' "${ROOT}/../../scripts/linux/mkosi-qemu-qualify.py"; then
+    "${ROOT}/../scripts/linux/generate-mkosi-sbom.sh"
+if grep -Fq '"-cpu", "max"' "${ROOT}/../scripts/linux/mkosi-qemu-qualify.py"; then
     bad "QEMU qualification must not force the TCG max CPU under KVM"
 fi
 for dropin in \

@@ -8,7 +8,7 @@ import {
   closeAospBuildEnvironment,
   prepareAospBuildEnvironment,
   revalidateAospBuildEnvironment,
-} from "../distro-android/build-aosp.ts";
+} from "../android/build-aosp.ts";
 
 test("prepared AOSP outputs remain relative for Siso and resolve to the validated directory", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aosp-siso-env-"));

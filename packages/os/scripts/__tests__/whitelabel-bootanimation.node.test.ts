@@ -18,7 +18,7 @@ const generator = path.join(
 );
 const packer = path.join(
   osRoot,
-  "scripts/android/build-eliza-bootanimation.ts",
+  "scripts/android/build-bootanimation.ts",
 );
 const sharp = createRequire(path.join(repoRoot, "packages/app/package.json"))(
   "sharp",

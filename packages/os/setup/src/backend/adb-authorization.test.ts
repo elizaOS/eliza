@@ -8,7 +8,7 @@ import { AdbFlasherBackend } from "./adb-backend";
 import * as signedRelease from "./signed-release";
 import type { FlashPlan } from "./types";
 
-vi.mock("../dependencies/host-tools", () => ({
+vi.mock("./host-tools", () => ({
   findHostTool: () => undefined,
 }));
 vi.mock("node:child_process", async (importOriginal) => {

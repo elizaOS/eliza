@@ -96,7 +96,7 @@ This is an internal OS component, not a standalone workspace or installable
 product. The OS package builds it against the locked
 `@elizaos/plugin-browser/native-wire` dependency. Linux assembly and signed AOSP
 provisioning live in `../scripts/linux/assemble-browser-payload.py` and
-`../scripts/distro-android/prepare-chromium-browser.ts`. Preserve those existing
+`../scripts/android/prepare-chromium-browser.ts`. Preserve those existing
 signed-artifact and certificate checks when changing the component.
 
 For installed Linux acceptance, set `ELIZA_BROWSER_EXECUTABLE` to the OS-built
@@ -190,7 +190,7 @@ Eliza OS owns Android Chromium compilation as well as source preparation. On a
 provisioned Linux Chromium/depot_tools host, run:
 
 ```sh
-node packages/os/scripts/distro-android/build-chromium-browser.ts \
+node packages/os/scripts/android/build-chromium-browser.ts \
   --source /absolute/chromium/src --extension /absolute/product/extension \
   --out /absolute/new-overlay --build /absolute/chromium/src/out/Owned \
   --args-file /absolute/reviewed-args.gn --jobs 8 \

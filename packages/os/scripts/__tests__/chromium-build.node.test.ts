@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chromiumBuildPlan } from "../distro-android/build-chromium-browser.ts";
+import { chromiumBuildPlan } from "../android/build-chromium-browser.ts";
 
 const gnArgs =
   'target_os = "android"\ntarget_cpu = "arm64"\nis_desktop_android = true\nchrome_public_manifest_package = "ai.elizaos.chromium"\n';

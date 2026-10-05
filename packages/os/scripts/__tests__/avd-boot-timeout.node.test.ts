@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { findEmulatorSerial, waitForBoot } from "../distro-android/avd-test.ts";
+import { findEmulatorSerial, waitForBoot } from "../android/avd-test.ts";
 
 for (const blocked of [
   "wait-for-device",

@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { loadProfile } from "../aosp/verify-source-lock.ts";
+import { loadProfile } from "../android/verify-source-lock.ts";
 
 const androidDir = fileURLToPath(new URL("../../android/", import.meta.url));
 const vendorDir = path.join(androidDir, "vendor/eliza");
