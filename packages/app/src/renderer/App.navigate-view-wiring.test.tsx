@@ -1299,18 +1299,10 @@ describe("App navigate-view event wiring", () => {
       appState.tab = "documents";
       window.history.replaceState(null, "", path);
       const { findByTestId, queryByTestId } = render(<App />);
-      if (remote) {
-        // Exact remote plugin routes take precedence on web/desktop.
-        expect(
-          (await findByTestId("dynamic-view-loader")).getAttribute(
-            "data-view-id",
-          ),
-        ).toBe("documents");
-        expect(queryByTestId("documents-view")).toBeNull();
-      } else {
-        expect(await findByTestId("documents-view")).toBeTruthy();
-        expect(queryByTestId("dynamic-view-loader")).toBeNull();
-      }
+      // The canonical character route is shell-reserved, even when a remote
+      // registry advertises the same path. Preserve the signed plugin owner.
+      expect(await findByTestId("documents-view")).toBeTruthy();
+      expect(queryByTestId("dynamic-view-loader")).toBeNull();
     },
   );
 
