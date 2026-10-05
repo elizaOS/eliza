@@ -50,6 +50,10 @@ export class X402BudgetTracker {
   ): { allowed: boolean; reason?: string } {
     this.maybeResetDaily();
 
+    if (amount < 0n) {
+      return { allowed: false, reason: "Payment amount cannot be negative" };
+    }
+
     // Global per-request check
     if (amount > this.globalPerRequestMax) {
       return {

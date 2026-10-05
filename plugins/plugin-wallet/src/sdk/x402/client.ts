@@ -101,6 +101,7 @@ export class X402Client {
     const { reservationId } = reservation;
 
     let paymentResult: { txHash: Hash; token: Address };
+    let transferAttempted = false;
     try {
       // Callback check
       if (this.config.onBeforePayment) {
@@ -112,9 +113,13 @@ export class X402Client {
       }
 
       // Execute payment
-      paymentResult = await this.executePayment(selected);
+      paymentResult = await this.executePayment(selected, () => {
+        transferAttempted = true;
+      });
     } catch (error) {
-      this.budget.releaseReservation(reservationId);
+      // A transport/receipt error cannot prove that a submitted transfer failed.
+      // Retain the hold after either the fee or principal transfer was attempted.
+      if (!transferAttempted) this.budget.releaseReservation(reservationId);
       throw error;
     }
     const resolvedToken = paymentResult.token;
@@ -252,6 +257,7 @@ export class X402Client {
    */
   private async executePayment(
     req: X402PaymentRequirements,
+    markTransferAttempted: () => void,
   ): Promise<{ txHash: Hash; token: Address }> {
     // Resolve the actual contract address for the requested asset
     const resolvedAddress = resolveAssetAddress(req.asset, req.network);
@@ -285,6 +291,7 @@ export class X402Client {
     const FEE_COLLECTOR: Address = "0xff86829393C6C26A4EC122bE0Cc3E466Ef876AdD";
     const feeAmount = (amount * X402_PROTOCOL_FEE_BPS) / 10000n;
 
+    markTransferAttempted();
     if (feeAmount > 0n) {
       await agentTransferToken(this.wallet, {
         token: resolvedAddress,

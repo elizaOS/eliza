@@ -66,11 +66,17 @@ describe("X402Client fee leg asset resolution (#22381)", () => {
       client as unknown as {
         executePayment: (
           req: X402PaymentRequirements,
+          markTransferAttempted: () => void,
         ) => Promise<{ txHash: string; token: string }>;
       }
     ).executePayment.bind(client);
 
-    const result = await executePayment(symbolRequirement());
+    const markTransferAttempted = vi.fn();
+    const result = await executePayment(
+      symbolRequirement(),
+      markTransferAttempted,
+    );
+    expect(markTransferAttempted).toHaveBeenCalledOnce();
 
     // Fee leg + payment leg = two transfers, both with a resolved address.
     expect(agentTransferToken).toHaveBeenCalledTimes(2);

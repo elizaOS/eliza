@@ -122,8 +122,8 @@ describe("X402Client budget under concurrent payments (#33927)", () => {
     }
   });
 
-  it("frees the held amount when the transfer fails", async () => {
-    agentTransferToken.mockRejectedValueOnce(new Error("transfer reverted"));
+  it("frees the held amount when pre-transfer budget lookup fails", async () => {
+    checkBudget.mockRejectedValueOnce(new Error("budget unavailable"));
     const fetchSpy = mockSeller();
     try {
       const client = new X402Client(createWallet(), {
@@ -133,10 +133,10 @@ describe("X402Client budget under concurrent payments (#33927)", () => {
       });
 
       await expect(client.fetch(`https://${SERVICE}/resource`)).rejects.toThrow(
-        "transfer reverted",
+        "budget unavailable",
       );
 
-      // The failed payment no longer holds the only dollar of budget
+      // No transfer was attempted, so the next request may use the budget
       const response = await client.fetch(`https://${SERVICE}/resource`);
       expect(response.status).toBe(200);
       expect(client.getDailySpendSummary().byService[SERVICE]).toBe(ONE_USDC);
@@ -144,6 +144,34 @@ describe("X402Client budget under concurrent payments (#33927)", () => {
       fetchSpy.mockRestore();
     }
   });
+
+  it.each([1, 2])(
+    "retains budget when transfer %i has an unknown outcome",
+    async (failedTransfer) => {
+      let calls = 0;
+      agentTransferToken.mockImplementation(async () => {
+        if (++calls === failedTransfer)
+          throw new Error("receipt unavailable after submission");
+        return TX_HASH;
+      });
+      const fetchSpy = mockSeller();
+      try {
+        const client = new X402Client(createWallet(), {
+          globalDailyLimit: ONE_USDC,
+        });
+        await expect(
+          client.fetch(`https://${SERVICE}/resource`),
+        ).rejects.toThrow("receipt unavailable");
+        await expect(
+          client.fetch(`https://${SERVICE}/resource`),
+        ).rejects.toBeInstanceOf(X402BudgetExceededError);
+        expect(agentTransferToken).toHaveBeenCalledTimes(failedTransfer);
+        expect(client.getTransactionLog()).toEqual([]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
 
   it("frees the held amount when onBeforePayment declines", async () => {
     const fetchSpy = mockSeller();
@@ -170,6 +198,13 @@ describe("X402Client budget under concurrent payments (#33927)", () => {
 });
 
 describe("X402BudgetTracker reservations", () => {
+  it("rejects negative holds before they can increase available budget", () => {
+    const tracker = new X402BudgetTracker({ globalDailyLimit: ONE_USDC });
+    expect(tracker.reserve(SERVICE, -ONE_USDC).allowed).toBe(false);
+    expect(tracker.reserve(SERVICE, 2n * ONE_USDC).allowed).toBe(false);
+    expect(tracker.reserve(SERVICE, ONE_USDC).allowed).toBe(true);
+  });
+
   it("counts held amounts in the daily checks until recorded or released", () => {
     const tracker = new X402BudgetTracker(fiveDollarServiceCap());
 
