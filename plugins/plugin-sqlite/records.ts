@@ -681,6 +681,20 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async deleteEntities(entityIds: UUID[]): Promise<void> {
+    if (entityIds.length === 0) return;
+    const set = new Set(entityIds);
+    // Cascade as plugin-sql does: its deleteEntity removes components the
+    // entity owns or sourced, and the participant FK drops its memberships.
+    await this.storage.deleteWhere<Component>(
+      COLLECTIONS.COMPONENTS,
+      (c) =>
+        set.has(c.entityId as UUID) ||
+        (c.sourceEntityId !== undefined && set.has(c.sourceEntityId as UUID)),
+    );
+    await this.storage.deleteWhere<StoredParticipant>(
+      COLLECTIONS.PARTICIPANTS,
+      (p) => set.has(p.entityId as UUID),
+    );
     for (const id of entityIds) {
       await this.storage.delete(COLLECTIONS.ENTITIES, id);
     }
@@ -955,8 +969,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         (c) =>
           c.entityId === key.entityId &&
           c.type === key.type &&
-          c.worldId === (key.worldId ?? null) &&
-          c.sourceEntityId === (key.sourceEntityId ?? null),
+          // An omitted worldId/sourceEntityId matches any value, as in
+          // plugin-sql's getComponent and getComponentsForEntities below.
+          (key.worldId === undefined || c.worldId === key.worldId) &&
+          (key.sourceEntityId === undefined ||
+            c.sourceEntityId === key.sourceEntityId),
       );
       result.push(matches[0] ?? null);
     }

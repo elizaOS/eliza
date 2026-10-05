@@ -47,6 +47,14 @@ public final class NativeRuntimeSession implements AutoCloseable {
     public void invalidate() { supervisor.invalidate(); }
     @Override public void close() { supervisor.close(); }
 
+    /** Bind resources captured by the host to their original lifecycle before dispatch.
+     * A restart between endpoint selection and request admission must reject, not reuse it. */
+    public <T> T request(Snapshot selected, BooleanSupplier activeHost, Request<T> request, String unavailable, String cancelled) throws Exception {
+        if (selected == null) throw new IllegalArgumentException("Runtime snapshot is required");
+        return request(() -> activeHost.getAsBoolean() && supervisor.snapshot() == selected.lifecycle,
+                request, unavailable, cancelled);
+    }
+
     /** Runs once, outside supervisor locks. A retired host or epoch cannot publish its response. */
     public <T> T request(BooleanSupplier activeHost, Request<T> request, String unavailable, String cancelled) throws Exception {
         NativeProcessSupervisor.Snapshot before = supervisor.snapshot();

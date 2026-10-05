@@ -57,8 +57,10 @@ export async function runIsolatedAndroidTest({
   beforeUpgrade,
   afterUpgrade,
   instrumentationTimeoutMs,
+  preflightVariant,
   prepareVariant,
   collectVariant,
+  cleanupVariant,
 }) {
   assert.match(serial ?? "", /^emulator-\d+$/);
   assert.ok(
@@ -153,17 +155,38 @@ export async function runIsolatedAndroidTest({
   runnerArgs = [...runnerArgs];
   upgradeRunnerArgs = [...upgradeRunnerArgs];
   assert.ok(Array.isArray(companionApks), "Companion APK list required");
-  const companions = companionApks.map(({ apk, packageName, sha256: hash }) => {
-    assert.ok(path.isAbsolute(apk), "Absolute companion APK path required");
-    assert.match(packageName ?? "", packagePattern);
-    assert.match(
-      hash ?? "",
-      /^[a-f0-9]{64}$/,
-      "Pinned companion SHA-256 required",
-    );
-    assert.equal(sha256(apk), hash, "Companion APK differs from its pin");
-    return { apk, packageName, sha256: hash };
-  });
+  const companions = companionApks.map(
+    ({ apk, packageName, sha256: hash, updates = [] }) => {
+      assert.ok(path.isAbsolute(apk), "Absolute companion APK path required");
+      assert.match(packageName ?? "", packagePattern);
+      assert.match(
+        hash ?? "",
+        /^[a-f0-9]{64}$/,
+        "Pinned companion SHA-256 required",
+      );
+      assert.equal(sha256(apk), hash, "Companion APK differs from its pin");
+      assert.ok(
+        Array.isArray(updates),
+        "Explicit companion update list required",
+      );
+      const declaredUpdates = updates.map(({ apk, sha256: hash }) => {
+        assert.ok(path.isAbsolute(apk), "Absolute update APK path required");
+        assert.match(
+          hash ?? "",
+          /^[a-f0-9]{64}$/,
+          "Pinned update SHA-256 required",
+        );
+        assert.equal(sha256(apk), hash, "Update APK differs from its pin");
+        return { apk, sha256: hash };
+      });
+      return {
+        apk,
+        packageName,
+        sha256: hash,
+        ...(declaredUpdates.length ? { updates: declaredUpdates } : {}),
+      };
+    },
+  );
   const packageNames = [
     packageName,
     testPackage,
@@ -174,7 +197,13 @@ export async function runIsolatedAndroidTest({
     packageNames.length,
     "Duplicate companion package identity",
   );
-  for (const item of companions) {
+  for (const item of companions.flatMap((item) => [
+    item,
+    ...(item.updates ?? []).map((update) => ({
+      ...update,
+      packageName: item.packageName,
+    })),
+  ])) {
     const badging = await dumpAndroidArtifactBadgingAsync(aapt, item.apk, {
       signal,
       timeout: commandTimeoutMs,
@@ -329,7 +358,9 @@ export async function runIsolatedAndroidTest({
   };
   let admitted = false,
     previousHome,
-    failure;
+    failure,
+    activeContext,
+    scenarioCleanupFailure;
   const owned = new Map();
   const installedHash = async (name) => {
     const lines = (
@@ -345,6 +376,29 @@ export async function runIsolatedAndroidTest({
       return sha256(local);
     } finally {
       fs.rmSync(local, { force: true });
+    }
+  };
+  const cleanupHashAllowed = (name, hash) =>
+    hash === owned.get(name) ||
+    companions.some(
+      (item) =>
+        item.packageName === name &&
+        item.updates?.some((update) => update.sha256 === hash),
+    );
+  // The cleanup callback runs once, even after cancellation or partial setup.
+  const restoreScenario = async () => {
+    if (!activeContext) return;
+    const context = activeContext;
+    activeContext = undefined;
+    const wasCleaning = cleaning;
+    cleaning = true;
+    try {
+      await cleanupVariant?.({ ...context, signal: undefined });
+    } catch (error) {
+      scenarioCleanupFailure = error;
+      throw error;
+    } finally {
+      cleaning = wasCleaning;
     }
   };
   const install = async (file, name, expectedHash, replace = false) => {
@@ -416,10 +470,6 @@ export async function runIsolatedAndroidTest({
         record.testSha256,
         "Test APK changed after preflight",
       );
-      await install(variant.apk, packageName, record.appSha256);
-      await install(variant.testApk, testPackage, record.testSha256);
-      for (const item of companions)
-        await install(item.apk, item.packageName, item.sha256);
       const context = {
         variant: variant.name,
         packageName,
@@ -429,7 +479,22 @@ export async function runIsolatedAndroidTest({
         directory,
         androidUser,
         signal,
+        run,
+        deviceLease: lease,
+        record,
       };
+      // This caller hook is read-only admission; a rejection must not invoke cleanup.
+      await preflightVariant?.(context);
+      signal?.throwIfAborted();
+      assert.ok(
+        !(await installed()),
+        "Installation appeared during scenario preflight",
+      );
+      activeContext = context;
+      await install(variant.apk, packageName, record.appSha256);
+      await install(variant.testApk, testPackage, record.testSha256);
+      for (const item of companions)
+        await install(item.apk, item.packageName, item.sha256);
       signal?.throwIfAborted();
       await prepareVariant?.(context);
       signal?.throwIfAborted();
@@ -517,13 +582,17 @@ export async function runIsolatedAndroidTest({
       }
       await collectVariant?.(context);
       signal?.throwIfAborted();
-      record.passed = true;
-      for (const [name, expected] of owned)
-        assert.equal(
-          await installedHash(name),
-          expected,
+      await restoreScenario();
+      record.finalInstalledHashes = {};
+      for (const name of owned.keys()) {
+        const hash = await installedHash(name);
+        assert.ok(
+          cleanupHashAllowed(name, hash),
           "Installed APK changed before cleanup",
         );
+        record.finalInstalledHashes[name] = hash;
+      }
+      record.passed = true;
       for (const name of [...owned.keys()].reverse())
         await run("uninstall", name);
       assert.ok(!(await installed()), "Variant package cleanup failed");
@@ -540,13 +609,21 @@ export async function runIsolatedAndroidTest({
       if (admitted) {
         // Only identities absent from all users at admission are owned by this run.
         report.cleanupErrors = [];
+        try {
+          await restoreScenario();
+        } catch {
+          /* Recorded by restoreScenario, including normal-path failures. */
+        }
+        if (scenarioCleanupFailure)
+          report.cleanupErrors.push(
+            `Scenario cleanup failed: ${scenarioCleanupFailure.message}`,
+          );
         const remainingOwned = [];
         for (const name of [...owned.keys()].reverse()) {
           try {
             if ((await packages()).includes(`package:${name}`)) {
-              assert.equal(
-                await installedHash(name),
-                owned.get(name),
+              assert.ok(
+                cleanupHashAllowed(name, await installedHash(name)),
                 "Owned APK changed; retain installation for recovery",
               );
               remainingOwned.push(name);

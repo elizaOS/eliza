@@ -1314,6 +1314,10 @@ export {
   shareAttachment,
 } from "./utils/download-share.js";
 export { formatByteSize } from "./utils/format.js";
+export {
+  createValidatedJsonStorage,
+  type JsonStoragePort,
+} from "./utils/json-storage.js";
 export { isSafeNavigationUrl } from "./utils/navigation-url.js";
 export { openExternalUrl } from "./utils/openExternalUrl.js";
 export { reportRendererDiagnostic } from "./utils/renderer-diagnostics.js";

@@ -239,3 +239,20 @@ consumer adapters, including static imports. The caller owns the temporary
 directory when staging, or supplies a compiler/JVM budget to the runner, which
 owns temporary-directory cleanup and propagates compilation/assertion failures.
 Staging rejects unknown fixtures, invalid packages and existing output files; it never rewrites production source.
+
+`RuntimeRequestDispatcher` shares bounded normal/urgent-control queues, serialized-body admission and destruction cleanup. Pause/cancel/abort work uses a separate single-worker lane. Defaults preserve four normal workers, sixteen queued normal requests and eight queued controls; hosts can configure queue bounds. Body limits count UTF-16 serialized JSON units; transport byte limits and route/authentication policy remain mandatory. Rejected work is never retried. `close()` interrupts active work and discards queued work. Portable contracts cover saturation, urgent progress, size boundaries and teardown.
+
+`runtime.EmbeddedRuntimeService` integrates the existing NativeRuntimeSession and
+EmbeddedRuntimeGroup with Android Service lifecycle, foreground dispatch, status,
+endpoint-bound requests and local health snapshots. Subclasses provide the private
+runtime root, notification UI/identity, launch commands and timing/size policy.
+Product wrappers retain asset admission, route allowlists, credentials and provider
+configuration. Static adapters use the concrete service class so replacement and
+shutdown invalidate old requests without retargeting them. No start is triggered by
+status or health reads. Consumer instrumentation should exercise actual failure,
+restart, stop and health wiring separately from real configured-runtime acceptance.
+
+Hosts that capture an endpoint before request admission must use the snapshot-bound
+`NativeRuntimeSession.request(snapshot, ...)` overload. Capture the snapshot before
+selecting the endpoint; a lifecycle change then rejects transport admission instead
+of allowing a stale endpoint to inherit a newer running epoch.

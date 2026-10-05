@@ -21,6 +21,7 @@ type Binding = {
 	projectionHash: string;
 	requestHash: string;
 	stateHash: string;
+	extractionProjectionAuthorized: boolean;
 };
 const key = Symbol.for("eliza.task-extraction-context");
 const bindings = () =>
@@ -58,15 +59,20 @@ export function bindTaskExtractionContext(
 				.filter((event) => sourceIds.has(event.id))
 				.map((event) => event.id),
 		);
-		if (!sources.length || included.size === sources.length) return;
+		// Exact full views bind current decision metadata without granting an
+		// extraction projection; only the existing partial-history rule can do so.
+		const extractionProjectionAuthorized =
+			sources.length > 0 && included.size !== sources.length;
 		// A producer may remove only reviewed dialogue and its unambiguously bound
 		// historical evidence. Current providers, instructions and effects stay exact.
-		const expected = {
-			...original,
-			events: selectHistoricalNavigation(original, included).events.filter(
-				(event) => !sourceIds.has(event.id) || included.has(event.id),
-			),
-		};
+		const expected = extractionProjectionAuthorized
+			? {
+					...original,
+					events: selectHistoricalNavigation(original, included).events.filter(
+						(event) => !sourceIds.has(event.id) || included.has(event.id),
+					),
+				}
+			: original;
 		if (hashStableJson(expected) !== hashStableJson(projected)) return;
 		bindings().set(state.data, {
 			original,
@@ -75,19 +81,17 @@ export function bindTaskExtractionContext(
 			projectionHash: hashStableJson(projected),
 			requestHash: hashStableJson(message),
 			stateHash: stateFingerprint(state),
+			extractionProjectionAuthorized,
 		});
 	} catch {
 		// Invalid optional projection cannot remove any extractor context.
 	}
 }
 
-/** Routing clones State.values but preserves State.data; copied JSON cannot
- * inherit this capability. Changed source/actor/request/state falls back to full. */
-export function readTaskExtractionContext(
+function readBinding(
 	state: State | undefined,
 	message: Memory | undefined,
-	expectedSystem?: string,
-): { text: string; originalText: string; system?: string } | undefined {
+): Binding | undefined {
 	if (!state?.data || !message) return undefined;
 	const binding = bindings().get(state.data);
 	if (!binding) return undefined;
@@ -99,6 +103,51 @@ export function readTaskExtractionContext(
 			binding.projectionHash !== hashStableJson(binding.projected)
 		)
 			return undefined;
+		return binding;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Current Stage-1 intent evidence from the same unmodified request capability.
+ * Missing, cloned or changed bindings grant no foreground ownership authority. */
+export function readTaskExtractionRequestIntents(
+	state: State | undefined,
+	message: Memory | undefined,
+): readonly string[] | undefined {
+	const binding = readBinding(state, message);
+	if (!binding) return undefined;
+	const events = binding.original.events.filter(
+		(event) =>
+			event.type === "message_handler" && event.source === "message-service",
+	);
+	if (events.length !== 1 || events[0].metadata?.processMessage !== "RESPOND")
+		return undefined;
+	const plan = events[0].metadata?.plan;
+	if (!plan || typeof plan !== "object" || Array.isArray(plan))
+		return undefined;
+	const intents = plan.intents;
+	if (
+		!Array.isArray(intents) ||
+		!intents.length ||
+		!intents.every(
+			(intent) => typeof intent === "string" && intent.trim().length > 0,
+		)
+	)
+		return undefined;
+	return [...intents] as string[];
+}
+
+/** Routing clones State.values but preserves State.data; copied JSON cannot
+ * inherit this capability. Changed source/actor/request/state falls back to full. */
+export function readTaskExtractionContext(
+	state: State | undefined,
+	message: Memory | undefined,
+	expectedSystem?: string,
+): { text: string; originalText: string; system?: string } | undefined {
+	const binding = readBinding(state, message);
+	if (!binding?.extractionProjectionAuthorized) return undefined;
+	try {
 		// Keep the trusted canonical prefix on the model's system surface once,
 		// rather than flattening it into user context and adding it again at dispatch.
 		// Originals, style directions, other instructions, providers and receipts
