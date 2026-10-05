@@ -10,6 +10,7 @@
 import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import type { SubscriptionProviderSelectionId } from "@elizaos/host/protocol";
 import {
+  isLocalOnlyInferenceInConfig,
   normalizeSubscriptionProviderSelectionId,
   resolveServiceRoutingInConfig,
 } from "@elizaos/host/protocol";
@@ -145,44 +146,23 @@ export function useProviderSelection(
     useState<ProviderPanelId | null>(() =>
       readRememberedProviderPanel(elizaCloudConnected),
     );
-  const readCloudCallsDisabled = useCallback(
-    (cfg: Record<string, unknown>): boolean => {
-      const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
-      if (
-        llmText?.transport === "cloud-proxy" ||
-        llmText?.transport === "direct" ||
-        llmText?.transport === "remote"
-      ) {
-        return false;
-      }
-      const cloud = asRecord(cfg.cloud);
-      const services = asRecord(cloud?.services);
-      return Boolean(
-        cloud?.inferenceMode === "local" || services?.inference === false,
-      );
-    },
-    [],
-  );
-  const initializeFromConfig = useCallback(
-    (cfg: Record<string, unknown>) => {
-      const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
-      const providerId = getFirstRunProviderOption(llmText?.backend)?.id;
-      const savedSubscriptionProvider = readSubscriptionProvider(cfg);
-      const nextSelectedId =
-        llmText?.transport === "cloud-proxy" && providerId === "elizacloud"
-          ? "__cloud__"
-          : llmText?.transport === "direct"
-            ? (providerId ?? null)
-            : llmText?.transport === "remote" && providerId
-              ? providerId
-              : savedSubscriptionProvider;
-      if (!hasManualSelection.current) {
-        setSelectedProviderId(nextSelectedId);
-      }
-      setCloudCallsDisabled(readCloudCallsDisabled(cfg));
-    },
-    [readCloudCallsDisabled],
-  );
+  const initializeFromConfig = useCallback((cfg: Record<string, unknown>) => {
+    const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
+    const providerId = getFirstRunProviderOption(llmText?.backend)?.id;
+    const savedSubscriptionProvider = readSubscriptionProvider(cfg);
+    const nextSelectedId =
+      llmText?.transport === "cloud-proxy" && providerId === "elizacloud"
+        ? "__cloud__"
+        : llmText?.transport === "direct"
+          ? (providerId ?? null)
+          : llmText?.transport === "remote" && providerId
+            ? providerId
+            : savedSubscriptionProvider;
+    if (!hasManualSelection.current) {
+      setSelectedProviderId(nextSelectedId);
+    }
+    setCloudCallsDisabled(isLocalOnlyInferenceInConfig(cfg));
+  }, []);
   const resolvedSelectedId = useMemo(
     () =>
       selectedProviderId === "__cloud__"

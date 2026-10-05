@@ -1335,6 +1335,16 @@ export function resolveServiceRoutingInConfig(
   return Object.keys(next).length > 0 ? next : null;
 }
 
+export function isLocalOnlyInferenceInConfig(
+  config: Record<string, unknown> | null | undefined,
+): boolean {
+  return (
+    asConfigRecord(config?.cloud)?.enabled === false &&
+    resolveDeploymentTargetInConfig(config).runtime === "local" &&
+    !resolveServiceRoutingInConfig(config)?.llmText
+  );
+}
+
 function deriveFirstRunConnectionFromRuntimeConfig(
   config: Record<string, unknown> | null | undefined,
 ): FirstRunConnection | null {

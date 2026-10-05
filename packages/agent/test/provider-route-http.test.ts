@@ -12,6 +12,8 @@ import {
   getBaseURL,
 } from "../../../plugins/plugin-openai/utils/config.ts";
 import { startApiServer } from "../src/api/server.ts";
+import { loadElizaConfig } from "../src/config/config.ts";
+import { collectPluginNames } from "../src/runtime/plugin-collector.ts";
 import { buildRuntimeSettingsProjection } from "../src/runtime/runtime-settings.ts";
 
 let directory: string;
@@ -22,6 +24,12 @@ const token = randomUUID();
 const openaiKey = "synthetic-openai-routing-credential";
 const cerebrasKey = "synthetic-cerebras-routing-credential";
 const config: ElizaConfig = {
+  deploymentTarget: { runtime: "local" },
+  cloud: {
+    enabled: false,
+    inferenceMode: "local",
+    services: { inference: false },
+  },
   serviceRouting: {
     llmText: {
       backend: "cerebras",
@@ -60,9 +68,18 @@ beforeAll(async () => {
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
   }))
     vi.stubEnv(key, value);
+  const loaded = loadElizaConfig();
+  expect(loaded.cloud?.inferenceMode).toBeUndefined();
+  expect(loaded.cloud?.services?.inference).toBeUndefined();
+  expect(loaded.serviceRouting).toEqual(config.serviceRouting);
+  for (const candidate of [config, loaded]) {
+    const selected = collectPluginNames(candidate);
+    expect(selected.has("@elizaos/plugin-openai")).toBe(true);
+    expect(selected.has("@elizaos/plugin-elizacloud")).toBe(false);
+  }
   fixture = await createTestRuntime({
     characterName: "ProviderRouteAcceptance",
-    settings: buildRuntimeSettingsProjection(config),
+    settings: buildRuntimeSettingsProjection(loaded),
     plugins: [openaiPlugin],
   });
   server = await startApiServer({
