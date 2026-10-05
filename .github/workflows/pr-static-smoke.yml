@@ -465,6 +465,12 @@ jobs:
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-preview.pglite.test.ts
           bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-downgrade-review.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-downgrade-preview.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-downgrade-quotes.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-invoice.pglite.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-payment-observation.pglite.test.ts

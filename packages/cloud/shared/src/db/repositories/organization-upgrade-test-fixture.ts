@@ -21,6 +21,7 @@ export async function installOrganizationUpgradeTestSchema(
           "0517_organization_upgrade_historical_targets",
           "0518_organization_upgrade_historical_settlement",
           "0519_organization_upgrade_void_result",
+          "0520_organization_downgrade_quotes",
         ]
       : []),
   ]) {

@@ -50,7 +50,11 @@ export async function prepareOrganizationUpgrade(
         ),
       )
       .for("update");
-    if (!quote || quote.review_digest !== settlementDigest(quote.review))
+    if (
+      !quote ||
+      quote.review.kind !== "upgrade_estimate" ||
+      quote.review_digest !== settlementDigest(quote.review)
+    )
       reject("quote_unavailable");
     const digest = organizationUpgradeIntentDigest({
       organizationId: input.organizationId,

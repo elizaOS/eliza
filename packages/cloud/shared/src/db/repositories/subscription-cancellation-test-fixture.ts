@@ -29,6 +29,7 @@ export async function installCancellationTestSchema(execute: (query: string) => 
 export async function seedCancellationTestAccount(
   queryOverride?: (text: string, values: unknown[]) => Promise<unknown>,
   period?: { start: Date; end: Date },
+  planKey: "plus_monthly" | "pro_monthly" = "plus_monthly",
 ) {
   const { getPgliteClientForTests } = await import("../client");
   const query =
@@ -47,7 +48,7 @@ export async function seedCancellationTestAccount(
     stripe_customer_id: `cus_${suffix}`,
     stripe_subscription_id: `sub_${suffix}`,
     stripe_subscription_item_id: `si_${suffix}`,
-    plan_key: "plus_monthly" as const,
+    plan_key: planKey,
     catalog_version: "v1",
     status: "active" as const,
     current_period_start: period?.start ?? new Date((now - 86400) * 1000),
@@ -118,11 +119,11 @@ export async function seedCancellationTestAccount(
             object: "subscription_item",
             quantity: 1,
             price: {
-              id: "price_plus",
-              product: "prod_plus",
+              id: planKey === "plus_monthly" ? "price_plus" : "price_pro",
+              product: planKey === "plus_monthly" ? "prod_plus" : "prod_pro",
               livemode: false,
               currency: "usd",
-              unit_amount: 3000,
+              unit_amount: planKey === "plus_monthly" ? 3000 : 10000,
               type: "recurring",
               billing_scheme: "per_unit",
               transform_quantity: null,
