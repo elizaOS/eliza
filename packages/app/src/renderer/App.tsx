@@ -1369,8 +1369,13 @@ function ViewUnavailableFallback({
   pageLayout?: PageLayoutManifest;
 }): ReactNode {
   const { refresh, error } = useAvailableViews();
+  // The missing view cannot own its scroller. Keep recovery inside the shell's
+  // scroll boundary so the floating composer never covers its escape controls.
   return (
-    <AppWorkspaceContent pageLayout={pageLayout}>
+    <AppWorkspaceContent
+      layout="scroll"
+      pageLayout={pageLayout ? { ...pageLayout, scroll: "shell" } : undefined}
+    >
       <ViewUnavailableState viewId={viewId} onRetry={refresh} error={error} />
     </AppWorkspaceContent>
   );

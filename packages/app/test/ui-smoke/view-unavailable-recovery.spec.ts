@@ -79,16 +79,21 @@ for (const width of [390, 1280]) {
               (element) => element.scrollWidth <= element.clientWidth,
             ),
           ).toBe(true);
-          expect(
-            await button.evaluate((element) => {
-              const bounds = element.getBoundingClientRect();
-              return [bounds.top + 2, bounds.bottom - 2].every((y) =>
-                element.contains(
-                  document.elementFromPoint(bounds.left + bounds.width / 2, y),
-                ),
-              );
-            }),
-          ).toBe(true);
+          await expect
+            .poll(() =>
+              button.evaluate((element) => {
+                const bounds = element.getBoundingClientRect();
+                return [bounds.top + 2, bounds.bottom - 2].every((y) =>
+                  element.contains(
+                    document.elementFromPoint(
+                      bounds.left + bounds.width / 2,
+                      y,
+                    ),
+                  ),
+                );
+              }),
+            )
+            .toBe(true);
         }
         await page.screenshot({
           path: testInfo.outputPath("unavailable-recovery.png"),

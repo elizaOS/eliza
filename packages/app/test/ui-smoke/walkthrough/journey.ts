@@ -533,6 +533,16 @@ export async function installJourneyRoutes(
     "eliza:permissions-primed": "1",
   });
   await installDefaultAppRoutes(page);
+  // The real composer reports activity to the agent host. This mock lane
+  // acknowledges the same telemetry contract without starting agent work.
+  await page.route("**/api/interactions/composer", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await fulfillJson(route, 200, {
+      ok: true,
+      activity: route.request().postDataJSON().activity,
+    });
+  });
+
   // The agent's TTS playback (e.g. the tutorial tour narrating) posts far-end
   // reference frames to this OPTIONAL echo-cancellation route. The keyless stub
   // 501s it; the route is explicitly fire-and-forget ("a missing backend must
