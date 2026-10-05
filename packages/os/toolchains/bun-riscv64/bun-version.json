@@ -26,7 +26,8 @@
   },
   "patches": {
     "bun": {
-      "0001-riscv64-c-loop.patch": "8598ed2d311c951cc755b78e8c9ff6e8d9ebf1948538244b6c40c617d9f2f049"
+      "0001-riscv64-c-loop.patch": "8598ed2d311c951cc755b78e8c9ff6e8d9ebf1948538244b6c40c617d9f2f049",
+      "0002-guard-disabled-sampling-profiler.patch": "0cc0bc6d9ff1ece075448cbf91146f8a6298d3a1b47cf1920572a82b2161a647"
     },
     "webkit": {
       "0001-riscv64-c-loop.patch": "9c08d4aa82e65b85b3b90280e6d73174f82d1e6710a7e5a5df974dcce68211f5"
