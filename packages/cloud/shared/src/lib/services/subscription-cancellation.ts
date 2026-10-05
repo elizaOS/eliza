@@ -159,11 +159,12 @@ async function executeClaim(
       await assertCancellationClaimCurrent(input, claim, true);
       // Stripe has no local lifecycle-revision CAS. A concurrent remote period/plan change
       // is detected by the final retrieval and prevents local publication, even after an accepted mutation.
+      // Durable command recovery owns uncertainty; the SDK must not retry a write behind its lease.
       if (claim.configuredCancellation) {
         await stripe.subscriptionSchedules.update(
           claim.configuredCancellation.scheduleId,
           configuredCancellationRequest(claim.configuredCancellation, targetScheduled),
-          { idempotencyKey: claim.command.provider_idempotency_key },
+          { idempotencyKey: claim.command.provider_idempotency_key, maxNetworkRetries: 0 },
         );
         rawSchedule = await stripe.subscriptionSchedules.retrieve(
           claim.configuredCancellation.scheduleId,
@@ -172,7 +173,7 @@ async function executeClaim(
         await stripe.subscriptions.update(
           claim.source.stripe_subscription_id,
           { cancel_at_period_end: targetScheduled },
-          { idempotencyKey: claim.command.provider_idempotency_key },
+          { idempotencyKey: claim.command.provider_idempotency_key, maxNetworkRetries: 0 },
         );
       raw = await stripe.subscriptions.retrieve(claim.source.stripe_subscription_id);
     } else if (initial.scheduled !== targetScheduled) {

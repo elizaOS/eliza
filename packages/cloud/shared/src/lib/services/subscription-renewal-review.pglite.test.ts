@@ -279,7 +279,7 @@ test("reviewed confirmation persists terms, dispatches once and replays after th
   expect(update.mock.calls[0]).toEqual([
     f.source.stripe_subscription_id,
     { cancel_at_period_end: false },
-    { idempotencyKey: `organization-cancellation:${result.commandId}` },
+    { idempotencyKey: `organization-cancellation:${result.commandId}`, maxNetworkRetries: 0 },
   ]);
   const receipt = await repo.readCancellationRenewalReview(f.input, result.commandId);
   expect(receipt?.termsDigest).toBe(f.review.termsDigest);
