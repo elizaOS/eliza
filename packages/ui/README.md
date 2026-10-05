@@ -29,6 +29,9 @@ responses; the durable runtime remains authoritative. Hosts that pass
 an in-flight or expired choice cannot be used, and hide options once the choice
 is no longer pending. `splitSpeechSegments`
 shares lossless caption/playback chunks without importing the voice runtime.
+`createSpeechWordTimeline` maps explicitly utterance-relative character timing to
+UTF-16 caption ranges at a media playback time. Hosts supply exact caption text
+and own playback/lifecycle; missing, reset or mismatched timing disables emphasis.
 
 `TaskLifecycle` projects authoritative task status and
 reconciles start/pause/resume/cancel requests without optimistically reporting
