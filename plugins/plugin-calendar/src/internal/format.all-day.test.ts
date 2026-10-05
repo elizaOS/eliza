@@ -4,7 +4,7 @@
  * a New York all-day Nov 1 listed as "Oct 31, 8:00 PM".
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatCalendarEventDateTime } from "./format.js";
 
 const allDayNov1 = {
@@ -14,6 +14,12 @@ const allDayNov1 = {
 };
 
 describe("formatCalendarEventDateTime all-day civil dates", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-01T12:00:00.000Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
   it.each(["America/New_York", "America/Los_Angeles", "Asia/Tokyo"] as const)(
     "labels Nov 1 as Nov 1 in a %s feed, not the previous local evening",
     (timeZone) => {
