@@ -38,6 +38,8 @@ class StubCharacterManagementService extends Service {
   async stop(): Promise<void> {}
 }
 
+const prompts: string[] = [];
+
 async function createRuntime(): Promise<AgentRuntime> {
   const character: Character = {
     name: "Eliza",
@@ -55,7 +57,10 @@ async function createRuntime(): Promise<AgentRuntime> {
     description: "Preference scope test plugin",
     services: [StubCharacterManagementService],
     models: {
-      [ModelType.TEXT_SMALL]: async () => JSON.stringify({ action: "reset" }),
+      [ModelType.TEXT_SMALL]: async (_runtime, params: { prompt: string }) => {
+        prompts.push(params.prompt);
+        return JSON.stringify({ action: "reset" });
+      },
     },
   };
   const runtime = new AgentRuntime({
@@ -83,6 +88,7 @@ describe("CHARACTER per-user preferences", () => {
 
   afterEach(async () => {
     await Promise.all(runtimes.splice(0).map((runtime) => runtime.stop()));
+    prompts.length = 0;
   });
 
   it("resets only the requesting user's preferences", async () => {
@@ -140,6 +146,22 @@ describe("CHARACTER per-user preferences", () => {
         })
       ).map((memory) => memory.content.text);
 
+    const turn = (entityId: UUID, text: string, createdAt: number) =>
+      runtime.createMemory(
+        {
+          id: uuidv4() as UUID,
+          entityId,
+          agentId,
+          roomId,
+          content: { text, source: "discord" },
+          createdAt,
+        },
+        "messages",
+      );
+    await turn(alice, "hi there", 1_000);
+    await turn(agentId, "hello alice", 2_000);
+    await turn(alice, "actually, keep it short", 3_000);
+
     const message: Memory = {
       id: uuidv4() as UUID,
       entityId: alice,
@@ -158,6 +180,14 @@ describe("CHARACTER per-user preferences", () => {
     );
 
     expect(result?.text).toBe("Reset 1 preferences");
+    const transcript = prompts[0]?.split("RECENT CONVERSATION:\n")[1] ?? "";
+    expect(transcript.indexOf("User: hi there")).toBeGreaterThanOrEqual(0);
+    expect(transcript.indexOf("User: hi there")).toBeLessThan(
+      transcript.indexOf("Eliza: hello alice"),
+    );
+    expect(transcript.indexOf("Eliza: hello alice")).toBeLessThan(
+      transcript.indexOf("User: actually, keep it short"),
+    );
     expect(await preferencesOf(alice)).toEqual([]);
     expect((await preferencesOf(bob)).sort()).toEqual([
       "no emoji for bob",
