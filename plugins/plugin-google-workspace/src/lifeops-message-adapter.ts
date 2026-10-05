@@ -177,7 +177,7 @@ function searchQuery(filters: SearchMessagesFilters): string {
 }
 
 function listQuery(opts: ListOptions): string {
-  const tokens = ["in:inbox"];
+  const tokens = [opts.channelIds?.length ? "in:anywhere" : "in:inbox"];
   pushSinceToken(tokens, opts.sinceMs);
   return tokens.join(" ");
 }
@@ -350,7 +350,12 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       opts.channelIds?.length || opts.sinceMs !== undefined
         ? await searchGmailChannels(
             service,
-            { accountId, query: listQuery(opts), maxResults: opts.limit },
+            {
+              accountId,
+              query: listQuery(opts),
+              maxResults: opts.limit,
+              includeSpamTrash: Boolean(opts.channelIds?.length),
+            },
             opts.channelIds
           )
         : await service.listGmailTriageMessages({

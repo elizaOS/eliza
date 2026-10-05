@@ -151,17 +151,26 @@ describe("GoogleGmailAdapter", () => {
       { id: "inbox_2", labelIds: ["UNREAD", "IMPORTANT", "INBOX"], at: 6_000 },
       { id: "inbox_1", labelIds: ["CATEGORY_UPDATES", "INBOX"], at: 5_000 },
       { id: "custom", labelIds: ["Label_7"], at: 1_000 },
+      { id: "trash", labelIds: ["TRASH"], at: 500 },
     ];
     const listCalls: Array<{ q: string; labelIds?: string[] }> = [];
     const client = new GoogleGmailClient({
       gmail: async () => ({
         users: {
           messages: {
-            list: async (request: { q: string; labelIds?: string[]; maxResults: number }) => {
+            list: async (request: {
+              q: string;
+              labelIds?: string[];
+              maxResults: number;
+              includeSpamTrash?: boolean;
+            }) => {
               listCalls.push({ q: request.q, labelIds: request.labelIds });
               const after = /after:(\d+)/.exec(request.q);
               const rows = mailbox.filter(
                 (row) =>
+                  (!request.q.includes("in:inbox") || row.labelIds.includes("INBOX")) &&
+                  (request.includeSpamTrash ||
+                    !row.labelIds.some((label) => ["SPAM", "TRASH"].includes(label))) &&
                   (request.labelIds ?? []).every((label) => row.labelIds.includes(label)) &&
                   (!after || row.at / 1000 > Number(after[1]))
               );
@@ -209,6 +218,15 @@ describe("GoogleGmailAdapter", () => {
     });
     expect(either.map((message) => message.externalId).sort()).toEqual([
       "custom",
+      "inbox_1",
+      "inbox_2",
+    ]);
+
+    const trash = await adapter.listMessages(runtime, { channelIds: ["TRASH"], limit: 1 });
+    expect(trash.map((message) => message.externalId)).toEqual(["trash"]);
+
+    const defaultInbox = await adapter.listMessages(runtime, { sinceMs: 4_500, limit: 2 });
+    expect(defaultInbox.map((message) => message.externalId).sort()).toEqual([
       "inbox_1",
       "inbox_2",
     ]);
