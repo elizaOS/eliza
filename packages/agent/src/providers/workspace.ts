@@ -7,7 +7,7 @@
  * MEMORY filename variants by realpath, and narrows the set to a subagent
  * allowlist for subagent sessions. Consumed by the workspace provider and boot path.
  */
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -15,88 +15,6 @@ import { isSubagentSessionKey, logger, resolveUserPath } from "@elizaos/core";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 
 const exec = promisify(execFile);
-
-export {
-  DEFAULT_AGENT_WORKSPACE_DIR,
-  resolveDefaultAgentWorkspaceDir,
-  shouldBootstrapWorkspaceInitFiles,
-  shouldUseRuntimeCwdWorkspace,
-} from "../shared/workspace-resolution.ts";
-
-export interface RunCommandResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-export interface RunCommandOptions {
-  cwd?: string;
-  timeoutMs?: number;
-  env?: NodeJS.ProcessEnv;
-}
-
-/**
- * Runs a command with an optional timeout.
- * Returns { code, stdout, stderr }.
- * Rejects if the process cannot be spawned or the timeout fires.
- */
-export function runCommandWithTimeout(
-  argv: string[],
-  opts: RunCommandOptions = {},
-): Promise<RunCommandResult> {
-  const [cmd, ...args] = argv;
-  if (!cmd) {
-    return Promise.reject(new Error("runCommandWithTimeout: empty argv"));
-  }
-
-  return new Promise<RunCommandResult>((resolve, reject) => {
-    const child = spawn(cmd, args, {
-      cwd: opts.cwd,
-      env: opts.env ?? process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-
-    child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
-
-    let timedOut = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    if (opts.timeoutMs && opts.timeoutMs > 0) {
-      timer = setTimeout(() => {
-        timedOut = true;
-        child.kill("SIGKILL");
-      }, opts.timeoutMs);
-    }
-
-    child.on("error", (err) => {
-      if (timer) clearTimeout(timer);
-      reject(err);
-    });
-
-    child.on("close", (exitCode) => {
-      if (timer) clearTimeout(timer);
-
-      if (timedOut) {
-        reject(
-          new Error(
-            `Command timed out after ${opts.timeoutMs}ms: ${argv.join(" ")}`,
-          ),
-        );
-        return;
-      }
-
-      resolve({
-        code: exitCode ?? 1,
-        stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
-        stderr: Buffer.concat(stderrChunks).toString("utf-8"),
-      });
-    });
-  });
-}
 
 const DEFAULT_AGENTS_FILENAME = "AGENTS.md";
 const DEFAULT_TOOLS_FILENAME = "TOOLS.md";
