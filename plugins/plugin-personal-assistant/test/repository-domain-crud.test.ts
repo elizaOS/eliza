@@ -878,6 +878,54 @@ describe("LifeOpsRepository domain CRUD", () => {
     ).toBe(3);
   });
 
+  it("targets exact X DM ids in SQL instead of a newest-rows window", async () => {
+    const dm = (externalDmId: string, receivedAt: string) =>
+      repository.upsertXDm({
+        id: `curation-${externalDmId}`,
+        agentId: runtime.agentId,
+        externalDmId,
+        conversationId: "x-conversation-ids",
+        senderHandle: "sender",
+        senderId: "sender-id",
+        isInbound: true,
+        text: externalDmId,
+        receivedAt,
+        readAt: null,
+        repliedAt: null,
+        metadata: { source: "x" },
+        syncedAt: NOW,
+        updatedAt: NOW,
+      } as never);
+    for (let index = 0; index < 30; index += 1) {
+      await dm(
+        `dm-${index}`,
+        `2026-07-11T07:${String(index).padStart(2, "0")}:00.000Z`,
+      );
+    }
+
+    // The oldest row is matched by id even under a limit that a window scan
+    // would spend entirely on newer rows.
+    const targeted = await repository.listXDms(runtime.agentId, {
+      ids: ["curation-dm-0", "curation-dm-29"],
+      limit: 2,
+    });
+    expect(targeted.map((row) => row.externalDmId)).toEqual(["dm-29", "dm-0"]);
+    expect(
+      await repository.listXDms(runtime.agentId, {
+        ids: ["curation-dm-0"],
+        limit: 1,
+      }),
+    ).toHaveLength(1);
+    // An empty id list is not a filter: the newest-rows window still applies.
+    expect(
+      await repository.listXDms(runtime.agentId, {
+        ids: [],
+        conversationId: "x-conversation-ids",
+        limit: 2,
+      }),
+    ).toHaveLength(2);
+  });
+
   it("round-trips connector sync, schedule, and work-thread records", async () => {
     const calendarEvent = {
       id: crypto.randomUUID(),
