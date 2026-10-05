@@ -282,6 +282,14 @@ lease follows the caller environment and remains held for a live process, rather
 than expiring during long instrumentation. Product callbacks own controlled
 fixture provisioning; this runner does not authorize live integrations. Use `testOutputPath` for reports produced inside this checkout.
 
+`scripts/lib/isolated-android-user.mjs` supplies the secondary-user lifecycle for
+caller-owned emulators. Hold the canonical device lease across the entire call;
+supply the exact AVD, stock HOME package, a bounded command executor and a durable
+record callback. It restores owner 0 independently of cancellation. The scenario
+must settle device work and return `{cleaned: true}` only after proving its package
+cleanup; missing proof or a thrown scenario retains the user for explicit recovery.
+It does not provision providers, grant permissions or install product packages.
+
 For installed upgrades, each variant supplies baseline `apk`/`testApk` and an
 `upgrade: {apk, testApk}` candidate pair. Both pairs are admitted before device
 mutation. `runnerArgs` seeds the baseline; `upgradeRunnerArgs` verifies the

@@ -70,18 +70,18 @@ export type {
   StreamEventEnvelope,
 } from "./api/client-types-core.js";
 export {
+  ApiError,
+  isApiError,
+  isCloudAgentGoneError,
+  isRateLimitedError,
+} from "./api/client-types-core.js";
+export {
   type ConversationRoom,
   type ConversationStopResult,
   ConversationTurnController,
   type ConversationTurnObserver,
   type ConversationTurnTransport,
 } from "./api/conversation-turn-controller.js";
-export {
-  ApiError,
-  isApiError,
-  isCloudAgentGoneError,
-  isRateLimitedError,
-} from "./api/client-types-core.js";
 export { fetchWithCsrf } from "./api/csrf-client.js";
 export type {
   DedicatedActivationConfirmationQuote,
