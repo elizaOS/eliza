@@ -1,6 +1,6 @@
-interface TtsBuildImportMeta extends ImportMeta {
+type TtsBuildImportMeta = ImportMeta & {
 	env: { ELIZA_TTS_DEBUG?: string; VITE_ELIZA_TTS_DEBUG?: string };
-}
+};
 
 import { logger } from "../logger.js";
 /**
