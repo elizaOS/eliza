@@ -544,6 +544,76 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     return (await import("../../lib/services/organization-schedule-publication"))
       .observeAndFinalizeOrganizationScheduleConfiguration;
   }
+  for (const providerStatus of ["active", "past_due", "unpaid"] as const)
+    for (const terminal of [false, true])
+      test(`late configuration recovery retains original snapshot and unpaid boundary: ${providerStatus}/${terminal}`, async () => {
+        const f = await configured(false);
+        const originalSnapshot = structuredClone(f.input.rawCurrentSchedule);
+        const events = originalEvents(f),
+          target = originalSnapshot.phases[1]!;
+        const now = terminal ? target.end_date! + 100 : target.start_date + 100;
+        const before = await state(f);
+        await db.query("UPDATE fixture_clock SET offset_seconds=$1", [now - Date.now() / 1000]);
+        try {
+          const reclaim = await repo.claimOrganizationSchedule(f.identity);
+          if (!reclaim) throw new Error("Late recovery lease missing");
+          f.input.rawCurrentSchedule = structuredClone(originalSnapshot);
+          if (terminal) {
+            for (const [key, value] of Object.entries({
+              status: "completed",
+              current_phase: null,
+              subscription: null,
+              completed_at: target.end_date,
+            }))
+              Reflect.set(f.input.rawCurrentSchedule, key, value);
+          } else
+            f.input.rawCurrentSchedule.current_phase = {
+              start_date: target.start_date,
+              end_date: target.end_date!,
+            };
+          const item = f.input.rawSubscription.items.data[0]!;
+          item.id = "si_late";
+          item.price.id = f.providerBinding.targetPriceId;
+          item.price.product = f.providerBinding.targetProductId;
+          item.price.unit_amount = 3000;
+          f.input.rawSubscription = {
+            ...f.input.rawSubscription,
+            status: providerStatus,
+            latest_invoice: "in_late",
+            schedule: terminal ? null : originalSnapshot.id,
+            current_period_start: terminal ? target.end_date! : target.start_date,
+            current_period_end: terminal ? target.end_date! + 2592000 : target.end_date!,
+          } as typeof f.input.rawSubscription;
+          const calls = providerFor(f, events);
+          // A foreign current customer cannot turn historical evidence into pending authority.
+          const customer = f.input.rawCustomer.id;
+          f.input.rawCustomer.id = "cus_foreign";
+          await expect((await publication())(f.identity, reclaim.claim)).rejects.toThrow();
+          expect((await state(f)).source).toEqual(before.source);
+          f.input.rawCustomer.id = customer;
+          const result = await (await publication())(f.identity, reclaim.claim);
+          expect(result.command.status).toBe("APPLIED");
+          expect(calls).toContain("schedule");
+          const after = await state(f);
+          expect(after.command.organization_schedule_configuration_snapshot).toEqual(
+            originalSnapshot,
+          );
+          expect(after.source.pending_plan_key).toBe("plus_monthly");
+          expect(after.source.plan_key).toBe(before.source.plan_key);
+          expect(after.source.current_period_start).toEqual(before.source.current_period_start);
+          expect(after.source.current_period_end).toEqual(before.source.current_period_end);
+          expect(after.projection.effective_until).toEqual(before.source.current_period_end);
+          expect(after.projection.effective_until.getTime()).toBeLessThan(now * 1000);
+          expect(after.allowance).toEqual(before.allowance);
+          expect(after.periods).toEqual(before.periods);
+          calls.length = 0;
+          expect((await (await publication())(f.identity, reclaim.claim)).replayed).toBeTrue();
+          expect(calls).toEqual([]);
+          expect(await state(f)).toEqual(after);
+        } finally {
+          await db.query("UPDATE fixture_clock SET offset_seconds=0");
+        }
+      });
   test("direct publication uses fresh provider reads and no additional financial write", async () => {
     const f = await configured();
     const calls = providerFor(f, []);
@@ -843,12 +913,12 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
         start: new Date((boundary - 120) * 1000),
         end: new Date(boundary * 1000),
       });
-      await f.finalize(f.input);
-      const before = await state(f);
+      if (liveStatus !== "active") await f.finalize(f.input);
+      let before = await state(f);
       const { subscriptionAuthorityRepository: authority } = await import(
         "./subscription-authority"
       );
-      const source = await authority.findById(f.identity.organizationId, f.captured.source.id);
+      let source = await authority.findById(f.identity.organizationId, f.captured.source.id);
       if (!source) throw new Error("Pending source missing");
       const target = f.input.rawCurrentSchedule.phases[1]!;
       if (typeof target.end_date !== "number") throw new Error("Finite target end required");
@@ -894,6 +964,22 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
           released_at: null,
           released_subscription: null,
         };
+        if (liveStatus === "active") {
+          // Recover a saved original response only after the target period expired,
+          // then prove the same historical payment through the normal renewal owner.
+          const reclaim = await repo.claimOrganizationSchedule(f.identity);
+          if (!reclaim) throw new Error("Late saved-response claim missing");
+          await f.finalize({
+            ...f.input,
+            leaseToken: reclaim.claim.leaseToken,
+            executionGeneration: reclaim.claim.generation,
+            rawSubscription: subscription,
+            rawCurrentSchedule: scheduledSchedule,
+          });
+          before = await state(f);
+          source = await authority.findById(f.identity.organizationId, f.captured.source.id);
+          if (!source) throw new Error("Late pending source missing");
+        }
         const { subscriptionBillingOperationsRepository: operations } = await import(
           "./subscription-billing-operations"
         );

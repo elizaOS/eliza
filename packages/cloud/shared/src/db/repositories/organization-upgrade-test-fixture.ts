@@ -31,6 +31,7 @@ export async function installOrganizationUpgradeTestSchema(
                 "0524_organization_schedule_compensation_result",
                 "0525_organization_schedule_configured_result",
                 "0526_organization_schedule_configured_snapshot",
+                "0527_organization_schedule_late_configuration",
               ]
             : []),
         ]
