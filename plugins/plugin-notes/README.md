@@ -25,3 +25,9 @@ The separate `./client` entry provides device-local note contracts, persistence
 and encrypted compare-and-exchange migration. Hosts supply storage keys, the
 native vault and legacy storage; preserve installed namespaces when adopting it.
 These device clients do not replace Cloud tenant storage or grant account authority.
+
+`DocumentNotesStore` reuses the same device-local envelope over a host-supplied
+atomic asynchronous document port. Hosts own initial legacy capture, opaque
+revision receipts, backup/reset and storage protection; the client never writes a
+synchronous mirror or claims that browser storage is encrypted. A stale writer
+fails instead of merging or replacing another view's saved Notes.
