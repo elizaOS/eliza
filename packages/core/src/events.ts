@@ -164,8 +164,6 @@ export const APPEARANCE_APPLY_EVENT = "appearance:apply" as const;
 
 /** Payload broadcast on {@link APPEARANCE_APPLY_EVENT}. */
 export interface AppearanceApplyPayload extends Record<string, unknown> {
-	/** Theme mode persisted by the Appearance settings section. */
-	themeMode?: "light" | "dark" | "system";
 	/** Accent preset id, e.g. default, amber, rose, green. */
 	accentId?: string;
 	/** Supported UI language code. */

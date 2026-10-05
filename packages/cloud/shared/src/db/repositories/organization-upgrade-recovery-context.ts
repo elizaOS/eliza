@@ -122,7 +122,7 @@ export async function readOrganizationUpgradeRecoveryContext(
     historicalTarget: historicalTarget ?? null,
     command,
     historicalSource: source,
-    quote,
+    quote: { ...quote, review },
     binding,
     origin: origin ?? null,
     originalRequest: {

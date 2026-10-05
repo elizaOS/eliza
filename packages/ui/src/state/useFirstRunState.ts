@@ -257,4 +257,3 @@ export function useFirstRunState(cloudOnly?: boolean): FirstRunStateHook {
     completionCommittedRef,
   };
 }
-export type { FirstRunAction as FirstRunDispatchAction };

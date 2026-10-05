@@ -10,6 +10,8 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.google.firebase.messaging.FirebaseMessaging;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Firebase-guarded replacement for the community PushNotifications plugin.
@@ -51,6 +53,7 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
         JSObject result = new JSObject();
         result.put("reminderDataNotifications", ElizaReminderMessagingService.isDeclaredHandler(getContext()));
         result.put("reminderChannelSelection", true);
+        result.put("reminderPresentation", true);
         call.resolve(result);
     }
 
@@ -73,6 +76,31 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
         JSObject result = new JSObject();
         result.put("channelId", selected.getId());
         result.put("blocked", ElizaReminderMessagingService.isReminderChannelBlocked(manager, selected));
+        call.resolve(result);
+    }
+
+    /** Foreground uses the same validated projection, groups, tap and receipt as FCM. */
+    @PluginMethod
+    public void presentReminderNotification(PluginCall call) {
+        String ownerType = call.getString("ownerType");
+        if (!"occurrence".equals(ownerType) && !"calendar_event".equals(ownerType)) {
+            call.reject("Invalid reminder owner type");
+            return;
+        }
+        if (call.getData().has("groupKey") && !(call.getData().opt("groupKey") instanceof String)) {
+            call.reject("Invalid reminder group key");
+            return;
+        }
+        Map<String, String> data = new HashMap<>();
+        data.put("category", "reminder");
+        for (String name : new String[]{"notificationId", "title", "body", "priority", "ownerType",
+                "deepLink", "conversationId", "messageId", "groupKey"}) {
+            String value = call.getString(name);
+            if (value != null) data.put(name, value);
+        }
+        JSObject result = new JSObject();
+        result.put("accepted", ElizaReminderMessagingService.projectReminder(
+            getContext(), data, data.get("notificationId")));
         call.resolve(result);
     }
 

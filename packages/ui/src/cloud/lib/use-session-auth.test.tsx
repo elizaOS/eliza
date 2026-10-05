@@ -23,7 +23,7 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
-import { setBootConfig } from "../../config/boot-config";
+import { setBootConfig } from "../../config/boot-config-store";
 import {
   LocalStewardAuthContext,
   type LocalStewardAuthValue,

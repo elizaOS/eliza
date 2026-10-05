@@ -1,6 +1,7 @@
 /** Original paid-upgrade authority under organization-first transaction locks. No provider I/O. */
 import { ElizaError } from "@elizaos/core";
 import { and, eq, isNull } from "drizzle-orm";
+import { organizationUpgradeReviewSchema } from "../../lib/services/organization-plan-change-contract";
 import { observePaidOrganizationUpgradeInvoice } from "../../lib/services/organization-upgrade-invoice";
 import { observeLaterPeriodUpgrade } from "../../lib/services/organization-upgrade-later-period";
 import {
@@ -95,7 +96,7 @@ export async function lockOrganizationUpgradeSettlement(
     association.subscription_id !== command.subscription_id
   )
     upgradeSettlementConflict("current_association_changed");
-  const [quote] = await tx
+  const [storedQuote] = await tx
     .select()
     .from(organizationPlanChangeQuotes)
     .where(
@@ -105,6 +106,9 @@ export async function lockOrganizationUpgradeSettlement(
       ),
     )
     .for("update");
+  const quote = storedQuote
+    ? { ...storedQuote, review: organizationUpgradeReviewSchema.parse(storedQuote.review) }
+    : undefined;
   if (
     !quote ||
     quote.actor_id !== command.requested_by_user_id ||

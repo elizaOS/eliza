@@ -47,6 +47,17 @@ export function getDocumentUploadFilename(file: DocumentUploadFile): string {
   return file.webkitRelativePath?.trim() || file.name;
 }
 
+/** Filenames the documents service already stores as UTF-8 text. */
+const TEXT_BACKED_UPLOAD_EXTENSIONS = [
+  ".md",
+  ".mdx",
+  ".txt",
+  ".json",
+  ".xml",
+  ".csv",
+  ".tsv",
+] as const;
+
 export function shouldReadDocumentFileAsText(
   file: Pick<File, "type" | "name">,
 ): boolean {
@@ -55,6 +66,8 @@ export function shouldReadDocumentFileAsText(
     "text/markdown",
     "text/html",
     "text/csv",
+    "text/xml",
+    "text/tab-separated-values",
     "application/json",
     "application/xml",
   ];
@@ -62,8 +75,9 @@ export function shouldReadDocumentFileAsText(
 
   return (
     textTypes.some((t) => file.type.includes(t)) ||
-    lowerName.endsWith(".md") ||
-    lowerName.endsWith(".mdx")
+    TEXT_BACKED_UPLOAD_EXTENSIONS.some((extension) =>
+      lowerName.endsWith(extension),
+    )
   );
 }
 

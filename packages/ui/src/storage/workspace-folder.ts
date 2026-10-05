@@ -86,5 +86,3 @@ export function clearStoredWorkspaceFolder(): void {
   if (!storage) return;
   storage.removeItem(STORAGE_KEY);
 }
-
-export const WORKSPACE_FOLDER_STORAGE_KEY = STORAGE_KEY;

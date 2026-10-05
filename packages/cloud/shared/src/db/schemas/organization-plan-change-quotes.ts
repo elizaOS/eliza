@@ -1,4 +1,4 @@
-/** Immutable, organization-owned upgrade quotes; consumed only by the original durable command. */
+/** Immutable, organization-owned plan-change quotes; consumed only by the original durable command. */
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { OrganizationDowngradeReview } from "../../lib/services/organization-downgrade-review";
 import type { OrganizationUpgradeReview } from "../../lib/services/organization-plan-change-contract";
 import type { OrganizationUpgradeProviderBinding } from "../../lib/services/organization-upgrade-provider-binding";
 import { billingIdentitySubjects } from "./billing-identities";
@@ -35,7 +36,9 @@ export const organizationPlanChangeQuotes = pgTable(
     catalog_version: text("catalog_version").notNull(),
     source_digest: text("source_digest").notNull(),
     review_digest: text("review_digest").notNull(),
-    review: jsonb("review").$type<OrganizationUpgradeReview>().notNull(),
+    review: jsonb("review")
+      .$type<OrganizationUpgradeReview | OrganizationDowngradeReview>()
+      .notNull(),
     provider_binding: jsonb("provider_binding").$type<OrganizationUpgradeProviderBinding>(),
     created_at: timestamp("created_at", { withTimezone: true }).notNull(),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),

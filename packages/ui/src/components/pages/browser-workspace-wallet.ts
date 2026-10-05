@@ -82,10 +82,7 @@ export interface BrowserWorkspaceWalletResponse {
   result?: unknown;
   error?: string;
 }
-export interface BrowserWorkspaceWalletReadyPayload {
-  type: typeof BROWSER_WALLET_READY_TYPE;
-  state: BrowserWorkspaceWalletState;
-}
+
 export const EMPTY_BROWSER_WORKSPACE_WALLET_STATE: BrowserWorkspaceWalletState =
   {
     address: null,

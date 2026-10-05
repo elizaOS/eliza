@@ -199,8 +199,6 @@ vi.mock("@elizaos/ui", async (importOriginal) => ({
       setState: vi.fn(),
       setTab: vi.fn(),
       setUiLanguage: vi.fn(),
-      setUiTheme: vi.fn(),
-      setUiThemeMode: vi.fn(),
       startupCoordinator: {
         phase: appState.startupPhase,
         isShellPaintable: [
@@ -220,7 +218,6 @@ vi.mock("@elizaos/ui", async (importOriginal) => ({
       uiLanguage: "en",
       uiShellMode: "default",
       uiTheme: "light",
-      uiThemeMode: "system",
     });
     return {
       useApp: () => getAppValue(),
@@ -238,10 +235,15 @@ vi.mock("../../../ui/src/config/boot-config-react.hooks", () => ({
   useBootConfig: () => ({}),
 }));
 
-vi.mock("../../../ui/src/config/branding", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../../ui/src/config/branding")>()),
-  useBranding: () => ({ cloudOnly: appState.cloudOnly }),
-}));
+vi.mock(
+  "../../../ui/src/config/branding-react.hooks",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../ui/src/config/branding-react.hooks")
+    >()),
+    useBranding: () => ({ cloudOnly: appState.cloudOnly }),
+  }),
+);
 
 vi.mock("../../../ui/src/components/shell/ShellControllerContext", () => ({
   ShellControllerProvider: ({ children }: { children: ReactNode }) => (

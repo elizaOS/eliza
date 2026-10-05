@@ -61,3 +61,6 @@ export const organizationUpgradeReviewSchema: z.ZodType<OrganizationSubscription
       }
     });
 export type OrganizationUpgradeReview = z.infer<typeof organizationUpgradeReviewSchema>;
+
+/** Shared exact amount shape for organization plan review variants. */
+export const organizationInvoiceReviewTermsSchema = invoice;

@@ -96,6 +96,68 @@ export interface OrganizationSubscriptionUpgradeQuoteDto {
 export type OrganizationSubscriptionUpgradeQuoteResponse =
   ApiSuccessEnvelope<OrganizationSubscriptionUpgradeQuoteDto>;
 
+/** Lower-plan review: no immediate charge; recurringEstimate is not a guaranteed next invoice. */
+export interface OrganizationSubscriptionDowngradeReviewDto {
+  kind: "downgrade_estimate";
+  subscriptionId: string;
+  expectedSubscriptionRevision: string;
+  sourcePlanKey: "plus_monthly" | "pro_monthly";
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  currency: "usd";
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  effectiveAt: string;
+  amountDueNowCents: 0;
+  targetBaseAmountCents: number;
+  targetAllowanceUsd: string;
+  recurringEstimate: OrganizationSubscriptionUpgradeInvoiceDto;
+  observedAt: string;
+  expiresAt: string;
+}
+
+export type OrganizationSubscriptionDowngradeQuoteRequest =
+  OrganizationSubscriptionUpgradeQuoteRequest;
+export interface OrganizationSubscriptionDowngradeQuoteDto {
+  quoteId: string;
+  review: OrganizationSubscriptionDowngradeReviewDto;
+}
+export type OrganizationSubscriptionDowngradeQuoteResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionDowngradeQuoteDto>;
+
+/** Durable server-owned outcome; OUTCOME_UNKNOWN never authorizes a new payment or intent. */
+export interface OrganizationSubscriptionUpgradeCommandDto {
+  commandId: string;
+  subscriptionId: string;
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+  status: "PREPARED" | "OUTCOME_UNKNOWN" | "APPLIED" | "FAILED" | "SUPERSEDED";
+  dispatchState: "ready" | "started";
+  expectedSubscriptionRevision: string;
+  resultSubscriptionRevision: string | null;
+  failure: "review_required" | "invoice_void" | null;
+}
+export interface OrganizationSubscriptionUpgradeConfirmRequest {
+  quoteId: string;
+  idempotencyKey: string;
+}
+export type OrganizationSubscriptionUpgradeCommandResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionUpgradeCommandDto>;
+
+/** Ephemeral private payment UI result. Never persist, log, or add its URL to model context. */
+export interface OrganizationSubscriptionUpgradePaymentDto {
+  command: OrganizationSubscriptionUpgradeCommandDto;
+  continuation: {
+    kind: "hosted_invoice";
+    hostedInvoiceUrl: string;
+    amountDueCents: number;
+    currency: "usd";
+    paymentState: "requires_action" | "requires_payment_method";
+    expiresAt: string;
+  } | null;
+}
+export type OrganizationSubscriptionUpgradePaymentResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionUpgradePaymentDto>;
+
 export interface CurrentUserOrganizationDto {
   id: string;
   name: string;

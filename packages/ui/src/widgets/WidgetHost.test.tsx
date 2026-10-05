@@ -48,10 +48,6 @@ vi.mock("../state/app-store", () => ({
 
 vi.mock("../api/client", () => ({ client: clientMock }));
 
-vi.mock("../state/useDeveloperMode", () => ({
-  useIsDeveloperMode: () => false,
-}));
-
 vi.mock("./registry", () => ({
   resolveWidgetsForSlot: resolveWidgetsForSlotMock,
   subscribeWidgetRegistry: () => () => {},

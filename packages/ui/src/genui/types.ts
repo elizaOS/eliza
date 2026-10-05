@@ -147,33 +147,4 @@ export type ElizaGenUiRenderContext = {
   ) => React.ReactNode;
 };
 
-export interface ElizaGenUiSendOptions {
-  prompt?: string;
-  body?: Record<string, unknown>;
-}
-
-export interface ElizaGenUiStreamOptions {
-  api: string;
-  headers?: Record<string, string>;
-  body?: Record<string, unknown>;
-  onError?: (error: Error) => void;
-  onComplete?: (spec: ElizaGenUiSpec | null) => void;
-}
-
-export interface ElizaGenUiStreamState {
-  spec: ElizaGenUiSpec | null;
-  isStreaming: boolean;
-  error: Error | null;
-}
-
 export type ElizaGenUiMode = "standalone" | "inline";
-
-export interface ElizaGenUiModeConfig {
-  mode?: ElizaGenUiMode;
-  customRules?: readonly string[];
-}
-
-export type ElizaGenUiSpecStreamPart =
-  | { type: "text"; text: string }
-  | { type: "spec-patch"; patch: ElizaGenUiPatch }
-  | { type: "spec-complete"; spec: ElizaGenUiSpec };

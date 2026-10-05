@@ -191,7 +191,6 @@ export function LoginForm({
   guestEmailPlaceholder = "you@example.com",
   guestTokenPlaceholder = "email verification token",
   onGuestDeleted,
-  showSIWE = false,
   showWallets = false,
   showGoogle = true,
   showDiscord = true,
@@ -1113,23 +1112,6 @@ export function LoginForm({
               <span>Farcaster</span>
             </Button>
           )}
-        </div>
-      )}
-
-      {/* Legacy SIWE placeholder. Prefer `showWallets` instead. Kept for
-          backward compatibility with any consumer that was relying on the
-          (disabled) placeholder button. */}
-      {showSIWE && !hasWallet && (
-        <div className="stwd-login__oauth">
-          <Button
-            className="stwd-login__btn stwd-login__btn--siwe"
-            disabled={true}
-            type="button"
-            title="connect a wallet to sign in"
-          >
-            <EthereumIcon size={18} />
-            <span>sign in with ethereum</span>
-          </Button>
         </div>
       )}
 

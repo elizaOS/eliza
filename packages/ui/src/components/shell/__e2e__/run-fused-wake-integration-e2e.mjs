@@ -16,16 +16,9 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  compileTailwindTheme,
-  createAssertGate,
-  createSnapper,
-  finishRun,
-  renameRecordedVideo,
-  stubElizaCore,
-  stubNodeBuiltins,
-  writeFixturePage,
-} from "../../../testing/e2e-runner/index.ts";
+import { compileTailwindTheme, writeFixturePage } from "../../../testing/e2e-runner/fixture-bundle";
+import { createAssertGate, createSnapper, finishRun, renameRecordedVideo } from "../../../testing/e2e-runner/browser-harness";
+import { stubElizaCore, stubNodeBuiltins } from "../../../testing/e2e-runner/esbuild-stubs";
 import { chromium } from "playwright";
 
 const here = dirname(fileURLToPath(import.meta.url));

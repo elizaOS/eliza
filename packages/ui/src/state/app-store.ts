@@ -207,5 +207,3 @@ export function __setAppValueForTests(value: AppContextValue | null): void {
   store.value = value;
   for (const listener of store.listeners) listener();
 }
-
-export { shallowEqual as __appShallowEqual };

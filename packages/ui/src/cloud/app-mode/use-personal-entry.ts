@@ -52,11 +52,6 @@ function takePersonalEntryHandoff(authToken: string): JoinFlowResult | null {
   return pending?.authToken === authToken ? pending.result : null;
 }
 
-/** The persisted-active-server id a resolved personal Eliza binds under. */
-export function personalEntryBindingId(result: JoinFlowResult): string {
-  return `cloud:${result.agentId}`;
-}
-
 /**
  * Resolve + persist the account's personal Eliza binding. Enabled only for the
  * authenticated rowless entry path; `retry: false` so an unavailable identity

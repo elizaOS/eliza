@@ -18,7 +18,7 @@ vi.mock("../../state/app-store", () => ({
       handleCloudDisconnect: vi.fn(async () => undefined),
     }),
 }));
-vi.mock("../../config/branding", () => ({
+vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({ cloudOnly: false }),
 }));
 vi.mock("../../first-run/mobile-runtime-mode", () => ({

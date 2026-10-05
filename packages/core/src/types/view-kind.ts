@@ -16,13 +16,8 @@ export interface EnabledViewKinds {
 
 /** A declaration that can be sorted into a {@link ViewKind}. */
 export interface ViewKindBearer {
-	/** Explicit kind. When set, it wins over the legacy `developerOnly` flag. */
+	/** Four-tier visibility category; absent values default to release. */
 	viewKind?: ViewKind;
-	/**
-	 * Legacy gate predating {@link viewKind}. `true` is equivalent to
-	 * `viewKind: "developer"`. Kept so existing declarations keep working.
-	 */
-	developerOnly?: boolean;
 }
 
 /** Presentation/runtime family for a view. */

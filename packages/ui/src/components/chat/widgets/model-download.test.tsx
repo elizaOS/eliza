@@ -39,7 +39,7 @@ vi.mock("../../../hooks/useRuntimeMode", () => ({
   useRuntimeMode: () => runtimeModeMock,
 }));
 const mobileRuntimeModeMock = vi.hoisted(() => ({
-  value: null as "local" | "remote-mac" | "tunnel-to-mobile" | null,
+  value: null as "local" | "remote-mac" | null,
 }));
 vi.mock("../../../first-run/mobile-runtime-mode", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -176,7 +176,7 @@ describe("ModelDownloadWidget", () => {
     startDownloadMock.mockResolvedValue({ job: {} });
   });
   afterEach(cleanup);
-  it.each(["remote-mac", "tunnel-to-mobile"] as const)(
+  it.each(["remote-mac"] as const)(
     "hides local-model routing errors for %s phone placement on a Mac host",
     async (mode) => {
       mobileRuntimeModeMock.value = mode;

@@ -28,7 +28,6 @@ import {
   SectionNav,
   type SectionPathRewrite,
   type SectionTab,
-  sectionTabs,
 } from "../shared/SectionNav";
 import { ViewHeader } from "../shared/ViewHeader";
 import { Card } from "../ui/card";
@@ -56,11 +55,6 @@ const walletRewrite: SectionPathRewrite = (
   }
   return null;
 };
-
-/** The Wallet section tabs, sorted and path-normalized. */
-export function walletSectionTabs(): SectionTab[] {
-  return sectionTabs(WALLET_SECTION_GROUP, walletRewrite);
-}
 
 /** True when a route belongs to the Wallet section (wallet + its sub-views). */
 export function isWalletSectionPath(path: string): boolean {

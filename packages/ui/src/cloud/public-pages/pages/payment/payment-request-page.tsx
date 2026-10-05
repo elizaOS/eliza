@@ -16,8 +16,8 @@ import { AlertCircle, CreditCard, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Button } from "../../../../components/ui/button";
+import { isSafeNavigationUrl } from "../../../../utils/navigation-url";
 import { ApiError, api } from "../../../lib/api-client";
-import { isSafeNavigationUrl } from "../../../lib/navigation-url";
 import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 
