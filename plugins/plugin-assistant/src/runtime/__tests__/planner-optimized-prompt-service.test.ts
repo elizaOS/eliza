@@ -109,7 +109,7 @@ it("uses only the registered service and checks its baseline before a model requ
   expect(requests).toHaveLength(4);
 });
 
-it("states the batch-scope rule once for an optimized template that omits it and keeps the short pointer on every tool", async () => {
+it("states the batch-scope rule once for an optimized template that omits it and preserves its pointer through shared descriptions", async () => {
   const root = await mkdtemp(join(tmpdir(), "planner-batch-scope-backstop-"));
   roots.push(root);
   vi.stubEnv("ELIZA_STATE_DIR", root);
@@ -187,14 +187,18 @@ it("states the batch-scope rule once for an optimized template that omits it and
   expect(
     instructions.split(`- Batch scope: ${plannerBatchScopeDescription}`),
   ).toHaveLength(2);
-  // Every exposed tool now carries the short pointer, never the full protocol.
+  // Identical parameter descriptions are shared across tools. The first owns
+  // the policy pointer; later tools refer to that exact parameter and owner.
   const tools = requests[0]?.tools ?? [];
   expect(tools.map(({ name }) => name)).toEqual(["SETTINGS", "REPLY"]);
+  expect(
+    tools[0]?.parameters?.properties?.[TURN_SCOPE_ARG]?.description,
+  ).toContain("Follow the shared Batch scope instruction");
+  expect(tools[1]?.parameters?.properties?.[TURN_SCOPE_ARG]?.description).toBe(
+    `Use the identical full description of parameter ${JSON.stringify(TURN_SCOPE_ARG)} on tool SETTINGS.`,
+  );
   for (const tool of tools) {
     const scope = tool.parameters?.properties?.[TURN_SCOPE_ARG];
-    expect(scope?.description).toContain(
-      "Follow the shared Batch scope instruction",
-    );
     expect(scope?.description).not.toContain(plannerBatchScopeDescription);
   }
 });
