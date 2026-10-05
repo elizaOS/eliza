@@ -4,6 +4,7 @@ import {
   type CompatibleRedis,
   type RedisFactoryEnv,
 } from "../cache/redis-factory";
+import { SocketRedis } from "../cache/socket-redis";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { withTimeout } from "../utils/with-timeout";
 
@@ -69,71 +70,74 @@ export async function checkProvisioningWorkerHealth(
 ): Promise<ProvisioningWorkerHealth> {
   const required = isProvisioningWorkerRequired();
   const redis = redisOverride === undefined ? getRedis() : redisOverride;
-
-  if (!required) {
-    return { ok: true, required: false };
-  }
-
-  if (!redis) {
-    // The daemon publishes its liveness to Redis; THIS reader (the cloud-api
-    // Worker) having no Redis binding is a config gap in the READER, not
-    // evidence the daemon is down. Hard-503'ing here blocks ALL provisioning
-    // whenever the Worker's Redis binding is missing (e.g. mid Redis-cutover) —
-    // even though the daemon is alive and claiming jobs. Fall open instead, the
-    // same way the rate-limiter does when Redis is unconfigured. When the
-    // Worker's Redis IS configured, a stale/missing heartbeat still fails closed
-    // below — so this only relaxes the unconfigured-reader case.
-    return { ok: true, required: false };
-  }
-
-  let raw: unknown;
   try {
-    raw = await redis.get(PROVISIONING_WORKER_HEARTBEAT_KEY);
-  } catch (error) {
-    return {
-      ok: false,
-      required: true,
-      status: 502,
-      code: "PROVISIONING_WORKER_UNREACHABLE",
-      error:
-        error instanceof Error
-          ? `Failed to read provisioning worker heartbeat from Redis: ${error.message}`
-          : "Failed to read provisioning worker heartbeat from Redis.",
-    };
-  }
-
-  if (!raw) {
-    return {
-      ok: false,
-      required: true,
-      status: 503,
-      code: "PROVISIONING_WORKER_UNHEALTHY",
-      error: "Provisioning worker has not reported a heartbeat in the last 60 seconds.",
-    };
-  }
-
-  let lastHeartbeatAt = typeof raw === "string" ? raw : undefined;
-  let capabilities: readonly string[] = [];
-  let parsed: unknown = raw;
-  try {
-    if (typeof raw === "string") parsed = JSON.parse(raw);
-  } catch {
-    // error-policy:J3 Legacy workers publish a bare ISO timestamp, which is
-    // valid liveness but intentionally carries no execution capabilities.
-    parsed = null;
-  }
-  if (parsed !== null && typeof parsed === "object") {
-    const heartbeat = parsed as { timestamp?: unknown; capabilities?: unknown };
-    if (typeof heartbeat.timestamp === "string") lastHeartbeatAt = heartbeat.timestamp;
-    if (
-      Array.isArray(heartbeat.capabilities) &&
-      heartbeat.capabilities.every((capability) => typeof capability === "string")
-    ) {
-      capabilities = heartbeat.capabilities;
+    if (!required) {
+      return { ok: true, required: false };
     }
-  }
 
-  return { ok: true, required: true, lastHeartbeatAt, capabilities };
+    if (!redis) {
+      // The daemon publishes its liveness to Redis; THIS reader (the cloud-api
+      // Worker) having no Redis binding is a config gap in the READER, not
+      // evidence the daemon is down. Hard-503'ing here blocks ALL provisioning
+      // whenever the Worker's Redis binding is missing (e.g. mid Redis-cutover) —
+      // even though the daemon is alive and claiming jobs. Fall open instead, the
+      // same way the rate-limiter does when Redis is unconfigured. When the
+      // Worker's Redis IS configured, a stale/missing heartbeat still fails closed
+      // below — so this only relaxes the unconfigured-reader case.
+      return { ok: true, required: false };
+    }
+
+    let raw: unknown;
+    try {
+      raw = await redis.get(PROVISIONING_WORKER_HEARTBEAT_KEY);
+    } catch (error) {
+      return {
+        ok: false,
+        required: true,
+        status: 502,
+        code: "PROVISIONING_WORKER_UNREACHABLE",
+        error:
+          error instanceof Error
+            ? `Failed to read provisioning worker heartbeat from Redis: ${error.message}`
+            : "Failed to read provisioning worker heartbeat from Redis.",
+      };
+    }
+
+    if (!raw) {
+      return {
+        ok: false,
+        required: true,
+        status: 503,
+        code: "PROVISIONING_WORKER_UNHEALTHY",
+        error: "Provisioning worker has not reported a heartbeat in the last 60 seconds.",
+      };
+    }
+
+    let lastHeartbeatAt = typeof raw === "string" ? raw : undefined;
+    let capabilities: readonly string[] = [];
+    let parsed: unknown = raw;
+    try {
+      if (typeof raw === "string") parsed = JSON.parse(raw);
+    } catch {
+      // error-policy:J3 Legacy workers publish a bare ISO timestamp, which is
+      // valid liveness but intentionally carries no execution capabilities.
+      parsed = null;
+    }
+    if (parsed !== null && typeof parsed === "object") {
+      const heartbeat = parsed as { timestamp?: unknown; capabilities?: unknown };
+      if (typeof heartbeat.timestamp === "string") lastHeartbeatAt = heartbeat.timestamp;
+      if (
+        Array.isArray(heartbeat.capabilities) &&
+        heartbeat.capabilities.every((capability) => typeof capability === "string")
+      ) {
+        capabilities = heartbeat.capabilities;
+      }
+    }
+
+    return { ok: true, required: true, lastHeartbeatAt, capabilities };
+  } finally {
+    if (redisOverride === undefined && redis instanceof SocketRedis) await redis.close();
+  }
 }
 
 /** Fail closed when the API is about to enqueue a job older workers misinterpret. */
@@ -143,27 +147,31 @@ export async function checkProvisioningWorkerCapability(
 ): Promise<ProvisioningWorkerHealth> {
   if (!isProvisioningWorkerRequired()) return { ok: true, required: false };
   const redis = redisOverride === undefined ? getRedis() : redisOverride;
-  if (!redis) {
-    return {
-      ok: false,
-      required: true,
-      status: 503,
-      code: "PROVISIONING_WORKER_NOT_CONFIGURED",
-      error: "Provisioning worker capability cannot be verified.",
-    };
+  try {
+    if (!redis) {
+      return {
+        ok: false,
+        required: true,
+        status: 503,
+        code: "PROVISIONING_WORKER_NOT_CONFIGURED",
+        error: "Provisioning worker capability cannot be verified.",
+      };
+    }
+    const health = await checkProvisioningWorkerHealth(redis);
+    if (!health.ok) return health;
+    if (!health.capabilities?.includes(capability)) {
+      return {
+        ok: false,
+        required: true,
+        status: 503,
+        code: "PROVISIONING_WORKER_CAPABILITY_REQUIRED",
+        error: "Provisioning worker must be updated before this Dedicated activation can start.",
+      };
+    }
+    return health;
+  } finally {
+    if (redisOverride === undefined && redis instanceof SocketRedis) await redis.close();
   }
-  const health = await checkProvisioningWorkerHealth(redis);
-  if (!health.ok) return health;
-  if (!health.capabilities?.includes(capability)) {
-    return {
-      ok: false,
-      required: true,
-      status: 503,
-      code: "PROVISIONING_WORKER_CAPABILITY_REQUIRED",
-      error: "Provisioning worker must be updated before this Dedicated activation can start.",
-    };
-  }
-  return health;
 }
 
 export function provisioningWorkerFailureBody(
@@ -190,19 +198,23 @@ export async function publishProvisioningWorkerHeartbeat(
   redisOverride?: CompatibleRedis | null,
 ): Promise<boolean> {
   const redis = redisOverride === undefined ? getRedis() : redisOverride;
-  if (!redis) return false;
-  const heartbeat = JSON.stringify({
-    timestamp: new Date().toISOString(),
-    capabilities: PROVISIONING_WORKER_CAPABILITIES,
-  });
-  await withTimeout(
-    Promise.resolve(
-      redis.set(PROVISIONING_WORKER_HEARTBEAT_KEY, heartbeat, {
-        ex: PROVISIONING_WORKER_HEARTBEAT_TTL_S,
-      }),
-    ),
-    HEARTBEAT_SET_TIMEOUT_MS,
-    "heartbeat redis set",
-  );
-  return true;
+  try {
+    if (!redis) return false;
+    const heartbeat = JSON.stringify({
+      timestamp: new Date().toISOString(),
+      capabilities: PROVISIONING_WORKER_CAPABILITIES,
+    });
+    await withTimeout(
+      Promise.resolve(
+        redis.set(PROVISIONING_WORKER_HEARTBEAT_KEY, heartbeat, {
+          ex: PROVISIONING_WORKER_HEARTBEAT_TTL_S,
+        }),
+      ),
+      HEARTBEAT_SET_TIMEOUT_MS,
+      "heartbeat redis set",
+    );
+    return true;
+  } finally {
+    if (redisOverride === undefined && redis instanceof SocketRedis) await redis.close();
+  }
 }
