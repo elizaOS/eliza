@@ -287,3 +287,12 @@ process. Hosts choose commands, environments, readiness and diagnostics; call
 deterministic nearest-rank percentile bootstrap intervals for a mean. Hosts own
 sampling units, cohorts, confidence labels, resample/seed/work budgets and
 interpretation; these calculations do not certify independence or causal effects.
+
+`scripts/mobile/android/build-consumer.mjs` runs an external consumer's admission and
+sync commands, assembles selected app distributions (debug, unsigned release and
+instrumentation), runs lint and product APK verification, then archives only the
+selected APKs plus verification manifest and host metadata. It never signs, installs
+or publishes a release. Hosts select environment, distribution names and archive
+identity. Missing build outputs or failed verification prevent archive publication.
+Run `node --test scripts/mobile/android/build-consumer.test.mjs` for ordering, failure
+and stale-artifact isolation checks.

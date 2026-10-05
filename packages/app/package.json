@@ -208,7 +208,7 @@
     "test:tts:standalone": "bun --no-install --conditions=eliza-source scripts/qualify-standalone-kokoro.ts",
     "build:consumer-tasks": "node scripts/build-consumer-task-runtime.mjs",
     "typecheck:consumer-build": "tsc --noEmit -p scripts/tsconfig.consumer-build.json",
-    "test:consumer-host": "node --test test/native-host/*.test.mjs"
+    "test:consumer-host": "node --test test/native-host/*.test.mjs scripts/mobile/android/build-consumer.test.mjs"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.0",
