@@ -93,3 +93,9 @@ releases resources without publishing late words. It never sends a chat message.
 `DraftTranscriptGuard` distinguishes a recording's own preview updates from later
 user edits and returns final conflicts for host review; hosts choose append/replace
 policy and explicit review/send gestures.
+
+`editTextControl` shares selection replacement, Unicode-code-point backspace,
+UTF-16 max-length admission and realm-owned native setter/input-event dispatch
+for controlled text fields. `isEditableTextControl` accepts the host's input-type
+policy. Keyboard layouts, key mapping, visibility, focus and viewport handling
+remain product-owned. These helpers do not submit forms or advance workflows.

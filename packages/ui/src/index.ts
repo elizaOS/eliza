@@ -1310,6 +1310,12 @@ export { formatByteSize } from "./utils/format.js";
 export { isSafeNavigationUrl } from "./utils/navigation-url.js";
 export { openExternalUrl } from "./utils/openExternalUrl.js";
 export { reportRendererDiagnostic } from "./utils/renderer-diagnostics.js";
+export {
+  editTextControl,
+  isEditableTextControl,
+  type TextControl,
+  type TextControlEdit,
+} from "./utils/text-control-editing.js";
 export { isTransientOptionalFetchFailure } from "./utils/transient-fetch.js";
 export {
   formatMinorCurrency,
@@ -1404,3 +1410,4 @@ export {
 } from "./voice/voice-selftest/voice-selftest-harness.js";
 export { registerBuiltinWidgets } from "./widgets/registry.js";
 export { WidgetHost } from "./widgets/WidgetHost.js";
+
