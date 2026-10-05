@@ -48,6 +48,7 @@ import {
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
+  readTaskExtractionRequestIntents,
   resolveActionArgs,
   type SubactionsMap,
   validateUuid,
@@ -4317,6 +4318,10 @@ async function runLifeOperationHandlerInner(
   options: HandlerOptions | undefined,
 ): Promise<PendingLifeActionResult> {
   const ownerSurfaceActionName = ownerSurfaceActionNameFromOptions(options);
+  const currentRequestIntents = readTaskExtractionRequestIntents(
+    state,
+    message,
+  );
   // Defense-in-depth: validate() excludes owner-operation candidates on
   // foreign page-* scopes, and this handler keeps direct tool execution a
   // no-op if a stale or malformed plan still reaches it.
@@ -4866,6 +4871,13 @@ async function runLifeOperationHandlerInner(
         params.title && explicitCadenceDetail && detailString(details, "kind"),
       );
       const nativeCreatePlan = parseNativeTaskCreatePlan(params.createPlan);
+      const ownsSingleCreateRequest =
+        ownerSurfaceActionName === "OWNER_REMINDERS" &&
+        nativeCreatePlan?.mode === "create" &&
+        nativeCreatePlan.multiStep === false &&
+        !reuseDeferredDraft &&
+        validateUuid(currentMessageId) !== null &&
+        currentRequestIntents?.length === 1;
       const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
       let title: string | null = editingDeferredDefinitionDraft
         ? (params.title ?? fallbackTitle)
@@ -5638,6 +5650,17 @@ async function runLifeOperationHandlerInner(
         userFacingText: savedText,
         verifiedUserFacing: true,
         data: toActionData(created),
+        ...(ownsSingleCreateRequest
+          ? {
+              values: {
+                ownerRequestHandling: {
+                  kind: "single_create",
+                  sourceMessageId: currentMessageId,
+                  definitionId: created.definition.id,
+                },
+              },
+            }
+          : {}),
       };
     };
 

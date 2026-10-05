@@ -545,6 +545,9 @@ export async function openSettingsSection(
     await expect(settingsShell.locator(`[id="${sectionId}"]`)).toBeVisible({
       timeout: READY_CHECK_TIMEOUT_MS,
     });
+    await expect(
+      settingsShell.locator(`[data-agent-id="section-${sectionId}"]`),
+    ).toHaveAttribute("aria-current", "page");
     return;
   }
   const sectionHeading = settingsShell.getByText(sectionName).filter({

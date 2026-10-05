@@ -24,7 +24,13 @@ export async function installOrganizationUpgradeTestSchema(
           "0519_organization_upgrade_void_result",
           "0520_organization_downgrade_quotes",
           "0521_organization_schedule_effects",
-          ...(includeRetainedTerms ? ["0522_organization_schedule_quote_terms"] : []),
+          ...(includeRetainedTerms
+            ? [
+                "0522_organization_schedule_quote_terms",
+                "0523_organization_schedule_compensation",
+                "0524_organization_schedule_compensation_result",
+              ]
+            : []),
         ]
       : []),
   ]) {
@@ -33,6 +39,10 @@ export async function installOrganizationUpgradeTestSchema(
       if (q.trim())
         await execute(
           q
+            .replace(
+              "ADD COLUMN organization_schedule_failure_evidence",
+              "ADD COLUMN IF NOT EXISTS organization_schedule_failure_evidence",
+            )
             .replace(
               "ADD COLUMN organization_upgrade_failure_evidence",
               "ADD COLUMN IF NOT EXISTS organization_upgrade_failure_evidence",

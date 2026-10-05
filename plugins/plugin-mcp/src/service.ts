@@ -78,11 +78,6 @@ export class McpService extends Service {
   capabilityDescription = "Enables the agent to interact with MCP (Model Context Protocol) servers";
   private connections: Map<string, McpConnection> = new Map();
   private connectionStates: Map<string, ConnectionState> = new Map();
-  private mcpProvider: McpProvider = {
-    values: { mcp: {}, mcpText: "" },
-    data: { mcp: {} },
-    text: "",
-  };
   private pingConfig: PingConfig = DEFAULT_PING_CONFIG;
   private toolCompatibility: McpToolCompatibility | null = null;
   private compatibilityInitialized = false;
@@ -119,12 +114,9 @@ export class McpService extends Service {
   private async initializeMcpServers(): Promise<void> {
     const mcpSettings = this.getMcpSettings();
     if (!mcpSettings?.servers || Object.keys(mcpSettings.servers).length === 0) {
-      this.mcpProvider = buildMcpProviderData([]);
       return;
     }
     await this.updateServerConnections(mcpSettings.servers);
-    const servers = this.getServers();
-    this.mcpProvider = buildMcpProviderData(servers);
   }
   private getMcpSettings(): McpSettings | undefined {
     const configured = this.getConfiguredMcpSettings();
@@ -557,8 +549,12 @@ export class McpService extends Service {
       .filter((conn) => !conn.server.disabled)
       .map((conn) => conn.server);
   }
+  /**
+   * Built from the live connections, so a server that connects or recovers
+   * after startup (reconnect ladder, restart) is offered with its tools.
+   */
   public getProviderData(): McpProvider {
-    return this.mcpProvider;
+    return buildMcpProviderData(this.getServers());
   }
   public async callTool(
     serverName: string,

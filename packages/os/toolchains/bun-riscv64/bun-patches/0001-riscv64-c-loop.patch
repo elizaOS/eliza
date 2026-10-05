@@ -1,6 +1,6 @@
 diff --git a/patches/mimalloc/atomic-pause.patch b/patches/mimalloc/atomic-pause.patch
 new file mode 100644
-index 0000000..c093683
+index 000000000..c0936832a
 --- /dev/null
 +++ b/patches/mimalloc/atomic-pause.patch
 @@ -0,0 +1,11 @@
@@ -16,7 +16,7 @@ index 0000000..c093683
 + #endif
 + 
 diff --git a/scripts/build.ts b/scripts/build.ts
-index 46e0597..d1c5759 100644
+index 46e05970d..d1c575968 100644
 --- a/scripts/build.ts
 +++ b/scripts/build.ts
 @@ -3,6 +3,10 @@
@@ -31,7 +31,7 @@ index 46e0597..d1c5759 100644
   *   bun scripts/build.ts --target tinycc                # build one dep
   *   bun scripts/build.ts --configure-only               # emit ninja, don't run
 diff --git a/scripts/build/bun.ts b/scripts/build/bun.ts
-index fc1a748..d004f44 100644
+index fc1a7481d..d004f445f 100644
 --- a/scripts/build/bun.ts
 +++ b/scripts/build/bun.ts
 @@ -829,6 +829,8 @@ function emitSmokeTest(n: Ninja, cfg: Config, exe: string, exeName: string, stri
@@ -44,7 +44,7 @@ index fc1a748..d004f44 100644
      // Windows: no setarch, no env wrapper syntax differences matter for
      // this simple case. cmd /c handles the pipe.
 diff --git a/scripts/build/config.ts b/scripts/build/config.ts
-index 671839b..ee8f9af 100644
+index 671839b78..ee8f9af29 100644
 --- a/scripts/build/config.ts
 +++ b/scripts/build/config.ts
 @@ -18,7 +18,7 @@ import { clangTargetArch, toolchainOverride } from "./tools.ts";
@@ -177,8 +177,24 @@ index 671839b..ee8f9af 100644
        (crossTarget !== undefined
          ? linux && abi === "gnu" && existsSync(`/usr/bin/${crossTarget}-strip`)
            ? `/usr/bin/${crossTarget}-strip`
+diff --git a/scripts/build/deps/highway.ts b/scripts/build/deps/highway.ts
+index f10550a07..7d866bb89 100644
+--- a/scripts/build/deps/highway.ts
++++ b/scripts/build/deps/highway.ts
+@@ -16,8 +16,9 @@ const HIGHWAY_COMMIT = "2607d3b5b0113992fe84d3848859eae13b3b52c1";
+ 
+ // The scalable SVE/SVE2 targets and SVE_256, which Highway starts building at clang >= 22, stay
+ // off: bun's movemask-style kernels (highway_json/xml/sourcemap.cpp) use BitsFromMask, which only
+-// fixed-width targets have. SVE2_128 (Neoverse V2/N2) is fixed-width and stays on, as before.
+-const disabledTargets = "HWY_DISABLED_TARGETS=HWY_ALL_SVE-HWY_SVE2_128";
++// fixed-width targets have. RVV is scalable too; keep its complete EMU128 fallback.
++// SVE2_128 (Neoverse V2/N2) is fixed-width and stays on, as before.
++const disabledTargets = "HWY_DISABLED_TARGETS=HWY_ALL_SVE-HWY_SVE2_128+HWY_RVV";
+ 
+ export const highway: Dependency = {
+   name: "highway",
 diff --git a/scripts/build/deps/libjpeg-turbo.ts b/scripts/build/deps/libjpeg-turbo.ts
-index 224d1f3..53fb3e4 100644
+index 224d1f312..53fb3e4c4 100644
 --- a/scripts/build/deps/libjpeg-turbo.ts
 +++ b/scripts/build/deps/libjpeg-turbo.ts
 @@ -98,7 +98,7 @@ export const libjpegTurbo: Dependency = {
@@ -191,7 +207,7 @@ index 224d1f3..53fb3e4 100644
      const hostWin = cfg.host.os === "windows";
      return {
 diff --git a/scripts/build/deps/mimalloc.ts b/scripts/build/deps/mimalloc.ts
-index 5e491a9..7b13da5 100644
+index 5e491a9ab..7b13da505 100644
 --- a/scripts/build/deps/mimalloc.ts
 +++ b/scripts/build/deps/mimalloc.ts
 @@ -24,6 +24,8 @@ export const mimalloc: Dependency = {
@@ -204,7 +220,7 @@ index 5e491a9..7b13da5 100644
      // ─── Override behavior (global malloc replacement) ───
      //   ASAN:    OFF — ASAN interceptors must see the real malloc.
 diff --git a/scripts/build/deps/tinycc.ts b/scripts/build/deps/tinycc.ts
-index 7fa186c..8c8f267 100644
+index 7fa186cde..8c8f2675f 100644
 --- a/scripts/build/deps/tinycc.ts
 +++ b/scripts/build/deps/tinycc.ts
 @@ -30,6 +30,11 @@ export const tinycc: Dependency = {
@@ -220,7 +236,7 @@ index 7fa186c..8c8f267 100644
      if (cfg.arm64) sources.push("arm64-gen.c", "arm64-link.c", "arm64-asm.c");
      else sources.push("x86_64-gen.c", "x86_64-link.c", "i386-asm.c");
 diff --git a/scripts/build/deps/webkit.ts b/scripts/build/deps/webkit.ts
-index 7e8ddec..87972cb 100644
+index 7e8ddecce..87972cbeb 100644
 --- a/scripts/build/deps/webkit.ts
 +++ b/scripts/build/deps/webkit.ts
 @@ -66,6 +66,11 @@ function prebuiltSuffix(cfg: Config): string {
@@ -251,7 +267,7 @@ index 7e8ddec..87972cb 100644
      //
      // CMAKE_C_FLAGS/CMAKE_CXX_FLAGS: overrides the global dep flags source.ts
 diff --git a/scripts/build/deps/zlib.ts b/scripts/build/deps/zlib.ts
-index 2ee3470..d05a4f4 100644
+index 2ee3470f9..d05a4f497 100644
 --- a/scripts/build/deps/zlib.ts
 +++ b/scripts/build/deps/zlib.ts
 @@ -203,6 +203,13 @@ export const zlib: Dependency = {
@@ -269,7 +285,7 @@ index 2ee3470..d05a4f4 100644
        throw new Error(`zlib: no SIMD kernel table for arch ${cfg.arch}`);
      }
 diff --git a/scripts/build/flags.ts b/scripts/build/flags.ts
-index 0b37756..bf81ede 100644
+index 0b3775620..bf81ede58 100644
 --- a/scripts/build/flags.ts
 +++ b/scripts/build/flags.ts
 @@ -67,6 +67,11 @@ export const cpuTargetFlags: Flag[] = [
@@ -285,7 +301,7 @@ index 0b37756..bf81ede 100644
      flag: "-march=nehalem",
      when: c => c.x64,
 diff --git a/scripts/build/rust.ts b/scripts/build/rust.ts
-index 5e4fa5c..0dd7db4 100644
+index 5e4fa5c5f..0dd7db41e 100644
 --- a/scripts/build/rust.ts
 +++ b/scripts/build/rust.ts
 @@ -51,7 +51,7 @@ export function rustTarget(cfg: Config): string {
@@ -314,7 +330,7 @@ index 5e4fa5c..0dd7db4 100644
    for (const clangFlag of computeCpuTargetFlags(cfg)) {
      const parsed = /^(?:\/clang:)?-m(cpu|tune|arch)=(.+)$/.exec(clangFlag);
 diff --git a/scripts/build/source.ts b/scripts/build/source.ts
-index e57282b..8f51cdf 100644
+index e57282be9..8f51cdf1a 100644
 --- a/scripts/build/source.ts
 +++ b/scripts/build/source.ts
 @@ -920,11 +920,11 @@ export function resolveDep(
@@ -351,7 +367,7 @@ index e57282b..8f51cdf 100644
      // Windows-specific toolchain forwarding. When CMAKE_C_COMPILER is
      // an explicit path, cmake's find_program for the supporting tools
 diff --git a/scripts/build/tools.ts b/scripts/build/tools.ts
-index 4aa4474..08410fc 100644
+index 4aa4474bc..08410fcae 100644
 --- a/scripts/build/tools.ts
 +++ b/scripts/build/tools.ts
 @@ -216,6 +216,7 @@ export function clangTargetArch(clang: string): Arch | undefined {
@@ -363,7 +379,7 @@ index 4aa4474..08410fc 100644
  }
  
 diff --git a/scripts/glob-sources.ts b/scripts/glob-sources.ts
-index c9ba759..89613c4 100644
+index c9ba75991..89613c444 100644
 --- a/scripts/glob-sources.ts
 +++ b/scripts/glob-sources.ts
 @@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
@@ -383,7 +399,7 @@ index c9ba759..89613c4 100644
    /** all `*.c` compiled into bun (usockets, llhttp, uv polyfills) */
    c: {
 diff --git a/src/bun_alloc/lib.rs b/src/bun_alloc/lib.rs
-index 64a4a3b..098c23a 100644
+index 64a4a3b40..098c23a96 100644
 --- a/src/bun_alloc/lib.rs
 +++ b/src/bun_alloc/lib.rs
 @@ -54,7 +54,16 @@ pub(crate) const MAX_ALIGN_T: usize = core::mem::align_of::<MaxAlignT>();
@@ -405,7 +421,7 @@ index 64a4a3b..098c23a 100644
  
  pub struct AllocatorVTable {
 diff --git a/src/bun_core/Global.rs b/src/bun_core/Global.rs
-index 3ac4e52..dd87b3f 100644
+index 3ac4e52ac..dd87b3f30 100644
 --- a/src/bun_core/Global.rs
 +++ b/src/bun_core/Global.rs
 @@ -588,6 +588,8 @@ pub const arch_name: &str = if cfg!(target_arch = "x86_64") {
@@ -418,7 +434,7 @@ index 3ac4e52..dd87b3f 100644
      "unknown"
  };
 diff --git a/src/bun_core/debug.rs b/src/bun_core/debug.rs
-index 9ff90f1..3e3c4cb 100644
+index 9ff90f16a..3e3c4cb94 100644
 --- a/src/bun_core/debug.rs
 +++ b/src/bun_core/debug.rs
 @@ -48,7 +48,16 @@ pub fn frame_address() -> usize {
@@ -450,7 +466,7 @@ index 9ff90f1..3e3c4cb 100644
  /// Capture the current thread's call stack.
  ///
 diff --git a/src/bun_core/env.rs b/src/bun_core/env.rs
-index 9f4c52e..f68ac11 100644
+index 9f4c52ef8..f68ac119d 100644
 --- a/src/bun_core/env.rs
 +++ b/src/bun_core/env.rs
 @@ -43,6 +43,7 @@ const IS_FREEBSD: bool = cfg!(target_os = "freebsd");
@@ -495,7 +511,7 @@ index 9f4c52e..f68ac11 100644
      panic!("Please add your architecture to the Architecture enum")
  };
 diff --git a/src/bun_core/lib.rs b/src/bun_core/lib.rs
-index c5b8d48..8516d39 100644
+index c5b8d48c6..8516d39b8 100644
 --- a/src/bun_core/lib.rs
 +++ b/src/bun_core/lib.rs
 @@ -2940,14 +2940,14 @@ pub fn return_address() -> usize {
@@ -517,7 +533,7 @@ index c5b8d48..8516d39 100644
          // No frame-pointer asm! mapping for this arch; capture_current treats 0
          // as "no trim".
 diff --git a/src/bun_core/util.rs b/src/bun_core/util.rs
-index 2800651..a968ab9 100644
+index 28006517b..a968ab946 100644
 --- a/src/bun_core/util.rs
 +++ b/src/bun_core/util.rs
 @@ -2314,7 +2314,16 @@ impl StackCheck {
@@ -539,7 +555,7 @@ index 2800651..a968ab9 100644
              let probe = 0u8;
              core::ptr::from_ref::<u8>(&probe) as usize
 diff --git a/src/crash_handler/CPUFeatures.rs b/src/crash_handler/CPUFeatures.rs
-index 5736ea9..b83c785 100644
+index 5736ea904..b83c78509 100644
 --- a/src/crash_handler/CPUFeatures.rs
 +++ b/src/crash_handler/CPUFeatures.rs
 @@ -44,7 +44,24 @@ bitflags::bitflags! {
@@ -579,7 +595,7 @@ index 5736ea9..b83c785 100644
      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
          let mut is_first = true;
 diff --git a/src/crash_handler/lib.rs b/src/crash_handler/lib.rs
-index 67f984f..f4641db 100644
+index 67f984f09..f4641db50 100644
 --- a/src/crash_handler/lib.rs
 +++ b/src/crash_handler/lib.rs
 @@ -1473,6 +1473,8 @@ mod draft {
@@ -622,7 +638,7 @@ index 67f984f..f4641db 100644
              {
                  b'm'
 diff --git a/src/install_types/resolver_hooks.rs b/src/install_types/resolver_hooks.rs
-index 53afb67..571c799 100644
+index 53afb6708..571c79916 100644
 --- a/src/install_types/resolver_hooks.rs
 +++ b/src/install_types/resolver_hooks.rs
 @@ -904,6 +904,7 @@ impl Architecture {
@@ -659,7 +675,7 @@ index 53afb67..571c799 100644
  
  // ─── Repository (data) ────────────────────────────────────────────────────
 diff --git a/src/jsc/bindings/BunCPUProfiler.cpp b/src/jsc/bindings/BunCPUProfiler.cpp
-index 978ab56..52610bb 100644
+index 978ab5660..52610bb89 100644
 --- a/src/jsc/bindings/BunCPUProfiler.cpp
 +++ b/src/jsc/bindings/BunCPUProfiler.cpp
 @@ -1,3 +1,37 @@
@@ -706,10 +722,10 @@ index 978ab56..52610bb 100644
  }
 +#endif
 diff --git a/src/jsc/bindings/BunDebugger.cpp b/src/jsc/bindings/BunDebugger.cpp
-index b691e6a..79ca1df 100644
+index b691e6a0f..500b826b0 100644
 --- a/src/jsc/bindings/BunDebugger.cpp
 +++ b/src/jsc/bindings/BunDebugger.cpp
-@@ -1,3 +1,34 @@
+@@ -1,3 +1,66 @@
 +#if defined(__riscv) && __riscv_xlen == 64
 +// riscv64 builds the JSCOnly C_LOOP WebKit with ENABLE_REMOTE_INSPECTOR=0, so
 +// JSC::JSGlobalObjectDebuggable and JSGlobalObject::inspectorController() do not
@@ -720,6 +736,8 @@ index b691e6a..79ca1df 100644
 +// Bun__InspectorConnection__disconnectAllOnExit symbol).
 +#include "root.h"
 +#include "headers-handwritten.h"
++#include <JavaScriptCore/Error.h>
++#include <JavaScriptCore/JSGlobalObject.h>
 +
 +namespace JSC {
 +class JSGlobalObject;
@@ -740,17 +758,47 @@ index b691e6a..79ca1df 100644
 +extern "C" void Debugger__willDispatchAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t) { }
 +extern "C" void Bun__InspectorConnection__disconnectAllOnExit(Zig::GlobalObject*) { }
 +
++namespace Bun {
++using namespace JSC;
++
++JSC_DEFINE_HOST_FUNCTION(jsFunction_openNodeInspector, (JSGlobalObject* globalObject, CallFrame*))
++{
++    auto& vm = JSC::getVM(globalObject);
++    auto scope = DECLARE_THROW_SCOPE(vm);
++    throwException(globalObject, scope, createError(globalObject, "Node inspector is unavailable in the RISC-V C-loop build"_s));
++    return {};
++}
++
++JSC_DEFINE_HOST_FUNCTION(jsFunction_waitForNodeInspectorConnection, (JSGlobalObject* globalObject, CallFrame*))
++{
++    auto& vm = JSC::getVM(globalObject);
++    auto scope = DECLARE_THROW_SCOPE(vm);
++    throwException(globalObject, scope, createError(globalObject, "Node inspector is unavailable in the RISC-V C-loop build"_s));
++    return {};
++}
++
++JSC_DEFINE_HOST_FUNCTION(jsFunction_postNodeInspectorControl, (JSGlobalObject*, CallFrame*))
++{
++    return JSValue::encode(jsBoolean(false));
++}
++
++JSC_DEFINE_HOST_FUNCTION(jsFunction_closeNodeInspector, (JSGlobalObject*, CallFrame*))
++{
++    return JSValue::encode(jsUndefined());
++}
++}
++
 +#else
  #include "root.h"
  
  #include "BunDebugger.h"
-@@ -1095,3 +1126,4 @@ extern "C" void Bun__InspectorConnection__disconnectAllOnExit(Zig::GlobalObject*
+@@ -1095,3 +1158,4 @@ extern "C" void Bun__InspectorConnection__disconnectAllOnExit(Zig::GlobalObject*
      globalObject->m_inspectorController = makeUnique<Inspector::JSGlobalObjectInspectorController>(*globalObject, Bun::BunInjectedScriptHost::create());
  }
  }
 +#endif // defined(__riscv) && __riscv_xlen == 64
 diff --git a/src/jsc/bindings/BunProcess.cpp b/src/jsc/bindings/BunProcess.cpp
-index 57f1b66..0c593b3 100644
+index 57f1b66e0..0c593b31d 100644
 --- a/src/jsc/bindings/BunProcess.cpp
 +++ b/src/jsc/bindings/BunProcess.cpp
 @@ -202,6 +202,8 @@ static JSValue constructArch(VM& vm, JSObject* processObject)
@@ -773,7 +821,7 @@ index 57f1b66..0c593b3 100644
  #error "Unsupported architecture"
  #endif
 diff --git a/src/jsc/bindings/CPUFeatures.cpp b/src/jsc/bindings/CPUFeatures.cpp
-index 06355dc..4b20492 100644
+index 06355dcb7..4b204920e 100644
 --- a/src/jsc/bindings/CPUFeatures.cpp
 +++ b/src/jsc/bindings/CPUFeatures.cpp
 @@ -135,6 +135,8 @@ extern "C" uint8_t bun_cpu_features()
@@ -786,7 +834,7 @@ index 06355dc..4b20492 100644
  #error "Unknown architecture"
  #endif
 diff --git a/src/jsc/bindings/ConsoleObject.cpp b/src/jsc/bindings/ConsoleObject.cpp
-index 5c0a357..669b3f2 100644
+index 5c0a357fb..669b3f258 100644
 --- a/src/jsc/bindings/ConsoleObject.cpp
 +++ b/src/jsc/bindings/ConsoleObject.cpp
 @@ -36,12 +36,14 @@ void ConsoleObject::messageWithTypeAndLevel(MessageType type, MessageLevel level
@@ -830,7 +878,7 @@ index 5c0a357..669b3f2 100644
  
  }
 diff --git a/src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp b/src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp
-index bf06efc..51285bb 100644
+index bf06efca5..51285bb32 100644
 --- a/src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp
 +++ b/src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp
 @@ -21,8 +21,13 @@ WTF_MAKE_TZONE_ALLOCATED_IMPL(InspectorBunFrontendDevServerAgent);
@@ -848,7 +896,7 @@ index bf06efc..51285bb 100644
  {
  }
 diff --git a/src/jsc/bindings/InspectorBunFrontendDevServerAgent.h b/src/jsc/bindings/InspectorBunFrontendDevServerAgent.h
-index 1db64af..baeda65 100644
+index 1db64afd1..baeda65f6 100644
 --- a/src/jsc/bindings/InspectorBunFrontendDevServerAgent.h
 +++ b/src/jsc/bindings/InspectorBunFrontendDevServerAgent.h
 @@ -43,7 +43,7 @@ public:
@@ -861,7 +909,7 @@ index 1db64af..baeda65 100644
  };
  
 diff --git a/src/jsc/bindings/InspectorHTTPServerAgent.cpp b/src/jsc/bindings/InspectorHTTPServerAgent.cpp
-index 2797152..1cbc7d3 100644
+index 279715252..1cbc7d323 100644
 --- a/src/jsc/bindings/InspectorHTTPServerAgent.cpp
 +++ b/src/jsc/bindings/InspectorHTTPServerAgent.cpp
 @@ -20,10 +20,16 @@ void Bun__HTTPServerAgent__setEnabled(Inspector::InspectorHTTPServerAgent* agent
@@ -882,7 +930,7 @@ index 2797152..1cbc7d3 100644
  
  InspectorHTTPServerAgent::~InspectorHTTPServerAgent()
 diff --git a/src/jsc/bindings/InspectorHTTPServerAgent.h b/src/jsc/bindings/InspectorHTTPServerAgent.h
-index 18d0060..d5c9793 100644
+index 18d0060e3..d5c9793fe 100644
 --- a/src/jsc/bindings/InspectorHTTPServerAgent.h
 +++ b/src/jsc/bindings/InspectorHTTPServerAgent.h
 @@ -48,7 +48,7 @@ public:
@@ -895,7 +943,7 @@ index 18d0060..d5c9793 100644
  };
  
 diff --git a/src/jsc/bindings/InspectorLifecycleAgent.cpp b/src/jsc/bindings/InspectorLifecycleAgent.cpp
-index 4764caf..d3850ac 100644
+index 4764caf22..d3850acde 100644
 --- a/src/jsc/bindings/InspectorLifecycleAgent.cpp
 +++ b/src/jsc/bindings/InspectorLifecycleAgent.cpp
 @@ -44,8 +44,13 @@ void Bun__LifecycleAgentReportError(Inspector::InspectorLifecycleAgent* agent, Z
@@ -913,7 +961,7 @@ index 4764caf..d3850ac 100644
  }
  
 diff --git a/src/jsc/bindings/InspectorLifecycleAgent.h b/src/jsc/bindings/InspectorLifecycleAgent.h
-index 2ba0e9c..607c83e 100644
+index 2ba0e9c53..607c83e7e 100644
 --- a/src/jsc/bindings/InspectorLifecycleAgent.h
 +++ b/src/jsc/bindings/InspectorLifecycleAgent.h
 @@ -42,7 +42,7 @@ public:
@@ -926,7 +974,7 @@ index 2ba0e9c..607c83e 100644
      bool m_preventingExit { false };
  };
 diff --git a/src/jsc/bindings/InspectorTestReporterAgent.cpp b/src/jsc/bindings/InspectorTestReporterAgent.cpp
-index dd90a86..1457637 100644
+index dd90a8617..14576374d 100644
 --- a/src/jsc/bindings/InspectorTestReporterAgent.cpp
 +++ b/src/jsc/bindings/InspectorTestReporterAgent.cpp
 @@ -118,8 +118,13 @@ void Bun__TestReporterAgentReportTestEnd(Inspector::InspectorTestReporterAgent*
@@ -944,7 +992,7 @@ index dd90a86..1457637 100644
  }
  
 diff --git a/src/jsc/bindings/InspectorTestReporterAgent.h b/src/jsc/bindings/InspectorTestReporterAgent.h
-index 9c165c1..8665928 100644
+index 9c165c145..866592875 100644
 --- a/src/jsc/bindings/InspectorTestReporterAgent.h
 +++ b/src/jsc/bindings/InspectorTestReporterAgent.h
 @@ -41,7 +41,7 @@ public:
@@ -957,7 +1005,7 @@ index 9c165c1..8665928 100644
  };
  
 diff --git a/src/jsc/bindings/NodeVM.cpp b/src/jsc/bindings/NodeVM.cpp
-index fafc332..c3e25ff 100644
+index fafc332de..c3e25fff8 100644
 --- a/src/jsc/bindings/NodeVM.cpp
 +++ b/src/jsc/bindings/NodeVM.cpp
 @@ -979,6 +979,7 @@ const JSC::GlobalObjectMethodTable& NodeVMGlobalObject::globalObjectMethodTable(
@@ -995,7 +1043,7 @@ index fafc332..c3e25ff 100644
      // This is exposed by JSC when exposeInternalModuleLoader() is true,
      // but it should not be visible in node:vm contexts.
 diff --git a/src/jsc/bindings/NodeVMScript.cpp b/src/jsc/bindings/NodeVMScript.cpp
-index 6f8303a..e210b15 100644
+index 6f8303a8e..e210b1551 100644
 --- a/src/jsc/bindings/NodeVMScript.cpp
 +++ b/src/jsc/bindings/NodeVMScript.cpp
 @@ -192,6 +192,10 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
@@ -1018,7 +1066,7 @@ index 6f8303a..e210b15 100644
      } else if (script->options().produceCachedData)
          script->cacheBytecode();
 diff --git a/src/jsc/bindings/ZigGlobalObject.cpp b/src/jsc/bindings/ZigGlobalObject.cpp
-index 1bcd27a..fdfcc51 100644
+index 1bcd27a1a..1e9184ce5 100644
 --- a/src/jsc/bindings/ZigGlobalObject.cpp
 +++ b/src/jsc/bindings/ZigGlobalObject.cpp
 @@ -146,7 +146,9 @@
@@ -1031,7 +1079,15 @@ index 1bcd27a..fdfcc51 100644
  #include <JavaScriptCore/WebAssemblyCompileOptions.h>
  #include "JSWebSocket.h"
  #include "JSWorker.h"
-@@ -968,8 +970,13 @@ const JSC::GlobalObjectMethodTable& GlobalObject::globalObjectMethodTable()
+@@ -230,6 +232,7 @@
+ #endif
+ 
+ #include <wtf/NumberOfCores.h>
++#include <wtf/SetForScope.h>
+ 
+ using namespace Bun;
+ 
+@@ -968,8 +971,13 @@ const JSC::GlobalObjectMethodTable& GlobalObject::globalObjectMethodTable()
          &scriptExecutionStatus,
          &unsafeEvalNoop, // reportViolationForUnsafeEval
          nullptr, // defaultLanguage
@@ -1045,7 +1101,7 @@ index 1bcd27a..fdfcc51 100644
          &deriveShadowRealmGlobalObject,
          &codeForEval, // codeForEval
          &canCompileStrings, // canCompileStrings
-@@ -996,8 +1003,13 @@ const JSC::GlobalObjectMethodTable& EvalGlobalObject::globalObjectMethodTable()
+@@ -996,8 +1004,13 @@ const JSC::GlobalObjectMethodTable& EvalGlobalObject::globalObjectMethodTable()
          &scriptExecutionStatus,
          &unsafeEvalNoop, // reportViolationForUnsafeEval
          nullptr, // defaultLanguage
@@ -1059,7 +1115,7 @@ index 1bcd27a..fdfcc51 100644
          &deriveShadowRealmGlobalObject,
          &codeForEval, // codeForEval
          &canCompileStrings, // canCompileStrings
-@@ -1024,8 +1036,13 @@ const JSC::GlobalObjectMethodTable& StandaloneGlobalObject::globalObjectMethodTa
+@@ -1024,8 +1037,13 @@ const JSC::GlobalObjectMethodTable& StandaloneGlobalObject::globalObjectMethodTa
          &scriptExecutionStatus,
          &unsafeEvalNoop, // reportViolationForUnsafeEval
          nullptr, // defaultLanguage
@@ -1073,7 +1129,7 @@ index 1bcd27a..fdfcc51 100644
          &deriveShadowRealmGlobalObject,
          &codeForEval, // codeForEval
          &canCompileStrings, // canCompileStrings
-@@ -2592,9 +2609,11 @@ void GlobalObject::finishCreation(VM& vm)
+@@ -2592,9 +2610,11 @@ void GlobalObject::finishCreation(VM& vm)
          { OBJECT_OFFSETOF(GlobalObject, m_utilInspectStylizeNoColorFunction), [](const LazyProperty<JSGlobalObject, JSFunction>::Initializer& init) {
               init.set(JSC::JSFunction::create(init.vm, init.owner, utilInspectStylizeWithNoColorCodeGenerator(init.vm), init.owner));
           } },
@@ -1085,7 +1141,7 @@ index 1bcd27a..fdfcc51 100644
          { OBJECT_OFFSETOF(GlobalObject, m_nativeMicrotaskTrampoline), [](const LazyProperty<JSGlobalObject, JSFunction>::Initializer& init) {
               init.set(JSFunction::create(init.vm, init.owner, 2, ""_s, functionNativeMicrotaskTrampoline, ImplementationVisibility::Private));
           } },
-@@ -4027,6 +4046,7 @@ JSC::JSValue EvalGlobalObject::moduleLoaderEvaluate(JSGlobalObject* lexicalGloba
+@@ -4027,6 +4047,7 @@ JSC::JSValue EvalGlobalObject::moduleLoaderEvaluate(JSGlobalObject* lexicalGloba
      return result;
  }
  
@@ -1093,7 +1149,7 @@ index 1bcd27a..fdfcc51 100644
  extern "C" JSC::EncodedJSValue Zig__GlobalObject__getBodyStreamOrBytesForWasmStreaming(JSGlobalObject*, EncodedJSValue response, JSC::Wasm::StreamingCompiler* compiler);
  
  extern "C" void JSC__Wasm__StreamingCompiler__addBytes(JSC::Wasm::StreamingCompiler* compiler, const uint8_t* spanPtr, size_t spanSize)
-@@ -4089,6 +4109,7 @@ void GlobalObject::instantiateStreaming(JSGlobalObject* globalObject, JSC::JSPro
+@@ -4089,6 +4110,7 @@ void GlobalObject::instantiateStreaming(JSGlobalObject* globalObject, JSC::JSPro
  {
      handleResponseOnStreamingAction(globalObject, promise, source, JSC::Wasm::CompilerMode::FullCompile, importObject, WTF::move(compileOptions));
  }
@@ -1102,7 +1158,7 @@ index 1bcd27a..fdfcc51 100644
  GlobalObject::PromiseFunctions GlobalObject::promiseHandlerID(Zig::FFIFunction handler)
  {
 diff --git a/src/jsc/bindings/ZigGlobalObject.h b/src/jsc/bindings/ZigGlobalObject.h
-index df90558..74f9420 100644
+index df9055832..74f94201f 100644
 --- a/src/jsc/bindings/ZigGlobalObject.h
 +++ b/src/jsc/bindings/ZigGlobalObject.h
 @@ -194,8 +194,10 @@ public:
@@ -1116,8 +1172,98 @@ index df90558..74f9420 100644
  
      static ScriptExecutionStatus scriptExecutionStatus(JSGlobalObject*, JSObject*);
      static void promiseRejectionTracker(JSGlobalObject*, JSC::JSPromise*, JSC::JSPromiseRejectionOperation);
+diff --git a/src/jsc/bindings/v8/V8CpuProfiler.cpp b/src/jsc/bindings/v8/V8CpuProfiler.cpp
+index c80db710f..d7fdafe84 100644
+--- a/src/jsc/bindings/v8/V8CpuProfiler.cpp
++++ b/src/jsc/bindings/v8/V8CpuProfiler.cpp
+@@ -26,14 +26,18 @@ namespace v8 {
+ 
+ namespace shim {
+ 
++#if ENABLE(SAMPLING_PROFILER)
+ static int64_t nowMicroseconds()
+ {
+     return static_cast<int64_t>(
+         WTF::MonotonicTime::now().secondsSinceEpoch().microseconds());
+ }
+ 
++#endif
++
+ uint32_t CpuProfilerImpl::start(WTF::String&& title, bool recordSamples)
+ {
++#if ENABLE(SAMPLING_PROFILER)
+     uint32_t id = m_nextId++;
+     m_sessions.append(Session { id, WTF::move(title), nowMicroseconds(), recordSamples });
+ 
+@@ -48,6 +52,10 @@ uint32_t CpuProfilerImpl::start(WTF::String&& title, bool recordSamples)
+     }
+ 
+     return id;
++#else
++    // C-loop builds have no sampler and must not claim a profiling session.
++    return 0;
++#endif
+ }
+ 
+ const CpuProfilerImpl::Session* CpuProfilerImpl::sessionWithTitle(const WTF::String& title) const
+@@ -59,6 +67,7 @@ const CpuProfilerImpl::Session* CpuProfilerImpl::sessionWithTitle(const WTF::Str
+     return nullptr;
+ }
+ 
++#if ENABLE(SAMPLING_PROFILER)
+ // Build the top-down call tree from JSC::SamplingProfiler stack traces. Mirrors
+ // the tree-building pass in BunCPUProfiler.cpp (which emits JSON), but targets
+ // the V8 CpuProfileNode/CpuProfile object model instead.
+@@ -275,8 +284,11 @@ static void buildProfileTree(JSC::VM& vm, CpuProfileImpl& profile, int64_t start
+     profile.m_endTime = lastTimestamp > startTime ? lastTimestamp : nowMicroseconds();
+ }
+ 
++#endif
++
+ CpuProfileImpl* CpuProfilerImpl::stop(uint32_t id)
+ {
++#if ENABLE(SAMPLING_PROFILER)
+     size_t index = WTF::notFound;
+     for (size_t i = 0; i < m_sessions.size(); ++i) {
+         if (m_sessions[i].id == id) {
+@@ -304,6 +316,9 @@ CpuProfileImpl* CpuProfilerImpl::stop(uint32_t id)
+     }
+ 
+     return profile;
++#else
++    return nullptr;
++#endif
+ }
+ 
+ } // namespace shim
+@@ -466,6 +481,7 @@ void CpuProfiler::CollectSample(Isolate*, const std::optional<uint64_t>)
+ void CpuProfiler::Dispose()
+ {
+     auto* impl = toImpl(this);
++#if ENABLE(SAMPLING_PROFILER)
+     if (!impl->m_sessions.isEmpty()) {
+         if (JSC::SamplingProfiler* sampler = impl->m_isolate->vm().samplingProfiler()) {
+             WTF::Locker locker { sampler->getLock() };
+@@ -473,6 +489,7 @@ void CpuProfiler::Dispose()
+             sampler->clearData();
+         }
+     }
++#endif
+     delete impl;
+ }
+ 
+@@ -506,7 +523,8 @@ CpuProfilingResult CpuProfiler::Start(Local<String> title, CpuProfilingMode, boo
+     // microseconds. Refusing the overlap is worse: pprof ignores
+     // kAlreadyStarted, later calls Stop(0), gets nullptr, and dereferences it.
+     uint32_t id = impl->start(WTF::move(name), record_samples);
+-    return CpuProfilingResult { id, CpuProfilingStatus::kStarted };
++    // V8 exposes one failure status; zero is never a live profiler ID.
++    return CpuProfilingResult { id, id ? CpuProfilingStatus::kStarted : CpuProfilingStatus::kErrorTooManyProfilers };
+ }
+ 
+ CpuProfilingStatus CpuProfiler::StartProfiling(Local<String> title, CpuProfilingMode mode, bool record_samples, unsigned max_samples)
 diff --git a/src/jsc/bindings/webcore/JSPerformance.cpp b/src/jsc/bindings/webcore/JSPerformance.cpp
-index 41ebf4a..cfcf8fc 100644
+index 41ebf4a08..cfcf8fcce 100644
 --- a/src/jsc/bindings/webcore/JSPerformance.cpp
 +++ b/src/jsc/bindings/webcore/JSPerformance.cpp
 @@ -237,11 +237,19 @@ size_t JSPerformance::estimatedSize(JSCell* cell, VM& vm)
@@ -1150,7 +1296,7 @@ index 41ebf4a..cfcf8fc 100644
  }
  
 diff --git a/src/jsc/bindings/webcore/SerializedScriptValue.cpp b/src/jsc/bindings/webcore/SerializedScriptValue.cpp
-index 64df9ee..d93cfd1 100644
+index 64df9eee8..d93cfd10e 100644
 --- a/src/jsc/bindings/webcore/SerializedScriptValue.cpp
 +++ b/src/jsc/bindings/webcore/SerializedScriptValue.cpp
 @@ -2591,12 +2591,13 @@ private:
@@ -1169,7 +1315,7 @@ index 64df9ee..d93cfd1 100644
          return true;
      }
 diff --git a/src/jsc/bindings/wtf-bindings.cpp b/src/jsc/bindings/wtf-bindings.cpp
-index 4c6344f..fa22ef2 100644
+index 4c6344fe0..fa22ef23b 100644
 --- a/src/jsc/bindings/wtf-bindings.cpp
 +++ b/src/jsc/bindings/wtf-bindings.cpp
 @@ -4,6 +4,7 @@
@@ -1193,7 +1339,7 @@ index 4c6344f..fa22ef2 100644
  {
      return WTF::numberOfProcessorCores();
 diff --git a/src/jsc/modules/BunJSCModule.h b/src/jsc/modules/BunJSCModule.h
-index 88f2ea8..37410a5 100644
+index 88f2ea816..37410a5ac 100644
 --- a/src/jsc/modules/BunJSCModule.h
 +++ b/src/jsc/modules/BunJSCModule.h
 @@ -461,6 +461,11 @@ JSC_DEFINE_HOST_FUNCTION(functionStartSamplingProfiler,
@@ -1268,7 +1414,7 @@ index 88f2ea8..37410a5 100644
  
  JSC_DECLARE_HOST_FUNCTION(functionGenerateHeapSnapshotForDebugging);
 diff --git a/src/options_types/compile_target.rs b/src/options_types/compile_target.rs
-index e4ca61a..8b4ab69 100644
+index e4ca61a31..8b4ab6906 100644
 --- a/src/options_types/compile_target.rs
 +++ b/src/options_types/compile_target.rs
 @@ -434,6 +434,7 @@ impl CompileTarget {
@@ -1280,7 +1426,7 @@ index e4ca61a..8b4ab69 100644
          };
          const VERSION: &[u8] =
 diff --git a/src/platform/linux.rs b/src/platform/linux.rs
-index 7fc5c01..3f49e98 100644
+index 7fc5c01e4..3f49e987d 100644
 --- a/src/platform/linux.rs
 +++ b/src/platform/linux.rs
 @@ -71,7 +71,26 @@ unsafe fn raw_syscall6(
@@ -1312,7 +1458,7 @@ index 7fc5c01..3f49e98 100644
  }
  
 diff --git a/src/runtime/bake/BakeGlobalObject.cpp b/src/runtime/bake/BakeGlobalObject.cpp
-index fea6184..4a1a446 100644
+index fea61849f..4a1a446a2 100644
 --- a/src/runtime/bake/BakeGlobalObject.cpp
 +++ b/src/runtime/bake/BakeGlobalObject.cpp
 @@ -229,8 +229,17 @@ const JSC::GlobalObjectMethodTable& GlobalObject::globalObjectMethodTable()
@@ -1334,7 +1480,7 @@ index fea6184..4a1a446 100644
          INHERIT_HOOK_METHOD(codeForEval),
          INHERIT_HOOK_METHOD(canCompileStrings),
 diff --git a/src/runtime/cli/upgrade_command.rs b/src/runtime/cli/upgrade_command.rs
-index 8ceab6b..b3a8efa 100644
+index 8ceab6b44..b3a8efa68 100644
 --- a/src/runtime/cli/upgrade_command.rs
 +++ b/src/runtime/cli/upgrade_command.rs
 @@ -100,6 +100,8 @@ impl Version {
@@ -1347,7 +1493,7 @@ index 8ceab6b..b3a8efa 100644
          "x64"
      };
 diff --git a/src/runtime/server/server_body.rs b/src/runtime/server/server_body.rs
-index b134871..2feecb2 100644
+index b134871b3..2feecb282 100644
 --- a/src/runtime/server/server_body.rs
 +++ b/src/runtime/server/server_body.rs
 @@ -516,6 +516,7 @@ pub(crate) mod BunInfo {
@@ -1359,7 +1505,7 @@ index b134871..2feecb2 100644
          }
      }
 diff --git a/src/runtime/webview/ChromeProcess.rs b/src/runtime/webview/ChromeProcess.rs
-index 3e8967d..c34e799 100644
+index 3e8967d46..c34e79998 100644
 --- a/src/runtime/webview/ChromeProcess.rs
 +++ b/src/runtime/webview/ChromeProcess.rs
 @@ -429,6 +429,8 @@ fn find_playwright_shell() -> Option<ZBox> {
@@ -1372,7 +1518,7 @@ index 3e8967d..c34e799 100644
              "x64"
          };
 diff --git a/src/tcc_sys/tcc.rs b/src/tcc_sys/tcc.rs
-index 0a95ffe..8e28cd0 100644
+index 0a95ffe74..8e28cd008 100644
 --- a/src/tcc_sys/tcc.rs
 +++ b/src/tcc_sys/tcc.rs
 @@ -27,12 +27,12 @@ pub type ErrorFunc<Ctx> = unsafe extern "C" fn(ctx: *mut Ctx, msg: *const c_char
@@ -1391,7 +1537,7 @@ index 0a95ffe..8e28cd0 100644
              unsafe extern "C" fn $name($($arg: $ty),*) $(-> $ret)? {
                  unreachable!(concat!(
 diff --git a/src/windows_sys/externs.rs b/src/windows_sys/externs.rs
-index b84cbfd..2c1b180 100644
+index b84cbfd3a..2c1b180df 100644
 --- a/src/windows_sys/externs.rs
 +++ b/src/windows_sys/externs.rs
 @@ -1681,6 +1681,14 @@ pub fn teb() -> *mut TEB {

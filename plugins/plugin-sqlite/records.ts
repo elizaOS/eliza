@@ -955,8 +955,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         (c) =>
           c.entityId === key.entityId &&
           c.type === key.type &&
-          c.worldId === (key.worldId ?? null) &&
-          c.sourceEntityId === (key.sourceEntityId ?? null),
+          // An omitted worldId/sourceEntityId matches any value, as in
+          // plugin-sql's getComponent and getComponentsForEntities below.
+          (key.worldId === undefined || c.worldId === key.worldId) &&
+          (key.sourceEntityId === undefined ||
+            c.sourceEntityId === key.sourceEntityId),
       );
       result.push(matches[0] ?? null);
     }

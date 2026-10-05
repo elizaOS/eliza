@@ -838,3 +838,124 @@ test("uncertain companion termination prevents uninstall of every owned package"
   assert.equal(report.cleaned, false);
   assert.equal(JSON.parse(fs.readFileSync(f.state)).packages.length, 3);
 });
+
+test("scenario preflight is read-only and runs before package installation", async (t) => {
+  const f = fixture(t);
+  let restored = false;
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      preflightVariant: async ({ run, deviceLease }) => {
+        assert.equal(deviceLease.lease.pid, process.pid);
+        assert.equal(
+          (await run("shell", "getprop", "ro.kernel.qemu")).trim(),
+          "1",
+        );
+        throw new Error("scenario not admitted");
+      },
+      cleanupVariant: () => {
+        restored = true;
+      },
+    }),
+    /scenario not admitted/,
+  );
+  assert.equal(restored, false);
+  assert.ok(!f.commands().some((c) => ["install", "uninstall"].includes(c[0])));
+});
+
+for (const outcome of [
+  "success",
+  "prepare-failure",
+  "cancel",
+  "cleanup-failure",
+]) {
+  test(`scenario restoration runs once per entered variant: ${outcome}`, async (t) => {
+    const f = fixture(t),
+      controller = new AbortController();
+    let restored = 0;
+    const execution = runIsolatedAndroidTest({
+      ...f.options,
+      signal: controller.signal,
+      prepareVariant: () => {
+        if (outcome === "cancel") controller.abort();
+        if (outcome === "prepare-failure") throw new Error("partial setup");
+      },
+      cleanupVariant: async ({ run, signal }) => {
+        restored++;
+        assert.equal(signal, undefined);
+        assert.equal(
+          (await run("shell", "getprop", "ro.kernel.qemu")).trim(),
+          "1",
+        );
+        assert.ok(JSON.parse(fs.readFileSync(f.state)).packages.length > 0);
+        if (outcome === "cleanup-failure")
+          throw new Error("cannot restore scenario");
+      },
+    });
+    if (outcome === "success") await execution;
+    else await assert.rejects(execution);
+    assert.equal(restored, outcome === "success" ? 2 : 1);
+    const report = JSON.parse(
+      fs.readFileSync(path.join(f.options.directory, "verification.json")),
+    );
+    assert.equal(report.cleaned, outcome !== "cleanup-failure");
+    if (outcome === "cleanup-failure") {
+      assert.equal(report.cleanupDeferred, true);
+      assert.match(report.cleanupErrors.join("\n"), /cannot restore scenario/);
+      assert.ok(!f.commands().some((c) => c[0] === "uninstall"));
+    }
+  });
+}
+
+for (const outcome of ["success", "failure", "wrong-pin", "wrong-identity"]) {
+  test(`declared companion updates preserve installed-byte ownership: ${outcome}`, async (t) => {
+    const f = fixture(t),
+      companion = withCompanion(f);
+    const apk = path.join(
+      f.root,
+      outcome === "wrong-identity" ? "unrelated.apk" : "update-companion.apk",
+    );
+    fs.writeFileSync(apk, "reviewed companion update");
+    companion.updates = [
+      {
+        apk,
+        sha256:
+          outcome === "wrong-pin"
+            ? "0".repeat(64)
+            : createHash("sha256").update(fs.readFileSync(apk)).digest("hex"),
+      },
+    ];
+    const execution = runIsolatedAndroidTest({
+      ...f.options,
+      collectVariant: () => {
+        const state = JSON.parse(fs.readFileSync(f.state));
+        fs.copyFileSync(apk, state.files[companion.packageName]);
+        if (outcome === "failure") throw new Error("after update");
+      },
+    });
+    if (outcome === "success") await execution;
+    else await assert.rejects(execution);
+    assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+    if (outcome.startsWith("wrong"))
+      assert.ok(!f.commands().some((c) => c[0] === "install"));
+  });
+}
+
+test("packages appearing during scenario admission remain unowned", async (t) => {
+  const f = fixture(t);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      preflightVariant: () => {
+        const state = JSON.parse(fs.readFileSync(f.state));
+        state.packages.push(f.options.packageName);
+        fs.writeFileSync(f.state, JSON.stringify(state));
+      },
+    }),
+    /appeared during scenario preflight/,
+  );
+  assert.ok(!f.commands().some((c) => ["install", "uninstall"].includes(c[0])));
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, [
+    f.options.packageName,
+  ]);
+});

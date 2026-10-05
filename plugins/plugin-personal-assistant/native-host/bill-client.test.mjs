@@ -3,6 +3,7 @@ import test from "node:test";
 import { validateTaskChoiceWidget } from "../../../packages/core/src/messaging/task-widgets.ts";
 import { formatMinorCurrency } from "../../../packages/ui/src/utils/value-formatting.ts";
 import {
+  BillClientResponseError,
   BillDecisionClient,
   BillSourceClient,
   BillSourceLinkClient,
@@ -147,6 +148,18 @@ test("response admission preserves detached metadata and validates shared money,
     copy = validateBillSourceLinks(links);
   links[0].url = "changed";
   assert.notEqual(copy[0].url, "changed");
+
+  const malformed = offer();
+  malformed.candidates[0].facts.origin = "not a url";
+  assert.throws(
+    () => readBillSourceOffer(malformed, validators),
+    (error) => {
+      assert.equal(error instanceof BillClientResponseError, true);
+      assert.equal(error.code, "BILL_CLIENT_RESPONSE_INVALID");
+      assert.equal(error.cause instanceof TypeError, true);
+      return true;
+    },
+  );
 });
 
 test("decision effect replay defers initial request and stop suppresses every later result", async () => {

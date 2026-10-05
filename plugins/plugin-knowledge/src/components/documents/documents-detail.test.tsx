@@ -38,6 +38,9 @@ vi.mock(
   async (importOriginal) => ({
     ...(await importOriginal<typeof import("@elizaos/ui")>()),
     client: {
+      getBaseUrl: () => "http://localhost",
+      getAuthorityRevision: () => 0,
+      onAuthorityChange: () => () => {},
       getDocument: (...args: unknown[]) => getDocument(...args),
       getDocumentFragments: (...args: unknown[]) =>
         getDocumentFragments(...args),
