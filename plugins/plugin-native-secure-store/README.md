@@ -36,3 +36,18 @@ uses Android API 26+; browser structure parsing requires API 28+. Production
 password keys must require device authentication. The unauthenticated constructor
 mode is only for host-restricted synthetic tests. Autofill metadata key strings
 retain their existing browser wire protocol identifiers.
+
+
+`DeviceCredentialSession` owns native Activity challenge/result fencing and absolute
+unlock expiry. Reserve an inclusive request-code range; forward activity results,
+`onStop`, and destruction, and call `saveState` from `onSaveInstanceState`. Pass that
+Bundle back on creation. Only the request-code watermark is saved, never a grant or
+continuation. Missing/corrupt restored counters fail closed. Hosts supply localized
+views/prompts and durations. Keep the `locked` listener presentation-only: do not
+call `lock()` recursively from it. `authenticated()` rechecks elapsed time even if
+Android delays timer delivery. This UI grant does not replace Keystore enforcement.
+
+Run `bun run --cwd plugins/plugin-native-secure-store test:native-session` with a
+JDK for deterministic grant tests. The Android DeviceCredentialSession instrumented
+tests use real Bundle/Handler lifecycle plumbing and a synthetic challenge port;
+they do not establish real device credential or biometric acceptance.
