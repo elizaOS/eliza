@@ -3487,6 +3487,13 @@
       "when": 1796083200145,
       "tag": "0527_organization_schedule_late_configuration",
       "breakpoints": true
+    },
+    {
+      "idx": 498,
+      "version": "7",
+      "when": 1796083200146,
+      "tag": "0528_subscription_adjustment_observations",
+      "breakpoints": true
     }
   ]
 }
