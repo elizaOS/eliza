@@ -103,14 +103,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
     }
     const cap = this.capabilities();
     if (cap.search) return this.searchMessagesImpl(runtime, filters);
-    // Degrade to a list-then-filter pass when the connector lacks native search.
-    const listed = await this.listMessages(runtime, {
-      sinceMs: filters.sinceMs,
-      limit: filters.limit,
-      worldIds: filters.worldIds,
-      channelIds: filters.channelIds,
-    });
-    return filterInMemory(listed, filters);
+    return searchByListing(this, runtime, filters);
   }
 
   async manageMessage(
@@ -243,6 +236,27 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
  * Pure in-memory filter shared by adapters that lack native search and by
  * the cross-connector MESSAGE action when it merges results.
  */
+/**
+ * Search for adapters without native search: list without the result limit,
+ * filter, then apply the limit. Listing only `limit` newest messages first
+ * would drop every older match and report the truncated page as complete.
+ */
+export async function searchByListing(
+  adapter: Pick<MessageAdapter, "listMessages">,
+  runtime: IAgentRuntime,
+  filters: SearchMessagesFilters,
+): Promise<MessageRef[]> {
+  const listed = await adapter.listMessages(runtime, {
+    sinceMs: filters.sinceMs,
+    worldIds: filters.worldIds,
+    channelIds: filters.channelIds,
+  });
+  const matches = filterInMemory(listed, filters);
+  return filters.limit === undefined
+    ? matches
+    : matches.slice(0, filters.limit);
+}
+
 export function filterInMemory(
   messages: MessageRef[],
   filters: SearchMessagesFilters,

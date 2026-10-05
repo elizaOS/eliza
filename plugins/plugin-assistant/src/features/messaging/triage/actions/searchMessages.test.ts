@@ -157,7 +157,8 @@ describe("searchMessagesAction", () => {
       limit: 1,
     });
 
-    expect(gmail.seenLimits).toEqual([2]);
+    // Without native search the listing is unbounded; limit+1 applies after filtering.
+    expect(gmail.seenLimits).toEqual([undefined]);
     expect(result.success).toBe(true);
     expect(result.text).toBe(
       "Found 1 match(es) from 1 source(s). Searched 1 of 4 requested source(s); not searched: whatsapp (not registered), discord (unavailable), telegram (failed). More matches were returned by the measured limit+1 probe beyond the 1 shown.",
