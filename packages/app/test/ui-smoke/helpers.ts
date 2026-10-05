@@ -159,6 +159,13 @@ export function installPageDiagnosticsGuard(page: Page): void {
     issues.push(`pageerror: ${issueMessage(error)}`);
   });
   page.on("console", (message) => {
+    if (
+      message.type() === "warning" &&
+      message.text().includes("Failed to load @elizaos/")
+    ) {
+      issues.push(`module-load: ${message.text()}`);
+      return;
+    }
     if (message.type() !== "error") return;
     // The browser logs an automatic "Failed to load resource" console error for
     // every non-2xx response; its text carries no URL — the resource URL is the
