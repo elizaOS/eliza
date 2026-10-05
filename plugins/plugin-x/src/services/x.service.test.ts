@@ -947,4 +947,65 @@ describe("XService trusted account routing", () => {
     expect(byText.get("inbound")?.entityId).not.toBe(runtime.agentId);
     expect(byText.get("inbound")?.metadata).toMatchObject({ fromBot: false });
   });
+
+  it("reads both sides of a DM conversation with one participant", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    async function* events() {
+      yield {
+        id: "1",
+        sender_id: "current-user",
+        participant_ids: ["current-user", "alice"],
+        text: "my reply to alice",
+      };
+      yield {
+        id: "2",
+        sender_id: "alice",
+        participant_ids: ["current-user", "alice"],
+        text: "alice asks",
+      };
+      yield {
+        id: "3",
+        sender_id: "bob",
+        participant_ids: ["current-user", "bob"],
+        text: "bob unrelated",
+      };
+    }
+    const iterator = Object.assign(events(), {
+      includes: {
+        users: [
+          { id: "current-user", username: "current" },
+          { id: "alice", username: "alice" },
+          { id: "bob", username: "bob" },
+        ],
+      },
+    });
+    const session = dmSession("current-user", {
+      listDmEvents: vi.fn(async () => iterator),
+    });
+    const base = {
+      profile: { id: "current-user", username: "current" },
+      twitterClient: {
+        withAuthenticatedSession: async <T>(
+          operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+        ) => operation(session),
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+
+    const memories = await service.fetchDirectMessagesForAccount("account-a", {
+      participantId: "alice",
+    });
+
+    expect(memories.map((memory) => memory.content.text)).toEqual([
+      "my reply to alice",
+      "alice asks",
+    ]);
+  });
 });
