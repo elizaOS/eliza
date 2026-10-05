@@ -1038,6 +1038,23 @@ test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   await clickSafeAllowlist(page, issues);
 });
 
+test("stale inventory link opens the canonical wallet without crashing", async ({
+  page,
+}) => {
+  const issues = installPageIssueGuards(page);
+  await openAppPath(page, "/apps/inventory");
+  const recovery = page.getByTestId("app-route-not-found");
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toContainText("/apps/inventory");
+  await recovery
+    .getByRole("button", { name: "Open Wallet", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/wallet(?:[?#]|$)/);
+  await expect(page.getByTestId("wallet-shell")).toBeVisible();
+  await expect(recovery).toHaveCount(0);
+  await expectNoPageIssues(issues, "stale inventory link recovery");
+});
+
 test("browser history returns from Wallet to the launcher without crashing", async ({
   page,
 }) => {
