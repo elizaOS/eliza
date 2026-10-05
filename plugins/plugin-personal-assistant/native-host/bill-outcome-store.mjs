@@ -1,5 +1,5 @@
-import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { BillHostError } from "./errors.mjs";
 /** Minimal product outcome records. No page bodies, tokens, or permanent transcripts. */
 export function createBillOutcomeStore(db, tasks) {
@@ -221,12 +221,17 @@ export function createBillOutcomeStore(db, tasks) {
         load,
         loadEvidence() {
           requireOwned();
-          const row = db.prepare(
-            "SELECT document FROM bill_outcomes_v1 WHERE task_id=? AND owner_key=?",
-          ).get(taskId, ownerKey);
+          const row = db
+            .prepare(
+              "SELECT document FROM bill_outcomes_v1 WHERE task_id=? AND owner_key=?",
+            )
+            .get(taskId, ownerKey);
           const saved = row ? validate(JSON.parse(row.document)) : null;
           const record = pending.get(pendingKey) ?? saved;
-          return { record, persisted: saved !== null && isDeepStrictEqual(record, saved) };
+          return {
+            record,
+            persisted: saved !== null && isDeepStrictEqual(record, saved),
+          };
         },
         loadReview() {
           const task = requireOwned();
