@@ -26,6 +26,19 @@ if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
   exit 1
 fi
 
+# OS qualification on GitHub's Ubuntu 24.04 images needs only Ubuntu packages.
+# Scope both operations without mutating third-party feed configuration or
+# weakening signature verification. Other callers retain their configured feeds.
+apt_sources=()
+if [ "${ELIZA_APT_UBUNTU_ONLY:-false}" = "true" ]; then
+  ubuntu_sources=/etc/apt/sources.list.d/ubuntu.sources
+  if ! sudo -n test -s "$ubuntu_sources"; then
+    echo "::error::Ubuntu repository configuration is missing: $ubuntu_sources" >&2
+    exit 1
+  fi
+  apt_sources=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o "Dir::Etc::sourceparts=-")
+fi
+
 # Mirrors the drop-in written by .github/actions/setup-bun-workspace so lanes
 # that call this script without that composite get the same protection.
 if ! printf 'DPkg::Lock::Timeout "%s";\n' "$APT_LOCK_TIMEOUT_SECONDS" \
@@ -35,8 +48,8 @@ fi
 
 attempt=1
 while true; do
-  if sudo apt-get update \
-    && sudo apt-get install -y -o DPkg::Lock::Timeout="$APT_LOCK_TIMEOUT_SECONDS" "$@"; then
+  if sudo apt-get "${apt_sources[@]}" update \
+    && sudo apt-get "${apt_sources[@]}" install -y -o DPkg::Lock::Timeout="$APT_LOCK_TIMEOUT_SECONDS" "$@"; then
     exit 0
   fi
   if [ "$attempt" -ge "$INSTALL_ATTEMPTS" ]; then
