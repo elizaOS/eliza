@@ -116,3 +116,10 @@ transport errors and do not put provider receipt/request payloads in the respons
 Native management projects the validated pending plan for host presentation without
 changing cancellation eligibility. Hosts can explain a scheduled change and prevent
 duplicate reviews while leaving current paid-plan authority intact.
+
+Native speech requests forward validated speed, previous/next text and normalization
+controls, applying the host's sensitive-text policy to each context string. Voice
+identity remains host-owned. The audio JSON includes `renderedSpeed` only as an
+acknowledged numeric speed (otherwise null); clients must retain their local pace
+adjustment when an older Cloud deployment omits the acknowledgement. A mismatched
+or malformed acknowledgement rejects the audio instead of applying pace twice.

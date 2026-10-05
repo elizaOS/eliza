@@ -13,7 +13,11 @@ import {
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
-import { getElevenLabsService } from "@elizaos/cloud-shared/lib/services/elevenlabs";
+import {
+  getElevenLabsService,
+  hasTtsSynthesisOptions,
+  TtsSynthesisOptions,
+} from "@elizaos/cloud-shared/lib/services/elevenlabs";
 import { drainPcm16ToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
 import { recordCustomVoiceUsage } from "@elizaos/cloud-shared/lib/services/tts-custom-voice-usage";
 import {
@@ -90,8 +94,9 @@ function resolveElevenLabsVoiceRevision(
   return `elevenlabs:${voiceId}:${modelId}:${DEFAULT_OUTPUT_FORMAT}`;
 }
 const MAX_TEXT_LENGTH = 5000;
-const TtsBody = z.object({
+const TtsBody = TtsSynthesisOptions.extend({
   text: z.string(),
+  withTimestamps: z.boolean().optional(),
   voiceId: z.string().optional(),
   modelId: z.string().optional(),
   // Optional container format. Default (unset) = MP3, unchanged for every
@@ -255,6 +260,27 @@ async function __hono_POST(c: AppContext) {
         { status: 400 },
       );
     }
+    if (
+      body &&
+      (hasTtsSynthesisOptions(body) || body.withTimestamps === true) &&
+      providerSelection?.ok &&
+      providerSelection.provider !== "elevenlabs"
+    ) {
+      pendingResponse = Response.json(
+        {
+          error:
+            "Synthesis options require an explicitly selected ElevenLabs voice",
+          code: "unsupported_synthesis_options",
+        },
+        { status: 400 },
+      );
+    }
+    if (body?.withTimestamps && body.format === "wav") {
+      pendingResponse = Response.json(
+        { error: "Timed speech requires MP3 output" },
+        { status: 400 },
+      );
+    }
     const willAdmit =
       pendingResponse === undefined &&
       providerSelection?.ok === true &&
@@ -317,7 +343,15 @@ async function __hono_POST(c: AppContext) {
       surface: "media_generation_prompt",
       organizationId: user.organization_id,
       userId: user.id,
-      text: `TTS text: ${text}`,
+      text: [
+        `TTS text: ${text}`,
+        ...(body.previousText !== undefined
+          ? [`Previous context: ${body.previousText}`]
+          : []),
+        ...(body.nextText !== undefined
+          ? [`Next context: ${body.nextText}`]
+          : []),
+      ].join("\n"),
       metadata: {
         type: "tts",
         model: modelId || "eleven_flash_v2_5",
@@ -483,9 +517,14 @@ async function __hono_POST(c: AppContext) {
         : voiceId || "EXAVITQu4vr4xnSDxMaL";
     const resolvedModelId = modelId || "eleven_flash_v2_5";
     const snipResult = firstSentenceSnip(text);
-    const cacheBypass = shouldBypassCloudFirstLineCache({
-      modelId: resolvedModelId,
-    });
+    // Context and rendering controls change audio. Never read or populate a
+    // legacy text-only cache entry for these requests.
+    const cacheBypass =
+      body.withTimestamps === true ||
+      hasTtsSynthesisOptions(body) ||
+      shouldBypassCloudFirstLineCache({
+        modelId: resolvedModelId,
+      });
     const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
     const mp3CacheProvider =
       providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
@@ -740,14 +779,23 @@ async function __hono_POST(c: AppContext) {
       if (audioStream === undefined) {
         const elevenlabs = getElevenLabsService(env);
         await markPaidTtsProviderDispatch();
-        audioStream = await elevenlabs.textToSpeech({
+        const synthesis = {
+          ...TtsSynthesisOptions.parse(body),
           text,
           voiceId,
           modelId,
-          // WAV path requests raw PCM (wrapped in a WAV header below); default
-          // callers get the service's MP3 default.
-          ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
-        });
+        };
+        audioStream = body.withTimestamps
+          ? await elevenlabs.textToSpeechWithTimestamps(
+              synthesis,
+              request.signal,
+            )
+          : await elevenlabs.textToSpeech({
+              ...synthesis,
+              ...(wantWav
+                ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` }
+                : {}),
+            });
       }
       if (wantWav) {
         wav = await drainPcm16ToWav(
@@ -905,16 +953,31 @@ async function __hono_POST(c: AppContext) {
           "Content-Type": "audio/wav",
           "Cache-Control": "no-cache",
           ...buildTtsObservabilityHeaders(synthesisEngine, timings),
+          // Clients can avoid applying the requested pace a second time and
+          // remain compatible with deployments predating provider controls.
+          ...(body.speed !== undefined
+            ? { "X-Eliza-TTS-Speed": String(body.speed) }
+            : {}),
           "X-TTS-Cache": "miss",
         },
       });
     }
     return new Response(audioStream, {
       headers: {
-        "Content-Type": cartesiaMp3ContentType,
+        "Content-Type": body.withTimestamps
+          ? "application/x-ndjson"
+          : cartesiaMp3ContentType,
         "Transfer-Encoding": "chunked",
+        ...(body.withTimestamps
+          ? { "X-Eliza-TTS-Timing": "character-v1" }
+          : {}),
         "Cache-Control": "no-cache",
         ...buildTtsObservabilityHeaders(synthesisEngine, timings),
+        // Clients can avoid applying the requested pace a second time and
+        // remain compatible with deployments predating provider controls.
+        ...(body.speed !== undefined
+          ? { "X-Eliza-TTS-Speed": String(body.speed) }
+          : {}),
         "X-TTS-Cache": "miss",
       },
     });

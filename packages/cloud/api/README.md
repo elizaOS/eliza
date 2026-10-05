@@ -118,3 +118,30 @@ command authority is a conflict, not proof that a replacement intent is safe.
 Apply scheduling migrations through 0527 before deployment. Unattended recovery,
 configured-schedule undo/cancel/resume, retained-adjustment payment authority and
 live qualification remain required before product rollout.
+
+## Speech rendering controls
+
+`POST /api/v1/voice/tts` accepts optional `speed` (0.7–1.2), `previousText` and
+`nextText` (at most 5,000 characters each), and `applyTextNormalization`
+(`auto`, `on`, `off`) for ElevenLabs synthesis. Explicitly pin an ElevenLabs
+voice when the deployment defaults to another provider; unsupported providers
+reject these options instead of silently dropping them. Context passes through
+content screening, but only the synthesized text is priced. Requests with any
+rendering control bypass the legacy audio cache. Explicit normalization takes
+precedence over the service's legacy latency optimization. Successful responses
+with explicit speed include `X-Eliza-TTS-Speed`, allowing clients to avoid applying
+pace twice and detect older deployments. Response audio and
+existing authorization, admission and billing boundaries are unchanged.
+
+Set `withTimestamps: true` with an ElevenLabs voice to receive
+`application/x-ndjson` and `X-Eliza-TTS-Timing: character-v1`. Timed output is MP3
+only and bypasses audio caching. Each `audio` record has a zero-based sequence,
+base64 audio, MIME type, original alignment and normalized alignment (nullable).
+Alignment arrays retain provider character coordinates; no timing is estimated.
+A final `done` record reports frame/audio-byte totals; missing completion means
+the stream is incomplete. Consumers must validate timing and bind it to their
+playback clock. The adapter bounds audio to 8 MiB, combined alignment to 50,000
+characters and records to 2,048; exceeding a limit fails rather than truncates.
+Cancellation aborts the provider transport. Provider errors after response headers
+error the stream without a completion record; existing synthesis billing semantics
+remain unchanged. This endpoint alone does not provide client streaming playback.

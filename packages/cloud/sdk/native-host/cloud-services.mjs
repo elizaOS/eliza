@@ -1187,10 +1187,34 @@ export function createCloudRoutes({
         )
           throw fail(message("speechTextRequiredMaximum5000Characters"));
         requireNonSensitiveText(input.text);
+        const rendering = {};
+        if (input.speed !== undefined) {
+          if (
+            typeof input.speed !== "number" ||
+            !Number.isFinite(input.speed) ||
+            input.speed < 0.7 ||
+            input.speed > 1.2
+          )
+            throw fail("Invalid speech speed");
+          rendering.speed = input.speed;
+        }
+        for (const field of ["previousText", "nextText"]) {
+          if (input[field] === undefined) continue;
+          if (typeof input[field] !== "string" || input[field].length > 5000)
+            throw fail("Invalid speech context");
+          requireNonSensitiveText(input[field]);
+          rendering[field] = input[field];
+        }
+        if (input.applyTextNormalization !== undefined) {
+          if (!["auto", "on", "off"].includes(input.applyTextNormalization))
+            throw fail("Invalid speech normalization");
+          rendering.applyTextNormalization = input.applyTextNormalization;
+        }
         const response = await request("/api/v1/voice/tts", {
           method: "POST",
           json: {
             text: input.text,
+            ...rendering,
             ...(speechVoice
               ? { voiceId: speechVoice.voiceId, modelId: speechVoice.modelId }
               : {}),
@@ -1204,6 +1228,20 @@ export function createCloudRoutes({
         const mimeType = response.headers.get("content-type") || "";
         if (!mimeType.startsWith("audio/"))
           throw fail(message("invalidSpeechAudio"), 502);
+        // Older Cloud deployments omit this acknowledgement. Clients retain
+        // local pace adjustment until the provider confirms the exact speed.
+        const speedHeader = response.headers.get("x-eliza-tts-speed");
+        let renderedSpeed = null;
+        if (input.speed !== undefined && speedHeader !== null) {
+          if (
+            !/^(?:0\.[0-9]+|1(?:\.[0-9]+)?)$/.test(speedHeader) ||
+            Number(speedHeader) !== input.speed
+          ) {
+            await response.body?.cancel();
+            throw fail("Invalid rendered speech speed", 502);
+          }
+          renderedSpeed = Number(speedHeader);
+        }
         // Evidence of which provider actually rendered the pinned voice.
         const provider = /^[a-z0-9-]{1,32}$/.test(
           response.headers.get("x-eliza-tts-provider") || "",
@@ -1224,6 +1262,7 @@ export function createCloudRoutes({
           audioBase64: Buffer.concat(chunks).toString("base64"),
           mimeType,
           provider,
+          renderedSpeed,
         });
         return true;
       }
