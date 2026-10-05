@@ -14,6 +14,11 @@ import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import { createLogger } from "./logger";
 import type { FetchLike } from "./media/fetch";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
+import type {
+	ExecutionTrace,
+	PromptOptimizationRuntimeHooks,
+	ScoreSignal,
+} from "./prompt-optimization";
 import { runPluginMigrations } from "./provisioning";
 import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { resolveActionGateFailure } from "./runtime/action-gate";
@@ -204,11 +209,6 @@ import {
 	type Metadata,
 	type UUID,
 } from "./types/primitives.js";
-import type { PromptOptimizationRuntimeHooks } from "./types/prompt-optimization-hooks";
-import type {
-	ExecutionTrace,
-	ScoreSignal,
-} from "./types/prompt-optimization-trace";
 import type { IAgentRuntime, RuntimeStopOptions } from "./types/runtime.js";
 import {
 	type SearchCategoryEnumerationOptions,

@@ -262,3 +262,10 @@ incidents in the existing billing operations store, and backs off unavailable
 legacy evidence without reconstruction. Lane infrastructure failures remain visible;
 recorded observations never post allowance corrections. Deploy migrations through
 0529 before enabling the updated maintenance handler.
+
+Original Acacia invoice-paid events with debit balances are retained under their
+existing platform billing receipt before funding recovery. Migration 0530 adds
+immutable, tenant-bound observations; atomic receipt insertion preserves exact
+replay and rejects late backfill. These records are not payment proof: deferred
+collection/allocation and allowance publication remain unavailable until separately
+qualified. Current provider invoices never replace original signed event bodies.

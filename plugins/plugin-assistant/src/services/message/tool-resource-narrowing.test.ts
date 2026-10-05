@@ -4,6 +4,7 @@ import {
   ownerAlarmsAction,
   ownerRemindersAction,
 } from "../../../../plugin-personal-assistant/src/actions/owner-surfaces";
+import { preferredOperationNames } from "../../runtime/action-retrieval";
 import { retrieveContextualPlannerActions } from "./action-surface";
 
 const actions = [
@@ -82,4 +83,34 @@ it("does not erase a second operation whose resource wording is unknown", () => 
     query: "create a reminder read a document",
   });
   expect(result.actions.map((action) => action.name)).toContain(read.name);
+});
+
+it("loads only reminder creation for the actual scheduled-reminder intent", () => {
+  const result = retrieveContextualPlannerActions({
+    actions,
+    query: "Remind me here to stretch my shoulders in two minutes.",
+    intents: [
+      "schedule a one-time reminder for the user in two minutes to stretch their shoulders in this room",
+    ],
+    contexts: ["todos", "tasks", "productivity"],
+  });
+  expect(result.actions.map((action) => action.name)).toEqual([
+    "OWNER_REMINDERS_CREATE",
+  ]);
+});
+
+it.each([
+  ["schedule a reminder", ["OWNER_REMINDERS_CREATE"]],
+  ["read my reminder schedule", ["OWNER_REMINDERS_LIST"]],
+  ["update the reminder schedule", ["OWNER_REMINDERS_UPDATE"]],
+  ["reschedule the reminder", []],
+  ["explain how to schedule a reminder", []],
+])("keeps schedule operation meaning for %s", (query, expected) => {
+  expect([
+    ...preferredOperationNames(query, [
+      "OWNER_REMINDERS_CREATE",
+      "OWNER_REMINDERS_LIST",
+      "OWNER_REMINDERS_UPDATE",
+    ]),
+  ]).toEqual(expected);
 });

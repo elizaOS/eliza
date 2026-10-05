@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AccessContext, UUID } from "@elizaos/core";
-import { getHttpRuntime } from "@elizaos/host/protocol";
+import {
+  getHttpRuntime,
+  type Route,
+  registerHttpPluginRoutes,
+} from "@elizaos/host/protocol";
 import {
   autonomyCapabilities,
   createAssistantBehavior,
@@ -9,10 +13,7 @@ import {
 import { dispatchBufferedRequest } from "@elizaos/plugin-native-inference/android/dispatch";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import {
-  resetHonoMountCache,
-  tryHandleHonoRuntimeRoute,
-} from "./hono-mount.ts";
+import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
 import { dispatchApiRoute, registerInProcessApi } from "./in-process-api.ts";
 
 let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
@@ -94,7 +95,6 @@ afterAll(async () => {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
     });
-  resetHonoMountCache();
   if (fixture) await fixture.cleanup();
   expect(failures).toEqual([]);
 }, 120_000);
@@ -174,7 +174,6 @@ it("cancels a streaming producer when its HTTP client disconnects", async () => 
       };
     },
   });
-  resetHonoMountCache();
   const controller = new AbortController();
   try {
     const response = await fetch(new URL("/api/cancellation-http", base), {
@@ -221,7 +220,6 @@ it("propagates native cancellation through the registered HTTP kernel", async ()
       };
     },
   });
-  resetHonoMountCache();
   const unregister = registerInProcessApi(fixture.runtime, {
     handle: async (req, res) => {
       await tryHandleHonoRuntimeRoute({
@@ -274,7 +272,6 @@ it("rejects a partial producer failure over HTTP and native dispatch", async () 
       })(),
     }),
   });
-  resetHonoMountCache();
   const response = await fetch(new URL("/api/failed-stream", base), {
     headers: { Authorization: `Bearer ${tokens[0]}` },
   });
@@ -337,7 +334,6 @@ it("cancels Android buffered dispatch and refuses a pre-aborted request", async 
       return { status: 200, body: "must not be returned" };
     },
   });
-  resetHonoMountCache();
   const unregister = registerInProcessApi(fixture.runtime, {
     handle: async (req, res) => {
       await tryHandleHonoRuntimeRoute({
@@ -385,7 +381,6 @@ it("serves the consolidated assistant routes through authenticated HTTP", async 
     ...(createAssistantBehavior().routes ?? []),
     ...autonomyCapabilities.routes,
   );
-  resetHonoMountCache();
   const headers = {
     Authorization: `Bearer ${tokens[0]}`,
     "content-type": "application/json",
@@ -438,5 +433,42 @@ it("serves the consolidated assistant routes through authenticated HTTP", async 
   } finally {
     fixture.runtime.turnControllers.abortTurn(roomId, "test-cleanup");
     await pending;
+  }
+});
+
+it("updates HTTP paths, methods and authorization when route contributions change", async () => {
+  const path = "/api/reload-fixture";
+  const headers = { Authorization: `Bearer ${tokens[0]}` };
+  const install = (routes: Route[]) =>
+    registerHttpPluginRoutes(fixture.runtime, {
+      name: "reload-fixture",
+      description: "HTTP route lifecycle",
+      routes,
+    });
+  const route = (version: number): Route => ({
+    type: "GET",
+    path,
+    rawPath: true,
+    routeHandler: async () => ({ status: 200, body: { version } }),
+  });
+  const request = (target = path, method = "GET") =>
+    fetch(new URL(target, base), { method, headers });
+  try {
+    install([route(1)]);
+    expect(await (await request()).json()).toEqual({ version: 1 });
+    install([route(2)]);
+    expect(await (await request()).json()).toEqual({ version: 2 });
+    const moved = `${path}/moved`;
+    install([{ ...route(3), path: moved, type: "POST" }]);
+    expect((await request()).status).toBe(404);
+    expect((await request(moved)).status).toBe(404);
+    expect((await fetch(new URL(moved, base), { method: "POST" })).status).toBe(
+      401,
+    );
+    expect(await (await request(moved, "POST")).json()).toEqual({ version: 3 });
+    install([]);
+    expect((await request(moved, "POST")).status).toBe(404);
+  } finally {
+    install([]);
   }
 });

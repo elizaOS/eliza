@@ -15,8 +15,8 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/host/protocol";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.ts";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
   type PluginParamInfo,
   validatePluginConfig,

@@ -170,10 +170,7 @@ async function runExecInContainer(
       stderr += data;
     });
 
-    if (stdin) {
-      proc.stdin.write(stdin);
-      proc.stdin.end();
-    }
+    proc.stdin.end(stdin);
 
     proc.on("close", (code) => {
       clearTimeout(timeout);
@@ -326,6 +323,7 @@ function parseContainerCommand(command: string): string[] {
 
 export function buildContainerExecArgs(opts: ContainerExecOptions): string[] {
   const args = ["exec"];
+  if (opts.stdin !== undefined) args.push("--interactive");
   if (opts.workdir) args.push("-w", opts.workdir);
   if (opts.env) appendEnvArgs(args, opts.env);
   const commandArgs = parseContainerCommand(opts.command);

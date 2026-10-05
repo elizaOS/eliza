@@ -79,28 +79,15 @@ export function formatErrorWithStack(error: unknown): string {
 
 /** Classify an error as a fetch/AbortSignal timeout. */
 export function isTimeoutError(error: unknown): boolean {
-	if (!error) return false;
-	if (error instanceof Error) {
-		if (error.name === "TimeoutError" || error.name === "AbortError")
-			return true;
-		const msg = error.message.toLowerCase();
-		return msg.includes("timed out") || msg.includes("timeout");
-	}
-	if (typeof error === "object") {
-		const candidate = error as { name?: unknown; message?: unknown };
-		if (candidate.name === "TimeoutError" || candidate.name === "AbortError") {
-			return true;
-		}
-		if (typeof candidate.message === "string") {
-			const msg = candidate.message.toLowerCase();
-			return msg.includes("timed out") || msg.includes("timeout");
-		}
-	}
-	if (typeof error === "string") {
-		const msg = error.toLowerCase();
-		return msg.includes("timed out") || msg.includes("timeout");
-	}
-	return false;
+	const name = readDiagnosticProperty(error, "name");
+	if (name === "TimeoutError" || name === "AbortError") return true;
+	const message =
+		typeof error === "string"
+			? error
+			: readDiagnosticProperty(error, "message");
+	if (typeof message !== "string") return false;
+	const normalized = message.toLowerCase();
+	return normalized.includes("timed out") || normalized.includes("timeout");
 }
 
 /** Classify a fetch Response as a redirect (3xx). */
