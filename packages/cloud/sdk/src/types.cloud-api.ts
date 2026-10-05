@@ -114,6 +114,21 @@ export interface OrganizationSubscriptionUpgradeConfirmRequest {
 export type OrganizationSubscriptionUpgradeCommandResponse =
   ApiSuccessEnvelope<OrganizationSubscriptionUpgradeCommandDto>;
 
+/** Ephemeral private payment UI result. Never persist, log, or add its URL to model context. */
+export interface OrganizationSubscriptionUpgradePaymentDto {
+  command: OrganizationSubscriptionUpgradeCommandDto;
+  continuation: {
+    kind: "hosted_invoice";
+    hostedInvoiceUrl: string;
+    amountDueCents: number;
+    currency: "usd";
+    paymentState: "requires_action" | "requires_payment_method";
+    expiresAt: string;
+  } | null;
+}
+export type OrganizationSubscriptionUpgradePaymentResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionUpgradePaymentDto>;
+
 export interface CurrentUserOrganizationDto {
   id: string;
   name: string;
