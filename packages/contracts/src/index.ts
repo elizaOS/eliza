@@ -5,6 +5,7 @@ export * from "./contracts/agent-backup-manifest-v3.js";
 export * from "./contracts/agent-backup-record-stream-v1.js";
 export * from "./contracts/agent-backup-restore-v3-materializer.js";
 export * from "./contracts/agent-backup-restore-v3-stream.js";
+export * from "./contracts/agent-backup-snapshot.js";
 export * from "./contracts/agent-routes.js";
 export * from "./contracts/app-permissions.js";
 export * from "./contracts/app-permissions-routes.js";
