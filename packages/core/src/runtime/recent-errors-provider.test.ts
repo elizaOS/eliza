@@ -10,12 +10,12 @@
 import { describe, expect, it } from "vitest";
 import type { ReportedError } from "../errors";
 import { ElizaError } from "../errors";
+import { AgentRuntime } from "../runtime";
 import { redactWithSecrets } from "../security/redact";
 import type { Character } from "../types/agent.js";
 import type { Memory } from "../types/memory.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state.js";
-import { AgentRuntime } from ".";
 import {
 	isProviderThrottleReport,
 	QUIET_ERROR_CODES,
