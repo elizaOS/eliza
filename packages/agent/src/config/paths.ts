@@ -90,3 +90,13 @@ export function resolveStewardCredentialsPath(
 ): string {
   return path.join(stateDirPath, STEWARD_CREDENTIALS_FILENAME);
 }
+
+export function resolveDefaultSessionStorePath(agentId = "main"): string {
+  return path.join(
+    resolveStateDir(),
+    "agents",
+    agentId,
+    "sessions",
+    "sessions.json",
+  );
+}
