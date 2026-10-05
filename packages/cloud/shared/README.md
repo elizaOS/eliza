@@ -166,6 +166,6 @@ leased creation/configuration, authenticated original-event recovery and proven
 partial-create cleanup. A started effect is never dispatched again. Same-quote
 retries keep the original command even with another retry key; occupied leases
 return durable status. Session failure survives cleanup, and status reads perform
-no provider work. Public routes, native/product adoption and unattended recovery
-scheduling still need integration; this internal coordinator does not close those
-gates or the retained-adjustment payment limitation.
+no provider work. Authenticated confirmation/status routes and SDK methods now expose this coordinator.
+Native/product adoption, unattended recovery scheduling and retained-adjustment
+payment authority still need integration and qualification.

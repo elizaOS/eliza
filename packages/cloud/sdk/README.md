@@ -93,3 +93,12 @@ provider UI returns and use the durable command result to determine completion.
 the existing period end. The quote expires within 60 seconds and reports no
 immediate charge plus a long-term recurring estimate. Saving it does not schedule
 a downgrade; do not show the plan as changed or scheduled after this call.
+
+
+Use `confirmOrganizationSubscriptionDowngrade` only after displaying the original
+lower-plan quote and receiving confirmation. Retain its quote/idempotency identity
+across uncertain transport outcomes. `readOrganizationSubscriptionDowngrade` is a
+provider-free status read; OUTCOME_UNKNOWN does not authorize a replacement quote
+or charge. APPLIED means the lower plan is scheduled; renewal payment still owns
+plan/allowance advancement. These session-authenticated methods preserve typed
+transport errors and do not put provider receipt/request payloads in the response.

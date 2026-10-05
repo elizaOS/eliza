@@ -94,3 +94,16 @@ period end and `amountDueNowCents` is zero. `recurringEstimate` is a long-term
 estimate, not a guaranteed next invoice. This endpoint creates no provider
 schedule, command, charge or allowance change; downgrade confirmation is not
 yet exposed. Upgrade confirmation rejects a downgrade quote.
+
+
+Organization downgrade confirmation uses `POST /api/v1/subscriptions/downgrade/confirm`
+with only `quoteId` and `idempotencyKey` from an explicitly reviewed original quote.
+`GET /api/v1/subscriptions/downgrade/{commandId}` reads durable status without
+provider work. Both require the current billing-manager session, recheck identity
+before returning, and return no-store responses. Confirmation resumes the original
+journal; it never repeats a started provider effect. APPLIED records a pending
+lower plan, not payment or immediate lower-plan allowance. Missing/changed original
+command authority is a conflict, not proof that a replacement intent is safe.
+Apply scheduling migrations through 0527 before deployment. Unattended recovery,
+configured-schedule undo/cancel/resume, retained-adjustment payment authority and
+live qualification remain required before product rollout.
