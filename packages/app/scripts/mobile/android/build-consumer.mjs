@@ -93,11 +93,37 @@ export function buildAndroidConsumer({
   if (!fs.statSync(manifest).isFile())
     throw new Error("Android verification manifest is missing");
   const destination = path.join(output, archive.name);
-  fs.mkdirSync(destination, { recursive: true });
-  for (const { name } of artifacts)
-    fs.copyFileSync(path.join(output, name), path.join(destination, name));
-  fs.copyFileSync(manifest, path.join(destination, "apk-manifest.json"));
-  fs.writeFileSync(path.join(destination, "service-mode.json"), metadata);
+  const staging = fs.mkdtempSync(path.join(output, ".android-archive-"));
+  const replacement = path.join(staging, "next");
+  const previous = path.join(staging, "previous");
+  let cleanup = true;
+  try {
+    fs.mkdirSync(replacement);
+    for (const { name } of artifacts)
+      fs.copyFileSync(path.join(output, name), path.join(replacement, name));
+    fs.copyFileSync(manifest, path.join(replacement, "apk-manifest.json"));
+    fs.writeFileSync(path.join(replacement, "service-mode.json"), metadata);
+    let moved = false;
+    try {
+      fs.renameSync(destination, previous);
+      moved = true;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    try {
+      fs.renameSync(replacement, destination);
+    } catch (error) {
+      if (moved) {
+        // Retain the old archive for recovery if restoring its name also fails.
+        cleanup = false;
+        fs.renameSync(previous, destination);
+        cleanup = true;
+      }
+      throw error;
+    }
+  } finally {
+    if (cleanup) fs.rmSync(staging, { recursive: true, force: true });
+  }
   return {
     files: artifacts.map(({ name }) => path.join(output, name)),
     archive: destination,

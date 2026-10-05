@@ -182,3 +182,56 @@ test("a successful verifier that produces no fresh manifest cannot reuse old evi
   assert.throws(f.build, /ENOENT/);
   assert.equal(fs.existsSync(path.join(f.root, "artifacts/production")), false);
 });
+
+test("reusing an archive replaces its contents when selected variants shrink", (t) => {
+  const f = fixture(t);
+  const first = f.build();
+  assert.equal(
+    fs.existsSync(path.join(first.archive, "standalone-debug.apk")),
+    true,
+  );
+  f.options.variants = ["launcher"];
+  const second = f.build();
+  assert.deepEqual(fs.readdirSync(second.archive).sort(), [
+    "apk-manifest.json",
+    "launcher-debug.apk",
+    "launcher-release-unsigned.apk",
+    "service-mode.json",
+  ]);
+});
+test("archive assembly failure preserves the previous verified archive", (t) => {
+  const f = fixture(t);
+  const first = f.build();
+  const before = Object.fromEntries(
+    fs
+      .readdirSync(first.archive)
+      .map((name) => [
+        name,
+        fs.readFileSync(path.join(first.archive, name), "utf8"),
+      ]),
+  );
+  const run = f.options.run;
+  f.options.run = (command, ...args) => {
+    run(command, ...args);
+    if (command === "verify")
+      fs.unlinkSync(path.join(f.root, "artifacts/launcher-debug.apk"));
+  };
+  assert.throws(f.build, /ENOENT/);
+  assert.deepEqual(
+    Object.fromEntries(
+      fs
+        .readdirSync(first.archive)
+        .map((name) => [
+          name,
+          fs.readFileSync(path.join(first.archive, name), "utf8"),
+        ]),
+    ),
+    before,
+  );
+  assert.equal(
+    fs
+      .readdirSync(path.join(f.root, "artifacts"))
+      .some((name) => name.startsWith(".android-archive-")),
+    false,
+  );
+});
