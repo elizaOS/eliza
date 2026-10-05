@@ -1,4 +1,7 @@
-/** Explicit consumer APK acceptance. Never replaces an existing installation. */
+/** Explicit consumer APK acceptance. Never replaces an unowned installation.
+ * Companion APKs require declared package identities and pinned SHA-256 values.
+ * They share the app/test admission, installed-byte checks and cleanup ownership.
+ */
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -36,6 +39,7 @@ export async function runIsolatedAndroidTest({
   runner = "androidx.test.runner.AndroidJUnitRunner",
   testClass,
   testClasses,
+  testMethod,
   expectedTests = 1,
   requiredAbi,
   expectedAvdName,
@@ -45,9 +49,13 @@ export async function runIsolatedAndroidTest({
   commandTimeoutMs,
   cleanupTimeoutMs,
   variants,
+  companionApks = [],
   directory,
   evidence,
   runnerArgs = [],
+  upgradeRunnerArgs = [],
+  beforeUpgrade,
+  afterUpgrade,
   instrumentationTimeoutMs,
   prepareVariant,
   collectVariant,
@@ -70,6 +78,15 @@ export async function runIsolatedAndroidTest({
   );
   for (const name of [packageName, testPackage, runner, ...classes])
     assert.match(name ?? "", packagePattern);
+  if (testMethod !== undefined) {
+    assert.match(testMethod, /^[A-Za-z][A-Za-z0-9_]*$/);
+    assert.equal(classes.length, 1, "Method selection requires one class");
+    assert.equal(
+      expectedTests,
+      1,
+      "Method selection requires exactly one test",
+    );
+  }
   assert.notEqual(packageName, testPackage);
   assert.ok(
     ["arm64-v8a", "x86_64"].includes(requiredAbi),
@@ -99,34 +116,73 @@ export async function runIsolatedAndroidTest({
     path.isAbsolute(directory),
     "Explicit absolute report directory required",
   );
-  assert.ok(Array.isArray(runnerArgs) && runnerArgs.length % 3 === 0);
-  for (let i = 0; i < runnerArgs.length; i += 3) {
-    assert.equal(runnerArgs[i], "-e");
-    assert.match(runnerArgs[i + 1], /^[A-Za-z][A-Za-z0-9_]*$/);
-    assert.ok(
-      ![
-        "class",
-        "package",
-        "notClass",
-        "notPackage",
-        "func",
-        "unit",
-        "annotation",
-        "notAnnotation",
-        "size",
-        "count",
-        "log",
-        "debug",
-        "suiteAssignment",
-        "numShards",
-        "shardIndex",
-      ].includes(runnerArgs[i + 1]),
-      "Runner selection is owned by the harness",
-    );
+  const validateRunnerArgs = (runnerArgs) => {
+    assert.ok(Array.isArray(runnerArgs) && runnerArgs.length % 3 === 0);
+    for (let i = 0; i < runnerArgs.length; i += 3) {
+      assert.equal(runnerArgs[i], "-e");
+      assert.match(runnerArgs[i + 1], /^[A-Za-z][A-Za-z0-9_]*$/);
+      assert.ok(
+        ![
+          "class",
+          "package",
+          "notClass",
+          "notPackage",
+          "func",
+          "unit",
+          "annotation",
+          "notAnnotation",
+          "size",
+          "count",
+          "log",
+          "debug",
+          "suiteAssignment",
+          "numShards",
+          "shardIndex",
+        ].includes(runnerArgs[i + 1]),
+        "Runner selection is owned by the harness",
+      );
+      assert.match(
+        runnerArgs[i + 2],
+        /^[A-Za-z0-9_.:-]+$/,
+        "Instrumentation extras must be shell-safe scalar values",
+      );
+    }
+  };
+  validateRunnerArgs(runnerArgs);
+  validateRunnerArgs(upgradeRunnerArgs);
+  runnerArgs = [...runnerArgs];
+  upgradeRunnerArgs = [...upgradeRunnerArgs];
+  assert.ok(Array.isArray(companionApks), "Companion APK list required");
+  const companions = companionApks.map(({ apk, packageName, sha256: hash }) => {
+    assert.ok(path.isAbsolute(apk), "Absolute companion APK path required");
+    assert.match(packageName ?? "", packagePattern);
     assert.match(
-      runnerArgs[i + 2],
-      /^[A-Za-z0-9_.:-]+$/,
-      "Instrumentation extras must be shell-safe scalar values",
+      hash ?? "",
+      /^[a-f0-9]{64}$/,
+      "Pinned companion SHA-256 required",
+    );
+    assert.equal(sha256(apk), hash, "Companion APK differs from its pin");
+    return { apk, packageName, sha256: hash };
+  });
+  const packageNames = [
+    packageName,
+    testPackage,
+    ...companions.map((item) => item.packageName),
+  ];
+  assert.equal(
+    new Set(packageNames).size,
+    packageNames.length,
+    "Duplicate companion package identity",
+  );
+  for (const item of companions) {
+    const badging = await dumpAndroidArtifactBadgingAsync(aapt, item.apk, {
+      signal,
+      timeout: commandTimeoutMs,
+    });
+    assert.equal(
+      /package: name='([^']+)'/.exec(badging)?.[1],
+      item.packageName,
+      "Companion APK identity differs from declared package",
     );
   }
   const names = new Set();
@@ -137,37 +193,56 @@ export async function runIsolatedAndroidTest({
     assert.match(variant.name ?? "", /^[a-z0-9-]+$/);
     assert.ok(!names.has(variant.name));
     names.add(variant.name);
-    for (const [apk, expected] of [
-      [variant.apk, packageName],
-      [variant.testApk, testPackage],
+    for (const artifacts of [
+      variant,
+      ...(variant.upgrade ? [variant.upgrade] : []),
     ]) {
-      assert.ok(path.isAbsolute(apk));
-      const actual = /package: name='([^']+)'/.exec(
-        await dumpAndroidArtifactBadgingAsync(aapt, apk, {
-          signal,
-          timeout: commandTimeoutMs,
-        }),
-      )?.[1];
-      assert.equal(
-        actual,
-        expected,
-        "APK identity differs from declared package",
+      for (const [apk, expected] of [
+        [artifacts.apk, packageName],
+        [artifacts.testApk, testPackage],
+      ]) {
+        assert.ok(path.isAbsolute(apk));
+        const actual = /package: name='([^']+)'/.exec(
+          await dumpAndroidArtifactBadgingAsync(aapt, apk, {
+            signal,
+            timeout: commandTimeoutMs,
+          }),
+        )?.[1];
+        assert.equal(
+          actual,
+          expected,
+          "APK identity differs from declared package",
+        );
+      }
+      assert.deepEqual(
+        androidInstrumentationEvidenceFromAapt(
+          await dumpAndroidArtifactManifestAsync(aapt, artifacts.testApk, {
+            signal,
+            timeout: commandTimeoutMs,
+          }),
+        ),
+        [{ name: runner, targetPackage: packageName }],
+        "Instrumentation target or runner mismatch",
       );
     }
-    assert.deepEqual(
-      androidInstrumentationEvidenceFromAapt(
-        await dumpAndroidArtifactManifestAsync(aapt, variant.testApk, {
-          signal,
-          timeout: commandTimeoutMs,
-        }),
-      ),
-      [{ name: runner, targetPackage: packageName }],
-      "Instrumentation target or runner mismatch",
-    );
+    if (variant.upgrade)
+      assert.notEqual(
+        sha256(variant.apk),
+        sha256(variant.upgrade.apk),
+        "Upgrade must change the app APK",
+      );
     records.push({
       variant: variant.name,
       appSha256: sha256(variant.apk),
       testSha256: sha256(variant.testApk),
+      ...(variant.upgrade
+        ? {
+            upgrade: {
+              appSha256: sha256(variant.upgrade.apk),
+              testSha256: sha256(variant.upgrade.testApk),
+            },
+          }
+        : {}),
     });
   }
   // Cleanup runs independently of an aborted operation signal and has its own caller deadline.
@@ -206,7 +281,7 @@ export async function runIsolatedAndroidTest({
     );
   const installed = async () =>
     (await packages()).some((line) =>
-      [packageName, testPackage].some((name) => line === `package:${name}`),
+      packageNames.some((name) => line === `package:${name}`),
     );
   // The canonical lease still reclaims dead PIDs. It must not expire under a live caller's work.
   const deviceKey = `android:${serial}`;
@@ -243,6 +318,7 @@ export async function runIsolatedAndroidTest({
     serial,
     packageName,
     testPackage,
+    companions,
     expectedAvdName,
     requiredAbi,
     androidUser,
@@ -254,7 +330,49 @@ export async function runIsolatedAndroidTest({
   let admitted = false,
     previousHome,
     failure;
-  const owned = new Set();
+  const owned = new Map();
+  const installedHash = async (name) => {
+    const lines = (
+      await run("shell", "pm", "path", "--user", String(androidUser), name)
+    )
+      .trim()
+      .split(/\r?\n/);
+    assert.equal(lines.length, 1, "Expected one installed APK");
+    assert.match(lines[0], /^package:\/[^\r\n]+\.apk$/);
+    const local = path.join(directory, `${name}-installed.apk`);
+    try {
+      await run("pull", lines[0].slice(8), local);
+      return sha256(local);
+    } finally {
+      fs.rmSync(local, { force: true });
+    }
+  };
+  const install = async (file, name, expectedHash, replace = false) => {
+    assert.equal(sha256(file), expectedHash, "APK changed after preflight");
+    if (replace)
+      assert.equal(
+        await installedHash(name),
+        owned.get(name),
+        "Installed APK changed before replacement",
+      );
+    owned.set(name, expectedHash);
+    assert.match(
+      await run(
+        "install",
+        ...(replace ? ["-r"] : []),
+        "--user",
+        String(androidUser),
+        "-t",
+        file,
+      ),
+      /^Success\s*$/m,
+    );
+    assert.equal(
+      await installedHash(name),
+      expectedHash,
+      "Installed APK hash mismatch",
+    );
+  };
   try {
     assert.equal(
       (await run("shell", "getprop", "ro.kernel.qemu")).trim(),
@@ -264,10 +382,6 @@ export async function runIsolatedAndroidTest({
     assert.equal(
       (await run("shell", "getprop", "ro.product.cpu.abi")).trim(),
       requiredAbi,
-      expectedAvdName,
-      signal,
-      commandTimeoutMs,
-      cleanupTimeoutMs,
       "Emulator ABI mismatch",
     );
     assert.equal(
@@ -302,16 +416,10 @@ export async function runIsolatedAndroidTest({
         record.testSha256,
         "Test APK changed after preflight",
       );
-      owned.add(packageName);
-      await run("install", "--user", String(androidUser), variant.apk);
-      owned.add(testPackage);
-      await run(
-        "install",
-        "--user",
-        String(androidUser),
-        "-t",
-        variant.testApk,
-      );
+      await install(variant.apk, packageName, record.appSha256);
+      await install(variant.testApk, testPackage, record.testSha256);
+      for (const item of companions)
+        await install(item.apk, item.packageName, item.sha256);
       const context = {
         variant: variant.name,
         packageName,
@@ -325,32 +433,99 @@ export async function runIsolatedAndroidTest({
       signal?.throwIfAborted();
       await prepareVariant?.(context);
       signal?.throwIfAborted();
-      const output = await run(
-        "shell",
-        "am",
-        "instrument",
-        "--user",
-        String(androidUser),
-        "-w",
-        "-r",
-        "-e",
-        "class",
-        classes.join(","),
-        ...runnerArgs,
-        `${testPackage}/${runner}`,
+      const instrument = async (args, label) => {
+        for (const [name, expected] of owned)
+          assert.equal(
+            await installedHash(name),
+            expected,
+            "Installed APK changed before instrumentation",
+          );
+        let output;
+        try {
+          output = await run(
+            "shell",
+            "am",
+            "instrument",
+            "--user",
+            String(androidUser),
+            "-w",
+            "-r",
+            "-e",
+            "class",
+            testMethod === undefined
+              ? classes.join(",")
+              : `${classes[0]}#${testMethod}`,
+            ...args,
+            `${testPackage}/${runner}`,
+          );
+        } catch (error) {
+          fs.writeFileSync(
+            path.join(
+              directory,
+              `${variant.name}${label ? `-${label}` : ""}.log`,
+            ),
+            `${error.stdout ?? ""}\n${error.stderr ?? ""}`,
+          );
+          throw error;
+        }
+        fs.writeFileSync(
+          path.join(
+            directory,
+            `${variant.name}${label ? `-${label}` : ""}.log`,
+          ),
+          output,
+        );
+        const instrumentation = requireInstrumentationSuccess(output, classes);
+        assert.equal(
+          instrumentation.totalTests,
+          expectedTests,
+          "Unexpected test count",
+        );
+        if (testMethod !== undefined)
+          assert.deepEqual(
+            instrumentation.cases,
+            [`${classes[0]}#${testMethod}`],
+            "Requested method missing",
+          );
+        return instrumentation;
+      };
+      record.instrumentation = await instrument(
+        runnerArgs,
+        variant.upgrade ? "baseline" : "",
       );
-      fs.writeFileSync(path.join(directory, `${variant.name}.log`), output);
-      record.instrumentation = requireInstrumentationSuccess(output, classes);
-      assert.equal(
-        record.instrumentation.totalTests,
-        expectedTests,
-        "Unexpected test count",
-      );
+      if (variant.upgrade) {
+        await beforeUpgrade?.(context);
+        signal?.throwIfAborted();
+        await install(
+          variant.upgrade.apk,
+          packageName,
+          record.upgrade.appSha256,
+          true,
+        );
+        await afterUpgrade?.(context);
+        signal?.throwIfAborted();
+        await install(
+          variant.upgrade.testApk,
+          testPackage,
+          record.upgrade.testSha256,
+          true,
+        );
+        record.upgrade.instrumentation = await instrument(
+          upgradeRunnerArgs,
+          "candidate",
+        );
+      }
       await collectVariant?.(context);
       signal?.throwIfAborted();
       record.passed = true;
-      await run("uninstall", testPackage);
-      await run("uninstall", packageName);
+      for (const [name, expected] of owned)
+        assert.equal(
+          await installedHash(name),
+          expected,
+          "Installed APK changed before cleanup",
+        );
+      for (const name of [...owned.keys()].reverse())
+        await run("uninstall", name);
       assert.ok(!(await installed()), "Variant package cleanup failed");
       owned.clear();
       assert.equal(await home(), previousHome, "Default HOME changed");
@@ -366,11 +541,14 @@ export async function runIsolatedAndroidTest({
         // Only identities absent from all users at admission are owned by this run.
         report.cleanupErrors = [];
         const remainingOwned = [];
-        for (const name of [testPackage, packageName].filter((name) =>
-          owned.has(name),
-        )) {
+        for (const name of [...owned.keys()].reverse()) {
           try {
             if ((await packages()).includes(`package:${name}`)) {
+              assert.equal(
+                await installedHash(name),
+                owned.get(name),
+                "Owned APK changed; retain installation for recovery",
+              );
               remainingOwned.push(name);
               await run(
                 "shell",
@@ -387,8 +565,8 @@ export async function runIsolatedAndroidTest({
             );
           }
         }
-        // Both processes must be stopped before either installed package is removed.
-        // A failed/uncertain stop preserves the pair for explicit fixture recovery.
+        // Every owned process must stop before any installed package is removed.
+        // A failed/uncertain stop preserves the set for explicit fixture recovery.
         report.cleanupDeferred = report.cleanupErrors.length > 0;
         if (!report.cleanupDeferred)
           for (const name of remainingOwned) {

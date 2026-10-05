@@ -4360,6 +4360,7 @@ export async function handleDirectCoreRoute(
       session: { id: "local", kind: "local", expiresAt: null },
       access: {
         mode: "local",
+        role: "OWNER",
         passwordConfigured: false,
         ownerConfigured: false,
       },

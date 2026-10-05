@@ -38,8 +38,6 @@ export {
   useVoteBallot,
 } from "./lib/approvals";
 
-/** Stable view/section id + URL path slug for the Approvals surface. */
-export const APPROVALS_SECTION_ID = "approvals";
 export const APPROVALS_ROUTE_PATH = "cloud/approvals";
 
 /** Lazy route element for the standalone Approvals pane (code-split). */

@@ -1,4 +1,3 @@
-/** Exercises stage default models behavior with deterministic app test fixtures. */
 import { describe, expect, it } from "bun:test";
 import path from "node:path";
 import {

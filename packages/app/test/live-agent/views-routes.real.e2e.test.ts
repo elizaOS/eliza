@@ -15,8 +15,8 @@
  *   (chat, character, automations, plugins-page, settings, …).
  */
 
+import { req } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { req } from "../helpers/http.ts";
 import {
   type RuntimeHarness,
   startLiveRuntimeServer,

@@ -14,7 +14,10 @@ import { parseOptionalBooleanQuery } from "./query-parameters.ts";
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/host/protocol";
 
 import { buildModelCatalog, type ModelCatalog } from "./model-catalog.ts";
-import { MODEL_PROVIDER_ID_PATTERN } from "./model-provider-helpers.ts";
+import {
+  MODEL_PROVIDER_ID_PATTERN,
+  ModelCatalogFetchError,
+} from "./model-provider-helpers.ts";
 
 export interface ModelsRouteContext
   extends RouteRequestMeta,
@@ -97,7 +100,24 @@ export async function handleModelsRoutes(
         // Ignore cache-bust errors and continue with a fresh fetch.
       }
     }
-    const models = await getOrFetchProvider(specificProvider, force);
+    let models: unknown[];
+    try {
+      models = await getOrFetchProvider(specificProvider, force);
+    } catch (error) {
+      if (!(error instanceof ModelCatalogFetchError)) throw error;
+      // error-policy:J1 translate an upstream provider failure at the HTTP
+      // boundary instead of fabricating a successful empty catalog.
+      json(
+        res,
+        {
+          error: error.message,
+          code: error.code,
+          provider: error.providerId,
+        },
+        502,
+      );
+      return true;
+    }
     json(res, { provider: specificProvider, models, catalog });
     return true;
   }

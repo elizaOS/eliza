@@ -7,9 +7,9 @@
  */
 
 import type { TranslateFn as AppTranslateFn } from "@elizaos/contracts";
+import type { TriggerType, TriggerWakeMode } from "@elizaos/core";
 import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { CronExpressionParser } from "cron-parser";
-import type { TriggerType, TriggerWakeMode } from "../../api/client";
 import type {
   CreateTriggerRequest,
   TriggerSummary,

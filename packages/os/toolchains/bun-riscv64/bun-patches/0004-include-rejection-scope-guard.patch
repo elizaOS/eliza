@@ -1,0 +1,11 @@
+diff --git a/src/jsc/bindings/ZigGlobalObject.cpp b/src/jsc/bindings/ZigGlobalObject.cpp
+--- a/src/jsc/bindings/ZigGlobalObject.cpp
++++ b/src/jsc/bindings/ZigGlobalObject.cpp
+@@ -230,6 +230,7 @@
+ #endif
+ 
+ #include <wtf/NumberOfCores.h>
++#include <wtf/SetForScope.h>
+ 
+ using namespace Bun;
+ 

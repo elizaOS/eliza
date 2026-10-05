@@ -40,4 +40,20 @@ describe("documents-upload.helpers", () => {
       true,
     );
   });
+
+  it.each([
+    ["notes.txt", ""],
+    ["NOTES.TXT", ""],
+    ["export.csv", "application/vnd.ms-excel"],
+    ["data.xml", "text/xml"],
+    ["data.json", ""],
+  ] as const)(
+    "reads %s with MIME %j as text instead of base64",
+    (name, type) => {
+      // The server already treats these filenames as UTF-8 text-backed. If the
+      // picker leaves MIME empty (or Windows labels CSV as Excel), the client
+      // still has to take readAsText so search stores the file, not its base64.
+      expect(shouldReadDocumentFileAsText({ name, type })).toBe(true);
+    },
+  );
 });

@@ -52,7 +52,7 @@ func TestIntervalScheduleNarrowsOverlapWithoutPoisoningFloor(t *testing.T) {
 		t.Fatal("wholly older interval accepted")
 	}
 	// Existing exact-time callers can read the same durable state.
-	if _, err = BeginDiscovery(dir, n, 0); err != nil {
+	if _, err = BeginDiscoveryInterval(dir, n, n, 0); err != nil {
 		t.Fatal(err)
 	}
 }

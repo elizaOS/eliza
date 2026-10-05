@@ -23,7 +23,7 @@ import {
   resolveDirectCloudAppBase,
 } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 import { isElectrobunRuntime } from "../../../bridge/electrobun-runtime";
-import { getBootConfig } from "../../../config/boot-config";
+import { getBootConfig } from "../../../config/boot-config-store";
 import { openExternalUrl } from "../../../utils/openExternalUrl";
 
 /**

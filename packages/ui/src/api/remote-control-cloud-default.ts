@@ -1,7 +1,7 @@
 /** Lazily composed owner client, kept separate from transport code to avoid an ElizaClient import cycle. */
 
 import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { client } from "./client";
 import { getCloudAuthToken } from "./client-cloud";
 import {

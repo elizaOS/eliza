@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop voice latency budget ts behavior for app shell integration. */
 export const VOICE_LATENCY_BUDGET_STAGES = [
 	"input_to_vad",
 	"vad_to_asr_partial",

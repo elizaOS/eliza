@@ -325,9 +325,3 @@ export function signInWithIosCloud(
   attempt.then(release, release);
   return attempt;
 }
-
-/** Dismisses a presented sign-in sheet, if any. */
-export async function cancelIosCloudSignIn(): Promise<void> {
-  if (!Capacitor.isPluginAvailable("ElizaCloudAuthSession")) return;
-  await CloudAuthSession.cancel();
-}

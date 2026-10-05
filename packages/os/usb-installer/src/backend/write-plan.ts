@@ -30,12 +30,13 @@ export async function createPlatformWritePlan(
   assertDriveMatchesExpected(request, drive);
   const image = images.find((candidate) => candidate.id === request.imageId);
   if (!image) throw new Error(`Unknown image id: ${request.imageId}`);
+  if (image.format !== "raw.zst")
+    throw new Error("Only signed raw.zst images are supported.");
   if (!request.acknowledgeDataLoss)
     throw new Error(
       "Data-loss acknowledgement is required before preparing media.",
     );
-  const privilegedWriteImplemented =
-    image.format !== "raw.zst" || backend.canonicalRawZstdSupported === true;
+  const privilegedWriteImplemented = backend.canonicalRawZstdSupported === true;
   const blockedReason =
     drive.safety !== "safe-removable"
       ? "the target is not marked safe-removable."

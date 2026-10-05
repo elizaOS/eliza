@@ -1,5 +1,3 @@
-/** Implements Electrobun desktop api base ts behavior for app shell integration. */
-
 import {
 	resolveApiExposePort,
 	resolveDesktopApiPort,

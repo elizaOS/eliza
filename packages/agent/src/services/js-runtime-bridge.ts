@@ -232,16 +232,7 @@ function toFileUrl(absolutePath: string): string {
 
 /* ── Capacitor plugin registration ─────────────────────────────────────── */
 
-/**
- * Capacitor plugin facades register themselves through this hook so the
- * agent layer never has to import the connector layer directly (the
- * dependency direction is connector → agent, not the other way around).
- *
- * `packages/app/src/connectors/capacitor-jsc.ts` and
- * `packages/app/src/connectors/capacitor-quickjs.ts` call
- * {@link registerJsRuntimeFactory} at import time so they participate in the
- * fallback chain below.
- */
+/** Hosts register runtime factories without importing host implementations here. */
 export interface JsRuntimeFactory {
   /** Stable identifier used to pick a factory in {@link resolveJsRuntimeBridge}. */
   readonly kind: Exclude<JsRuntimeKind, "host-node">;

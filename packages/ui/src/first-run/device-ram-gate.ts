@@ -56,12 +56,6 @@ function readSyncDeviceTotalRamMb(): number | null {
 let cachedAssessment: DeviceRamTierAssessment | null = null;
 let resolveInFlight: Promise<DeviceRamTierAssessment> | null = null;
 
-/** Test seam: drop the session cache. */
-export function resetDeviceRamGateForTests(): void {
-  cachedAssessment = null;
-  resolveInFlight = null;
-}
-
 /**
  * The already-known assessment, resolving the synchronous Android bridge on
  * first call; null while only the async probe could answer (iOS before

@@ -36,7 +36,6 @@
     "src/platform",
     "src/runtime",
     "src/utils",
-    "src/desktop-shell.ts",
     "src/cli",
     "src/browser.ts",
     "src/styles",
@@ -45,6 +44,8 @@
     "src/api",
     "src/index.ts",
     "src/entry-cloud-api-key.ts",
-    "src/services"
+    "src/services",
+    "src/auth.ts",
+    "src/dev-tools.ts"
   ]
 }

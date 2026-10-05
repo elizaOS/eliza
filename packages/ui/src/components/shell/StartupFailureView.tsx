@@ -10,7 +10,7 @@ import { AlertCircle, Power } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { waitForCloudAgentRunning } from "../../api/client-cloud";
-import { useBranding } from "../../config/branding";
+import { useBranding } from "../../config/branding-react.hooks";
 import type { BugReportDraft } from "../../hooks/useBugReport.hooks";
 import { useOptionalBugReport } from "../../hooks/useBugReport.hooks";
 import { startFreshFirstRunReload } from "../../platform/first-run-reset";

@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop types ts behavior for app shell integration. */
 import type { JsonValue } from "@elizaos/core";
 import type { DatabaseSnapshot } from "../database";
 

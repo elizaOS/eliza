@@ -74,19 +74,14 @@ func (f *boundedFetcher) DownloadFile(address string, limit int64, _ time.Durati
 
 var sessionLock sync.Mutex
 
-// FetchDescriptor performs the TUF client workflow and returns only hash- and
+// FetchDescriptorInterval performs the TUF client workflow and returns only hash- and
 // length-verified target bytes. privateDirectory must be exclusively owned by
 // the supervisor. Both process and filesystem locks serialize cache mutation.
 // metadataBase is provisioned, never selected by downloaded metadata.
-func FetchDescriptor(privateDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, trustedUnixMillis int64, transport Transport) ([]byte, error) {
-	return FetchDescriptorInterval(privateDirectory, pinnedRoot, metadataBase, channel, distribution, trustedUnixMillis, trustedUnixMillis, transport)
-}
-
-// FetchDescriptorInterval uses the upper authenticated bound for TUF reference
+// It uses the upper authenticated bound for TUF reference
 // time and persists only the lower bound. Bounds describe the start of this TUF
 // workflow; callers must refresh time and authorization before activation.
-// Legacy .clock values were qualified exact times and remain valid lower floors.
-// Neither API establishes time trust or configures the transport's TLS clock.
+// This API does not establish time trust or configure the transport's TLS clock.
 func FetchDescriptorInterval(privateDirectory string, pinnedRoot []byte, metadataBase, channel, distribution string, trustedLowerMillis, trustedUpperMillis int64, transport Transport) (result []byte, err error) {
 	if !sessionLock.TryLock() {
 		return nil, errors.New("trust session already active")

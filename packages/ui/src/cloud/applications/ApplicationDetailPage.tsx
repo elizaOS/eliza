@@ -32,7 +32,7 @@ export default function ApplicationDetailPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const legacyQueryApiKey = searchParams.get("showApiKey") ?? undefined;
+  const queryApiKey = searchParams.get("showApiKey") ?? undefined;
   const [showApiKey, setShowApiKey] = useState<string | undefined>();
 
   const validId = id && isValidUUID(id) ? id : undefined;
@@ -47,8 +47,7 @@ export default function ApplicationDetailPage() {
   }, [validId]);
 
   useEffect(() => {
-    if (!legacyQueryApiKey) return;
-    setShowApiKey(legacyQueryApiKey);
+    if (!queryApiKey) return;
     const params = new URLSearchParams(location.search);
     params.delete("showApiKey");
     const search = params.toString();
@@ -56,7 +55,7 @@ export default function ApplicationDetailPage() {
       preventScrollReset: true,
       replace: true,
     });
-  }, [legacyQueryApiKey, location.pathname, location.search, navigate]);
+  }, [queryApiKey, location.pathname, location.search, navigate]);
 
   if (id && !isValidUUID(id)) {
     return <Navigate to="/cloud/apps" replace />;

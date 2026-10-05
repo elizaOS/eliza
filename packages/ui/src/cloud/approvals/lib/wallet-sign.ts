@@ -80,15 +80,3 @@ export async function signApprovalChallenge(message: string): Promise<string> {
   }
   return signature;
 }
-
-/** The connected wallet address, or null if none/locked. Non-throwing. */
-export async function getConnectedWalletAddress(): Promise<string | null> {
-  const provider = getInjectedProvider();
-  if (!provider) return null;
-  const accounts = (await provider
-    .request({ method: "eth_accounts" })
-    .catch(() => null)) as unknown;
-  return Array.isArray(accounts) && typeof accounts[0] === "string"
-    ? accounts[0]
-    : null;
-}

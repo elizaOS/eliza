@@ -10,7 +10,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { readAliasedEnv } from "@elizaos/host/protocol";
 import type {
   PlatformSecureStore,
   SecureStoreSecretKind,
@@ -65,9 +64,7 @@ function createStewardSecureStore(
   return options.secureStore ?? createNodePlatformSecureStore();
 }
 
-function readCredentialsFile():
-  | (Partial<PersistedStewardCredentials> & StewardCredentialsMetadata)
-  | null {
+function readCredentialsFile(): Partial<PersistedStewardCredentials> | null {
   const credPath = resolveCredentialsPath();
   try {
     if (!fs.existsSync(credPath)) {
@@ -75,7 +72,7 @@ function readCredentialsFile():
     }
     return JSON.parse(
       fs.readFileSync(credPath, "utf-8"),
-    ) as Partial<PersistedStewardCredentials> & StewardCredentialsMetadata;
+    ) as Partial<PersistedStewardCredentials>;
   } catch {
     // error-policy:J3 absent/invalid credentials JSON
     return null;
@@ -184,6 +181,40 @@ async function writeStewardSecret(
   }
 }
 
+async function migrateLegacyFileSecrets(
+  store: PlatformSecureStore,
+  vaultId: string,
+  parsed: Partial<PersistedStewardCredentials>,
+): Promise<void> {
+  if (!parsed.apiKey && !parsed.agentToken) return;
+  const snapshot = await snapshotStewardSecrets(store, vaultId);
+  // Do not combine credentials from different accounts after a partial upgrade.
+  for (const field of ["apiUrl", "tenantId", "agentId"] as const) {
+    const current = snapshot.get(field);
+    if (current && parsed[field] && current.trim() !== parsed[field]?.trim()) {
+      throw new Error(
+        "Steward account identity differs; plaintext credentials were retained for recovery",
+      );
+    }
+  }
+  for (const field of Object.keys(
+    STEWARD_SECRET_KINDS,
+  ) as StewardCredentialSecretField[]) {
+    const value = parsed[field];
+    // A rotated secure-store value wins over the old file, including on retry
+    // after an interrupted migration. Only a confirmed missing entry is filled.
+    if (
+      snapshot.get(field) === null &&
+      typeof value === "string" &&
+      value.trim()
+    ) {
+      await writeStewardSecret(store, vaultId, field, value);
+    }
+  }
+  // Every copy is verified before removing the recoverable original secrets.
+  writeCredentialsMetadata(parsed);
+}
+
 async function snapshotStewardSecrets(
   store: PlatformSecureStore,
   vaultId: string,
@@ -234,26 +265,6 @@ async function restoreStewardSecrets(
   }
 }
 
-async function migrateLegacyFileSecrets(
-  store: PlatformSecureStore,
-  vaultId: string,
-  parsed: Partial<PersistedStewardCredentials> & StewardCredentialsMetadata,
-): Promise<void> {
-  const migrated: Partial<PersistedStewardCredentials> = {};
-  for (const field of Object.keys(
-    STEWARD_SECRET_KINDS,
-  ) as StewardCredentialSecretField[]) {
-    const value = parsed[field];
-    if (typeof value === "string" && value.trim()) {
-      await writeStewardSecret(store, vaultId, field, value);
-      migrated[field] = value.trim();
-    }
-  }
-  if (Object.keys(migrated).length > 0) {
-    writeCredentialsMetadata({ ...parsed, ...migrated });
-  }
-}
-
 /**
  * Load persisted steward credentials from metadata + platform secure store.
  * Returns null if credentials are missing or unreadable.
@@ -265,12 +276,6 @@ export async function loadStewardCredentials(
   if (!parsed) return null;
 
   const store = createStewardSecureStore(options);
-  const hasLegacySecrets = (
-    Object.keys(STEWARD_SECRET_KINDS) as StewardCredentialSecretField[]
-  ).some((field) => {
-    const value = parsed[field];
-    return typeof value === "string" && value.trim().length > 0;
-  });
   if (await store.isAvailable()) {
     const vaultId = deriveAgentVaultId();
     await migrateLegacyFileSecrets(store, vaultId, parsed);
@@ -306,12 +311,11 @@ export async function loadStewardCredentials(
     };
   }
 
-  if (hasLegacySecrets) {
+  if (parsed.apiKey || parsed.agentToken) {
     throw new Error(
-      "platform secure store is unavailable; plaintext Steward credentials were retained for recovery",
+      "platform secure store is unavailable; plaintext credentials were retained for recovery",
     );
   }
-
   const apiUrl = parsed.apiUrl || null;
   const tenantId = parsed.tenantId || null;
   const agentId = parsed.agentId || null;

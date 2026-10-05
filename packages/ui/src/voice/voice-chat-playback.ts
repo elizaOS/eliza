@@ -21,10 +21,7 @@ import { MOUTH_OPEN_STEP, type SpeechSegmentKind } from "./voice-chat-types";
 export function normalizeCacheText(input: string): string {
   return collapseWhitespace(input.normalize("NFKC")).toLowerCase();
 }
-export function countSpeechTokens(input: string): number {
-  const normalized = collapseWhitespace(input);
-  return normalized ? normalized.split(/\s+/).length : 0;
-}
+
 export function shouldCacheGeneratedSpeech(
   _input: string,
   segment: SpeechSegmentKind,

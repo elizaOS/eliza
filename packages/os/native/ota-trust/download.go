@@ -29,14 +29,6 @@ var errArtifactIntegrity = errors.New("artifact integrity mismatch")
 // Metadata discovery continues to use its separate two-minute transport budget.
 type ArtifactDownloader struct{ transport *HTTPTransport }
 
-func NewArtifactDownloader(approvedHosts string) (*ArtifactDownloader, error) {
-	t, err := NewHTTPTransport(approvedHosts)
-	if err != nil {
-		return nil, err
-	}
-	return artifactDownloaderWithTransport(t), nil
-}
-
 // NewArtifactDownloaderWithTimeSource uses the same interval-aware TLS boundary
 // as metadata requests. Signed artifact identity and hash checks remain required.
 func NewArtifactDownloaderWithTimeSource(approvedHosts string, source TrustedTimeSource) (*ArtifactDownloader, error) {

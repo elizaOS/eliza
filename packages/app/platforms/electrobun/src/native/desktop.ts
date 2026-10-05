@@ -1,3 +1,4 @@
+import type { DetachedSurface } from "../surface-windows";
 /**
  * Desktop Native Module for Electrobun
  *
@@ -155,7 +156,6 @@ interface TrayPopoverConfig {
 	partition?: string | null;
 	rpc?: TrayPopoverRpc;
 	injectApiBase?: (window: BrowserWindow) => void;
-	wireRpc?: (window: BrowserWindow) => void;
 	onWindowFocused?: (window: BrowserWindow) => void;
 	onWindowClosed?: () => void;
 }
@@ -387,14 +387,7 @@ export class DesktopManager {
 	private openSettingsCallback: ((tabHint?: string) => void) | null = null;
 	private openSurfaceWindowCallback:
 		| ((
-				surface:
-					| "chat"
-					| "browser"
-					| "release"
-					| "triggers"
-					| "plugins"
-					| "connectors"
-					| "cloud",
+				surface: DetachedSurface,
 				browse?: string,
 				alwaysOnTop?: boolean,
 		  ) => Promise<DesktopManagedWindowSnapshot> | DesktopManagedWindowSnapshot)
@@ -503,14 +496,7 @@ export class DesktopManager {
 	 */
 	setOpenSurfaceWindowCallback(
 		cb: (
-			surface:
-				| "chat"
-				| "browser"
-				| "release"
-				| "triggers"
-				| "plugins"
-				| "connectors"
-				| "cloud",
+			surface: DetachedSurface,
 			browse?: string,
 			alwaysOnTop?: boolean,
 		) => Promise<DesktopManagedWindowSnapshot> | DesktopManagedWindowSnapshot,
@@ -576,14 +562,7 @@ export class DesktopManager {
 	 * Open a detached surface window via the registered callback.
 	 */
 	openSurfaceWindow(
-		surface:
-			| "chat"
-			| "browser"
-			| "release"
-			| "triggers"
-			| "plugins"
-			| "connectors"
-			| "cloud",
+		surface: DetachedSurface,
 		browse?: string,
 		alwaysOnTop?: boolean,
 	): Promise<DesktopManagedWindowSnapshot | null> {
@@ -2443,7 +2422,6 @@ X-GNOME-Autostart-enabled=true
 			...(config.rpc ? { rpc: config.rpc } : {}),
 		};
 		const win = createElectrobunBrowserWindow(options);
-		config.wireRpc?.(win);
 		win.webview.on("dom-ready", () => {
 			config.injectApiBase?.(win);
 		});

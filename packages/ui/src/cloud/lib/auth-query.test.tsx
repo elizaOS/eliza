@@ -29,7 +29,7 @@ vi.mock("@capacitor/core", () => ({
 // page-reload reality: ONLY a persisted localStorage JWT, no Steward provider
 // mounted.
 
-import { setBootConfig } from "../../config/boot-config";
+import { setBootConfig } from "../../config/boot-config-store";
 import { useAuthenticatedQueryGate } from "./auth-query";
 
 function makeJwt(payload: Record<string, unknown>): string {

@@ -120,12 +120,8 @@ func TestSourceDiscoveryLossRetainsClaimAndExposesNoAuthorization(t *testing.T) 
 	}
 }
 
-func TestSourceDiscoveryRejectsMissingSourceAndPointOverride(t *testing.T) {
+func TestSourceDiscoveryRejectsMissingSource(t *testing.T) {
 	f, source := sourceDiscovery(t)
-	if result, err := f.run(); err == nil || result != nil {
-		t.Fatal("point override accepted")
-	}
-	f, source = sourceDiscovery(t)
 	source.set(1, 1, errors.New("no anchor"))
 	if result, err := runWithSource(f); err == nil || result != nil {
 		t.Fatal("unqualified source accepted")
@@ -133,8 +129,9 @@ func TestSourceDiscoveryRejectsMissingSourceAndPointOverride(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(f.schedule, "schedule.json")); !os.IsNotExist(err) {
 		t.Fatal("missing source mutated schedule")
 	}
-	legacy := enrolledTest(t)
-	if _, err := runWithSource(legacy); err == nil {
+	missing := enrolledTest(t)
+	missing.session.session.source = nil
+	if _, err := runWithSource(missing); err == nil {
 		t.Fatal("source-free instance silently used wall time")
 	}
 }

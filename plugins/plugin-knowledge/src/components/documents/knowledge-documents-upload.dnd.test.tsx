@@ -430,6 +430,35 @@ describe("KnowledgeDocumentsView — root file drop drives the real upload path"
     );
   });
 
+  it.each([
+    ["export.csv", "application/vnd.ms-excel", "a,b\n1,2"],
+    ["data.xml", "text/xml", "<note>ok</note>"],
+    ["notes.txt", "", "plain owner notes"],
+  ] as const)(
+    "uploads %s with MIME %s as decoded text",
+    async (filename, type, body) => {
+      const { root } = await renderView();
+      const file = new File([body], filename, { type }) as DocumentUploadFile;
+
+      fireEvent.drop(root, { dataTransfer: makeDataTransfer([file]) });
+
+      await waitFor(() =>
+        expect(clientMock.uploadDocumentsBulk).toHaveBeenCalledTimes(1),
+      );
+      const payload = clientMock.uploadDocumentsBulk.mock.calls[0][0] as {
+        documents: Array<{ content: string; filename: string }>;
+      };
+      expect(payload.documents).toHaveLength(1);
+      expect(payload.documents[0]).toMatchObject({
+        content: body,
+        filename,
+      });
+      expect(payload.documents[0]?.content).not.toBe(
+        Buffer.from(body, "utf8").toString("base64"),
+      );
+    },
+  );
+
   it("batches multiple dropped files into one bulk upload request", async () => {
     clientMock.uploadDocumentsBulk.mockResolvedValue({
       results: [

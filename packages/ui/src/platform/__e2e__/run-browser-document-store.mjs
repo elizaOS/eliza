@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium, firefox, webkit } from "playwright";
 
+const engines = { chromium, firefox, webkit };
+const selected = process.argv.slice(2);
+assert.ok(selected.every(name => Object.hasOwn(engines, name)), "Choose chromium, firefox or webkit");
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL("../browser-document-store.ts", import.meta.url))],
   bundle: true, format: "esm", platform: "browser", write: false,
@@ -15,7 +18,7 @@ const server = createServer((request, response) => {
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const url = `http://127.0.0.1:${server.address().port}/`;
 try {
-  for (const [name, engine] of Object.entries({ chromium, firefox, webkit })) {
+  for (const [name, engine] of Object.entries(engines).filter(([name]) => selected.length === 0 || selected.includes(name))) {
     const browser = await engine.launch({ headless: true });
     const deadline = setTimeout(() => {
       console.error(`${name}: document-store checks exceeded 60 seconds`);
@@ -49,6 +52,68 @@ try {
       const items = await b.evaluate(async () => JSON.parse((await window.store.read("rapid")).raw));
       assert.deepEqual(items.sort(), ["a", "b"].flatMap(owner => Array.from({ length: 100 }, (_, i) => `${owner}:${i}`)).sort());
       console.log(`${name}: all 200 cross-tab updates and receipts retained`);
+
+      // Concurrent initialization must return one receipt without rewriting existing bytes.
+      const initialize = (page, owner) => page.evaluate(async owner => {
+        return Promise.all(Array.from({length: 20}, (_, i) => window.store.readOrCreate("initialize", `${owner}:${i}`)));
+      }, owner);
+      const initialized = (await Promise.all([initialize(a, "a"), initialize(b, "b")])).flat();
+      assert.equal(new Set(initialized.map(row => row.revision)).size, 1);
+      assert.equal(new Set(initialized.map(row => row.raw)).size, 1);
+      const initializeState = await a.evaluate(async () => {
+        const before = await window.store.read("initialize");
+        const tombstone = await window.store.compareExchange("initialize", before, null);
+        const kept = await window.store.readOrCreate("initialize", "must not resurrect");
+        const abort = new AbortController();abort.abort();let cancelled;
+        try { await window.store.readOrCreate("cancelled-initialize", "lost", abort.signal); } catch(e) {cancelled=e.name;}
+        const put = IDBObjectStore.prototype.put;
+        IDBObjectStore.prototype.put = function(){throw new DOMException("Full", "QuotaExceededError");};
+        let failed, stable;
+        try {
+          stable = await window.store.readOrCreate("initialize", "must not write");
+          try { await window.store.readOrCreate("failed-initialize", "lost"); } catch(e) {failed=e.name;}
+        } finally {IDBObjectStore.prototype.put=put;}
+        return {tombstone,kept,stable,cancelled,failed,cancelledRecord:await window.store.read("cancelled-initialize"),failedRecord:await window.store.read("failed-initialize")};
+      });
+      assert.deepEqual(initializeState.kept, initializeState.tombstone);
+      assert.deepEqual(initializeState.stable, initializeState.tombstone);
+      assert.equal(initializeState.cancelled, "AbortError");
+      assert.equal(initializeState.failed, "QuotaExceededError");
+      assert.equal(initializeState.cancelledRecord, undefined);
+      assert.equal(initializeState.failedRecord, undefined);
+      console.log(`${name}: concurrent initialization, stable tombstones, cancellation and quota failure pass`);
+
+      // Initialization must not invalidate an asynchronous edit that already owns the key.
+      const coordinated = await a.evaluate(async () => {
+        let release, started;
+        const ready = new Promise(resolve => { started = resolve; });
+        const editing = window.store.edit("initialize-during-edit", async () => {
+          started();
+          await new Promise(resolve => { release = resolve; });
+          return { raw: "edited", result: "committed" };
+        }).then(value => ({value}), error => ({error:error.name}));
+        await ready;
+        let initialized = false;
+        const creating = window.store.readOrCreate("initialize-during-edit", "legacy").then(value => { initialized = true; return value; });
+        await new Promise(resolve => setTimeout(resolve, 30));
+        const premature = initialized;
+        release();
+        return {premature, editing:await editing, initialized:await creating, saved:await window.store.read("initialize-during-edit")};
+      });
+      assert.equal(coordinated.premature, false);
+      assert.deepEqual(coordinated.editing, {value:"committed"});
+      assert.equal(coordinated.initialized.raw, "edited");
+      assert.deepEqual(coordinated.initialized, coordinated.saved);
+      console.log(`${name}: initialization preserves an in-flight asynchronous editor`);
+
+      const unlockedInitialization = await a.evaluate(async () => {
+        const locks = navigator.locks;
+        Object.defineProperty(navigator, "locks", {configurable:true, value:undefined});
+        try { return await Promise.all(Array.from({length:20}, (_, i) => window.store.readOrCreate("initialize-without-locks", String(i)))); }
+        finally { Object.defineProperty(navigator, "locks", {configurable:true, value:locks}); }
+      });
+      assert.equal(new Set(unlockedInitialization.map(row => row.revision)).size, 1);
+      assert.equal(new Set(unlockedInitialization.map(row => row.raw)).size, 1);
 
       // CAS works without the optional editor lock; two creators cannot both win.
       const create = page => page.evaluate(async () => {

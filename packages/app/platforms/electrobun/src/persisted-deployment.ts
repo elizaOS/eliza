@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop persisted deployment ts behavior for app shell integration. */
 import fs from "node:fs";
 import path from "node:path";
 import { resolveUserPath } from "@elizaos/core";

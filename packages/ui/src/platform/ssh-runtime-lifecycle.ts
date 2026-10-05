@@ -436,9 +436,3 @@ export function retrySshRuntimeCleanup(
     return true;
   });
 }
-
-export const sshRuntimeLifecycleInternals = {
-  RECEIPTS_STORAGE_KEY,
-  decodeReceipt,
-  pendingStepNames,
-};

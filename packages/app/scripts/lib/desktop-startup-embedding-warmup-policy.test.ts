@@ -1,4 +1,3 @@
-/** Exercises desktop startup embedding warmup policy behavior with deterministic app test fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./desktop-startup-embedding-warmup-policy.ts";

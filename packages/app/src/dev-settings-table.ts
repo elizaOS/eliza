@@ -20,23 +20,10 @@ export type DevSettingsRow = {
   change: string;
 };
 
-const DEFAULT_CAPS = {
-  setting: 44,
-  effective: 16,
-  source: 52,
-  change: 64,
-} as const;
-
 export type DevSettingsTableOptions = {
-  caps?: Partial<Record<keyof typeof DEFAULT_CAPS, number>>;
-  /** Multiline ~80 cols by default; set `wide` for legacy single-line table. */
-  layout?: "wide" | "narrow";
-  /** Max line length for `layout: "narrow"` (default 80). */
+  /** Maximum line length (default 80). */
   narrowWidth?: number;
-  /**
-   * When `layout` is `narrow`, draw a Unicode frame (default true).
-   * Set false for plain `=== title ===` blocks (e.g. tests or log capture).
-   */
+  /** Draw a Unicode frame (default true). */
   narrowFrame?: boolean;
 };
 
@@ -201,60 +188,16 @@ export function formatDevSettingsTableNarrow(
   return `${lines.join("\n")}\n`;
 }
 
-/**
- * Format a titled dev settings banner. Default is multiline (~80 cols); pass
- * `layout: "wide"` for the legacy four-column table with Setting/Effective/Source/Change header.
- */
+/** Format a multiline startup settings banner. */
 export function formatDevSettingsTable(
   title: string,
   rows: DevSettingsRow[],
   options?: DevSettingsTableOptions,
 ): string {
-  const layout = options?.layout ?? "narrow";
-  if (layout === "narrow") {
-    return formatDevSettingsTableNarrow(
-      title,
-      rows,
-      options?.narrowWidth ?? 80,
-      options?.narrowFrame !== false,
-    );
-  }
-  const caps = { ...DEFAULT_CAPS, ...options?.caps };
-  for (const width of Object.values(caps)) requireWidth(width);
-  const header: DevSettingsRow = {
-    setting: "Setting",
-    effective: "Effective",
-    source: "Source",
-    change: "Change",
-  };
-  let w0 = header.setting.length;
-  let w1 = header.effective.length;
-  let w2 = header.source.length;
-  let w3 = header.change.length;
-  for (const r of rows) {
-    w0 = Math.max(w0, r.setting.length);
-    w1 = Math.max(w1, r.effective.length);
-    w2 = Math.max(w2, r.source.length);
-    w3 = Math.max(w3, r.change.length);
-  }
-  w0 = Math.min(caps.setting, w0);
-  w1 = Math.min(caps.effective, w1);
-  w2 = Math.min(caps.source, w2);
-  w3 = Math.min(caps.change, w3);
-
-  const fmt = (r: DevSettingsRow) =>
-    [
-      truncateCell(r.setting, w0).padEnd(w0),
-      truncateCell(r.effective, w1).padEnd(w1),
-      truncateCell(r.source, w2).padEnd(w2),
-      truncateCell(r.change, w3),
-    ].join("  ");
-
-  const lines = [
-    `=== ${title} ===`,
-    fmt(header),
-    "-".repeat(w0 + w1 + w2 + w3 + 6),
-    ...rows.map(fmt),
-  ];
-  return `${lines.join("\n")}\n`;
+  return formatDevSettingsTableNarrow(
+    title,
+    rows,
+    options?.narrowWidth ?? 80,
+    options?.narrowFrame !== false,
+  );
 }

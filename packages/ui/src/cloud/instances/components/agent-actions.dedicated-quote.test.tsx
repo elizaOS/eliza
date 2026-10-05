@@ -30,8 +30,8 @@ vi.mock("../../lib/api-client", () => ({
 
 vi.mock("sonner", () => ({ toast }));
 
-vi.mock("../lib/i18n", () => ({
-  useT: () => (_key: string, options?: Record<string, unknown>) => {
+vi.mock("../../shell/CloudI18nProvider", () => ({
+  useCloudT: () => (_key: string, options?: Record<string, unknown>) => {
     let text = String(options?.defaultValue ?? _key);
     for (const [name, value] of Object.entries(options ?? {})) {
       text = text.replaceAll(`{{${name}}}`, String(value));

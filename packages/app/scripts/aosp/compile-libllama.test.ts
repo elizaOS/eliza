@@ -1,4 +1,3 @@
-/** Exercises compile libllama behavior with deterministic app test fixtures. */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

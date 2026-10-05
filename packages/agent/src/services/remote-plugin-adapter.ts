@@ -288,10 +288,8 @@ export function createRemoteCapabilityPlugin(
     (view): ViewDeclaration => ({
       id: view.id,
       label: view.label,
-      viewType: view.viewType === "tui" ? "tui" : "gui",
-      ...(view.backgroundPolicy === undefined
-        ? {}
-        : { backgroundPolicy: view.backgroundPolicy }),
+      viewType: view.viewType ?? "gui",
+      ...(view.viewKind === undefined ? {} : { viewKind: view.viewKind }),
       ...(view.surface === undefined ? {} : { surface: view.surface }),
       ...(view.bundleUrl === undefined ? {} : { bundleUrl: view.bundleUrl }),
       ...(view.bundleUrl !== undefined || view.bundlePath === undefined
@@ -513,9 +511,7 @@ export function createRemoteCapabilityPlugin(
         ? {}
         : { defaultEnabled: widget.defaultEnabled }),
       ...(widget.navGroup === undefined ? {} : { navGroup: widget.navGroup }),
-      ...(widget.developerOnly === undefined
-        ? {}
-        : { developerOnly: widget.developerOnly }),
+      ...(widget.viewKind === undefined ? {} : { viewKind: widget.viewKind }),
       ...(widget.componentExport === undefined
         ? {}
         : { componentExport: widget.componentExport }),

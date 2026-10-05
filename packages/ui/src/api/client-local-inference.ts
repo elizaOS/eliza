@@ -9,11 +9,12 @@ import type {
   ActiveModelState,
   AgentModelSlot,
   CatalogModel,
+  DeviceBridgeStatus,
   DownloadJob,
   HardwareProbe,
   InstalledModel,
+  LocalInferenceRegistration,
   ModelAssignments,
-  ModelBucket,
   ModelHubSnapshot,
   ProviderStatus,
   VerifyResult,
@@ -24,10 +25,6 @@ import type {
   RoutingPreferences,
 } from "@elizaos/plugin-native-inference/model-catalog/routing-policy";
 import { ElizaClient } from "./client-base";
-import type {
-  DeviceBridgeStatus,
-  PublicRegistration,
-} from "./local-inference-response-types";
 
 let localInferenceHubRequest: Promise<ModelHubSnapshot> | null = null;
 /** Stable classification for an invalid hardware section in the hub response. */
@@ -127,23 +124,6 @@ function parseModelHubSnapshotHardware(value: unknown): ModelHubSnapshot {
   return value as unknown as ModelHubSnapshot;
 }
 
-export type {
-  ActiveModelState,
-  AgentModelSlot,
-  CatalogModel,
-  DeviceBridgeStatus,
-  DownloadJob,
-  HardwareProbe,
-  InstalledModel,
-  ModelAssignments,
-  ModelBucket,
-  ModelHubSnapshot,
-  ProviderStatus,
-  PublicRegistration,
-  RoutingPolicy,
-  RoutingPreferences,
-  VerifyResult,
-};
 /** Hardware classification tier (mirrors the plugin `DeviceTier`). */
 export type DeviceTier = "MAX" | "GOOD" | "OKAY" | "POOR";
 /**
@@ -159,77 +139,25 @@ export interface DeviceTierResult {
   /** True on iOS/Android (clamped to OKAY at best). */
   mobile: boolean;
   /**
-   * Authoritative fields populated when this came from the server
-   * `/api/local-inference/device-tier` endpoint (the same assessment the router's
-   * AUTO policy uses). Absent when falling back to the coarse client estimate.
+   * The server assessment used by the router's AUTO policy.
    */
-  recommendedMode?: "local" | "cloud-with-local-voice" | "cloud-only";
-  canRunLocalLm?: boolean;
-  canRunLocalVoice?: boolean;
+  recommendedMode: "local" | "cloud-with-local-voice" | "cloud-only";
+  canRunLocalLm: boolean;
+  canRunLocalVoice: boolean;
   /** The biggest eliza-1 tier (+128k QJL context) that fits, or null → Cloud. */
-  recommendedFit?: {
+  recommendedFit: {
     tierId: string;
     contextLength: number;
     kvQuant: string;
     contextDownscaled: boolean;
   } | null;
 }
-/**
- * Classify a `HardwareProbe` into a coarse device tier for UI display.
- *
- * This is a deliberately small client-side approximation of the plugin's
- * `classifyDeviceTier` (which carries the authoritative R9 thresholds). The UI
- * only needs the tier label + a one-line reason to render the banner and the
- * per-slot "Auto" resolution; it does not gate runtime behaviour, so the full
- * server classifier is not required on the client.
- */
-export function classifyDeviceTierFromProbe(
-  probe: HardwareProbe,
-): DeviceTierResult {
-  const mobile =
-    probe.mobile?.platform === "ios" || probe.mobile?.platform === "android";
-  const cpuOnly = !probe.gpu && !probe.appleSilicon;
-  const vramGb = probe.gpu?.totalVramGb ?? 0;
-  const effectiveMemoryGb = probe.appleSilicon
-    ? probe.totalRamGb
-    : probe.gpu
-      ? Math.max(vramGb, probe.totalRamGb * 0.5)
-      : probe.totalRamGb * 0.5;
-  const accelerator = probe.appleSilicon
-    ? `Apple Silicon ${probe.totalRamGb.toFixed(0)} GB`
-    : probe.gpu
-      ? `${vramGb.toFixed(0)} GB VRAM`
-      : `${probe.totalRamGb.toFixed(0)} GB RAM, ${probe.cpuCores} cores`;
-  const reason = `${effectiveMemoryGb.toFixed(1)} GB effective · ${probe.freeRamGb.toFixed(1)} GB free · ${accelerator}`;
-  const tier = ((): DeviceTier => {
-    // Mobile clamps to OKAY at best (OS background-task limits).
-    if (mobile) {
-      return probe.freeRamGb >= 3 ? "OKAY" : "POOR";
-    }
-    if (probe.cpuCores < 4) return "POOR";
-    const meetsMax =
-      effectiveMemoryGb >= 24 &&
-      probe.freeRamGb >= 16 &&
-      (vramGb >= 16 || (probe.appleSilicon && probe.totalRamGb >= 32));
-    if (meetsMax) return "MAX";
-    const meetsGood =
-      effectiveMemoryGb >= 12 &&
-      probe.freeRamGb >= 8 &&
-      (vramGb >= 8 ||
-        (probe.appleSilicon && probe.totalRamGb >= 16) ||
-        (cpuOnly && probe.totalRamGb >= 32));
-    if (meetsGood) return "GOOD";
-    const meetsOkay = effectiveMemoryGb >= 6 && probe.freeRamGb >= 3;
-    return meetsOkay ? "OKAY" : "POOR";
-  })();
-  return { tier, reason, cpuOnly, mobile };
-}
 declare module "./client-base.js" {
   interface ElizaClient {
     getLocalInferenceHub(): Promise<ModelHubSnapshot>;
     getLocalInferenceHardware(): Promise<HardwareProbe>;
     /**
-     * Resolve the live device tier by probing hardware and classifying it.
+     * Read the authoritative device-tier assessment from the agent.
      * Backs the Settings → Voice tier banner and the per-slot "Auto"
      * resolution in the routing matrix.
      */
@@ -274,7 +202,7 @@ declare module "./client-base.js" {
     }>;
     verifyLocalInferenceModel(id: string): Promise<VerifyResult>;
     getLocalInferenceRouting(): Promise<{
-      registrations: PublicRegistration[];
+      registrations: LocalInferenceRegistration[];
       preferences: RoutingPreferences;
     }>;
     setLocalInferencePreferredProvider(
@@ -321,45 +249,61 @@ ElizaClient.prototype.getLocalInferenceHardware = async function (
 ElizaClient.prototype.getLocalInferenceDeviceTier = async function (
   this: ElizaClient,
 ) {
-  // Prefer the authoritative server assessment (same one the router's AUTO policy
-  // consumes) so the UI's tier/recommendedMode/recommendedFit cannot disagree with
-  // the actual routing decision. Fall back to the coarse client estimate only when
-  // the endpoint is unavailable (older agent, transient error).
-  try {
-    const res = (await this.fetch("/api/local-inference/device-tier")) as {
-      tier?: {
-        tier?: DeviceTier;
-        reasons?: string[];
-        canRunLocalLm?: boolean;
-        canRunLocalVoice?: boolean;
-        recommendedMode?: DeviceTierResult["recommendedMode"];
-        recommendedFit?: DeviceTierResult["recommendedFit"];
-        numericContext?: {
-          vramGb?: number | null;
-          appleSilicon?: boolean;
-          mobile?: boolean;
-        };
-      };
-    };
-    const a = res?.tier;
-    if (a && typeof a.tier === "string") {
-      const nc = a.numericContext ?? {};
-      return {
-        tier: a.tier,
-        reason: a.reasons?.[0] ?? "",
-        cpuOnly: !nc.vramGb && !nc.appleSilicon,
-        mobile: Boolean(nc.mobile),
-        recommendedMode: a.recommendedMode,
-        canRunLocalLm: a.canRunLocalLm,
-        canRunLocalVoice: a.canRunLocalVoice,
-        recommendedFit: a.recommendedFit ?? null,
-      };
-    }
-  } catch {
-    // fall through to the client-side approximation
+  const response = await this.fetch<unknown>(
+    "/api/local-inference/device-tier",
+  );
+  const assessment = isRecord(response) ? response.tier : undefined;
+  const context = isRecord(assessment) ? assessment.numericContext : undefined;
+  if (
+    !isRecord(assessment) ||
+    typeof assessment.tier !== "string" ||
+    !["MAX", "GOOD", "OKAY", "POOR"].includes(assessment.tier) ||
+    !Array.isArray(assessment.reasons) ||
+    !assessment.reasons.every((reason) => typeof reason === "string") ||
+    typeof assessment.canRunLocalLm !== "boolean" ||
+    typeof assessment.canRunLocalVoice !== "boolean" ||
+    typeof assessment.recommendedMode !== "string" ||
+    !["local", "cloud-with-local-voice", "cloud-only"].includes(
+      assessment.recommendedMode,
+    ) ||
+    !isRecord(context) ||
+    typeof context.appleSilicon !== "boolean" ||
+    typeof context.mobile !== "boolean" ||
+    (context.vramGb !== null &&
+      (typeof context.vramGb !== "number" ||
+        !Number.isFinite(context.vramGb) ||
+        context.vramGb < 0))
+  ) {
+    throw new ElizaError("The agent returned an invalid device assessment.", {
+      code: "LOCAL_INFERENCE_DEVICE_TIER_RESPONSE_INVALID",
+    });
   }
-  const probe = await this.getLocalInferenceHardware();
-  return classifyDeviceTierFromProbe(probe);
+  const fit = assessment.recommendedFit;
+  if (
+    fit !== null &&
+    (!isRecord(fit) ||
+      typeof fit.tierId !== "string" ||
+      typeof fit.contextLength !== "number" ||
+      !Number.isFinite(fit.contextLength) ||
+      fit.contextLength <= 0 ||
+      typeof fit.kvQuant !== "string" ||
+      typeof fit.contextDownscaled !== "boolean")
+  ) {
+    throw new ElizaError("The agent returned an invalid model fit.", {
+      code: "LOCAL_INFERENCE_DEVICE_TIER_RESPONSE_INVALID",
+    });
+  }
+  return {
+    tier: assessment.tier as DeviceTier,
+    reason: assessment.reasons[0] ?? "",
+    cpuOnly: !context.vramGb && !context.appleSilicon,
+    mobile: context.mobile,
+    recommendedMode:
+      assessment.recommendedMode as DeviceTierResult["recommendedMode"],
+    canRunLocalLm: assessment.canRunLocalLm,
+    canRunLocalVoice: assessment.canRunLocalVoice,
+    recommendedFit: fit as DeviceTierResult["recommendedFit"],
+  };
 };
 ElizaClient.prototype.getLocalInferenceCatalog = async function (
   this: ElizaClient,

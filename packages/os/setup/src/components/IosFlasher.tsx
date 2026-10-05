@@ -1,4 +1,3 @@
-// Renders AOSP setup flasher UI controls and installer state.
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -206,22 +205,32 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
   const [plan, setPlan] = useState<IosInstallPlan | null>(null);
   const [steps, setSteps] = useState<IosInstallStep[]>([]);
   const [authState, setAuthState] = useState<IosAuthState>({ status: "idle" });
-  const attemptTokenRef = useRef<string | undefined>(undefined);
-  attemptTokenRef.current = authState.attemptToken;
-  useEffect(
-    () => () => {
-      const attemptToken = attemptTokenRef.current;
-      if (attemptToken)
-        void authorizedFetch(backendRoute(serverUrl, "/ios/cancel"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ attemptToken }),
-        }).catch(() => {
-          /* The server also expires abandoned, nonexecuting attempts. */
-        });
+  const attemptRef = useRef<{ active: boolean; token?: string | undefined }>({
+    active: false,
+  });
+  const cancelAttempt = useCallback(
+    async (attemptToken?: string) => {
+      if (!attemptToken) return;
+      await authorizedFetch(backendRoute(serverUrl, "/ios/cancel"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attemptToken }),
+      }).catch(() => {
+        /* The server expires abandoned, nonexecuting attempts if transport fails. */
+      });
     },
     [serverUrl],
   );
+  useEffect(() => {
+    const owner: { active: boolean; token?: string | undefined } = {
+      active: true,
+    };
+    attemptRef.current = owner;
+    return () => {
+      owner.active = false;
+      void cancelAttempt(owner.token);
+    };
+  }, [cancelAttempt]);
 
   const [appleId, setAppleId] = useState("");
   const [password, setPassword] = useState("");
@@ -335,6 +344,7 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
     if (!appleId.trim() || !password) return;
     setError(null);
     setLoading(true);
+    const owner = attemptRef.current;
     try {
       const res = await authorizedFetch(
         backendRoute(serverUrl, "/ios/authenticate"),
@@ -350,6 +360,11 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
       );
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as IosAuthState;
+      owner.token = data.attemptToken;
+      if (!owner.active) {
+        await cancelAttempt(owner.token);
+        return;
+      }
       setAuthState(data);
       if (data.status === "awaiting-2fa") {
         setScreen("two-factor");
@@ -371,6 +386,7 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
     if (twoFaCode.length !== 6) return;
     setError(null);
     setLoading(true);
+    const owner = attemptRef.current;
     try {
       const res = await authorizedFetch(backendRoute(serverUrl, "/ios/2fa"), {
         method: "POST",
@@ -382,6 +398,11 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
       });
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as IosAuthState;
+      owner.token = data.attemptToken;
+      if (!owner.active) {
+        await cancelAttempt(owner.token);
+        return;
+      }
       setAuthState(data);
       if (data.status === "authenticated") {
         await handleStartInstall(data);
@@ -400,6 +421,7 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
 
   async function handleStartInstall(auth: IosAuthState) {
     if (!selectedDevice || !selectedApp) return;
+    const owner = attemptRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -418,12 +440,11 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
       );
       if (!planRes.ok) throw new Error(await planRes.text());
       const planData = (await planRes.json()) as IosInstallPlan;
+      if (!owner.active) return;
       setPlan(planData);
       setSteps(planData.steps);
       setScreen("installing");
 
-      // The server consumes this attempt when execution starts.
-      setAuthState({ status: "idle" });
       const execRes = await authorizedFetch(
         backendRoute(serverUrl, "/ios/execute"),
         {
@@ -433,6 +454,9 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
         },
       );
 
+      if (!execRes.ok) throw new Error(await execRes.text());
+      delete owner.token;
+      setAuthState({ status: "idle" });
       await readExecutionStream(execRes, (payload) => {
         const step = planData.steps.find(
           (candidate) => candidate.id === payload.stepId,
@@ -470,6 +494,7 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      if (!owner.active) await cancelAttempt(owner.token);
       setLoading(false);
     }
   }

@@ -47,27 +47,6 @@ export type NativeFetchRequestClass =
   | { kind: "relative-api"; path: string }
   | { kind: "absolute"; url: URL };
 
-/** Parse fetch inputs once without granting trust to an unparseable target. */
-export function classifyNativeFetchRequest(
-  input: RequestInfo | URL,
-): NativeFetchRequestClass {
-  const raw =
-    typeof input === "string"
-      ? input
-      : input instanceof URL
-        ? input.href
-        : input.url;
-  if (raw.startsWith("/api/") || raw === "/api") {
-    return { kind: "relative-api", path: raw };
-  }
-  try {
-    return { kind: "absolute", url: new URL(raw) };
-  } catch {
-    // error-policy:J3 Unparseable targets remain explicitly invalid and receive no native route.
-    return { kind: "invalid" };
-  }
-}
-
 export function nativeJsonRequestData(
   body: BodyInit | null | undefined,
 ): unknown {

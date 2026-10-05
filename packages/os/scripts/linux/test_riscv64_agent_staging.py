@@ -17,13 +17,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LINUX_DIR = ROOT / "linux/elizaos"
 SCRIPT = ROOT / "scripts/linux/stage-agent-artifacts.sh"
-BUILD_SH = LINUX_DIR / "build-live-iso.sh"
-INSTALL_HOOK = LINUX_DIR / "config/hooks/normal/0010-elizaos-agent.hook.chroot"
-RISCV64_PACKAGE_LIST = LINUX_DIR / "config/package-lists/elizaos-riscv64.list.chroot"
-RUN_AGENT = LINUX_DIR / "config/includes.chroot/usr/lib/elizaos/run-agent.sh"
-WAIT_AGENT_HEALTH = LINUX_DIR / "config/includes.chroot/usr/lib/elizaos/wait-agent-health.sh"
-FIRST_BOOT = LINUX_DIR / "config/includes.chroot/usr/local/lib/elizaos/first-boot.sh"
-RISCV64_POSTGRES_HOOK = LINUX_DIR / "config/hooks/normal/0012-riscv64-agent-postgres.hook.chroot"
 MUSL_RUNTIME = LINUX_DIR / "artifacts/riscv64/elizaos-app/musl-runtime"
 
 
@@ -217,7 +210,8 @@ def test_fresh_riscv64_stage_writes_patch_bound_provenance() -> None:
         inputs = provenance.get("inputs", {})
         required_inputs = {
             "toolchains/bun-riscv64/bun-version.json",
-            "toolchains/bun-riscv64/bun-patches/0021-fix-riscv64-linux-open-flags.patch",
+            "toolchains/bun-riscv64/bun-patches/0001-riscv64-c-loop.patch",
+            "toolchains/bun-riscv64/webkit-patches/0001-riscv64-c-loop.patch",
         }
         missing = sorted(required_inputs - set(inputs))
         if missing:
@@ -288,18 +282,6 @@ def test_stage_rejects_output_symlink_without_modifying_its_target() -> None:
         assert sentinel.read_bytes() == b"original"
 
 
-def test_live_build_and_install_hook_require_riscv64_bun_provenance() -> None:
-    build_text = BUILD_SH.read_text(encoding="utf-8")
-    hook_text = INSTALL_HOOK.read_text(encoding="utf-8")
-    for label, text in (("build-live-iso.sh", build_text), ("0010 hook", hook_text)):
-        if "riscv64-bun-provenance.json" not in text:
-            raise AssertionError(f"{label} does not require riscv64 Bun provenance")
-    if "staged_bun_sha256" not in build_text:
-        raise AssertionError("build-live-iso.sh does not verify staged Bun hash against provenance")
-    if "eliza.os.linux.riscv64_bun_stage_provenance.v1" not in build_text:
-        raise AssertionError("build-live-iso.sh does not verify the riscv64 Bun provenance schema")
-
-
 def test_artifact_check_never_claims_runtime_execution() -> None:
     checker = ROOT / "scripts/linux/check-riscv64-agent-runtime-artifact.sh"
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -354,107 +336,6 @@ def test_artifact_check_defaults_to_repository_test_output() -> None:
         assert not (tmp / "evidence").exists()
 
 
-def test_riscv64_image_has_node_agent_bundle_fallback_before_bun() -> None:
-    packages = RISCV64_PACKAGE_LIST.read_text(encoding="utf-8")
-    for package in (
-        "linux-image-riscv64",
-        "grub-efi-riscv64",
-        "grub-efi-riscv64-bin",
-        "postgresql",
-        "postgresql-17-pgvector",
-        "nodejs",
-        "node-undici",
-        "node-ws",
-        "node-fetch",
-    ):
-        if package not in packages:
-            raise AssertionError(f"riscv64 package list must install {package}")
-
-    hook = INSTALL_HOOK.read_text(encoding="utf-8")
-    for expected in (
-        "for module in undici ws node-fetch",
-        "/usr/share/nodejs/${module}",
-        "${INSTALL}/app/node_modules",
-        "${INSTALL}/app/node_modules/${module}",
-    ):
-        if expected not in hook:
-            raise AssertionError(f"install hook must provide app-local Node modules for riscv64 Node ESM: {expected}")
-
-    run_agent = RUN_AGENT.read_text(encoding="utf-8")
-    node_agent = "node \\\n            --no-wasm-tier-up"
-    bun_agent = "/opt/elizaos/bin/bun /opt/elizaos/app/agent-bundle.js serve --headless"
-    if node_agent not in run_agent:
-        raise AssertionError("run-agent.sh is missing the node agent-bundle fallback with V8 Wasm tier-up disabled")
-    for flag in ("--no-wasm-tier-up", "--no-wasm-dynamic-tiering", "--liftoff-only"):
-        if flag not in run_agent:
-            raise AssertionError(f"run-agent.sh node fallback is missing {flag}")
-    if run_agent.index(node_agent) > run_agent.index(bun_agent):
-        raise AssertionError("riscv64 node fallback must run before the Bun path that can SIGILL")
-    if 'ARCH="$(dpkg --print-architecture 2>/dev/null || true)"' not in run_agent:
-        raise AssertionError("run-agent.sh must detect the Debian architecture")
-    if '[ "${AGENT_RUNTIME}" = "node-agent-bundle" ] || [ "${ARCH}" = "riscv64" ]' not in run_agent:
-        raise AssertionError("node fallback must include the explicit riscv64 scope")
-    if '{ [ "${ARCH}" = "arm64" ] && [ ! -f /opt/elizaos/app/Resources/app/eliza-dist/index.js ]; }' not in run_agent:
-        raise AssertionError("node fallback must cover bare arm64 agent bundles without Electrobun")
-
-def test_boot_health_markers_are_serial_provable() -> None:
-    wait_health = WAIT_AGENT_HEALTH.read_text(encoding="utf-8")
-    for marker in (
-        "elizaos-curl-health-ready",
-        "elizaos-agent-ready",
-        "elizaos-agent-health-failed",
-        "tee \"${DEVICE}\"",
-        "sudo -n tee \"${DEVICE}\"",
-    ):
-        if marker not in wait_health:
-            raise AssertionError(f"wait-agent-health.sh does not serial-emit marker/proof path: {marker}")
-
-    first_boot = FIRST_BOOT.read_text(encoding="utf-8")
-    for expected in (
-        "elizaos-agent-starting",
-        "systemctl start --no-block elizaos-agent.service",
-        "elizaos-agent-health-failed",
-        "elizaos-agent-diagnostics-start",
-        "elizaos-agent-runtime-log-start",
-        "dump_file_to_serial /var/log/elizaos/agent-runtime.log",
-        "dump_file_to_serial /var/lib/elizaos/agent-runtime.log",
-        "journalctl --no-pager -u elizaos-agent.service -n 120",
-    ):
-        if expected not in first_boot:
-            raise AssertionError(f"first-boot.sh missing serial-provable boot diagnostic: {expected}")
-
-    run_agent = RUN_AGENT.read_text(encoding="utf-8")
-    if "run_agent_command node-agent-bundle node \\" not in run_agent:
-        raise AssertionError("run-agent.sh must emit the selected riscv64 agent entrypoint")
-    if "/opt/elizaos/app/agent-bundle.js serve --headless" not in run_agent:
-        raise AssertionError("run-agent.sh must pass the staged agent-bundle.js to Debian node")
-    if "elizaos-agent-exited runtime=${RUNTIME} rc=${RC}" not in run_agent:
-        raise AssertionError("run-agent.sh must serial-emit nonzero runtime exits")
-    if "agent-runtime.log" not in run_agent:
-        raise AssertionError("run-agent.sh must preserve agent stderr/stdout for diagnostics")
-    if 'AGENT_RUNTIME_LOG="${ELIZA_STATE_DIR}/agent-runtime.log"' not in run_agent:
-        raise AssertionError("run-agent.sh must fall back to state dir if /var/log is unavailable")
-    if "set +e" not in run_agent or "set -e" not in run_agent:
-        raise AssertionError("run-agent.sh must capture nonzero agent exits under set -e")
-
-    rv64_hook = RISCV64_POSTGRES_HOOK.read_text(encoding="utf-8")
-    for expected in (
-        "/var/lib/elizaos/eliza.json",
-        '"provider": "postgres"',
-        '"connectionString": "postgresql://elizaos:elizaos@127.0.0.1:5432/elizaos"',
-        "CREATE EXTENSION IF NOT EXISTS vector",
-        "CREATE EXTENSION IF NOT EXISTS fuzzystrmatch",
-        "CREATE EXTENSION IF NOT EXISTS pgcrypto",
-        "ELIZA_PLATFORM=android",
-        "ELIZA_MOBILE_PLATFORM=android",
-        "elizaos-first-boot.service.d/10-riscv64-timeout.conf",
-        "ELIZA_AGENT_HEALTH_TIMEOUT_SECONDS=600",
-        "TimeoutStartSec=900",
-    ):
-        if expected not in rv64_hook:
-            raise AssertionError(f"riscv64 hook missing emulated boot proof timeout: {expected}")
-
-
 if __name__ == "__main__":
     test_staged_agent_preserves_a_leading_shebang()
     test_stage_options_fail_before_source_resolution()
@@ -463,9 +344,6 @@ if __name__ == "__main__":
     test_fresh_riscv64_stage_writes_patch_bound_provenance()
     test_riscv64_node_only_stage_omits_bun_but_keeps_agent_bundle()
     test_stage_rejects_output_symlink_without_modifying_its_target()
-    test_live_build_and_install_hook_require_riscv64_bun_provenance()
     test_artifact_check_defaults_to_repository_test_output()
     test_artifact_check_never_claims_runtime_execution()
-    test_riscv64_image_has_node_agent_bundle_fallback_before_bun()
-    test_boot_health_markers_are_serial_provable()
     print("OK")

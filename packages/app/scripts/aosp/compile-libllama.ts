@@ -27,8 +27,8 @@ import {
 } from "./compile-libllama-paths.ts";
 import { main as compileShimMain } from "./compile-shim.ts";
 import {
-  prepareAndroidVulkanSource,
   readPinnedNativeRevision,
+  validateMaintainedVulkanSource,
 } from "./vulkan-source-contract.ts";
 import {
   ABI_TARGETS,
@@ -456,7 +456,6 @@ export function parseArgs(argv) {
     jobs: Math.max(1, Math.min(os.cpus().length, 8)),
     srcDir: null,
     cacheDirExplicit: false,
-    legacyVulkanGraft: false,
     dryRun: false,
     // Optional source dir of prebuilt LiteRT-LM `.litertlm` text artifacts to
     // stage into the on-device bundle assets (`models/text/`), parallel to the
@@ -489,8 +488,6 @@ export function parseArgs(argv) {
     } else if (arg === "--src-dir") {
       args.srcDir = path.resolve(readFlagValue(arg, i));
       i += 1;
-    } else if (arg === "--legacy-vulkan-graft") {
-      args.legacyVulkanGraft = true;
     } else if (arg === "--litertlm-dir") {
       args.litertlmDir = path.resolve(readFlagValue(arg, i));
       i += 1;
@@ -541,13 +538,12 @@ export function parseArgs(argv) {
           "                    -fused enables the omnivoice graft (same as mtp's\n" +
           "                    *-fused desktop targets) — one binary serving text +\n" +
           "                    POST /v1/audio/speech.\n" +
-          "  --dry-run         Print the cmake invocation + graft steps + expected\n" +
+          "  --dry-run         Print the cmake invocation + expected\n" +
           "                    output layout WITHOUT running cmake/ndk. Honored for\n" +
           "                    every --target.\n" +
-          "  --legacy-vulkan-graft  Explicitly patch an older external Vulkan source tree; never the maintained submodule.\n" +
           "  --src-dir <PATH>  Use an existing llama.cpp checkout instead of the\n" +
           "                    in-repo submodule / a fresh clone. The directory's HEAD\n" +
-          "                    is used as-is; Vulkan requires the parent native gitlink unless legacy graft is explicitly selected.\n" +
+          "                    is used as-is; Vulkan requires the parent native gitlink for source admission.\n" +
           `  Default source:   the git submodule plugins/plugin-local-inference/native/llama.cpp\n` +
           `                    (elizaOS/llama.cpp @ ${LLAMA_CPP_TAG}) when initialized;\n` +
           `                    otherwise a standalone clone under --cache-dir.\n` +
@@ -1911,23 +1907,6 @@ function stripBinary({ filePath, zigBin, log }) {
 }
 
 /**
- * No-op shim retained for backward compatibility with callers that still
- * import `applyOmnivoiceGraft`. H2.c collapsed the W3-3 deprecation runway:
- * the legacy clone-and-graft path is gone; OmniVoice is built exclusively
- * from the merged in-fork tree at `tools/omnivoice/`.
- *
- * Returns a minimal info object so log lines that surface fields like
- * `commit` or `sourceCount` keep their shape; the merged tree's source
- * count is fixed at build time and recorded by `verifyFusedSymbols`.
- */
-export function applyOmnivoiceGraft({ srcDir: _srcDir, log = console.log }) {
-  log(
-    "[compile-libllama] omnivoice: merged in-fork path (legacy graft removed)",
-  );
-  return { mode: "merged", source: "tools/omnivoice" };
-}
-
-/**
  * Stage prebuilt LiteRT-LM `.litertlm` text artifacts into the on-device
  * bundle assets, parallel to the `.so` libs this script stages and the `.gguf`
  * models `stage-default-models.ts` stages. The destination is
@@ -2336,23 +2315,15 @@ export async function mainTargets(args) {
     srcDescription = `llama.cpp ${LLAMA_CPP_TAG} / ${LLAMA_CPP_COMMIT.slice(0, 12)}`;
   }
 
-  if (args.targets.some((target) => target.backend === "vulkan")) {
-    prepareAndroidVulkanSource({
+  if (
+    !args.dryRun &&
+    args.targets.some((target) => target.backend === "vulkan")
+  ) {
+    validateMaintainedVulkanSource({
       source: srcDir,
-      maintainedSource: LLAMA_CPP_SUBMODULE_DIR,
-      expectedRevision:
-        args.legacyVulkanGraft || args.dryRun
-          ? undefined
-          : readPinnedNativeRevision(repoRoot),
-      legacy: args.legacyVulkanGraft,
-      dryRun: args.dryRun,
+      expectedRevision: readPinnedNativeRevision(repoRoot),
     });
   }
-
-  // omnivoice.cpp clone lives at <cacheRoot>/omnivoice.cpp; we use the parent
-  // of the llama.cpp cache dir so both clones live under one cache root, the
-  // same shape the mtp build path uses (cacheRoot=path.dirname(args.cacheDir)).
-  const omnivoiceCacheRoot = path.dirname(args.cacheDir);
 
   if (!args.dryRun) {
     const zigVersion = probeZig();
@@ -2375,24 +2346,7 @@ export async function mainTargets(args) {
         abiAssetDir,
         jobs: args.jobs,
       });
-      if (parsed.fused) {
-        console.log(
-          `  fused-graft cacheRoot=${omnivoiceCacheRoot} (omnivoice.cpp clone)`,
-        );
-      }
       continue;
-    }
-
-    // Pre-cmake: run the omnivoice graft for fused targets. Same call
-    // sequence as the mtp linux-x64-cpu-fused path; the graft is
-    // toolchain-agnostic (CMake snippet + source layout).
-    let omnivoiceInfo = null;
-    if (parsed.fused) {
-      omnivoiceInfo = applyOmnivoiceGraft({
-        srcDir,
-        omnivoiceCacheRoot,
-        log: console.log,
-      });
     }
 
     // Vulkan source was admitted before toolchain work. Assemble the
@@ -2402,7 +2356,7 @@ export async function mainTargets(args) {
     let vulkanCmakeFlags = [];
     if (parsed.backend === "vulkan") {
       console.log(
-        `[compile-libllama] Using ${args.legacyVulkanGraft ? "explicit legacy" : "unchanged pinned"} Vulkan source from ${srcDir}`,
+        `[compile-libllama] Using unchanged pinned Vulkan source from ${srcDir}`,
       );
       vulkanCmakeFlags = resolveAndroidVulkanCmakeFlags({
         stagingDir: path.join(args.cacheDir, "vulkan-headers"),
@@ -2459,11 +2413,6 @@ export async function mainTargets(args) {
           `omnivoice=${verification.omnivoiceSymbolCount} ` +
           `abi=${verification.abiSymbolCount}`,
       );
-      if (omnivoiceInfo) {
-        console.log(
-          `[compile-libllama] omnivoice mode=${omnivoiceInfo.mode ?? "merged"} source=${omnivoiceInfo.source ?? "tools/omnivoice"}`,
-        );
-      }
     }
   }
 

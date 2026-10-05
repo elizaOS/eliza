@@ -5,12 +5,8 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IAgentRuntime, logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import { buildLiveHarness, type LiveAgentHarness } from "@elizaos/testing/live";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-import {
-  buildLiveHarness,
-  type LiveAgentHarness,
-} from "../../../packages/app/test/helpers/live-agent-test";
 import {
   type CapturedWireCall,
   type CerebrasWireCapture,

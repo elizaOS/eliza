@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { type FileHandle, open } from "node:fs/promises";
-import type { ReleaseSequenceStore } from "@elizaos/os-usb-installer/trust";
+import type { ReleaseSequenceStore } from "@elizaos/os/trust";
 import {
   type FactoryManifestPolicy,
   verifyFactoryManifest,

@@ -21,7 +21,6 @@ import {
 	type RemotePluginAppNavTabManifest,
 	type RemotePluginAppSessionManifest,
 	type RemotePluginAppViewerManifest,
-	type RemotePluginBackgroundPolicy,
 	type RemotePluginComponentTypeManifest,
 	type RemotePluginConfigMap,
 	type RemotePluginEvaluatorManifest,
@@ -348,17 +347,6 @@ export function optionalBoolean(
 	if (value === undefined) return undefined;
 	if (typeof value === "boolean") return value;
 	throw decodeError(method, `${key} must be a boolean when present.`);
-}
-
-function optionalBackgroundPolicy(
-	object: JsonObject,
-	key: string,
-	method: string,
-): RemotePluginBackgroundPolicy | undefined {
-	const value = optionalString(object, key, method);
-	if (value === undefined) return undefined;
-	if (value === "opaque" || value === "shared") return value;
-	throw decodeError(method, `${key} must be "opaque" or "shared".`);
 }
 
 function optionalSurfaceManifest(
@@ -1054,6 +1042,25 @@ function validateRemotePluginModuleId(
 	}
 }
 
+function optionalViewKind(
+	object: Record<string, JsonValue>,
+	method: string,
+): import("../types/view-kind.js").ViewKind | undefined {
+	const value = optionalString(object, "viewKind", method);
+	if (
+		value === undefined ||
+		value === "system" ||
+		value === "release" ||
+		value === "developer" ||
+		value === "preview"
+	)
+		return value;
+	throw decodeError(
+		method,
+		"viewKind must be system, release, developer, or preview.",
+	);
+}
+
 function requireRemotePluginWidget(
 	value: JsonValue,
 	method: string,
@@ -1068,7 +1075,7 @@ function requireRemotePluginWidget(
 	const order = optionalNumber(object, "order", method);
 	const defaultEnabled = optionalBoolean(object, "defaultEnabled", method);
 	const navGroup = optionalString(object, "navGroup", method);
-	const developerOnly = optionalBoolean(object, "developerOnly", method);
+	const viewKind = optionalViewKind(object, method);
 	const componentExport = optionalString(object, "componentExport", method);
 	return {
 		id: requireNonEmptyString(object, "id", method),
@@ -1079,7 +1086,7 @@ function requireRemotePluginWidget(
 		...(order === undefined ? {} : { order }),
 		...(defaultEnabled === undefined ? {} : { defaultEnabled }),
 		...(navGroup === undefined ? {} : { navGroup }),
-		...(developerOnly === undefined ? {} : { developerOnly }),
+		...(viewKind === undefined ? {} : { viewKind }),
 		...(componentExport === undefined ? {} : { componentExport }),
 	};
 }
@@ -1117,7 +1124,7 @@ function requireRemotePluginApp(
 					object.uiExtension,
 					`${method}.uiExtension`,
 				);
-	const developerOnly = optionalBoolean(object, "developerOnly", method);
+	const viewKind = optionalViewKind(object, method);
 	const visibleInAppStore = optionalBoolean(
 		object,
 		"visibleInAppStore",
@@ -1143,7 +1150,7 @@ function requireRemotePluginApp(
 		...(session === undefined ? {} : { session }),
 		...(bridgeExport === undefined ? {} : { bridgeExport }),
 		...(uiExtension === undefined ? {} : { uiExtension }),
-		...(developerOnly === undefined ? {} : { developerOnly }),
+		...(viewKind === undefined ? {} : { viewKind }),
 		...(visibleInAppStore === undefined ? {} : { visibleInAppStore }),
 		...(navTabs === undefined ? {} : { navTabs }),
 	};
@@ -1247,13 +1254,8 @@ function requireRemotePluginAppNavTab(
 	const object = requireObject(value, method);
 	const icon = optionalString(object, "icon", method);
 	const order = optionalNumber(object, "order", method);
-	const developerOnly = optionalBoolean(object, "developerOnly", method);
+	const viewKind = optionalViewKind(object, method);
 	const group = optionalString(object, "group", method);
-	const backgroundPolicy = optionalBackgroundPolicy(
-		object,
-		"backgroundPolicy",
-		method,
-	);
 	const surface = optionalSurfaceManifest(object, "surface", method);
 	const componentExport = optionalString(object, "componentExport", method);
 	const path = requireNonEmptyString(object, "path", method);
@@ -1264,9 +1266,8 @@ function requireRemotePluginAppNavTab(
 		...(icon === undefined ? {} : { icon }),
 		path,
 		...(order === undefined ? {} : { order }),
-		...(developerOnly === undefined ? {} : { developerOnly }),
+		...(viewKind === undefined ? {} : { viewKind }),
 		...(group === undefined ? {} : { group }),
-		...(backgroundPolicy === undefined ? {} : { backgroundPolicy }),
 		...(surface === undefined ? {} : { surface }),
 		...(componentExport === undefined ? {} : { componentExport }),
 	};
@@ -1410,6 +1411,7 @@ function requireRemotePluginView(
 	method: string,
 ): RemotePluginViewManifest {
 	const object = requireObject(value, method);
+	const viewKind = optionalViewKind(object, method);
 	const viewType = optionalString(object, "viewType", method);
 	if (
 		viewType !== undefined &&
@@ -1435,11 +1437,6 @@ function requireRemotePluginView(
 	if (frameUrl !== undefined) {
 		validateRemotePluginBundleUrl(frameUrl, "frameUrl", method);
 	}
-	const backgroundPolicy = optionalBackgroundPolicy(
-		object,
-		"backgroundPolicy",
-		method,
-	);
 	const surface = optionalSurfaceManifest(object, "surface", method);
 	const contentType = optionalString(object, "contentType", method);
 	const integrity = optionalString(object, "integrity", method);
@@ -1447,7 +1444,7 @@ function requireRemotePluginView(
 		id: requireNonEmptyString(object, "id", method),
 		label: requireNonEmptyString(object, "label", method),
 		...(viewType === undefined ? {} : { viewType }),
-		...(backgroundPolicy === undefined ? {} : { backgroundPolicy }),
+		...(viewKind === undefined ? {} : { viewKind }),
 		...(surface === undefined ? {} : { surface }),
 		...(bundlePath === undefined ? {} : { bundlePath }),
 		...(bundleUrl === undefined ? {} : { bundleUrl }),
