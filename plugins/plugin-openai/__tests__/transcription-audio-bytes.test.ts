@@ -4,6 +4,8 @@
  * Core requires an `audioUrl`, so callers that already hold the media send
  * `{ audioUrl: "", audio }` (audio redaction verification). The bytes must win
  * over the (possibly empty) URL instead of being sent to the URL fetcher.
+ * An empty `audioUrl` with no bytes is a caller-shape error rejected at the
+ * dispatch boundary, matching the elizacloud handler.
  * Deterministic with a stubbed provider endpoint; never touches the network.
  */
 import type { IAgentRuntime } from "@elizaos/core";
@@ -100,5 +102,13 @@ describe("OpenAI transcription in-process audio", () => {
     expect(mocks.uploaded).toHaveLength(1);
     expect(mocks.uploaded[0]).toEqual(WAV_BYTES);
     expect(mocks.fetchRemoteMedia).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty audioUrl with no audio as a caller-shape error", async () => {
+    await expect(handleTranscription(createRuntime(), { audioUrl: "" })).rejects.toThrow(
+      "TRANSCRIPTION requires audio bytes or a non-empty audioUrl; received an empty audioUrl with no audio."
+    );
+    expect(mocks.fetchRemoteMedia).not.toHaveBeenCalled();
+    expect(mocks.uploaded).toHaveLength(0);
   });
 });
