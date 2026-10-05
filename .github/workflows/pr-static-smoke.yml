@@ -491,6 +491,7 @@ jobs:
             packages/cloud/shared/src/lib/services/stripe-captured-renewal-payment.test.ts \
             packages/cloud/shared/src/lib/services/organization-schedule-target-authority.test.ts \
             packages/cloud/shared/src/lib/services/organization-schedule-target-observation.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-live-compatibility.test.ts \
             packages/cloud/shared/src/lib/services/organization-schedule-pending-lineage.test.ts \
             packages/cloud/shared/src/lib/services/organization-schedule-dunning-observation.test.ts \
             packages/cloud/shared/src/lib/services/organization-schedule-publication.test.ts \
