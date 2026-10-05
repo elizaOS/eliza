@@ -255,6 +255,13 @@ and cleanup deadlines, and a new evidence directory; omit `androidUser` and
 failure, and removes the secondary user only with matching fresh package-cleanup
 evidence. Product hooks still own permissions and fixture assertions.
 
+`scripts/lib/android-fixture-observation.mjs` reads a named SharedPreferences
+string, package stopped state, or exact notification key through the harness's
+ADB executor. Supply its explicit secondary user and package identity. These
+observations never start instrumentation or an Activity, which would interfere
+with pending-alarm/reboot evidence. Product code owns envelope schemas and
+fixture assertions; the helper does not retain unrelated preferences or bodies.
+
 For installed upgrades, each variant supplies baseline `apk`/`testApk` and an
 `upgrade: {apk, testApk}` candidate pair. Both pairs are admitted before device
 mutation. `runnerArgs` seeds the baseline; `upgradeRunnerArgs` verifies the
