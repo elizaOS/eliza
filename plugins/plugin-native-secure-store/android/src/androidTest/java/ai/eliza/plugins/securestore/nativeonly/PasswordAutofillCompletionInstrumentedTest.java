@@ -70,6 +70,7 @@ public final class PasswordAutofillCompletionInstrumentedTest {
       FillResponse response=intent.getParcelableExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT);
       assertNotNull(response);assertArrayEquals(bytes(expected),bytes(response));
     });
+    session.cancelled=false; // Compatibility flag cannot reset the private completion watermark.
     denied(()->PasswordAutofillCompletion.complete(session,vault,()->true,"selected",presentation(),intent->calls.incrementAndGet()));
     assertEquals(1,calls.get());assertEquals(2,vault.reads);
   }); }

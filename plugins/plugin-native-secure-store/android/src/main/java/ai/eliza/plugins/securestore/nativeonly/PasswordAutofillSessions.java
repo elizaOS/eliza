@@ -9,8 +9,9 @@ public final class PasswordAutofillSessions {
     public final PasswordAutofillRequest request;
     final long created=SystemClock.elapsedRealtime();
     public volatile boolean cancelled;
+    private volatile boolean consumed;
     Session(PasswordAutofillRequest request){this.request=request;}
-    public boolean valid(){long elapsed=SystemClock.elapsedRealtime()-created;return !cancelled && elapsed>=0 && elapsed<120000;}
+    public boolean valid(){long elapsed=SystemClock.elapsedRealtime()-created;return !cancelled && !consumed && elapsed>=0 && elapsed<120000;}
   }
   private static final Map<String,Session> pending=new HashMap<>();
   private static Session current;
@@ -23,7 +24,7 @@ public final class PasswordAutofillSessions {
   /** Atomically consumes the currently selected capability before publishing a result. */
   static synchronized boolean claim(Session session){
     if(session==null || session!=current || !session.valid())return false;
-    session.cancelled=true;pending.clear();return true;
+    session.consumed=true;session.cancelled=true;pending.clear();return true;
   }
   public static synchronized Session take(String token){Session session=pending.remove(token);return session!=null && session.valid()?session:null;}
   public static synchronized void cancel(String token){Session session=pending.remove(token);if(session!=null)session.cancelled=true; if(token.equals(currentToken) && current!=null)current.cancelled=true;}
