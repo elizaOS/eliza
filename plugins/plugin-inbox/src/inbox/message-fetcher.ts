@@ -290,6 +290,45 @@ function sourceNotWiredStatus(
   };
 }
 
+/**
+ * Newest-first pages of `limit * 3` raw memories. The caller's limit counts
+ * inbox candidates, so the agent's own replies and blank texts must not fill
+ * the window: a single capped read can come back empty while older user
+ * messages exist. Pages continue until that many candidates are in hand or
+ * history ends. A repeated page (a store that ignores offset) stops the scan.
+ */
+async function loadInboxCandidateMemories(
+  runtime: IAgentRuntime,
+  sourceRoomIds: UUID[],
+  limit: number,
+  accept: (memory: Memory) => boolean,
+): Promise<Memory[]> {
+  const pageSize = limit * 3;
+  const filtered: Memory[] = [];
+  const seenMemoryIds = new Set<string>();
+  let offset = 0;
+  while (filtered.length < limit) {
+    const page = await runtime.getMemoriesByRoomIds({
+      roomIds: sourceRoomIds,
+      tableName: "messages",
+      limit: pageSize,
+      offset,
+    });
+    if (page.length === 0) break;
+    let fresh = 0;
+    for (const memory of page) {
+      const memoryId = typeof memory.id === "string" ? memory.id : "";
+      if (memoryId.length > 0 && seenMemoryIds.has(memoryId)) continue;
+      if (memoryId.length > 0) seenMemoryIds.add(memoryId);
+      fresh += 1;
+      if (accept(memory)) filtered.push(memory);
+    }
+    if (fresh === 0 || page.length < pageSize) break;
+    offset += page.length;
+  }
+  return filtered;
+}
+
 export async function fetchChatMessages(
   runtime: IAgentRuntime,
   opts: {
@@ -329,23 +368,23 @@ export async function fetchChatMessages(
   if (sourceRooms.length === 0) return [];
 
   const sourceRoomIds = sourceRooms.map((r) => r.id) as UUID[];
-  const memories = await runtime.getMemoriesByRoomIds({
-    roomIds: sourceRoomIds,
-    tableName: "messages",
-    limit: limit * 3, // over-fetch for filtering
-  });
-
-  const filtered = memories.filter((m) => {
-    if (m.entityId === runtime.agentId) return false;
-    const src = extractMemorySource(m);
-    if (!sourceMatchesFilter(src, sourceTags)) return false;
-    const createdAt = parseRequiredTimestamp(
-      m.createdAt,
-      "chat memory createdAt",
-    );
-    if (sinceMs > 0 && createdAt < sinceMs) return false;
-    return true;
-  });
+  const filtered = await loadInboxCandidateMemories(
+    runtime,
+    sourceRoomIds,
+    limit,
+    (memory) => {
+      if (memory.entityId === runtime.agentId) return false;
+      const src = extractMemorySource(memory);
+      if (!sourceMatchesFilter(src, sourceTags)) return false;
+      const createdAt = parseRequiredTimestamp(
+        memory.createdAt,
+        "chat memory createdAt",
+      );
+      if (sinceMs > 0 && createdAt < sinceMs) return false;
+      // Blank texts are not inbox rows and must not consume a result slot.
+      return extractText(memory).length > 0;
+    },
+  );
 
   filtered.sort(
     (a, b) =>
