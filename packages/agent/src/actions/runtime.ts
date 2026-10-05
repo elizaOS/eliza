@@ -1,20 +1,4 @@
-/**
- * RUNTIME — single polymorphic entry point for runtime control + introspection.
- *
- * Ops:
- *   - status           in-process snapshot of agent + counts
- *   - self_status      Layer-2 detail from the Self-Awareness System (folds in GET_SELF_STATUS)
- *   - describe_actions in-process listing of registered actions, optionally filtered
- *                      (alias: list_actions)
- *   - reload_config    POST /api/config/reload — reapplies hot-reloadable eliza.json fields
- *   - restart          requests a process restart via the registered RestartHandler.
- *                      When invoked from a chat turn the handler verifies the user
- *                      explicitly asked for it and persists a "Restarting…" memory;
- *                      otherwise it falls through to a plain restart request.
- *
- * @module actions/runtime
- */
-
+/** Runtime control and complete in-process introspection. */
 import crypto from "node:crypto";
 import {
   type Action,
@@ -46,15 +30,6 @@ const RUNTIME_OPS = [
 
 type RuntimeOp = (typeof RUNTIME_OPS)[number];
 
-// `list_actions` is accepted as an alias of `describe_actions` so older
-// inbound callers that wrote the previous name continue to work.
-const OP_ALIASES: Record<string, RuntimeOp> = {
-  list_actions: "describe_actions",
-  // `restart_agent` was the legacy name for the user-validated restart op;
-  // it now flows through `restart` like any other restart request.
-  restart_agent: "restart",
-};
-
 const RESTART_SOURCES = ["self-edit", "user", "plugin-install"] as const;
 type RestartSource = (typeof RESTART_SOURCES)[number];
 
@@ -73,8 +48,6 @@ type SelfStatusModule = (typeof SELF_STATUS_MODULES)[number];
 
 interface RuntimeParams {
   action?: string;
-  subaction?: string;
-  op?: string;
   view?: "summary" | "counts";
   filter?: string;
   reason?: string;
@@ -94,9 +67,6 @@ const RESTART_REQUEST_TERMS = getValidationKeywordTerms(
 function normalizeOp(value: string): RuntimeOp | null {
   if ((RUNTIME_OPS as readonly string[]).includes(value)) {
     return value as RuntimeOp;
-  }
-  if (Object.hasOwn(OP_ALIASES, value)) {
-    return OP_ALIASES[value];
   }
   return null;
 }
@@ -393,9 +363,9 @@ async function restartOp(
   }
 
   // When a chat message is present and was an explicit restart request, persist
-  // a memory entry (legacy RESTART_AGENT semantics). When invoked without a
+  // a memory entry. When invoked without a
   // message context (programmatic) or via an internal source, skip the memory
-  // write — that path is the legacy RESTART_RUNTIME semantics.
+  // write.
   const restart = requireRestartHandler();
   const isFromChat = isExplicitRestartRequest(message);
   const restartText = reason ? `Restarting… (${reason})` : "Restarting…";
@@ -495,14 +465,7 @@ export const runtimeAction: Action = {
       ((options as HandlerOptions | undefined)?.parameters as
         | RuntimeParams
         | undefined) ?? {};
-    const opRaw =
-      typeof params.action === "string"
-        ? params.action
-        : typeof params.subaction === "string"
-          ? params.subaction
-          : typeof params.op === "string"
-            ? params.op
-            : "";
+    const opRaw = typeof params.action === "string" ? params.action : "";
     const op = normalizeOp(opRaw);
     if (!op) {
       return {
@@ -536,7 +499,7 @@ export const runtimeAction: Action = {
       required: true,
       schema: {
         type: "string" as const,
-        enum: [...RUNTIME_OPS, ...Object.keys(OP_ALIASES)],
+        enum: [...RUNTIME_OPS],
       },
     },
     {
