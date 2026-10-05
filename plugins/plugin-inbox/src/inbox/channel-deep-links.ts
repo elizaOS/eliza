@@ -63,15 +63,34 @@ function buildTelegramLink(
       ? `https://t.me/${username}/${messageId}`
       : `https://t.me/${username}`;
   }
-  if (chatId) {
-    const normalized = chatId.replace(/^-100/, "");
-    if (normalized.length > 0) {
+  // The Telegram connector persists no `chatId`/`username` room metadata — the
+  // platform chat id lives only on `Room.channelId` (as `<chat.id>`, or
+  // `<chat.id>-<threadId>` for forum-topic rooms), which the fetcher overlays
+  // into `channelId`. Only the `-100…` supergroup/channel form has a public
+  // `t.me/c/<internal>` link; DM ids (positive) and basic-group ids (negative
+  // without `-100`) have none, and fabricating `t.me/c/<id>` for them yields a
+  // dead URL, so those stay null and the inbox keeps its `/inbox` fallback.
+  const rawChatId = chatId ?? telegramChatIdFromChannelId(room.channelId);
+  if (rawChatId) {
+    const normalized = rawChatId.replace(/^-100/, "");
+    if (normalized.length > 0 && rawChatId.startsWith("-100")) {
       return messageId
         ? `https://t.me/c/${normalized}/${messageId}`
         : `https://t.me/c/${normalized}`;
     }
   }
   return null;
+}
+
+/** Extract the numeric Telegram supergroup/channel id from a `Room.channelId`
+ * value (`-1001234567890` or a forum-topic `-1001234567890-45`), or null when
+ * the value is not a `-100…` Telegram chat id (another connector's channel id,
+ * a DM id, or a basic-group id — none of those have a public `t.me/c` link). */
+function telegramChatIdFromChannelId(channelId: unknown): string | null {
+  const value = str(channelId);
+  if (!value) return null;
+  const match = value.match(/^-100\d+/);
+  return match ? match[0] : null;
 }
 
 function buildIMessageLink(room: Record<string, unknown>): string | null {
@@ -99,7 +118,10 @@ function buildSlackLink(
   world: Record<string, unknown>,
   messageId?: string,
 ): string | null {
-  const teamId = str(world.teamId) || str(room.teamId);
+  // Slack rooms persist the workspace id as room metadata `serverId`
+  // (see plugin-slack `ensureRoomExists`); world metadata only nests it under
+  // `extra.teamId`. Resolve from any of the three, or the link is never built.
+  const teamId = str(world.teamId) || str(room.teamId) || str(room.serverId);
   const channelId = str(room.channelId);
   if (!teamId || !channelId) return null;
 
