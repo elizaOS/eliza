@@ -51,10 +51,10 @@ const record = mock(async (...args: unknown[]) => {
   };
   return releaseState;
 });
-const proof = mock((..._args: unknown[]) => {
-  calls.push("proof");
-  if (failure === "proof") throw Error("financial drift");
-  return { scheduleId: "sub_sched_owned" };
+const finalize = mock(async (..._args: unknown[]) => {
+  calls.push("finalize");
+  if (failure === "finalize") throw Error("financial drift");
+  return { command: { status: "FAILED" }, replayed: false };
 });
 const search = mock(async (input: { originalRequest: { request: { kind: string } } }) => {
   calls.push(`search:${input.originalRequest.request.kind}`);
@@ -85,6 +85,7 @@ mock.module(
       return releaseState;
     },
     recordAuthenticatedOrganizationScheduleEvidence: record,
+    finalizeOrganizationScheduleCompensation: finalize,
   }),
 );
 mock.module(resolve(import.meta.dir, "organization-schedule-attached-terms.ts"), () => ({
@@ -95,9 +96,6 @@ mock.module(resolve(import.meta.dir, "organization-schedule-attached-terms.ts"),
 }));
 mock.module(resolve(import.meta.dir, "organization-schedule-event-search.ts"), () => ({
   findOriginalScheduleEvent: search,
-}));
-mock.module(resolve(import.meta.dir, "organization-schedule-release-proof.ts"), () => ({
-  proveOrganizationScheduleRelease: proof,
 }));
 mock.module(resolve(import.meta.dir, "../stripe.ts"), () => ({
   requireStripe: () => ({
@@ -135,11 +133,12 @@ beforeEach(() => {
   observations = 0;
   release.mockClear();
   record.mockClear();
-  proof.mockClear();
+  finalize.mockClear();
   search.mockClear();
 });
 test("cleanup rechecks retained terms twice, marks once and preserves cancellation date", async () => {
-  await execute();
+  const result = await execute();
+  expect(result.resolution.command.status).toBe("FAILED");
   expect(observations).toBe(2);
   expect(calls.indexOf("retained")).toBeLessThan(calls.indexOf("stage"));
   expect(calls.lastIndexOf("retained")).toBeLessThan(calls.indexOf("mark"));
@@ -152,7 +151,8 @@ test("cleanup rechecks retained terms twice, marks once and preserves cancellati
     ],
   ]);
   expect(record.mock.calls).toEqual([[identity, claim, "release", { kind: "response", raw }]]);
-  expect(proof).toHaveBeenCalledTimes(1);
+  expect(finalize).toHaveBeenCalledTimes(1);
+  expect(calls.indexOf("record")).toBeLessThan(calls.indexOf("finalize"));
 });
 test("terms changing after staging block the irreversible release marker", async () => {
   failure = "drift";
@@ -171,10 +171,10 @@ test("lost release response never retries or invents receipt", async () => {
   await expect(execute()).rejects.toThrow("lost release response");
   expect(release).toHaveBeenCalledTimes(1);
   expect(record).not.toHaveBeenCalled();
-  expect(proof).not.toHaveBeenCalled();
+  expect(finalize).not.toHaveBeenCalled();
 });
-test("receipt or post-release proof failure cannot cause another release", async () => {
-  for (const step of ["record", "proof"]) {
+test("receipt or finalization failure cannot cause another release", async () => {
+  for (const step of ["record", "finalize"]) {
     failure = step;
     observations = 0;
     release.mockClear();
@@ -195,19 +195,26 @@ test("unknown release recovery finds original events and retains event receipt w
   expect(release).not.toHaveBeenCalled();
   expect(calls).not.toContain("mark");
   expect(calls).not.toContain("stage");
-  expect(proof).toHaveBeenCalledTimes(1);
+  expect(finalize).toHaveBeenCalledTimes(1);
 });
-test("observed response recovery uses supplemental event proof without replacing receipt", async () => {
+test("observed response recovery passes supplemental event evidence without replacing receipt", async () => {
   releaseState = { ...releaseBase, state: "observed" };
   const original = releaseState.receipt;
   await recover();
   expect(record).not.toHaveBeenCalled();
   expect(release).not.toHaveBeenCalled();
-  const input = proof.mock.calls[0]![0] as {
-    originalRelease: { originalReceipt: unknown; evidence: { kind: string } };
-  };
-  expect(input.originalRelease.originalReceipt).toBe(original);
-  expect(input.originalRelease.evidence.kind).toBe("event");
+  expect(releaseState.receipt).toBe(original);
+  expect(finalize.mock.calls[0]).toEqual([
+    identity,
+    claim,
+    {
+      createEvidence: { kind: "event", raw: { kind: "schedule_create" } },
+      releaseEvidence: { kind: "event", raw: { kind: "schedule_release" } },
+      rawCurrentSchedule: {},
+      rawSubscription: {},
+      rawCustomer: {},
+    },
+  ]);
 });
 test("unstarted release is not a lost-response recovery", async () => {
   releaseState = { ...releaseBase, state: "ready" };
@@ -221,5 +228,5 @@ test("missing history preserves uncertainty without provider writes", async () =
   await expect(recover()).rejects.toThrow("history unavailable");
   expect(release).not.toHaveBeenCalled();
   expect(record).not.toHaveBeenCalled();
-  expect(proof).not.toHaveBeenCalled();
+  expect(finalize).not.toHaveBeenCalled();
 });

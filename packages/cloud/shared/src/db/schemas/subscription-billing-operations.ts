@@ -126,6 +126,19 @@ export const billingSubscriptionCommands = pgTable(
       livePeriodEnd: string;
       observedAt: string;
     }>(),
+    organization_schedule_failure_evidence: jsonb("organization_schedule_failure_evidence").$type<{
+      kind: "original_unconfigured_schedule_released";
+      scheduleId: string;
+      quoteId: string;
+      createEffectId: string;
+      releaseEffectId: string;
+      createReceiptDigest: string;
+      releaseReceiptDigest: string;
+      snapshotDigest: string;
+      retainedTermsDigest: string;
+      sourceDigest: string;
+      observedAt: string;
+    }>(),
     error_code: text("error_code"),
     completed_at: timestamp("completed_at", { withTimezone: true }),
     result_subscription_id: uuid("result_subscription_id"),
@@ -211,6 +224,26 @@ export const billingSubscriptionCommands = pgTable(
       ],
       name: "billing_subscription_commands_result_revision_tenant_fk",
     }).onDelete("restrict"),
+    organization_schedule_failure_evidence_shape: check(
+      "organization_schedule_failure_evidence_shape",
+      sql` ${table.organization_schedule_failure_evidence} IS NULL OR (
+  ${table.kind}='downgrade' AND ${table.app_id} IS NULL AND ${table.billing_scope_id} IS NULL AND ${table.merchant_key}='platform'
+  AND ${table.status}='FAILED' AND ${table.error_code}='ORIGINAL_SCHEDULE_CREATE_COMPENSATED'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence})='object'
+  AND ${table.organization_schedule_failure_evidence}->>'kind'='original_unconfigured_schedule_released'
+  AND ${table.organization_schedule_failure_evidence}->>'scheduleId' ~ '^sub_sched_[A-Za-z0-9]+$'
+  AND ${table.organization_schedule_failure_evidence}->>'createReceiptDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'releaseReceiptDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'snapshotDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'retainedTermsDigest' ~ '^[a-f0-9]{64}$'
+  AND ${table.organization_schedule_failure_evidence}->>'sourceDigest' ~ '^[a-f0-9]{64}$'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'quoteId')='string'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'createEffectId')='string'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'releaseEffectId')='string'
+  AND jsonb_typeof(${table.organization_schedule_failure_evidence}->'observedAt')='string'
+  AND ${table.organization_schedule_failure_evidence}-ARRAY['kind','scheduleId','createReceiptDigest','releaseReceiptDigest','snapshotDigest','retainedTermsDigest','sourceDigest','quoteId','createEffectId','releaseEffectId','observedAt']='{}'::jsonb
+ ) IS TRUE`,
+    ),
     organization_upgrade_failure_evidence_shape: check(
       "organization_upgrade_failure_evidence_shape",
       sql`

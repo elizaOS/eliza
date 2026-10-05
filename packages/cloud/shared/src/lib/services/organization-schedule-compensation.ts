@@ -1,15 +1,15 @@
-/** Private cleanup of original partial creation. Does not retire the command or publish allowance. */
+/** Prove and retire original partial-create cleanup without changing the paid plan or allowance. */
 import { ElizaError } from "@elizaos/core";
 import {
+  finalizeOrganizationScheduleCompensation,
   markOrganizationScheduleCompensationDispatch,
   prepareOrganizationScheduleCompensation,
   readOrganizationScheduleCompensationSource,
   recordAuthenticatedOrganizationScheduleEvidence,
-} from "../../db/repositories/organization-schedule-effects";
+} from "../../db/repositories/organization-schedule-effects.ts";
 import { requireStripe } from "../stripe";
 import { assertOrganizationScheduleAttachedTermsCurrent } from "./organization-schedule-attached-terms";
 import { findOriginalScheduleEvent } from "./organization-schedule-event-search";
-import { proveOrganizationScheduleRelease } from "./organization-schedule-release-proof";
 
 type Identity = { organizationId: string; actorId: string; commandId: string };
 type Claim = { commandId: string; leaseToken: string; generation: number };
@@ -96,8 +96,15 @@ export async function compensateOrganizationScheduleCreate(
     started.id,
     { kind: "response", raw },
   );
-  const proof = await readReleasedState(first, effect, evidence, { kind: "response", raw }, stripe);
-  return { effect, proof };
+  const observation = await readReleasedState(
+    first,
+    effect,
+    evidence,
+    { kind: "response", raw },
+    stripe,
+  );
+  const resolution = await finalizeOrganizationScheduleCompensation(identity, claim, observation);
+  return { effect, resolution };
 }
 
 type Context = Awaited<ReturnType<typeof readOrganizationScheduleCompensationSource>>;
@@ -139,25 +146,7 @@ async function readReleasedState(
     {},
     options,
   );
-  const observedAt = new Date();
-  return proveOrganizationScheduleRelease({
-    originalCreate: {
-      originalReceipt: create.receipt,
-      originalRequest: originalRequestFor(create),
-      evidence: createEvidence,
-      observedAt,
-    },
-    originalRelease: {
-      originalReceipt: effect.receipt,
-      originalRequest: originalRequestFor(effect),
-      evidence: releaseEvidence,
-      observedAt,
-    },
-    rawCurrentSchedule,
-    rawSubscription,
-    rawCustomer,
-    originalTerms: context.retainedTerms,
-  });
+  return { createEvidence, releaseEvidence, rawCurrentSchedule, rawSubscription, rawCustomer };
 }
 
 /** Reconcile an already-started release with authenticated original events. Never POSTs.
@@ -206,6 +195,13 @@ export async function recoverOrganizationScheduleCompensation(identity: Identity
           release.id,
           releaseEvidence,
         );
-  const proof = await readReleasedState(context, effect, createEvidence, releaseEvidence, stripe);
-  return { effect, proof };
+  const observation = await readReleasedState(
+    context,
+    effect,
+    createEvidence,
+    releaseEvidence,
+    stripe,
+  );
+  const resolution = await finalizeOrganizationScheduleCompensation(identity, claim, observation);
+  return { effect, resolution };
 }
