@@ -4,7 +4,10 @@ import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 import type { proveOriginalConfiguredTarget } from "./organization-schedule-target-authority";
-import { observeScheduledTargetSubscription } from "./organization-schedule-target-observation";
+import {
+  observeScheduledTargetLiveSubscription,
+  observeScheduledTargetSubscription,
+} from "./organization-schedule-target-observation";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   validateCancellationCustomer,
@@ -14,6 +17,7 @@ import {
   resolveSubscriptionPlanDefinition,
   resolveSubscriptionProviderBinding,
 } from "./subscription-catalog";
+import { SUBSCRIPTION_PAYMENT_GRACE_MS } from "./subscription-payment-grace";
 
 const seconds = z.number().int().nonnegative().safe();
 const cents = z.number().int().positive().safe();
@@ -226,6 +230,7 @@ export function validatePaidRenewal(
   const subResult = z
     .object({
       latest_invoice: z.string(),
+      status: z.enum(["active", "past_due", "unpaid"]),
       trial_start: z.null(),
       trial_end: z.null(),
       cancel_at_period_end: z.literal(false),
@@ -274,6 +279,7 @@ export function validatePaidRenewal(
       );
   const start = new Date(line.period.start * 1000),
     end = new Date(line.period.end * 1000);
+  const historicalTarget = target !== undefined && end <= input.databaseNow;
   // A renewal paid after failed attempts settles dunning: the stored period is
   // still the one that came due, so adjacency below is unchanged.
   const dunning = source.status !== "active";
@@ -292,7 +298,7 @@ export function validatePaidRenewal(
       (start.getTime() !== target.phase.start.getTime() ||
         end.getTime() !== target.phase.end.getTime())) ||
     start > input.databaseNow ||
-    end <= input.databaseNow ||
+    (!historicalTarget && end <= input.databaseNow) ||
     (input.replayPeriod || input.initialPayment
       ? start.getTime() !== source.current_period_start.getTime() ||
         end.getTime() !== source.current_period_end.getTime()
@@ -309,8 +315,8 @@ export function validatePaidRenewal(
       environment: input.environment,
     });
   // This is structural validation of the new period; the old→new adjacency above remains authoritative.
-  const targetObservation = target
-    ? observeScheduledTargetSubscription({
+  const targetInput = target
+    ? {
         source,
         authority: target,
         organizationCustomerId: input.organizationCustomerId,
@@ -319,7 +325,14 @@ export function validatePaidRenewal(
         invoiceId: invoice.id,
         observedAt: input.databaseNow,
         retainedCanceledAt: source.canceled_at,
-      })
+      }
+    : null;
+  const historicalObservation =
+    historicalTarget && targetInput
+      ? observeScheduledTargetLiveSubscription(targetInput, subResult.data.status)
+      : null;
+  const targetObservation = targetInput
+    ? (historicalObservation ?? observeScheduledTargetSubscription(targetInput))
     : null;
   const observed =
     targetObservation ??
@@ -339,9 +352,16 @@ export function validatePaidRenewal(
       requireScheduled: false,
       allowRetainedCanceledAt: source.canceled_at,
     });
-  const subscriptionItemId =
-    targetObservation?.subscriptionItemId ?? source.stripe_subscription_item_id;
-  if (subResult.data.latest_invoice !== invoice.id)
+  const subscriptionItemId = historicalObservation
+    ? line.subscription_item
+    : (targetObservation?.subscriptionItemId ?? source.stripe_subscription_item_id);
+  if (
+    historicalObservation
+      ? subResult.data.latest_invoice === invoice.id ||
+        !/^si_[A-Za-z0-9]+$/.test(line.subscription_item) ||
+        invoice.status_transitions.paid_at * 1000 > input.databaseNow.getTime()
+      : subResult.data.latest_invoice !== invoice.id
+  )
     renewalUnavailable("payment_invoice_or_catalog_identity_mismatch");
   if (!source.stripe_subscription_id || !source.stripe_customer_id || !subscriptionItemId)
     renewalUnavailable("missing_payment_owner");
@@ -362,11 +382,25 @@ export function validatePaidRenewal(
       end,
     },
   });
+  const laterDunning = historicalObservation && historicalObservation.providerStatus !== "active";
+  const graceExpiresAt = laterDunning
+    ? new Date(end.getTime() + SUBSCRIPTION_PAYMENT_GRACE_MS)
+    : null;
+  const status: "active" | "grace" | "past_due" | "unpaid" = !laterDunning
+    ? "active"
+    : historicalObservation.providerStatus === "unpaid"
+      ? "unpaid"
+      : input.databaseNow < graceExpiresAt!
+        ? "grace"
+        : "past_due";
   return {
     invoiceId: invoice.id,
     planKey: plan.key,
     subscriptionItemId,
     scheduledTarget: target !== undefined,
+    status,
+    dunningStartedAt: laterDunning ? end : null,
+    graceExpiresAt,
     start,
     end,
     amount: plan.allowance.amountUsd,

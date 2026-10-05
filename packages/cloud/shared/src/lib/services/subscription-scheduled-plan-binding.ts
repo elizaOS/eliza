@@ -10,6 +10,7 @@ import type { BillingSubscriptionCommand } from "../../db/schemas/subscription-b
 import { proveOriginalConfiguredAuthority } from "./organization-schedule-target-authority";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import { renewalUnavailable } from "./stripe-paid-renewal-validation";
+import { SUBSCRIPTION_PAYMENT_GRACE_MS } from "./subscription-payment-grace";
 
 function reject(): never {
   return renewalUnavailable("scheduled_paid_plan_binding_unverified");
@@ -72,11 +73,14 @@ export function proveScheduledPaidPlanBinding(input: {
     paidIndex < 2 ||
     !paid ||
     source.plan_key !== authority.targetPlanKey ||
-    paid.status !== "active" ||
+    !(paid.status === "active"
+      ? paid.dunning_started_at === null && paid.grace_expires_at === null
+      : ["grace", "past_due", "unpaid"].includes(paid.status) &&
+        paid.dunning_started_at?.getTime() === authority.phase.end.getTime() &&
+        paid.grace_expires_at?.getTime() ===
+          authority.phase.end.getTime() + SUBSCRIPTION_PAYMENT_GRACE_MS) ||
     paid.cancel_at_period_end ||
     paid.ended_at !== null ||
-    paid.dunning_started_at !== null ||
-    paid.grace_expires_at !== null ||
     paid.current_period_start.getTime() !== authority.phase.start.getTime() ||
     paid.current_period_end.getTime() !== authority.phase.end.getTime()
   )
