@@ -92,6 +92,7 @@ export function isBootingAgentProbeError(err: unknown): boolean {
 async function interpretAnsweredFirstRunStatus(
   client: ExistingFirstRunProbeClient,
   status: { complete: boolean },
+  surfaceConfigFailure: boolean,
 ): Promise<ExistingFirstRunProbeResult | null> {
   if (status.complete) {
     return {
@@ -100,9 +101,17 @@ async function interpretAnsweredFirstRunStatus(
     } satisfies ExistingFirstRunProbeResult;
   }
 
-  // error-policy:J4 same probe semantics — no readable config means "no
-  // existing install detected", so onboarding proceeds.
-  const config = await client.getConfig().catch(() => null);
+  let config: Record<string, unknown> | null | undefined;
+  try {
+    config = await client.getConfig();
+  } catch (error) {
+    if (surfaceConfigFailure) throw error;
+    // error-policy:J4 a fresh install has no committed local runtime to
+    // preserve, so an unavailable config probe retains the fast onboarding
+    // fallback. Committed runtimes surface the fault above instead of being
+    // misclassified as a new install.
+    return null;
+  }
   if (!hasPersistedExistingInstallConfig(config)) {
     return null;
   }
@@ -207,20 +216,28 @@ export async function detectExistingFirstRunConnection(args: {
         continue;
       }
 
-      return interpretAnsweredFirstRunStatus(args.client, status);
+      return interpretAnsweredFirstRunStatus(
+        args.client,
+        status,
+        args.waitForBootingAgent === true,
+      );
     }
   };
-  const result = await Promise.race([
-    probe(),
-    new Promise<typeof timeoutToken>((resolve) => {
-      timeoutId = setTimeout(() => {
-        timedOut = true;
-        resolve(timeoutToken);
-      }, args.timeoutMs);
-    }),
-  ]);
-  if (timeoutId !== null) {
-    clearTimeout(timeoutId);
+  let result: ExistingFirstRunProbeResult | null | typeof timeoutToken;
+  try {
+    result = await Promise.race([
+      probe(),
+      new Promise<typeof timeoutToken>((resolve) => {
+        timeoutId = setTimeout(() => {
+          timedOut = true;
+          resolve(timeoutToken);
+        }, args.timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
   }
 
   return result === timeoutToken ? null : result;
