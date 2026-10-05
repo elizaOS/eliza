@@ -269,3 +269,50 @@ immutable, tenant-bound observations; atomic receipt insertion preserves exact
 replay and rejects late backfill. These records are not payment proof: deferred
 collection/allocation and allowance publication remain unavailable until separately
 qualified. Current provider invoices never replace original signed event bodies.
+
+Private retained-invoice discovery includes historical and terminal subscription
+sources without requiring a funded period or current item. Claims reuse the
+existing receipt lease/counter, primary database clock and capped retry delay;
+organization deletion and billing fences are rechecked after lock acquisition.
+The selector/claim boundary does not run provider reads or publish allowance.
+
+Migration 0531 retains versioned balance observations under the original invoice
+receipt. The private observer reads outside locks, then rechecks the organization,
+source fence and live receipt lease before atomic append and retry release. The
+claim token replays its first durable result without touching a newer lease.
+Observations never mark financial application complete or grant allowance. The
+existing authenticated Stripe maintenance endpoint invokes an independent lane of
+at most five original receipts under one 20-second read-only provider deadline.
+Expected observation failures retain receipt-attributed incidents before retry
+release; database failures fail the lane visibly. Deploy migrations through 0533
+before enabling this handler. Migration 0532 preserves earlier balance rows and
+admits the collecting-capture shape under the same immutable journal and receipt
+lease. Only retained original positive starting balance and amount due select
+capture reads; later provider pointers cannot promote a deferred original.
+Capture failures remain retryable incidents and never fall back to balance-only
+success. Complete captured payment evidence does not allocate historic debt or
+authorize allowance; allocation proof and policy remain open.
+
+The private `traceOriginalInvoiceDebt` calculation traces full-debit carry chains
+through retained originals and complete ledger movements. It preserves each
+invoice's net new contribution, subscription and original period; a carried
+starting balance is never counted as new debt. Repeated equivalent events do not
+duplicate components. Missing/conflicting originals, reversed or partial
+applications, unsupported credit movements and broken arithmetic fail explicitly.
+This is provenance evidence only: provider-shape qualification, fresh capture and
+original-invoice observations, durable attribution, source fencing and allowance
+policy remain required before financial publication. The original-invoice maintenance lane now uses this calculation through the
+combined current-observation path described below.
+
+`observeOriginalInvoiceDebt` brackets two current reads of every traced original
+with repeated authenticated collecting-capture observations. Current projected
+collector and original invoice fields must still equal retained facts. It reuses
+the read-only absolute-deadline transport with four concurrent component readers,
+awaits outstanding readers on failure, and returns only a complete, consistent
+observation. Provider changes and private response errors reject. Migration 0533 retains this combined evidence in the existing receipt journal.
+Publication rechecks original receipts and locks the billing fences of all
+contributing subscriptions; unrelated sources do not block it. The existing
+maintenance lane records unsupported traces and missing originals as incidents.
+Earlier balance/capture versions remain immutable and replayable. This does not
+grant allowance; repeated reads are not an atomic provider snapshot. Deploy
+migration 0533 before the updated maintenance handler.

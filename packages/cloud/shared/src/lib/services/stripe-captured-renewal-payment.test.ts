@@ -7,6 +7,7 @@ import {
   createRenewalSettlementDetails,
 } from "./renewal-settlement-details";
 import { settlementDigest } from "./settlement-digest";
+import { validateInvoiceCapture } from "./stripe-invoice-capture";
 import { validateSettledRenewalPayment as prove } from "./stripe-paid-renewal-validation";
 
 function fixture() {
@@ -991,4 +992,94 @@ test("initial captured settlement retains its separate positive-payment contract
   expect(() =>
     createRenewalSettlementDetails({ payment: null, charge: null }, details, authority),
   ).toThrow();
+});
+
+function carriedCapture() {
+  const x = fixture();
+  x.invoice.starting_balance = 200;
+  x.invoice.amount_due = 3200;
+  x.invoice.amount_paid = 3200;
+  x.paymentIntent.amount = 3200;
+  x.paymentIntent.amount_received = 3200;
+  x.charge.amount = 3200;
+  x.charge.amount_captured = 3200;
+  return x;
+}
+test("invoice capture includes carried money without granting settlement or allocating debt", () => {
+  const x = carriedCapture();
+  const result = validateInvoiceCapture(x);
+  expect(result.payment.amount_received).toBe(3200);
+  expect(result.charge.amount_captured).toBe(3200);
+  expect(Object.keys(result).sort()).toEqual(["charge", "payment"]);
+  expect(() => prove(x)).toThrow();
+});
+for (const [name, mutate] of [
+  [
+    "wrong object",
+    (x: ReturnType<typeof fixture>) => {
+      x.invoice.object = "not_an_invoice";
+    },
+  ],
+  [
+    "invoice paid amount",
+    (x: ReturnType<typeof fixture>) => {
+      x.invoice.amount_paid = 3000;
+    },
+  ],
+  [
+    "charge amount",
+    (x: ReturnType<typeof fixture>) => {
+      x.charge.amount_captured = 3000;
+    },
+  ],
+  [
+    "payment amount",
+    (x: ReturnType<typeof fixture>) => {
+      x.paymentIntent.amount_received = 3000;
+    },
+  ],
+  [
+    "foreign charge",
+    (x: ReturnType<typeof fixture>) => {
+      x.charge.invoice = "in_foreign";
+    },
+  ],
+  [
+    "refund",
+    (x: ReturnType<typeof fixture>) => {
+      x.charge.amount_refunded = 1;
+    },
+  ],
+  [
+    "dispute",
+    (x: ReturnType<typeof fixture>) => {
+      x.charge.disputed = true;
+    },
+  ],
+  [
+    "out of band",
+    (x: ReturnType<typeof fixture>) => {
+      x.invoice.paid_out_of_band = true;
+    },
+  ],
+  [
+    "unpaid status",
+    (x: ReturnType<typeof fixture>) => {
+      x.invoice.status = "open";
+    },
+  ],
+] as const)
+  test(`capture-only validation rejects ${name} on a debt-bearing invoice`, () => {
+    const x = carriedCapture();
+    mutate(x);
+    expect(() => validateInvoiceCapture(x)).toThrow();
+  });
+test("capture-only normalization excludes provider private fields", () => {
+  const x = carriedCapture();
+  const result = validateInvoiceCapture({
+    ...x,
+    charge: { ...x.charge, receipt_email: "private@example.test", metadata: { secret: "private" } },
+    paymentIntent: { ...x.paymentIntent, client_secret: "private" },
+  });
+  expect(JSON.stringify(result)).not.toContain("private");
 });

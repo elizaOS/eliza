@@ -16,7 +16,7 @@
 		"declaration": false,
 		"outDir": "./dist",
 		"rootDir": "../../../..",
-		"types": ["bun-types"],
+		"types": ["bun-types", "vite/client"],
 		"paths": {
 			"@elizaos/plugin-assistant/*": [
 				"../../../../plugins/plugin-assistant/src/*"

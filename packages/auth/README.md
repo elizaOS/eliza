@@ -41,7 +41,9 @@ LOGIN_TEST_DATABASE_URL=postgres://postgres:password@127.0.0.1:5432/postgres bun
 The PostgreSQL lane requires a loopback server and an administrator able to create
 an isolated database and role. It fails when configuration is missing. CI runs
 `test:integration` for Chromium/passkey and PostgreSQL tenant-isolation contracts.
-The default tests also verify the built deployment package.
+The default tests also verify the built deployment package. The login tests use
+local OpenSSL to generate ephemeral attestation certificates and verify that
+untrusted chains cannot trigger revocation requests.
 
 ## Native enrollment
 

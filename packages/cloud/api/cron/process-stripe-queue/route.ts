@@ -6,6 +6,7 @@ import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-erro
 import { drain, queueLength } from "@elizaos/cloud-shared/lib/redis-queue";
 import { recoverOrganizationSchedules } from "@elizaos/cloud-shared/lib/services/organization-schedule-maintenance";
 import { recoverOrganizationUpgrades } from "@elizaos/cloud-shared/lib/services/organization-upgrade-maintenance";
+import { recoverOriginalInvoiceObservations } from "@elizaos/cloud-shared/lib/services/original-invoice-maintenance";
 import { recoverRenewalAdjustmentObservations } from "@elizaos/cloud-shared/lib/services/renewal-adjustment-maintenance";
 import { recoverOrganizationSubscriptionCancellations } from "@elizaos/cloud-shared/lib/services/subscription-cancellation";
 import { recoverStaleSubscriptionCheckouts } from "@elizaos/cloud-shared/lib/services/subscription-checkout";
@@ -80,6 +81,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       recoverMissedSubscriptionEvents(),
       recoverStaleSubscriptionCheckouts(10),
       recoverRenewalAdjustmentObservations(),
+      recoverOriginalInvoiceObservations(),
     ]);
     const [
       queue,
@@ -90,6 +92,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       recovery,
       checkouts,
       adjustments,
+      originalInvoices,
     ] = lanes;
     if (
       queue.status !== "fulfilled" ||
@@ -99,7 +102,8 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       notices.status !== "fulfilled" ||
       recovery.status !== "fulfilled" ||
       checkouts.status !== "fulfilled" ||
-      adjustments.status !== "fulfilled"
+      adjustments.status !== "fulfilled" ||
+      originalInvoices.status !== "fulfilled"
     ) {
       const names = [
         "queue",
@@ -110,6 +114,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
         "recovery",
         "checkouts",
         "adjustments",
+        "originalInvoices",
       ];
       const failures = lanes.flatMap((lane, index) =>
         lane.status === "rejected" ? [names[index]] : [],
@@ -153,6 +158,7 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       recovery: recovery.value,
       checkouts: checkouts.value,
       adjustments: adjustments.value,
+      originalInvoices: originalInvoices.value,
     });
   } catch (error) {
     // error-policy:J1 authenticated cron failures retain a structured retryable boundary.
