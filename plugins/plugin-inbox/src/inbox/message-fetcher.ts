@@ -905,7 +905,11 @@ function metadataForRoom(room: Room | undefined): Record<string, unknown> {
     channelId: room.channelId ?? metadata.channelId,
     roomId: room.id,
     roomName: room.name,
-    serverId: room.serverId,
+    // Same precedence for the server id: Slack stamps it only as room metadata
+    // (`serverId: teamId` in ensureRoomExists) while Discord persists the
+    // Room.serverId column — an unset column must not clobber the metadata
+    // copy, or the inbox Slack deep link loses its workspace id.
+    serverId: room.serverId ?? metadata.serverId,
   };
 }
 

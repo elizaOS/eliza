@@ -102,4 +102,104 @@ describe("fetchChatMessages deep links", () => {
         "https://app.slack.com/client/T0456/C0123/thread/C0123-1700000000.000100",
     });
   });
+
+  it("links Slack and Telegram from the exact rooms those connectors persist", async () => {
+    // plugin-slack ensureRoomExists: team id only as room metadata `serverId`,
+    // Room.serverId column unset; the workspace world nests teamId in `extra`.
+    // plugin-telegram ensureConnection: Room.channelId = <chat.id>, and no
+    // username/chatId room metadata at all.
+    const TELEGRAM_ROOM = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaabbb" as UUID;
+    const SLACK_ROOM2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbacc" as UUID;
+    const SLACK_WORLD2 = "cccccccc-cccc-4ccc-8ccc-cccccccccdcc" as UUID;
+    const rooms: Room[] = [
+      {
+        id: SLACK_ROOM2,
+        name: "eng",
+        source: "slack",
+        type: ChannelType.GROUP,
+        channelId: "C0123",
+        worldId: SLACK_WORLD2,
+        metadata: {
+          source: "slack",
+          accountId: "default",
+          slackChannelType: "channel",
+          serverId: "T0456",
+          slack: { accountId: "default", teamId: "T0456", channelId: "C0123" },
+        },
+      },
+      {
+        id: TELEGRAM_ROOM,
+        name: "Private Supergroup",
+        source: "telegram",
+        type: ChannelType.GROUP,
+        channelId: "-1001234567890",
+      },
+    ];
+    const worlds: World[] = [
+      {
+        id: SLACK_WORLD2,
+        agentId: AGENT,
+        messageServerId: SLACK_WORLD2,
+        metadata: {
+          type: "slack",
+          source: "slack",
+          accountId: "default",
+          extra: { accountId: "default", teamId: "T0456", domain: "team" },
+        },
+      },
+    ];
+    const memory = (
+      id: string,
+      roomId: UUID,
+      source: string,
+      platformId: string,
+    ): Memory => ({
+      id: id as UUID,
+      agentId: AGENT,
+      entityId: SENDER,
+      roomId,
+      createdAt: 1_700_000_000_000,
+      content: { text: `hello from ${source}`, source },
+      metadata: { type: "message", messageIdFull: platformId },
+    });
+    const memories = [
+      memory(
+        "dddddddd-dddd-4ddd-8ddd-dddddddddeee",
+        SLACK_ROOM2,
+        "slack",
+        "1700000000.000100",
+      ),
+      memory(
+        "eeeeeeee-eeee-4eee-8eee-eeeeeeeeefff",
+        TELEGRAM_ROOM,
+        "telegram",
+        "42",
+      ),
+    ];
+    const runtime = {
+      agentId: AGENT,
+      getRoomsForParticipant: async () => [SLACK_ROOM2, TELEGRAM_ROOM],
+      getRoomsByIds: async (ids: UUID[]) =>
+        rooms.filter((room) => ids.includes(room.id)),
+      getMemoriesByRoomIds: async ({ roomIds }: { roomIds: UUID[] }) =>
+        memories.filter((m) => roomIds.includes(m.roomId)),
+      getParticipantsForRooms: async (ids: UUID[]) =>
+        ids.map((roomId) => ({ roomId, entityIds: [AGENT, SENDER] })),
+      getWorldsByIds: async (ids: UUID[]) =>
+        worlds.filter((world) => ids.includes(world.id)),
+    } as unknown as IAgentRuntime;
+
+    const messages = await fetchChatMessages(runtime, {
+      sources: ["slack", "telegram"],
+      limit: 10,
+    });
+
+    expect(
+      Object.fromEntries(messages.map((m) => [m.source, m.deepLink])),
+    ).toEqual({
+      slack:
+        "https://app.slack.com/client/T0456/C0123/thread/C0123-1700000000.000100",
+      telegram: "https://t.me/c/1234567890/42",
+    });
+  });
 });
