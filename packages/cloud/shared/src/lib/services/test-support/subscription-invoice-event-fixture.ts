@@ -23,7 +23,7 @@ export function invoiceEventFixture() {
     collection_method: "charge_automatically",
     currency: "usd",
     amount_paid: 0,
-    amount_due: 20,
+    amount_due: 0,
     total: 20,
     subtotal: 20,
     amount_remaining: 0,

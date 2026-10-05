@@ -4,6 +4,7 @@ import {
   ownerAlarmsAction,
   ownerRemindersAction,
 } from "../../../../plugin-personal-assistant/src/actions/owner-surfaces";
+import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task";
 import { preferredOperationNames } from "../../runtime/action-retrieval";
 import { retrieveContextualPlannerActions } from "./action-surface";
 
@@ -99,12 +100,33 @@ it("loads only reminder creation for the actual scheduled-reminder intent", () =
   ]);
 });
 
+it("loads reminder creation for the captured one-shot set intent", () => {
+  const result = retrieveContextualPlannerActions({
+    actions: [...actions, ...promoteSubactionsToActions(scheduledTaskAction)],
+    query: "Remind me here to stretch my shoulders in two minutes.",
+    intents: [
+      "Set a one-shot reminder about two minutes ahead to remind the user to stretch their shoulders in this chat",
+    ],
+    contexts: ["general", "tasks", "productivity"],
+  });
+  expect(result.actions.map((action) => action.name)).toEqual([
+    "OWNER_REMINDERS_CREATE",
+  ]);
+});
+
 it.each([
   ["schedule a reminder", ["OWNER_REMINDERS_CREATE"]],
   ["read my reminder schedule", ["OWNER_REMINDERS_LIST"]],
   ["update the reminder schedule", ["OWNER_REMINDERS_UPDATE"]],
   ["reschedule the reminder", []],
   ["explain how to schedule a reminder", []],
+  ["set a reminder for noon", ["OWNER_REMINDERS_CREATE"]],
+  ["set a one-shot reminder for noon", ["OWNER_REMINDERS_CREATE"]],
+  ["set the reminder message to hello", []],
+  ["set a reminder's message to hello", []],
+  ["set a reminder message to hello", []],
+  ["set my timezone", []],
+  ["explain how to set a reminder", []],
 ])("keeps schedule operation meaning for %s", (query, expected) => {
   expect([
     ...preferredOperationNames(query, [

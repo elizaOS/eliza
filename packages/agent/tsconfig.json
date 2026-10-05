@@ -9,7 +9,7 @@
     "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
-    "types": ["node", "bun", "react", "react-dom"],
+    "types": ["node", "bun", "react", "react-dom", "vite/client"],
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,

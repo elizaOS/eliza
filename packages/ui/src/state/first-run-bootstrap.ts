@@ -59,6 +59,15 @@ function hasPersistedExistingInstallConfig(
 /** Delay between existing-install probes while waiting for a booting agent. */
 const BOOTING_AGENT_RETRY_MS = 1_000;
 
+export class ExistingFirstRunProbeTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(
+      `Existing-install probe timed out after ${timeoutMs}ms for a committed runtime`,
+    );
+    this.name = "ExistingFirstRunProbeTimeoutError";
+  }
+}
+
 /**
  * True when an existing-install probe failure means "the committed on-device
  * agent is still coming up", so the wait-for-boot loop should keep retrying
@@ -154,10 +163,11 @@ export async function detectExistingFirstRunConnection(args: {
    * cold boot takes ~30s on a low-power phone — far longer than the single-shot
    * probe — so a still-booting agent must be waited out, not read as "no
    * install". When set, an unreachable probe (see {@link isBootingAgentProbeError})
-   * is retried until the agent answers or the outer timeout fires; a genuine
-   * probe fault (auth/5xx/malformed) is rethrown for the caller to surface. A
-   * fresh install leaves this unset and keeps the fast single-shot: any failure
-   * there legitimately means "not installed", and re-onboarding is correct.
+   * is retried until the agent answers or the outer timeout fires. A genuine
+   * probe fault (auth/5xx/malformed) or committed-runtime timeout is rethrown
+   * for the caller to preserve the install and surface recovery. A fresh
+   * install leaves this unset and keeps the fast single-shot: any failure there
+   * legitimately means "not installed", and re-onboarding is correct.
    */
   waitForBootingAgent?: boolean;
 }): Promise<ExistingFirstRunProbeResult | null> {
@@ -240,5 +250,11 @@ export async function detectExistingFirstRunConnection(args: {
     }
   }
 
-  return result === timeoutToken ? null : result;
+  if (result === timeoutToken) {
+    if (args.waitForBootingAgent) {
+      throw new ExistingFirstRunProbeTimeoutError(args.timeoutMs);
+    }
+    return null;
+  }
+  return result;
 }
