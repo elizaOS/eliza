@@ -1821,10 +1821,10 @@ async function hasRecentAssistantMemory(
   }
 }
 /**
- * Reports whether a visible assistant reply exists in the room since
- * `sinceMs`. A failed storage read rejects with `ElizaError`
+ * Reports whether the recent 12-message read contains a visible assistant
+ * reply at or after `sinceMs - 2000`. A failed storage read rejects with `ElizaError`
  * (`ASSISTANT_MEMORY_READ_FAILED`) instead of resolving `false`: `false`
- * always means a confirmed "no recent reply", and callers must not catch the
+ * means no matching reply in that read, and callers must not catch the
  * rejection and substitute `false`.
  */
 export async function hasRecentVisibleAssistantMemorySince(
@@ -1837,8 +1837,9 @@ export async function hasRecentVisibleAssistantMemorySince(
   );
 }
 /**
- * Returns the most recent visible assistant reply text since `sinceMs`, or
- * `null` only when a successful read confirms no such reply. A storage read
+ * Returns the newest visible assistant reply text at or after
+ * `sinceMs - slackMs` in the recent 12-message read, or `null` when that
+ * successful read contains no matching reply. A storage read
  * failure rejects with `ElizaError` (`ASSISTANT_MEMORY_READ_FAILED`) rather
  * than degrading to `null`, which would read as "no prior reply".
  */
@@ -1896,8 +1897,8 @@ export function compareAssistantTurnRecencyDescending(
 }
 /**
  * Reads the most recent visible (non-internal) assistant turn at or after
- * `sinceMs - slackMs`, newest first, as `{ id, text }`. Resolves `null` only
- * when a successful read confirms no such turn; a failed storage read rejects
+ * `sinceMs - slackMs` among the recent 12 messages, newest first, as
+ * `{ id, text }`. Resolves `null` when that successful read has no match; a failed storage read rejects
  * with `ElizaError` (`ASSISTANT_MEMORY_READ_FAILED`) wrapping the cause.
  * Fail closed is the contract: a fabricated "no prior reply" would regenerate
  * and re-send a previous turn's answer on rapid-fire retries. Reachable by
