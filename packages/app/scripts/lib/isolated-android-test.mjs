@@ -37,6 +37,7 @@ export async function runIsolatedAndroidTest({
   packageName,
   testPackage = `${packageName}.test`,
   runner = "androidx.test.runner.AndroidJUnitRunner",
+  additionalInstrumentationRunners = [],
   testClass,
   testClasses,
   testMethod,
@@ -63,6 +64,20 @@ export async function runIsolatedAndroidTest({
   cleanupVariant,
 }) {
   assert.match(serial ?? "", /^emulator-\d+$/);
+  assert.ok(
+    Array.isArray(additionalInstrumentationRunners),
+    "Explicit additional runner list required",
+  );
+  const admittedRunners = [runner, ...additionalInstrumentationRunners];
+  assert.equal(
+    new Set(admittedRunners).size,
+    admittedRunners.length,
+    "Duplicate instrumentation runner",
+  );
+  for (const name of admittedRunners) assert.match(name ?? "", packagePattern);
+  const runnerEvidence = admittedRunners
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => ({ name, targetPackage: packageName }));
   assert.ok(
     testClasses === undefined || testClass === undefined,
     "Choose testClass or testClasses",
@@ -249,8 +264,8 @@ export async function runIsolatedAndroidTest({
             signal,
             timeout: commandTimeoutMs,
           }),
-        ),
-        [{ name: runner, targetPackage: packageName }],
+        ).sort((a, b) => a.name.localeCompare(b.name)),
+        runnerEvidence,
         "Instrumentation target or runner mismatch",
       );
     }
