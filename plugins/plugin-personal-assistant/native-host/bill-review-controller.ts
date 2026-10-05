@@ -183,8 +183,10 @@ export class LatestOutcomeController {
         /^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}$/.test(value)
       )
         id = value;
-    } catch {
-      /* An unavailable result is not an active task. */
+    } catch (error) {
+      // A failed lookup provides no evidence that the active task is absent.
+      if (ticket === this.generation) throw error;
+      return;
     }
     if (ticket === this.generation) receive(id);
   }

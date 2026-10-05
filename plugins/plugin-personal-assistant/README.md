@@ -72,5 +72,6 @@ forces observation-only reconciliation; null, failed or unknown observations nev
 clear that marker or trigger automatic resubmission. The host scopes storage to owner,
 account and bill and supplies authorization, provider matching, UI stages and copy.
 `LatestOutcomeController` admits task identifiers and fences stale read-only results.
+Current lookup failures reject for host error reporting without clearing the last result.
 These clients do not grant payment authority or start work without an explicit call.
 Run `npm run test:bill-host` for their sequencing and uncertainty regressions.
