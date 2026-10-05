@@ -284,5 +284,11 @@ Observations never mark financial application complete or grant allowance. The
 existing authenticated Stripe maintenance endpoint invokes an independent lane of
 at most five original receipts under one 20-second read-only provider deadline.
 Expected observation failures retain receipt-attributed incidents before retry
-release; database failures fail the lane visibly. Deploy migrations through 0531
-before enabling this handler. Collection/allocation proof and policy remain open.
+release; database failures fail the lane visibly. Deploy migrations through 0532
+before enabling this handler. Migration 0532 preserves earlier balance rows and
+admits the collecting-capture shape under the same immutable journal and receipt
+lease. Only retained original positive starting balance and amount due select
+capture reads; later provider pointers cannot promote a deferred original.
+Capture failures remain retryable incidents and never fall back to balance-only
+success. Complete captured payment evidence does not allocate historic debt or
+authorize allowance; allocation proof and policy remain open.

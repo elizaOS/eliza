@@ -18,6 +18,7 @@ import type {
   GenericBillingCommandPayload,
   GenericBillingCommandResult,
 } from "../../lib/services/generic-billing-command-types";
+import type { observeRetainedCollectingInvoiceCapture } from "../../lib/services/retained-collecting-invoice-capture";
 import type { observeRetainedInvoiceBalance } from "../../lib/services/retained-invoice-balance-observation";
 import type { CheckoutContract } from "../../lib/services/subscription-checkout-contract";
 import type { SubscriptionInvoiceEventEvidence } from "../../lib/services/subscription-invoice-event-evidence";
@@ -741,7 +742,10 @@ export const subscriptionInvoiceObservations = pgTable(
     version: integer("version").notNull(),
     previous_id: uuid("previous_id"),
     observation: jsonb("observation")
-      .$type<Awaited<ReturnType<typeof observeRetainedInvoiceBalance>>>()
+      .$type<
+        | Awaited<ReturnType<typeof observeRetainedInvoiceBalance>>
+        | Awaited<ReturnType<typeof observeRetainedCollectingInvoiceCapture>>
+      >()
       .notNull(),
     observed_at: timestamp("observed_at", { withTimezone: true }).notNull(),
     recorded_at: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),

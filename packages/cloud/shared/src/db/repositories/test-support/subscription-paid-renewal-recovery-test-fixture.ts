@@ -32,6 +32,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
   const requests: string[] = [];
   const mutations = new Map<string, (body: URLSearchParams) => object>();
   let writes = 0;
+  let legacyObservation: Record<string, unknown>;
   let beforeChargeResponse: (() => Promise<void>) | null = null;
   let beforeInvoiceResponse: (() => Promise<void>) | null = null;
   const server = createServer((request, response) => {
@@ -130,6 +131,19 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       "utf8",
     );
     for (const statement of observationMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await database.exec(statement);
+    // Persist a genuine pre-upgrade row before installing the new shape constraint.
+    const legacy = await prepareInvoiceObservation();
+    await legacy.journal.observeAndRecordOriginalInvoice(legacy.input, legacy.stripe);
+    legacyObservation = (await legacy.rows())[0]!;
+    const captureMigration = await readFile(
+      new URL(
+        "../../migrations/0532_subscription_invoice_capture_observations.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    for (const statement of captureMigration.split("--> statement-breakpoint"))
       if (statement.trim()) await database.exec(statement);
     service = await import("../../../lib/services/subscription-reconciliation");
   });
@@ -1393,16 +1407,36 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       );
     });
 
-  async function retainUnfunded(originalDebit = true) {
+  async function retainUnfunded(originalDebit = true, collecting = false) {
     const f = await seed();
-    Object.assign(f.invoice, {
-      amount_paid: 0,
-      amount_due: 0,
-      payment_intent: null,
-      charge: null,
-      starting_balance: 0,
-      ending_balance: f.invoice.total,
-    });
+    Object.assign(
+      f.invoice,
+      collecting
+        ? {
+            amount_paid: f.invoice.total + 20,
+            amount_due: f.invoice.total + 20,
+            starting_balance: 20,
+            ending_balance: 0,
+          }
+        : {
+            amount_paid: 0,
+            amount_due: 0,
+            payment_intent: null,
+            charge: null,
+            starting_balance: 0,
+            ending_balance: f.invoice.total,
+          },
+    );
+    if (collecting) {
+      Object.assign(f.paymentIntent, {
+        amount: f.invoice.total + 20,
+        amount_received: f.invoice.total + 20,
+      });
+      Object.assign(f.charge, {
+        amount: f.invoice.total + 20,
+        amount_captured: f.invoice.total + 20,
+      });
+    }
     objects.set("/v1/account", { id: "acct_original", object: "account" });
     const event: Stripe.InvoicePaidEvent = JSON.parse(
       JSON.stringify({
@@ -1443,8 +1477,8 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       operations,
     };
   }
-  async function prepareInvoiceObservation(beforeRead?: () => Promise<void>) {
-    const original = await retainUnfunded();
+  async function prepareInvoiceObservation(beforeRead?: () => Promise<void>, collecting = false) {
+    const original = await retainUnfunded(true, collecting);
     const { f, owner, recovery } = original;
     const claim = (await recovery.claimOriginalInvoiceEvent(owner))!;
     const posting = {
@@ -1454,9 +1488,9 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       invoice: f.invoice.id,
       livemode: false,
       currency: "usd",
-      type: "invoice_too_small",
-      amount: f.invoice.total,
-      ending_balance: f.invoice.total,
+      type: collecting ? "applied_to_invoice" : "invoice_too_small",
+      amount: collecting ? -20 : f.invoice.total,
+      ending_balance: collecting ? 0 : f.invoice.total,
       created: f.invoice.status_transitions.paid_at,
       credit_note: null,
     };
@@ -1464,7 +1498,24 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       objects.set(`/v1/customers/${f.customer.id}/balance_transactions?limit=${limit}`, {
         object: "list",
         has_more: false,
-        data: [posting],
+        data: collecting
+          ? [
+              posting,
+              ...(limit === 100
+                ? [
+                    {
+                      ...posting,
+                      id: "cbtxn_prior",
+                      invoice: "in_prior",
+                      type: "invoice_too_small",
+                      amount: 20,
+                      ending_balance: 20,
+                      created: posting.created - 1,
+                    },
+                  ]
+                : []),
+            ]
+          : [posting],
       });
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Loopback address missing");
@@ -1673,7 +1724,10 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       [x.f.source.id],
     );
     const result = await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
-    expect(result.observation.observation.invoice.lines.data[0]!.subscription_item).toBe(
+    const evidence = result.observation.observation;
+    if (evidence.kind !== "retained_invoice_balance_observation")
+      throw new Error("Expected balance observation");
+    expect(evidence.invoice.lines.data[0]!.subscription_item).toBe(
       x.f.invoice.lines.data[0]!.subscription_item,
     );
     expect(await allowanceCount(x.owner.organizationId)).toBe(0);
@@ -1716,8 +1770,8 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     );
     expect(await x.rows()).toHaveLength(1);
   });
-  async function prepareInvoiceMaintenance() {
-    const x = await prepareInvoiceObservation();
+  async function prepareInvoiceMaintenance(collecting = false) {
+    const x = await prepareInvoiceObservation(undefined, collecting);
     await x.operations.releaseEventForRetry(x.input);
     await database.query(
       "UPDATE billing_subscription_event_receipts SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
@@ -1749,6 +1803,149 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
         )
       ).rows,
     ).toEqual([{ status: "received", processed_at: null, applied_subscription_revision: null }]);
+    expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+    expect(writes).toBe(0);
+  });
+  test("capture migration preserves existing balance rows and their immutability", async () => {
+    expect(
+      (
+        await database.query("SELECT * FROM subscription_invoice_observations WHERE id=$1", [
+          legacyObservation.id,
+        ])
+      ).rows,
+    ).toEqual([legacyObservation]);
+    await expect(
+      database.query("UPDATE subscription_invoice_observations SET version=version WHERE id=$1", [
+        legacyObservation.id,
+      ]),
+    ).rejects.toThrow("immutable");
+    await expect(
+      database.query("DELETE FROM subscription_invoice_observations WHERE id=$1", [
+        legacyObservation.id,
+      ]),
+    ).rejects.toThrow("immutable");
+  });
+  for (const fault of ["refund", "missing_payment"] as const)
+    test(`collecting maintenance preserves unavailable ${fault} without a balance fallback`, async () => {
+      const x = await prepareInvoiceMaintenance(true);
+      if (fault === "refund")
+        Object.assign(x.f.charge, { refunded: true, amount_refunded: x.f.charge.amount });
+      else objects.delete(`/v1/payment_intents/${x.f.paymentIntent.id}`);
+      expect(await x.recover()).toMatchObject({
+        status: "degraded",
+        attempts: [{ receiptId: x.owner.receiptId, disposition: "unavailable" }],
+      });
+      expect(await x.rows()).toHaveLength(0);
+      expect(
+        (
+          await database.query(
+            "SELECT id FROM billing_subscription_incidents WHERE event_receipt_id=$1",
+            [x.owner.receiptId],
+          )
+        ).rows,
+      ).toHaveLength(1);
+      expect(
+        (
+          await database.query(
+            "SELECT status FROM billing_subscription_event_receipts WHERE id=$1",
+            [x.owner.receiptId],
+          )
+        ).rows,
+      ).toEqual([{ status: "received" }]);
+      expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+      expect(writes).toBe(0);
+    });
+  test("capture cannot publish after the receipt lease changes during charge retrieval", async () => {
+    const x = await prepareInvoiceObservation(undefined, true);
+    const replacement = randomUUID();
+    beforeChargeResponse = async () => {
+      await database.query(
+        "UPDATE billing_subscription_event_receipts SET lease_token=$2 WHERE id=$1",
+        [x.owner.receiptId, replacement],
+      );
+    };
+    await expect(
+      x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_INVOICE_OBSERVATION_UNAVAILABLE" });
+    expect(await x.rows()).toHaveLength(0);
+    expect(
+      (
+        await database.query(
+          "SELECT lease_token FROM billing_subscription_event_receipts WHERE id=$1",
+          [x.owner.receiptId],
+        )
+      ).rows,
+    ).toEqual([{ lease_token: replacement }]);
+  });
+  test("collecting capture is journaled and replayed without allowance publication", async () => {
+    const x = await prepareInvoiceObservation(undefined, true);
+    const result = await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
+    const evidence = result.observation.observation;
+    expect(evidence.kind).toBe("retained_collecting_invoice_capture");
+    if (evidence.kind !== "retained_collecting_invoice_capture")
+      throw new Error("Expected capture");
+    expect(evidence.payment.id).toBe(x.f.paymentIntent.id);
+    expect(evidence.charge.amount_captured).toBe(x.f.invoice.amount_due);
+    const count = requests.length;
+    expect((await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe)).replayed).toBe(
+      true,
+    );
+    expect(requests).toHaveLength(count);
+    expect(await x.rows()).toHaveLength(1);
+    expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+    expect(writes).toBe(0);
+  });
+  test("capture journal rejects foreign nested ownership and replacement payment IDs", async () => {
+    const x = await prepareInvoiceObservation(undefined, true);
+    const first = await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
+    const evidence = first.observation.observation;
+    if (evidence.kind !== "retained_collecting_invoice_capture")
+      throw new Error("Expected capture");
+    await database.query(
+      "UPDATE billing_subscription_event_receipts SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
+      [x.owner.receiptId],
+    );
+    const next = (await x.recovery.claimOriginalInvoiceEvent(x.owner))!;
+    for (const payload of [
+      { ...evidence, balance: { ...evidence.balance, organizationId: randomUUID() } },
+      { ...evidence, payment: { ...evidence.payment, id: "pi_replacement" } },
+      {
+        ...evidence,
+        charge: { ...evidence.charge, amount_captured: evidence.charge.amount_captured + 1 },
+      },
+    ])
+      await expect(
+        database.query(
+          "INSERT INTO subscription_invoice_observations(organization_id,receipt_id,request_id,version,previous_id,observation,observed_at) VALUES($1,$2,$3,2,$4,$5,clock_timestamp())",
+          [
+            x.owner.organizationId,
+            x.owner.receiptId,
+            next.leaseToken,
+            first.observation.id,
+            JSON.stringify(payload),
+          ],
+        ),
+      ).rejects.toThrow();
+    expect(await x.rows()).toHaveLength(1);
+    expect(
+      (
+        await x.journal.observeAndRecordOriginalInvoice(
+          { ...x.owner, leaseToken: next.leaseToken },
+          x.stripe,
+        )
+      ).observation.version,
+    ).toBe(2);
+    expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+  });
+  test("maintenance records collecting capture through the original receipt lane", async () => {
+    const x = await prepareInvoiceMaintenance(true);
+    expect(await x.recover()).toMatchObject({
+      status: "ok",
+      attempts: [{ receiptId: x.owner.receiptId, disposition: "recorded" }],
+    });
+    expect((await x.rows())[0]!.observation).toMatchObject({
+      kind: "retained_collecting_invoice_capture",
+    });
     expect(await allowanceCount(x.owner.organizationId)).toBe(0);
     expect(writes).toBe(0);
   });

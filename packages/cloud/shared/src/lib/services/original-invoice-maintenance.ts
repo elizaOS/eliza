@@ -34,6 +34,7 @@ export async function recoverOriginalInvoiceObservations() {
         !(error instanceof ElizaError) ||
         ![
           "SUBSCRIPTION_INVOICE_BALANCE_UNAVAILABLE",
+          "SUBSCRIPTION_COLLECTING_CAPTURE_UNAVAILABLE",
           "SUBSCRIPTION_INVOICE_OBSERVATION_UNAVAILABLE",
           "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
         ].includes(error.code)
