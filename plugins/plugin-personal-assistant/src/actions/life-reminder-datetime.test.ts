@@ -2996,6 +2996,68 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
   });
 
   it.each([
+    { nativeProjection: "in_app_only", extractionCalls: 0 },
+    { nativeProjection: null, extractionCalls: 1 },
+  ])(
+    "keeps the recorded current-conversation plan safe ($nativeProjection)",
+    async ({ nativeProjection, extractionCalls }) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-04T22:38:18.291Z"));
+      try {
+        const intent = "Remind me here to stretch my shoulders in two minutes.";
+        const createPlan = {
+          mode: "create",
+          requestKind: "reminder",
+          nativeProjection,
+          title: "Stretch your shoulders",
+          cadenceKind: "once",
+          dueDate: null,
+          dueInDays: null,
+          dueWeekday: null,
+          dueInMinutes: 2,
+          multiStep: false,
+        };
+        const prompts: string[] = [];
+        const runtime = makeRuntime((prompt) => {
+          if (prompt.includes("create_definition request")) {
+            prompts.push(prompt);
+            return taskPlanJson({
+              ...createPlan,
+              nativeProjection: "in_app_only",
+            });
+          }
+          return "";
+        });
+        const result = await runLifeOperationHandler(
+          runtime,
+          makeMessage(intent),
+          undefined,
+          {
+            parameters: { action: "create_reminder", intent, createPlan },
+          } as HandlerOptions,
+        );
+        expect(prompts).toHaveLength(extractionCalls);
+        expect(result.success).toBe(true);
+        expect(serviceState.createCalls).toHaveLength(1);
+        expect(serviceState.createCalls[0]).toMatchObject({
+          title: createPlan.title,
+          cadence: {
+            kind: "once",
+            dueAt: "2026-10-04T22:40:18.291Z",
+            visibilityLeadMinutes: 0,
+          },
+          metadata: { nativeProjection: "in_app_only" },
+        });
+        expect(serviceState.createCalls[0].metadata).not.toHaveProperty(
+          "nativeAppleReminder",
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each([
     {
       name: "Travel complete plan",
       input: {
