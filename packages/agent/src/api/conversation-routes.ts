@@ -82,6 +82,7 @@ import {
   withStandaloneTrajectory,
 } from "@elizaos/core";
 import {
+  type ElizaConfig,
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
   LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
   type RouteRequestContext,
@@ -101,7 +102,6 @@ import {
   isScheduledTask,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import type { ElizaConfig } from "../config/config.ts";
 import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,

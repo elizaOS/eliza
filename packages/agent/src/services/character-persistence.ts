@@ -7,6 +7,7 @@
  * a success/error result rather than throwing.
  */
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import {
   CHARACTER_PERSISTENCE_SERVICE,
   type CharacterPersistenceReceipt,
@@ -14,11 +15,7 @@ import {
   type PersistCharacterParams,
   type PersistCharacterResult,
 } from "@elizaos/plugin-assistant/character-persistence";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   type RuntimeCharacterLike,
   recordCharacterHistory,

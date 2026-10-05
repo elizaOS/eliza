@@ -67,6 +67,7 @@ export async function finalizeConfiguredOrganizationSchedule(
         lease_token: null,
         lease_expires_at: null,
         organization_schedule_configuration_evidence: verified.proof,
+        organization_schedule_configuration_snapshot: verified.configuredSnapshot,
         provider_response_digest: settlementDigest(verified.proof),
         result_subscription_id: verified.source.id,
         result_subscription_revision: verified.subscription.lifecycle_revision,

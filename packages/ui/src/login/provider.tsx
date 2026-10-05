@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { DEFAULT_THEME, mergeTheme } from "./theme.js";
 import type {
   LoginAuthConfig,
   LoginAuthContextValue,
@@ -24,7 +25,6 @@ import type {
   TenantFeatureFlags,
   TenantTheme,
 } from "./types.js";
-import { DEFAULT_THEME, mergeTheme } from "./utils/theme.js";
 
 const DEFAULT_FEATURES: TenantFeatureFlags = {
   showFundingQR: true,

@@ -10,9 +10,6 @@ const meta = {
   title: "Shared/ViewHeader",
   component: ViewHeader,
   parameters: { layout: "fullscreen" },
-  args: {
-    title: "Automations",
-  },
 } satisfies Meta<typeof ViewHeader>;
 
 export default meta;
@@ -46,7 +43,6 @@ export const WithTrailingAction: Story = {
 
 export const RootView: Story = {
   tags: ["story-gate-expect-blank"],
-  args: { showBack: false, title: "Home" },
   render: (args) => (
     <div data-testid="root-view-output">
       <ViewHeader {...args} />

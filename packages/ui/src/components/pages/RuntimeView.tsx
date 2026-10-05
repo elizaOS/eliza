@@ -598,6 +598,7 @@ export function RuntimeView({
       testId="runtime-sidebar"
       collapsible
       contentIdentity="runtime"
+      footerClassName="!pb-[calc(var(--eliza-chat-clearance,0px)+0.5rem)]"
     >
       <SidebarPanel>
         <div className="mt-2 space-y-2">

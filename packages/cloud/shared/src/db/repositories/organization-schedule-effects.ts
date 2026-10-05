@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { z } from "zod";
 import { organizationDowngradeIntentDigest } from "../../lib/services/organization-downgrade-intent";
 import { organizationDowngradeReviewSchema } from "../../lib/services/organization-downgrade-review";
 import { organizationPlanChangeProviderBindingSchema } from "../../lib/services/organization-plan-change-provider-binding";
@@ -946,7 +947,15 @@ export async function lockOrganizationScheduleConfiguredAuthority(
     configurationReceiptDigest: configured.receipt_digest!,
     observedAt: now.toISOString(),
   };
-  return { source, projection, command: locked.command, proof };
+  // The full snapshot has just been authenticated and compared with the original
+  // configuration. Retain unknown wire fields; SDK transport metadata is not state.
+  const { lastResponse: _transport, ...wireSnapshot } = z
+    .record(z.string(), z.unknown())
+    .parse(input.rawCurrentSchedule);
+  const configuredSnapshot = structuredClone(wireSnapshot);
+  if (settlementDigest(configuredSnapshot) !== proof.snapshotDigest)
+    reject("configured_snapshot_changed");
+  return { source, projection, command: locked.command, proof, configuredSnapshot };
 }
 
 /** Read-only original command context. A terminal result can replay without current provider reads. */

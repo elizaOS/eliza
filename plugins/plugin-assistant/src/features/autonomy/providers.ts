@@ -82,7 +82,9 @@ export const adminChatProvider: Provider = {
         orderBy: "createdAt",
         orderDirection: "desc",
         unique: false,
-        tableName: "memories",
+        // Chat turns are persisted to "messages"; "memories" holds the
+        // autonomy loop's own thoughts, which never include admin turns.
+        tableName: "messages",
       });
       const trustedAdminMessages = (adminMessages ?? []).filter(
         (memory) =>

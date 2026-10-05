@@ -126,6 +126,9 @@ export const billingSubscriptionCommands = pgTable(
       livePeriodEnd: string;
       observedAt: string;
     }>(),
+    organization_schedule_configuration_snapshot: jsonb(
+      "organization_schedule_configuration_snapshot",
+    ).$type<Record<string, unknown>>(),
     organization_schedule_configuration_evidence: jsonb(
       "organization_schedule_configuration_evidence",
     ).$type<{
@@ -244,6 +247,14 @@ export const billingSubscriptionCommands = pgTable(
       ],
       name: "billing_subscription_commands_result_revision_tenant_fk",
     }).onDelete("restrict"),
+    organization_schedule_configuration_snapshot_shape: check(
+      "organization_schedule_configuration_snapshot_shape",
+      sql`${table.organization_schedule_configuration_snapshot} IS NULL OR (
+        ${table.organization_schedule_configuration_evidence} IS NOT NULL
+        AND jsonb_typeof(${table.organization_schedule_configuration_snapshot})='object'
+        AND NOT ${table.organization_schedule_configuration_snapshot} ? 'lastResponse'
+      ) IS TRUE`,
+    ),
     organization_schedule_configuration_evidence_shape: check(
       "organization_schedule_configuration_evidence_shape",
       sql`${table.organization_schedule_configuration_evidence} IS NULL OR (

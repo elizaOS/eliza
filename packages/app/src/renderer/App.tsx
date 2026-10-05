@@ -155,10 +155,8 @@ import {
   subscribeAppShellPages,
   subscribeDesktopBridgeEvent,
   TAB_PATHS,
-  type Tab,
   TrayLauncher,
   tabFromPath,
-  titleForTab,
   topLevelAuthGateOwnsSurface,
   useActiveAgentAuthority,
   useAgentSessionRecovery,
@@ -184,7 +182,6 @@ import {
   useSessionAuth,
   useShellControllerContext,
   ViewErrorBoundary,
-  ViewHeader,
   type ViewRegistryEntry,
   ViewUnavailableState,
   VoiceCaptureHud,
@@ -422,27 +419,20 @@ function ViewSurfaceFrame({
   children,
   declaration,
   nav,
-  suppressHeader = false,
-  title,
 }: {
   children: ReactNode;
   declaration: SurfaceManifestBearer | null | undefined;
   nav?: ReactNode;
-  suppressHeader?: boolean;
-  title: string;
 }) {
   const manifest = resolveRoutedSurfaceManifest(declaration);
   if (manifest.layout.topology === "ambient") {
     return <>{children}</>;
   }
-  const showHeader =
-    manifest.header === "normal" && nav === undefined && !suppressHeader;
   return (
     <AppWorkspaceContent
       nav={nav}
       pageLayout={manifest.layout}
       reserveChatClearance={!surfaceOwnsViewport(declaration)}
-      header={showHeader ? <ViewHeader title={title} /> : undefined}
     >
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {children}
@@ -1199,12 +1189,7 @@ function renderRemoteView(
 ): ReactNode {
   if (!view.bundleUrl && !view.frameUrl) return null;
   return (
-    <ViewSurfaceFrame
-      declaration={view}
-      nav={nav}
-      suppressHeader={Boolean(viewProps?.pageChrome)}
-      title={view.label}
-    >
+    <ViewSurfaceFrame declaration={view} nav={nav}>
       <DynamicViewLoader
         installationId={view.installationId}
         bundleUrl={view.bundleUrl}
@@ -1439,19 +1424,6 @@ function buildStaticTabRenderers(): Record<
         {node}
       </AppWorkspaceContent>
     );
-  // Tool views that own no header of their own get the shared ViewHeader (back
-  // button + centered title) via the same flush structure MemoryViewerView uses,
-  // so every launcher tool reads the same at the top instead of opening headerless.
-  const withHeader =
-    (tab: Tab, node: ReactNode) =>
-    ({ pageLayout }: StaticTabRenderContext) => (
-      <AppWorkspaceContent
-        header={<ViewHeader title={titleForTab(tab)} />}
-        pageLayout={pageLayout}
-      >
-        {node}
-      </AppWorkspaceContent>
-    );
   return {
     chat: () => <HomeScreenMount initialSection="apps" />,
     browser: wrapOverlayAware(<LazyBrowserWorkspaceView />),
@@ -1462,10 +1434,10 @@ function buildStaticTabRenderers(): Record<
       </ShellViewAgentSurface>,
     ),
     automations: wrapOverlayAware(<LazyAutomationsFeed />),
-    plugins: withHeader("plugins", <LazyPluginsPageView />),
-    skills: withHeader("skills", <LazySkillsView />),
+    plugins: wrap(<LazyPluginsPageView />),
+    skills: wrap(<LazySkillsView />),
     trajectories: wrap(<LazyTrajectoriesView />),
-    transcripts: withHeader("transcripts", <LazyLiveMeetingPageView />),
+    transcripts: wrap(<LazyLiveMeetingPageView />),
     // Relationships is plugin-owned. Its app-shell registration claims the
     // route and supplies the page chrome; an absent plugin is an unavailable
     // feature rather than a host-side duplicate implementation.
@@ -1485,10 +1457,10 @@ function buildStaticTabRenderers(): Record<
     ),
     memories: wrapOverlayAware(<LazyMemoryViewerView />),
     files: wrapOverlayAware(<LazyFilesView />),
-    runtime: withHeader("runtime", <LazyRuntimeView />),
+    runtime: wrap(<LazyRuntimeView />),
     database: wrapOverlayAware(<LazyDatabasePageView />),
-    logs: withHeader("logs", <LazyLogsView />),
-    desktop: withHeader("desktop", <LazyDesktopWorkspaceSection />),
+    logs: wrap(<LazyLogsView />),
+    desktop: wrap(<LazyDesktopWorkspaceSection />),
     settings: ({
       settingsInitialSection,
       settingsNavigatePayload,
@@ -1684,8 +1656,6 @@ function renderViewRouterContent({
       <ViewSurfaceFrame
         declaration={registration}
         nav={registrationCharacterNav ? undefined : walletNav}
-        suppressHeader={Boolean(registrationCharacterNav)}
-        title={registration.label}
       >
         <RegisteredAppShellPage
           registration={registration}
@@ -1737,10 +1707,7 @@ function renderViewRouterContent({
   }
   if (visibleDynamicPage(dynamicPage, enabledKinds, managedCloudRuntime)) {
     return (
-      <ViewSurfaceFrame
-        declaration={dynamicPage.registration ?? dynamicPage}
-        title={dynamicPage.registration?.label ?? dynamicPage.id}
-      >
+      <ViewSurfaceFrame declaration={dynamicPage.registration ?? dynamicPage}>
         <DynamicPluginPage resolved={dynamicPage} />
       </ViewSurfaceFrame>
     );
@@ -1749,7 +1716,6 @@ function renderViewRouterContent({
     return (
       <ViewSurfaceFrame
         declaration={dynamicAppPage.registration ?? dynamicAppPage}
-        title={dynamicAppPage.registration?.label ?? dynamicAppPage.id}
       >
         <DynamicPluginPage resolved={dynamicAppPage} />
       </ViewSurfaceFrame>

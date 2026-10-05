@@ -1,7 +1,7 @@
 /** Runs bounded missed-event recovery using read-only provider requests on the existing cron lane; every claimed outcome is retained with primary lease and retry ownership, and policy failures open the same incident as the webhook owner. */
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
-import { findPurchasedSubscriptionContract } from "../../db/repositories/subscription-purchased-binding";
+import { findSubscriptionRenewalBinding } from "../../db/repositories/subscription-purchased-binding";
 import {
   claimSubscriptionReconciliation,
   failSubscriptionReconciliation,
@@ -12,7 +12,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { createStripeRecoveryClient } from "../stripe";
 import { logger } from "../utils/logger";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
-import { validateStripeDunningObservation } from "./stripe-dunning-lifecycle";
+import { retrieveStripeDunningObservation } from "./stripe-dunning-objects";
 import { retrievePaidRenewalObjects } from "./stripe-paid-renewal-objects";
 import {
   validateCancellationCustomer,
@@ -24,10 +24,7 @@ import {
 } from "./stripe-scheduled-cancellation-lifecycle";
 import { validateStripeTerminalObservation } from "./stripe-terminal-lifecycle";
 import { resolveSubscriptionProviderBinding } from "./subscription-catalog";
-import {
-  assertCheckoutProviderAuthority,
-  checkoutContractEnvironment,
-} from "./subscription-checkout-contract";
+import { assertCheckoutProviderAuthority } from "./subscription-checkout-contract";
 import { openSubscriptionIncident } from "./subscription-event-incidents";
 import { subscriptionPolicyFailureReason, typedFailure } from "./subscription-lifecycle-failures";
 
@@ -42,7 +39,10 @@ export async function recoverMissedSubscriptionEvents() {
     try {
       assertOrganizationSubscription(claim.source);
       const configuredEnvironment = getCloudAwareEnv();
-      const contract = await findPurchasedSubscriptionContract(claim.source);
+      const { contract, environment } = await findSubscriptionRenewalBinding(
+        claim.source,
+        configuredEnvironment,
+      );
       const stripe = createStripeRecoveryClient(deadline);
       if (contract)
         assertCheckoutProviderAuthority(
@@ -50,9 +50,6 @@ export async function recoverMissedSubscriptionEvents() {
           (await stripe.accounts.retrieve(null)).id,
           configuredEnvironment,
         );
-      const environment = contract
-        ? checkoutContractEnvironment(contract, configuredEnvironment)
-        : configuredEnvironment;
       const binding = resolveSubscriptionProviderBinding(
         environment,
         claim.source.plan_key,
@@ -85,7 +82,12 @@ export async function recoverMissedSubscriptionEvents() {
           : raw.status === "past_due" || raw.status === "unpaid"
             ? await finalizeSubscriptionReconciliation(claim, {
                 kind: "dunning",
-                observation: validateStripeDunningObservation(raw, claim.source, environment),
+                observation: await retrieveStripeDunningObservation(
+                  claim.source,
+                  raw,
+                  stripe,
+                  customer,
+                ),
               })
             : await (async () => {
                 const period = z

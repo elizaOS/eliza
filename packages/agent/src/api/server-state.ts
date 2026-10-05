@@ -4,7 +4,7 @@
  * runtime-backed, and stopped-server states deterministic and testable.
  */
 import type { AgentRuntime } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import type {
   AgentAutomationMode,
   PluginEntry,

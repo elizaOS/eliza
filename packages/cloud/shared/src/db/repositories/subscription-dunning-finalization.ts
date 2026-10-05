@@ -1,6 +1,7 @@
 /** Publishes Stripe dunning (past_due/unpaid) lifecycle with its projection, policy generation and receipt in one organization-fenced transaction. Payment recovery belongs to paid renewal and cancellation to the terminal owner. */
 import { ElizaError } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
+import type { ScheduledDunningObjects } from "../../lib/services/organization-schedule-dunning-observation";
 import { SUBSCRIPTION_PAYMENT_GRACE_MS } from "../../lib/services/subscription-payment-grace";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
@@ -11,6 +12,7 @@ import {
 } from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
 import { billingSubscriptionEventReceipts } from "../schemas/subscription-billing-operations";
+import { verifyScheduledDunningInTransaction } from "./organization-schedule-dunning-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import { subscriptionBillingOperationsRepository as operations } from "./subscription-billing-operations";
@@ -34,6 +36,7 @@ export function dunningUnavailable(reason: string, context: Record<string, unkno
 export interface DunningObservation {
   providerStatus: "past_due" | "unpaid";
   providerObjectDigest: string;
+  scheduledObjects?: ScheduledDunningObjects;
 }
 
 /**
@@ -191,7 +194,20 @@ export async function finalizeDunningEvent(input: FinalizeDunningEventInput) {
       receipt.event_created_at < source.last_provider_event_created_at
     )
       dunningUnavailable("out_of_order_event_requires_reconciliation");
-    const values = dunningLifecycleValues(source, input.observation, now);
+    const scheduled = await verifyScheduledDunningInTransaction(tx, source, input.observation);
+    if (
+      scheduled &&
+      ((receipt.provider_object_type === "invoice" &&
+        receipt.provider_object_id !== scheduled.invoiceId) ||
+        (receipt.provider_object_type === "subscription" &&
+          receipt.provider_object_id !== source.stripe_subscription_id))
+    )
+      dunningUnavailable("scheduled_dunning_receipt_mismatch");
+    const values = dunningLifecycleValues(
+      source,
+      input.observation,
+      await readPostLockDatabaseNow(tx),
+    );
     let revision = source.lifecycle_revision;
     let published = false;
     if (!sameDunningLifecycle(source, values)) {
@@ -241,7 +257,12 @@ export async function publishDunningReconciliationInTransaction(
     expectedProjectionRevision: number | null;
   },
 ): Promise<{ changed: false } | { changed: true; revision: number }> {
-  const values = dunningLifecycleValues(input.source, input.observation, input.databaseNow);
+  await verifyScheduledDunningInTransaction(tx, input.source, input.observation);
+  const values = dunningLifecycleValues(
+    input.source,
+    input.observation,
+    await readPostLockDatabaseNow(tx),
+  );
   if (sameDunningLifecycle(input.source, values)) return { changed: false };
   const lifecycle = await subscriptionAuthorityRepository.advanceReconciliationInTransaction(tx, {
     ...input.identity,
