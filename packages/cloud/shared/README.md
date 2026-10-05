@@ -101,8 +101,12 @@ acknowledge immutable payment records without changing current source, entitleme
 spendable balances. Positive captured renewals reconcile invoice/item discount allocations
 and inclusive/exclusive tax against the original catalog base and exact captured total.
 Adjustment attribution is included in immutable grant proof; unadjusted grant digests remain
-compatible. Customer balances, credit notes and zero-due settlements remain unsupported
-and require separate settlement authority before product adoption.
+compatible. Renewals also support canonical invoice credit application, captured remainders,
+and fully discounted or credit-settled zero-due invoices without fabricated payments.
+Credit authority requires complete customer balance history with a stable reobserved head,
+matching invoice application and exact starting/ending balance arithmetic. Reversals,
+credit notes, deferred debit balances and ambiguous applications remain unavailable.
+Initial Checkout retains its separate positive-payment contract.
 
 Failed owned target invoices now use the existing dunning lifecycle through webhook and
 missed-event recovery. Publication rechecks original configured lineage, target schedule,

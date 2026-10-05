@@ -5,6 +5,7 @@ import { findSubscriptionRenewalBinding } from "../../db/repositories/subscripti
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
+import { retrieveInvoiceBalanceHistory } from "./stripe-invoice-settlement";
 import { renewalInvoiceSchema, renewalUnavailable } from "./stripe-paid-renewal-validation";
 import {
   resolveSubscriptionPlanDefinition,
@@ -47,8 +48,10 @@ export async function retrievePaidRenewalObjects(
   const [subscription, customer, paymentIntent, charge, price, product] = await Promise.all([
     stripe.subscriptions.retrieve(source.stripe_subscription_id),
     stripe.customers.retrieve(source.stripe_customer_id),
-    stripe.paymentIntents.retrieve(invoiceParsed.data.payment_intent),
-    stripe.charges.retrieve(invoiceParsed.data.charge),
+    invoiceParsed.data.payment_intent
+      ? stripe.paymentIntents.retrieve(invoiceParsed.data.payment_intent)
+      : null,
+    invoiceParsed.data.charge ? stripe.charges.retrieve(invoiceParsed.data.charge) : null,
     stripe.prices.retrieve(binding.priceId),
     stripe.products.retrieve(binding.productId),
   ]);
@@ -80,7 +83,16 @@ export async function retrievePaidRenewalObjects(
         { apiVersion: scheduledContext.providerBinding.apiVersion },
       )
     : undefined;
+  const balanceHistory =
+    invoiceParsed.data.starting_balance < 0
+      ? await retrieveInvoiceBalanceHistory(
+          source.stripe_customer_id,
+          invoiceParsed.data.livemode,
+          (customerId, params) => stripe.customers.listBalanceTransactions(customerId, params),
+        )
+      : undefined;
   return {
+    balanceHistory,
     invoice,
     subscription,
     customer,
