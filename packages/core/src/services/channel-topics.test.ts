@@ -13,7 +13,7 @@ import { AgentRuntime } from "../runtime.ts";
 import type { Room } from "../types/environment.js";
 import type { UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime";
-import { stringToUuid as sqliteTestAgentId } from "../utils.js";
+import { stringToUuid as sqliteTestAgentId } from "../utils/string-to-uuid.js";
 import {
 	CHANNEL_TOPICS_LRU_CAPACITY,
 	CHANNEL_TOPICS_METADATA_KEY,

@@ -242,12 +242,13 @@ import {
 import type { RuntimeSettings } from "./types/settings.js";
 import type { State } from "./types/state.js";
 import type { Task, TaskWorker } from "./types/task.js";
-import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
 import { getNumberEnv } from "./utils/environment";
 import { getOptimizationRootDir } from "./utils/state-dir";
+import { stringToUuid } from "./utils/string-to-uuid.js";
 import { isPlainObject } from "./utils/type-guards";
+import { validateUuid } from "./utils/uuid.js";
 import { deriveKnownSecrets } from "./validation/secret-catalog";
 
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;

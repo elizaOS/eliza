@@ -23,7 +23,7 @@ import {
 } from "../types/notification.ts";
 import type { Plugin } from "../types/plugin.ts";
 import { ServiceType } from "../types/service.ts";
-import { stringToUuid as sqliteTestAgentId } from "../utils.js";
+import { stringToUuid as sqliteTestAgentId } from "../utils/string-to-uuid.js";
 import { AgentEventService } from "./agent-event.ts";
 import { NotificationService } from "./notification.ts";
 

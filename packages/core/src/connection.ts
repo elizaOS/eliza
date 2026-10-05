@@ -15,7 +15,7 @@ import type { IDatabaseAdapter } from "./types/database";
 import type { Entity, Room, World } from "./types/environment.js";
 import type { JsonValue, Metadata, UUID } from "./types/primitives.js";
 import { ChannelType } from "./types/primitives.js";
-import { stringToUuid } from "./utils";
+import { stringToUuid } from "./utils/string-to-uuid.js";
 
 /** Re-read + re-merge attempts for a world upsert that hits a stale revision. */
 const WORLD_UPSERT_STALE_ATTEMPTS = 3;

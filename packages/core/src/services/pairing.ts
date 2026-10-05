@@ -27,7 +27,7 @@ import {
 } from "../types/pairing";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
-import { stringToUuid } from "../utils";
+import { stringToUuid } from "../utils/string-to-uuid.js";
 
 /**
  * Fill `bytes` from the platform CSPRNG, failing closed when none exists.

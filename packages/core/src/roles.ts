@@ -31,8 +31,9 @@ import type { UUID } from "./types/primitives.js";
 import type { IAgentRuntime } from "./types/runtime.js";
 import { ServiceType } from "./types/service";
 import { formatError } from "./utils/format-error";
+import { stringToUuid } from "./utils/string-to-uuid.js";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
-import { stringToUuid, validateUuid } from "./utils.ts";
+import { validateUuid } from "./utils/uuid.js";
 
 export type { RoleName } from "./access-control/role-primitives.js";
 

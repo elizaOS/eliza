@@ -32,7 +32,7 @@ import type { DisclosureGate } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
-import { stringToUuid } from "../utils";
+import { stringToUuid } from "../utils/string-to-uuid.js";
 
 const trustedDeliveryAudienceBrand: unique symbol = Symbol(
 	"eliza.trusted-delivery-audience.brand",

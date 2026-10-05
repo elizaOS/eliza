@@ -111,6 +111,7 @@ export {
 	type IntegrationTelemetrySpan,
 } from "./integration-observability.ts";
 export {
+	__loggerTestHooks,
 	addLogListener,
 	type ChatInLogParams,
 	type ChatOutLogParams,
@@ -131,7 +132,7 @@ export {
 	recentLogs,
 	removeLogListener,
 } from "./logger";
-export { __loggerTestHooks } from "./logger.js";
+
 // Shared media boundary: fetching, attachment decoding, MIME detection, and cache.
 export * from "./media/attachments.js";
 export * from "./media/fetch.js";
@@ -191,24 +192,24 @@ export * from "./protocol.js";
 // Provisioning (migrations, agent/entity/room, embedding dimension) - node only
 export * from "./provisioning";
 export * from "./roles";
-export {
-	hasAdminAccess,
-	hasOwnerAccess,
-	type SecurityDeps,
-} from "./roles.ts";
+
 export * from "./runtime";
-export { actionGateRejection } from "./runtime/action-gate";
 export {
 	actionGateFailure,
 	actionGateNeedsCallerRoles,
+	actionGateRejection,
 	canActionRun,
 	resolveActionCallerRoles,
 	resolveActionGateFailure,
-} from "./runtime/action-gate.ts";
+} from "./runtime/action-gate";
+
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
 export { isLocalProvider } from "./runtime/action-model-routing";
-export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
-export { resolveActionRolePolicyRole } from "./runtime/action-role-policy.ts";
+export {
+	resolveActionRolePolicyRole,
+	warnOnUnmatchedActionRolePolicyKeys,
+} from "./runtime/action-role-policy";
+
 export { runWithActionRoutingContext } from "./runtime/action-routing-context.ts";
 export {
 	COMPLETION_CONTEXT_SCHEMA,
@@ -380,14 +381,7 @@ export {
 	type ProcessingScope,
 } from "./security/processing-policy.js";
 export * from "./security/secret-swap";
-export {
-	parseSecretSwapExemptValues,
-	SECRET_SWAP_ENABLED_SETTING,
-	SECRET_SWAP_EXEMPT_VALUES_SETTING,
-	type SecretSwapEntry,
-	SecretSwapSession,
-	SecretSwapUnresolvedPlaceholderError,
-} from "./security/secret-swap.js";
+
 export {
 	attestAuthenticatedApiDeliveryAudience,
 	attestDeliveryAudienceFromCanonicalRoom,
@@ -478,7 +472,7 @@ export * from "./types/action-reply.js";
 export * from "./types/provider-integrations.js";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
-export { addHeader, parseKeyValueXml, parseToonKeyValue } from "./utils";
+
 export {
 	readJsonFile,
 	writeJsonAtomic,
@@ -503,6 +497,29 @@ export {
 	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";
+export {
+	resolveActionContexts,
+	resolveProviderContexts,
+} from "./utils/context-catalog";
+export {
+	AVAILABLE_CONTEXTS_STATE_KEY,
+	attachAvailableContexts,
+	CONTEXT_ROUTING_METADATA_KEY,
+	CONTEXT_ROUTING_STATE_KEY,
+	type ContextRoutingDecision,
+	deriveAvailableContexts,
+	getActiveRoutingContexts,
+	getActiveRoutingContextsForTurn,
+	getContextRoutingFromMessage,
+	getContextRoutingFromState,
+	inferContextRoutingFromMessage,
+	inferContextRoutingFromText,
+	mergeContextRouting,
+	parseContextList,
+	parseContextRoutingMetadata,
+	setContextRoutingMetadata,
+	shouldIncludeByContext,
+} from "./utils/context-routing";
 export { createHash } from "./utils/crypto-compat.ts";
 export {
 	isEnvDisabled,
@@ -528,6 +545,14 @@ export {
 export * from "./utils/inference-priority-gate";
 export { getLogPrefix } from "./utils/log-prefix.js";
 export {
+	extractUserText,
+	getUserMessageText,
+	hasDocumentAugmentationEnvelope,
+	normalizeUserMessageText,
+	stripAugmentationForPersistence,
+} from "./utils/message-text";
+export { getLocalServerUrl } from "./utils/node";
+export {
 	getMacPermissionDeepLink,
 	openPermissionSettings,
 } from "./utils/permission-deep-links.js";
@@ -537,8 +562,15 @@ export * from "./utils/read-env";
 export * from "./utils/resolve-setting";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";
+export { stringToUuid } from "./utils/string-to-uuid.js";
+export {
+	isSyntheticConversationArtifactMemory,
+	isSyntheticConversationArtifactText,
+} from "./utils/synthetic-conversation-artifact";
+export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
 export {
 	isTtsDebugEnabled,
 	ttsDebug,
 	ttsDebugTextPreview,
 } from "./utils/tts-debug.js";
+export { validateUuid } from "./utils/uuid.js";

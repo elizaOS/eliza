@@ -13,7 +13,7 @@ import {
 	resolveOwnerEntityIdOrDefault,
 } from "./roles";
 import type { IAgentRuntime } from "./types/runtime.js";
-import { validateUuid } from "./utils.ts";
+import { validateUuid } from "./utils/uuid.js";
 
 type WorldMetadataShape = {
 	ownership?: { ownerId?: string };

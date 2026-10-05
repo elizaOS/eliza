@@ -19,32 +19,31 @@ export { validateToolArgs } from "./actions/validate-tool-args.ts";
 export * from "./activity-plaintext.js";
 
 export * from "./agent-backup-limits.js";
-export type {
-	AgentAutomationMode,
-	AgentStartupDiagnostics,
-	ChatImageAttachment,
-	ColumnInfo,
-	ConnectionTestResult,
-	CreateTriggerRequest,
-	DatabaseStatus,
-	LogEntry as AgentLogEntry,
-	PluginParamDef,
-	QueryResult,
-	RuntimeOrderItem,
-	RuntimeServiceOrderItem,
-	SkillEntry,
-	StreamEventEnvelope,
-	StreamEventType as AgentStreamEventType,
-	TableInfo,
-	TriggerHealthSnapshot,
-	TriggerSummary,
-	TriggerTaskMetadata,
-	UpdateTriggerRequest,
-} from "./api/agent-api-types.js";
 export {
+	type AgentAutomationMode,
+	type AgentStartupDiagnostics,
+	type ChatImageAttachment,
+	type ColumnInfo,
+	type ConnectionTestResult,
+	type CreateTriggerRequest,
+	type DatabaseStatus,
 	DELTA_STREAM_PROTOCOL,
 	type DeltaStreamProtocol,
+	type LogEntry as AgentLogEntry,
+	type PluginParamDef,
+	type QueryResult,
+	type RuntimeOrderItem,
+	type RuntimeServiceOrderItem,
+	type SkillEntry,
+	type StreamEventEnvelope,
+	type StreamEventType as AgentStreamEventType,
+	type TableInfo,
+	type TriggerHealthSnapshot,
+	type TriggerSummary,
+	type TriggerTaskMetadata,
+	type UpdateTriggerRequest,
 } from "./api/agent-api-types.js";
+
 export type {
 	CommandsCatalogResponse,
 	SerializedCommand,
@@ -94,14 +93,7 @@ export * from "./embedding-vector-space";
 export * from "./env-utils";
 export * from "./error-classification.js";
 export * from "./errors";
-export {
-	ElizaError,
-	type ElizaErrorOptions,
-	type ElizaErrorSeverity,
-	isElizaError,
-	type ReportedError,
-	toElizaError,
-} from "./errors";
+
 export * from "./events.js";
 export type { ValidationKeywordLocale } from "./i18n/keyword-matching-core.js";
 export * from "./i18n/language.js";
@@ -138,35 +130,33 @@ export {
 	parseInteractionBlocks,
 	stripUnclaimedInteractionMarkup,
 } from "./messaging/interaction-parse.js";
-export type {
-	InteractiveTask,
-	TaskActionProposal,
-	TaskContext,
-	TaskObservation,
-	TaskOperation,
-	TaskOwner,
-	TaskTransition,
-} from "./messaging/interactive-task.js";
 export {
 	createInteractiveTask,
+	type InteractiveTask,
 	sameTaskOwner,
+	type TaskActionProposal,
+	type TaskContext,
+	type TaskObservation,
+	type TaskOperation,
+	type TaskOwner,
+	type TaskTransition,
 	transitionInteractiveTask,
 	validateInteractiveTask,
 } from "./messaging/interactive-task.js";
-export type {
-	TaskEvent,
-	TaskEventPage,
-	TaskEventReaderOptions,
-	TaskEventReaderState,
-	TaskOperationStatus,
-	TaskStatus as TaskEventStatus,
-} from "./messaging/task-events.js";
+
 export {
 	mergeTaskEventPage,
 	mergeTaskEvents,
+	type TaskEvent,
+	type TaskEventPage,
 	TaskEventReader,
+	type TaskEventReaderOptions,
+	type TaskEventReaderState,
+	type TaskOperationStatus,
+	type TaskStatus as TaskEventStatus,
 	validateTaskEvent,
 } from "./messaging/task-events.js";
+
 export * from "./messaging/task-widgets.js";
 export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
@@ -298,6 +288,7 @@ export * from "./security/redact";
 export * from "./security/spawn-env-policy.js";
 export {
 	composeToolDiagnosticRedactor,
+	projectCompleteToolArgsForModel,
 	projectCompleteToolValueForModel,
 	projectModelCallDiagnosticValue,
 	projectProtectedModelCallValue,
@@ -306,7 +297,7 @@ export {
 	TOOL_DIAGNOSTIC_MASK,
 	type ToolDiagnosticTextRedactor,
 } from "./security/tool-diagnostics.js";
-export { projectCompleteToolArgsForModel } from "./security/tool-diagnostics.ts";
+
 export * from "./security/untrusted-email-content.js";
 export * from "./sensitive-request-dispatch";
 export * from "./sensitive-request-policy";
@@ -423,71 +414,50 @@ export * from "./types/pipeline-hooks.js";
 export * from "./types/plugin.js";
 export * from "./types/plugin-manifest";
 export * from "./types/plugin-store.js";
-export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
-export type { JsonPrimitive } from "./types/primitives.js";
 export * from "./types/primitives.js";
+
 export * from "./types/prompt-optimization-hooks.js";
 export * from "./types/prompt-optimization-score-card.js";
 export * from "./types/prompt-optimization-trace.js";
 export * from "./types/prompts.js";
 export * from "./types/reminder-presentation";
-export type {
-	ConnectorAccountCapability,
-	ConnectorAccountRef,
-} from "./types/runtime.js";
 export * from "./types/runtime.js";
-export {
-	ConnectorAccountHealth,
-	ConnectorAccountPurpose,
-	ConnectorAccountRole,
-	ConnectorAuthMethod,
-} from "./types/runtime.js";
+
 export * from "./types/service.js";
 export * from "./types/service-interfaces.js";
 export * from "./types/settings.js";
 export * from "./types/state.js";
 export * from "./types/streaming.js";
-export type {
-	PageLayoutManifest,
-	ResolvedSurfaceManifest,
-	SurfaceCapability,
-	SurfaceIsolationLevel,
-	SurfaceLifecyclePolicy,
-	SurfaceManifest,
-	SurfaceManifestBearer,
-} from "./types/surface-manifest.js";
 export * from "./types/surface-manifest.js";
+
 export * from "./types/swarm-coordinator.js";
 export * from "./types/system-notice.js";
 export * from "./types/task.js";
 export * from "./types/tee.js";
 export * from "./types/testing.js";
-export type {
-	ActionAttempt,
-	ARTTrajectory,
-	ChatMessage as TrajectoryChatMessage,
-	ContextObjectTrajectoryExport,
-	ContextObjectTrajectoryVersion,
-	EnvironmentState,
-	LLMCall,
-	ProviderAccess,
-	RewardComponents,
-	RewardRequest,
-	RewardResponse,
-	TrainingBatch,
-	Trajectory,
-	TrajectoryGroup,
-	TrajectoryRecord,
-	TrajectoryStep,
+export {
+	type ActionAttempt,
+	type ARTTrajectory,
+	type ChatMessage as TrajectoryChatMessage,
+	CONTEXT_OBJECT_TRAJECTORY_VERSION,
+	type ContextObjectTrajectoryExport,
+	type ContextObjectTrajectoryVersion,
+	type EnvironmentState,
+	type LLMCall,
+	type ProviderAccess,
+	type RewardComponents,
+	type RewardRequest,
+	type RewardResponse,
+	type TrainingBatch,
+	type Trajectory,
+	type TrajectoryGroup,
+	type TrajectoryRecord,
+	type TrajectoryStep,
 } from "./types/trajectory-export.ts";
-export { CONTEXT_OBJECT_TRAJECTORY_VERSION } from "./types/trajectory-export.ts";
+
 export * from "./types/trigger.js";
-export type {
-	EnabledViewKinds,
-	ViewKind,
-	ViewKindBearer,
-} from "./types/view-kind";
 export * from "./types/view-kind.js";
+
 export * from "./types/workspace-delta.js";
 export {
 	collectActionResultSizeWarnings,
@@ -496,12 +466,13 @@ export {
 } from "./utils/action-results.ts";
 export { hasActionContext } from "./utils/action-validation.ts";
 export * from "./utils/assistant-text.js";
-export type { BatchItemOutcome } from "./utils/batch-queue.js";
 export {
+	type BatchItemOutcome,
 	Semaphore,
 	TaskDrain,
 	type TaskDrainOptions,
 } from "./utils/batch-queue.js";
+
 export * from "./utils/boolean";
 export * from "./utils/channel-utils";
 export * from "./utils/character-message-examples.js";
@@ -521,17 +492,7 @@ export {
 } from "./utils/context-routing.ts";
 export * from "./utils/deadline.js";
 export * from "./utils/deterministic.js";
-export {
-	buildDeterministicSeed,
-	createDeterministicRandom,
-	deterministicPick,
-	deterministicSample,
-	deterministicShuffle,
-	getDeterministicNames,
-	hashStringToUint32,
-	shortStringHash,
-	stableStringify,
-} from "./utils/deterministic.js";
+
 export * from "./utils/duration.js";
 export * from "./utils/env.js";
 export * from "./utils/errors.js";
@@ -544,26 +505,25 @@ export {
 export * from "./utils/extraction-evidence";
 export type { SymlinkType } from "./utils/filesystem.js";
 export * from "./utils/format-bytes.js";
-export { formatError } from "./utils/format-error";
 export * from "./utils/format-error.js";
+
 export * from "./utils/html-raw-text";
 export * from "./utils/inflection-term-keys";
 export * from "./utils/json5-model-output.js";
 export { getLogPrefix } from "./utils/log-prefix.js";
 export {
 	assertModelOutputComplete,
+	getErrorMessage,
 	isModelOutputLimitFinishReason,
 	isModelProviderError,
-	isProviderSchemaRejection,
-	modelProviderErrorDetail,
-} from "./utils/model-errors";
-export {
-	getErrorMessage,
 	isProviderContextOverflowError,
 	isProviderContextOverflowFailure,
+	isProviderSchemaRejection,
 	isTransientModelError,
+	modelProviderErrorDetail,
 	PROVIDER_CONTEXT_OVERFLOW,
-} from "./utils/model-errors.ts";
+} from "./utils/model-errors";
+
 export * from "./utils/model-retry";
 export * from "./utils/number-parsing.js";
 export * from "./utils/path-component.js";
@@ -581,7 +541,7 @@ export { sleepWithAbort } from "./utils/retry";
 export * from "./utils/safe-diagnostic-error.js";
 export * from "./utils/serialise.js";
 export * from "./utils/streaming";
-export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
+
 export * from "./utils/string-boundaries.js";
 export {
 	MAX_TEXT_NORMALIZE_EDGES,

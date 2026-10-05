@@ -2,7 +2,7 @@
 
 import { ElizaError } from "../errors.ts";
 import type { UUID } from "../types/primitives.ts";
-import { stringToUuid } from "../utils.ts";
+import { stringToUuid } from "./string-to-uuid.js";
 
 /**
  * Prefix for the project→world derivation. Kept distinct so a project id can

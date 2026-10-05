@@ -716,9 +716,6 @@ export function parseBooleanFromText(
 	return false;
 }
 
-export { stringToUuid } from "./utils/string-to-uuid.js";
-export { validateUuid } from "./utils/uuid.js";
-
 export const getContentTypeFromMimeType = (
 	mimeType: string,
 ): ContentType | undefined => {
@@ -734,46 +731,6 @@ export const getContentTypeFromMimeType = (
 	}
 	return undefined;
 };
-
-export {
-	resolveActionContexts,
-	resolveProviderContexts,
-} from "./utils/context-catalog";
-export {
-	AVAILABLE_CONTEXTS_STATE_KEY,
-	attachAvailableContexts,
-	CONTEXT_ROUTING_METADATA_KEY,
-	CONTEXT_ROUTING_STATE_KEY,
-	type ContextRoutingDecision,
-	deriveAvailableContexts,
-	getActiveRoutingContexts,
-	getActiveRoutingContextsForTurn,
-	getContextRoutingFromMessage,
-	getContextRoutingFromState,
-	inferContextRoutingFromMessage,
-	inferContextRoutingFromText,
-	mergeContextRouting,
-	parseContextList,
-	parseContextRoutingMetadata,
-	setContextRoutingMetadata,
-	shouldIncludeByContext,
-} from "./utils/context-routing";
-export {
-	extractUserText,
-	getUserMessageText,
-	hasDocumentAugmentationEnvelope,
-	normalizeUserMessageText,
-	stripAugmentationForPersistence,
-} from "./utils/message-text";
-// `export * from "./utils"` (in index.ts etc.) resolves to this file, not
-// to a `./utils/index.ts`. Any helper in the `utils/` directory that needs to be
-// reachable from `@elizaos/core` must be re-exported here.
-export { getLocalServerUrl } from "./utils/node";
-export {
-	isSyntheticConversationArtifactMemory,
-	isSyntheticConversationArtifactText,
-} from "./utils/synthetic-conversation-artifact";
-export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";
 
 export interface ProviderUsageLike {
 	promptTokens?: number;
