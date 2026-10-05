@@ -1489,6 +1489,27 @@ export class RemindersDomain {
       (await this.ctx.ownerRoutingEntityId()) ?? this.ctx.ownerEntityId();
     const agentId = this.ctx.agentId();
     try {
+      if (args.attempt.ownerType === "occurrence") {
+        const plan = await this.ctx.repository.getReminderPlan(
+          agentId,
+          args.attempt.planId,
+        );
+        const definition =
+          plan?.ownerType === "definition"
+            ? await getCallerDefinition(
+                this.ctx.repository,
+                this.ctx,
+                plan.ownerId,
+              )
+            : null;
+        if (definition && definition.status !== "active") {
+          await this.closeInactiveDefinitionReview(
+            args.attempt,
+            definition.status,
+          );
+          return { ...noResponse, reason: "definition_inactive" };
+        }
+      }
       const roomIds = await this.ctx.runtime.getRoomsForParticipants([
         ownerEntityId,
         agentId,
@@ -3659,6 +3680,35 @@ export class RemindersDomain {
     classifierSource?: string | null;
     semanticReason?: string | null;
   }): Promise<void> {
+    if (args.ownerType === "occurrence") {
+      // Classification may have awaited a model while the owner cancelled.
+      // Revalidate current scoped policy before any acknowledgement or snooze.
+      const occurrence = await getCallerOccurrence(
+        this.ctx.repository,
+        this.ctx,
+        args.ownerId,
+      );
+      const plan = occurrence
+        ? null
+        : await this.ctx.repository.getReminderPlan(
+            this.ctx.agentId(),
+            args.attempt.planId,
+          );
+      const definitionId =
+        occurrence?.definitionId ??
+        (plan?.ownerType === "definition" ? plan.ownerId : null);
+      const definition = definitionId
+        ? await getCallerDefinition(this.ctx.repository, this.ctx, definitionId)
+        : null;
+      if (!definition) return;
+      if (definition.status !== "active") {
+        await this.closeInactiveDefinitionReview(
+          args.attempt,
+          definition.status,
+        );
+        return;
+      }
+    }
     if (args.resolution === "snoozed") {
       if (args.ownerType !== "occurrence" || !args.snoozeRequest) {
         await this.markReminderReviewObservedResponse({
@@ -3762,6 +3812,26 @@ export class RemindersDomain {
       resolution: args.resolution,
       note: acknowledgementNote,
     });
+  }
+
+  /** Close the review job only; cancellation is not an owner acknowledgement. */
+  private async closeInactiveDefinitionReview(
+    attempt: LifeOpsReminderAttempt,
+    status: LifeOpsTaskDefinition["status"],
+  ): Promise<void> {
+    const metadata = {
+      [REMINDER_REVIEW_STATUS_METADATA_KEY]: "resolved",
+      [REMINDER_REVIEW_DECISION_METADATA_KEY]: "no_response",
+      [REMINDER_REVIEW_REASON_METADATA_KEY]: "definition_inactive",
+      reviewReason: `definition_${status}`,
+    };
+    await this.ctx.repository.updateReminderAttemptOutcome(
+      attempt.id,
+      attempt.outcome,
+      metadata,
+    );
+    Object.assign(attempt.deliveryMetadata, metadata);
+    attempt.reviewStatus = "resolved";
   }
 
   public async markReminderReviewResolvedFromState(args: {
@@ -3932,6 +4002,21 @@ export class RemindersDomain {
       }
 
       if (reviewAttempt.ownerType === "occurrence") {
+        const definition =
+          plan.ownerType === "definition"
+            ? await getCallerDefinition(
+                this.ctx.repository,
+                this.ctx,
+                plan.ownerId,
+              )
+            : null;
+        if (definition && definition.status !== "active") {
+          await this.closeInactiveDefinitionReview(
+            reviewAttempt,
+            definition.status,
+          );
+          continue;
+        }
         const occurrence = await getCallerOccurrenceView(
           this.ctx.repository,
           this.ctx,
@@ -3961,13 +4046,18 @@ export class RemindersDomain {
           });
           continue;
         }
-        const definition = await getCallerDefinition(
-          this.ctx.repository,
-          this.ctx,
-          occurrence.definitionId,
+        const occurrenceDefinition =
+          definition?.id === occurrence.definitionId
+            ? definition
+            : await getCallerDefinition(
+                this.ctx.repository,
+                this.ctx,
+                occurrence.definitionId,
+              );
+        if (!occurrenceDefinition) continue;
+        const preference = await this.getReminderPreference(
+          occurrenceDefinition.id,
         );
-        if (!definition) continue;
-        const preference = await this.getReminderPreference(definition.id);
         const attempt = await this.dispatchDueReminderEscalation({
           plan,
           ownerType: "occurrence",
@@ -3992,7 +4082,7 @@ export class RemindersDomain {
           acknowledged: false,
           nearbyReminderTitles: [],
           timezone: args.timezone,
-          definition,
+          definition: occurrenceDefinition,
           reviewAttempt,
         });
         if (attempt) {
@@ -4269,9 +4359,11 @@ export class RemindersDomain {
         responseReview.classifierSource === "none" &&
         (responseReview.reason === "no_semantic_verdict" ||
           responseReview.reason === "foreground_request_pending" ||
-          responseReview.reason === "foreground_request_refresh_unknown")
+          responseReview.reason === "foreground_request_refresh_unknown" ||
+          responseReview.reason === "definition_inactive")
       ) {
-        // Preserve unknown evidence before due-review transitions or closure.
+        // Unknown evidence stays retryable. Inactive definitions already closed
+        // their review job and cannot authorize an owner transition.
         return null;
       }
       const reviewTransition = decideReminderReviewTransition({
@@ -4740,7 +4832,23 @@ export class RemindersDomain {
       },
     );
 
-    if (args.acknowledged) {
+    // Background dispatch is agent-wide; refresh the exact linked definition
+    // without narrowing it to the service's synthetic default owner.
+    const definition =
+      args.ownerType === "occurrence" && args.plan.ownerType === "definition"
+        ? await this.ctx.repository.getDefinition(
+            this.ctx.agentId(),
+            args.plan.ownerId,
+          )
+        : null;
+    if (
+      args.ownerType === "occurrence" &&
+      args.plan.ownerType === "definition" &&
+      definition?.status !== "active"
+    ) {
+      outcome = "blocked_policy";
+      deliveryMetadata.reason = "definition_inactive";
+    } else if (args.acknowledged) {
       outcome = "blocked_acknowledged";
       deliveryMetadata.reason = "owner_acknowledged";
     } else if (
@@ -4908,9 +5016,7 @@ export class RemindersDomain {
             },
           };
           const acceptRuntimeSendResult = (
-            result: Awaited<
-              ReturnType<typeof this.ctx.runtime.sendMessageToTarget>
-            >,
+            result: Awaited<ReturnType<IAgentRuntime["sendMessageToTarget"]>>,
           ): boolean => {
             const disposition = inspectSendHandlerResult(result);
             if (
