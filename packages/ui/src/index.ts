@@ -1020,6 +1020,7 @@ export {
   type TaskCoordinatorPtyConsoleBaseProps,
 } from "./slots/task-coordinator-slots.helpers.js";
 export { CodingAgentSettingsSection } from "./slots/task-coordinator-slots.js";
+export { SpatialSurface } from "./spatial/dom.js";
 export type { SpatialTone } from "./spatial/ir.js";
 export {
   Button as SpatialButton,
