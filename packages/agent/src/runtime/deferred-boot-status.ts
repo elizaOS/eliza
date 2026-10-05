@@ -3,7 +3,7 @@
  * distinguish "the runtime is ready" from "every deferred capability has
  * registered". Feature routes, connectors, and non-essential plugins load
  * AFTER `/api/health` flips `ready:true` (the agent deferred wave, and — with
- * app routes deferred by default — app-core's post-ready boot tail), so a
+ * app routes deferred by default — app's post-ready boot tail), so a
  * feature route can 404 for a short window right after ready. Producers mark
  * their phase `pending` synchronously before the readiness gate flips and
  * `complete`/`failed` when their wave settles; `GET /api/health` exposes the
@@ -11,7 +11,7 @@
  * instead of sleeping.
  *
  * Producers: `runDeferredBoot` in `./eliza.ts` (phase `agent-deferred-boot`)
- * and app-core's `repairRuntimeAfterBoot` (phase `app-route-tail`, imported
+ * and app's `repairRuntimeAfterBoot` (phase `app-route-tail`, imported
  * via the `@elizaos/agent/runtime/*` subpath export). A restart re-marks its
  * phases `pending` before the new readiness gate flips, so a stale `complete`
  * from the previous boot never reads as the new boot being settled.

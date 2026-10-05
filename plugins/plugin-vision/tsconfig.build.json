@@ -5,8 +5,6 @@
     "rootDir": "./src",
     "sourceMap": true,
     "inlineSources": true,
-    "declaration": true,
-    "declarationMap": true,
     "emitDeclarationOnly": true,
     "noEmit": false
   },

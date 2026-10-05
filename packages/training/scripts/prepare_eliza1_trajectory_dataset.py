@@ -5,7 +5,7 @@ Inputs:
   * `eliza_native_v1` model-boundary rows from runtime trajectory export.
   * `eliza_native_v1` rows produced by `eliza-scenarios run ... --export-native`
     (the scenario-runner → corpus bridge in
-    `packages/scenario-runner/src/native-export.ts`). These are ingested through
+    `packages/testing/scenario-runner/src/native-export.ts`). These are ingested through
     the same `eliza_native_v1` path — no separate flag — and run through the
     mandatory privacy filter like every other input row.
   * LifeOps benchmark result JSON exported by the standalone benchmark system.
@@ -27,6 +27,8 @@ JSONL rows through `scripts/format_for_training.py`.
 """
 
 from __future__ import annotations
+
+from eliza_training.lib.dataset_splits import isolate_success_splits
 
 import argparse
 import hashlib
@@ -67,78 +69,8 @@ LOG = logging.getLogger("prepare-eliza1-trajectories")
 # ---------------------------------------------------------------------------
 
 
-def _load_privacy_filter():
-    """Build the package-owned privacy filter used for every imported row."""
+from eliza_training.privacy_filter_trajectories import apply_privacy_filter
 
-    @dataclass
-    class FilterStats:  # type: ignore[no-redef]
-        redaction_count: int = 0
-        anonymization_count: int = 0
-        credential_hits: dict[str, int] = field(default_factory=dict)
-
-    credential_patterns: list[tuple[str, re.Pattern[str]]] = [
-        ("openai-key", re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b")),
-        ("anthropic-key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{16,}\b")),
-        ("bearer", re.compile(r"\bBearer\s+[A-Za-z0-9._-]{16,}\b")),
-        ("github-token", re.compile(r"\bghp_[A-Za-z0-9]{20,}\b")),
-        ("aws-access-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    ]
-    geo_patterns: list[re.Pattern[str]] = [
-        re.compile(
-            r'"coords"\s*:\s*\{\s*"latitude"\s*:\s*-?\d+(?:\.\d+)?\s*,'
-            r'\s*"longitude"\s*:\s*-?\d+(?:\.\d+)?'
-            r'(?:\s*,\s*"[A-Za-z_][A-Za-z0-9_]*"\s*:\s*[^,}]+)*\s*\}'
-        ),
-        re.compile(
-            r'"latitude"\s*:\s*-?\d+(?:\.\d+)?\s*,\s*"longitude"\s*:\s*-?\d+(?:\.\d+)?'
-        ),
-        re.compile(
-            r"\b(?:current\s+location|location|coords|coordinates)\s*[:=]\s*"
-            r"-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?",
-            re.IGNORECASE,
-        ),
-        re.compile(
-            r"\b(?:lat|latitude)\s*[:=]\s*-?\d+(?:\.\d+)?\s*[,;]\s*"
-            r"(?:lng|lon|long|longitude)\s*[:=]\s*-?\d+(?:\.\d+)?",
-            re.IGNORECASE,
-        ),
-        re.compile(r"\b-?\d{1,3}\.\d{2,}\s*,\s*-?\d{1,3}\.\d{2,}\b"),
-    ]
-
-    def _filter_value(value: Any, stats: FilterStats) -> Any:
-        if isinstance(value, str):
-            out = value
-            for pattern in geo_patterns:
-                out = pattern.sub(lambda _m: _count_geo(stats), out)
-            for label, pattern in credential_patterns:
-                out = pattern.sub(lambda _m, _label=label: _count_secret(stats, _label), out)
-            return out
-        if isinstance(value, dict):
-            return {k: _filter_value(v, stats) for k, v in value.items()}
-        if isinstance(value, list):
-            return [_filter_value(v, stats) for v in value]
-        return value
-
-    def _count_geo(stats: FilterStats) -> str:
-        stats.redaction_count += 1
-        return "[REDACTED_GEO]"
-
-    def _count_secret(stats: FilterStats, label: str) -> str:
-        stats.redaction_count += 1
-        stats.credential_hits[label] = stats.credential_hits.get(label, 0) + 1
-        return f"<REDACTED:{label}>"
-
-    def apply_privacy_filter(payload: dict[str, Any]) -> tuple[dict[str, Any], FilterStats]:
-        stats = FilterStats()
-        cleaned = _filter_value(payload, stats)
-        if not isinstance(cleaned, dict):
-            raise TypeError(f"privacy filter expected dict, got {type(payload).__name__}")
-        return cleaned, stats
-
-    return apply_privacy_filter, FilterStats
-
-
-apply_privacy_filter, FilterStats = _load_privacy_filter()
 
 
 # ---------------------------------------------------------------------------
@@ -799,6 +731,7 @@ def build_native_record(
             fmt=NATIVE_FORMAT,
         ),
         "metadata": {
+            "requestedSplit": row.get("split") or metadata.get("split"),
             "boundary": row.get("boundary"),
             "model": row.get("model"),
             "provider": row.get("provider"),
@@ -1105,7 +1038,10 @@ def _credential_hits(stats: Any) -> Counter[str]:
 
 
 def split_success_record(record: dict[str, Any], *, seed: str, val_ratio: float, test_ratio: float) -> str:
-    unit = stable_unit(seed, record["id"])
+    source = record.get("source") or {}
+    metadata = record.get("metadata") or {}
+    identity = source.get("trajectoryId") or source.get("scenarioId") or metadata.get("contentHash") or record["id"]
+    unit = stable_unit(seed, str(identity))
     if unit < test_ratio:
         return "test"
     if unit < test_ratio + val_ratio:
@@ -1113,45 +1049,6 @@ def split_success_record(record: dict[str, Any], *, seed: str, val_ratio: float,
     return "train"
 
 
-def enforce_requested_success_splits(
-    splits: dict[str, list[dict[str, Any]]],
-    *,
-    val_ratio: float,
-    test_ratio: float,
-) -> list[dict[str, str]]:
-    """Keep requested train/val/test files populated for small repeatable runs."""
-
-    requested = ["train"]
-    if val_ratio > 0:
-        requested.append("val")
-    if test_ratio > 0:
-        requested.append("test")
-
-    success_total = sum(len(splits[name]) for name in ("train", "val", "test"))
-    if success_total < len(requested):
-        return []
-
-    moves: list[dict[str, str]] = []
-    for target in requested:
-        if splits[target]:
-            continue
-        donor = max(
-            (
-                split
-                for split in ("train", "val", "test")
-                if split != target and len(splits[split]) > 1
-            ),
-            key=lambda split: (len(splits[split]), split),
-            default=None,
-        )
-        if donor is None:
-            continue
-        row = sorted(splits[donor], key=lambda item: str(item.get("id") or ""))[-1]
-        splits[donor].remove(row)
-        row["split"] = target
-        splits[target].append(row)
-        moves.append({"id": str(row.get("id") or ""), "from": donor, "to": target})
-    return moves
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -1346,7 +1243,7 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
     stats = PrepStats()
     max_records = int(args.max_records or 0)
     dedup_native = not getattr(args, "no_dedup", False)
-    seen_content_hashes: dict[str, str] = {}
+    seen_content_hashes: dict[str, dict[str, Any]] = {}
 
     for path in iter_input_files(args.input):
         if not path.exists():
@@ -1411,10 +1308,23 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
                 record["metadata"] = metadata
                 if dedup_hash in seen_content_hashes:
                     if dedup_native:
+                        retained = seen_content_hashes[dedup_hash]
+                        retained_metadata = retained["metadata"]
+                        requested = metadata.get("requestedSplit")
+                        previous = retained_metadata.get("requestedSplit")
+                        if requested and previous and requested != previous:
+                            raise ValueError("Conflicting explicit splits for duplicate content")
+                        if requested:
+                            retained_metadata["requestedSplit"] = requested
+                        trajectory_id = (record.get("source") or {}).get("trajectoryId")
+                        if trajectory_id:
+                            trajectory_aliases = retained_metadata.setdefault("splitTrajectoryIds", [])
+                            if trajectory_id not in trajectory_aliases:
+                                trajectory_aliases.append(trajectory_id)
                         stats.deduped += 1
                         continue
                 else:
-                    seen_content_hashes[dedup_hash] = str(record.get("id") or "")
+                    seen_content_hashes[dedup_hash] = record
                 if record["quality"]["success"]:
                     split = split_success_record(
                         record,
@@ -1439,7 +1349,7 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
             break
 
     stats.unique_content = len(seen_content_hashes)
-    split_minimum_moves = enforce_requested_success_splits(
+    split_minimum_moves = isolate_success_splits(
         splits,
         val_ratio=args.val_ratio,
         test_ratio=args.test_ratio,

@@ -1,23 +1,31 @@
 // Handles v1 cloud API v1 eliza agents agentid provision route traffic with route-local auth expectations.
-import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { CONTAINER_BACKED_EXECUTION_TIERS } from "@/db/schemas/agent-sandboxes";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { containersEnv } from "@/lib/config/containers-env";
-import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
-import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { CONTAINER_BACKED_EXECUTION_TIERS } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@elizaos/cloud-shared/lib/eliza-agent-web-ui";
+import { assertSafeOutboundUrl } from "@elizaos/cloud-shared/lib/security/outbound-url";
+import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
+import { requireDedicatedComputePriceAcceptance } from "@elizaos/cloud-shared/lib/services/dedicated-compute-price-acceptance";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const CORS_METHODS = "POST, OPTIONS";
 
@@ -217,6 +225,8 @@ async function __hono_POST(
     }
 
     // ── Credit gate: require minimum deposit before provisioning ──────
+    const priceError = requireDedicatedComputePriceAcceptance(request);
+    if (priceError) return applyCorsHeaders(priceError, CORS_METHODS);
     const creditCheck = await checkAgentCreditGate(user.organization_id);
     if (!creditCheck.allowed) {
       const body = insufficientCredits402(

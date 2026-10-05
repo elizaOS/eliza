@@ -219,3 +219,26 @@ describe("GET /api/orchestrator/accounts/readiness", () => {
     );
   });
 });
+
+it("reports an unhydrated gateway credential through existing readiness problems", async () => {
+  vi.stubEnv("ELIZA_CONFIG_PATH", "/nonexistent/readiness-gateway/eliza.json");
+  vi.stubEnv("ELIZA_MODEL_GATEWAY_URL", "http://localhost:18811");
+  vi.stubEnv("ELIZA_MODEL_GATEWAY_TOKEN", "vault://ELIZA_MODEL_GATEWAY_TOKEN");
+  try {
+    await withBridge(
+      () => ({
+        ...av("claude", [{ total: 1, enabled: 1, healthy: 1 }]),
+        ...av("codex", [{ total: 1, enabled: 1, healthy: 1 }]),
+      }),
+      async () => {
+        const readiness = makeService().getAccountReadiness();
+        expect(readiness.ready).toBe(false);
+        expect(readiness.problems).toEqual([
+          "Model gateway credential has not been hydrated by the host",
+        ]);
+      },
+    );
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});

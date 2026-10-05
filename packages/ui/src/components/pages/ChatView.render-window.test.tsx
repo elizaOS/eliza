@@ -55,6 +55,11 @@ function seedMessages(count: number): ConversationMessage[] {
 
 const seeded = seedMessages(THREAD_LENGTH);
 const inboxClient = vi.hoisted(() => ({
+  // ChatView mounts PersonalAccountStateBanner, which reads the chat's runtime
+  // base; a local runtime base is not the personal Shared identity, so the
+  // banner stays idle.
+  getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
+  onBaseUrlChange: vi.fn(() => () => {}),
   getInboxMessages: vi.fn(async () => ({
     messages: [
       {

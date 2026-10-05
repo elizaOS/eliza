@@ -59,41 +59,44 @@ const returnToSpies = vi.hoisted(() => ({
 // Keep this focused login test on the Alert primitive the section actually
 // uses; evaluating the broad primitives barrel pulls in unrelated optional
 // controls and their peer dependencies.
-vi.mock("../../../../components/primitives", async () => {
+vi.mock("../../../../components/ui/alert", async () => {
   const { Alert, AlertDescription } = await import(
     "../../../../components/ui/alert"
   );
   return { Alert, AlertDescription };
 });
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@elizaos/shared/steward-session-client")
-    >();
-  return {
-    ...actual,
-    hasStewardAuthedCookie: () => sessionSpies.hasAuthedCookie,
-    readStoredStewardToken: () => sessionSpies.storedToken,
-    clearStoredStewardToken: async () => {
-      sessionSpies.storedToken = null;
-      sessionSpies.clear();
-    },
-    writeStoredStewardToken: (token: string) => {
-      sessionSpies.storedToken = token;
-      sessionSpies.write(token);
-    },
-    StewardSessionError: class StewardSessionError extends Error {
-      status: number;
-      constructor(message: string, status: number) {
-        super(message);
-        this.status = status;
-      }
-    },
-  };
-});
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+      >();
+    return {
+      ...actual,
+      hasStewardAuthedCookie: () => sessionSpies.hasAuthedCookie,
+      readStoredStewardToken: () => sessionSpies.storedToken,
+      clearStoredStewardToken: async () => {
+        sessionSpies.storedToken = null;
+        sessionSpies.clear();
+      },
+      writeStoredStewardToken: (token: string) => {
+        sessionSpies.storedToken = token;
+        sessionSpies.write(token);
+      },
+      StewardSessionError: class StewardSessionError extends Error {
+        status: number;
+        constructor(message: string, status: number) {
+          super(message);
+          this.status = status;
+        }
+      },
+    };
+  },
+);
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     constructor(config: {
       storage: {
@@ -347,17 +350,11 @@ describe("StewardLoginSection phone login", () => {
     const countrySelect = await screen.findByLabelText("Country calling code");
     expect(countrySelect.textContent).toContain("US +1");
     expect(countrySelect.textContent).not.toContain("United States");
-    fireEvent.pointerDown(countrySelect, {
-      button: 0,
-      ctrlKey: false,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    fireEvent.click(
-      await screen.findByRole("option", {
-        name: "GB +44 — United Kingdom",
-      }),
-    );
+    // Use real keyboard selection without mounting the full country popover in jsdom.
+    act(() => countrySelect.focus());
+    fireEvent.keyDown(countrySelect, { key: "g" });
+    fireEvent.keyDown(countrySelect, { key: "b" });
+    expect(countrySelect.textContent).toContain("GB +44");
     fireEvent.change(screen.getByLabelText("Phone number"), {
       target: { value: "020 7946 0018" },
     });
@@ -375,10 +372,25 @@ describe("StewardLoginSection phone login", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
 
-    expect(await screen.findByText(/Enter a valid phone number/)).toBeTruthy();
+    const message = await screen.findByText(/Enter a valid phone number/);
     expect(authSpies.sendSmsOtp).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Magic Link" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Google" })).toBeTruthy();
+
+    // #27241: the message is anchored to the phone field, announced, linked
+    // to the invalid input, and focus returns to that input.
+    const phoneInput = screen.getByLabelText("Phone number");
+    expect(message.getAttribute("role")).toBe("alert");
+    expect(phoneInput.getAttribute("aria-invalid")).toBe("true");
+    expect(phoneInput.getAttribute("aria-describedby")).toBe(message.id);
+    expect(document.activeElement).toBe(phoneInput);
+    expect(phoneInput.parentElement?.parentElement?.contains(message)).toBe(
+      true,
+    );
+
+    fireEvent.change(phoneInput, { target: { value: "5551" } });
+    expect(phoneInput.getAttribute("aria-invalid")).toBeNull();
+    expect(screen.queryByText(/Enter a valid phone number/)).toBeNull();
   });
 
   it("holds the send state while Steward is pending and surfaces its failure", async () => {

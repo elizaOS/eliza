@@ -3,6 +3,11 @@
  * inference timer. Backup listing and cache I/O are controlled collaborators;
  * an advancing clock proves which awaited boundary owns each recorded delay.
  */
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasRoleAccess: collaborators.ownerAccess,
+}));
+
 import {
   ChannelType,
   type IAgentRuntime,
@@ -13,7 +18,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { hasOwnerAccess as realHasOwnerAccess } from "../../../../packages/agent/src/security/access.ts";
 import type { FirstRunRecord } from "../lifeops/first-run/state.ts";
 import { firstRunProvider } from "./first-run.ts";
 
@@ -23,9 +27,11 @@ const collaborators = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: collaborators.ownerAccess,
   listLocalAgentBackups: collaborators.backups,
 }));
+
+const { hasRoleAccess: realHasRoleAccess } =
+  await vi.importActual<typeof import("@elizaos/core")>("@elizaos/core");
 
 const ownerId = "00000000-0000-0000-0000-000000000001" as UUID;
 const strangerId = "00000000-0000-0000-0000-000000000002" as UUID;
@@ -66,7 +72,10 @@ function harness(record?: Partial<FirstRunRecord>) {
     agentId,
     entityId: ownerId,
     roomId: ownerId,
-    content: { text: "private incoming words", channelType: ChannelType.DM },
+    content: {
+      text: "Start first-run setup with my private preferences",
+      channelType: ChannelType.DM,
+    },
   } as Memory;
   const timer = new InferenceTurnTimer({
     turnId: "first-run-test",
@@ -80,13 +89,19 @@ beforeEach(() => {
   vi.spyOn(Date, "now").mockImplementation(() => now);
   collaborators.ownerAccess
     .mockReset()
-    .mockImplementation(async (runtime: IAgentRuntime, message: Memory) => {
-      try {
-        return await realHasOwnerAccess(runtime, message);
-      } finally {
-        now += 11;
-      }
-    });
+    .mockImplementation(
+      async (
+        runtime: IAgentRuntime,
+        message: Memory,
+        role: Parameters<typeof realHasRoleAccess>[2],
+      ) => {
+        try {
+          return await realHasRoleAccess(runtime, message, role);
+        } finally {
+          now += 11;
+        }
+      },
+    );
   collaborators.backups.mockReset().mockImplementation(async () => {
     now += 23;
     return [];
@@ -122,6 +137,7 @@ describe("first-run boundary timing", () => {
     expect(collaborators.ownerAccess).toHaveBeenCalledExactlyOnceWith(
       runtime,
       message,
+      "OWNER",
     );
     expect(collaborators.backups).toHaveBeenCalledExactlyOnceWith(agentId);
     expect(runtime.setCache).not.toHaveBeenCalled();

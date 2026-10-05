@@ -13,14 +13,14 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(packageRoot, "dist");
 
-const SHIM_FILES = ["node/index.d.ts", "browser/index.d.ts", "cjs/index.d.ts"] as const;
+const SHIM_FILES = ["node/index.d.ts", "cjs/index.d.ts"] as const;
 
 function distFile(relative: string): string {
   return path.join(distDir, relative);
@@ -33,6 +33,17 @@ function readShimSpecifiers(shimRelPath: string): string[] {
     specifiers.push(match[1]);
   }
   return specifiers;
+}
+
+/** Lists every emitted JS module (ESM and CJS) under dist, relative to dist. */
+function listDistModules(dir = distDir): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...listDistModules(full));
+    else if (/\.(c|m)?js$/.test(entry.name)) out.push(path.relative(distDir, full));
+  }
+  return out;
 }
 
 /** Collects every relative-path leaf in an exports value, skipping the named condition. */
@@ -132,5 +143,41 @@ describe("dist packaging (#15779)", () => {
     );
     expect(result.status, `host-routes import failed: ${result.stderr}`).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual(["function", "function", "function", "function"]);
+  });
+
+  it("bundles the config.env writer mutex exactly once and routes every caller to it", () => {
+    // Every inlined copy of lib/config-env carries its own `writeChain` mutex;
+    // the agent reaches the writer through the `./lib/config-env` subpath, so
+    // any second copy (node entry, cjs entry, cloud-wallet, routes) would
+    // serialise independently and race the agent's config.env writes.
+    const modules = listDistModules();
+    const owners = modules.filter((file) =>
+      readFileSync(distFile(file), "utf8").includes("writeChain")
+    );
+    expect(owners.map((file) => file.split(path.sep).join("/"))).toEqual(["lib/config-env.js"]);
+    for (const caller of ["node/index.node.js", "cjs/index.node.cjs", "cloud/cloud-wallet.js"]) {
+      expect(
+        readFileSync(distFile(caller), "utf8"),
+        `${caller} must import the shared writer`
+      ).toContain("@elizaos/plugin-elizacloud/lib/config-env");
+    }
+  });
+
+  it("the built cloud-wallet subpath shares the published config.env writer at runtime", () => {
+    const result = spawnSync(
+      "node",
+      [
+        "--input-type=module",
+        "-e",
+        [
+          "const wallet = await import('@elizaos/plugin-elizacloud/cloud/cloud-wallet');",
+          "const writer = await import('@elizaos/plugin-elizacloud/lib/config-env');",
+          "process.stdout.write(JSON.stringify([typeof writer.persistConfigEnv, Object.keys(wallet).length > 0]));",
+        ].join(" "),
+      ],
+      { cwd: packageRoot, encoding: "utf8", timeout: 60_000 }
+    );
+    expect(result.status, `cloud-wallet import failed: ${result.stderr}`).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(["function", true]);
   });
 });

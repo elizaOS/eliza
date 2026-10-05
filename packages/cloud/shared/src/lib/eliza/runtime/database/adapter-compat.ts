@@ -1,4 +1,5 @@
 // Wires hosted Eliza agent adapter compat behavior for cloud runtime services.
+
 import {
   type Component,
   type Entity,

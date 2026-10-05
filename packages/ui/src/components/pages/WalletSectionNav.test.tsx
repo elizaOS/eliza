@@ -1,12 +1,6 @@
 /** Verifies isWalletSectionPath through the package's configured test harness. */
 // @vitest-environment jsdom
 
-/**
- * jsdom tests for `WalletSectionNav` and `isWalletSectionPath`: exercises the
- * real app-shell page registry to confirm active-route matching, alias
- * resolution to Wallet, and that a sub-view stops matching when its registration
- * is absent.
- */
 import {
   cleanup,
   fireEvent,
@@ -16,15 +10,19 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../../app-shell-registry";
-import { resetUiRegistryHostForTests } from "../../registry-host";
+import { resetUiRegistryHostForTests } from "../../registry-host.js";
 import { isWalletSectionPath, WalletSectionNav } from "./WalletSectionNav";
 
+/**
+ * jsdom tests for `WalletSectionNav` and `isWalletSectionPath`: exercises the
+ * real app-shell page registry to confirm active-route matching, alias
+ * resolution to Wallet, and that a sub-view stops matching when its registration
+ * is absent.
+ */
 const platformMocks = vi.hoisted(() => ({ platform: "web" }));
-
 vi.mock("../../platform/platform-guards", () => ({
   getFrontendPlatform: () => platformMocks.platform,
 }));
-
 function registerWalletSectionPages(): void {
   registerAppShellPage({
     id: "test.wallet",
@@ -57,19 +55,16 @@ function registerWalletSectionPages(): void {
     loader: async () => ({ default: () => null }),
   });
 }
-
 beforeEach(() => {
   platformMocks.platform = "web";
   resetUiRegistryHostForTests();
   registerWalletSectionPages();
 });
-
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
   resetUiRegistryHostForTests();
 });
-
 describe("isWalletSectionPath", () => {
   it("matches wallet + registered sub-view routes", () => {
     for (const path of [
@@ -82,13 +77,11 @@ describe("isWalletSectionPath", () => {
       expect(isWalletSectionPath(path)).toBe(true);
     }
   });
-
   it("rejects unrelated routes", () => {
     for (const path of ["/browser", "/automations", "/apps/logs", "/"]) {
       expect(isWalletSectionPath(path)).toBe(false);
     }
   });
-
   it("stops matching a sub-view when its app-shell registration is absent", () => {
     resetUiRegistryHostForTests();
     registerAppShellPage({
@@ -101,24 +94,20 @@ describe("isWalletSectionPath", () => {
       order: 10,
       loader: async () => ({ default: () => null }),
     });
-
     expect(isWalletSectionPath("/perps")).toBe(false);
     expect(isWalletSectionPath("/wallet")).toBe(true);
   });
 });
-
 describe("WalletSectionNav", () => {
   it("moves the safe-area inset inside the Wallet header on native", () => {
     platformMocks.platform = "android";
     render(<WalletSectionNav activePath="/inventory" />);
-
     expect(
       screen
         .getByTestId("wallet-section-header-inset")
         .className.includes("safe-area-top"),
     ).toBe(true);
   });
-
   it("suppresses the secondary strip when only one group member is registered", () => {
     resetUiRegistryHostForTests();
     registerAppShellPage({
@@ -134,7 +123,6 @@ describe("WalletSectionNav", () => {
     render(<WalletSectionNav activePath="/wallet" />);
     expect(screen.queryByTestId("section-nav-wallet")).toBeNull();
   });
-
   it("marks the active sub-view (aliases resolve to Wallet)", () => {
     render(<WalletSectionNav activePath="/inventory" />);
     const strip = screen.getByTestId("section-nav-wallet");
@@ -149,7 +137,6 @@ describe("WalletSectionNav", () => {
         .getAttribute("aria-current"),
     ).toBeNull();
   });
-
   it("marks Perps active on its registered route", () => {
     render(<WalletSectionNav activePath="/perps" />);
     const strip = screen.getByTestId("section-nav-wallet");
@@ -159,14 +146,12 @@ describe("WalletSectionNav", () => {
         .getAttribute("aria-current"),
     ).toBe("page");
   });
-
   it("navigates to the sub-view route on click", () => {
     render(<WalletSectionNav activePath="/wallet" />);
     const strip = screen.getByTestId("section-nav-wallet");
     fireEvent.click(within(strip).getByRole("button", { name: "Predictions" }));
     expect(window.location.pathname).toBe("/predictions");
   });
-
   it("does not renavigate when the active tab is clicked", () => {
     window.history.replaceState(null, "", "/wallet");
     render(<WalletSectionNav activePath="/wallet" />);

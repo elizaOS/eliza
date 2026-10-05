@@ -2,7 +2,12 @@
  * Exercises canonical Worker error responses without external infrastructure.
  */
 import { describe, expect, it } from "vitest";
-import { failureResponse } from "./cloud-worker-errors";
+import {
+  ApiError,
+  ForbiddenError,
+  failureResponse,
+  safeUnknownErrorMessage,
+} from "./cloud-worker-errors";
 
 function fakeContext() {
   return {
@@ -109,4 +114,29 @@ describe("failureResponse infrastructure-error sanitization", () => {
     expect(body.error).toBe("Invalid API key");
     expect(body.code).toBe("authentication_required");
   });
+});
+
+it("the actual billing manager denial stays actionable in the MCP envelope", () => {
+  const error = ForbiddenError("Only organization owners and admins can cancel billable resources");
+  expect(safeUnknownErrorMessage(error)).toBe(error.message);
+});
+for (const message of [
+  "Failed query: select fixture_private_column from fixture_credentials",
+  'password authentication failed for user "fixture_user"',
+  "authentication failed for user fixture_user using fixture_secret",
+]) {
+  it(`typed 400 infrastructure denial remains redacted: ${message.split(" ")[0]}`, () => {
+    expect(safeUnknownErrorMessage(new ApiError(400, "validation_error", message))).toBe(
+      "An unexpected error occurred",
+    );
+  });
+}
+it("a status-shaped arbitrary error does not gain public-message authority", () => {
+  const error = Object.assign(new Error("fixture private diagnostic"), { status: 400 });
+  expect(safeUnknownErrorMessage(error)).toBe("An unexpected error occurred");
+});
+it("a canonical server error stays redacted", () => {
+  expect(
+    safeUnknownErrorMessage(new ApiError(503, "service_unavailable", "fixture private diagnostic")),
+  ).toBe("An unexpected error occurred");
 });

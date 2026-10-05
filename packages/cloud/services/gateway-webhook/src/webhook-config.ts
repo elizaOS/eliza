@@ -1,4 +1,6 @@
 /** Resolves shared and per-agent webhook configuration for connector fan-in. */
+import { blooioSenderIsolationViolation } from "@elizaos/cloud-services-common/blooio-environment";
+import { gatewayBlooioEnvironment } from "./adapters/blooio";
 import type { Platform, WebhookConfig } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
 import { logger } from "./logger";
@@ -67,7 +69,24 @@ export async function resolveWebhookConfig(
   reauth: () => Promise<Record<string, string>> = reacquireAuthHeader,
 ): Promise<WebhookConfig | null> {
   if (!agentId) {
-    return resolveSharedWebhookConfig(platform, project);
+    const shared = resolveSharedWebhookConfig(platform, project);
+    const violation =
+      platform === "blooio"
+        ? blooioSenderIsolationViolation({
+            environment: gatewayBlooioEnvironment(),
+            senderNumber: shared.fromNumber,
+          })
+        : null;
+    if (violation) {
+      // Fail closed for this connector only: a non-production gateway never
+      // receives or sends as a production Blooio line (#22787).
+      logger.error("Blooio connector is not environment-isolated; disabled", {
+        project,
+        violation,
+      });
+      return null;
+    }
+    return shared;
   }
 
   const cacheKey = `webhook-config:${platform}:agent:${agentId}`;

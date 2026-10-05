@@ -5,15 +5,15 @@
  * Google connector. Results are capped at `maxResults` (default 12).
  */
 
-import { parseCanonicalInteger } from "@elizaos/shared";
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
   fetchManagedGoogleGmailSearch,
-} from "@/lib/services/agent-google-connector";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/agent-google-connector";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
@@ -23,6 +23,12 @@ app.get("/", async (c) => {
     const rawSide = c.req.query("side") ?? null;
     const grantId = c.req.query("grantId")?.trim();
     const rawQuery = c.req.query("query") ?? null;
+    const pageToken = c.req.query("pageToken");
+    if (
+      pageToken !== undefined &&
+      (!pageToken.length || pageToken.length > 4096)
+    )
+      return c.json({ error: "Invalid Gmail page token." }, 400);
     const rawMaxResults = c.req.query("maxResults") ?? null;
 
     if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
@@ -45,6 +51,7 @@ app.get("/", async (c) => {
       grantId: grantId && grantId.length > 0 ? grantId : undefined,
       query,
       maxResults,
+      pageToken,
     });
     return c.json(result);
   } catch (error) {

@@ -1,33 +1,19 @@
-/**
- * Browser service mixin: declares the LifeOps browser-companion service surface
- * and the `withBrowser` mixin that composes the browser domain's pairing,
- * settings, tab-context, and session methods onto the LifeOpsService base.
- */
-import type {
-  BrowserBridgeCompanionPairingResponse,
-  BrowserBridgeCompanionPreflightRequest,
-  BrowserBridgeCompanionPreflightResponse,
-  BrowserBridgeCompanionRevocationResetResponse,
-  BrowserBridgeCompanionRevokeResponse,
-  BrowserBridgeCompanionSessionBeginRequest,
-  BrowserBridgeCompanionSessionProgressRequest,
-  BrowserBridgeCompanionStatus,
-  BrowserBridgeCompanionSyncRequest,
-  BrowserBridgeCompanionSyncResponse,
-  BrowserBridgePageContext,
-  BrowserBridgeSettings,
-  BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionPairingRequest,
-  SyncBrowserBridgeStateRequest,
-  UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser";
+/** Declares the legacy browser history and stored-session surface used by LifeOps. New automation uses the browser workspace action. */
+
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,
   UpdateLifeOpsBrowserSessionProgressRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
+import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgePageContext,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+  UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser";
 
 export interface BrowserBridgeService {
   getBrowserSettings(): Promise<BrowserBridgeSettings>;
@@ -37,27 +23,6 @@ export interface BrowserBridgeService {
   listBrowserCompanions(): Promise<BrowserBridgeCompanionStatus[]>;
   listBrowserTabs(): Promise<BrowserBridgeTabSummary[]>;
   getCurrentBrowserPage(): Promise<BrowserBridgePageContext | null>;
-  syncBrowserState(request: SyncBrowserBridgeStateRequest): Promise<{
-    companion: BrowserBridgeCompanionStatus;
-    tabs: BrowserBridgeTabSummary[];
-    currentPage: BrowserBridgePageContext | null;
-  }>;
-  createBrowserCompanionPairing(
-    request: CreateBrowserBridgeCompanionPairingRequest,
-  ): Promise<BrowserBridgeCompanionPairingResponse>;
-  resetBrowserCompanionRevocation(
-    companionId: string,
-  ): Promise<BrowserBridgeCompanionRevocationResetResponse>;
-  syncBrowserCompanion(
-    companionId: string,
-    pairingToken: string,
-    request: BrowserBridgeCompanionSyncRequest,
-  ): Promise<BrowserBridgeCompanionSyncResponse>;
-  preflightBrowserCompanion(
-    companionId: string,
-    pairingToken: string,
-    request: BrowserBridgeCompanionPreflightRequest,
-  ): Promise<BrowserBridgeCompanionPreflightResponse>;
   listBrowserSessions(): Promise<LifeOpsBrowserSession[]>;
   getBrowserSession(sessionId: string): Promise<LifeOpsBrowserSession>;
   createBrowserSession(
@@ -71,31 +36,6 @@ export interface BrowserBridgeService {
     sessionId: string,
     request: CompleteLifeOpsBrowserSessionRequest,
   ): Promise<LifeOpsBrowserSession>;
-  updateBrowserSessionProgressFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: BrowserBridgeCompanionSessionProgressRequest,
-  ): Promise<LifeOpsBrowserSession>;
-  beginBrowserSessionActionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: BrowserBridgeCompanionSessionBeginRequest,
-  ): Promise<LifeOpsBrowserSession>;
-  completeBrowserSessionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-    sessionId: string,
-    request: CompleteLifeOpsBrowserSessionRequest,
-  ): Promise<LifeOpsBrowserSession>;
-  revokeBrowserCompanion(
-    companionId: string,
-  ): Promise<BrowserBridgeCompanionRevokeResponse>;
-  revokeBrowserCompanionFromCompanion(
-    companionId: string,
-    pairingToken: string,
-  ): Promise<BrowserBridgeCompanionRevokeResponse>;
   updateBrowserSessionProgress(
     sessionId: string,
     request: UpdateLifeOpsBrowserSessionProgressRequest,

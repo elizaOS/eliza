@@ -4,6 +4,8 @@
  * durable, no-op, or rejected effect receipt; affected-party decisions remain
  * confined to a boundary that authenticates the responding principal.
  */
+
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type {
   Action,
   ActionResult,
@@ -13,7 +15,6 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -92,6 +93,7 @@ const SUBACTIONS: SubactionsMap<HouseholdOwnerSubaction> = {
       "subjectEntityIds",
       "scopes",
     ],
+    allowEmptyArrays: ["subjectEntityIds"],
     optional: ["expiresAt"],
   },
   revoke_grant: {

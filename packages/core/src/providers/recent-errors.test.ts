@@ -12,7 +12,10 @@ import type { ReportedError } from "../errors";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
 import { redactWithSecrets } from "../security/redact";
-import type { Character, IAgentRuntime, Memory, State } from "../types";
+import type { Character } from "../types/agent.js";
+import type { Memory } from "../types/memory.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { State } from "../types/state.js";
 import {
 	isProviderThrottleReport,
 	QUIET_ERROR_CODES,
@@ -270,7 +273,7 @@ describe("RECENT_ERRORS provider", () => {
 		).toBe(false);
 	});
 
-	it("frames the block as internal diagnostics that never absorb user questions", async () => {
+	it("preserves diagnostic records without adding unsolicited recovery instructions", async () => {
 		// A live "available_apps provider timeout" rendered without this framing
 		// got answered as if it were the user's question (tj-f8249b30e986d6).
 		const entries: ReportedError[] = [
@@ -286,12 +289,11 @@ describe("RECENT_ERRORS provider", () => {
 			message,
 			state,
 		);
-		expect(result.text).toContain("internal diagnostics");
+		expect(result.data?.recentErrors).toEqual(entries);
 		expect(result.text).toContain(
-			"Never assume a user's message refers to them unless the user explicitly asks about errors.",
+			"[provider:available_apps] PROVIDER_TIMEOUT: available_apps provider timeout",
 		);
-		// The self-healing / escalation instruction is unchanged.
-		expect(result.text).toContain("tell the owner");
+		expect(result.text).not.toContain("disable it");
 	});
 
 	it("exports the quiet-code set with the scheduler plumbing codes", () => {

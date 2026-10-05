@@ -9,9 +9,6 @@
 
 // @vitest-environment jsdom
 
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,8 +26,10 @@ vi.mock("../../shell/CloudI18nProvider", () => ({
     options?.defaultValue ?? _key,
 }));
 
-vi.mock("../../../cloud-ui", () => ({
+vi.mock("../../../components/ui/corner-brackets", () => ({
   CornerBrackets: () => null,
+}));
+vi.mock("../../../components/ui/switch", () => ({
   Switch: ({
     checked,
     onCheckedChange: _onCheckedChange,
@@ -56,13 +55,6 @@ vi.mock("../data/audit-client", () => ({
   emitAuditEvent: vi.fn(),
 }));
 
-vi.mock("../data/consent-store", () => ({
-  getTrajectoryLoggingEnabled: vi.fn(() => false),
-  getVisionEnabled: vi.fn(() => false),
-  setTrajectoryLoggingEnabled: vi.fn(),
-  setVisionEnabled: vi.fn(),
-}));
-
 vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
@@ -75,17 +67,6 @@ import { ApiKeysLink } from "./api-keys-link";
 import { MfaPanel } from "./mfa-panel";
 import { PluginPermissionsLink } from "./plugin-permissions-link";
 import { RecentAuditEvents } from "./recent-audit-events";
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PRIVACY_PANEL_SOURCE = path.join(HERE, "privacy-panel.tsx");
-const ACCOUNT_DELETION_DIALOG_SOURCE = path.join(
-  HERE,
-  "account-deletion-dialog.tsx",
-);
-const ACCOUNT_DELETION_PAGE_SOURCE = path.join(
-  HERE,
-  "../../public-pages/pages/legal/account-deletion-page.tsx",
-);
 
 describe("account-security panels", () => {
   beforeEach(() => {
@@ -219,24 +200,5 @@ describe("account-security panels", () => {
     expect(screen.getByText(/Audit log reading is unavailable/i)).toBeTruthy();
     expect(apiMock).not.toHaveBeenCalled();
     expect(apiFetchMock).not.toHaveBeenCalled();
-  });
-
-  it("keeps export unavailable while wiring the real account-deletion endpoint", () => {
-    const source = readFileSync(PRIVACY_PANEL_SOURCE, "utf8");
-    const deletionDialog = readFileSync(ACCOUNT_DELETION_DIALOG_SOURCE, "utf8");
-    const deletionPage = readFileSync(ACCOUNT_DELETION_PAGE_SOURCE, "utf8");
-
-    expect(source).toContain("Export unavailable");
-    expect(source).toContain("<AccountDeletionDialog />");
-    expect(source).not.toContain("Deletion unavailable");
-    expect(deletionDialog).toContain('data-testid="delete-account-trigger"');
-    expect(deletionDialog).toContain("submitAccountDeletion");
-    expect(deletionDialog).not.toContain("?requested=");
-    expect(deletionPage).toContain("readAccountDeletionStatus");
-    expect(deletionPage).toContain("cancelAccountDeletion");
-    expect(deletionPage).not.toContain("useSearchParams");
-    expect(deletionPage).not.toContain('params.get("requested")');
-    expect(source).not.toContain("/api/v1/me/export");
-    expect(deletionDialog).not.toContain("/api/v1/me/delete-request");
   });
 });

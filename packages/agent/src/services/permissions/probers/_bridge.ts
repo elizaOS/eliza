@@ -7,7 +7,7 @@
  *   - bundle identifier resolution and TCC.db reads
  *   - bun:ffi loader for the existing macOS permissions dylib
  *     (`libMacWindowEffects.dylib`, built under
- *     `packages/app-core/platforms/electrobun/src/`)
+ *     `packages/app/platforms/electrobun/src/`)
  *
  * The TCC.db read trick lets us answer `check()` without triggering an OS
  * dialog: TCC's authorization database is readable via sqlite3 for the
@@ -21,14 +21,14 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { ElizaError } from "@elizaos/core";
-
-import type {
-  PermissionId,
-  PermissionPlatform,
-  PermissionState,
-  PermissionStatus,
-} from "../contracts.js";
+import {
+  ElizaError,
+  type PermissionId,
+  type Platform as PermissionPlatform,
+  type PermissionState,
+  type PermissionStatus,
+  type Prober,
+} from "@elizaos/core";
 
 export const PLATFORM: PermissionPlatform =
   process.platform as PermissionPlatform;
@@ -300,11 +300,11 @@ const DYLIB_CANDIDATES = [
   // Packaged Electrobun layout — the permission caller is Contents/MacOS/bun.
   resolvePackagedNativePermissionsDylib(),
   // Source worktree layout — relative to this prober file
-  "../../../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+  "../../../../../app/platforms/electrobun/src/libMacWindowEffects.dylib",
   // Worktree layout — relative to the agent package
-  "../../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+  "../../../../app/platforms/electrobun/src/libMacWindowEffects.dylib",
   // Installed package layout
-  "../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+  "../../../app/platforms/electrobun/src/libMacWindowEffects.dylib",
 ].filter(Boolean);
 
 export async function getNativeDylib(): Promise<NativePermissionsLib | null> {
@@ -407,4 +407,48 @@ export async function openPrivacyPane(pane: string): Promise<void> {
   } catch {
     // Best-effort only; failures leave the caller on the existing settings path.
   }
+}
+
+/** Shared EventKit/Contacts transport; each grant keeps its own native API and TCC identity. */
+export function createNativePrivacyProber(options: {
+  id: PermissionId;
+  service: string;
+  pane: string;
+  check: (native: NativePermissionsLib) => number;
+  request: (native: NativePermissionsLib) => number;
+  requestFullAccess?: boolean;
+}): Prober {
+  function fromNative(value: number): PermissionState {
+    const status = mapNativePrivacyAuthStatus(value);
+    return buildState(options.id, status, {
+      canRequest:
+        status === "not-determined" ||
+        (options.requestFullAccess === true && value === 4),
+      restrictedReason: status === "restricted" ? "os_policy" : undefined,
+    });
+  }
+  const prober: Prober = {
+    id: options.id,
+    async check() {
+      if (!IS_DARWIN) return platformUnsupportedState(options.id);
+      const native = await getNativeDylib();
+      if (native) return fromNative(options.check(native));
+      const status = await queryTccStatus(options.service, resolveBundleId());
+      return buildState(options.id, status ?? "not-determined", {
+        canRequest: status === null,
+      });
+    },
+    async request() {
+      if (!IS_DARWIN) return platformUnsupportedState(options.id);
+      const native = await getNativeDylib();
+      if (native)
+        return {
+          ...fromNative(options.request(native)),
+          lastRequested: Date.now(),
+        };
+      await openPrivacyPane(options.pane);
+      return { ...(await prober.check()), lastRequested: Date.now() };
+    },
+  };
+  return prober;
 }

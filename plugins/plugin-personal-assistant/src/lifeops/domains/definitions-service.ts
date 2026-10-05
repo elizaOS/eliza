@@ -1,3 +1,5 @@
+import { requestReminderWake } from "../reminder-wake.js";
+
 /**
  * Task-definition domain for LifeOps: CRUD over LifeOps task definitions and
  * their occurrences (the recurring reminders/check-ins/routines the scheduler
@@ -5,7 +7,6 @@
  * scoring.
  */
 
-import { ElizaError } from "@elizaos/core";
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,
@@ -23,16 +24,18 @@ import type {
   RecordLifeOpsProgressResult,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import {
   type DefinitionCreationContext,
   definitionCreationIdentity,
 } from "../definition-creation-identity.js";
+import { resolveOwnerDefinitionSurface } from "../definition-owner-surface.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsTaskDefinition } from "../repository.js";
 import {
@@ -167,6 +170,77 @@ export class DefinitionsDomain {
     }));
   }
 
+  /** Owner reminder read-model; retains occurrence/attempt identity for existing verbs. */
+  async listReminders() {
+    const definitions = (
+      await listCallerDefinitions(this.ctx.repository, this.ctx, {
+        activeOnly: false,
+      })
+    ).filter(
+      (definition) =>
+        resolveOwnerDefinitionSurface(definition) === "OWNER_REMINDERS",
+    );
+    const occurrences = await this.ctx.repository.listOccurrencesForDefinitions(
+      this.ctx.agentId(),
+      definitions.map((definition) => definition.id),
+    );
+    const occurrencesByDefinition = new Map<string, LifeOpsOccurrence[]>();
+    for (const row of occurrences) {
+      const list = occurrencesByDefinition.get(row.definitionId) ?? [];
+      list.push(row);
+      occurrencesByDefinition.set(row.definitionId, list);
+    }
+    const now = Date.now();
+    const views = definitions.map((definition) => {
+      const rows = occurrencesByDefinition.get(definition.id) ?? [];
+      const pending = rows
+        .filter(
+          (row) =>
+            !["completed", "skipped", "expired", "muted"].includes(row.state),
+        )
+        .sort(
+          (a, b) =>
+            Date.parse(
+              a.snoozedUntil ?? a.dueAt ?? a.scheduledAt ?? a.createdAt,
+            ) -
+            Date.parse(
+              b.snoozedUntil ?? b.dueAt ?? b.scheduledAt ?? b.createdAt,
+            ),
+        );
+      const occurrence =
+        pending.find(
+          (row) =>
+            Date.parse(
+              row.snoozedUntil ?? row.dueAt ?? row.scheduledAt ?? row.createdAt,
+            ) >= now,
+        ) ??
+        pending[0] ??
+        rows.sort(
+          (a, b) =>
+            Date.parse(b.dueAt ?? b.scheduledAt ?? b.createdAt) -
+            Date.parse(a.dueAt ?? a.scheduledAt ?? a.createdAt),
+        )[0];
+      return {
+        definition,
+        occurrence: occurrence ?? null,
+      };
+    });
+    const attempts =
+      await this.ctx.repository.listLatestReminderAttemptsForOccurrences(
+        this.ctx.agentId(),
+        views.flatMap(({ occurrence }) => (occurrence ? [occurrence.id] : [])),
+      );
+    const latestByOccurrence = new Map(
+      attempts.map((attempt) => [attempt.ownerId, attempt]),
+    );
+    return views.map((view) => ({
+      ...view,
+      latestAttempt: view.occurrence
+        ? (latestByOccurrence.get(view.occurrence.id) ?? null)
+        : null,
+    }));
+  }
+
   async getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord> {
     return this.deps.getDefinitionRecord(definitionId);
   }
@@ -179,10 +253,19 @@ export class DefinitionsDomain {
       this.ctx,
       { activeOnly: false },
     );
+    const reminderDefinitionIds = new Set(
+      definitions
+        .filter(
+          (definition) =>
+            resolveOwnerDefinitionSurface(definition) === "OWNER_REMINDERS",
+        )
+        .map((definition) => definition.id),
+    );
     const unscheduled: LifeOpsTodoView[] = definitions
       .filter(
         (definition) =>
           definition.subjectType === "owner" &&
+          !reminderDefinitionIds.has(definition.id) &&
           definition.kind === "task" &&
           definition.cadence.kind === "unscheduled" &&
           ["active", "completed"].includes(definition.status),
@@ -196,21 +279,25 @@ export class DefinitionsDomain {
         progress: null,
       }));
     return [
-      ...occurrences.map(
-        (occurrence): LifeOpsTodoView => ({
-          id: occurrence.id,
-          targetKind: "occurrence",
-          title: occurrence.title,
-          status:
-            occurrence.state === "completed"
-              ? "completed"
-              : occurrence.state === "snoozed"
-                ? "in_progress"
-                : "pending",
-          dueDate: occurrence.dueAt,
-          progress: occurrence.progress,
-        }),
-      ),
+      ...occurrences
+        .filter(
+          (occurrence) => !reminderDefinitionIds.has(occurrence.definitionId),
+        )
+        .map(
+          (occurrence): LifeOpsTodoView => ({
+            id: occurrence.id,
+            targetKind: "occurrence",
+            title: occurrence.title,
+            status:
+              occurrence.state === "completed"
+                ? "completed"
+                : occurrence.state === "snoozed"
+                  ? "in_progress"
+                  : "pending",
+            dueDate: occurrence.dueAt,
+            progress: occurrence.progress,
+          }),
+        ),
       ...unscheduled,
     ];
   }
@@ -388,6 +475,8 @@ export class DefinitionsDomain {
         definition,
         operationKey,
       );
+    if (reminderPlan?.steps.length)
+      await requestReminderWake(this.ctx.runtime, Date.now());
     return {
       idempotency: { key: operationKey, replayed: false },
       definition,
@@ -616,6 +705,8 @@ export class DefinitionsDomain {
       this.ctx.agentId(),
       nextDefinition.id,
     );
+    if (reminderPlan?.steps.length)
+      await requestReminderWake(this.ctx.runtime, Date.now());
     return {
       definition: nextDefinition,
       reminderPlan,
@@ -1004,6 +1095,9 @@ export class DefinitionsDomain {
     request: SnoozeLifeOpsOccurrenceRequest,
     now = new Date(),
   ): Promise<LifeOpsOccurrenceView> {
+    if (!Number.isFinite(now.getTime())) {
+      fail(400, "snooze time must be a valid date");
+    }
     const { occurrence, definition } = await this.deps.getFreshOccurrence(
       occurrenceId,
       now,
@@ -1018,9 +1112,31 @@ export class DefinitionsDomain {
     ) {
       fail(409, `occurrence cannot be snoozed from state ${occurrence.state}`);
     }
-    const snoozedUntil = computeSnoozedUntil(definition, request, now);
+    // A duration postpones the current eligible time, including an existing
+    // snooze. Named wall-clock presets still resolve from now, not that anchor.
+    const eligibleTimes = [
+      now.getTime(),
+      Date.parse(occurrence.relevanceStartAt),
+      occurrence.snoozedUntil === null
+        ? now.getTime()
+        : Date.parse(occurrence.snoozedUntil),
+    ];
+    if (eligibleTimes.some((time) => !Number.isFinite(time))) {
+      fail(400, "occurrence eligibility time must be a valid date");
+    }
+    const eligibleAt = new Date(Math.max(...eligibleTimes));
+    const absolutePreset =
+      request.preset === "tonight" || request.preset === "tomorrow_morning";
+    const snoozedUntil = computeSnoozedUntil(
+      definition,
+      request,
+      absolutePreset ? now : eligibleAt,
+    );
     if (snoozedUntil.getTime() <= now.getTime()) {
       fail(400, "snoozedUntil must be in the future");
+    }
+    if (snoozedUntil.getTime() < eligibleAt.getTime()) {
+      fail(400, "snooze preset would deliver before the current eligible time");
     }
     const updatedOccurrence: LifeOpsOccurrence = {
       ...occurrence,
@@ -1093,6 +1209,10 @@ export class DefinitionsDomain {
         { occurrenceId: updatedOccurrence.id },
       );
     }
+    // Ask the existing worker to reconcile the committed snooze against its
+    // effective plan, rather than reproducing preference/offset policy here.
+    if (definition.reminderPlanId)
+      await requestReminderWake(this.ctx.runtime, Date.now());
     return view;
   }
 }

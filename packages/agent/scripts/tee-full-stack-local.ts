@@ -12,20 +12,25 @@
  * (local-only, desktop, cloud-routed), drives a golden (trusted) key release
  * for each, and then drives a golden + tampered fixture for EVERY decision
  * reason in the closed `TeeEvidencePolicyDecision` union, asserting the exact
- * reason each time. Artifacts are written under evidence/tee/.
+ * reason each time. Artifacts are written under test-results/agent-tee-full-stack-local/.
  *
- * This is NOT the unit test (tee-evidence-policy.matrix.test.ts owns the pure
- * data matrix). This script wires the same vectors through the real key-release
- * client + mock KMS so the wrap/unwrap, nonce, and report_data binding paths are
- * exercised end to end. Real TDX/CoVE quote-signature verification is BLOCKED on
- * hardware (plan Phase B/C); this verifies a normalized evidence document only.
+ * This script wires the vectors through the real key-release client and a
+ * mock KMS so the wrap/unwrap, nonce, and report_data binding paths are
+ * exercised end to end. CPU evidence here is a normalized fixture document (the
+ * raw dstack TDX path is covered by test/tee-dstack-*.test.ts). GPU claims
+ * cannot be self-declared: the cloud-routed topology obtains gpuProtected /
+ * gpuFirmware from the real NVIDIA verifier against the local NRAS emulator
+ * (test/support/nras-emulator.ts) with each request's nonce.
  *
  * Run: bun packages/agent/scripts/tee-full-stack-local.ts
  * Exit: 0 on all-green, non-zero on any mismatch.
  */
+
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
   type SealedWeightsBlob,
   unsealModelWeights,
@@ -34,6 +39,11 @@ import type {
   TeeEvidence,
   TeeMeasurementName,
 } from "../src/services/tee-evidence.ts";
+import { attachVerifiedNvidiaGpuAttestation } from "../src/services/tee-gpu-evidence.ts";
+import {
+  NvidiaGpuAttestationVerifier,
+  nvidiaGpuFirmwareDigest,
+} from "../src/services/tee-gpu-nvidia.ts";
 import {
   HttpTeeKeyReleaseClient,
   type TeeReportDataBoundEvidenceProvider,
@@ -49,6 +59,11 @@ import {
   mergeTeeRevocationsIntoPolicy,
   type TeeRevocationManifest,
 } from "../src/services/tee-revocation.ts";
+import {
+  GPU_FIRMWARE,
+  startNrasEmulator,
+  writePinnedCollector,
+} from "../test/support/nras-emulator.ts";
 
 // Fixed clock so timestamp-freshness vectors are deterministic.
 const NOW = Date.parse("2026-05-20T12:00:00.000Z");
@@ -68,8 +83,30 @@ const GOLDEN_MEASUREMENTS: Record<TeeMeasurementName, string> = {
   device: digest("device"),
   container: digest("container"),
   npuFirmware: digest("npuFirmware"),
-  gpuFirmware: digest("gpuFirmware"),
+  // The digest the verified NRAS path yields for the emulator's single GPU.
+  gpuFirmware: nvidiaGpuFirmwareDigest([
+    {
+      hwModel: GPU_FIRMWARE.hwModel,
+      driverVersion: GPU_FIRMWARE.driver,
+      vbiosVersion: GPU_FIRMWARE.vbios,
+    },
+  ]),
 };
+
+// External NVIDIA boundary: NRAS emulator + pinned nvattest-compatible collector.
+const nrasDirectory = await mkdtemp(path.join(tmpdir(), "tee-full-stack-"));
+const nras = await startNrasEmulator(nrasDirectory);
+const gpuVerifier = new NvidiaGpuAttestationVerifier({
+  collector: await writePinnedCollector(nrasDirectory, "nvattest"),
+  nrasUrl: `${nras.origin}/v4/attest/gpu`,
+  jwks: {
+    source: "fetched",
+    url: `${nras.origin}/.well-known/jwks.json`,
+    x5cTrustAnchorSha256: [nras.anchorSha256],
+  },
+  trustedCaPem: nras.caPem,
+  policy: { expectedGpuCount: 1, allowedArchitectures: ["HOPPER"] },
+});
 
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 
@@ -217,7 +254,8 @@ function buildDesktop(): TopologyFixture {
 
 function buildCloudRouted(): TopologyFixture {
   // Cloud-routed: prompt data goes to a dstack CVM on TDX + H100 confidential
-  // GPU. Adds the cloud KMS provider, requires gpuProtected + gpuFirmware.
+  // GPU. Adds the cloud KMS provider, requires gpuProtected + gpuFirmware,
+  // which only the verified NVIDIA attestation (per request nonce) supplies.
   const evidence: TeeEvidence = {
     kind: "tdx",
     provider: "eliza-cloud-kms",
@@ -231,7 +269,6 @@ function buildCloudRouted(): TopologyFixture {
       policy: GOLDEN_MEASUREMENTS.policy,
       device: GOLDEN_MEASUREMENTS.device,
       container: GOLDEN_MEASUREMENTS.container,
-      gpuFirmware: GOLDEN_MEASUREMENTS.gpuFirmware,
     },
     freshness: {
       nonce: ISSUED_NONCE,
@@ -244,7 +281,6 @@ function buildCloudRouted(): TopologyFixture {
       memoryEncrypted: true,
       ioProtected: true,
       productionLifecycle: true,
-      gpuProtected: true,
     },
   };
   const policy = mergeTeeProductionProfile(
@@ -299,7 +335,18 @@ function makeMockKmsFetch(kmsSecretLabel: string): typeof fetch {
       evidence: TeeEvidence;
       policy: TeeEvidencePolicy;
     };
-    const decision = evaluateTeeEvidencePolicy(body.evidence, body.policy);
+    // GPU claims cannot cross the wire unverified (they are stripped from any
+    // input document); this mock KMS appraises the CPU evidence only, and the
+    // agent's own appraisal of its locally verified evidence covers the GPU.
+    const { gpuProtected: _gpuClaim, ...cpuClaims } =
+      body.policy.requiredClaims ?? {};
+    const { gpuFirmware: _gpuMeasurement, ...cpuMeasurements } =
+      body.policy.requiredMeasurements ?? {};
+    const decision = evaluateTeeEvidencePolicy(body.evidence, {
+      ...body.policy,
+      requiredClaims: cpuClaims,
+      requiredMeasurements: cpuMeasurements,
+    });
     if (!decision.trusted) {
       return Response.json({ decision }, { status: 403 });
     }
@@ -328,14 +375,30 @@ function makeMockKmsFetch(kmsSecretLabel: string): typeof fetch {
 function makeEvidenceProvider(
   fixture: TopologyFixture,
 ): TeeReportDataBoundEvidenceProvider {
-  return {
-    id: `full-stack-${fixture.topology}`,
-    collectEvidence: async () => fixture.evidence,
-    collectEvidenceWithReportData: async ({ nonce, reportDataHex }) => ({
+  const collectEvidenceWithReportData = async ({
+    nonce,
+    reportDataHex,
+  }: {
+    nonce: string;
+    reportDataHex: string;
+  }): Promise<TeeEvidence> => {
+    const cpu: TeeEvidence = {
       ...fixture.evidence,
       reportData: reportDataHex,
       freshness: { ...fixture.evidence.freshness, nonce },
-    }),
+    };
+    if (fixture.topology !== "cloud-routed") return cpu;
+    // GPU claims only through the verified NVIDIA path, bound to this nonce.
+    const gpu = await gpuVerifier.attest(nonce);
+    return attachVerifiedNvidiaGpuAttestation(cpu, gpu, nonce);
+  };
+  return {
+    id: `full-stack-${fixture.topology}`,
+    collectEvidence: () => {
+      const nonce = randomBytes(32).toString("hex");
+      return collectEvidenceWithReportData({ nonce, reportDataHex: nonce });
+    },
+    collectEvidenceWithReportData,
   };
 }
 
@@ -351,7 +414,15 @@ type TopologyRunResult = {
 async function runTopology(
   fixture: TopologyFixture,
 ): Promise<TopologyRunResult> {
-  const golden = evaluateTeeEvidencePolicy(fixture.evidence, fixture.policy);
+  // Golden: freshly collected evidence against the topology policy + nonce.
+  const goldenNonce = randomBytes(32).toString("hex");
+  const golden = evaluateTeeEvidencePolicy(
+    await makeEvidenceProvider(fixture).collectEvidenceWithReportData?.({
+      nonce: goldenNonce,
+      reportDataHex: goldenNonce,
+    }),
+    { ...fixture.policy, expectedNonce: goldenNonce },
+  );
   const client = new HttpTeeKeyReleaseClient({
     baseUrl: "https://kms.example.test",
     fetch: makeMockKmsFetch(`full-stack-${fixture.topology}-kms`),
@@ -388,7 +459,9 @@ async function runTopology(
 // reason the policy must return; the harness exits non-zero on any mismatch.
 // ---------------------------------------------------------------------------
 
-const REASON_BASE_FIXTURE = buildCloudRouted();
+// Desktop base: its claims are all plain document claims. GPU claims are only
+// honoured from the verified NVIDIA path, so they cannot seed a data matrix.
+const REASON_BASE_FIXTURE = buildDesktop();
 const reasonBaseEvidence = REASON_BASE_FIXTURE.evidence;
 const reasonBasePolicy = REASON_BASE_FIXTURE.policy;
 
@@ -481,7 +554,7 @@ const reasonVectors: ReasonVector[] = [
     evidence: reasonBaseEvidence,
     policy: mergeTeeRevocationsIntoPolicy(reasonBasePolicy, {
       schemaVersion: 1,
-      revokedSecurityVersions: [9],
+      revokedSecurityVersions: [5],
     } satisfies TeeRevocationManifest),
     trusted: false,
   },
@@ -532,7 +605,7 @@ const reasonVectors: ReasonVector[] = [
     reason: "claim-mismatch",
     evidence: {
       ...reasonBaseEvidence,
-      claims: { ...reasonBaseEvidence.claims, gpuProtected: false },
+      claims: { ...reasonBaseEvidence.claims, npuProtected: false },
     },
     policy: reasonBasePolicy,
     trusted: false,
@@ -698,16 +771,39 @@ async function runUnseal(): Promise<{
 // Drive everything, self-check, write artifacts.
 // ---------------------------------------------------------------------------
 
-const topologyResults = await Promise.all(topologies.map(runTopology));
+let topologyResults: TopologyRunResult[];
+let unseal: Awaited<ReturnType<typeof runUnseal>>;
+let forgedGpuRefused: boolean;
+try {
+  topologyResults = await Promise.all(topologies.map(runTopology));
+  unseal = await runUnseal();
+  // Self-declared GPU claims in a document are never honoured.
+  const cloud = buildCloudRouted();
+  const forged = evaluateTeeEvidencePolicy(
+    {
+      ...cloud.evidence,
+      measurements: {
+        ...cloud.evidence.measurements,
+        gpuFirmware: GOLDEN_MEASUREMENTS.gpuFirmware,
+      },
+      claims: { ...cloud.evidence.claims, gpuProtected: true },
+    },
+    cloud.policy,
+  );
+  forgedGpuRefused = !forged.trusted;
+} finally {
+  await nras.close();
+  await rm(nrasDirectory, { recursive: true, force: true });
+}
 const { results: reasonResults, coverageOk } = runReasonMatrix();
-const unseal = await runUnseal();
 
 const topologiesOk = topologyResults.every((result) => result.ok);
 const reasonsOk = reasonResults.every((result) => result.ok);
 const unsealOk = unseal.happyPath && unseal.deniedPath;
 
 const output = {
-  ok: topologiesOk && reasonsOk && coverageOk && unsealOk,
+  ok: topologiesOk && reasonsOk && coverageOk && unsealOk && forgedGpuRefused,
+  forgedGpuRefused,
   topologies: topologyResults,
   decisionReasonMatrix: {
     coverageOk,
@@ -728,6 +824,7 @@ if (!output.ok) {
         reasonsOk,
         coverageOk,
         unsealOk,
+        forgedGpuRefused,
         failedTopologies: failedTopologies.map((result) => result.topology),
         failedReasons: failedReasons.map((result) => result.reason),
       },
@@ -737,7 +834,7 @@ if (!output.ok) {
   );
 }
 
-const outputPath = "evidence/tee/full-stack-local-2026-05-20.json";
+const outputPath = testOutputPath("agent-tee-full-stack-local", "report.json");
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`);
 console.log(

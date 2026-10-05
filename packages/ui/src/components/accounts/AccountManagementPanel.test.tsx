@@ -139,7 +139,7 @@ describe("AccountManagementPanel", () => {
     const onSelectChatProvider = vi.fn();
     render(
       <AccountManagementPanel
-        activeSubscriptionId="openai-subscription"
+        activeSubscriptionId="anthropic-subscription"
         onSelectChatProvider={onSelectChatProvider}
         onSelectSubscription={vi.fn()}
       />,
@@ -188,7 +188,7 @@ describe("AccountManagementPanel", () => {
   it("renders a lucide chevron on the available-providers disclosure", () => {
     render(
       <AccountManagementPanel
-        activeSubscriptionId="openai-subscription"
+        activeSubscriptionId="anthropic-subscription"
         onSelectChatProvider={vi.fn()}
         onSelectSubscription={vi.fn()}
       />,

@@ -4,18 +4,19 @@
  * account identity; durable credential refs point at the runtime secret store.
  */
 import { createHash } from "node:crypto";
-import {
-  type ConnectorAccount,
-  ElizaError,
-  getConnectorAccountManager,
-  type IAgentRuntime,
-  SECRETS_SERVICE_TYPE,
-} from "@elizaos/core";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
   LifeOpsMicrosoftCapability,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import {
+  type ConnectorAccount,
+  ElizaError,
+  type FetchLike,
+  getConnectorAccountManager,
+  type IAgentRuntime,
+} from "@elizaos/core";
+import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 
 export const MICROSOFT_CALENDAR_PROVIDER = "microsoft";
 export const MICROSOFT_CALENDAR_GRANT_PREFIX = "connector-account:microsoft:";
@@ -766,8 +767,8 @@ interface MicrosoftRefreshResponse {
   expiresAt: number;
 }
 
-function tokenFetch(runtime: IAgentRuntime): typeof fetch {
-  const runtimeFetch = (runtime as { fetch?: typeof fetch }).fetch;
+function tokenFetch(runtime: IAgentRuntime): FetchLike {
+  const runtimeFetch = runtime.fetch;
   return runtimeFetch ? runtimeFetch.bind(runtime) : globalThis.fetch;
 }
 

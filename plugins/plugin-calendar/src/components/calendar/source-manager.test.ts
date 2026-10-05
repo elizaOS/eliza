@@ -6,7 +6,7 @@
 import type {
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
   calendarSourceIdentityKey,

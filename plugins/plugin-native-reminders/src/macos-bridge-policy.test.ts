@@ -25,7 +25,7 @@ describe("Apple Reminders macOS bridge policy", () => {
       },
       {
         label: "local Apple permissions bridge",
-        path: `../../../../packages/app-core/platforms/electrobun/src/${APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME}`,
+        path: `../../../../packages/app/platforms/electrobun/src/${APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME}`,
       },
     ]);
   });

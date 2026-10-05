@@ -1,5 +1,7 @@
 /** Selects and invokes registered model providers with admission, failover, streaming, and trajectory recording. Handlers receive the original runtime; private lifecycle and prompt collaborators remain explicit host callbacks. */
 
+import { performance } from "node:perf_hooks";
+import { copyEmbeddingVectorSpace } from "../../embedding-vector-space";
 import { ElizaError } from "../../errors";
 import {
 	INFERENCE_MARKS,
@@ -9,33 +11,41 @@ import {
 	setInferenceModelProvider,
 } from "../../inference-timing";
 import {
-	collectPiiPromptText,
-	GuardedStreamScanner,
-	type PseudonymSession,
-} from "../../security/index.js";
-import type { SecretSwapSession } from "../../security/secret-swap";
+	type ConfidentialInferenceAuthority,
+	ConfidentialInferenceOperation,
+	runWithConfidentialInference,
+} from "../../security/confidential-inference.js";
+import { GuardedStreamScanner } from "../../security/guarded-stream.js";
 import {
 	describeModelCallError,
-	isElizaCloudGatewayWarmingExhaustedError,
 	isModelProviderFallbackError,
-} from "../../services/message/fallback-reply";
+	isModelProviderRetryBudgetExhaustedError,
+} from "../../security/model-failure.ts";
+import {
+	collectPiiPromptText,
+	type PseudonymSession,
+} from "../../security/pii-pseudonymizer.js";
+import {
+	admitProcessing,
+	type ProcessingPolicy,
+} from "../../security/processing-policy";
+import type { SecretSwapSession } from "../../security/secret-swap";
 import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 } from "../../streaming-context";
 import { getTrajectoryContext } from "../../trajectory-context";
 import {
+	ensureTaskTrajectory,
 	runInModelCallRecordingScope,
-	runWithModelCallRecordingScope,
 	type TrajectoryRuntimeLlmCallLogger,
 } from "../../trajectory-utils";
-import type { ModelHandler } from "../../types";
+import type { StreamChunkCallback } from "../../types/components.js";
+import { EventType } from "../../types/events.js";
+import type { ModelHandler } from "../../types/model.js";
 import {
-	EventType,
 	type GenerateTextParams,
 	getModelFallbackChain,
-	type IAgentRuntime,
-	type JsonValue,
 	MODEL_PROVIDER_ATTEMPTS,
 	type ModelAttemptContext,
 	type ModelParamsMap,
@@ -46,18 +56,17 @@ import {
 	ModelType,
 	type ModelTypeName,
 	type ResponseSkeleton,
-	type Service,
-	type ServiceTypeName,
-	type StreamChunkCallback,
 	type TextStreamResult,
-	type UUID,
-} from "../../types";
+} from "../../types/model.js";
 import {
 	modelStreamChunkPipelineHookContext,
 	modelStreamEndPipelineHookContext,
 	postModelPipelineHookContext,
 	preModelPipelineHookContext,
 } from "../../types/pipeline-hooks";
+import type { JsonValue, UUID } from "../../types/primitives.js";
+import type { IAgentRuntime } from "../../types/runtime.js";
+import type { Service, ServiceTypeName } from "../../types/service.js";
 import { BufferUtils } from "../../utils/buffer";
 import {
 	assertModelOutputComplete,
@@ -86,13 +95,23 @@ import {
 	withModelInputBudgetProviderOptions,
 } from "../model-input-budget";
 import type { RuntimePipelineHooks } from "../pipeline-hooks.js";
-import { resolveEffectiveSystemPrompt } from "../system-prompt";
+import {
+	dropDuplicateLeadingSystemMessage,
+	resolveEffectiveSystemPrompt,
+} from "../system-prompt";
 import {
 	buildProviderAttributionsFromState,
 	canonicalPromptForModelCall,
 	omitUnvalidatedProviderSpans,
 } from "../trajectory-provider-attribution";
 import {
+	LLM_MODE_OVERRIDE_MODEL_TYPES,
+	modalityForModelType,
+	PII_SWAP_SKIP_MODEL_TYPES,
+	SECRET_SWAP_SKIP_MODEL_TYPES,
+} from "./modality.js";
+import {
+	assertModelResultPresent,
 	assertRuntimeModelOutputComplete,
 	isTextStreamResult,
 	isUnavailableLocalModel,
@@ -104,8 +123,18 @@ import {
 } from "./policy.js";
 
 export interface RuntimeModelDispatchHost {
+	confidentialInference(): ConfidentialInferenceAuthority | undefined;
+	processingPolicy(): ProcessingPolicy | undefined;
 	models(): Map<string, ModelHandler[]>;
 	pinnedEmbeddingProvider(): string | undefined;
+	validateEmbeddingOutput(
+		modelType: string,
+		params: unknown,
+		source: unknown,
+		result: unknown,
+		provider: string,
+		signal?: AbortSignal,
+	): void | Promise<void>;
 	currentRoomId(): UUID | undefined;
 	isSecretSwapEnabled(): boolean;
 	isPiiSwapEnabled(): boolean;
@@ -131,6 +160,23 @@ export interface RuntimeModelDispatchHost {
 }
 
 export class RuntimeModelDispatch {
+	private readonly pendingDiagnostics = new Set<Promise<void>>();
+
+	private trackDiagnostic(write: Promise<void>): void {
+		this.pendingDiagnostics.add(write);
+		void write.then(
+			() => this.pendingDiagnostics.delete(write),
+			() => this.pendingDiagnostics.delete(write),
+		);
+	}
+
+	/** Finish owned writes before services or their database are closed. */
+	async drainDiagnostics(): Promise<void> {
+		while (this.pendingDiagnostics.size > 0) {
+			await Promise.allSettled(this.pendingDiagnostics);
+		}
+	}
+
 	constructor(
 		private readonly runtime: IAgentRuntime,
 		private readonly host: RuntimeModelDispatchHost,
@@ -199,14 +245,27 @@ export class RuntimeModelDispatch {
 		// routing table) can mirror the model registry without patching the
 		// runtime or capturing handlers. Fire-and-forget: a no-op when nothing
 		// is subscribed, and registry bookkeeping must never block boot.
-		void this.runtime.emitEvent(EventType.MODEL_REGISTERED, {
-			runtime: this.runtime,
-			source: "runtime",
-			modelType: modelKey,
-			metadata,
-			provider,
-			priority: priority || 0,
-		});
+		// Fire-and-forget, but a rejecting observer must not become an unhandled
+		// rejection: `emitEvent` awaits every handler, and a handler that awaits
+		// initialization (the embedding service's registration handler, the API
+		// broadcast handler) can reject. Report it through the runtime's error
+		// channel like every other emit site in this package.
+		void this.runtime
+			.emitEvent(EventType.MODEL_REGISTERED, {
+				runtime: this.runtime,
+				source: "runtime",
+				modelType: modelKey,
+				metadata,
+				provider,
+				priority: priority || 0,
+			})
+			.catch((error: unknown) => {
+				this.runtime.reportError("AgentRuntime.registerModel", error, {
+					agentId: this.runtime.agentId,
+					modelType: modelKey,
+					provider,
+				});
+			});
 	}
 
 	/**
@@ -584,7 +643,17 @@ export class RuntimeModelDispatch {
 		const record = isPlainObject(params)
 			? (params as Record<string, unknown>)
 			: {};
+		const requestedModelName =
+			typeof record.model === "string" && record.model.trim()
+				? record.model.trim()
+				: undefined;
+		// Slot limits describe its registered model, not an unrelated per-call
+		// override. Unknown capacity stays diagnostic; complete input is retained.
+		const limitsMatchModel =
+			requestedModelName === undefined ||
+			requestedModelName === this.resolveRegistrationModelName(metadata);
 		const contextWindowTokens =
+			limitsMatchModel &&
 			typeof metadata?.contextWindowTokens === "number" &&
 			Number.isFinite(metadata.contextWindowTokens)
 				? Math.max(1, Math.floor(metadata.contextWindowTokens))
@@ -594,11 +663,12 @@ export class RuntimeModelDispatch {
 			Number.isFinite(record.maxTokens) &&
 			record.maxTokens > 0
 				? Math.floor(record.maxTokens)
-				: 0;
-		const requestedModelName =
-			typeof record.model === "string" && record.model.trim()
-				? record.model.trim()
-				: undefined;
+				: limitsMatchModel &&
+						typeof metadata?.maxOutputTokens === "number" &&
+						Number.isFinite(metadata.maxOutputTokens) &&
+						metadata.maxOutputTokens > 0
+					? Math.floor(metadata.maxOutputTokens)
+					: 0;
 		return buildModelInputBudget({
 			completeRequest: params,
 			messages: Array.isArray(record.messages)
@@ -736,57 +806,128 @@ export class RuntimeModelDispatch {
 			(trajectoryContext?.roomId as UUID | undefined) ??
 			this.host.currentRoomId() ??
 			this.runtime.agentId;
-		void this.runtime.adapter
-			.createLogs([
-				{
-					entityId: this.runtime.agentId,
-					roomId: logRoomId,
-					body: {
-						modelType,
-						modelKey,
-						prompt: promptContent ?? undefined,
-						systemPrompt,
-						runId: this.runtime.getCurrentRunId(),
-						timestamp: Date.now(),
-						executionTime: elapsedTime,
-						provider:
-							provider ||
-							this.host.models().get(modelKey)?.[0]?.provider ||
-							"unknown",
-						response: responseValue,
-					},
-					type: `useModel:${modelKey}`,
-				},
-			])
-			.catch((error) => {
-				// error-policy:J7 Model-call logs are diagnostic; report failed
-				// persistence without altering the completed model response.
-				this.runtime.logger.debug(
+		this.trackDiagnostic(
+			this.runtime.adapter
+				.createLogs([
 					{
-						src: "agent",
-						agentId: this.runtime.agentId,
-						model: modelKey,
-						error: error instanceof Error ? error.message : String(error),
+						entityId: this.runtime.agentId,
+						roomId: logRoomId,
+						body: {
+							modelType,
+							modelKey,
+							prompt: promptContent ?? undefined,
+							systemPrompt,
+							runId: this.runtime.getCurrentRunId(),
+							timestamp: Date.now(),
+							executionTime: elapsedTime,
+							provider:
+								provider ||
+								this.host.models().get(modelKey)?.[0]?.provider ||
+								"unknown",
+							response: responseValue,
+						},
+						type: `useModel:${modelKey}`,
 					},
-					"Model call log write failed",
-				);
-				this.runtime.reportError("AgentRuntime.modelCallLog", error, {
-					model: modelKey,
-					diagnosticOnly: true,
-				});
-			});
+				])
+				.catch((error) => {
+					// error-policy:J7 Model-call logs are diagnostic; report failed
+					// persistence without altering the completed model response.
+					this.runtime.logger.debug(
+						{
+							src: "agent",
+							agentId: this.runtime.agentId,
+							model: modelKey,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Model call log write failed",
+					);
+					this.runtime.reportError("AgentRuntime.modelCallLog", error, {
+						model: modelKey,
+						diagnosticOnly: true,
+					});
+				}),
+		);
 	}
 
-	async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
+	private resolveDispatchRegistrations(
+		modelType: keyof ModelParamsMap,
+		provider?: string,
+	) {
+		// The caller's model type, before any LLM-mode override rewrites it.
+		const callerModelKey = String(modelType);
+		let requestedModelKey = callerModelKey;
+
+		// Apply LLM mode override for text generation models
+		const llmMode = this.runtime.getLLMMode();
+		if (llmMode !== "DEFAULT") {
+			if (LLM_MODE_OVERRIDE_MODEL_TYPES.has(requestedModelKey)) {
+				const overrideModelKey =
+					llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
+				if (requestedModelKey !== overrideModelKey) {
+					this.runtime.logger.debug(
+						{
+							src: "agent",
+							agentId: this.runtime.agentId,
+							originalModel: requestedModelKey,
+							overrideModel: overrideModelKey,
+							llmMode,
+						},
+						"LLM mode override applied",
+					);
+					requestedModelKey = overrideModelKey as typeof requestedModelKey;
+				}
+			}
+		}
+
+		// TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH calls without an explicit
+		// provider are pinned to the provider that answered the dimension probe:
+		// the vector column was sized from its output, so serving an embedding
+		// call from any other registration (including a higher-priority BATCH
+		// handler, or via rate-limit failover) can emit a different-width vector
+		// that the SQL adapter silently drops (#8769). Pinning also disables
+		// mid-call provider failover for embeddings — an embedding either comes
+		// from the provider the column was sized for, or the call fails loudly.
+		// An explicit provider argument still wins.
+		const requestedProvider =
+			provider === undefined &&
+			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
+				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
+			this.host.pinnedEmbeddingProvider() !== undefined
+				? this.host.pinnedEmbeddingProvider()
+				: provider;
+
+		// Runtime preferred-provider override: when the caller did not pin a
+		// provider and this is a text-generation model, honor the runtime-selected
+		// provider (ELIZA_BRAIN_PROVIDER). This lets an owner flip the chat brain
+		// between loaded providers with no restart. A selection is a strict pin:
+		// failure or missing registration must not silently switch providers.
+		const providerOverride =
+			provider === undefined &&
+			TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)
+				? this.resolveTextProviderOverride()
+				: undefined;
+		const resolvedModels = this.resolveModelRegistrations(
+			requestedModelKey,
+			providerOverride ?? requestedProvider,
+		);
+		if (resolvedModels.length === 0) {
+			this.throwNoModelHandler(requestedModelKey);
+		}
+
+		return {
+			callerModelKey,
+			requestedModelKey,
+			requestedProvider,
+			resolvedModels,
+		};
+	}
+
+	/** Resolve an action chain once; nested attempts clear the routing context. */
+	private routeActionModel<T extends keyof ModelParamsMap, R>(
 		modelType: T,
 		params: ModelParamsMap[T],
-		provider?: string,
-	): Promise<R> {
-		const useModelStartedAt = Date.now();
-		this.assertCanonicalModelCapabilityEnabled(String(modelType));
-		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
-			? captureModelLookupCaller()
-			: undefined;
+		provider: string | undefined,
+	): Promise<R> | undefined {
 		// Per-action model routing seam (closes A5 / W1-R2). If the call
 		// originates inside an action handler that declared a `modelClass`, and
 		// the requested model type is a text-generation model, we resolve
@@ -849,86 +990,44 @@ export class RuntimeModelDispatch {
 			}
 		}
 
-		let requestedModelKey = String(modelType);
+		return undefined;
+	}
 
-		// Apply LLM mode override for text generation models
-		const llmMode = this.runtime.getLLMMode();
-		if (llmMode !== "DEFAULT") {
-			// List of text generation model types that can be overridden
-			const textGenerationModels = [
-				ModelType.TEXT_NANO,
-				ModelType.TEXT_SMALL,
-				ModelType.TEXT_MEDIUM,
-				ModelType.TEXT_LARGE,
-				ModelType.TEXT_MEGA,
-				ModelType.RESPONSE_HANDLER,
-				ModelType.ACTION_PLANNER,
-				ModelType.TEXT_COMPLETION,
-			];
+	async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
+		modelType: T,
+		params: ModelParamsMap[T],
+		provider?: string,
+	): Promise<R> {
+		const explicitSignal = isPlainObject(params)
+			? (params as { signal?: AbortSignal }).signal
+			: undefined;
+		const contextSignal = getStreamingContext()?.abortSignal;
+		const throwIfAborted = () => {
+			explicitSignal?.throwIfAborted();
+			contextSignal?.throwIfAborted();
+		};
+		throwIfAborted();
+		const useModelStartedAt = Date.now();
+		this.assertCanonicalModelCapabilityEnabled(String(modelType));
+		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
+			? captureModelLookupCaller()
+			: undefined;
+		const routed = this.routeActionModel<T, R>(modelType, params, provider);
+		if (routed) return routed;
 
-			if (
-				textGenerationModels.includes(
-					requestedModelKey as (typeof textGenerationModels)[number],
-				)
-			) {
-				const overrideModelKey =
-					llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
-				if (requestedModelKey !== overrideModelKey) {
-					this.runtime.logger.debug(
-						{
-							src: "agent",
-							agentId: this.runtime.agentId,
-							originalModel: requestedModelKey,
-							overrideModel: overrideModelKey,
-							llmMode,
-						},
-						"LLM mode override applied",
-					);
-					requestedModelKey = overrideModelKey as typeof requestedModelKey;
-				}
-			}
-		}
-
-		// TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH calls without an explicit
-		// provider are pinned to the provider that answered the dimension probe:
-		// the vector column was sized from its output, so serving an embedding
-		// call from any other registration (including a higher-priority BATCH
-		// handler, or via rate-limit failover) can emit a different-width vector
-		// that the SQL adapter silently drops (#8769). Pinning also disables
-		// mid-call provider failover for embeddings — an embedding either comes
-		// from the provider the column was sized for, or the call fails loudly.
-		// An explicit provider argument still wins.
-		const requestedProvider =
-			provider === undefined &&
-			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
-				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
-			this.host.pinnedEmbeddingProvider() !== undefined
-				? this.host.pinnedEmbeddingProvider()
-				: provider;
-
-		// Runtime preferred-provider override: when the caller did not pin a
-		// provider and this is a text-generation model, honor the runtime-selected
-		// provider (ELIZA_BRAIN_PROVIDER). This lets an owner flip the chat brain
-		// between loaded providers with no restart. A selection is a strict pin:
-		// failure or missing registration must not silently switch providers.
-		const providerOverride =
-			provider === undefined &&
-			TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)
-				? this.resolveTextProviderOverride()
-				: undefined;
-		const resolvedModels = this.resolveModelRegistrations(
+		const {
+			callerModelKey,
 			requestedModelKey,
-			providerOverride ?? requestedProvider,
-		);
-		if (resolvedModels.length === 0) {
-			this.throwNoModelHandler(requestedModelKey);
-		}
+			requestedProvider,
+			resolvedModels,
+		} = this.resolveDispatchRegistrations(modelType, provider);
 
 		let lastModelError: unknown;
 		let lastFailedModel: ResolvedModelRegistration | undefined;
 		let providerAttemptStartedOutput = false;
-		const providersWithExhaustedWarmingBudget = new Set<string>();
+		const providersWithExhaustedRetryBudget = new Set<string>();
 		const providerAttempts: ModelProviderAttempt[] = [];
+		const confidentialOperation = new ConfidentialInferenceOperation();
 		const registrationAttempted = (
 			candidate: ResolvedModelRegistration,
 		): boolean =>
@@ -948,13 +1047,34 @@ export class RuntimeModelDispatch {
 				continue;
 			}
 			if (
-				providersWithExhaustedWarmingBudget.has(resolvedModel.provider) ||
+				providersWithExhaustedRetryBudget.has(resolvedModel.provider) ||
 				registrationAttempted(resolvedModel)
 			) {
 				continue;
 			}
 			const resolvedModelKey = resolvedModel.modelKey;
 			const handler = resolvedModel.handler;
+			// Processing admission precedes every payload transformation (secret/PII
+			// swap, hooks) and the handler, so a denied destination receives nothing.
+			// A denial is terminal and keeps any earlier provider failure as cause.
+			await admitProcessing(
+				this.host.processingPolicy(),
+				this.runtime.agentId,
+				{
+					kind: "model_attempt",
+					model: {
+						modelType: String(resolvedModelKey),
+						requestedModelType: callerModelKey,
+						modality: modalityForModelType(String(resolvedModelKey)),
+						provider: resolvedModel.provider,
+						handler,
+						attempt: providerAttempts.length + 1,
+						reason: providerAttempts.length > 0 ? "failover" : "primary",
+					},
+				},
+				lastModelError,
+			);
+			throwIfAborted();
 			providerAttemptStartedOutput = false;
 			const attemptMeta = {
 				modelKey: String(resolvedModelKey),
@@ -978,47 +1098,31 @@ export class RuntimeModelDispatch {
 			// assigned inside (#17532).
 			let modelParamsRef: unknown = params;
 			let promptContentRef: string | null | undefined;
-			// recordingStateRef tracks whether the provider already logged this call.
+			// recordingState tracks whether the provider already logged this call.
 			// The catch block must not add a second failure entry for a call the
 			// provider recorded before throwing (e.g. OpenAI streaming logs in its
 			// generator finalizer then rethrows the stream error) — that would
 			// reintroduce the double-counting this fix removes (#17532).
 			//
-			// Initial value `{ recorded: false }` is only read when the handler
-			// throws BEFORE runWithModelCallRecordingScope assigns the real store
-			// (line ~6578). Once assigned, all later reads reference the scope's
-			// live mutable object, not this placeholder.
-			let recordingStateRef: { recorded: boolean } = { recorded: false };
+			// Own the live store before dispatch so a handler that records then
+			// rejects still suppresses the generic failure record.
+			const recordingState = { recorded: false };
 			let attemptPreparationFailed = false;
 			let drainStructuredStreamCallbacks: (() => Promise<void>) | undefined;
 
 			try {
-				const binaryModels: string[] = [
-					ModelType.TRANSCRIPTION,
-					ModelType.IMAGE,
-					ModelType.AUDIO,
-					ModelType.VIDEO,
-				];
-				// PII swap skips binary-input modalities (nothing to swap) and TEXT_EMBEDDING
-				// (a random per-turn surrogate would destabilize embeddings), but — unlike
-				// the secret gate — swaps IMAGE prompts, whose text can carry real names.
-				const PII_SWAP_SKIP_MODELS: string[] = [
-					ModelType.TRANSCRIPTION,
-					ModelType.AUDIO,
-					ModelType.VIDEO,
-					ModelType.TEXT_EMBEDDING,
-				];
+				throwIfAborted();
 				const shouldSubstituteSecrets =
 					this.host.isSecretSwapEnabled() &&
-					!binaryModels.includes(resolvedModelKey);
+					!SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey);
+				const shouldSubstitutePii =
+					this.host.isPiiSwapEnabled() &&
+					!PII_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey);
 				// Validate the caller-owned graph before `isPlainObject` / object spread
 				// below can reflect it. The later collection still runs after secret swap
 				// so NER never sees raw secrets; this preflight exists to make the earlier
 				// runtime cloning boundary descriptor-safe and fail-closed as well.
-				if (
-					this.host.isPiiSwapEnabled() &&
-					!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
-				) {
+				if (shouldSubstitutePii) {
 					collectPiiPromptText(params);
 				}
 				let modelParams: ModelParamsMap[T];
@@ -1105,11 +1209,7 @@ export class RuntimeModelDispatch {
 					}
 					delete (modelParams as GenerateTextParams).prepareModelAttempt;
 				}
-				let startTime =
-					typeof performance !== "undefined" &&
-					typeof performance.now === "function"
-						? performance.now()
-						: Date.now();
+				let startTime = performance.now();
 
 				// Get streaming config
 				// Define interface for params that may have streaming properties
@@ -1127,7 +1227,7 @@ export class RuntimeModelDispatch {
 				const paramsChunk = paramsAsStreaming?.onStreamChunk;
 				const ctxChunk = streamingCtx?.onStreamChunk;
 				const msgId = streamingCtx?.messageId;
-				const abortSignal = streamingCtx?.abortSignal;
+				const abortSignal = explicitSignal ?? contextSignal;
 				const explicitStream = paramsAsStreaming?.stream;
 				const resolvedProviderName = resolvedModel?.provider;
 				// stream: false = force no stream, otherwise stream if any callback exists.
@@ -1204,11 +1304,7 @@ export class RuntimeModelDispatch {
 					}
 					if (streamedText === "" && safeChunk.length > 0) {
 						markInference(INFERENCE_MARKS.firstToken);
-						const firstTokenAt =
-							typeof performance !== "undefined" &&
-							typeof performance.now === "function"
-								? performance.now()
-								: Date.now();
+						const firstTokenAt = performance.now();
 						recordInferenceSpan(
 							`model-ttft:${String(modelType)}`,
 							firstTokenAt - startTime,
@@ -1354,16 +1450,9 @@ export class RuntimeModelDispatch {
 							: secretSwapSession.substituteText(effectiveSystemPrompt);
 				}
 
-				// Models the PII swap must NOT touch: binary-input modalities (nothing to
-				// swap) and — unlike the secret gate — IMAGE is INCLUDED (its text prompt
-				// can carry real names), while TEXT_EMBEDDING is EXCLUDED (a per-turn-random
-				// surrogate would embed the same real text differently every turn and wreck
-				// semantic memory retrieval; embeddings stay on the real text).
+				// PII_SWAP_SKIP_MODEL_TYPES documents which slots stay on real text.
 				let piiIngressText = "";
-				if (
-					this.host.isPiiSwapEnabled() &&
-					!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
-				) {
+				if (shouldSubstitutePii) {
 					// Turn-scoped like the secret session (same mapping all turn), so the
 					// execution boundary can restore what this call swapped.
 					const trajectoryCtx = getTrajectoryContext();
@@ -1433,6 +1522,31 @@ export class RuntimeModelDispatch {
 						postHookSystemPrompt === undefined
 							? undefined
 							: piiSwapSession.substituteText(postHookSystemPrompt);
+				}
+
+				// Contact references are opaque handles, not credentials or prose.
+				// Attach after hooks/redaction so every text-provider attempt sees it.
+				if (
+					secretSwapSession?.entries.some((entry) =>
+						entry.placeholder.startsWith("__ELIZA_CONTACT_"),
+					) &&
+					TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey)) &&
+					isPlainObject(modelParams)
+				) {
+					const guidance =
+						"Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements.";
+					const record = modelParams as Record<string, unknown>;
+					// Remove only an exact existing duplicate before extending system.
+					// Otherwise the provider receives two different system messages.
+					if (Array.isArray(record.messages)) {
+						record.messages = dropDuplicateLeadingSystemMessage(
+							record.messages,
+							effectiveSystemPrompt,
+						);
+					}
+					effectiveSystemPrompt = `${effectiveSystemPrompt ?? ""}\n\n${guidance}`;
+					(modelParams as Record<string, unknown>).system =
+						effectiveSystemPrompt;
 				}
 
 				const hookedParamsObj =
@@ -1519,7 +1633,7 @@ export class RuntimeModelDispatch {
 					this.freezeAdmittedModelRequest(modelParams);
 				}
 
-				if (!binaryModels.includes(resolvedModelKey)) {
+				if (!SECRET_SWAP_SKIP_MODEL_TYPES.has(resolvedModelKey)) {
 					this.runtime.logger.trace(
 						{
 							src: "agent",
@@ -1579,16 +1693,23 @@ export class RuntimeModelDispatch {
 				// pre_model hooks, prompt extraction) is runtime work, and charging
 				// it to the provider span makes `model:*` timings unreadable as
 				// provider latency (#16394).
-				startTime =
-					typeof performance !== "undefined" &&
-					typeof performance.now === "function"
-						? performance.now()
-						: Date.now();
+				startTime = performance.now();
 				recordInferenceSpan(
 					`model-preprocess:${String(modelType)}`,
 					Date.now() - preprocessingStartedAt,
 					attemptMeta,
 				);
+				throwIfAborted();
+				// Capture actual calls, including PII_SCRUB and custom slots. Embedding
+				// and tokenizer work stays exempt; any nested generative fallback enters here.
+				if (
+					modelType !== ModelType.TEXT_EMBEDDING &&
+					modelType !== ModelType.TEXT_EMBEDDING_BATCH &&
+					!String(modelType).startsWith("TEXT_TOKENIZER")
+				) {
+					await ensureTaskTrajectory();
+				}
+				throwIfAborted();
 				handlerStartedAt = Date.now();
 				providerAttempt = {
 					modelType: resolvedModelKey,
@@ -1596,18 +1717,45 @@ export class RuntimeModelDispatch {
 					handler,
 				};
 				providerAttempts.push(providerAttempt);
-				const { result: handlerResult, recordingState } =
-					await runWithModelCallRecordingScope(() =>
-						handler(
-							this.runtime,
-							modelParams as Record<string, JsonValue | object>,
+				const handlerResult = await runInModelCallRecordingScope(
+					recordingState,
+					() =>
+						runWithConfidentialInference(
+							this.host.confidentialInference(),
+							{
+								agentId: this.runtime.agentId,
+								modelType: String(resolvedModelKey),
+								handler,
+								operation: confidentialOperation,
+							},
+							() =>
+								handler(
+									this.runtime,
+									modelParams as Record<string, JsonValue | object>,
+								),
 						),
-					);
-				// Expose the mutable recording state to the catch block so it can
-				// suppress a failure entry when the provider already logged this
-				// call before throwing (#17532).
-				recordingStateRef = recordingState;
+				);
+
+				throwIfAborted();
+				assertModelResultPresent(handlerResult, String(modelType));
 				const rawResponse = handlerResult;
+				let embeddingProviderOutput: unknown = rawResponse;
+				if (
+					modelType === ModelType.TEXT_EMBEDDING ||
+					modelType === ModelType.TEXT_EMBEDDING_BATCH
+				) {
+					const snapshot = (vector: unknown): unknown => {
+						if (!Array.isArray(vector)) return vector;
+						const copy = [...vector];
+						copyEmbeddingVectorSpace(vector, copy);
+						return copy;
+					};
+					embeddingProviderOutput =
+						modelType === ModelType.TEXT_EMBEDDING_BATCH &&
+						Array.isArray(rawResponse)
+							? rawResponse.map(snapshot)
+							: snapshot(rawResponse);
+				}
 
 				let safeRawResponse: unknown =
 					secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse;
@@ -1626,7 +1774,7 @@ export class RuntimeModelDispatch {
 					// Consume the provider stream inside the recording scope, mirroring
 					// the pass-through TextStreamResult wrapper below. Async generators
 					// do not inherit AsyncLocalStorage context from their creation, and
-					// runWithModelCallRecordingScope above has already exited by the
+					// runInModelCallRecordingScope above has already exited by the
 					// time we iterate, so markProviderRecordedCall (fired from the
 					// provider finalizer via logActiveTrajectoryLlmCall — e.g. the
 					// plugin-openai live-stream finally block) would find no store and
@@ -1645,7 +1793,7 @@ export class RuntimeModelDispatch {
 							// for-await pull-then-check order) so the provider generator
 							// body always advances at least once and its finally block
 							// runs on .return() cleanup.
-							if (abortSignal?.aborted) break;
+							throwIfAborted();
 							await deliverModelStreamChunk(value);
 						}
 					} finally {
@@ -1656,6 +1804,7 @@ export class RuntimeModelDispatch {
 							await streamIter.return?.();
 						});
 					}
+					throwIfAborted();
 					await flushGuardedStream();
 					structuredExtractor?.flush();
 					await drainStructuredStreamCallbacks();
@@ -1727,11 +1876,7 @@ export class RuntimeModelDispatch {
 						resultRef.current = streamedText;
 					}
 
-					const elapsedTime =
-						(typeof performance !== "undefined" &&
-						typeof performance.now === "function"
-							? performance.now()
-							: Date.now()) - startTime;
+					const elapsedTime = performance.now() - startTime;
 					const postprocessingStartedAt = Date.now();
 
 					await this.host.invokePipelineHooks(
@@ -1841,11 +1986,7 @@ export class RuntimeModelDispatch {
 					});
 				}
 
-				const elapsedTime =
-					(typeof performance !== "undefined" &&
-					typeof performance.now === "function"
-						? performance.now()
-						: Date.now()) - startTime;
+				const elapsedTime = performance.now() - startTime;
 				const postprocessingStartedAt = Date.now();
 
 				await this.host.invokePipelineHooks(
@@ -1996,6 +2137,7 @@ export class RuntimeModelDispatch {
 										recordingState,
 										() => innerIter.next(),
 									);
+									throwIfAborted();
 									if (done) {
 										await checkedFinishReason;
 										break;
@@ -2045,6 +2187,21 @@ export class RuntimeModelDispatch {
 					Date.now() - postprocessingStartedAt,
 					{ ...attemptMeta, streaming: handlerDeliveredStream },
 				);
+				if (
+					modelType === ModelType.TEXT_EMBEDDING ||
+					modelType === ModelType.TEXT_EMBEDDING_BATCH
+				) {
+					await this.host.validateEmbeddingOutput(
+						String(modelType),
+						params,
+						embeddingProviderOutput,
+						resultRef.current,
+						resolvedModel.provider,
+						explicitSignal && contextSignal
+							? AbortSignal.any([explicitSignal, contextSignal])
+							: (explicitSignal ?? contextSignal),
+					);
+				}
 				return resultRef.current as R;
 			} catch (error) {
 				const streamCallbackResult =
@@ -2061,6 +2218,7 @@ export class RuntimeModelDispatch {
 				) {
 					throw streamCallbackResult.error;
 				}
+				if (handlerStartedAt === null) throwIfAborted();
 				const unavailableLocalText =
 					TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey) &&
 					isUnavailableLocalModel(error);
@@ -2136,20 +2294,23 @@ export class RuntimeModelDispatch {
 				// (e.g. OpenAI streaming logs in its finalizer then rethrows) — a
 				// second failure entry would reintroduce the double-counting this
 				// fix removes (#17532).
-				if (!recordingStateRef.recorded) {
-					void this.recordFailedModelTrajectory({
-						modelType: String(modelType),
-						resolvedModelKey: String(resolvedModelKey),
-						provider: resolvedModel.provider,
-						modelParams: modelParamsRef,
-						promptContent: promptContentRef,
-						error,
-						elapsedTime:
-							handlerStartedAt === null
-								? Date.now() - preprocessingStartedAt
-								: Date.now() - handlerStartedAt,
-					});
+				if (!recordingState.recorded) {
+					this.trackDiagnostic(
+						this.recordFailedModelTrajectory({
+							modelType: String(modelType),
+							resolvedModelKey: String(resolvedModelKey),
+							provider: resolvedModel.provider,
+							modelParams: modelParamsRef,
+							promptContent: promptContentRef,
+							error,
+							elapsedTime:
+								handlerStartedAt === null
+									? Date.now() - preprocessingStartedAt
+									: Date.now() - handlerStartedAt,
+						}),
+					);
 				}
+				throwIfAborted();
 				// A model can unload between admission and dispatch. Record that
 				// real attempt, but retain the previous provider failure if absence
 				// is the only fallback outcome. Output/request errors stay decisive.
@@ -2163,13 +2324,13 @@ export class RuntimeModelDispatch {
 					lastFailedModel = resolvedModel;
 				}
 				if (providerAttempt) providerAttempt.error = error;
-				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
-					providersWithExhaustedWarmingBudget.add(resolvedModel.provider);
+				if (isModelProviderRetryBudgetExhaustedError(error)) {
+					providersWithExhaustedRetryBudget.add(resolvedModel.provider);
 				}
 				const nextModelIndex = resolvedModels.findIndex(
 					(candidate, candidateIndex) =>
 						candidateIndex > resolvedIndex &&
-						!providersWithExhaustedWarmingBudget.has(candidate.provider) &&
+						!providersWithExhaustedRetryBudget.has(candidate.provider) &&
 						!registrationAttempted(candidate),
 				);
 				const nextModel =

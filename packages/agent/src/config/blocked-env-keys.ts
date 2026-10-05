@@ -10,6 +10,12 @@
 import {
   BLOCKED_SPAWN_ENV_KEYS,
   BLOCKED_SPAWN_ENV_PREFIXES,
+  PROCESS_ONLY_ENV_KEY_PREFIXES,
+} from "@elizaos/core";
+
+export {
+  isProcessOnlyEnvKey,
+  PROCESS_ONLY_ENV_KEY_PREFIXES,
 } from "@elizaos/core";
 
 export const BLOCKED_ENV_KEYS = new Set<string>([
@@ -41,8 +47,10 @@ export const BLOCKED_ENV_KEYS = new Set<string>([
  * then inherited by every spawn site that passes no explicit env — so both
  * paths need the same families.
  */
-export const BLOCKED_ENV_KEY_PREFIXES: readonly string[] =
-  BLOCKED_SPAWN_ENV_PREFIXES;
+export const BLOCKED_ENV_KEY_PREFIXES: readonly string[] = [
+  ...BLOCKED_SPAWN_ENV_PREFIXES,
+  ...PROCESS_ONLY_ENV_KEY_PREFIXES,
+];
 
 /**
  * The single predicate every config/API env gate should use. `BLOCKED_ENV_KEYS`

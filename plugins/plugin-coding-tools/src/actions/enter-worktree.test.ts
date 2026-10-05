@@ -107,8 +107,9 @@ function setCapabilityRouter(
 function makeGitRouter(
   commandRun: (params: GitCommandRunParams) => Promise<GitCommandRunResult>,
 ): ElizaCapabilityRouter {
+  const router = new UnavailableCapabilityRouter("desktop");
   return {
-    environment: "desktop",
+    ...router,
     availability: async () => ({
       environment: "desktop",
       available: true,
@@ -120,37 +121,7 @@ function makeGitRouter(
         plugin: false,
       },
     }),
-    fs: {
-      list: async () => {
-        throw new Error("fs unavailable");
-      },
-      readText: async () => {
-        throw new Error("fs unavailable");
-      },
-      writeText: async () => {
-        throw new Error("fs unavailable");
-      },
-    },
-    pty: {
-      runCommand: async () => {
-        throw new Error("pty unavailable");
-      },
-    },
-    git: {
-      status: async () => {
-        throw new Error("git status unavailable");
-      },
-      diff: async () => {
-        throw new Error("git diff unavailable");
-      },
-      commandRun,
-    },
-    model: {
-      status: async () => {
-        throw new Error("model unavailable");
-      },
-    },
-    plugin: new UnavailableCapabilityRouter("desktop").plugin,
+    git: { ...router.git, commandRun },
   };
 }
 
@@ -210,6 +181,28 @@ describe("ENTER_WORKTREE", () => {
 
     expect(typeof data?.branch).toBe("string");
     expect(result.text).toContain("Entered worktree");
+  });
+
+  it("keeps files inside an auto-generated worktree within the sandbox roots", async () => {
+    const result = await enterWorktreeHandler(
+      env.runtime,
+      makeMessage(env.conversationId),
+      state,
+      { parameters: {} },
+    );
+
+    if (!result.success) throw new Error(result.text);
+    const worktreePath = (result.data as Record<string, unknown> | undefined)
+      ?.worktreePath as string | undefined;
+    if (!worktreePath) throw new Error("missing worktreePath");
+    env.cleanupDirs.push(worktreePath);
+
+    const validation = await env.sandbox.validatePath(
+      env.conversationId,
+      path.join(worktreePath, "a.txt"),
+    );
+
+    expect(validation.ok).toBe(true);
   });
 
   it("routes git worktree add through the capability router when available", async () => {

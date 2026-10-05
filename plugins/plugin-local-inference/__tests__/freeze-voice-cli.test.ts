@@ -1,5 +1,5 @@
 /**
- * End-to-end test for packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs.
+ * End-to-end test for packages/app/scripts/omnivoice-fuse/freeze-voice.ts.
  *
  * The CLI builds an ELZ2 v2 voice preset from a corpus directory. We
  * exercise the corpus-discovery + selection + dry-run + skip-encode write
@@ -38,10 +38,10 @@ const REPO_ROOT = path.resolve(HERE, "../../..");
 const SCRIPT = path.join(
 	REPO_ROOT,
 	"packages",
-		"app-core",
+		"app",
 		"scripts",
 		"voice",
-		"freeze-voice.mjs",
+		"freeze-voice.ts",
 	);
 
 interface RunResult {
@@ -52,7 +52,7 @@ interface RunResult {
 
 function runFreeze(args: string[], opts: { allowFail?: boolean } = {}): RunResult {
 	try {
-		const stdout = execFileSync("bun", [SCRIPT, ...args], {
+		const stdout = execFileSync("bun", ["--conditions=eliza-source", SCRIPT, ...args], {
 			cwd: REPO_ROOT,
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],
@@ -97,7 +97,7 @@ function writeSineWav(filePath: string, durSec: number, srHz: number) {
 	writeFileSync(filePath, buf);
 }
 
-describe("freeze-voice.mjs CLI", () => {
+describe("freeze-voice.ts CLI", () => {
 	let corpusDir: string;
 	let outDir: string;
 
@@ -180,7 +180,7 @@ describe("freeze-voice.mjs CLI", () => {
 		expect(parsed.refAudioTokens.K).toBe(0); // --skip-encode left these empty
 		expect(parsed.refAudioTokens.refT).toBe(0);
 		expect(parsed.metadata.voiceId).toBe("test");
-		expect(parsed.metadata.generator).toBe("freeze-voice.mjs");
+		expect(parsed.metadata.generator).toBe("freeze-voice.ts");
 		expect(Array.isArray(parsed.metadata.referenceClipIds)).toBe(true);
 		expect((parsed.metadata.referenceClipIds as string[]).length).toBeGreaterThan(0);
 	});

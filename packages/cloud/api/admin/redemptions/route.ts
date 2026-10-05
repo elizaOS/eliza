@@ -1,27 +1,29 @@
 /**
  * /api/admin/redemptions
  * GET: list redemptions filtered by status (admin only).
- * POST: approve/reject a redemption (admin only). Rejection refunds balance.
+ * POST: reject a redemption (admin only), which returns the lock to the frozen
+ * balance. Approval is retired with creator payouts (#23022) and answers 410.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
 import {
   type TokenRedemptionStatus,
   tokenRedemptionsRepository,
-} from "@/db/repositories/token-redemptions";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/db/repositories/token-redemptions";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { secureTokenRedemptionService } from "@/lib/services/token-redemption-secure";
-import { parseClampedLimit } from "@/lib/utils/clamp-limit";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { CreatorMonetizationRetiredError } from "@elizaos/cloud-shared/lib/services/creator-monetization-retirement";
+import { secureTokenRedemptionService } from "@elizaos/cloud-shared/lib/services/token-redemption-secure";
+import { parseClampedLimit } from "@elizaos/cloud-shared/lib/utils/clamp-limit";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const AdminActionSchema = z.object({
   redemptionId: z.string().uuid(),
@@ -241,17 +243,13 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     });
 
     if (action === "approve") {
-      const result = await secureTokenRedemptionService.approveRedemption(
-        redemptionId,
-        adminUser.id,
-        notes,
+      // Creator payouts are retired (#23022): approving would queue an
+      // automatic payout of a frozen balance. Rejecting stays available so an
+      // operator can release a pending lock back into the frozen balance.
+      return failureResponse(
+        c,
+        new CreatorMonetizationRetiredError("payout_processing"),
       );
-      if (!result.success)
-        return c.json({ success: false, error: result.error }, 400);
-      return c.json({
-        success: true,
-        message: "Redemption approved. It will be processed in the next batch.",
-      });
     }
 
     const result = await secureTokenRedemptionService.rejectRedemption(

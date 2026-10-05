@@ -9,10 +9,13 @@ import { readFileSync } from "node:fs";
 import process from "node:process";
 import * as readline from "node:readline";
 import {
+  type ActionResult,
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
+  type EffectReceipt,
   logger,
+  PI_CODING_ACTION_PROFILE,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -34,6 +37,10 @@ export interface BenchmarkResult {
   actions_taken: string[];
   duration_ms: number;
   success: boolean;
+  turn_completed?: boolean;
+  request_fulfilled?: boolean;
+  effect_receipts?: readonly EffectReceipt[];
+  action_results?: readonly ActionResult[];
   error?: string;
   failure_kind?: string;
   failure_code?: string;
@@ -106,21 +113,25 @@ export async function runBenchmarkTask(
     });
     abortSignal.throwIfAborted();
 
+    const context = task.context ? JSON.stringify(task.context) : undefined;
     const message = createMessageMemory({
       id: crypto.randomUUID() as UUID,
       entityId: userId,
       roomId,
       content: {
-        text: task.prompt,
+        text:
+          context === undefined
+            ? task.prompt
+            : `${task.prompt}\n\nTask context (JSON):\n${context}`,
         source: "benchmark",
         channelType: ChannelType.DM,
       },
     });
-    if (task.context) {
+    if (context !== undefined) {
       if (message.metadata?.type !== "message") {
         throw new Error("Benchmark message is missing message metadata");
       }
-      message.metadata.benchmarkContext = JSON.stringify(task.context);
+      message.metadata.benchmarkContext = context;
     }
 
     if (!runtime.messageService) {
@@ -147,13 +158,30 @@ export async function runBenchmarkTask(
       },
       {
         abortSignal,
-        ...(taskType === "coding" ? { codingMode: true } : {}),
+        ...(taskType === "coding"
+          ? { codingMode: true, codingActionProfile: PI_CODING_ACTION_PROFILE }
+          : {}),
         onStreamChunk: async (chunk: string) => {
           if (chunk) streamText += chunk;
         },
       },
     );
 
+    // Planner actions need not emit a delivery callback. The message service
+    // retains their authoritative results after planner state is released.
+    for (const actionResult of result.actionResults ?? []) {
+      const actionName = actionResult.data?.actionName;
+      if (
+        typeof actionName === "string" &&
+        actionName &&
+        !actionsTaken.includes(actionName)
+      ) {
+        actionsTaken.push(actionName);
+      }
+    }
+
+    const terminalFailure =
+      result.outcome.status === "failed" ? result.outcome.error : undefined;
     const resultText = result.responseContent?.text ?? "";
     const messagesText = result.responseMessages
       .map((m) => m.content?.text ?? "")
@@ -165,8 +193,11 @@ export async function runBenchmarkTask(
     // the final answer with duplicated chunks or verbose action output.
     const responseText =
       resultText || messagesText || streamText || callbackText || "";
+    // Failed attempts remain in receipts. The final planner assessment can
+    // recognize recovery; independent benchmark grading must verify the result.
     const success =
-      result.terminalFailure === undefined &&
+      result.requestFulfilled !== false &&
+      result.outcome.status === "completed" &&
       result.didRespond &&
       responseText.trim().length > 0;
 
@@ -177,19 +208,28 @@ export async function runBenchmarkTask(
       actions_taken: actionsTaken,
       duration_ms: Math.round(performance.now() - start),
       success,
+      turn_completed: result.outcome.status === "completed",
+      effect_receipts: result.outcome.effects,
+      ...(result.actionResults ? { action_results: result.actionResults } : {}),
+      ...(typeof result.requestFulfilled === "boolean"
+        ? { request_fulfilled: result.requestFulfilled }
+        : {}),
       ...(!success
         ? {
             error:
-              result.terminalFailure?.message ??
+              terminalFailure?.message ??
+              (result.requestFulfilled === false
+                ? "Planner finished without fulfilling the request"
+                : undefined) ??
               result.reason ??
               "Agent completed without a response",
-            ...(result.terminalFailure
+            ...(terminalFailure
               ? {
-                  failure_kind: result.terminalFailure.kind,
-                  ...(result.terminalFailure.code
-                    ? { failure_code: result.terminalFailure.code }
+                  failure_kind: terminalFailure.kind,
+                  ...(terminalFailure.code
+                    ? { failure_code: terminalFailure.code }
                     : {}),
-                  transient: result.terminalFailure.transient,
+                  transient: terminalFailure.transient,
                 }
               : {}),
           }
@@ -354,10 +394,12 @@ type RuntimeShutdown = (
 /** @internal Installs the benchmark process boundary's SIGINT/SIGTERM owner. */
 export function installOwnerSignalHandlers(
   controller: AbortController,
+  onExitCode?: (code: number) => void,
 ): () => void {
   const handleSignal = (signal: NodeJS.Signals) => {
     if (controller.signal.aborted) return;
     process.exitCode = signal === "SIGINT" ? 130 : 143;
+    onExitCode?.(process.exitCode);
     controller.abort(new Error(`Benchmark owner received ${signal}`));
   };
   const handleInterrupt = () => handleSignal("SIGINT");
@@ -474,7 +516,13 @@ export async function runBenchmark(
   process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS = "1";
 
   const ownerController = new AbortController();
-  const removeSignalHandlers = installOwnerSignalHandlers(ownerController);
+  let ownerExitCode: number | undefined;
+  const removeSignalHandlers = installOwnerSignalHandlers(
+    ownerController,
+    (code) => {
+      ownerExitCode = code;
+    },
+  );
   let runtime: AgentRuntime | undefined;
   let shutdownRuntime: RuntimeShutdown | undefined;
   try {
@@ -501,7 +549,8 @@ export async function runBenchmark(
         success: false,
         error: `Runtime boot failed: ${err instanceof Error ? err.message : String(err)}`,
       });
-      if (process.exitCode === undefined) process.exitCode = 1;
+      if (process.exitCode === undefined || process.exitCode === 0)
+        process.exitCode = 1;
       return;
     }
 
@@ -529,12 +578,18 @@ export async function runBenchmark(
       process.exitCode = result.success ? 0 : 1;
     }
   } finally {
+    // PGlite/WASM teardown can reset process.exitCode to zero. The CLI owns
+    // its task/cancellation status independently of database cleanup.
+    const taskExitCode = process.exitCode;
+    let shutdownFailed = false;
     try {
       if (runtime && shutdownRuntime) {
         await shutdownRuntime(runtime, "benchmark shutdown");
+        logger.debug("[benchmark] Runtime shutdown completed");
       }
     } catch (err) {
       // error-policy:J1 shutdown failure is visible through stderr and exit status.
+      shutdownFailed = true;
       process.stderr.write(
         `[benchmark] Runtime shutdown failed: ${err instanceof Error ? err.message : String(err)}\n`,
       );
@@ -543,6 +598,7 @@ export async function runBenchmark(
       }
     } finally {
       removeSignalHandlers();
+      process.exitCode = ownerExitCode ?? (shutdownFailed ? 1 : taskExitCode);
       if (previousBlockDeferred === undefined) {
         delete process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS;
       } else {

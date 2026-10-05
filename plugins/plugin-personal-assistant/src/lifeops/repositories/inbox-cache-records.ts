@@ -3,7 +3,7 @@ import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsInboxChannel,
   type LifeOpsInboxMessage,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   parseJsonArray,
   parseJsonRecord,
@@ -21,13 +21,6 @@ export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
 export type LifeOpsInboxCacheWriteMessage = LifeOpsInboxMessage & {
   priorityFlags?: readonly string[];
 };
-
-// Finance tables were carved out of plugin-personal-assistant into
-// @elizaos/plugin-finances and now live under the `app_finances` PostgreSQL
-// schema. The raw SQL against those tables moved with them into
-// `FinancesRepository`; the finance methods below delegate to a shared
-// FinancesRepository instance so the subscriptions mixin keeps reaching them
-// through `this.repository`.
 
 export const LIFEOPS_INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(
   LIFEOPS_INBOX_CHANNELS,

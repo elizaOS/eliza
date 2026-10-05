@@ -8,7 +8,7 @@
 
 import { Server } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import {
   inspectExistingElizaInstall,
   migrateDesktopStateDir,
@@ -18,11 +18,11 @@ import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { isStoreBuild } from "../../build-variant";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
-import { useAppSelector } from "../../state";
 import {
   type AgentRuntimeTargetKind,
   inferAgentRuntimeTarget,
 } from "../../state/agent-runtime-target";
+import { useAppSelector } from "../../state/app-store";
 import { loadPersistedActiveServer } from "../../state/persistence";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";

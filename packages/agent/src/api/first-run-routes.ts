@@ -18,13 +18,12 @@
 import type http from "node:http";
 import {
   type AgentRuntime,
+  asObjectRecord as asRecord,
   logger,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
-  asRecord,
   type DeploymentTargetConfig,
   getDirectAccountProviderForFirstRunProvider,
   isCloudInferenceSelectedInConfig,
@@ -34,9 +33,10 @@ import {
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   PostFirstRunRequestSchema,
+  prepareFirstRunConnectors,
+  type ReadJsonBodyOptions,
   type ServiceRoutingConfig,
-} from "@elizaos/shared";
-import { prepareFirstRunConnectors } from "@elizaos/shared/first-run-config";
+} from "@elizaos/host/protocol";
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import {
@@ -274,12 +274,6 @@ export interface FirstRunServerState {
   chatConnectionReady: unknown;
   chatConnectionPromise: Promise<void> | null;
 }
-
-export {
-  type BlooioFirstRunResolution,
-  type CanonicalBlooioConnectorConfig,
-  resolveBlooioFirstRunConfig,
-} from "@elizaos/shared/first-run-config";
 
 function restoreProcessEnvironment(
   snapshot: NodeJS.ProcessEnv,

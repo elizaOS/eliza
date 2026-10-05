@@ -6,6 +6,7 @@
  * resolved through `permission-types`.
  */
 
+import type { PermissionStatus } from "@elizaos/core/protocol";
 import {
   AppWindow,
   Battery,
@@ -34,18 +35,20 @@ import {
   Wifi,
   Workflow,
 } from "lucide-react";
-import { useAgentElement } from "../../agent-surface";
-import type { PermissionStatus, PluginInfo } from "../../api";
-import { useAppSelector } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import type { PluginInfo } from "../../api/client-types-config";
+import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/status-badge";
-import type { CapabilityDef, PermissionDef } from "./permission-types";
 import {
+  type CapabilityDef,
   getPermissionAction,
   getPermissionBadge,
+  type PermissionDef,
   translateWithFallback,
 } from "./permission-types";
+
 import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsRow } from "./settings-layout";
 

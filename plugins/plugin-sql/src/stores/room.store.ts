@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import type { ChannelType, Room, RoomMetadata, UUID } from "@elizaos/core";
 import { and, eq, inArray } from "drizzle-orm";
-import { roomTable } from "../schema/index";
+import { roomTable } from "../schema/room";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 

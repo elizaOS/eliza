@@ -5,8 +5,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -18,7 +18,7 @@ export default scenario({
     "Transcript-derived case: the assistant should put urgent blockers first and demote low-value inbound.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

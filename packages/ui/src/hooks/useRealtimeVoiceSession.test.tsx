@@ -13,8 +13,10 @@
  * the real mint fetch + the real getUserMedia denial, not simulated.
  */
 
-import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { Capacitor } from "@capacitor/core";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { client } from "../api/client";
 
 import {
   deniedGetUserMedia,
@@ -28,6 +30,17 @@ import {
   parseRealtimeVoiceFlag,
   useRealtimeVoiceSession,
 } from "./useRealtimeVoiceSession";
+
+const finishDeferredCloses = new Set<() => void>();
+
+afterEach(async () => {
+  // Unmount starts the real client's asynchronous microphone/playback teardown.
+  await act(async () => {
+    for (const finish of finishDeferredCloses) finish();
+    finishDeferredCloses.clear();
+    cleanup();
+  });
+});
 
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
 const CONV_ID = "22222222-2222-2222-2222-222222222222";
@@ -196,6 +209,43 @@ describe("useRealtimeVoiceSession", () => {
     await expect(startPromise).resolves.toEqual({ kind: "live" });
   });
 
+  it("carries the native Browser implementation in voice view context", async () => {
+    const native = vi
+      .spyOn(Capacitor, "isNativePlatform")
+      .mockReturnValue(true);
+    const { options, ws, micCtx } = makeOptions();
+    const { result, unmount } = renderHook(() =>
+      useRealtimeVoiceSession(options),
+    );
+    try {
+      const start = beginStart(result);
+      await flushAsync();
+      await act(async () => {
+        ws.last().emitOpen();
+        await flushAsync();
+        ws.last().emitControl({
+          t: "ready",
+          sessionId: "sess-1",
+          traceId: "native-context",
+          uiContext: true,
+        });
+        await flushAsync();
+      });
+      await expect(start).resolves.toEqual({ kind: "live" });
+      micCtx.scriptNode?.feed(new Float32Array(1600).fill(0.25));
+      expect(ws.last().sentControls()).toContainEqual({
+        t: "ui_context",
+        context: expect.objectContaining({
+          uiBrowserSurface: "native",
+          uiClientId: client.clientId,
+        }),
+      });
+    } finally {
+      unmount();
+      native.mockRestore();
+    }
+  });
+
   it("full flow: start → listening → partial → final → speaking → barge-in → stop through the REAL client", async () => {
     const stopTrack = vi.fn();
     const { options, ws, micCtx, pbCtx, getConsentNonce } = makeOptions({
@@ -251,12 +301,24 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.transcriptFinal).toBe("hello");
     expect(result.current.transcriptPartial).toBe("");
 
+    await act(async () => {
+      sock.emitControl({
+        t: "progress",
+        text: "Checking your note.",
+        traceId: "T1",
+      });
+      await flushAsync();
+    });
+    expect(result.current.progressText).toBe("Checking your note.");
+    expect(result.current.transcriptFinal).toBe("hello");
     // Thinking → speaking.
     await act(async () => {
       sock.emitControl({ t: "llm_first_text", traceId: "T1" });
       await flushAsync();
     });
     expect(result.current.status).toBe("thinking");
+    // Keep the acknowledgment visible until playback completes.
+    expect(result.current.progressText).toBe("Checking your note.");
 
     await act(async () => {
       sock.emitControl({ t: "speaking_start", traceId: "T1" });
@@ -294,6 +356,80 @@ describe("useRealtimeVoiceSession", () => {
     expect(pbCtx.closed).toBe(true);
     expect(result.current.active).toBe(false);
     expect(result.current.status).toBe("idle");
+  });
+
+  it("does not resume cancelled speech from queued frames after barge-in", async () => {
+    const { options, ws, pbCtx } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+    const starting = beginStart(result);
+    await waitFor(() => expect(ws.sockets).toHaveLength(1));
+    const sock = await driveReady(ws);
+    await starting;
+    await waitFor(() => expect(result.current.status).toBe("listening"));
+
+    await act(async () => {
+      sock.emitControl({ t: "stt_final", text: "Read my note", traceId: "T1" });
+      sock.emitControl({ t: "speaking_start", traceId: "T1" });
+      sock.emitAudio(new Uint8Array(4096).fill(1));
+      await flushAsync();
+    });
+    expect(result.current.agentSpeaking).toBe(true);
+    await act(async () => {
+      result.current.bargeIn();
+      sock.emitControl({ t: "llm_first_text", traceId: "T1" });
+      sock.emitControl({ t: "speaking_start", traceId: "T1" });
+      sock.emitAudio(new Uint8Array(4096).fill(1));
+      await flushAsync();
+    });
+    expect(result.current.agentSpeaking).toBe(false);
+    expect(result.current.status).toBe("listening");
+    expect(pbCtx.scriptNode?.render(4096).every((sample) => sample === 0)).toBe(
+      true,
+    );
+    await act(async () => {
+      sock.emitControl({ t: "stt_final", text: "Next note", traceId: "T2" });
+      sock.emitControl({ t: "speaking_start", traceId: "T2" });
+      sock.emitAudio(new Uint8Array(4096).fill(1));
+      await flushAsync();
+    });
+    expect(result.current.agentSpeaking).toBe(true);
+    expect(pbCtx.scriptNode?.render(4096).some((sample) => sample !== 0)).toBe(
+      true,
+    );
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
+  it("keeps speaking through final text and usage until the device drains audio", async () => {
+    const { options, ws, pbCtx } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+    const starting = beginStart(result);
+    await waitFor(() => expect(ws.sockets).toHaveLength(1));
+    const sock = await driveReady(ws);
+    await starting;
+    await waitFor(() => expect(result.current.status).toBe("listening"));
+    await act(async () => {
+      sock.emitControl({ t: "stt_final", text: "Read my note", traceId: "T1" });
+      sock.emitControl({ t: "progress", text: "Checking.", traceId: "T1" });
+      sock.emitControl({ t: "speaking_start", traceId: "T1" });
+      sock.emitAudio(new Uint8Array(8192).fill(1));
+      sock.emitControl({ t: "llm_first_text", traceId: "T1" });
+      sock.emitControl({ t: "speaking_end", traceId: "T1" });
+      sock.emitControl({ t: "usage", traceId: "T1" });
+      await flushAsync();
+    });
+    expect(result.current.status).toBe("speaking");
+    expect(result.current.agentSpeaking).toBe(true);
+    await act(async () => {
+      pbCtx.scriptNode?.render(8192);
+      await flushAsync();
+    });
+    expect(result.current.status).toBe("listening");
+    expect(result.current.agentSpeaking).toBe(false);
+    await act(async () => {
+      await result.current.stop();
+    });
   });
 
   it("does not report active until socket open + server ready + mic capturing (truthful `active`)", async () => {
@@ -627,8 +763,10 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.active).toBe(false);
     // This interaction falls back, while the next user tap may retry realtime.
     expect(result.current.available).toBe(true);
-    expect(result.current.error?.actionable).toBe(false);
-    expect(result.current.error?.message).toMatch(/standard voice/i);
+    expect(result.current.error?.actionable).toBe(true);
+    expect(result.current.error?.message).toBe(
+      "Voice setup couldn't complete. Tap the mic to try again.",
+    );
     expect(startOutcome).toEqual({
       kind: "fallback-to-batch",
       reason: "consent",
@@ -716,6 +854,7 @@ describe("useRealtimeVoiceSession", () => {
 
   it("rapid identity changes re-mint only the newest identity", async () => {
     const closeGate = deferred<void>();
+    finishDeferredCloses.add(() => closeGate.resolve());
     const closeStarted = vi.fn();
     class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
       override async close(): Promise<void> {
@@ -749,6 +888,12 @@ describe("useRealtimeVoiceSession", () => {
         conversationId: "44444444-4444-4444-4444-444444444444",
       });
     });
+    await flushAsync();
+    expect(mint.calls).toHaveLength(1);
+    await act(async () => {
+      closeGate.resolve();
+      await flushAsync();
+    });
     await waitFor(() => expect(mint.calls).toHaveLength(2));
     expect(mint.calls[1]).toMatchObject({
       agentId: AGENT_ID,
@@ -767,10 +912,6 @@ describe("useRealtimeVoiceSession", () => {
       expect(result.current.status).toBe("listening");
     });
 
-    closeGate.resolve();
-    await act(async () => {
-      await flushAsync();
-    });
     expect(mint.calls).toHaveLength(2);
     expect(result.current.active).toBe(true);
     expect(result.current.status).toBe("listening");
@@ -781,6 +922,7 @@ describe("useRealtimeVoiceSession", () => {
 
   it("does not re-mint after the user stops during identity-change teardown", async () => {
     const closeGate = deferred<void>();
+    finishDeferredCloses.add(() => closeGate.resolve());
     const closeStarted = vi.fn();
     class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
       override async close(): Promise<void> {
@@ -810,11 +952,10 @@ describe("useRealtimeVoiceSession", () => {
     await waitFor(() => expect(closeStarted).toHaveBeenCalledTimes(1));
 
     await act(async () => {
-      await result.current.stop();
-    });
-    closeGate.resolve();
-    await act(async () => {
-      await flushAsync();
+      const stopped = result.current.stop();
+      expect(mint.calls).toHaveLength(1);
+      closeGate.resolve();
+      await stopped;
     });
 
     expect(mint.calls).toHaveLength(1);
@@ -824,6 +965,7 @@ describe("useRealtimeVoiceSession", () => {
 
   it("does not auto-restart after operational identity loss during deferred teardown", async () => {
     const closeGate = deferred<void>();
+    finishDeferredCloses.add(() => closeGate.resolve());
     const closeStarted = vi.fn();
     class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
       override async close(): Promise<void> {
@@ -909,6 +1051,7 @@ describe("useRealtimeVoiceSession", () => {
 
   it("does not re-mint after unmount during identity-change teardown", async () => {
     const closeGate = deferred<void>();
+    finishDeferredCloses.add(() => closeGate.resolve());
     const closeStarted = vi.fn();
     class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
       override async close(): Promise<void> {
@@ -1004,10 +1147,17 @@ describe("useRealtimeVoiceSession", () => {
 });
 
 describe("isRealtimeVoiceFlagEnabled", () => {
-  it("defaults to off in non-cloud builds (batch path is the default)", () => {
-    // In the test env both VITE_VOICE_REALTIME_WS and
-    // VITE_ELIZA_DESKTOP_RUNTIME_MODE are unset → the flag reads false.
-    expect(isRealtimeVoiceFlagEnabled()).toBe(false);
+  it("makes realtime available without build flags while preserving explicit opt-out", () => {
+    try {
+      vi.stubEnv("VITE_VOICE_REALTIME_WS", undefined);
+      expect(isRealtimeVoiceFlagEnabled()).toBe(true);
+      vi.stubEnv("VITE_VOICE_REALTIME_WS", "0");
+      expect(isRealtimeVoiceFlagEnabled()).toBe(false);
+      vi.stubEnv("VITE_VOICE_REALTIME_WS", "invalid");
+      expect(isRealtimeVoiceFlagEnabled()).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it.each(["1", "true", "TRUE", " yes ", "on"])(

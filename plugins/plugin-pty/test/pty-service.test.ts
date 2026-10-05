@@ -5,7 +5,7 @@
  */
 import os from "node:os";
 import type { ElizaError } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PtyService, resolveIdleTimeoutMs } from "../services/pty-service";
 import type { PtySpawnSpec } from "../services/pty-types";

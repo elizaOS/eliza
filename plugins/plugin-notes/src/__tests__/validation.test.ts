@@ -42,29 +42,25 @@ describe("Notes boundary validation", () => {
       );
       expect(result).toEqual({
         title: "Header Line",
-        body: "First paragraph\nSecond paragraph",
+        body: "\nFirst paragraph\nSecond paragraph",
       });
     });
 
     it("handles leading and trailing whitespace on lines cleanly", () => {
       const result = parseNoteContent("   Padded Title   \n   Padded Body   ");
       expect(result).toEqual({
-        title: "Padded Title",
-        body: "Padded Body",
+        title: "   Padded Title   ",
+        body: "\n   Padded Body   ",
       });
     });
 
-    it('splits a one-line "Label: details" note at the labelled colon', () => {
-      // Planners flatten "create a note titled X saying Y" and users write
-      // "create a note called X: Y" into exactly this one-line shape.
-      expect(parseNoteContent("Demo Checklist: mic, charger, water")).toEqual({
-        title: "Demo Checklist",
-        body: "mic, charger, water",
-      });
-      expect(parseNoteContent("Groceries: eggs, bread")).toEqual({
-        title: "Groceries",
-        body: "eggs, bread",
-      });
+    it.each([
+      "Demo Checklist: mic, charger, water",
+      "Groceries: eggs, bread",
+      "Demo check 917: bring the green notebook.",
+      "Reminder:  keep both spaces: and this colon.",
+    ])("preserves single-line colon content: %s", (content) => {
+      expect(parseNoteContent(content)).toEqual({ title: content, body: "" });
     });
 
     it("keeps colons that are not label separators in the title", () => {
@@ -85,7 +81,7 @@ describe("Notes boundary validation", () => {
     it("leaves multi-line content on the first-line label contract", () => {
       expect(parseNoteContent("Demo Checklist: mic\ncharger")).toEqual({
         title: "Demo Checklist: mic",
-        body: "charger",
+        body: "\ncharger",
       });
     });
 
@@ -149,7 +145,7 @@ describe("Notes boundary validation", () => {
       });
       expect(note).toEqual({
         title: "Task Note",
-        body: "Details here",
+        body: "\nDetails here",
         color: "rose",
       });
     });
@@ -165,6 +161,23 @@ describe("Notes boundary validation", () => {
     it("accepts valid partial patch", () => {
       const patch = parseUpdateNoteInput({ title: "Updated Title" });
       expect(patch).toEqual({ title: "Updated Title" });
+    });
+
+    it("retains exact edit whitespace and rejects malformed or combined edits", () => {
+      const textEdit = { field: "body", oldText: " green ", newText: "" };
+      expect(parseUpdateNoteInput({ textEdit })).toEqual({ textEdit });
+      for (const invalid of [
+        null,
+        {},
+        { ...textEdit, field: "color" },
+        { ...textEdit, oldText: "" },
+        { ...textEdit, newText: null },
+        { ...textEdit, extra: true },
+      ])
+        expect(() => parseUpdateNoteInput({ textEdit: invalid })).toThrow();
+      expect(() =>
+        parseUpdateNoteInput({ textEdit, body: "rewrite" }),
+      ).toThrow();
     });
 
     it("rejects empty patch", () => {
@@ -191,6 +204,27 @@ describe("Notes boundary validation", () => {
       };
       const parsed = parseNotesDocument(validDoc);
       expect(parsed).toEqual(validDoc);
+    });
+
+    it("rejects all-whitespace canonical persisted content", () => {
+      const timestamp = "2026-08-12T12:00:00.000Z";
+      expect(() =>
+        parseNotesDocument({
+          schemaVersion: NOTES_SCHEMA_VERSION,
+          revision: 1,
+          persistedAt: timestamp,
+          notes: [
+            {
+              id: "note-blank",
+              title: " ".repeat(240),
+              body: "\n ",
+              color: "yellow",
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+        }),
+      ).toThrow("Stored note content must not be empty");
     });
 
     it("rejects duplicate note IDs in document", () => {

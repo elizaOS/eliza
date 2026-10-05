@@ -105,7 +105,7 @@ function parseTtsOutputFormat(
  */
 export interface STTOptions {
   audioFile: File | Blob;
-  modelId?: ElevenLabs.SpeechToTextConvertRequestModelId;
+  modelId?: Parameters<ElevenLabsClient["speechToText"]["convert"]>[0]["modelId"];
   languageCode?: string;
 }
 
@@ -181,7 +181,7 @@ export class ElevenLabsService {
    * Convert speech to text
    */
   async speechToText(options: STTOptions): Promise<string> {
-    const modelId: ElevenLabs.SpeechToTextConvertRequestModelId =
+    const modelId: Parameters<ElevenLabsClient["speechToText"]["convert"]>[0]["modelId"] =
       options.modelId === "scribe_v2" ? "scribe_v2" : "scribe_v1";
 
     const FileConstructor = globalThis.File;

@@ -22,7 +22,7 @@ import org.junit.runner.RunWith
  * cleans up. Permissions are granted with `GrantPermissionRule` so it runs
  * unattended on a device/emulator.
  *
- * Run: `./gradlew :elizaos-capacitor-contacts:connectedDebugAndroidTest`
+ * Run: `./gradlew :elizaos-plugin-native-contacts:connectedDebugAndroidTest`
  */
 @RunWith(AndroidJUnit4::class)
 class ContactsReaderInstrumentedTest {

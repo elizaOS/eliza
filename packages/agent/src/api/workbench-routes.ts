@@ -15,14 +15,6 @@ import type {
 } from "./workbench-context.ts";
 import { handleWorkbenchVfsRoutes } from "./workbench-vfs-routes.ts";
 
-// ---------------------------------------------------------------------------
-// Route handler
-// ---------------------------------------------------------------------------
-//
-// Workbench todos CRUD (`/api/workbench/todos*`) lives in
-// `@elizaos/plugin-workflow` (registered on the runtime plugin route system).
-// This handler owns the read-only overview plus the VFS surface.
-
 export async function handleWorkbenchRoutes(
   ctx: WorkbenchRouteContext,
 ): Promise<boolean> {
@@ -32,16 +24,10 @@ export async function handleWorkbenchRoutes(
     return true;
   }
 
-  // ── GET /api/workbench/overview ──────────────────────────────────────
-  // Workbench surfaces todos + triggers. Workflow listings live at
-  // /api/automations; the `tasks: []` / `tasksAvailable: false` fields remain in
-  // the response for backward compatibility with clients that still read them.
   if (method === "GET" && pathname === "/api/workbench/overview") {
     const triggers: TriggerSummary[] = [];
     const todos: WorkbenchTodoView[] = [];
     const summary = {
-      totalTasks: 0,
-      completedTasks: 0,
       totalTriggers: 0,
       activeTriggers: 0,
       totalTodos: 0,
@@ -96,11 +82,9 @@ export async function handleWorkbenchRoutes(
     summary.completedTodos = todos.filter((todo) => todo.isCompleted).length;
 
     json(res, {
-      tasks: [],
       triggers,
       todos,
       summary,
-      tasksAvailable: false,
       triggersAvailable,
       todosAvailable,
     });

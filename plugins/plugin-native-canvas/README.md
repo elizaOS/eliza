@@ -1,140 +1,58 @@
 # @elizaos/capacitor-canvas
 
-A [Capacitor](https://capacitorjs.com/) plugin for elizaOS that provides an interactive 2D canvas with layer management, drawing primitives, web view embedding, and an A2UI bridge for building rich visual UIs in Eliza agent surfaces.
+Capacitor plugin that provides a multi-layer 2D canvas, drawing primitives, web view
+embedding, and an A2UI bridge for elizaOS Eliza agents running on browser, node
+(Electrobun), iOS, and Android.
 
-Supported platforms: **browser**, **node** (Electrobun desktop), **iOS**, **Android**.
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
-## What it does
+## Development
 
-- **Canvas with layers** — create canvases of any size, manage named composited layers with independent opacity, z-index, and transform.
-- **Drawing primitives** — rectangles (with corner radius), ellipses, lines, arbitrary paths (Bezier, arc, ellipse, closePath), text with font/align/baseline control, and images (URL or base64).
-- **Batch drawing** — submit a typed array of draw commands in a single call for efficient rendering.
-- **Gradients, blend modes, shadows, transforms** — applied per draw call or globally.
-- **Export** — capture the canvas to a base64 PNG/JPEG/WEBP image or read raw pixel data.
-- **Web view** — load any URL inline, fullscreen, or in a popup; evaluate JavaScript in it; capture a screenshot.
-- **A2UI bridge** — push structured agent-to-UI messages (text cards, action buttons, forms, status indicators) into a loaded web view and receive back action events.
-- **Touch/pointer events** — emit normalized `CanvasTouchEvent` on touch start/move/end/cancel and equivalent mouse drag.
-
-## Installation
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun add @elizaos/capacitor-canvas
+bun run --cwd plugins/plugin-native-canvas build  # build
+bun run --cwd plugins/plugin-native-canvas test   # tests
 ```
 
-Peer dependency (must be installed by the host):
+Android drawing and clearing reject unknown or deleted layer IDs with
+`LAYER_NOT_FOUND`. Batch errors include `commandIndex`; earlier commands remain
+applied and later commands do not run. Device contracts verify layer isolation,
+encoded pixels, and failure recovery through the real WebView bridge:
 
 ```bash
-bun add @capacitor/core
+bun packages/app/scripts/android-native-plugins.ts --serial emulator-5580 --plugin plugin-native-canvas
 ```
 
-For iOS add the pod:
+Android's public WebView methods own a standalone view: `navigate` selects inline,
+fullscreen, or popup placement; `eval`, `snapshot`, and A2UI calls use that view.
+Existing explicit `canvasId` calls remain isolated. Inline content sits behind the
+host WebView; fullscreen sits above it; popup uses a native dialog. Wait for
+`webViewReady` before using page content. Snapshot supports PNG/JPEG/WebP and
+rejects invalid options or an unlaid view. A2UI requires the page's runtime host.
 
-```bash
-npx cap sync ios
-```
+Android attachment owns the base, layers, and embedded WebView together. Detach
+removes that group; reattach preserves its contents and layer order. Enabling
+touch places the drawing surfaces above the host; disabling it returns input to
+the host. Repeated attachment does not add duplicate views.
+Touch settings require a boolean. Disabling, hiding, or removing an active surface emits
+one cancellation with the last pointer coordinates; repeated enable/attach calls
+preserve an unchanged gesture.
 
-The podspec is `ElizaosCapacitorCanvas.podspec`. iOS deployment target is 15.0, Swift 5.9, frameworks UIKit / CoreGraphics / WebKit.
+Android create and resize require positive integer dimensions whose RGBA byte count
+fits a signed 32-bit integer. Invalid sizes reject with `INVALID_ARGUMENT` before
+allocation or mutation. Resize preserves existing base and layer pixels, crops on
+shrink, and leaves new pixels transparent on growth.
 
-## Usage
+Android intercepts `eliza://` navigation from both API calls and embedded pages.
+Deep-link events include the encoded path and decoded query parameters (last
+repeated value wins). Navigation errors include the native code and message.
 
-```ts
-import { Canvas } from "@elizaos/capacitor-canvas";
+Android A2UI action events expose `action`, `data`, and optional `messageId`,
+while retaining legacy action and surface metadata and the complete `userAction`.
+Acknowledgements correlate with the supplied ID; they acknowledge bridge delivery,
+not execution of an agent action.
 
-// Create a canvas
-const { canvasId } = await Canvas.create({ size: { width: 800, height: 600 } });
-
-// Add a layer
-const { layerId } = await Canvas.createLayer({
-  canvasId,
-  layer: { visible: true, opacity: 1, zIndex: 1 },
-});
-
-// Draw on it
-await Canvas.drawRect({
-  canvasId,
-  rect: { x: 10, y: 10, width: 200, height: 100 },
-  fill: { color: { r: 255, g: 100, b: 0, a: 0.9 } },
-  cornerRadius: 8,
-  drawOptions: { layerId },
-});
-
-// Batch draw
-await Canvas.drawBatch({
-  canvasId,
-  commands: [
-    { type: "ellipse", args: { center: { x: 400, y: 300 }, radiusX: 50, radiusY: 50, fill: { color: "#3399ff" } } },
-    { type: "text", args: { text: "Hello", position: { x: 400, y: 300 }, style: { font: "sans-serif", size: 24, color: "#fff", align: "center" } } },
-  ],
-});
-
-// Export to image
-const image = await Canvas.toImage({ canvasId, format: "png" });
-// image.base64, image.width, image.height
-
-// Attach to DOM (browser/desktop)
-await Canvas.attach({ canvasId, element: document.getElementById("canvas-host")! });
-
-// Enable touch events
-await Canvas.setTouchEnabled({ canvasId, enabled: true });
-const handle = await Canvas.addListener("touch", (evt) => {
-  console.log(evt.type, evt.touches);
-});
-
-// Embed a web view
-await Canvas.navigate({ url: "https://example.com", placement: "inline" });
-
-// Evaluate JS in it
-const { result } = await Canvas.eval({ script: "document.title" });
-
-// Push A2UI messages
-await Canvas.a2uiPush({
-  messages: [
-    { role: "assistant", type: "text", content: "Hello from the agent!" },
-  ],
-});
-
-// Listen for A2UI actions triggered in the web content
-await Canvas.addListener("a2uiAction", (evt) => {
-  console.log(evt.action, evt.data);
-});
-
-// Cleanup
-await handle.remove();
-await Canvas.destroy({ canvasId });
-```
-
-## A2UI message types
-
-| `type`    | Use |
-|-----------|-----|
-| `text`    | Plain text bubble |
-| `card`    | Structured card with title/body |
-| `action`  | Clickable action button |
-| `form`    | Input form |
-| `list`    | Ordered/unordered list |
-| `image`   | Image display |
-| `status`  | Status indicator |
-
-## Web view events
-
-| Event | Payload | When |
-|-------|---------|------|
-| `webViewReady` | `{ url, title }` | Navigation completed |
-| `navigationError` | `{ url, code, message }` | Load failed |
-| `deepLink` | `{ url, path, params }` | `eliza://` URL intercepted |
-| `a2uiAction` | `{ action, data, messageId? }` | Web content triggered an action |
-
-## Canvas events
-
-| Event | Payload | When |
-|-------|---------|------|
-| `touch` | `CanvasTouchEvent` | Touch or mouse drag on canvas |
-| `render` | `CanvasRenderEvent` | Each rendered frame (FPS telemetry) |
-
-## Notes
-
-- `snapshot()` only works with `placement: "inline"` or `"fullscreen"`. Cross-origin iframes render an unavailable frame.
-- `eval()` requires the loaded page to handle `eliza:eval` postMessages and reply with `eliza:evalResult`; times out after 5 seconds.
-- `a2uiPush` and `a2uiReset` prefer the `window.elizaA2UI` bridge when present; otherwise fall back to `postMessage`.
-- Call `attach()` before calling `setTouchEnabled()` — touch handlers are wired on attach.
-- Layer canvases are absolute-positioned siblings of the base canvas element; the host container should be `position: relative`.
+Malformed JSON and invalid Android A2UI actions emit no action event and receive a failure status
+with `INVALID_ARGUMENT`. Data values must be strings, finite numbers, or booleans.
+Status IDs retain a usable supplied ID; unparseable messages use an empty ID.

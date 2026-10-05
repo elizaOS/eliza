@@ -12,15 +12,12 @@ const mocks = vi.hoisted(() => ({
   resolve: vi.fn(),
 }));
 
-vi.mock("@elizaos/app-core/api/auth", () => ({
+vi.mock("@elizaos/app/auth", () => ({
   resolveAuthorizedRouteRole: mocks.auth,
+  authStoreForRuntime: () => null,
 }));
 
-vi.mock("@elizaos/app-core/services/auth-store", () => ({
-  AuthStore: class AuthStore {},
-}));
-
-vi.mock("@elizaos/agent", () => ({
+vi.mock("@elizaos/plugin-relationships", () => ({
   resolveKnowledgeGraphService: () => ({
     getEntityStore: () => ({ resolve: mocks.resolve }),
   }),

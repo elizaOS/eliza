@@ -9,10 +9,12 @@
  * the evidence id).
  */
 
-import type { EntityStore } from "../entities/store.js";
+import type {
+  EntityStore,
+  RelationshipStore,
+} from "@elizaos/plugin-relationships";
 import type { Entity } from "../entities/types.js";
 import { SELF_ENTITY_ID } from "../entities/types.js";
-import type { RelationshipStore } from "./store.js";
 import type { Relationship, RelationshipSource } from "./types.js";
 
 /**

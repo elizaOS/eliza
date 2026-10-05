@@ -26,7 +26,26 @@ const { appValue, clientMock } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../state", () => {
+vi.mock("../../state/useApp", () => {
+  Object.assign(appValue, {
+    t: (key: string) => key,
+    exportBusy: false,
+    exportPassword: "",
+    exportIncludeLogs: false,
+    exportError: null,
+    exportSuccess: null,
+    importBusy: false,
+    importPassword: "",
+    importFile: null,
+    importError: null,
+    importSuccess: null,
+    handleAgentExport: vi.fn(),
+    handleAgentImport: vi.fn(),
+    setState: vi.fn(),
+  });
+  return { useApp: () => appValue };
+});
+vi.mock("../../state/app-store", () => {
   Object.assign(appValue, {
     t: (key: string) => key,
     exportBusy: false,
@@ -44,7 +63,6 @@ vi.mock("../../state", () => {
     setState: vi.fn(),
   });
   return {
-    useApp: () => appValue,
     useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
       sel(appValue),
     useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
@@ -52,9 +70,7 @@ vi.mock("../../state", () => {
   };
 });
 
-vi.mock("../../api", () => ({
-  client: clientMock,
-}));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 
 import { AdvancedSection } from "./AdvancedSection";
 
@@ -144,6 +160,45 @@ describe("AdvancedSection agent backups", () => {
     expect(
       screen.getByText(/Created backup 2026-06-29 12:34:56Z/),
     ).toBeTruthy();
+  });
+
+  it("shows the size-limit refusal as-is and without a retry hint", async () => {
+    const message =
+      "Agent state is too large for a local backup (150.0 MB; the limit is 128.0 MB). Retrying will not help until the agent's state is smaller.";
+    clientMock.createLocalAgentBackup.mockRejectedValue(
+      Object.assign(new Error(message), {
+        status: 413,
+        code: "AGENT_SNAPSHOT_BUDGET_EXCEEDED",
+        data: { error: message, retryable: false },
+      }),
+    );
+    render(<AdvancedSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Back up agent/i }));
+    await screen.findByText("No backups yet.");
+    fireEvent.click(screen.getByRole("button", { name: "Create Backup" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(message);
+  });
+
+  it("marks an unexpected backup failure as retryable", async () => {
+    clientMock.createLocalAgentBackup.mockRejectedValue(
+      Object.assign(new Error("Backup failed"), {
+        status: 500,
+        data: { error: "Backup failed" },
+      }),
+    );
+    render(<AdvancedSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Back up agent/i }));
+    await screen.findByText("No backups yet.");
+    fireEvent.click(screen.getByRole("button", { name: "Create Backup" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      "Backup failed. This may be temporary; try again.",
+    );
   });
 
   it("restores the selected backup through the API", async () => {

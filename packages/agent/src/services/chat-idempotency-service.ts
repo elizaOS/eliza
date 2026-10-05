@@ -3,7 +3,7 @@
  * Route adapters choose the conversation scope and durable outcome shape while
  * this service enforces active-turn ownership and settled-result retention.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, normalizeChatIdempotencyKey } from "@elizaos/core";
 
 export interface ChatIdempotencyReservation {
   readonly scope: string;
@@ -48,18 +48,17 @@ export interface ChatIdempotencyStore<Outcome> {
     clientMessageId: string | null,
     options?: { fingerprint?: string; now?: number },
   ): ChatIdempotencyAdmission<Outcome>;
-  reserve(scope: string, clientMessageId: string | null, now?: number): boolean;
   release(
     scope: string,
     clientMessageId: string | null,
-    reservation?: ChatIdempotencyReservation | null,
+    reservation: ChatIdempotencyReservation | null,
   ): void;
   firstSeenAt(scope: string, clientMessageId: string | null): number | null;
   settle(
     scope: string,
     clientMessageId: string | null,
     outcome: Outcome,
-    reservation?: ChatIdempotencyReservation | null,
+    reservation: ChatIdempotencyReservation | null,
   ): void;
   outcome(scope: string, clientMessageId: string | null): Outcome | null;
   reset(): void;
@@ -69,7 +68,6 @@ export interface ChatIdempotencyStore<Outcome> {
 interface Entry<Outcome> {
   firstSeenAt: number;
   token: symbol;
-  legacyOwner: boolean;
   status: "active" | "settled" | "released";
   settledAt?: number;
   outcome?: Outcome;
@@ -105,12 +103,10 @@ export function createChatIdempotencyStore<Outcome>(options?: {
 
   const createEntry = (
     firstSeenAt: number,
-    legacyOwner = false,
     fingerprint?: string,
   ): Entry<Outcome> => ({
     firstSeenAt,
     token: Symbol("chat-idempotency-owner"),
-    legacyOwner,
     status: "active",
     waiters: new Set(),
     fingerprint,
@@ -122,12 +118,10 @@ export function createChatIdempotencyStore<Outcome>(options?: {
     entry: Entry<Outcome>,
     reservation: ChatIdempotencyReservation | null | undefined,
   ): boolean =>
-    (reservation === undefined && entry.legacyOwner) ||
-    (reservation !== undefined &&
-      reservation !== null &&
-      reservation.scope === scope &&
-      reservation.clientMessageId === clientMessageId &&
-      reservation.token === entry.token);
+    reservation != null &&
+    reservation.scope === scope &&
+    reservation.clientMessageId === clientMessageId &&
+    reservation.token === entry.token;
 
   const admit = (
     scope: string,
@@ -139,16 +133,7 @@ export function createChatIdempotencyStore<Outcome>(options?: {
     const key = keyFor(scope, clientMessageId);
     const current = entries.get(key);
     if (current) {
-      // Retire a settled entry that has outlived the retention window BEFORE
-      // comparing fingerprints. Past `retentionMs` the reservation no longer
-      // exists as far as this contract is concerned, so a client reusing the
-      // same `clientMessageId` for genuinely new content is a fresh request.
-      // Comparing fingerprints first pinned the key to its original content
-      // permanently — the caller got CHAT_IDEMPOTENCY_CONFLICT forever, and
-      // the route layer hands that value straight to the client as an SSE
-      // error. It also returned before the opportunistic sweep below, so the
-      // dead entry was never collected either. `reserve()` already retires the
-      // expired entry first; this makes `admit()` agree with it.
+      // Expired outcomes release the key before fingerprint comparison.
       const settledAndExpired =
         current.status === "settled" &&
         current.settledAt !== undefined &&
@@ -212,7 +197,7 @@ export function createChatIdempotencyStore<Outcome>(options?: {
       }
     }
 
-    const entry = createEntry(now, false, options.fingerprint);
+    const entry = createEntry(now, options.fingerprint);
     entries.set(key, entry);
     if (now - lastSweepAt > retentionMs) {
       lastSweepAt = now;
@@ -239,42 +224,9 @@ export function createChatIdempotencyStore<Outcome>(options?: {
   return {
     retentionMs,
     normalize(value) {
-      if (typeof value !== "string") return null;
-      const normalized = value.trim();
-      return normalized.length > 0 && normalized.length <= maxKeyLength
-        ? normalized
-        : null;
+      return normalizeChatIdempotencyKey(value, maxKeyLength);
     },
     admit,
-    reserve(scope, clientMessageId, now = Date.now()) {
-      if (!clientMessageId) return false;
-      const key = keyFor(scope, clientMessageId);
-      const current = entries.get(key);
-      if (current) {
-        if (
-          current.status !== "settled" ||
-          current.settledAt === undefined ||
-          now - current.settledAt <= retentionMs
-        ) {
-          return true;
-        }
-        entries.delete(key);
-      }
-      entries.set(key, createEntry(now, true));
-      if (now - lastSweepAt > retentionMs) {
-        lastSweepAt = now;
-        for (const [candidateKey, candidate] of entries) {
-          if (
-            candidate.status === "settled" &&
-            candidate.settledAt !== undefined &&
-            now - candidate.settledAt > retentionMs
-          ) {
-            entries.delete(candidateKey);
-          }
-        }
-      }
-      return false;
-    },
     release(scope, clientMessageId, reservation) {
       if (!clientMessageId) return;
       const key = keyFor(scope, clientMessageId);

@@ -5,9 +5,9 @@
  */
 
 import type { Room as BaseRoom } from "@elizaos/core";
+import { memoryTable, participantTable, roomTable } from "@elizaos/plugin-sql";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../client";
-import { memoryTable, participantTable, roomTable } from "../../schemas/eliza";
 import { userCharacters } from "../../schemas/user-characters";
 
 /**

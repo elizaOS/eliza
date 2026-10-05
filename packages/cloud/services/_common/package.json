@@ -9,19 +9,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./logger": "./src/logger.ts",
-    "./k8s-service-account": "./src/k8s-service-account.ts",
-    "./k8s-deployment-wake": "./src/k8s-deployment-wake.ts",
-    "./identity-link-code": "./src/identity-link-code.ts",
-    "./gateway-auth": "./src/gateway-auth.ts",
-    "./hash-router": "./src/hash-router.ts",
-    "./personal-shared-failure": "./src/personal-shared-failure.ts",
-    "./response-attempts": "./src/response-attempts.ts",
-    "./retry": "./src/retry.ts",
-    "./telegram-connector": "./src/telegram-connector.ts",
-    "./telegram-delivery": "./src/telegram-delivery.ts",
-    "./gateway-routing": "./src/gateway-routing.ts",
-    "./gateway-forward": "./src/gateway-forward.ts",
-    "./bounded-fetch": "./src/bounded-fetch.ts"
+    "./blooio-environment": "./src/blooio-environment.ts",
+    "./node": "./src/node.ts",
+    "./transport": "./src/transport.ts",
+    "./testing": "./src/testing.ts",
+    "./telegram": "./src/telegram.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -37,7 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "22.19.17",
-    "bun-types": "1.3.14",
+    "bun-types": "1.4.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   }

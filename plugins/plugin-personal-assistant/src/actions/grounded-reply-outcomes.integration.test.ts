@@ -3,8 +3,9 @@
  * Actions, receipt validation, and PGlite persistence are real; only reply
  * generation is a deterministic collaborator, so this is not live-model proof.
  */
-import * as agent from "@elizaos/agent";
+
 import type { ActionResult, AgentRuntime, Memory, UUID } from "@elizaos/core";
+import * as assistant from "@elizaos/plugin-assistant";
 import {
   afterAll,
   afterEach,
@@ -70,57 +71,132 @@ describe("grounded reply outcomes — real PGlite", () => {
     } as Memory;
   }
 
-  it("keeps one persisted definition and its applied receipt after reply failure", async () => {
+  it.each(["unavailable", "deferred"] as const)(
+    "keeps one persisted definition and receipt with %s presentation",
+    async (kind) => {
+      const renderReply = vi
+        .spyOn(assistant, "renderGroundedActionReply")
+        .mockResolvedValue(
+          kind === "unavailable"
+            ? { kind, failure }
+            : { kind, grounding: "All action facts and reply rules" },
+        );
+      const callback = vi.fn(async () => []);
+      const title = `Reply ${kind} daily task`;
+      const result = await runLifeOperationHandler(
+        runtime,
+        message(`Remind me about ${title}`),
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            kind: "definition",
+            title,
+            intent: `Remind me about ${title}`,
+            details: {
+              confirmed: true,
+              kind: "habit",
+              cadence: { kind: "daily", windows: ["morning"] },
+              timeZone: "UTC",
+            },
+          },
+        },
+        callback,
+      );
+
+      if (kind === "unavailable") {
+        expectUnavailable(result);
+      } else {
+        expect(result).toMatchObject({
+          success: true,
+          transcriptVisibility: "internal",
+          turnComplete: false,
+          data: { replyGrounding: "All action facts and reply rules" },
+        });
+        expect(result.replyFailure).toBeUndefined();
+        expect(result.userFacingText).toBeUndefined();
+      }
+      const records = (await service.listDefinitions()).filter(
+        (record) => record.definition.title === title,
+      );
+      expect(records).toHaveLength(1);
+      expect(result.data).toMatchObject({
+        definition: { id: records[0].definition.id },
+      });
+      expect(result.effectReceipts).toMatchObject([
+        {
+          outcome: "applied",
+          operation: "lifeops.definition.create",
+          resource: { id: records[0].definition.id },
+          commit: { kind: "durable" },
+          idempotency: { replayed: false },
+        },
+      ]);
+      expect(renderReply).toHaveBeenCalledOnce();
+      expect(callback).not.toHaveBeenCalled();
+    },
+  );
+
+  it("grounds reminder confirmation in the persisted timezone, channel and absent native projection", async () => {
     const renderReply = vi
-      .spyOn(agent, "renderGroundedActionReply")
-      .mockResolvedValue({ kind: "unavailable", failure });
+      .spyOn(assistant, "renderGroundedActionReply")
+      .mockResolvedValue({
+        kind: "deferred",
+        grounding: "Saved reminder facts",
+      });
     const callback = vi.fn(async () => []);
-    const title = "Reply unavailable daily task";
     const result = await runLifeOperationHandler(
       runtime,
-      message(`Remind me about ${title}`),
+      message("Remind me in 2 minutes, in-app only, using Tokyo time"),
       undefined,
       {
         parameters: {
           action: "create",
           kind: "definition",
-          title,
-          intent: `Remind me about ${title}`,
-          details: {
-            confirmed: true,
-            kind: "habit",
-            cadence: { kind: "daily", windows: ["morning"] },
-            timeZone: "UTC",
+          ownerSurface: "OWNER_REMINDERS",
+          confirmed: true,
+          intent: "Remind me in 2 minutes, in-app only, using Tokyo time",
+          createPlan: {
+            mode: "create",
+            requestKind: "reminder",
+            nativeProjection: "in_app_only",
+            title: "Drink water",
+            cadenceKind: "once",
+            dueInMinutes: 2,
+            timeZone: "Asia/Tokyo",
+            multiStep: false,
           },
         },
       },
       callback,
     );
-
-    expectUnavailable(result);
-    const records = (await service.listDefinitions()).filter(
-      (record) => record.definition.title === title,
-    );
-    expect(records).toHaveLength(1);
-    expect(result.data).toMatchObject({
-      definition: { id: records[0].definition.id },
+    const id = result.effectReceipts?.[0]?.resource.id;
+    expect(result.success).toBe(true);
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      outcome: "applied",
+      commit: { kind: "durable" },
     });
-    expect(result.effectReceipts).toMatchObject([
-      {
-        outcome: "applied",
-        operation: "lifeops.definition.create",
-        resource: { id: records[0].definition.id },
-        commit: { kind: "durable" },
-        idempotency: { replayed: false },
-      },
-    ]);
+    if (!id) throw new Error("Missing saved reminder receipt");
+    const saved = await service.getDefinition(id);
+    expect(saved.definition.timezone).toBe("Asia/Tokyo");
+    expect(saved.definition.metadata.nativeAppleReminder).toBeUndefined();
     expect(renderReply).toHaveBeenCalledOnce();
+    expect(renderReply.mock.calls[0]?.[0].context).toMatchObject({
+      created: {
+        title: saved.definition.title,
+        cadence: saved.definition.cadence,
+        timezone: saved.definition.timezone,
+        notificationChannels: ["in_app"],
+        nativeAppleReminderId: null,
+      },
+    });
     expect(callback).not.toHaveBeenCalled();
+    expect(result.userFacingText).toBeUndefined();
   });
 
   it("keeps one persisted entity contact and its applied receipt after reply failure", async () => {
     const renderReply = vi
-      .spyOn(agent, "renderGroundedActionReply")
+      .spyOn(assistant, "renderGroundedActionReply")
       .mockResolvedValue({ kind: "unavailable", failure });
     const callback = vi.fn(async () => []);
     const result = await entityAction.handler(
@@ -158,7 +234,7 @@ describe("grounded reply outcomes — real PGlite", () => {
 
   it("keeps the scheduling preference write and task evidence after reply failure", async () => {
     const renderReply = vi
-      .spyOn(agent, "renderGroundedActionReply")
+      .spyOn(assistant, "renderGroundedActionReply")
       .mockResolvedValue({ kind: "unavailable", failure });
     const callback = vi.fn(async () => []);
     const result = await runUpdateMeetingPreferencesHandler(
@@ -185,7 +261,7 @@ describe("grounded reply outcomes — real PGlite", () => {
   it("delivers the exact model reply once and keeps its canonical entity receipt", async () => {
     const text = "Your contacts are ready to review.";
     const renderReply = vi
-      .spyOn(agent, "renderGroundedActionReply")
+      .spyOn(assistant, "renderGroundedActionReply")
       .mockResolvedValue({ kind: "model", text });
     const callback = vi.fn(async () => []);
     const result = await entityAction.handler(

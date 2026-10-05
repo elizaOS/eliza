@@ -16,6 +16,39 @@ import com.getcapacitor.JSObject
  * is unchanged.
  */
 object NetworkPolicyReader {
+    /** One fresh capability snapshot for the detached agent's download admission. */
+    fun readNetworkState(context: Context): JSObject {
+        val response = JSObject()
+        response.put("connectionType", "unknown")
+        response.put("metered", JSObject.NULL)
+        response.put("source", "android-os")
+        val cm = context.applicationContext
+            .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return response
+        try {
+            val active = cm.activeNetwork
+            if (active == null) {
+                response.put("connectionType", "none")
+                return response
+            }
+            val caps = cm.getNetworkCapabilities(active) ?: return response
+            // Captive portals and links without Internet validation cannot authorize downloads.
+            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return response
+            val transport = when {
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                else -> "unknown"
+            }
+            response.put("connectionType", transport)
+            response.put("metered", !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED))
+        } catch (_: SecurityException) {
+            // Missing ACCESS_NETWORK_STATE supplies no authorization to download.
+        }
+        return response
+    }
+
     /**
      * `{ metered: true|false|null, source: "android-os" }`. `metered` is null
      * when there is no active network, the capabilities are unavailable
@@ -62,8 +95,8 @@ object NetworkPolicyReader {
     /** iOS-only path hints; on Android always the safe "no info" shape. */
     fun readPathHints(): JSObject {
         val response = JSObject()
-        response.put("isExpensive", false)
-        response.put("isConstrained", false)
+        response.put("isExpensive", JSObject.NULL)
+        response.put("isConstrained", JSObject.NULL)
         response.put("source", "nw-path-monitor")
         return response
     }

@@ -170,9 +170,23 @@ function tsOf(row: RetainableRow, nowMs: number): number {
  * zero-retention-delete-everything.
  */
 export interface ResolvedRetentionConfig extends RetentionPolicy {
-  /** Sweep cadence in minutes. Undefined => service default. */
+  /**
+   * Sweep cadence in minutes. Undefined => service default. Never above
+   * {@link MAX_RETENTION_INTERVAL_MINUTES}.
+   */
   intervalMinutes?: number;
 }
+
+/**
+ * Longest sweep cadence a JS timer can hold. `setInterval` takes a 32-bit
+ * signed millisecond delay; a cadence past it (a "monthly" 43200 minutes is
+ * the common one) overflows and the runtime resets the delay to 1 ms, turning
+ * the sweep into a continuous loop. The services log the effective cadence at
+ * startup, so a bounded value is visible rather than silently different.
+ */
+export const MAX_RETENTION_INTERVAL_MINUTES = Math.floor(
+  (2 ** 31 - 1) / (60 * 1000),
+);
 
 export function resolveRetentionConfig(
   get: (key: string) => string | undefined,
@@ -204,10 +218,17 @@ export function resolveRetentionConfigWithPrefix(
     maxDeletePerSweep: positiveIntegerOrUndefined(
       get(`${prefix}_MAX_DELETE_PER_SWEEP`),
     ),
-    intervalMinutes: positiveNumberOrUndefined(
-      get(`${prefix}_INTERVAL_MINUTES`),
+    intervalMinutes: boundedIntervalMinutes(
+      positiveNumberOrUndefined(get(`${prefix}_INTERVAL_MINUTES`)),
     ),
   };
+}
+
+function boundedIntervalMinutes(
+  minutes: number | undefined,
+): number | undefined {
+  if (minutes === undefined) return undefined;
+  return Math.min(minutes, MAX_RETENTION_INTERVAL_MINUTES);
 }
 
 function positiveNumberOrUndefined(

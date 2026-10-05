@@ -13,7 +13,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const handshake = vi.hoisted(() => ({ fails: false }));
+const handshake = vi.hoisted(() => ({
+  fails: false,
+  tools: [] as Array<{ name: string; description: string }>,
+}));
 
 vi.mock("@modelcontextprotocol/sdk/client/index.js", () => {
   class LocalClient {
@@ -25,8 +28,8 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js", () => {
     getServerCapabilities(): Record<string, never> {
       return {};
     }
-    async listTools(): Promise<{ tools: [] }> {
-      return { tools: [] };
+    async listTools(): Promise<{ tools: Array<{ name: string; description: string }> }> {
+      return { tools: handshake.tools };
     }
     async listResources(): Promise<{ resources: [] }> {
       return { resources: [] };
@@ -46,11 +49,12 @@ import {
   INITIAL_RETRY_DELAY,
   MAX_RECONNECT_ATTEMPTS,
   type McpConnection,
+  type McpProvider,
   type McpServerConfig,
   type PingConfig,
 } from "../src/types";
 
-const STDIO: McpServerConfig = { type: "stdio", command: "bun", args: ["server.mjs"] };
+const STDIO: McpServerConfig = { type: "stdio", command: "bun", args: ["server.ts"] };
 
 type LadderInternals = {
   runtime: { reportError: ReturnType<typeof vi.fn> };
@@ -59,6 +63,10 @@ type LadderInternals = {
   pingConfig: PingConfig;
   initializeConnection: (name: string, config: McpServerConfig) => Promise<void>;
   buildStdioClientTransport: (name: string, config: McpServerConfig) => Promise<unknown>;
+  getMcpSettings: () => { servers: Record<string, McpServerConfig> };
+  initializeMcpServers: () => Promise<void>;
+  restartConnection: (name: string) => Promise<void>;
+  getProviderData: () => McpProvider;
 };
 
 /** Every delay handed to setTimeout while the fake clock is installed. */
@@ -108,6 +116,7 @@ async function runNextReconnect(): Promise<number | undefined> {
 
 beforeEach(() => {
   handshake.fails = false;
+  handshake.tools = [];
   vi.useFakeTimers();
   scheduledDelays = [];
   const clockSetTimeout = globalThis.setTimeout;
@@ -201,5 +210,38 @@ describe("stdio reconnect ladder", () => {
 
     expect(delays).toHaveLength(MAX_RECONNECT_ATTEMPTS * 2 + 2);
     expect(service.runtime.reportError).not.toHaveBeenCalled();
+  });
+});
+
+describe("provider data after startup", () => {
+  it("offers a server that was down at startup once it connects", async () => {
+    const service = makeService();
+    service.getMcpSettings = () => ({ servers: { srv: STDIO } });
+    handshake.fails = true;
+    await service.initializeMcpServers();
+    expect(service.getProviderData().data.mcp.srv?.status).toBe("disconnected");
+
+    handshake.fails = false;
+    handshake.tools = [{ name: "search", description: "Search the index" }];
+    await service.restartConnection("srv");
+
+    const provider = service.getProviderData();
+    expect(provider.data.mcp.srv?.status).toBe("connected");
+    expect(Object.keys(provider.data.mcp.srv?.tools ?? {})).toEqual(["search"]);
+    expect(provider.text).toContain("search");
+  });
+
+  it("stops offering a server's tools while it is down after a crash", async () => {
+    const service = makeService();
+    service.getMcpSettings = () => ({ servers: { srv: STDIO } });
+    handshake.tools = [{ name: "search", description: "Search the index" }];
+    await service.initializeMcpServers();
+    expect(service.getProviderData().data.mcp.srv?.status).toBe("connected");
+
+    handshake.fails = true;
+    await crashChildProcess(service);
+    await runNextReconnect();
+
+    expect(service.getProviderData().data.mcp.srv?.status).not.toBe("connected");
   });
 });

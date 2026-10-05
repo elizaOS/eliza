@@ -1,19 +1,10 @@
+/** Reads complete Android contact records, preserving caller-requested limits and explicit provider failures. */
 package ai.eliza.plugins.contacts
 
 import android.content.Context
 import android.provider.ContactsContract
 
-/**
- * Pure, [Context]-backed reader for the contact query that
- * [ContactsPlugin.listContacts] exposes (name + phone + email, with optional
- * search + limit).
- *
- * Extracted from the Capacitor plugin so the real `ContactsContract` query can
- * be exercised by an instrumented `androidTest` (a write→read round-trip)
- * against the real ContactsProvider, without a Capacitor `Bridge`/WebView
- * (issue #9967). Requires `READ_CONTACTS`; [ContactsPlugin] delegates to it and
- * marshals each record into the unchanged JS shape.
- */
+/** Queries require READ_CONTACTS; a missing cursor is unavailable data, never an empty address book. */
 class ContactsReader(private val context: Context) {
 
     data class ContactRecord(
@@ -28,7 +19,8 @@ class ContactsReader(private val context: Context) {
 
     /** @throws IllegalStateException if the provider returns no cursor (matches
      *  the plugin's reject). */
-    fun listContacts(query: String?, limit: Int): List<ContactRecord> {
+    fun listContacts(query: String?, limit: Long? = null): List<ContactRecord> {
+        require(limit == null || limit > 0) { "limit must be positive when provided" }
         val normalizedQuery = query?.trim()?.lowercase()
         val results = mutableListOf<ContactRecord>()
         val projection = arrayOf(
@@ -54,8 +46,7 @@ class ContactsReader(private val context: Context) {
             val photoCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.PHOTO_THUMBNAIL_URI)
             val phoneCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.HAS_PHONE_NUMBER)
             val starredCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)
-            var count = 0
-            while (cursor.moveToNext() && count < limit) {
+            while ((limit == null || results.size.toLong() < limit) && cursor.moveToNext()) {
                 val id = cursor.getString(idCol)
                 val displayName = cursor.getString(nameCol) ?: ""
                 val phoneNumbers = readPhoneNumbers(id, cursor.getInt(phoneCol) > 0)
@@ -72,7 +63,6 @@ class ContactsReader(private val context: Context) {
                         starred = cursor.getInt(starredCol) == 1,
                     ),
                 )
-                count += 1
             }
         }
         return results
@@ -87,7 +77,7 @@ class ContactsReader(private val context: Context) {
             "${ContactsContract.CommonDataKinds.Phone.CONTACT_ID} = ?",
             arrayOf(contactId),
             null,
-        ) ?: return numbers
+        ) ?: throw IllegalStateException("Contacts provider returned no phone cursor")
         cursor.use {
             val numberCol =
                 cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
@@ -107,7 +97,7 @@ class ContactsReader(private val context: Context) {
             "${ContactsContract.CommonDataKinds.Email.CONTACT_ID} = ?",
             arrayOf(contactId),
             null,
-        ) ?: return emails
+        ) ?: throw IllegalStateException("Contacts provider returned no email cursor")
         cursor.use {
             val emailCol =
                 cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email.ADDRESS)

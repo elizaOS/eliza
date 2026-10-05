@@ -81,6 +81,10 @@ export class DiscordAccountClientPool {
 		return this.list().map((state) => state.accountId);
 	}
 
+	delete(accountId: string): boolean {
+		return this.clients.delete(normalizeAccountId(accountId));
+	}
+
 	clear(): void {
 		this.clients.clear();
 	}

@@ -8,19 +8,21 @@
 // active conversation id. Deterministic in-memory client mock; the logger is
 // spied to assert the failure surfaces.
 
-import { logger } from "@elizaos/logger";
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../logger.ts";
 
 const mocks = vi.hoisted(() => ({
   client: {
+    // This fixture keeps one stable runtime authority throughout each scenario.
+    onAuthorityChange: vi.fn(() => () => {}),
     getConversationMessages: vi.fn(),
     listConversations: vi.fn(),
     getConfig: vi.fn(async () => ({ ui: {} })),
   },
 }));
 
-vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
 

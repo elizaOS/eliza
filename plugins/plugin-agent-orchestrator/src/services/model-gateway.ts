@@ -26,6 +26,7 @@
  * @module services/model-gateway
  */
 
+import { ElizaError } from "@elizaos/core";
 import { readConfigEnvKey } from "./config-env.js";
 
 export const MODEL_GATEWAY_URL_KEY = "ELIZA_MODEL_GATEWAY_URL";
@@ -66,6 +67,20 @@ export function resolveModelGatewayConfig(): ModelGatewayConfig | undefined {
   const url = readConfigEnvKey(MODEL_GATEWAY_URL_KEY)?.trim();
   const token = readConfigEnvKey(MODEL_GATEWAY_TOKEN_KEY)?.trim();
   if (!url || !token) return undefined;
+  if (token.startsWith("vault://")) {
+    // The host hydrates config secrets into its environment at boot. The disk
+    // config retains sentinels; this plugin must not open a second vault owner.
+    const hydrated = process.env[MODEL_GATEWAY_TOKEN_KEY]?.trim();
+    if (!hydrated || hydrated.startsWith("vault://")) {
+      throw new ElizaError(
+        "Model gateway credential has not been hydrated by the host",
+        {
+          code: "MODEL_GATEWAY_CREDENTIAL_UNAVAILABLE",
+        },
+      );
+    }
+    return { url, token: hydrated };
+  }
   return { url, token };
 }
 
@@ -107,6 +122,11 @@ export function applyModelGatewayEnv(
   env: NodeJS.ProcessEnv,
   gateway: ModelGatewayConfig,
 ): void {
+  if (!gateway.token.trim() || gateway.token.startsWith("vault://")) {
+    throw new ElizaError("Model gateway credential is unresolved", {
+      code: "MODEL_GATEWAY_CREDENTIAL_UNAVAILABLE",
+    });
+  }
   const rawValues: string[] = [];
   for (const key of MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS) {
     const value = env[key];

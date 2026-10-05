@@ -9,7 +9,7 @@ Tests cover:
 - Complete validation pipeline
 """
 
-from src.training.format_validator import (
+from eliza_training.rl.format_validator import (
     analyze_length,
     analyze_reasoning_quality,
     get_format_and_reasoning_scores,

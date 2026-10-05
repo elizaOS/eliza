@@ -1,0 +1,173 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["setup/dist/**", "usb-installer/dist/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "package.json",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.base.json"
+      ],
+      "passThroughEnv": [
+        "ELIZAOS_ELIZA_ROOT",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
+        "ELIZAOS_GRIZZLY_EGL",
+        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
+        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "package.json",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.base.json"
+      ],
+      "passThroughEnv": [
+        "ELIZAOS_ELIZA_ROOT",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
+        "ELIZAOS_GRIZZLY_EGL",
+        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
+        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
+      ]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "package.json",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.base.json"
+      ],
+      "passThroughEnv": [
+        "ELIZAOS_ELIZA_ROOT",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
+        "ELIZAOS_GRIZZLY_EGL",
+        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
+        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
+      ]
+    },
+    "lint": {
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "package.json",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.base.json"
+      ],
+      "passThroughEnv": [
+        "ELIZAOS_ELIZA_ROOT",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
+        "ELIZAOS_GRIZZLY_EGL",
+        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
+        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
+      ]
+    },
+    "lint:check": {
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "package.json",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.base.json"
+      ],
+      "passThroughEnv": [
+        "ELIZAOS_ELIZA_ROOT",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
+        "ELIZAOS_GRIZZLY_EGL",
+        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
+        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
+      ]
+    },
+    "format": {
+      "cache": false,
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "package.json",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.base.json"
+      ],
+      "passThroughEnv": [
+        "ELIZAOS_ELIZA_ROOT",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
+        "ELIZAOS_GRIZZLY_EGL",
+        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
+        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
+      ]
+    },
+    "format:check": {
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "package.json",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.base.json"
+      ],
+      "passThroughEnv": [
+        "ELIZAOS_ELIZA_ROOT",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
+        "ELIZAOS_GRIZZLY_EGL",
+        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
+        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
+      ]
+    },
+    "clean": {
+      "cache": false,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "package.json",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.base.json"
+      ],
+      "passThroughEnv": [
+        "ELIZAOS_ELIZA_ROOT",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
+        "ELIZAOS_GRIZZLY_EGL",
+        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
+        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
+      ]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "package.json",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.base.json"
+      ],
+      "passThroughEnv": [
+        "ELIZAOS_ELIZA_ROOT",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_BACKEND",
+        "ELIZAOS_GRIZZLY_RENDERENGINE_GRAPHITE",
+        "ELIZAOS_GRIZZLY_EGL",
+        "ELIZAOS_GRIZZLY_EARLY_BOOT_PROBES",
+        "ELIZAOS_GRIZZLY_CONSERVATIVE_F2FS"
+      ]
+    }
+  },
+  "extends": ["//"]
+}

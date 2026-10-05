@@ -21,6 +21,7 @@ export interface FakeStripeCustomer {
 }
 
 export interface FakeStripeCheckoutSession {
+  mode: "payment";
   id: string;
   object: "checkout.session";
   url: string;
@@ -382,6 +383,17 @@ function createCheckoutSession(
     return;
   }
 
+  if (form.get("mode") !== "payment") {
+    writeStripeError(
+      outgoing,
+      400,
+      "invalid_request_error",
+      "This fixture supports payment Checkout Sessions only",
+      undefined,
+      "mode",
+    );
+    return;
+  }
   const customer = form.get("customer");
   if (!customer || !state.customers.has(customer)) {
     writeStripeError(
@@ -421,6 +433,7 @@ function createCheckoutSession(
 
   const numericId = state.nextSessionId;
   const session: FakeStripeCheckoutSession = {
+    mode: "payment",
     id: `cs_test_fake_${padId(numericId)}`,
     object: "checkout.session",
     url: `https://checkout.stripe.test/c/pay/cs_test_fake_${padId(numericId)}`,

@@ -13,7 +13,7 @@
  *   - loading  while the first fetch is in flight,
  *   - error    with a Retry that refetches into populated,
  *   - empty    honest "ask Eliza to add one", no fabricated todos, routed
- *              through client.sendChatMessage,
+ *              through dispatchChatPrefill,
  *   - populated the three lanes, with lane assignment by dueDate (<= now+24h
  *              incl. overdue -> Today, future -> Upcoming, missing/unparseable
  *              -> Someday), active-only filter (completed excluded), and the
@@ -27,15 +27,15 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// TodosView only touches the narrow `@elizaos/ui/api` client surface:
-// `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
-// `client.sendChatMessage()` (add-a-todo affordance). The spatial primitives
-// come from the separate `@elizaos/ui/spatial` subpath, which is not mocked.
-const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
-vi.mock("@elizaos/ui/api", () => ({
+// Preserve the real spatial components while replacing the API client seam.
+const { dispatchChatPrefill } = vi.hoisted(() => ({
+  dispatchChatPrefill: vi.fn(),
+}));
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  dispatchChatPrefill,
   client: {
     getBaseUrl: () => "http://test.local",
-    sendChatMessage,
   },
 }));
 
@@ -108,7 +108,7 @@ function agent(agentId: string): HTMLElement {
 
 afterEach(() => {
   cleanup();
-  sendChatMessage.mockClear();
+  dispatchChatPrefill.mockClear();
 });
 
 describe("TodosView — states", () => {
@@ -165,7 +165,7 @@ describe("TodosView — states", () => {
     );
     await screen.findByText("No active todos");
     fireEvent.click(agent("add"));
-    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+    expect(dispatchChatPrefill).toHaveBeenCalledTimes(1);
   });
 
   it("shows the error state with a Retry that refetches into populated", async () => {

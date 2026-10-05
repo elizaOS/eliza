@@ -19,17 +19,13 @@
  */
 import {
   applyForceFreshFirstRunReset,
-  installForceFreshFirstRunClientPatch,
-} from "@elizaos/ui/platform/first-run-reset";
-import {
   armOnboardingReplay,
+  type FirstRunClientLike,
+  installForceFreshFirstRunClientPatch,
   type OnboardingReplayHandle,
-} from "@elizaos/ui/platform/onboarding-replay";
-import type { FirstRunClientLike } from "@elizaos/ui/platform/types";
-import {
   shouldInstallMainWindowFirstRunPatches,
   type WindowShellRoute,
-} from "@elizaos/ui/platform/window-shell";
+} from "@elizaos/ui";
 
 const INERT_HANDLE: OnboardingReplayHandle = {
   active: false,

@@ -1,0 +1,412 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.save",
+      "description": "Save the current document to its current location",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.write_text",
+      "description": "Write text at the current cursor position in the document.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to write at the current cursor position."
+          },
+          "bold": {
+            "type": "boolean",
+            "description": "Optional. Whether to write the text in bold."
+          },
+          "italic": {
+            "type": "boolean",
+            "description": "Optional. Whether to write the text in italic."
+          },
+          "size": {
+            "type": "number",
+            "description": "Optional. The size of the text."
+          }
+        },
+        "required": ["text"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_color",
+      "description": "Changes the color of matched text in the document for specified paragraphs.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "The pattern to match in the document, should be a regular expression"
+          },
+          "color": {
+            "type": "number",
+            "description": "The color to apply, should be a hex color code, like 0x000000 for black"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Optional. Indices of paragraphs to modify (0-based indexing). If not provided, applies to all paragraphs."
+          }
+        },
+        "required": ["pattern", "color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.find_and_replace",
+      "description": "Finds all occurrences of a specified text pattern and replaces them with another text in the document.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "The pattern to match in the document, should be a regular expression"
+          },
+          "replacement": {
+            "type": "string",
+            "description": "The text to replace the found text with."
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Optional. Indices of paragraphs to modify (0-based indexing). If not provided, applies to all paragraphs."
+          }
+        },
+        "required": ["pattern", "replacement"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_font",
+      "description": "Changes the font of text in the document or specified paragraphs.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "font_name": {
+            "type": "string",
+            "description": "The name of the font to apply (e.g., 'Times New Roman', 'Arial', 'Calibri')"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Optional. Indices of paragraphs to modify (0-based indexing). If not provided, applies to all paragraphs."
+          }
+        },
+        "required": ["font_name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_line_spacing",
+      "description": "Sets the line spacing for specified paragraphs in the document.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "spacing_value": {
+            "type": "number",
+            "description": "The line spacing value to apply (1.0 for single spacing, 2.0 for double spacing, etc.)."
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Optional. Indices of paragraphs to modify (0-based indexing). If not provided, applies to all paragraphs."
+          }
+        },
+        "required": ["spacing_value"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.remove_highlighting",
+      "description": "Removes highlighting from text in the document for specified paragraphs.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Optional. Indices of paragraphs to modify (0-based indexing). If not provided, applies to all paragraphs."
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.find_highlighted_text",
+      "description": "Finds all text in the document that has a specific highlight color applied to it.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "highlight_color": {
+            "type": "string",
+            "description": "The highlight color to search for. Can be a color name (e.g., 'yellow', 'green') or hex code."
+          }
+        },
+        "required": ["highlight_color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.insert_formula_at_cursor",
+      "description": "Inserts a formula at the current cursor position in the document.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "formula": {
+            "type": "string",
+            "description": "The formula to insert at the current cursor position."
+          }
+        },
+        "required": ["formula"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.insert_image_at_cursor",
+      "description": "Inserts an image at the current cursor position in the document.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "image_path": {
+            "type": "string",
+            "description": "Full path to the image file to insert"
+          },
+          "width": {
+            "type": "integer",
+            "description": "Optional. Width to display the image in pixels. If not specified, uses the original image width."
+          },
+          "height": {
+            "type": "integer",
+            "description": "Optional. Height to display the image in pixels. If not specified, uses the original image height."
+          }
+        },
+        "required": ["image_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_strikethrough",
+      "description": "Sets the strikethrough formatting for specified text in the document.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "The pattern to match in the document, should be a regular expression"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Optional. Indices of paragraphs to modify (0-based indexing). If not provided, applies to all paragraphs."
+          }
+        },
+        "required": ["pattern"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_font_size",
+      "description": "Changes the font size of specified text in the document.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "font_size": {
+            "type": "number",
+            "description": "The font size to apply (in points)."
+          },
+          "pattern": {
+            "type": "string",
+            "description": "The pattern to match in the document, should be a regular expression"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Optional. Indices of paragraphs to modify (0-based indexing). If not provided, applies to all paragraphs."
+          }
+        },
+        "required": ["font_size", "pattern"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.export_to_pdf",
+      "description": "Exports the current document to PDF format.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "output_path": {
+            "type": "string",
+            "description": "Optional. The full path where the PDF should be saved. If not provided, uses the same location as the original document with .pdf extension."
+          },
+          "output_filename": {
+            "type": "string",
+            "description": "Optional. The filename to use for the PDF. If not provided, uses the original document's filename with .pdf extension."
+          },
+          "include_comments": {
+            "type": "boolean",
+            "description": "Optional. Whether to include comments in the exported PDF. Defaults to false."
+          },
+          "quality": {
+            "type": "string",
+            "description": "Optional. The quality of the PDF export ('standard', 'high', 'print'). Defaults to 'standard'."
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_paragraph_alignment",
+      "description": "Sets the text alignment for specified paragraphs in the document.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "alignment": {
+            "type": "string",
+            "description": "The alignment to apply ('left', 'center', 'right', 'justify')."
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Optional. Indices of paragraphs to modify (0-based indexing). If not provided, applies to all paragraphs."
+          }
+        },
+        "required": ["alignment"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.capitalize_words",
+      "description": "Capitalizes the first letter of each word for specified paragraphs in the document.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Optional. Indices of paragraphs to modify (0-based indexing). If not provided, applies to all paragraphs."
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.set_default_font",
+      "description": "Sets the default font for new text in the document without changing existing text.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "font_name": {
+            "type": "string",
+            "description": "The name of the font to set as default (e.g., 'Times New Roman', 'Arial', 'Calibri')"
+          },
+          "font_size": {
+            "type": "number",
+            "description": "Optional. The default font size in points."
+          }
+        },
+        "required": ["font_name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.add_page_numbers",
+      "description": "Adds page numbers to the document at the specified position.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "type": "string",
+            "description": "Position of the page numbers ('bottom_left', 'bottom_center', 'bottom_right', 'top_left', 'top_center', 'top_right')"
+          },
+          "start_number": {
+            "type": "integer",
+            "description": "Optional. The starting page number. Defaults to 1."
+          },
+          "format": {
+            "type": "string",
+            "description": "Optional. Format of the page numbers (e.g., '1', 'Page 1', '1 of N'). Defaults to simple number format."
+          }
+        },
+        "required": ["position"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.insert_page_break",
+      "description": "Inserts a page break at the current cursor position, creating a new blank page after the current one.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "type": "string",
+            "description": "Optional. Specifies where to insert the page break: 'at_cursor' for current cursor position, 'end_of_document' for end of document. Defaults to 'at_cursor'."
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "WriterTools.change_text_case",
+      "description": "Changes the case of text in the document or a specified selection.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "case_type": {
+            "type": "string",
+            "description": "The type of case conversion to apply ('lowercase', 'uppercase')."
+          },
+          "pattern": {
+            "type": "string",
+            "description": "The pattern to match in the document, should be a regular expression"
+          },
+          "paragraph_indices": {
+            "type": "array",
+            "description": "Optional. Indices of paragraphs to modify (0-based indexing). If not provided, applies to all paragraphs."
+          }
+        },
+        "required": ["case_type", "pattern"]
+      }
+    }
+  }
+]

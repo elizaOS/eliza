@@ -23,5 +23,5 @@ export {
   type MeetingCreditBillingSessionOptions,
   resolveMeetingUsdPerMinute,
 } from "./services/meeting-billing";
-export { provisioningJobService } from "./services/provisioning-jobs";
+export { provisioningJobService } from "./services/provisioning-job-queue";
 export { logger } from "./utils/logger";

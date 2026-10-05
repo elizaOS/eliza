@@ -2,7 +2,7 @@
  * Hygiene: vitamins with breakfast — daily morning window habit.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -12,7 +12,7 @@ export default scenario({
   tags: ["lifeops", "hygiene", "habits", "daily"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

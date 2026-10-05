@@ -20,24 +20,24 @@ const mocks = vi.hoisted(() => ({
   waitForCloudAgentRunning: vi.fn(),
 }));
 
-vi.mock("../../api", () => ({ client: {} }));
+vi.mock("../../api/client", () => ({ client: {} }));
 vi.mock("../../api/client-cloud", () => ({
   waitForCloudAgentRunning: mocks.waitForCloudAgentRunning,
 }));
 
-vi.mock("../../config/branding", () => ({
+vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({ appUrl: "https://elizaos.ai" }),
 }));
 
-vi.mock("../../hooks", () => ({
+vi.mock("../../hooks/useBugReport.hooks", () => ({
   useOptionalBugReport: () => null,
 }));
 
-vi.mock("../../platform", () => ({
+vi.mock("../../platform/first-run-reset", () => ({
   startFreshFirstRunReload: mocks.startFreshFirstRunReload,
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: <T,>(
     selector: (state: {
       t: (key: string, options?: { defaultValue?: string }) => string;

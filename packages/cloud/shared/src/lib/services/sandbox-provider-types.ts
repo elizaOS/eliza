@@ -256,6 +256,29 @@ export class SandboxReplacementCreateSettlementCleanupUnresolvedError extends Sa
 }
 
 export interface SandboxProvider {
+  /** Removes only the verified immutable runtime; its caller owns transactional capacity reconciliation. */
+  stopObservedRuntime?(
+    sandboxId: string,
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ): Promise<void>;
+  /**
+   * Stops the verified immutable runtime in place with its restart policy
+   * disabled, retaining the container, mounts and node-local state. Absence,
+   * replacement or an unconfirmed stop rejects; it never removes anything.
+   */
+  retainObservedRuntimeStopped?(
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ): Promise<void>;
+  /** Starts the exact retained runtime in place; absence or replacement rejects. */
+  startRetainedRuntime?(
+    identity: import("./sandbox-runtime-observation").SandboxRuntimeIdentity,
+  ): Promise<void>;
+  /** Exact read-only identity observation; unsupported or unknown never means absent. */
+  observeRuntime?(
+    input: import("./sandbox-runtime-observation").SandboxRuntimeObservationRequest,
+  ): Promise<import("./sandbox-runtime-observation").SandboxRuntimeObservation>;
+  /** Remote paid compute supports a caller-owned, committed-funding start instead of raw Docker start. */
+  readonly computeFundingCapability?: "host-lease-v1";
   /**
    * Declares support for caller-owned replacement identity, a pre-effect start
    * marker, and an exact success-only completion signal. Callers must check
@@ -285,7 +308,14 @@ export interface SandboxProvider {
    * cannot prove the old workload is no longer running; abandoning an
    * unreachable container would create two live agents after the node returns.
    */
-  stopForReplacement?(sandboxId: string): Promise<void>;
+  stopForReplacement?(
+    sandboxId: string,
+    /** A lifecycle caller that transactionally recounts capacity owns its release. */
+    options?: {
+      readonly releaseCapacity?: false;
+      readonly expectedRuntime?: import("./sandbox-runtime-observation").SandboxRuntimeIdentity;
+    },
+  ): Promise<void>;
   /**
    * Reclaims a replacement candidate from its durable placement record. This
    * bypasses sandbox-id lookup because the routed agent row may still point at
@@ -450,6 +480,14 @@ export interface SandboxCreateConfig {
   onReplacementCreateIntent?: (handle: SandboxHandle) => Promise<void>;
   /** CAS-enriches a persisted intent with Docker's exact container id. */
   onReplacementCreated?: (handle: SandboxHandle) => Promise<void>;
+  /**
+   * Starts the exact created container only after its funding binding commits.
+   * Called after host configuration is prepared. A rejection must never fall
+   * through to an ordinary provider start. Required for runnable remote Docker
+   * customer containers, including replacements and test organizations. Local,
+   * stopped exact-restore candidates and explicit pool capacity are exempt.
+   */
+  startFundedContainer?: (handle: SandboxHandle) => Promise<void>;
   /**
    * Enriches the durable candidate fence with the exact Headscale identity as
    * soon as registration completes. The initial placement remains authoritative

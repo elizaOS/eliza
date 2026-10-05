@@ -15,6 +15,7 @@ import {
 } from "node:http";
 import { request as requestHttps } from "node:https";
 import net from "node:net";
+import type { CustomActionDef, CustomActionHandler } from "@elizaos/contracts";
 import {
   type Action,
   type HandlerOptions,
@@ -25,13 +26,10 @@ import {
 } from "@elizaos/core";
 import {
   createSelfApiRequestHeaders,
-  resolveServerOnlyPort,
-} from "@elizaos/shared";
-import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
-import type {
-  CustomActionDef,
-  CustomActionHandler,
-} from "../config/types.eliza.ts";
+  resolveSelfApiBaseUrl,
+} from "@elizaos/host/protocol";
+
+import { hasSelectedContextOrSignalSync } from "@elizaos/plugin-assistant";
 
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;
@@ -109,8 +107,9 @@ type DnsLookupAllFn = (
 
 let dnsLookupImpl: DnsLookupAllFn = dnsLookup as DnsLookupAllFn;
 
+/** Port of this process's own API listener (same resolver as self-calls). */
 function getApiPort(): string {
-  return String(resolveServerOnlyPort(process.env));
+  return new URL(resolveSelfApiBaseUrl(process.env)).port;
 }
 
 async function fetchWithTimeout(
@@ -851,7 +850,7 @@ function buildHandler(
         }
 
         const response = await fetchWithTimeout(
-          `http://localhost:${getApiPort()}/api/terminal/run`,
+          `${resolveSelfApiBaseUrl(process.env)}/api/terminal/run`,
           {
             method: "POST",
             headers: {

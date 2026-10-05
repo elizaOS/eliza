@@ -182,8 +182,8 @@ export class UsageRecordsRepository {
     const [stats] = await dbRead
       .select({
         totalRequests: sql<number>`count(*)::int`,
-        totalInputTokens: sql<number>`coalesce(sum(${usageRecords.input_tokens}), 0)::int`,
-        totalOutputTokens: sql<number>`coalesce(sum(${usageRecords.output_tokens}), 0)::int`,
+        totalInputTokens: sql<number>`coalesce(sum(${usageRecords.input_tokens}), 0)::bigint`,
+        totalOutputTokens: sql<number>`coalesce(sum(${usageRecords.output_tokens}), 0)::bigint`,
         totalCost: sql<number>`coalesce(sum(${usageRecords.input_cost} + ${usageRecords.output_cost}), 0)::numeric`,
         successRate: sql<number>`coalesce(
           count(*) filter (where ${usageRecords.is_successful} = true)::float /
@@ -196,8 +196,8 @@ export class UsageRecordsRepository {
 
     return {
       totalRequests: stats?.totalRequests || 0,
-      totalInputTokens: stats?.totalInputTokens || 0,
-      totalOutputTokens: stats?.totalOutputTokens || 0,
+      totalInputTokens: Number(stats?.totalInputTokens || 0),
+      totalOutputTokens: Number(stats?.totalOutputTokens || 0),
       totalCost: Number(stats?.totalCost || 0), // Convert NUMERIC to number
       successRate: stats?.successRate ?? 1.0,
     };
@@ -274,8 +274,8 @@ export class UsageRecordsRepository {
         timestamp: truncateExpression.as("timestamp"),
         totalRequests: sql<number>`count(*)::int`,
         totalCost: sql<number>`coalesce(sum(${usageRecords.input_cost} + ${usageRecords.output_cost}), 0)::numeric`,
-        inputTokens: sql<number>`coalesce(sum(${usageRecords.input_tokens}), 0)::int`,
-        outputTokens: sql<number>`coalesce(sum(${usageRecords.output_tokens}), 0)::int`,
+        inputTokens: sql<number>`coalesce(sum(${usageRecords.input_tokens}), 0)::bigint`,
+        outputTokens: sql<number>`coalesce(sum(${usageRecords.output_tokens}), 0)::bigint`,
         successRate: sql<number>`coalesce(
           count(*) filter (where ${usageRecords.is_successful} = true)::float /
           nullif(count(*)::float, 0),
@@ -297,8 +297,8 @@ export class UsageRecordsRepository {
       timestamp: new Date(row.timestamp as string),
       totalRequests: row.totalRequests,
       totalCost: Number(row.totalCost || 0),
-      inputTokens: row.inputTokens,
-      outputTokens: row.outputTokens,
+      inputTokens: Number(row.inputTokens),
+      outputTokens: Number(row.outputTokens),
       successRate: row.successRate,
     }));
   }
@@ -332,8 +332,8 @@ export class UsageRecordsRepository {
         userEmail: users.email,
         totalRequests: sql<number>`count(*)::int`,
         totalCost: sql<number>`coalesce(sum(${usageRecords.input_cost} + ${usageRecords.output_cost}), 0)::numeric`,
-        inputTokens: sql<number>`coalesce(sum(${usageRecords.input_tokens}), 0)::int`,
-        outputTokens: sql<number>`coalesce(sum(${usageRecords.output_tokens}), 0)::int`,
+        inputTokens: sql<number>`coalesce(sum(${usageRecords.input_tokens}), 0)::bigint`,
+        outputTokens: sql<number>`coalesce(sum(${usageRecords.output_tokens}), 0)::bigint`,
         lastActive: sql<Date>`max(${usageRecords.created_at})`,
       })
       .from(usageRecords)
@@ -351,8 +351,8 @@ export class UsageRecordsRepository {
         userEmail: row.userEmail!,
         totalRequests: row.totalRequests,
         totalCost: Number(row.totalCost || 0),
-        inputTokens: row.inputTokens,
-        outputTokens: row.outputTokens,
+        inputTokens: Number(row.inputTokens),
+        outputTokens: Number(row.outputTokens),
         lastActive: row.lastActive,
       }));
   }
@@ -416,7 +416,7 @@ export class UsageRecordsRepository {
         provider: usageRecords.canonical_provider,
         totalRequests: sql<number>`count(*)::int`,
         totalCost: sql<number>`coalesce(sum(${usageRecords.input_cost} + ${usageRecords.output_cost}), 0)::numeric`,
-        totalTokens: sql<number>`coalesce(sum(${usageRecords.input_tokens} + ${usageRecords.output_tokens}), 0)::int`,
+        totalTokens: sql<number>`coalesce(sum(${usageRecords.input_tokens} + ${usageRecords.output_tokens}), 0)::bigint`,
         successRate: sql<number>`coalesce(
           count(*) filter (where ${usageRecords.is_successful} = true)::float /
           nullif(count(*)::float, 0),
@@ -432,7 +432,7 @@ export class UsageRecordsRepository {
       provider: row.provider ?? "unknown",
       totalRequests: row.totalRequests,
       totalCost: Number(row.totalCost || 0),
-      totalTokens: row.totalTokens,
+      totalTokens: Number(row.totalTokens),
       successRate: row.successRate,
     }));
     const totalCost = aggregated.reduce((sum, row) => sum + row.totalCost, 0);
@@ -471,7 +471,7 @@ export class UsageRecordsRepository {
         groupProvider: usageRecords.canonical_provider,
         totalRequests: sql<number>`count(*)::int`,
         totalCost: sql<number>`coalesce(sum(${usageRecords.input_cost} + ${usageRecords.output_cost}), 0)::numeric`,
-        totalTokens: sql<number>`coalesce(sum(${usageRecords.input_tokens} + ${usageRecords.output_tokens}), 0)::int`,
+        totalTokens: sql<number>`coalesce(sum(${usageRecords.input_tokens} + ${usageRecords.output_tokens}), 0)::bigint`,
         successRate: sql<number>`coalesce(
           count(*) filter (where ${usageRecords.is_successful} = true)::float /
           nullif(count(*)::float, 0),
@@ -488,7 +488,7 @@ export class UsageRecordsRepository {
       const groupModel = String(row.groupModel);
       const displayModel = groupModel === "__null__" ? "unknown" : groupModel;
       const totalCost = Number(row.totalCost || 0);
-      const totalTokens = row.totalTokens;
+      const totalTokens = Number(row.totalTokens);
       return {
         model: displayModel,
         provider: String(row.groupProvider),
@@ -594,7 +594,7 @@ export class UsageRecordsRepository {
       value: row.value || "unknown",
       cost: Number(row.cost || 0),
       requests: row.requests,
-      tokens: row.tokens,
+      tokens: Number(row.tokens),
       successCount: row.successCount,
       totalCount: row.totalCount,
     });
@@ -605,7 +605,7 @@ export class UsageRecordsRepository {
           value: usageRecords.canonical_model,
           cost: sql<number>`coalesce(sum(${usageRecords.input_cost} + ${usageRecords.output_cost}), 0)::numeric`,
           requests: sql<number>`count(*)::int`,
-          tokens: sql<number>`coalesce(sum(${usageRecords.input_tokens} + ${usageRecords.output_tokens}), 0)::int`,
+          tokens: sql<number>`coalesce(sum(${usageRecords.input_tokens} + ${usageRecords.output_tokens}), 0)::bigint`,
           successCount: sql<number>`count(*) filter (where ${usageRecords.is_successful} = true)::int`,
           totalCount: sql<number>`count(*)::int`,
         })
@@ -630,7 +630,7 @@ export class UsageRecordsRepository {
           value: usageRecords.canonical_provider,
           cost: sql<number>`coalesce(sum(${usageRecords.input_cost} + ${usageRecords.output_cost}), 0)::numeric`,
           requests: sql<number>`count(*)::int`,
-          tokens: sql<number>`coalesce(sum(${usageRecords.input_tokens} + ${usageRecords.output_tokens}), 0)::int`,
+          tokens: sql<number>`coalesce(sum(${usageRecords.input_tokens} + ${usageRecords.output_tokens}), 0)::bigint`,
           successCount: sql<number>`count(*) filter (where ${usageRecords.is_successful} = true)::int`,
           totalCount: sql<number>`count(*)::int`,
         })
@@ -651,7 +651,7 @@ export class UsageRecordsRepository {
         value: dimensionColumn,
         cost: sql<number>`coalesce(sum(${usageRecords.input_cost} + ${usageRecords.output_cost}), 0)::numeric`,
         requests: sql<number>`count(*)::int`,
-        tokens: sql<number>`coalesce(sum(${usageRecords.input_tokens} + ${usageRecords.output_tokens}), 0)::int`,
+        tokens: sql<number>`coalesce(sum(${usageRecords.input_tokens} + ${usageRecords.output_tokens}), 0)::bigint`,
         successCount: sql<number>`count(*) filter (where ${usageRecords.is_successful} = true)::int`,
         totalCount: sql<number>`count(*)::int`,
       })

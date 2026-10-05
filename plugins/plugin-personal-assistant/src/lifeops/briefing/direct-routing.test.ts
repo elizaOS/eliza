@@ -14,6 +14,10 @@ describe("looksLikeTrackedWorkRecapRequest", () => {
     "How did I do this week?",
     "Give me a status overview of my tasks.",
     "Show me my completed work.",
+    "Give me my morning brief for today. Use the information available and clearly say if a source is unavailable.",
+    "Please show me my daily brief.",
+    "Can you compose a morning briefing?",
+    "Generate my daily dossier.",
   ])("routes tracked-work recap variant: %s", (text) => {
     expect(looksLikeTrackedWorkRecapRequest(text)).toBe(true);
   });
@@ -32,6 +36,12 @@ describe("looksLikeTrackedWorkRecapRequest", () => {
     "How are you today?",
     "Tell me a story about finishing everything.",
     "What is left recursion?",
+    "What is a morning brief?",
+    "Do not give me a morning brief.",
+    "Give me no daily brief.",
+    'Someone said "give me my morning brief".',
+    'Give me "my morning brief" as a title.',
+    "Give me my morning brief from this conversation.",
   ])("does not route unrelated chat: %s", (text) => {
     expect(looksLikeTrackedWorkRecapRequest(text)).toBe(false);
   });

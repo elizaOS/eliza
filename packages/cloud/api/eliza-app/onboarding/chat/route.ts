@@ -6,29 +6,32 @@
  * provisioning and handoff memory copy.
  */
 
-import { isElizaError } from "@elizaos/core";
-import { type Context, Hono } from "hono";
-import { z } from "zod";
-import { providerForPlatform, usersRepository } from "@/db/repositories/users";
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
+import {
+  providerForPlatform,
+  usersRepository,
+} from "@elizaos/cloud-shared/db/repositories/users";
 import {
   ApiError,
   ForbiddenError,
   failureResponse,
   ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { elizaAppSessionService } from "@/lib/services/eliza-app";
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
 import {
   inspectOnboardingContinuation,
   type OnboardingContinuationPreview,
   type OnboardingPlatform,
   previewTelegramPersonalAccountClaimContinuation,
   runOnboardingChat,
-} from "@/lib/services/eliza-app/onboarding-chat";
-import { publicElizaAppProvisioningPayload } from "@/lib/services/eliza-app/provisioning";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat";
+import { publicElizaAppProvisioningPayload } from "@elizaos/cloud-shared/lib/services/eliza-app/provisioning";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { isElizaError } from "@elizaos/core";
+import { type Context, Hono } from "hono";
+import { z } from "zod";
 import { requireInternalAuth } from "../../../internal/_auth";
 
 const app = new Hono<AppEnv>();

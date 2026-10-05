@@ -14,7 +14,7 @@
  * them separate because the user can grant one without the other.
  */
 
-import type { PermissionState, Prober } from "../contracts.js";
+import type { PermissionState, Prober } from "@elizaos/core";
 import {
   buildState,
   IS_DARWIN,

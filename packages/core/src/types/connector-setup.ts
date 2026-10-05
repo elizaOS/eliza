@@ -3,7 +3,7 @@
  *
  * This is the single source of truth for the connector-setup wire shapes.
  * It lives in `@elizaos/core` — the innermost package every connector plugin
- * and the API host (`@elizaos/app-core`) already depend on — so both the
+ * and the API host (`@elizaos/app`) already depend on — so both the
  * server that mounts the routes and the plugins that implement them agree on
  * one definition instead of mirroring it locally (see #10201).
  *

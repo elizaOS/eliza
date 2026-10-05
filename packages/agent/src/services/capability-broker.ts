@@ -31,7 +31,8 @@ import {
   type DistributionProfile,
   type RuntimeExecutionMode,
   resolveDistributionProfile,
-} from "@elizaos/shared";
+} from "@elizaos/host/protocol";
+
 import { resolveStateDir } from "../config/paths.ts";
 
 export type CapabilityKind =

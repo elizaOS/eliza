@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rmPathRecursive = fileURLToPath(
-  new URL("../../../../../packages/scripts/rm-path-recursive.mjs", import.meta.url)
+  new URL("../../../../../packages/scripts/rm-path-recursive.ts", import.meta.url)
 );
 
 export async function runBuild(

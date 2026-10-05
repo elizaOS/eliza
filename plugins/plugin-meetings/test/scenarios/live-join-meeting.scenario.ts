@@ -6,7 +6,7 @@
  * which is fine — the trajectory proves planner → JOIN_MEETING → MeetingService
  * with the real error surfaced.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   id: "live-join-meeting",

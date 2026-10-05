@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>ai.elizaos.app</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>elizaOS</name>
+  <developer id="ai.elizaos">
+    <name>elizaOS</name>
+  </developer>
+  <summary>Personal Eliza agent desktop shell</summary>
+  <description>
+    <p>
+      elizaOS provides a native desktop shell for a personal Eliza agent,
+      including tray, overlay, notifications, and secure browser-based Cloud
+      onboarding.
+    </p>
+    <p>
+      Computer and privileged operations remain local and are subject to
+      explicit owner controls.
+    </p>
+  </description>
+  <launchable type="desktop-id">ai.elizaos.app.desktop</launchable>
+  <provides>
+    <mediatype>x-scheme-handler/elizaos</mediatype>
+  </provides>
+  <url type="homepage">https://elizaos.ai/</url>
+  <content_rating type="oars-1.1" />
+</component>

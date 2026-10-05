@@ -4,7 +4,10 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import type { SandboxAuditLog } from "../security/audit-log.ts";
+import {
+  reportDetachedAuditRecord,
+  type SandboxAuditLog,
+} from "../security/audit-log.ts";
 import {
   type PolicyDecision,
   type SigningPolicy,
@@ -83,22 +86,28 @@ export class RemoteSigningService {
     // policyEvaluator.release(request.requestId) to return the slot.
     const decision = this.policyEvaluator.tryReserve(request);
 
-    this.auditLog?.record({
-      type: "signing_request_submitted",
-      summary: `Sign request ${request.requestId}: chain=${request.chainId} to=${request.to} value=${request.value}`,
-      metadata: {
-        requestId: request.requestId,
-        chainId: request.chainId,
-        to: request.to,
-        value: request.value,
-        allowed: decision.allowed,
-        reason: decision.reason,
-      },
-      severity: "info",
-    });
+    try {
+      await this.auditLog?.record({
+        type: "signing_request_submitted",
+        summary: `Sign request ${request.requestId}: chain=${request.chainId} to=${request.to} value=${request.value}`,
+        metadata: {
+          requestId: request.requestId,
+          chainId: request.chainId,
+          to: request.to,
+          value: request.value,
+          allowed: decision.allowed,
+          reason: decision.reason,
+        },
+        severity: "info",
+      });
+    } catch (error) {
+      // error-policy:J2 No request proceeds without its submission evidence.
+      if (decision.allowed) this.policyEvaluator.release(request.requestId);
+      throw error;
+    }
 
     if (!decision.allowed) {
-      this.auditLog?.record({
+      await this.auditLog?.record({
         type: "signing_request_rejected",
         summary: `Rejected: ${decision.reason}`,
         metadata: {
@@ -181,12 +190,16 @@ export class RemoteSigningService {
       // be consumed by a sign now — return the rate-limit slot and replay
       // marker to the pool.
       this.policyEvaluator.release(requestId);
-      this.auditLog?.record({
-        type: "signing_request_rejected",
-        summary: `Human rejected request ${requestId}`,
-        metadata: { requestId },
-        severity: "info",
-      });
+      if (this.auditLog) {
+        reportDetachedAuditRecord(
+          this.auditLog.record({
+            type: "signing_request_rejected",
+            summary: `Human rejected request ${requestId}`,
+            metadata: { requestId },
+            severity: "info",
+          }),
+        );
+      }
     }
 
     return existed;
@@ -206,11 +219,15 @@ export class RemoteSigningService {
 
   updatePolicy(policy: SigningPolicy): void {
     this.policyEvaluator.updatePolicy(policy);
-    this.auditLog?.record({
-      type: "policy_decision",
-      summary: "Signing policy updated",
-      severity: "warn",
-    });
+    if (this.auditLog) {
+      reportDetachedAuditRecord(
+        this.auditLog.record({
+          type: "policy_decision",
+          summary: "Signing policy updated",
+          severity: "warn",
+        }),
+      );
+    }
   }
 
   getPolicy(): SigningPolicy {
@@ -222,6 +239,7 @@ export class RemoteSigningService {
     decision: PolicyDecision,
     humanConfirmed: boolean,
   ): Promise<SigningResult> {
+    let signedTx: string;
     try {
       const unsigned: UnsignedTransaction = {
         to: request.to,
@@ -237,31 +255,7 @@ export class RemoteSigningService {
       if (request.maxPriorityFeePerGas !== undefined) {
         unsigned.maxPriorityFeePerGas = request.maxPriorityFeePerGas;
       }
-      const signedTx = await this.signer.signTransaction(unsigned);
-
-      // Replay protection + rate limiting were already reserved atomically
-      // by tryReserve() before this method was called; the reservation is
-      // now consumed by a real signed transaction, so there is nothing left
-      // to record here.
-
-      this.auditLog?.record({
-        type: "signing_request_approved",
-        summary: `Signed request ${request.requestId}: chain=${request.chainId} to=${request.to}`,
-        metadata: {
-          requestId: request.requestId,
-          chainId: request.chainId,
-          to: request.to,
-          humanConfirmed,
-        },
-        severity: "info",
-      });
-
-      return {
-        success: true,
-        signature: signedTx,
-        policyDecision: decision,
-        humanConfirmed,
-      };
+      signedTx = await this.signer.signTransaction(unsigned);
     } catch (err) {
       const errorMsg = String(err);
 
@@ -270,7 +264,7 @@ export class RemoteSigningService {
       // failed attempt (#23228).
       this.policyEvaluator.release(request.requestId);
 
-      this.auditLog?.record({
+      await this.auditLog?.record({
         type: "signing_request_rejected",
         summary: `Signing failed for ${request.requestId}: ${errorMsg}`,
         metadata: {
@@ -287,6 +281,28 @@ export class RemoteSigningService {
         humanConfirmed,
       };
     }
+
+    // Replay protection + rate limiting were already reserved atomically by
+    // tryReserve(); the signature consumed that reservation. The signature is
+    // released only after its approval evidence is accepted.
+    await this.auditLog?.record({
+      type: "signing_request_approved",
+      summary: `Signed request ${request.requestId}: chain=${request.chainId} to=${request.to}`,
+      metadata: {
+        requestId: request.requestId,
+        chainId: request.chainId,
+        to: request.to,
+        humanConfirmed,
+      },
+      severity: "info",
+    });
+
+    return {
+      success: true,
+      signature: signedTx,
+      policyDecision: decision,
+      humanConfirmed,
+    };
   }
 }
 

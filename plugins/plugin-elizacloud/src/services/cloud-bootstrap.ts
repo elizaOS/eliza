@@ -1,12 +1,12 @@
 /**
  * CloudBootstrapService — service-port that exposes Eliza Cloud bootstrap
- * verification endpoints to `app-core` via the runtime service registry.
+ * verification endpoints to `app` via the runtime service registry.
  *
  * The actual JWKS fetch / cache and bootstrap-token verify path lives in
- * `app-core` (`services/cloud-jwks-store.ts` and `api/auth/bootstrap-token.ts`).
+ * `app` (`services/cloud-jwks-store.ts` and `api/auth/bootstrap-token.ts`).
  * This service intentionally has a minimal surface: it answers questions
  * about the cloud trust anchor (issuer, JWKS URL, revocation list URL,
- * expected container id) so that `app-core` does not need to import
+ * expected container id) so that `app` does not need to import
  * directly from `@elizaos/plugin-elizacloud`.
  *
  * Hard rule (per remote-auth-hardening-plan §3.2): no fail-open. If the
@@ -60,7 +60,7 @@ function trimTrailingSlash(input: string): string {
 export class CloudBootstrapServiceImpl extends Service implements CloudBootstrapService {
   static serviceType = "CLOUD_BOOTSTRAP";
   capabilityDescription =
-    "Exposes Eliza Cloud bootstrap-token trust anchor (issuer, JWKS URL, revocation list URL, expected container id) to app-core";
+    "Exposes Eliza Cloud bootstrap-token trust anchor (issuer, JWKS URL, revocation list URL, expected container id) to app";
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new CloudBootstrapServiceImpl(runtime);

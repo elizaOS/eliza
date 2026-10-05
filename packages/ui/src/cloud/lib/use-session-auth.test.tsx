@@ -10,6 +10,7 @@
  * bypass, source precedence, and the re-read listeners.
  */
 
+import { createMemoryStorage } from "@elizaos/testing/browser-mocks";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,7 +23,7 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
-import { setBootConfig } from "../../config/boot-config";
+import { setBootConfig } from "../../config/boot-config-store";
 import {
   LocalStewardAuthContext,
   type LocalStewardAuthValue,
@@ -36,24 +37,6 @@ function makeJwt(payload: Record<string, unknown>): string {
       .replace(/\//g, "_")
       .replace(/=+$/, "");
   return `${b64url({ alg: "HS256", typ: "JWT" })}.${b64url(payload)}.sig`;
-}
-
-function createMemoryStorage(): Storage {
-  const store = new Map<string, string>();
-  return {
-    get length() {
-      return store.size;
-    },
-    clear: () => store.clear(),
-    getItem: (key: string) => store.get(key) ?? null,
-    key: (index: number) => [...store.keys()][index] ?? null,
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-    setItem: (key: string, value: string) => {
-      store.set(key, String(value));
-    },
-  };
 }
 
 const FUTURE_EXP = Math.floor(Date.now() / 1000) + 600;

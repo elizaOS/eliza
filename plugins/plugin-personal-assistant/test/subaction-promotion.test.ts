@@ -284,22 +284,23 @@ describe("SCHEDULED_TASKS promotion + alias normalization", () => {
     ]);
   });
 
-  it("parent handler returns a structured failure when no action is supplied", async () => {
+  it("parent handler rejects a missing operation for an authorized owner", async () => {
+    const runtime = {
+      ...STATIC_RUNTIME,
+      getSetting: (key: string) =>
+        key === "ELIZA_ADMIN_ENTITY_ID" ? STATIC_MESSAGE.entityId : undefined,
+    } as IAgentRuntime;
     const result = await scheduledTaskAction.handler(
-      STATIC_RUNTIME,
+      runtime,
       STATIC_MESSAGE,
       NOOP_STATE,
       { parameters: {} },
       NOOP_CALLBACK,
     );
-    expect(result?.success).toBe(false);
-    if (result?.data && typeof result.data === "object") {
-      const error = (result.data as Record<string, unknown>).error;
-      // Either PERMISSION_DENIED (owner gate) or MISSING_SUBACTION (validator
-      // bypassed) is acceptable — both prove the handler failed before any
-      // downstream side effect.
-      expect(["PERMISSION_DENIED", "MISSING_SUBACTION"]).toContain(error);
-    }
+    expect(result).toMatchObject({
+      success: false,
+      data: { error: "MISSING_SUBACTION" },
+    });
   });
 
   it("the SCHEDULED_TASKS_LIST virtual delegates to the parent handler with action=list injected", async () => {

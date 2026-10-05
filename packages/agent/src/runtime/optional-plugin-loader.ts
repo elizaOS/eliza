@@ -1,7 +1,8 @@
 /** Loads optional bundled plugins while honoring explicit workspace-source development. */
 import { pathToFileURL } from "node:url";
-import { logger } from "@elizaos/core";
-import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
+import { ElizaError, logger } from "@elizaos/core";
+import { isModuleNotFoundError } from "../utils/module-resolution-error.ts";
+import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.ts";
 import {
   hasElizaSourceRuntimeCondition,
   OPTIONAL_STATIC_PLUGIN_OVERRIDES,
@@ -42,20 +43,25 @@ export async function loadOptionalPlugin(
     const importer = OPTIONAL_PLUGIN_IMPORTERS[packageName];
     if (importer) return await importer();
     return await import(optionalPluginImportSpecifier(packageName));
-  } catch {
-    // error-policy:J4 Optional imports unavailable in a partial install may
-    // use the existing dev source fallback, otherwise remain unavailable.
+  } catch (cause) {
+    const specifier = optionalPluginImportSpecifier(packageName);
+    if (
+      !isModuleNotFoundError(cause, specifier) &&
+      !isModuleNotFoundError(cause, packageName)
+    ) {
+      throw new ElizaError("Optional plugin could not be loaded", {
+        code: "OPTIONAL_PLUGIN_LOAD_FAILED",
+        context: { packageName },
+        cause,
+      });
+    }
     if (isWorkspacePluginSourceFallbackAllowed()) {
       const sourceEntry = resolveSourceEntry();
       if (sourceEntry) {
-        try {
-          logger.debug(
-            `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
-          );
-          return await import(pathToFileURL(sourceEntry).href);
-        } catch {
-          // error-policy:J4 An unbuildable optional plugin remains unavailable.
-        }
+        logger.debug(
+          `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
+        );
+        return await import(pathToFileURL(sourceEntry).href);
       }
     }
     return null;

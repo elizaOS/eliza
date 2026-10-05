@@ -3,13 +3,13 @@
  * guest availability and source-health reporting.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
 } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConflictDetectEvent,

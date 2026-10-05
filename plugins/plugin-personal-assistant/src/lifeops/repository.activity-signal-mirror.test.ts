@@ -1,5 +1,6 @@
 /** PGlite-backed proof that mirror failures remain non-fatal and enter AgentRuntime diagnostics. */
 
+import type { LifeOpsActivitySignal } from "@elizaos/contracts";
 import {
   AgentRuntime,
   type Character,
@@ -7,11 +8,12 @@ import {
   EventType,
   type UUID,
 } from "@elizaos/core";
-import type { LifeOpsActivitySignal } from "@elizaos/shared";
+import {
+  PGliteClientManager,
+  PgliteDatabaseAdapter,
+} from "@elizaos/plugin-sql";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PgliteDatabaseAdapter } from "../../../plugin-sql/src/pglite/adapter.js";
-import { PGliteClientManager } from "../../../plugin-sql/src/pglite/manager.js";
 import {
   createSignalSourceRegistry,
   registerSignalSourceRegistry,

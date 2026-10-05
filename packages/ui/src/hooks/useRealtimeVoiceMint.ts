@@ -173,7 +173,7 @@ export function useRealtimeVoiceMint(options?: {
   forceEnabled?: boolean;
   /** Production self-hosted capability stamp (tests may inject it). */
   selfHostedEnabled?: boolean;
-  /** Whether the selected runtime is a paired self-hosted remote. */
+  /** Whether the selected runtime is local or a paired self-hosted remote. */
   resolveSelfHostedRuntime?: () => boolean;
 }): UseRealtimeVoiceMintResult {
   const doFetch = options?.fetch ?? defaultConsentFetch;
@@ -203,7 +203,7 @@ export function useRealtimeVoiceMint(options?: {
 
   const selfHostedRuntime = options?.resolveSelfHostedRuntime
     ? options.resolveSelfHostedRuntime()
-    : persistedActiveServer?.kind === "remote";
+    : persistedActiveServer?.kind !== "cloud";
 
   const probeConversationId = normalizeRealtimeConversationId(
     options?.conversationId,
@@ -232,19 +232,29 @@ export function useRealtimeVoiceMint(options?: {
     }
 
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retryDelayMs = 1_000;
     setArmedProbeKey(null);
-    void probeRealtimeVoiceAvailability(
-      doFetch,
-      availabilityProbeKey,
-      expectedProbeConversationId,
-    ).then((available) => {
-      if (!cancelled) {
-        setArmedProbeKey(available ? availabilityProbeKey : null);
+    const probe = async () => {
+      const available = await probeRealtimeVoiceAvailability(
+        doFetch,
+        availabilityProbeKey,
+        expectedProbeConversationId,
+      );
+      if (cancelled) return;
+      setArmedProbeKey(available ? availabilityProbeKey : null);
+      if (!available) {
+        // The gateway can start after the UI. Recover capability without a
+        // reload; readiness still never starts the microphone or grants consent.
+        retryTimer = setTimeout(() => void probe(), retryDelayMs);
+        retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
       }
-    });
+    };
+    void probe();
 
     return () => {
       cancelled = true;
+      clearTimeout(retryTimer);
     };
   }, [availabilityProbeKey, doFetch, expectedProbeConversationId]);
 

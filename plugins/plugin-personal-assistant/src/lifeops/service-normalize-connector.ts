@@ -3,16 +3,7 @@
  * validate and coerce connector mode/side, browser permission state, and
  * settings inputs into the canonical shapes the domains trust.
  */
-import { parseCronExpression } from "@elizaos/agent";
-import {
-  BROWSER_BRIDGE_KINDS,
-  BROWSER_BRIDGE_SITE_ACCESS_MODES,
-  BROWSER_BRIDGE_TRACKING_MODES,
-  type BrowserBridgeKind,
-  type BrowserBridgePermissionState,
-  type BrowserBridgeSettings,
-  type UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser";
+
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -24,7 +15,7 @@ import type {
   LifeOpsWorkflowPermissionPolicy,
   LifeOpsWorkflowSchedule,
   LifeOpsWorkflowTriggerType,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
@@ -33,7 +24,17 @@ import {
   LIFEOPS_REMINDER_CHANNELS,
   LIFEOPS_TIME_WINDOW_NAMES,
   LIFEOPS_WORKFLOW_TRIGGER_TYPES,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
+import { parseCronExpression } from "@elizaos/core";
+import {
+  BROWSER_BRIDGE_KINDS,
+  BROWSER_BRIDGE_SITE_ACCESS_MODES,
+  BROWSER_BRIDGE_TRACKING_MODES,
+  type BrowserBridgeKind,
+  type BrowserBridgePermissionState,
+  type BrowserBridgeSettings,
+  type UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser";
 import { DEFAULT_BROWSER_PERMISSION_STATE } from "./browser-constants.js";
 import {
   resolveDefaultTimeZone,

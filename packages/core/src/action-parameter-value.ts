@@ -9,7 +9,7 @@
  */
 
 import { ElizaError } from "./errors";
-import type { ActionParameters } from "./types";
+import type { ActionParameters } from "./types/components.js";
 import { toWellFormedUnicode } from "./utils/well-formed";
 
 export const MAX_ACTION_PARAMETER_DEPTH = 32;

@@ -46,14 +46,12 @@ import argparse
 import json
 import logging
 import random
-import sys
 from pathlib import Path
 from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.native_record import native_text_record, native_tool_call_record, stable_id, write_jsonl  # noqa: E402
+from eliza_training.lib.native_record import native_text_record, native_tool_call_record, stable_id, write_jsonl  # noqa: E402
 
 EVAL_DIR = ROOT / "data" / "synthesized" / "evaluators"
 BACKUP_DIR = EVAL_DIR / "_backup"
@@ -72,7 +70,7 @@ LEGACY_MAP = {
 GENERATED_TASK_TYPES = ["relationship_extraction", "skill_extraction", "skill_refinement"]
 
 
-# ─── current runtime templates (verbatim from packages/prompts/src/index.ts) ──
+# ─── current runtime templates (verbatim from plugins/plugin-assistant/src/features/advanced-memory/prompts.ts) ──
 
 REFLECTION_TEMPLATE = """# Task: Reflect on recent agent behavior and interactions.
 

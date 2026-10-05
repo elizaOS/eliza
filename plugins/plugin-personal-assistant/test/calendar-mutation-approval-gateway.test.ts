@@ -2,12 +2,13 @@
  * The conversational calendar gateway freezes exact provider intent into the
  * owner-approval queue; no provider service participates in this harness.
  */
+
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import type {
   CalendarMutationGatewayDep,
   CalendarTravelBufferResult,
 } from "@elizaos/plugin-calendar";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarMutationApprovalGateway } from "../src/actions/calendar.js";
 import type {

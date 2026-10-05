@@ -1,11 +1,16 @@
-// Coordinates cloud service managed eliza config behavior behind route handlers.
+/** Produces managed-agent credentials, routing hints and embedding compatibility pins without migrating stored vectors. */
 import crypto from "node:crypto";
-import { EXTERNAL_URLS } from "@elizaos/shared/brand";
+import { ElizaError } from "@elizaos/core";
+import { EXTERNAL_URLS } from "@elizaos/host/protocol";
 import type { DbTransaction } from "../../db/client";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { apiKeysService } from "./api-keys";
+import {
+  MANAGED_CLOUD_OWNER_KEYS,
+  prepareManagedCloudOwnerEnvironment,
+} from "./managed-cloud-owner-config";
 import { findReservedEnvKeys, RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
 
 const DEFAULT_ELIZA_APP_URL = EXTERNAL_URLS.app;
@@ -198,36 +203,11 @@ export function mergeManagedPublicBaseUrl(
 }
 
 /**
- * The cloud-managed inference defaults: the embedding endpoint + the cloud
- * embedding handler's OUTPUT dimensions, and the Cerebras-direct small/large
- * model pins. Pure and single-source-of-truth - both the provision path (via
- * prepareManagedElizaBaseEnvironment) and the blue/green fleet-upgrade path
- * (eliza-sandbox.ts) backfill these onto an agent's stored env so an agent
- * provisioned BEFORE these pins landed heals on upgrade (#8434). An explicit
- * per-agent value always wins.
- *
- * Local-primary embeddings: FRESH provisions default to the local gte-small
- * handler (384-d) instead of the paid cloud text-embedding-3-small path —
- * nubs/shaw directive 2026-08-16: self-hosted embeddings are the platform
- * default. Freshness is detected by the absence of ELIZAOS_CLOUD_API_KEY in
- * existingEnv: a previously provisioned agent always carries its key (and its
- * pinned dimension hints) in stored env, so upgrades/backfills keep their
- * original width and a pre-pin legacy 1536-d store is never healed onto 384-d
- * hints (#9911 recall-degradation class). Explicit controls still win both
- * ways: ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1 opts an existing agent in (only
- * after re-embedding its store), =0 keeps a fresh agent on the cloud path, and
- * ELIZAOS_CLOUD_USE_EMBEDDINGS=true always restores cloud embeddings.
- *
- * NOTE on dimensions: EMBEDDING_DIMENSION / ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS
- * set the width of the vectors the plugin-elizacloud TEXT_EMBEDDING handler
- * EMITS when cloud embeddings are enabled (1536 by default, 384 for the
- * local-primary opt-in so all probes/storage hints agree). They do NOT size the
- * plugin-sql storage column - plugin-sql never reads either var. The storage
- * column width is decided at boot by runtime.ensureEmbeddingDimension(), which
- * probes the registered embedding handler's actual vector length and snaps the
- * column to that dimension. That probe must run before bundled docs are seeded;
- * that boot ordering was the real no-memory bug (#8769) - fixed in
- * packages/agent/src/runtime/eliza.ts, not here.
+ * Selects BGE384 for fresh agents and preserves explicit embedding controls.
+ * Local ownership includes the lean-chat plugin opt-in and the persisted route.
+ * Existing 384-dimensional stores require an explicit model identity: prior
+ * managed defaults could route that width to different models. The legacy
+ * 1536-dimensional compatibility path is not a BGE migration. Incompatible BGE selections fail before runtime storage probes.
  */
 export function applyManagedAgentInferenceEnvDefaults(
   existingEnv: Record<string, string>,
@@ -237,14 +217,58 @@ export function applyManagedAgentInferenceEnvDefaults(
   const localPrimaryEmbeddings =
     (explicitLean === "1" || (isFreshProvision && explicitLean !== "0")) &&
     existingEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !== "true";
-  const embeddingDimension = localPrimaryEmbeddings ? "384" : "1536";
+  const embeddingDimension =
+    existingEnv.EMBEDDING_DIMENSION ??
+    existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ??
+    (isFreshProvision ? "384" : "1536");
+  const cloudDimension = existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? embeddingDimension;
+  const embeddingModel =
+    existingEnv.ELIZAOS_CLOUD_EMBEDDING_MODEL ??
+    (localPrimaryEmbeddings || (isFreshProvision && embeddingDimension === "384")
+      ? "bge-small-en-v1.5"
+      : "text-embedding-3-small");
+  const directEmbeddingProvider =
+    (localPrimaryEmbeddings ||
+      existingEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() === "false") &&
+    Boolean(existingEnv.EMBEDDING_BASE_URL?.trim() || existingEnv.EMBEDDING_API_KEY?.trim());
+  if (
+    embeddingDimension !== cloudDimension ||
+    (!isFreshProvision &&
+      embeddingDimension === "384" &&
+      !directEmbeddingProvider &&
+      !existingEnv.ELIZAOS_CLOUD_EMBEDDING_MODEL?.trim()) ||
+    (!isFreshProvision &&
+      localPrimaryEmbeddings &&
+      !directEmbeddingProvider &&
+      existingEnv.ELIZAOS_CLOUD_EMBEDDING_MODEL !== "bge-small-en-v1.5") ||
+    (!directEmbeddingProvider &&
+      (localPrimaryEmbeddings || embeddingModel === "bge-small-en-v1.5") &&
+      (embeddingDimension !== "384" || embeddingModel !== "bge-small-en-v1.5"))
+  ) {
+    throw new ElizaError(
+      "Managed embedding identity or dimensions are incompatible or unknown; back up and explicitly re-embed the existing store before pinning BGE384 model and dimensions",
+      {
+        code: "MANAGED_EMBEDDING_MIGRATION_REQUIRED",
+        context: {
+          embeddingDimension,
+          cloudDimension,
+          embeddingModel,
+        },
+      },
+    );
+  }
   return {
-    ...(localPrimaryEmbeddings ? { ELIZAOS_CLOUD_USE_EMBEDDINGS: "false" } : {}),
+    ...(localPrimaryEmbeddings
+      ? {
+          ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "1",
+          ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+        }
+      : {}),
     ELIZAOS_CLOUD_EMBEDDING_URL:
       existingEnv.ELIZAOS_CLOUD_EMBEDDING_URL ?? resolveCloudApiBaseUrl(),
-    EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? embeddingDimension,
-    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS:
-      existingEnv.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? embeddingDimension,
+    EMBEDDING_DIMENSION: embeddingDimension,
+    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: cloudDimension,
+    ELIZAOS_CLOUD_EMBEDDING_MODEL: embeddingModel,
     // These are managed control-plane pins, not user overrides. Replacing
     // stored values also heals previously provisioned agents during upgrade.
     ELIZAOS_CLOUD_SMALL_MODEL: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
@@ -256,6 +280,7 @@ export async function prepareManagedElizaBaseEnvironment(
   params: PrepareManagedElizaSharedEnvironmentParams,
 ): Promise<ManagedElizaBaseEnvironmentResult> {
   const existingEnv = { ...(params.existingEnv ?? {}) };
+  for (const key of MANAGED_CLOUD_OWNER_KEYS) delete existingEnv[key];
   const localDockerDirectInference =
     process.env.ELIZA_LOCAL_DOCKER_PROVIDER === "1" &&
     (existingEnv.ELIZAOS_CLOUD_ENABLED?.trim().toLowerCase() === "false" ||
@@ -275,6 +300,8 @@ export async function prepareManagedElizaBaseEnvironment(
   // DATABASE_URL re-injected by computeManagedAgentDbEnv.
   delete existingEnv.DATABASE_URL;
   delete existingEnv.ELIZA_MANAGED_DATABASE_URL;
+  const cloudOwnerEnvironment = await prepareManagedCloudOwnerEnvironment(params);
+  const inferenceDefaults = applyManagedAgentInferenceEnvDefaults(existingEnv);
   const { plainKey: agentApiKey, revokedKeyHashes } = await apiKeysService.createForAgent({
     organizationId: params.organizationId,
     userId: params.userId,
@@ -290,12 +317,14 @@ export async function prepareManagedElizaBaseEnvironment(
     revokedKeyHashes,
     environmentVars: {
       ...existingEnv,
+      ...cloudOwnerEnvironment,
       // Hosting-mode marker: this process is a managed Eliza Cloud agent, not a
       // user-owned/self-hosted install. Always forced on for the managed path —
       // callers cannot clear or override it (also in RESERVED_PLATFORM_ENV_KEYS).
       // The agent server exposes it as `cloudProvisioned` on /api/status and
       // /api/first-run/status so the UI can render managed vs user-owned UX.
       ELIZA_CLOUD_PROVISIONED: "1",
+      ELIZA_RUNTIME_OWNER_ID: params.userId,
       // Managed browser pairing terminates at the Cloud Worker. Only the local
       // Docker provider may opt a loopback-bound container into direct relay.
       ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
@@ -327,11 +356,12 @@ export async function prepareManagedElizaBaseEnvironment(
       // BOTH embedding-output dimensions to the handler's output width, and pin
       // the healthy Cerebras-direct small/large models so the container never
       // resolves a tier to the `:nitro` default. For the explicit
-      // ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1 rollout lane, the helper yields the
-      // cloud embedding slot and uses 384-dim hints so local gte-small,
-      // ensureEmbeddingDimension, and storage agree. Embedding controls honor
-      // explicit per-agent overrides; managed small/large model pins do not.
-      ...applyManagedAgentInferenceEnvDefaults(existingEnv),
+      // local-primary lane, the helper stamps the lean-chat plugin opt-in,
+      // yields the cloud embedding slot, and uses 384-dim hints so local
+      // BGE-small, ensureEmbeddingDimension, and storage agree. Embedding
+      // controls honor explicit per-agent overrides; managed small/large model
+      // pins do not.
+      ...inferenceDefaults,
       // New managed agents keep agent-state in a LOCAL in-container DB (PGlite on
       // the persistent /root/.eliza volume) instead of the shared cloud Postgres;
       // auth + discovery still flow through the cloud API (ELIZAOS_CLOUD_* above).

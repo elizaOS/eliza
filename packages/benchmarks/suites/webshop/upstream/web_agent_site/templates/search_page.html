@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="{{url_for('static', filename='style.css')}}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <link rel="icon" href="data:,">
+  </head>
+  <body>
+    <!-- Code reference: https://bootsnipp.com/snippets/m13mN -->
+    <div class="container" style="margin-top: 8%;">
+      <div class="col-md-6 col-md-offset-3">     
+        <div class="row">
+          <div id="logo" class="text-center">
+            <h2>WebShop</h2>
+          </div>
+          <div id="instruction-text" class="text-center">
+            <h4>Instruction: <br>{{ instruction_text }}</h4>
+          </div>
+          <form role="form" id="form-buscar" method="post" action="{{url_for('index', session_id=session_id)}}">
+            <div class="form-group">
+              <div class="input-group">
+                <input id="search_input" class="form-control" type="text" name="search_query" placeholder="Search..." required/>
+                <span class="input-group-btn">
+                  <button class="btn btn-success" type="submit"><i class="glyphicon glyphicon-search" aria-hidden="true"></i>Search</button>
+                </span>
+              </div>
+            </div>
+          </form>
+        </div>            
+      </div>
+    </div>
+  </body>
+</html>

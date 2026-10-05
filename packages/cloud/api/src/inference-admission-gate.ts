@@ -7,17 +7,15 @@
  * resetting an active quota window. The object never queries Postgres or Redis.
  */
 
-import { runWithDbCacheAsync } from "@/db/client";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import { isAffiliateBillingAttribution } from "@/lib/services/affiliate-billing-attribution";
-import type { InferenceBalanceFence } from "@/lib/services/credits";
-import {
-  type InferenceAdmissionRecoveryContext,
-  type InferenceAdmissionRecoveryResult,
-  recoverExpiredInferenceAdmissionLease,
-} from "@/lib/services/inference-admission-recovery";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { isAffiliateBillingAttribution } from "@elizaos/cloud-shared/lib/services/affiliate-billing-attribution";
+import type { InferenceBalanceFence } from "@elizaos/cloud-shared/lib/services/credits";
+import type {
+  InferenceAdmissionRecoveryContext,
+  InferenceAdmissionRecoveryResult,
+} from "@elizaos/cloud-shared/lib/services/inference-admission-recovery";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 interface ActiveLeaseTiming {
   estimatedCostUsd: number;
@@ -34,11 +32,26 @@ interface ActiveLease extends ActiveLeaseTiming {
    * dispatch without making crash recovery optimistic.
    */
   preProviderCancellationToken?: string;
+  /**
+   * Organization policy generation the lease was admitted under. Dispatch of
+   * a separately leased request fails closed once the gate has observed a
+   * newer generation.
+   */
+  policyGeneration?: string;
   recovery: InferenceAdmissionRecoveryContext;
 }
 
+/**
+ * Which authoritative balance the ceiling reflects. Absent means purchased
+ * credit only. "funding" is subscriber capacity: purchased credit plus
+ * spendable allowance at the same organization balance revision. At equal
+ * revisions the funding view supersedes a credit-only observation.
+ */
+type BalanceView = "funding";
+
 interface GateLedger {
   balanceRevision: string;
+  balanceView?: BalanceView;
   balanceCeilingUsd: number;
   availableUsd: number;
   uncollectedDebtUsd: number;
@@ -46,6 +59,12 @@ interface GateLedger {
   activeEstimateUsd: number;
   nextAlarmAt: number | null;
   settledRequestIds: string[];
+  /**
+   * Highest organization policy generation observed from an authoritative
+   * policy read (primary admission or snapshot publication). Cache-served
+   * admissions carrying an older generation are stale and fail closed.
+   */
+  policyGeneration?: string;
 }
 
 interface LeaseExpiryIndex {
@@ -59,8 +78,11 @@ interface LeaseRequest {
   requestId: string;
   balanceUsd: number;
   balanceRevision: string;
+  balanceView?: BalanceView;
   estimatedCostUsd: number;
   recovery: InferenceAdmissionRecoveryContext;
+  /** Policy generation the caller's admission decision was made under. */
+  policyGeneration?: string;
 }
 
 interface AuthorizedLeaseRequest extends LeaseRequest {
@@ -78,6 +100,9 @@ interface AuthorizedLeaseDispatchRequest extends AuthorizedLeaseRequest {
 interface HydrateRequest {
   balanceUsd: number;
   balanceRevision: string;
+  balanceView?: BalanceView;
+  /** Authoritative policy generation published with the observation. */
+  policyGeneration?: string;
 }
 
 interface SettleRequest {
@@ -86,6 +111,7 @@ interface SettleRequest {
   gateConsumedUsd: number;
   balanceUsd: number;
   balanceRevision: string;
+  balanceView?: BalanceView;
 }
 
 interface LeaseIdentityRequest {
@@ -108,6 +134,12 @@ interface RateLimitRequest {
   maxRequests: number;
   /** Fixed-window identity captured before this request enters a Durable Object queue. */
   windowStartedAt?: number;
+  /**
+   * Optional per-API-key cap (`api_keys.rate_limit`, requests per window across
+   * every endpoint) enforced under the plan tier in the same serialized
+   * decision: a request is allowed only when both windows have room.
+   */
+  apiKey?: { id: string; maxRequests: number };
 }
 
 type CredentialCheckRequest =
@@ -177,6 +209,8 @@ interface RateLimitReceipt {
   windowStartedAt: number;
   windowMs: number;
   maxRequests: number;
+  apiKeyId?: string;
+  apiKeyMaxRequests?: number;
   decision: {
     allowed: boolean;
     remaining: number;
@@ -192,6 +226,7 @@ const LEASE_KEY_PREFIX = "lease:";
 const LEASE_ACTIVE_KEY_PREFIX = "lease-active:";
 const LEASE_EXPIRY_KEY_PREFIX = "lease-expiry:";
 const RATE_LIMITS_KEY = "rate-limits";
+const API_KEY_RATE_LIMIT_WINDOW_PREFIX = "api-key:";
 const ORGANIZATION_DISABLED_KEY = "revocation:organization-disabled";
 const REVOKED_API_KEY_PREFIX = "revocation:api-key:";
 const DISABLED_SUBJECT_PREFIX = "revocation:subject-disabled:";
@@ -310,6 +345,19 @@ function validRecoveryContext(
     if (lane.kind === "direct_debit") {
       return Object.keys(lane).length === 1;
     }
+    if (lane.kind === "subscription_funding") {
+      if (lane.affiliate === undefined) return Object.keys(lane).length === 1;
+      const affiliate = lane.affiliate as Record<string, unknown> | null;
+      return (
+        Object.keys(lane).length === 2 &&
+        affiliate !== null &&
+        typeof affiliate === "object" &&
+        Object.keys(affiliate).length === 2 &&
+        isAffiliateBillingAttribution(affiliate.attribution) &&
+        affiliate.attribution.affiliateUserId !== record.userId &&
+        validTrimmedId(affiliate.payoutSourceId)
+      );
+    }
     return (
       lane.kind === "affiliate_debit" &&
       isAffiliateBillingAttribution(lane.attribution) &&
@@ -366,6 +414,14 @@ function canonicalJson(value: unknown): string {
   return serialized;
 }
 
+function validBalanceView(value: unknown): value is BalanceView | undefined {
+  return value === undefined || value === "funding";
+}
+
+function balanceViewRank(view: BalanceView | undefined): number {
+  return view === "funding" ? 1 : 0;
+}
+
 function balanceRevision(value: unknown): bigint | null {
   if (typeof value !== "string" || !/^(0|[1-9]\d*)$/.test(value)) {
     return null;
@@ -377,9 +433,60 @@ function jsonError(message: string, status: 400 | 409 | 503): Response {
   return Response.json({ success: false, error: message }, { status });
 }
 
+const POLICY_STALE_CODE = "inference_admission_policy_stale";
+
+function policyStale(): Response {
+  return Response.json(
+    {
+      success: false,
+      code: POLICY_STALE_CODE,
+      error: "Inference admission policy generation is stale",
+    },
+    { status: 409 },
+  );
+}
+
+/**
+ * Adopt a newer authoritative policy generation. Returns false when the
+ * supplied generation is older than one the gate has already observed, which
+ * proves the caller decided admission from a superseded policy projection.
+ */
+function observePolicyGeneration(
+  ledger: GateLedger,
+  generation: string | undefined,
+): boolean {
+  if (generation === undefined) return true;
+  const incoming = balanceRevision(generation);
+  if (incoming === null) {
+    throw new Error("Inference admission policy generation is invalid");
+  }
+  const current =
+    ledger.policyGeneration === undefined
+      ? null
+      : balanceRevision(ledger.policyGeneration);
+  if (current !== null && incoming < current) return false;
+  if (current === null || incoming > current) {
+    ledger.policyGeneration = generation;
+  }
+  return true;
+}
+
+function policyGenerationIsCurrent(
+  ledger: GateLedger,
+  generation: string | undefined,
+): boolean {
+  if (generation === undefined || ledger.policyGeneration === undefined) {
+    return true;
+  }
+  const leased = balanceRevision(generation);
+  const current = balanceRevision(ledger.policyGeneration);
+  return leased !== null && current !== null && leased >= current;
+}
+
 function cloneLedger(ledger: GateLedger): GateLedger {
   return {
     balanceRevision: ledger.balanceRevision,
+    ...(ledger.balanceView && { balanceView: ledger.balanceView }),
     balanceCeilingUsd: ledger.balanceCeilingUsd,
     availableUsd: ledger.availableUsd,
     uncollectedDebtUsd: ledger.uncollectedDebtUsd,
@@ -387,6 +494,9 @@ function cloneLedger(ledger: GateLedger): GateLedger {
     activeEstimateUsd: ledger.activeEstimateUsd,
     nextAlarmAt: ledger.nextAlarmAt,
     settledRequestIds: [...ledger.settledRequestIds],
+    ...(ledger.policyGeneration !== undefined && {
+      policyGeneration: ledger.policyGeneration,
+    }),
   };
 }
 
@@ -447,19 +557,33 @@ function applyBalanceSnapshot(
   ledger: GateLedger,
   balanceUsd: number,
   revision: string,
+  view?: BalanceView,
 ): void {
   const incomingRevision = balanceRevision(revision);
   const currentRevision = balanceRevision(ledger.balanceRevision);
-  if (incomingRevision === null || currentRevision === null) {
+  if (
+    incomingRevision === null ||
+    currentRevision === null ||
+    !validBalanceView(view)
+  ) {
     throw new Error("Inference admission balance revision is invalid");
   }
-  if (incomingRevision > currentRevision) {
+  if (
+    incomingRevision > currentRevision ||
+    (incomingRevision === currentRevision &&
+      balanceViewRank(view) > balanceViewRank(ledger.balanceView))
+  ) {
     ledger.balanceRevision = revision;
+    if (view) ledger.balanceView = view;
+    else delete ledger.balanceView;
     ledger.balanceCeilingUsd = balanceUsd;
     recomputeAvailable(ledger);
     return;
   }
-  if (incomingRevision === currentRevision) {
+  if (
+    incomingRevision === currentRevision &&
+    balanceViewRank(view) === balanceViewRank(ledger.balanceView)
+  ) {
     ledger.balanceCeilingUsd = Math.min(ledger.balanceCeilingUsd, balanceUsd);
     ledger.availableUsd = Math.min(
       ledger.availableUsd,
@@ -548,6 +672,7 @@ export class InferenceAdmissionGate {
         !nonNegativeFinite(this.ledger.availableUsd) ||
         !nonNegativeFinite(this.ledger.uncollectedDebtUsd) ||
         balanceRevision(this.ledger.balanceRevision) === null ||
+        !validBalanceView(this.ledger.balanceView) ||
         !Number.isSafeInteger(this.ledger.activeLeaseCount) ||
         this.ledger.activeLeaseCount < 0 ||
         this.ledger.activeLeaseCount > MAX_ACTIVE_LEASES ||
@@ -557,6 +682,8 @@ export class InferenceAdmissionGate {
             this.ledger.nextAlarmAt <= 0)) ||
         !Array.isArray(this.ledger.settledRequestIds) ||
         this.ledger.settledRequestIds.length > MAX_SETTLED_REQUEST_IDS ||
+        (this.ledger.policyGeneration !== undefined &&
+          balanceRevision(this.ledger.policyGeneration) === null) ||
         this.ledger.settledRequestIds.some(
           (requestId) => !validRequestId(requestId),
         ))
@@ -595,6 +722,8 @@ export class InferenceAdmissionGate {
       !["leased", "dispatched", "recovering"].includes(lease.phase) ||
       (lease.preProviderCancellationToken !== undefined &&
         !validTrimmedId(lease.preProviderCancellationToken)) ||
+      (lease.policyGeneration !== undefined &&
+        balanceRevision(lease.policyGeneration) === null) ||
       (lease.phase === "recovering" &&
         (!Number.isSafeInteger(lease.recoveryStartedAt) ||
           (lease.recoveryStartedAt ?? 0) <= 0)) ||
@@ -787,15 +916,23 @@ export class InferenceAdmissionGate {
       !validId(request.organizationId) ||
       !nonNegativeFinite(request.balanceUsd) ||
       balanceRevision(request.balanceRevision) === null ||
+      !validBalanceView(request.balanceView) ||
       !nonNegativeFinite(request.estimatedCostUsd) ||
       request.estimatedCostUsd === 0 ||
+      (request.policyGeneration !== undefined &&
+        balanceRevision(request.policyGeneration) === null) ||
       (preProviderCancellationToken !== undefined &&
         !validTrimmedId(preProviderCancellationToken)) ||
       !validRecoveryContext(
         request.recovery,
         request.requestId,
         request.organizationId,
-      )
+      ) ||
+      // Subscriber funding leases are admitted only against subscriber
+      // capacity, and credit-funded leases only against credit balances.
+      (request.balanceView === "funding") !==
+        (request.recovery.kind === "organization" &&
+          request.recovery.accounting.kind === "subscription_funding")
     ) {
       return jsonError("Invalid inference admission lease", 400);
     }
@@ -812,7 +949,12 @@ export class InferenceAdmissionGate {
       );
     }
     const ledger = cloneLedger(existing);
-    applyBalanceSnapshot(ledger, request.balanceUsd, request.balanceRevision);
+    applyBalanceSnapshot(
+      ledger,
+      request.balanceUsd,
+      request.balanceRevision,
+      request.balanceView,
+    );
 
     const prior = await this.loadLease(request.requestId);
     if (prior) {
@@ -879,6 +1021,12 @@ export class InferenceAdmissionGate {
       await this.save(ledger);
       return jsonError("Request ID was already settled", 409);
     }
+    // A new lease decided under a superseded policy generation never reaches
+    // the provider. Replays of an existing lease above keep their identity.
+    if (!observePolicyGeneration(ledger, request.policyGeneration)) {
+      await this.save(ledger);
+      return policyStale();
+    }
     if (ledger.activeLeaseCount >= MAX_ACTIVE_LEASES) {
       await this.save(ledger);
       return jsonError("Inference admission gate capacity is exhausted", 503);
@@ -906,6 +1054,9 @@ export class InferenceAdmissionGate {
         preProviderCancellationToken === undefined ? "leased" : "dispatched",
       ...(preProviderCancellationToken !== undefined && {
         preProviderCancellationToken,
+      }),
+      ...(request.policyGeneration !== undefined && {
+        policyGeneration: request.policyGeneration,
       }),
       recovery: structuredClone(request.recovery),
     };
@@ -944,7 +1095,10 @@ export class InferenceAdmissionGate {
   private async hydrate(request: HydrateRequest): Promise<Response> {
     if (
       !nonNegativeFinite(request.balanceUsd) ||
-      balanceRevision(request.balanceRevision) === null
+      balanceRevision(request.balanceRevision) === null ||
+      !validBalanceView(request.balanceView) ||
+      (request.policyGeneration !== undefined &&
+        balanceRevision(request.policyGeneration) === null)
     ) {
       return jsonError("Invalid inference admission hydration", 400);
     }
@@ -952,6 +1106,10 @@ export class InferenceAdmissionGate {
     if (!existing) {
       await this.save({
         balanceRevision: request.balanceRevision,
+        ...(request.balanceView && { balanceView: request.balanceView }),
+        ...(request.policyGeneration !== undefined && {
+          policyGeneration: request.policyGeneration,
+        }),
         balanceCeilingUsd: request.balanceUsd,
         availableUsd: request.balanceUsd,
         uncollectedDebtUsd: 0,
@@ -963,7 +1121,15 @@ export class InferenceAdmissionGate {
       return Response.json({ hydrated: true, initialized: true });
     }
     const ledger = cloneLedger(existing);
-    applyBalanceSnapshot(ledger, request.balanceUsd, request.balanceRevision);
+    applyBalanceSnapshot(
+      ledger,
+      request.balanceUsd,
+      request.balanceRevision,
+      request.balanceView,
+    );
+    // An older published generation is an out-of-order observation, not a
+    // rollback: the gate keeps the newest generation it has seen.
+    observePolicyGeneration(ledger, request.policyGeneration);
     await this.save(ledger);
     return Response.json({ hydrated: true, initialized: false });
   }
@@ -975,7 +1141,8 @@ export class InferenceAdmissionGate {
       !nonNegativeFinite(request.gateConsumedUsd) ||
       request.gateConsumedUsd < request.balanceBackedUsd ||
       !nonNegativeFinite(request.balanceUsd) ||
-      balanceRevision(request.balanceRevision) === null
+      balanceRevision(request.balanceRevision) === null ||
+      !validBalanceView(request.balanceView)
     ) {
       return jsonError("Invalid inference admission settlement", 400);
     }
@@ -1003,7 +1170,12 @@ export class InferenceAdmissionGate {
     removeActiveLease(ledger, lease);
     ledger.uncollectedDebtUsd +=
       request.gateConsumedUsd - request.balanceBackedUsd;
-    applyBalanceSnapshot(ledger, request.balanceUsd, request.balanceRevision);
+    applyBalanceSnapshot(
+      ledger,
+      request.balanceUsd,
+      request.balanceRevision,
+      request.balanceView,
+    );
     recomputeAvailable(ledger);
     rememberSettledRequest(ledger, request.requestId);
     await this.save(ledger, {
@@ -1059,6 +1231,9 @@ export class InferenceAdmissionGate {
         put: [{ requestId: request.requestId, lease: refreshed }],
       });
       return Response.json({ dispatched: true, duplicate: true });
+    }
+    if (!policyGenerationIsCurrent(ledger, lease.policyGeneration)) {
+      return policyStale();
     }
     const dispatched: ActiveLease = {
       ...lease,
@@ -1218,7 +1393,12 @@ export class InferenceAdmissionGate {
       !Number.isSafeInteger(request.windowMs) ||
       request.windowMs <= 0 ||
       !Number.isSafeInteger(request.maxRequests) ||
-      request.maxRequests <= 0
+      request.maxRequests <= 0 ||
+      (request.apiKey !== undefined &&
+        (!validTrimmedId(request.apiKey?.id) ||
+          request.apiKey.id.length > 128 ||
+          !Number.isSafeInteger(request.apiKey.maxRequests) ||
+          request.apiKey.maxRequests <= 0))
     ) {
       return jsonError("Invalid inference rate-limit request", 400);
     }
@@ -1251,7 +1431,9 @@ export class InferenceAdmissionGate {
         receipt.operationDeadlineAt !== request.operationDeadlineAt ||
         receipt.windowStartedAt !== windowStartedAt ||
         receipt.windowMs !== request.windowMs ||
-        receipt.maxRequests !== request.maxRequests
+        receipt.maxRequests !== request.maxRequests ||
+        receipt.apiKeyId !== request.apiKey?.id ||
+        receipt.apiKeyMaxRequests !== request.apiKey?.maxRequests
       ) {
         return jsonError(
           "Inference rate-limit operation was reused with a different policy",
@@ -1308,11 +1490,44 @@ export class InferenceAdmissionGate {
             ...(activeReceipts.length > 0 && { receipts: activeReceipts }),
           };
     current.count = Math.min(current.count + 1, Number.MAX_SAFE_INTEGER);
-    const allowed = current.count <= request.maxRequests;
+    // The per-key window counts every endpoint; like the tier window it counts
+    // denied attempts, so a throttled key cannot hammer the object for free.
+    const apiKeyWindowName = request.apiKey
+      ? `${API_KEY_RATE_LIMIT_WINDOW_PREFIX}${request.apiKey.id}`
+      : undefined;
+    const apiKeyWindow = request.apiKey
+      ? (() => {
+          const prior = apiKeyWindowName
+            ? windows[apiKeyWindowName]
+            : undefined;
+          return {
+            windowStartedAt,
+            windowMs: request.windowMs,
+            maxRequests: request.apiKey.maxRequests,
+            count:
+              prior &&
+              prior.windowStartedAt === windowStartedAt &&
+              prior.windowMs === request.windowMs
+                ? Math.min(prior.count + 1, Number.MAX_SAFE_INTEGER)
+                : 1,
+          };
+        })()
+      : undefined;
+    const allowed =
+      current.count <= request.maxRequests &&
+      (!apiKeyWindow || apiKeyWindow.count <= apiKeyWindow.maxRequests);
     const resetAt = windowStartedAt + request.windowMs;
     const decision = {
       allowed,
-      remaining: Math.max(0, request.maxRequests - current.count),
+      remaining: Math.max(
+        0,
+        Math.min(
+          request.maxRequests - current.count,
+          apiKeyWindow
+            ? apiKeyWindow.maxRequests - apiKeyWindow.count
+            : Number.MAX_SAFE_INTEGER,
+        ),
+      ),
       resetAt,
       retryAfter: allowed
         ? undefined
@@ -1327,10 +1542,25 @@ export class InferenceAdmissionGate {
         windowStartedAt,
         windowMs: request.windowMs,
         maxRequests: request.maxRequests,
+        ...(request.apiKey && {
+          apiKeyId: request.apiKey.id,
+          apiKeyMaxRequests: request.apiKey.maxRequests,
+        }),
         decision,
       });
     }
     windows[request.endpointType] = current;
+    // Per-key windows are dropped once their window has ended, so the stored
+    // map stays bounded by the keys active in the current window.
+    for (const [name, window] of Object.entries(windows)) {
+      if (
+        name.startsWith(API_KEY_RATE_LIMIT_WINDOW_PREFIX) &&
+        window.windowStartedAt + window.windowMs <= now
+      )
+        delete windows[name];
+    }
+    if (apiKeyWindowName && apiKeyWindow)
+      windows[apiKeyWindowName] = apiKeyWindow;
     this.saveRateLimitWindows(windows);
 
     return Response.json(decision, { status: allowed ? 200 : 429 });
@@ -1507,6 +1737,7 @@ export class InferenceAdmissionGate {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const handlerStartedAt = performance.now();
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
     }
@@ -1608,13 +1839,21 @@ export class InferenceAdmissionGate {
         this.release(body as LeaseIdentityRequest),
       );
     }
-    if (path === "/rate-limit") {
-      return await this.serializeRateLimit(() =>
-        this.rateLimit(body as RateLimitRequest),
+    if (path === "/rate-limit" || path === "/rate-limit-warm") {
+      const response = await this.serializeRateLimit(() =>
+        path === "/rate-limit"
+          ? this.rateLimit(body as RateLimitRequest)
+          : this.warmRateLimit(),
       );
-    }
-    if (path === "/rate-limit-warm") {
-      return await this.serializeRateLimit(() => this.warmRateLimit());
+      // Internal binding telemetry only. This includes body parsing and our
+      // queue, but excludes time before handler entry and the platform output
+      // gate that commits storage before delivering the response. Do not label
+      // the difference from caller elapsed time as network time alone.
+      response.headers.set(
+        "x-eliza-gate-handler-ms",
+        String(Math.max(0, performance.now() - handlerStartedAt)),
+      );
+      return response;
     }
     if (path === "/rate-limit-v2-cutover") {
       return await this.serializeRateLimit(() =>
@@ -1793,6 +2032,7 @@ export class InferenceAdmissionGate {
     if (
       !nonNegativeFinite(recovery.balanceUsd) ||
       balanceRevision(recovery.balanceRevision) === null ||
+      !validBalanceView(recovery.balanceView) ||
       !nonNegativeFinite(recovery.collectedUsd) ||
       !nonNegativeFinite(recovery.gateConsumedUsd) ||
       recovery.gateConsumedUsd < recovery.collectedUsd
@@ -1803,7 +2043,12 @@ export class InferenceAdmissionGate {
     removeActiveLease(ledger, currentLease);
     ledger.uncollectedDebtUsd +=
       recovery.gateConsumedUsd - recovery.collectedUsd;
-    applyBalanceSnapshot(ledger, recovery.balanceUsd, recovery.balanceRevision);
+    applyBalanceSnapshot(
+      ledger,
+      recovery.balanceUsd,
+      recovery.balanceRevision,
+      recovery.balanceView,
+    );
     recomputeAvailable(ledger);
     rememberSettledRequest(ledger, requestId);
     await this.save(ledger, {
@@ -1856,6 +2101,17 @@ export class InferenceAdmissionGate {
     if (expired.length === 0) return;
     const results = await Promise.allSettled(
       expired.map(async ({ requestId, lease }) => {
+        // Recovery is alarm-only. Keep its database, pricing, and provider
+        // dependencies out of Worker startup and ordinary admission requests.
+        const [
+          { runWithDbCacheAsync },
+          { recoverExpiredInferenceAdmissionLease },
+        ] = await Promise.all([
+          import("@elizaos/cloud-shared/db/client"),
+          import(
+            "@elizaos/cloud-shared/lib/services/inference-admission-recovery"
+          ),
+        ]);
         const inferenceBalanceFence: InferenceBalanceFence = {
           // Alarm recovery charges the exact active estimate, so the existing
           // lease already fences this amount. The authoritative revision below

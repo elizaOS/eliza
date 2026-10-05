@@ -10,7 +10,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { CarveOutDatabase } from "@elizaos/plugin-sql";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { DispatchResult } from "../dispatch-types.js";
 import {
@@ -49,6 +49,7 @@ function carveOutDatabase(pg: PGlite): CarveOutDatabase {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  type ScheduledTaskRunnerDeps,
   type ScheduledTaskRunnerHandle,
 } from "./runner.js";
 import { createInMemoryScheduledTaskLogStore } from "./state-log.js";
@@ -71,12 +72,16 @@ interface RaceHarness {
   runner: ScheduledTaskRunnerHandle;
   store: ReturnType<typeof createInMemoryScheduledTaskStore>;
   logStore: ReturnType<typeof createInMemoryScheduledTaskLogStore>;
+  prepareDelivery(message: string, key: string): Promise<void>;
   releaseDispatch(): void;
   settleDispatch(result: DispatchResult): void;
   failDispatch(error: Error): void;
 }
 
-function makeRaceHarness(): RaceHarness {
+function makeRaceHarness(
+  executionBoundary?: ScheduledTaskRunnerDeps["executionBoundary"],
+  withExactSnapshot = false,
+): RaceHarness {
   const ownerFacts: OwnerFactsView = {
     timezone: "UTC",
     morningWindow: { start: "07:00", end: "10:00" },
@@ -93,9 +98,19 @@ function makeRaceHarness(): RaceHarness {
 
   let gate: { resolve(result: DispatchResult | Error): void } | null = null;
 
+  let prepareDelivery:
+    | ((message: string, key: string) => Promise<void>)
+    | undefined;
   let counter = 0;
   const runner = createScheduledTaskRunner({
     agentId: "test-agent",
+    ...(executionBoundary ? { executionBoundary } : {}),
+    ...(withExactSnapshot
+      ? {
+          prepareAutomaticFire: async ({ task }: { task: ScheduledTask }) =>
+            task.metadata ?? {},
+        }
+      : {}),
     store,
     logStore,
     gates,
@@ -110,13 +125,15 @@ function makeRaceHarness(): RaceHarness {
     activity: { hasSignalSince: () => false } as ActivitySignalBusView,
     subjectStore: { wasUpdatedSince: () => false } as SubjectStoreView,
     dispatcher: {
-      dispatch: async () =>
-        new Promise<DispatchResult>((resolve, reject) => {
+      dispatch: async (record) => {
+        prepareDelivery = record.persistPreparedDelivery;
+        return new Promise<DispatchResult>((resolve, reject) => {
           gate = {
             resolve: (result) =>
               result instanceof Error ? reject(result) : resolve(result),
           };
-        }),
+        });
+      },
     },
     newTaskId: () => {
       counter += 1;
@@ -132,6 +149,11 @@ function makeRaceHarness(): RaceHarness {
     settleDispatch: (result) => gate?.resolve(result),
     failDispatch: (error) => gate?.resolve(error),
     releaseDispatch: () => gate?.resolve({ ok: true, channelKey: "in_app" }),
+    prepareDelivery: (message, key) => {
+      if (!prepareDelivery)
+        throw new Error("Runner omitted preparation callback");
+      return prepareDelivery(message, key);
+    },
   };
 }
 
@@ -145,6 +167,86 @@ const baseInput = {
   createdBy: "tester",
   ownerVisible: true,
 };
+
+describe("host execution admission", () => {
+  it("rejects before claiming a task when its host denies admission", async () => {
+    const denied = new Error("workspace fenced");
+    const h = makeRaceHarness(async () => {
+      throw denied;
+    });
+    const task = await h.runner.schedule(baseInput);
+    await expect(h.runner.fireWithResult(task.taskId)).rejects.toBe(denied);
+    expect((await h.store.get(task.taskId))?.state.status).toBe("scheduled");
+  });
+
+  it("retries admission when task metadata changes before the fire claim", async () => {
+    let h!: RaceHarness;
+    h = makeRaceHarness(async (task, execute) => {
+      await h.store.upsert({
+        ...task,
+        metadata: { systemOperation: "family.monthlyCoordination" },
+      });
+      return execute();
+    });
+    const task = await h.runner.schedule(baseInput);
+    const firing = h.runner.fireWithResult(task.taskId);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    h.releaseDispatch();
+    expect((await firing).kind).toBe("raced");
+    expect((await h.store.get(task.taskId))?.state.status).toBe("scheduled");
+  });
+
+  it("keeps host admission until the dispatch result is persisted", async () => {
+    let admitted = false;
+    const h = makeRaceHarness(async (_task, execute) => {
+      admitted = true;
+      try {
+        return await execute();
+      } finally {
+        admitted = false;
+      }
+    });
+    const task = await h.runner.schedule(baseInput);
+    const original = h.store.upsertIfStatus.bind(h.store);
+    let entered!: () => void;
+    let release!: () => void;
+    const enteredPersist = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const resumePersist = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.store.upsertIfStatus = async (next, options) => {
+      if (next.metadata?.lastDispatchResult) {
+        entered();
+        await resumePersist;
+      }
+      return original(next, options);
+    };
+    const firing = h.runner.fireWithResult(task.taskId);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    h.releaseDispatch();
+    try {
+      await Promise.race([
+        enteredPersist,
+        firing.then(() => {
+          throw new Error("Execution bypassed final persistence");
+        }),
+      ]);
+      expect(admitted).toBe(true);
+      expect(
+        (await h.store.get(task.taskId))?.metadata?.lastDispatchResult,
+      ).toBeUndefined();
+    } finally {
+      release();
+    }
+    expect((await firing).kind).toBe("fired");
+    expect(
+      (await h.store.get(task.taskId))?.metadata?.lastDispatchResult,
+    ).toMatchObject({ ok: true });
+    expect(admitted).toBe(false);
+  });
+});
 
 describe("post-dispatch persist vs concurrent user verbs (in-memory)", () => {
   it("keeps a complete that lands while the dispatch is in flight", async () => {
@@ -220,12 +322,60 @@ describe("post-dispatch persist vs concurrent user verbs (in-memory)", () => {
     );
   });
 
+  it("rejects preparation after completion without replacing the newer task", async () => {
+    const h = makeRaceHarness(undefined, true);
+    const task = await h.runner.schedule(baseInput);
+    const firing = h.runner.fireWithResult(task.taskId);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await h.runner.apply(task.taskId, "complete");
+    const failure = await h
+      .prepareDelivery("Must not send", "stale-key")
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: "SCHEDULED_TASK_DISPATCH_PREPARATION_RACED",
+    });
+    if (!(failure instanceof Error))
+      throw new Error("Expected preparation rejection");
+    h.failDispatch(failure);
+    expect((await firing).kind).toBe("raced");
+    const current = await h.store.get(task.taskId);
+    expect(current?.state.status).toBe("completed");
+    expect(current?.metadata?.dispatchPreparedMessage).toBeUndefined();
+  });
+
+  it("rejects preparation after a concurrent metadata edit on the same fired state", async () => {
+    const h = makeRaceHarness(undefined, true);
+    const task = await h.runner.schedule(baseInput);
+    const firing = h.runner.fireWithResult(task.taskId);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const newer = await h.store.get(task.taskId);
+    if (!newer) throw new Error("Missing claimed task");
+    newer.metadata = { ...newer.metadata, concurrentOwnerEdit: "retained" };
+    await h.store.upsert(newer);
+    const failure = await h
+      .prepareDelivery("Must not send", "stale-key")
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: "SCHEDULED_TASK_DISPATCH_PREPARATION_RACED",
+    });
+    if (!(failure instanceof Error))
+      throw new Error("Expected preparation rejection");
+    h.failDispatch(failure);
+    expect((await firing).kind).toBe("raced");
+    expect((await h.store.get(task.taskId))?.metadata).toEqual(newer.metadata);
+  });
+
   it("still persists dispatch metadata on the uncontended happy path", async () => {
-    const h = makeRaceHarness();
+    const h = makeRaceHarness(undefined, true);
     const task = await h.runner.schedule(baseInput);
 
     const firePromise = h.runner.fireWithResult(task.taskId);
     await new Promise((r) => setTimeout(r, 0));
+    await h.prepareDelivery("Exact prepared payload", "stable-key");
+    expect((await h.store.get(task.taskId))?.metadata).toMatchObject({
+      dispatchPreparedMessage: "Exact prepared payload",
+      dispatchIdempotencyKey: "stable-key",
+    });
     h.settleDispatch({ ok: true, channelKey: "in_app", messageId: "m1" });
     const fireResult = await firePromise;
 
@@ -304,6 +454,52 @@ describe("upsertIfStatus guard (SQL store, PGlite)", () => {
       await pg.close();
     }
   }, 15_000);
+
+  describe("admitted metadata claim", () => {
+    let pg: PGlite;
+    beforeAll(async () => {
+      pg = new PGlite();
+      await migrateSchedulingTables(carveOutDatabase(pg));
+    }, 15_000);
+    afterAll(async () => {
+      await pg?.close();
+    });
+    it("claims only the task metadata that the host actually admitted", async () => {
+      const store = createSchedulingSqlScheduledTaskStore({
+        agentId: "agent-admission",
+        executeSql: async (statement) =>
+          (await pg.query<Record<string, unknown>>(statement)).rows,
+      });
+      const task: ScheduledTask = {
+        ...baseInput,
+        taskId: "admission-race",
+        state: { status: "scheduled", followupCount: 0 },
+      };
+      await store.upsert(task);
+      const observed = await store.get(task.taskId);
+      if (!observed) throw new Error("Scheduled task disappeared");
+      const metadata = { systemOperation: "family.monthlyCoordination" };
+      await store.upsert({ ...task, metadata });
+      expect(
+        await store.claimForFire({
+          taskId: task.taskId,
+          firedAtIso: "2026-05-09T12:00:00.000Z",
+          expectedMetadata: observed.metadata ?? {},
+        }),
+      ).toEqual({ kind: "raced" });
+      expect((await store.get(task.taskId))?.state.status).toBe("scheduled");
+      expect(
+        (
+          await store.claimForFire({
+            taskId: task.taskId,
+            firedAtIso: "2026-05-09T12:00:00.000Z",
+            expectedMetadata: (await store.get(task.taskId))?.metadata ?? {},
+          })
+        ).kind,
+      ).toBe("fired");
+      expect((await store.get(task.taskId))?.metadata).toMatchObject(metadata);
+    });
+  });
 
   // A guarded write must not resurrect a row a concurrent writer deleted.
   // Reusing the upsert here took the INSERT branch on a missing row and

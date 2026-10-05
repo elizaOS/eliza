@@ -19,13 +19,13 @@ import {
   MAX_TIMER_DELAY_MS,
   parseArgs,
   parseTimeoutMs,
-} from "../run-live-test-with-artifacts.mjs";
+} from "../run-live-test-with-artifacts.ts";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUNNER = path.resolve(
   SCRIPT_DIR,
   "..",
-  "run-live-test-with-artifacts.mjs",
+  "run-live-test-with-artifacts.ts",
 );
 const NODE_BIN = "node";
 const posixTest = process.platform === "win32" ? test.skip : test;

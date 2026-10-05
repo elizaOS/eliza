@@ -68,7 +68,7 @@ export const seoMessages: SeoMessages = {
     billing: {
       title: "Cobrança e créditos",
       description:
-        "Gerencie seus créditos, veja o uso e compre pacotes de créditos. Preços transparentes para todas as operações de IA.",
+        "Assine o Plus ou o Pro para ter uma franquia mensal, ou recarregue créditos pré-pagos de US$ 5 a US$ 1.000. Preços transparentes para todas as operações de IA.",
     },
     apiKeys: {
       title: "Chaves de API",

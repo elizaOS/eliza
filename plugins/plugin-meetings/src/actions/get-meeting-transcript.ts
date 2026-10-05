@@ -12,15 +12,19 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { MEETING_PLATFORM_LABELS } from "@elizaos/shared";
-import { transcriptPlainText } from "@elizaos/shared/transcripts";
+import {
+  MEETING_PLATFORM_LABELS,
+  transcriptPlainText,
+} from "@elizaos/core/protocol";
 import type { MeetingService } from "../service.js";
 import { readTranscriptRow } from "../transcripts/meeting-transcript-writer.js";
 import {
+  MEETING_URL_PARAMETER,
   messageText,
   reply,
   requireMeetingService,
   resolveTargetSession,
+  SESSION_ID_PARAMETER,
 } from "./shared.js";
 
 async function handler(
@@ -74,7 +78,6 @@ async function handler(
     { sessionId: target.id, transcriptId: transcript.id },
   );
 }
-
 export const getMeetingTranscriptAction: Action = {
   name: "GET_MEETING_TRANSCRIPT",
   similes: ["MEETING_NOTES", "SHOW_MEETING_TRANSCRIPT"],
@@ -87,6 +90,7 @@ export const getMeetingTranscriptAction: Action = {
       messageText(message),
     );
   },
+  parameters: [SESSION_ID_PARAMETER, MEETING_URL_PARAMETER],
   handler,
   examples: [
     [

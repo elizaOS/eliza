@@ -43,7 +43,7 @@ vi.mock("./passkey-capability", () => ({
     Promise.resolve({ usable: false, reason: "native-without-bridge" }),
 }));
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     getProviders() {
       return Promise.resolve({
@@ -81,12 +81,15 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@elizaos/shared/steward-session-client")
-  >()),
-  hasStewardAuthedCookie: sessionSpies.hasAuthedCookie,
-}));
+vi.mock(
+  "@elizaos/plugin-elizacloud/steward-session-client",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+    >()),
+    hasStewardAuthedCookie: sessionSpies.hasAuthedCookie,
+  }),
+);
 
 vi.mock("../../lib/steward-email-login", () => ({
   StewardEmailLoginError: class StewardEmailLoginError extends Error {
@@ -146,7 +149,9 @@ function renderSection(initialEntry = "/login") {
 async function startEmailLogin() {
   const input = await screen.findByPlaceholderText("you@example.com");
   fireEvent.change(input, { target: { value: "person@example.com" } });
-  fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+  });
   await screen.findByLabelText("Six-digit code");
 }
 
@@ -315,7 +320,9 @@ describe("StewardLoginSection email magic-link companion code", () => {
     });
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "other@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    });
     await screen.findByLabelText("Six-digit code");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3_000);
@@ -500,7 +507,9 @@ describe("StewardLoginSection email magic-link companion code", () => {
     renderSection();
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    });
     await screen.findByText("Check your email");
 
     // The waiting copy must not assert a code the email may not contain.
@@ -539,7 +548,9 @@ describe("StewardLoginSection email magic-link companion code", () => {
     renderSection();
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+    });
     await screen.findByText("Check your email");
 
     expect(

@@ -11,23 +11,23 @@
 
 import {
   type AccountStoragePolicy,
+  applySubscriptionCredentials,
   resetAccountCredentialStorage,
-} from "@elizaos/auth/account-storage";
-import { applySubscriptionCredentials } from "@elizaos/auth/credentials";
-import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/types";
+  SUBSCRIPTION_PROVIDER_MAP,
+} from "@elizaos/auth/auth";
 import type {
   DeploymentTargetConfig,
   LinkedAccountFlagsConfig,
   ServiceCapability,
   ServiceRoutingConfig,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { asNonEmptyString, asObjectRecord as asRecord } from "@elizaos/core";
 import {
-  asNonEmptyString,
-  asRecord,
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
   DEFAULT_CEREBRAS_TEXT_MODEL,
   deriveFirstRunCredentialPersistencePlan,
+  type ElizaConfig,
   type FirstRunConnection,
   type FirstRunCredentialInputs,
   type FirstRunLlmPersistenceSelection,
@@ -44,8 +44,7 @@ import {
   normalizeServiceRoutingConfig,
   normalizeSubscriptionProviderSelectionId,
   requiresAdditionalRuntimeProvider,
-} from "@elizaos/shared";
-import type { ElizaConfig } from "../config/types.eliza.ts";
+} from "@elizaos/host/protocol";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {
   cloud?: Record<string, unknown>;
@@ -648,9 +647,9 @@ function toFirstRunConnectionFromSelection(
  * Sets `agents.defaults.subscriptionProvider` so the task-agent orchestrator
  * knows which subscription is active.
  *
- * For providers with a runtime model-provider plugin, also sets
- * `agents.defaults.model.primary`. Anthropic subscriptions are restricted to
- * Claude Code CLI (TOS), so `model.primary` is NOT set for that provider.
+ * Subscriptions are coding-agent credentials only: none has a runtime
+ * text handler (Anthropic tokens are restricted to Claude Code CLI by TOS and
+ * the Codex CLI chat handler was removed), so `model.primary` is never set.
  *
  * Mutates `config` in place.
  */
@@ -673,14 +672,6 @@ export function applySubscriptionProviderConfig(
 
   if (modelProvider) {
     defaults.subscriptionProvider = subscriptionKey;
-
-    // Only set model.primary for providers with a runtime model-provider
-    // plugin. Anthropic subscription tokens are restricted to Claude Code
-    // CLI (TOS), so the runtime cannot use them for LLM inference.
-    const runtimeApplicable = subscriptionKey === "openai-codex";
-    if (runtimeApplicable) {
-      defaults.model = { ...defaults.model, primary: modelProvider };
-    }
   }
 }
 
@@ -766,7 +757,6 @@ export function clearPersistedFirstRunConfig(
         "nearai",
         "ollama",
         "openai",
-        "openai-subscription",
         "openrouter",
         "together",
         "zai",
@@ -985,8 +975,7 @@ export async function applyFirstRunConnectionConfig(
       : {}),
   });
   const linkedAccounts: LinkedAccountFlagsConfig | undefined =
-    normalizedConnection.provider === "anthropic-subscription" ||
-    normalizedConnection.provider === "openai-subscription"
+    normalizedConnection.provider === "anthropic-subscription"
       ? {
           [normalizedConnection.provider]: {
             status: "linked",
@@ -1044,6 +1033,8 @@ export async function applyFirstRunCredentialPersistence(
     credentialInputs?: FirstRunCredentialInputs | null;
     deploymentTarget?: DeploymentTargetConfig | null;
     serviceRouting?: ServiceRoutingConfig | null;
+    /** Observe synchronous environment writes without claiming later concurrent changes. */
+    observeEnvironmentMutation?: <T>(mutation: () => T) => T;
   },
 ): Promise<string | null> {
   const plan = deriveFirstRunCredentialPersistencePlan({
@@ -1055,12 +1046,23 @@ export async function applyFirstRunCredentialPersistence(
   if (plan.llmSelection) {
     const llmConnection = toFirstRunConnectionFromSelection(plan.llmSelection);
     if (llmConnection) {
-      await applyFirstRunConnectionConfig(config, llmConnection);
+      // Direct account providers mutate env before their first await; the
+      // continuation only updates canonical config. Subscription credential
+      // async work is not part of first-run direct-account rollback.
+      await (args.observeEnvironmentMutation
+        ? args.observeEnvironmentMutation(() =>
+            applyFirstRunConnectionConfig(config, llmConnection),
+          )
+        : applyFirstRunConnectionConfig(config, llmConnection));
     }
   }
 
   if (plan.cloudApiKey) {
-    persistLinkedCloudApiKey(config, plan.cloudApiKey);
+    if (args.observeEnvironmentMutation) {
+      args.observeEnvironmentMutation(() =>
+        persistLinkedCloudApiKey(config, plan.cloudApiKey),
+      );
+    } else persistLinkedCloudApiKey(config, plan.cloudApiKey);
   }
 
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);

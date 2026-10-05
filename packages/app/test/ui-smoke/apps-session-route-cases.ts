@@ -228,7 +228,6 @@ const managerVisibleViewTileCases = [
   { viewId: "computer-use-sessions", path: "/computer-use-sessions" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "cockpit", path: "/cockpit" },
-  { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
   { viewId: "goals", path: "/goals" },
   { viewId: "health", path: "/health" },
@@ -243,7 +242,6 @@ const managerVisibleViewTileCases = [
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
-  { viewId: "views-manager", path: "/views" },
   { viewId: "wallet", path: "/wallet" },
 ];
 

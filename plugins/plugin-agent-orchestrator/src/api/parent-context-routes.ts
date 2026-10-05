@@ -10,7 +10,8 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { getProjectById, ModelType } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { getProjectById } from "@elizaos/host";
 import { activeWorkspaceContextProvider } from "../providers/active-workspace-context.js";
 import {
   type SessionInfo,
@@ -49,8 +50,8 @@ const MEMORY_TABLES = ["facts", "messages", "documents"] as const;
 const MAX_ORIGINATING_DECISIONS = 20;
 
 /** The narrow slice of the AgentSkillsService the bridge reads. Structural to
- * avoid a hard dependency on `@elizaos/plugin-agent-skills` (optional at
- * runtime); `content` is the full SKILL.md body incl. frontmatter. */
+ * support an optional host-provided service; `content` is the full SKILL.md
+ * body including frontmatter. */
 interface SkillsServiceShape {
   getEligibleSkills: () => Promise<
     Array<{ slug: string; name: string; description: string; content: string }>

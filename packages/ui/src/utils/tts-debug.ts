@@ -22,7 +22,10 @@ type RuntimeImportMeta = ImportMeta & {
   env?: Record<string, unknown>;
 };
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/protocol";
 
 function ttsDebugEnabled(): boolean {
   const truthy = (raw: string | undefined | null): boolean => {
@@ -68,13 +71,19 @@ export function ttsDebugTextPreview(
 }
 
 function serializeTtsDebugDetail(detail: Record<string, unknown>): string {
-  const seen = new WeakSet<object>();
+  // Ancestors only (not every object ever visited): a shared non-cyclic
+  // sub-object appears here whenever two debug keys reference the same value,
+  // and a never-pruned seen-set would print the second one as "[Circular]"
+  // (#31004). `this` is the holder of the visited key, so pruning to it keeps
+  // the ancestor chain while still collapsing true cycles.
+  const ancestors: object[] = [];
   try {
-    return JSON.stringify(detail, (_key, value: unknown) => {
+    return JSON.stringify(detail, function (_key, value: unknown) {
       if (typeof value === "bigint") return value.toString();
       if (value && typeof value === "object") {
-        if (seen.has(value)) return "[Circular]";
-        seen.add(value);
+        while (ancestors.length && ancestors.at(-1) !== this) ancestors.pop();
+        if (ancestors.includes(value)) return "[Circular]";
+        ancestors.push(value);
       }
       return value;
     });

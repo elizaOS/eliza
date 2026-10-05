@@ -3,23 +3,20 @@
  * elizaOS runtime plugin route system. The handlers run in-process against
  * plugin-workflow services; there is no external workflow server or sidecar.
  */
-
 import type http from 'node:http';
-import type { Plugin, Route } from '@elizaos/core';
-import { handleAutomationsRoutes } from './routes/automations';
+import { getCloudRuntimeRequestIdentity } from '@elizaos/contracts';
+import type { HttpPlugin as Plugin, Route } from '@elizaos/host/protocol';
+import { handleAutomationsRoutes, readAutomations } from './routes/automations';
 import { handleWorkbenchTodosRoutes } from './routes/workbench-todos';
 import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
 
 type AnyRuntime = WorkflowRouteContext['runtime'];
-
 interface WorkflowRouteState {
   current: AnyRuntime;
 }
-
 function buildState(runtime: unknown): WorkflowRouteState {
   return { current: runtime as AnyRuntime } as WorkflowRouteState;
 }
-
 function jsonResponder(httpRes: http.ServerResponse) {
   return (_res: http.ServerResponse, body: unknown, status = 200) => {
     if (httpRes.headersSent) return;
@@ -28,7 +25,6 @@ function jsonResponder(httpRes: http.ServerResponse) {
     httpRes.end(JSON.stringify(body));
   };
 }
-
 function makeWorkflowHandler() {
   return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
@@ -36,18 +32,17 @@ function makeWorkflowHandler() {
     const url = new URL(httpReq.url ?? '/', 'http://localhost');
     const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
-
     await handleWorkflowRoutes({
       req: httpReq,
       res: httpRes,
       method,
       pathname: url.pathname,
       runtime: state.current,
+      principalId: getCloudRuntimeRequestIdentity(httpReq),
       json: jsonResponder(httpRes),
     });
   };
 }
-
 function makeAutomationsHandler() {
   return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
@@ -55,7 +50,6 @@ function makeAutomationsHandler() {
     const url = new URL(httpReq.url ?? '/', 'http://localhost');
     const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
-
     await handleAutomationsRoutes({
       req: httpReq,
       res: httpRes,
@@ -66,7 +60,6 @@ function makeAutomationsHandler() {
     });
   };
 }
-
 function makeWorkbenchTodosHandler() {
   return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
@@ -74,7 +67,6 @@ function makeWorkbenchTodosHandler() {
     const url = new URL(httpReq.url ?? '/', 'http://localhost');
     const method = (httpReq.method ?? 'GET').toUpperCase();
     const state = buildState(runtime);
-
     await handleWorkbenchTodosRoutes({
       req: httpReq,
       res: httpRes,
@@ -84,12 +76,96 @@ function makeWorkbenchTodosHandler() {
     });
   };
 }
-
 const workflowHandler = makeWorkflowHandler();
 const automationsHandler = makeAutomationsHandler();
 const workbenchTodosHandler = makeWorkbenchTodosHandler();
-
 const workflowRouteList: Route[] = [
+  {
+    type: 'GET',
+    path: '/api/workflow/executions/:id/phone-review',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  { type: 'GET', path: '/api/workflow/phone/catalog', rawPath: true, handler: workflowHandler },
+  {
+    type: 'POST',
+    path: '/api/workflow/phone/generate',
+    rawPath: true,
+    maxBodyBytes: 75000,
+    handler: workflowHandler,
+  },
+  { type: 'POST', path: '/api/workflow/phone/validate', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/phone/workflows', rawPath: true, handler: workflowHandler },
+  {
+    type: 'GET',
+    path: '/api/workflow/phone/mutations/:mutationId',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/workflows/:id/phone-spec',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  { type: 'GET', path: '/api/workflow/removed-workflows', rawPath: true, handler: workflowHandler },
+  {
+    type: 'POST',
+    path: '/api/workflow/workflows/:id/lifecycle',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/workflows/:id/lifecycle-mutations/:mutationId',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+
+  // Hosted digests. `/status` advertises `hostedDigestProtocol: 1`; these are
+  // the paths handleWorkflowRoutes serves under `/hosted/`. The dispatcher
+  // parses JSON bodies (default cap 1 MiB) before the handler's readBody caps
+  // run. live-calendars (2000) and sources (20000) are tighter than that
+  // default, so they restate their caps. The other hosted POSTs read with
+  // the handler's MAX_WORKFLOW_JSON_BYTES (2 MB); the 1 MiB default is
+  // already stricter, and restating 2 MB would loosen them.
+  {
+    type: 'POST',
+    path: '/api/workflow/hosted/live-calendars',
+    rawPath: true,
+    maxBodyBytes: 2000,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/hosted/live-accounts',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  { type: 'GET', path: '/api/workflow/hosted/sources', rawPath: true, handler: workflowHandler },
+  {
+    type: 'POST',
+    path: '/api/workflow/hosted/sources',
+    rawPath: true,
+    maxBodyBytes: 20000,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/hosted/sources/revoke',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  { type: 'GET', path: '/api/workflow/hosted/loops', rawPath: true, handler: workflowHandler },
+  { type: 'POST', path: '/api/workflow/hosted/loops', rawPath: true, handler: workflowHandler },
+  { type: 'GET', path: '/api/workflow/hosted/results', rawPath: true, handler: workflowHandler },
+  {
+    type: 'POST',
+    path: '/api/workflow/hosted/results/ack',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+
   // Status surface
   {
     type: 'GET',
@@ -148,7 +224,25 @@ const workflowRouteList: Route[] = [
   },
   {
     type: 'GET',
+    path: '/api/workflow/workflows/:id/submissions/:submissionId',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
     path: '/api/workflow/workflows/:id/executions',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/workflows/:id/metadata',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/workflows/:id/metadata-mutations/:mutationId',
     rawPath: true,
     handler: workflowHandler,
   },
@@ -173,6 +267,12 @@ const workflowRouteList: Route[] = [
   {
     type: 'POST',
     path: '/api/workflow/executions/:id/cancel',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/executions/:id/approvals',
     rawPath: true,
     handler: workflowHandler,
   },
@@ -213,6 +313,19 @@ const workflowRouteList: Route[] = [
     path: '/api/automations',
     rawPath: true,
     handler: automationsHandler,
+    routeHandler: async (ctx) => {
+      const principal = ctx.accessContext;
+      if (
+        principal &&
+        (!principal.isOwner || principal.role !== 'OWNER' || !principal.requesterEntityId?.trim())
+      ) {
+        return { status: 403, body: { error: 'Owner role required' } };
+      }
+      if (!principal && !ctx.isTrustedLocal && !ctx.inProcess) {
+        return { status: 403, body: { error: 'Owner role required' } };
+      }
+      return readAutomations(ctx.runtime as AnyRuntime, principal?.requesterEntityId);
+    },
   },
   // Workbench task-list CRUD for runtime tasks tagged as workbench items. Ordered
   // most-specific-first so `/:id/complete` matches before `/:id`.
@@ -253,11 +366,9 @@ const workflowRouteList: Route[] = [
     handler: workbenchTodosHandler,
   },
 ];
-
 export const workflowRoutePlugin: Plugin = {
   name: '@elizaos/plugin-workflow:routes',
   description: 'Workflow routes — in-process status, generation, CRUD, and lifecycle handlers.',
   routes: workflowRouteList,
 };
-
 export default workflowRoutePlugin;

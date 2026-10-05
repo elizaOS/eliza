@@ -194,9 +194,13 @@ export class StreamingAudioCaptureService extends EventEmitter {
       // Add to buffer
       this.audioBuffer.push(audioChunk);
 
-      // Reset silence timer
+      // Reset silence timer. Null the handle after clearing so the
+      // `if (!this.silenceTimer)` re-arm guard below can schedule a fresh
+      // end-of-speech countdown once the user pauses again; a stale truthy
+      // handle would permanently block re-arming and drop the utterance.
       if (this.silenceTimer) {
         clearTimeout(this.silenceTimer);
+        this.silenceTimer = null;
       }
 
       // Start streaming transcription if not already running

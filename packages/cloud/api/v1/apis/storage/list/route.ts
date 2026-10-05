@@ -13,16 +13,16 @@
  * the catalog remains authoritative for immutable generations and tombstones.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { storageOperationPriceUsd } from "@elizaos/cloud-shared/lib/constants/pricing";
 import {
   executeNativeStorageList,
   NativeStorageReadError,
-} from "@/lib/services/storage/native-storage-read";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/storage/native-storage-read";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 
 const MAX_LIST_RESULTS = 1000;
 
@@ -76,12 +76,13 @@ app.get("/", async (c) => {
     const { prefix, recursive } = parsed.data;
 
     const trimmedPrefix = prefix.replace(/^\/+|\/+$/g, "");
+    const priceUsd = storageOperationPriceUsd("list");
     const result = await executeNativeStorageList({
       bucket,
       organizationId: organization_id,
       userId: user.id,
       rawIdempotencyKey: c.req.header("Idempotency-Key") ?? "",
-      priceUsd: await getServiceMethodCost("storage", "list"),
+      priceUsd,
       prefix: trimmedPrefix,
       recursive,
       limit: MAX_LIST_RESULTS,
@@ -89,12 +90,13 @@ app.get("/", async (c) => {
     c.header("X-Storage-Receipt-Id", result.operation.id);
     return c.json(result.body);
   } catch (error) {
+    // error-policy:J1 transport boundary maps typed read failures to HTTP status.
     if (error instanceof NativeStorageReadError) {
       if (error.code === "INSUFFICIENT_CREDITS") {
         return c.json(
           {
             error: "Insufficient credits",
-            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+            topUpUrl: "https://cloud.eliza.app/cloud/billing",
           },
           402,
         );

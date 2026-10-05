@@ -6,33 +6,45 @@
  * to its own container bridge. Losing that second branch is what 404'd every
  * dedicated agent between 2026-07-23 and #18062.
  */
-import type { Context } from "hono";
-import { Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse, ValidationError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { coordinateSharedBridge } from "@/lib/services/shared-runtime/conversation-coordinator";
-import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
+
+import {
+  errorToResponse,
+  ValidationError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { resolveElizaTraceId } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import type { BridgeRequest } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { resolvePersonalDedicatedTrafficAccess } from "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback";
+import {
+  personalDirectChatRefusalResponse,
+  resolveSharedSurfaceTarget,
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { coordinateSharedBridge } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
+import { isPersonalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
-import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
+import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import {
   classifyBridgeRequestMethod,
   classifySharedTurnOutcome,
   recordSharedTurnAttempt,
   type SharedTurnRuntimeKind,
-} from "@/lib/services/shared-runtime/shared-turn-observability";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-turn-observability";
 import type {
   AppEnv,
   RuntimeDurableObjectNamespace,
-} from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { Context } from "hono";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const CORS_METHODS = "POST, OPTIONS";
 
@@ -85,7 +97,48 @@ async function __hono_POST(
       );
     }
 
-    const rpcRequest = parsed.data as BridgeRequest;
+    let rpcRequest = parsed.data as BridgeRequest;
+    // A personal turn follows its entitlement route (#25146): Dedicated
+    // ownership is refused with its agent id, and a withdrawn Dedicated is
+    // answered in the scoped fallback journal with the account state.
+    let trustedAccountState:
+      | Extract<
+          Awaited<ReturnType<typeof resolveSharedSurfaceTarget>>,
+          { ok: true }
+        >["accountState"]
+      | undefined;
+    if (
+      resolved.agentKind === "personal" &&
+      rpcRequest.method === "message.send"
+    ) {
+      const requestedRoom = rpcRequest.params?.roomId;
+      const target = await resolveSharedSurfaceTarget({
+        agent: resolved.agent,
+        personal: true,
+        conversationId:
+          typeof requestedRoom === "string" && requestedRoom.trim()
+            ? requestedRoom
+            : resolved.agent.id,
+        namespace: resolved.namespace,
+      });
+      if (!target.ok) {
+        const refusal = personalDirectChatRefusalResponse(target.refusal);
+        return applyCorsHeaders(
+          Response.json(refusal.body, {
+            status: refusal.status,
+            headers: refusal.headers,
+          }),
+          CORS_METHODS,
+        );
+      }
+      if (target.accountState) {
+        trustedAccountState = target.accountState;
+        rpcRequest = {
+          ...rpcRequest,
+          params: { ...rpcRequest.params, roomId: target.roomId },
+        };
+      }
+    }
     const trustedUserUtterance =
       rpcRequest.method === "message.send" &&
       typeof rpcRequest.params?.text === "string" &&
@@ -97,6 +150,7 @@ async function __hono_POST(
       namespace: resolved.namespace,
       agentKind: resolved.agentKind,
       ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
+      ...(trustedAccountState ? { trustedAccountState } : {}),
     });
 
     return applyCorsHeaders(Response.json(response), CORS_METHODS);
@@ -170,6 +224,31 @@ async function dispatchToDedicatedSandbox(
       );
     }
     const { user } = await requireAuthOrApiKeyWithOrg(c.req.raw);
+    // A cut-over personal Dedicated whose owner's access is withdrawn is not
+    // reachable directly (#25146); its memory stays sealed until recovery.
+    const access = await resolvePersonalDedicatedTrafficAccess({
+      dedicatedAgentId: c.req.param("agentId")!,
+      organizationId: user.organization_id,
+    });
+    if (access.access === "withdrawn") {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: access.error,
+            code: access.code,
+            retryable: access.retryable,
+          },
+          {
+            status: access.status,
+            ...(access.retryAfterSeconds
+              ? { headers: { "Retry-After": String(access.retryAfterSeconds) } }
+              : {}),
+          },
+        ),
+        CORS_METHODS,
+      );
+    }
     const response = await elizaSandboxService.bridge(
       c.req.param("agentId")!,
       user.organization_id,

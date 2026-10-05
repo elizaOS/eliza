@@ -5,20 +5,24 @@
  * exercised by the walkthrough.
  */
 
+// Seed the real selector store before mounting; production selectors bypass
+// the state barrel, so its lazy fixture alias cannot own initialization.
+import "./settings-fixture-state-stub.cts";
+
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import type { AccountsListProvider } from "../../../api/client-agent";
+import type { AccountsListProvider } from "../../../api/client-agent-accounts";
 import { TranslationProvider } from "../../../state/TranslationProvider";
 import { getAccountProviderOption } from "../../accounts/account-provider-options";
 import { ProviderAccountRow } from "../../accounts/ProviderAccountRow";
 import { SettingsView } from "../SettingsView";
 
 const accountProvider: AccountsListProvider = {
-  providerId: "openai-codex",
+  providerId: "anthropic-subscription",
   strategy: "priority",
   accounts: [{
-    id: "fixture-codex",
-    providerId: "openai-codex",
+    id: "fixture-claude",
+    providerId: "anthropic-subscription",
     label: "Personal subscription",
     source: "oauth",
     enabled: true,
@@ -32,8 +36,8 @@ const accountProvider: AccountsListProvider = {
 function AccountRowFixture(): React.JSX.Element {
   const [expanded, setExpanded] = React.useState(false);
   const [action, setAction] = React.useState("");
-  const option = getAccountProviderOption("openai-codex");
-  if (!option) throw new Error("Codex provider option unavailable");
+  const option = getAccountProviderOption("anthropic-subscription");
+  if (!option) throw new Error("Claude provider option unavailable");
   const noMutation = async () => {};
   return (
     <div className="grid w-full gap-3 p-6 sm:pl-[264px]">

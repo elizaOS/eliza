@@ -5,9 +5,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createConversation } from "@elizaos/testing/runtime";
 import { afterAll, expect, it } from "vitest";
-import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
-import { createConversation } from "../../../packages/app-core/test/helpers/http";
+import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
 import {
   assertNoProviderIssue,
   LIVE_TESTS_ENABLED,

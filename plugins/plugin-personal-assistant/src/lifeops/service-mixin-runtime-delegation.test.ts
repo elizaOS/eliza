@@ -1,11 +1,11 @@
 /** Verifies the LifeOpsService delegates messaging (X post/DM) calls through the connector runtime services. Deterministic vitest with stubbed runtime services. */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import type { IAgentRuntime, SendHandlerOutcome } from "@elizaos/core";
 import type {
   CreateLifeOpsXPostRequest,
   LifeOpsConnectorGrant,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime, SendHandlerOutcome } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "./service.js";
 
@@ -193,7 +193,15 @@ describe("LifeOps messaging mixin runtime delegation", () => {
         target: "12345",
         message: "hello",
       }),
-    ).resolves.toEqual({ ok: true, messageId: null });
+    ).resolves.toEqual({
+      ok: true,
+      messageId: "telegram-message-1",
+      receipt: {
+        providerMessageIds: ["telegram-message-1"],
+        acceptedAt: 1_780_000_000_000,
+        persistence: { status: "persisted", memoryIds: [] },
+      },
+    });
 
     expect(handleSendMessage).toHaveBeenCalledWith(
       service.runtime,

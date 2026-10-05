@@ -11,7 +11,7 @@ import type {
   CreateLifeOpsCalendarEventRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarSummary,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import { CalendarServiceError } from "./errors.js";
 
 export const ELIZA_CALENDAR_PROVIDER = "eliza" as const;

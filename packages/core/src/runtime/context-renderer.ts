@@ -31,18 +31,18 @@ export interface RenderedContextObject {
 	promptSegments: ContextObjectPromptSegment[];
 }
 
-/**
- * Format one prompt segment as a labeled block. Segments with `label: "system"`
- * are emitted as raw content (the label is implicit in the system role); all
- * other segments get a `<label>:\n<content>` prefix so the model can locate
- * them inside the merged Tier 1 / Tier 2 strings.
- */
+/** Render readable block framing while keeping machine labels in segment metadata. */
 export function segmentBlock(segment: PromptSegment): string {
 	const content = segment.content;
 	const label = (segment as PromptSegment & { label?: unknown }).label;
-	if (label === "system") {
+	if (
+		label === "system" ||
+		(typeof label === "string" &&
+			(label.startsWith("provider:") || label.startsWith("prior_message:")))
+	) {
 		return content;
 	}
+	if (label === "message:user") return `# Current message\n${content}`;
 	return typeof label === "string" && label ? `${label}:\n${content}` : content;
 }
 
@@ -135,11 +135,169 @@ function textFromUnknown(value: unknown): string {
 	return JSON.stringify(value);
 }
 
+const DIALOGUE_CONTENT_FIELDS = new Set([
+	"text",
+	"source",
+	"channelType",
+	"metadata",
+	"attachments",
+	"chatIdempotency",
+]);
+const DIALOGUE_METADATA_FIELDS = new Set([
+	"selectedValue",
+	"selectedValues",
+	"parentMessageId",
+	"uiViewPath",
+	"uiTimeZone",
+	"clientTransport",
+	"uiView",
+	"uiTab",
+	"uiViewCapabilities",
+	"uiViewActionNames",
+	"__responseContext",
+	"viewClientId",
+	"injectionRisk",
+]);
+
+function isStringArray(value: unknown): boolean {
+	return (
+		Array.isArray(value) && value.every((item) => typeof item === "string")
+	);
+}
+
+/** Host retry bookkeeping is not dialogue; extended payloads remain evidence. */
+function isChatIdempotencyMarker(value: unknown): boolean {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const fields = Object.entries(value);
+	return (
+		fields.length === 4 &&
+		fields.every(([key, item]) =>
+			key === "version"
+				? item === 1
+				: ["scope", "clientMessageId", "fingerprint"].includes(key) &&
+					typeof item === "string",
+		)
+	);
+}
+
+/** Unknown shapes under known diagnostic keys are evidence, not diagnostics. */
+function isDialogueMetadataValue(key: string, value: unknown): boolean {
+	if (value === undefined) return true;
+	if (
+		key === "selectedValue" ||
+		key === "selectedValues" ||
+		key === "parentMessageId"
+	)
+		return true;
+	if (key === "uiViewCapabilities" || key === "uiViewActionNames")
+		return isStringArray(value);
+	if (key === "__responseContext" || key === "injectionRisk") {
+		if (!value || typeof value !== "object" || Array.isArray(value))
+			return false;
+		return Object.entries(value).every(([field, item]) => {
+			if (key === "__responseContext") {
+				return field === "primaryContext"
+					? typeof item === "string"
+					: field === "secondaryContexts" && isStringArray(item);
+			}
+			if (field === "socialEngineeringClasses") return isStringArray(item);
+			return (
+				[
+					"hiddenCharCount",
+					"nonAsciiCount",
+					"letterSplitHits",
+					"wordReversalHits",
+					"structuralInjectionHits",
+					"score",
+				].includes(field) &&
+				typeof item === "number" &&
+				Number.isFinite(item)
+			);
+		});
+	}
+	return typeof value === "string";
+}
+
+/** Only the known chat envelope has a readable projection. Unknown connector or
+ * domain evidence stays complete on the model wire, not merely in recordings. */
+function renderMessageContent(event: ContextMessageEvent): string {
+	const content = event.message.content;
+	if (event.message.metadata?.renderAsDialogue !== true)
+		return textFromUnknown(content);
+	if (
+		!content ||
+		typeof content !== "object" ||
+		Array.isArray(content) ||
+		!("text" in content)
+	)
+		return textFromUnknown(content);
+	const text = content.text;
+	if (typeof text !== "string") return textFromUnknown(content);
+	if (Object.keys(content).some((key) => !DIALOGUE_CONTENT_FIELDS.has(key)))
+		return textFromUnknown(content);
+	if (
+		("source" in content &&
+			content.source !== undefined &&
+			typeof content.source !== "string") ||
+		("channelType" in content &&
+			content.channelType !== undefined &&
+			typeof content.channelType !== "string")
+	)
+		return textFromUnknown(content);
+	if (
+		"chatIdempotency" in content &&
+		!isChatIdempotencyMarker(content.chatIdempotency)
+	)
+		return textFromUnknown(content);
+	if ("metadata" in content && content.metadata !== undefined) {
+		if (
+			!content.metadata ||
+			typeof content.metadata !== "object" ||
+			Array.isArray(content.metadata) ||
+			Object.entries(content.metadata).some(
+				([key, value]) =>
+					!DIALOGUE_METADATA_FIELDS.has(key) ||
+					!isDialogueMetadataValue(key, value),
+			)
+		)
+			return textFromUnknown(content);
+	}
+	if (
+		"attachments" in content &&
+		content.attachments !== undefined &&
+		!Array.isArray(content.attachments)
+	)
+		return textFromUnknown(content);
+	const speaker = event.message.metadata?.speakerName;
+	const lines = [typeof speaker === "string" ? `${speaker}: ${text}` : text];
+	if (
+		"metadata" in content &&
+		content.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata)
+	) {
+		for (const [key, value] of Object.entries(content.metadata)) {
+			if (
+				key === "selectedValue" ||
+				key === "selectedValues" ||
+				key === "parentMessageId"
+			)
+				lines.push(`${key}: ${renderEvidenceValue(value)}`);
+		}
+	}
+	if ("attachments" in content && Array.isArray(content.attachments)) {
+		lines.push(`attachments: ${JSON.stringify(content.attachments)}`);
+	}
+	return lines.join("\n\n");
+}
+
+/** Preserve nested evidence boundaries and value types without indentation. */
+function renderEvidenceValue(value: unknown): string {
+	return value === undefined ? "undefined" : JSON.stringify(value);
+}
+
 function renderProviderContent(event: ContextProviderEvent): string {
-	// The segment is already labeled `provider:<name>` by `appendPromptSegment`,
-	// which `segmentBlock` then renders as `provider:<name>:\n<content>`. Do NOT
-	// also bake the provider name into the content body — that produced a
-	// duplicated `provider: <name>` line at the top of every provider block.
+	// Provider identity stays in segment metadata rather than prompt framing.
 	const text = event.text;
 	return text === undefined ? "" : text;
 }
@@ -230,7 +388,7 @@ function renderEvent(
 		rendered.promptSegments.push({
 			id: event.message.id ?? event.id,
 			label: `message:${event.message.role}`,
-			content: textFromUnknown(event.message.content),
+			content: renderMessageContent(event),
 			stable: false,
 		});
 		return;
@@ -353,13 +511,16 @@ export function renderContextObject(
 	// Synthetic system segments use label="system" so segmentBlock emits the
 	// raw content without a redundant `<label>:\n` header — every content body
 	// below is already self-labeled (e.g. `selected_contexts: ...`,
-	// `contexts:\n- ...`).
+	// `contexts:\n- ...`). They change per turn (Stage-1 output), so they are
+	// dynamic: keeping them out of the system message leaves the planner and
+	// evaluator system prefix byte-stable across turns for provider prompt
+	// caches (live 2026-09-13: 6.6K of 19K system chars shared before).
 	if (context.trajectoryPrefix?.messageHandlerThought) {
 		appendSyntheticSegment(rendered, {
 			id: "message-handler-thought",
 			label: "system",
 			content: `message_handler_thought: ${context.trajectoryPrefix.messageHandlerThought}`,
-			stable: true,
+			stable: false,
 		});
 	}
 	if (context.trajectoryPrefix?.selectedContexts?.length) {
@@ -367,7 +528,7 @@ export function renderContextObject(
 			id: "selected-contexts",
 			label: "system",
 			content: `selected_contexts: ${context.trajectoryPrefix.selectedContexts.join(", ")}`,
-			stable: true,
+			stable: false,
 		});
 	}
 	if (context.trajectoryPrefix?.contextDefinitions?.length) {
@@ -383,7 +544,7 @@ export function renderContextObject(
 			id: "context-definitions",
 			label: "system",
 			content: `contexts:\n${lines.join("\n")}`,
-			stable: true,
+			stable: false,
 		});
 	}
 	for (const segment of context.trajectoryPrefix?.contextProviders ?? []) {

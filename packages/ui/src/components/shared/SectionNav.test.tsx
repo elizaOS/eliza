@@ -1,14 +1,6 @@
 /** Verifies isSectionPath through the package's configured test harness. */
 // @vitest-environment jsdom
 
-/**
- * jsdom tests for the generalized `SectionNav` primitive and `isSectionPath`
- * predicate (#13586). Exercises the real app-shell page registry to confirm:
- *  - one ghost tab per registered group page, sorted by order → label → id,
- *  - active-tab marking from `activePath` (incl. path rewrites/aliases),
- *  - a single-member section renders NO strip (one tab is not a nav),
- *  - `isSectionPath` matches the section's tabs + aliases and rejects others.
- */
 import {
   act,
   cleanup,
@@ -18,13 +10,11 @@ import {
 } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  AgentSurfaceProvider,
-  getViewRegistry,
-  handleAgentSurfaceCapability,
-} from "../../agent-surface";
+import { AgentSurfaceProvider } from "../../agent-surface/AgentSurfaceContext";
+import { handleAgentSurfaceCapability } from "../../agent-surface/capabilities";
+import { getViewRegistry } from "../../agent-surface/registry";
 import { registerAppShellPage } from "../../app-shell-registry";
-import { resetUiRegistryHostForTests } from "../../registry-host";
+import { resetUiRegistryHostForTests } from "../../registry-host.js";
 import {
   isSectionPath,
   SectionNav,
@@ -32,8 +22,15 @@ import {
   SectionTabStrip,
 } from "./SectionNav";
 
+/**
+ * jsdom tests for the generalized `SectionNav` primitive and `isSectionPath`
+ * predicate (#13586). Exercises the real app-shell page registry to confirm:
+ *  - one ghost tab per registered group page, sorted by order → label → id,
+ *  - active-tab marking from `activePath` (incl. path rewrites/aliases),
+ *  - a single-member section renders NO strip (one tab is not a nav),
+ *  - `isSectionPath` matches the section's tabs + aliases and rejects others.
+ */
 const GROUP = "wallet";
-
 /** Rewrite the inventory root to a canonical `/wallet` path with an alias. */
 const rootRewrite: SectionPathRewrite = (registration) => {
   if (registration.path === "/inventory") {
@@ -46,7 +43,6 @@ const rootRewrite: SectionPathRewrite = (registration) => {
   }
   return null;
 };
-
 function registerPages(): void {
   registerAppShellPage({
     id: "test.wallet",
@@ -76,18 +72,15 @@ function registerPages(): void {
     loader: async () => ({ default: () => null }),
   });
 }
-
 beforeEach(() => {
   resetUiRegistryHostForTests();
   registerPages();
 });
-
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
   resetUiRegistryHostForTests();
 });
-
 describe("isSectionPath", () => {
   it("matches the section's tab + alias routes", () => {
     for (const path of [
@@ -100,13 +93,11 @@ describe("isSectionPath", () => {
       expect(isSectionPath(GROUP, path, rootRewrite)).toBe(true);
     }
   });
-
   it("rejects routes outside the section", () => {
     for (const path of ["/browser", "/automations", "/apps/logs", "/"]) {
       expect(isSectionPath(GROUP, path, rootRewrite)).toBe(false);
     }
   });
-
   it("stops matching a member once its registration is absent", () => {
     resetUiRegistryHostForTests();
     registerAppShellPage({
@@ -132,7 +123,6 @@ describe("isSectionPath", () => {
     expect(isSectionPath(GROUP, "/perps", rootRewrite)).toBe(true);
   });
 });
-
 describe("SectionNav", () => {
   it("renders one ghost tab per group page, sorted by order", () => {
     render(
@@ -144,7 +134,6 @@ describe("SectionNav", () => {
     );
     expect(labels).toEqual(["Wallet", "Perps", "Predictions"]);
   });
-
   it("marks the active tab from activePath (alias resolves to root)", () => {
     render(
       <SectionNav
@@ -164,7 +153,6 @@ describe("SectionNav", () => {
         .getAttribute("aria-current"),
     ).toBeNull();
   });
-
   it("navigates to the tab route on click", () => {
     render(
       <SectionNav group={GROUP} activePath="/wallet" rewrite={rootRewrite} />,
@@ -172,7 +160,6 @@ describe("SectionNav", () => {
     fireEvent.click(screen.getByRole("button", { name: "Predictions" }));
     expect(window.location.pathname).toBe("/predictions");
   });
-
   it("does not renavigate when the active tab is clicked", () => {
     window.history.replaceState(null, "", "/perps");
     render(
@@ -181,7 +168,6 @@ describe("SectionNav", () => {
     fireEvent.click(screen.getByRole("button", { name: "Perps" }));
     expect(window.location.pathname).toBe("/perps");
   });
-
   it("renders no strip when the section has a single member", () => {
     resetUiRegistryHostForTests();
     registerAppShellPage({
@@ -199,7 +185,6 @@ describe("SectionNav", () => {
     expect(container.firstChild).toBeNull();
     expect(screen.queryByTestId(`section-nav-${GROUP}`)).toBeNull();
   });
-
   it("renders no strip for an empty section", () => {
     resetUiRegistryHostForTests();
     const { container } = render(
@@ -208,7 +193,6 @@ describe("SectionNav", () => {
     expect(container.firstChild).toBeNull();
   });
 });
-
 describe("SectionTabStrip agent surface", () => {
   it("registers scope tabs and activates them through the live bridge", () => {
     function ScopeFixture() {
@@ -232,16 +216,18 @@ describe("SectionTabStrip agent surface", () => {
         </AgentSurfaceProvider>
       );
     }
-
     render(<ScopeFixture />);
     const registry = getViewRegistry("documents", "gui");
     if (!registry) throw new Error("documents registry missing");
-
     const elements = handleAgentSurfaceCapability(
       registry,
       "list-elements",
       undefined,
-    ) as Array<{ id: string; role: string; status?: string }>;
+    ) as Array<{
+      id: string;
+      role: string;
+      status?: string;
+    }>;
     expect(elements).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -256,7 +242,6 @@ describe("SectionTabStrip agent surface", () => {
         }),
       ]),
     );
-
     act(() => {
       handleAgentSurfaceCapability(registry, "agent-click", {
         id: "scope-shared",

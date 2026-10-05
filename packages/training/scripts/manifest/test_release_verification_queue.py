@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.release_verification_queue import build_queue, filter_queue, render_markdown  # noqa: E402
+from eliza_training.manifest.release_verification_queue import build_queue, filter_queue, render_markdown  # noqa: E402
 
 
 def test_build_queue_expands_grouped_audit_failures() -> None:
@@ -106,7 +103,7 @@ def test_render_markdown_names_commands_and_evidence() -> None:
     assert "## 2b:eval-suite" in text
     assert "bundles/2b/evals/aggregate.json" in text
     assert "python3 packages/training/scripts/manifest/release_process_guard.py &&" in text
-    assert "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0 python3 -m scripts.eval.eliza1_eval_suite" in text
+    assert "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0 python3 -m eliza_training.eval.eliza1_eval_suite" in text
 
 
 def test_filter_queue_selects_next_local_item() -> None:
@@ -206,7 +203,7 @@ def test_build_queue_can_use_explicit_eval_python() -> None:
 
     assert items[0].command.startswith(
         "/opt/miniconda3/bin/python3 packages/training/scripts/manifest/release_process_guard.py && "
-        "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0 /opt/miniconda3/bin/python3 -m scripts.eval.eliza1_eval_suite"
+        "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0 /opt/miniconda3/bin/python3 -m eliza_training.eval.eliza1_eval_suite"
     )
 
 
@@ -234,7 +231,7 @@ def test_build_queue_expands_imagegen_hardware_evidence() -> None:
     assert all(item.requires_hardware for item in items)
     assert all(item.category == "imagegenEvidence" for item in items)
     assert items[0].command.startswith("python3 packages/training/scripts/manifest/release_process_guard.py && ")
-    assert "plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs --json" in items[0].command
+    assert "packages/scripts/plugins/plugin-local-inference/probe-sd-cpp.ts --json" in items[0].command
     assert "p.get('requiredAccelerator') == 'vulkan'" in items[0].command
     assert "'vulkan' in p.get('accelerators', [])" in items[0].command
     assert "evidence/imagegen/sd-cpp-runtime.json" in items[0].evidence
@@ -361,7 +358,7 @@ def test_build_queue_expands_mtp_and_finetune_blockers() -> None:
     assert finetune.requires_hardware is True
     assert finetune.category == "fineTuneComparison"
     assert "scripts/run_pipeline.py" in finetune.command
-    assert "scripts/benchmark/native_tool_call_bench.py" in finetune.command
+    assert "scripts/eval/native_tool_call_bench.py" in finetune.command
     assert "--registry-key gemma4-e2b" in finetune.command
     assert "--model checkpoints/eliza-1-2b-finetuned-v2/final" in finetune.command
     assert "--test-file /tmp/eliza-1-training/sft/2b/test.jsonl" in finetune.command

@@ -2,11 +2,11 @@
 import {
   type Action,
   type Character,
-  documentsPluginCore,
   type Plugin,
   type Provider,
   parseCharacter,
 } from "@elizaos/core";
+import { createDocumentsPlugin } from "@elizaos/plugin-assistant";
 import { memoriesRepository } from "../../db/repositories/agents/memories";
 import { charactersService } from "../services/characters/characters";
 import type { ElizaCharacter } from "../types/eliza-character";
@@ -21,22 +21,6 @@ import {
 import { cloudModelProviderPlugin } from "./cloud-model-provider";
 import { buildElevenLabsSettings, getElizaCloudApiUrl } from "./config";
 import mcpPlugin from "./plugin-mcp";
-
-/**
- * Feature flag for the Eliza Cloud Apps read-core on the cloud-hosted path.
- *
- * `cloudAppsPlugin` runs as a FULL plugin (its LIST_CLOUD_APPS / GET_APP actions
- * + CLOUD_APPS provider) on EVERY dedicated prod agent when enabled, so it stays
- * OFF by default until staged + proven. Enable per-agent via the character
- * setting `CLOUD_APPS_PLUGIN_ENABLED` or process-wide via the
- * `CLOUD_APPS_PLUGIN_ENABLED` env var (both accept `true`). The
- * local/native + Discord/Telegram path enables it separately via CORE_PLUGINS.
- */
-function isCloudAppsPluginEnabled(characterSettings: Record<string, unknown>): boolean {
-  const fromSetting = characterSettings.CLOUD_APPS_PLUGIN_ENABLED;
-  if (fromSetting === true || fromSetting === "true") return true;
-  return process.env.CLOUD_APPS_PLUGIN_ENABLED === "true";
-}
 
 // Plugin cache - preloaded at module init to eliminate dynamic import latency
 let _documentsPlugin: Plugin | null = null;
@@ -92,7 +76,7 @@ async function resolveEffectiveMode(
 
 async function getDocumentsPlugin(): Promise<Plugin> {
   if (_documentsPlugin) return _documentsPlugin;
-  _documentsPlugin = asPlugin(documentsPluginCore);
+  _documentsPlugin = asPlugin(createDocumentsPlugin({ enableActions: false }));
   return _documentsPlugin;
 }
 
@@ -235,23 +219,6 @@ export class AgentLoader {
     options?: { hasDocuments?: boolean },
   ): Promise<Plugin[]> {
     const plugins: Plugin[] = [cloudModelProviderPlugin];
-
-    // Eliza Cloud Apps (#10218 apps launch). Added as a FULL plugin
-    // (NOT via AVAILABLE_PLUGINS, which strips to models-only) so its actions +
-    // provider reach cloud-hosted agents. This is the FULL action set
-    // (list/get/create/deploy/manage incl. delete/withdraw/rotate-key), not just
-    // read. Gated OFF by default — see isCloudAppsPluginEnabled — because it
-    // loads on every dedicated prod agent and includes destructive/money actions.
-    if (isCloudAppsPluginEnabled(characterSettings)) {
-      // Lazy-load so the default-OFF gate actually avoids the import cost: a
-      // static top-level import would pull @elizaos/plugin-cloud-apps (+ the
-      // cloud SDK) into every dedicated prod agent regardless of the flag.
-      const { cloudAppsPlugin } = await import("@elizaos/plugin-cloud-apps");
-      plugins.push(asPlugin(cloudAppsPlugin));
-      logger.info(
-        "[AgentLoader] Cloud Apps plugin enabled (full: list/create/deploy/manage incl. delete/withdraw/rotate-key)",
-      );
-    }
 
     const conditionalPlugins = getConditionalPlugins(characterSettings);
     const modePlugins = isValidAgentMode(agentMode)

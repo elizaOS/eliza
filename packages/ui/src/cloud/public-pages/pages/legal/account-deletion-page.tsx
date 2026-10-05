@@ -1,6 +1,6 @@
 /** Server-authoritative external request, status, export, and recovery page. */
 
-import type { AccountDeletionStatusDto } from "@elizaos/cloud-shared/types/account-lifecycle";
+import type { AccountDeletionStatusDto } from "@elizaos/cloud-sdk/browser-contracts/account-lifecycle";
 import {
   CheckCircle2,
   CircleAlert,
@@ -18,8 +18,8 @@ import {
   downloadAccountDeletionExport,
   readAccountDeletionStatus,
 } from "../../../account-security/data/account-deletion-client";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useSessionAuth } from "../../../lib/use-session-auth";
-import { usePageTitle } from "../../lib/use-page-title";
 
 function statusHeading(request: AccountDeletionStatusDto): string {
   switch (request.status) {
@@ -66,7 +66,7 @@ function statusInstruction(request: AccountDeletionStatusDto): string {
 }
 
 export default function AccountDeletionPage() {
-  usePageTitle("Delete your Eliza account | Eliza Cloud");
+  useDocumentTitle("Delete your Eliza account | Eliza Cloud");
   const session = useSessionAuth();
   const [request, setRequest] = useState<AccountDeletionStatusDto | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);

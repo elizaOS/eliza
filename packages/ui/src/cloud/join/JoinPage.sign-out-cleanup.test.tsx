@@ -1,4 +1,9 @@
-/** Verifies JoinPage waits for its active identity read before destroying the SSO session. */
+/**
+ * Verifies JoinPage sign-out and session ownership: it waits for its active
+ * identity read before destroying the SSO session, issues exactly one logout
+ * per sign-out, and never dispatches Dedicated activation after the signed-in
+ * account changes during the quote review.
+ */
 // @vitest-environment jsdom
 
 import {
@@ -14,9 +19,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const runJoinFlowMock = vi.hoisted(() => vi.fn());
 const signOutMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const replaceMock = vi.hoisted(() => vi.fn());
+const joinSession = vi.hoisted(() => ({
+  token: "steward-token" as string | null,
+}));
 
 vi.mock("react-router-dom", () => ({ Navigate: () => null }));
-vi.mock("../../api", () => ({ client: {} }));
+vi.mock("../../api/client", () => ({ client: {} }));
 vi.mock("../../config/boot-config-store", () => ({
   getBootConfig: () => ({}),
 }));
@@ -45,7 +53,7 @@ vi.mock("./lib/apex-app-handoff", () => ({
   resolveApexJoinHandoff: () => null,
 }));
 vi.mock("./lib/resolve-cloud-connection", () => ({
-  resolveJoinAuthToken: () => "steward-token",
+  resolveJoinAuthToken: () => joinSession.token,
   resolveJoinCloudApiBase: () => "https://api.eliza.app",
 }));
 vi.mock("./lib/run-join-flow", () => ({
@@ -74,6 +82,7 @@ describe("JoinPage sign-out cleanup ownership", () => {
     signOutMock.mockReset();
     signOutMock.mockResolvedValue(undefined);
     replaceMock.mockClear();
+    joinSession.token = "steward-token";
   });
 
   afterEach(() => {
@@ -102,6 +111,69 @@ describe("JoinPage sign-out cleanup ownership", () => {
     });
     await waitFor(() => expect(signOutMock).toHaveBeenCalledTimes(1));
     expect(replaceMock).toHaveBeenCalledWith("/login");
+  });
+
+  it("issues exactly one hosted logout when Sign out is activated twice", async () => {
+    runJoinFlowMock.mockRejectedValue(new Error("agent unavailable"));
+    let finishLogout!: () => void;
+    signOutMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishLogout = resolve;
+        }),
+    );
+    render(<JoinPage />);
+    await screen.findByText("agent unavailable");
+
+    const button = screen.getByRole("button", { name: "Sign out" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect(signOutMock).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      finishLogout();
+    });
+    expect(signOutMock).toHaveBeenCalledTimes(1);
+    expect(replaceMock).toHaveBeenCalledWith("/login");
+  });
+
+  it("does not dispatch Dedicated activation after the account changes during quote review", async () => {
+    const activationPost = vi.fn();
+    runJoinFlowMock.mockImplementation(
+      async (args: {
+        signal: AbortSignal;
+        requestDedicatedActivationConfirmation: (
+          quote: Record<string, unknown>,
+          context: { signal?: AbortSignal },
+        ) => Promise<unknown>;
+      }) => {
+        const decision = await args.requestDedicatedActivationConfirmation(
+          {
+            quoteId: "a".repeat(64),
+            dailyRateUsd: 1,
+            hourlyRateUsd: 0.05,
+            balanceUsd: 10,
+            minimumBalanceUsd: 5,
+            minimumActivationChargeUsd: 0.5,
+          },
+          { signal: args.signal },
+        );
+        args.signal.throwIfAborted();
+        if (decision) activationPost();
+        return connectedResult();
+      },
+    );
+    render(<JoinPage />);
+    await screen.findByTestId("dedicated-activation-review");
+
+    // Another tab signs in as a different account while the quote is open.
+    joinSession.token = "other-account-token";
+    await act(async () => {
+      window.dispatchEvent(new Event("storage"));
+    });
+
+    await screen.findByText(/Your Eliza Cloud sign-in changed/);
+    expect(activationPost).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("dedicated-activation-review")).toBeNull();
   });
 
   it("keeps the user on a retryable error state when hosted logout is refused", async () => {

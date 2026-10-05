@@ -20,7 +20,7 @@ for (const viewport of [
     { name: "Calendar", path: "/calendar", root: "lifeops-calendar-section" },
     { name: "Eliza Cloud", path: "/cloud", root: "cloud-signed-out" },
   ]) {
-    test(`${view.name} preserves headerless content and browser back navigation at ${viewport.width}px`, async ({
+    test(`${view.name} keeps its primary action reachable at ${viewport.width}px`, async ({
       page,
     }) => {
       await page.setViewportSize(viewport);
@@ -68,6 +68,35 @@ for (const viewport of [
       await expect(page.getByTestId(view.root)).toBeVisible({
         timeout: 60_000,
       });
+      if (view.path === "/calendar") {
+        const create = page.getByRole("button", {
+          name: "New event",
+          exact: true,
+        });
+        await expect(create).toBeInViewport();
+        await create.click();
+        await expect(page.getByRole("dialog")).toBeVisible();
+        const cancel = page.getByRole("button", {
+          name: "Cancel event editor",
+          exact: true,
+        });
+        await cancel.scrollIntoViewIfNeeded();
+        await cancel.click();
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await expect(page.getByTestId(view.root)).toBeVisible();
+      } else {
+        const connect = page.getByRole("button", {
+          name: "Connect in Settings",
+          exact: true,
+        });
+        await expect(connect).toBeInViewport();
+        await connect.click();
+        await expect(page).toHaveURL(/\/settings(?:[?#]|$)/);
+        await expect(page.getByTestId("settings-shell")).toBeVisible();
+        await expect(page.getByTestId(view.root)).toHaveCount(0);
+      }
+      await openAppPath(page, "/views");
+      await openAppPath(page, routePath);
       await assertHeaderlessViewChrome(page);
       await page.goBack();
       await expect(page).toHaveURL(/\/views(?:[?#]|$)/);
@@ -101,12 +130,11 @@ test("Calendar landscape scrolling exposes an event for opening", async ({
   await expect(event).toBeInViewport({ ratio: 1 });
   await event.click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await page.mouse.move(600, 180);
-  await page.mouse.wheel(0, 2000);
   const cancel = page.getByRole("button", {
     name: "Cancel event editor",
     exact: true,
   });
+  await cancel.scrollIntoViewIfNeeded();
   await expect(cancel).toBeInViewport();
   await cancel.click({ timeout: 15_000 });
   await expect(page.getByRole("dialog")).toHaveCount(0);

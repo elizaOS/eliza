@@ -6,7 +6,6 @@
 
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
@@ -16,7 +15,8 @@ import {
   canonicalizeAgentBackupManifestV3,
   canonicalizeAgentBackupOperationKeyBundleContext,
   computeAgentBackupManifestV3Digest,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import type {
   AgentBackupOperationClaim,
   AgentBackupOperationExecution,

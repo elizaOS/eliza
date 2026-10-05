@@ -2,7 +2,8 @@
  * Renders the post-login permission soft-ask modal and its injected-controller
  * seam for tests and stories.
  */
-import type { PermissionId } from "@elizaos/shared/contracts/permissions";
+
+import type { PermissionId } from "@elizaos/core/protocol";
 import {
   AudioLines,
   Bell,
@@ -13,7 +14,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import * as React from "react";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
+import { appNameInterpolationVars } from "../../config/branding-base";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -40,7 +42,6 @@ import {
  * This is a controlled dialog: the parent owns `open` and is told when the
  * sequence is finished via `onComplete` (granted, skipped, or dismissed).
  */
-
 const ICONS: Record<string, LucideIcon> = {
   mic: Mic,
   "audio-lines": AudioLines,
@@ -48,7 +49,6 @@ const ICONS: Record<string, LucideIcon> = {
   bell: Bell,
   camera: Camera,
 };
-
 export interface PermissionPrimingModalProps {
   /** Ordered permissions to prime; resolved per-platform by the caller. */
   ids: PermissionId[];
@@ -58,7 +58,6 @@ export interface PermissionPrimingModalProps {
   /** Test/story seam to inject a controller instead of the live hook. */
   controllerOverride?: PermissionPrimingController;
 }
-
 /**
  * Container: routes to the live hook, or an injected controller for
  * tests/stories. Splitting keeps the live `usePermissionPriming` (and its
@@ -77,7 +76,6 @@ export function PermissionPrimingModal(
     <PermissionPrimingModalLive {...props} />
   );
 }
-
 function PermissionPrimingModalLive({
   ids,
   open,
@@ -92,7 +90,6 @@ function PermissionPrimingModalLive({
     />
   );
 }
-
 function PermissionPrimingModalView({
   controller,
   open,
@@ -114,10 +111,8 @@ function PermissionPrimingModalView({
     recheck,
     skipAll,
   } = controller;
-
   const t = useAppSelector((s) => s.t);
   const branding = useBranding();
-
   // Fire onComplete exactly once when the sequence finishes.
   const completedRef = React.useRef(false);
   React.useEffect(() => {
@@ -126,7 +121,6 @@ function PermissionPrimingModalView({
       onComplete();
     }
   }, [done, onComplete]);
-
   const headerTitle = t("permissionpriming.title", {
     defaultValue: "Set up {{appName}}",
     ...appNameInterpolationVars(branding),
@@ -134,7 +128,6 @@ function PermissionPrimingModalView({
   const headerSubtitle = t("permissionpriming.subtitle", {
     defaultValue: "A couple of quick permissions so I'm ready to help.",
   });
-
   return (
     <Dialog
       open={open}
@@ -205,7 +198,6 @@ function PermissionPrimingModalView({
     </Dialog>
   );
 }
-
 interface PrimingCardProps {
   id: PermissionId;
   status: PermissionPrimingController["items"][number]["status"];
@@ -222,7 +214,6 @@ interface PrimingCardProps {
   onSkipAll: () => void;
   cloudOnly: boolean;
 }
-
 function PrimingCard({
   id,
   status,
@@ -266,10 +257,8 @@ function PrimingCard({
           "Enable this permission so I can complete the request you just made.",
         permission: fallbackName,
       });
-
   const denied = status === "denied";
   const needsRecovery = denied || requestError || recheckError;
-
   return (
     <div className="flex flex-col gap-4" data-testid={`priming-card-${id}`}>
       <div className="flex items-start gap-3">

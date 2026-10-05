@@ -11,7 +11,7 @@
 import type {
   WalletBalancesResponse,
   WalletConfigStatus,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import {
   cleanup,
   fireEvent,

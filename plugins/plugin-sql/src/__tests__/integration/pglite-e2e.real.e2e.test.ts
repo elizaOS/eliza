@@ -4,21 +4,19 @@
  * handling) against a real in-process PGlite instance with migrations
  * applied — no mocks, standing in for a real PostgreSQL backend.
  */
-import { PGlite } from "@electric-sql/pglite";
 import type { Agent, ChannelType, Component, Entity, Memory, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseMigrationService } from "../../migration-service";
 import { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { PGliteClientManager } from "../../pglite/manager";
-import * as schema from "../../schema";
+import { schema } from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 import { expectCreatedEntityIds } from "./entity-create-assertions";
 
 describe("PostgreSQL E2E Tests", () => {
   const createTestAdapter = async () => {
-    const client = new PGlite();
-    const manager = new PGliteClientManager(client);
+    const manager = new PGliteClientManager({ dataDir: "memory://" });
     const agentId = uuidv4() as UUID;
     const adapter = new PgliteDatabaseAdapter(agentId, manager);
     await adapter.init();

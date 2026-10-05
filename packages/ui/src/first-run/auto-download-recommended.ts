@@ -19,21 +19,21 @@
  *     The next boot can retry.
  *   - hub fetch fails → silent skip, no marker. Same retry semantics.
  *   - download POST fails → silent skip, no marker.
+ *   - no published, activation-eligible tier fits → skip, no marker.
  */
 
-import { client } from "../api";
+import type { CatalogModel, ModelHubSnapshot } from "@elizaos/contracts";
+import {
+  selectRecommendedModelForSlot,
+  UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
+} from "@elizaos/plugin-native-inference/model-catalog/recommendation";
+import { client } from "../api/client";
 import { fetchWithCsrf } from "../api/csrf-client";
-import { selectRecommendedModelForSlot } from "../services/local-inference/recommendation";
-import type {
-  CatalogModel,
-  ModelHubSnapshot,
-} from "../services/local-inference/types";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 
 const AUTO_DOWNLOAD_MARKER_KEY = "eliza.localInference.autoDownloadAttempted";
-const HEALTH_POLL_INTERVAL_MS = 2_000;
+const HEALTH_POLL_INTERVAL_MS = 2000;
 const HEALTH_POLL_DEADLINE_MS = 5 * 60 * 1000;
-
 function readMarker(): boolean {
   if (typeof window === "undefined") return true;
   try {
@@ -44,7 +44,6 @@ function readMarker(): boolean {
     return false;
   }
 }
-
 function writeMarker(): void {
   if (typeof window === "undefined") return;
   try {
@@ -54,7 +53,6 @@ function writeMarker(): void {
     // it only re-offers the download next session
   }
 }
-
 async function waitForLocalAgent(apiBase: string): Promise<boolean> {
   const deadline = Date.now() + HEALTH_POLL_DEADLINE_MS;
   const url = `${apiBase.replace(/\/$/, "")}/api/health`;
@@ -70,7 +68,6 @@ async function waitForLocalAgent(apiBase: string): Promise<boolean> {
   }
   return false;
 }
-
 function pickRecommendedModel(snapshot: ModelHubSnapshot): CatalogModel | null {
   const installedIds = new Set(snapshot.installed.map((m) => m.id));
   return (
@@ -78,10 +75,10 @@ function pickRecommendedModel(snapshot: ModelHubSnapshot): CatalogModel | null {
       "TEXT_LARGE",
       snapshot.hardware,
       snapshot.catalog,
+      { policy: UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY },
     ).alternatives.find((model) => !installedIds.has(model.id)) ?? null
   );
 }
-
 function pickInstalledElizaDownloadModel(
   snapshot: ModelHubSnapshot,
 ): string | null {
@@ -92,16 +89,13 @@ function pickInstalledElizaDownloadModel(
     )?.id ?? null
   );
 }
-
 export async function autoDownloadRecommendedLocalModelInBackground(
   apiBase: string,
 ): Promise<void> {
   if (isElizaCloudControlPlaneAgentlessBase(apiBase)) return;
   if (readMarker()) return;
-
   const ready = await waitForLocalAgent(apiBase);
   if (!ready) return;
-
   let snapshot: ModelHubSnapshot;
   try {
     snapshot = await client.getLocalInferenceHub();
@@ -110,7 +104,6 @@ export async function autoDownloadRecommendedLocalModelInBackground(
     // auto-download once the hub responds
     return;
   }
-
   const installedElizaDownload = pickInstalledElizaDownloadModel(snapshot);
   if (installedElizaDownload) {
     if (
@@ -121,7 +114,6 @@ export async function autoDownloadRecommendedLocalModelInBackground(
       writeMarker();
       return;
     }
-
     try {
       await client.setLocalInferenceActive(installedElizaDownload);
     } catch {
@@ -132,13 +124,12 @@ export async function autoDownloadRecommendedLocalModelInBackground(
     writeMarker();
     return;
   }
-
   const recommended = pickRecommendedModel(snapshot);
-  if (!recommended) {
-    writeMarker();
-    return;
-  }
-
+  // No published, activation-eligible tier fits this device (for example every
+  // published manifest is still a candidate). Leave the marker unset so a later
+  // boot offers the download once an eligible tier is published; chat stays on
+  // the configured cloud/provider route meanwhile.
+  if (!recommended) return;
   try {
     await client.startLocalInferenceDownload(recommended.id);
     writeMarker();

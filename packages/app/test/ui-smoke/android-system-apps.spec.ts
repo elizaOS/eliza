@@ -37,7 +37,7 @@ const ANDROID_SYSTEM_APP_CASES: readonly AndroidSystemRouteCase[] = [
   },
   {
     name: "wifi",
-    path: "/apps/wifi",
+    path: "/apps/native-wifi",
     readyChecks: [{ selector: '[data-testid="wifi-shell"]' }],
   },
   {
@@ -266,7 +266,10 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   await page.locator('[data-agent-id="key-1"]').click();
   await page.locator('[data-agent-id="key-2"]').click();
   await expect(page.getByText("12", { exact: true })).toBeVisible();
-  await expect(page.getByText("None", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Recent calls unavailable", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('[data-agent-id="phone-call"]')).toBeDisabled();
   await expectNoIssues(page, issues.splice(0), "phone interactions");
   await page.close();
 

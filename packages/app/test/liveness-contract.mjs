@@ -2,7 +2,7 @@
  * The onboarding liveness contract: the single, surface-agnostic rule that a
  * post-onboarding chat reply came from a REAL model and not the deterministic
  * stub. Consumed by the Playwright wrapper (`liveness-contract.ts`), the iOS
- * simulator harness (`scripts/ios-onboarding-smoke.mjs`), and the in-app iOS
+ * simulator harness (`scripts/ios-onboarding-smoke.ts`), and the in-app iOS
  * verifier (`src/main.tsx`) — every onboarding surface asserts liveness through
  * this one implementation so the check cannot drift between lanes (#14359).
  *
@@ -15,7 +15,7 @@
  * The deterministic keyless stub tags every reply with this fixture id. A real
  * model turn must never contain it — that is how liveness is proven. Kept here
  * as the one source of truth; the stub emitter
- * (`packages/app-core/scripts/playwright-ui-smoke-api-stub.mjs`) writes the same
+ * (`packages/app/scripts/playwright-ui-smoke-api-stub.ts`) writes the same
  * literal, so if that fixture id ever changes both sides update together.
  */
 export const STUB_FIXTURE_MARKER = "ui-smoke-assistant-v1";

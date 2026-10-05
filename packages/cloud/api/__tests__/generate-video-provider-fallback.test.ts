@@ -15,28 +15,35 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import * as quotaPolicyActual from "@/lib/services/organization-quota-policy";
+import { billingHoldService } from "@elizaos/cloud-shared/lib/services/billing-hold";
+import * as quotaPolicyActual from "@elizaos/cloud-shared/lib/services/organization-quota-policy";
 import { purchasedCreditPolicyFixture } from "./purchased-credit-policy-fixture";
 
-// These route billing fixtures model purchased-credit funding with no subscription.
-// The primary policy reader is the external boundary; reservation, provider health,
-// settlement and reconciliation below remain the real implementations.
+// These route billing fixtures model purchased-credit funding with no subscription
+// and no payment-reversal hold. The primary policy and hold readers are the external
+// boundaries; reservation, provider health, settlement and reconciliation below
+// remain the real implementations.
 let policyLookup: ReturnType<typeof spyOn>;
+let holdLookup: ReturnType<typeof spyOn>;
 beforeEach(() => {
   policyLookup = spyOn(
     quotaPolicyActual,
     "readOrganizationQuotaPolicy",
   ).mockResolvedValue(purchasedCreditPolicyFixture());
+  holdLookup = spyOn(billingHoldService, "assertNoHold").mockResolvedValue(
+    undefined,
+  );
 });
 afterEach(() => {
   policyLookup.mockRestore();
+  holdLookup.mockRestore();
 });
 
-import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
-import * as aiPricingActual from "@/lib/services/ai-pricing";
-import * as contentSafetyActual from "@/lib/services/content-safety";
-import * as creditsActual from "@/lib/services/credits";
-import * as generationsActual from "@/lib/services/generations";
+import * as workersHonoAuthActual from "@elizaos/cloud-shared/auth";
+import * as aiPricingActual from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import * as contentSafetyActual from "@elizaos/cloud-shared/lib/services/content-safety";
+import * as creditsActual from "@elizaos/cloud-shared/lib/services/credits";
+import * as generationsActual from "@elizaos/cloud-shared/lib/services/generations";
 
 const falActual = require("@fal-ai/client") as typeof import("@fal-ai/client");
 const { ApiError: FalApiError } = falActual;
@@ -44,18 +51,19 @@ const originalFetch = globalThis.fetch;
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
-const FAL_MODEL = "fal-ai/veo3";
-const ATLAS_MODEL = "vidu/q3-turbo/text-to-video";
+const FAL_MODEL = "minimax/h3-max/image-to-video";
+const ATLAS_MODEL = "vidu/image-to-video-2.0";
+const REFERENCE_URL = "https://example.com/start.png";
 const FAL_COST = 0.8;
 const ATLAS_COST = 0.3;
 
 const requireUserOrApiKeyWithOrg = mock();
-mock.module("@/lib/auth/workers-hono-auth", () => ({
+mock.module("@elizaos/cloud-shared/auth", () => ({
   ...workersHonoAuthActual,
   requireUserOrApiKeyWithOrg,
 }));
 
-mock.module("@/lib/services/content-safety", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/content-safety", () => ({
   ...contentSafetyActual,
   contentSafetyService: {
     ...contentSafetyActual.contentSafetyService,
@@ -73,26 +81,35 @@ const calculateVideoGenerationCostFromCatalog = mock(
     };
   },
 );
-mock.module("@/lib/services/ai-pricing", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/ai-pricing", () => ({
   ...aiPricingActual,
   calculateVideoGenerationCostFromCatalog,
   getDefaultVideoBillingDimensions: (model: string) => ({
-    durationSeconds: model === FAL_MODEL ? 8 : 5,
+    durationSeconds: model === FAL_MODEL ? 5 : 4,
     dimensions:
       model === FAL_MODEL
-        ? { audio: true }
+        ? { resolution: "768P", audio: true }
         : { resolution: "720p", audio: false },
   }),
 }));
 
+// This provider failover fixture uses prepaid credits; subscription funding
+// is exercised by the billing authority integration suite.
+mock.module(
+  "@elizaos/cloud-shared/db/repositories/subscription-entitlements",
+  () => ({
+    subscriptionEntitlementsRepository: { find: async () => undefined },
+  }),
+);
+
 const reserve = mock();
-mock.module("@/lib/services/credits", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({
   ...creditsActual,
   creditsService: { ...creditsActual.creditsService, reserve },
 }));
 
 const generationsCreate = mock();
-mock.module("@/lib/services/generations", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/generations", () => ({
   ...generationsActual,
   generationsService: {
     ...generationsActual.generationsService,
@@ -124,11 +141,23 @@ const videoRoute = (await import("../v1/generate-video/route")).default;
 
 afterAll(() => {
   globalThis.fetch = originalFetch;
-  mock.module("@/lib/auth/workers-hono-auth", () => workersHonoAuthActual);
-  mock.module("@/lib/services/content-safety", () => contentSafetyActual);
-  mock.module("@/lib/services/ai-pricing", () => aiPricingActual);
-  mock.module("@/lib/services/credits", () => creditsActual);
-  mock.module("@/lib/services/generations", () => generationsActual);
+  mock.module("@elizaos/cloud-shared/auth", () => workersHonoAuthActual);
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/content-safety",
+    () => contentSafetyActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/ai-pricing",
+    () => aiPricingActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/credits",
+    () => creditsActual,
+  );
+  mock.module(
+    "@elizaos/cloud-shared/lib/services/generations",
+    () => generationsActual,
+  );
   mock.module("@fal-ai/client", () => falActual);
 });
 
@@ -181,7 +210,10 @@ function atlasSuccess(url = "https://atlas.media/video.mp4") {
 
 function post(
   env: Record<string, unknown>,
-  body: Record<string, unknown> = { prompt: "a neon cat" },
+  body: Record<string, unknown> = {
+    prompt: "a neon cat",
+    referenceUrl: REFERENCE_URL,
+  },
 ) {
   return videoRoute.request(
     "/",
@@ -230,6 +262,215 @@ beforeEach(() => {
 });
 
 describe("generate-video — default provider fallback", () => {
+  test("requires an image for an explicitly image-only model", async () => {
+    const response = await post(
+      { FAL_KEY: "fal-key", ATLASCLOUD_API_KEY: "atlas-key" },
+      { model: ATLAS_MODEL, prompt: "a neon cat" },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      error: "referenceUrl is required for image-to-video generation",
+    });
+    expect(calculateVideoGenerationCostFromCatalog).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("generates a prompt-only request with H3 Max without fabricating an image", async () => {
+    const ledger = makeLedgerReservation(100, FAL_COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    subscribe.mockResolvedValue({
+      data: { video: { url: "https://fal.media/video.mp4" } },
+      requestId: "fal-text-request",
+    });
+
+    const response = await post(
+      { FAL_KEY: "fal-key" },
+      { prompt: "a neon cat" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    expect(subscribe.mock.calls[0]?.[0]).toBe(FAL_MODEL);
+    expect(subscribe.mock.calls[0]?.[1]?.input).toMatchObject({
+      prompt: "a neon cat",
+      prompt_expansion_mode: "balanced",
+    });
+    expect(subscribe.mock.calls[0]?.[1]?.input).not.toHaveProperty("image_url");
+    expect(ledger.lastActual).toBeCloseTo(FAL_COST, 10);
+    expect(generationsCreate.mock.calls[0]?.[0]).toMatchObject({
+      model: FAL_MODEL,
+      storage_url: "https://fal.media/video.mp4",
+    });
+  });
+
+  test("retains a text-to-video fallback for prompt-only requests", async () => {
+    const ledger = makeLedgerReservation(100, ATLAS_COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    fetchMock.mockResolvedValue(atlasSuccess());
+
+    const response = await post(
+      { ATLASCLOUD_API_KEY: "atlas-key" },
+      { prompt: "a neon cat" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(generationsCreate.mock.calls[0]?.[0]).toMatchObject({
+      model: "vidu/q3-turbo/text-to-video",
+      provider: "vidu",
+      storage_url: "https://atlas.media/video.mp4",
+    });
+    expect(ledger.lastActual).toBeCloseTo(ATLAS_COST, 10);
+  });
+
+  test.each([undefined, REFERENCE_URL])(
+    "preserves silent default media with reference %j",
+    async (referenceUrl) => {
+      const ledger = makeLedgerReservation(100, ATLAS_COST);
+      reserve.mockResolvedValue(ledger.reservation);
+      subscribe.mockResolvedValue({
+        data: { video: { url: "https://fal.media/silent.mp4" } },
+        requestId: "fal-silent-request",
+      });
+
+      const response = await post(
+        { FAL_KEY: "fal-key" },
+        {
+          prompt: "a neon cat",
+          audio: false,
+          voiceControl: false,
+          durationSeconds: 5,
+          referenceUrl,
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(subscribe.mock.calls[0]?.[0]).toBe(
+        referenceUrl
+          ? "bytedance/seedance-2.5/image-to-video"
+          : "bytedance/seedance-2.5/text-to-video",
+      );
+      expect(subscribe.mock.calls[0]?.[1]?.input).toMatchObject({
+        prompt: "a neon cat",
+        duration: "5",
+        resolution: "720p",
+        generate_audio: false,
+        ...(referenceUrl ? { image_url: referenceUrl } : {}),
+      });
+      expect(subscribe.mock.calls[0]?.[1]?.input).not.toHaveProperty(
+        "voice_control",
+      );
+      expect(subscribe.mock.calls[0]?.[1]?.input).not.toHaveProperty("audio");
+      expect(generationsCreate.mock.calls[0]?.[0]).toMatchObject({
+        model: referenceUrl
+          ? "bytedance/seedance-2.5/image-to-video"
+          : "bytedance/seedance-2.5/text-to-video",
+        provider: "fal",
+      });
+      expect(
+        calculateVideoGenerationCostFromCatalog.mock.calls[0]?.[0],
+      ).toMatchObject({
+        model: referenceUrl
+          ? "bytedance/seedance-2.5/image-to-video"
+          : "bytedance/seedance-2.5/text-to-video",
+        durationSeconds: 5,
+      });
+      expect(ledger.lastActual).toBeCloseTo(ATLAS_COST, 10);
+    },
+  );
+
+  test.each([
+    undefined,
+    "bytedance/seedance-2.5/text-to-video",
+    "bytedance/seedance-2.5/image-to-video",
+  ])(
+    "rejects unsupported voice selection for %j before pricing or billing",
+    async (model) => {
+      const response = await post(
+        { FAL_KEY: "fal-key" },
+        {
+          prompt: "a neon cat",
+          model,
+          referenceUrl: REFERENCE_URL,
+          audio: false,
+          voiceControl: true,
+        },
+      );
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("voice control");
+      expect(calculateVideoGenerationCostFromCatalog).not.toHaveBeenCalled();
+      expect(reserve).not.toHaveBeenCalled();
+      expect(subscribe).not.toHaveBeenCalled();
+    },
+  );
+  test.each([
+    undefined,
+    "bytedance/seedance-2.5/text-to-video",
+    "bytedance/seedance-2.5/image-to-video",
+  ])(
+    "rejects a too-short Seedance request %j before credit work",
+    async (model) => {
+      const response = await post(
+        { FAL_KEY: "fal-key" },
+        {
+          prompt: "a cat",
+          referenceUrl: REFERENCE_URL,
+          model,
+          audio: false,
+          durationSeconds: 3,
+        },
+      );
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("durationSeconds");
+      expect(calculateVideoGenerationCostFromCatalog).not.toHaveBeenCalled();
+      expect(reserve).not.toHaveBeenCalled();
+      expect(subscribe).not.toHaveBeenCalled();
+    },
+  );
+
+  test("accepts no voice selection without changing the primary model", async () => {
+    const ledger = makeLedgerReservation(100, FAL_COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    subscribe.mockResolvedValue({
+      data: { video: { url: "https://fal.media/out.mp4" } },
+      requestId: "fal-no-voice",
+    });
+    const response = await post(
+      { FAL_KEY: "fal-key" },
+      { prompt: "a neon cat", voiceControl: false },
+    );
+    expect(response.status).toBe(200);
+    expect(subscribe.mock.calls[0]?.[0]).toBe(FAL_MODEL);
+    expect(subscribe.mock.calls[0]?.[1]?.input).not.toHaveProperty(
+      "voice_control",
+    );
+    expect(ledger.lastActual).toBeCloseTo(FAL_COST, 10);
+  });
+
+  test.each([{ audio: false }, { voiceControl: true }])(
+    "rejects unsupported explicit controls %j before pricing or billing",
+    async (controls) => {
+      const response = await post(
+        { FAL_KEY: "fal-key" },
+        {
+          model: FAL_MODEL,
+          prompt: "a neon cat",
+          ...controls,
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(calculateVideoGenerationCostFromCatalog).not.toHaveBeenCalled();
+      expect(reserve).not.toHaveBeenCalled();
+      expect(subscribe).not.toHaveBeenCalled();
+    },
+  );
+
   test("rejects an unconfigured default chain before pricing or credit work", async () => {
     const response = await post({});
 
@@ -304,7 +545,11 @@ describe("generate-video — default provider fallback", () => {
   test("keeps an explicit model request pinned to its provider", async () => {
     const response = await post(
       { ATLASCLOUD_API_KEY: "atlas-key" },
-      { model: FAL_MODEL, prompt: "a neon cat" },
+      {
+        model: FAL_MODEL,
+        prompt: "a neon cat",
+        referenceUrl: REFERENCE_URL,
+      },
     );
 
     expect(response.status).toBe(503);
@@ -351,13 +596,13 @@ describe("generate-video — default provider fallback", () => {
     expect(reserve).toHaveBeenCalledTimes(2);
     expect(reserve.mock.calls[0]?.[0]).toMatchObject({
       amount: FAL_COST,
-      model: "veo3",
+      model: "h3-max",
       provider: "fal",
       billingSource: "fal",
     });
     expect(reserve.mock.calls[1]?.[0]).toMatchObject({
       amount: ATLAS_COST,
-      model: "q3-turbo",
+      model: "image-to-video-2.0",
       provider: "vidu",
       billingSource: "atlascloud",
     });

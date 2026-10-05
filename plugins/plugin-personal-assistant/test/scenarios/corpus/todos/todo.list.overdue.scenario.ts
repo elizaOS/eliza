@@ -1,5 +1,5 @@
 /** Scenario fixture for todo list overdue; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const EXPECTED_OVERDUE_TITLES = ["File expense report"] as const;
 
@@ -28,7 +28,7 @@ export default scenario({
   tags: ["lifeops", "todos", "time-of-day-edge"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

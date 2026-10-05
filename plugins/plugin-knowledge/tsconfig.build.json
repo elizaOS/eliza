@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.build.shared.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "./src",
+    "types": ["node", "react", "react-dom"]
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/__tests__/**",
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx"
+  ]
+}

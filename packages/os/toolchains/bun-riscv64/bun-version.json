@@ -1,0 +1,35 @@
+{
+  "bun": {
+    "commit": "744846f844374847c902b5e7fd59b4342a51ef99",
+    "version": "1.4.2"
+  },
+  "webkit": {
+    "fork": "oven-sh/WebKit",
+    "commit": "2e2aa2290fac856d6f451ceacb58f7f5b44dd057",
+    "jit_tier": "c_loop"
+  },
+  "toolchain": {
+    "llvm": {
+      "version": "21.1.8"
+    },
+    "rust": {
+      "channel": "nightly-2026-07-20",
+      "target": "riscv64gc-unknown-linux-musl"
+    },
+    "musl": {
+      "alpine_branch": "v3.24"
+    }
+  },
+  "artifact": {
+    "filename": "bun-linux-riscv64-musl.zip",
+    "internal_layout": "bun-linux-riscv64-musl/bun"
+  },
+  "patches": {
+    "bun": {
+      "0001-riscv64-c-loop.patch": "0744a031eb53a8c5b41859483fa72af0a6a0594f095ea7f1b96b5f0737d126c6"
+    },
+    "webkit": {
+      "0001-riscv64-c-loop.patch": "9c08d4aa82e65b85b3b90280e6d73174f82d1e6710a7e5a5df974dcce68211f5"
+    }
+  }
+}

@@ -26,12 +26,15 @@
  * and the caller gates it behind `isPlatform("android") && isNativePlatform()`.
  */
 
-import { logger } from "@elizaos/logger";
 import {
+  type BuildVoiceTurnSignalContext,
+  buildVoiceTurnSignal,
   EchoReferenceBuffer,
   NlmsEchoCanceller,
   platformPlaybackDelaySamples,
-} from "@elizaos/shared/voice/aec";
+  type VoiceTurnSignal,
+  type VoiceTurnSpeakerAttribution,
+} from "@elizaos/voice";
 import type {
   ElizaVoicePluginLike,
   ElizaVoiceTurn,
@@ -39,12 +42,7 @@ import type {
   TalkModePlaybackFrameEvent,
   TalkModePluginLike,
 } from "../bridge/native-plugins";
-import {
-  type BuildVoiceTurnSignalContext,
-  buildVoiceTurnSignal,
-  type VoiceTurnSignal,
-  type VoiceTurnSpeakerAttribution,
-} from "./voice-turn-signal";
+import { logger } from "../logger.ts";
 
 /** Max audioFrames buffered before a pipeline feed is forced (≈ 1 s @ 20 ms). */
 const MAX_BATCH_FRAMES = 49;
@@ -71,9 +69,10 @@ export interface JniAttributedTurn {
   embeddingNorm: number;
   /** The decoded 256-d speaker embedding (empty when the turn was too short). */
   embedding: Float32Array;
-  /** Per-frame pyannote powerset labels for the 5 s diariz window. */
+  /** Concatenated per-window pyannote labels; class identities are window-local. */
   diarizLabels: Int8Array;
-  /** Distinct diariz classes that fired (1 ≈ single speaker). */
+  diarizWindows?: ElizaVoiceTurn["diarizWindows"];
+  /** Distinct window-local label values; this is not a speaker count. */
   diarizDistinctClasses: number;
   /** The ambient-gate verdict for this turn. */
   signal: VoiceTurnSignal;
@@ -514,6 +513,7 @@ export class JniVoicePipeline {
         embeddingNorm: raw.embNorm,
         embedding,
         diarizLabels: base64ToInt8(raw.labels),
+        diarizWindows: raw.diarizWindows,
         diarizDistinctClasses: raw.diarizDistinctClasses,
         signal,
       };

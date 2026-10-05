@@ -4,7 +4,7 @@
  * These agents run on dedicated Hetzner servers, not AWS ECS.
  * Pricing is hourly-based and billed by an hourly cron.
  *
- * Running agents:  $0.01/hour  (~$7.20/month)
+ * Running agents:  $0.01/hour  (~$7.20 per 30 days)
  * Idle/stopped:    $0.0025/hour (~$1.80/month - snapshot storage)
  *
  * All amounts in USD.
@@ -14,6 +14,15 @@ export const AGENT_PRICING = {
   // ── Hourly rates ──────────────────────────────────────────────────
   /** Cost per hour for a running agent. */
   RUNNING_HOURLY_RATE: 0.01,
+  /** Minimum billed amount per successful activation, expressed at the running rate. */
+  MINIMUM_ACTIVATION_HOURS: 2,
+  get MINIMUM_ACTIVATION_CHARGE(): number {
+    return (
+      Math.round(
+        this.RUNNING_HOURLY_RATE * this.MINIMUM_ACTIVATION_HOURS * 100,
+      ) / 100
+    );
+  },
   /** Cost per hour for an idle/stopped agent (snapshot storage). */
   IDLE_HOURLY_RATE: 0.0025,
 
@@ -50,3 +59,11 @@ export const AGENT_PRICING = {
   /** No unpaid grace: insufficient funds queue a stop immediately. */
   GRACE_PERIOD_HOURS: 0,
 } as const;
+
+/** Explicit acceptance of the tariff shown before a new paid Dedicated start. */
+export const DEDICATED_COMPUTE_PRICE_HEADER = "X-Eliza-Dedicated-Price";
+
+/** Version the policy as well as its amounts; callers must review changed terms. */
+export function getDedicatedComputePriceAcceptance(): string {
+  return `dedicated-compute-v1:USD:${AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6)}:${AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE.toFixed(6)}`;
+}

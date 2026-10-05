@@ -202,3 +202,70 @@ export async function prewarmPersonalSharedAgentTurnCaches(
   }
   await settlePrewarmLegs(agent, legs);
 }
+
+/**
+ * Keep-warm legs for a rowless Personal Shared room. The cron only knows the
+ * namespaced agent id and room from mirrored history, and that id is a one-way
+ * hash of the account, so it is never sent to a UUID repository. The room's
+ * conversation object (with its turn-ingress modules) is warmed first; it
+ * reports the verified owning organization recorded by an earlier turn, which
+ * then selects the organization-scoped rate-limit gate to warm. Rooms without
+ * a recorded owner keep the session-start warm (see
+ * {@link prewarmResolvedSharedAgentSession}). Personal rooms start empty
+ * exactly as their turns do, so this never migrates or rewrites history.
+ *
+ * `warmedOrganizations` lets one sweep warm each organization's gate once.
+ */
+export async function prewarmPersonalSharedRoom(
+  agentId: string,
+  roomId: string,
+  namespace: RuntimeDurableObjectNamespace,
+  warmedOrganizations: Set<string> = new Set(),
+): Promise<void> {
+  const conversation = coordinateSharedConversationPrewarm(agentId, roomId, {
+    namespace,
+    startEmpty: true,
+  });
+  const rateLimitGate = conversation.then(
+    async ({ organizationId }) => {
+      if (!organizationId || warmedOrganizations.has(organizationId)) return;
+      warmedOrganizations.add(organizationId);
+      await warmInferenceRateLimitGate(organizationId);
+    },
+    // The conversation leg reports its own failure; without an owner there is
+    // no organization gate to warm.
+    () => undefined,
+  );
+  await settlePrewarmLegs({ id: agentId, organization_id: "" }, [
+    { leg: "conversation-object", run: conversation },
+    { leg: "rate-limit-gate", run: rateLimitGate },
+  ]);
+}
+
+/**
+ * Session-start prewarm: when the app opens a Shared conversation (before a
+ * human can type), hydrate the same caches the cache-only first turn consults.
+ * Personal Shared identities warm their rate-limit gate and conversation
+ * object; sandbox-backed shared agents run the full provision-time legs with
+ * the opening request's credential. Best-effort and off the response path.
+ */
+export function prewarmResolvedSharedAgentSession(
+  resolved:
+    | { agentKind: "personal"; agent: SharedRuntimeAgent; agentId: string }
+    | { agentKind?: undefined; agent: AgentSandbox; agentId: string },
+  options: {
+    namespace: RuntimeDurableObjectNamespace;
+    requestContext: Context<AppEnv>;
+  },
+): Promise<void> {
+  if (resolved.agentKind === "personal") {
+    return prewarmPersonalSharedAgentTurnCaches(resolved.agent, options.namespace, {
+      warmConversation: true,
+      conversationId: resolved.agentId,
+    });
+  }
+  return prewarmSharedAgentTurnCaches(resolved.agent, {
+    namespace: options.namespace,
+    requestContext: options.requestContext,
+  });
+}

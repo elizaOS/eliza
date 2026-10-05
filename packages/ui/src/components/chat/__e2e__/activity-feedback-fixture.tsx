@@ -55,7 +55,7 @@ function Fixture() {
       data-testid="activity-feedback-fixture"
       className="mx-auto flex max-w-[720px] flex-col gap-8 p-8"
     >
-      <Panel label="1 · Thinking (working indicator + elapsed clock)">
+      <Panel label="1 · Thinking (working indicator + phase label)">
         <Bubble>
           <TurnStatus status={{ kind: "thinking" }} showLabel />
         </Bubble>

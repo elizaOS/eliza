@@ -11,7 +11,7 @@
 import {
   clearStoredStewardToken,
   writeStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authMe } from "../api/auth-client";
@@ -36,7 +36,12 @@ import {
 const AUTH_ME_BODY = {
   identity: { id: "owner", displayName: "Owner", kind: "owner" },
   session: { id: "s1", kind: "browser", expiresAt: null },
-  access: { mode: "session", passwordConfigured: true, ownerConfigured: true },
+  access: {
+    mode: "session",
+    role: "OWNER",
+    passwordConfigured: true,
+    ownerConfigured: true,
+  },
 };
 
 function makeJwt(expSecondsFromNow: number): string {
@@ -103,6 +108,29 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       .__electrobunWindowId;
     vi.restoreAllMocks();
     __resetAuthStatusForTests();
+  });
+
+  it.each([undefined, "wizard", "__proto__"])(
+    "rejects an authenticated response with invalid role %s",
+    async (role) => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, {
+          ...AUTH_ME_BODY,
+          access: { ...AUTH_ME_BODY.access, role },
+        }),
+      );
+      await expect(authMe()).resolves.toEqual({ ok: false, status: 503 });
+    },
+  );
+
+  it("rejects an authenticated response without its access contract", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        identity: AUTH_ME_BODY.identity,
+        session: AUTH_ME_BODY.session,
+      }),
+    );
+    await expect(authMe()).resolves.toEqual({ ok: false, status: 503 });
   });
 
   it("fails the shared Cloud auth gate when no Steward account session exists", async () => {
@@ -441,6 +469,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     const unauthorized = {
       reason: "remote_auth_required",
       access: {
+        role: "GUEST",
         mode: "remote",
         passwordConfigured: true,
         ownerConfigured: false,
@@ -633,6 +662,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
         jsonResponse(401, {
           reason: "remote_password_not_configured",
           access: {
+            role: "GUEST",
             mode: "remote",
             passwordConfigured: false,
             ownerConfigured: true,
@@ -680,6 +710,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       jsonResponse(401, {
         reason: "remote_auth_required",
         access: {
+          role: "GUEST",
           mode: "remote",
           passwordConfigured: true,
           ownerConfigured: true,
@@ -752,6 +783,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       jsonResponse(401, {
         reason: "remote_password_not_configured",
         access: {
+          role: "GUEST",
           mode: "remote",
           passwordConfigured: true,
           ownerConfigured: true,
@@ -795,6 +827,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
         jsonResponse(401, {
           reason: "remote_password_not_configured",
           access: {
+            role: "GUEST",
             mode: "remote",
             passwordConfigured: true,
             ownerConfigured: true,

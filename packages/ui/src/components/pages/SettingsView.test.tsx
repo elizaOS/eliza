@@ -121,8 +121,8 @@ const stubSections = vi.hoisted(() => [
   },
 ]);
 
-vi.mock("../../state", () => ({
-  useApp: () => appMock.value,
+vi.mock("../../state/useApp", () => ({ useApp: () => appMock.value }));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
@@ -225,7 +225,6 @@ vi.mock("../settings/settings-sections", async () => {
     },
     SETTINGS_GROUP_LABEL: groupLabels,
     SETTINGS_GROUP_ORDER: groupOrder,
-    SETTINGS_SECTIONS: sections,
     backFromConnectorDetail,
     getAllSettingsSections: () => sections,
     // Group the stub sections the way the real helper does (bucket by group,

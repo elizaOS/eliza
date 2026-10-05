@@ -3,7 +3,7 @@
  * Both Worker and container hosts inject their own Drizzle connection so all
  * persistence, hierarchy, and concurrency rules remain identical.
  */
-import { ElizaError, type UUID, validateUuid } from "@elizaos/core/edge";
+import { ElizaError, type UUID, validateUuid } from "@elizaos/core";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
@@ -17,14 +17,17 @@ import {
   type CreateTodoInput,
   findDuplicateTodoId,
   isValidTodoListLimit,
+  TODO_CONFIRMATION_TTL_MS,
   TODO_DUPLICATE_ID_ERROR_CODE,
   TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE,
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
   TODO_SCOPE_CONVERGENCE_ERROR_CODE,
+  type TodoClearGate,
   type TodoCutoverState,
   type TodoFilter,
+  type TodoLocator,
   type TodoMutation,
   type TodoMutationExecution,
   type TodoMutationImportInput,
@@ -36,9 +39,17 @@ import {
   type TodoScope,
   type TodoScopeConvergenceInput,
   type TodoStore,
+  type TodoTargetMiss,
   type UpdateTodoInput,
   type WriteTodoListInput,
 } from "./store.js";
+import {
+  isOpenTodo,
+  matchTodosByContent,
+  readTodoRef,
+  sameTodoContent,
+  todoRef,
+} from "./todo-match.js";
 import {
   TODO_STATUSES,
   TODOS_LOG_PREFIX,
@@ -72,19 +83,33 @@ interface SerializedTodo {
   completedAt: string | null;
 }
 
+type SerializedTodoTargetMiss =
+  | { kind: "not_found" }
+  | { kind: "ambiguous"; candidates: SerializedTodo[] };
+
 type SerializedTodoMutationResult =
-  | { action: "create"; todo: SerializedTodo }
+  | { action: "create"; todo: SerializedTodo; duplicate?: boolean }
   | {
       action: "update" | "complete" | "cancel";
       todo: SerializedTodo | null;
+      miss?: SerializedTodoTargetMiss;
     }
-  | { action: "delete"; deleted: SerializedTodo | null }
+  | {
+      action: "delete";
+      deleted: SerializedTodo | null;
+      miss?: SerializedTodoTargetMiss;
+    }
   | {
       action: "write";
       before: SerializedTodo[];
       after: SerializedTodo[];
     }
-  | { action: "clear"; count: number };
+  | {
+      action: "clear";
+      count: number;
+      gate?: TodoClearGate;
+      preview?: SerializedTodo[];
+    };
 
 interface TodoMutationWire {
   version: 1;
@@ -179,6 +204,37 @@ function deserializeTodo(value: unknown): Todo {
   };
 }
 
+function serializeTargetMiss(miss: TodoTargetMiss | undefined): {
+  miss?: SerializedTodoTargetMiss;
+} {
+  if (!miss) return {};
+  return {
+    miss:
+      miss.kind === "ambiguous"
+        ? { kind: miss.kind, candidates: miss.candidates.map(serializeTodo) }
+        : { kind: miss.kind },
+  };
+}
+
+function deserializeTargetMiss(value: unknown): {
+  miss?: TodoTargetMiss;
+} {
+  if (value === undefined) return {};
+  const miss = record(value);
+  if (miss?.kind === "not_found") return { miss: { kind: "not_found" } };
+  if (miss?.kind === "ambiguous") {
+    return {
+      miss: {
+        kind: "ambiguous",
+        candidates: deserializeTodoArray(miss.candidates, "miss.candidates"),
+      },
+    };
+  }
+  throw new ElizaError(`${TODOS_LOG_PREFIX} invalid persisted target miss`, {
+    code: TODO_MUTATION_RECORD_ERROR_CODE,
+  });
+}
+
 function serializeMutationResult(result: TodoMutationResult): TodoMutationWire {
   switch (result.action) {
     case "create":
@@ -192,16 +248,18 @@ function serializeMutationResult(result: TodoMutationResult): TodoMutationWire {
       return {
         version: 1,
         result: {
-          ...result,
+          action: result.action,
           todo: result.todo ? serializeTodo(result.todo) : null,
+          ...serializeTargetMiss(result.miss),
         },
       };
     case "delete":
       return {
         version: 1,
         result: {
-          ...result,
+          action: result.action,
           deleted: result.deleted ? serializeTodo(result.deleted) : null,
+          ...serializeTargetMiss(result.miss),
         },
       };
     case "write":
@@ -214,7 +272,17 @@ function serializeMutationResult(result: TodoMutationResult): TodoMutationWire {
         },
       };
     case "clear":
-      return { version: 1, result };
+      return {
+        version: 1,
+        result: {
+          action: result.action,
+          count: result.count,
+          ...(result.gate !== undefined ? { gate: result.gate } : {}),
+          ...(result.preview
+            ? { preview: result.preview.map(serializeTodo) }
+            : {}),
+        },
+      };
   }
 }
 
@@ -245,19 +313,25 @@ function deserializeMutationResult(
   }
   switch (operation) {
     case "create":
-      return { action: operation, todo: deserializeTodo(result.todo) };
+      return {
+        action: operation,
+        todo: deserializeTodo(result.todo),
+        ...(result.duplicate === true ? { duplicate: true } : {}),
+      };
     case "update":
     case "complete":
     case "cancel":
       return {
         action: operation,
         todo: result.todo === null ? null : deserializeTodo(result.todo),
+        ...deserializeTargetMiss(result.miss),
       };
     case "delete":
       return {
         action: operation,
         deleted:
           result.deleted === null ? null : deserializeTodo(result.deleted),
+        ...deserializeTargetMiss(result.miss),
       };
     case "write":
       return {
@@ -277,7 +351,26 @@ function deserializeMutationResult(
           { code: TODO_MUTATION_RECORD_ERROR_CODE },
         );
       }
-      return { action: operation, count };
+      const gate = result.gate;
+      if (
+        gate !== undefined &&
+        gate !== "preview" &&
+        gate !== "confirmed" &&
+        gate !== "cancelled"
+      ) {
+        throw new ElizaError(
+          `${TODOS_LOG_PREFIX} invalid persisted clear.gate`,
+          { code: TODO_MUTATION_RECORD_ERROR_CODE },
+        );
+      }
+      return {
+        action: operation,
+        count,
+        ...(gate !== undefined ? { gate } : {}),
+        ...(result.preview !== undefined
+          ? { preview: deserializeTodoArray(result.preview, "clear.preview") }
+          : {}),
+      };
     }
   }
 }
@@ -341,6 +434,8 @@ function semanticMutationRequest(mutation: TodoMutation): unknown {
           parentTodoId: mutation.input.parentTodoId ?? null,
           metadata: mutation.input.metadata ?? {},
         },
+        // Absent for legacy records so their digests stay stable.
+        ...(mutation.reply !== undefined ? { reply: mutation.reply } : {}),
       };
     case "write":
       return {
@@ -351,7 +446,10 @@ function semanticMutationRequest(mutation: TodoMutation): unknown {
         })),
       };
     case "clear":
-      return { action: mutation.action };
+      return {
+        action: mutation.action,
+        ...(mutation.reply !== undefined ? { reply: mutation.reply } : {}),
+      };
     default:
       return mutation;
   }
@@ -369,7 +467,7 @@ async function mutationRequestDigest(mutation: TodoMutation): Promise<string> {
 function mutationApplied(result: TodoMutationResult): boolean {
   switch (result.action) {
     case "create":
-      return true;
+      return result.duplicate !== true;
     case "update":
     case "complete":
     case "cancel":
@@ -529,20 +627,36 @@ function remapMutationResult(
   result: TodoMutationResult,
   input: TodoStateRemap,
 ): TodoMutationResult {
+  const remapMiss = (
+    miss: TodoTargetMiss | undefined,
+  ): { miss?: TodoTargetMiss } => {
+    if (!miss) return {};
+    return {
+      miss:
+        miss.kind === "ambiguous"
+          ? {
+              kind: miss.kind,
+              candidates: miss.candidates.map((todo) => remapTodo(todo, input)),
+            }
+          : miss,
+    };
+  };
   switch (result.action) {
     case "create":
-      return { action: result.action, todo: remapTodo(result.todo, input) };
+      return { ...result, todo: remapTodo(result.todo, input) };
     case "update":
     case "complete":
     case "cancel":
       return {
         action: result.action,
         todo: result.todo ? remapTodo(result.todo, input) : null,
+        ...remapMiss(result.miss),
       };
     case "delete":
       return {
         action: result.action,
         deleted: result.deleted ? remapTodo(result.deleted, input) : null,
+        ...remapMiss(result.miss),
       };
     case "write":
       return {
@@ -551,7 +665,12 @@ function remapMutationResult(
         after: result.after.map((todo) => remapTodo(todo, input)),
       };
     case "clear":
-      return result;
+      return result.preview
+        ? {
+            ...result,
+            preview: result.preview.map((todo) => remapTodo(todo, input)),
+          }
+        : result;
   }
 }
 
@@ -615,13 +734,19 @@ function todoMutationResultTodos(result: TodoMutationResult): Todo[] {
     case "update":
     case "complete":
     case "cancel":
-      return result.todo ? [result.todo] : [];
+      return [
+        ...(result.todo ? [result.todo] : []),
+        ...(result.miss?.kind === "ambiguous" ? result.miss.candidates : []),
+      ];
     case "delete":
-      return result.deleted ? [result.deleted] : [];
+      return [
+        ...(result.deleted ? [result.deleted] : []),
+        ...(result.miss?.kind === "ambiguous" ? result.miss.candidates : []),
+      ];
     case "write":
       return [...result.before, ...result.after];
     case "clear":
-      return [];
+      return result.preview ?? [];
   }
 }
 
@@ -1375,7 +1500,7 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
 
   private async clearInTransaction(
     tx: TodoTransaction<TSchema>,
-    filter: TodoScope & { roomId?: string | null },
+    filter: TodoScope & { roomId?: string | null; ids?: readonly string[] },
   ): Promise<number> {
     const conditions = [
       eq(todosTable.entityId, filter.entityId as UUID),
@@ -1384,13 +1509,20 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
     if (filter.roomId !== undefined && filter.roomId !== null) {
       conditions.push(eq(todosTable.roomId, filter.roomId as UUID));
     }
+    if (filter.ids !== undefined) {
+      if (filter.ids.length === 0) return 0;
+      conditions.push(inArray(todosTable.id, filter.ids as UUID[]));
+    }
     const targets = await tx
       .select({ id: todosTable.id })
       .from(todosTable)
       .where(and(...conditions));
     if (targets.length === 0) return 0;
     const targetIds = targets.map((target) => target.id);
-    if (filter.roomId !== undefined && filter.roomId !== null) {
+    if (
+      (filter.roomId !== undefined && filter.roomId !== null) ||
+      filter.ids !== undefined
+    ) {
       await tx
         .update(todosTable)
         .set({ parentTodoId: null, updatedAt: new Date() })
@@ -1420,6 +1552,161 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
       await this.lockScope(tx, filter);
       return this.clearInTransaction(tx, filter);
     });
+  }
+
+  private async scopeTodos(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+  ): Promise<Todo[]> {
+    const rows = await tx
+      .select()
+      .from(todosTable)
+      .where(
+        and(
+          eq(todosTable.agentId, scope.agentId as UUID),
+          eq(todosTable.entityId, scope.entityId as UUID),
+        ),
+      )
+      .orderBy(asc(todosTable.createdAt), asc(todosTable.id));
+    return rows.map(rowToTodo);
+  }
+
+  /**
+   * Resolve a locator to one row under the scope lock, so the committed
+   * outcome (including a miss) is what later replays of the key return even
+   * after the visible content changes or the row is removed.
+   */
+  private async resolveLocator(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+    locator: TodoLocator,
+  ): Promise<{ id: string } | { miss: TodoTargetMiss }> {
+    if (locator.id !== undefined) return { id: locator.id };
+    const todos = await this.scopeTodos(tx, scope);
+    let matches: Todo[];
+    if (locator.match !== undefined) {
+      matches = matchTodosByContent(locator.match, todos);
+    } else {
+      const ref = readTodoRef(locator.ref);
+      matches = [];
+      if (ref !== null) {
+        for (const todo of todos) {
+          if ((await todoRef(todo.id)) === ref) matches.push(todo);
+        }
+      }
+    }
+    const [only] = matches;
+    if (matches.length === 1 && only) return { id: only.id };
+    if (matches.length === 0) return { miss: { kind: "not_found" } };
+    return { miss: { kind: "ambiguous", candidates: matches } };
+  }
+
+  /** Latest record of one operation, only while its confirmation window is open. */
+  private async openConfirmationRecord(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+    operation: "create" | "clear",
+  ): Promise<TodoMutationRecord | null> {
+    const [row] = await tx
+      .select({
+        mutation: todoMutationsTable,
+        open: sql<boolean>`${todoMutationsTable.committedAt} > now() - make_interval(secs => ${TODO_CONFIRMATION_TTL_MS / 1000})`,
+      })
+      .from(todoMutationsTable)
+      .where(
+        and(
+          eq(todoMutationsTable.agentId, scope.agentId as UUID),
+          eq(todoMutationsTable.entityId, scope.entityId as UUID),
+          eq(todoMutationsTable.operation, operation),
+        ),
+      )
+      .orderBy(
+        desc(todoMutationsTable.committedAt),
+        desc(todoMutationsTable.mutationId),
+      )
+      .limit(1);
+    return row?.open ? rowToMutationRecord(row.mutation) : null;
+  }
+
+  /**
+   * Create with store-owned deduplication: under the scope lock an open todo
+   * with the same content (and parent) blocks the insert, so concurrent
+   * creates cannot both land. Only an affirmative user reply to the durable
+   * duplicate question recorded for the same content creates the second row.
+   */
+  private async createDeduplicatedInTransaction(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+    mutation: Extract<TodoMutation, { action: "create" }>,
+  ): Promise<Extract<TodoMutationResult, { action: "create" }>> {
+    const parentTodoId = mutation.input.parentTodoId ?? null;
+    const existing = (await this.scopeTodos(tx, scope)).find(
+      (todo) =>
+        isOpenTodo(todo) &&
+        todo.parentTodoId === parentTodoId &&
+        sameTodoContent(todo.content, mutation.input.content),
+    );
+    if (existing && mutation.reply === "affirmative") {
+      const question = await this.openConfirmationRecord(tx, scope, "create");
+      if (
+        question?.result.action === "create" &&
+        question.result.duplicate === true &&
+        sameTodoContent(question.result.todo.content, mutation.input.content)
+      ) {
+        return {
+          action: "create",
+          todo: await this.createInTransaction(tx, {
+            ...mutation.input,
+            ...scope,
+          }),
+        };
+      }
+    }
+    if (existing) return { action: "create", todo: existing, duplicate: true };
+    return {
+      action: "create",
+      todo: await this.createInTransaction(tx, {
+        ...mutation.input,
+        ...scope,
+      }),
+    };
+  }
+
+  /**
+   * Planner clear gate. Without an open preview the call records one listing
+   * exactly what would be removed; an affirmative reply then removes only
+   * those rows (todos added after the preview survive), and any other reply
+   * cancels it. The preview is durable, so it works on per-turn edge hosts.
+   */
+  private async gatedClearInTransaction(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+    mutation: Extract<TodoMutation, { action: "clear" }>,
+  ): Promise<Extract<TodoMutationResult, { action: "clear" }>> {
+    const pending = await this.openConfirmationRecord(tx, scope, "clear");
+    if (
+      pending?.result.action === "clear" &&
+      pending.result.gate === "preview"
+    ) {
+      const preview = pending.result.preview ?? [];
+      if (mutation.reply === "affirmative") {
+        return {
+          action: "clear",
+          count: await this.clearInTransaction(tx, {
+            ...scope,
+            ids: preview.map((todo) => todo.id),
+          }),
+          gate: "confirmed",
+        };
+      }
+      return { action: "clear", count: 0, gate: "cancelled", preview };
+    }
+    const roomId = mutation.roomId ?? null;
+    const preview = (await this.scopeTodos(tx, scope)).filter(
+      (todo) => roomId === null || todo.roomId === roomId,
+    );
+    if (preview.length === 0) return { action: "clear", count: 0 };
+    return { action: "clear", count: 0, gate: "preview", preview };
   }
 
   async applyMutation(
@@ -1459,72 +1746,77 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
       }
 
       let result: TodoMutationResult;
-      switch (input.mutation.action) {
+      const mutation = input.mutation;
+      switch (mutation.action) {
         case "create":
-          result = {
-            action: input.mutation.action,
-            todo: await this.createInTransaction(tx, {
-              ...input.mutation.input,
-              ...input.scope,
-            }),
-          };
+          result = await this.createDeduplicatedInTransaction(
+            tx,
+            input.scope,
+            mutation,
+          );
           break;
         case "update":
-          result = {
-            action: input.mutation.action,
-            todo: await this.updateInTransaction(
-              tx,
-              input.scope,
-              input.mutation.id,
-              input.mutation.patch,
-            ),
-          };
-          break;
         case "complete":
-        case "cancel":
+        case "cancel": {
+          const target = await this.resolveLocator(tx, input.scope, mutation);
+          if ("miss" in target) {
+            result = { action: mutation.action, todo: null, miss: target.miss };
+            break;
+          }
           result = {
-            action: input.mutation.action,
+            action: mutation.action,
             todo: await this.updateInTransaction(
               tx,
               input.scope,
-              input.mutation.id,
-              {
-                status:
-                  input.mutation.action === "complete"
-                    ? "completed"
-                    : "cancelled",
-              },
+              target.id,
+              mutation.action === "update"
+                ? mutation.patch
+                : {
+                    status:
+                      mutation.action === "complete"
+                        ? "completed"
+                        : "cancelled",
+                  },
             ),
           };
           break;
-        case "delete":
-          result = {
-            action: input.mutation.action,
-            deleted: await this.deleteInTransaction(
-              tx,
-              input.scope,
-              input.mutation.id,
-            ),
-          };
+        }
+        case "delete": {
+          const target = await this.resolveLocator(tx, input.scope, mutation);
+          result =
+            "miss" in target
+              ? { action: mutation.action, deleted: null, miss: target.miss }
+              : {
+                  action: mutation.action,
+                  deleted: await this.deleteInTransaction(
+                    tx,
+                    input.scope,
+                    target.id,
+                  ),
+                };
           break;
+        }
         case "write": {
           const list = await this.writeListInTransaction(tx, {
-            ...input.mutation.input,
+            ...mutation.input,
             ...input.scope,
           });
-          result = { action: input.mutation.action, ...list };
+          result = { action: mutation.action, ...list };
           break;
         }
         case "clear":
-          result = {
-            action: input.mutation.action,
-            count: await this.clearInTransaction(tx, {
-              ...input.scope,
-              ...(input.mutation.roomId !== undefined
-                ? { roomId: input.mutation.roomId }
-                : {}),
-            }),
-          };
+          result =
+            mutation.reply !== undefined
+              ? await this.gatedClearInTransaction(tx, input.scope, mutation)
+              : {
+                  action: mutation.action,
+                  count: await this.clearInTransaction(tx, {
+                    ...input.scope,
+                    ...(mutation.roomId !== undefined
+                      ? { roomId: mutation.roomId }
+                      : {}),
+                  }),
+                };
           break;
       }
       const applied = mutationApplied(result);

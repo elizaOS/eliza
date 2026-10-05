@@ -4,7 +4,7 @@
  *
  * The canonical group set lives in `settings-section-meta.ts`
  * (`SETTINGS_GROUP_ORDER` / `SETTINGS_GROUP_LABEL`), which is intentionally
- * frozen — the app-core `dev-route-catalog` parity test pins it. To add groups
+ * frozen — the app `dev-route-catalog` parity test pins it. To add groups
  * such as "Cloud" or "Developer" without mutating that pinned list, host code
  * registers them here at boot and the Settings view reads
  * {@link listExtraSettingsGroups} to render any group a section declares that
@@ -55,13 +55,6 @@ export function registerSettingsGroup(group: ExtraSettingsGroupDef): void {
 /** All registered extra groups, sorted by `order`. */
 export function listExtraSettingsGroups(): ExtraSettingsGroupDef[] {
   return [...getStore().groups.values()].sort((a, b) => a.order - b.order);
-}
-
-/** Look up a single registered extra group by id. */
-export function getExtraSettingsGroup(
-  id: string,
-): ExtraSettingsGroupDef | undefined {
-  return getStore().groups.get(id);
 }
 
 /** The Cloud group id used by every cloud settings section in this directory. */

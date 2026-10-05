@@ -7,7 +7,6 @@
 import {
   type Content,
   ContentType,
-  composePromptFromState,
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
@@ -16,49 +15,44 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
-import { toolReasoningTemplate } from "../templates/toolReasoningTemplate";
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
+import { resourceAnalysisTemplate, toolReasoningTemplate } from "../protocol-utils/prompts.js";
 import type { McpProviderData, McpResourceContent } from "../types";
 import { createMcpMemory } from "./mcp";
 
 function getMimeTypeToContentType(mimeType: string | undefined): ContentType | undefined {
   if (!mimeType) return undefined;
-
   if (mimeType.startsWith("image/")) return ContentType.IMAGE;
   if (mimeType.startsWith("video/")) return ContentType.VIDEO;
   if (mimeType.startsWith("audio/")) return ContentType.AUDIO;
   if (mimeType.includes("pdf") || mimeType.includes("document")) return ContentType.DOCUMENT;
-
   return undefined;
 }
-
 interface ResourceResult {
   readonly contents: readonly McpResourceContent[];
 }
-
 export function processResourceResult(
   result: ResourceResult,
   uri: string
-): { resourceContent: string; resourceMeta: string } {
+): {
+  resourceContent: string;
+  resourceMeta: string;
+} {
   let resourceContent = "";
   let resourceMeta = "";
-
   for (const content of result.contents) {
     if (content.text) {
       resourceContent += content.text;
     } else if (content.blob) {
       resourceContent += `[Binary data${content.mimeType ? ` - ${content.mimeType}` : ""}]`;
     }
-
     resourceMeta += `Resource: ${content.uri ?? uri}\n`;
     if (content.mimeType) {
       resourceMeta += `Type: ${content.mimeType}\n`;
     }
   }
-
   return { resourceContent, resourceMeta };
 }
-
 interface ToolContentItem {
   readonly type: string;
   readonly text?: string;
@@ -70,26 +64,28 @@ interface ToolContentItem {
     readonly blob?: string;
   };
 }
-
 interface ToolResult {
   readonly content: readonly ToolContentItem[];
   readonly isError?: boolean;
 }
-
 export function processToolResult(
   result: ToolResult,
   serverName: string,
   toolName: string,
   runtime: IAgentRuntime,
   messageEntityId: string
-): { toolOutput: string; hasAttachments: boolean; attachments: Media[]; isError: boolean } {
+): {
+  toolOutput: string;
+  hasAttachments: boolean;
+  attachments: Media[];
+  isError: boolean;
+} {
   let toolOutput = "";
   let hasAttachments = false;
   const attachments: Media[] = [];
   // Distinguishes each image within one tool result so its `Media.id` is
   // unique even when several attachments share identical bytes.
   let imageIndex = 0;
-
   for (const content of result.content) {
     if (content.type === "text" && content.text) {
       toolOutput += content.text;
@@ -121,10 +117,8 @@ export function processToolResult(
       }
     }
   }
-
   return { toolOutput, hasAttachments, attachments, isError: result.isError === true };
 }
-
 export async function handleResourceAnalysis(
   runtime: IAgentRuntime,
   message: Memory,
@@ -138,18 +132,15 @@ export async function handleResourceAnalysis(
     uri,
     isResourceAccess: true,
   });
-
   const analysisPrompt = createAnalysisPrompt(
     uri,
     message.content.text ?? "",
     resourceContent,
     resourceMeta
   );
-
   const analyzedResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
     prompt: analysisPrompt,
   })) as string;
-
   if (callback) {
     await callback({
       text: analyzedResponse,
@@ -157,13 +148,15 @@ export async function handleResourceAnalysis(
     });
   }
 }
-
 interface McpProviderArg {
-  readonly values: { readonly mcp: McpProviderData };
-  readonly data: { readonly mcp: McpProviderData };
+  readonly values: {
+    readonly mcp: McpProviderData;
+  };
+  readonly data: {
+    readonly mcp: McpProviderData;
+  };
   readonly text: string;
 }
-
 export async function handleToolResponse(
   runtime: IAgentRuntime,
   message: Memory,
@@ -183,7 +176,6 @@ export async function handleToolResponse(
     arguments: toolArgs,
     isToolCall: true,
   });
-
   const reasoningPrompt = createReasoningPrompt(
     state,
     mcpProvider,
@@ -194,11 +186,9 @@ export async function handleToolResponse(
     hasAttachments,
     isError
   );
-
   const reasonedResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
     prompt: reasoningPrompt,
   })) as string;
-
   const agentId = message.agentId ?? runtime.agentId;
   const replyMemory: Memory = {
     entityId: agentId,
@@ -210,9 +200,7 @@ export async function handleToolResponse(
       attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
     },
   };
-
   await runtime.createMemory(replyMemory, "messages");
-
   if (callback) {
     await callback({
       text: reasonedResponse,
@@ -220,10 +208,8 @@ export async function handleToolResponse(
       attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
     });
   }
-
   return replyMemory;
 }
-
 export async function sendInitialResponse(callback?: HandlerCallback): Promise<void> {
   if (callback) {
     const responseContent: Content = {
@@ -233,7 +219,6 @@ export async function sendInitialResponse(callback?: HandlerCallback): Promise<v
     await callback(responseContent);
   }
 }
-
 function createAnalysisPrompt(
   uri: string,
   userMessage: string,
@@ -250,13 +235,11 @@ function createAnalysisPrompt(
       resourceMeta,
     },
   };
-
   return composePromptFromState({
     state: enhancedState,
     template: resourceAnalysisTemplate,
   });
 }
-
 function createReasoningPrompt(
   state: State,
   mcpProvider: McpProviderArg,
@@ -280,7 +263,6 @@ function createReasoningPrompt(
       toolErrored,
     },
   };
-
   return composePromptFromState({
     state: enhancedState,
     template: toolReasoningTemplate,

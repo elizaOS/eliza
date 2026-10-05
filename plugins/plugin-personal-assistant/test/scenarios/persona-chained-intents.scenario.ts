@@ -1,6 +1,6 @@
 // Defines the persona chained intents LifeOps scenario-runner spec.
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 import {
   localWeekdayHourMinute,
   personaDentistFinalChecks,
@@ -101,7 +101,7 @@ export default scenario({
   tags: ["lifeops", "tasks", "persona", "robustness", "multi-intent"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

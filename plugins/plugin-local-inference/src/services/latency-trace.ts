@@ -25,7 +25,7 @@
  *   - `peer-utterance-end`       — (DUET ONLY) the producing agent's
  *                                   scheduler drained its last PCM chunk into
  *                                   the cross ring — the headline `t0` for a
- *                                   two-agents-talking run (`voice-duet.mjs`).
+ *                                   two-agents-talking run (`voice-duet.ts`).
  *                                   Not recorded in the single-agent path.
  *   - `vad-trigger`              — `VadDetector` energy-rise edge / the
  *                                   turn controller's wake instant.

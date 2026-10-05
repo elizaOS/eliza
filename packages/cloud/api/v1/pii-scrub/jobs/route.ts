@@ -1,27 +1,33 @@
 /** Handles v1 cloud API PII scrub job enqueue traffic with route-local auth expectations. */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { resolveCloudPiiScrubEscalationHandler } from "@elizaos/cloud-shared/lib/services/pii-scrub-executor";
 import {
   enqueuePiiScrubBatch,
+  PII_SCRUB_INSPECTION_SCOPES,
   PII_SCRUB_MAX_CONTENT_BYTES,
   PII_SCRUB_MAX_ITEMS_PER_JOB,
   PII_SCRUB_MAX_RULESET_VERSION_LENGTH,
   PiiScrubJobDataError,
   toPiiScrubJobDto,
-} from "@/lib/services/pii-scrub-jobs";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/pii-scrub-jobs";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const enqueueSchema = z.object({
   rulesetVersion: z.string().min(1).max(PII_SCRUB_MAX_RULESET_VERSION_LENGTH),
   stage: z.string().min(1).max(64).optional(),
+  inspectionScope: z.enum(PII_SCRUB_INSPECTION_SCOPES).optional(),
   items: z
     .array(
       z.object({
@@ -46,6 +52,8 @@ interface PiiScrubJobsRouteDependencies {
   requireUserOrApiKeyWithOrg: typeof requireUserOrApiKeyWithOrg;
   rateLimit: typeof rateLimit;
   enqueuePiiScrubBatch: typeof enqueuePiiScrubBatch;
+  /** True when the drain can inspect full content (server discovery). */
+  serverDiscoveryAvailable: () => boolean;
 }
 
 export function createPiiScrubJobsRoute(
@@ -55,6 +63,8 @@ export function createPiiScrubJobsRoute(
     requireUserOrApiKeyWithOrg,
     rateLimit,
     enqueuePiiScrubBatch,
+    serverDiscoveryAvailable: () =>
+      resolveCloudPiiScrubEscalationHandler() !== undefined,
     ...overrides,
   };
   const app = new Hono<AppEnv>();
@@ -69,11 +79,26 @@ export function createPiiScrubJobsRoute(
       }
       const rawBody = decodedRawBody.value;
       const body = enqueueSchema.parse(rawBody);
+      if (
+        body.inspectionScope === "server_discovery" &&
+        !dependencies.serverDiscoveryAvailable()
+      ) {
+        // Fail closed at the front door: without a discovery handler the
+        // drain could only quarantine these items after burning retries.
+        return jsonError(
+          c,
+          422,
+          "server_discovery inspection is not available on this deployment",
+          "validation_error",
+          { reason: "pii_scrub_server_discovery_unavailable" },
+        );
+      }
       const job = await dependencies.enqueuePiiScrubBatch({
         organizationId: user.organization_id,
         userId: user.id,
         rulesetVersion: body.rulesetVersion,
         stage: body.stage,
+        inspectionScope: body.inspectionScope,
         items: body.items,
       });
       return c.json({ success: true, job: toPiiScrubJobDto(job) }, 202);

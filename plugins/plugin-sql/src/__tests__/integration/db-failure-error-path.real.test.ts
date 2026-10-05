@@ -49,7 +49,9 @@ describe("DB adapter fail-fast error paths (real broken PGlite)", () => {
   let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    const setup = await createIsolatedTestDatabase("db-failure-error-path");
+    const setup = await createIsolatedTestDatabase("db-failure-error-path", [], {
+      postgresUrl: null,
+    });
     adapter = setup.adapter;
     cleanup = setup.cleanup;
   }, 60_000);

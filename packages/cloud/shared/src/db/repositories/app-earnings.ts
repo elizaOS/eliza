@@ -117,30 +117,6 @@ export class AppEarningsRepository {
   }
 
   /**
-   * Finds an earnings transaction by Stripe payment intent ID.
-   *
-   * Uses JSONB containment query for efficient lookup.
-   */
-  async findTransactionByPaymentIntent(
-    appId: string,
-    paymentIntentId: string,
-    transaction?: DbTransaction,
-  ): Promise<AppEarningsTransaction | undefined> {
-    const result = await (transaction ?? dbRead)
-      .select()
-      .from(appEarningsTransactions)
-      .where(
-        and(
-          eq(appEarningsTransactions.app_id, appId),
-          sql`${appEarningsTransactions.metadata} @> ${JSON.stringify({ stripePaymentIntentId: paymentIntentId })}::jsonb`,
-        ),
-      )
-      .limit(1);
-
-    return result[0];
-  }
-
-  /**
    * Finds an earnings transaction by idempotency key.
    *
    * Used for withdrawal deduplication when clients retry failed requests.

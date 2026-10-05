@@ -4,37 +4,52 @@
  */
 
 import { createHash } from "node:crypto";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  checkoutAmountUsdToCents,
+  ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
+} from "@elizaos/cloud-shared/billing";
+import { dbRead } from "@elizaos/cloud-shared/db/helpers";
+import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import {
+  failureResponse,
+  ValidationError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
+import {
+  moneyRateLimit,
+  RateLimitPresets,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  assertAllowedAbsoluteRedirectUrl,
+  getDefaultPlatformRedirectOrigins,
+} from "@elizaos/cloud-shared/lib/security/redirect-validation";
+import { stripeCheckoutOrdersService } from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import { stripeCustomerAuthorityService } from "@elizaos/cloud-shared/lib/services/stripe-customer-authority";
+import { usersService } from "@elizaos/cloud-shared/lib/services/users";
+import { requireStripe } from "@elizaos/cloud-shared/lib/stripe";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
-import { dbRead } from "@/db/helpers";
-import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
-import {
-  failureResponse,
-  ValidationError,
-} from "@/lib/api/cloud-worker-errors";
-import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import {
-  moneyRateLimit,
-  RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  assertAllowedAbsoluteRedirectUrl,
-  getDefaultPlatformRedirectOrigins,
-} from "@/lib/security/redirect-validation";
-import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
-import { stripeCustomerAuthorityService } from "@/lib/services/stripe-customer-authority";
-import { usersService } from "@/lib/services/users";
-import { requireStripe } from "@/lib/stripe";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CHECKOUT_RECONCILIATION_TIMEOUT_MS = 10_000;
 
-const checkoutAmountSchema = z.number().min(1).max(1000);
+// Bounds come from the canonical organization-credit checkout contract so the
+// enforced range and every advertised range cannot drift apart (#22963).
+const checkoutAmountSchema = z
+  .number()
+  .min(
+    ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd,
+    `amountUsd must be at least $${ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd}`,
+  )
+  .max(
+    ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd,
+    `amountUsd cannot exceed $${ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd}`,
+  );
 
 const CheckoutSchema = z
   .object({
@@ -128,8 +143,8 @@ app.post("/", async (c) => {
     type LineItem = NonNullable<
       Stripe.Checkout.SessionCreateParams["line_items"]
     >[number];
-    const chargeAmountCents = amount * 100;
-    if (!Number.isSafeInteger(chargeAmountCents)) {
+    const chargeAmountCents = checkoutAmountUsdToCents(amount);
+    if (chargeAmountCents === null) {
       throw ValidationError("Credits must resolve to exact cents");
     }
     const lineItems: LineItem[] = [

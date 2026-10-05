@@ -3,7 +3,8 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@elizaos/core")>()),
 	logger: { warn() {}, debug() {}, info() {}, error() {} },
 	readJsonBody: async () => null,
 	resolveStateDir: () => "/tmp",

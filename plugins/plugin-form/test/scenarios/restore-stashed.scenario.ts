@@ -18,7 +18,7 @@ import {
   formAction,
   saveSession,
 } from "@elizaos/plugin-form";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 const FORM = "FORM";
 const SCENARIO_ID = "form.restore-stashed";

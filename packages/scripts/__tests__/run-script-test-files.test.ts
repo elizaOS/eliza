@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 import {
   isSerialScriptTest,
   parseIsolatedScriptTestArgs,
-} from "../run-script-test-files.mjs";
+} from "../run-script-test-files.ts";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-const driver = path.resolve(scriptDirectory, "..", "run-script-test-files.mjs");
+const driver = path.resolve(scriptDirectory, "..", "run-script-test-files.ts");
 const testFile = "packages/scripts/example.test.ts";
 
 function parse(...options: string[]) {
@@ -83,6 +83,8 @@ describe("isolated script-test runner arguments", () => {
     expect(result.stderr).toContain(
       `[script-tests] failed: ${missingTestFile}`,
     );
+    expect(result.stderr).not.toContain("files were searched");
+    expect(result.stderr).not.toContain("filters did not match");
   });
 });
 

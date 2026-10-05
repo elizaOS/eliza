@@ -85,6 +85,31 @@ describe("convertMarkdownToTelegram", () => {
     );
   });
 
+  it("renders a bold heading as a single bold span (#30735)", () => {
+    // Bold inside a heading collided with the heading's own bold wrap and
+    // resolved to `**Summary**`, the sequence Telegram rejects (HTTP 400,
+    // "can't find end of bold entity"), or to a mis-nested `**Bold* header*`.
+    expect(convertMarkdownToTelegram("# **Summary**")).toBe("*Summary*");
+    expect(convertMarkdownToTelegram("## **Bold** header")).toBe(
+      "*Bold header*",
+    );
+    expect(convertMarkdownToTelegram("### a **b** and **c** d")).toBe(
+      "*a b and c d*",
+    );
+  });
+
+  it("keeps escaping and other nested tokens inside a bold heading", () => {
+    const out = convertMarkdownToTelegram("# **Step 1.** run `bun test` _now_");
+    expect(out).toBe("*Step 1\\. run `bun test` _now_*");
+    expect(out).not.toContain("\u0000");
+  });
+
+  it("leaves bold outside headings unchanged", () => {
+    expect(convertMarkdownToTelegram("# Title\n**bold** body")).toBe(
+      "*Title*\n*bold* body",
+    );
+  });
+
   it("drops empty headings without consuming the following line", () => {
     expect(convertMarkdownToTelegram("# ")).toBe("");
     expect(convertMarkdownToTelegram("######\t")).toBe("");
@@ -179,6 +204,30 @@ describe("convertToTelegramButtons", () => {
   it("returns [] for null/undefined", () => {
     expect(convertToTelegramButtons(null)).toEqual([]);
     expect(convertToTelegramButtons(undefined)).toEqual([]);
+  });
+});
+
+describe("convertMarkdownToTelegram — sentinel forgery", () => {
+  const NUL = String.fromCharCode(0);
+  const sentinel = (index: number) => `${NUL}${index}${NUL}`;
+
+  it("does not resolve an out-of-range sentinel to the word undefined", () => {
+    const out = convertMarkdownToTelegram(`hello ${sentinel(9999)} world`);
+    expect(out).not.toContain("undefined");
+    expect(out).not.toContain(NUL);
+  });
+
+  it("does not let incoming text forge a stored replacement", () => {
+    const out = convertMarkdownToTelegram(`\`secret\` then ${sentinel(0)}`);
+    // The code span must appear once — where the author wrote it.
+    expect(out.match(/secret/g)).toHaveLength(1);
+    expect(out).not.toContain(NUL);
+  });
+
+  it("still resolves its own nested sentinels", () => {
+    expect(convertMarkdownToTelegram("**bold** and `code`")).toBe(
+      "*bold* and `code`",
+    );
   });
 });
 

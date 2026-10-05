@@ -41,23 +41,22 @@
  * two-party owner DM that is the owner alone, which is byte-equivalent to what
  * `decisionFromAudience` allows (see the parity tests).
  */
+
 import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience";
-import type {
-	AccessContext,
-	DisclosureSubject,
-	MemoryScope,
-	UUID,
-} from "../types";
+import type { AccessContext } from "../types/access-context.js";
+import type { DisclosureSubject } from "../types/memory.js";
+import type { UUID } from "../types/primitives.js";
 import type {
 	ArtifactDisclosure,
 	ArtifactDisclosureRecord,
 } from "./artifact-disclosure";
 import { resolveArtifactDisclosure } from "./artifact-disclosure";
+import { isMemoryScope } from "./memory-scope.js";
 
 // The subject shape lives in the types layer so the `DisclosureGate` contract
 // (also in the types layer) can reference it without a barrel cycle. Re-export
 // it here so this module's original public surface is unchanged.
-export type { DisclosureSubject } from "../types";
+export type { DisclosureSubject } from "../types/memory.js";
 
 /**
  * The universal disclosure level. Deliberately the SAME type as the artifact
@@ -95,21 +94,6 @@ const EMPTY_UUIDS: readonly UUID[] = Object.freeze([]);
 
 function isDisclosureLevel(value: unknown): value is DisclosureLevel {
 	return value === "full" || value === "redacted" || value === "none";
-}
-
-function isMemoryScope(value: unknown): value is MemoryScope {
-	switch (value) {
-		case "shared":
-		case "private":
-		case "room":
-		case "global":
-		case "owner-private":
-		case "user-private":
-		case "agent-private":
-			return true;
-		default:
-			return false;
-	}
 }
 
 /** The lower of two disclosure levels (none < redacted < full). */

@@ -2,6 +2,15 @@
  * Mints opaque, short-lived native R2 read capabilities after a durable
  * provider-success receipt and exact server-priced settlement.
  */
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { storageOperationPriceUsd } from "@elizaos/cloud-shared/lib/constants/pricing";
+import {
+  executeNativeStoragePresign,
+  NativeStorageReadError,
+} from "@elizaos/cloud-shared/lib/services/storage/native-storage-read";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
@@ -10,14 +19,6 @@ import {
   StorageReadCapabilityConfigurationError,
   validateStorageReadCapabilityConfiguration,
 } from "@/api-app/storage-read-capability";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
-import {
-  executeNativeStoragePresign,
-  NativeStorageReadError,
-} from "@/lib/services/storage/native-storage-read";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const requestSchema = z.object({
   operation: z.literal("get"),
@@ -74,13 +75,14 @@ app.post("/", async (c) => {
       c.env.STORAGE_READ_SIGNING_SECRETS,
       c.env.R2_PUBLIC_HOST,
     );
+    const priceUsd = storageOperationPriceUsd("presign");
     const result = await executeNativeStoragePresign({
       bucket: c.env.BLOB,
       organizationId: user.organization_id,
       userId: user.id,
       logicalKey,
       rawIdempotencyKey: c.req.header("Idempotency-Key") ?? "",
-      priceUsd: await getServiceMethodCost("storage", "presign"),
+      priceUsd,
       capabilityHost,
       ttlSeconds: parsed.data.expiresIn,
     });
@@ -120,7 +122,7 @@ app.post("/", async (c) => {
         return c.json(
           {
             error: "Insufficient credits",
-            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+            topUpUrl: "https://cloud.eliza.app/cloud/billing",
           },
           402,
         );

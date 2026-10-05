@@ -512,6 +512,9 @@ describe("HealthDomain connector lifecycle and summaries", () => {
     await expect(
       domain.getHealthSummary({ startDate: "yesterday" }),
     ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      domain.getHealthSummary({ startDate: "2026-02-30" }),
+    ).rejects.toMatchObject({ status: 400 });
     await expect(domain.getHealthSummary({ days: -3 })).rejects.toMatchObject({
       status: 400,
     });
@@ -569,17 +572,22 @@ describe("HealthDomain connector lifecycle and summaries", () => {
     const domain = makeDomain({});
 
     await expect(
-      domain.getHealthDailySummary("2026-07-10"),
+      domain.getHealthDailySummary("2026-07-10", { timeZone: "UTC" }),
     ).rejects.toMatchObject({ status: 503 });
-    await expect(domain.getHealthTrend(7)).rejects.toMatchObject({
+    await expect(
+      domain.getHealthTrend(7, { timeZone: "UTC" }),
+    ).rejects.toMatchObject({
       status: 503,
     });
     await expect(
-      domain.getHealthDataPoints({
-        metric: "steps",
-        startAt: "2026-07-09T00:00:00.000Z",
-        endAt: "2026-07-10T00:00:00.000Z",
-      }),
+      domain.getHealthDataPoints(
+        {
+          metric: "steps",
+          startAt: "2026-07-09T00:00:00.000Z",
+          endAt: "2026-07-10T00:00:00.000Z",
+        },
+        { timeZone: "UTC" },
+      ),
     ).rejects.toMatchObject({ status: 503 });
   });
 });

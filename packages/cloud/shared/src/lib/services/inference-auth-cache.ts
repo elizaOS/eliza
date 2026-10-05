@@ -53,6 +53,19 @@ export interface InferenceAdmissionSnapshot {
     standardRpm: number;
     strictRpm: number;
   };
+  /**
+   * Payment-reversal hold state read under the publishing policy lock. Only an
+   * explicit `false` lets the snapshot admission lane skip the primary read.
+   */
+  billingHold?: boolean;
+  /**
+   * Subscriber funding capacity (purchased credit plus spendable allowance) at
+   * the same balance revision, published for subscription-funded orgs.
+   */
+  funding?: {
+    balanceUsd: number;
+    balanceRevision: string;
+  };
 }
 
 /**
@@ -152,7 +165,16 @@ export function isInferenceAdmissionSnapshot(value: unknown): value is Inference
     Number.isSafeInteger(rateLimits?.standardRpm) &&
     (rateLimits?.standardRpm ?? 0) > 0 &&
     Number.isSafeInteger(rateLimits?.strictRpm) &&
-    (rateLimits?.strictRpm ?? 0) > 0
+    (rateLimits?.strictRpm ?? 0) > 0 &&
+    (candidate.billingHold === undefined || typeof candidate.billingHold === "boolean") &&
+    (candidate.funding === undefined ||
+      (typeof candidate.funding === "object" &&
+        candidate.funding !== null &&
+        typeof candidate.funding.balanceUsd === "number" &&
+        Number.isFinite(candidate.funding.balanceUsd) &&
+        candidate.funding.balanceUsd >= 0 &&
+        typeof candidate.funding.balanceRevision === "string" &&
+        /^(0|[1-9]\d*)$/.test(candidate.funding.balanceRevision)))
   );
 }
 
@@ -334,6 +356,19 @@ async function cachedPolicyIsCurrent(
   snapshot: InferenceAdmissionSnapshot | undefined,
 ): Promise<boolean> {
   if (!isInferenceAdmissionSnapshot(snapshot)) return false;
+  const { isSnapshotAdmissionEnabled } = await import("./inference-billing-deferred");
+  if (isSnapshotAdmissionEnabled()) {
+    // Snapshot admission keeps the primary off the warm path. The organization
+    // Durable Object fences the embedded policy generation at lease and
+    // dispatch; here a newer published organization projection only retires
+    // this entry early so it re-authorizes instead of failing at the gate.
+    const { peekInferenceAdmissionSnapshot } = await import("./inference-admission-snapshot");
+    const published = await peekInferenceAdmissionSnapshot(orgId);
+    return (
+      published === null ||
+      BigInt(published.authority.generation) <= BigInt(snapshot.authority.generation)
+    );
+  }
   try {
     const { readOrganizationQuotaPolicy, requireOrganizationRateTier } = await import(
       "./organization-quota-policy"
@@ -407,11 +442,14 @@ export async function writeInferenceAuthContext(
   if (!isInferenceAdmissionSnapshot(ctx.admission))
     throw new Error("Authorized inference cache entry requires current policy");
   const { withOrganizationPolicyAdmission } = await import("./organization-policy-admission");
-  const { inferenceAdmissionSnapshotFromPolicy } = await import("./inference-admission-snapshot");
-  return withOrganizationPolicyAdmission(ctx.orgId, ctx.admission.authority, async (policy) => {
+  const { inferenceAdmissionSnapshotInTransaction, publishInferenceAdmissionSnapshotToGate } =
+    await import("./inference-admission-snapshot");
+  return withOrganizationPolicyAdmission(ctx.orgId, ctx.admission.authority, async (policy, tx) => {
+    const admission = await inferenceAdmissionSnapshotInTransaction(tx, ctx.orgId, policy);
+    await publishInferenceAdmissionSnapshotToGate(ctx.orgId, admission);
     return await cache.setWithOutcome(
       CacheKeys.inference.authContext(ctx.keyHash),
-      { ...ctx, admission: inferenceAdmissionSnapshotFromPolicy(policy) },
+      { ...ctx, admission },
       CacheTTL.inference.authContext,
       { keyClass: "inference_auth" },
     );
@@ -485,14 +523,17 @@ export async function writeInferenceSessionAuthDecision(
     if (!isInferenceAdmissionSnapshot(decision.admission))
       throw new Error("Authorized session cache entry requires current policy");
     const { withOrganizationPolicyAdmission } = await import("./organization-policy-admission");
-    const { inferenceAdmissionSnapshotFromPolicy } = await import("./inference-admission-snapshot");
+    const { inferenceAdmissionSnapshotInTransaction, publishInferenceAdmissionSnapshotToGate } =
+      await import("./inference-admission-snapshot");
     return withOrganizationPolicyAdmission(
       decision.orgId,
       decision.admission.authority,
-      async (policy) => {
+      async (policy, tx) => {
+        const admission = await inferenceAdmissionSnapshotInTransaction(tx, decision.orgId, policy);
+        await publishInferenceAdmissionSnapshotToGate(decision.orgId, admission);
         return cache.setWithOutcome(
           CacheKeys.inference.sessionAuthContext(hashStewardUserId(decision.stewardUserId)),
-          { ...decision, admission: inferenceAdmissionSnapshotFromPolicy(policy) },
+          { ...decision, admission },
           CacheTTL.inference.authContext,
           { keyClass: "inference_auth" },
         );
@@ -627,6 +668,9 @@ export async function writeOrgBalanceHint(
     hint,
     CacheTTL.inference.orgBalanceStale,
   );
+  // With no cache backend configured there is no projection to seed, matching
+  // `delConfirmed`; a configured backend that did not confirm still fails closed.
+  if (outcome.kind === "unavailable" && !cache.isBackendConfigured()) return;
   if (outcome.kind !== "written") {
     throw new Error(`Organization balance hint write was not confirmed: ${outcome.kind}`);
   }

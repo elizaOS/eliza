@@ -5,23 +5,28 @@
  * recipient, token, and amount on-chain before issuing org credits.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-shared/billing";
 import {
   moneyRateLimit,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   type DirectWalletNetwork,
   directWalletPaymentsService,
-} from "@/lib/services/direct-wallet-payments";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/direct-wallet-payments";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const createSchema = z.object({
-  amount: z.number().min(1).max(10000),
+  amount: z
+    .number()
+    .min(ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd)
+    .max(ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd),
   network: z.enum(["base", "bsc", "solana"]),
   payerAddress: z.string().min(1),
   // BSC supports multiple tokens (BNB native, USDT, U). Other networks ignore
@@ -45,8 +50,12 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     // Credits land on `organization_id` from the authenticated session; the
     // actual paying wallet is recorded from the verified transaction.
 
-    const body = await c.req.json();
-    const validation = createSchema.safeParse(body);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const validation = createSchema.safeParse(decodedBody.value);
     if (!validation.success) {
       return c.json(
         {

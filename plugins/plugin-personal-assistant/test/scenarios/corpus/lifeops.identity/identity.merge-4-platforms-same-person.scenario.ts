@@ -5,8 +5,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -18,7 +18,7 @@ export default scenario({
     "Stress test: 4 handles on 4 platforms for one person. Merge must preserve every handle, pick a canonical display name, and store the platform-of-origin per handle.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

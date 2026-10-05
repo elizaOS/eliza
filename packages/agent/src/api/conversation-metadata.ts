@@ -9,8 +9,13 @@
  * out (optionally pinned to a conversation id), and classify a scope as
  * automation- or page-scoped.
  */
-import type { JsonValue, Room } from "@elizaos/core";
-import { asNonEmptyString, asRecord } from "@elizaos/shared";
+import {
+  asNonEmptyString,
+  asObjectRecord as asRecord,
+  type JsonValue,
+  type Room,
+} from "@elizaos/core";
+
 import type {
   ConversationMeta,
   ConversationMetadata,

@@ -1,3 +1,4 @@
+import { isCapacitorNativeRuntime as isNativeRuntime } from "../platform/native-probe";
 /**
  * useAgentSessionRecovery, bridges the unauthenticated auth state (#15132) to
  * a transparent re-pair instead of the password-wall dead-end.
@@ -18,12 +19,12 @@
  * owner-password wall.
  */
 
-import { logger } from "@elizaos/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";
 import { persistCloudPairApiToken } from "../components/auth/CloudPairRelay";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
+import { logger } from "../logger.ts";
 import { persistActiveServerCredential } from "../state/active-server-credential";
 import {
   type AgentSessionUnauthReason,
@@ -87,18 +88,6 @@ function defaultNavigate(url: string): void {
  * (`/api/auth/pair/native`) authenticates with the Cloud session the browser
  * already holds, so the app hosts can redeem it directly and stay same-origin.
  */
-function isNativeRuntime(): boolean {
-  try {
-    const cap = (globalThis as Record<string, unknown>).Capacitor as
-      | { isNativePlatform?: () => boolean }
-      | undefined;
-    return Boolean(cap?.isNativePlatform?.());
-  } catch {
-    // error-policy:J4 an unavailable native bridge means browser-style
-    // navigation remains the compatible fallback.
-    return false;
-  }
-}
 
 function shouldConsumePairRedirectInProcess(): boolean {
   return isNativeRuntime() || isAppModeHost();
@@ -270,7 +259,7 @@ export function useAgentSessionRecovery(
         clearStalePairCredentials: () =>
           clearStalePairCredentialsForAgent(decision.agentId),
         commitPairedInProcess: async (apiToken) => {
-          const { client } = await import("../api");
+          const { client } = await import("../api/client");
           if (!isRecoveryTargetCurrent()) {
             recoveryAbortController.abort();
             throw new Error(

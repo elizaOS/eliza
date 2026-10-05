@@ -5,7 +5,8 @@
  */
 
 import { ElizaError } from "../errors";
-import type { ConnectorAccountJsonObject, JsonValue } from "../types";
+import type { ConnectorAccountJsonObject } from "../types/database.js";
+import type { JsonValue } from "../types/primitives.js";
 
 export const CONNECTOR_JSON_UNBOUNDED = "CONNECTOR_JSON_UNBOUNDED";
 export const CONNECTOR_JSON_BOUNDED = "[BOUNDED]";

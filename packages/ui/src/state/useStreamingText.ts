@@ -26,22 +26,23 @@
  * stay as direct `setConversationMessages` calls.
  */
 
-import type { CapabilityHandoffRequest } from "@elizaos/shared";
-import type { Dispatch, SetStateAction } from "react";
 import type {
-  AccountConnectRequest,
   ChatFailureKind,
   ChatTerminalFailure,
   ChatToolCallEvent,
+} from "@elizaos/contracts";
+
+import type { CapabilityHandoffRequest } from "@elizaos/core/protocol";
+import type { Dispatch, SetStateAction } from "react";
+import type {
+  AccountConnectRequest,
   ConversationMessage,
-} from "../api";
+} from "../api/client-types-chat";
 import { mergeChatToolEvent } from "../components/tool-events/chat-tool-events";
 import { mergeStreamingText } from "./parsers";
-
 export type StreamingTextSetter = Dispatch<
   SetStateAction<ConversationMessage[]>
 >;
-
 /**
  * One streaming-text mutation against a single in-flight assistant turn.
  *
@@ -78,6 +79,7 @@ export type StreamingTextModification =
       failureKind?: ChatFailureKind;
       /** Authoritative terminal failure details from the runtime. */
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
       /**
        * Optional structured "connect another account" request to stamp on the
        * completed turn so the renderer can swap in the AccountConnectBlock.
@@ -91,6 +93,8 @@ export type StreamingTextModification =
       assistantEphemeral?: boolean;
       /** Persisted server id replacing the optimistic temp-resp-* stream id. */
       persistedMessageId?: string;
+      /** Server-confirmed user turn that owns this reply, including ephemeral failures. */
+      replyToMessageId?: string;
     }
   | {
       messageId: string;
@@ -112,6 +116,7 @@ export type StreamingTextModification =
       failureKind: ChatFailureKind;
       /** Authoritative terminal failure details from the runtime. */
       terminalFailure?: ChatTerminalFailure;
+      replyRecoveryAvailable?: boolean;
     }
   | {
       messageId: string;
@@ -121,7 +126,6 @@ export type StreamingTextModification =
       messageId: string;
       mode: "drop";
     };
-
 /**
  * Stamp or clear the `provisional` marker (action-callback text the final
  * reply may replace — held back from voice output). The latest frame is
@@ -139,7 +143,6 @@ function withProvisional(
   if (message.provisional !== undefined) delete message.provisional;
   return message;
 }
-
 /**
  * Compute the patched message for a single modification, or return `null`
  * if the modification produces no observable change.
@@ -189,16 +192,21 @@ function computeNextMessage(
       const sameId =
         mod.persistedMessageId === undefined ||
         message.id === mod.persistedMessageId;
+      const sameReplyTo =
+        mod.replyToMessageId === undefined ||
+        message.replyToMessageId === mod.replyToMessageId;
       if (
         sameText &&
         sameInterruption &&
         sameFailure &&
         sameTerminalFailure &&
+        message.replyRecoveryAvailable === mod.replyRecoveryAvailable &&
         sameAccountConnect &&
         sameCapabilityHandoff &&
         sameReasoning &&
         sameAssistantEphemeral &&
         sameId &&
+        sameReplyTo &&
         message.provisional === undefined
       ) {
         return null;
@@ -207,6 +215,9 @@ function computeNextMessage(
         {
           ...message,
           ...(mod.persistedMessageId ? { id: mod.persistedMessageId } : {}),
+          ...(mod.replyToMessageId
+            ? { replyToMessageId: mod.replyToMessageId }
+            : {}),
           text: mod.fullText,
         },
         // Terminal text is no longer provisional; interruption remains a
@@ -227,6 +238,11 @@ function computeNextMessage(
         next.terminalFailure = mod.terminalFailure;
       } else if (message.terminalFailure !== undefined) {
         delete next.terminalFailure;
+      }
+      if (mod.replyRecoveryAvailable === true) {
+        next.replyRecoveryAvailable = true;
+      } else {
+        delete next.replyRecoveryAvailable;
       }
       if (mod.accountConnect) {
         next.accountConnect = mod.accountConnect;
@@ -263,12 +279,14 @@ function computeNextMessage(
     case "fail": {
       if (
         message.failureKind === mod.failureKind &&
-        message.terminalFailure === mod.terminalFailure
+        message.terminalFailure === mod.terminalFailure &&
+        message.replyRecoveryAvailable === mod.replyRecoveryAvailable
       )
         return null;
       return {
         ...message,
         failureKind: mod.failureKind,
+        replyRecoveryAvailable: mod.replyRecoveryAvailable,
         ...(mod.terminalFailure
           ? { terminalFailure: mod.terminalFailure }
           : {}),
@@ -285,7 +303,6 @@ function computeNextMessage(
       return message;
   }
 }
-
 /**
  * Apply one streaming-text modification to the chat-message reducer.
  *
@@ -301,7 +318,6 @@ export function applyStreamingTextModification(
       const filtered = prev.filter((message) => message.id !== mod.messageId);
       return filtered.length === prev.length ? prev : filtered;
     }
-
     let changed = false;
     let next = prev.map((message) => {
       if (message.id !== mod.messageId) return message;

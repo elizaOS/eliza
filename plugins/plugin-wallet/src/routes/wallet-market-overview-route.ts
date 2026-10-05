@@ -3,14 +3,21 @@
  * price snapshots and top movers from CoinGecko plus highlighted Polymarket
  * predictions, normalized into `WalletMarketOverviewResponse` and merged into
  * per-source `WalletMarketOverviewSource` status (available/stale/error) so
- * the client can render partial data gracefully. Falls back to a cloud
- * preview endpoint (`resolveCloudApiBaseUrl`) when direct upstream calls are
- * unavailable, caches successful responses for `MARKET_OVERVIEW_CACHE_TTL_MS`
+ * the client can render partial data gracefully. Uses the cloud preview
+ * endpoint (`resolveCloudApiBaseUrl`) first, then fills unavailable price/mover
+ * sources from direct CoinGecko feeds. Caches successful responses for
+ * `MARKET_OVERVIEW_CACHE_TTL_MS`
  * and serves stale-but-cached data on upstream failure, and rate-limits
  * refreshes per client address via `consumeRefreshSlot`.
  */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import type {
+  WalletMarketOverviewResponse,
+  WalletMarketOverviewSource,
+  WalletMarketPrediction,
+} from "../contracts.js";
 import {
   buildCoinGeckoMarketsUrl,
   buildMarketMovers,
@@ -19,13 +26,7 @@ import {
   type CoinGeckoMarketRecord,
   POLYMARKET_MARKET_PROVIDER,
   parseCoinGeckoMarkets,
-  resolveCloudApiBaseUrl,
-} from "@elizaos/shared";
-import type {
-  WalletMarketOverviewResponse,
-  WalletMarketOverviewSource,
-  WalletMarketPrediction,
-} from "../contracts.js";
+} from "../lib/market-overview.js";
 
 const MARKET_OVERVIEW_PATH = "/api/wallet/market-overview";
 const CLOUD_MARKET_OVERVIEW_PREVIEW_PATH = "/market/preview/wallet-overview";
@@ -480,19 +481,44 @@ async function buildWalletMarketOverview(
       );
     }
 
-    return {
-      ...cloudPreviewResult.value,
-      sources: {
-        ...cloudPreviewResult.value.sources,
-        predictions: buildMarketOverviewSource(POLYMARKET_MARKET_PROVIDER, {
-          available: polymarketError === null,
+    const cloud = cloudPreviewResult.value;
+    const response = { ...cloud, sources: { ...cloud.sources } };
+    if (!cloud.sources.prices.available || !cloud.sources.movers.available) {
+      try {
+        const markets = await fetchCoinGeckoMarkets();
+        const source = buildMarketOverviewSource(COINGECKO_MARKET_PROVIDER, {
+          available: true,
           stale: false,
-          error: polymarketError,
-        }),
-      },
-      predictions:
-        polymarketError === null ? buildPredictions(polymarketMarkets) : [],
-    };
+          error: null,
+        });
+        if (!cloud.sources.prices.available) {
+          response.prices = buildMarketPriceSnapshots(markets);
+          response.sources.prices = source;
+        }
+        if (!cloud.sources.movers.available) {
+          response.movers = buildMarketMovers(markets);
+          response.sources.movers = source;
+        }
+      } catch (error) {
+        // error-policy:J4 Preserve the cloud's partial/stale data and source
+        // errors if the independently attempted direct feed is unavailable too.
+        logger.warn(
+          `[WalletMarketOverviewRoute] Direct CoinGecko fallback unavailable (${marketOverviewErrorMessage(error)})`,
+        );
+      }
+    }
+    if (polymarketError === null) {
+      response.predictions = buildPredictions(polymarketMarkets);
+      response.sources.predictions = buildMarketOverviewSource(
+        POLYMARKET_MARKET_PROVIDER,
+        {
+          available: true,
+          stale: false,
+          error: null,
+        },
+      );
+    }
+    return response;
   }
 
   {

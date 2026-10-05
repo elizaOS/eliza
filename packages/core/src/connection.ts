@@ -11,9 +11,10 @@
 import { worldMetadataValueEquals } from "./database/world-metadata-cas";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
-import type { Entity, JsonValue, Metadata, Room, UUID, World } from "./types";
-import { ChannelType } from "./types";
 import type { IDatabaseAdapter } from "./types/database";
+import type { Entity, Room, World } from "./types/environment.js";
+import type { JsonValue, Metadata, UUID } from "./types/primitives.js";
+import { ChannelType } from "./types/primitives.js";
 import { stringToUuid } from "./utils";
 
 /** Re-read + re-merge attempts for a world upsert that hits a stale revision. */

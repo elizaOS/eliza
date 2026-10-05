@@ -4,7 +4,7 @@
 Inputs:
 
   --id              VoiceModelId — must be one of the values in
-                    `packages/shared/src/local-inference/voice-models.ts`
+                    `plugins/plugin-native-inference/src/model-catalog/voice-model-versions.json`
                     (`speaker-encoder`, `diarizer`, `turn-detector`,
                     `voice-emotion`, `kokoro`, `omnivoice`, `vad`,
                     `wakeword`, `embedding`, `asr`).
@@ -27,8 +27,8 @@ Inputs:
   --changelog-entry First line of the matching H3 block in
                     `models/voice/CHANGELOG.md` (also written to the
                     CHANGELOG when --append-changelog is set).
-  --voice-models-ts Path to the registry module — defaults to
-                    `packages/shared/src/local-inference/voice-models.ts`.
+  --registry Path to the registry module — defaults to
+                    `plugins/plugin-native-inference/src/model-catalog/voice-model-versions.json`.
   --changelog-md    Path to the human-readable changelog — defaults to
                     `models/voice/CHANGELOG.md`.
   --append-changelog
@@ -65,8 +65,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("append_voice_model_version")
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_VOICE_MODELS_TS = (
-    REPO_ROOT / "packages" / "shared" / "src" / "local-inference" / "voice-models.ts"
+DEFAULT_VOICE_REGISTRY = (
+    REPO_ROOT / "plugins" / "plugin-native-inference" / "src" / "model-catalog" / "voice-model-versions.json"
 )
 DEFAULT_CHANGELOG_MD = REPO_ROOT / "models" / "voice" / "CHANGELOG.md"
 
@@ -77,14 +77,16 @@ KNOWN_VOICE_MODEL_IDS = (
     "turn-detector-intl",
     "voice-emotion",
     "kokoro",
-    "omnivoice",
-    "vad",
+        "vad",
     "wakeword",
     "embedding",
     "asr",
 )
 
 KNOWN_QUANTS = (
+    "q3_k_m",
+    "gguf-fp32",
+    "onnx-fp32",
     "q4_0",
     "q4_k_m",
     "q5_k_m",
@@ -141,119 +143,14 @@ class VoiceVersion:
     min_bundle_version: str
 
 
-def _format_asset_block(asset: Asset) -> str:
-    return (
-        "      {\n"
-        f"        filename: {json.dumps(asset.filename)},\n"
-        f"        sha256: {json.dumps(asset.sha256)},\n"
-        f"        sizeBytes: {asset.size_bytes},\n"
-        f"        quant: {json.dumps(asset.quant)},\n"
-        "      },"
-    )
 
 
-def _format_eval_deltas(eval_deltas: dict[str, object]) -> str:
-    # Preserve insertion order so the resulting file is stable on re-runs.
-    keys = [
-        "rtfDelta",
-        "werDelta",
-        "eerDelta",
-        "f1Delta",
-        "mosDelta",
-        "falseBargeInDelta",
-        "netImprovement",
-    ]
-    parts: list[str] = []
-    for k in keys:
-        if k in eval_deltas:
-            v = eval_deltas[k]
-            if isinstance(v, bool):
-                parts.append(f"{k}: {'true' if v else 'false'}")
-            elif isinstance(v, (int, float)):
-                parts.append(f"{k}: {v}")
-            else:
-                parts.append(f"{k}: {json.dumps(v)}")
-    return "{ " + ", ".join(parts) + " }"
 
 
-def _format_version_block(v: VoiceVersion) -> str:
-    assets_text = (
-        "[]"
-        if not v.assets
-        else "[\n" + "\n".join(_format_asset_block(a) for a in v.assets) + "\n    ]"
-    )
-    parent_line = (
-        f"    parentVersion: {json.dumps(v.parent_version)},\n"
-        if v.parent_version is not None
-        else ""
-    )
-    return (
-        "  {\n"
-        f"    id: {json.dumps(v.id)},\n"
-        f"    version: {json.dumps(v.version)},\n"
-        f"{parent_line}"
-        f"    publishedToHfAt: {json.dumps(v.published_at)},\n"
-        f"    hfRepo: {json.dumps(v.hf_repo)},\n"
-        f"    hfRevision: {json.dumps(v.hf_revision)},\n"
-        f"    ggufAssets: {assets_text},\n"
-        f"    evalDeltas: {_format_eval_deltas(v.eval_deltas)},\n"
-        f"    changelogEntry: {json.dumps(v.changelog_entry)},\n"
-        f"    minBundleVersion: {json.dumps(v.min_bundle_version)},\n"
-        "  },"
-    )
 
 
-def already_has_entry(ts_text: str, model_id: str, version: str) -> bool:
-    """Return True when `{ id: "<model_id>", version: "<version>", ... }`
-    already lives in `VOICE_MODEL_VERSIONS`. Match is structural and
-    tolerant of intervening lines / nested blocks (ggufAssets is a list
-    of inner `{}` objects, so we cannot rely on a flat `{...}` regex)."""
-    needle_id = re.compile(rf'\bid:\s*"{re.escape(model_id)}"')
-    needle_version = re.compile(rf'\bversion:\s*"{re.escape(version)}"')
-    # Walk every `id: "<model_id>"` occurrence and look forward for the
-    # matching `version: "<version>"` line within the same top-level
-    # VoiceVersion record. A record always begins with `id: "..."` and ends
-    # at the next sibling `},\n  {` (or at the closing `];` of the array).
-    # Forward scan is bounded by the next top-level record terminator.
-    record_terminator = re.compile(r"\},\s*\{", re.MULTILINE)
-    end_of_array = re.compile(r"\}\s*,?\s*\];", re.MULTILINE)
-    for m in needle_id.finditer(ts_text):
-        scan_start = m.end()
-        terminator = record_terminator.search(ts_text, scan_start)
-        end = end_of_array.search(ts_text, scan_start)
-        if end is None and terminator is None:
-            continue
-        if end is None:
-            scan_end = terminator.start()
-        elif terminator is None:
-            scan_end = end.start()
-        else:
-            scan_end = min(terminator.start(), end.start())
-        if needle_version.search(ts_text, scan_start, scan_end):
-            return True
-    return False
 
 
-def insert_into_voice_models_ts(
-    ts_text: str,
-    new_block: str,
-) -> str:
-    """Insert the new block at the top of `VOICE_MODEL_VERSIONS`."""
-    anchor = "export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = ["
-    idx = ts_text.find(anchor)
-    if idx == -1:
-        raise RuntimeError(
-            "VOICE_MODEL_VERSIONS anchor not found in voice-models.ts"
-        )
-    insert_at = idx + len(anchor)
-    # Walk past trailing whitespace and one newline so we land immediately
-    # before the first `{ id: …`.
-    while insert_at < len(ts_text) and ts_text[insert_at] in (" ", "\t", "\n"):
-        if ts_text[insert_at] == "\n":
-            insert_at += 1
-            break
-        insert_at += 1
-    return ts_text[:insert_at] + new_block + "\n" + ts_text[insert_at:]
 
 
 def append_to_changelog(
@@ -329,7 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mos-delta", type=float, default=None)
     p.add_argument("--false-bargein-delta", type=float, default=None)
     p.add_argument("--changelog-entry", required=True)
-    p.add_argument("--voice-models-ts", type=Path, default=DEFAULT_VOICE_MODELS_TS)
+    p.add_argument("--registry", type=Path, default=DEFAULT_VOICE_REGISTRY)
     p.add_argument("--changelog-md", type=Path, default=DEFAULT_CHANGELOG_MD)
     p.add_argument("--append-changelog", action="store_true")
     p.add_argument("--dry-run", action="store_true")
@@ -408,22 +305,35 @@ def main(argv: list[str] | None = None) -> int:
         min_bundle_version=args.min_bundle,
     )
 
-    ts_path = args.voice_models_ts.resolve()
+    ts_path = args.registry.resolve()
     if not ts_path.exists():
-        log.error("voice-models.ts not found at %s", ts_path)
+        log.error("voice-model-versions.json not found at %s", ts_path)
         return 2
-    ts_text = ts_path.read_text(encoding="utf-8")
+    versions = json.loads(ts_path.read_text(encoding="utf-8"))
+    if not isinstance(versions, list) or any(not isinstance(item, dict) for item in versions):
+        raise ValueError("Voice registry must be a JSON array of version objects")
 
-    if already_has_entry(ts_text, args.id, args.version):
+    if any(item.get("id") == args.id and item.get("version") == args.version for item in versions):
         log.info(
-            "voice-models.ts already contains %s @ %s — unchanged (idempotent)",
+            "voice-model-versions.json already contains %s @ %s — unchanged (idempotent)",
             args.id,
             args.version,
         )
         return 0
 
-    new_block = _format_version_block(new_version)
-    updated_ts = insert_into_voice_models_ts(ts_text, new_block)
+    entry = {
+        "id": new_version.id, "version": new_version.version,
+        "publishedToHfAt": new_version.published_at,
+        "hfRepo": new_version.hf_repo, "hfRevision": new_version.hf_revision,
+        "ggufAssets": [{"filename": asset.filename, "sha256": asset.sha256,
+                        "sizeBytes": asset.size_bytes, "quant": asset.quant} for asset in assets],
+        "evalDeltas": eval_deltas, "changelogEntry": args.changelog_entry,
+        "minBundleVersion": args.min_bundle,
+    }
+    if args.parent_version is not None:
+        entry["parentVersion"] = args.parent_version
+    new_block = json.dumps(entry, ensure_ascii=False, indent=2)
+    updated_ts = json.dumps([entry, *versions], ensure_ascii=False, indent=2) + "\n"
 
     md_path = args.changelog_md.resolve()
     updated_md: str | None = None

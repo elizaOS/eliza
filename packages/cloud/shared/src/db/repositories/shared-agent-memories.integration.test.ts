@@ -13,6 +13,7 @@ const CAN_USE_ISOLATED_PGLITE =
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
+import { identifyEmbeddingVector } from "@elizaos/core";
 import { pushSchema } from "drizzle-kit/api";
 import { sql } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../client";
@@ -451,6 +452,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       roomId: ROOM_A,
       type: "messages",
       content: { text: "exact match" },
+      embeddingModel: "test-encoder:cls:l2:3:tail-v1",
       embedding: [1, 0, 0],
     });
     await sharedAgentMemoriesWriter.insertMemory({
@@ -458,6 +460,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       roomId: ROOM_A,
       type: "messages",
       content: { text: "near match" },
+      embeddingModel: "test-encoder:cls:l2:3:tail-v1",
       embedding: [0.9, 0.1, 0],
     });
     await sharedAgentMemoriesWriter.insertMemory({
@@ -465,6 +468,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       roomId: ROOM_A,
       type: "messages",
       content: { text: "orthogonal" },
+      embeddingModel: "test-encoder:cls:l2:3:tail-v1",
       embedding: [0, 1, 0],
     });
     // Dimension mismatch: must be filtered out, not fail the whole query.
@@ -473,6 +477,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       roomId: ROOM_A,
       type: "messages",
       content: { text: "other model dims" },
+      embeddingModel: "test-encoder:cls:l2:3:tail-v1",
       embedding: [1, 0],
     });
     // Same vector in tenant B: a leak would rank first.
@@ -481,6 +486,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       roomId: ROOM_A,
       type: "messages",
       content: { text: "tenant B exact match" },
+      embeddingModel: "test-encoder:cls:l2:3:tail-v1",
       embedding: [1, 0, 0],
     });
     await sharedAgentMemoriesWriter.insertMemory({
@@ -488,6 +494,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       roomId: ROOM_B,
       type: "messages",
       content: { text: "other room exact match" },
+      embeddingModel: "test-encoder:cls:l2:3:tail-v1",
       embedding: [1, 0, 0],
     });
     await sharedAgentMemoriesWriter.insertMemory({
@@ -495,10 +502,27 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       roomId: null,
       type: "messages",
       content: { text: "legacy exact match" },
+      embeddingModel: "test-encoder:cls:l2:3:tail-v1",
       embedding: [1, 0, 0],
     });
 
-    const hits = await sharedAgentMemoriesReader.searchByEmbedding(scopeA, ROOM_A, [1, 0, 0], 5);
+    for (const embeddingModel of [null, "bge-small-en-v1.5", "other-encoder:cls:l2:3:tail-v1"]) {
+      await sharedAgentMemoriesWriter.insertMemory({
+        scope: scopeA,
+        roomId: ROOM_A,
+        type: "messages",
+        content: { text: `incompatible representation ${embeddingModel}` },
+        embedding: [1, 0, 0],
+        embeddingModel,
+      });
+    }
+
+    const hits = await sharedAgentMemoriesReader.searchByEmbedding(
+      scopeA,
+      ROOM_A,
+      identifyEmbeddingVector([1, 0, 0], "test-encoder:cls:l2:3:tail-v1"),
+      5,
+    );
     expect(hits.map((hit) => hit.content.text)).toEqual([
       "exact match",
       "near match",
@@ -513,10 +537,16 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
     const roomBHits = await sharedAgentMemoriesReader.searchByEmbedding(
       scopeA,
       ROOM_B,
-      [1, 0, 0],
+      identifyEmbeddingVector([1, 0, 0], "test-encoder:cls:l2:3:tail-v1"),
       5,
     );
     expect(roomBHits.map((hit) => hit.content.text)).toEqual(["other room exact match"]);
+  });
+
+  test("rejects a query without provider-verified identity", async () => {
+    await expect(
+      sharedAgentMemoriesReader.searchByEmbedding(scopeA, ROOM_A, [1, 0, 0], 5),
+    ).rejects.toMatchObject({ code: "EMBEDDING_SPACE_MISMATCH" });
   });
 
   test("returns an explicit empty result when the tenant has no embedded rows", async () => {
@@ -526,7 +556,12 @@ describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)",
       type: "messages",
       content: { text: "no embedding stored" },
     });
-    const hits = await sharedAgentMemoriesReader.searchByEmbedding(scopeA, ROOM_A, [1, 0, 0], 5);
+    const hits = await sharedAgentMemoriesReader.searchByEmbedding(
+      scopeA,
+      ROOM_A,
+      identifyEmbeddingVector([1, 0, 0], "test-encoder:cls:l2:3:tail-v1"),
+      5,
+    );
     expect(hits).toEqual([]);
   });
 });

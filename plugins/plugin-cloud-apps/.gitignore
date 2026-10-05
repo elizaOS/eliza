@@ -1,7 +1,0 @@
-dist
-node_modules
-.env
-.elizadb
-.turbo
-*.tsbuildinfo
-.DS_Store

@@ -18,8 +18,9 @@
  * mutated.
  */
 import { resolveCanonicalOwnerIdForMessage } from "../roles";
-import type { IAgentRuntime, Memory } from "../types";
 import type { RoleGateRole } from "../types/contexts";
+import type { Memory } from "../types/memory.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state";
 
 /**

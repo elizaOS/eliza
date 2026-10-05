@@ -6,12 +6,9 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { createConversation, req } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
-import {
-  createConversation,
-  req,
-} from "../../../packages/app-core/test/helpers/http.ts";
+import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
 import {
   type CapturedWireCall,
   type CerebrasWireCapture,

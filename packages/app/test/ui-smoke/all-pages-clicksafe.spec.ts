@@ -15,7 +15,10 @@ import {
   openSettingsSection,
   seedAppStorage,
 } from "./helpers";
-import { assertHeaderlessViewChrome } from "./helpers/view-header";
+import {
+  assertHeaderlessViewChrome,
+  clickViewBackControl,
+} from "./helpers/view-header";
 
 type ReadyCheck =
   | { selector: string; text?: never }
@@ -215,15 +218,13 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   },
   {
     name: "rolodex",
-    path: "/rolodex",
-    // Rolodex is a retired built-in route whose launcher entry canonicalizes
-    // to Relationships. Its retained deep link must remain a visible,
-    // recoverable unavailable state instead of presenting a healthy launcher.
-    readyChecks: [
-      {
-        selector: '[data-view-status="unavailable"][data-view-id="rolodex"]',
-      },
-    ],
+    path: "/apps/relationships",
+    // Rolodex is a legacy path of Relationships (`rolodex: { aliasOf:
+    // "relationships" }` in builtin-route-descriptors.ts): the retained deep
+    // link must land on the canonical Relationships route, not on an
+    // unavailable state or a healthy launcher.
+    expectedUrl: /\/apps\/relationships$/,
+    readyChecks: [{ selector: '[data-testid="relationships-view"]' }],
     timeoutMs: 60_000,
   },
   {
@@ -340,16 +341,6 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     // gracefully (#root present, no crash) rather than the Android camera UI.
     name: "camera deep link",
     path: "/camera",
-    readyChecks: [{ selector: "#root" }],
-    timeoutMs: 60_000,
-  },
-  {
-    // /pendant/transcript renders the realtime pendant transcription view
-    // (#15806). Without a paired pendant the view shows its designed
-    // disconnected state; like the device deep links above, the sweep proves
-    // the shell renders it without crashing.
-    name: "pendant transcript deep link",
-    path: "/pendant/transcript",
     readyChecks: [{ selector: "#root" }],
     timeoutMs: 60_000,
   },
@@ -1063,4 +1054,26 @@ test("browser history returns from Wallet to the launcher without crashing", asy
     launcher.mode ?? "any",
   );
   await expectNoPageIssues(issues, "wallet browser back");
+});
+
+test("mobile Settings back control returns to the settings hub without crashing", async ({
+  page,
+}) => {
+  const issues = installPageIssueGuards(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await probeRoute(page, coreRouteProbe("settings"));
+  const hub = page.getByTestId("settings-hub-list");
+  await expect(hub).toBeVisible();
+  await hub.getByRole("button", { name: "Voice", exact: true }).click();
+  await expect(hub).toHaveCount(0);
+  await clickViewBackControl(page, {
+    name: "Back to Settings",
+    within: '[data-testid="settings-shell"]',
+    requireTapTarget: true,
+    destination: page.getByTestId("settings-hub-list"),
+  });
+  await expect(
+    page.getByRole("button", { name: "Back to Settings", exact: true }),
+  ).toHaveCount(0);
+  await expectNoPageIssues(issues, "mobile settings back navigation");
 });

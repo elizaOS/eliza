@@ -3,7 +3,7 @@
  * suites the default config excludes — the focused `memory-text-contains`
  * adapter coverage plus the `memory-keyword-search` scale test. These
  * exercise a real SQL store: PGlite by default, or a live Postgres via
- * `POSTGRES_URL`. No `run-all-tests.mjs` lane runs this config; invoke it on
+ * `POSTGRES_URL`. No `run-all-tests.ts` lane runs this config; invoke it on
  * demand via `bun run test:real:files`, after building `@elizaos/core` (this
  * config uses normal workspace resolution rather than aliasing core to its
  * TS source).

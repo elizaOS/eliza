@@ -6,9 +6,14 @@
  * can't afford.
  */
 
+import Decimal from "decimal.js";
 import { calculateCost, getProviderFromModel } from "../pricing";
 import { agentBudgetService } from "../services/agent-budgets";
-import { creditsService } from "../services/credits";
+import { readAgentFundingAccount } from "../services/agent-funding-account";
+import {
+  deductAllowanceEligibleCredits,
+  isAllowanceFirstOrganization,
+} from "../services/allowance-first-credits";
 import { organizationsService } from "../services/organizations";
 import { logger } from "./logger";
 
@@ -26,6 +31,8 @@ export interface BillingContext {
   description: string;
 
   // Operation metadata
+  /** Retry-stable identity; subscription funding replays a repeated id instead of charging twice. */
+  operationId?: string;
   operationType?: string;
   model?: string;
 }
@@ -130,7 +137,17 @@ export async function preCheckBilling(context: BillingContext): Promise<PreBillR
     };
   }
 
-  const balance = Number(org.credit_balance);
+  let balance = Number(org.credit_balance);
+  if (balance < estimatedCost && (await isAllowanceFirstOrganization(organizationId))) {
+    // A subscriber's spendable allowance funds agent operations before
+    // purchased credit, so it counts toward admission.
+    const account = await readAgentFundingAccount(organizationId);
+    if (account) {
+      balance = new Decimal(account.credit_balance)
+        .plus(account.eligible_subscription_allowance)
+        .toNumber();
+    }
+  }
 
   if (balance < estimatedCost) {
     return {
@@ -192,8 +209,9 @@ export async function postBillOperation(
     };
   }
 
-  // Deduct from org credits
-  const result = await creditsService.deductCredits({
+  // Subscribers fund agent operations allowance-first, then from purchased
+  // credit; every other organization keeps its purchased-credit debit.
+  const result = await deductAllowanceEligibleCredits("managed_agent_compute", {
     organizationId: context.organizationId,
     amount: cost,
     description: context.description,
@@ -202,13 +220,21 @@ export async function postBillOperation(
       operation_type: context.operationType,
       model: context.model,
     },
+    operationKey: {
+      prefix: "agent-op:",
+      identity: context.operationId ?? crypto.randomUUID(),
+    },
   });
 
   return {
     success: result.success,
     actualCost: cost,
     newBalance: result.newBalance,
-    transactionId: result.transaction?.id,
+    transactionId:
+      result.transaction?.id ??
+      (result.fundingReservationId
+        ? `funding-reservation:${result.fundingReservationId}`
+        : undefined),
     error: result.success ? undefined : "Credit deduction failed",
   };
 }

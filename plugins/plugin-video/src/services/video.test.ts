@@ -1,6 +1,7 @@
 /** Exercises VideoService metadata and parsing boundaries with deterministic binary doubles. */
 
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ElizaError, IAgentRuntime, Media } from "@elizaos/core";
@@ -37,6 +38,21 @@ function createServiceWithYtDlp(results: unknown[]) {
 }
 
 describe("VideoService deterministic behavior", () => {
+  it("accepts a cache directory created after a stale absence observation", () => {
+    fs.mkdirSync("./content_cache", { recursive: true });
+    const exists = fs.existsSync.bind(fs);
+    const probe = vi
+      .spyOn(fs, "existsSync")
+      .mockImplementation((value) =>
+        value === "./content_cache" ? false : exists(value),
+      );
+    try {
+      expect(() => createServiceWithYtDlp([])).not.toThrow();
+    } finally {
+      probe.mockRestore();
+    }
+  });
+
   it("parses yt-dlp compact upload_date into a valid Date", async () => {
     const { service } = createServiceWithYtDlp([
       {

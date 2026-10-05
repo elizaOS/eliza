@@ -1,0 +1,43 @@
+{
+  "Z7GOZK": {
+    "reservation_id": "Z7GOZK",
+    "user_id": "olivia_gonzalez_2305",
+    "origin": "EWR",
+    "destination": "EWR",
+    "flight_type": "one_way",
+    "cabin": "basic_economy",
+    "flights": [
+      {
+        "origin": "EWR",
+        "destination": "IAH",
+        "flight_number": "HAT188",
+        "date": "2024-05-28",
+        "price": 52
+      },
+      {
+        "origin": "IAH",
+        "destination": "EWR",
+        "flight_number": "HAT207",
+        "date": "2024-05-28",
+        "price": 87
+      }
+    ],
+    "passengers": [
+      {
+        "first_name": "Olivia",
+        "last_name": "Gonzalez",
+        "dob": "1988-06-13"
+      }
+    ],
+    "payment_history": [
+      {
+        "payment_id": "gift_card_2200803",
+        "amount": 169
+      }
+    ],
+    "created_at": "2024-05-13T19:41:32",
+    "total_baggages": 0,
+    "nonfree_baggages": 0,
+    "insurance": "yes"
+  }
+}

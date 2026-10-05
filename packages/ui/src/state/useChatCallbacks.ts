@@ -1,3 +1,4 @@
+import type { ChatTurnUsage } from "./types";
 /**
  * Chat callbacks, one of the domain hooks AppContext composes.
  *
@@ -5,50 +6,52 @@
  * greeting / conversation-management callbacks that depend on both.
  */
 
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import type { ChatTurnStatus } from "@elizaos/contracts";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/protocol";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
+import { client } from "../api/client";
 import type {
-  ChatTurnStatus,
-  CodingAgentSession,
   Conversation,
-  FirstRunOptions,
-} from "../api";
-import {
-  type AgentStatus,
-  type ConversationMessage,
-  client,
-  type ImageAttachment,
-} from "../api";
+  ConversationMessage,
+  ImageAttachment,
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
+import type { AgentStatus } from "../api/client-types-core";
+import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
 import { isIOS, isNative } from "../platform/init";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
-import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import {
+  type ChatReplyTarget,
   clearChatDraft,
   readChatDraft,
   writeChatDraft,
 } from "./ChatComposerContext.hooks";
+
 import {
   isConversationRecord,
-  isReservedLegacyChatTitle,
   normalizeConversationList,
 } from "./chat-conversation-guards";
 import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
-import { appendGreetingOnce } from "./greeting-dedupe";
-import type { AppState, LifecycleAction } from "./internal";
 import {
   filterRenderableConversationMessages,
-  type LoadConversationMessagesResult,
-  loadActiveConversationId,
-  type StreamingTextModification,
   shouldKeepConversationMessage,
-} from "./internal";
+} from "./conversation-message-filter";
+import { appendGreetingOnce } from "./greeting-dedupe";
+import { loadActiveConversationId } from "./persistence";
 import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
-import { deriveAgentReady } from "./types";
+import {
+  type AppState,
+  deriveAgentReady,
+  type LifecycleAction,
+  type LoadConversationMessagesResult,
+} from "./types";
+
 import { useChatLifecycle } from "./useChatLifecycle";
 import { useChatSend } from "./useChatSend";
 import type { ConversationMessageStateMutation } from "./useDataLoaders";
+import type { StreamingTextModification } from "./useStreamingText";
 
 function hasConversationBootstrapMessage(
   messages: ConversationMessage[],
@@ -145,6 +148,15 @@ export interface HydrateInitialConversationDeps {
   loadedConversationIdRef: MutableRefObject<string | null>;
   /** Explicitly binds the visible message store before any rows are committed. */
   claimConversationMessagesOwnership: (conversationId: string | null) => void;
+  /**
+   * Merges restored server history with the claimed conversation's registered
+   * local-turn overlay (useDataLoaders). A restore can land while a send is
+   * in flight or before history exposes its receipts; it must never evict it.
+   */
+  reconcileRestoredConversationMessages: (
+    conversationId: string,
+    serverMessages: ConversationMessage[],
+  ) => ConversationMessage[];
   setConversations: (conversations: Conversation[]) => void;
   setActiveConversationId: (id: string | null) => void;
   setConversationMessages: (messages: ConversationMessage[]) => void;
@@ -286,6 +298,7 @@ export async function hydrateInitialConversation(
     conversationMessagesRef,
     loadedConversationIdRef,
     claimConversationMessagesOwnership,
+    reconcileRestoredConversationMessages,
     setConversations,
     setActiveConversationId,
     setConversationMessages,
@@ -300,10 +313,17 @@ export async function hydrateInitialConversation(
 
   try {
     const { conversations: rawConversations } = await api.listConversations();
-    if (
-      !Array.isArray(rawConversations) ||
-      !rawConversations.every(isConversationRecord)
-    ) {
+    const invalidRows = Array.isArray(rawConversations)
+      ? rawConversations.filter((row) => !isConversationRecord(row)).length
+      : null;
+    if (invalidRows === null || invalidRows > 0) {
+      logger.warn(
+        {
+          isArray: Array.isArray(rawConversations),
+          invalidRows,
+        },
+        "[useChatCallbacks] invalid conversation list during hydration",
+      );
       return null;
     }
     const conversations = normalizeConversationList(rawConversations);
@@ -358,14 +378,18 @@ export async function hydrateInitialConversation(
       }
       try {
         claimConversationMessagesOwnership(restoredConversation.id);
+        const restoredMessages = reconcileRestoredConversationMessages(
+          restoredConversation.id,
+          nextMessages,
+        );
         greetingFiredRef.current =
-          hasConversationBootstrapMessage(nextMessages);
-        conversationMessagesRef.current = nextMessages;
+          hasConversationBootstrapMessage(restoredMessages);
+        conversationMessagesRef.current = restoredMessages;
         loadedConversationIdRef.current = restoredConversation.id;
-        setConversationMessages(nextMessages);
+        setConversationMessages(restoredMessages);
         markConversationHistoryApplied(messagesLoaded);
         return messagesLoaded &&
-          nextMessages.length === 0 &&
+          restoredMessages.length === 0 &&
           seedSyntheticGreeting
           ? restoredConversation.id
           : null;
@@ -461,7 +485,12 @@ export async function hydrateInitialConversation(
       }
       return null;
     }
-  } catch {
+  } catch (error) {
+    // error-policy:J4 Keep hydration unavailable and expose the failed restore for diagnosis.
+    logger.warn(
+      { error },
+      "[useChatCallbacks] initial conversation hydration failed",
+    );
     return null;
   }
 }
@@ -528,13 +557,7 @@ export interface UseChatCallbacksDeps {
   setChatFirstTokenReceived: (v: boolean) => void;
   /** Set/clear the live server-reported phase of the in-flight turn (#8813). */
   setServerTurnStatus: (status: ChatTurnStatus | null) => void;
-  setChatLastUsage: (v: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    model: string | undefined;
-    updatedAt: number;
-  }) => void;
+  setChatLastUsage: (v: ChatTurnUsage) => void;
   setChatPendingImages: (v: ImageAttachment[]) => void;
   setConversations: (
     v: Conversation[] | ((prev: Conversation[]) => Conversation[]),
@@ -611,6 +634,7 @@ export interface UseChatCallbacksDeps {
     lineages: readonly string[],
     explicitMessages?: readonly ConversationMessage[],
   ) => void;
+  reconcileRestoredConversationMessages: HydrateInitialConversationDeps["reconcileRestoredConversationMessages"];
   applyConversationMessageOverlayModification: (
     conversationId: string | null,
     lineage: string,
@@ -739,6 +763,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     isConversationMessagesOwnershipCurrent,
     getConversationMessagesOwnershipGeneration,
     registerConversationMessageOverlay,
+    reconcileRestoredConversationMessages,
     applyConversationMessageOverlayModification,
     removeConversationMessageStateMessages,
     discardConversationMessageState,
@@ -971,6 +996,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       conversationMessagesRef,
       loadedConversationIdRef,
       claimConversationMessagesOwnership,
+      reconcileRestoredConversationMessages,
       setConversations,
       setActiveConversationId,
       setConversationMessages,
@@ -994,6 +1020,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     greetingFiredRef,
     loadedConversationIdRef,
     claimConversationMessagesOwnership,
+    reconcileRestoredConversationMessages,
     seedSyntheticGreeting,
     uiLanguage,
     setActiveConversationId,
@@ -1282,10 +1309,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         const { conversation: rawConversation, greeting: inlineGreeting } =
           await client.createConversation(title, {
             lang: uiLanguage,
-            // Stamp an explicit scope so the legacy page-chat TITLE heuristic
-            // (isMainChatConversation) can never hide this conversation — a
-            // scope-less chat renamed/auto-titled to "wallet"/"settings"/…
-            // used to vanish from every list.
             metadata: { scope: "general" },
           });
         if (!isConversationRecord(rawConversation)) {
@@ -1528,7 +1551,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   );
 
   const handleSelectConversation = useCallback(
-    async (id: string) => {
+    async (id: string, options?: { onRejected: () => void }) => {
       const selectionEpoch = ++conversationHydrationEpochRef.current;
       // Read the LIVE active id from the ref, not the closure: callers can hold
       // a stale `handleSelectConversation` captured before another navigation
@@ -1645,6 +1668,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       if (conversationHydrationEpochRef.current !== selectionEpoch) return;
       if (loaded.ok === true) return;
       const loadedMessage = loaded.message;
+      if (loaded.status === 404 || loaded.status === 403) options?.onRejected();
 
       if (loaded.ok === false && loaded.status === 404) {
         const refreshed = await loadConversations();
@@ -1869,16 +1893,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       const trimmed = title.trim();
       if (!trimmed) {
         setActionNotice("Conversation title cannot be empty.", "error", 2800);
-        return;
-      }
-      if (isReservedLegacyChatTitle(trimmed)) {
-        // A scope-less conversation with this exact title is classified as a
-        // legacy page chat and hidden from every list — apparent data loss.
-        setActionNotice(
-          `"${trimmed}" is a reserved name. Pick a different title.`,
-          "error",
-          3600,
-        );
         return;
       }
       try {

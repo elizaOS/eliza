@@ -9,29 +9,35 @@
 import {
   CloudApnsProvider,
   resolveCloudApnsConfig,
-} from "@/lib/mobile-push/apns-provider";
+} from "@elizaos/cloud-shared/lib/mobile-push/apns-provider";
 import {
   MAX_MOBILE_PUSH_TOKEN_CHARACTERS,
   type MobilePushMessage,
   type MobilePushPlatform,
   type MobilePushTokenRecord,
-} from "@/lib/mobile-push/types";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
-import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
+} from "@elizaos/cloud-shared/lib/mobile-push/types";
+import type { BridgeRequest } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import {
+  hydrationSettledWithin,
+  SHARED_TURN_HYDRATION_WAIT_MS,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/bounded-hydration";
+import type { CachedAgentSandbox } from "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates";
+import { parsePersonalSharedFallbackAccountState } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-fallback-account-state";
+import { isCanonicalPersonalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import type {
   SharedRuntimeChannel,
   SharedTurnMessage,
-} from "@/lib/services/shared-runtime/run-shared-agent-turn";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
-import { parseSharedRuntimeChannel } from "@/lib/services/shared-runtime/shared-runtime-channel";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/run-shared-agent-turn";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
+import { parseSharedRuntimeChannel } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-channel";
 import type {
   SharedRuntimeHistoryStore,
   SharedTurnClaimStore,
   SharedTurnTerminalResult,
-} from "@/lib/services/shared-runtime/shared-runtime-chat";
-import { SharedRuntimeTurnError } from "@/lib/services/shared-runtime/shared-runtime-errors";
-import { mergeSharedRuntimeHistoryMessages } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import { SharedRuntimeTurnError } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-errors";
+import { mergeSharedRuntimeHistoryMessages } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-history-policy";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const RELEASE_QUEUE_BEFORE_BODY_HEADER = "X-Eliza-Release-Coordinator-Queue";
 
@@ -60,6 +66,7 @@ type ConversationRequest =
       transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
+      trustedAccountState?: unknown;
     }
   | {
       operation: "stream";
@@ -82,6 +89,7 @@ type ConversationRequest =
       transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
+      trustedAccountState?: unknown;
     }
   | {
       operation: "prewarm";
@@ -169,6 +177,17 @@ const HISTORY_ARCHIVE_PREFIX = "history-archive:";
 const HISTORY_ARCHIVE_BODY_PREFIX = "history-archive-body:";
 const HISTORY_ARCHIVE_CHUNK_BYTES = 256_000;
 const CUTOVER_SEAL_KEY = "personal-cutover-seal";
+/**
+ * Verified account behind a rowless Personal Shared room. Its id is a one-way
+ * hash of the account, so keep-warm learns the owning organization here to warm
+ * organization-scoped turn gates without a UUID repository lookup.
+ */
+const PERSONAL_OWNER_KEY = "personal-owner";
+
+interface StoredPersonalOwner {
+  organizationId: string;
+  userId: string;
+}
 const PROVISIONAL_CONVERGENCE_SEAL_KEY =
   "personal-provisional-convergence-seal";
 const PROVISIONAL_CONVERGENCE_RESERVATION_KEY =
@@ -357,6 +376,7 @@ export class SharedRuntimeConversation {
   private readonly pendingHistory = new Map<string, SharedTurnMessage[]>();
   private pendingHistoryCheckpoint: Promise<void> = Promise.resolve();
   private hydration: Promise<void> | undefined;
+  private personalOwnerRecord: StoredPersonalOwner | null | undefined;
   private prewarmReady = false;
   private prewarm: Promise<void> | undefined;
   private queue: Promise<void> = Promise.resolve();
@@ -380,8 +400,8 @@ export class SharedRuntimeConversation {
   private async runWithBindings<T>(fn: () => Promise<T>): Promise<T> {
     const [{ runWithDbCacheAsync }, { runWithCloudBindingsAsync }] =
       await Promise.all([
-        import("@/db/client"),
-        import("@/lib/runtime/cloud-bindings"),
+        import("@elizaos/cloud-shared/db/client"),
+        import("@elizaos/cloud-shared/lib/runtime/cloud-bindings"),
       ]);
     return await runWithCloudBindingsAsync(this.env, async () =>
       runWithDbCacheAsync(fn),
@@ -419,7 +439,7 @@ export class SharedRuntimeConversation {
     if (!this.hydration) {
       this.hydration = this.runWithBindings(async () => {
         const { sharedRuntimeHistoryRepository } = await import(
-          "@/db/repositories/shared-runtime-history"
+          "@elizaos/cloud-shared/db/repositories/shared-runtime-history"
         );
         const history = await sharedRuntimeHistoryRepository.get(
           agentId,
@@ -446,7 +466,9 @@ export class SharedRuntimeConversation {
         .catch(async (error) => {
           // error-policy:J7 a failed migration leaves the request fail-closed;
           // a later retry starts a fresh hydration instead of losing history.
-          const { logger } = await import("@/lib/utils/logger");
+          const { logger } = await import(
+            "@elizaos/cloud-shared/lib/utils/logger"
+          );
           logger.warn("[SharedRuntimeConversation] history hydration failed", {
             agentId,
             channelId,
@@ -458,7 +480,23 @@ export class SharedRuntimeConversation {
         });
       this.state.waitUntil(this.hydration);
     }
+    // Join the in-flight hydration for a bounded time instead of failing the
+    // turn at once (#22552). Hydration errors are logged above and leave
+    // `conversation` unset, so they still surface as the retryable warming.
+    const hydration = this.hydration;
+    if (
+      hydration &&
+      (await hydrationSettledWithin(hydration, SHARED_TURN_HYDRATION_WAIT_MS))
+    ) {
+      // Re-read through a call: the hydration assigned the field meanwhile.
+      const hydrated = this.hydratedConversation();
+      if (hydrated) return hydrated;
+    }
     throw new ConversationCacheWarmingError();
+  }
+
+  private hydratedConversation(): StoredConversation | null | undefined {
+    return this.conversation;
   }
 
   /**
@@ -486,13 +524,18 @@ export class SharedRuntimeConversation {
     const historyReadyAt = Date.now();
     await this.runWithBindings(async () => {
       const imports: Promise<unknown>[] = [
-        import("@/lib/services/shared-runtime/shared-runtime-chat"),
-        import("@/lib/services/shared-runtime/cached-agent-dates"),
+        import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
+        ),
+        import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates"
+        ),
       ];
       imports.push(
-        import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
-          ({ prewarmSharedElizaStreamingContext }) =>
-            prewarmSharedElizaStreamingContext(),
+        import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-eliza-runtime"
+        ).then(({ prewarmSharedElizaStreamingContext }) =>
+          prewarmSharedElizaStreamingContext(),
         ),
       );
       await Promise.all(imports);
@@ -500,7 +543,7 @@ export class SharedRuntimeConversation {
     this.prewarmReady = true;
     const completedAt = Date.now();
     this.state.waitUntil(
-      import("@/lib/utils/logger").then(({ logger }) => {
+      import("@elizaos/cloud-shared/lib/utils/logger").then(({ logger }) => {
         logger.info(
           "[SharedRuntimeConversation] conversation prewarm completed",
           {
@@ -539,15 +582,25 @@ export class SharedRuntimeConversation {
       this.state.waitUntil(prewarm);
     }
 
-    const completion = this.prewarm ?? Promise.resolve();
+    const completion = (this.prewarm ?? Promise.resolve()).then(() =>
+      this.personalOwner(),
+    );
     let canceled = false;
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode('{"success":'));
         void completion.then(
-          () => {
+          (owner) => {
             if (canceled) return;
-            controller.enqueue(new TextEncoder().encode("true}"));
+            // Keep-warm uses the verified owner to warm this identity's
+            // organization-scoped rate-limit gate.
+            controller.enqueue(
+              new TextEncoder().encode(
+                owner
+                  ? `true,"organizationId":${JSON.stringify(owner.organizationId)}}`
+                  : "true}",
+              ),
+            );
             controller.close();
           },
           (error) => {
@@ -610,6 +663,39 @@ export class SharedRuntimeConversation {
       .then(operation);
     this.alarmMutationQueue = current;
     await current;
+  }
+
+  private async personalOwner(): Promise<StoredPersonalOwner | null> {
+    if (this.personalOwnerRecord === undefined) {
+      this.personalOwnerRecord =
+        (await this.state.storage.get<StoredPersonalOwner>(
+          PERSONAL_OWNER_KEY,
+        )) ?? null;
+    }
+    return this.personalOwnerRecord;
+  }
+
+  /** Record the account behind a canonical personal identity once per change. */
+  private async rememberPersonalOwner(
+    agent: Pick<
+      SharedRuntimeAgent,
+      "id" | "organization_id" | "user_id" | "execution_tier"
+    >,
+  ): Promise<void> {
+    if (!isCanonicalPersonalSharedAgent(agent)) return;
+    const current = await this.personalOwner();
+    if (
+      current?.organizationId === agent.organization_id &&
+      current.userId === agent.user_id
+    ) {
+      return;
+    }
+    const owner: StoredPersonalOwner = {
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+    };
+    await this.state.storage.put(PERSONAL_OWNER_KEY, owner);
+    this.personalOwnerRecord = owner;
   }
 
   private async deletionTombstone(): Promise<StoredDeletionTombstone | null> {
@@ -841,7 +927,9 @@ export class SharedRuntimeConversation {
       this.dispatchMobilePush(message).catch(async (error: unknown) => {
         // error-policy:J7 APNs fan-out is observed after the owning response;
         // it must not hold the conversation's serialization lock.
-        const { logger } = await import("@/lib/utils/logger");
+        const { logger } = await import(
+          "@elizaos/cloud-shared/lib/utils/logger"
+        );
         logger.warn("[SharedRuntimeConversation] mobile push dispatch failed", {
           error: error instanceof Error ? error.message : String(error),
         });
@@ -867,7 +955,7 @@ export class SharedRuntimeConversation {
           : snapshot.history;
       await this.runWithBindings(async () => {
         const { sharedRuntimeHistoryRepository } = await import(
-          "@/db/repositories/shared-runtime-history"
+          "@elizaos/cloud-shared/db/repositories/shared-runtime-history"
         );
         await sharedRuntimeHistoryRepository.merge(
           snapshot.agentId,
@@ -900,7 +988,7 @@ export class SharedRuntimeConversation {
       // error-policy:J7 the Durable Object copy is authoritative for active
       // chat; a failed reporting mirror is retried by alarm and must not kill
       // or delay the user-visible turn.
-      const { logger } = await import("@/lib/utils/logger");
+      const { logger } = await import("@elizaos/cloud-shared/lib/utils/logger");
       logger.warn("[SharedRuntimeConversation] Postgres mirror failed", {
         agentId: snapshot.agentId,
         channelId: snapshot.channelId,
@@ -1169,7 +1257,7 @@ export class SharedRuntimeConversation {
       const sourceAgentId = seal.sourceAgentId;
       const recovery = await this.runWithBindings(async () => {
         const { resolvePersonalDedicatedCutoverRecovery } = await import(
-          "@/lib/services/agent-tier-upgrade-target"
+          "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target"
         );
         return await resolvePersonalDedicatedCutoverRecovery({
           organizationId,
@@ -1292,6 +1380,25 @@ export class SharedRuntimeConversation {
       );
     }
     const validatedChannel = channel ?? undefined;
+    const suppliedAccountState =
+      "trustedAccountState" in payload
+        ? payload.trustedAccountState
+        : undefined;
+    const accountState =
+      suppliedAccountState === undefined
+        ? undefined
+        : parsePersonalSharedFallbackAccountState(suppliedAccountState);
+    if (suppliedAccountState !== undefined && accountState === null) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid personal fallback account state",
+          code: "invalid_account_state",
+        },
+        { status: 400 },
+      );
+    }
+    const validatedAccountState = accountState ?? undefined;
     // Deletion fence: once the agent behind this room is purged, every later
     // operation (save, hydration, history read, forwarded turn) fails closed
     // instead of re-creating state for a deleted agent. The `delete` op stays
@@ -1506,7 +1613,7 @@ export class SharedRuntimeConversation {
       await this.state.storage.put(PROVISIONAL_CONVERGENCE_SEAL_KEY, seal);
       const history = await this.runWithBindings(async () => {
         const { sharedRuntimeChatService } = await import(
-          "@/lib/services/shared-runtime/shared-runtime-chat"
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
         );
         return await sharedRuntimeChatService.getHistory(
           payload.agentId,
@@ -1708,7 +1815,7 @@ export class SharedRuntimeConversation {
       }
       await this.runWithBindings(async () => {
         const { sharedRuntimeChatService } = await import(
-          "@/lib/services/shared-runtime/shared-runtime-chat"
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
         );
         await sharedRuntimeChatService.recordLifecycleEvent(
           payload.agentId,
@@ -1757,7 +1864,7 @@ export class SharedRuntimeConversation {
       try {
         const history = await this.runWithBindings(async () => {
           const { sharedRuntimeChatService } = await import(
-            "@/lib/services/shared-runtime/shared-runtime-chat"
+            "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
           );
           return await sharedRuntimeChatService.getHistory(
             payload.agentId,
@@ -1802,7 +1909,7 @@ export class SharedRuntimeConversation {
     if (payload.operation === "history") {
       const history = await this.runWithBindings(async () => {
         const { sharedRuntimeChatService } = await import(
-          "@/lib/services/shared-runtime/shared-runtime-chat"
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
         );
         return await sharedRuntimeChatService.getHistory(
           payload.agentId,
@@ -1841,7 +1948,7 @@ export class SharedRuntimeConversation {
       // the fenced DO operation; retries are intentionally idempotent.
       await this.runWithBindings(async () => {
         const { sharedRuntimeHistoryRepository } = await import(
-          "@/db/repositories/shared-runtime-history"
+          "@elizaos/cloud-shared/db/repositories/shared-runtime-history"
         );
         await sharedRuntimeHistoryRepository.deleteByAgent(payload.agentId);
       });
@@ -1870,14 +1977,16 @@ export class SharedRuntimeConversation {
 
     return await this.runWithBindings(async () => {
       const { sharedRuntimeChatService } = await import(
-        "@/lib/services/shared-runtime/shared-runtime-chat"
+        "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
       );
       const agent = personal
         ? payload.agent
-        : await import("@/lib/services/shared-runtime/cached-agent-dates").then(
-            ({ rehydrateCachedAgentDates }) =>
-              rehydrateCachedAgentDates(payload.agent),
+        : await import(
+            "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates"
+          ).then(({ rehydrateCachedAgentDates }) =>
+            rehydrateCachedAgentDates(payload.agent),
           );
+      if (personal) await this.rememberPersonalOwner(agent);
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
@@ -1897,6 +2006,9 @@ export class SharedRuntimeConversation {
           transientInput: payload.transientInput,
           trustedUserUtterance: payload.trustedUserUtterance,
           channel: validatedChannel,
+          ...(personal && validatedAccountState
+            ? { trustedAccountState: validatedAccountState }
+            : {}),
           mobilePushDispatch: personal
             ? async (message: MobilePushMessage) => {
                 this.enqueueMobilePush(message);
@@ -1915,6 +2027,9 @@ export class SharedRuntimeConversation {
         transientInput: payload.transientInput,
         trustedUserUtterance: payload.trustedUserUtterance,
         channel: validatedChannel,
+        ...(personal && validatedAccountState
+          ? { trustedAccountState: validatedAccountState }
+          : {}),
         mobilePushDispatch: personal
           ? async (message: MobilePushMessage) => {
               this.enqueueMobilePush(message);
@@ -1979,7 +2094,9 @@ export class SharedRuntimeConversation {
             // error-policy:J7 a failed checkpoint keeps this object fail-closed;
             // Workers resets it after the failed storage output gate, and the
             // next instance admits only from the prior durable snapshot.
-            const { logger } = await import("@/lib/utils/logger");
+            const { logger } = await import(
+              "@elizaos/cloud-shared/lib/utils/logger"
+            );
             logger.warn(
               "[SharedRuntimeConversation] off-queue stream cancellation failed",
               {
@@ -2093,7 +2210,7 @@ export class SharedRuntimeConversation {
         );
       }
       const { InsufficientCreditsError, RateLimitError } = await import(
-        "@/lib/api/errors"
+        "@elizaos/cloud-shared/lib/api/errors"
       );
       if (error instanceof RateLimitError) {
         return Response.json(

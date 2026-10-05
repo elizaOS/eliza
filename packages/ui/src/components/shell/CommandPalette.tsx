@@ -13,7 +13,6 @@
  * mirrors the view catalog, so hidden developer/preview views never leak.
  */
 
-import { logger } from "@elizaos/logger";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -21,28 +20,29 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { isElectrobunRuntime } from "../../bridge";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   buildCommands as buildCommandPaletteCommands,
   type CommandItem,
   paletteViewEntries,
   type ViewNavEntry,
 } from "../../chat";
-import { reportShortcutFired } from "../../chat/useSlashCommandController";
+import { reportShortcutFired } from "../../chat/shortcut-report";
 import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../../events";
-import { useBugReport } from "../../hooks";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
+import { useBugReport } from "../../hooks/useBugReport.hooks";
 import { SHORTCUT_OPEN_COMMAND_PALETTE } from "../../hooks/useKeyboardShortcuts";
+import { logger } from "../../logger.ts";
 import type { Tab } from "../../navigation";
-import { useAppSelectorShallow } from "../../state";
 import { TOAST_TTL_MS } from "../../state/action-notice";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import {
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,
   openDesktopWorkspaceWindow,
   requestDesktopBridge,
-} from "../../utils";
+} from "../../utils/desktop-workspace";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import {

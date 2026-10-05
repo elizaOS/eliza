@@ -3,10 +3,10 @@
   "groups": [
     {
       "id": "native-background-task-runner",
-      "source": "packages/app-core/platforms/shared/runners/eliza-tasks.js",
+      "source": "packages/app/platforms/shared/runners/eliza-tasks.js",
       "generated": [
-        "packages/app-core/platforms/android/app/src/main/assets/runners/eliza-tasks.js",
-        "packages/app-core/platforms/ios/App/App/runners/eliza-tasks.js"
+        "packages/app/platforms/android/app/src/main/assets/runners/eliza-tasks.js",
+        "packages/app/platforms/ios/App/App/runners/eliza-tasks.js"
       ]
     },
     {
@@ -31,20 +31,15 @@
         "plugins/plugin-browser/tsconfig.build.json",
         "plugins/plugin-blocker/tsconfig.build.json",
         "plugins/plugin-calendar/tsconfig.build.json",
-        "plugins/plugin-companion/tsconfig.build.json",
-        "plugins/plugin-contacts/tsconfig.build.json",
-        "plugins/plugin-finances/tsconfig.build.json",
+        "plugins/plugin-native-contacts/tsconfig.build.json",
         "plugins/plugin-form/tsconfig.build.json",
         "plugins/plugin-inbox/tsconfig.build.json",
         "plugins/plugin-maps/tsconfig.build.json",
-        "plugins/plugin-messages/tsconfig.build.json",
-        "plugins/plugin-omarchy/tsconfig.build.json",
+        "plugins/plugin-native-messages/tsconfig.build.json",
         "plugins/plugin-personal-assistant/tsconfig.build.json",
-        "plugins/plugin-registry/tsconfig.build.json",
         "plugins/plugin-relationships/tsconfig.build.json",
         "plugins/plugin-reminders/tsconfig.build.json",
         "plugins/plugin-scheduling/tsconfig.build.json",
-        "plugins/plugin-task-coordinator/tsconfig.build.json",
         "plugins/plugin-todos/tsconfig.build.json",
         "plugins/plugin-trajectory-logger/tsconfig.build.json"
       ]
@@ -57,7 +52,6 @@
         "plugins/plugin-native-appblocker/tsconfig.json",
         "plugins/plugin-native-contacts/tsconfig.json",
         "plugins/plugin-native-location/tsconfig.json",
-        "plugins/plugin-native-messages/tsconfig.json",
         "plugins/plugin-native-phone/tsconfig.json",
         "plugins/plugin-native-system/tsconfig.json",
         "plugins/plugin-native-websiteblocker/tsconfig.json",
@@ -68,10 +62,8 @@
       "id": "native-view-plugin-tsconfig",
       "source": "packages/scripts/config-templates/native-view-plugin.tsconfig.json",
       "generated": [
-        "plugins/plugin-native-screencapture/tsconfig.json",
         "plugins/plugin-native-canvas/tsconfig.json",
         "plugins/plugin-native-eliza-tasks/tsconfig.json",
-        "plugins/plugin-native-mlkit-text/tsconfig.json",
         "plugins/plugin-native-mobile-signals/tsconfig.json",
         "plugins/plugin-native-swabble/tsconfig.json"
       ]
@@ -79,29 +71,12 @@
     {
       "id": "workspace-connector-tsconfig",
       "source": "packages/scripts/config-templates/workspace-connector.tsconfig.json",
-      "generated": [
-        "plugins/plugin-google-workspace/tsconfig.json",
-        "plugins/plugin-dropbox/tsconfig.json",
-        "plugins/plugin-notion/tsconfig.json"
-      ]
+      "generated": ["plugins/plugin-google-workspace/tsconfig.json"]
     },
     {
       "id": "workspace-connector-biome",
       "source": "packages/scripts/config-templates/workspace-connector.biome.json",
-      "generated": [
-        "plugins/plugin-google-workspace/biome.json",
-        "plugins/plugin-dropbox/biome.json",
-        "plugins/plugin-notion/biome.json"
-      ]
-    },
-    {
-      "id": "standalone-template-rm-path",
-      "source": "packages/elizaos/template-assets/rm-path-recursive.mjs",
-      "generated": [
-        "packages/elizaos/templates/plugin/scripts/rm-path-recursive.mjs",
-        "packages/elizaos/templates/project/scripts/rm-path-recursive.mjs",
-        "packages/elizaos/templates/project/apps/app/scripts/rm-path-recursive.mjs"
-      ]
+      "generated": ["plugins/plugin-google-workspace/biome.json"]
     }
   ],
   "approvedBespokeNpmWorkflows": {

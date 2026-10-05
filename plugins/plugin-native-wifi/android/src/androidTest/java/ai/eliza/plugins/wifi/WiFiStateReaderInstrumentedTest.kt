@@ -17,7 +17,7 @@ import org.junit.runner.RunWith
  * asserts a real native side-effect (the live radio state) — not a mocked
  * `Capacitor.Plugins` bridge.
  *
- * Run: `./gradlew :elizaos-capacitor-wifi:connectedDebugAndroidTest`
+ * Run: `./gradlew :elizaos-plugin-native-wifi:connectedDebugAndroidTest`
  */
 @RunWith(AndroidJUnit4::class)
 class WiFiStateReaderInstrumentedTest {

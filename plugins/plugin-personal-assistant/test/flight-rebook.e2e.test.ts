@@ -17,8 +17,8 @@
 import crypto from "node:crypto";
 import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider.ts";
-import { withTimeout } from "../../../packages/app-core/test/helpers/test-utils.ts";
+import { selectLiveProvider } from "../../../packages/app/test/helpers/live-provider.ts";
+import { withTimeout } from "../../../packages/app/test/helpers/test-utils.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { judgeTextWithLlm } from "./helpers/lifeops-live-judge.ts";
 import type { MockedTestRuntime } from "./support/helpers/mock-runtime.ts";

@@ -1,38 +1,71 @@
 # @elizaos/plugin-workflow
 
-Native [Smithers](https://www.npmjs.com/package/smthrs) workflows for elizaOS.
+Native Smithers workflow authoring and execution through the Eliza runtime.
 
-Workflows are executable TS/TSX modules, authored from chat or the Workflows studio and run behind elizaOS authentication, tenancy, Cloud APIs, scheduling, and model routing. The integration does not run a Smithers Gateway. Native Smithers progress, outputs, approvals, and widget metadata are surfaced through elizaOS run records and UI.
+## Development
 
-See [CLAUDE.md](./CLAUDE.md) for the source contract, architecture, routes, and validation commands.
-
-`ELIZA_SMTHRS_TIMEOUT_MS` optionally sets the worker deadline in milliseconds. It accepts canonical decimal integers from `1` through `2147483647`; invalid configuration fails before worker startup.
-
-## Validation scenarios
-
-The integration is pinned to Smithers 0.35.0. Run the isolated package suite with
-`bun run --cwd plugins/plugin-workflow test`. Its real-runner scenarios cover:
-
-- complete output passed between dependent tasks, persisted rows, and reuse of a completed run without replaying model calls;
-- invalid render errors and finite retry budgets for malformed model output;
-- approval-gated execution that resumes only after a persisted decision;
-- external signals that resume a waiting workflow with the complete payload;
-- timeout, cancellation, inherited child pipes, and delayed event delivery.
-
-`bun run --cwd packages/app test:e2e:workflow-real` exercises authoring, event
-triggers, execution output, widgets, and reload persistence through the browser
-and a real local runtime. That lane uses a deterministic model bridge; it is
-separate from credentialed model validation. Use `E2E_RECORD=1` with the app's
-`test:e2e` runner when collecting video and trace evidence.
-
-The coding-task integration has a live subscription lane:
+Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-RUN_LIVE_SMITHERS_SUBSCRIPTION=1 bun run --cwd plugins/plugin-agent-orchestrator test -- __tests__/live/smithers-codex-subscription.live.test.ts
+bun run --cwd plugins/plugin-workflow build  # build
+bun run --cwd plugins/plugin-workflow test   # tests
 ```
 
-It requires an authenticated Codex subscription and checks an exact model
-response through the durable Smithers worker and native ACP transport. The
-managed Codex adapter is pinned to 1.10.0; startup diagnostics are negotiated as
-typed records and retained separately from the model answer. Run the owning
-package checks and root `bun run verify` after changing either dependency.
+## Portable approval presentation
+
+Workflow authors may supply `request.metadata.approvalPresentation` with `version: 1`, `operation`, `target`, and `account` strings. Keep `request.title` and `request.summary` as the human review heading and explanation. The receipt API bounds these fields and only supports its existing simple approval modes; adding presentation metadata does not authorize execution or relax owner/version checks.
+
+```ts
+metadata: {
+  approvalPresentation: {
+    version: 1,
+    operation: "Compute",
+    target: "Selected result",
+    account: "Workflow owner",
+  },
+}
+```
+
+Legacy `metadata.alphaPhone` remains readable only when `approvalPresentation` is absent. An explicitly malformed value or unsupported version must not fall back to legacy metadata: it produces an unsupported receipt, and an attempted approval is rejected with HTTP422 while the approval stays pending. Generic presentation takes precedence when both fields are present. The request digest remains bound to the original full serialized canonical request; presentation selection does not rewrite it or remove legacy fields from the digest.
+
+Workflow status advertises `approvalPresentationProtocol: 1` alongside `approvalReceiptProtocol: 1`. The authoring prompt instructs use of concrete truthful version1 fields and forbids inventing an account. Missing details require clarification before authoring an executable action. Unsupported custom options, allowed users/scopes, or auto-approval restrictions must not be stripped to fit the portable surface; deny or review those workflows out of band.
+
+Unsupported presentation still permits an explicit denial; it does not authorize approval or require the user to leave an unsupported request permanently pending.
+
+
+### Generated draft semantic validation
+
+Generated and modified drafts are checked against the pinned Smithers TypeScript API before they are returned. The checker runs a trusted compiler child, never imports or executes the draft, ignores user compiler configuration, and allows only the documented Smithers/Zod imports. TypeScript suppression and reference directives are rejected. Source is limited to 64 KiB, compiler output to 16 KiB, compiler runtime to 15 seconds, and Node old-space heap to 512 MiB (not a total-process RSS cap). Node must be available on the service PATH. TypeScript and declaration dependencies are production dependencies so this behavior is not dependent on a development installation.
+
+One model repair is permitted for semantic diagnostics; compiler availability/resource failures return a service error without model repair. Failed drafts are not deployed, activated, scheduled, or executed. A passing check is type compatibility only: existing approval restrictions, authorization checks, and runtime controls still apply. Manually stored legacy source is outside this initial authoring-only gate.
+
+### Packaged workflow process hosts
+
+Trusted native bootstrap may install `configureWorkflowProcessHost` before the first workflow child dispatch. It accepts separately pinned runtime/compiler executables and prefix files (for example, a packaged musl loader followed by Bun), a canonical dependency root, pinned compiler module and native library directories. Configuration is copied, immutable and cannot be changed after dispatch. Executable and prefix hashes are rechecked before each child. Configured Bun children use `--no-install`; missing dependencies fail instead of fetching packages. No HTTP route or workflow input configures this descriptor. Hosts remain responsible for the complete dependency-artifact manifest and immutable extraction.
+
+Without configuration, Node semantic checking and Bun worker/control/approval commands retain their existing arguments and environment. A Bun compiler host keeps the source/output/time limits but does **not** inherit Node's 512 MiB old-space flag; its memory/resource policy needs separate platform qualification. This process contract does not package or enable a mobile workflow engine, sandbox workflow code, or establish Android support.
+
+For offline packaging discovery, run `node packages/scripts/plugins/plugin-workflow/inventory-mobile-dependencies.ts` from the repository root after the pinned installation. It reports the physical declared dependency/peer graph, separate installed versions, missing edges and platform constraints without executing packages. This conservative inventory is not a minimal runtime closure or an authenticated mobile artifact; package contents, target binaries, declarations, safe extraction and real Android execution still require qualification.
+
+A host may supply `compilerDependencyRoot` for a separate immutable compiler/declaration artifact; it defaults to the runtime `dependencyRoot`. Semantic checking anchors imports and type roots there while execution links stay on the runtime artifact. Both artifacts must describe the same supported workflow API. Host-owned workflow dependency symlinks are refreshed atomically when an artifact path changes; unexpected files/directories are rejected and preserved. This is private-directory maintenance, not protection against a hostile same-UID writer.
+
+### Android immutable source publication
+
+Android runtimes selected by `ELIZA_PLATFORM=android` or `ELIZA_MOBILE_PLATFORM=android` publish complete versioned source through a private directory reservation and same-directory rename, without requiring hard links in app data. Existing identical source is reused; conflicting bytes, nonprivate files and untrusted paths are rejected. A crashed reservation is preserved and causes a bounded refusal rather than being stolen. This coordinates cooperating publishers in one trusted app UID; it is not isolation from arbitrary hostile code with that UID.
+
+The filesystem integration tests exercise multiple real writer processes, concurrent readers, conflicting versions, symlink/permission rejection and abandoned reservations. Runtime dispatch tests exercise both environment aliases. Passing these tests on a POSIX development host does not qualify Android filesystem durability or power-loss recovery. The Windows backend and desktop hard-link publisher remain separate.
+
+### Typed phone draft generation
+
+`POST /api/workflow/phone/generate` accepts a prompt, selected operation IDs,
+current catalog/compiler revisions, and optional existing typed draft and device
+enrollment. The phone catalog advertises `generationProtocol: 1`. A text model
+must be available; enrollment is validated for the authenticated workflow owner
+before model submission and again before returning the draft.
+
+The result is an inactive, unsaved typed spec with its digest and required reviews.
+Generation never creates workflows, schedules, executions, or device approvals.
+Notes and Calendar read scopes must match a previously selected draft scope;
+model-supplied device identities, source code and activation are rejected. An
+unsupported request returns a clarification error. Saving remains a separate,
+explicit typed mutation. This endpoint does not enable mobile workflow execution.

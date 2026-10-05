@@ -1,0 +1,164 @@
+/**
+ * Tests the read-only `androidContacts` provider against a mocked
+ * `@elizaos/plugin-native-contacts/bridge` bridge: it supersedes the LIST_CONTACTS action
+ * and emits complete address-book context as JSON. Also guards the failure
+ * path (#12744): a bridge failure must render a distinguishable error shape
+ * and surface via `runtime.reportError`, never a silent empty address book.
+ */
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const contactsMock = vi.hoisted(() => ({
+  listContacts: vi.fn(),
+}));
+
+vi.mock("@elizaos/plugin-native-contacts/bridge", () => ({
+  Contacts: contactsMock,
+}));
+
+import { appContactsPlugin } from "../plugin";
+import { contactsProvider } from "./contacts";
+
+describe("androidContacts provider", () => {
+  beforeEach(() => {
+    contactsMock.listContacts.mockReset();
+  });
+
+  it("replaces the read-only LIST_CONTACTS action with a dynamic provider", () => {
+    expect(appContactsPlugin.actions ?? []).toHaveLength(0);
+    expect((appContactsPlugin.providers ?? []).map((p) => p.name)).toContain(
+      "androidContacts",
+    );
+    expect(contactsProvider.dynamic).toBe(true);
+  });
+
+  it("returns complete address-book context as JSON context", async () => {
+    const contacts = [
+      {
+        id: "1",
+        lookupKey: "ada",
+        displayName: "Ada Lovelace",
+        phoneNumbers: ["+15551234567"],
+        emailAddresses: ["ada@example.com"],
+        starred: true,
+      },
+    ];
+    contactsMock.listContacts.mockResolvedValue({ contacts });
+
+    const result = await contactsProvider.get(
+      {} as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    expect(contactsMock.listContacts).toHaveBeenCalledWith({
+      limit: 2_147_483_647,
+    });
+    expect(typeof result.text).toBe("string");
+    expect(result.text).toContain("android_contacts");
+    expect(result.text).toContain("Ada Lovelace");
+    expect(result.values).toMatchObject({
+      contactsAvailable: true,
+      contactsCount: 1,
+    });
+    const data = result.data as {
+      contacts: { id: string; displayName: string }[];
+      count: number;
+    };
+    expect(data.count).toBe(1);
+    expect(data.contacts[0]).toMatchObject({
+      id: "1",
+      displayName: "Ada Lovelace",
+      starred: true,
+    });
+  });
+
+  it("preserves contacts beyond the former 50-entry boundary", async () => {
+    const contacts = Array.from({ length: 75 }, (_, index) => ({
+      id: String(index),
+      lookupKey: `contact-${index}`,
+      displayName: `Contact ${index}`,
+      phoneNumbers: [`+1555${String(index).padStart(7, "0")}`],
+      emailAddresses: [`contact-${index}@example.com`],
+      starred: false,
+    }));
+    contactsMock.listContacts.mockResolvedValue({ contacts });
+
+    const result = await contactsProvider.get(
+      {} as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    expect((result.data as { contacts: unknown[] }).contacts).toHaveLength(75);
+    expect(result.text).toContain("Contact 74");
+  });
+
+  it("returns an explicit error instead of a potentially incomplete native page", async () => {
+    contactsMock.listContacts.mockResolvedValue({
+      contacts: Object.assign([], { length: 2_147_483_647 }),
+    });
+    const reportError = vi.fn();
+
+    const result = await contactsProvider.get(
+      { reportError } as unknown as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    expect(result.values).toMatchObject({
+      contactsAvailable: false,
+      contactsCount: 0,
+      contactsError: expect.stringContaining("potentially incomplete"),
+    });
+    expect((result.data as { contacts: unknown[] }).contacts).toEqual([]);
+    expect(reportError).toHaveBeenCalledWith(
+      "androidContacts.provider",
+      expect.objectContaining({ code: "NATIVE_CONTACTS_PROVIDER_INCOMPLETE" }),
+    );
+  });
+  it("renders a distinguishable error shape and reports on bridge failure", async () => {
+    const boom = new Error("contacts permission denied");
+    contactsMock.listContacts.mockRejectedValue(boom);
+    const reportError = vi.fn();
+
+    const result = await contactsProvider.get(
+      { reportError } as unknown as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    // NOT the designed empty address-book shape: text carries an error
+    // marker so the planner can tell a broken bridge from zero contacts.
+    expect(result.text).toContain("error");
+    expect(result.text).toContain("contacts permission denied");
+    expect(result.values).toMatchObject({
+      contactsAvailable: false,
+      contactsCount: 0,
+      contactsError: "contacts permission denied",
+    });
+    expect((result.data as { error: string }).error).toBe(
+      "contacts permission denied",
+    );
+    // The failure is observable in RECENT_ERRORS / owner-escalation.
+    expect(reportError).toHaveBeenCalledWith("androidContacts.provider", boom);
+  });
+
+  it("does not report on a successful empty address book", async () => {
+    contactsMock.listContacts.mockResolvedValue({ contacts: [] });
+    const reportError = vi.fn();
+
+    const result = await contactsProvider.get(
+      { reportError } as unknown as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    expect(reportError).not.toHaveBeenCalled();
+    expect(result.values).toMatchObject({
+      contactsAvailable: false,
+      contactsCount: 0,
+    });
+    expect(result.values).not.toHaveProperty("contactsError");
+  });
+});

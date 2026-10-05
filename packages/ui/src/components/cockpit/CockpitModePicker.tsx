@@ -53,23 +53,33 @@ function ModeOptionButton({
       variant="choice"
       size="row"
       align="start"
-      data-state={isActive ? "on" : "off"}
       aria-pressed={isActive}
       disabled={disabled}
       data-testid={`cockpit-mode-${option.id}`}
       onClick={() => select(option.toConfig)}
       {...agentProps}
+      data-state={isActive ? "on" : "off"}
     >
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-semibold text-txt">
+        <span
+          className={`truncate text-sm font-semibold ${isActive ? "text-inherit" : "text-txt"}`}
+        >
           {option.title}
         </span>
-        <span className="truncate text-xs text-muted">{option.subtitle}</span>
+        <span
+          className={`truncate text-xs ${isActive ? "text-inherit" : "text-muted"}`}
+        >
+          {option.subtitle}
+        </span>
       </span>
       <span
         className={cn(
           "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-          BADGE_CLASS[option.badge],
+          isActive
+            ? option.badge === "cloud"
+              ? "border-border bg-card text-card-foreground"
+              : "border-current text-inherit"
+            : BADGE_CLASS[option.badge],
         )}
       >
         {BADGE_LABEL[option.badge]}

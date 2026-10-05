@@ -40,5 +40,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}
         run: |
-          ./scripts/security/apply-branch-protection.sh --check --repo "$GITHUB_REPOSITORY"
-          ./scripts/security/apply-branch-protection.sh --check --repo "$GITHUB_REPOSITORY" --manifest .github/rulesets/promotion-branches.json
+          ./packages/scripts/security/apply-branch-protection.sh --check --repo "$GITHUB_REPOSITORY"
+          ./packages/scripts/security/apply-branch-protection.sh --check --repo "$GITHUB_REPOSITORY" --manifest .github/rulesets/promotion-branches.json

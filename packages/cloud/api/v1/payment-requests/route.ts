@@ -7,24 +7,23 @@
  * The read surface fronts payment_requests rows across providers.
  * Creation accepts the wired credit rails — Stripe and OxaPay (#10732),
  * settled by /api/v1/stripe/webhook and /api/v1/oxapay/webhook
- * respectively; use the app-charge and x402 routes for wallet-native
- * and x402 flows.
+ * respectively; use the x402 routes for x402 flows.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "@/db/schemas/payment-requests";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "@elizaos/cloud-shared/db/schemas/payment-requests";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { toPaymentRequestDto } from "@/lib/services/payment-requests";
-import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { toPaymentRequestDto } from "@elizaos/cloud-shared/lib/services/payment-requests";
+import { getPaymentRequestsService } from "@elizaos/cloud-shared/lib/services/payment-requests-default";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 // Stripe + OxaPay are the wired credit-top-up rails on this surface (#10732).
 const CreateProviderSchema = z.enum(["stripe", "oxapay"]);

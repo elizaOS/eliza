@@ -5,9 +5,10 @@
  * signals, invokes the analyzer, and exposes the fired-log accessor over the
  * PROACTIVE_AGENT task metadata where the profile is persisted.
  */
+
+import type { LifeOpsActivitySignal } from "@elizaos/contracts";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import type { LifeOpsActivitySignal } from "../contracts/index.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import {
   LifeOpsScreenContextSampler,
@@ -15,7 +16,7 @@ import {
 } from "../lifeops/screen-context.js";
 import { LifeOpsService } from "../lifeops/service.js";
 
-export { resolveOwnerEntityId } from "@elizaos/agent";
+export { resolveOwnerEntityId } from "@elizaos/core";
 
 import {
   analyzeMessages,

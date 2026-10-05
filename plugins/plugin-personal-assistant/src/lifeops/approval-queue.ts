@@ -5,15 +5,15 @@
  * subject-scoped CAS and durable execution-attempt protocol.
  */
 import { randomUUID } from "node:crypto";
+import { getAgentEventService } from "@elizaos/agent";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
   APPROVAL_EXECUTION_CAPABILITY,
   APPROVAL_EXECUTION_PROTOCOL_VERSION,
   createApprovalQueue as createRuntimeApprovalQueue,
-  getAgentEventService,
   PgApprovalQueue as RuntimePgApprovalQueue,
   resolveApprovalService,
-} from "@elizaos/agent";
-import { type IAgentRuntime, logger } from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskInput,

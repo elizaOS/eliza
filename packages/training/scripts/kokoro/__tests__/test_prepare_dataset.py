@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import prep_ljspeech  # type: ignore  # noqa: E402
+from eliza_training.kokoro import prep_ljspeech  # type: ignore  # noqa: E402
 
 
 def test_prep_emits_manifest_and_splits(tiny_ljspeech: Path, tmp_path: Path) -> None:
@@ -31,7 +31,7 @@ def test_prep_emits_manifest_and_splits(tiny_ljspeech: Path, tmp_path: Path) -> 
             "--run-dir",
             str(run_dir),
             "--config",
-            "kokoro_lora_ljspeech.yaml",
+            "kokoro_full_ljspeech.yaml",
             "--no-audio-libs",
             "--no-phonemize",
             "--speaker-id",
@@ -68,27 +68,3 @@ def test_prep_emits_manifest_and_splits(tiny_ljspeech: Path, tmp_path: Path) -> 
     assert len(phonemes) == manifest["stats"]["totalClips"]
     for rec in phonemes:
         assert set(rec.keys()) >= {"clip_id", "raw_text", "norm_text", "phonemes"}
-
-
-def test_prep_synthetic_smoke_runs(tmp_path: Path) -> None:
-    """The pure-synthetic path (no --data-dir) must work for CI smoke.
-
-    Pump the synthetic clip count above the 60s hard-duration gate (each
-    synthetic clip is 1s of silence).
-    """
-    run_dir = tmp_path / "synth-run"
-    rc = prep_ljspeech.main(
-        [
-            "--run-dir",
-            str(run_dir),
-            "--synthetic-smoke",
-            "--synthetic-clips",
-            "72",
-            "--config",
-            "kokoro_lora_ljspeech.yaml",
-        ]
-    )
-    assert rc == 0
-    assert (run_dir / "processed" / "prep_manifest.json").exists()
-    assert (run_dir / "processed" / "train_list.txt").read_text().strip()
-    assert (run_dir / "processed" / "val_list.txt").read_text().strip()

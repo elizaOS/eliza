@@ -12,7 +12,7 @@
 import { sql } from "drizzle-orm";
 import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { RuntimeMigrator } from "../../runtime-migrator";
+import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabaseForMigration } from "../test-helpers";
 

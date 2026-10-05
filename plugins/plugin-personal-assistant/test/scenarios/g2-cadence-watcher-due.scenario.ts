@@ -3,8 +3,8 @@
  * relationship edge is represented as a relationship-scoped follow-up task; the
  * list step proves downstream code reads structural fields, not prompt text.
  */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 function resultData(
   action: ScenarioContext["actionsCalled"][number],

@@ -1,7 +1,10 @@
 /** Persists live upstream video jobs and promotes deferred admission off the response path. */
 
+import {
+  isSubscriptionFundedReservation,
+  reserveAllowanceEligibleCredits,
+} from "./allowance-first-credits";
 import type { CreditReservation } from "./credits";
-import { creditsService } from "./credits";
 import { generationsService } from "./generations";
 
 export interface PendingVideoSettlementInput {
@@ -26,12 +29,21 @@ export async function persistPendingVideoSettlement(
 ): Promise<void> {
   const reservation =
     input.existingReservation ??
-    (await creditsService.reserve({
+    (await reserveAllowanceEligibleCredits("media_generation", {
       organizationId: input.organizationId,
       userId: input.userId,
       amount: input.totalCost,
       description: `Pending video generation: ${input.model}`,
+      // The video reconcile sweep owns this hold, not the stale-funding sweep.
+      operationKey: { prefix: "video:", identity: input.requestId },
     }));
+  const funding = isSubscriptionFundedReservation(reservation)
+    ? {
+        logical_operation_id: reservation.funding.logicalOperationId,
+        operation: reservation.funding.operation,
+        occurred_at: reservation.funding.occurredAt.toISOString(),
+      }
+    : undefined;
   if (!input.existingReservation) await input.releaseDeferredAdmission();
 
   await generationsService.create({
@@ -50,6 +62,7 @@ export async function persistPendingVideoSettlement(
       reserved_amount: reservation.reservedAmount,
       billed_cost: input.totalCost,
       billing_source: input.billingSource,
+      ...(funding ? { funding, funding_logical_operation_id: funding.logical_operation_id } : {}),
     },
     dimensions: { duration: input.durationSeconds },
     cost: String(input.totalCost),

@@ -8,13 +8,14 @@
  * the model over-extracts. Deterministic-only paths (sent mail, document
  * hooks, transcripts) stay on `extractCommitmentLedgerRecords`.
  */
-import { hasOwnerAccess } from "@elizaos/agent";
+
 import type {
   Evaluator,
   IAgentRuntime,
   JSONSchema,
   Memory,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import { LifeOpsRepository } from "../repository.js";
 import {
   classifyCommitmentKind,
@@ -168,6 +169,7 @@ export const commitmentExtractionEvaluator: Evaluator<
   Record<string, never>
 > = {
   name: "commitment_extraction",
+  inputScope: "current_message",
   description:
     "Extracts concrete first-person promises from the owner's message into the durable commitment ledger.",
   priority: 120,
@@ -181,7 +183,7 @@ export const commitmentExtractionEvaluator: Evaluator<
     // spend and structurally no row — the false-positive guard's outer wall.
     if (!textHasCommitmentCue(text)) return false;
     if (!hasSqlAdapter(runtime)) return false;
-    return hasOwnerAccess(runtime, message);
+    return hasRoleAccess(runtime, message, "OWNER");
   },
 
   async prepare() {
@@ -199,6 +201,8 @@ Rules:
 - "dueAtIso" is an ISO-8601 timestamp only when the promise names an explicit date; otherwise omit it.
 - "confidence" in [0,1]: how certain you are this is a firm commitment.
 - Return {"commitments": []} when the message contains no firm promise.
+
+Source message timestamp: ${new Date(message.createdAt ?? Date.now()).toISOString()}
 
 Owner message:
 ${message.content.text ?? ""}`;

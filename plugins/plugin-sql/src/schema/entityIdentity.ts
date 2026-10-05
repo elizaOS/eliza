@@ -44,6 +44,7 @@ export const entityIdentityTable = pgTable(
     firstSeen: timestamp("first_seen", { withTimezone: true }).notNull().default(sql`now()`),
     lastSeen: timestamp("last_seen", { withTimezone: true }).notNull().default(sql`now()`),
     evidenceMessageIds: jsonb("evidence_message_ids").$type<string[]>(),
+    extractionEvidence: jsonb("extraction_evidence"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (table) => [

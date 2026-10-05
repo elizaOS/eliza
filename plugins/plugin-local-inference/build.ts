@@ -11,7 +11,7 @@ import { $ } from "bun";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
 const RM_RECURSIVE_SCRIPT = fileURLToPath(
-	new URL("../../packages/scripts/rm-path-recursive.mjs", import.meta.url),
+	new URL("../../packages/scripts/rm-path-recursive.ts", import.meta.url),
 );
 
 export function rmRecursive(target: string) {
@@ -77,9 +77,15 @@ export async function buildLocalInferencePlugin(
 			"./src/runtime/index.ts",
 			"./src/routes/index.ts",
 			"./src/services/index.ts",
+			"./src/services/voice/voice-preset-format.ts",
+			// Spawned as its own process by the app's standalone Kokoro service
+			// (resolved through the package's `./*` export). Not smoke-imported:
+			// it reads its configuration from the environment at load.
+			"./src/host-tts-worker.ts",
 			"./src/voice-wake.ts",
 			"./src/voice-workbench.ts",
 		],
+		root: "./src",
 		outdir: "dist",
 		target: "node",
 		format: "esm",
@@ -107,6 +113,10 @@ export async function buildLocalInferencePlugin(
 
 	await smokeImport(
 		new URL("./dist/local-inference-routes.js", import.meta.url).href,
+	);
+	await smokeImport(
+		new URL("./dist/services/voice/voice-preset-format.js", import.meta.url)
+			.href,
 	);
 	await smokeImport(
 		new URL("./dist/actions/generate-media.js", import.meta.url).href,

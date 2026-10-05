@@ -4,34 +4,34 @@
  * Also invalidates Redis caches to ensure immediate token invalidation.
  */
 
-import { Hono } from "hono";
-import { deleteCookie } from "hono/cookie";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import { invalidateSessionCaches } from "@/lib/auth";
-import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
-import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
-import { verifyStewardTokenCached } from "@/lib/auth/steward-client";
-import {
-  readStewardAccessCookieFromHeader,
-  stewardCookieNames,
-} from "@/lib/auth/steward-cookies";
 import {
   getCurrentUserForStewardToken,
   readStewardSessionToken,
-} from "@/lib/auth/workers-hono-auth";
+} from "@elizaos/cloud-shared/auth";
+import { invalidateSessionCaches } from "@elizaos/cloud-shared/lib/auth";
+import { checkElizaMutatingRequestOrigin } from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
+import { cookieDomainForHost } from "@elizaos/cloud-shared/lib/auth/cookie-domain";
+import { verifyStewardTokenCached } from "@elizaos/cloud-shared/lib/auth/steward-client";
+import {
+  readStewardAccessCookieFromHeader,
+  stewardCookieNames,
+} from "@elizaos/cloud-shared/lib/auth/steward-cookies";
 import {
   getRequestIp,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   isInferenceStrongRevocationEnabled,
   revokeInferenceSessionsThrough,
-} from "@/lib/services/inference-credential-revocation";
-import { markSsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
-import { userSessionsService } from "@/lib/services/user-sessions";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { markSsoBridgeLogout } from "@elizaos/cloud-shared/lib/services/sso-bridge-codes";
+import { userSessionsService } from "@elizaos/cloud-shared/lib/services/user-sessions";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { deleteCookie } from "hono/cookie";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 
 const app = new Hono<AppEnv>();
 
@@ -195,7 +195,7 @@ app.post("/", async (c) => {
           // error-policy:J7 audit write is diagnostic; logout already succeeded via
           // the cookie clear above, so a dropped audit event is logged, not fatal.
           .catch((err: unknown) => {
-            logger.warn("[Logout] audit emit failed", {
+            logger.error("[Logout] audit emit failed", {
               error: err instanceof Error ? err.message : String(err),
             });
           });

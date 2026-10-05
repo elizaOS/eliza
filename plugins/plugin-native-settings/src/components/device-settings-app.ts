@@ -1,7 +1,7 @@
-import { type OverlayApp, registerOverlayApp } from "@elizaos/shared";
+/** Registers the Android device-settings overlay in the shared browser app registry. */
+import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 
 export const DEVICE_SETTINGS_APP_NAME = "@elizaos/plugin-native-settings";
-
 export const deviceSettingsApp: OverlayApp = {
   name: DEVICE_SETTINGS_APP_NAME,
   displayName: "Device Settings",
@@ -14,7 +14,6 @@ export const deviceSettingsApp: OverlayApp = {
       default: m.DeviceSettingsAppView,
     })),
 };
-
 export function registerDeviceSettingsApp(): void {
   registerOverlayApp(deviceSettingsApp);
 }

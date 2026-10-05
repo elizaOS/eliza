@@ -1,35 +1,8 @@
 /**
- * VoiceCaptureHud — an on-screen trace of the last voice-capture breadcrumbs so
- * a "tapped the mic, then crickets" report is diagnosable from a phone
- * screenshot instead of a devtools console the installed PWA doesn't have.
- *
- * It is the voice-capture sibling of {@link ../shell/BuildBadge}: same
- * stamped-builds-only gate (reads `/build-info.json`; renders nothing when the
- * file is absent, i.e. production bundles without the build-time stamp cost
- * nothing), and the same "screenshot is ground truth" philosophy that ended the
- * bottom-bar blind-fix loop.
- *
- * The HUD subscribes to the unconditional breadcrumb ring in
- * {@link ../../utils/voice-capture-debug} and renders the last ~8 steps with
- * millisecond offsets from the `mic:tap` that began the trace, e.g.
- *
- *   `mic:tap → gum:req → gum:ok(120ms) → ctx:running → rec:start → post:200 → txt`
- *
- * or wherever it dies:
- *
- *   `mic:tap → gum:err(NotAllowedError)`   (permission denied)
- *   `mic:tap → gum:ok → ctx:suspended!`    (AudioContext never resumed)
- *   `mic:tap → … → wav:SILENT`             (silence guard no-op'd)
- *   `mic:tap → … → post:403`               (cloud STT rejected)
- *   `mic:tap`  (nothing after → provider branch/handler never reached capture)
- *
- * Monospace, tiny, high-contrast, bottom-anchored above the composer, auto-
- * scrolled to the newest event so the failing step is always visible.
- *
- * The ring is populated whether or not `eliza:voice:debug` is set, so on a
- * stamped sol-dev build the HUD works with zero on-device console setup. The
- * `× ` dismiss hides it for the session (sessionStorage) so it never nags real
- * use, matching BuildBadge's dismissal contract.
+ * Displays recent voice-capture diagnostic breadcrumbs above the composer on
+ * stamped development builds. The screenshot-visible trace helps diagnose
+ * mobile microphone failures without a developer console. Dismissal lasts
+ * for the browser session; unstamped production builds do not show the HUD.
  */
 
 import { X } from "lucide-react";

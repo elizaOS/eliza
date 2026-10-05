@@ -23,29 +23,29 @@ import {
 // prototype extension — without this import, boot-batch signals are lost and
 // surface as spurious capture_error until the idle facade load lands.
 import "../api/client-lifeops.js";
+import type {
+  CaptureLifeOpsActivitySignalRequest,
+  LifeOpsActivitySignal,
+} from "@elizaos/contracts";
 // Narrow @elizaos/ui subpaths only — the root barrel drags react-router and
 // the full component tree into this headless register chunk, which both
 // bloats the renderer bundle and breaks under node module resolution in test
 // lanes. (isApiError also only carries its type-guard on the /api subpath.)
 import {
-  client as apiClient,
-  isApiError,
-  isCloudAgentGoneError,
-} from "@elizaos/ui/api";
-import {
+  APP_PAUSE_EVENT,
+  APP_RESUME_EVENT,
   type AuthStatusState,
+  client as apiClient,
   getAuthStatusSnapshot,
+  isApiError,
   isAuthenticatedNow,
+  isCloudAgentGoneError,
+  isElectrobunRuntime,
+  loadDesktopWorkspaceSnapshot,
   subscribeAuthStatus,
-} from "@elizaos/ui/auth-status";
-import { isElectrobunRuntime } from "@elizaos/ui/bridge";
-import { loadDesktopWorkspaceSnapshot } from "@elizaos/ui/browser";
-import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "@elizaos/ui/events";
+} from "@elizaos/ui";
+
 import type { LifeOpsElizaClientMethods } from "../api/client-lifeops.js";
-import type {
-  CaptureLifeOpsActivitySignalRequest,
-  LifeOpsActivitySignal,
-} from "../contracts/index.js";
 import { dispatchLifeOpsActivitySignalsStatus } from "../events/index.js";
 
 // client-lifeops (imported above for its side effect) installs the LifeOps
@@ -752,10 +752,12 @@ export function startLifeOpsActivitySignalCapture(
   const emitCurrentState = (reason: string): void => {
     const generation = runtimeReadinessGeneration;
     void (async () => {
+      const active =
+        document.visibilityState === "visible" && document.hasFocus();
       await sendSignal({
         source: "app_lifecycle",
-        state: "active",
-        metadata: { reason: "resume" },
+        state: active ? "active" : "background",
+        metadata: { reason: active ? "resume" : "pause" },
       });
       if (
         !mounted ||

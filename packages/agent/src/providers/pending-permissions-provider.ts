@@ -15,42 +15,17 @@ import {
   type IAgentRuntime,
   type Memory,
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  type PermissionState,
   type Provider,
   type ProviderResult,
   revalidateOwnerExclusiveDisclosure,
   type State,
 } from "@elizaos/core";
-import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
-import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 
-/** Service id used by the concrete permissions registry service. */
-export const PERMISSIONS_REGISTRY_SERVICE_ID = PERMISSIONS_REGISTRY_SERVICE;
-const LEGACY_PERMISSIONS_REGISTRY_SERVICE_ID = "PERMISSIONS_REGISTRY_SERVICE";
-
-interface PermissionsRegistryServiceLike {
-  getRegistry?: () => IPermissionsRegistry;
-  registry?: IPermissionsRegistry;
-}
-
-function resolveRegistry(runtime: IAgentRuntime): IPermissionsRegistry | null {
-  const svc = (runtime.getService(PERMISSIONS_REGISTRY_SERVICE_ID) ??
-    runtime.getService(LEGACY_PERMISSIONS_REGISTRY_SERVICE_ID)) as
-    | (PermissionsRegistryServiceLike & Partial<IPermissionsRegistry>)
-    | null
-    | undefined;
-  if (!svc) return null;
-  if (typeof svc.pending === "function") {
-    return svc as IPermissionsRegistry;
-  }
-  if (typeof svc.getRegistry === "function") {
-    try {
-      return svc.getRegistry();
-    } catch {
-      return null;
-    }
-  }
-  return svc.registry ?? null;
-}
+import {
+  PERMISSIONS_REGISTRY_SERVICE,
+  type PermissionRegistry,
+} from "../services/permissions-registry.ts";
 
 const RELATIVE_TIME_MIN = 60_000;
 const RELATIVE_TIME_HOUR = 60 * RELATIVE_TIME_MIN;
@@ -145,7 +120,9 @@ export const pendingPermissionsProvider: Provider = {
     if (!disclosure.allowed) {
       return { text: "", values: {}, data: {} };
     }
-    const registry = resolveRegistry(runtime);
+    const registry = runtime.getService<PermissionRegistry>(
+      PERMISSIONS_REGISTRY_SERVICE,
+    );
     if (!registry) return { text: "", values: {}, data: {} };
 
     const pending = registry.pending();

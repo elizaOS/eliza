@@ -1,11 +1,11 @@
 # This workflow is the sole pull-request and merge-candidate validation authority.
-# It checks mergeability, changed secrets and workflow syntax, then builds and
+# It checks mergeability and workflow syntax, then builds and
 # statically validates the affected workspace closure. A narrow, mock-backed
 # billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
 # and the bounded synthetic-world transaction suite are the affected-path test
 # exceptions. Provider, device, deployment, and destructive-effect lanes remain
 # excluded.
-name: PR Static Smoke
+name: PR Validation
 
 on:
   pull_request:
@@ -23,16 +23,26 @@ permissions:
 
 env:
   CI: "true"
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "1.4.2"
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: "--max-old-space-size=8192"
 
 jobs:
+  secret-scan:
+    uses: ./.github/workflows/gitleaks.yml
+    with:
+      base_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+      head_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
   source-smoke:
-    name: Source static smoke
+    name: Source checks
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      # Cloud API checking needs more than 4 GiB; serialize tasks so its
+      # 8 GiB heap does not compete with another compiler on a 16 GiB runner.
+      NODE_OPTIONS: "--max-old-space-size=8192"
+      RUN_TURBO_CONCURRENCY: "1"
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -68,35 +78,15 @@ jobs:
 
           echo "merge_base=$merge_base" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          if git diff --quiet "$merge_base"..."$HEAD_SHA" -- packages/synthetic-world; then
+          if git diff --quiet "$merge_base"..."$HEAD_SHA" -- packages/testing/synthetic-world; then
             echo "synthetic_world_changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "synthetic_world_changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install pinned gitleaks
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./.github/scripts/install-gitleaks.sh "$RUNNER_TEMP/gitleaks"
-          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
-
-      - name: Scan candidate commits for secrets
-        shell: bash
-        env:
-          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
-          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
-        run: >-
-          gitleaks detect
-          --config .gitleaks.toml
-          --source .
-          --redact
-          --no-banner
-          --log-opts "${MERGE_BASE}..${HEAD_SHA}"
-
       - name: Install pinned workflow linters
         shell: bash
-        run: .github/scripts/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
+        run: packages/scripts/github/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
 
       - name: Lint changed workflows
         shell: bash
@@ -117,34 +107,38 @@ jobs:
             -config-file .github/actionlint.yaml \
             "${workflows[@]}"
 
+      - name: Verify OSWorld uses configured authentication
+        run: python3 -m unittest discover -s packages/benchmarks/suites/OSWorld/tests -p test_vllm_auth.py -v
+
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "true"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Apply required dependency compatibility patches
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.ts
+          bun packages/scripts/patch-llama-cpp-capacitor.ts
+          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
+
       - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+        run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
       - name: Test required workflow contracts
         run: >-
           bun test
-          packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs
-          packages/scripts/__tests__/homepage-deploy-workflow.test.ts
-          packages/scripts/__tests__/cloud-cf-canonical-source-guard-workflow.test.ts
-          packages/scripts/__tests__/cloud-cf-voice-deploy-workflow.test.ts
+          packages/cloud/scripts/shared/messaging-gateway-preflight.test.ts
           packages/scripts/__tests__/ci-bun-version-contract.test.ts
-          packages/scripts/__tests__/github-action-pinning.test.ts
-          packages/scripts/__tests__/pr-static-smoke-workflow.test.ts
-
-      - name: Check production and smoke view navigation parity
-        working-directory: packages/app-core
-        run: node ../scripts/run-vitest.mjs run --config vitest.config.ts scripts/smoke-view-declarations.test.ts
+      - name: Test native Cloud billing and service boundaries
+        run: bun run --cwd packages/cloud/sdk test:native-host
 
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -154,27 +148,42 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      - name: Resolve broad core bootstrap
+        id: core_scope
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: |
+          if [[ -f packages/scripts/pr-core-build-scope.ts ]]; then
+            node packages/scripts/pr-core-build-scope.ts "$MERGE_BASE" "$GITHUB_OUTPUT"
+          else
+            echo "Candidate predates scoped bootstrap; retaining the full core build."
+            echo "core_bootstrap_required=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build core contract
+        if: steps.core_scope.outputs.core_bootstrap_required == 'true'
         run: bun run build:core
-
-      - name: Run synthetic-world transaction tests
-        if: steps.diff.outputs.synthetic_world_changed == 'true'
-        run: bun run --cwd packages/synthetic-world test
-
-      - name: Lint affected workspace closure
-        env:
-          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run lint:check --concurrency=4 --affected
-
-      - name: Typecheck affected workspace closure
-        env:
-          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
 
       - name: Build affected workspace closure
         env:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
-        run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only
+        run: node packages/scripts/run-turbo.ts run build --concurrency=4 --affected --output-logs=errors-only
+
+      - name: Run synthetic-world transaction tests
+        if: steps.diff.outputs.synthetic_world_changed == 'true'
+        run: bun run --cwd packages/testing test:synthetic-world
+
+      - name: Lint affected workspace closure
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: node packages/scripts/run-turbo.ts run lint:check --concurrency=4 --affected
+
+      - name: Typecheck affected workspace closure
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        # Each typecheck may use the inherited 8 GiB heap. Serialize this
+        # closure so concurrent heaps cannot exceed the 16 GiB runner.
+        run: node packages/scripts/run-turbo.ts run typecheck --concurrency=1 --affected
 
   billing-payment-replay-e2e:
     name: Billing payment replay E2E
@@ -193,9 +202,9 @@ jobs:
       CRON_SECRET: test-cron-secret
       # These are the workspace entry points actually executed by the keyless
       # stack. Detection below walks their runtime workspace dependencies, so a
-      # shared/core/logger/plugin change cannot silently skip the replay proof.
+      # shared/core/plugin change cannot silently skip the replay proof.
       # packages/app carries a large native/desktop-only dependency graph, so
-      # its browser source and app-core aliases stay explicit path inputs below.
+      # its browser source and app aliases stay explicit path inputs below.
       BILLING_REPLAY_WORKSPACE_SEEDS: >-
         packages/cloud/api
         packages/cloud/e2e
@@ -204,7 +213,7 @@ jobs:
       BILLING_REPLAY_PATH_INPUTS: >-
         packages/cloud
         packages/app
-        packages/app-core
+        packages/app
         packages/scripts
         package.json
         bun.lock
@@ -213,7 +222,7 @@ jobs:
         tsconfig.json
         tsconfig.base.json
         .github/actions/cloud-setup-test-env
-        .github/scripts/install-playwright-browsers.sh
+        packages/scripts/github/install-playwright-browsers.sh
         .github/develop-surface-graph.json
         .github/workflows/develop-full.yml
         .github/workflows/pr-static-smoke.yml
@@ -236,7 +245,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { spawnSync } from "node:child_process";
           import { appendFileSync } from "node:fs";
-          import { listPackages } from "./packages/scripts/lib/workspaces.mjs";
+          import { listPackages } from "./packages/scripts/lib/workspaces.ts";
 
           function requiredEnv(name) {
             const value = process.env[name]?.trim();
@@ -309,11 +318,11 @@ jobs:
         uses: ./.github/actions/cloud-setup-test-env
       - name: Install Playwright browsers
         if: steps.billing-diff.outputs.run == 'true'
-        run: .github/scripts/install-playwright-browsers.sh chromium
+        run: packages/scripts/github/install-playwright-browsers.sh chromium
       - name: Run billing payment replay spec
         if: steps.billing-diff.outputs.run == 'true'
         run: >-
-          bun run cloud:e2e --
+          bun run --cwd packages/cloud/e2e test --
           '(^|/)billing-payment-replay\.spec\.ts$'
       - name: Upload Playwright evidence
         if: failure() && steps.billing-diff.outputs.run == 'true'
@@ -321,7 +330,7 @@ jobs:
         with:
           name: billing-payment-replay-e2e-${{ github.run_attempt }}
           path: |
-            packages/cloud/e2e/test-results
+            test-results/cloud-e2e
             packages/cloud/e2e/.logs
           retention-days: 7
           include-hidden-files: true
@@ -350,7 +359,7 @@ jobs:
           merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           test -n "$merge_base"
           if git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
-            packages/cloud/shared packages/core packages/shared \
+            packages/cloud/shared packages/core packages/core \
             package.json bun.lock bunfig.toml turbo.json \
             tsconfig.json tsconfig.base.json .github/actions/setup-bun-workspace \
             .github/workflows/pr-static-smoke.yml; then
@@ -361,6 +370,7 @@ jobs:
       - if: steps.authority-diff.outputs.run == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-bun-install-cache: "false"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -403,15 +413,92 @@ jobs:
             sleep 1
           done
           bun test --config=/dev/null --isolate \
-            packages/cloud/shared/src/db/repositories/subscription-authority.postgres.integration.test.ts
-          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/account-billing-snapshot.postgres.integration.test.ts
-          bun test --config=/dev/null \
-            packages/cloud/shared/src/db/repositories/organization-policy.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/app-billing-accounts.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/subscription-cancellation.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-upgrade-commands.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-upgrade-invoice-origins.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-upgrade-finalization.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-target.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-repreview.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/api/v1/subscriptions/upgrade/confirm/route.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/sdk/src/organization-upgrade.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-invoice-search.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-recovery-state.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-upgrade-recovery-context.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-recovery.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-historical-target.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-later-period.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-target-search.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/api/__tests__/stripe-event.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-upgrade-observation-lease.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-maintenance.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/api/cron/process-stripe-queue/route.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-upgrade-allowance-posting.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-invoice-origin.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-preview.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-downgrade-review.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-downgrade-preview.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-downgrade-quotes.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-schedule-effects.postgres.integration.test.ts \
+            packages/cloud/shared/src/db/repositories/organization-schedule-dispatch-source.postgres.integration.test.ts \
+            packages/cloud/shared/src/db/repositories/organization-schedule-compensation-result.postgres.integration.test.ts \
+            packages/cloud/shared/src/db/repositories/organization-schedule-compensation-finalization.postgres.integration.test.ts \
+            packages/cloud/shared/src/db/repositories/organization-schedule-finalization.postgres.integration.test.ts \
+            packages/cloud/shared/src/db/repositories/organization-schedule-quote-terms-legacy.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/organization-schedule-migration-ledger.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-effect-contract.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-effect-origin.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-attached-terms.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-phase-mapping.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-event-search.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-configuration-proof.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-reviewed-configuration.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-publication.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-release-proof.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-dispatch.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-configuration.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-compensation.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-retained-terms.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-quote-terms.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-invoice.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-payment-observation.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-upgrade-binding-migration.pglite.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/subscription-reconciliation.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
@@ -432,16 +519,12 @@ jobs:
             exit 1
           fi
 
-  browser-bridge-windows-security:
-    name: Browser bridge Windows security
-    uses: ./.github/workflows/browser-bridge-windows-security.yml
-
   static-smoke:
     name: All Tests Passed
     if: always()
     needs:
+      - secret-scan
       - source-smoke
-      - browser-bridge-windows-security
       - billing-payment-replay-e2e
       - subscription-authority-postgres
     runs-on: ubuntu-24.04
@@ -449,8 +532,8 @@ jobs:
       - name: Require every admission lane
         env:
           RESULTS: >-
+            secret-scan=${{ needs.secret-scan.result }}
             source-smoke=${{ needs.source-smoke.result }}
-            browser-bridge-windows-security=${{ needs.browser-bridge-windows-security.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
         run: |

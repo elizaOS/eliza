@@ -15,9 +15,11 @@ import {
   MONTHLY_IDLE_COST,
   MONTHLY_RUNNING_COST,
 } from "@elizaos/cloud-sdk/browser-contracts";
-import { Card, CornerBrackets, StatusBadge } from "@elizaos/ui/cloud-ui";
 import { Clock, DollarSign, TrendingDown, Zap } from "lucide-react";
-import { useT } from "../lib/i18n";
+import { Card } from "../../../components/ui/card";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
+import { StatusBadge } from "../../../components/ui/status-badge";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 
 interface ElizaAgentPricingBannerProps {
   sharedCount: number;
@@ -93,6 +95,12 @@ export function ElizaAgentPricingBanner({
             </p>
             <p className="text-2xs text-white/30 font-mono">
               {formatMonthlyEstimate(AGENT_PRICING.RUNNING_HOURLY_RATE)}
+            </p>
+            <p className="text-xs text-white/72">
+              {t("cloud.containers.pricingBanner.activationMinimum", {
+                defaultValue: "{{minimum}} minimum per successful start",
+                minimum: formatUSD(AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE),
+              })}
             </p>
           </div>
 

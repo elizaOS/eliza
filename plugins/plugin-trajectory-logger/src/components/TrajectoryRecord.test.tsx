@@ -130,3 +130,30 @@ it("distinguishes host delivery, internal tokens, missing marks and unattributed
   expect(screen.getByText("unattributed")).toBeTruthy();
   expect(screen.getByText(/duplicate-first-token/)).toBeTruthy();
 });
+
+it.each([true, false])("qualifies estimated call usage (%s)", (estimated) => {
+  render(
+    <TrajectoryRecord
+      detail={{
+        ...detail,
+        llmCalls: [
+          {
+            id: "call",
+            model: "fixture",
+            response: "",
+            purpose: "fixture",
+            actionType: "",
+            stepType: "",
+            promptTokens: 123,
+            completionTokens: 45,
+            tokenUsageEstimated: estimated,
+          },
+        ],
+      }}
+    />,
+  );
+  expect(
+    screen.getByText(estimated ? "≈ 123 / ≈ 45 (estimated)" : "123 / 45"),
+  ).toBeTruthy();
+  if (!estimated) expect(screen.queryByText(/estimated/)).toBeNull();
+});

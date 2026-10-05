@@ -12,6 +12,10 @@
  * `mark_followup_done`, `set_followup_threshold`) lives on `SCHEDULED_TASKS`.
  */
 
+import {
+  LIFEOPS_MESSAGE_CHANNELS,
+  type LifeOpsMessageChannel,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionResult,
@@ -27,10 +31,6 @@ import {
   ElizaError,
   ModelType,
 } from "@elizaos/core";
-import {
-  LIFEOPS_MESSAGE_CHANNELS,
-  type LifeOpsMessageChannel,
-} from "@elizaos/shared";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -769,12 +769,11 @@ export const entityAction: Action & {
       );
       const evidence = normalizedNonEmpty(params.evidence) ?? "user_chat";
       const fromEntityId = normalizedNonEmpty(params.fromEntityId) ?? "self";
-      const edge = await relationshipStore.upsert({
+      // Restating an edge updates the active one instead of adding a duplicate.
+      const edge = await relationshipStore.assertEdge({
         fromEntityId,
         toEntityId,
         type: relationshipType,
-        metadata: {},
-        state: {},
         evidence: [evidence],
         confidence: 1,
         source: "user_chat",

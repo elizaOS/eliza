@@ -1,3 +1,54 @@
+import {
+  type AudioGenerationOptions,
+  type AudioGenerationProvider,
+  type AudioGenerationResult,
+  fetchMediaProviderResponse as fetchWithTimeout,
+  type ImageGenerationOptions,
+  type ImageGenerationProvider,
+  type MediaImageGenerationResult as ImageGenerationResult,
+  isMediaProviderResult,
+  type MediaProviderResult,
+  resolveVisionImageInput,
+  type VideoGenerationOptions,
+  type VideoGenerationProvider,
+  type VideoGenerationResult,
+  type VisionAnalysisOptions,
+  type VisionAnalysisProvider,
+  type VisionAnalysisResult,
+  withMediaProviderErrorBoundary as withProviderErrorBoundary,
+} from "@elizaos/host/protocol";
+
+export type {
+  AudioGenerationOptions,
+  AudioGenerationProvider,
+  AudioGenerationResult,
+  ImageGenerationOptions,
+  ImageGenerationProvider,
+  MediaImageGenerationResult as ImageGenerationResult,
+  MediaProviderResult,
+  VideoGenerationOptions,
+  VideoGenerationProvider,
+  VideoGenerationResult,
+  VisionAnalysisOptions,
+  VisionAnalysisProvider,
+  VisionAnalysisResult,
+} from "@elizaos/host/protocol";
+export { fetchMediaProviderResponse as fetchWithTimeout } from "@elizaos/host/protocol";
+
+import { AnthropicVisionProvider } from "@elizaos/plugin-anthropic/direct-media";
+import {
+  OpenAIImageProvider,
+  OpenAIVideoProvider,
+  OpenAIVisionProvider,
+} from "@elizaos/plugin-openai/direct-media";
+
+export { AnthropicVisionProvider } from "@elizaos/plugin-anthropic/direct-media";
+export {
+  OpenAIImageProvider,
+  OpenAIVideoProvider,
+  OpenAIVisionProvider,
+} from "@elizaos/plugin-openai/direct-media";
+
 /**
  * Media Provider Abstraction Layer
  *
@@ -12,15 +63,6 @@
  * - "own-key" mode uses the user's own API keys
  */
 
-import {
-  ElizaError,
-  fetchRemoteMedia,
-  isElizaError,
-  logger,
-  nodeLookupFn,
-  nodePinnedFetch,
-  VISION_IMAGE_MAX_BYTES,
-} from "@elizaos/core";
 import type {
   AudioGenConfig,
   AudioGenProvider,
@@ -29,56 +71,26 @@ import type {
   MediaConfig,
   VideoConfig,
   VisionConfig,
-} from "../config/types.eliza.ts";
+} from "@elizaos/contracts";
+import {
+  fetchRemoteMedia,
+  logger,
+  nodeLookupFn,
+  nodePinnedFetch,
+  sleepWithAbort,
+  VISION_IMAGE_MAX_BYTES,
+} from "@elizaos/core";
 
 // ============================================================================
 // Fetch Utilities
 // ============================================================================
 
-/** Fetch with an AbortController-based timeout (default 30s). */
-export function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
-  timeoutMs = 30_000,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...init, signal: controller.signal }).finally(() =>
-    clearTimeout(timer),
-  );
-}
-
-async function withProviderErrorBoundary<T>(
-  providerName: string,
-  run: () => Promise<MediaProviderResult<T>>,
-): Promise<MediaProviderResult<T>> {
-  try {
-    return await run();
-  } catch (err) {
-    // error-policy:J1 provider boundary returns an explicit failed result.
-    const message = err instanceof Error ? err.message : String(err);
-    const structuredError = isElizaError(err) ? err : undefined;
-    return {
-      success: false,
-      error: `[${providerName}] ${structuredError ? message : `Network error: ${message}`}`,
-      ...(structuredError
-        ? {
-            errorCode: structuredError.code,
-            errorContext: structuredError.context,
-          }
-        : {}),
-    };
-  }
-}
+/** Deadline covers headers and body; caller cancellation remains authoritative. */
 
 const DEFAULT_AUDIO_TIMEOUT_MS = 120_000;
 
 const VEO_OPERATION_POLL_INTERVAL_MS = 10_000;
 const VEO_OPERATION_TIMEOUT_MS = 300_000;
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 interface VeoOperation {
   name?: string;
@@ -159,149 +171,6 @@ function buildOutputFormatQuery(outputFormat: string | undefined): string {
 // Result Types
 // ============================================================================
 
-export interface MediaProviderResult<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  errorCode?: string;
-  errorContext?: Record<string, unknown>;
-}
-
-export interface ImageGenerationResult {
-  imageUrl?: string;
-  imageBase64?: string;
-  revisedPrompt?: string;
-}
-
-export interface VideoGenerationResult {
-  videoUrl?: string;
-  thumbnailUrl?: string;
-  duration?: number;
-}
-
-export interface AudioGenerationResult {
-  audioUrl?: string;
-  audioBase64?: string;
-  mimeType?: string;
-  id?: string;
-  fileName?: string;
-  title?: string;
-  duration?: number;
-}
-
-export interface VisionAnalysisResult {
-  description: string;
-  labels?: string[];
-  confidence?: number;
-}
-
-// ============================================================================
-// Options Types
-// ============================================================================
-
-export interface ImageGenerationOptions {
-  prompt: string;
-  size?: string;
-  quality?: "standard" | "hd";
-  style?: "natural" | "vivid";
-  negativePrompt?: string;
-  seed?: number;
-}
-
-export interface VideoGenerationOptions {
-  prompt: string;
-  duration?: number;
-  aspectRatio?: string;
-  imageUrl?: string;
-}
-
-export interface AudioGenerationOptions {
-  prompt: string;
-  kind?: AudioKind;
-  audioKind?: AudioKind;
-  text?: string;
-  duration?: number;
-  instrumental?: boolean;
-  genre?: string;
-  voiceId?: string;
-  modelId?: string;
-  outputFormat?: string;
-  loop?: boolean;
-  promptInfluence?: number;
-  seed?: number;
-  languageCode?: string;
-  voiceSettings?: NonNullable<
-    NonNullable<AudioGenConfig["elevenlabs"]>["voiceSettings"]
-  >;
-}
-
-export interface VisionAnalysisOptions {
-  imageUrl?: string;
-  imageBase64?: string;
-  prompt?: string;
-  maxTokens?: number;
-}
-
-type VisionImageInput =
-  | { type: "base64"; value: string }
-  | { type: "url"; value: string };
-
-function resolveVisionImageInput(
-  providerName: string,
-  options: VisionAnalysisOptions,
-): VisionImageInput | MediaProviderResult<VisionAnalysisResult> {
-  const imageBase64 = options.imageBase64?.trim();
-  if (imageBase64) {
-    return { type: "base64", value: imageBase64 };
-  }
-  const imageUrl = options.imageUrl?.trim();
-  if (imageUrl) {
-    return { type: "url", value: imageUrl };
-  }
-  return {
-    success: false,
-    error: `[${providerName}] imageUrl or imageBase64 is required`,
-  };
-}
-
-function isMediaProviderResult<T>(
-  value: VisionImageInput | MediaProviderResult<T>,
-): value is MediaProviderResult<T> {
-  return "success" in value;
-}
-
-// ============================================================================
-// Provider Interfaces
-// ============================================================================
-
-export interface ImageGenerationProvider {
-  name: string;
-  generate(
-    options: ImageGenerationOptions,
-  ): Promise<MediaProviderResult<ImageGenerationResult>>;
-}
-
-export interface VideoGenerationProvider {
-  name: string;
-  generate(
-    options: VideoGenerationOptions,
-  ): Promise<MediaProviderResult<VideoGenerationResult>>;
-}
-
-export interface AudioGenerationProvider {
-  name: string;
-  generate(
-    options: AudioGenerationOptions,
-  ): Promise<MediaProviderResult<AudioGenerationResult>>;
-}
-
-export interface VisionAnalysisProvider {
-  name: string;
-  analyze(
-    options: VisionAnalysisOptions,
-  ): Promise<MediaProviderResult<VisionAnalysisResult>>;
-}
-
 class ElizaCloudVisionProvider implements VisionAnalysisProvider {
   name = "eliza-cloud";
   private baseUrl: string;
@@ -318,6 +187,8 @@ class ElizaCloudVisionProvider implements VisionAnalysisProvider {
     const response = await fetchWithTimeout(
       `${this.baseUrl}/media/vision/analyze`,
       {
+        signal: options.signal,
+
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -377,6 +248,8 @@ export class FalImageProvider implements ImageGenerationProvider {
   ): Promise<MediaProviderResult<ImageGenerationResult>> {
     return withProviderErrorBoundary(this.name, async () => {
       const response = await fetchWithTimeout(`${this.baseUrl}/${this.model}`, {
+        signal: options.signal,
+
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -434,6 +307,8 @@ export class FalVideoProvider implements VideoGenerationProvider {
   ): Promise<MediaProviderResult<VideoGenerationResult>> {
     return withProviderErrorBoundary(this.name, async () => {
       const response = await fetchWithTimeout(`${this.baseUrl}/${this.model}`, {
+        signal: options.signal,
+
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -478,227 +353,6 @@ export class FalVideoProvider implements VideoGenerationProvider {
 // OpenAI Provider Implementations
 // ============================================================================
 
-export class OpenAIImageProvider implements ImageGenerationProvider {
-  name = "openai";
-  private apiKey: string;
-  private model: string;
-  private quality: "standard" | "hd";
-  private style: "natural" | "vivid";
-
-  constructor(config: NonNullable<ImageConfig["openai"]>) {
-    if (!config.apiKey) {
-      throw new Error(`${this.name} API key is required`);
-    }
-    this.apiKey = config.apiKey;
-    this.model = config.model ?? "dall-e-3";
-    this.quality = config.quality ?? "standard";
-    this.style = config.style ?? "vivid";
-  }
-
-  async generate(
-    options: ImageGenerationOptions,
-  ): Promise<MediaProviderResult<ImageGenerationResult>> {
-    return withProviderErrorBoundary(this.name, async () => {
-      const response = await fetchWithTimeout(
-        "https://api.openai.com/v1/images/generations",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: this.model,
-            prompt: options.prompt,
-            n: 1,
-            size: options.size ?? "1024x1024",
-            quality: options.quality ?? this.quality,
-            style: options.style ?? this.style,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const text = await response.text();
-        return { success: false, error: `OpenAI error: ${text}` };
-      }
-
-      const data = (await response.json()) as {
-        data?: Array<{ url?: string; revised_prompt?: string }>;
-      };
-      const image = data.data?.[0];
-      if (!image?.url) {
-        return { success: false, error: "No image returned from OpenAI" };
-      }
-
-      return {
-        success: true,
-        data: {
-          imageUrl: image.url,
-          revisedPrompt: image.revised_prompt,
-        },
-      };
-    });
-  }
-}
-
-export class OpenAIVideoProvider implements VideoGenerationProvider {
-  name = "openai";
-  private apiKey: string;
-  private model: string;
-
-  constructor(config: NonNullable<VideoConfig["openai"]>) {
-    if (!config.apiKey) {
-      throw new Error(`${this.name} API key is required`);
-    }
-    this.apiKey = config.apiKey;
-    this.model = config.model ?? "sora-1.0-turbo";
-  }
-
-  async generate(
-    options: VideoGenerationOptions,
-  ): Promise<MediaProviderResult<VideoGenerationResult>> {
-    return withProviderErrorBoundary(this.name, async () => {
-      // OpenAI Sora API (video generation)
-      const response = await fetchWithTimeout(
-        "https://api.openai.com/v1/videos/generations",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: this.model,
-            prompt: options.prompt,
-            n: 1,
-            duration: options.duration ?? 5,
-            aspect_ratio: options.aspectRatio ?? "16:9",
-            ...(options.imageUrl ? { image: options.imageUrl } : {}),
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const text = await response.text();
-        return { success: false, error: `OpenAI Sora error: ${text}` };
-      }
-
-      const data = (await response.json()) as {
-        data?: Array<{ url?: string; duration?: number }>;
-      };
-      const video = data.data?.[0];
-      if (!video?.url) {
-        return { success: false, error: "No video returned from OpenAI Sora" };
-      }
-
-      return {
-        success: true,
-        data: {
-          videoUrl: video.url,
-          duration: video.duration,
-        },
-      };
-    });
-  }
-}
-
-export class OpenAIVisionProvider implements VisionAnalysisProvider {
-  name = "openai";
-  private apiKey: string;
-  private model: string;
-  private maxTokens?: number;
-
-  constructor(config: NonNullable<VisionConfig["openai"]>) {
-    if (!config.apiKey) {
-      throw new Error(`${this.name} API key is required`);
-    }
-    this.apiKey = config.apiKey;
-    // Mirrors plugin-openai's IMAGE_DESCRIPTION default (utils/config.ts).
-    this.model = config.model ?? "gpt-5-mini";
-    this.maxTokens = config.maxTokens;
-  }
-
-  async analyze(
-    options: VisionAnalysisOptions,
-  ): Promise<MediaProviderResult<VisionAnalysisResult>> {
-    const imageInput = resolveVisionImageInput(this.name, options);
-    if (isMediaProviderResult(imageInput)) return imageInput;
-    const imageContent =
-      imageInput.type === "base64"
-        ? {
-            type: "image_url" as const,
-            image_url: { url: `data:image/jpeg;base64,${imageInput.value}` },
-          }
-        : {
-            type: "image_url" as const,
-            image_url: { url: imageInput.value },
-          };
-
-    return withProviderErrorBoundary(this.name, async () => {
-      const response = await fetchWithTimeout(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: this.model,
-            ...((options.maxTokens ?? this.maxTokens) !== undefined
-              ? { max_tokens: options.maxTokens ?? this.maxTokens }
-              : {}),
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: options.prompt ?? "Describe this image in detail.",
-                  },
-                  imageContent,
-                ],
-              },
-            ],
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const text = await response.text();
-        return { success: false, error: `OpenAI error: ${text}` };
-      }
-
-      const data = (await response.json()) as {
-        choices?: Array<{
-          finish_reason?: string;
-          message?: { content?: string };
-        }>;
-      };
-      if (data.choices?.[0]?.finish_reason === "length") {
-        return {
-          success: false,
-          error:
-            "OpenAI returned an incomplete vision description after reaching an output limit",
-        };
-      }
-      const description = data.choices?.[0]?.message?.content;
-      if (!description) {
-        return {
-          success: false,
-          error: "No description returned from OpenAI",
-        };
-      }
-
-      return {
-        success: true,
-        data: { description },
-      };
-    });
-  }
-}
-
 // ============================================================================
 // Google Provider Implementations
 // ============================================================================
@@ -725,6 +379,8 @@ export class GoogleImageProvider implements ImageGenerationProvider {
       const response = await fetchWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:predict`,
         {
+          signal: options.signal,
+
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -789,6 +445,8 @@ export class GoogleVideoProvider implements VideoGenerationProvider {
       const response = await fetchWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:predictLongRunning`,
         {
+          signal: options.signal,
+
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -826,7 +484,7 @@ export class GoogleVideoProvider implements VideoGenerationProvider {
         };
       }
 
-      const completed = await this.pollOperation(started);
+      const completed = await this.pollOperation(started, options.signal);
       const videoUri = extractVeoVideoUri(completed);
       if (!videoUri) {
         return {
@@ -839,7 +497,15 @@ export class GoogleVideoProvider implements VideoGenerationProvider {
     });
   }
 
-  private async pollOperation(started: VeoOperation): Promise<VeoOperation> {
+  private async pollOperation(
+    started: VeoOperation,
+    callerSignal?: AbortSignal,
+  ): Promise<VeoOperation> {
+    const timeout = AbortSignal.timeout(VEO_OPERATION_TIMEOUT_MS);
+    const signal = callerSignal
+      ? AbortSignal.any([callerSignal, timeout])
+      : timeout;
+    signal.throwIfAborted();
     if (started.done) return started;
     const deadline = Date.now() + VEO_OPERATION_TIMEOUT_MS;
     let operation = started;
@@ -851,10 +517,12 @@ export class GoogleVideoProvider implements VideoGenerationProvider {
           )}s`,
         );
       }
-      await delay(VEO_OPERATION_POLL_INTERVAL_MS);
+      await sleepWithAbort(VEO_OPERATION_POLL_INTERVAL_MS, signal);
       const pollResponse = await fetchWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/${operation.name}`,
         {
+          signal: signal,
+
           method: "GET",
           headers: { "x-goog-api-key": this.apiKey },
         },
@@ -903,6 +571,8 @@ export class GoogleVisionProvider implements VisionAnalysisProvider {
       const response = await fetchWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`,
         {
+          signal: options.signal,
+
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -970,6 +640,8 @@ export class XAIImageProvider implements ImageGenerationProvider {
       const response = await fetchWithTimeout(
         "https://api.x.ai/v1/images/generations",
         {
+          signal: options.signal,
+
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1043,6 +715,8 @@ export class XAIVisionProvider implements VisionAnalysisProvider {
       const response = await fetchWithTimeout(
         "https://api.x.ai/v1/chat/completions",
         {
+          signal: options.signal,
+
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1123,14 +797,16 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
     this.autoDownload = config.autoDownload === true;
   }
 
-  private async ensureModelAvailable(): Promise<void> {
+  private async ensureModelAvailable(signal?: AbortSignal): Promise<void> {
     if (this.modelChecked) return;
 
     try {
       // Check if model exists
       const response = await fetchWithTimeout(
         `${this.baseUrl}/api/tags`,
-        {},
+        {
+          signal: signal,
+        },
         120_000,
       );
       if (!response.ok) {
@@ -1149,7 +825,7 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
         logger.info(
           `[ollama-vision] Model ${this.model} not found, downloading...`,
         );
-        await this.downloadModel();
+        await this.downloadModel(signal);
       } else if (!hasModel) {
         throw new Error(
           `Ollama model ${this.model} not found. Run 'ollama pull ${this.model}' or enable autoDownload.`,
@@ -1170,10 +846,12 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
     }
   }
 
-  private async downloadModel(): Promise<void> {
+  private async downloadModel(signal?: AbortSignal): Promise<void> {
     const response = await fetchWithTimeout(
       `${this.baseUrl}/api/pull`,
       {
+        signal: signal,
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: this.model, stream: false }),
@@ -1195,7 +873,7 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
     options: VisionAnalysisOptions,
   ): Promise<MediaProviderResult<VisionAnalysisResult>> {
     try {
-      await this.ensureModelAvailable();
+      await this.ensureModelAvailable(options.signal);
     } catch (err) {
       return {
         success: false,
@@ -1211,6 +889,7 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
       try {
         const { buffer } = await fetchRemoteMedia({
           url: options.imageUrl,
+          signal: options.signal,
           maxBytes: VISION_IMAGE_MAX_BYTES,
           timeoutMs: 120_000,
           lookupFn: nodeLookupFn,
@@ -1238,6 +917,8 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
       const response = await fetchWithTimeout(
         `${this.baseUrl}/api/chat`,
         {
+          signal: options.signal,
+
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1291,161 +972,6 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
 // Anthropic Provider Implementation
 // ============================================================================
 
-export class AnthropicVisionProvider implements VisionAnalysisProvider {
-  name = "anthropic";
-  private apiKey: string;
-  private model: string;
-  private modelMaxOutputTokens?: number;
-
-  constructor(config: NonNullable<VisionConfig["anthropic"]>) {
-    if (!config.apiKey) {
-      throw new Error(`${this.name} API key is required`);
-    }
-    this.apiKey = config.apiKey;
-    this.model = config.model ?? "claude-opus-4-7";
-  }
-
-  private async resolveModelMaxOutputTokens(): Promise<number> {
-    if (this.modelMaxOutputTokens !== undefined) {
-      return this.modelMaxOutputTokens;
-    }
-    const response = await fetchWithTimeout(
-      `https://api.anthropic.com/v1/models/${encodeURIComponent(this.model)}`,
-      {
-        method: "GET",
-        headers: {
-          "x-api-key": this.apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-      },
-    );
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(
-        `Anthropic model metadata error: ${response.status} ${text}`,
-      );
-    }
-    const data = (await response.json()) as { max_tokens?: unknown };
-    if (
-      typeof data.max_tokens !== "number" ||
-      !Number.isSafeInteger(data.max_tokens) ||
-      data.max_tokens <= 0
-    ) {
-      throw new Error(
-        `Anthropic model metadata omitted max_tokens for ${this.model}`,
-      );
-    }
-    this.modelMaxOutputTokens = data.max_tokens;
-    return data.max_tokens;
-  }
-
-  async analyze(
-    options: VisionAnalysisOptions,
-  ): Promise<MediaProviderResult<VisionAnalysisResult>> {
-    const imageInput = resolveVisionImageInput(this.name, options);
-    if (isMediaProviderResult(imageInput)) return imageInput;
-    const imageSource =
-      imageInput.type === "base64"
-        ? {
-            type: "base64" as const,
-            media_type: "image/jpeg" as const,
-            data: imageInput.value,
-          }
-        : { type: "url" as const, url: imageInput.value };
-
-    return withProviderErrorBoundary(this.name, async () => {
-      if (
-        options.maxTokens !== undefined &&
-        (!Number.isSafeInteger(options.maxTokens) || options.maxTokens <= 0)
-      ) {
-        throw new ElizaError(
-          `Requested Anthropic output tokens must be a positive safe integer; received ${options.maxTokens}`,
-          {
-            code: "VISION_OUTPUT_BUDGET_INVALID",
-            context: {
-              model: this.model,
-              requestedMaxTokens: options.maxTokens,
-            },
-          },
-        );
-      }
-      const modelMaxOutputTokens = await this.resolveModelMaxOutputTokens();
-      if (
-        options.maxTokens !== undefined &&
-        options.maxTokens > modelMaxOutputTokens
-      ) {
-        throw new ElizaError(
-          `Requested ${options.maxTokens} output tokens for Anthropic model ${this.model}, which supports at most ${modelMaxOutputTokens}`,
-          {
-            code: "VISION_OUTPUT_BUDGET_UNSUPPORTED",
-            context: {
-              model: this.model,
-              requestedMaxTokens: options.maxTokens,
-              supportedMaxTokens: modelMaxOutputTokens,
-            },
-          },
-        );
-      }
-      const response = await fetchWithTimeout(
-        "https://api.anthropic.com/v1/messages",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": this.apiKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: this.model,
-            max_tokens: options.maxTokens ?? modelMaxOutputTokens,
-            messages: [
-              {
-                role: "user",
-                content: [
-                  { type: "image", source: imageSource },
-                  {
-                    type: "text",
-                    text: options.prompt ?? "Describe this image in detail.",
-                  },
-                ],
-              },
-            ],
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const text = await response.text();
-        return { success: false, error: `Anthropic error: ${text}` };
-      }
-
-      const data = (await response.json()) as {
-        content?: Array<{ type: string; text?: string }>;
-        stop_reason?: string;
-      };
-      if (data.stop_reason === "max_tokens") {
-        return {
-          success: false,
-          error:
-            "Anthropic returned an incomplete vision description after reaching max_tokens",
-        };
-      }
-      const textBlock = data.content?.find((c) => c.type === "text");
-      if (!textBlock?.text) {
-        return {
-          success: false,
-          error: "No description returned from Anthropic",
-        };
-      }
-
-      return {
-        success: true,
-        data: { description: textBlock.text },
-      };
-    });
-  }
-}
-
 // ============================================================================
 // FAL Audio Provider Implementation
 // ============================================================================
@@ -1482,6 +1008,8 @@ export class FalAudioProvider implements AudioGenerationProvider {
       const response = await fetchWithTimeout(
         `${this.baseUrl}/${this.model}`,
         {
+          signal: options.signal,
+
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1590,6 +1118,8 @@ export class ElevenLabsAudioProvider implements AudioGenerationProvider {
       const response = await fetchWithTimeout(
         `${this.baseUrl}/sound-generation${buildOutputFormatQuery(outputFormat)}`,
         {
+          signal: options.signal,
+
           method: "POST",
           headers: this.headers(),
           body: JSON.stringify({
@@ -1648,6 +1178,8 @@ export class ElevenLabsAudioProvider implements AudioGenerationProvider {
       const response = await fetchWithTimeout(
         `${this.baseUrl}/music${buildOutputFormatQuery(outputFormat)}`,
         {
+          signal: options.signal,
+
           method: "POST",
           headers: this.headers(),
           body: JSON.stringify({
@@ -1706,6 +1238,8 @@ export class ElevenLabsAudioProvider implements AudioGenerationProvider {
       const response = await fetchWithTimeout(
         `${this.baseUrl}/text-to-speech/${encodeURIComponent(voiceId)}${buildOutputFormatQuery(outputFormat)}`,
         {
+          signal: options.signal,
+
           method: "POST",
           headers: this.headers(),
           body: JSON.stringify({
@@ -1779,6 +1313,8 @@ export class SunoAudioProvider implements AudioGenerationProvider {
   ): Promise<MediaProviderResult<AudioGenerationResult>> {
     return withProviderErrorBoundary(this.name, async () => {
       const response = await fetchWithTimeout(`${this.baseUrl}/generate`, {
+        signal: options.signal,
+
         method: "POST",
         headers: {
           "Content-Type": "application/json",

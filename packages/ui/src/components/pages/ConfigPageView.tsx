@@ -6,18 +6,21 @@
  *   2. Secrets (modal)
  */
 
+import type {
+  WalletConfigUpdateRequest,
+  WalletRpcSelections,
+} from "@elizaos/contracts";
 import {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
-  type WalletRpcSelections,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { navigateBrowserPath } from "../../app-navigate-view";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
-import { openExternalUrl } from "../../utils";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { Button } from "../ui/button";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
@@ -33,13 +36,11 @@ import {
 } from "./config-page-sections.helpers";
 
 /* ── ConfigPageView ──────────────────────────────────────────────────── */
-
 const CLOUD_RPC_SELECTIONS = {
   evm: "eliza-cloud",
   bsc: "eliza-cloud",
   solana: "eliza-cloud",
 } as const satisfies WalletRpcSelections;
-
 function areCloudRpcSelections(selections: WalletRpcSelections) {
   return (
     selections.evm === "eliza-cloud" &&
@@ -47,14 +48,12 @@ function areCloudRpcSelections(selections: WalletRpcSelections) {
     selections.solana === "eliza-cloud"
   );
 }
-
 function firstCustomRpcProvider<T extends string>(
   options: readonly RpcProviderOption<T>[],
   fallback: T,
 ): T {
   return options.find((option) => option.id !== "eliza-cloud")?.id ?? fallback;
 }
-
 function resolveCustomRpcSelections(
   current: WalletRpcSelections,
 ): WalletRpcSelections {
@@ -73,7 +72,6 @@ function resolveCustomRpcSelections(
         : current.solana,
   };
 }
-
 function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
   return (
     /* Flat — no card/border. The shell owns the page's horizontal padding. */
@@ -92,7 +90,6 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
     </div>
   );
 }
-
 export function ConfigPageView({
   embedded = false,
   onWalletSaveSuccess,
@@ -108,6 +105,7 @@ export function ConfigPageView({
     walletConfig,
     walletApiKeySaving,
     handleWalletApiKeySave,
+    setActionNotice,
     handleInteractiveCloudLogin,
   } = useAppSelectorShallow((s) => ({
     t: s.t,
@@ -117,33 +115,28 @@ export function ConfigPageView({
     walletConfig: s.walletConfig,
     walletApiKeySaving: s.walletApiKeySaving,
     handleWalletApiKeySave: s.handleWalletApiKeySave,
+    setActionNotice: s.setActionNotice,
     handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
   }));
-
   const manualRpcModeSelection = useRef(false);
-
   const initialRpc = resolveInitialWalletRpcSelections(walletConfig);
   const initialEvmRpc = initialRpc.evm;
   const initialBscRpc = initialRpc.bsc;
   const initialSolanaRpc = initialRpc.solana;
-
   /* ── Mode: "cloud" or "custom" ─────────────────────────────────────── */
   const allCloud =
     areCloudRpcSelections(initialRpc) || (!walletConfig && elizaCloudConnected);
   const [rpcMode, setRpcMode] = useState<"cloud" | "custom">(
     allCloud ? "cloud" : "custom",
   );
-
   /* ── RPC provider field values ─────────────────────────────────────── */
   const [rpcFieldValues, setRpcFieldValues] = useState<Record<string, string>>(
     {},
   );
-
   const handleRpcFieldChange = useCallback((key: string, value: unknown) => {
     setRpcFieldValues((prev) => ({ ...prev, [key]: String(value ?? "") }));
   }, []);
   const handleOpenVault = useCallback(() => navigateBrowserPath("/vault"), []);
-
   /* ── RPC provider selection state ──────────────────────────────────── */
   const initialSelectedRpc = allCloud ? CLOUD_RPC_SELECTIONS : initialRpc;
   const [selectedEvmRpc, setSelectedEvmRpc] = useState<
@@ -155,7 +148,6 @@ export function ConfigPageView({
   const [selectedSolanaRpc, setSelectedSolanaRpc] = useState<
     WalletRpcSelections["solana"]
   >(initialSelectedRpc.solana);
-
   useEffect(() => {
     if (manualRpcModeSelection.current) {
       return;
@@ -177,7 +169,6 @@ export function ConfigPageView({
       setSelectedSolanaRpc(selections.solana);
     }
   }, [initialBscRpc, initialEvmRpc, initialSolanaRpc]);
-
   /* When switching to cloud mode, set all providers to eliza-cloud */
   const handleModeChange = useCallback(
     (mode: "cloud" | "custom") => {
@@ -200,23 +191,38 @@ export function ConfigPageView({
     },
     [selectedBscRpc, selectedEvmRpc, selectedSolanaRpc],
   );
-
   const handleWalletSaveAll = useCallback(async () => {
-    const config = buildWalletRpcUpdateRequest({
-      walletConfig,
-      rpcFieldValues,
-      selectedProviders: {
-        evm: selectedEvmRpc,
-        bsc: selectedBscRpc,
-        solana: selectedSolanaRpc,
-      },
-    });
+    let config: WalletConfigUpdateRequest;
+    try {
+      config = buildWalletRpcUpdateRequest({
+        walletConfig,
+        rpcFieldValues,
+        selectedProviders: {
+          evm: selectedEvmRpc,
+          bsc: selectedBscRpc,
+          solana: selectedSolanaRpc,
+        },
+      });
+    } catch (error) {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : t("configpageview.WalletConfigurationInvalid", {
+              defaultValue:
+                "Wallet configuration is invalid. Refresh it before saving.",
+            }),
+        "error",
+      );
+      return;
+    }
     const saved = await handleWalletApiKeySave(config);
     if (saved) {
       onWalletSaveSuccess?.();
     }
   }, [
     handleWalletApiKeySave,
+    setActionNotice,
+    t,
     onWalletSaveSuccess,
     rpcFieldValues,
     selectedBscRpc,
@@ -224,7 +230,6 @@ export function ConfigPageView({
     selectedSolanaRpc,
     walletConfig,
   ]);
-
   const evmRpcConfigs: RpcSectionConfigMap = {
     alchemy: [
       {
@@ -254,7 +259,6 @@ export function ConfigPageView({
       },
     ],
   };
-
   const bscRpcConfigs: RpcSectionConfigMap = {
     alchemy: [
       {
@@ -293,7 +297,6 @@ export function ConfigPageView({
       },
     ],
   };
-
   const solanaRpcConfigs: RpcSectionConfigMap = {
     "helius-birdeye": [
       {
@@ -312,7 +315,6 @@ export function ConfigPageView({
       },
     ],
   };
-
   const cloudStatusProps = {
     connected: elizaCloudConnected,
     loginBusy: elizaCloudLoginBusy,
@@ -321,7 +323,6 @@ export function ConfigPageView({
       void handleInteractiveCloudLogin();
     },
   };
-
   const legacyRpcChains = walletConfig?.legacyCustomChains ?? [];
   const legacyRpcWarning =
     legacyRpcChains.length > 0
@@ -331,12 +332,10 @@ export function ConfigPageView({
           chains: legacyRpcChains.join(", "),
         })
       : null;
-
   /* Filter out eliza-cloud from per-chain options in custom mode */
   const filterCloudOption = <T extends string>(
     options: readonly RpcProviderOption<T>[],
   ) => options.filter((o) => o.id !== "eliza-cloud");
-
   const cloudModeEl = useAgentElement<HTMLButtonElement>({
     id: "rpc-mode-cloud",
     role: "tab",
@@ -386,7 +385,6 @@ export function ConfigPageView({
     description: "Open the Vault workspace to manage encrypted credentials",
     onActivate: handleOpenVault,
   });
-
   return (
     <ShellViewAgentSurface viewId="config">
       <div>
@@ -410,9 +408,9 @@ export function ConfigPageView({
             variant="choice"
             size="card"
             align="start"
-            data-state={rpcMode === "cloud" ? "on" : "off"}
             data-testid="wallet-rpc-mode-cloud"
             {...cloudModeEl.agentProps}
+            data-state={rpcMode === "cloud" ? "on" : "off"}
             onClick={() => handleModeChange("cloud")}
             className="relative"
           >
@@ -426,7 +424,7 @@ export function ConfigPageView({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className={rpcMode === "cloud" ? "text-accent" : "text-muted"}
+                className={rpcMode === "cloud" ? "text-inherit" : "text-muted"}
               >
                 <title>
                   {t("configpageview.CloudModeSvgTitle", {
@@ -441,7 +439,9 @@ export function ConfigPageView({
                 })}
               </span>
             </div>
-            <span className="text-xs-tight text-muted leading-snug">
+            <span
+              className={`text-xs-tight leading-snug ${rpcMode === "cloud" ? "text-inherit" : "text-muted"}`}
+            >
               {t("configpageview.CloudModeDesc", {
                 defaultValue:
                   "Managed RPC for EVM, BSC, and Solana via Eliza Cloud, with Helius on Solana.",
@@ -459,8 +459,8 @@ export function ConfigPageView({
             variant="choice"
             size="card"
             align="start"
-            data-state={rpcMode === "custom" ? "on" : "off"}
             {...customModeEl.agentProps}
+            data-state={rpcMode === "custom" ? "on" : "off"}
             onClick={() => handleModeChange("custom")}
             className="relative"
           >
@@ -474,7 +474,7 @@ export function ConfigPageView({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className={rpcMode === "custom" ? "text-accent" : "text-muted"}
+                className={rpcMode === "custom" ? "text-inherit" : "text-muted"}
               >
                 <title>
                   {t("configpageview.CustomModeSvgTitle", {
@@ -489,7 +489,9 @@ export function ConfigPageView({
                 })}
               </span>
             </div>
-            <span className="text-xs-tight text-muted leading-snug">
+            <span
+              className={`text-xs-tight leading-snug ${rpcMode === "custom" ? "text-inherit" : "text-muted"}`}
+            >
               {t("configpageview.CustomModeDesc", {
                 defaultValue: "Bring your own API keys. Configure per chain.",
               })}

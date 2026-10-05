@@ -9,5 +9,5 @@ export default createViewBundleConfig({
     "./src/components/lifeops-connections/lifeops-connections-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "LifeOpsConnectionsView",
-  additionalExternals: ["@elizaos/app-core"],
+  additionalExternals: ["@elizaos/app"],
 });

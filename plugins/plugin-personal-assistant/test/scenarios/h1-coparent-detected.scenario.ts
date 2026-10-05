@@ -3,7 +3,7 @@
  * custody/logistics history can be represented structurally without relationship
  * commentary.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",

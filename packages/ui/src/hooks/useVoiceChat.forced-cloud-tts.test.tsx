@@ -15,9 +15,9 @@
  * and a fake audio graph.
  */
 
-import { logger } from "@elizaos/logger";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../logger.ts";
 
 const fetchWithCsrf = vi.fn();
 vi.mock("../api/csrf-client", () => ({
@@ -49,7 +49,8 @@ interface FakeSource {
 
 const createdSources: FakeSource[] = [];
 
-class FakeAudioContext {
+class FakeAudioContext extends EventTarget {
+  currentTime = 0;
   state = "running";
   destination = {};
   audioWorklet = { addModule: vi.fn(async () => {}) };

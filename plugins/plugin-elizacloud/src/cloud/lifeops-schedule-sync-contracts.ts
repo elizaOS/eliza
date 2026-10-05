@@ -1,14 +1,4 @@
-import type {
-  LifeOpsAwakeProbability,
-  LifeOpsCircadianState,
-  LifeOpsPersonalBaseline,
-  LifeOpsRelativeTime,
-  LifeOpsScheduleInsight,
-  LifeOpsScheduleMealLabel,
-  LifeOpsScheduleRegularity,
-  LifeOpsScheduleSleepStatus,
-  LifeOpsUnclearReason,
-} from "@elizaos/shared";
+import { type LifeOpsAwakeProbability, type LifeOpsCircadianState, type LifeOpsPersonalBaseline, type LifeOpsRelativeTime, type LifeOpsScheduleInsight, type LifeOpsScheduleMealLabel, type LifeOpsScheduleRegularity, type LifeOpsScheduleSleepStatus, type LifeOpsUnclearReason } from "@elizaos/contracts";
 
 export const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
   "iphone",
@@ -96,6 +86,12 @@ export interface LifeOpsScheduleMergedState extends LifeOpsScheduleInsight {
 }
 
 export interface SyncLifeOpsScheduleObservationInput {
+  /**
+   * When the device recorded this row. A sync replays the device's recent
+   * history, so rows carry their own times; the request `observedAt` is the
+   * send time and the fallback for senders that omit this.
+   */
+  observedAt?: string;
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
   uncertaintyReason?: LifeOpsUnclearReason | null;

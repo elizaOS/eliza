@@ -6,43 +6,47 @@
  * cutover route confirms a healthy running target and imports personal state.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
-import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
-import { checkAgentTierUpgradeCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { resolveElizaTraceId } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { checkAgentTierUpgradeCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
 import {
   adoptPersonalDedicatedTargetWithProvision,
   PersonalDedicatedAdoptionError,
   type PersonalDedicatedAdoptionResolution,
   resolvePersonalDedicatedAdoption,
-} from "@/lib/services/agent-tier-upgrade-target";
-import { personalDedicatedActivationAuthorityKey } from "@/lib/services/personal-dedicated-adoption-provenance";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+} from "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target";
+import { personalDedicatedActivationAuthorityKey } from "@elizaos/cloud-shared/lib/services/personal-dedicated-adoption-provenance";
 import {
   checkProvisioningWorkerCapability,
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
   REVIEWED_BACKUP_RESTORE_CAPABILITY,
-} from "@/lib/services/provisioning-worker-health";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   isPersonalSharedAgentId,
   personalSharedAgentId,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const CORS_METHODS = "GET, POST, OPTIONS";
-const ADOPTION_QUOTE_VERSION = "personal-dedicated-adoption-v2";
+const ADOPTION_QUOTE_VERSION = "personal-dedicated-adoption-v3";
 
 const AdoptionConfirmation = z
   .object({
     action: z.literal("adopt_existing_dedicated"),
     quoteId: z.string().regex(/^[a-f0-9]{64}$/),
+    minimumActivationChargeUsd: z.number().finite().nonnegative(),
   })
   .strict();
 
@@ -104,6 +108,7 @@ async function quoteIdFor(params: {
     params.balance.toFixed(6),
     params.activationAuthorityKey,
     AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6),
+    AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE.toFixed(6),
     AGENT_PRICING.DAILY_RUNNING_COST.toFixed(6),
     AGENT_PRICING.UPGRADE_MINIMUM_BALANCE.toFixed(6),
     AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS.toString(10),
@@ -156,6 +161,9 @@ async function adoptionQuote(
     adoptionState: resolution.state,
     startsCompute: willStartCompute,
     hourlyRateUsd: AGENT_PRICING.RUNNING_HOURLY_RATE,
+    minimumActivationChargeUsd: willStartCompute
+      ? AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE
+      : 0,
     dailyRateUsd: AGENT_PRICING.DAILY_RUNNING_COST,
     minimumBalanceUsd,
     minimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
@@ -334,7 +342,11 @@ async function __hono_POST(
     const quote = await timed("quote", () =>
       adoptionQuote(sourceAgentId, user, resolved),
     );
-    if (confirmation.data.quoteId !== quote.quoteId) {
+    if (
+      confirmation.data.quoteId !== quote.quoteId ||
+      confirmation.data.minimumActivationChargeUsd !==
+        quote.minimumActivationChargeUsd
+    ) {
       return json(
         {
           success: false,

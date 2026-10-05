@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import type { PostWorkbenchVfsGitRequest } from "@elizaos/shared";
+import type { PostWorkbenchVfsGitRequest } from "@elizaos/contracts";
 import git, {
   type AuthCallback,
   type ReadCommitResult,
@@ -312,20 +312,42 @@ function normalizeGitFilepath(input: string): string {
   return stripped;
 }
 
+/**
+ * Request-supplied credentials go to whichever remote the request targets.
+ * Host GitHub credentials (GITHUB_TOKEN, then GITHUB_PAT; empty values count
+ * as unset) are only attached when isomorphic-git asks for auth on an HTTPS
+ * github.com remote, so a user-supplied remote can never harvest them.
+ */
 function authCallback(
   request: PostWorkbenchVfsGitRequest,
 ): AuthCallback | undefined {
-  const token =
-    request.auth?.token ??
-    process.env.GITHUB_TOKEN?.trim() ??
-    process.env.GITHUB_PAT?.trim();
-  const username = request.auth?.username?.trim();
-  const password = request.auth?.password ?? token;
-  if (!password) return undefined;
-  return () => ({
-    username: token ? (username ?? "x-access-token") : (username ?? "git"),
-    password,
-  });
+  const requestToken = nonEmpty(request.auth?.token);
+  const requestPassword = request.auth?.password || undefined;
+  const username = nonEmpty(request.auth?.username);
+  const hostToken =
+    nonEmpty(process.env.GITHUB_TOKEN) ?? nonEmpty(process.env.GITHUB_PAT);
+  if (!requestToken && !requestPassword && !hostToken) return undefined;
+  return (url) => {
+    const token =
+      requestToken ?? (isGitHubHttpsRemote(url) ? hostToken : undefined);
+    const password = requestPassword ?? token;
+    if (!password) return undefined;
+    return {
+      username: token ? (username ?? "x-access-token") : (username ?? "git"),
+      password,
+    };
+  };
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function isGitHubHttpsRemote(url: string): boolean {
+  if (!URL.canParse(url)) return false;
+  const parsed = new URL(url);
+  return parsed.protocol === "https:" && parsed.hostname === "github.com";
 }
 
 function statusRowView(row: StatusRow): VfsGitStatusEntry {

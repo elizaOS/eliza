@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "targets": [
+    {
+      "targetId": "pixel11pro-grizzly",
+      "marketingName": "Pixel 11 Pro",
+      "manufacturer": "Google",
+      "codenames": ["grizzly"],
+      "reviewedAt": "2026-09-04",
+      "authoritativeReferences": [
+        "https://developers.google.com/android/images",
+        "https://source.android.com/docs/setup/build/building-pixel-kernels",
+        "https://github.com/GrapheneOS/adevtool/commit/144f004cc484d7e7234cdd167cee48e5f240288f",
+        "https://github.com/GrapheneOS/vendor_state/commit/afd6a0c9f6ca13d395f00e98227a0866cc14de07"
+      ],
+      "productName": "eliza_grizzly_phone",
+      "lunchTarget": "eliza_grizzly_phone-cp2a-userdebug",
+      "expectedFingerprintPrefix": "elizaOS/eliza_grizzly_phone/grizzly:",
+      "aospLockPath": "android/pixel11pro.lock.json",
+      "sourceStatus": "pinned-generated",
+      "installerEligible": false,
+      "blockedReasons": [
+        "A complete reproducible device-kernel and vendor-module integration is not yet verified; initial bring-up intentionally uses the stock kernel extracted from the pinned factory image.",
+        "The generated vendor module has not yet completed an exact-source build and physical Pixel 11 Pro boot validation.",
+        "No retained Pixel 11 Pro rollback, flash, post-boot hardware, launcher, local inference, or voice evidence bundle exists yet."
+      ],
+      "labExperimentsEligible": false,
+      "decisionNote": "Alpha Phone (#31023) names Pixel 10 as the target and allows Pixel 11 only after support is validated. This tree pins only Pixel 11 Pro (grizzly) and has no Pixel 10 (frankel/blazer/mustang) lock, so the device choice is an open owner decision. Keep this target unvalidated until either the Pixel 11 Pro evidence above exists or a Pixel 10 lock, brand config and vendor product are added."
+    },
+    {
+      "targetId": "generic-mediatek-gsi",
+      "marketingName": "Generic MediaTek Treble tablet (GSI)",
+      "manufacturer": "Various",
+      "codenames": ["generic_arm64"],
+      "reviewedAt": "2026-10-02",
+      "authoritativeReferences": [
+        "https://source.android.com/docs/core/tests/vts/gsi",
+        "https://source.android.com/docs/core/architecture/vintf/fcm",
+        "https://android.googlesource.com/platform/manifest/+/refs/tags/android-17.0.0_r1"
+      ],
+      "sourceStatus": "blocked",
+      "installerEligible": false,
+      "blockedReasons": [
+        "No physical device has been qualified: there is no retained flash, boot, VINTF compatibility, rollback, launcher, local inference, or voice evidence for any MediaTek tablet running this GSI.",
+        "The tablet maker's vendor, ODM, boot and kernel partitions are third-party binaries that cannot be reproduced from pinned source.",
+        "Third-party MediaTek bootloaders require Android Verified Boot verification to be disabled with an unlocked (orange) boot state, a weaker trust state than a locked device with an enrolled key.",
+        "Protection of radio-frequency calibration and parameters below the OS (bootloader, modem and vendor firmware) has not been verified for any candidate device.",
+        "A production user build is blocked: the on-device agent depends on a userdebug-only SELinux rule that lets platform_app execute app data files."
+      ],
+      "labExperimentsEligible": false,
+      "decisionNote": "generic_arm64 is the PRODUCT_DEVICE of the eliza_gsi_arm64 system image, not a tablet codename; on a GSI, ro.product.device comes from the tablet's vendor partition. Each qualified tablet needs its own target with its real codename, vendor API level, kernel version and VINTF evidence."
+    },
+    {
+      "targetId": "lightphone3-tlp301",
+      "marketingName": "Light Phone III",
+      "manufacturer": "Light",
+      "codenames": ["TLP301"],
+      "reviewedAt": "2026-08-18",
+      "authoritativeReferences": [
+        "https://github.com/lightphone/light-sdk",
+        "https://developers.thelightphone.com/"
+      ],
+      "sourceStatus": "blocked",
+      "installerEligible": false,
+      "blockedReasons": [
+        "Light's official light-sdk is an application/tool SDK, not a bootable LightOS/AOSP source, signing, or flash contract.",
+        "No authoritative AOSP device tree or board configuration has been published.",
+        "No kernel source or boot-image contract has been published.",
+        "No licensed vendor-blob manifest has been published.",
+        "No validated bootloader unlock, flash, or rollback procedure exists."
+      ],
+      "labExperimentsEligible": false
+    }
+  ]
+}

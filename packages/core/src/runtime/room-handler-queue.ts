@@ -5,6 +5,7 @@
  * acquired lease remains owned until its complete durable outcome settles.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ElizaError } from "../errors";
 
 interface QueuedItem<T> {
@@ -88,8 +89,7 @@ export interface RoomHandlerQueueOptions {
 	/** Diagnostic boundary for telemetry-listener failures. */
 	onListenerError?: (error: unknown, event: RoomQueueEvent) => void;
 	/**
-	 * Force explicit capability propagation when async-local context is unavailable.
-	 * Browser and edge runtimes select this mode automatically.
+	 * Require explicit lease capabilities instead of inheriting async-local ownership.
 	 */
 	asyncContext?: "auto" | "explicit";
 }
@@ -109,24 +109,10 @@ interface RoomHandlerOwnershipStorage {
 	run<T>(context: RoomHandlerOwnershipContext, fn: () => T): T;
 }
 
-let roomHandlerOwnershipStorage: RoomHandlerOwnershipStorage | null | undefined;
+const roomHandlerOwnershipStorage =
+	new AsyncLocalStorage<RoomHandlerOwnershipContext>();
 
-function getRoomHandlerOwnershipStorage(): RoomHandlerOwnershipStorage | null {
-	if (roomHandlerOwnershipStorage !== undefined) {
-		return roomHandlerOwnershipStorage;
-	}
-	if (
-		typeof process !== "undefined" &&
-		typeof process.getBuiltinModule === "function"
-	) {
-		const { AsyncLocalStorage } = process.getBuiltinModule(
-			"node:async_hooks",
-		) as typeof import("node:async_hooks");
-		roomHandlerOwnershipStorage =
-			new AsyncLocalStorage<RoomHandlerOwnershipContext>();
-		return roomHandlerOwnershipStorage;
-	}
-	roomHandlerOwnershipStorage = null;
+function getRoomHandlerOwnershipStorage(): RoomHandlerOwnershipStorage {
 	return roomHandlerOwnershipStorage;
 }
 

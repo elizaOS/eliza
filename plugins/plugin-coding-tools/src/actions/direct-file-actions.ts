@@ -20,12 +20,19 @@ export const readAction: Action = {
   name: "READ",
   ...DIRECT_FILE_GATE,
   description:
-    "Read a UTF-8 text file with numbered lines. Use offset and limit for a bounded window.",
+    "Read complete UTF-8 text without line-number decoration. Supply offset and limit only for an explicit range.",
   parameters: [
     {
       name: "file_path",
-      description: "Absolute file path.",
-      required: true,
+      description: "File path for an initial read; omit when using reference.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "reference",
+      description:
+        "Opaque file reference from a previous read; use instead of file_path with expectedRevision.",
+      required: false,
       schema: { type: "string" },
     },
     {
@@ -36,9 +43,22 @@ export const readAction: Action = {
     },
     {
       name: "limit",
-      description: "Maximum lines to return; omit for the configured cap.",
+      description: "Maximum units to return; omit for the complete remainder.",
       required: false,
       schema: { type: "number" },
+    },
+    {
+      name: "unit",
+      description: "Coordinate unit: line (default) or byte.",
+      required: false,
+      schema: { type: "string", enum: ["line", "byte"] },
+    },
+    {
+      name: "expectedRevision",
+      description:
+        "For continuation only, copy the opaque revision from the latest READ of this file, never a write receipt version or content hash. Omit on initial reads and after writes or edits.",
+      required: false,
+      schema: { type: "string" },
     },
   ],
   validate: async () => true,
@@ -59,7 +79,8 @@ export const writeAction: Action = {
     },
     {
       name: "content",
-      description: "Complete replacement file content.",
+      description:
+        "Exact complete replacement text, preserving all whitespace including the final newline.",
       required: true,
       schema: { type: "string" },
     },

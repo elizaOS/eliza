@@ -14,13 +14,14 @@
  * rest is a deliberately separate concern and would land in a follow-up.
  *
  * Cloud users (Eliza Cloud session active) are out of scope here — they
- * use the `platformCredentials` table in `cloud/packages/db/schemas/` via
+ * use the `platformCredentials` table in `packages/cloud/shared/src/db/schemas/` via
  * the dedicated OAuth flow. This module is the local-first surface only.
  */
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 
 export interface GitHubCredentials {
   /** The PAT itself. Never sent back to the UI after save. */
@@ -53,32 +54,35 @@ function isGitHubCredentials(value: unknown): value is GitHubCredentials {
     typeof v.username === "string" &&
     Array.isArray(v.scopes) &&
     v.scopes.every((s) => typeof s === "string") &&
-    typeof v.savedAt === "number"
+    typeof v.savedAt === "number" &&
+    Number.isFinite(v.savedAt)
   );
 }
 
-/**
- * Read the saved credentials, or null if no file exists / the file is
- * unreadable / the contents don't conform to the expected shape. Callers
- * that need to surface a specific cause should check the file path
- * themselves; we treat all failure modes the same here so the UI never
- * has to reason about transient FS errors during render.
- */
+/** Read the saved record; only an absent file means unconfigured. */
 export async function loadCredentials(): Promise<GitHubCredentials | null> {
   const filePath = getCredentialFilePath();
   let raw: string;
   try {
     raw = await fs.readFile(filePath, "utf-8");
-  } catch {
-    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return null;
+    throw new ElizaError("Saved GitHub credential record is malformed", {
+      code: "GITHUB_CREDENTIAL_RECORD_INVALID",
+    });
   }
-  return isGitHubCredentials(parsed) ? parsed : null;
+  if (!isGitHubCredentials(parsed))
+    throw new ElizaError(
+      "Saved GitHub credential record has an invalid shape",
+      { code: "GITHUB_CREDENTIAL_RECORD_INVALID" },
+    );
+  return parsed;
 }
 
 /** Read just the metadata: same as `loadCredentials` minus the token. */
@@ -101,7 +105,7 @@ export async function saveCredentials(creds: GitHubCredentials): Promise<void> {
   await fs.chmod(directory, 0o700);
   // Write to a temp sibling then rename so an interrupted write can never
   // leave a half-written credential file readable by the runtime.
-  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  const tmpPath = `${filePath}.${randomUUID()}.tmp`;
   await fs.writeFile(tmpPath, JSON.stringify(creds, null, 2), {
     mode: 0o600,
   });

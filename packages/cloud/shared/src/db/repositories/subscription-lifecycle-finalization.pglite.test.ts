@@ -51,6 +51,8 @@ beforeAll(async () => {
     CREATE TABLE credit_transactions (id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id), CONSTRAINT credit_transactions_id_org_idx UNIQUE (id, organization_id));
   `);
   await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
+  const { applyAppBillingTestMigrations } = await import("./app-billing-test-migrations");
+  await applyAppBillingTestMigrations((statement) => getPgliteClientForTests().exec(statement));
   const noticeMigration = await readFile(
     new URL("../migrations/0382_subscription_notice_intents.sql", import.meta.url),
     "utf8",
@@ -508,7 +510,8 @@ describe("atomic terminal subscription finalization", () => {
     { stripe_customer_id: "cus_other" },
     { stripe_subscription_item_id: "si_other" },
     { plan_key: "pro_monthly" },
-    { current_period_end: new Date(PERIOD_END.getTime() + 86_400_000) },
+    // Stripe may advance the period (dunning cancellation), never move it backwards.
+    { current_period_start: new Date(PERIOD_START.getTime() - 86_400_000) },
     { current_period_start: new Date("invalid") },
   ])("mismatched provider/plan/period observation fails closed: %j", async (changes) => {
     const input = await prepare();

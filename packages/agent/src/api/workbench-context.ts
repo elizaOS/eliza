@@ -9,7 +9,8 @@
 
 import type http from "node:http";
 import type { AgentRuntime, Task, UUID } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { ReadJsonBodyOptions } from "@elizaos/host/protocol";
+
 import type { TriggerSummary } from "../triggers/types.ts";
 
 export interface WorkbenchTodoView {
@@ -42,13 +43,7 @@ export interface WorkbenchRouteContext {
     res: http.ServerResponse,
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
-  // Helpers from server.ts
   toWorkbenchTodo: (task: Task) => WorkbenchTodoView | null;
-  normalizeTags: (value: unknown, required?: string[]) => string[];
-  readTaskMetadata: (task: Task) => Record<string, unknown>;
-  readTaskCompleted: (task: Task) => boolean;
-  parseNullableNumber: (value: unknown) => number | null;
-  asObject: (value: unknown) => Record<string, unknown> | null;
   decodePathComponent: (
     raw: string,
     res: http.ServerResponse,

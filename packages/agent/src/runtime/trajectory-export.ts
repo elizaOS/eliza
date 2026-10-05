@@ -8,17 +8,14 @@
 import {
   ElizaError,
   type JsonValue,
-  serializeTrajectoryExport,
+  type TrajectoryDetailRecord as Trajectory,
+  type TrajectoryExportOptions,
+  type TrajectoryExportResult,
+  type TrajectorySummaryRecord as TrajectoryListItem,
+  type TrajectoryLlmCallRecord as TrajectoryLlmCall,
+  type TrajectoryProviderAccessRecord as TrajectoryProviderAccess,
+  type TrajectoryStepRecord as TrajectoryStep,
 } from "@elizaos/core";
-import type {
-  Trajectory,
-  TrajectoryExportOptions,
-  TrajectoryExportResult,
-  TrajectoryListItem,
-  TrajectoryLlmCall,
-  TrajectoryProviderAccess,
-  TrajectoryStep,
-} from "../types/trajectory.ts";
 import {
   enrichTrajectoryLlmCall,
   normalizePersistedTrajectoryTiming,
@@ -225,3 +222,5 @@ export {
   toArchiveSafeTimestamp,
   writeCompressedJsonlRows,
 } from "./trajectory-internals.ts";
+
+import { serializeTrajectoryExport } from "@elizaos/core";

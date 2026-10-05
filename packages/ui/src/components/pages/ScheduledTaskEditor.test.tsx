@@ -18,11 +18,15 @@ import type { AutomationItem } from "../../api/client-types-config";
 import type { ScheduledTaskView } from "../../api/client-types-core";
 
 // The editor routes verbs to the scheduled-task endpoints via the typed client.
-const { applyScheduledTaskMock } = vi.hoisted(() => ({
+const { applyScheduledTaskMock, fireScheduledTaskMock } = vi.hoisted(() => ({
   applyScheduledTaskMock: vi.fn(),
+  fireScheduledTaskMock: vi.fn(),
 }));
-vi.mock("../../api", () => ({
-  client: { applyScheduledTask: applyScheduledTaskMock },
+vi.mock("../../api/client", () => ({
+  client: {
+    applyScheduledTask: applyScheduledTaskMock,
+    fireScheduledTask: fireScheduledTaskMock,
+  },
 }));
 // Translation: echo the defaultValue so we can assert on the English copy.
 vi.mock("../../state/TranslationContext.hooks", () => ({
@@ -73,24 +77,56 @@ describe("ScheduledTaskEditor", () => {
   beforeEach(() => {
     applyScheduledTaskMock.mockReset();
     applyScheduledTaskMock.mockResolvedValue(undefined);
+    fireScheduledTaskMock.mockReset();
+    fireScheduledTaskMock.mockResolvedValue({
+      fire: { kind: "fired", task: null },
+    });
   });
   afterEach(() => {
     cleanup();
   });
 
-  it("shows 'Run now' for a manual (paused) starter and acknowledges it", async () => {
+  it("shows 'Run now' for a manual (paused) starter and fires the canonical dispatch", async () => {
     const onApplied = vi.fn();
     render(<ScheduledTaskEditor item={item(task())} onApplied={onApplied} />);
 
     fireEvent.click(screen.getByText("Run now"));
     await waitFor(() =>
-      expect(applyScheduledTaskMock).toHaveBeenCalledWith(
-        "t-1",
-        "acknowledge",
-        undefined,
-      ),
+      expect(fireScheduledTaskMock).toHaveBeenCalledWith("t-1"),
     );
+    // The acknowledge lifecycle verb must NOT be used to trigger a run.
+    expect(applyScheduledTaskMock).not.toHaveBeenCalled();
     await waitFor(() => expect(onApplied).toHaveBeenCalledTimes(1));
+  });
+
+  it("reports a failed dispatch visibly instead of reporting success", async () => {
+    fireScheduledTaskMock.mockResolvedValueOnce({
+      fire: {
+        kind: "dispatch_failed",
+        error: "provider unavailable",
+        task: null,
+      },
+    });
+    const onApplied = vi.fn();
+    render(<ScheduledTaskEditor item={item(task())} onApplied={onApplied} />);
+
+    fireEvent.click(screen.getByText("Run now"));
+    await waitFor(() =>
+      expect(screen.getByText("provider unavailable")).toBeTruthy(),
+    );
+    expect(onApplied).not.toHaveBeenCalled();
+  });
+
+  it("treats a raced claim as a completed run", async () => {
+    fireScheduledTaskMock.mockResolvedValueOnce({
+      fire: { kind: "raced", task: null },
+    });
+    const onApplied = vi.fn();
+    render(<ScheduledTaskEditor item={item(task())} onApplied={onApplied} />);
+
+    fireEvent.click(screen.getByText("Run now"));
+    await waitFor(() => expect(onApplied).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/could not be run/i)).toBeNull();
   });
 
   it("labels the run button 'Acknowledge' for a non-manual task", () => {
@@ -140,7 +176,7 @@ describe("ScheduledTaskEditor", () => {
   });
 
   it("surfaces an error and does not call onApplied when the verb fails", async () => {
-    applyScheduledTaskMock.mockRejectedValue(new Error("server rejected"));
+    fireScheduledTaskMock.mockRejectedValue(new Error("server rejected"));
     const onApplied = vi.fn();
     render(<ScheduledTaskEditor item={item(task())} onApplied={onApplied} />);
 

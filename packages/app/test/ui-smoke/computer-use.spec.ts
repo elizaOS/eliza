@@ -33,9 +33,7 @@ test("settings exposes computer use capability controls", async ({ page }) => {
   await openSettingsSection(page, /^Permissions\b/);
   await expect(page.locator("#permissions")).toBeVisible();
   await expect(
-    page
-      .locator("#permissions")
-      .getByText("Permissions", { exact: true }),
+    page.locator("#permissions").getByText("Permissions", { exact: true }),
   ).toBeVisible();
 });
 
@@ -82,7 +80,7 @@ test("first-run starts with setup choices before capability settings", async ({
 
   // The Computer Use capability switch must NOT be reachable before the agent
   // exists — the in-chat onboarding gates it.
-  await expect(
-    page.getByRole("switch", { name: "Computer Use" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("switch", { name: "Computer Use" })).toHaveCount(
+    0,
+  );
 });

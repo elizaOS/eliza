@@ -6,7 +6,8 @@
  */
 import crypto from "node:crypto";
 import type http from "node:http";
-import { readAliasedEnv, type TradePermissionMode } from "@elizaos/shared";
+import type { TradePermissionMode } from "@elizaos/contracts";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 
 import type { WalletExportRequestBody } from "../contracts.js";
 import {
@@ -136,100 +137,15 @@ const hardenedGuard = createHardenedExportGuard(
 // Exported types and functions
 // ---------------------------------------------------------------------------
 
+export {
+  AGENT_AUTO_MAX_DAILY_TRADES,
+  agentAutoDailyTrades,
+  canUseLocalTradeExecution,
+  getAgentAutoTradeDate,
+  recordAgentAutoTrade,
+  resolveTradePermissionMode,
+} from "./trade-safety.js";
 export type { TradePermissionMode };
-
-export function resolveTradePermissionMode(config: {
-  features?: { tradePermissionMode?: unknown } | null;
-}): TradePermissionMode {
-  const raw = config.features?.tradePermissionMode;
-  if (
-    raw === "user-sign-only" ||
-    raw === "manual-local-key" ||
-    raw === "agent-auto"
-  ) {
-    return raw;
-  }
-  return "user-sign-only";
-}
-
-// ---------------------------------------------------------------------------
-// Autonomous (agent-auto) daily trade quota.
-//
-// Canonical semantics live in the host at
-// `packages/agent/src/api/trade-safety.ts`; this copy is kept in exact parity
-// (same 25/day cap, same UTC-calendar-day counting window, same consume/peek
-// behavior) so the `@elizaos/agent`-free plugin barrel enforces the identical
-// spend guard for its own consumers.
-// ---------------------------------------------------------------------------
-
-/** Maximum number of autonomous agent trades allowed per calendar day. */
-export const AGENT_AUTO_MAX_DAILY_TRADES = 25;
-
-/** Tracks autonomous trade count for rate-limiting in agent-auto mode. */
-export const agentAutoDailyTrades = { count: 0, resetDate: "" };
-
-export function getAgentAutoTradeDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/**
- * Record an autonomous agent trade. Returns true if allowed, false if
- * the daily limit has been reached. Resets the counter on a new calendar day.
- */
-export function recordAgentAutoTrade(log?: (msg: string) => void): boolean {
-  const today = getAgentAutoTradeDate();
-  if (agentAutoDailyTrades.resetDate !== today) {
-    agentAutoDailyTrades.count = 0;
-    agentAutoDailyTrades.resetDate = today;
-  }
-  if (agentAutoDailyTrades.count >= AGENT_AUTO_MAX_DAILY_TRADES) {
-    log?.(
-      `[trade] Agent-auto daily trade limit reached (${AGENT_AUTO_MAX_DAILY_TRADES}). Rejecting autonomous trade.`,
-    );
-    return false;
-  }
-  agentAutoDailyTrades.count += 1;
-  log?.(
-    `[trade] Agent-auto autonomous trade ${agentAutoDailyTrades.count}/${AGENT_AUTO_MAX_DAILY_TRADES} for ${today}`,
-  );
-  return true;
-}
-
-type LocalTradeExecutionOptions = {
-  consumeAgentQuota?: boolean;
-};
-
-/**
- * Returns true if local-key execution is permitted for the given actor.
- *
- * In `agent-auto` mode an autonomous agent is additionally capped at
- * `AGENT_AUTO_MAX_DAILY_TRADES` trades per calendar day. By default a permitted
- * agent-auto trade consumes one unit of daily quota; pass
- * `{ consumeAgentQuota: false }` to peek at remaining headroom without spending
- * it.
- */
-export function canUseLocalTradeExecution(
-  mode: TradePermissionMode,
-  isAgent: boolean,
-  log?: (msg: string) => void,
-  options: LocalTradeExecutionOptions = {},
-): boolean {
-  if (mode === "agent-auto") {
-    if (isAgent) {
-      if (options.consumeAgentQuota === false) {
-        const today = getAgentAutoTradeDate();
-        if (agentAutoDailyTrades.resetDate !== today) {
-          return true;
-        }
-        return agentAutoDailyTrades.count < AGENT_AUTO_MAX_DAILY_TRADES;
-      }
-      return recordAgentAutoTrade(log);
-    }
-    return true;
-  }
-  if (mode === "manual-local-key") return !isAgent;
-  return false;
-}
 
 /**
  * Hardened wallet export rejection function.

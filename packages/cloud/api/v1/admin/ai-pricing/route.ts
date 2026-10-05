@@ -8,24 +8,24 @@
  * Requires admin role.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { aiPricingRepository } from "@/db/repositories/ai-pricing";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { requireAdmin } from "@elizaos/cloud-shared/auth";
+import { aiPricingRepository } from "@elizaos/cloud-shared/db/repositories/ai-pricing";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   buildDimensionKey,
   listPersistedPricingEntries,
   listRecentPricingRefreshRuns,
   normalizePricingDimensions,
   refreshPricingCatalog,
-} from "@/lib/services/ai-pricing";
+} from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import {
   PRICING_BILLING_SOURCES,
   PRICING_PRODUCT_FAMILIES,
-} from "@/lib/services/ai-pricing-definitions";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const app = new Hono<AppEnv>();
 
@@ -78,6 +78,7 @@ const RefreshSchema = z.object({
   sources: z
     .array(
       z.enum([
+        "selfhosted",
         "gateway",
         "bitrouter",
         "cerebras",

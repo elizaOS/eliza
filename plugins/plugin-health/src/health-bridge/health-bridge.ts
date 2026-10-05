@@ -11,13 +11,25 @@
  *   - Google Fit REST API as a cross-platform fallback, authenticated via an
  *     OAuth access token supplied through config.
  *
+ * Day keys (`YYYY-MM-DD`) are calendar days in `HealthBridgeConfig.timeZone`,
+ * defaulting to the process zone: the HealthKit helper interprets `--date` as
+ * a device-local day, so "today" and the trend window must never be derived
+ * from the UTC instant.
+ *
  * Never log raw health values in plaintext.
  */
 
 import { execFile } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { promisify } from "node:util";
+import { normalizeTimeZone } from "@elizaos/contracts";
 import { logger } from "@elizaos/core";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getLocalDateKey,
+  getZonedDateParts,
+} from "../util/time.js";
 
 const execFileAsync = promisify(execFile);
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -83,6 +95,11 @@ export interface HealthBridgeConfig {
   healthKitCliPath?: string;
   /** OAuth2 access token for Google Fit. */
   googleFitAccessToken?: string;
+  /**
+   * IANA zone whose calendar day defines "today" and the trend window.
+   * Defaults to the process zone when absent.
+   */
+  timeZone?: string;
 }
 
 export class HealthBridgeError extends Error {
@@ -136,18 +153,25 @@ function utcMidnightMs(date: string): number {
   return ms;
 }
 
-function todayDateKeyUtc(): string {
-  return new Date().toISOString().slice(0, 10);
+function resolveDayTimeZone(config?: HealthBridgeConfig): string {
+  return normalizeTimeZone(config?.timeZone);
 }
 
-function fixtureDayOffset(date: string): number {
-  return Math.round(
-    (utcMidnightMs(date) - utcMidnightMs(todayDateKeyUtc())) / ONE_DAY_MS,
-  );
+function localTodayParts(timeZone: string) {
+  const { year, month, day } = getZonedDateParts(new Date(), timeZone);
+  return { year, month, day };
 }
 
-function fixtureSummaryForDate(date: string): HealthDailySummary {
-  const offset = fixtureDayOffset(date);
+function fixtureDayOffset(date: string, timeZone: string): number {
+  const today = getLocalDateKey(localTodayParts(timeZone));
+  return Math.round((utcMidnightMs(date) - utcMidnightMs(today)) / ONE_DAY_MS);
+}
+
+function fixtureSummaryForDate(
+  date: string,
+  timeZone: string,
+): HealthDailySummary {
+  const offset = fixtureDayOffset(date, timeZone);
   const distance = Math.abs(offset);
   const direction = offset < 0 ? 1 : -1;
   const steps = Math.max(
@@ -249,13 +273,16 @@ function fixturePointValue(
   };
 }
 
-function fixtureDataPoints(opts: {
-  metric: HealthDataPoint["metric"];
-  startAt: string;
-  endAt: string;
-}): HealthDataPoint[] {
+function fixtureDataPoints(
+  opts: {
+    metric: HealthDataPoint["metric"];
+    startAt: string;
+    endAt: string;
+  },
+  timeZone: string,
+): HealthDataPoint[] {
   return enumerateFixtureDates(opts.startAt, opts.endAt)
-    .map((date) => fixtureSummaryForDate(date))
+    .map((date) => fixtureSummaryForDate(date, timeZone))
     .map((summary) => {
       const point = fixturePointValue(summary, opts.metric);
       return {
@@ -558,18 +585,44 @@ function avgBucketValues(
   return count > 0 ? total / count : undefined;
 }
 
-function dayBoundsMs(date: string): { startMs: number; endMs: number } {
-  const start = new Date(`${date}T00:00:00Z`).getTime();
-  if (!Number.isFinite(start)) {
+/**
+ * The instants bounding local calendar day `date` in `timeZone`: local
+ * midnight to the next local midnight, so a DST day spans 23 or 25 hours and a
+ * day outside UTC never borrows hours from its neighbours.
+ */
+function dayBoundsMs(
+  date: string,
+  timeZone: string,
+): { startMs: number; endMs: number } {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const day = match
+    ? { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
+    : null;
+  if (!day || getLocalDateKey(addDaysToLocalDate(day, 0)) !== date) {
     throw new HealthBridgeError(
       `Invalid date for Google Fit summary: ${date}`,
       "google-fit",
     );
   }
-  return { startMs: start, endMs: start + 24 * 60 * 60 * 1000 };
+  const midnight = { hour: 0, minute: 0, second: 0 };
+  return {
+    startMs: buildUtcDateFromLocalParts(timeZone, {
+      ...day,
+      ...midnight,
+    }).getTime(),
+    endMs: buildUtcDateFromLocalParts(timeZone, {
+      ...addDaysToLocalDate(day, 1),
+      ...midnight,
+    }).getTime(),
+  };
 }
 
-function enumerateGoogleFitDates(startAt: string, endAt: string): string[] {
+/** Local calendar days in `timeZone` touched by the instant window. */
+function enumerateGoogleFitDates(
+  startAt: string,
+  endAt: string,
+  timeZone: string,
+): string[] {
   const start = new Date(startAt);
   const end = new Date(endAt);
   const startMs = start.getTime();
@@ -585,17 +638,15 @@ function enumerateGoogleFitDates(startAt: string, endAt: string): string[] {
   }
 
   const dates: string[] = [];
-  const cursor = new Date(
-    Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
-  );
-  const endCursorMs = Date.UTC(
-    end.getUTCFullYear(),
-    end.getUTCMonth(),
-    end.getUTCDate(),
-  );
-  while (cursor.getTime() <= endCursorMs) {
-    dates.push(cursor.toISOString().slice(0, 10));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  const endKey = getLocalDateKey(getZonedDateParts(end, timeZone));
+  let cursor = getZonedDateParts(start, timeZone);
+  for (
+    let key = getLocalDateKey(cursor);
+    key <= endKey;
+    key = getLocalDateKey(cursor)
+  ) {
+    dates.push(key);
+    cursor = { ...cursor, ...addDaysToLocalDate(cursor, 1) };
   }
   return dates;
 }
@@ -603,8 +654,9 @@ function enumerateGoogleFitDates(startAt: string, endAt: string): string[] {
 async function googleFitDailySummary(
   date: string,
   accessToken: string,
+  timeZone: string,
 ): Promise<HealthDailySummary> {
-  const { startMs, endMs } = dayBoundsMs(date);
+  const { startMs, endMs } = dayBoundsMs(date, timeZone);
   const aggregateBy = (
     [
       "steps",
@@ -704,11 +756,16 @@ async function googleFitDailySummary(
 async function googleFitDataPoints(
   opts: { metric: HealthDataPoint["metric"]; startAt: string; endAt: string },
   accessToken: string,
+  timeZone: string,
 ): Promise<HealthDataPoint[]> {
   if (opts.metric === "sleep_hours") {
     const points: HealthDataPoint[] = [];
-    for (const date of enumerateGoogleFitDates(opts.startAt, opts.endAt)) {
-      const summary = await googleFitDailySummary(date, accessToken);
+    for (const date of enumerateGoogleFitDates(
+      opts.startAt,
+      opts.endAt,
+      timeZone,
+    )) {
+      const summary = await googleFitDailySummary(date, accessToken, timeZone);
       // Skip days with no sleep points OR a failed sleep sub-fetch: emitting a
       // point for a `sleepUnavailable` day would surface a fabricated value.
       // The failure is already logged as a structured warn in
@@ -716,12 +773,13 @@ async function googleFitDataPoints(
       if (summary.sleepUnavailable || summary.sleepHours <= 0) {
         continue;
       }
+      const { startMs, endMs } = dayBoundsMs(date, timeZone);
       points.push({
         metric: "sleep_hours",
         value: summary.sleepHours,
         unit: "hours",
-        startAt: `${date}T00:00:00.000Z`,
-        endAt: `${date}T23:59:59.999Z`,
+        startAt: new Date(startMs).toISOString(),
+        endAt: new Date(endMs - 1).toISOString(),
         source: "google-fit",
       });
     }
@@ -790,7 +848,7 @@ export async function getDailySummary(
 ): Promise<HealthDailySummary> {
   const backend = await detectHealthBackend(config);
   if (backend === "fixture") {
-    return fixtureSummaryForDate(date);
+    return fixtureSummaryForDate(date, resolveDayTimeZone(config));
   }
   if (backend === "healthkit") {
     const cliPath = resolveHealthKitCliPath(config);
@@ -810,7 +868,7 @@ export async function getDailySummary(
         "google-fit",
       );
     }
-    return googleFitDailySummary(date, token);
+    return googleFitDailySummary(date, token, resolveDayTimeZone(config));
   }
   throw new HealthBridgeError("no health backend available", "none");
 }
@@ -821,7 +879,7 @@ export async function getDataPoints(
 ): Promise<HealthDataPoint[]> {
   const backend = await detectHealthBackend(config);
   if (backend === "fixture") {
-    return fixtureDataPoints(opts);
+    return fixtureDataPoints(opts, resolveDayTimeZone(config));
   }
   if (backend === "healthkit") {
     const cliPath = resolveHealthKitCliPath(config);
@@ -841,7 +899,7 @@ export async function getDataPoints(
         "google-fit",
       );
     }
-    return googleFitDataPoints(opts, token);
+    return googleFitDataPoints(opts, token, resolveDayTimeZone(config));
   }
   throw new HealthBridgeError("no health backend available", "none");
 }
@@ -854,11 +912,9 @@ export async function getRecentSummaries(
     return [];
   }
   const out: HealthDailySummary[] = [];
-  const today = new Date();
+  const today = localTodayParts(resolveDayTimeZone(config));
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setUTCDate(today.getUTCDate() - i);
-    const date = d.toISOString().slice(0, 10);
+    const date = getLocalDateKey(addDaysToLocalDate(today, -i));
     const summary = await getDailySummary(date, config);
     out.push(summary);
   }

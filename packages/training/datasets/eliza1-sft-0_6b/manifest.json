@@ -64,7 +64,7 @@
     "voice_emotion": "spoken replies with omnivoice-singing inline tags ([happy]/[sad]/[angry]/[nervous]/[calm]/[excited]/[whisper]/[singing] + non-verbals [laughter]/[sigh]) in replyText"
   },
   "sources": {
-    "action-selection-cases.ts": "packages/app-core/test/benchmarks/action-selection-cases.ts",
+    "action-selection-cases.ts": "packages/app/test/benchmarks/action-selection-cases.ts",
     "personality-bench": "elizaOS/benchmarks:suites/personality-bench/tests/calibration",
     "cerebras": "gpt-oss-120b via https://api.cerebras.ai/v1 (CEREBRAS_API_KEY env)"
   }

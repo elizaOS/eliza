@@ -1,32 +1,33 @@
 /**
- * Provider that exposes complete authorized cross-platform conversation
- * history with supplementary room retrieval metadata. RECENT_MESSAGES owns the current-room
- * transcript when present. Suppressed
- * inside automation and page-scoped rooms, which carry their own context.
- * Gated to ADMIN (enforced by applyPluginRoleGating).
- * Authorized message bodies remain complete regardless of recall keywords.
- * The model transport owns explicit rejection at an actual input boundary.
+ * Exposes the complete authorized cross-platform conversation history inline,
+ * with a room index for exact storage-backed reads when a permitted
+ * memory-read action exists. Current dialogue stays in RECENT_MESSAGES;
+ * relevant-conversations independently recalls matching historical evidence.
+ * No authorized body is replaced by the index, shortened or dropped under an
+ * estimated budget; a genuine model input boundary rejects explicitly.
+ * Automation/page rooms are excluded and owner-private disclosure is checked
+ * before identity expansion or history reads.
  */
-import type {
-  IAgentRuntime,
-  Media,
-  Memory,
-  Provider,
-  ProviderResult,
-  Room,
-  State,
-  UUID,
-} from "@elizaos/core";
 import {
+  actionGateRejection,
   buildCrossWorldConversationAccessContext,
-  dedupeHygienicDialogueMessages,
+  getValidationKeywordTerms,
+  type IAgentRuntime,
+  type Media,
+  type Memory,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  type Provider,
+  type ProviderResult,
+  type Room,
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
+  type State,
   toWellFormedUnicode,
+  type UUID,
 } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/shared";
+
+import { dedupeHygienicDialogueMessages } from "@elizaos/plugin-assistant";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -56,14 +57,12 @@ function attachmentPromptSummary(attachments: readonly Media[]): string {
 export const recentConversationsProvider: Provider = {
   name: "recent-conversations",
   description:
-    "Authorized conversation-room manifest for storage-backed cross-platform recall.",
+    "Complete authorized cross-platform conversation history with a room index for storage-backed recall.",
   descriptionCompressed:
-    "authorized conversation room manifest search stored cross platform history",
+    "authorized cross platform conversation history room index stored recall",
   dynamic: true,
-  // Cross-world continuity must be available to the response router itself;
-  // waiting for a memory/messaging context selection is too late for a direct
-  // recall answer. The owner-private audience gate below remains authoritative.
-  alwaysInResponseState: true,
+  // Cross-room originals load for selected recall contexts; current-room
+  // dialogue remains available independently through RECENT_MESSAGES.
   position: 5,
   relevanceKeywords: getValidationKeywordTerms(
     "provider.recentConversations.relevance",
@@ -131,16 +130,30 @@ export const recentConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
+      const recallAction = runtime.actions?.find((action) => {
+        if (action.name !== "MEMORY_SEARCH" && action.name !== "MEMORY") {
+          return false;
+        }
+        const rejection = actionGateRejection(action, {
+          message,
+          userRoles: accessContext.role ? [accessContext.role] : [],
+          // This manifest tells the response router to select memory when
+          // needed; context selection has not happened yet. Every other gate
+          // must already admit the action, and execution rechecks all gates.
+          activeContexts: ["memory"],
+        });
+        return rejection === undefined;
+      });
+      // Complete authorized bodies are always inline. A recall action adds a
+      // room index for exact reads; it never replaces the bodies.
       const memories = await runtime.getMemoriesByRoomIds({
         tableName: "messages",
         roomIds,
         accessContext,
       });
-      // Per room, the canonical RECENT_MESSAGES dedupe pass (consecutive
-      // identical rows from one sender; repeated assistant texts within one
-      // assistant run): connector record-of-send rows duplicate every delivered
-      // reply, and this eager form rendered both copies for every room (live:
-      // 378 duplicate entries, ~7K tokens, in one Stage-1 prompt).
+      // Share RECENT_MESSAGES source hygiene: only identical copies of the
+      // same source ID collapse. Distinct connector records and repeated turns
+      // keep their provenance even when their visible text is identical.
       const byRoom = new Map<string, Memory[]>();
       for (const memory of memories) {
         if (
@@ -195,30 +208,30 @@ export const recentConversationsProvider: Provider = {
           label: toWellFormedUnicode(roomSourceTag(room)),
         };
       });
-      const manifestLines = [
-        "Stored conversation manifest:",
-        `${sorted.length} stored message(s) across ${rooms.length} authorized room(s).`,
-        "Message bodies are not included here. Use MEMORY_SEARCH for complete historical recall.",
-        ...rooms.map((room) => `- ${room.label} roomId=${room.id}`),
-      ];
-      const eagerLines = ["Recent conversations:"];
+      markOwnerExclusiveDisclosureUsed(message);
+
+      const lines = ["Stored conversations (complete authorized history):"];
       for (const memory of sorted) {
         const room = roomCache.get(memory.roomId) ?? null;
-        const text = toWellFormedUnicode(memory.content.text ?? "");
+        const body = toWellFormedUnicode(memory.content.text ?? "");
         const attachments = attachmentPromptSummary(
           memory.content.attachments ?? [],
         );
-        eagerLines.push(
-          `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[text, attachments].filter(Boolean).join(" ")}`,
+        lines.push(
+          `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[body, attachments].filter(Boolean).join(" ")}`,
         );
       }
-
-      markOwnerExclusiveDisclosureUsed(message);
-
-      const manifestText = manifestLines.join("\n");
+      if (recallAction) {
+        lines.push(
+          "",
+          `Room index for exact reads with ${recallAction.name}${recallAction.name === "MEMORY" ? " action=search" : ""}, type=messages and a roomId below:`,
+          ...rooms.map((room) => `- ${room.label} roomId=${room.id}`),
+        );
+      }
+      // No `overflowText`: an estimated budget must not swap these bodies for
+      // a body-free index. A genuine model input boundary rejects explicitly.
       return {
-        text: eagerLines.join("\n"),
-        overflowText: manifestText,
+        text: lines.join("\n"),
         values: {
           recentConversationCount: sorted.length,
           recentConversationRoomCount: rooms.length,
@@ -226,15 +239,16 @@ export const recentConversationsProvider: Provider = {
         data: { rooms },
       };
     } catch (error) {
-      // error-policy:J4 recall failure degrades to no recent-conversations text,
-      // but must be distinguishable from a legit-empty recall: reportError
-      // surfaces the broken pipeline to the agent via RECENT_ERRORS instead of
-      // it reading as "no recent history".
+      // error-policy:J4 expose retrieval failure before a direct response can mistake it for empty history.
       runtime.reportError("RecentConversationsProvider", error, {
         entityId: message.entityId,
         roomId: message.roomId,
       });
-      return { text: "", values: {}, data: {} };
+      return {
+        text: "Cross-room history is unavailable because retrieval failed. Do not infer that no prior discussion exists; use an authorized recall tool if available or state the gap.",
+        values: {},
+        data: { recallUnavailable: true },
+      };
     }
   },
 };

@@ -102,6 +102,12 @@ function snapshot(
       balance: exact("125.500000", "usd"),
       revision: "42",
     }),
+    subscription: {
+      status: "not_applicable",
+      source: "primary-organization-subscription",
+      observedAt: OBSERVED_AT,
+      reason: "no_organization_subscription",
+    },
     activeCompute: {
       resources: available([CONTAINER, SANDBOX]),
       estimatedRecurringComputeCostPerDay: available(

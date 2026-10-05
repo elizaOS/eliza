@@ -8,7 +8,9 @@
 import { randomUUID } from "node:crypto";
 import { type Component, ElizaError, type Entity, type UUID } from "@elizaos/core";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { componentTable, entityTable, participantTable } from "../schema/index";
+import { componentTable } from "../schema/component";
+import { entityTable } from "../schema/entity";
+import { participantTable } from "../schema/participant";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
 

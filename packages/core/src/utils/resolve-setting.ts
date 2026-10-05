@@ -4,8 +4,8 @@ import { type ReadEnvOptions, readEnv } from "./read-env.js";
 
 /**
  * Minimal structural shape of a runtime that can resolve a setting. Kept local
- * (rather than importing `IAgentRuntime`) so this helper stays browser/edge-safe
- * and free of the runtime type graph.
+ * (rather than importing `IAgentRuntime`) to avoid coupling simple settings
+ * consumers to the complete runtime type graph.
  */
 export interface SettingReader {
 	getSetting(key: string): string | boolean | number | null;

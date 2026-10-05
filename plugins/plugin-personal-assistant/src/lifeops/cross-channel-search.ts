@@ -80,7 +80,7 @@ import type {
   LifeOpsGmailMessageSummary,
   LifeOpsXDm,
   LifeOpsXFeedItem,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 
 // ---------------------------------------------------------------------------
 // Public types

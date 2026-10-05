@@ -8,10 +8,10 @@
 import { Moon } from "lucide-react";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
-import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { client } from "../../../api/client";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";

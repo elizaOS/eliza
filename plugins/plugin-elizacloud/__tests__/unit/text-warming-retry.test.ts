@@ -8,13 +8,14 @@
  * fallback, while every other failure still throws immediately. The fetch is
  * mocked; timers are faked to drive the backoff deterministically.
  */
-import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   __resetNativeChatLimiterForTests,
   ElizaCloudGatewayWarmingExhaustedError,
   generateNativeChatCompletion,
+  handleResponseHandler,
   isWarmingUnavailableResponse,
   nextWarmingRetryDelayMs,
   requestNativeWithWarmingRetry,
@@ -114,6 +115,20 @@ function mockFetchSequence(responses: Array<() => Response>): ReturnType<typeof 
     call += 1;
     return factory();
   });
+  vi.spyOn(globalThis, "fetch").mockImplementation(impl as unknown as typeof fetch);
+  return impl;
+}
+
+/** A fetch that settles only when its request signal aborts. */
+function hangingFetchUntilAbort(): ReturnType<typeof vi.fn> {
+  const impl = vi.fn(
+    (_input: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+          once: true,
+        });
+      })
+  );
   vi.spyOn(globalThis, "fetch").mockImplementation(impl as unknown as typeof fetch);
   return impl;
 }
@@ -249,7 +264,7 @@ describe("buffered native chat completion", () => {
     await vi.runAllTimersAsync();
     const error = await pending;
     expect(error).toBeInstanceOf(ElizaCloudGatewayWarmingExhaustedError);
-    expect((error as ElizaErrorShape).code).toBe(ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED);
+    expect((error as ElizaErrorShape).code).toBe(MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED);
     expect((error as Error & { status?: number }).status).toBe(503);
     // 1 initial attempt + 4 bounded retries, then the normal error path.
     expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -337,6 +352,83 @@ describe("streaming native chat completion", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("aborts an in-flight buffered completion with the caller's signal", async () => {
+    const fetchMock = hangingFetchUntilAbort();
+    const controller = new AbortController();
+    const abortReason = new DOMException("turn cancelled", "AbortError");
+    const pending = generateNativeChatCompletion(
+      runtime(),
+      "TEXT_SMALL",
+      { ...NATIVE_PARAMS, signal: controller.signal },
+      CONTEXT
+    ).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    controller.abort(abortReason);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(Promise.race([pending, Promise.resolve("still pending")])).resolves.toBe(
+      abortReason
+    );
+  });
+
+  it("still applies the client timeout to a buffered completion that carries a caller signal", async () => {
+    const previous = process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS;
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "1000";
+    try {
+      const fetchMock = hangingFetchUntilAbort();
+      const controller = new AbortController();
+      const pending = generateNativeChatCompletion(
+        runtime(),
+        "TEXT_SMALL",
+        { ...NATIVE_PARAMS, signal: controller.signal },
+        CONTEXT
+      ).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const settled = await Promise.race([pending, Promise.resolve("still pending")]);
+      expect(settled).toBeInstanceOf(Error);
+      expect(controller.signal.aborted).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previous === undefined) delete process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS;
+      else process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = previous;
+    }
+  });
+
+  it("aborts an in-flight /responses round-trip with the caller's signal", async () => {
+    const fetchMock = hangingFetchUntilAbort();
+    const controller = new AbortController();
+    const abortReason = new DOMException("turn cancelled", "AbortError");
+    const pending = handleResponseHandler(runtime(), {
+      prompt: "hello",
+      signal: controller.signal,
+    } as Parameters<typeof handleResponseHandler>[1]).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/responses");
+    controller.abort(abortReason);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(Promise.race([pending, Promise.resolve("still pending")])).resolves.toBe(
+      abortReason
+    );
+  });
+
+  it("ends a buffered completion's warming backoff on caller abort without another request", async () => {
+    const fetchMock = mockFetchSequence([warmingResponse]);
+    const controller = new AbortController();
+    const abortReason = new DOMException("turn cancelled", "AbortError");
+    const pending = generateNativeChatCompletion(
+      runtime(),
+      "TEXT_SMALL",
+      { ...NATIVE_PARAMS, signal: controller.signal },
+      CONTEXT
+    ).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    controller.abort(abortReason);
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toBe(abortReason);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves caller abort during warming backoff without another request", async () => {
     const fetchMock = mockFetchSequence([warmingResponse]);
     const controller = new AbortController();
@@ -406,7 +498,7 @@ describe("streaming native chat completion", () => {
     await vi.runAllTimersAsync();
     const error = await pending;
     expect(error).toBeInstanceOf(ElizaCloudGatewayWarmingExhaustedError);
-    expect((error as ElizaErrorShape).code).toBe(ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED);
+    expect((error as ElizaErrorShape).code).toBe(MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED);
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 });

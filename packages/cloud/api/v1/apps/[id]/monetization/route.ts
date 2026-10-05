@@ -1,15 +1,15 @@
 /** Handles monetization settings for an authenticated cloud application. */
 
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { CreatorMonetizationRetiredError } from "@elizaos/cloud-shared/lib/services/creator-monetization-retirement";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { appCreditsService } from "@/lib/services/app-credits";
-import { isAppMonetizationApproved } from "@/lib/services/app-review";
-import { appsService } from "@/lib/services/apps";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const UpdateMonetizationSchema = z.object({
   monetizationEnabled: z.boolean().optional(),
@@ -140,21 +140,11 @@ async function __hono_PUT(
       );
     }
 
-    // Compliance gate (#10732): monetization can only be *enabled* once the
-    // automated review has approved the app. Disabling is always allowed.
-    if (
-      validationResult.data.monetizationEnabled === true &&
-      !isAppMonetizationApproved(app)
-    ) {
-      return Response.json(
-        {
-          success: false,
-          error:
-            "App must pass compliance review before monetization can be enabled. Submit it for review and reach 'approved' status first.",
-          review_status: app.review_status,
-        },
-        { status: 403 },
-      );
+    // Creator monetization is retired (#22961 / #23022). Disabling stays
+    // allowed so an owner can clear a legacy setting.
+    if (validationResult.data.monetizationEnabled === true) {
+      const retired = new CreatorMonetizationRetiredError("app_monetization");
+      return Response.json(retired.toJSON(), { status: 410 });
     }
 
     await appCreditsService.updateMonetizationSettings(

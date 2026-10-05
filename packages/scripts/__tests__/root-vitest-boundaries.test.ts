@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.ts";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -144,7 +144,6 @@ describe("root Vitest boundaries", () => {
         env: {
           ...process.env,
           CHOKIDAR_USEPOLLING: "1",
-          NODE_OPTIONS: "--no-addons",
           WS_NO_BUFFER_UTIL: "1",
           WS_NO_UTF_8_VALIDATE: "1",
         },

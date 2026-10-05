@@ -9,7 +9,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType, Service, ServiceType } from "@elizaos/core";
+import { ElizaError, ModelType, Service, ServiceType } from "@elizaos/core";
 import { getDocumentProxy, getResolvedPDFJS, renderPageAsImage } from "unpdf";
 import type {
   PdfCompleteDocument,
@@ -228,8 +228,23 @@ export class PdfService extends Service {
     pdfBuffer: Buffer | Uint8Array,
     options: PdfCompleteExtractionOptions = {}
   ): Promise<PdfCompleteDocument> {
+    options = { ...options };
     const uint8Array = validatePdfInput(pdfBuffer);
+    let ownershipFailure: { value: unknown } | undefined;
+    const assertActive = async () => {
+      options.signal?.throwIfAborted();
+      try {
+        await options.assertActive?.();
+      } catch (error) {
+        // Keep the host's ownership failure distinct from parser failures.
+        ownershipFailure = { value: error };
+        throw error;
+      }
+      options.signal?.throwIfAborted();
+    };
+    await assertActive();
     const pdf = await getDocumentProxy(uint8Array);
+    await assertActive();
     const pageCount = requirePdfPageCount(pdf.numPages);
     const pdfjs = await getResolvedPDFJS();
     const ops = pdfjs.OPS as Record<string, number>;
@@ -249,6 +264,7 @@ export class PdfService extends Service {
 
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
       try {
+        await assertActive();
         const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1 });
         const textContent = await page.getTextContent();
@@ -263,6 +279,7 @@ export class PdfService extends Service {
         );
         const isParserBlank = nativeText.length === 0 && operatorList.fnArray.length === 0;
         let ocrText: string | null = null;
+        await assertActive();
         const rendered = await renderPageAsImage(pdf, pageNumber, {
           canvasImport: () => import("@napi-rs/canvas"),
           scale: renderScale,
@@ -274,28 +291,46 @@ export class PdfService extends Service {
         const encoded = rendered.slice(rendered.indexOf(",") + 1);
         const binary = atob(encoded);
         const pngBytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+        await assertActive();
         if (options.ocrPage) {
           ocrText = this.cleanUpContent(await options.ocrPage({ pageNumber, pngBytes }));
           if (!ocrText) ocrText = null;
         }
-        const response = await this.runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-          imageUrl: rendered,
-          stream: false,
-          prompt: [
-            `Transcribe every visible word on PDF page ${pageNumber} exactly and in reading order.`,
-            "Preserve headings, labels, table cells, dates, handwriting, and meaningful layout relationships.",
-            "Do not summarize, omit repeated text, or infer text that is not visible.",
-            "Reconcile the rendered page against all parser and OCR evidence below; resolve disagreements from the image and explicitly note any unresolved ambiguity.",
-            "After the exact transcription, describe non-text visual information needed to understand the page.",
-            "If and only if the rendered page is completely blank, return exactly [BLANK PAGE].",
-            `Native flattened text evidence: ${JSON.stringify(nativeText)}`,
-            `Native positioned text evidence: ${JSON.stringify(nativePositionedText)}`,
-            `OCR evidence: ${JSON.stringify(ocrText)}`,
-            options.visionPrompt?.trim() ?? "",
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        });
+        await assertActive();
+        const response = await this.runtime
+          .useModel(ModelType.IMAGE_DESCRIPTION, {
+            imageUrl: rendered,
+            signal: options.signal,
+            stream: false,
+            prompt: [
+              `Transcribe every visible word on PDF page ${pageNumber} exactly and in reading order.`,
+              "Preserve headings, labels, table cells, dates, handwriting, and meaningful layout relationships.",
+              "Do not summarize, omit repeated text, or infer text that is not visible.",
+              "Reconcile the rendered page against all parser and OCR evidence below; resolve disagreements from the image and explicitly note any unresolved ambiguity.",
+              "After the exact transcription, describe non-text visual information needed to understand the page.",
+              "If and only if the rendered page is completely blank, return exactly [BLANK PAGE].",
+              `Native flattened text evidence: ${JSON.stringify(nativeText)}`,
+              `Native positioned text evidence: ${JSON.stringify(nativePositionedText)}`,
+              `OCR evidence: ${JSON.stringify(ocrText)}`,
+              options.visionPrompt?.trim() ?? "",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          })
+          .catch((cause) => {
+            options.signal?.throwIfAborted();
+            // error-policy:J2 identify a failed transcription dependency without blaming the PDF.
+            throw new ElizaError(
+              "PDF page transcription is unavailable. Check the model service and retry the upload.",
+              {
+                code: "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE",
+                context: { pageNumber, pageCount },
+                cause,
+                severity: "ephemeral",
+              }
+            );
+          });
+        await assertActive();
         const visionText = response.description.trim();
         if (!visionText) {
           throw new Error("IMAGE_DESCRIPTION returned an empty page transcription");
@@ -329,8 +364,13 @@ export class PdfService extends Service {
         };
         pages.push(result);
         await options.onPageComplete?.(result);
+        await assertActive();
       } catch (error) {
-        // error-policy:J2 add page provenance and preserve the original cause.
+        options.signal?.throwIfAborted();
+        if (ownershipFailure && Object.is(error, ownershipFailure.value)) throw error;
+        // error-policy:J2 preserve typed dependency failures; add provenance to parser failures.
+        if (error instanceof ElizaError && error.code === "PDF_PAGE_TRANSCRIPTION_UNAVAILABLE")
+          throw error;
         throw new Error(
           `Complete PDF extraction failed on page ${pageNumber} of ${pageCount}: ${error instanceof Error ? error.message : String(error)}`,
           { cause: error }
@@ -338,6 +378,7 @@ export class PdfService extends Service {
       }
     }
 
+    await assertActive();
     return {
       complete: true,
       pageCount,

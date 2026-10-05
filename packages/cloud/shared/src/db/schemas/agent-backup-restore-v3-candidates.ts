@@ -7,7 +7,7 @@
  * candidate row (and therefore before any isolated plaintext is materialized).
  */
 
-import { AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS } from "@elizaos/shared";
+import { AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS } from "@elizaos/contracts";
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   bigint,

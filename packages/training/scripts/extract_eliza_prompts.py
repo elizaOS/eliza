@@ -1,32 +1,8 @@
-"""Extract every elizaOS prompt template into a single registry.
+"""Extract evaluated owner-local templates and action prompts for training.
 
-Sources:
-  1. Canonical templates: `eliza/packages/prompts/prompts/*.txt` (38 files).
-  2. Action-embedded templates: TypeScript template strings inside
-     `eliza/apps/*/src/actions/*.ts` and `eliza/packages/typescript/src/`
-     where the file declares a *_PROMPT, *_TEMPLATE, *_TPL, or composePrompt
-     literal containing handlebars `{{var}}` and a `# Task:` header or a
-     trailing `output:`/`Respond using native JSON` block.
-
-Output: `training/data/prompts/registry.json`
-
-Each entry:
-  {
-    "task_id":              "should_respond",
-    "source_path":          "eliza/packages/prompts/prompts/should_respond.txt",
-    "source_kind":          "canonical | action",
-    "template":             "<full text>",
-    "variables":            ["agentName", "providers", ...],
-    "output_format":        "payload | json | text | unknown",
-    "expected_keys":        ["decision", ...],   // best-effort from example block
-    "examples":             [ "<example block>", ... ]
-  }
-
-Used by:
-  * `synthesize_targets.py` — knows which template to render and what schema
-    the supervised target should match.
-  * `normalize.py` — uses `expected_keys` to validate that emitted native JSON
-    targets match the prompt's declared schema.
+Canonical templates are loaded through Bun from their agent and assistant
+modules, preserving interpolation and complete text exactly as runtime sees it.
+Action discovery remains a lexical supplement to the canonical exports.
 """
 
 from __future__ import annotations
@@ -36,17 +12,14 @@ import json
 import logging
 import re
 import sys
+import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]  # /home/shaw/eliza
+ROOT = Path(__file__).resolve().parents[3]
 TRAIN_ROOT = Path(__file__).resolve().parents[1]
-ELIZA = ROOT / "eliza"
-CANONICAL_DIR = ELIZA / "packages" / "prompts" / "prompts"
-TS_ACTION_GLOBS = [
-    ELIZA / "apps",                            # apps/*/src/actions/*.ts
-    ELIZA / "packages" / "typescript" / "src", # core actions/evaluators
-]
+ELIZA = ROOT
+TS_ACTION_GLOBS = [ROOT / "plugins", ROOT / "packages" / "agent" / "src"]
 OUT_DIR = TRAIN_ROOT / "data" / "prompts"
 
 logging.basicConfig(
@@ -122,20 +95,21 @@ def extract_variables(text: str) -> list[str]:
     return list(out)
 
 
-def from_canonical_file(path: Path) -> PromptEntry:
-    text = path.read_text(encoding="utf-8")
-    task_id = path.stem
-    examples, keys = extract_examples_and_keys(text)
-    return PromptEntry(
-        task_id=task_id,
-        source_path=str(path.relative_to(ROOT)),
-        source_kind="canonical",
-        template=text,
-        variables=extract_variables(text),
-        output_format=detect_output_format(text),
-        expected_keys=keys,
-        examples=examples,
-    )
+def canonical_entries() -> list[PromptEntry]:
+    exporter = Path(__file__).with_name("export-owned-prompts.ts")
+    rows = json.loads(subprocess.check_output(["bun", str(exporter)], cwd=ROOT, text=True))
+    entries: list[PromptEntry] = []
+    for row in rows:
+        text = row["template"]
+        name = row["name"].removesuffix("Template")
+        task_id = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+        examples, keys = extract_examples_and_keys(text)
+        entries.append(PromptEntry(
+            task_id=task_id, source_path=row["source_path"], source_kind="canonical",
+            template=text, variables=extract_variables(text),
+            output_format=detect_output_format(text), expected_keys=keys, examples=examples,
+        ))
+    return entries
 
 
 def looks_like_prompt(text: str) -> bool:
@@ -194,22 +168,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=OUT_DIR / "registry.json")
     ap.add_argument("--include-actions", action="store_true", default=True,
-                    help="also walk eliza/apps/**/src/actions and core typescript")
+                    help="also walk plugin and agent action sources")
     ap.add_argument("--print-stats", action="store_true")
     args = ap.parse_args()
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
-    if not CANONICAL_DIR.exists():
-        log.error("canonical prompts dir missing: %s", CANONICAL_DIR)
-        return 1
-
-    entries: list[PromptEntry] = []
-
-    canonical_files = sorted(CANONICAL_DIR.glob("*.txt"))
-    log.info("canonical prompts: %d files", len(canonical_files))
-    for p in canonical_files:
-        entries.append(from_canonical_file(p))
+    entries = canonical_entries()
+    log.info("canonical prompts: %d templates", len(entries))
 
     if args.include_actions:
         ts_files: list[Path] = []

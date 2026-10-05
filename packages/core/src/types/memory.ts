@@ -4,7 +4,7 @@
  * The central data shape the runtime persists, embeds, and retrieves through the
  * database adapter.
  */
-import type { Content, MetadataValue, UUID } from "./primitives";
+import type { Content, MetadataValue, UUID } from "./primitives.js";
 
 /**
  * Memory type enumeration for built-in memory types
@@ -107,6 +107,10 @@ export interface BaseMetadata {
 export interface DocumentMetadata {
 	base?: BaseMetadata;
 	type?: "document";
+	/** Legacy agent-wide discovery pin, used only when pinTargets is absent. */
+	pinned?: boolean;
+	/** Discovery placement only; every reader must independently satisfy document access. */
+	pinTargets?: { agent: boolean; roomIds: UUID[] };
 	/** Read-only entity grants that remain valid independently of room membership. */
 	directGrantEntityIds?: UUID[];
 	/** Served original-bytes file (content-addressed) linked to this document. */
@@ -512,6 +516,10 @@ export interface FactMetadata {
 }
 
 interface MemoryMetadataBase {
+	/** Explicit response controls also prevent background embedding admission. */
+	doNotPersist?: boolean;
+	skipMemory?: boolean;
+	transient?: boolean;
 	type?: MemoryTypeAlias;
 	source?: string;
 	scope?: MemoryScope;

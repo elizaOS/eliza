@@ -13,7 +13,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import * as React from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { cn } from "../../lib/utils";
 import { Button, type ButtonProps } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";

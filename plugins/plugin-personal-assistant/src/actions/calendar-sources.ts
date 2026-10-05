@@ -14,7 +14,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   type CalendarSourcesActionDeps,
   registerCalendarSourcesHostAdapter,
-} from "@elizaos/plugin-calendar/actions/calendar-sources";
+} from "@elizaos/plugin-calendar";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 
 const personalAssistantCalendarSourcesDeps: CalendarSourcesActionDeps = {

@@ -14,13 +14,15 @@ import { Socket } from "node:net";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  createInMemoryScheduledTaskLogStore,
   createInMemoryScheduledTaskStore,
-  registerScheduledTaskRunnerDeps,
-  type ScheduledTaskLogEntry,
-  ScheduledTaskRunnerService,
   TestNoopScheduledTaskDispatcher,
-} from "../scheduled-task/index.js";
+} from "../scheduled-task/runner.js";
+import {
+  registerScheduledTaskRunnerDeps,
+  ScheduledTaskRunnerService,
+} from "../scheduled-task/runner-service.js";
+import { createInMemoryScheduledTaskLogStore } from "../scheduled-task/state-log.js";
+import type { ScheduledTaskLogEntry } from "../scheduled-task/types.js";
 import { buildSchedulingRoutes } from "./plugin-routes.js";
 
 const AGENT_ID = "seam-test-agent";

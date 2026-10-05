@@ -12,7 +12,6 @@
  * owner conversation, not something to raise in a group room.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -20,7 +19,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { ChannelType, logger } from "@elizaos/core";
+import { ChannelType, hasRoleAccess, logger } from "@elizaos/core";
 import { createFirstRunStateStore } from "../lifeops/first-run/state.js";
 import { createFtuGoalStateStore } from "../lifeops/ftu-goal/state.js";
 
@@ -66,7 +65,7 @@ export const ftuGoalProvider: Provider = {
     if (!isPrivateSurface(message)) {
       return QUIET_RESULT;
     }
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return QUIET_RESULT;
     }
 

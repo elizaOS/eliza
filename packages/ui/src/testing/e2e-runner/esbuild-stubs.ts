@@ -1,23 +1,22 @@
 /**
  * esbuild resolve/load plugins the `__e2e__` fixture runners share to bundle a
- * shell fixture for the browser. The overlay's import graph transitively reaches
- * server-only code — `@elizaos/core` module-init that touches `process` + node
- * builtins — which is dead at render in a headless page. Production Vite
- * resolves core's `browser` export condition; a raw esbuild bundle does not, so
- * these plugins replace those edges with no-op proxies.
+ * shell fixture for the browser. These isolated fixtures replace server-only
+ * core and Node imports with controlled doubles. They validate UI behavior,
+ * not the production renderer's dependency boundary or core runtime behavior.
  *
  * Type-only esbuild import: importing these factories pulls no runtime esbuild, so
  * the frame-glitch harness (which resolves esbuild itself) can share them too.
  */
 
 import { builtinModules } from "node:module";
+import { fileURLToPath } from "node:url";
 import type { Plugin } from "esbuild";
 
 /**
  * Replace `@elizaos/core` with a no-op Proxy that answers the render-path symbols
- * the shell reads (`isViewVisible`, `dedupeModalities`, `matchShortcut`,
- * `findInteractionRegions`, `stripUnclaimedInteractionMarkup`) and proxies
- * everything else, so core's Node graph is never bundled.
+ * the shell reads (`isViewVisible`, `dedupeModalities`,
+ * `findInteractionRegions`, `stripUnclaimedInteractionMarkup`) and rejects
+ * unconfigured exports, so accidental dependencies cannot pass unnoticed.
  */
 export function stubElizaCore(): Plugin {
   return {
@@ -29,7 +28,7 @@ export function stubElizaCore(): Plugin {
       }));
       build.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
         contents: `
-        const noop = new Proxy(() => noop, { get: () => noop });
+        const notifications = require(${JSON.stringify(fileURLToPath(new URL("../../../../core/src/types/notification.ts", import.meta.url)))});
         // The wake/provision path (client-cloud.ts) subclasses the real
         // ElizaError; esbuild's ESM interop copies only this object's own keys,
         // so a Proxy fallback would surface undefined here and break the
@@ -50,30 +49,32 @@ export function stubElizaCore(): Plugin {
         }
         module.exports = new Proxy(
           {
+            ...notifications,
             ElizaError,
             isElizaError: (v) => v instanceof ElizaError,
             isViewVisible: () => true,
             dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
-            // Fixture chat messages must fall through to the mocked transport.
-            // Keep this as an own property so esbuild can materialize the named
-            // ESM import reached through slash-menu.ts.
-            matchShortcut: () => null,
             findInteractionRegions: () => [],
             // The stub reports no claimed interaction regions, so preserve the
             // fixture text. This must be a concrete own property: esbuild's ESM
             // interop cannot expose named imports supplied only by the Proxy.
             stripUnclaimedInteractionMarkup: (text) => text,
           },
-          { get: (t, p) => (p in t ? t[p] : noop) },
+          { get: (t, p) => {
+            if (p in t) return t[p];
+            if (p === "__esModule" || p === "then" || typeof p === "symbol") return undefined;
+            throw new Error("Unconfigured core fixture export: " + p);
+          } },
         );
       `,
         loader: "js",
+        resolveDir: fileURLToPath(new URL(".", import.meta.url)),
       }));
     },
   };
 }
 
-/** Replace every node builtin (dead in the browser) with a no-op proxy module. */
+/** Keep explicit unavailable probes; fail if a browser fixture executes a Node-only operation. */
 export function stubNodeBuiltins(): Plugin {
   const nodeBuiltins = new Set([
     ...builtinModules,
@@ -94,7 +95,7 @@ export function stubNodeBuiltins(): Plugin {
         return null;
       });
       build.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-        contents: `function anyfn() { return anyfn; }
+        contents: `function anyfn() { throw new Error("Node-only operation executed in browser fixture"); }
 export default anyfn;
 export const createRequire = () => anyfn;
 export const homedir = anyfn;
@@ -108,21 +109,21 @@ export const dirname = anyfn;
 export const basename = anyfn;
 export const extname = anyfn;
 export const sep = "/";
-export const createHash = () => ({ update: () => ({ digest: () => "" }) });
+export const createHash = anyfn;
 export const randomBytes = anyfn;
-export const randomUUID = () => "00000000-0000-0000-0000-000000000000";
+export const randomUUID = () => globalThis.crypto.randomUUID();
 export const Buffer = {
-  from: () => ({}),
+  from: anyfn,
   isBuffer: () => false,
-  alloc: () => ({}),
-  byteLength: () => 0,
+  alloc: anyfn,
+  byteLength: anyfn,
 };
 export const promises = {};
 export const existsSync = () => false;
 export const readFileSync = anyfn;
 export const writeFileSync = anyfn;
 export const mkdirSync = anyfn;
-export const readdirSync = () => [];
+export const readdirSync = anyfn;
 export const statSync = anyfn;
 export const realpathSync = anyfn;
 export const renameSync = anyfn;
@@ -132,7 +133,7 @@ export const fileURLToPath = anyfn;
 export const pathToFileURL = anyfn;
 export const lookup = anyfn;
 export const request = anyfn;
-export const createHmac = () => ({ update: () => ({ digest: () => "" }) });
+export const createHmac = anyfn;
 export const timingSafeEqual = () => false;
 export const createCipheriv = anyfn;
 export const createDecipheriv = anyfn;
@@ -150,7 +151,7 @@ export const unlink = anyfn;
 export const writeFile = anyfn;
 export const mkdir = anyfn;
 export const stat = anyfn;
-export const readdir = () => [];
+export const readdir = anyfn;
 export const isIP = () => 0;
 // Browser fixtures never admit operator CIDRs. Keep the Node BlockList surface
 // available to transitive shared imports while making every check fail closed.

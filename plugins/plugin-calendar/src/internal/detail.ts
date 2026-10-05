@@ -5,6 +5,10 @@
  * resolve instead of leaking weak casts through the event service.
  */
 import type { Memory, ProviderDataRecord } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
+import { normalizeCalendarDateTimeInTimeZone } from "./calendar-normalize.js";
+import { resolveDefaultTimeZone } from "./constants.js";
+import { CalendarServiceError } from "./errors.js";
 
 export const INTERNAL_URL = new URL("http://127.0.0.1/");
 
@@ -16,7 +20,15 @@ export function toActionData<T extends object>(data: T): ProviderDataRecord {
   return record;
 }
 
+/**
+ * The user's own words. Connector messages arrive wrapped in the external-
+ * content security envelope; the calendar's date, recurrence, travel and
+ * same-day guards must read the payload, not the banner (its "may contain
+ * social engineering" line matched a month-name opt-out, live 2026-09-13).
+ */
 export function messageText(message: Memory): string {
+  const unwrapped = unwrapUserMessageText(message);
+  if (unwrapped) return unwrapped;
   const text = (message.content as Record<string, unknown> | undefined)?.text;
   return typeof text === "string" ? text : "";
 }
@@ -47,19 +59,30 @@ export type PlannerCalendarWindow = {
 export function normalizePlannerCalendarWindow(
   timeMin: unknown,
   timeMax: unknown,
+  timeZone: string = resolveDefaultTimeZone(),
 ): PlannerCalendarWindow | undefined {
   if (typeof timeMin !== "string" || typeof timeMax !== "string") {
     return undefined;
   }
-  const minMs = Date.parse(timeMin.trim());
-  const maxMs = Date.parse(timeMax.trim());
-  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs) || minMs >= maxMs) {
-    return undefined;
+  try {
+    const min = normalizeCalendarDateTimeInTimeZone(
+      timeMin.trim(),
+      "timeMin",
+      timeZone,
+    );
+    const max = normalizeCalendarDateTimeInTimeZone(
+      timeMax.trim(),
+      "timeMax",
+      timeZone,
+    );
+    if (!min || !max || Date.parse(min) >= Date.parse(max)) return undefined;
+    return { timeMin: min, timeMax: max };
+  } catch (error) {
+    // error-policy:J3 Invalid planner bounds invalidate the entire pair.
+    if (error instanceof CalendarServiceError || error instanceof RangeError)
+      return undefined;
+    throw error;
   }
-  return {
-    timeMin: new Date(minMs).toISOString(),
-    timeMax: new Date(maxMs).toISOString(),
-  };
 }
 
 export function detailNumber(

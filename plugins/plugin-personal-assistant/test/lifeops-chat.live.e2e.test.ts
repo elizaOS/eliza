@@ -2,12 +2,10 @@
  * Live-model chat e2e driving LifeOps conversations end to end through a booted runtime and
  * the conversation API. Gated on live-provider credentials.
  */
+
+import { createConversation, req } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
-import {
-  createConversation,
-  req,
-} from "../../../packages/app-core/test/helpers/http";
+import { describeIf } from "../../../packages/app/test/helpers/conditional-tests.ts";
 import {
   assertNoProviderIssue,
   getLifeOpsLiveSetupWarnings,

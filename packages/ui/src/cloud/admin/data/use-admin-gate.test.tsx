@@ -10,8 +10,9 @@
  * provider mounted), which is the reload reality.
  */
 
+import { createMemoryStorage } from "@elizaos/testing/browser-mocks";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,23 +29,6 @@ function makeJwt(payload: Record<string, unknown>): string {
 
 // Node ≥22's bare localStorage global is non-functional under vitest and
 // shadows jsdom's — install a working in-memory Storage on both access paths.
-function createMemoryStorage(): Storage {
-  const store = new Map<string, string>();
-  return {
-    get length() {
-      return store.size;
-    },
-    clear: () => store.clear(),
-    getItem: (key: string) => store.get(key) ?? null,
-    key: (index: number) => [...store.keys()][index] ?? null,
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-    setItem: (key: string, value: string) => {
-      store.set(key, String(value));
-    },
-  };
-}
 
 let storage: Storage;
 
@@ -65,6 +49,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 

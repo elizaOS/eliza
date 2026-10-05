@@ -1,55 +1,52 @@
 /**
  * HTTP handler for the local-inference catalog, download orchestration, active-
  * model status, hardware detection, and chat-command routes — the root
- * `@elizaos/plugin-local-inference` subpath (app-core mounts the compat variant
+ * `@elizaos/plugin-local-inference` subpath (app mounts the compat variant
  * in `routes/local-inference-compat-routes.ts`). The heavy service graph
  * (engine / voice / catalog / downloader) is imported lazily on first route use
  * to keep it off the boot critical path (#9565).
  */
 import crypto from "node:crypto";
-import * as dns from "node:dns";
-import fs from "node:fs";
 import fsp from "node:fs/promises";
-import * as http from "node:http";
-import * as https from "node:https";
+import type * as http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import {
-	type ContentValue,
-	logger,
-	readJsonBody,
-	resolveStateDir,
-	sendJson,
-	sendJsonError,
-} from "@elizaos/core";
-import {
 	AGENT_MODEL_SLOTS,
 	type AgentModelSlot,
-	buildHuggingFaceResolveUrl,
-	isMobilePlatform,
+	type CatalogModel as SharedCatalogModel,
+	type VerifyResult,
+} from "@elizaos/contracts";
+import {
+	type ContentValue,
+	type IAgentRuntime,
+	logger,
+	resolveStateDir,
+} from "@elizaos/core";
+import { readJsonBody, sendJson, sendJsonError } from "@elizaos/host";
+import { resolveElizaCloudTopology } from "@elizaos/host/protocol";
+import {
+	isCatalogModelOfferable,
+	MODEL_CATALOG as SHARED_MODEL_CATALOG,
+} from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import {
 	isRoutingPolicy,
 	ROUTING_POLICIES,
 	type RoutingPreferences,
-	resolveElizaCloudTopology,
-	resolveHubAuthHeaders,
-	MODEL_CATALOG as SHARED_MODEL_CATALOG,
-	type CatalogModel as SharedCatalogModel,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-policy";
 import {
 	readRoutingPreferences,
 	setPolicy,
 	setPreferredProvider,
 	setTextRouting,
-} from "@elizaos/shared/local-inference/routing-preferences";
+} from "@elizaos/plugin-native-inference/model-catalog/routing-preferences";
 import {
 	LOCAL_INFERENCE_MODEL_TYPES,
 	LOCAL_INFERENCE_PROVIDER_ID,
 } from "./provider.js";
 import { classifyDeviceTier } from "./services/device-tier.js";
-import {
-	resolveLocalInferenceStoredPath,
-	toLocalInferenceStoredPath,
-} from "./services/paths.js";
+import { resolveLocalInferenceStoredPath } from "./services/paths.js";
+import type { DownloadJob } from "./services/types.js";
 
 // Lazy service handle. Importing `./services/service.js` eagerly evaluates the
 // full engine/voice/catalog/downloader graph (~800ms) — far too heavy for the
@@ -76,15 +73,7 @@ async function prewarmLocalVoiceStackLazy(modelId: string): Promise<void> {
 	);
 	await prewarmLocalVoiceStackForModel(modelId);
 }
-
 type ModelRole = "chat" | "embedding";
-type DownloadState =
-	| "queued"
-	| "downloading"
-	| "completed"
-	| "failed"
-	| "cancelled";
-
 type MobileDeviceBridgeApi = {
 	getMobileDeviceBridgeStatus: () => MobileDeviceBridgeStatus;
 	getMobileDeviceBridgeServingStatus: () => Promise<MobileDeviceBridgeServingStatus>;
@@ -94,20 +83,19 @@ type MobileDeviceBridgeApi = {
 	) => Promise<void>;
 	unloadMobileDeviceBridgeModel: () => Promise<void>;
 };
-
 type MobileDeviceBridgeServingStatus = {
 	registeredTrigger: "bionic-host" | "device-bridge" | null;
 	/** True only when handlers are bound via bionic-host AND the host socket serves. */
 	bionicHostServing: boolean;
 };
-
 type MobileDeviceBridgeStatus = {
 	enabled?: boolean;
 	connected?: boolean;
 	reason?: string;
-	devices: Array<{ loadedPath?: string | null }>;
+	devices: Array<{
+		loadedPath?: string | null;
+	}>;
 };
-
 type AospLocalInferenceApi = {
 	buildAospLoadModelArgs: (
 		role: "chat" | "embedding",
@@ -120,29 +108,24 @@ type AospLocalInferenceApi = {
 	}) => Promise<typeof activeModelState>;
 	clearAospLocalInferenceModel: () => Promise<typeof activeModelState>;
 };
-
 let mobileDeviceBridgeApiPromise: Promise<MobileDeviceBridgeApi> | null = null;
 let aospLocalInferenceApiPromise: Promise<AospLocalInferenceApi> | null = null;
-
 function getMobileDeviceBridgeApi(): Promise<MobileDeviceBridgeApi> {
 	mobileDeviceBridgeApiPromise ??= import(
-		"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+		"@elizaos/plugin-native-inference/mobile-device-bridge-bootstrap"
 	) as Promise<MobileDeviceBridgeApi>;
 	return mobileDeviceBridgeApiPromise;
 }
-
 function getAospLocalInferenceApi(): Promise<AospLocalInferenceApi> {
 	aospLocalInferenceApiPromise ??= import(
 		"@elizaos/plugin-native-inference"
 	) as Promise<AospLocalInferenceApi>;
 	return aospLocalInferenceApiPromise;
 }
-
 function shouldUseAospLocalInference(): boolean {
 	const value = process.env.ELIZA_LOCAL_LLAMA?.trim().toLowerCase();
 	return value === "1" || value === "true" || value === "yes";
 }
-
 function getMobileDeviceBridgeStatusUnavailable(): MobileDeviceBridgeStatus {
 	return {
 		enabled: false,
@@ -151,7 +134,6 @@ function getMobileDeviceBridgeStatusUnavailable(): MobileDeviceBridgeStatus {
 		devices: [],
 	};
 }
-
 export type LocalInferenceCommandIntent =
 	| "retry"
 	| "resume"
@@ -162,11 +144,9 @@ export type LocalInferenceCommandIntent =
 	| "status"
 	| "use_cloud"
 	| "use_local";
-
 interface CatalogModel extends SharedCatalogModel {
 	role: ModelRole;
 }
-
 const ASSIGNMENT_SLOTS = new Set<keyof Assignments>([
 	"TEXT_SMALL",
 	"TEXT_LARGE",
@@ -174,7 +154,6 @@ const ASSIGNMENT_SLOTS = new Set<keyof Assignments>([
 	"TEXT_TO_SPEECH",
 	"TRANSCRIPTION",
 ]);
-
 interface InstalledModel {
 	id: string;
 	displayName: string;
@@ -187,20 +166,6 @@ interface InstalledModel {
 	sha256?: string;
 	lastVerifiedAt?: string;
 }
-
-interface DownloadJob {
-	jobId: string;
-	modelId: string;
-	state: DownloadState;
-	received: number;
-	total: number;
-	bytesPerSec: number;
-	etaMs: number | null;
-	startedAt: string;
-	updatedAt: string;
-	error?: string;
-}
-
 export interface LocalInferenceChatMetadata {
 	[key: string]: ContentValue;
 	intent?: LocalInferenceCommandIntent;
@@ -226,23 +191,19 @@ export interface LocalInferenceChatMetadata {
 		etaMs?: number | null;
 	};
 }
-
 export interface LocalInferenceChatResult {
 	text: string;
 	localInference: LocalInferenceChatMetadata;
 }
-
 type Assignments = Partial<
 	Record<(typeof LOCAL_INFERENCE_MODEL_TYPES)[number], string>
 >;
-
 let activeModelState: {
 	modelId: string | null;
 	loadedAt: string | null;
 	status: "idle" | "loading" | "ready" | "error";
 	error?: string;
 } = { modelId: null, loadedAt: null, status: "idle" };
-
 export type LocalInferenceManagementOp =
 	| "start_download"
 	| "cancel_download"
@@ -256,7 +217,6 @@ export type LocalInferenceManagementOp =
 	| "set_policy"
 	| "set_preferred_provider"
 	| "set_assignment";
-
 export interface LocalInferenceManagementInput {
 	op: LocalInferenceManagementOp;
 	modelId?: string;
@@ -269,27 +229,55 @@ export interface LocalInferenceManagementInput {
 		autoUpdateOnWifi?: boolean;
 		autoUpdateOnCellular?: boolean;
 		autoUpdateOnMetered?: boolean;
-		quietHours?: Array<{ start: string; end: string }>;
+		quietHours?: Array<{
+			start: string;
+			end: string;
+		}>;
 	};
 }
-
 export type LocalInferenceManagementResult =
-	| { op: "start_download"; modelId: string; job: DownloadJob }
-	| { op: "cancel_download"; modelId: string | null; cancelled: true }
-	| { op: "set_active"; modelId: string; active: typeof activeModelState }
-	| { op: "clear_active"; active: typeof activeModelState }
-	| { op: "uninstall_model"; modelId: string; removed: boolean }
-	| { op: "trigger_voice_model_update"; id: string; result: unknown }
-	| { op: "pin_voice_model"; id: string; pinned: boolean }
-	| { op: "set_voice_model_preferences"; preferences: unknown }
 	| {
+			op: "start_download";
+			modelId: string;
+			job: DownloadJob;
+	  }
+	| {
+			op: "cancel_download";
+			modelId: string | null;
+			cancelled: boolean;
+	  }
+	| {
+			op: "set_active";
+			modelId: string;
+			active: typeof activeModelState;
+	  }
+	| {
+			op: "clear_active";
+			active: typeof activeModelState;
+	  }
+	| {
+			op: "uninstall_model";
+			modelId: string;
+			removed: boolean;
+	  }
+	| {
+			op: "trigger_voice_model_update";
+			id: string;
+			result: unknown;
+	  }
+	| {
+			op: "pin_voice_model";
+			id: string;
+			pinned: boolean;
+	  }
+	| {
+			op: "set_voice_model_preferences";
+			preferences: unknown;
+	  }
+	| ({
 			op: "verify_model";
 			modelId: string;
-			state: "ok" | "unknown";
-			currentSha256: string;
-			expectedSha256: string | null;
-			currentBytes: number;
-	  }
+	  } & VerifyResult)
 	| {
 			op: "set_policy";
 			slot: string;
@@ -308,7 +296,6 @@ export type LocalInferenceManagementResult =
 			modelId: string | null;
 			assignments: Assignments;
 	  };
-
 export function getLocalInferenceActiveModelId(): string | undefined {
 	const serviceActive = localInferenceServiceIfLoaded()?.getActive();
 	if (serviceActive?.status === "ready" && serviceActive.modelId?.trim()) {
@@ -318,17 +305,14 @@ export function getLocalInferenceActiveModelId(): string | undefined {
 		? activeModelState.modelId.trim()
 		: undefined;
 }
-
 function catalogRole(model: SharedCatalogModel): ModelRole {
 	if ((model.category as string) === "embedding") return "embedding";
 	return "chat";
 }
-
 const CATALOG: CatalogModel[] = SHARED_MODEL_CATALOG.map((model) => ({
 	...model,
 	role: catalogRole(model),
 }));
-
 function isCuratedCatalogModelId(modelId: string): boolean {
 	return CATALOG.some(
 		(model) =>
@@ -337,7 +321,6 @@ function isCuratedCatalogModelId(modelId: string): boolean {
 			model.runtimeRole !== "mtp-drafter",
 	);
 }
-
 function sanitizeAssignments(assignments: Assignments): Assignments {
 	const next: Assignments = {};
 	for (const [slot, modelId] of Object.entries(assignments) as Array<
@@ -349,164 +332,55 @@ function sanitizeAssignments(assignments: Assignments): Assignments {
 	}
 	return next;
 }
-
-const activeDownloads = new Map<
-	string,
-	{ job: DownloadJob; abortController: AbortController }
->();
-const MOBILE_DNS_SERVERS = ["8.8.8.8", "1.1.1.1"];
-const mobileDnsResolver = new dns.Resolver();
-mobileDnsResolver.setServers(MOBILE_DNS_SERVERS);
-
+/**
+ * Downloads are owned by the canonical `Downloader` in the lazily loaded
+ * service graph (bundle manifest + activation gate, per-file sha256, strict
+ * 206 resume). This route module only delegates; it never writes model bytes.
+ */
+async function startDownload(modelId: string): Promise<DownloadJob> {
+	return (await localInferenceServiceLazy()).startDownload(modelId);
+}
+async function downloadJobs(): Promise<DownloadJob[]> {
+	return (await localInferenceServiceLazy()).getDownloads();
+}
+function isDownloadInFlight(job: DownloadJob): boolean {
+	return job.state === "queued" || job.state === "downloading";
+}
+/**
+ * Cancel `modelId`, or every in-flight download when null. Returns the ids
+ * whose download was actually cancelled.
+ */
+async function cancelDownloads(modelId: string | null): Promise<string[]> {
+	const service = await localInferenceServiceLazy();
+	const targets = modelId
+		? [modelId]
+		: service
+				.getDownloads()
+				.filter(isDownloadInFlight)
+				.map((job) => job.modelId);
+	return targets.filter((target) => service.cancelDownload(target));
+}
 function stateDir(): string {
 	return resolveStateDir();
 }
-
 function localInferenceRoot(): string {
 	return path.join(stateDir(), "local-inference");
 }
-
 function modelsDir(): string {
 	return path.join(localInferenceRoot(), "models");
 }
-
-function downloadsDir(): string {
-	return path.join(localInferenceRoot(), "downloads");
-}
-
 function registryPath(): string {
 	return path.join(localInferenceRoot(), "registry.json");
 }
-
 function assignmentsPath(): string {
 	return path.join(localInferenceRoot(), "assignments.json");
 }
-
 function aospActivePath(): string {
 	return path.join(localInferenceRoot(), "aosp-active.json");
 }
-
-function finalModelPath(model: CatalogModel): string {
-	return path.join(
-		modelsDir(),
-		`${model.id.replace(/[^a-zA-Z0-9._-]/g, "_")}.gguf`,
-	);
-}
-
-function stagingPath(model: CatalogModel): string {
-	return path.join(
-		downloadsDir(),
-		`${model.id.replace(/[^a-zA-Z0-9._-]/g, "_")}.part`,
-	);
-}
-
-function huggingFaceResolveUrl(model: CatalogModel): string {
-	return buildHuggingFaceResolveUrl(model);
-}
-
-function shouldUseMobileDns(): boolean {
-	return isMobilePlatform();
-}
-
-const mobileLookup: http.RequestOptions["lookup"] = (
-	hostname,
-	options,
-	callback,
-) => {
-	mobileDnsResolver.resolve4(hostname, (error, addresses) => {
-		if (error) {
-			callback(error, undefined as never, undefined as never);
-			return;
-		}
-		if (options.all) {
-			callback(
-				null,
-				addresses.map((address) => ({ address, family: 4 })),
-				undefined as never,
-			);
-			return;
-		}
-		callback(null, addresses[0], 4);
-	});
-};
-
-/**
- * Recompute request headers when following a redirect. The HuggingFace bearer
- * token must never leak past a cross-host redirect: HF `/resolve/` URLs 302 to
- * cdn-lfs*.hf.co / *.amazonaws.com / *.cloudfront.net, none of which are HF
- * hosts. Strip Authorization, then re-add it only if the redirect target is
- * itself a HuggingFace host — mirroring the cross-origin auth stripping WHATWG
- * fetch performs for the sibling `Downloader` path.
- */
-export function reauthorizeRedirectHeaders(
-	headers: Record<string, string>,
-	nextUrl: string,
-): Record<string, string> {
-	const next: Record<string, string> = { ...headers };
-	delete next.authorization;
-	delete next.Authorization;
-	Object.assign(next, resolveHubAuthHeaders(nextUrl));
-	return next;
-}
-
-async function openDownloadResponse(
-	url: string,
-	headers: Record<string, string>,
-	signal: AbortSignal,
-	redirectCount = 0,
-): Promise<http.IncomingMessage> {
-	if (redirectCount > 5) {
-		throw new Error("Too many redirects while downloading model");
-	}
-
-	const parsed = new URL(url);
-	const transport = parsed.protocol === "http:" ? http : https;
-
-	return new Promise((resolve, reject) => {
-		const req = transport.get(
-			parsed,
-			{
-				headers,
-				lookup: shouldUseMobileDns() ? mobileLookup : undefined,
-			},
-			(response) => {
-				const statusCode = response.statusCode ?? 0;
-				const location = response.headers.location;
-				if (location && [301, 302, 303, 307, 308].includes(statusCode)) {
-					response.resume();
-					const nextUrl = new URL(location, parsed).toString();
-					resolve(
-						openDownloadResponse(
-							nextUrl,
-							reauthorizeRedirectHeaders(headers, nextUrl),
-							signal,
-							redirectCount + 1,
-						),
-					);
-					return;
-				}
-				resolve(response);
-			},
-		);
-
-		const abort = () => {
-			req.destroy(new Error("Download cancelled"));
-		};
-		if (signal.aborted) {
-			abort();
-			return;
-		}
-		signal.addEventListener("abort", abort, { once: true });
-		req.on("error", reject);
-		req.on("close", () => signal.removeEventListener("abort", abort));
-	});
-}
-
 async function ensureLocalInferenceDirs(): Promise<void> {
 	await fsp.mkdir(modelsDir(), { recursive: true });
-	await fsp.mkdir(downloadsDir(), { recursive: true });
 }
-
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
 	try {
 		return JSON.parse(await fsp.readFile(filePath, "utf8")) as T;
@@ -514,7 +388,6 @@ async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
 		return fallback;
 	}
 }
-
 async function writeJsonFile(
 	filePath: string,
 	payload: unknown,
@@ -536,7 +409,6 @@ async function writeJsonFile(
 		throw error;
 	}
 }
-
 // Serializes read-modify-write transactions per persisted config file. The
 // management mutations (set_assignment, upsertInstalledModel,
 // removeInstalledModel) each read the current JSON, mutate it, and write it
@@ -562,34 +434,6 @@ async function withConfigFileLock<T>(
 	);
 	return next;
 }
-
-async function hashFile(filePath: string): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const hash = crypto.createHash("sha256");
-		const stream = fs.createReadStream(filePath, {
-			highWaterMark: 1024 * 1024,
-		});
-		stream.on("data", (chunk) => hash.update(chunk));
-		stream.on("end", () => resolve(hash.digest("hex")));
-		stream.on("error", reject);
-	});
-}
-
-async function isGgufFile(filePath: string): Promise<boolean> {
-	try {
-		const file = await fsp.open(filePath, "r");
-		try {
-			const buffer = Buffer.alloc(4);
-			await file.read(buffer, 0, 4, 0);
-			return buffer.toString("ascii") === "GGUF";
-		} finally {
-			await file.close();
-		}
-	} catch {
-		return false;
-	}
-}
-
 async function readRegistry(): Promise<InstalledModel[]> {
 	const registry = await readJsonFile<{
 		version?: number;
@@ -612,60 +456,27 @@ async function readRegistry(): Promise<InstalledModel[]> {
 	}
 	return installed;
 }
-
-async function writeRegistry(models: InstalledModel[]): Promise<void> {
-	await writeJsonFile(registryPath(), {
-		version: 1,
-		models: models.map((model) => {
-			const storedPath = toLocalInferenceStoredPath(model.path);
-			if (!storedPath) {
-				throw new Error(
-					"[local-inference] installed model path must live under the local-inference root",
-				);
-			}
-			return { ...model, path: storedPath };
-		}),
-	});
-}
-
-async function upsertInstalledModel(model: InstalledModel): Promise<void> {
-	await withConfigFileLock(registryPath(), async () => {
-		const current = await readRegistry();
-		await writeRegistry([
-			...current.filter((entry) => entry.id !== model.id),
-			model,
-		]);
-	});
-}
-
 async function removeInstalledModel(id: string): Promise<boolean> {
-	return withConfigFileLock(registryPath(), async () => {
-		const current = await readRegistry();
-		const target = current.find((model) => model.id === id);
-		if (!target) return false;
-		await fsp.rm(target.path, { force: true });
-		await writeRegistry(current.filter((model) => model.id !== id));
-		return true;
-	});
-}
-
-async function readAssignments(): Promise<Assignments> {
-	const file = await readJsonFile<{ assignments?: Assignments }>(
-		assignmentsPath(),
-		{
-			assignments: {},
-		},
+	const service = await localInferenceServiceLazy();
+	return withConfigFileLock(
+		registryPath(),
+		async () => (await service.uninstall(id)).removed,
 	);
+}
+async function readAssignments(): Promise<Assignments> {
+	const file = await readJsonFile<{
+		assignments?: Assignments;
+	}>(assignmentsPath(), {
+		assignments: {},
+	});
 	return sanitizeAssignments(file.assignments ?? {});
 }
-
 async function writeAssignments(
 	assignments: Assignments,
 ): Promise<Assignments> {
 	await writeJsonFile(assignmentsPath(), { version: 1, assignments });
 	return assignments;
 }
-
 // Serialized read-modify-write for assignments.json. The mutator runs inside
 // the per-file lock between a fresh read and the write-back, so concurrent
 // assignment updates observe each other's writes instead of racing on the
@@ -679,7 +490,6 @@ async function updateAssignments(
 		return writeAssignments(assignments);
 	});
 }
-
 async function assignModel(
 	model: CatalogModel,
 	overwrite: boolean,
@@ -706,160 +516,10 @@ async function assignModel(
 		}
 	});
 }
-
-async function ensureDefaultAssignment(model: CatalogModel): Promise<void> {
-	await assignModel(model, false);
-}
-
-async function downloadModel(
-	model: CatalogModel,
-	record: DownloadJob,
-): Promise<void> {
-	const abortController = activeDownloads.get(model.id)?.abortController;
-	if (!abortController) return;
-
-	const finalPath = finalModelPath(model);
-	const partialPath = stagingPath(model);
-	const existingPartial = await fsp
-		.stat(partialPath)
-		.then((stat) => (stat.isFile() ? stat.size : 0))
-		.catch(() => 0);
-
-	record.state = "downloading";
-	record.received = existingPartial;
-	record.updatedAt = new Date().toISOString();
-
-	try {
-		const downloadUrl = huggingFaceResolveUrl(model);
-		const headers: Record<string, string> = {
-			"user-agent": "Eliza-MobileLocalInference/1.0",
-			...resolveHubAuthHeaders(downloadUrl),
-		};
-		if (existingPartial > 0) headers.range = `bytes=${existingPartial}-`;
-		const response = await openDownloadResponse(
-			downloadUrl,
-			headers,
-			abortController.signal,
-		);
-		const statusCode = response.statusCode ?? 0;
-		if (statusCode < 200 || statusCode >= 300) {
-			throw new Error(`HTTP ${statusCode} ${response.statusMessage ?? ""}`);
-		}
-		const contentLength = Number.parseInt(
-			String(response.headers["content-length"] ?? "0"),
-			10,
-		);
-		if (Number.isFinite(contentLength) && contentLength > 0) {
-			record.total = existingPartial + contentLength;
-		}
-
-		const stream = fs.createWriteStream(partialPath, {
-			flags: existingPartial > 0 ? "a" : "w",
-		});
-		let lastSampleAt = Date.now();
-		let lastSampleBytes = record.received;
-
-		try {
-			for await (const chunk of response) {
-				const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-				if (!stream.write(Buffer.from(value))) {
-					await new Promise<void>((resolve) => stream.once("drain", resolve));
-				}
-				record.received += value.length;
-				const now = Date.now();
-				const elapsed = now - lastSampleAt;
-				if (elapsed >= 1000) {
-					record.bytesPerSec =
-						((record.received - lastSampleBytes) * 1000) / elapsed;
-					record.etaMs =
-						record.bytesPerSec > 0
-							? ((record.total - record.received) * 1000) / record.bytesPerSec
-							: null;
-					lastSampleAt = now;
-					lastSampleBytes = record.received;
-					record.updatedAt = new Date().toISOString();
-				}
-			}
-		} finally {
-			stream.end();
-			await new Promise<void>((resolve, reject) => {
-				stream.on("finish", resolve);
-				stream.on("error", reject);
-			});
-		}
-
-		await fsp.rename(partialPath, finalPath);
-		if (!(await isGgufFile(finalPath))) {
-			throw new Error("Downloaded file is not a valid GGUF");
-		}
-		const stat = await fsp.stat(finalPath);
-		const sha256 = await hashFile(finalPath);
-		await upsertInstalledModel({
-			id: model.id,
-			displayName: model.displayName,
-			path: finalPath,
-			sizeBytes: stat.size,
-			hfRepo: model.hfRepo,
-			installedAt: new Date().toISOString(),
-			lastUsedAt: null,
-			source: "eliza-download",
-			sha256,
-			lastVerifiedAt: new Date().toISOString(),
-		});
-		await ensureDefaultAssignment(model);
-
-		record.state = "completed";
-		record.received = stat.size;
-		record.total = stat.size;
-		record.updatedAt = new Date().toISOString();
-	} catch (error) {
-		if (abortController.signal.aborted) {
-			record.state = "cancelled";
-		} else {
-			record.state = "failed";
-			record.error = error instanceof Error ? error.message : String(error);
-			logger.warn(
-				`[local-inference] Download failed for ${model.id}: ${record.error}`,
-			);
-		}
-		record.updatedAt = new Date().toISOString();
-	} finally {
-		if (record.state !== "downloading") {
-			activeDownloads.delete(model.id);
-		}
-	}
-}
-
-async function startDownload(modelId: string): Promise<DownloadJob> {
-	const existing = activeDownloads.get(modelId);
-	if (existing) return { ...existing.job };
-	const model = CATALOG.find((entry) => entry.id === modelId);
-	if (!model) throw new Error(`Unknown model id: ${modelId}`);
-	await ensureLocalInferenceDirs();
-	const job: DownloadJob = {
-		jobId: crypto.randomUUID(),
-		modelId,
-		state: "queued",
-		received: 0,
-		total: Math.round(model.sizeGb * 1024 ** 3),
-		bytesPerSec: 0,
-		etaMs: null,
-		startedAt: new Date().toISOString(),
-		updatedAt: new Date().toISOString(),
-	};
-	activeDownloads.set(modelId, {
-		job,
-		abortController: new AbortController(),
-	});
-	void downloadModel(model, job);
-	return { ...job };
-}
-
 async function installedSnapshot(): Promise<InstalledModel[]> {
 	await ensureLocalInferenceDirs();
 	return readRegistry();
 }
-
 /**
  * Whether local inference is the routing target for chat text, independent of
  * whether a model is resident. Local is routed when the config does not send
@@ -881,7 +541,6 @@ async function isLocalInferenceRouted(): Promise<boolean | undefined> {
 	if (!topology.services.inference) return true;
 	return topology.servicesUnreconciled.includes("inference");
 }
-
 export async function getLocalInferenceActiveSnapshot(): Promise<{
 	modelId: string | null;
 	loadedAt: string | null;
@@ -894,8 +553,11 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 	loadedGpuLayers?: number | null;
 }> {
 	const routed = await isLocalInferenceRouted();
-	const withRouted = <T extends object>(state: T): T & { routed?: boolean } =>
-		routed === undefined ? state : { ...state, routed };
+	const withRouted = <T extends object>(
+		state: T,
+	): T & {
+		routed?: boolean;
+	} => (routed === undefined ? state : { ...state, routed });
 	const serviceActive = (await localInferenceServiceLazy()).getActive();
 	if (serviceActive.status === "ready" && serviceActive.modelId) {
 		return withRouted(serviceActive);
@@ -951,13 +613,12 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 		status: "ready" as const,
 	});
 }
-
 async function hubSnapshot(): Promise<Record<string, unknown>> {
 	return {
 		catalog: CATALOG.filter((model) => !model.hiddenFromCatalog),
 		installed: await installedSnapshot(),
 		active: await getLocalInferenceActiveSnapshot(),
-		downloads: [...activeDownloads.values()].map(({ job }) => ({ ...job })),
+		downloads: await downloadJobs(),
 		hardware: {
 			totalRamGb: Math.round((os.totalmem() / 1024 ** 3) * 10) / 10,
 			freeRamGb: Math.round((os.freemem() / 1024 ** 3) * 10) / 10,
@@ -972,14 +633,20 @@ async function hubSnapshot(): Promise<Record<string, unknown>> {
 		assignments: await readAssignments(),
 	};
 }
-
 function chatModels(): CatalogModel[] {
 	return CATALOG.filter((model) => model.role === "chat");
 }
-
+/**
+ * Chat models this host may offer to download unprompted: published tiers
+ * whose published manifest passes the activation gate. Never a pending or
+ * candidate-only tier, which the downloader/activation would refuse.
+ */
+function offerableChatModels(): CatalogModel[] {
+	return chatModels().filter(isCatalogModelOfferable);
+}
 function recommendedChatModel(): CatalogModel | null {
 	const totalRamGb = os.totalmem() / 1024 ** 3;
-	const candidates = chatModels()
+	const candidates = offerableChatModels()
 		.filter((model) => totalRamGb >= model.minRamGb)
 		.sort((left, right) => {
 			const rightSize =
@@ -994,7 +661,7 @@ function recommendedChatModel(): CatalogModel | null {
 		});
 	return (
 		candidates[0] ??
-		chatModels().sort((a, b) => {
+		offerableChatModels().sort((a, b) => {
 			const aSize =
 				typeof a.sizeGb === "number" && Number.isFinite(a.sizeGb)
 					? a.sizeGb
@@ -1008,7 +675,6 @@ function recommendedChatModel(): CatalogModel | null {
 		null
 	);
 }
-
 function isNoSpaceMessage(value: unknown): boolean {
 	const message =
 		value instanceof Error
@@ -1020,7 +686,6 @@ function isNoSpaceMessage(value: unknown): boolean {
 		message,
 	);
 }
-
 function formatBytes(bytes: number): string {
 	if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
 	const units = ["B", "KB", "MB", "GB", "TB"];
@@ -1033,7 +698,6 @@ function formatBytes(bytes: number): string {
 	const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
 	return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
-
 function progressForJob(
 	job: DownloadJob,
 ): LocalInferenceChatMetadata["progress"] {
@@ -1051,7 +715,6 @@ function progressForJob(
 		etaMs: job.etaMs,
 	};
 }
-
 function progressText(
 	progress: LocalInferenceChatMetadata["progress"] | undefined,
 ): string {
@@ -1062,7 +725,6 @@ function progressText(
 		progress.totalBytes > 0 ? ` of ${formatBytes(progress.totalBytes)}` : "";
 	return `${percent} (${formatBytes(progress.receivedBytes)}${total})`;
 }
-
 function pickStatusLine(status: LocalInferenceChatMetadata["status"]): string {
 	const variants: Record<LocalInferenceChatMetadata["status"], string[]> = {
 		missing: [
@@ -1112,9 +774,8 @@ function pickStatusLine(status: LocalInferenceChatMetadata["status"]): string {
 		],
 	};
 	const list = variants[status];
-	return list[Math.floor(Date.now() / 15_000) % list.length] ?? list[0];
+	return list[Math.floor(Date.now() / 15000) % list.length] ?? list[0];
 }
-
 function buildLocalInferenceChatResult(
 	metadata: LocalInferenceChatMetadata,
 	detail?: string,
@@ -1132,7 +793,6 @@ function buildLocalInferenceChatResult(
 		localInference: metadata,
 	};
 }
-
 function resolveRequestedCatalogModel(prompt: string): CatalogModel | null {
 	const normalized = prompt.toLowerCase();
 	return (
@@ -1148,7 +808,6 @@ function resolveRequestedCatalogModel(prompt: string): CatalogModel | null {
 		}) ?? null
 	);
 }
-
 async function resolveDefaultChatModel(
 	prompt: string,
 ): Promise<CatalogModel | null> {
@@ -1180,11 +839,9 @@ async function resolveDefaultChatModel(
 		})[0];
 	return installedCatalog ?? recommendedChatModel();
 }
-
 async function setRoutingForChat(provider: string): Promise<void> {
 	await setTextRouting(provider, "manual");
 }
-
 async function activateInstalledModel(
 	installed: InstalledModel,
 ): Promise<LocalInferenceChatResult> {
@@ -1225,14 +882,11 @@ async function activateInstalledModel(
 		});
 	}
 }
-
 export async function getLocalInferenceChatStatus(
 	intent: LocalInferenceCommandIntent = "status",
 	error?: unknown,
 ): Promise<LocalInferenceChatResult> {
-	const activeDownload = [...activeDownloads.values()]
-		.map(({ job }) => ({ ...job }))
-		.find((job) => job.state === "queued" || job.state === "downloading");
+	const activeDownload = (await downloadJobs()).find(isDownloadInFlight);
 	if (activeDownload) {
 		return buildLocalInferenceChatResult({
 			intent,
@@ -1242,7 +896,6 @@ export async function getLocalInferenceChatStatus(
 			progress: progressForJob(activeDownload),
 		});
 	}
-
 	const active = await getLocalInferenceActiveSnapshot();
 	if (activeModelState.status === "loading") {
 		return buildLocalInferenceChatResult({
@@ -1252,7 +905,6 @@ export async function getLocalInferenceChatStatus(
 			activeModelId: active.modelId,
 		});
 	}
-
 	const errorMessage =
 		error instanceof Error
 			? error.message
@@ -1268,7 +920,6 @@ export async function getLocalInferenceChatStatus(
 			error: errorMessage,
 		});
 	}
-
 	if (active.status === "ready" && active.modelId) {
 		const provider =
 			(await localInferenceServiceLazy()).getActive().status === "ready"
@@ -1282,7 +933,6 @@ export async function getLocalInferenceChatStatus(
 			provider,
 		});
 	}
-
 	const installed = await installedSnapshot();
 	const installedChat = installed.find((entry) =>
 		CATALOG.some((model) => model.id === entry.id && model.role === "chat"),
@@ -1295,7 +945,6 @@ export async function getLocalInferenceChatStatus(
 			activeModelId: active.modelId,
 		});
 	}
-
 	return buildLocalInferenceChatResult({
 		intent,
 		status: "missing",
@@ -1303,7 +952,6 @@ export async function getLocalInferenceChatStatus(
 		activeModelId: active.modelId,
 	});
 }
-
 export async function handleLocalInferenceChatCommand(
 	intent: LocalInferenceCommandIntent,
 	prompt: string,
@@ -1311,22 +959,16 @@ export async function handleLocalInferenceChatCommand(
 	if (intent === "status") {
 		return getLocalInferenceChatStatus(intent);
 	}
-
 	if (intent === "cancel") {
 		const requested = resolveRequestedCatalogModel(prompt);
-		const targets = requested ? [requested.id] : [...activeDownloads.keys()];
-		for (const modelId of targets) {
-			activeDownloads.get(modelId)?.abortController.abort();
-			activeDownloads.delete(modelId);
-		}
+		const cancelled = await cancelDownloads(requested?.id ?? null);
 		return buildLocalInferenceChatResult({
 			intent,
 			status: "cancelled",
-			modelId: requested?.id ?? targets[0] ?? null,
+			modelId: requested?.id ?? cancelled[0] ?? null,
 			activeModelId: activeModelState.modelId,
 		});
 	}
-
 	if (intent === "use_cloud") {
 		await setRoutingForChat("elizacloud");
 		return buildLocalInferenceChatResult(
@@ -1340,7 +982,6 @@ export async function handleLocalInferenceChatCommand(
 			"Subsequent chat model calls will prefer Eliza Cloud.",
 		);
 	}
-
 	if (intent === "use_local") {
 		const installed = await installedSnapshot();
 		const requested = await resolveDefaultChatModel(prompt);
@@ -1371,7 +1012,6 @@ export async function handleLocalInferenceChatCommand(
 		}
 		return getLocalInferenceChatStatus(intent);
 	}
-
 	if (intent === "switch_smaller") {
 		const active = await getLocalInferenceActiveSnapshot();
 		const installed = await installedSnapshot();
@@ -1386,7 +1026,12 @@ export async function handleLocalInferenceChatCommand(
 				),
 			}))
 			.filter(
-				(entry): entry is { entry: InstalledModel; catalog: CatalogModel } => {
+				(
+					entry,
+				): entry is {
+					entry: InstalledModel;
+					catalog: CatalogModel;
+				} => {
 					const catalog = entry.catalog;
 					if (!catalog) return false;
 					return !activeCatalog || catalog.sizeGb < activeCatalog.sizeGb;
@@ -1396,7 +1041,9 @@ export async function handleLocalInferenceChatCommand(
 		if (smallerInstalled) {
 			return activateInstalledModel(smallerInstalled.entry);
 		}
-		const smallest = chatModels().sort((a, b) => a.sizeGb - b.sizeGb)[0];
+		const smallest = offerableChatModels().sort(
+			(a, b) => a.sizeGb - b.sizeGb,
+		)[0];
 		if (smallest) {
 			const job = await startDownload(smallest.id);
 			return buildLocalInferenceChatResult(
@@ -1411,7 +1058,6 @@ export async function handleLocalInferenceChatCommand(
 			);
 		}
 	}
-
 	const model = await resolveDefaultChatModel(prompt);
 	if (!model) {
 		return getLocalInferenceChatStatus(intent);
@@ -1428,21 +1074,18 @@ export async function handleLocalInferenceChatCommand(
 		progress: progressForJob(job),
 	});
 }
-
 function requireModelId(modelId: string | undefined, op: string): string {
 	if (typeof modelId !== "string" || !modelId.trim()) {
 		throw new Error(`${op} requires modelId`);
 	}
 	return modelId.trim();
 }
-
 function requireSlot(slot: string | undefined, op: string): string {
 	if (typeof slot !== "string" || !slot.trim()) {
 		throw new Error(`${op} requires slot`);
 	}
 	return slot.trim();
 }
-
 export async function applyLocalInferenceManagementMutation(
 	input: LocalInferenceManagementInput,
 ): Promise<LocalInferenceManagementResult> {
@@ -1453,15 +1096,11 @@ export async function applyLocalInferenceManagementMutation(
 		}
 		case "cancel_download": {
 			const modelId = input.modelId?.trim() || null;
-			const targets = modelId ? [modelId] : [...activeDownloads.keys()];
-			for (const target of targets) {
-				activeDownloads.get(target)?.abortController.abort();
-				activeDownloads.delete(target);
-			}
+			const cancelled = await cancelDownloads(modelId);
 			return {
 				op: input.op,
-				modelId: modelId ?? targets[0] ?? null,
-				cancelled: true,
+				modelId: modelId ?? cancelled[0] ?? null,
+				cancelled: cancelled.length > 0,
 			};
 		}
 		case "set_active": {
@@ -1492,9 +1131,7 @@ export async function applyLocalInferenceManagementMutation(
 			} catch (error) {
 				// Clearing chat routing should still reset our state in headless tests.
 				logger.debug(
-					`[local-inference] clear_active ignored bridge unload failure: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
+					`[local-inference] clear_active ignored bridge unload failure: ${error instanceof Error ? error.message : String(error)}`,
 				);
 			}
 			activeModelState = { modelId: null, loadedAt: null, status: "idle" };
@@ -1514,14 +1151,10 @@ export async function applyLocalInferenceManagementMutation(
 				(model) => model.id === modelId,
 			);
 			if (!installed) throw new Error(`Model not installed: ${modelId}`);
-			const currentSha256 = await hashFile(installed.path);
 			return {
 				op: input.op,
 				modelId,
-				state: currentSha256 === installed.sha256 ? "ok" : "unknown",
-				currentSha256,
-				expectedSha256: installed.sha256 ?? null,
-				currentBytes: installed.sizeBytes,
+				...(await (await localInferenceServiceLazy()).verifyModel(modelId)),
 			};
 		}
 		case "trigger_voice_model_update":
@@ -1603,11 +1236,9 @@ export async function applyLocalInferenceManagementMutation(
 		}
 	}
 }
-
 function writeSse(res: http.ServerResponse, payload: unknown): void {
 	res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
-
 function decodeLocalInferencePathId(
 	raw: string,
 	res: http.ServerResponse,
@@ -1621,7 +1252,6 @@ function decodeLocalInferencePathId(
 		return null;
 	}
 }
-
 export async function handleLocalInferenceRoutes(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
@@ -1660,7 +1290,6 @@ export async function handleLocalInferenceRoutes(
 		if (await handleVoiceSpeakerProfileRoutes(req, res)) return true;
 	}
 	if (!pathname.startsWith("/api/local-inference/")) return false;
-
 	// Voice-sub-model auto-updater compat namespace
 	// (R5-versioning §3 + §4 + §5). The route module owns its own
 	// path-prefix check and returns false on miss so non-voice-model
@@ -1671,7 +1300,6 @@ export async function handleLocalInferenceRoutes(
 		);
 		if (await handleVoiceModelsRoutes(req, res)) return true;
 	}
-
 	if (
 		method === "GET" &&
 		pathname === "/api/local-inference/downloads/stream"
@@ -1681,21 +1309,15 @@ export async function handleLocalInferenceRoutes(
 			"Cache-Control": "no-cache, no-transform",
 			Connection: "keep-alive",
 		});
+		const service = await localInferenceServiceLazy();
 		const interval = setInterval(() => {
-			writeSse(res, {
-				type: "snapshot",
-				downloads: [...activeDownloads.values()].map(({ job }) => ({ ...job })),
-			});
+			writeSse(res, { type: "snapshot", downloads: service.getDownloads() });
 		}, 1000);
 		interval.unref();
-		writeSse(res, {
-			type: "snapshot",
-			downloads: [...activeDownloads.values()].map(({ job }) => ({ ...job })),
-		});
+		writeSse(res, { type: "snapshot", downloads: service.getDownloads() });
 		req.on("close", () => clearInterval(interval));
 		return true;
 	}
-
 	if (method === "GET" && pathname === "/api/local-inference/hub") {
 		sendJson(res, await hubSnapshot());
 		return true;
@@ -1704,10 +1326,7 @@ export async function handleLocalInferenceRoutes(
 		sendJson(res, (await hubSnapshot()).hardware);
 		return true;
 	}
-	// The authoritative device-tier assessment (tier + recommendedMode +
-	// recommendedFit) — the same one the router's AUTO policy consumes. Mirrors
-	// the app-core compat route so mobile (which mounts this upstream variant)
-	// also gets the authoritative assessment instead of the coarse client estimate.
+	// The same authoritative assessment drives the router's AUTO policy.
 	if (method === "GET" && pathname === "/api/local-inference/device-tier") {
 		sendJson(res, {
 			tier: classifyDeviceTier(
@@ -1939,9 +1558,8 @@ export async function handleLocalInferenceRoutes(
 			"model id",
 		);
 		if (modelId === null) return true;
-		activeDownloads.get(modelId)?.abortController.abort();
-		activeDownloads.delete(modelId);
-		sendJson(res, { cancelled: true });
+		const cancelled = (await cancelDownloads(modelId)).length > 0;
+		sendJson(res, { cancelled }, cancelled ? 200 : 404);
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/active") {
@@ -2075,13 +1693,7 @@ export async function handleLocalInferenceRoutes(
 			sendJsonError(res, "Model not installed", 404);
 			return true;
 		}
-		const currentSha256 = await hashFile(installed.path);
-		sendJson(res, {
-			state: currentSha256 === installed.sha256 ? "ok" : "unknown",
-			currentSha256,
-			expectedSha256: installed.sha256 ?? null,
-			currentBytes: installed.sizeBytes,
-		});
+		sendJson(res, await (await localInferenceServiceLazy()).verifyModel(id));
 		return true;
 	}
 	const installedMatch = /^\/api\/local-inference\/installed\/([^/]+)$/.exec(
@@ -2105,6 +1717,14 @@ export async function handleLocalInferenceRoutes(
 		});
 		return true;
 	}
-
 	return false;
+}
+
+/** Runtime-specific readiness uses the generation backend, including lazy reload. */
+export async function hasLocalTextModelAvailable(
+	runtime: IAgentRuntime,
+	modelTypes: readonly string[],
+): Promise<boolean> {
+	const provider = await import("./runtime/ensure-local-inference-handler.js");
+	return provider.hasLocalTextModelAvailable(runtime, modelTypes);
 }

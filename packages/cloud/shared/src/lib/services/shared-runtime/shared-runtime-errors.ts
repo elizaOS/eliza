@@ -7,7 +7,7 @@
  * `error.name` because the class cannot survive the Durable Object fetch
  * boundary).
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 
 export class SharedRuntimeCacheWarmingError extends Error {
   constructor(message: string) {
@@ -26,6 +26,32 @@ export class SharedTurnConflictError extends Error {
   constructor(message = "clientMessageId was already used with a different message.") {
     super(message);
     this.name = "SharedTurnConflictError";
+  }
+}
+
+/**
+ * A personal Shared turn reached the conversation while a Shared→Dedicated
+ * cutover held it (#22934). Before commit the seal refuses new Shared turns;
+ * after commit the conversation belongs to Dedicated. Neither case executed
+ * the turn, so connector ingress must hold the message and retry it — the
+ * retry re-resolves the route and reaches Dedicated once it is attested. The
+ * turn is never dropped and, because the refusal precedes the Shared claim,
+ * never runs in both runtimes.
+ */
+export class PersonalCutoverHoldError extends Error {
+  readonly retryAfterSeconds: number;
+
+  constructor(
+    readonly committed: boolean,
+    retryAfterSeconds = 1,
+  ) {
+    super(
+      committed
+        ? "This personal Eliza moved to Dedicated; retry to reach it."
+        : "Dedicated cutover is finishing; retry this turn shortly.",
+    );
+    this.name = "PersonalCutoverHoldError";
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 

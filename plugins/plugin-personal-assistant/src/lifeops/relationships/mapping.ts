@@ -10,12 +10,12 @@
  */
 
 import type {
-  Entity,
-  EntityAttribute,
-  EntityIdentity,
+  KnowledgeGraphEntity as Entity,
+  LifeOpsEntityAttribute as EntityAttribute,
+  LifeOpsEntityIdentity as EntityIdentity,
   LifeOpsRelationship,
-  Relationship,
-} from "@elizaos/shared";
+  KnowledgeGraphRelationship as Relationship,
+} from "@elizaos/contracts";
 
 /** Tag marking a person entity that the owner explicitly added as a contact. */
 export const LIFEOPS_CONTACT_TAG = "lifeops:contact";

@@ -16,14 +16,14 @@ import type {
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
   SnoozeLifeOpsOccurrenceRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
   LIFEOPS_REMINDER_CHANNELS,
   LIFEOPS_REMINDER_INTENSITIES,
   type LIFEOPS_REMINDER_PREFERENCE_SOURCES,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   DEFAULT_MORNING_WINDOW,
   DEFAULT_NIGHT_WINDOW,
@@ -334,7 +334,10 @@ function readProfileNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function readProfileBoolean(value: unknown, fallback: boolean): boolean {
+function readProfileBoolean<T extends boolean | undefined>(
+  value: unknown,
+  fallback: T,
+): boolean | T {
   return typeof value === "boolean" ? value : fallback;
 }
 
@@ -411,6 +414,39 @@ function readForceChannelProfile(
       base.requireAvailable,
     ),
   };
+}
+
+/** Presence alone is not an escalation opt-in: use the same field validators
+ * as the profile reader, rejecting empty/unknown/malformed profile objects. */
+export function hasExplicitReminderEscalationProfile(
+  definition: Pick<LifeOpsTaskDefinition, "metadata"> | null | undefined,
+): boolean {
+  const raw = definition?.metadata?.[REMINDER_ESCALATION_PROFILE_METADATA_KEY];
+  if (!isRecord(raw)) return false;
+  if (
+    readProfileBoolean(raw.activeWindowOnly, undefined) !== undefined ||
+    readProfileBoolean(raw.requireRoutineDefinition, undefined) !== undefined
+  )
+    return true;
+  if (raw.delayCompression === null || raw.forceChannel === null) return true;
+  const delayCompression = raw.delayCompression;
+  if (
+    isRecord(delayCompression) &&
+    ["afterMinutes", "factor", "minMinutes"].some((key) =>
+      Number.isFinite(readProfileNumber(delayCompression[key], NaN)),
+    )
+  )
+    return true;
+  if (isRecord(raw.forceChannel)) {
+    return (
+      isReminderChannel(raw.forceChannel.channel) ||
+      Number.isFinite(readProfileNumber(raw.forceChannel.afterMinutes, NaN)) ||
+      readProfileBoolean(raw.forceChannel.requireAvailable, undefined) !==
+        undefined ||
+      readProfileUrgencies(raw.forceChannel.urgencies, []).length > 0
+    );
+  }
+  return false;
 }
 
 export function readReminderEscalationProfile(
@@ -1488,6 +1524,19 @@ export async function classifyReminderOwnerResponse(args: {
       snoozeRequest: null,
       confidence: 0,
       reason: "empty_response",
+      classifierSource: "deterministic",
+    };
+  }
+  if (
+    args.context?.allowStandaloneResolution === false &&
+    classifyExactReminderReply(cleaned)
+  ) {
+    return {
+      decision: "unrelated",
+      resolution: null,
+      snoozeRequest: null,
+      confidence: 1,
+      reason: "standalone_resolution_not_allowed",
       classifierSource: "deterministic",
     };
   }

@@ -31,7 +31,7 @@ vi.mock("../../lib/steward-session", () => ({
   syncStewardSessionCookie: () => Promise.resolve(),
 }));
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     getSession() {
       return null;
@@ -64,10 +64,10 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async () => {
+vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/shared/steward-session-client")
-  >("@elizaos/shared/steward-session-client");
+    typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+  >("@elizaos/plugin-elizacloud/steward-session-client");
   return {
     ...actual,
     peekStewardOAuthState: () => "state-1",

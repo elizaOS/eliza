@@ -7,7 +7,7 @@
  * device.
  */
 
-import type { LoginAuthResult, LoginMfaRequiredResult } from "@elizaos/login";
+import type { LoginAuthResult, LoginMfaRequiredResult } from "@elizaos/auth";
 
 export type StewardEmailLoginStatus =
   | "pending"

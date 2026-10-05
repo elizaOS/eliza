@@ -10,18 +10,12 @@ import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 
 export const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
 
-// Thresholds describe a *runaway render loop*, not ordinary churn. Normal
-// behaviour — startup data settling, typing, dragging, token streaming — easily
-// produces a handful of commits per second, and React StrictMode double-invokes
-// the mount effect in dev, so the previous 2/3 thresholds fired constantly on
-// healthy components (e.g. chat-first onboarding during first-run). A real loop renders
-// continuously, far faster than any interaction sustains, so only a rate well
-// above one commit per frame is flagged.
+// Sustained commits above one per frame indicate a possible render loop.
 export const INFO_THRESHOLD = 60;
 export const ERROR_THRESHOLD = 120;
 export const WINDOW_MS = 1000;
 
-type ImportMetaWithEnv = ImportMeta & {
+type ImportMetaWithEnv = {
   env?: Record<string, boolean | string | undefined>;
 };
 
@@ -194,6 +188,28 @@ export function setRenderTelemetrySink(sink: RenderTelemetrySink | null): void {
   renderTelemetrySink = sink;
 }
 
+export class RenderTelemetryWindow {
+  readonly timestamps: number[] = [];
+  private lastSeverity: RenderTelemetrySeverity | null = null;
+
+  record(now: number): RenderTelemetrySeverity | null {
+    this.timestamps.push(now);
+    while (this.timestamps.length > 0 && this.timestamps[0] < now - WINDOW_MS) {
+      this.timestamps.shift();
+    }
+    if (this.timestamps.length < INFO_THRESHOLD) {
+      this.lastSeverity = null;
+      return null;
+    }
+    const severity =
+      this.timestamps.length >= ERROR_THRESHOLD ? "error" : "info";
+    if (this.lastSeverity === severity || this.lastSeverity === "error")
+      return null;
+    this.lastSeverity = severity;
+    return severity;
+  }
+}
+
 /**
  * Development/test-only guard for runaway render loops.
  *
@@ -205,11 +221,10 @@ export function setRenderTelemetrySink(sink: RenderTelemetrySink | null): void {
  * streaming to avoid false positives. Production builds skip all work.
  */
 export function useRenderGuard(name: string): void {
-  const timestamps = useRef<number[]>([]);
+  const window = useRef(new RenderTelemetryWindow());
   const renderStack = useRef<string | undefined>(undefined);
   const previousRenderStack = useRef<string | undefined>(undefined);
   const currentName = useRef(name);
-  const lastSeverity = useRef<RenderTelemetrySeverity | null>(null);
 
   useEffect(() => {
     if (!isRenderTelemetryEnabled()) return;
@@ -219,29 +234,13 @@ export function useRenderGuard(name: string): void {
 
     if (currentName.current !== name) {
       currentName.current = name;
-      timestamps.current = [];
-      lastSeverity.current = null;
+      window.current = new RenderTelemetryWindow();
     }
 
     const now = Date.now();
-    const ts = timestamps.current;
-    ts.push(now);
-
-    while (ts.length > 0 && ts[0] < now - WINDOW_MS) {
-      ts.shift();
-    }
-
-    if (ts.length < INFO_THRESHOLD) {
-      lastSeverity.current = null;
-      return;
-    }
-
-    const severity: RenderTelemetrySeverity =
-      ts.length >= ERROR_THRESHOLD ? "error" : "info";
-    if (lastSeverity.current === severity) return;
-    if (lastSeverity.current === "error") return;
-
-    lastSeverity.current = severity;
+    const severity = window.current.record(now);
+    if (!severity) return;
+    const ts = window.current.timestamps;
     emitRenderTelemetry({
       source: "useRenderGuard",
       name,

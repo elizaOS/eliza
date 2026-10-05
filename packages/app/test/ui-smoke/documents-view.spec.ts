@@ -2,9 +2,11 @@
  * Playwright UI-smoke spec for the Documents View app flow using the real
  * renderer fixture.
  */
+
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -106,7 +108,7 @@ test.describe("Knowledge/Documents view visual + smoke (desktop + mobile)", () =
     test(`documents ${vp.name}`, async ({ page }) => {
       const screenshotDir =
         process.env.ELIZA_VIEW_SCREENSHOT_DIR ??
-        path.join(process.cwd(), "test-results", "documents-view");
+        testOutputPath("app", "documents-view");
       await mkdir(screenshotDir, { recursive: true });
 
       const pageErrors: string[] = [];
@@ -119,13 +121,24 @@ test.describe("Knowledge/Documents view visual + smoke (desktop + mobile)", () =
       // Registered AFTER the defaults so these take precedence (Playwright runs
       // route handlers in reverse registration order). Match the list endpoint
       // exactly so the populated fixture renders.
-      await page.route("**/api/documents?**", (route) =>
-        route.fulfill({
+      await page.route("**/api/documents?**", (route) => {
+        const facet = new URL(route.request().url()).searchParams.get(
+          "knowledgeFacet",
+        );
+        const documents =
+          facet === "transcript"
+            ? DOCS_FIXTURE.documents.filter((document) => document.transcriptId)
+            : DOCS_FIXTURE.documents;
+        return route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(DOCS_FIXTURE),
-        }),
-      );
+          body: JSON.stringify({
+            ...DOCS_FIXTURE,
+            documents,
+            total: documents.length,
+          }),
+        });
+      });
       await page.route("**/api/documents", (route) =>
         route.fulfill({
           status: 200,
@@ -168,12 +181,29 @@ test.describe("Knowledge/Documents view visual + smoke (desktop + mobile)", () =
 
       await openAppPath(page, "/character/documents");
 
-      // Bind the probe to the populated Knowledge library, not ambient chrome.
       const viewRoot = page.getByTestId("documents-view");
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
+      const uploaded = viewRoot.getByRole("button", {
+        name: "Open q3-strategy.pdf",
+        exact: true,
+      });
+      await expect(uploaded).toBeVisible();
+      await assertHeaderlessViewChrome(page, {
+        within: '[data-testid="documents-view"]',
+      });
+      const facets = viewRoot.getByRole("navigation", {
+        name: "Filter knowledge by media type",
+      });
+      await facets.getByRole("button", { name: /^Transcripts/ }).click();
+      await expect(uploaded).toHaveCount(0);
       await expect(
-        viewRoot.getByText("q3-strategy.pdf", { exact: true }).first(),
+        viewRoot.getByRole("button", {
+          name: "Open Standup recording",
+          exact: true,
+        }),
       ).toBeVisible();
+      await facets.getByRole("button", { name: /^All/ }).click();
+      await expect(uploaded).toBeVisible();
       await assertHeaderlessViewChrome(page, {
         within: '[data-testid="documents-view"]',
       });

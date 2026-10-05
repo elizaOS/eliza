@@ -8,18 +8,12 @@
  * admission/settle chain runs either way, only the middle hop changes.
  */
 
-import { APICallError, embed, embedMany, RetryError } from "ai";
-import { Hono } from "hono";
-import {
-  resolveInferenceAuthStandingDenial,
-  resolveInferenceCredentialAdmissionDenial,
-} from "@/api-app/lib/generative-route-auth";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
-} from "@/lib/middleware/rate-limit";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit";
 import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
@@ -28,42 +22,67 @@ import {
   snapshotGatewayPreforwardTiming,
   withGatewayPreforwardTelemetry,
   withInferenceAuthTelemetry,
-} from "@/lib/observability/http-telemetry";
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
 import {
+  calculateCost,
   estimateTokens,
   getProviderFromModel,
   normalizeModelName,
-} from "@/lib/pricing";
+} from "@elizaos/cloud-shared/lib/pricing";
+import { validateBgeInput } from "@elizaos/cloud-shared/lib/providers/bge-embeddings";
 import {
   getAiProviderConfigurationError,
   getTextEmbeddingModel,
   hasTextEmbeddingProviderConfigured,
   resolveEmbeddingProviderSource,
   resolvePassthroughEmbeddingsUpstream,
-} from "@/lib/providers/language-model";
-import { billUsage, InsufficientCreditsError } from "@/lib/services/ai-billing";
-import type { CreditReservation } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import {
+  billUsage,
+  InsufficientCreditsError,
+} from "@elizaos/cloud-shared/lib/services/ai-billing";
+import {
+  admitAppSubscriptionInference,
+  appInferenceDeveloperScope,
+} from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
+import type { CreditReservation } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
+import { requireInferenceApiKeyWithOrg } from "@elizaos/cloud-shared/lib/services/inference-api-key-auth";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
   type InferenceAuthTelemetry,
   resolveInferenceAuthContext,
-} from "@/lib/services/inference-auth-context";
-import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
-import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
-import { isPassthroughEmbeddingsEnabled } from "@/lib/services/inference-passthrough";
-import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
+} from "@elizaos/cloud-shared/lib/services/inference-auth-context";
+import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
+import {
+  assertInferenceCredentialActive,
+  type InferenceCredentialCheck,
+} from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isPassthroughEmbeddingsEnabled } from "@elizaos/cloud-shared/lib/services/inference-passthrough";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+import {
+  nativeApplicationInferenceErrorResponse,
+  prepareNativeApplicationInference,
+} from "@elizaos/cloud-shared/lib/services/native-application-inference";
 import {
   admitOrganizationInference,
   InferenceAdmissionUnavailableError,
   InferenceAffiliateCacheUnavailableError,
   InferencePricingCacheUnavailableError,
   type OrganizationInferenceAdmission,
-} from "@/lib/services/organization-inference-admission";
-import { usageService } from "@/lib/services/usage";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
+import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { ElizaError } from "@elizaos/core";
+import { APICallError, embed, embedMany, RetryError } from "ai";
+import { Hono } from "hono";
+import {
+  resolveInferenceAuthStandingDenial,
+  resolveInferenceCredentialAdmissionDenial,
+} from "@/api-app/lib/generative-route-auth";
 
 interface EmbeddingsRequest {
   input: string | string[];
@@ -130,12 +149,14 @@ app.post("/", async (c) => {
   let billed = false;
   let providerDispatched = false;
   try {
+    const native = await prepareNativeApplicationInference(c);
+    const inferenceRequest = native.request;
     let guardOrganizationId: string | undefined;
     await using credentialGuard = deferredCredentialAdmissionGuard({
       organizationId: () => guardOrganizationId,
       credential: () => admissionCredential,
     });
-    const request = (await c.req
+    const request = (await inferenceRequest
       .json()
       .catch(() => null)) as EmbeddingsRequest | null;
     const requestIsValid = Boolean(request?.model && request.input);
@@ -163,7 +184,7 @@ app.post("/", async (c) => {
     // authoritative compatibility path is available only outside Workers.
     let user: { id: string; organization_id: string };
     let apiKeyId: string | null;
-    const resolution = await resolveInferenceAuthContext(c.req.raw, {
+    const resolution = await resolveInferenceAuthContext(inferenceRequest, {
       traceId,
       executionCtx,
       cacheOnly: Boolean(executionCtx),
@@ -243,11 +264,28 @@ app.post("/", async (c) => {
           401,
         );
       }
-      user = await requireUserOrApiKeyWithOrg(c);
-      // `requireUserOrApiKeyWithOrg` already validated the API key (when present)
-      // and exposed its id on the request context — reuse it instead of doing a
-      // second DB lookup per request.
-      apiKeyId = c.get("apiKeyId") ?? null;
+      if (native.actor) {
+        const authorization = inferenceRequest.headers.get("Authorization");
+        if (!authorization?.startsWith("Bearer "))
+          throw new Error("Native infrastructure credential is unavailable");
+        const resolved = await requireInferenceApiKeyWithOrg(
+          authorization.substring(7),
+        );
+        user = resolved.user;
+        apiKeyId = resolved.apiKey.id;
+        admissionCredential = {
+          kind: "api_key",
+          credentialId: apiKeyId,
+          userId: user.id,
+        };
+        guardOrganizationId = user.organization_id;
+      } else {
+        user = await requireUserOrApiKeyWithOrg(c);
+        // `requireUserOrApiKeyWithOrg` already validated the API key (when present)
+        // and exposed its id on the request context — reuse it instead of doing a
+        // second DB lookup per request.
+        apiKeyId = c.get("apiKeyId") ?? null;
+      }
     }
 
     const tAuth = performance.now();
@@ -256,6 +294,7 @@ app.post("/", async (c) => {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
           config: inferenceRateLimitConfig(admissionSnapshot, "embeddings"),
+          apiKeyId,
         })
       : Promise.resolve(null);
 
@@ -325,11 +364,14 @@ app.post("/", async (c) => {
 
     const model = request.model;
     providerModel = model;
-    const provider = getProviderFromModel(model);
+    const billingSource = resolveEmbeddingProviderSource(model);
+    const provider =
+      billingSource === "cloudflare"
+        ? "cloudflare"
+        : getProviderFromModel(model);
     const normalizedModel = normalizeModelName(model);
-    const billingSource = resolveEmbeddingProviderSource();
 
-    if (!hasTextEmbeddingProviderConfigured() || !billingSource) {
+    if (!hasTextEmbeddingProviderConfigured(model) || !billingSource) {
       return c.json(
         {
           error: {
@@ -342,39 +384,127 @@ app.post("/", async (c) => {
       );
     }
 
+    let retainedBgeTokens: number | undefined;
+    if (billingSource === "cloudflare" || billingSource === "selfhosted") {
+      if (request.dimensions !== undefined && request.dimensions !== 384) {
+        return c.json(
+          {
+            error: {
+              message: "BGE-small-en-v1.5 requires exactly 384 dimensions",
+              type: "invalid_request_error",
+              param: "dimensions",
+              code: "invalid_value",
+            },
+          },
+          400,
+        );
+      }
+      try {
+        retainedBgeTokens = 0;
+        for (const text of Array.isArray(request.input)
+          ? request.input
+          : [request.input])
+          retainedBgeTokens += validateBgeInput(text);
+      } catch (error) {
+        // error-policy:J1 Reject unrepresentable tails before reserving credits or dispatching.
+        if (
+          !(error instanceof ElizaError) ||
+          ![
+            "EMBEDDING_INPUT_UNREPRESENTABLE",
+            "EMBEDDING_INPUT_INVALID",
+          ].includes(error.code)
+        )
+          throw error;
+        return c.json(
+          {
+            error: {
+              message: error.message,
+              type: "invalid_request_error",
+              param: "input",
+              code: error.code,
+            },
+          },
+          400,
+        );
+      }
+    }
+
     const inputText = Array.isArray(request.input)
       ? request.input.join(" ")
       : request.input;
-    const estimatedInputTokens = estimateTokens(inputText);
+    const estimatedInputTokens = retainedBgeTokens ?? estimateTokens(inputText);
 
     const requestId = crypto.randomUUID();
     providerRequestId = requestId;
-    const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
+    const affiliateCode = native.actor
+      ? null
+      : (c.req.header("X-Affiliate-Code") ?? null);
     const tBeforeReserve = performance.now();
     try {
-      const admission = await admitOrganizationInference({
-        context: {
-          organizationId: user.organization_id,
-          userId: user.id,
-          apiKeyId,
-          model,
+      if (native.actor) {
+        const { totalCost } = await calculateCost(
+          normalizedModel,
           provider,
+          estimatedInputTokens,
+          0,
           billingSource,
-          requestId,
-        },
-        apiKeyId,
-        estimatedInputTokens,
-        estimatedOutputTokens: 0,
-        affiliateCode,
-        executionCtx,
-        admissionSnapshot,
-        credential: credentialGuard.credentialForAdmission(),
-        atomicProviderBoundary: Boolean(executionCtx),
-      });
-      settleReservation = admission.settle;
-      settleUnknown = admission.settleUnknown;
-      markProviderDispatched = admission.markProviderDispatched;
-      billingReservation = admission.reservation;
+        );
+        const admission = await admitAppSubscriptionInference({
+          actor: native.actor,
+          developerOrganizationId: user.organization_id,
+          developerAppScopeId: await appInferenceDeveloperScope(apiKeyId),
+          logicalOperationId:
+            inferenceRequest.headers.get("Idempotency-Key") ?? "",
+          requestDigest: settlementDigest({
+            request,
+            model: normalizedModel,
+            provider,
+            billingSource,
+          }),
+          estimatedCostUsd: totalCost,
+          revalidateDeveloperCredential: async () => {
+            if (!apiKeyId)
+              throw new Error(
+                "Native infrastructure credential is unavailable",
+              );
+            await assertInferenceCredentialActive(
+              user.organization_id,
+              admissionCredential ?? {
+                kind: "api_key",
+                credentialId: apiKeyId,
+                userId: user.id,
+              },
+            );
+          },
+        });
+        settleReservation = admission.settle;
+        settleUnknown = admission.settleUnknown;
+        markProviderDispatched = admission.markProviderDispatched;
+      } else {
+        const admission = await admitOrganizationInference({
+          context: {
+            organizationId: user.organization_id,
+            userId: user.id,
+            apiKeyId,
+            model,
+            provider,
+            billingSource,
+            requestId,
+          },
+          apiKeyId,
+          estimatedInputTokens,
+          estimatedOutputTokens: 0,
+          affiliateCode,
+          executionCtx,
+          admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: Boolean(executionCtx),
+        });
+        settleReservation = admission.settle;
+        settleUnknown = admission.settleUnknown;
+        markProviderDispatched = admission.markProviderDispatched;
+        billingReservation = admission.reservation;
+      }
     } catch (error) {
       // error-policy:J1 the route boundary exposes cached credit decisions and
       // cache readiness without falling through to authoritative storage.
@@ -494,6 +624,7 @@ app.post("/", async (c) => {
     });
 
     let embeddings: number[][] = [];
+    let embeddingSpace: string | undefined;
     let actualTokens = 0;
 
     // #15512 pass-through fast path: when OpenAI serves the model directly,
@@ -504,7 +635,7 @@ app.post("/", async (c) => {
     let passthroughBody: ArrayBuffer | null = null;
     const passthroughUpstream =
       isPassthroughEmbeddingsEnabled() &&
-      resolveEmbeddingProviderSource() === "openai"
+      resolveEmbeddingProviderSource(model) === "openai"
         ? resolvePassthroughEmbeddingsUpstream(model)
         : null;
 
@@ -544,6 +675,12 @@ app.post("/", async (c) => {
       actualTokens = parsed.usage?.prompt_tokens || estimatedInputTokens;
     } else if (Array.isArray(request.input)) {
       const embeddingModel = getTextEmbeddingModel(model);
+      if (
+        "embeddingSpace" in embeddingModel &&
+        typeof embeddingModel.embeddingSpace === "string"
+      ) {
+        embeddingSpace = embeddingModel.embeddingSpace;
+      }
       await markProviderDispatched?.();
       providerDispatched = true;
       const result = await bindGatewayHandoffTelemetry(
@@ -557,6 +694,12 @@ app.post("/", async (c) => {
       actualTokens = result.usage?.tokens || estimatedInputTokens;
     } else {
       const embeddingModel = getTextEmbeddingModel(model);
+      if (
+        "embeddingSpace" in embeddingModel &&
+        typeof embeddingModel.embeddingSpace === "string"
+      ) {
+        embeddingSpace = embeddingModel.embeddingSpace;
+      }
       await markProviderDispatched?.();
       providerDispatched = true;
       const result = await bindGatewayHandoffTelemetry(
@@ -675,6 +818,7 @@ app.post("/", async (c) => {
     return attachTelemetry(
       c.json({
         object: "list",
+        ...(embeddingSpace ? { embedding_space: embeddingSpace } : {}),
         data: embeddings.map((embedding, index) => ({
           object: "embedding",
           embedding,
@@ -809,6 +953,8 @@ app.post("/", async (c) => {
       );
     }
 
+    const nativeError = nativeApplicationInferenceErrorResponse(error);
+    if (nativeError) return nativeError;
     return failureResponse(c, error);
   }
 });

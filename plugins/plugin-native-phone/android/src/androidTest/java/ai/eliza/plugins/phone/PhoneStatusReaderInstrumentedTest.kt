@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
  * and asserts the live dialer state — the native side-effect that separates a
  * working Phone view from the web stub the issue warns about.
  *
- * Run: `./gradlew :elizaos-capacitor-phone:connectedDebugAndroidTest`
+ * Run: `./gradlew :elizaos-plugin-native-phone:connectedDebugAndroidTest`
  */
 @RunWith(AndroidJUnit4::class)
 class PhoneStatusReaderInstrumentedTest {

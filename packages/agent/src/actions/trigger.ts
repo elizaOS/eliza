@@ -21,13 +21,11 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
-  AUTONOMY_SERVICE_TYPE,
   type EffectReceipt,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
-  resolveMessageTimeZone,
   type State,
   stringToUuid,
   type Task,
@@ -35,11 +33,17 @@ import {
   type TriggerConfig,
   type TriggerType,
   type TriggerWakeMode,
+  textStatesExplicitRecurrence,
   toWellFormedUnicode,
   type UUID,
+  unwrapUserMessageText,
   validateUuid,
 } from "@elizaos/core";
-import { textStatesExplicitRecurrence } from "@elizaos/shared";
+
+import {
+  AUTONOMY_SERVICE_TYPE,
+  resolveMessageTimeZone,
+} from "@elizaos/plugin-assistant";
 import {
   describeCronSchedule,
   describeIntervalMs,
@@ -381,10 +385,43 @@ async function loadTriggerTask(
  * Exactly one match resolves; none or several return a structured failure
  * that lists the active triggers so the model can correct in one step.
  */
+const TRIGGER_REQUEST_LEAD_PATTERN =
+  /^(?:(?:hey|hi|ok|okay|please)[\s,]+)*(?:please\s+)?(?:can you\s+|could you\s+|would you\s+)?(?:delete|cancel|remove|stop|clear|drop|kill|turn off|disable|pause|resume|enable|run|fire)\s+(?:the\s+|my\s+|that\s+|this\s+)?/i;
+const TRIGGER_NOUN_PATTERN =
+  /\b(?:triggers?|reminders?|alerts?|alarms?|tasks?|notifications?|please|now)\b/gi;
+const MENTION_MARKER_PATTERN = /<@!?\d{6,}>|[^()\n]{0,80}\(@\d{6,}\)/gu;
+
+/**
+ * The trigger the user named in a request the planner sent without any
+ * target ("delete the landlord trigger" arrived as `{action: "delete"}`,
+ * live 2026-09-14, and the not-found text became the delivered reply
+ * although the retry deleted it). The words after the leading verb, minus
+ * the generic nouns; undefined when nothing usable remains.
+ */
+export function impliedTriggerQuery(
+  message: Memory | undefined,
+): string | undefined {
+  if (!message) return undefined;
+  const text = unwrapUserMessageText(message)
+    .replace(MENTION_MARKER_PATTERN, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const firstClause = text.split(/[.!?;\n]/)[0] ?? "";
+  if (!TRIGGER_REQUEST_LEAD_PATTERN.test(firstClause)) return undefined;
+  const query = firstClause
+    .replace(TRIGGER_REQUEST_LEAD_PATTERN, "")
+    .replace(TRIGGER_NOUN_PATTERN, " ")
+    .replace(/\b(?:about|for|to|that|the|my|a|an)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /[a-z]{3,}/i.test(query) ? query : undefined;
+}
+
 async function resolveTriggerRef(
   runtime: IAgentRuntime,
   op: TriggerOp,
   params: TriggerParameters,
+  message?: Memory,
 ): Promise<{ task: Task; trigger: TriggerConfig } | ActionResult> {
   const taskId = readUuid(params.taskId);
   if (taskId) {
@@ -425,8 +462,14 @@ async function resolveTriggerRef(
     }
   }
   const rawId = readString(params.taskId);
+  // A non-uuid taskId is the planner naming the trigger ("Email landlord
+  // (nubs)", live 2026-09-13): resolve it as a display-name fragment instead of
+  // failing and costing a replan with the id copied from the failure text.
   const querySource =
-    readString(params.displayName) ?? readString(params.instructions);
+    readString(params.displayName) ??
+    readString(params.instructions) ??
+    (rawId && !readUuid(params.taskId) ? rawId : undefined) ??
+    impliedTriggerQuery(message);
   const query = querySource?.toLowerCase().replace(/^trigger:\s*/, "");
 
   const tasks = await runtime.getTasks({
@@ -468,13 +511,29 @@ async function resolveTriggerRef(
       `More than one reminder matches that: ${shown}. Which one?`,
     );
   }
+  // Nothing was changed by a miss, so the failure never outranks a later
+  // successful call's reply (readOnlyOperation), and a call with no target
+  // at all is a malformed call, not a lookup miss.
+  if (!query && !rawId) {
+    return failed(
+      op,
+      all.length
+        ? `taskId or displayName is required. Active triggers: ${names}.`
+        : "taskId or displayName is required. No triggers exist.",
+      "TRIGGER_MISSING_TARGET",
+      { readOnlyOperation: true },
+      all.length
+        ? `Which reminder do you mean? The ones set are: ${names}.`
+        : "You don't have any reminders set right now.",
+    );
+  }
   return failed(
     op,
     all.length
       ? `No trigger matched. Active triggers: ${names}. Pass taskId or a displayName fragment.`
       : "No triggers exist.",
     "TRIGGER_NOT_FOUND",
-    undefined,
+    { readOnlyOperation: true },
     all.length
       ? `I couldn't find a reminder matching that — it may have already gone off. The ones still set are: ${names}.`
       : "You don't have any reminders set right now.",
@@ -519,6 +578,33 @@ async function opCreate(
   // explicit one-shot/interval `triggerType` — a typed statement, not a
   // sprayed number — outranks a provided cronExpression.
   const explicitType = params.triggerType?.trim().toLowerCase();
+  if (
+    !["once", "interval", "cron"].includes(explicitType ?? "") &&
+    params.delaySeconds === undefined &&
+    params.delayMinutes === undefined &&
+    params.intervalMs === undefined &&
+    !readString(params.scheduledAtIso) &&
+    !readString(params.cronExpression)
+  ) {
+    return {
+      ...failed(
+        "create",
+        "Provide an explicit schedule before creating a trigger.",
+        "MISSING_SCHEDULE",
+        { acceptance: "rejected", executionStatus: "not_started" },
+      ),
+      // No write has started: corrected schedule parameters can safely retry.
+      // Keep this validation rejection in the trace without giving it authority
+      // over a later committed creation with those corrected parameters.
+      failureProvenance: {
+        kind: "handler_error",
+        boundary: "handler",
+        code: "MISSING_SCHEDULE",
+        retryable: true,
+      },
+    };
+  }
+
   const cronExpression = readString(params.cronExpression);
   const explicitScheduledAtIso = readString(params.scheduledAtIso);
   const wantsCron =
@@ -702,17 +788,7 @@ async function opCreate(
     );
   }
 
-  // Two duplicate tiers with different evidentiary strength. A dedupeKey
-  // match hashes the FULL request (type, instructions, schedule, workflow),
-  // so it proves the desired state is already true and may mint a replayed
-  // receipt. The legacy fallback matches instructions+type only — it ignores
-  // the schedule, so a stored 8am reminder "matches" a new 9am request; that
-  // is a hint, never proof, and must not become a verified "you're covered".
-  // The createdBy equality is load-bearing even though the key already hashes
-  // the creator: dedupeHash is a 32-bit djb2, so a collision across users is
-  // possible — and a cross-recipient false match here silently swallows a
-  // distinct recipient's delivery. The structural guard makes that class of
-  // suppression impossible regardless of hash width.
+  // Match the complete request and creator before replaying a committed receipt.
   const exactDuplicate = existingTasks.find((t) => {
     const cfg = readTriggerConfig(t);
     return Boolean(
@@ -738,28 +814,6 @@ async function opCreate(
       { duplicateTaskId: exactDuplicate.id, dedupeKey },
     );
   }
-  const legacyDuplicate = existingTasks.find((t) => {
-    const cfg = readTriggerConfig(t);
-    if (!cfg?.enabled || cfg.dedupeKey) return false;
-    // Same recipient only: another user's identical wording is a different
-    // delivery, not a near-duplicate — steering them to "delete it first"
-    // would suppress their own reminder in favor of someone else's.
-    if (cfg.createdBy !== creatorId) return false;
-    return (
-      cfg.instructions.trim().toLowerCase() === instructions.toLowerCase() &&
-      cfg.triggerType === triggerType
-    );
-  });
-  if (legacyDuplicate?.id) {
-    // Un-receipted: the fuzzy match cannot prove the schedule matches, so
-    // this reports the near-duplicate without claiming verified success.
-    return ok(
-      "create",
-      `A similar ${triggerType} trigger already exists ("${readTriggerConfig(legacyDuplicate)?.instructions ?? "unknown"}"). Confirm whether that covers this, or delete it first to create the new one.`,
-      { duplicateTaskId: legacyDuplicate.id, legacyFuzzyMatch: true },
-    );
-  }
-
   // A trigger with a workflowId dispatches that workflow; without one it is a
   // "prompt automation" (a reminder) that injects `instructions` as an agent
   // turn when it fires. Both are first-class TriggerConfig kinds — a reminder
@@ -850,18 +904,29 @@ async function opUpdate(
   message: Memory,
   params: TriggerParameters,
 ): Promise<ActionResult> {
+  // Both lookups run before any write, so a miss changed nothing: marked
+  // read-only, it never outranks a later applied mutation's reply (live
+  // 2026-09-14, tj-239c3d599bc9e6: update with a malformed taskId, then a
+  // delete and a create that applied, and the turn was forced through a
+  // "do not claim success" compose pass).
   const taskId = readUuid(params.taskId);
   if (!taskId)
-    return failed("update", "taskId is required.", "MISSING_TASK_ID");
+    return failed("update", "taskId is required.", "MISSING_TASK_ID", {
+      readOnlyOperation: true,
+    });
   const loaded = await loadTriggerTask(runtime, taskId);
   if (!loaded)
     return failed(
       "update",
       `Trigger task not found: ${taskId}`,
       "TRIGGER_NOT_FOUND",
+      { readOnlyOperation: true },
     );
   const { task, trigger } = loaded;
-  if (!task.id) return failed("update", "Task missing id.", "TASK_NOT_FOUND");
+  if (!task.id)
+    return failed("update", "Task missing id.", "TASK_NOT_FOUND", {
+      readOnlyOperation: true,
+    });
   const messageTimeZone = resolveMessageTimeZone(runtime, message);
 
   const next: TriggerConfig = { ...trigger };
@@ -888,8 +953,15 @@ async function opUpdate(
     next.intervalMs = normalizedIntervalMs;
   }
   if (scheduledAtIso !== undefined && next.triggerType === "once") {
-    if (parseScheduledAtIso(scheduledAtIso) === null) {
-      return failed("update", "Invalid scheduledAtIso.", "INVALID_SCHEDULE");
+    const atMs = parseScheduledAtIso(scheduledAtIso);
+    // Same rule as create: a past once-time becomes updateInterval 0, and the
+    // scheduler then treats the repeat task as invalid and never fires it.
+    if (atMs === null || atMs <= Date.now()) {
+      return failed(
+        "update",
+        "Once trigger requires a valid future scheduledAtIso.",
+        "INVALID_SCHEDULE",
+      );
     }
     dedupeIdentityChanged =
       dedupeIdentityChanged || scheduledAtIso !== trigger.scheduledAtIso;
@@ -971,8 +1043,9 @@ async function opUpdate(
 async function opDelete(
   runtime: IAgentRuntime,
   params: TriggerParameters,
+  message?: Memory,
 ): Promise<ActionResult> {
-  const loaded = await resolveTriggerRef(runtime, "delete", params);
+  const loaded = await resolveTriggerRef(runtime, "delete", params, message);
   if ("success" in loaded) return loaded;
   if (!loaded.task.id)
     return failed("delete", "Task missing id.", "TASK_NOT_FOUND");
@@ -988,8 +1061,9 @@ async function opDelete(
 async function opRun(
   runtime: IAgentRuntime,
   params: TriggerParameters,
+  message?: Memory,
 ): Promise<ActionResult> {
-  const loaded = await resolveTriggerRef(runtime, "run", params);
+  const loaded = await resolveTriggerRef(runtime, "run", params, message);
   if ("success" in loaded) return loaded;
   const result = await executeTriggerTask(runtime, loaded.task, {
     source: "manual",
@@ -1068,8 +1142,9 @@ async function opList(
 async function opToggle(
   runtime: IAgentRuntime,
   params: TriggerParameters,
+  message?: Memory,
 ): Promise<ActionResult> {
-  const loaded = await resolveTriggerRef(runtime, "toggle", params);
+  const loaded = await resolveTriggerRef(runtime, "toggle", params, message);
   if ("success" in loaded) return loaded;
   const { task, trigger } = loaded;
   if (!task.id) return failed("toggle", "Task missing id.", "TASK_NOT_FOUND");
@@ -1077,6 +1152,20 @@ async function opToggle(
     params.enabled === undefined ? !trigger.enabled : readBool(params.enabled);
   const next: TriggerConfig = { ...trigger, enabled };
   const nowMs = Date.now();
+  if (enabled && next.triggerType === "once") {
+    const atMs = next.scheduledAtIso
+      ? parseScheduledAtIso(next.scheduledAtIso)
+      : null;
+    // Resuming after the fire time used to persist updateInterval 0 and
+    // report success. The scheduler skips that repeat task forever.
+    if (atMs === null || atMs <= nowMs) {
+      return failed(
+        "toggle",
+        "Once trigger requires a valid future scheduledAtIso.",
+        "INVALID_SCHEDULE",
+      );
+    }
+  }
   // A disabled trigger has no next fire by definition — `resolveTriggerTiming`
   // returns null for `enabled === false`, so recomputing timing for the
   // about-to-be-paused config ALWAYS failed and pausing was structurally
@@ -1186,11 +1275,11 @@ export const triggerAction: Action = {
       case "update":
         return opUpdate(runtime, message, params);
       case "delete":
-        return opDelete(runtime, params);
+        return opDelete(runtime, params, message);
       case "run":
-        return opRun(runtime, params);
+        return opRun(runtime, params, message);
       case "toggle":
-        return opToggle(runtime, params);
+        return opToggle(runtime, params, message);
       case "list":
         return opList(runtime, message);
     }

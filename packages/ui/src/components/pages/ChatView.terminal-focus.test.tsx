@@ -23,7 +23,7 @@ import {
 } from "@testing-library/react";
 import { useEffect, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CodingAgentSession } from "../../api/client";
+import type { CodingAgentSession } from "../../api/client-types-cloud";
 import {
   isProblemSessionStatus,
   pickProblemSessionToAutoFocus,

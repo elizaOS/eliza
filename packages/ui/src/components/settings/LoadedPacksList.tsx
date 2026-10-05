@@ -4,10 +4,10 @@
  * row is agent-addressable via `useAgentElement`.
  */
 
-import type { ResolvedContentPack } from "@elizaos/shared";
+import type { ResolvedContentPack } from "@elizaos/contracts";
 import { Check } from "lucide-react";
-import { useAgentElement } from "../../agent-surface";
-import { useAppSelector } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { useAppSelector } from "../../state/app-store";
 import { ActionListRow } from "../shared/ActionListRow";
 import { SettingsGroup } from "./settings-layout";
 
@@ -16,7 +16,6 @@ interface LoadedPacksListProps {
   activePackId: string | null;
   onToggle: (pack: ResolvedContentPack) => void;
 }
-
 function LoadedPackRow({
   pack,
   isActive,
@@ -61,7 +60,6 @@ function LoadedPackRow({
     />
   );
 }
-
 export function LoadedPacksList({
   loadedPacks,
   activePackId,

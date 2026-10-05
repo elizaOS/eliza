@@ -5,11 +5,11 @@
  *   - connectionRole: "owner" | "agent" (default "owner")
  */
 
-import { parseCanonicalInteger } from "@elizaos/shared";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { getXDmDigest } from "@elizaos/cloud-shared/lib/services/x";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { parseCanonicalInteger } from "@elizaos/core/protocol";
 import { Hono } from "hono";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { getXDmDigest } from "@/lib/services/x";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { xRouteErrorResponse } from "../../error-response";
 
 const app = new Hono<AppEnv>();

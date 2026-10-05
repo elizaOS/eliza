@@ -20,7 +20,7 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { agentTable } from "../../schema";
+import { agentTable } from "../../schema/agent";
 import { mockCharacter } from "../schema-data";
 import { createIsolatedTestDatabase } from "../test-helpers";
 

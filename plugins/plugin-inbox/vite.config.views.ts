@@ -7,5 +7,5 @@ export default createViewBundleConfig({
   entry: "./src/components/inbox/inbox-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "InboxView",
-  additionalExternals: ["@elizaos/app-core"],
+  additionalExternals: ["@elizaos/app"],
 });

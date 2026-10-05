@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { entityTable } from "../../schema";
+import { entityTable } from "../../schema/entity";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 import { expectCreatedEntityIds } from "./entity-create-assertions";

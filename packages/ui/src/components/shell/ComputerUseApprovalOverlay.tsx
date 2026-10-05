@@ -9,9 +9,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
-import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
+import { client } from "../../api/client";
+import type { ComputerUseApprovalSnapshot } from "../../api/client-computeruse";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
-import { useAppSelector } from "../../state";
+import { useDialogFocus } from "../../hooks/useDialogFocus";
+import { useAppSelector } from "../../state/app-store";
 import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
@@ -26,8 +28,6 @@ const EMPTY_SNAPSHOT: ComputerUseApprovalSnapshot = {
   pendingApprovals: [],
 };
 const POLL_MS = 1500;
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function approvalStreamUrl(): string | null {
   const baseUrl = client.getBaseUrl();
@@ -49,9 +49,6 @@ function approvalStreamUrl(): string | null {
     // so degrade to the polling path.
     return null;
   }
-  if (restToken) {
-    url.searchParams.set("token", restToken);
-  }
   return url.toString();
 }
 
@@ -71,7 +68,6 @@ export function ComputerUseApprovalOverlay() {
   const [denyTargetId, setDenyTargetId] = useState<string | null>(null);
   const [denyReason, setDenyReason] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const refresh = useCallback(async () => {
     if (!appShellRoutesSupported || !authenticated) {
@@ -173,52 +169,7 @@ export function ComputerUseApprovalOverlay() {
     [visibleApprovals],
   );
 
-  // This is a real modal that gates live computer-use actions, so trap focus
-  // inside it while it's shown (mirrors AssistantOverlay) — but DO NOT bind
-  // Escape: approving/denying is mandatory, there's no dismiss. Restores focus
-  // to the prior element when the last approval clears.
-  const hasApprovals = approvalCards.length > 0;
-  useEffect(() => {
-    if (!hasApprovals || typeof document === "undefined") return undefined;
-    previousFocusRef.current =
-      (document.activeElement as HTMLElement | null) ?? null;
-    const dialog = dialogRef.current;
-    if (dialog) {
-      const firstFocusable =
-        dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-      (firstFocusable ?? dialog).focus();
-    }
-    function onKey(event: KeyboardEvent): void {
-      if (event.key !== "Tab" || !dialog) return;
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-      );
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      if (event.shiftKey) {
-        if (active === first || active === dialog) {
-          event.preventDefault();
-          last.focus();
-        }
-      } else if (active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      const previous = previousFocusRef.current;
-      if (previous && typeof previous.focus === "function") previous.focus();
-      previousFocusRef.current = null;
-    };
-  }, [hasApprovals]);
+  useDialogFocus(dialogRef, approvalCards.length > 0);
 
   const handleRespond = useCallback(
     async (approvalId: string, approved: boolean, reason?: string) => {
@@ -236,10 +187,12 @@ export function ComputerUseApprovalOverlay() {
         setActionNotice(
           approved
             ? t("computeruseapprovaloverlay.ApprovedNotice", {
-                defaultValue: `Approved ${resolution.command}.`,
+                defaultValue: "Approved {{command}}.",
+                command: resolution.command,
               })
             : t("computeruseapprovaloverlay.RejectedNotice", {
-                defaultValue: `Rejected ${resolution.command}.`,
+                defaultValue: "Rejected {{command}}.",
+                command: resolution.command,
               }),
           approved ? "success" : "info",
           2600,

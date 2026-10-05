@@ -16,17 +16,17 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import {
-  client,
-  type RuntimeDebugSnapshot,
-  type RuntimeOrderItem,
-  type RuntimeServiceOrderItem,
-} from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type {
+  RuntimeDebugSnapshot,
+  RuntimeOrderItem,
+  RuntimeServiceOrderItem,
+} from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";

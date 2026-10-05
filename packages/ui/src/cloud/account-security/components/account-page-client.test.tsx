@@ -6,13 +6,15 @@
 
 // @vitest-environment jsdom
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CloudI18nProvider } from "../../shell/CloudI18nProvider";
 import type { UserProfile } from "../data/user";
 import { AccountPageClient } from "./account-page-client";
 
-vi.mock("../../../cloud-ui", () => ({
+vi.mock("../../../cloud-ui/components/layout/dashboard-page", () => ({
   DashboardPageContainer: ({ children }: { children: ReactNode }) => (
     <main>{children}</main>
   ),
@@ -82,14 +84,27 @@ describe("AccountPageClient", () => {
   });
 
   it("renders the profile form + account details, with no org/welcome banner", () => {
-    const { container } = render(<AccountPageClient user={makeUser()} />);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <CloudI18nProvider initialLang="en">
+          <AccountPageClient user={makeUser()} />
+        </CloudI18nProvider>
+      </QueryClientProvider>,
+    );
     const text = container.textContent ?? "";
 
     expect(text).toContain("profile form");
     expect(text).toContain("account details");
-    // Per-user-account console: no org surfacing even when one exists.
+    expect(
+      container.querySelector('[data-testid="cloud-privacy-panel"]'),
+    ).not.toBeNull();
+    // No organization banner; the privacy disclosure still explains excluded records.
     expect(text).not.toMatch(/Welcome back/i);
     expect(text).not.toMatch(/You're part of/i);
-    expect(text).not.toMatch(/organization/i);
+    expect(text).not.toContain("Sol's Organization");
+    expect(text).toContain("Organization-wide records are excluded.");
   });
 });

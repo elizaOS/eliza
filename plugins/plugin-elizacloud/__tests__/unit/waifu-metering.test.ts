@@ -216,6 +216,30 @@ describe("buildInferenceSpentPayload", () => {
     expect(buildInferenceSpentPayload(CONFIG, payload)).toBeNull();
   });
 
+  it("produces a non-zero token estimate once native tokens are attributed (#27732)", () => {
+    // Before the fix the native /chat/completions MODEL_USED payload zeroed
+    // prompt/completion (only total survived), so the estimate substituting for
+    // an absent gateway cost was always $0 and waifu fell back to its $5/day
+    // default. With the counts attributed, the estimate is a real positive USD
+    // over exactly those token counts.
+    const attributed = makePayload({ prompt: 100, completion: 50 });
+    const spent = requireInferenceSpentPayload(buildInferenceSpentPayload(CONFIG, attributed));
+    expect(spent.promptTokens).toBe(100);
+    expect(spent.completionTokens).toBe(50);
+    expect(spent.costSource).toBe("estimate");
+    expect(spent.usd).toBeCloseTo(
+      (100 / 1000) * CONFIG.usdPer1kInput + (50 / 1000) * CONFIG.usdPer1kOutput,
+      9
+    );
+    expect(spent.usd).toBeGreaterThan(0);
+    expect(estimateUsd(CONFIG, 100, 50)).toBe(spent.usd);
+
+    // The pre-fix symptom (prompt=completion=0, total surviving) still drops so
+    // burn is never inflated with an empty event.
+    const zeroed = makePayload({ prompt: 0, completion: 0, total: 150 });
+    expect(buildInferenceSpentPayload(CONFIG, zeroed)?.usd).toBe(0);
+  });
+
   it("emits a unique idempotency key per call", () => {
     const payload = makePayload({ prompt: 10, completion: 10 });
     const a = buildInferenceSpentPayload(CONFIG, payload);

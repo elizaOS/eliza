@@ -1,9 +1,9 @@
 /** Session-readiness regression coverage for the public invite acceptance page. */
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigateMock = vi.hoisted(() => vi.fn());
 const apiMock = vi.hoisted(() => vi.fn());
@@ -25,26 +25,41 @@ vi.mock("../../../lib/api-client", () => ({
   ApiError: class ApiError extends Error {},
 }));
 
-vi.mock("../../../shell/CloudI18nProvider", () => ({
-  useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
-    options?.defaultValue ?? _key,
-}));
+vi.mock("../../../shell/CloudI18nProvider", () => {
+  // Match the provider's stable translator so validation settles after loading.
+  const t = (_key: string, options?: { defaultValue?: string }) =>
+    options?.defaultValue ?? _key;
+  return { useCloudT: () => t };
+});
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 
-vi.mock("../../../../components/primitives", () => {
+vi.mock("../../../../components/ui/alert", () => {
+  const Container = ({ children }: { children?: ReactNode }) => (
+    <div>{children}</div>
+  );
+  return { Alert: Container, AlertDescription: Container };
+});
+vi.mock("../../../../components/ui/badge", () => {
+  const Container = ({ children }: { children?: ReactNode }) => (
+    <div>{children}</div>
+  );
+  return { Badge: Container };
+});
+vi.mock("../../../../components/ui/card", () => {
   const Container = ({ children }: { children?: ReactNode }) => (
     <div>{children}</div>
   );
   return {
-    Alert: Container,
-    AlertDescription: Container,
-    Badge: Container,
     Card: Container,
     CardContent: Container,
     CardDescription: Container,
     CardHeader: Container,
     CardTitle: Container,
+  };
+});
+vi.mock("../../../../components/ui/button", () => {
+  return {
     Button: ({
       children,
       disabled,
@@ -63,6 +78,8 @@ vi.mock("../../../../components/primitives", () => {
 
 import InviteAcceptPage from "./invite-accept-page";
 
+afterEach(cleanup);
+
 beforeEach(() => {
   navigateMock.mockReset();
   apiMock.mockReset();
@@ -79,6 +96,11 @@ beforeEach(() => {
   });
 });
 
+// globals are off, so Testing Library does not auto-unmount; unmount before
+// the jsdom environment is torn down so the pending invite load cannot
+// schedule React work against a missing window.
+afterEach(cleanup);
+
 describe("InviteAcceptPage", () => {
   it("does not offer a sign-in action until session identity is ready", async () => {
     render(<InviteAcceptPage />);
@@ -87,6 +109,7 @@ describe("InviteAcceptPage", () => {
       name: /checking sign-in/i,
     });
     expect((action as HTMLButtonElement).disabled).toBe(true);
+    expect(apiMock).toHaveBeenCalledTimes(1);
 
     fireEvent.click(action);
     expect(navigateMock).not.toHaveBeenCalled();

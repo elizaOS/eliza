@@ -1,3 +1,4 @@
+import { accountProviderDisplayName } from "../accounts/account-provider-options";
 /**
  * AccountConnectBlock — inline chat entry point for adding another provider
  * account (Claude / Codex).
@@ -11,11 +12,11 @@
  * `AccountList`; it never duplicates that UI.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
 import { useMemo, useState } from "react";
 import type { AccountConnectRequest } from "../../api/client-types-chat";
 import { useAccounts } from "../../hooks/useAccounts";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { AddAccountDialog } from "../accounts/AddAccountDialog";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -25,64 +26,6 @@ import { Card } from "../ui/card";
  * `providerDisplayName` mapping inside `AddAccountDialog` (kept local so the
  * block reads a display label without pulling the dialog's private helper).
  */
-function providerLabel(
-  providerId: LinkedAccountProviderId,
-  t: (key: string, vars?: Record<string, unknown>) => string,
-): string {
-  switch (providerId) {
-    case "anthropic-subscription":
-      return t("accounts.provider.anthropicSubscription", {
-        defaultValue: "Claude Subscription",
-      });
-    case "openai-codex":
-      return t("accounts.provider.openaiCodex", {
-        defaultValue: "OpenAI Codex",
-      });
-    case "gemini-cli":
-      return t("accounts.provider.geminiCli", { defaultValue: "Gemini CLI" });
-    case "zai-coding":
-      return t("accounts.provider.zaiCoding", {
-        defaultValue: "z.ai Coding Plan",
-      });
-    case "kimi-coding":
-      return t("accounts.provider.kimiCoding", { defaultValue: "Kimi Code" });
-    case "deepseek-coding":
-      return t("accounts.provider.deepseekCoding", {
-        defaultValue: "DeepSeek Coding Plan",
-      });
-    case "anthropic-api":
-      return t("accounts.provider.anthropicApi", {
-        defaultValue: "Anthropic API",
-      });
-    case "openai-api":
-      return t("accounts.provider.openaiApi", { defaultValue: "OpenAI API" });
-    case "deepseek-api":
-      return t("accounts.provider.deepseekApi", {
-        defaultValue: "DeepSeek API",
-      });
-    case "zai-api":
-      return t("accounts.provider.zaiApi", { defaultValue: "z.ai API" });
-    case "moonshot-api":
-      return t("accounts.provider.moonshotApi", {
-        defaultValue: "Kimi / Moonshot API",
-      });
-    case "cerebras-api":
-      return t("accounts.provider.cerebrasApi", {
-        defaultValue: "Cerebras API",
-      });
-    case "openrouter-api":
-      return t("accounts.provider.openrouterApi", {
-        defaultValue: "OpenRouter credits / BYOK",
-      });
-    case "xai-api":
-      return t("accounts.provider.xaiApi", {
-        defaultValue: "xAI API (metered)",
-      });
-    default:
-      return providerId;
-  }
-}
-
 export function AccountConnectBlock({
   request,
 }: {
@@ -92,7 +35,6 @@ export function AccountConnectBlock({
   const accounts = useAccounts();
   const [openProvider, setOpenProvider] =
     useState<LinkedAccountProviderId | null>(null);
-
   const countByProvider = useMemo(() => {
     const map = new Map<LinkedAccountProviderId, number>();
     for (const p of accounts.data?.providers ?? []) {
@@ -100,7 +42,6 @@ export function AccountConnectBlock({
     }
     return map;
   }, [accounts.data]);
-
   return (
     <Card
       variant="insetPadded"
@@ -110,7 +51,7 @@ export function AccountConnectBlock({
       <div className="font-medium mb-1">
         {t("accounts.connect.heading", { defaultValue: "Add another account" })}
       </div>
-      <div className="text-muted whitespace-pre-wrap mb-3">
+      <div className="text-muted-strong whitespace-pre-wrap mb-3">
         {request.reason?.trim()
           ? request.reason
           : t("accounts.connect.subheading", {
@@ -132,15 +73,15 @@ export function AccountConnectBlock({
             >
               <div className="min-w-0">
                 <div className="truncate font-medium">
-                  {providerLabel(providerId, t)}
+                  {accountProviderDisplayName(providerId, t)}
                 </div>
-                <div className="text-xs text-muted">
+                <div className="text-xs text-muted-strong">
                   {accounts.loading && !accounts.data
                     ? t("accounts.connect.loadingCount", {
                         defaultValue: "Loading accounts…",
                       })
                     : t("accounts.connect.currentCount", {
-                        defaultValue: `${count} connected`,
+                        defaultValue: "{{count}} connected",
                         count,
                       })}
                 </div>

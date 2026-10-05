@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { parseReviewerArgs } from "../../../../scripts/ai-qa/reviewer-args.mjs";
+import { parseReviewerArgs } from "../../../scripts/ai-qa/reviewer-args.ts";
 
 const reviewerScripts = [
   {
@@ -16,7 +16,7 @@ const reviewerScripts = [
     supportsVerdictMd: false,
     path: resolve(
       import.meta.dirname,
-      "../../../../scripts/ai-qa/review-screenshots.mjs",
+      "../../../scripts/ai-qa/review-screenshots.ts",
     ),
   },
   {
@@ -24,7 +24,7 @@ const reviewerScripts = [
     supportsVerdictMd: true,
     path: resolve(
       import.meta.dirname,
-      "../../../../scripts/ai-qa/review-walkthrough.mjs",
+      "../../../scripts/ai-qa/review-walkthrough.ts",
     ),
   },
 ];

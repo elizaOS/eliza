@@ -28,6 +28,11 @@ import {
 } from "./formatting.ts";
 import { isValidMessageTs, parseSlackMessageLink } from "./types.ts";
 
+// The conversion sentinels are delimited by control characters. Built from
+// char codes here so the test source stays readable in a diff and a terminal.
+const BOLD_DELIM = String.fromCharCode(0);
+const CODE_DELIM = String.fromCharCode(1);
+
 describe("escapeSlackMrkdwn", () => {
   it("escapes the three Slack control chars, leaves clean text untouched", () => {
     expect(escapeSlackMrkdwn("a & b < c > d")).toBe("a &amp; b &lt; c &gt; d");
@@ -48,9 +53,146 @@ describe("markdownToSlackMrkdwn", () => {
     expect(markdownToSlackMrkdwn("")).toBe("");
   });
 
+  it("leaves fenced code bodies exactly as authored", () => {
+    // The link/heading/style passes are regex-based and cannot see fence
+    // state, so without protection they rewrote code: a `#` comment line
+    // became bold, `a * b` became `a _ b`, and a literal markdown link
+    // became a Slack link. Slack renders none of that inside ``` — the user
+    // just sees corrupted code and copies it out.
+    expect(
+      markdownToSlackMrkdwn("Run this:\n```bash\n# install deps\nnpm i\n```"),
+    ).toContain("# install deps");
+    expect(markdownToSlackMrkdwn("```python\narea = w * h * d\n```")).toContain(
+      "area = w * h * d",
+    );
+    expect(
+      markdownToSlackMrkdwn("```md\nsee [docs](https://ex.com)\n```"),
+    ).toContain("[docs](https://ex.com)");
+  });
+
+  it("still entity-escapes & < > inside a fenced body", () => {
+    // The body is held aside before `escapeSlackMrkdwn` runs, so it is escaped
+    // at lift-out time instead; Slack renders raw & < > inside a fence.
+    const out = markdownToSlackMrkdwn(
+      "```sh\nif [ $a -lt 5 ] && echo <hi>\n```",
+    );
+    expect(out).toContain("&amp;&amp;");
+    expect(out).toContain("&lt;hi&gt;");
+  });
+
+  it("restores multiple fences in order and still styles the prose between", () => {
+    const out = markdownToSlackMrkdwn(
+      "```\nAAA * A\n```\nmid *em*\n```\nBBB * B\n```",
+    );
+    expect(out).toContain("AAA * A");
+    expect(out).toContain("BBB * B");
+    expect(out).toContain("_em_");
+    expect(out.indexOf("AAA")).toBeLessThan(out.indexOf("BBB"));
+    expect(out).not.toContain("\u0000");
+  });
+
   it("handles a 100k unterminated code fence without backtracking", () => {
-    const adversarial = `\`\`\`json\n${"x".repeat(100_000)}`;
-    expect(markdownToSlackMrkdwn(adversarial)).toContain("x".repeat(100_000));
+    // Exact equality, not `toContain`: a substring check still passed while the
+    // body around it was being rewritten, which is how the unterminated-fence
+    // corruption below survived this test.
+    const body = "x".repeat(100_000);
+    expect(markdownToSlackMrkdwn(`\`\`\`json\n${body}`)).toBe(
+      `\`\`\`\n${body}`,
+    );
+  });
+
+  it("does not rewrite the body after an unmatched opening fence", () => {
+    // A truncated or streamed message ends mid-fence, and SlackService formats
+    // every outbound message, so this is a reachable output state -- not a
+    // parser curiosity. Before this, the tail kept every style pass: `#` went
+    // bold, `*literal*` went italic, and a markdown link became a Slack link.
+    expect(
+      markdownToSlackMrkdwn("```sh\n# keep *literal* [docs](https://ex.com)"),
+    ).toBe("```\n# keep *literal* [docs](https://ex.com)");
+    // and the closed case is unchanged
+    expect(
+      markdownToSlackMrkdwn(
+        "```\n# keep *literal* [docs](https://ex.com)\n```",
+      ),
+    ).toContain("# keep *literal* [docs](https://ex.com)");
+  });
+
+  it("does not let sentinel-looking input forge a code block into prose", () => {
+    // The restore used to split/join each sentinel across the whole document,
+    // so a sentinel arriving IN THE INPUT was replaced with a real fenced body
+    // -- duplicating the block into a prose position. Both delimiters are now
+    // stripped at entry, so neither sentinel can be forged.
+    const out = markdownToSlackMrkdwn(
+      `${CODE_DELIM}CODE0${CODE_DELIM} then\n\`\`\`\n*real*\n\`\`\``,
+    );
+    expect(out).not.toContain(CODE_DELIM);
+    expect(out).not.toContain(BOLD_DELIM);
+    // the fence body appears exactly once, in its own position
+    expect(out.split("*real*").length - 1).toBe(1);
+    expect(out).toContain("CODE0 then");
+  });
+
+  it("does not splice a later fence into a body that mentions its sentinel", () => {
+    // Restoring in ascending index order re-scanned bodies it had already
+    // restored, so a body containing a LATER sentinel had that block spliced
+    // into it. The restore is now a single left-to-right pass.
+    const out = markdownToSlackMrkdwn(
+      `\`\`\`\n${CODE_DELIM}CODE1${CODE_DELIM}\n\`\`\`\ntext\n\`\`\`\n# second\n\`\`\``,
+    );
+    expect(out).not.toContain(CODE_DELIM);
+    expect(out).not.toContain(BOLD_DELIM);
+    expect(out.split("# second").length - 1).toBe(1);
+    expect(out).toContain("CODE1");
+  });
+
+  it("does not let caller text forge the bold sentinel", () => {
+    // Folded in from #30372. The bold sentinel predates the code sentinel and
+    // is forgeable on develop: the sender gets bold they never typed, or a
+    // stray asterisk. Stripping the delimiter at entry degrades a forged
+    // sentinel to the literal characters that were actually sent.
+    expect(
+      markdownToSlackMrkdwn(
+        `hello ${BOLD_DELIM}BOLD${BOLD_DELIM}world${BOLD_DELIM}BOLD${BOLD_DELIM} bye`,
+      ),
+    ).toBe("hello BOLDworldBOLD bye");
+    expect(markdownToSlackMrkdwn(`a ${BOLD_DELIM}BOLD${BOLD_DELIM} b`)).toBe(
+      "a BOLD b",
+    );
+    expect(
+      markdownToSlackMrkdwn(
+        `# Title ${BOLD_DELIM}BOLD${BOLD_DELIM}x${BOLD_DELIM}BOLD${BOLD_DELIM}`,
+      ),
+    ).toBe("*Title BOLDxBOLD*");
+    // ordinary emphasis is untouched
+    expect(markdownToSlackMrkdwn("**bold** and _i_")).toBe("*bold* and _i_");
+  });
+
+  it("keeps the code body when the literal word BOLD follows the fence", () => {
+    // Both sentinels were delimited by the same control character, so
+    // convertItalic's global BOLD_SENTINEL -> "*" replace could match ACROSS a
+    // code token's closing delimiter: the token was eaten, its body was never
+    // restored, and a raw control character reached Slack. The delimiters
+    // differ now, so formatting repair can no longer drop the body.
+    expect(markdownToSlackMrkdwn("```\nkeep me\n```BOLD**z**")).toBe(
+      "```\nkeep me\n```BOLD*z*",
+    );
+    expect(markdownToSlackMrkdwn("**a```x```BOLD** tail")).toBe(
+      "*a```\n```BOLD* tail",
+    );
+  });
+
+  it("escapes mention tokens and a leading quote inside a fence", () => {
+    // Holding the body aside swaps escapeSlackMrkdwn (via
+    // escapeSlackMrkdwnContent, which preserves Slack angle tokens and skips a
+    // leading "> ") for escapeSlackMrkdwnSegment, which does neither. Inside a
+    // fence that is the wanted behaviour -- the text is meant to be literal --
+    // so it is pinned here rather than left to be rediscovered.
+    expect(markdownToSlackMrkdwn("```\nping <@U123> now\n```")).toContain(
+      "&lt;@U123&gt;",
+    );
+    expect(markdownToSlackMrkdwn("```\n> quoted line\n```")).toContain(
+      "&gt; quoted line",
+    );
   });
 });
 

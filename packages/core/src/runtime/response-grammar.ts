@@ -10,7 +10,7 @@
  * where the skeleton can't express a constraint (the `contexts` array is an
  * array whose *elements* are drawn from a fixed enum), an explicit GBNF
  * `grammar` string. The local llama-server engine (W4,
- * `packages/app-core/src/services/local-inference/structured-output.ts`)
+ * `packages/app/src/services/local-inference/structured-output.ts`)
  * consumes either: `grammar` wins, else it compiles the skeleton to a lazy
  * GBNF. Cloud adapters ignore both — `responseSchema` / `tools` carry the
  * equivalent (unforced) contract for them, so there is no fallback branch here.
@@ -47,7 +47,6 @@ import type {
 	SpanSamplerOverride,
 	SpanSamplerPlan,
 } from "../types/model.js";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./builtin-field-evaluators.js";
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -954,11 +953,7 @@ export function buildResponseGrammar(
 	options: BuildResponseGrammarOptions,
 ): ResponseGrammarResult {
 	const suppliedFields = runtime.responseHandlerFields ?? [];
-	const baseFields = sortFields(
-		suppliedFields.length > 0
-			? suppliedFields
-			: BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
-	);
+	const baseFields = sortFields(suppliedFields);
 	const fields = baseFields;
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(
@@ -1556,7 +1551,12 @@ function buildBoundedNumberRule(
 		if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
 			const literals: string[] = [];
 			for (let i = min; i <= max; i++) {
-				literals.push(gbnfJsonStringLiteral(String(i)));
+				// Emit a bare JSON numeric literal (e.g. `5`), not a JSON string
+				// (`"5"`): this rule constrains an integer parameter, so quoting
+				// it would force the model to emit `{"count":"5"}` and violate the
+				// declared {type:"integer"} schema. Matches the float / large-range
+				// branches, which both use the bare `jsonnumber` rule.
+				literals.push(gbnfLiteral(String(i)));
 			}
 			builder.rule(ruleName, literals.join(" | "));
 			return ruleName;
@@ -1589,7 +1589,7 @@ function propertyValueGbnf(
 ): string {
 	const type = (propSchema as { type?: unknown }).type;
 	if (type === "string") {
-		const enumValues = readStringEnumForGrammar(propSchema);
+		const enumValues = readStringEnum(propSchema);
 		if (enumValues !== null) {
 			if (enumValues.length === 1) {
 				return gbnfJsonStringLiteral(enumValues[0]);
@@ -1627,7 +1627,7 @@ function propertyValueGbnf(
 		const items = (propSchema as { items?: JSONSchema }).items;
 		const itemsType = items && (items as { type?: unknown }).type;
 		if (itemsType === "string") {
-			const enumValues = readStringEnumForGrammar(items as JSONSchema);
+			const enumValues = readStringEnum(items as JSONSchema);
 			if (enumValues !== null && enumValues.length > 0) {
 				builder.useShared("ws");
 				const elem = `( ${enumValues
@@ -1671,18 +1671,6 @@ function schemaHasDeclaredProperties(schema: JSONSchema): boolean {
 		properties !== null &&
 		Object.keys(properties).length > 0
 	);
-}
-
-/** Reuse the conservative string-enum reader from buildPlannerParamsSkeleton. */
-function readStringEnumForGrammar(propSchema: JSONSchema): string[] | null {
-	const raw = (propSchema as { enum?: unknown }).enum;
-	if (!Array.isArray(raw) || raw.length === 0) return null;
-	const normalized: string[] = [];
-	for (const v of raw) {
-		if (typeof v !== "string") return null;
-		normalized.push(v);
-	}
-	return normalized;
 }
 
 function escapeJsonKey(key: string): string {

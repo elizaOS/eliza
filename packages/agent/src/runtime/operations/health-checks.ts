@@ -12,8 +12,12 @@
  *   - Treat real failures (DB ping false, provider unreachable) as failures.
  */
 
-import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
-import { isInsufficientCreditsError } from "../../api/credit-detection.ts";
+import {
+  type AgentRuntime,
+  isInsufficientCreditsError,
+  logger,
+  ModelType,
+} from "@elizaos/core";
 import { probeRuntimeDatabaseLiveness } from "../../api/database-liveness.ts";
 import type { HealthCheck, HealthCheckResult } from "./types.ts";
 
@@ -148,15 +152,16 @@ export const providerSmokeCheck: HealthCheck = {
       return { ok: true };
     }
     try {
-      // Tiny, deterministic prompt with a hard 1-token cap. Empty completions
-      // still count as "model responded" — we only need transport health.
+      // Let the provider complete this short probe under its normal output
+      // policy. A one-token budget can force length termination and reject a
+      // reachable provider, especially when its budget includes reasoning.
       await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: "ping",
-        maxTokens: 1,
+        prompt: "Reply with pong.",
         temperature: 0,
       });
       return { ok: true };
     } catch (err) {
+      // error-policy:J1 Translate provider failures into failed activation checks.
       if (isInsufficientCreditsError(err)) {
         return {
           ok: false,

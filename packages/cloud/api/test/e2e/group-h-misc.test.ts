@@ -334,7 +334,12 @@ describeE2E("Group H — GET /api/v1/proxy/birdeye/*", () => {
 describeE2E("Group H — GET /api/v1/apis/birdeye/*", () => {
   test("auth gate: missing credentials → 401", async () => {
     const res = await api.get("/api/v1/apis/birdeye/defi/price?address=foo");
-    expect(res.status).toBe(401);
+    const responseDiagnostic = JSON.stringify({
+      contentType: res.headers.get("content-type"),
+      server: res.headers.get("server"),
+      body: await res.text(),
+    });
+    expect(res.status, responseDiagnostic).toBe(401);
   });
 
   test.skipIf(birdeyeConfigured)(
@@ -531,7 +536,7 @@ describeE2E("Group H — /api/crypto/webhook", () => {
 
   test("happy path: GET probe returns documented JSON status", async () => {
     const res = await api.get("/api/crypto/webhook");
-    expect(res.status).toBe(200);
+    expect(res.status, await res.clone().text()).toBe(200);
     const body = (await res.json()) as { status?: string; message?: string };
     expect(body.status).toBe("ok");
   });
@@ -707,7 +712,27 @@ for (const {
             : await api.post(path, validBody ?? {}, {
                 headers: internalHeaders(),
               });
-        expect(res.status).toBe(okStatus);
+        const failureContext =
+          res.status === okStatus
+            ? undefined
+            : JSON.stringify({
+                method,
+                path: validPath ?? path,
+                status: res.status,
+                headers: Object.fromEntries(
+                  [
+                    "content-type",
+                    "server-timing",
+                    "x-request-id",
+                    "cf-ray",
+                    "retry-after",
+                  ]
+                    .map((name) => [name, res.headers.get(name)])
+                    .filter(([, value]) => value !== null),
+                ),
+                body: await res.clone().text(),
+              });
+        expect(res.status, failureContext).toBe(okStatus);
       },
     );
 

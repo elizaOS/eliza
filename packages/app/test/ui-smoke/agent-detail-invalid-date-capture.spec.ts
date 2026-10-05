@@ -6,7 +6,9 @@
  * defect and its fix, rather than the healthy/valid-data path the general
  * audit fixture exercises.
  */
+
 import { expect, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
@@ -102,7 +104,7 @@ test("agent detail page renders explicit fallbacks for a malformed agent timesta
   expect(bodyText).not.toContain("Invalid Date");
 
   await page.screenshot({
-    path: "test-results/agent-detail-invalid-date-capture.png",
+    path: testOutputPath("app", "agent-detail-invalid-date-capture.png"),
     fullPage: true,
   });
 

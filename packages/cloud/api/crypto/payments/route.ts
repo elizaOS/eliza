@@ -5,26 +5,27 @@
  * GET: list all crypto payments for the authed org. Standard rate limit.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import {
   requireUserOrApiKeyWithOrg,
   requireUserWithOrg,
-} from "@/lib/auth/workers-hono-auth";
-import { SUPPORTED_PAY_CURRENCIES } from "@/lib/config/crypto";
+} from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { SUPPORTED_PAY_CURRENCIES } from "@elizaos/cloud-shared/lib/config/crypto";
 import {
   moneyRateLimit,
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   CryptoPaymentError,
   cryptoPaymentsService,
-} from "@/lib/services/crypto-payments";
-import { isOxaPayConfigured } from "@/lib/services/oxapay";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/crypto-payments";
+import { isOxaPayConfigured } from "@elizaos/cloud-shared/lib/services/oxapay";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const createPaymentSchema = z.object({
   amount: z
@@ -49,8 +50,12 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json({ error: "Crypto payments not available" }, 503);
     }
 
-    const body = await c.req.json();
-    const validation = createPaymentSchema.safeParse(body);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is invalid request input.
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const validation = createPaymentSchema.safeParse(decodedBody.value);
     if (!validation.success) {
       return c.json(
         {
@@ -93,6 +98,10 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
         INVALID_UUID: { status: 400, message: "Invalid request format" },
         AMOUNT_TOO_SMALL: { status: 400, message: "Amount too small" },
         AMOUNT_TOO_LARGE: { status: 400, message: "Amount too large" },
+        AMOUNT_INVALID: {
+          status: 400,
+          message: "Amount must be a USD value in whole cents",
+        },
         INVALID_CURRENCY: { status: 400, message: "Currency must be USD" },
         SERVICE_NOT_CONFIGURED: {
           status: 503,

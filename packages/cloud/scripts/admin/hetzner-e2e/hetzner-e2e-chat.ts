@@ -1,24 +1,10 @@
 #!/usr/bin/env bun
 /**
- * One real chat turn against the deployed E2E agent, through the production
- * message path: the cloud Worker's bridge route (`POST
- * /api/v1/eliza/agents/{agentId}/bridge`, JSON-RPC `message.send`) forwards to
- * the sandbox bridge, which reaches the agent runtime on the Hetzner box over
- * the tailnet. The `status.get` healthcheck alone lets "agent provisioned but
- * chat dead-ends" regressions (#15347) pass the nightly — this step closes
- * that gap by requiring an actual assistant reply. Exit 0 = the agent replied.
- *
- * The runtime answers HTTP 200 with canned text (`failureKind` set) when its
- * model path is dead, and the bridge fabricates text (`fallback: true`) when
- * the runtime produced no reply — exactly the dead-ends this step exists to
- * catch (#15616). classifyBridgeReply rejects both, rejects known canned
- * strings from pre-`failureKind` runtimes, and requires the per-run proof
- * token in the reply — so a pass means a live model round-tripped THIS
- * message. Attempts retry until HETZNER_E2E_CHAT_TIMEOUT_MS (default 240s) to
- * absorb a cold model path and the occasional paraphrase that drops the token.
- * The success log names which bridge rung (conversation REST, OpenAI-compat,
- * central-channel, …) replied, so a conversation-route-only regression cannot
- * hide behind a fallback rung.
+ * Exercises a real assistant turn through the Cloud bridge and provisioned runtime.
+ * The reply classifier rejects model failures, canned responses and fabricated
+ * bridge fallbacks; a per-run proof token binds success to this request.
+ * Retries accommodate model warmup until HETZNER_E2E_CHAT_TIMEOUT_MS. The receipt
+ * names the responding bridge rung so fallback routing remains observable.
  */
 
 import { randomBytes } from "node:crypto";

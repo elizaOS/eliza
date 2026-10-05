@@ -15,23 +15,22 @@
  * "combined enable matrix is an architectural project" problem by making
  * configuration navigable rather than centralised.
  */
-
 import fs from "node:fs/promises";
 import type {
+	LinkedAccountProviderId,
 	ProviderEnableState,
 	ProviderId,
 	ProviderMeta,
 	ProviderStatus,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import { deviceBridge } from "./device-bridge";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";
-
 /**
  * Runtime provider descriptor. Extends the UI-safe `ProviderMeta` with a
  * callable `getEnableState()` that inspects env vars, fs, or device-bridge
  * sockets. Server-side only — UI code reads `ProviderMeta` /
- * `ProviderStatus` from `@elizaos/shared` instead.
+ * `ProviderStatus` from `@elizaos/core` instead.
  */
 export interface ProviderDefinition extends ProviderMeta {
 	/**
@@ -41,9 +40,7 @@ export interface ProviderDefinition extends ProviderMeta {
 	 */
 	getEnableState(): Promise<ProviderEnableState>;
 }
-
 export type { ProviderEnableState, ProviderId, ProviderMeta, ProviderStatus };
-
 /** Resolve which slots have at least one registered handler from this provider. */
 export function getRegisteredSlotsForProvider(providerId: string): string[] {
 	const regs = handlerRegistry.getAll();
@@ -53,9 +50,7 @@ export function getRegisteredSlotsForProvider(providerId: string): string[] {
 	}
 	return [...slots];
 }
-
 // ── Built-in provider definitions ────────────────────────────────────
-
 const LOCAL_PROVIDER: ProviderDefinition = {
 	id: "eliza-local-inference",
 	label: "Eliza-1 local runtime",
@@ -94,7 +89,6 @@ const LOCAL_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#local-inference-panel",
 };
-
 const DEVICE_BRIDGE_PROVIDER: ProviderDefinition = {
 	id: "eliza-device-bridge",
 	label: "Paired device bridge",
@@ -128,7 +122,6 @@ const DEVICE_BRIDGE_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#device-bridge-status",
 };
-
 const CAPACITOR_LLAMA_PROVIDER: ProviderDefinition = {
 	id: "capacitor-llama",
 	label: "eliza-1-2b runtime",
@@ -138,7 +131,9 @@ const CAPACITOR_LLAMA_PROVIDER: ProviderDefinition = {
 	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
 	async getEnableState(): Promise<ProviderEnableState> {
 		const cap = (globalThis as Record<string, unknown>).Capacitor as
-			| { isNativePlatform?: () => boolean }
+			| {
+					isNativePlatform?: () => boolean;
+			  }
 			| undefined;
 		if (cap?.isNativePlatform?.()) {
 			return {
@@ -153,7 +148,6 @@ const CAPACITOR_LLAMA_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: null,
 };
-
 const ANTHROPIC_PROVIDER: ProviderDefinition = {
 	id: "anthropic",
 	label: "Anthropic API",
@@ -168,7 +162,6 @@ const ANTHROPIC_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const OPENAI_PROVIDER: ProviderDefinition = {
 	id: "openai",
 	label: "OpenAI API",
@@ -183,7 +176,6 @@ const OPENAI_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const GROK_PROVIDER: ProviderDefinition = {
 	id: "grok",
 	label: "Grok API",
@@ -199,7 +191,6 @@ const GROK_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const ELIZACLOUD_PROVIDER: ProviderDefinition = {
 	id: "elizacloud",
 	label: "Eliza Cloud",
@@ -218,7 +209,6 @@ const ELIZACLOUD_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const ANTHROPIC_SUBSCRIPTION_PROVIDER: ProviderDefinition = {
 	id: "anthropic-subscription",
 	label: "Claude subscription",
@@ -235,7 +225,6 @@ const ANTHROPIC_SUBSCRIPTION_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const OPENAI_CODEX_PROVIDER: ProviderDefinition = {
 	id: "openai-codex",
 	label: "Codex subscription",
@@ -247,7 +236,6 @@ const OPENAI_CODEX_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const GEMINI_CLI_PROVIDER: ProviderDefinition = {
 	id: "gemini-cli",
 	label: "Gemini CLI subscription",
@@ -259,7 +247,6 @@ const GEMINI_CLI_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const ZAI_CODING_PROVIDER: ProviderDefinition = {
 	id: "zai-coding",
 	label: "z.ai Coding Plan",
@@ -272,7 +259,6 @@ const ZAI_CODING_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const KIMI_CODING_PROVIDER: ProviderDefinition = {
 	id: "kimi-coding",
 	label: "Kimi Code",
@@ -284,7 +270,6 @@ const KIMI_CODING_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const DEEPSEEK_CODING_PROVIDER: ProviderDefinition = {
 	id: "deepseek-coding",
 	label: "DeepSeek Coding Plan",
@@ -297,7 +282,6 @@ const DEEPSEEK_CODING_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const GOOGLE_PROVIDER: ProviderDefinition = {
 	id: "google",
 	label: "Google (Gemini)",
@@ -313,7 +297,6 @@ const GOOGLE_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const MISTRAL_PROVIDER: ProviderDefinition = {
 	id: "mistral",
 	label: "Mistral API",
@@ -328,7 +311,6 @@ const MISTRAL_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const DEEPSEEK_PROVIDER: ProviderDefinition = {
 	id: "deepseek",
 	label: "DeepSeek API",
@@ -340,7 +322,6 @@ const DEEPSEEK_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const ZAI_PROVIDER: ProviderDefinition = {
 	id: "zai",
 	label: "z.ai API",
@@ -355,7 +336,6 @@ const ZAI_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const NEARAI_PROVIDER: ProviderDefinition = {
 	id: "nearai",
 	label: "NEAR AI Cloud",
@@ -371,7 +351,6 @@ const NEARAI_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 const MOONSHOT_PROVIDER: ProviderDefinition = {
 	id: "moonshot",
 	label: "Kimi / Moonshot API",
@@ -386,7 +365,6 @@ const MOONSHOT_PROVIDER: ProviderDefinition = {
 	},
 	configureHref: "#ai-model",
 };
-
 export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
 	LOCAL_PROVIDER,
 	DEVICE_BRIDGE_PROVIDER,
@@ -408,34 +386,10 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
 	GROK_PROVIDER,
 	MISTRAL_PROVIDER,
 ];
-
-interface LinkedAccountLike {
-	enabled?: boolean;
-	health?: string;
+async function listLinkedAccounts(providerId: LinkedAccountProviderId) {
+	const { getDefaultAccountPool } = await import("@elizaos/auth/accounts");
+	return getDefaultAccountPool().list(providerId);
 }
-
-type OptionalAccountPoolModule = {
-	getDefaultAccountPool?: () => {
-		list?: (providerId: string) => LinkedAccountLike[];
-	};
-};
-
-async function listLinkedAccounts(
-	providerId: string,
-): Promise<LinkedAccountLike[]> {
-	try {
-		const dynamicImport = new Function("id", "return import(id)") as (
-			id: string,
-		) => Promise<OptionalAccountPoolModule>;
-		const appCoreAccountPoolSpecifier = "@elizaos/app-core/account-pool";
-		const mod = await dynamicImport(appCoreAccountPoolSpecifier);
-		const pool = mod.getDefaultAccountPool?.();
-		return pool?.list?.(providerId) ?? [];
-	} catch {
-		return [];
-	}
-}
-
 async function apiKeyOrLinkedAccountState(
 	providerId: "deepseek-api" | "zai-api" | "moonshot-api",
 	envKeys: readonly string[],
@@ -453,7 +407,6 @@ async function apiKeyOrLinkedAccountState(
 		reason: `${accounts.length} linked account${accounts.length === 1 ? "" : "s"}`,
 	};
 }
-
 type SubscriptionProviderStatusId =
 	| "anthropic-subscription"
 	| "openai-codex"
@@ -461,7 +414,6 @@ type SubscriptionProviderStatusId =
 	| "zai-coding"
 	| "kimi-coding"
 	| "deepseek-coding";
-
 async function subscriptionEnableState(
 	providerId: SubscriptionProviderStatusId,
 ): Promise<ProviderEnableState> {
@@ -486,7 +438,6 @@ async function subscriptionEnableState(
 		reason: `${accounts.length} linked account${accounts.length === 1 ? "" : "s"}`,
 	};
 }
-
 export async function snapshotProviders(): Promise<ProviderStatus[]> {
 	const entries = await Promise.all(
 		BUILT_IN_PROVIDERS.map(async (def) => {

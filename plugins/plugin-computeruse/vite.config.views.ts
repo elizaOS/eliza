@@ -8,5 +8,5 @@ export default createViewBundleConfig({
   entry: "./src/views/computer-use-sessions-view-bundle.ts",
   outDir: "dist/views",
   componentExport: "ComputerUseSessionsView",
-  additionalExternals: ["@elizaos/app-core"],
+  additionalExternals: ["@elizaos/app"],
 });

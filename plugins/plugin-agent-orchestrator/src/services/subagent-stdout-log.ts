@@ -20,8 +20,8 @@ import { join } from "node:path";
 import {
   isTrajectoryRecordingEnabled,
   redactSensitiveText,
-  resolveTrajectoryDir,
 } from "@elizaos/core";
+import { resolveTrajectoryDir } from "@elizaos/plugin-assistant";
 
 // Rotate the per-session stdout log when it crosses this byte threshold. Chosen
 // to match the orchestrator audit log's cap (audit.ts:17): a sub-agent can emit

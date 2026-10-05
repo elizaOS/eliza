@@ -10,7 +10,7 @@ import type {
 import {
   resetDevCloudEnvAuthorityForTests,
   resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BROKER_FETCH_TIMEOUT_MS,

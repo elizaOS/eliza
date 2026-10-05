@@ -26,7 +26,7 @@
  * `handleGitHubRoutes` is the pure dispatcher — no auth, no runtime deps
  * beyond the injectable `GitHubRouteContext` callbacks. The runtime adapter
  * (`createGitHubRouteHandler`) lives in index.ts where it can import the
- * heavier app-core auth surface without polluting this module's import graph
+ * heavier app auth surface without polluting this module's import graph
  * (and breaking tests that only need the pure handler).
  */
 

@@ -101,6 +101,24 @@ export interface PurchaseConfirmationEmailData {
 }
 
 /**
+ * Data for the agent funding-retention deletion notice (#22967), sent 7 days
+ * and 1 day before a paused agent's container is deleted.
+ */
+export interface AgentRetentionDeletionNoticeEmailData {
+  email: string;
+  organizationName: string;
+  agentName: string;
+  reason: "credits_exhausted" | "subscription_lapsed";
+  daysRemaining: number;
+  suspendedAt: string;
+  deleteAfter: string;
+  backupRetainUntil: string;
+  billingUrl: string;
+  dashboardUrl: string;
+  locale?: string;
+}
+
+/**
  * Data for container shutdown warning email template.
  */
 export interface ContainerShutdownWarningEmailData {

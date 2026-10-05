@@ -5,17 +5,16 @@
  */
 
 import { logger } from "../logger.ts";
+import type { Memory } from "../types/memory.js";
 import {
-	type IAgentRuntime,
-	type Memory,
 	PENDING_USER_ACTION_WEIGHT,
 	type PendingUserAction,
-	type State,
-	type Task,
-	type TaskWorker,
-	type UUID,
-} from "../types/index.ts";
+} from "../types/pending-user-action.js";
+import type { UUID } from "../types/primitives.js";
+import type { IAgentRuntime } from "../types/runtime.js";
 import { Service, ServiceType } from "../types/service.ts";
+import type { State } from "../types/state.js";
+import type { Task, TaskWorker } from "../types/task.js";
 
 /**
  * Options for a single approval choice

@@ -7,8 +7,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
-  ChevronRight,
-  Coins,
   ExternalLink,
   Eye,
   EyeOff,
@@ -30,7 +28,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
-import { DashboardStatCard } from "../../../cloud-ui/components/brand";
+import { DashboardStatCard } from "../../../cloud-ui/components/brand/dashboard-stat-card";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,7 +45,6 @@ import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
-import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
 import {
@@ -86,10 +83,6 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const [deployRef, setDeployRef] = useState("");
   const [deployDockerfile, setDeployDockerfile] = useState("");
   const [deployInputError, setDeployInputError] = useState<string | null>(null);
-  const [monetizationEnabled, setMonetizationEnabled] = useState<
-    boolean | null
-  >(null);
-  const [totalEarnings, setTotalEarnings] = useState<number | null>(null);
   const hideApiKeyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deploymentPollInFlightRef = useRef(false);
   const mountedRef = useRef(true);
@@ -201,30 +194,6 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       void pollLatestDeployment(false);
     }
   }, [app.deployment_status, pollLatestDeployment]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void api<{
-      success?: boolean;
-      monetization?: {
-        monetizationEnabled: boolean;
-        totalCreatorEarnings: number;
-      };
-    }>(`/api/v1/apps/${app.id}/monetization`)
-      .then((data) => {
-        if (cancelled) return;
-        if (data.success && data.monetization) {
-          setMonetizationEnabled(data.monetization.monetizationEnabled);
-          setTotalEarnings(data.monetization.totalCreatorEarnings);
-        }
-      })
-      .catch(() => {
-        // Monetization summary is non-critical; leave the card hidden.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [app.id]);
 
   async function handleRegenerateApiKey(): Promise<void> {
     setIsRegenerating(true);
@@ -651,44 +620,6 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           </div>
         </Card>
       </div>
-
-      {/* Monetization Card */}
-      {monetizationEnabled !== null && (
-        <Card variant="flatPadded">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-sm bg-surface">
-                <Coins className="size-5 text-muted" />
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-txt">Monetization</h3>
-                <p className="text-xs text-neutral-500">
-                  {monetizationEnabled
-                    ? totalEarnings && totalEarnings > 0
-                      ? `$${totalEarnings.toFixed(2)} earned`
-                      : "Enabled, no earnings yet"
-                    : "Enable to earn from app usage"}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Badge variant={monetizationEnabled ? "default" : "outline"}>
-                {monetizationEnabled ? "Enabled" : "Disabled"}
-              </Badge>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                type="button"
-                onClick={() =>
-                  navigate(`/cloud/apps/${app.id}?tab=monetization`)
-                }
-              >
-                <ChevronRight className="size-4 text-neutral-400" />
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
 
       {/* Allowed Origins */}
       <Card stack="compact" variant="flatPadded">

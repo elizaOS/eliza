@@ -7,18 +7,18 @@
 import { gatePluginSessionForHostedApp } from "../services/app-session-gate.ts";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.ts";
 
-const WIFI_APP_NAME = "@elizaos/plugin-wifi";
-const CONTACTS_APP_NAME = "@elizaos/plugin-contacts";
-const PHONE_APP_NAME = "@elizaos/plugin-phone";
+const WIFI_APP_NAME = "@elizaos/plugin-native-wifi";
+const CONTACTS_APP_NAME = "@elizaos/plugin-native-contacts";
+const PHONE_APP_NAME = "@elizaos/plugin-native-phone";
 
 const [
   { contactsProvider, appContactsPlugin: rawContactsPlugin },
   { phoneCallLogProvider, appPhonePlugin: rawPhonePlugin },
   { appWifiPlugin: rawWifiPlugin, wifiNetworksProvider },
 ] = await Promise.all([
-  import(/* @vite-ignore */ "@elizaos/plugin-contacts/plugin"),
-  import(/* @vite-ignore */ "@elizaos/plugin-phone/plugin"),
-  import(/* @vite-ignore */ "@elizaos/plugin-wifi/plugin"),
+  import(/* @vite-ignore */ "@elizaos/plugin-native-contacts/plugin"),
+  import(/* @vite-ignore */ "@elizaos/plugin-native-phone/plugin"),
+  import(/* @vite-ignore */ "@elizaos/plugin-native-wifi/plugin"),
 ]);
 
 export const appWifiPlugin = gatePluginSessionForHostedApp(

@@ -3,20 +3,22 @@
 // Drives the installed Capacitor app through a real device sleep/wake cycle and
 // proves the WebView emits pause/resume lifecycle signals, returns to the home
 // shell, and remains interactive against the live host backend.
+
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   captureAndroidLogcat,
   captureAndroidScreenshot,
   startAndroidScreenRecord,
-} from "../../scripts/lib/android-capture.mjs";
+} from "../../scripts/lib/android-capture.ts";
 import {
   APP_ID,
   foregroundApp,
   MAIN_ACTIVITY,
   resolveAdb,
-} from "../../scripts/lib/android-device.mjs";
+} from "../../scripts/lib/android-device.ts";
 import {
   expect,
   isFirstRunShowing,
@@ -28,14 +30,7 @@ import {
 const API = process.env.API ?? "http://127.0.0.1:31337";
 const ARTIFACT_DIR = path.resolve(
   process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
-    path.join(
-      process.cwd(),
-      "..",
-      "..",
-      "test-results",
-      "android-artifacts",
-      "9943-android-sleep-wake",
-    ),
+    testOutputPath("android-artifacts", "9943-android-sleep-wake"),
   "sleep-wake",
 );
 

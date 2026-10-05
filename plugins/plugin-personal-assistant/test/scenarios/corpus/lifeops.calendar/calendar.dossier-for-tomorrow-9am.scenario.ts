@@ -7,11 +7,7 @@
  * "key talking points".
  */
 
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
-import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/scenario-runner/schema";
+import { judgeRubric, type ScenarioContext, scenario } from "@elizaos/testing";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
 function checkDossierAddressesSeededMeeting(
@@ -40,7 +36,7 @@ export default scenario({
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "dossier", "no-fabrication"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
+  requires: { plugins: [] },
   mockoon: ["calendar", "gmail"],
   rooms: [
     {

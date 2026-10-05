@@ -18,7 +18,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { StoredFile } from "../../api";
+import type { StoredFile } from "../../api/client-files";
 import { RoleProvider } from "../../hooks/useRole";
 import { FilesView } from "./FilesView";
 
@@ -37,9 +37,13 @@ const clientMock = vi.hoisted(() => ({
   deleteFile: vi.fn(),
 }));
 
-vi.mock("../../api", () => ({
-  client: clientMock,
+// This standalone page fixture has no connected runtime view installation.
+// Catalog binding and reporting are exercised by the shell/catalog integration tests.
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useAvailableViews: () => ({ views: [] }),
 }));
+
+vi.mock("../../api/client", () => ({ client: clientMock }));
 
 // The download/share affordances delegate to the transport-aware helper. Mock
 // it so we can assert intent without touching the DOM/Capacitor bridges.

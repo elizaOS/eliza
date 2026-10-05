@@ -15,7 +15,7 @@ vi.mock("./passkey-capability", () => ({
     Promise.resolve({ usable: false, reason: "native-without-bridge" }),
 }));
 
-vi.mock("@elizaos/login", () => ({
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     getProviders() {
       return Promise.resolve({
@@ -44,7 +44,7 @@ vi.mock("../../../shell/steward-url", () => ({
 }));
 
 vi.mock("../../../shell/steward-config", () => ({
-  configuredStewardApiUrlOverride: () => undefined,
+  configuredStewardApiUrlOverride: () => null,
   configuredStewardTenantId: () => "elizacloud",
   DEFAULT_STEWARD_TENANT_ID: "elizacloud",
 }));
@@ -54,7 +54,9 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
     opts?.defaultValue ?? _key,
 }));
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
 // Eager section import — LoginPage also lazy-loads this module; importing it
 // here keeps Suspense resolution deterministic under the test runner.

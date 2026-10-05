@@ -41,7 +41,7 @@
  *
  *   1. **Local (`eliza-local-inference`)** — tier-aware Eliza-1 voice,
  *      using the ordered `ELIZA_1_VOICE_BACKENDS` policy in
- *      `@elizaos/shared/local-inference/catalog` (OmniVoice first where
+ *      `@elizaos/plugin-native-inference/model-catalog/catalog` (OmniVoice first where
  *      bundled, Kokoro fallback where bundled). Always preferred when
  *      available.
  *   2. **Eliza Cloud (`elizacloud`)** — managed cloud proxy. Picked when
@@ -531,6 +531,18 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 							return onStreamChunk(chunk);
 						},
 					};
+				}
+				if (
+					providerParams !== params &&
+					providerParams !== null &&
+					typeof providerParams === "object"
+				) {
+					// Stream-owner copies must retain the non-enumerable, call-local
+					// retry ledger so delegates cannot restart an exhausted budget.
+					Object.defineProperty(providerParams, MODEL_PROVIDER_ATTEMPTS, {
+						value: providerAttempts,
+						enumerable: false,
+					});
 				}
 				// Record dispatch, not just rejection: a returned lazy stream may fail
 				// later in the runtime's existing stream owner, outside this catch.

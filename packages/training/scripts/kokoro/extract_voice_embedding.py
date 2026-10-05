@@ -47,9 +47,6 @@ Usage:
         --steps 200 \\
         --out /tmp/af_same.bin
 
-    # CI smoke (no torch, no model): emits a zero-vector voice.bin so the
-    # downstream tools can validate format without a GPU.
-    python3 scripts/kokoro/extract_voice_embedding.py --synthetic-smoke --out /tmp/v.bin
 """
 
 from __future__ import annotations
@@ -80,34 +77,6 @@ def _write_voice_bin(path: Path, vector: "list[float] | object") -> None:
         raise ValueError(f"expected 256-dim vector, got shape {arr.shape}")
     table = np.tile(arr.astype(np.float32)[None, None, :], (VOICE_BUCKETS, 1, 1))
     table.astype("<f4").tofile(str(path))
-
-
-def _run_synthetic_smoke(args: argparse.Namespace) -> int:
-    out = Path(args.out).resolve()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        import numpy as np  # noqa: PLC0415
-    except ImportError as exc:
-        raise SystemExit("numpy is required even for the smoke path") from exc
-    _write_voice_bin(out, np.zeros((VOICE_DIM,), dtype=np.float32))
-    sidecar = out.with_suffix(".json")
-    sidecar.write_text(
-        json.dumps(
-            {
-                "kind": "kokoro-voice-embedding",
-                "synthetic": True,
-                "voiceName": args.voice_name,
-                "dim": VOICE_DIM,
-                "buckets": VOICE_BUCKETS,
-                "clips": 0,
-                "generatedAt": datetime.now(timezone.utc).isoformat(),
-            },
-            indent=2,
-        )
-        + "\n"
-    )
-    log.info("synthetic-smoke wrote %s + %s", out, sidecar)
-    return 0
 
 
 def _collect_clips(clips_dir: Path, max_clips: int) -> list[Path]:
@@ -510,11 +479,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--voice-lang", default="a", choices=["a", "b"], help="Phonemizer lang: a=US English, b=British English.")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument(
-        "--synthetic-smoke",
-        action="store_true",
-        help="Emit a zero-vector voice.bin without loading the model (CI smoke).",
-    )
-    p.add_argument(
         "--transcripts-dir",
         type=Path,
         default=None,
@@ -564,10 +528,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.synthetic_smoke:
-        return _run_synthetic_smoke(args)
     if not args.clips_dir:
-        log.error("--clips-dir is required (or use --synthetic-smoke)")
+        log.error("--clips-dir is required")
         return 2
     return _extract_with_kokoro(args)
 

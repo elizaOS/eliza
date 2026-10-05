@@ -346,6 +346,94 @@ describe("eliza.thinking='off' reasoning suppression (Cerebras mode)", () => {
   });
 });
 
+describe("explicit reasoning for original-source reconciliation", () => {
+  const params = {
+    prompt: "Read the originals",
+    providerOptions: { eliza: { thinking: "on" } },
+  } as never;
+  function effort(settings: Record<string, string>, model = "qwen-3.8-27b") {
+    const opts = __INTERNAL_resolveProviderOptions(params, buildRuntime(settings), model);
+    return (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort;
+  }
+  it("enables low reasoning only when the supported Qwen call opts in", () => {
+    expect(effort({ CEREBRAS_API_KEY: "csk-test" })).toBe("low");
+    expect(effort({ CEREBRAS_API_KEY: "csk-test" }, "cerebras/qwen-3.8-27b")).toBe("low");
+    expect(effort({ OPENAI_API_KEY: "sk-test" })).toBeUndefined();
+    expect(effort({ CEREBRAS_API_KEY: "csk-test" }, "qwen-custom")).toBeUndefined();
+  });
+  it("preserves a configured reasoning effort and explicit per-call overrides", () => {
+    expect(effort({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "high" })).toBe("high");
+    const opts = __INTERNAL_resolveProviderOptions(
+      {
+        prompt: "originals",
+        providerOptions: { eliza: { thinking: "on" }, openai: { reasoningEffort: "none" } },
+      } as never,
+      buildRuntime({ CEREBRAS_API_KEY: "csk-test" }),
+      "qwen-3.8-27b"
+    );
+    expect((opts as { openai?: { reasoningEffort?: string } })?.openai?.reasoningEffort).toBe(
+      "none"
+    );
+  });
+});
+
+describe("provider-gated tool reasoning preference", () => {
+  const params = {
+    prompt: "Create the supplied literal",
+    providerOptions: { eliza: { thinking: "off", preferToolReasoning: true } },
+  } as never;
+  it.each([
+    ["qwen-3.8-27b", "low"],
+    ["cerebras/qwen-3.8-27b", "low"],
+    ["zai-glm-4.7", "none"],
+    ["gemma-4-31b", "none"],
+    ["gpt-oss-120b", "low"],
+    ["qwen-custom", undefined],
+  ])("keeps the provider capability boundary for %s", (model, expected) => {
+    const options = __INTERNAL_resolveProviderOptions(
+      params,
+      buildRuntime({ CEREBRAS_API_KEY: "csk-test" }),
+      model
+    );
+    expect(options?.openai).toMatchObject(
+      expected === undefined ? {} : { reasoningEffort: expected }
+    );
+    expect((options?.openai as { reasoningEffort?: string })?.reasoningEffort).toBe(expected);
+  });
+  it("preserves explicit disabled effort and unknown endpoint behavior", () => {
+    const disabled = __INTERNAL_resolveProviderOptions(
+      params,
+      buildRuntime({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "none" }),
+      "qwen-3.8-27b"
+    );
+    expect(disabled?.openai).toMatchObject({ reasoningEffort: "none" });
+    const explicit = __INTERNAL_resolveProviderOptions(
+      {
+        providerOptions: {
+          eliza: { thinking: "off", preferToolReasoning: true },
+          openai: { reasoningEffort: "none" },
+        },
+      } as never,
+      buildRuntime({ CEREBRAS_API_KEY: "csk-test" }),
+      "qwen-3.8-27b"
+    );
+    expect(explicit?.openai).toMatchObject({ reasoningEffort: "none" });
+    const deepseek = __INTERNAL_resolveProviderOptions(
+      params,
+      buildRuntime({ OPENAI_API_KEY: "sk-test", OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1" }),
+      "deepseek-v4-flash"
+    );
+    expect(deepseek?.openai).toMatchObject({ reasoningEffort: "none" });
+    const other = __INTERNAL_resolveProviderOptions(
+      params,
+      buildRuntime({ OPENAI_API_KEY: "sk-test" }),
+      "qwen-3.8-27b"
+    );
+    expect((other?.openai as { reasoningEffort?: string })?.reasoningEffort).toBeUndefined();
+    expect(other?.eliza).toMatchObject({ thinking: "off" });
+  });
+});
+
 describe("Cerebras Qwen 3.8 reasoning contract", () => {
   it("accepts an explicit none effort for the supported Qwen endpoint", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test", OPENAI_REASONING_EFFORT: "none" });
@@ -417,37 +505,14 @@ describe("eliza.thinking='off' reasoning suppression (DeepSeek V4 Flash)", () =>
     ).toBe("none");
   });
 
-  it("maps thinking-off through a proxy that declares its OpenCode Go upstream", () => {
-    vi.stubGlobal("document", {});
-    try {
-      const runtime = buildRuntime({
-        OPENAI_API_KEY: "sk-test",
-        OPENAI_BROWSER_BASE_URL: "https://app.example.test/api/openai",
-        OPENAI_BROWSER_UPSTREAM_BASE_URL: "https://opencode.ai/zen/go/v1",
-      });
-      const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
-      expect(
-        (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
-      ).toBe("none");
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("does not infer the upstream behind an opaque browser proxy", () => {
-    vi.stubGlobal("document", {});
-    try {
-      const runtime = buildRuntime({
-        OPENAI_API_KEY: "sk-test",
-        OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1",
-        OPENAI_BROWSER_BASE_URL: "https://app.example.test/api/openai",
-      });
-      const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
-      const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
-      expect(openai?.reasoningEffort).toBeUndefined();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it("does not infer the upstream behind an opaque host proxy", () => {
+    const runtime = buildRuntime({
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_BASE_URL: "https://app.example.test/api/openai",
+    });
+    const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
+    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+    expect(openai?.reasoningEffort).toBeUndefined();
   });
 
   it("does not send 'none' to a standard OpenAI-compatible endpoint", () => {

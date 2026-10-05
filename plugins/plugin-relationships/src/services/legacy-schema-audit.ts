@@ -6,6 +6,7 @@
  * silently ignored now that the plugin no longer registers or creates it.
  */
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { graphRecordRepository } from "../knowledge-graph/record-repository.ts";
 
 export const RELATIONSHIPS_LEGACY_SCHEMA_AUDIT_SERVICE_TYPE =
   "relationships_legacy_schema_audit";
@@ -141,6 +142,14 @@ export class LegacyRelationshipsSchemaAuditService extends Service {
     runtime: IAgentRuntime,
   ): Promise<LegacyRelationshipsSchemaAuditService> {
     const service = new LegacyRelationshipsSchemaAuditService(runtime);
+    const records = graphRecordRepository(runtime, runtime.agentId);
+    if (records) {
+      await records.transaction(async () => undefined);
+      logger.debug(
+        "[Relationships] Native graph records selected; PostgreSQL legacy-schema import requires a separately validated migration",
+      );
+      return service;
+    }
     const db = runtime.db as
       | { execute?: (query: unknown) => Promise<unknown> }
       | undefined;

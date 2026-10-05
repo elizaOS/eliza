@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { taskTable } from "../../schema";
+import { taskTable } from "../../schema/tasks";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -93,6 +93,7 @@ describe("Task Integration Tests", () => {
       expect(retrieved?.agentId).toBe(testAgentId);
       expect(retrieved?.entityId).toBe(testEntityId);
       expect(retrieved?.dueAt).toBe(1_900_000_005_000);
+      expect(typeof retrieved?.createdAt).toBe("number");
       expect(retrieved?.metadata).toMatchObject({
         status: "pending",
         scheduledAt: "2030-03-17T17:46:45.000Z",
@@ -216,6 +217,45 @@ describe("Task Integration Tests", () => {
       } finally {
         warn.mockRestore();
       }
+    });
+
+    it("patches metadata keys atomically without touching the rest", async () => {
+      const id = uuidv4() as UUID;
+      await adapter.createTasks([
+        {
+          id,
+          name: "patch-me",
+          description: "metadata patch",
+          roomId: testRoomId,
+          worldId: testWorldId,
+          entityId: testEntityId,
+          tags: ["queue", "repeat"],
+          metadata: {
+            updateInterval: 60_000,
+            baseInterval: 60_000,
+            lastError: "boom",
+            failureCount: 2,
+            paused: true,
+          },
+        },
+      ]);
+      const patched = await adapter.patchTaskMetadata(id, {
+        set: { updatedAt: 1_800_000_000_000, failureCount: 0, updateInterval: 5_000 },
+        unset: ["lastError", "baseInterval"],
+      });
+      expect(patched).toBe(true);
+      const [task] = await adapter.getTasksByIds([id]);
+      expect(task?.metadata).toMatchObject({
+        paused: true,
+        updatedAt: 1_800_000_000_000,
+        failureCount: 0,
+        updateInterval: 5_000,
+      });
+      expect(task?.metadata).not.toHaveProperty("lastError");
+      expect(task?.metadata).not.toHaveProperty("baseInterval");
+      expect(await adapter.patchTaskMetadata(uuidv4() as UUID, { set: { paused: true } })).toBe(
+        false
+      );
     });
 
     it("allows exactly one pending-task lifecycle transition", async () => {

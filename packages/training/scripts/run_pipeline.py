@@ -18,7 +18,7 @@ Stages (skippable individually; see flags):
   6c. Throughput bench (llama-bench on the GGUFs)  → checkpoints/<run>/evals/throughput.json
       — prefill + gen tokens/sec, CUDA build if       (best -fa 1 -b 2048 -ngl 99 on GPU)
       available; --skip-throughput-bench to skip
-  7. Publish (--publish, requires --bundle-dir)   → python -m scripts.publish.orchestrator
+  7. Publish (--publish, requires --bundle-dir)   → python -m eliza_training.publish.orchestrator
 
 Usage:
     # Validation smoke on the smallest Eliza-1 size, tiny 1k-per-source mix.
@@ -57,12 +57,10 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from training.model_registry import get as registry_get  # noqa: E402
-from training.instrumentation import assert_finite_checkpoint  # noqa: E402
-from benchmarks.eliza1_gates import apply_gates, normalize_tier  # noqa: E402
+from eliza_training.training.model_registry import get as registry_get  # noqa: E402
+from eliza_training.training.instrumentation import assert_finite_checkpoint  # noqa: E402
+from eliza_training.release.gates import apply_gates, normalize_tier  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
@@ -224,6 +222,8 @@ def main() -> int:
                          "Internal upstream keys are aliases.")
     ap.add_argument("--run-name", default=None,
                     help="Default: <registry-key>-apollo-<unix-ts>.")
+    ap.add_argument("--out-dir", default=str(ROOT / "checkpoints"),
+                    help="Root directory for checkpoints, quantizations and gate reports.")
     ap.add_argument("--epochs", type=float, default=3.0)
     ap.add_argument(
         "--max-steps", type=int, default=0,
@@ -399,10 +399,25 @@ def main() -> int:
             "--eliza1-bundle is no longer supported: the legacy "
             "scripts/optimize_for_eliza1.py eliza1-optimized path was retired. "
             "Stage release bundles with scripts/manifest/stage_eliza1_source_weights.py "
-            "and publish them through python -m scripts.publish.orchestrator."
+            "and publish them through python -m eliza_training.publish.orchestrator."
         )
 
     entry = registry_get(args.registry_key)
+    quantizers = [q.strip() for q in args.quantizers.split(",") if q.strip()]
+    quantizer_scripts = {
+        script.name.removesuffix("_apply.py"): [str(script)]
+        for script in (ROOT / "scripts" / "quantization").glob("*_apply.py")
+        if script.is_file()
+    }
+    from eliza_training.quantization.gguf_profile import PROFILES
+    quantizer_scripts.update({
+        "gguf-" + profile.lower(): ["-m", "eliza_training.quantization.gguf_profile", "--profile", profile]
+        for profile in PROFILES
+    })
+    if not args.skip_quantize:
+        missing = [q for q in quantizers if q not in quantizer_scripts]
+        if missing:
+            ap.error(f"Unknown or unavailable quantizers: {', '.join(missing)}")
     if (
         not entry.can_train_locally
         and not args.skip_finetune
@@ -418,7 +433,8 @@ def main() -> int:
 
     tier_id = normalize_tier(entry.public_name)
     run_name = args.run_name or f"{entry.public_name}-apollo-{int(time.time())}"
-    ckpt_dir = ROOT / "checkpoints" / run_name
+    checkpoint_root = Path(args.out_dir).resolve()
+    ckpt_dir = checkpoint_root / run_name
     bench_dir = ROOT / "benchmarks" / run_name
     bench_dir.mkdir(parents=True, exist_ok=True)
 
@@ -554,7 +570,7 @@ def main() -> int:
         out_base = bench_dir / out_sub
         rc_native = run([
             "uv", "run", "--extra", "train", "python",
-            "scripts/benchmark/native_tool_call_bench.py",
+            "scripts/eval/native_tool_call_bench.py",
             "--model", model,
             "--test-file", str(test_file),
             "--out-dir", str(out_base / "native_tool_call"),
@@ -572,6 +588,8 @@ def main() -> int:
         summary["stages"]["base_bench"] = {"exit": rcs}
         if any(rc != 0 for rc in rcs.values()):
             log.error("base benchmark failed (exit=%s)", rcs)
+            (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+            return 1
 
     # ───────────── stage 2: fine-tune ──────────────────────────────────
     if not args.skip_finetune:
@@ -582,6 +600,7 @@ def main() -> int:
             "--epochs", str(args.epochs),
             "--lr", str(args.lr),
             "--run-name", run_name,
+            "--out-dir", str(checkpoint_root),
             "--full-finetune",
             "--use-liger", args.use_liger,
             "--train-file", str(train_file),
@@ -638,6 +657,10 @@ def main() -> int:
     if not args.skip_bench:
         rcs = _bench(str(finetuned_model), "finetuned")
         summary["stages"]["finetuned_bench"] = {"exit": rcs}
+        if any(rc != 0 for rc in rcs.values()):
+            log.error("fine-tuned benchmark failed (exit=%s)", rcs)
+            (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+            return 1
 
     # ───────────── stage 4: aggregate evals + gate report ─────────────
     base_rate = _bench_format_ok("base")
@@ -704,25 +727,25 @@ def main() -> int:
         return 1
 
     # ───────────── stage 5: quantize ──────────────────────────────────
-    quantizers = [q.strip() for q in args.quantizers.split(",") if q.strip()]
     if not args.skip_quantize:
         for q in quantizers:
             if q not in entry.quantization_after:
                 log.warning("registry says %s is not in quant list for %s; running anyway",
                             q, entry.public_name)
-            apply_script = ROOT / "scripts" / "quantization" / f"{q}_apply.py"
-            if not apply_script.exists():
-                log.error("missing quantizer script %s", apply_script)
-                continue
+            apply_command = quantizer_scripts[q]
             out_path = ckpt_dir / f"final-{q}"
             rc = run([
-                "uv", "run", "--extra", "train", "python", str(apply_script),
+                "uv", "run", "--extra", "train", "python", *apply_command,
                 "--model", str(finetuned_model),
                 "--output", str(out_path),
                 "--calibration", str(val_file),
                 "--calibration-samples", "128",
             ], cwd=ROOT)
             summary["stages"][f"quantize_{q}"] = {"exit": rc, "output": str(out_path)}
+            if rc != 0:
+                log.error("quantizer %s failed (exit=%d)", q, rc)
+                (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+                return 1
 
     # ───────────── stage 6: quantized benchmarks ──────────────────────
     if not args.skip_bench:
@@ -732,6 +755,10 @@ def main() -> int:
                 continue
             rcs = _bench(str(ck), q)
             summary["stages"][f"{q}_bench"] = {"exit": rcs}
+            if any(rc != 0 for rc in rcs.values()):
+                log.error("quantized benchmark %s failed (exit=%s)", q, rcs)
+                (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+                return 1
 
     # Stage 6b was the legacy eliza1-optimized GGUF path. It is retired because
     # it delegated to the disconnected Qwen-shaped optimizer. App-facing bundles
@@ -797,7 +824,7 @@ def main() -> int:
             )
             channel = "recommended" if text_quality_green else "base-v1"
         cmd = [
-            "uv", "run", "python", "-m", "scripts.publish.orchestrator",
+            "uv", "run", "python", "-m", "eliza_training.publish.orchestrator",
             "--tier", tier_id,
             "--bundle-dir", str(args.bundle_dir),
         ]
@@ -815,6 +842,8 @@ def main() -> int:
             log.error("publish orchestrator failed (exit=%d) — blocked on a gate; "
                       "see the [stage N/7] lines above for which one", rc)
             log.error("blocked: %s (exit=%d, channel=%s)", repo_id, rc, channel)
+            (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+            return 1
 
     summary["finished"] = time.time()
     summary["elapsed_s"] = summary["finished"] - summary["started"]

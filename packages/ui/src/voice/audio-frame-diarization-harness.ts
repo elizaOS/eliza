@@ -18,7 +18,7 @@
  * drivable + observable on a real device.
  */
 
-import { ElizaClient } from "../api";
+import { ElizaClient } from "../api/client";
 import { getTalkModePlugin } from "../bridge/native-plugins";
 import { MOBILE_LOCAL_AGENT_API_BASE } from "../first-run/mobile-runtime-mode";
 import { AudioFramePump } from "./audio-frame-pump";

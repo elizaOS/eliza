@@ -21,7 +21,6 @@
  *     PA-owned and is passed in.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import {
   type CreateLifeOpsGoalRequest,
   LIFEOPS_GOAL_STATUSES,
@@ -32,7 +31,8 @@ import {
   type LifeOpsOwnership,
   type LifeOpsOwnershipInput,
   type UpdateLifeOpsGoalRequest,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   createGoalDefinition,
   GoalsRepository,

@@ -56,7 +56,9 @@ it("keeps summer event positions aligned with winter-derived hour labels", () =>
         timeout: 30000,
       },
     );
-    // Report a missing browser or child failure before attempting its output.
+    // A runner that could not start (no installed browser, a crash, the
+    // spawn timeout) leaves no report; surface its stderr instead of an
+    // ENOENT that hides the cause.
     expect(result.error, result.stderr).toBeUndefined();
     expect(result.status, result.stderr).toBe(0);
     const report = JSON.parse(

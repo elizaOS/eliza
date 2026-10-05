@@ -7,10 +7,10 @@
  * cloud client, desktop bridge, and boot config mocked — no real Steward
  * service.
  */
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setBootConfig } from "../config/boot-config";
+import { setBootConfig } from "../config/boot-config-store";
 
 const clientCloudMocks = vi.hoisted(() => ({
   refreshCloudStewardSession: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock("../api/client-cloud", () => ({
   resolveDirectCloudAuthApiBase: () => "https://api.eliza.app",
 }));
 
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: {
     getBaseUrl: () => "",
     getCloudStatus: async () => ({
@@ -34,8 +34,11 @@ vi.mock("../api", () => ({
   },
 }));
 
-vi.mock("../bridge", () => ({
+vi.mock("../bridge/electrobun-rpc", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../bridge/electrobun-rpc")>()),
   invokeDesktopBridgeRequestWithTimeout: vi.fn(),
+}));
+vi.mock("../bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => true,
 }));
 

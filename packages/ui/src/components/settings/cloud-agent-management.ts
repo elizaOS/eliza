@@ -4,14 +4,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client, ElizaClient } from "../../api";
+import { client, ElizaClient } from "../../api/client";
 import { resolveCloudAgentApiBase } from "../../api/client-cloud";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
-import { getBootConfig } from "../../config/boot-config";
-import { useBranding } from "../../config/branding";
-import { useAppSelector } from "../../state";
+import { getBootConfig } from "../../config/boot-config-store";
+import { useBranding } from "../../config/branding-react.hooks";
 import { upsertAndActivateAgentProfile } from "../../state/agent-profiles";
 import { resolveDedicatedAgentId } from "../../state/agent-session-recovery";
+import { useAppSelector } from "../../state/app-store";
 import { clearStalePairCredentialsForAgent } from "../../state/cloud-pair-token";
 import {
   createPersistedActiveServer,

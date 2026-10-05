@@ -1,8 +1,9 @@
 /** Configures the deterministic Vitest harness for @elizaos/core test suites. */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
-import { repoRoot } from "../../packages/scripts/vitest/repo-root";
-import { getElizaWorkspaceRoot } from "../../packages/scripts/vitest/workspace-aliases";
+import { repoRoot } from "../../packages/scripts/vitest/repo-root.ts";
+import { getElizaWorkspaceRoot } from "../../packages/scripts/vitest/workspace-aliases.ts";
+import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
 
 const pluginSqlRoot = path.join(
 	getElizaWorkspaceRoot(repoRoot),
@@ -10,25 +11,42 @@ const pluginSqlRoot = path.join(
 	"plugin-sql",
 	"src",
 );
-const loggerSource = path.join(
-	getElizaWorkspaceRoot(repoRoot),
-	"packages",
-	"logger",
-	"src",
-	"index.ts",
-);
 
 export default defineConfig({
 	resolve: {
+		conditions: ["eliza-source"],
 		alias: [
 			{
-				find: /^@elizaos\/logger$/,
-				replacement: loggerSource,
+				find: /^@elizaos\/testing$/,
+				replacement: path.join(
+					getElizaWorkspaceRoot(repoRoot),
+					"packages",
+					"testing",
+					"src",
+					"index.ts",
+				),
 			},
 			{
-				// Core's src re-exports `@elizaos/prompts`, which ships no dist in
-				// this lane — anchor it to source so suites importing core prompts
-				// load (same fix the agent and plugin-app-control configs carry).
+				find: /^@elizaos\/plugin-sqlite$/,
+				replacement: path.join(
+					getElizaWorkspaceRoot(repoRoot),
+					"plugins",
+					"plugin-sqlite",
+					"index.ts",
+				),
+			},
+			{
+				find: /^@elizaos\/core$/,
+				replacement: new URL("./src/index.ts", import.meta.url).pathname,
+			},
+			{
+				find: /^@elizaos\/prompts\/keywords$/,
+				replacement: new URL("../prompts/src/keywords.ts", import.meta.url)
+					.pathname,
+			},
+
+			{
+				// Retained prompt contract tests exercise the owning package's source.
 				find: /^@elizaos\/prompts$/,
 				replacement: path.join(
 					getElizaWorkspaceRoot(repoRoot),
@@ -40,7 +58,7 @@ export default defineConfig({
 			},
 			{
 				find: /^@elizaos\/plugin-sql$/,
-				replacement: path.join(pluginSqlRoot, "index.node.ts"),
+				replacement: path.join(pluginSqlRoot, "index.ts"),
 			},
 			{
 				find: /^@elizaos\/plugin-sql\/schema$/,
@@ -54,6 +72,7 @@ export default defineConfig({
 				find: /^@elizaos\/plugin-sql\/(.+)$/,
 				replacement: path.join(pluginSqlRoot, "$1"),
 			},
+			...buildWorkspaceSourceAliases(),
 		],
 	},
 	test: {
@@ -70,13 +89,10 @@ export default defineConfig({
 			"**/*.real.e2e.test.*",
 			// #9310 §E: the guarded live/real suites (they self-skip without
 			// creds/opt-in) are invocable only in the post-merge lane, where
-			// run-all-tests.mjs prints a named skip accounting. The unguarded
+			// run-all-tests.ts prints a named skip accounting. The unguarded
 			// live/real files stay excluded in every lane.
 			...(process.env.VITEST_LANE === "post-merge"
-				? [
-						"src/__tests__/read-attachment-action.live.test.ts",
-						"src/features/trust/should-respond-risk-gate.real.test.ts",
-					]
+				? []
 				: ["**/*.live.test.*", "**/*.real.test.*"]),
 			// Playwright e2e specs must be run with `npm run test:e2e` (playwright test), not vitest
 			"e2e/**",

@@ -14,6 +14,7 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
+import android.os.SystemClock
 import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
@@ -31,6 +32,9 @@ import java.util.Locale
 class AppBlockerForegroundService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var polling = false
+    private var scheduledStop: Runnable? = null
+    private var foregroundPackage: String? = null
+    private var lastUsageEventTime = 0L
     private var ownPackageName = ""
     private var overlayView: View? = null
     private var windowManager: WindowManager? = null
@@ -59,6 +63,7 @@ class AppBlockerForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                cancelScheduledStop()
                 stopPolling()
                 hideBlockingOverlay()
                 stopForegroundCompat()
@@ -69,6 +74,7 @@ class AppBlockerForegroundService : Service() {
             else -> return START_NOT_STICKY
         }
 
+        cancelScheduledStop()
         val saved = AppBlockerStateStore.load(this)
         if (saved == null || saved.packageNames.isEmpty()) {
             stopSelf()
@@ -82,13 +88,20 @@ class AppBlockerForegroundService : Service() {
         if (endsAtEpochMs != null) {
             val delayMs = endsAtEpochMs - System.currentTimeMillis()
             if (delayMs > 0) {
-                handler.postDelayed({
+                val stop = Runnable {
+                    scheduledStop = null
+                    // A bridge request can save a replacement before its service
+                    // intent is delivered. Do not let the old deadline erase it.
+                    val current = AppBlockerStateStore.load(this)
+                    if (current != null && current != saved) return@Runnable
                     AppBlockerStateStore.clear(this)
                     stopPolling()
                     hideBlockingOverlay()
                     stopForegroundCompat()
                     stopSelf()
-                }, delayMs)
+                }
+                scheduledStop = stop
+                handler.postDelayed(stop, delayMs)
             } else {
                 AppBlockerStateStore.clear(this)
                 stopSelf()
@@ -100,9 +113,15 @@ class AppBlockerForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        cancelScheduledStop()
         stopPolling()
         hideBlockingOverlay()
         super.onDestroy()
+    }
+
+    private fun cancelScheduledStop() {
+        scheduledStop?.let(handler::removeCallbacks)
+        scheduledStop = null
     }
 
     private fun startPolling() {
@@ -128,7 +147,9 @@ class AppBlockerForegroundService : Service() {
             return
         }
 
-        if (!Settings.canDrawOverlays(this)) {
+        if (!Settings.canDrawOverlays(this) || !AppBlockerPermissions.hasUsageAccess(this)) {
+            foregroundPackage = null
+            lastUsageEventTime = 0L
             hideBlockingOverlay()
             return
         }
@@ -149,16 +170,20 @@ class AppBlockerForegroundService : Service() {
     private fun getForegroundPackage(): String? {
         val usageStatsManager = getSystemService("usagestats") as? UsageStatsManager ?: return null
         val now = System.currentTimeMillis()
-        val usageEvents = usageStatsManager.queryEvents(now - 2_000, now)
+        // Reconstruct the current foreground app once, then consume events from
+        // the last observed timestamp. An idle foreground app has no new events.
+        val since = if (lastUsageEventTime > 0 && lastUsageEventTime <= now) lastUsageEventTime
+            else (now - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        val usageEvents = usageStatsManager.queryEvents(since, now)
         val event = UsageEvents.Event()
-        var packageName: String? = null
         while (usageEvents.hasNextEvent()) {
             usageEvents.getNextEvent(event)
+            lastUsageEventTime = maxOf(lastUsageEventTime, event.timeStamp)
             if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
-                packageName = event.packageName
+                foregroundPackage = event.packageName
             }
         }
-        return packageName
+        return foregroundPackage
     }
 
     private fun showBlockingOverlay(saved: SavedAppBlock) {

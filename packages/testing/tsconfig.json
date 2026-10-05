@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "bun"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "paths": {
+      "@elizaos/core/protocol": ["../core/src/protocol"]
+    },
+    "composite": false,
+    "incremental": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/__tests__/**"]
+}

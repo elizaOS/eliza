@@ -1,5 +1,5 @@
 // Defines the tax deadline prep LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/testing";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
@@ -14,7 +14,7 @@ export default scenario({
   tags: ["lifeops", "executive-assistant", "money", "legal", "outcome"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

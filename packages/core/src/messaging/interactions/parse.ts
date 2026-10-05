@@ -25,9 +25,9 @@ import type {
 	InteractionFieldType,
 	InteractionOption,
 	TaskInteraction,
-} from "../../types/interactions";
-import { truncateWellFormed } from "../../utils/well-formed.ts";
-import { stripDashboardOnlyMarkers } from "./dashboard-markers";
+} from "../../types/interactions.js";
+import { truncateWellFormed } from "../../utils/unicode.js";
+import { stripDashboardOnlyMarkers } from "./dashboard-markers.js";
 
 /** Hard caps mirroring the dashboard parsers — keep a runaway template safe. */
 export const MAX_FORM_FIELDS = 20;
@@ -267,10 +267,20 @@ function isValidOpeningMarker(marker: ParsedMarker): boolean {
 function scanRawInteractionRegions(text: string): RawInteractionRegion[] {
 	const regions: RawInteractionRegion[] = [];
 	const active = new Map<MarkerKind, ActiveMarker>();
+	const lines = sourceLines(text);
+	let lineIndex = 0;
 	let cursor = 0;
 	while (cursor < text.length) {
 		const start = text.indexOf("[", cursor);
 		if (start < 0) break;
+		while (lineIndex < lines.length && start >= lines[lineIndex].end) {
+			lineIndex += 1;
+		}
+		const line = lines[lineIndex];
+		if (line?.inFence && start >= line.start) {
+			cursor = line.end;
+			continue;
+		}
 		const scanned = scanMarkerEnd(text, start);
 		if (!scanned) break;
 		if ("nested" in scanned) {
@@ -284,7 +294,7 @@ function scanRawInteractionRegions(text: string): RawInteractionRegion[] {
 			continue;
 		}
 		if (!marker.closing) {
-			if (!isValidOpeningMarker(marker) || active.has(marker.kind)) continue;
+			if (!isValidOpeningMarker(marker)) continue;
 			let bodyStart = bracketEnd + 1;
 			if (marker.kind !== "TASK") {
 				while (bodyStart < text.length && /[ \t]/.test(text[bodyStart]))

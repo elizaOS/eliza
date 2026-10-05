@@ -7,6 +7,7 @@
  *     personal_baseline_sufficient.
  */
 
+import type { LifeOpsActivitySignal } from "@elizaos/contracts";
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
 import type {
   GateEvaluationContext,
@@ -16,7 +17,6 @@ import {
   createTaskGateRegistry,
   registerBuiltInGates,
 } from "@elizaos/plugin-scheduling";
-import type { LifeOpsActivitySignal } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import type { ActivityProfile } from "../../activity-profile/types.js";
 import {

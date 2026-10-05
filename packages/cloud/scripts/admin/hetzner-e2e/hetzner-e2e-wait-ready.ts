@@ -20,7 +20,7 @@ const rmRecursiveScript = resolve(
   "..",
   "..",
   "scripts",
-  "rm-path-recursive.mjs",
+  "rm-path-recursive.ts",
 );
 
 function requireEnv(name: string): string {

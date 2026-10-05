@@ -29,12 +29,12 @@ vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
   return {
     ...actual,
+    resolveAttachmentBytes: resolveAttachmentBytesMock,
     logger: {
       ...actual.logger,
       error: loggerErrorMock,
       warn: loggerWarnMock,
     },
-    resolveAttachmentBytes: resolveAttachmentBytesMock,
   };
 });
 
@@ -319,7 +319,7 @@ describe("MessageManager malformed payload handling", () => {
     ]);
   });
 
-  it("does not throw when image description fails after the byte fetch", async () => {
+  it("keeps the photo attachment when image description fails after the byte fetch", async () => {
     const getFileLink = vi.fn(
       async () => new URL("https://files.test/photo.jpg"),
     );
@@ -342,7 +342,18 @@ describe("MessageManager malformed payload handling", () => {
         chat: { id: 123, type: "private" },
         photo: [{ file_id: "p1", file_unique_id: "u1", width: 1, height: 1 }],
       } as never),
-    ).resolves.toEqual({ processedContent: "", attachments: [] });
+    ).resolves.toEqual({
+      processedContent: "",
+      attachments: [
+        {
+          id: "p1",
+          url: "telegram-file:p1",
+          title: "Image Attachment",
+          source: "Image",
+          contentType: "image",
+        },
+      ],
+    });
     expect(useModel).toHaveBeenCalled();
   });
 
@@ -424,8 +435,8 @@ describe("MessageManager malformed payload handling", () => {
     });
 
     // Unknown/absent content types degrade to a document upload rather than
-    // throwing synchronously (a sync throw inside Promise.all would abort the
-    // whole reply); the underlying send failure is still awaited and propagated.
+    // throwing synchronously. A later Telegram send failure is isolated so the
+    // reply path can still deliver accompanying text.
     await expect(
       manager.sendMessageInChunks(
         {
@@ -437,13 +448,13 @@ describe("MessageManager malformed payload handling", () => {
           attachments: [
             {
               id: "a1",
-              url: "https://files.test/file.bin",
+              url: "data:application/octet-stream;base64,ZGF0YQ==",
               contentType: "application/octet-stream",
             },
           ],
         } as never,
       ),
-    ).rejects.toThrow("telegram unavailable");
+    ).resolves.toEqual([]);
     expect(sendDocument).toHaveBeenCalled();
   });
 
@@ -468,7 +479,7 @@ describe("MessageManager malformed payload handling", () => {
         attachments: [
           {
             id: "p1",
-            url: "https://files.test/p.png",
+            url: "data:image/png;base64,aGVsbG8=",
             contentType: "image/png",
           },
         ],
@@ -499,7 +510,7 @@ describe("MessageManager malformed payload handling", () => {
         attachments: [
           {
             id: "p1",
-            url: "https://files.test/p.png",
+            url: "data:image/png;base64,aGVsbG8=",
             contentType: "image/png",
           },
         ],

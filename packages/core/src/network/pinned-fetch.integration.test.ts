@@ -27,6 +27,12 @@ describe("pinned fetch through a real local HTTP server", () => {
 				res.write(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 				return;
 			}
+			if (req.url === "/loop") {
+				res.statusCode = 302;
+				res.setHeader("location", "/loop");
+				res.end();
+				return;
+			}
 			if (req.url === "/redirect-to-rebound") {
 				res.statusCode = 302;
 				res.setHeader("location", `http://rebound.example.test:${port}/steal`);
@@ -145,6 +151,25 @@ describe("pinned fetch through a real local HTTP server", () => {
 		expect(firstHop.length).toBe(1);
 		expect(seenRequests.some((entry) => entry.url === "/steal")).toBe(false);
 	});
+
+	it.each([
+		["a redirect loop", undefined, "Redirect loop detected"],
+		["an exhausted redirect budget", 0, "Too many redirects (limit: 0)"],
+	])(
+		"classifies %s as a policy block",
+		async (_label, maxRedirects, message) => {
+			const failure = fetchWithSsrfGuard({
+				url: `http://pinned.example.test:${port}/loop`,
+				lookupFn: async () => [{ address: "127.0.0.1", family: 4 }],
+				pinnedFetchImpl: nodePinnedFetch,
+				policy: { allowedHostnames: ["pinned.example.test"] },
+				maxRedirects,
+				timeoutMs: 5000,
+			});
+			await expect(failure).rejects.toBeInstanceOf(SsrfBlockedError);
+			await expect(failure).rejects.toThrow(message);
+		},
+	);
 
 	it("aborts a real response body that stalls after headers", async () => {
 		const guarded = await fetchWithSsrfGuard({

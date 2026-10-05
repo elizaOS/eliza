@@ -13,8 +13,8 @@
  * {@link FTU_GOAL_CONFIDENCE_THRESHOLD}.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type { Evaluator, JSONSchema } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import { createFirstRunStateStore } from "../first-run/state.js";
 import { createOwnerFactStore } from "../owner/fact-store.js";
 import { createFtuGoalStateStore } from "./state.js";
@@ -78,7 +78,7 @@ export const ftuGoalDiscoveryEvaluator: Evaluator<FtuGoalDiscoveryOutput> = {
     if (!message.content.text || message.entityId === runtime.agentId) {
       return false;
     }
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return false;
     }
     const firstRun = await createFirstRunStateStore(runtime).read();

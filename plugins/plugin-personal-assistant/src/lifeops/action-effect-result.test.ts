@@ -4,6 +4,7 @@
  * applied, no-op, failed, missing, and forged receipt outcomes.
  */
 
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type Action,
   executePlannedToolCall,
@@ -11,7 +12,6 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   completeLifeOpsEffect,

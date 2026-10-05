@@ -5,15 +5,14 @@
  * hide work that still blocks the agent.
  */
 
-import {
-  type AgentNotification,
-  type PendingUserAction,
-  type PendingUserActionOption,
-  stringToUuid,
+import type {
+  AgentNotification,
+  PendingUserAction,
+  PendingUserActionOption,
 } from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
+import { client } from "../../api/client";
 import { useAuthStatus } from "../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 
@@ -342,7 +341,8 @@ export function derivePendingActionOptionReply(
 }
 
 export function pendingActionNotificationId(actionId: string) {
-  return stringToUuid(`${PENDING_ACTION_NOTIFICATION_NAMESPACE}:${actionId}`);
+  // UI projection identity; the underlying pending action owns its durable ID.
+  return `${PENDING_ACTION_NOTIFICATION_NAMESPACE}:${actionId}`;
 }
 
 export function pendingActionIdFromNotification(

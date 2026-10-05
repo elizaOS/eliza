@@ -6,6 +6,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CreateLifeOpsDefinitionRequest } from "@elizaos/contracts";
 import {
   type ActionResult,
   ElizaError,
@@ -13,7 +14,6 @@ import {
   ModelType,
   type UUID,
 } from "@elizaos/core";
-import type { CreateLifeOpsDefinitionRequest } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

@@ -2,14 +2,15 @@
  * Exercises GitHub issue Stage-1 hints through the production action
  * promotion, retrieval, and tiering pipeline without invoking GitHub.
  */
+
+import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { promoteSubactionsToActions } from "../../../../packages/core/src/actions/promote-subactions.ts";
 import {
   buildActionCatalog,
   type RuntimeActionLike,
-} from "../../../../packages/core/src/runtime/action-catalog.ts";
-import { retrieveActions } from "../../../../packages/core/src/runtime/action-retrieval.ts";
-import { tierActionResults } from "../../../../packages/core/src/runtime/action-tiering.ts";
+} from "../../../plugin-assistant/src/runtime/action-catalog.ts";
+import { retrieveActions } from "../../../plugin-assistant/src/runtime/action-retrieval.ts";
+import { tierActionResults } from "../../../plugin-assistant/src/runtime/action-tiering.ts";
 import { tasksAction } from "../actions/tasks.ts";
 
 const GITHUB_ISSUE_STAGE1_ALIASES = [
@@ -46,8 +47,6 @@ function retrieveIssueSurface(
   const surface = tierActionResults({
     catalog,
     results: retrieval.results,
-    narrowToCandidateActions: [candidateAction],
-    queryTokens: retrieval.query.tokens,
   });
 
   return { retrieval, surface };

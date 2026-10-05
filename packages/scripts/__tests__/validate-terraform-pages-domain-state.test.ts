@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = new URL("../../../", import.meta.url);
 const verifier = new URL(
-  "packages/scripts/validate-terraform-pages-domain-state.mjs",
+  "packages/scripts/validate-terraform-pages-domain-state.ts",
   repoRoot,
 );
 const verifierPath = fileURLToPath(verifier);

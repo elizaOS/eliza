@@ -2,6 +2,8 @@
  * Owns durable Stripe Checkout quotes and atomically fulfills organization-credit purchases.
  * Stripe metadata is only a lookup hint; every money and tenant field is compared to this record.
  */
+
+import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-sdk/browser-contracts";
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { and, eq, inArray, isNull } from "drizzle-orm";
@@ -119,13 +121,29 @@ function validateCreate(input: CreateStripeCheckoutOrderInput): void {
       "Checkout request digest is invalid",
     );
   }
-  const packShapeMatches =
-    (input.purchaseType === "credit_pack" && !!input.creditPackId) ||
-    (input.purchaseType === "custom_amount" && !input.creditPackId);
-  if (!packShapeMatches) {
+  // Fixed credit packs are retired (#22963). Historical pack orders still
+  // settle and read back, but no new pack order can be created.
+  if (input.purchaseType !== "custom_amount" || input.creditPackId) {
     throw new StripeCheckoutAuthorityError(
-      "STRIPE_CHECKOUT_INVALID_PACK_SHAPE",
-      "Checkout credit-pack linkage does not match its purchase type",
+      "STRIPE_CHECKOUT_CREDIT_PACK_RETIRED",
+      "Credit packs are retired; checkout must be a pay-as-you-go top-up amount",
+      { purchaseType: input.purchaseType },
+    );
+  }
+  const minCents = ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd * 100;
+  const maxCents = ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd * 100;
+  if (input.chargeAmountCents < minCents || input.chargeAmountCents > maxCents) {
+    throw new StripeCheckoutAuthorityError(
+      "STRIPE_CHECKOUT_AMOUNT_OUT_OF_RANGE",
+      "Top-up amount is outside the pay-as-you-go checkout range",
+      { chargeAmountCents: input.chargeAmountCents, minCents, maxCents },
+    );
+  }
+  // One credit is one dollar and top-ups carry no bonus credit.
+  if (!credits.mul(100).eq(input.chargeAmountCents)) {
+    throw new StripeCheckoutAuthorityError(
+      "STRIPE_CHECKOUT_GRANT_MISMATCH",
+      "Top-up credits must equal the charged amount",
     );
   }
 }

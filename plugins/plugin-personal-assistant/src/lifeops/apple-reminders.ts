@@ -8,17 +8,17 @@
  */
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  type NativeLibraryCandidate,
-  resolveNativeLibraryCandidate,
-} from "@elizaos/app-core/platform/native-library-policy";
+import type { FeatureResult } from "@elizaos/contracts";
 import type { IAgentRuntime, Service } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, resolveNativeLibraryCandidate } from "@elizaos/core";
+import type {
+  IPermissionsRegistry,
+  NativeLibraryCandidate,
+} from "@elizaos/core/protocol";
 import {
   APPLE_REMINDERS_MACOS_BRIDGE_DYLIB_BASENAME,
   appleRemindersMacosBridgeCandidates,
 } from "@elizaos/macosreminders";
-import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
 import { isDarwin } from "../platform/host.js";
 
 export const NATIVE_APPLE_REMINDER_METADATA_KEY = "nativeAppleReminder";

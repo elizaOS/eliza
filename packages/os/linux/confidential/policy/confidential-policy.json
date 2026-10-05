@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "packages/os/docs/tee-os-implementation-plan.md §3-§4 (OS-3)",
+  "summary": "Memory + side-channel posture for the ELIZAOS_PROFILE=confidential guest. This blob is the source of measurements.policy: it is hashed at build time and folded into the policy measurement. Any change here changes the policy digest and fails launch if it does not match the signed golden manifest.",
+  "memory": {
+    "swap": {
+      "hostBackedSwap": false,
+      "zramOnly": true,
+      "zramDmCrypt": true,
+      "swapTargetMasked": true
+    },
+    "mlock": {
+      "secretPages": true,
+      "mlockallFutureForInference": true,
+      "raiseRlimitMemlock": true,
+      "madvDontDump": true,
+      "disableCoreDumpsForSecretUnits": true
+    },
+    "hugepages": {
+      "weightsArenaHugepages": true,
+      "privateEncryptedMemoryOnly": true,
+      "noHostBackedFileMapping": true
+    },
+    "pageCache": {
+      "dmCryptModelVolume": true,
+      "preferODirectForWeights": true,
+      "dropCachesAfterUnseal": true
+    },
+    "zeroization": {
+      "blkdiscardOnShutdown": true,
+      "zeroKeyOnTeardown": true,
+      "panicNotifierZeroesKeys": true,
+      "kdumpDisabled": true
+    },
+    "kexecHibernation": {
+      "hibernationDisabled": true,
+      "kexecDisabled": true
+    },
+    "guestMemfd": {
+      "useGuestMemfd": true,
+      "minimalSharedWindow": true
+    }
+  },
+  "sideChannel": {
+    "cpuMitigations": {
+      "mitigationsOff": false,
+      "kpti": true,
+      "retbleed": true,
+      "mdsTaa": true,
+      "mmioStaleData": true,
+      "l1tf": true,
+      "kaslr": true,
+      "randomizeKstackOffset": true
+    },
+    "smt": {
+      "nosmt": true,
+      "pinInferenceThreads": true,
+      "isolcpusForWeights": true
+    },
+    "observability": {
+      "perfEventParanoid": 3,
+      "unprivilegedRdpmcDisabled": true,
+      "restrictCapPerfmon": true,
+      "denyDevMem": true,
+      "denyProcKcore": true,
+      "kptrRestrict": 2,
+      "dmesgRestrict": 1
+    },
+    "secureBoot": {
+      "kernelLockdown": "confidentiality",
+      "imaAppraisal": true,
+      "dmVerityRootfs": true,
+      "moduleSignatureEnforce": true,
+      "dmCryptUserData": true,
+      "unsealBindsStateDir": true
+    }
+  },
+  "gate": {
+    "name": "confidential-policy-check",
+    "blockedOn": "Enforcement of these settings inside a booted confidential guest is BLOCKED on a TDX/CoVE host (gate tdx-cvm-boot-smoke). This file is the build-time data form only.",
+    "provingCommand": "node packages/os/scripts/generate-tee-measurements.mjs --policy packages/os/linux/confidential/policy/confidential-policy.json ..."
+  }
+}

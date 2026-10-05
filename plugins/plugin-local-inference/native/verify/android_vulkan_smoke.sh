@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Repo root via git, not a fixed level count: native/ moved under
 # plugins/plugin-local-inference/, so the old "$SCRIPT_DIR/../../.." resolved to
-# plugins/ and "$REPO_ROOT/packages/app-core/..." became plugins/packages/... (ENOENT).
+# plugins/ and "$REPO_ROOT/packages/app/..." became plugins/packages/... (ENOENT).
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 cd "$SCRIPT_DIR"
 

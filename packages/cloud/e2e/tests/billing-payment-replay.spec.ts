@@ -464,17 +464,28 @@ test("lost provider response and duplicate webhook settle exactly once", async (
     await context.addInitScript(
       ({ runtimeAgentId, apiBase, apiKey }) => {
         window.localStorage.setItem("eliza:first-run-complete", "1");
+        const profile = {
+          id: `cloud:${runtimeAgentId}`,
+          kind: "cloud",
+          label: "Billing replay projection E2E shared runtime",
+          apiBase,
+          accessToken: apiKey,
+          cloudAgentId: runtimeAgentId,
+          cloudRuntimeAgentId: runtimeAgentId,
+          cloudRuntime: "shared",
+          createdAt: Date.now(),
+        };
+        window.localStorage.setItem(
+          "elizaos:agent-profiles",
+          JSON.stringify({
+            version: 1,
+            activeProfileId: profile.id,
+            profiles: [profile],
+          }),
+        );
         window.localStorage.setItem(
           "elizaos:active-server",
-          JSON.stringify({
-            id: `cloud:${runtimeAgentId}`,
-            kind: "cloud",
-            label: "Billing replay projection E2E shared runtime",
-            apiBase,
-            accessToken: apiKey,
-            cloudRuntimeAgentId: runtimeAgentId,
-            cloudRuntime: "shared",
-          }),
+          JSON.stringify(profile),
         );
       },
       {
@@ -490,12 +501,23 @@ test("lost provider response and duplicate webhook settle exactly once", async (
         response.status() === 200,
       { timeout: 60_000 },
     );
+    const authReady = authenticatedPage.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/auth/me" &&
+        response.status() === 200,
+    );
     await authenticatedPage.goto(stack.urls.frontend, { timeout: 60_000 });
     await runtimeReady;
+    expect((await (await authReady).json()).access.role).toBe("USER");
     await expect(
       authenticatedPage.getByTestId("home-launcher-surface"),
     ).toBeVisible();
 
+    const runtimeProductRequests: string[] = [];
+    authenticatedPage.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/cloud/status")
+        runtimeProductRequests.push(request.url());
+    });
     const snapshotResponsePromise = authenticatedPage.waitForResponse(
       (response) =>
         new URL(response.url()).pathname === BILLING_SNAPSHOT_PATH &&
@@ -561,19 +583,47 @@ test("lost provider response and duplicate webhook settle exactly once", async (
       invoiceRow.getByRole("button", { name: "View", exact: true }),
     ).toBeVisible();
 
-    // Billing belongs to the authenticated account even when the selected
-    // agent cannot start. Fault the real app's agent-status request across a
-    // reload while keeping the Cloud session and billing API available.
+    // Direct account management no longer boots an agent. Prove the selected
+    // agent is unavailable, then reload billing and require fresh account data
+    // without another agent-status request.
     backendFaults.setFault({
       path: "/api/status",
       status: 503,
       body: { error: "Agent temporarily unavailable" },
     });
+    const unavailableAgent = await authenticatedPage.request.get(
+      `${stack.urls.frontend}/api/status`,
+    );
+    expect(unavailableAgent.status()).toBe(503);
+    expect(await unavailableAgent.json()).toEqual({
+      error: "Agent temporarily unavailable",
+    });
+    const faultHitsBeforeReload = backendFaults.faultHits;
+    expect(faultHitsBeforeReload).toBeGreaterThan(0);
+    const freshAccountData = Promise.all([
+      authenticatedPage.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === BILLING_SNAPSHOT_PATH &&
+          response.status() === 200,
+      ),
+      authenticatedPage.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === INVOICE_LIST_PATH &&
+          response.status() === 200,
+      ),
+    ]);
     await authenticatedPage.reload();
-    await expect.poll(() => backendFaults.faultHits).toBeGreaterThan(0);
+    await freshAccountData;
     await expect(renderedBalance).toBeVisible();
     await expect(invoiceRow).toHaveCount(1);
     await expect(invoiceRow.getByText("Paid", { exact: true })).toBeVisible();
+    expect(backendFaults.faultHits).toBe(faultHitsBeforeReload);
+    expect(runtimeProductRequests).toEqual([]);
+    await expect(
+      authenticatedPage.getByRole("button", {
+        name: "Retry product selection",
+      }),
+    ).toHaveCount(0);
   } finally {
     backendFaults.clearFault();
     backendFaults.clearPathRewrites();

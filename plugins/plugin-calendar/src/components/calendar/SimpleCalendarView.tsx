@@ -5,25 +5,25 @@
  * second calendar store or write boundary.
  */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import {
   Button,
   Grid,
+  PagePanel,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  useAgentElement,
+  useViewEvent,
+  VIEW_EVENTS,
+  ViewHeader,
 } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@elizaos/ui/components";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
-import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
+
 import {
   AlertTriangle,
   ChevronDown,

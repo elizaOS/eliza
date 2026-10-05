@@ -12,7 +12,10 @@
  */
 import path from "node:path";
 import { runVfsSearchPattern } from "./vfs-search-pattern.ts";
-import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
+import {
+  createVirtualFilesystemService,
+  VirtualFilesystemError,
+} from "./virtual-filesystem.ts";
 
 interface VfsBuiltinShellRequest {
   cwdUri?: string;
@@ -166,18 +169,70 @@ async function runScriptSegment(
   cwd: string,
   segment: string,
 ): Promise<VfsBuiltinCommandResult> {
-  const redirect = segment.match(/^(.*?)(>>|>)\s*([^\s]+)\s*$/);
+  const redirect = parseOutputRedirect(segment);
   if (redirect) {
-    const [, before, op, target] = redirect;
+    const { before, op, target } = redirect;
     const result = await runCommandLine(vfs, cwd, before.trim());
     if (result.exitCode !== 0) return result;
     const targetPath = resolveVirtualPath(cwd, stripQuotes(target));
-    const existing =
-      op === ">>" ? await vfs.readFile(targetPath).catch(() => "") : "";
+    const existing = op === ">>" ? await readAppendBase(vfs, targetPath) : "";
     await vfs.writeFile(targetPath, existing + result.stdout);
     return { exitCode: 0, stdout: "", stderr: result.stderr };
   }
   return runCommandLine(vfs, cwd, segment);
+}
+
+function parseOutputRedirect(
+  segment: string,
+): { before: string; op: string; target: string } | null {
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < segment.length; index += 1) {
+    const character = segment[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = quote === character ? null : (quote ?? character);
+      continue;
+    }
+    if (quote !== null || character !== ">") continue;
+
+    const redirect = segment.slice(index).match(/^(>>|>)\s*([^\s]+)\s*$/);
+    if (!redirect) continue;
+    return {
+      before: segment.slice(0, index),
+      op: redirect[1],
+      target: redirect[2],
+    };
+  }
+  return null;
+}
+
+/**
+ * Returns the current contents of an append target. Only a missing file is an
+ * empty base; any other read failure propagates so `>>` never overwrites
+ * content it could not read.
+ */
+async function readAppendBase(
+  vfs: VfsService,
+  targetPath: string,
+): Promise<string> {
+  try {
+    return await vfs.readFile(targetPath);
+  } catch (error) {
+    // error-policy:J2 Absence is the only condition equivalent to empty content.
+    if (error instanceof VirtualFilesystemError && error.code === "NOT_FOUND") {
+      return "";
+    }
+    throw error;
+  }
 }
 
 async function runCommandLine(

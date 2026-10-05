@@ -1,0 +1,22 @@
+[
+	{
+		"slug": "contacts",
+		"canonicalName": "@elizaos/plugin-native-contacts",
+		"aliases": []
+	},
+	{
+		"slug": "phone",
+		"canonicalName": "@elizaos/plugin-native-phone",
+		"aliases": []
+	},
+	{
+		"slug": "wifi",
+		"canonicalName": "@elizaos/plugin-native-wifi",
+		"aliases": []
+	},
+	{
+		"slug": "trajectory-logger",
+		"canonicalName": "@elizaos/plugin-trajectory-logger",
+		"aliases": []
+	}
+]

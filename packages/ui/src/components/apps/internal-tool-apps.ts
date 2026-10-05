@@ -10,7 +10,7 @@
  * in its ViewDeclaration updates the catalog with no edit here.
  */
 
-import type { RegistryAppInfo } from "../../api";
+import type { RegistryAppInfo } from "@elizaos/core/protocol";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import type { Tab } from "../../navigation";
 
@@ -165,7 +165,7 @@ const INTERNAL_TOOL_VIEW_DECLARATIONS: readonly InternalToolViewDeclaration[] =
       pinnable: true,
     },
     {
-      name: "@elizaos/plugin-task-coordinator",
+      name: "@elizaos/plugin-agent-orchestrator",
       displayName: "Automations",
       description:
         "Create, inspect, and manage workflows, triggers, and scheduled items.",
@@ -181,10 +181,6 @@ const INTERNAL_TOOL_VIEW_DECLARATIONS: readonly InternalToolViewDeclaration[] =
 
 const INTERNAL_TOOL_APP_BY_NAME = new Map(
   INTERNAL_TOOL_VIEW_DECLARATIONS.map((app) => [app.name, app] as const),
-);
-
-const INTERNAL_TOOL_APP_BY_PATH = new Map(
-  INTERNAL_TOOL_VIEW_DECLARATIONS.map((app) => [app.path, app] as const),
 );
 
 /**
@@ -269,30 +265,6 @@ export function getInternalToolAppTargetTab(name: string): Tab | null {
 
 export function getInternalToolAppCatalogOrder(name: string): number {
   return INTERNAL_TOOL_APP_BY_NAME.get(name)?.order ?? Number.MAX_SAFE_INTEGER;
-}
-
-export function getInternalToolAppWindowPath(name: string): string | null {
-  return INTERNAL_TOOL_APP_BY_NAME.get(name)?.path ?? null;
-}
-
-export function getInternalToolAppHasDetailsPage(name: string): boolean {
-  return INTERNAL_TOOL_APP_BY_NAME.get(name)?.hasDetailsPage === true;
-}
-
-/** Resolve the internal-tool app name that owns a given window path. */
-export function getInternalToolAppNameForPath(path: string): string | null {
-  return INTERNAL_TOOL_APP_BY_PATH.get(path)?.name ?? null;
-}
-
-/**
- * The internal-tool apps the homescreen launcher may pin, read from each
- * declaration's `pinnable` flag. Replaces the old `PINNABLE_INTERNAL_APPS`
- * literal name list.
- */
-export function getPinnableInternalAppNames(): string[] {
-  return INTERNAL_TOOL_VIEW_DECLARATIONS.filter((app) => app.pinnable).map(
-    (app) => app.name,
-  );
 }
 
 /** Plain descriptor used by the desktop application/tray menus. */

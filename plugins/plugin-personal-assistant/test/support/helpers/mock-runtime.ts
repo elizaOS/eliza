@@ -4,17 +4,16 @@ import os from "node:os";
 import path from "node:path";
 import { ChannelType, type Plugin, stringToUuid } from "@elizaos/core";
 import {
-  createRealTestRuntime,
-  type RealTestRuntimeOptions,
-  type RealTestRuntimeResult,
-} from "../../../../../packages/core/src/testing/real-runtime.ts";
-import {
-  type CorpusMockOptions,
   MOCK_ENVIRONMENTS,
   type MockEnvironmentName,
   type StartedMocks,
   startMocks,
-} from "../../../../../packages/scenario-runner/test/mocks/scripts/start-mocks.ts";
+} from "@elizaos/testing/mocks";
+import {
+  createRealTestRuntime,
+  type RealTestRuntimeOptions,
+  type RealTestRuntimeResult,
+} from "@elizaos/testing/runtime";
 import { personalAssistantPlugin } from "../../../src/plugin.ts";
 import { createBenchmarkRuntimeFixturesEnvironment } from "./benchmark-runtime-fixtures.ts";
 import {
@@ -74,8 +73,6 @@ export interface MockedTestRuntimeOptions {
    * provider contract tests can keep using their small exact fixtures.
    */
   seedLifeOpsSimulator?: boolean;
-  /** Optional validated personal-corpus shard directory for mock provider data. */
-  corpus?: CorpusMockOptions;
   /** Pass-through to the underlying real-runtime factory. */
   withLLM?: boolean;
   /** Optional explicit model-provider plugin, such as the core deterministic provider. */
@@ -268,17 +265,13 @@ async function cleanupRuntimeAfterFailure(
 }
 
 export async function prepareMockedTestEnvironment(
-  opts?: Pick<
-    MockedTestRuntimeOptions,
-    "envs" | "seedLifeOpsSimulator" | "corpus"
-  >,
+  opts?: Pick<MockedTestRuntimeOptions, "envs" | "seedLifeOpsSimulator">,
 ): Promise<MockedTestEnvironment> {
   const envs = opts?.envs ?? MOCK_ENVIRONMENTS;
   const seedLifeOpsSimulator = opts?.seedLifeOpsSimulator ?? false;
   const mocks = await startMocks({
     envs,
     simulator: seedLifeOpsSimulator,
-    ...(opts?.corpus ? { corpus: opts.corpus } : {}),
   });
   const benchmarkFixtures = await createBenchmarkRuntimeFixturesEnvironment();
   const simulatorFixtures = seedLifeOpsSimulator
@@ -342,7 +335,6 @@ export async function createMockedTestRuntime(
     : await prepareMockedTestEnvironment({
         envs,
         seedLifeOpsSimulator: opts?.seedLifeOpsSimulator,
-        ...(opts?.corpus ? { corpus: opts.corpus } : {}),
       });
   const environment = sharedEnvironment ?? localEnvironment;
   if (!environment) {

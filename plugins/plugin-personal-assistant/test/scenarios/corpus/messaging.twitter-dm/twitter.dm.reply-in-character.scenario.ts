@@ -4,8 +4,8 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 import { seedXReadFixtures } from "../../../scenario-support/x-seeds.ts";
 
 export default scenario({
@@ -16,7 +16,7 @@ export default scenario({
   tags: ["messaging", "twitter", "parameter-extraction"],
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   seed: [
     {

@@ -1,4 +1,4 @@
-import type { Plugin } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { VideoService } from "./services/video";
 
 const videoPlugin: Plugin = {
@@ -13,5 +13,4 @@ const videoPlugin: Plugin = {
     await svc?.stop();
   },
 };
-
 export default videoPlugin;

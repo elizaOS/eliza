@@ -28,10 +28,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   DEFAULT_WEIGHTS,
   runLauncherLoop,
-} from "../../../ui/src/testing/launcher-loop";
+} from "../../../ui/src/testing/launcher-loop/index";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -43,12 +44,7 @@ import {
 } from "./helpers/brand-color-scans";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
-const REPO_ROOT = process.cwd().endsWith(path.join("packages", "app"))
-  ? path.resolve(process.cwd(), "..", "..")
-  : process.cwd();
-const OUT_DIR = path.join(
-  REPO_ROOT,
-  "test-results",
+const OUT_DIR = testOutputPath(
   "ui-smoke-artifacts",
   "12179-launcher-loops",
   "real-app",

@@ -89,11 +89,11 @@ function findPluginsManifestRoot(startDir: string): string {
 }
 
 export type {
-  LogEntry,
+  AgentLogEntry as LogEntry,
+  AgentStreamEventType as StreamEventType,
   SkillEntry,
   StreamEventEnvelope,
-  StreamEventType,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 export type { PluginEntry, PluginParamDef } from "./server-types.ts";
 
 import type { PluginEntry, PluginParamDef } from "./server-types.ts";

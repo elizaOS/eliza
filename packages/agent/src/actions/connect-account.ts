@@ -17,7 +17,7 @@
 import {
   SUBSCRIPTION_PROVIDER_METADATA,
   type SubscriptionProvider,
-} from "@elizaos/auth/types";
+} from "@elizaos/auth/auth";
 import type {
   Action,
   ActionExample,

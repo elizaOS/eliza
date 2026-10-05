@@ -18,6 +18,14 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 			...actual.logger,
 			debug: coreMocks.debug,
 		},
+	};
+});
+
+vi.mock("@elizaos/plugin-assistant", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("@elizaos/plugin-assistant")>();
+	return {
+		...actual,
 		renderMessageHandlerStablePrefix:
 			coreMocks.renderMessageHandlerStablePrefix,
 	};

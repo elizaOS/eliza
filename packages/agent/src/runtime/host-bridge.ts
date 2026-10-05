@@ -1,35 +1,37 @@
 /**
  * Agent host bridge — the downward-injection seam that replaces the former
- * memoized dynamic import of the app-core `agent-bridge` subpath (a reverse
+ * memoized dynamic import of the app `agent-bridge` subpath (a reverse
  * edge from agent up into the host).
  *
- * `@elizaos/agent` is the lower layer; `@elizaos/app-core` is the host that
+ * `@elizaos/agent` is the lower layer; `@elizaos/app` is the host that
  * runs it. A small set of host-owned capabilities (OS wallet-key hydration,
  * vault bootstrap/access, the account-pool singleton, build-variant flags, and
- * the cloud-SSO pair route) used to be pulled UP from agent into app-core via a
- * memoized dynamic import of the `app-core/agent-bridge` subpath. That edge put
- * `@elizaos/app-core ↔ @elizaos/agent` in a real dependency cycle (#9626),
+ * the cloud-SSO pair route) used to be pulled UP from agent into app via a
+ * memoized dynamic import of the `app/agent-bridge` subpath. That edge put
+ * `@elizaos/app ↔ @elizaos/agent` in a real dependency cycle (#9626),
  * hidden from `madge` only by the narrow-subpath `.d.ts`.
  *
  * The host now INJECTS these capabilities via {@link setAgentHostBridge} before
- * booting the runtime (see app-core's boot funnel). When no host installs a
+ * booting the runtime (see app's boot funnel). When no host installs a
  * bridge — the on-device mobile bundle and any standalone-agent boot — the
- * built-in {@link defaultAgentHostBridge} supplies the exact no-op behavior the
- * mobile `app-core-runtime.cjs` stub used to provide. Agent therefore never
- * imports `@elizaos/app-core`, static or dynamic.
+ * built-in {@link defaultAgentHostBridge} exposes absent host capabilities.
+ * Vault writes reject until a durable host vault is installed. Agent therefore never
+ * imports `@elizaos/app`, static or dynamic.
  */
 
 import type {
   IncomingMessage as HttpIncomingMessage,
   ServerResponse as HttpServerResponse,
 } from "node:http";
-import type { AgentRuntime, RoleGateRole } from "@elizaos/core";
+import type { Vault } from "@elizaos/auth/vault";
 import {
   type AccountPoolBrokerSnapshot,
+  type AgentRuntime,
+  ElizaError,
   emptyAccountPoolBrokerSnapshot,
+  type RoleGateRole,
 } from "@elizaos/core";
-import type { resolveServiceRoutingInConfig } from "@elizaos/shared";
-import type { Vault } from "@elizaos/vault";
+import type { resolveServiceRoutingInConfig } from "@elizaos/host/protocol";
 
 export type AccountPoolCredentialsOptions = {
   activeBackend?: string | undefined;
@@ -39,6 +41,12 @@ export type AccountPoolCredentialsOptions = {
 
 /** Authenticated HTTP caller data resolved by the embedding host. */
 export interface AgentHttpRequestAuthorization {
+  /** Cryptographically verified external owner, never copied from caller headers. */
+  externalIdentity?: {
+    issuer: string;
+    subject: string;
+    organizationId: string;
+  };
   ok: boolean;
   role: RoleGateRole;
   /** Present for a DB-backed browser or machine session. */
@@ -100,9 +108,8 @@ export interface AccountPoolConsumerKeyAdmin {
 }
 
 /**
- * Host capabilities the agent runtime consumes at boot / request time. Every
- * member has a no-op default so a hostless (mobile / standalone) boot degrades
- * gracefully instead of throwing.
+ * Host capabilities the agent runtime consumes at boot / request time. Defaults support hostless boot; unavailable durable
+ * writes reject explicitly instead of reporting a successful no-op.
  */
 export interface AgentHostBridge {
   /**
@@ -132,7 +139,7 @@ export interface AgentHostBridge {
   isStoreBuild(): boolean;
   /**
    * Let an embedding host recognize its own HTTP authentication mechanism
-   * (for example app-core's browser session cookie). The standalone agent
+   * (for example app's browser session cookie). The standalone agent
    * has no host session model, so the default remains deny-by-default.
    */
   isHttpRequestAuthorized?(
@@ -148,6 +155,10 @@ export interface AgentHostBridge {
     runtime: AgentRuntime | null,
     options: AgentHttpRequestAuthorizationOptions,
   ): Promise<AgentHttpRequestAuthorization> | AgentHttpRequestAuthorization;
+  /** Subscribe to durable revocations; null means revalidate all sessions after a bulk revoke. */
+  subscribeSessionRevocations?(
+    listener: (sessionId: string | null) => void,
+  ): () => void;
   /**
    * Resolve a bare session-id bearer presented outside an HTTP request —
    * the WebSocket auth paths, where device pairing hands the client a
@@ -168,6 +179,12 @@ export interface AgentHostBridge {
     req: HttpIncomingMessage,
     res: HttpServerResponse,
   ): Promise<boolean>;
+  /** Host-owned pairing/session lifecycle, before the agent fallback auth routes. */
+  handleAuthRoutes?(
+    req: HttpIncomingMessage,
+    res: HttpServerResponse,
+    runtime: AgentRuntime | null,
+  ): Promise<boolean>;
   /**
    * One-shot desktop session bootstrap. The host owns browser-session
    * persistence, while the agent owns the packaged HTTP listener, so this
@@ -180,10 +197,18 @@ export interface AgentHostBridge {
   ): Promise<boolean>;
 }
 
-const noopVault: Vault = {
-  set: () => Promise.resolve(),
-  setIfAbsent: () => Promise.resolve(false),
-  setReference: () => Promise.resolve(),
+function rejectUnavailableVaultWrite(): Promise<never> {
+  return Promise.reject(
+    new ElizaError("Host vault is not installed", {
+      code: "AGENT_HOST_VAULT_UNAVAILABLE",
+    }),
+  );
+}
+
+const unavailableVault: Vault = {
+  set: rejectUnavailableVaultWrite,
+  setIfAbsent: rejectUnavailableVaultWrite,
+  setReference: rejectUnavailableVaultWrite,
   get: () => Promise.resolve(""),
   reveal: () => Promise.resolve(""),
   has: () => Promise.resolve(false),
@@ -200,14 +225,14 @@ function defaultBuildVariant(): "store" | "direct" {
 }
 
 /**
- * No-op host bridge — the exact behavior the mobile `app-core-runtime.cjs`
- * stub used to expose. Used whenever a host has not installed a real bridge.
+ * Default host capabilities when no embedding host installed a bridge.
+ * Empty vault reads describe absence; attempted writes cannot report success.
  */
 export const defaultAgentHostBridge: AgentHostBridge = {
   captureWalletEnvBootBaseline: () => undefined,
   hydrateWalletKeysFromNodePlatformSecureStore: () => undefined,
   runVaultBootstrap: () => Promise.resolve({ migrated: 0, failed: [] }),
-  sharedVault: () => noopVault,
+  sharedVault: () => unavailableVault,
   getDefaultAccountPool: () => null,
   getAccountPoolBrokerSnapshot: emptyAccountPoolBrokerSnapshot,
   applyAccountPoolApiCredentials: () => undefined,
@@ -237,7 +262,7 @@ function getHostBridgeProcessState(): AgentHostBridgeProcessState {
 }
 
 /**
- * Install the host bridge. Called by the app-core boot funnel before the
+ * Install the host bridge. Called by the app boot funnel before the
  * runtime starts. Idempotent — the last installer wins.
  */
 export function setAgentHostBridge(bridge: AgentHostBridge): void {
@@ -256,7 +281,7 @@ export function getAgentHostBridge(): AgentHostBridge {
  * service) must treat it as absent rather than silently losing data.
  */
 export function hasDurableHostVault(): boolean {
-  return getAgentHostBridge().sharedVault() !== noopVault;
+  return getAgentHostBridge().sharedVault() !== unavailableVault;
 }
 
 /** Test-only: drop any installed bridge so the default is used again. */

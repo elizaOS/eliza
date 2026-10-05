@@ -1,13 +1,17 @@
 // Handles v1 cloud API v1 eliza agents agentid environment route traffic with route-local auth expectations.
+
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { findReservedManagedElizaEnvKeys } from "@elizaos/cloud-shared/lib/services/managed-eliza-config";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { findReservedManagedElizaEnvKeys } from "@/lib/services/managed-eliza-config";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "PATCH, OPTIONS";
 

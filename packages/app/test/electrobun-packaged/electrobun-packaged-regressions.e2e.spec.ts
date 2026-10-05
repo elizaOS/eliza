@@ -59,10 +59,7 @@ function isPackagedPlatform(): boolean {
 function getApiBaseExpression(): string {
   // The boot config is the single source of truth for the API base; the
   // Electrobun renderer injection seeds its window mirror before renderer JS.
-  return [
-    "window.__ELIZAOS_APP_BOOT_CONFIG__?.apiBase",
-    "window.__ELIZAOS_API_BASE__",
-  ].join(" ?? ");
+  return "window.__ELIZAOS_APP_BOOT_CONFIG__?.apiBase";
 }
 
 function debugPackagedPhase(label: string): void {
@@ -576,7 +573,7 @@ async function readVisiblePluginIds(
     (current) =>
       current.ok &&
       current.ids.includes("openai") &&
-      current.ids.includes("ollama"),
+      current.ids.includes("local-inference"),
     {
       timeout: 20_000,
       message: `Timed out waiting for visible plugin catalog entries at ${PLUGINS_ROUTE}.`,
@@ -1025,7 +1022,9 @@ test("packaged desktop persists media, provider, and plugin state across relaunc
 
     await openRouteAndWait(harness, PLUGINS_ROUTE, PLUGINS_SELECTOR);
     const pluginIds = await readVisiblePluginIds(harness);
-    expect(pluginIds).toEqual(expect.arrayContaining(["openai", "ollama"]));
+    expect(pluginIds).toEqual(
+      expect.arrayContaining(["openai", "local-inference"]),
+    );
     await writeHarnessScreenshot(
       harness,
       testInfo,

@@ -1,129 +1,101 @@
-/**
- * Unit tests for streaming utilities in packages/core/src/utils/streaming.ts.
- * Tests PassthroughExtractor, MarkableExtractor, StreamError, createStreamingRetryState, and createStreamingContext.
- */
+import { describe, expect, it } from "vitest";
+import { REASONING_TAG_NAMES } from "./reasoning-tags";
+import { ResponseSkeletonStreamExtractor } from "./streaming";
 
-import { describe, expect, it, vi } from "vitest";
-import {
-	createStreamingContext,
-	createStreamingRetryState,
-	MarkableExtractor,
-	PassthroughExtractor,
-	StreamError,
-} from "./streaming";
+const skeleton = {
+	spans: [
+		{ kind: "literal" as const, value: '{"shouldRespond":' },
+		{ kind: "free-string" as const, key: "shouldRespond" },
+		{ kind: "literal" as const, value: ',"replyText":' },
+		{ kind: "free-string" as const, key: "replyText" },
+		{ kind: "literal" as const, value: "}" },
+	],
+};
+const head = '{"shouldRespond":"RESPOND","replyText":"';
 
-describe("StreamError", () => {
-	it("constructs and identifies StreamError instances", () => {
-		const error = new StreamError("CHUNK_TOO_LARGE", "Chunk too big", {
-			chunkSize: 2000,
+function run(pushes: string[]) {
+	const chunks: string[] = [];
+	const accumulated: string[] = [];
+	const extractor = new ResponseSkeletonStreamExtractor({
+		skeleton,
+		streamFields: ["replyText"],
+		onChunk: (chunk, _field, acc) => {
+			chunks.push(chunk);
+			if (acc !== undefined) accumulated.push(acc);
+		},
+	});
+	for (const push of pushes) extractor.push(push);
+	extractor.flush();
+	for (const value of [...chunks, ...accumulated]) {
+		expect(value.isWellFormed()).toBe(true);
+	}
+	return { text: chunks.join(""), final: accumulated.at(-1) };
+}
+
+describe("ResponseSkeletonStreamExtractor surrogate pairs (#30904)", () => {
+	it.each([
+		["an escaped pair", [`${head}Hi \\ud83d\\ude00!"}`], "Hi \u{1f600}!"],
+		[
+			"a literal pair split across pushes",
+			[`${head}Hi \ud83d`, '\ude00!"}'],
+			"Hi \u{1f600}!",
+		],
+		["a lone trailing high surrogate", [`${head}Hi \\ud83d"}`], "Hi �"],
+		["an interior lone high surrogate", [`${head}A\\ud83dB"}`], "A�B"],
+		["an isolated low surrogate", [`${head}A\\ude00B"}`], "A�B"],
+	])("emits well-formed chunks for %s", (_label, pushes, expected) => {
+		expect(run(pushes)).toEqual({ text: expected, final: expected });
+	});
+
+	it.each([
+		[
+			"a literal pair split across pushes",
+			["Hi \ud83d", "\ude00!"],
+			"Hi \u{1f600}!",
+		],
+		["a lone high surrogate at end-of-stream", ["Hi \ud83d"], "Hi �"],
+	])(
+		"emits well-formed passthrough prose for %s",
+		(_label, pushes, expected) => {
+			expect(run(pushes)).toEqual({ text: expected, final: expected });
+		},
+	);
+});
+
+describe("ResponseSkeletonStreamExtractor reasoning tags", () => {
+	it.each(REASONING_TAG_NAMES.map((name) => [name] as const))(
+		"hides streamed <%s> reasoning blocks",
+		(name) => {
+			const expected = "Hello there";
+			expect(
+				run([`${head}Hello <${name}>secret plan</${name}>there"}`]),
+			).toEqual({ text: expected, final: expected });
+		},
+	);
+
+	it.each(REASONING_TAG_NAMES.map((name) => [name] as const))(
+		"hides <%s> reasoning split across pushes",
+		(name) => {
+			const expected = "Hi ok";
+			const raw = `Hi <${name}>private</${name.toUpperCase()}>ok`;
+			const pushes = [...`${head}${raw}"}`];
+			expect(run(pushes)).toEqual({ text: expected, final: expected });
+		},
+	);
+
+	it("only closes a reasoning block with its own tag name", () => {
+		const expected = "A B";
+		expect(run([`${head}A <thinking>x</think>y</thinking>B"}`])).toEqual({
+			text: expected,
+			final: expected,
 		});
-
-		expect(error.name).toBe("StreamError");
-		expect(error.code).toBe("CHUNK_TOO_LARGE");
-		expect(error.message).toBe("Chunk too big");
-		expect(error.details).toEqual({ chunkSize: 2000 });
-		expect(StreamError.isStreamError(error)).toBe(true);
-		expect(StreamError.isStreamError(new Error("generic"))).toBe(false);
-	});
-});
-
-describe("PassthroughExtractor", () => {
-	it("passes chunks through unchanged and implements IStreamExtractor lifecycle", () => {
-		const extractor = new PassthroughExtractor();
-		expect(extractor.done).toBe(false);
-
-		expect(extractor.push("hello")).toBe("hello");
-		expect(extractor.push(" world")).toBe(" world");
-		expect(extractor.flush()).toBe("");
-
-		extractor.reset();
-		expect(extractor.done).toBe(false);
 	});
 
-	it("throws StreamError when chunk exceeds MAX_CHUNK_SIZE", () => {
-		const extractor = new PassthroughExtractor();
-		const oversized = "x".repeat(1024 * 1024 + 1);
-
-		expect(() => extractor.push(oversized)).toThrow(StreamError);
-	});
-
-	it("rejects non-string chunks at the runtime boundary", () => {
-		const extractor = new PassthroughExtractor();
-
-		expect(() => extractor.push(42 as never)).toThrow(TypeError);
-	});
-});
-
-describe("MarkableExtractor", () => {
-	it("passes through chunks and marks complete on demand", () => {
-		const extractor = new MarkableExtractor();
-		expect(extractor.done).toBe(false);
-
-		expect(extractor.push("chunk-1")).toBe("chunk-1");
-		expect(extractor.flush()).toBe("");
-		expect(extractor.done).toBe(false);
-
-		extractor.markComplete();
-		expect(extractor.done).toBe(true);
-
-		extractor.reset();
-		expect(extractor.done).toBe(false);
-	});
-});
-
-describe("createStreamingRetryState", () => {
-	it("tracks streamed text and handles reset", () => {
-		const extractor = new PassthroughExtractor();
-		const retryState = createStreamingRetryState(extractor);
-
-		expect(retryState.isComplete()).toBe(false);
-		expect(retryState.getStreamedText()).toBe("");
-
-		retryState.appendText("token1 ");
-		retryState.appendText("token2");
-		expect(retryState.getStreamedText()).toBe("token1 token2");
-
-		retryState.reset();
-		expect(retryState.getStreamedText()).toBe("");
-	});
-});
-
-describe("createStreamingContext", () => {
-	it("routes streaming chunks through extractor to callback and records text", async () => {
-		const extractor = new MarkableExtractor();
-		const receivedChunks: string[] = [];
-		const callback = vi.fn(async (chunk: string) => {
-			receivedChunks.push(chunk);
+	it("keeps non-reasoning angle-bracket text visible", () => {
+		const expected = "1 <thin 2 <b>x</b>";
+		expect(run([`${head}${expected}"}`])).toEqual({
+			text: expected,
+			final: expected,
 		});
-
-		const context = createStreamingContext(extractor, callback, "msg-123");
-		expect(context.messageId).toBe("msg-123");
-		expect(context.isComplete()).toBe(false);
-
-		await context.onStreamChunk("first ");
-		await context.onStreamChunk("second");
-
-		expect(receivedChunks).toEqual(["first ", "second"]);
-		expect(context.getStreamedText()).toBe("first second");
-
-		extractor.markComplete();
-		expect(context.isComplete()).toBe(true);
-
-		// When complete, further chunks are ignored
-		await context.onStreamChunk("ignored");
-		expect(receivedChunks).toEqual(["first ", "second"]);
-	});
-
-	it("forwards the structured-stream revision to the downstream callback", async () => {
-		const callback = vi.fn();
-		const context = createStreamingContext(
-			new MarkableExtractor(),
-			callback,
-			"msg-revision",
-		);
-
-		await context.onStreamChunk("new", "msg-revision", "new", 7);
-
-		expect(callback).toHaveBeenCalledWith("new", "msg-revision", "new", 7);
 	});
 });

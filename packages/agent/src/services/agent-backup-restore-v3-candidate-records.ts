@@ -13,7 +13,6 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { isProxy, isUint8Array } from "node:util/types";
-import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
@@ -22,7 +21,8 @@ import {
   type AgentBackupRestoreV3StageRecordReceipt,
   type AgentBackupRestoreV3StagingSession,
   type AgentBackupRestoreV3StreamComponentName,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
 import {
   type AgentBackupRestoreV3CandidateFs,
   type AgentBackupRestoreV3CandidateFsLock,
@@ -832,7 +832,8 @@ function snapshotRecordControl(
   return snapshot;
 }
 
-function snapshotRecord(
+/** Caller owns the intrinsic payload copy and must zero it after its effect settles. */
+export function snapshotAgentBackupRestoreV3CandidateRecord(
   input: Readonly<AgentBackupRestoreV3StagedRecord>,
   control: Readonly<AgentBackupRestoreV3OperationControl>,
 ): CopiedRecord {
@@ -1844,7 +1845,7 @@ export function stageAgentBackupRestoreV3CandidateRecord(
   const session = snapshotSession(
     exactInput.session as Readonly<AgentBackupRestoreV3StagingSession>,
   );
-  const copied = snapshotRecord(
+  const copied = snapshotAgentBackupRestoreV3CandidateRecord(
     exactInput.record as Readonly<AgentBackupRestoreV3StagedRecord>,
     control,
   );

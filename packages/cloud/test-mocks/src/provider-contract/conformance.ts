@@ -24,7 +24,6 @@ const PROFILE_SCENARIOS: Record<
     "connection-reset",
     "provider-4xx",
     "provider-5xx",
-    "opaque-connection-id",
     "secret-redaction",
     "read-policy",
   ],

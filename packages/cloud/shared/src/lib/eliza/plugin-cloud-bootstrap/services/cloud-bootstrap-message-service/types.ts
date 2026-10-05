@@ -7,7 +7,7 @@
  */
 
 import type { Content, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import type { NativePlannerActionResult, StrategyMode } from "../../types";
+import type { NativePlannerActionResult } from "../../types";
 
 export type RuntimeWithEvaluators = IAgentRuntime & {
   evaluate?: (
@@ -19,13 +19,7 @@ export type RuntimeWithEvaluators = IAgentRuntime & {
   ) => Promise<unknown>;
 };
 
-export interface MessageProcessingResult {
-  didRespond: boolean;
-  responseContent: Content | null;
-  responseMessages: Memory[];
-  state: State;
-  mode: StrategyMode;
-}
+export type { MessageProcessingResult } from "@elizaos/core";
 
 export interface ResponseDecision {
   shouldRespond: boolean;

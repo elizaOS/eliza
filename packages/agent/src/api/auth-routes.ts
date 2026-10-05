@@ -3,23 +3,25 @@
  * reports the caller's identity, session, and server-authoritative boundary
  * role (OWNER for a trusted loopback owner or valid API token, else GUEST with
  * a 401); `GET /api/auth/status` reports whether a token is required and the
- * pairing-code state; `GET /api/auth/pair-code` exposes the current code on
- * loopback for operators; `POST /api/auth/pair` exchanges a rate-limited,
- * timing-safe pairing code for the configured connection token. These are the
+ * pairing-code state; `GET /api/auth/pair-code` exposes the current code to
+ * operators on loopback or holding the API token (the remote-agent pairing
+ * contract in @elizaos/core); `POST /api/auth/pair` exchanges a rate-limited,
+ * timing-safe, instance-bound pairing code for the connection token. These are the
  * entry points a client hits before it is authenticated, so they front the
- * rest of the API surface. In app-core the pair handler is shadowed by the
+ * rest of the API surface. In app the pair handler is shadowed by the
  * compat route that mints a real machine session.
  */
 import crypto from "node:crypto";
-import type {
-  PostAuthPairResponse,
-  RouteRequestContext,
-} from "@elizaos/shared";
 import {
-  isCloudProvisionedContainer,
   PostAuthPairRequestSchema,
+  type PostAuthPairResponse,
+} from "@elizaos/contracts";
+import {
+  type RouteRequestContext,
   resolveApiToken,
-} from "@elizaos/shared";
+} from "@elizaos/host/protocol";
+
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import {
   isAuthorized,
   isTrustedLocalRequest,
@@ -38,6 +40,7 @@ export interface AuthRouteContext extends RouteRequestContext {
   normalizePairingCode: (code: string) => string;
   rateLimitPairing: (ip: string | null) => boolean;
   getPairingExpiresAt: () => number;
+  getPairingInstanceId: () => string;
   clearPairing: () => void;
 }
 
@@ -57,6 +60,7 @@ export async function handleAuthRoutes(
     normalizePairingCode,
     rateLimitPairing,
     getPairingExpiresAt,
+    getPairingInstanceId,
     clearPairing,
   } = ctx;
 
@@ -114,7 +118,7 @@ export async function handleAuthRoutes(
     if (isCloudProvisionedContainer()) {
       // Steward-managed cloud containers enforce API auth upstream, but the
       // local pairing flow is intentionally unavailable there. Reporting
-      // required=true would strand app-core clients in PairingView.
+      // required=true would strand app clients in PairingView.
       json(res, {
         required: false,
         pairingEnabled: false,
@@ -130,16 +134,18 @@ export async function handleAuthRoutes(
       authenticated: isAuthorized(req),
       pairingEnabled: enabled,
       expiresAt: enabled ? getPairingExpiresAt() : null,
+      instanceId: getPairingInstanceId(),
     });
     return true;
   }
 
-  // Loopback-only helper for operators pairing a remote browser against a
-  // standalone agent (`bun run start`). External clients must enter the code
-  // manually — never receive it over the LAN.
+  // Operator helper for pairing a device against a standalone agent. Only a
+  // trusted loopback operator or a caller already holding the API token may
+  // read the code (a hosted agent, e.g. in a dstack CVM, has no reachable
+  // loopback). Unauthenticated clients must enter the code they were given.
   if (method === "GET" && pathname === "/api/auth/pair-code") {
-    if (!isTrustedLocalRequest(req)) {
-      error(res, "Pair code visible on loopback only", 403);
+    if (!isTrustedLocalRequest(req) && !isAuthorized(req)) {
+      error(res, "Pair code requires loopback or the API token", 403);
       return true;
     }
     if (isCloudProvisionedContainer()) {
@@ -155,19 +161,23 @@ export async function handleAuthRoutes(
       error(res, "Pairing not enabled", 503);
       return true;
     }
-    json(res, { code, expiresAt: getPairingExpiresAt() });
+    json(res, {
+      code,
+      expiresAt: getPairingExpiresAt(),
+      instanceId: getPairingInstanceId(),
+    });
     return true;
   }
 
   if (method === "POST" && pathname === "/api/auth/pair") {
     // NOTE: this handler is shadowed by `handleAuthPairingCompatRoutes` in
-    // `@elizaos/app-core` (the compat route mints a real machine session
+    // `@elizaos/app` (the compat route mints a real machine session
     // bound to an identity, which authenticates against
     // `ensureCompatApiAuthorizedAsync`). This agent-only path is kept for
     // standalone agent-server usage; it returns the static connection key,
     // which only authenticates routes that explicitly accept the static
     // token (e.g. `/api/auth/status`). For full route coverage, run via
-    // app-core so the compat handler intercepts first.
+    // app so the compat handler intercepts first.
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostAuthPairRequestSchema.safeParse(rawBody);
@@ -201,6 +211,23 @@ export async function handleAuthRoutes(
       return true;
     }
 
+    const instanceId = getPairingInstanceId();
+    if (
+      parsed.data.instanceId !== undefined &&
+      parsed.data.instanceId.toLowerCase() !== instanceId
+    ) {
+      json(
+        res,
+        {
+          error: "Pairing code was issued by a different server instance",
+          code: "PAIRING_INSTANCE_MISMATCH",
+          instanceId,
+        },
+        409,
+      );
+      return true;
+    }
+
     const provided = parsed.data.code.trim();
 
     // Accept the raw API token itself as a valid "pairing code" — but only
@@ -225,7 +252,7 @@ export async function handleAuthRoutes(
       crypto.timingSafeEqual(tokenA, tokenB);
 
     if (tokenMatch) {
-      const response: PostAuthPairResponse = { token };
+      const response: PostAuthPairResponse = { token, instanceId };
       json(res, response);
       return true;
     }
@@ -251,7 +278,7 @@ export async function handleAuthRoutes(
     }
 
     clearPairing();
-    const response: PostAuthPairResponse = { token };
+    const response: PostAuthPairResponse = { token, instanceId };
     json(res, response);
     return true;
   }

@@ -28,7 +28,9 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  ElizaError,
   inspectSendHandlerResult,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   registerRuntimeManagedInternalActor,
   ServiceType,
@@ -425,7 +427,12 @@ async function dispatchWorkflow(
         eventKind: event.kind,
         eventPayload: event.payload ?? {},
       }
-    : {};
+    : typeof task.metadata?.hostedVersionId === "string"
+      ? {
+          scheduledAtMs: trigger.nextRunAtMs,
+          workflowVersionId: task.metadata.hostedVersionId,
+        }
+      : {};
   const result = await svc.execute(trigger.workflowId, payload, {
     idempotencyKey,
     ...(event?.triggerChainDepth !== undefined
@@ -525,7 +532,17 @@ async function dispatchPrompt(
       deliveryCallback = async (content) => {
         const disposition = inspectSendHandlerResult(
           await runtime.sendMessageToTarget(
-            { source: connectorSource, roomId: originRoomId },
+            {
+              source: connectorSource,
+              roomId: originRoomId,
+              // Simple response persistence runs alongside this callback. The
+              // dashboard transport delivers the same identity, not a new row.
+              ...(connectorSource === MESSAGE_SOURCE_CLIENT_CHAT &&
+              content.simple === true &&
+              content.responseId
+                ? { responseMemoryId: content.responseId }
+                : {}),
+            },
             { ...content, agentVoiced: true },
           ),
         );
@@ -625,6 +642,14 @@ export async function executeTriggerTask(
     return { status: "skipped", taskDeleted: false };
   }
 
+  if (task.scheduleError !== undefined) {
+    throw new ElizaError(task.scheduleError, {
+      code: "TASK_SCHEDULE_INVALID",
+      context: { taskId: task.id, field: "metadata.scheduledAt" },
+      severity: "fatal",
+    });
+  }
+
   const trigger = readTriggerConfig(task);
   if (!trigger) {
     recordExecutionMetric(runtime.agentId, "skipped", Date.now());
@@ -716,6 +741,9 @@ export async function executeTriggerTask(
     // emit a duplicate success notification, and could prematurely exhaust
     // maxRuns even though no second workflow execution was started.
     recordExecutionMetric(runtime.agentId, "skipped", Date.now());
+    if (options.source !== "event") {
+      return advanceDedupedScheduledFire(runtime, task, result.executionId);
+    }
     return {
       status: "skipped",
       taskDeleted: false,
@@ -827,7 +855,7 @@ export async function executeTriggerTask(
 
   let taskToPersist = task;
   let triggerToPersist = trigger;
-  if (options.source === "event") {
+  {
     const currentTask = await runtime.getTask(task.id);
     if (!currentTask) {
       const finishedAt = Date.now();
@@ -930,18 +958,7 @@ export async function executeTriggerTask(
   // Refresh the idempotency key for the next fire so a re-run within the
   // same minute window collapses at dispatch. The schedule-arming layer
   // (`armSchedules`) seeds the initial key with the same formula.
-  if (
-    metadataToPersist.trigger?.kind === "workflow" &&
-    metadataToPersist.trigger.workflowId &&
-    typeof metadataToPersist.trigger.nextRunAtMs === "number"
-  ) {
-    const minuteBucket = Math.floor(
-      metadataToPersist.trigger.nextRunAtMs / 60_000,
-    );
-    metadataToPersist.idempotencyKey = `${metadataToPersist.trigger.workflowId}:${minuteBucket}`;
-  } else {
-    delete metadataToPersist.idempotencyKey;
-  }
+  refreshNextFireIdempotencyKey(metadataToPersist);
 
   await runtime.updateTask(task.id, {
     description:
@@ -981,6 +998,72 @@ export async function executeTriggerTask(
     updateInterval:
       typeof metadataToPersist.updateInterval === "number"
         ? metadataToPersist.updateInterval
+        : undefined,
+  };
+}
+
+function refreshNextFireIdempotencyKey(metadata: TriggerTaskMetadata): void {
+  if (
+    metadata.trigger?.kind === "workflow" &&
+    metadata.trigger.workflowId &&
+    typeof metadata.trigger.nextRunAtMs === "number"
+  ) {
+    const minuteBucket = Math.floor(metadata.trigger.nextRunAtMs / 60_000);
+    metadata.idempotencyKey = `${metadata.trigger.workflowId}:${minuteBucket}`;
+  } else {
+    delete metadata.idempotencyKey;
+  }
+}
+
+async function advanceDedupedScheduledFire(
+  runtime: IAgentRuntime,
+  task: Task,
+  executionId: string | undefined,
+): Promise<TriggerExecutionResult> {
+  const currentTask = task.id ? await runtime.getTask(task.id) : null;
+  const currentTrigger = currentTask ? readTriggerConfig(currentTask) : null;
+  if (!currentTask?.id || !currentTrigger) {
+    return {
+      status: "skipped",
+      taskDeleted: !currentTask,
+      executionId,
+    };
+  }
+  if (readTaskIdempotencyKey(currentTask) !== readTaskIdempotencyKey(task)) {
+    return {
+      status: "skipped",
+      taskDeleted: false,
+      trigger: taskToTriggerSummary(currentTask),
+      executionId,
+    };
+  }
+  if (currentTrigger.triggerType === "once") {
+    await runtime.deleteTask(currentTask.id);
+    return { status: "skipped", taskDeleted: true, executionId };
+  }
+  const nextMetadata = buildTriggerMetadata({
+    existingMetadata: taskMetadata(currentTask),
+    trigger: currentTrigger,
+    nowMs: Date.now(),
+  });
+  if (!nextMetadata) {
+    return {
+      status: "skipped",
+      taskDeleted: false,
+      trigger: taskToTriggerSummary(currentTask),
+      executionId,
+    };
+  }
+  refreshNextFireIdempotencyKey(nextMetadata);
+  await runtime.updateTask(currentTask.id, { metadata: nextMetadata });
+  return {
+    status: "skipped",
+    taskDeleted: false,
+    trigger: taskToTriggerSummary({ ...currentTask, metadata: nextMetadata }),
+    executionId,
+    updateInterval:
+      typeof nextMetadata.updateInterval === "number"
+        ? nextMetadata.updateInterval
         : undefined,
   };
 }

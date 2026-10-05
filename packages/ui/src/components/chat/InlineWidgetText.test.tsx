@@ -43,7 +43,7 @@ const { clientMock } = vi.hoisted(() => ({
 vi.mock("../../api/client", () => ({ client: clientMock }));
 
 import { InlineWidgetText } from "./InlineWidgetText";
-// The task widget is plugin-owned (registered by plugin-task-coordinator at
+// The task widget is plugin-owned (registered by plugin-agent-orchestrator at
 // boot, not a built-in); register it here so this surface renders it too.
 import { registerTaskWidget } from "./widgets/task-widget";
 
@@ -106,6 +106,22 @@ describe("InlineWidgetText", () => {
       <InlineWidgetText content="just a normal reply" />,
     );
     expect(container.textContent).toContain("just a normal reply");
+  });
+
+  it("retains the source message when choosing a reminder in the shell", () => {
+    const id = "20f881d4-6d80-4f1e-8ea6-dc207d89ddb9";
+    const view = withApp(
+      <InlineWidgetText
+        messageId={id}
+        content={
+          "[CHOICE:lifeops-reminder id=reminder-source]\ndone=Done\n[/CHOICE]"
+        }
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(view.sendActionMessage).toHaveBeenCalledWith("done", {
+      metadata: { replyToMessageId: id, reminderChoiceId: "reminder-source" },
+    });
   });
 
   it("renders a choice picker and does not leak the [CHOICE] marker", () => {
@@ -200,6 +216,38 @@ describe("InlineWidgetText", () => {
     expect(container.textContent ?? "").not.toContain("<think>");
   });
 
+  it("renders a complete model table with a surplus closing brace without another model call", () => {
+    const patch = {
+      op: "add",
+      path: "/elements/comparison",
+      value: {
+        type: "Table",
+        props: {
+          columns: ["Project", "Tasks"],
+          rows: [
+            ["Amber", "3"],
+            ["Birch", "7"],
+            ["Cedar", "2"],
+          ],
+        },
+        children: [],
+      },
+    };
+    const { container } = withApp(
+      <InlineWidgetText
+        content={
+          '{"op":"add","path":"/root","value":"comparison"}\n' +
+          JSON.stringify(patch) +
+          "}"
+        }
+      />,
+    );
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("cell", { name: "Cedar" })).toBeTruthy();
+    expect(screen.getByRole("cell", { name: "7" })).toBeTruthy();
+    expect(container.textContent).not.toContain('"op"');
+  });
+
   it("renders a fenced UiSpec JSON block as an interactive UI block", () => {
     // Valid UiSpec shape (root: string + elements: object) so parseSegments
     // classifies it as a ui-spec region, not code.
@@ -263,5 +311,29 @@ describe("InlineWidgetText", () => {
         "__permission_card__:granted feature=lifeops.reminders.create permission=reminders",
       ),
     );
+  });
+
+  it.each(["lifeops-reminder", "lifeops-calendar-reminder"])(
+    "hides historical %s panels only for reminder producer messages",
+    (scope) => {
+      const content = `Reminder: Take your meds.\n\n[CHOICE:${scope} id=history]\ndone=Done\n10 minutes=Snooze 10m\nskip=Skip\n[/CHOICE]`;
+      const before = content;
+      withApp(<InlineWidgetText content={content} producerScope="reminder" />);
+      expect(screen.getByText(/Reminder: Take your meds/)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+      expect(content).toBe(before);
+    },
+  );
+  it("keeps ordinary agent question choices visible", () => {
+    withApp(
+      <InlineWidgetText
+        content={
+          "[CHOICE:clarification id=question]\nyes=Yes\nno=No\n[/CHOICE]"
+        }
+        producerScope="reminder"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Yes" })).toBeTruthy();
   });
 });

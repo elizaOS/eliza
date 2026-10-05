@@ -1,9 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Deploy a trivial test agent via the Eliza Cloud staging API and wait
- * for it to reach `running` / `databaseStatus=ready`. Mirrors the
- * pattern in `live-cloud-provision-smoke.ts` but trimmed to the minimum
- * needed for the E2E heartbeat check.
+ * Creates the manual diagnostic's staging agent and waits for runtime and database readiness.
+ * The shared smoke plugin list keeps its minimal runtime consistent with the
+ * canonical cloud onboarding smoke.
  */
 
 import { randomBytes } from "node:crypto";

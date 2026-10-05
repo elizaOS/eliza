@@ -2,8 +2,9 @@
  * Conversational calendar writes fail closed when approval or authoritative
  * source context is unavailable; provider CRUD is never a fallback.
  */
+
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
@@ -55,6 +56,7 @@ function runtime(service: Record<string, unknown>): IAgentRuntime {
       debug: vi.fn(),
     },
     reportError: vi.fn(),
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
 }
@@ -119,12 +121,18 @@ describe("calendar conversational mutation gateway guardrails", () => {
       getConditionalCalendarMutationTarget: vi.fn(async () => TARGET),
       updateCalendarEvent: vi.fn(),
     };
-    const action = createCalendarActionRunner(deps());
+    const action = createCalendarActionRunner({
+      ...deps(),
+      runJsonModel: vi.fn(async () => ({
+        rawResponse: "{}",
+        parsed: { title: "Pediatrician follow-up" },
+      })),
+    });
     const callback = vi.fn(async () => []);
 
     const result = await action.handler(
       runtime(service),
-      message("rename the pediatrician appointment"),
+      message("rename the pediatrician appointment to Pediatrician follow-up"),
       undefined,
       {
         parameters: {
@@ -167,6 +175,7 @@ describe("calendar conversational mutation gateway guardrails", () => {
     };
     const service = {
       getCalendarFeed: vi.fn(async () => feed),
+      listCalendars: vi.fn(async () => []),
       prepareCalendarEventCreate: vi.fn(),
       createCalendarEvent: vi.fn(),
     };

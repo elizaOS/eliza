@@ -5,12 +5,12 @@
  * cannot drift from the write boundary.
  */
 
+import { normalizeKeywordMatchText } from "@elizaos/core";
 import {
-  normalizeKeywordMatchText,
   textStatesExplicitRecurrence,
   UI_LANGUAGES,
   type UiLanguage,
-} from "@elizaos/shared";
+} from "@elizaos/core/protocol";
 
 type PhraseSpec = {
   value: string;

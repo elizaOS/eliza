@@ -1,41 +1,20 @@
 # @elizaos/native-plugin-shared-types
 
-Shared TypeScript type contracts for elizaOS native plugin bridges.
+Shared TypeScript type contracts for elizaOS native plugin bridges (Capacitor and
+Electrobun).
 
-## What this package does
+Type-only bridge contracts exported directly from src/index.ts. No runtime
+configuration, separate build, or test runner is defined; validate consumers and run the
+package typecheck.
 
-This is a **type-only workspace package**. It provides canonical TypeScript interfaces and type aliases used by elizaOS plugins that bridge between web, Capacitor (mobile), and Electrobun (desktop) runtimes. It contains no runtime code and registers no elizaOS plugin actions, providers, or services.
+## Development
 
-## Exported types
+Install dependencies with `bun install` at the repository root. Run from that root:
 
-### Native bridge contracts
-
-- **`EventCallback<T>`** — generic event callback used across Capacitor and Electrobun plugin bridges.
-- **`ListenerEntry<TEventName, TEventData>`** — listener entry shape consumed by Electrobun plugin bridges.
-
-### Web Speech API shims
-
-TypeScript's `lib.dom.d.ts` does not expose `SpeechRecognition` in all compiler targets. These minimal interfaces cover the surface used by web implementations of speech-enabled plugins (e.g. Swabble, TalkMode):
-
-- **`SpeechRecognitionInstance`** — minimal interface for a Web Speech API `SpeechRecognition` instance.
-- **`SpeechRecognitionResultEvent`** — result event shape.
-- **`SpeechRecognitionResultList`** — indexed result list with `isFinal` and `transcript`.
-- **`SpeechRecognitionCtor`** — constructor type for `SpeechRecognitionInstance`.
-- **`SpeechRecognitionWindow`** — window augmentation type declaring optional `SpeechRecognition` and `webkitSpeechRecognition` properties.
-
-## Usage
-
-This package is consumed as a `workspace:*` dependency by other plugins in the elizaOS monorepo:
-
-```ts
-import type { EventCallback, SpeechRecognitionInstance } from "@elizaos/native-plugin-shared-types";
+```bash
+bun run --cwd plugins/plugin-native-shared-types typecheck  # static validation
 ```
 
-## Requirements
+No standalone build script is defined; this package is consumed or executed from source.
 
-No environment variables. No configuration. No build step — the package exports TypeScript source directly.
-
-## Notes
-
-- `"private": true` — not published to npm; used only within the elizaOS monorepo workspace.
-- All types are in a single file: `src/index.ts`.
+No standalone `test` script is defined in this package.

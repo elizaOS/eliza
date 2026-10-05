@@ -6,8 +6,7 @@
  *
  * Caller-supplied audio URLs load only through the platform-installed guarded
  * fetcher (`models/transcription-url.ts`) so agents and tools cannot aim
- * transcription at loopback, link-local, or private hosts, and so this shared
- * module never names a Node-only core subpath a browser bundle would follow.
+ * transcription at loopback, link-local, or private hosts.
  * Provider endpoint calls (OpenAI-compatible base URL) stay on the configured
  * API path and are not remote-media fetches.
  */
@@ -50,8 +49,7 @@ function isBlobOrFile(value: unknown): value is Blob | File {
 }
 
 function isBuffer(value: unknown): value is Buffer {
-  // A real browser has no Buffer global; referencing it bare throws.
-  return typeof Buffer !== "undefined" && Buffer.isBuffer(value);
+  return Buffer.isBuffer(value);
 }
 
 function isLocalTranscriptionParams(value: unknown): value is LocalTranscriptionParams {
@@ -121,7 +119,7 @@ export async function handleTranscription(
 
   if (typeof input === "string") {
     logger.debug(`[OpenAI] Fetching audio from URL: ${input}`);
-    blob = await fetchAudioFromUrl(input);
+    blob = await fetchAudioFromUrl(input, callerSignal);
   } else if (isBlobOrFile(input)) {
     blob = input;
   } else if (isBuffer(input)) {
@@ -142,7 +140,7 @@ export async function handleTranscription(
     }
   } else if (isCoreTranscriptionParams(input)) {
     logger.debug(`[OpenAI] Fetching audio from URL: ${input.audioUrl}`);
-    blob = await fetchAudioFromUrl(input.audioUrl);
+    blob = await fetchAudioFromUrl(input.audioUrl, callerSignal);
     extraParams = { prompt: input.prompt };
   } else {
     throw new Error(

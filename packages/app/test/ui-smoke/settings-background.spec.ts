@@ -2,11 +2,13 @@
  * Playwright UI-smoke spec for the Settings Background app flow using the real
  * renderer fixture.
  */
-import { mkdir } from "node:fs/promises";
+
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
+import type { ModelHubSnapshot } from "@elizaos/contracts";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import sharp from "sharp";
-import type { ModelHubSnapshot } from "../../../ui/src/api/client-local-inference";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import {
   expectNoPageDiagnostics,
   installDefaultAppRoutes,
@@ -15,17 +17,10 @@ import {
   seedAppStorage,
   UI_SMOKE_CPU_ONLY_HARDWARE,
 } from "./helpers";
+import { installReadyDesktopStatusBridge } from "./helpers/desktop-status-bridge";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
-// Routed Settings uses the manifest's opaque background, including safe areas.
-// Detached Settings can reveal the shared wallpaper. Exercise both policies,
-// plus desktop/mobile readability and recovery controls.
-
-const SCREENSHOT_DIR = path.join(
-  process.cwd(),
-  "aesthetic-audit-output",
-  "settings-background",
-);
+const SCREENSHOT_DIR = testOutputPath("aesthetic-audit", "settings-background");
 
 // A handful of launcher views so the launcher is non-empty (the home
 // WidgetHost / catalog only renders content when the catalog has visible
@@ -132,6 +127,17 @@ async function installSettingsBackgroundRoutes(
   hubOverrides: Partial<ModelHubSnapshot> = {},
 ): Promise<void> {
   await installDefaultAppRoutes(page);
+  await page.route("**/api/cloud/credits", (route) =>
+    fulfillJson(route, {
+      balance: 100,
+      low: false,
+      critical: false,
+      authRejected: false,
+    }),
+  );
+  await page.route("**/api/local-inference/providers", (route) =>
+    fulfillJson(route, { providers: [] }),
+  );
 
   await page.route("**/api/config", async (route) => {
     if (route.request().method() !== "GET") {
@@ -169,8 +175,7 @@ async function installSettingsBackgroundRoutes(
 
   // Local-inference shell-level GETs — the booted zero-key stack answers 501,
   // which the diagnostics guard treats as a failure. A fresh agent has no local
-  // model, so an idle snapshot with valid OS-fallback hardware matches the
-  // real zero-state.
+  // model, so an idle/unsupported snapshot matches real zero-state.
   await page.route("**/api/local-inference/providers", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -276,125 +281,8 @@ async function seedSettingsBackgroundStorage(
   });
 }
 
-async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const secureStore = new Map<string, string>();
-    type Bridge = {
-      request?: Record<string, (params?: unknown) => Promise<unknown>>;
-      onMessage?: (
-        messageName: string,
-        listener: (payload: unknown) => void,
-      ) => void;
-      offMessage?: (
-        messageName: string,
-        listener: (payload: unknown) => void,
-      ) => void;
-    };
-    const win = window as Window & { __ELIZA_ELECTROBUN_RPC__?: Bridge };
-    const existing = win.__ELIZA_ELECTROBUN_RPC__;
-    const now = Date.now();
-    const readyStatus = {
-      state: "running",
-      agentName: "Playwright Smoke",
-      model: "ui-smoke",
-      uptime: 60_000,
-      startedAt: now - 60_000,
-      pendingRestart: false,
-      pendingRestartReasons: [],
-      startup: { phase: "running", attempt: 0 },
-    };
-    const readyLaunch = {
-      phase: "ready",
-      agent: {
-        state: "running",
-        port: null,
-        apiBase: null,
-        startedAt: now - 60_000,
-        error: null,
-      },
-      boot: {
-        runtimePhase: "running",
-        pluginsLoaded: 0,
-        pluginsFailed: 0,
-        database: "ok",
-      },
-      auth: { checked: true, required: false },
-      firstRun: { checked: true, complete: true, cloudProvisioned: true },
-      remotes: { seeded: true, requiredStarted: false, errors: [] },
-      localModel: { backgroundDownloadQueued: false, blocking: false },
-      diagnostics: { logPath: "", statusPath: "" },
-      recovery: {
-        canRetry: false,
-        canOpenLogs: false,
-        canCreateBugReport: false,
-      },
-      updatedAt: new Date(now).toISOString(),
-    };
-    const readyBoot = {
-      state: "running",
-      phase: "running",
-      lastError: null,
-      pluginsLoaded: 0,
-      pluginsFailed: 0,
-      database: "ok",
-      agentName: "Playwright Smoke",
-      port: null,
-      startedAt: now - 60_000,
-    };
-    const withReadyStatus = (bridge?: Bridge): Bridge => ({
-      request: {
-        ...(bridge?.request ?? {}),
-        desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
-        desktopRegisterShortcut: async () => ({ success: true }),
-        desktopSetTrayMenu: async () => undefined,
-        secureStoreGet: async ({ kind }: { kind: string }) =>
-          secureStore.has(kind)
-            ? { ok: true, value: secureStore.get(kind) }
-            : { ok: false, reason: "not_found" },
-        secureStoreSet: async ({
-          kind,
-          value,
-        }: {
-          kind: string;
-          value: string;
-        }) => {
-          secureStore.set(kind, value);
-          return { ok: true };
-        },
-        secureStoreDelete: async ({ kind }: { kind: string }) => ({
-          ok: true,
-          deleted: secureStore.delete(kind),
-        }),
-        getAgentStatus: async () => readyStatus,
-        launchProgress: async () => readyLaunch,
-        bootProgress: async () => readyBoot,
-      },
-      onMessage: bridge?.onMessage ?? (() => {}),
-      offMessage: bridge?.offMessage ?? (() => {}),
-    });
-    let currentBridge = withReadyStatus(existing);
-    Object.defineProperty(win, "__ELIZA_ELECTROBUN_RPC__", {
-      configurable: true,
-      get() {
-        return currentBridge;
-      },
-      set(nextBridge: Bridge | undefined) {
-        currentBridge = withReadyStatus(nextBridge);
-      },
-    });
-    localStorage.setItem(
-      "elizaos:active-server",
-      JSON.stringify({
-        id: "local:playwright-smoke",
-        kind: "local",
-        label: "Playwright Smoke",
-        apiBase: window.location.origin,
-      }),
-    );
-  });
-}
-
 async function screenshot(page: Page, name: string): Promise<void> {
+  await expect(page.getByTestId("permission-priming-modal")).toBeHidden();
   await mkdir(SCREENSHOT_DIR, { recursive: true });
   await captureScreenshotWithQualityRetry(page, name, {
     path: path.join(SCREENSHOT_DIR, `${name}.png`),
@@ -413,7 +301,11 @@ async function gotoSettings(page: Page): Promise<void> {
   });
 }
 
-test.describe("settings background policies and recovery controls", () => {
+test.describe("Settings appearance and model controls", () => {
+  test.beforeAll(async () => {
+    await rm(SCREENSHOT_DIR, { force: true, recursive: true });
+  });
+
   test.beforeEach(({ page }) => {
     installPageDiagnosticsGuard(page);
   });
@@ -505,10 +397,9 @@ test.describe("settings background policies and recovery controls", () => {
           hasApiKey: true,
         }),
       );
-      // Connected Cloud voice also reads account credit state. Supply that
-      // dependency so media-decoder failures are the only expected error.
       await page.route("**/api/cloud/credits", (route) =>
         fulfillJson(route, {
+          connected: true,
           balance: 100,
           low: false,
           critical: false,
@@ -714,4 +605,58 @@ test.describe("settings background policies and recovery controls", () => {
       await screenshot(page, `launcher-${mode}-desktop`);
     });
   }
+  test("keeps Settings opaque while preserving the selected launcher wallpaper", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+
+    const wallpaper = await busyWallpaperDataUrl();
+    await seedSettingsBackgroundStorage(page, {
+      mode: "image",
+      color: "#ef5a1f",
+      imageUrl: wallpaper,
+    });
+    await installReadyDesktopStatusBridge(page);
+    await installSettingsBackgroundRoutes(page);
+
+    for (const [name, viewport] of [
+      ["desktop", DESKTOP_VIEWPORT],
+      ["mobile", MOBILE_VIEWPORT],
+    ] as const) {
+      await page.setViewportSize(viewport);
+      await gotoSettings(page);
+      await expect(page.getByTestId("app-background-image")).toHaveCount(0);
+      const hasOpaqueSurface = await page
+        .getByTestId("settings-shell")
+        .evaluate((shell) => {
+          let node: Element | null = shell;
+          while (node && node !== document.body) {
+            const color = getComputedStyle(node).backgroundColor;
+            if (
+              color.startsWith("rgb(") ||
+              /rgba\([^,]+,[^,]+,[^,]+,\s*1\)/.test(color)
+            )
+              return true;
+            node = node.parentElement;
+          }
+          return false;
+        });
+      expect(hasOpaqueSurface, "Settings needs an opaque reading surface").toBe(
+        true,
+      );
+      await screenshot(page, `${name}-settings-opaque`);
+      await openAppPath(page, "/views");
+      const image = page.getByTestId("app-background-image");
+      await expect(image).toBeAttached();
+      await expect
+        .poll(() =>
+          image.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.top <= 0 && rect.bottom >= window.innerHeight - 1;
+          }),
+        )
+        .toBe(true);
+      await screenshot(page, `${name}-launcher-image`);
+    }
+  });
 });

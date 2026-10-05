@@ -39,9 +39,9 @@ async function fetchOwnerChatMessages(
   if (roomIds.length === 0) return [];
 
   // Resolve rooms and filter to client_chat source
-  const roomResults = await Promise.all(
-    roomIds.map((id) => runtime.getRoom(id)),
-  );
+  const rooms = await runtime.getRoomsByIds(roomIds);
+  const roomById = new Map(rooms.map((room) => [room.id, room]));
+  const roomResults = roomIds.map((id) => roomById.get(id));
   const chatRooms = roomResults.filter(
     (r): r is NonNullable<typeof r> =>
       r != null && r.source === MESSAGE_SOURCE_CLIENT_CHAT,

@@ -48,6 +48,7 @@ import {
 import {
   assertInferenceCredentialActive,
   type InferenceCredentialCheck,
+  InferenceCredentialRevocationUnavailableError,
   InferenceCredentialRevokedError,
   inferenceCredentialRevocationReason,
   isInferenceStrongRevocationEnabled,
@@ -102,8 +103,8 @@ export interface InferenceAuthTimings {
   readonly extractMs: number;
   readonly cacheAvailabilityMs: number | null;
   readonly cacheReadMs: number | null;
-  readonly keyLookupMs: number | null;
-  readonly userOrgLookupMs: number | null;
+  /** Combined key/user/organization primary statement. */
+  readonly identityLookupMs: number | null;
   readonly moderationMs: number | null;
   readonly cacheWriteMs: number | null;
   readonly totalMs: number;
@@ -164,8 +165,7 @@ interface MutableInferenceAuthTrace {
     extractMs: number;
     cacheAvailabilityMs: number | null;
     cacheReadMs: number | null;
-    keyLookupMs: number | null;
-    userOrgLookupMs: number | null;
+    identityLookupMs: number | null;
     moderationMs: number | null;
     cacheWriteMs: number | null;
   };
@@ -460,11 +460,25 @@ function getOrCreateApiKeyHydration(
     .then(async (result) => {
       if (!result) return;
       if (result.kind === "authorized" && "keyHash" in result.ctx) {
-        await assertInferenceCredentialActive(result.ctx.orgId, {
+        const credential: InferenceCredentialCheck = {
           kind: "api_key",
           credentialId: result.ctx.apiKeyId,
           userId: result.ctx.userId,
-        });
+        };
+        try {
+          await assertInferenceCredentialActive(result.ctx.orgId, credential);
+        } catch (error) {
+          if (!(error instanceof InferenceCredentialRevocationUnavailableError)) throw error;
+          // error-policy:J2 background projection may retry one unavailable
+          // read with a fresh stub. A cold object can outlive the short check
+          // deadline; abandoning the projection leaves every later request
+          // paying origin auth again. Neither attempt authorizes inference,
+          // extends cache freshness, nor retries an explicit revocation.
+          logger.info("[InferenceAuth] retrying background credential projection", {
+            traceId: boundedTraceId(options.traceId),
+          });
+          await assertInferenceCredentialActive(result.ctx.orgId, credential);
+        }
         const startedAt = performance.now();
         const write = await writeInferenceAuthContext(result.ctx);
         const telemetry = freezeCacheWriteTrace(options.traceId, write, startedAt);
@@ -687,8 +701,7 @@ export async function resolveInferenceAuthContext(
       extractMs: 0,
       cacheAvailabilityMs: null,
       cacheReadMs: null,
-      keyLookupMs: null,
-      userOrgLookupMs: null,
+      identityLookupMs: null,
       moderationMs: null,
       cacheWriteMs: null,
     },
@@ -841,11 +854,26 @@ export async function resolveInferenceAuthContext(
           credentialId: cached.ctx.apiKeyId,
           userId: cached.ctx.userId,
         };
+        // Aged hits refresh through one coalesced, retained hydration so an
+        // active key never falls off the physical TTL into a cold
+        // authoritative request. The deferred-credential branch returns early
+        // below, so the refresh must be scheduled before it (#30722).
+        const scheduleAgedRefresh = () => {
+          if (!options.executionCtx) return;
+          if (Date.now() - cached.ctx.cachedAt < AUTH_CONTEXT_REFRESH_AFTER_MS) return;
+          const hydrationOptions = {
+            ...options,
+            executionCtx: options.executionCtx,
+          };
+          const hydration = getOrCreateApiKeyHydration(req, keyHash, hydrationOptions);
+          observeHydrationProjection(hydration, hydrationOptions, false);
+        };
         if (deferStrongCredentialCheck) {
           observeInferenceApiKeyUsage(
             { kind: "authorized", ctx: cached.ctx, source: "cache" },
             options.executionCtx,
           );
+          scheduleAgedRefresh();
           trace.result = "authorized_cache";
           return {
             kind: "authorized",
@@ -875,16 +903,7 @@ export async function resolveInferenceAuthContext(
           { kind: "authorized", ctx: cached.ctx, source: "cache" },
           options.executionCtx,
         );
-        if (options.executionCtx) {
-          if (Date.now() - cached.ctx.cachedAt >= AUTH_CONTEXT_REFRESH_AFTER_MS) {
-            const hydrationOptions = {
-              ...options,
-              executionCtx: options.executionCtx,
-            };
-            const hydration = getOrCreateApiKeyHydration(req, keyHash, hydrationOptions);
-            observeHydrationProjection(hydration, hydrationOptions, false);
-          }
-        }
+        scheduleAgedRefresh();
         trace.result = "authorized_cache";
         return { kind: "authorized", ctx: cached.ctx, source: "cache" };
       }
@@ -918,8 +937,7 @@ export async function resolveInferenceAuthContext(
         );
         if (continued) {
           const authoritative = hydration.authoritativeTelemetry();
-          trace.timings.keyLookupMs = authoritative.timings.keyLookupMs;
-          trace.timings.userOrgLookupMs = authoritative.timings.userOrgLookupMs;
+          trace.timings.identityLookupMs = authoritative.timings.identityLookupMs;
           trace.timings.moderationMs = authoritative.timings.moderationMs;
         }
         if (continued?.kind === "authorized") {
@@ -1002,11 +1020,8 @@ export async function resolveInferenceAuthContext(
     trace.result = "error";
     const { user, apiKey } = await requireInferenceApiKeyWithOrg(credential.rawKey, {
       timing: {
-        keyLookup: (durationMs) => {
-          trace.timings.keyLookupMs = Math.round(durationMs * 100) / 100;
-        },
-        userOrgLookup: (durationMs) => {
-          trace.timings.userOrgLookupMs = Math.round(durationMs * 100) / 100;
+        identityLookup: (durationMs) => {
+          trace.timings.identityLookupMs = Math.round(durationMs * 100) / 100;
         },
       },
       rejected: (reason) => {

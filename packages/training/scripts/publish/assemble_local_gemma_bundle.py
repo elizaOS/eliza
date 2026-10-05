@@ -39,8 +39,9 @@ Usage:
 
 from __future__ import annotations
 
+from eliza_training.lib.file_integrity import sha256_file
+
 import argparse
-import hashlib
 import json
 import shutil
 import sys
@@ -98,15 +99,6 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def sha256_file(path: Path, chunk: int = 1 << 20) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        while True:
-            b = f.read(chunk)
-            if not b:
-                break
-            h.update(b)
-    return h.hexdigest()
 
 
 def _gguf_field(reader: Any, name: str) -> Any:

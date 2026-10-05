@@ -2,16 +2,16 @@
  * Owns the dynamic settings-section registry shared by built-ins, hosts, and
  * plugins so the Settings view can render declared sections in one order.
  */
+
 import type { ViewKind } from "@elizaos/core";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType, LazyExoticComponent } from "react";
-import { getUiRegistryStore } from "../../registry-host";
+import { getUiRegistryStore } from "../../registry-host.js";
 import type {
   SettingsRuntimeCapabilities,
   SettingsRuntimeCapability,
 } from "./settings-runtime-capabilities";
 import type { SettingsSectionGroup } from "./settings-section-meta";
-
 /**
  * Pluggable settings-section registry.
  *
@@ -24,27 +24,23 @@ import type { SettingsSectionGroup } from "./settings-section-meta";
  * This is what makes settings modular: an app adds a section with one
  * `registerSettingsSection(...)` call at boot, no edits to the view.
  */
-
 export type SettingsSectionTone =
   | "ok"
   | "warn"
   | "muted"
   | "accent"
   | "neutral";
-
 /** Curated, token-safe medallion tints for the section icons. No blue. */
 export type SettingsSectionHue = "accent" | "amber" | "rose" | "slate";
 export type SettingsSectionProminence = "primary" | "secondary";
-
 export interface SettingsSectionDef {
   /** Stable id — URL hash + agent-surface address. */
   id: string;
   /**
    * Extra friendly tokens (beyond {@link id}) a user can type to reach this
    * section via `/settings <token>`. Owner-declared so a plugin-registered
-   * section carries its own aliases instead of needing a central host edit;
-   * `resolveSettingsSectionToken` consults the live registry, so these resolve
-   * for dynamically-registered sections too. The `id` itself is always a token.
+   * section carries its own aliases instead of needing a central host edit.
+   * The `id` itself is always a token.
    */
   aliases?: readonly string[];
   /** i18n key for the nav label. */
@@ -76,11 +72,7 @@ export interface SettingsSectionDef {
   prominence?: SettingsSectionProminence;
   /** Padding override for the section body panel. */
   bodyClassName?: string;
-  /**
-   * Hide unless Developer Mode is on (dev builds default on; prod off).
-   * Equivalent to `viewKind: "developer"`.
-   */
-  developerOnly?: boolean;
+
   /**
    * Hide on the cloud mobile build (no host machine). For host/self-host
    * concepts that are meaningless to a cloud user — e.g. the host
@@ -106,11 +98,7 @@ export interface SettingsSectionDef {
    * not infer a platform from viewport size or user-agent strings.
    */
   requires?: readonly SettingsRuntimeCapability[];
-  /**
-   * Four-tier visibility category. Supersedes `developerOnly` when set:
-   * `system`/`release` always show; `developer`/`preview` follow the Settings
-   * toggles. See `ViewKind` in `@elizaos/core`.
-   */
+  /** Four-tier visibility category; absent values default to release. */
   viewKind?: ViewKind;
   /**
    * The section body. Accepts a plain component or a `React.lazy` wrapper so
@@ -119,29 +107,25 @@ export interface SettingsSectionDef {
    */
   Component: ComponentType | LazyExoticComponent<ComponentType>;
 }
-
 /** Shared navigation policy for destinations that should stay one disclosure away. */
 export function settingsSectionIsSecondary(
-  section: Pick<
-    SettingsSectionDef,
-    "developerOnly" | "prominence" | "viewKind"
-  >,
+  section: Pick<SettingsSectionDef, "prominence" | "viewKind">,
 ): boolean {
   return (
     section.prominence === "secondary" ||
-    section.developerOnly === true ||
     section.viewKind === "developer" ||
     section.viewKind === "preview"
   );
 }
-
 /** Partition one registry-driven group without duplicating prominence policy. */
 export function partitionSettingsSections<
-  T extends Pick<
-    SettingsSectionDef,
-    "developerOnly" | "prominence" | "viewKind"
-  >,
->(sections: readonly T[]): { primary: T[]; secondary: T[] } {
+  T extends Pick<SettingsSectionDef, "prominence" | "viewKind">,
+>(
+  sections: readonly T[],
+): {
+  primary: T[];
+  secondary: T[];
+} {
   const primary: T[] = [];
   const secondary: T[] = [];
   for (const section of sections) {
@@ -149,22 +133,18 @@ export function partitionSettingsSections<
   }
   return { primary, secondary };
 }
-
 interface SettingsSectionRegistryStore {
   entries: Map<string, SettingsSectionDef>;
   seq: number;
 }
-
 const SETTINGS_SECTION_REGISTRY_STORE = "settings-sections";
 const registryListeners = new Set<() => void>();
-
 function getStore(): SettingsSectionRegistryStore {
   return getUiRegistryStore(SETTINGS_SECTION_REGISTRY_STORE, () => ({
     entries: new Map<string, SettingsSectionDef>(),
     seq: 0,
   }));
 }
-
 /**
  * Register (or replace) a settings section. Later registration with the same id
  * wins, so a host app can override a built-in section by re-registering its id.
@@ -176,29 +156,24 @@ export function registerSettingsSection(section: SettingsSectionDef): void {
   store.entries.set(section.id, { ...section, order });
   for (const listener of registryListeners) listener();
 }
-
 /** Monotonic snapshot used by React consumers of the dynamic registry. */
 export function getSettingsSectionRegistryVersion(): number {
   return getStore().seq;
 }
-
 /** Re-render subscribers after a host or lazy domain registers a section. */
 export function subscribeSettingsSections(listener: () => void): () => void {
   registryListeners.add(listener);
   return () => registryListeners.delete(listener);
 }
-
 /** All registered sections, sorted by `order` then registration sequence. */
 export function listSettingsSections(): SettingsSectionDef[] {
   return [...getStore().entries.values()].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   );
 }
-
 export function getSettingsSection(id: string): SettingsSectionDef | undefined {
   return getStore().entries.get(id);
 }
-
 /**
  * Every section the Settings view should render — built-ins plus any added by a
  * host app / plugin through {@link registerSettingsSection}. Alias of
@@ -209,7 +184,6 @@ export function getSettingsSection(id: string): SettingsSectionDef | undefined {
 export function getAllSettingsSections(): SettingsSectionDef[] {
   return listSettingsSections();
 }
-
 /** Pure capability gate shared by hub visibility and deep-link resolution. */
 export function settingsSectionIsAvailable(
   section: SettingsSectionDef,

@@ -1,0 +1,765 @@
+[
+  {
+    "id": "calendar.create_meeting_john_next_monday",
+    "name": "Create meeting with John next Monday at 14:00 UTC",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Please schedule a 45\u2011minute meeting with John Doe next Monday at 2\u202fpm UTC on my work calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "create meeting with John Doe on 2026-05-13 14:00-14:45 UTC",
+          "title": "Meeting with John Doe",
+          "details": {
+            "calendarId": "cal_work",
+            "start": "2026-05-13T14:00:00Z",
+            "end": "2026-05-13T14:45:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["John", "Monday", "45"],
+    "first_question_fallback": {
+      "canned_answer": "work calendar, no other attendees needed.",
+      "applies_when": "agent asks which calendar or whether to add attendees"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Simple event creation on the work calendar, testing correct time conversion and calendar selection."
+  },
+  {
+    "id": "calendar.cancel_dentist_appointment",
+    "name": "Cancel dentist appointment on personal calendar",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "cancel my dentist appointment on my personal calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "delete_event",
+          "intent": "cancel dentist appointment on cal_primary",
+          "details": {
+            "eventId": "event_00045",
+            "calendarId": "cal_primary"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["cancel"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Single-event cancel on the primary calendar; no clarification needed."
+  },
+  {
+    "id": "calendar.reschedule_team_sync_tuesday_to_thursday",
+    "name": "Reschedule weekly team sync from Tuesday to Thursday",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Move my weekly 'Team Sync' meeting from Tuesday 10\u202fam to Thursday 11\u202fam UTC, keeping the 2\u2011hour duration.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "update_event",
+          "intent": "move event_00030 from Tue 10:00 to Thu 11:00 UTC, keep 2h duration",
+          "details": {
+            "eventId": "event_00030",
+            "calendarId": "cal_primary",
+            "start": "2026-05-10T11:00:00Z",
+            "end": "2026-05-10T13:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Team Sync", "Thursday", "2"],
+    "first_question_fallback": {
+      "canned_answer": "yes \u2014 keep it on my primary calendar and retain the same attendees.",
+      "applies_when": "agent asks which calendar or whether to keep attendees"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Rescheduling a recurring\u2011type event; tests correct identification and time shift."
+  },
+  {
+    "id": "calendar.propose_brainstorm_slots_next_week",
+    "name": "Propose three 30\u2011minute brainstorming slots next week",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Propose three 30\u2011minute slots for a brainstorming session sometime between May\u202f13 and May\u202f17, within my preferred working hours.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "propose_times",
+          "intent": "find three 30\u2011minute open slots between 2026-05-13 and 2026-05-17",
+          "durationMinutes": 30,
+          "slotCount": 3,
+          "windowStart": "2026-05-13T09:00:00Z",
+          "windowEnd": "2026-05-17T18:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": ["slot", "30"],
+    "first_question_fallback": {
+      "canned_answer": "30 minutes each, no attendees needed \u2014 just for me.",
+      "applies_when": "agent asks for duration or attendees"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Availability search without modifying the calendar."
+  },
+  {
+    "id": "calendar.check_availability_friday_13_14",
+    "name": "Check availability Friday 13\u201114\u202fUTC",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Am I free this Friday from 13:00 to 14:00 UTC?",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "check_availability",
+          "intent": "is the owner free 2026-05-13T13:00 to 14:00 UTC",
+          "startAt": "2026-05-13T13:00:00Z",
+          "endAt": "2026-05-13T14:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Simple availability query for a single hour."
+  },
+  {
+    "id": "calendar.delete_lunch_sarah_family",
+    "name": "Delete tentative Lunch with Sarah on family calendar",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Delete that tentative lunch with Sarah on my family calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "delete_event",
+          "intent": "cancel tentative lunch with Sarah on cal_family",
+          "details": {
+            "eventId": "event_00055",
+            "calendarId": "cal_family"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["cancel"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Deletion of a tentative event on a non\u2011primary calendar."
+  },
+  {
+    "id": "calendar.create_all_day_conference_day1",
+    "name": "Create all\u2011day Conference Day\u202f1 event",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Add an all\u2011day event called \"Conference Day 1\" on May\u202f20 to my primary calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "create all\u2011day Conference Day 1 on 2026-05-20 UTC",
+          "title": "Conference Day 1",
+          "details": {
+            "calendarId": "cal_primary",
+            "start": "2026-05-20T00:00:00Z",
+            "end": "2026-05-21T00:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Conference", "May 20"],
+    "first_question_fallback": {
+      "canned_answer": "primary calendar, all\u2011day, no attendees.",
+      "applies_when": "agent asks which calendar or whether to set time"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Testing all\u2011day event creation."
+  },
+  {
+    "id": "calendar.move_gym_event_earlier",
+    "name": "Move Gym event 07:00\u201108:00",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Shift my Gym workout (event_00070) to start at 07:00 UTC instead of 06:00, keeping the same duration, on my primary calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "update_event",
+          "intent": "move event_00070 to 07:00\u201108:00 UTC",
+          "details": {
+            "eventId": "event_00070",
+            "calendarId": "cal_primary",
+            "start": "2026-05-10T07:00:00Z",
+            "end": "2026-05-10T08:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Gym", "07:00"],
+    "first_question_fallback": {
+      "canned_answer": "yes \u2014 keep it on my primary calendar.",
+      "applies_when": "agent asks which calendar"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Rescheduling a single-instance workout event."
+  },
+  {
+    "id": "calendar.create_focus_reading_tomorrow",
+    "name": "Create reading focus block tomorrow evening",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Schedule a 1\u2011hour focus block called \"Reading\" for tomorrow from 18:00 to 19:00 UTC on my primary calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "create focus block Reading on 2026-05-11 18:00\u201119:00 UTC",
+          "title": "Reading",
+          "details": {
+            "calendarId": "cal_primary",
+            "start": "2026-05-11T18:00:00Z",
+            "end": "2026-05-11T19:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Reading", "18:00"],
+    "first_question_fallback": {
+      "canned_answer": "primary calendar, no attendees, just a focus block.",
+      "applies_when": "agent asks which calendar or attendees"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Focus block creation with explicit times."
+  },
+  {
+    "id": "calendar.propose_client_call_90min",
+    "name": "Propose three 90\u2011minute slots for client call",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Propose three 90\u2011minute slots for a client call between May\u202f15 and May\u202f18, respecting my working hours.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "propose_times",
+          "intent": "find three 90\u2011minute open slots between 2026-05-15 and 2026-05-18",
+          "durationMinutes": 90,
+          "slotCount": 3,
+          "windowStart": "2026-05-15T09:00:00Z",
+          "windowEnd": "2026-05-18T18:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": ["90", "client"],
+    "first_question_fallback": {
+      "canned_answer": "90 minutes each, no specific attendees.",
+      "applies_when": "agent asks for duration or attendees"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Availability proposal for a longer meeting."
+  },
+  {
+    "id": "calendar.check_availability_weekend_sat",
+    "name": "Check weekend availability Saturday 09\u201111",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Am I free this Saturday from 09:00 to 11:00 UTC?",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "check_availability",
+          "intent": "is the owner free 2026-05-15T09:00 to 11:00 UTC",
+          "startAt": "2026-05-15T09:00:00Z",
+          "endAt": "2026-05-15T11:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Weekend availability query."
+  },
+  {
+    "id": "calendar.cancel_doctor_appointment",
+    "name": "Cancel doctor appointment on primary calendar",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Please cancel the doctor appointment (event_00090) on my primary calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "delete_event",
+          "intent": "cancel doctor appointment on cal_primary",
+          "details": {
+            "eventId": "event_00090",
+            "calendarId": "cal_primary"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["cancel"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Straightforward event deletion."
+  },
+  {
+    "id": "calendar.create_meeting_team_zoom",
+    "name": "Create team meeting with Zoom link",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Schedule a 1\u2011hour meeting titled \"Team Sync\" tomorrow at 10\u202fam UTC on my work calendar, with a Zoom link.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "create Team Sync with Zoom on 2026-05-11 10:00\u201111:00 UTC",
+          "title": "Team Sync",
+          "details": {
+            "calendarId": "cal_work",
+            "start": "2026-05-11T10:00:00Z",
+            "end": "2026-05-11T11:00:00Z",
+            "location": "Zoom"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Team Sync", "Zoom"],
+    "first_question_fallback": {
+      "canned_answer": "work calendar, Zoom link, no other attendees needed.",
+      "applies_when": "agent asks which calendar or location"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Event creation with location field."
+  },
+  {
+    "id": "calendar.reschedule_budget_review_next_day",
+    "name": "Reschedule Budget Review to next day",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Move the 'Budget Review' (event_00100) to the same time slot but on the following day.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "update_event",
+          "intent": "move event_00100 to next day same time",
+          "details": {
+            "eventId": "event_00100",
+            "calendarId": "cal_primary",
+            "start": "2026-05-11T09:00:00Z",
+            "end": "2026-05-11T10:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Budget Review", "next day"],
+    "first_question_fallback": {
+      "canned_answer": "yes \u2014 keep it on my primary calendar.",
+      "applies_when": "agent asks which calendar"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Simple date shift while preserving time."
+  },
+  {
+    "id": "calendar.delete_birthday_party_family",
+    "name": "Delete Birthday Party event on family calendar",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Delete the 'Birthday Party' event (event_00110) from my family calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "delete_event",
+          "intent": "cancel Birthday Party on cal_family",
+          "details": {
+            "eventId": "event_00110",
+            "calendarId": "cal_family"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["cancel"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Deletion of a personal event on a non\u2011primary calendar."
+  },
+  {
+    "id": "calendar.check_availability_may12_15_30",
+    "name": "Check availability May\u202f12 15:00\u201130:00",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Check if I'm free on May\u202f12 from 15:00 to 15:30 UTC.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "check_availability",
+          "intent": "is the owner free 2026-05-12T15:00 to 15:30 UTC",
+          "startAt": "2026-05-12T15:00:00Z",
+          "endAt": "2026-05-12T15:30:00Z"
+        }
+      }
+    ],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Fine\u2011grained availability check."
+  },
+  {
+    "id": "calendar.propose_three_45min_next_five_days",
+    "name": "Propose three 45\u2011minute slots in next five days",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Give me three 45\u2011minute time slots sometime in the next five days that fit my usual work hours.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "propose_times",
+          "intent": "find three 45\u2011minute open slots in next five days",
+          "durationMinutes": 45,
+          "slotCount": 3,
+          "windowStart": "2026-05-10T09:00:00Z",
+          "windowEnd": "2026-05-15T18:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": ["45"],
+    "first_question_fallback": {
+      "canned_answer": "45 minutes each, within my usual work hours.",
+      "applies_when": "agent asks for duration or work\u2011hour preferences"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Availability proposal spanning multiple days."
+  },
+  {
+    "id": "calendar.move_interview_event_00115",
+    "name": "Move interview event to later time",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Reschedule the interview (event_00115) from 09:00 to 11:00 UTC on the same day.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "update_event",
+          "intent": "move event_00115 to 11:00\u201112:00 UTC",
+          "details": {
+            "eventId": "event_00115",
+            "calendarId": "cal_primary",
+            "start": "2026-05-10T11:00:00Z",
+            "end": "2026-05-10T12:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["interview", "11:00"],
+    "first_question_fallback": {
+      "canned_answer": "yes \u2014 keep it on my primary calendar.",
+      "applies_when": "agent asks which calendar"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Single\u2011instance event time shift."
+  },
+  {
+    "id": "calendar.cancel_webinar_work",
+    "name": "Cancel Webinar on work calendar",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Cancel the webinar (event_00118) on my work calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "delete_event",
+          "intent": "cancel webinar on cal_work",
+          "details": {
+            "eventId": "event_00118",
+            "calendarId": "cal_work"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["cancel"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Deletion of a webinar event on the work calendar."
+  },
+  {
+    "id": "calendar.create_holiday_all_day_may25",
+    "name": "Create all\u2011day Holiday on May\u202f25",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Add an all\u2011day \"Holiday\" event on May\u202f25 to my primary calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "create all\u2011day Holiday on 2026-05-25 UTC",
+          "title": "Holiday",
+          "details": {
+            "calendarId": "cal_primary",
+            "start": "2026-05-25T00:00:00Z",
+            "end": "2026-05-26T00:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Holiday", "May 25"],
+    "first_question_fallback": {
+      "canned_answer": "primary calendar, all\u2011day, no attendees.",
+      "applies_when": "agent asks which calendar or time details"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "All\u2011day event creation for a future date."
+  },
+  {
+    "id": "calendar.check_availability_may14_16_30",
+    "name": "Check availability May\u202f14 16:00\u201116:30",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Am I free on May\u202f14 from 16:00 to 16:30 UTC?",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "check_availability",
+          "intent": "is the owner free 2026-05-14T16:00 to 16:30 UTC",
+          "startAt": "2026-05-14T16:00:00Z",
+          "endAt": "2026-05-14T16:30:00Z"
+        }
+      }
+    ],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Mid\u2011day availability query."
+  },
+  {
+    "id": "calendar.create_meeting_with_sales_team",
+    "name": "Create Sales Team meeting on work calendar",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Schedule a 1\u2011hour meeting titled \"Sales Team Sync\" on Thursday at 09:00 UTC on my work calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "create Sales Team Sync on 2026-05-14 09:00\u201110:00 UTC",
+          "title": "Sales Team Sync",
+          "details": {
+            "calendarId": "cal_work",
+            "start": "2026-05-14T09:00:00Z",
+            "end": "2026-05-14T10:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Sales", "Thursday"],
+    "first_question_fallback": {
+      "canned_answer": "work calendar, no attendees needed.",
+      "applies_when": "agent asks which calendar or attendees"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Simple event creation on work calendar."
+  },
+  {
+    "id": "calendar.check_availability_may13_08_09",
+    "name": "Check availability May\u202f13 08:00\u201109:00",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Am I free on May\u202f13 from 08:00 to 09:00 UTC?",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "check_availability",
+          "intent": "is the owner free 2026-05-13T08:00 to 09:00 UTC",
+          "startAt": "2026-05-13T08:00:00Z",
+          "endAt": "2026-05-13T09:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Early\u2011morning availability check."
+  },
+  {
+    "id": "calendar.create_focus_block_project_review",
+    "name": "Create focus block for Project Review tomorrow",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Schedule a 2\u2011hour focus block called \"Project Review\" for tomorrow from 13:00 to 15:00 UTC on my primary calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "create focus block Project Review on 2026-05-11 13:00\u201115:00 UTC",
+          "title": "Project Review",
+          "details": {
+            "calendarId": "cal_primary",
+            "start": "2026-05-11T13:00:00Z",
+            "end": "2026-05-11T15:00:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Project Review", "13:00"],
+    "first_question_fallback": {
+      "canned_answer": "primary calendar, no attendees, just a focus block.",
+      "applies_when": "agent asks which calendar or attendees"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Longer focus block creation."
+  },
+  {
+    "id": "calendar.propose_three_30min_morning_next_week",
+    "name": "Propose three 30\u2011minute morning slots next week",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Suggest three 30\u2011minute morning slots (between 08:00\u201112:00) sometime next week for a quick call.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "propose_times",
+          "intent": "find three 30\u2011minute open slots next week morning",
+          "durationMinutes": 30,
+          "slotCount": 3,
+          "windowStart": "2026-05-12T08:00:00Z",
+          "windowEnd": "2026-05-18T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": ["30", "morning"],
+    "first_question_fallback": {
+      "canned_answer": "30 minutes each, morning only, no attendees needed.",
+      "applies_when": "agent asks for duration or time\u2011of\u2011day preference"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Morning availability proposal."
+  },
+  {
+    "id": "calendar.check_availability_may16_14_15",
+    "name": "Check availability May\u202f16 14:00\u201115:00",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Am I free on May\u202f16 from 14:00 to 15:00 UTC?",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "check_availability",
+          "intent": "is the owner free 2026-05-16T14:00 to 15:00 UTC",
+          "startAt": "2026-05-16T14:00:00Z",
+          "endAt": "2026-05-16T15:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Mid\u2011afternoon availability query."
+  },
+  {
+    "id": "calendar.create_meeting_with_marketing_team",
+    "name": "Create Marketing Team meeting on work calendar",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Schedule a 45\u2011minute \"Marketing Team\" meeting on Wednesday at 11:30 UTC on my work calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "create Marketing Team meeting on 2026-05-15 11:30\u201112:15 UTC",
+          "title": "Marketing Team",
+          "details": {
+            "calendarId": "cal_work",
+            "start": "2026-05-15T11:30:00Z",
+            "end": "2026-05-15T12:15:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["Marketing", "Wednesday"],
+    "first_question_fallback": {
+      "canned_answer": "work calendar, no attendees needed.",
+      "applies_when": "agent asks which calendar or attendees"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Event creation with non\u2011round times."
+  }
+]

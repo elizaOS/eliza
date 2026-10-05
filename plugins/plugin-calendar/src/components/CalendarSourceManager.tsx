@@ -12,18 +12,19 @@
 import type {
   LifeOpsCalendarSourceHealth,
   LifeOpsIcsCalendarSource,
-} from "@elizaos/shared";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
+} from "@elizaos/contracts";
 import {
   Button,
   Card,
   ConfirmDialog,
+  client,
   Input,
   SemanticForm,
   Switch,
-} from "@elizaos/ui/components";
-import { useAppSelector } from "@elizaos/ui/state";
+  useAgentElement,
+  useAppSelector,
+} from "@elizaos/ui";
+
 import { AlertTriangle, ChevronDown, RefreshCw, Settings2 } from "lucide-react";
 import {
   useCallback,
@@ -33,7 +34,6 @@ import {
   useRef,
   useState,
 } from "react";
-import "../api/client-calendar.js";
 import type { CalendarClientMethods } from "../api/client-calendar.js";
 import { useCalendarSources } from "../hooks/useCalendarSources.js";
 import {

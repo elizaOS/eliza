@@ -9,11 +9,11 @@
  * scheduler tick and the runner.
  */
 
-import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core/edge";
+import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
-import { InvalidLocalTimeError, resolveLocalHHMMToIso } from "./local-time.js";
-import { isRepresentableMs } from "./time-range.js";
+import { resolveAnchorOccurrences } from "./anchor-occurrences.js";
+import { InvalidLocalTimeError } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
@@ -24,7 +24,6 @@ import type {
 import { resolveOwnerWindowSegments } from "./window-bounds.js";
 
 const MINUTE_MS = 60_000;
-const DAY_MS = 24 * 60 * MINUTE_MS;
 const CRON_CATCHUP_WINDOW_MS = 36 * 60 * MINUTE_MS;
 
 export interface ScheduledTaskDueContext {
@@ -109,17 +108,17 @@ function localDateKey(date: Date, timeZone: string): string {
     .padStart(2, "0")}-${parts.day.toString().padStart(2, "0")}`;
 }
 
+/** `YYYY-MM-DD` of a UTC calendar date (no zone conversion). */
+function utcDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
 function metadataCreatedAtMs(task: ScheduledTask): number | null {
   return (
     parseIsoMs(task.metadata?.createdAtIso) ??
     parseIsoMs(task.metadata?.createdAt) ??
     parseIsoMs(task.metadata?.scheduledAtIso)
   );
-}
-
-function wasFiredOnOrAfter(task: ScheduledTask, occurrenceMs: number): boolean {
-  const firedAtMs = parseIsoMs(task.state.firedAt);
-  return firedAtMs !== null && firedAtMs >= occurrenceMs;
 }
 
 function scheduledOverrideDue(
@@ -229,88 +228,33 @@ function cronDue(
     : { due: false, reason: "cron_pending" };
 }
 
-async function resolveAnchorIso(
-  trigger: Extract<ScheduledTaskTrigger, { kind: "relative_to_anchor" }>,
-  context: ScheduledTaskDueContext,
-): Promise<string | null> {
-  const ownerFacts = context.ownerFacts ?? {};
-  const registryAnchor = context.anchors?.get(trigger.anchorKey) as {
-    resolve?: (
-      ctx: unknown,
-    ) => Promise<{ atIso: string } | null> | { atIso: string } | null;
-  } | null;
-  if (typeof registryAnchor?.resolve === "function") {
-    const resolved = await registryAnchor.resolve({
-      nowIso: context.now.toISOString(),
-      ownerFacts,
-    });
-    if (resolved?.atIso && Number.isFinite(Date.parse(resolved.atIso))) {
-      return resolved.atIso;
-    }
-  }
-
-  const timeZone = ownerFacts.timezone ?? "UTC";
-  if (
-    trigger.anchorKey === "wake.confirmed" ||
-    trigger.anchorKey === "wake.observed" ||
-    trigger.anchorKey === "morning.start"
-  ) {
-    return resolveLocalHHMMToIso(
-      context.now,
-      ownerFacts.morningWindow?.start,
-      timeZone,
-    );
-  }
-  if (trigger.anchorKey === "bedtime.target") {
-    return (
-      resolveLocalHHMMToIso(
-        context.now,
-        ownerFacts.eveningWindow?.end,
-        timeZone,
-      ) ?? resolveLocalHHMMToIso(context.now, "22:30", timeZone)
-    );
-  }
-  if (trigger.anchorKey === "night.start") {
-    return resolveLocalHHMMToIso(
-      context.now,
-      ownerFacts.eveningWindow?.start,
-      timeZone,
-    );
-  }
-  if (trigger.anchorKey === "lunch.start") {
-    return resolveLocalHHMMToIso(context.now, "12:00", timeZone);
-  }
-  return null;
-}
-
 async function relativeAnchorDue(
   task: ScheduledTask,
   trigger: Extract<ScheduledTaskTrigger, { kind: "relative_to_anchor" }>,
   context: ScheduledTaskDueContext,
-  nowMs: number,
 ): Promise<ScheduledTaskDueDecision> {
-  const anchorIso = await resolveAnchorIso(trigger, context);
-  const anchorMs = parseIsoMs(anchorIso);
-  if (anchorMs === null) {
+  const occurrences = await resolveAnchorOccurrences(trigger, {
+    now: context.now,
+    ownerFacts: context.ownerFacts ?? {},
+    anchors: context.anchors,
+    firedAtIso: task.state.firedAt,
+  });
+  if (occurrences.kind === "unresolved") {
     return { due: false, reason: "anchor_unresolved" };
   }
-  const occurrenceMs = anchorMs + trigger.offsetMinutes * MINUTE_MS;
-  // `offsetMinutes` is only schema-bounded to an integer; an extreme value
-  // pushes the ms product outside the representable Date range and
-  // `new Date(...).toISOString()` below would throw mid-tick.
-  if (!isRepresentableMs(occurrenceMs)) {
+  if (occurrences.kind === "out_of_range") {
     return { due: false, reason: "anchor_offset_out_of_range" };
   }
-  if (occurrenceMs > nowMs) {
+  if (occurrences.currentMs === null) {
     return { due: false, reason: "anchor_pending" };
   }
-  if (wasFiredOnOrAfter(task, occurrenceMs)) {
+  if (occurrences.currentFired) {
     return { due: false, reason: "anchor_already_fired" };
   }
   return {
     due: true,
     reason: "anchor_due",
-    occurrenceAtIso: new Date(occurrenceMs).toISOString(),
+    occurrenceAtIso: new Date(occurrences.currentMs).toISOString(),
   };
 }
 
@@ -340,8 +284,12 @@ export function windowOccurrenceKey(
   const isAfterMidnightTail =
     active.start === 0 &&
     windows.some((w) => w.name === active.name && w.end === 24 * 60);
-  const anchor = isAfterMidnightTail ? new Date(at.getTime() - DAY_MS) : at;
-  return `${localDateKey(anchor, timeZone)}:${windowKey}:${active.name}`;
+  // The previous local date by calendar arithmetic: subtracting 24 hours lands
+  // two dates back in the first hour after a 23-hour spring-forward day.
+  const dateKey = isAfterMidnightTail
+    ? utcDateKey(new Date(Date.UTC(parts.year, parts.month - 1, parts.day - 1)))
+    : localDateKey(at, timeZone);
+  return `${dateKey}:${windowKey}:${active.name}`;
 }
 
 function duringWindowDue(
@@ -412,7 +360,7 @@ export async function isScheduledTaskDue(
     case "cron":
       return cronDue(task, task.trigger, nowMs, context.ownerFacts);
     case "relative_to_anchor":
-      return relativeAnchorDue(task, task.trigger, context, nowMs);
+      return relativeAnchorDue(task, task.trigger, context);
     case "during_window":
       return duringWindowDue(task, task.trigger, context);
     case "manual":

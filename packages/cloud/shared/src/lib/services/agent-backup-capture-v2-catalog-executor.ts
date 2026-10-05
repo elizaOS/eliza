@@ -16,7 +16,7 @@ import {
   AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,
   type AgentBackupCaptureV2Request,
   type AgentBackupManifestV3,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 import {
   type AgentBackupOperationClaim,
   heartbeatAgentBackupOperation,
@@ -26,6 +26,8 @@ import { openAgentBackupCaptureV2 } from "./agent-backup-capture-v2-client";
 import {
   AgentBackupCaptureV2CatalogExecutorError,
   createAgentBackupCaptureV2ExecutorError,
+  DEFAULT_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS,
+  escalateRepeatedAgentBackupCaptureV2Failure,
   normalizeAgentBackupCaptureV2TerminalFailure,
 } from "./agent-backup-capture-v2-failure-disposition";
 import {
@@ -110,6 +112,8 @@ export interface ExecuteAgentBackupCaptureV2CatalogClaimDependencies {
   }): Promise<unknown>;
   now?: () => number;
   captureDeadlineMs?: number;
+  /** Claims of one operation after which a retryable failure escalates (#23235). */
+  captureEscalationAttempts?: number;
 }
 
 /** Deployment evidence that every pre-v3 spool writer has exited before activation. */
@@ -562,6 +566,17 @@ export async function executeAgentBackupCaptureV2CatalogClaim(
     } catch (cause) {
       const terminal = normalizeAgentBackupCaptureV2TerminalFailure(cause, terminalSpoolCleanup);
       if (terminal) throw terminal;
+      // #23235: a failure that stays retryable across repeated claims of this
+      // operation escalates to a terminal, operator-visible disposition.
+      const escalated = escalateRepeatedAgentBackupCaptureV2Failure({
+        error: cause,
+        attempts: input.claim.backup.catalog_attempts,
+        threshold:
+          input.dependencies.captureEscalationAttempts ??
+          DEFAULT_AGENT_BACKUP_CAPTURE_ESCALATION_ATTEMPTS,
+        terminalSpoolCleanup,
+      });
+      if (escalated) throw escalated;
       throw cause;
     }
     if (result.state !== "captured-upload-pending") {

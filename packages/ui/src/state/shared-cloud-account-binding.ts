@@ -3,8 +3,8 @@
  * Cloud agent when its Steward account session ends.
  */
 
-import { client } from "../api";
-import { clearElizaApiBase } from "../utils/eliza-globals";
+import { clearElizaApiBase } from "@elizaos/host/protocol";
+import { client } from "../api/client";
 import {
   removeManagedCloudAgentProfilesDurably,
   removeManagedSharedCloudAgentProfiles,
@@ -17,7 +17,6 @@ import {
 } from "./persistence";
 
 const STORED_API_BASE_KEY = "elizaos_api_base";
-
 /**
  * Clear the active server, matching profile, boot/global base, and legacy
  * client-base storage mirror. Returns false for dedicated or self-hosted
@@ -27,7 +26,6 @@ export function clearSharedCloudAccountBinding(): boolean {
   const activeServer = loadPersistedActiveServer();
   const apiBase = activeServer?.apiBase;
   if (!apiBase || !clearPersistedSharedCloudActiveServer()) return false;
-
   removeManagedSharedCloudAgentProfiles();
   client.setToken(null);
   client.setBaseUrl(null);
@@ -43,7 +41,6 @@ export function clearSharedCloudAccountBinding(): boolean {
   }
   return true;
 }
-
 /**
  * Releases every browser mirror whose authority comes from the ending Eliza
  * Cloud account while preserving unrelated local and self-hosted profiles.

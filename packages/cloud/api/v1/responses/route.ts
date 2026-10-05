@@ -1,10 +1,14 @@
 /** Adapts OpenAI Responses requests to the canonical chat auth and admission pipeline. */
-import { type Context, Hono } from "hono";
 
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { createPreflightResponse } from "@/lib/middleware/cors-apps";
-import { copyHttpTelemetryHeaders } from "@/lib/observability/http-telemetry";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { createPreflightResponse } from "@elizaos/cloud-shared/lib/middleware/cors-apps";
+import { copyHttpTelemetryHeaders } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import {
+  nativeApplicationInferenceErrorResponse,
+  prepareNativeApplicationInference,
+} from "@elizaos/cloud-shared/lib/services/native-application-inference";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { type Context, Hono } from "hono";
 import { handleChatCompletionsPOST } from "../chat/completions/route";
 
 type ResponseInputRole = "system" | "user" | "assistant" | "tool";
@@ -229,7 +233,9 @@ app.post("/", async (c) => {
     }
 
     const chatRequest = buildChatRequest(c.req.raw, body, messages);
-    const chatResponse = await handleChatCompletionsPOST(chatRequest, {
+    const native = await prepareNativeApplicationInference(c, chatRequest);
+    const chatResponse = await handleChatCompletionsPOST(native.request, {
+      appFundingActor: native.actor,
       executionCtx: c.executionCtx,
       traceId: c.get("traceId"),
     });
@@ -257,6 +263,9 @@ app.post("/", async (c) => {
     copyHttpTelemetryHeaders(chatResponse.headers, response.headers);
     return response;
   } catch (error) {
+    // error-policy:J1 Translate explicit native product authority failures at the HTTP boundary.
+    const nativeError = nativeApplicationInferenceErrorResponse(error);
+    if (nativeError) return nativeError;
     const response = failureResponse(c, error);
     if (response.status >= 500) {
       return c.json(

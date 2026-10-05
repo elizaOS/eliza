@@ -8,12 +8,12 @@
  * Home.
  */
 
-import { logger } from "@elizaos/logger";
 import { useEffect } from "react";
 import { client } from "../../api/client";
 import { initLocalNotificationTapRouting } from "../../bridge/native-notifications";
-import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
-import { useAppSelector } from "../../state";
+import { APP_RESUME_EVENT, OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
+import { logger } from "../../logger.ts";
+import { useAppSelector } from "../../state/app-store";
 import { peekNotificationCenterOpenRequest } from "../../state/notifications/notification-center-open-request";
 import { initNotifications } from "../../state/notifications/notification-store";
 import {
@@ -83,14 +83,21 @@ export function NotificationsShellBoot(): null {
   useEffect(() => {
     // Native-only, gated on granted permission, guarded against double-register.
     // The token POST is what makes the server's APNs/FCM stack a live pipeline.
-    void initPushRegistration().catch((error: unknown) => {
-      // error-policy:J1 push registration is an OS/provider transport boundary;
-      // a missing distributor Firebase configuration must not crash the shell.
-      logger.error(
-        { src: "push-registration", error },
-        "[push-registration] native registration unavailable",
-      );
-    });
+    const registerPush = () => {
+      void initPushRegistration().catch((error: unknown) => {
+        // error-policy:J1 push registration is an OS/provider transport boundary;
+        // a missing distributor Firebase configuration must not crash the shell.
+        logger.error(
+          { src: "push-registration", error },
+          "[push-registration] native registration unavailable",
+        );
+      });
+    };
+    registerPush();
+    // Returning from OS settings may grant permission after the permission
+    // request has already finished. The existing initializer rechecks the grant
+    // without prompting and keeps successful registration idempotent.
+    document.addEventListener(APP_RESUME_EVENT, registerPush);
     const refreshAuthority = (force = false) => {
       void refreshPushRegistrationAuthority(undefined, force).catch(
         (error: unknown) => {
@@ -108,6 +115,7 @@ export function NotificationsShellBoot(): null {
     const unsubscribeBase = client.onBaseUrlChange(onBaseAuthorityChange);
     window.addEventListener("steward-token-sync", onTokenAuthorityChange);
     return () => {
+      document.removeEventListener(APP_RESUME_EVENT, registerPush);
       unsubscribeBase();
       window.removeEventListener("steward-token-sync", onTokenAuthorityChange);
     };

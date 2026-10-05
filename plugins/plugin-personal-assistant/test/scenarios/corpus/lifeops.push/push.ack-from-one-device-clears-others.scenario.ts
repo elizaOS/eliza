@@ -5,8 +5,8 @@ import {
   expectStateTransition,
   expectTurnToCallAction,
   judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
-import { scenario } from "@elizaos/scenario-runner/schema";
+  scenario,
+} from "@elizaos/testing";
 
 export default scenario({
   lane: "live-only",
@@ -19,7 +19,7 @@ export default scenario({
     "Same DEVICE_INTENT was dispatched to desktop, mobile, and watch. User acks on mobile. Desktop and watch copies must transition to acknowledged. No stale copy left ringing.",
   isolation: "per-scenario",
   requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
+    plugins: [],
   },
   rooms: [
     {

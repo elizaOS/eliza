@@ -24,7 +24,7 @@ vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
 
-vi.mock("../../../hooks", () => ({
+vi.mock("../../../hooks/useDocumentVisibility", () => ({
   useIntervalWhenDocumentVisible: (callback: () => void) => {
     intervalMock.callback = callback;
   },
@@ -35,18 +35,12 @@ const { getBaseUrlMock, publishHomeAttentionSpy } = vi.hoisted(() => ({
   publishHomeAttentionSpy: vi.fn(),
 }));
 
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: { getBaseUrl: getBaseUrlMock },
 }));
 
 vi.mock("../../../widgets/home-attention-store", () => ({
   usePublishHomeAttention: publishHomeAttentionSpy,
-}));
-
-// useWidgetNavigation → reportUserViewSwitch (from the slash-command controller);
-// stub it so the click test isolates the navigation rail (the CustomEvent).
-vi.mock("../../../chat/useSlashCommandController", () => ({
-  reportUserViewSwitch: vi.fn(),
 }));
 
 import { HealthSleepWidget } from "./health-sleep";

@@ -8,20 +8,27 @@
  * Cloud state. Sits behind the authenticated dashboard gate; not public.
  */
 import path from "node:path";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
-import type { AgentRuntime, RouteRequestMeta, UUID } from "@elizaos/core";
-import type { RouteHelpers } from "@elizaos/shared";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth";
+import {
+  type AgentRuntime,
+  normalizeCharacterLanguage,
+  type UUID,
+} from "@elizaos/core";
 import {
   getDefaultStylePreset,
-  normalizeCharacterLanguage,
-} from "@elizaos/shared";
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/host/protocol";
+
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveUserPath } from "../config/paths.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
+import { removeResetCredentialsFromVault } from "../runtime/operations/vault-bridge.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
 import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
+import type { RuntimeRestartOptions } from "./server.ts";
 
 type AgentStateStatus =
   | "not_started"
@@ -69,7 +76,10 @@ export interface AgentAdminRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "error"> {
   state: AgentAdminRouteState;
-  onRestart?: (() => Promise<AgentRuntime | null>) | undefined;
+  onRestart?:
+    | ((options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>)
+    | undefined;
+  restartRequiresRuntimeDisposal?: boolean;
   onRuntimeSwapped?: () => void;
   onRuntimeActivated?: (
     previousRuntime: AgentRuntime | null,
@@ -138,7 +148,9 @@ export async function handleAgentAdminRoutes(
     state.agentState = "restarting";
     try {
       const previousRuntime = state.runtime;
-      const newRuntime = await onRestart();
+      const newRuntime = ctx.restartRequiresRuntimeDisposal
+        ? await onRestart({ disposeCurrentBeforeBuild: true })
+        : await onRestart();
       if (newRuntime) {
         await quiesceRuntimeBeforeReplacement(previousRuntime, newRuntime);
         state.runtime = newRuntime;
@@ -163,7 +175,10 @@ export async function handleAgentAdminRoutes(
           },
         });
       } else {
-        state.agentState = previousState;
+        if (ctx.restartRequiresRuntimeDisposal) state.runtime = null;
+        state.agentState = ctx.restartRequiresRuntimeDisposal
+          ? "error"
+          : previousState;
         error(
           res,
           "Restart handler returned null — runtime failed to re-initialize",
@@ -171,8 +186,12 @@ export async function handleAgentAdminRoutes(
         );
       }
     } catch (err) {
+      // error-policy:J1 expose restart failure without reviving a disposed runtime.
       const message = err instanceof Error ? err.message : String(err);
-      state.agentState = previousState;
+      if (ctx.restartRequiresRuntimeDisposal) state.runtime = null;
+      state.agentState = ctx.restartRequiresRuntimeDisposal
+        ? "error"
+        : previousState;
       error(res, `Restart failed: ${message}`, 500);
     }
     return true;
@@ -208,25 +227,7 @@ export async function handleAgentAdminRoutes(
       // ELIZAOS_CLOUD_API_KEY → vault-bootstrap rehydrates env on next start
       // → useCloudState reports cloud connected → user sees themselves still
       // logged in even though they just hit "Reset".
-      try {
-        const vault = getAgentHostBridge().sharedVault();
-        const cloudKeys = [
-          "ELIZAOS_CLOUD_API_KEY",
-          "ELIZAOS_CLOUD_BASE_URL",
-          "ELIZAOS_CLOUD_ENABLED",
-        ];
-        for (const key of cloudKeys) {
-          try {
-            await vault.remove(key);
-          } catch {
-            // Entry may not exist — fine.
-          }
-        }
-      } catch (vaultErr) {
-        logWarn(
-          `[eliza-api] Reset: failed to wipe cloud vault entries: ${vaultErr instanceof Error ? vaultErr.message : String(vaultErr)}`,
-        );
-      }
+      await removeResetCredentialsFromVault(getAgentHostBridge().sharedVault());
 
       state.agentState = "stopped";
       state.agentName = resolveDefaultAgentName(config);

@@ -1,48 +1,652 @@
-# gitleaks fingerprint ignore-list
-#
-# Each line: <commit-sha>:<path>:<rule-id>:<line>
-# Entries here are reviewed false positives. Add a comment above each
-# fingerprint explaining why it is safe.
+# Reviewed immutable findings in the staging baseline promotion.
+# Synthetic regression/benchmark fixtures, public hashes/manifest keys, and code/prose
+# identifiers only. No path, rule, future commit, or entire historical commit is excluded.
 
-# Historical security-test fixture: this base64 literal decodes to
-# "fixture-value-123456789" and tests rejection of encoded credentials.
-# The current fixture computes that encoding; keep the full history scan active.
-f5aaa84aa0b5cf3dcd018f4e35f9c7243c5cc80c:plugins/plugin-agent-orchestrator/src/__tests__/diff-review-gate.test.ts:generic-api-key:244
+# packages/core/src/__tests__/swap-user-reply.test.ts
+8615912a33886f33f3fd6d1d214767d6630a5e08:packages/core/src/__tests__/swap-user-reply.test.ts:generic-api-key:65
 
-# PEM envelope template wrapper in normalizePem(). The wrapper shapes
-# operator-provided env content into canonical PEM markers; no key
-# material is committed. A later commit splits the markers across string
-# concatenation and adds a path-scoped .gitleaks.toml allowlist, but the
-# fork CI workflow scans the full PR commit range, so the original
-# commit fingerprint must be explicitly suppressed here.
-3f807bbe1d0272cc1edcff3692f6617daf8e7159:packages/cloud/shared/src/lib/auth/agent-token.ts:private-key:32
+# packages/core/src/__tests__/swap-user-reply.test.ts
+f4183d5e94da24623d2290ed3bd19db99453c4f1:packages/core/src/__tests__/swap-user-reply.test.ts:generic-api-key:37
 
-# ANSI terminal escape sequences (bold+italic formatting codes `^[[1;3;m...^[[0m`)
-# in mock/test data files. These are CI terminal output captured in test fixtures,
-# not real secrets. Confirmed false positives — no key material present.
-6e5a9ae9d7ea4fabdafb4d87d993927f48393110:packages/app-core/scripts/playwright-ui-smoke-api-stub.mjs:generic-api-key:2812
-6e5a9ae9d7ea4fabdafb4d87d993927f48393110:packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts:generic-api-key:1131
+# packages/cloud/shared/src/lib/services/agent-google-connector/gmail.test.ts
+67580d208dad5269a7df2c87bb2a9e8e245c0612:packages/cloud/shared/src/lib/services/agent-google-connector/gmail.test.ts:generic-api-key:41
 
-# Fake fixture value in a unit test asserting the containers route REDACTS
-# infra columns (deployment_log_key is a storage path, not a credential).
-# The test exists precisely to prove this field never reaches API responses.
-69e4235edffd5a526c7ff4b920d1c6b3d9a429f9:packages/cloud/api/v1/containers/route.test.ts:generic-api-key:148
+# packages/agent/test/task-trajectory-persistence.test.ts
+7210f084193bf69cfb3947a4e6b9dbc87c8d9c25:packages/agent/test/task-trajectory-persistence.test.ts:generic-api-key:49
 
-# Env-var NAMES (not values) in a test's env-cleanup list: the string literals
-# "ELIZA_APP_DISCORD_BOT_TOKEN" and "ELIZA_APP_DISCORD_APPLICATION_ID" match the
-# discord-client-secret regex by identifier shape alone. No secret material here.
-8177acbf458c2c7ae164584e79408aac048bb17b:packages/cloud/shared/src/lib/services/eliza-app/config.error-policy.test.ts:discord-client-secret:13
+# packages/browser-bridge-extension/scripts/chromium/upstream.json
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/browser-bridge-extension/scripts/chromium/upstream.json:generic-api-key:16
 
-# Synthetic bridge-verdict unit-test token used to assert canned reply rejection.
-# A later commit renames the fixture constant/value, but promotion PR gitleaks
-# scans the full main..develop commit range and sees this historical false
-# positive. No credential material was committed.
-15ccd4c4713e9dbf86502e21b855d97b48c01761:packages/scripts/cloud/admin/bridge-reply-verdict.test.ts:generic-api-key:14
+# packages/browser-bridge-extension/scripts/chromium/upstream.json
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/browser-bridge-extension/scripts/chromium/upstream.json:generic-api-key:17
 
-# Public USDC mainnet contract address used by the wallet token-info scenario.
-7b44422e1fb0545fbcdef0c30bfd88d0c78ae1ac:plugins/plugin-wallet/test/scenarios/token-info.scenario.ts:generic-api-key:17
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3087
 
-# Empty environment assignments document optional Cerebras credentials for the
-# scenario runner. The package manifest contains names only, not secret values.
-5f255cc1c2eccb3a7733ad6b866c6dec61a838b7:packages/scenario-runner/package.json:generic-api-key:70
-5f255cc1c2eccb3a7733ad6b866c6dec61a838b7:packages/scenario-runner/package.json:generic-api-key:71
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3105
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3308
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3639
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3741
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3745
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3806
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3913
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3924
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3925
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4212
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4213
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4313
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4485
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4496
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4528
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4539
+
+# plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.live.test.ts
+dce4782e174a0038259318f0f9fa8dec189f7864:plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.live.test.ts:generic-api-key:38
+
+# packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts
+435deee5637f30dd698eba9a8534961325fe36a1:packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts:stripe-access-token:131
+
+# packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts
+435deee5637f30dd698eba9a8534961325fe36a1:packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts:stripe-access-token:276
+
+# packages/app/platforms/electrobun/src/native/browser-bridge-extension-identity.json
+55f4f25689160c93d57d50e1691423b0d2395263:packages/app/platforms/electrobun/src/native/browser-bridge-extension-identity.json:generic-api-key:2
+
+# packages/benchmarks/suites/terminal-bench/tasks/get-bitcoin-nodes/tests/test_outputs.py
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/get-bitcoin-nodes/tests/test_outputs.py:coinbase-access-token:96
+
+# packages/benchmarks/suites/terminal-bench/tasks/install-windows-xp/tests/test_outputs.py
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/install-windows-xp/tests/test_outputs.py:generic-api-key:239
+
+# packages/benchmarks/suites/terminal-bench/tasks/password-recovery/setup.sh
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/password-recovery/setup.sh:generic-api-key:25
+
+# packages/benchmarks/suites/terminal-bench/tasks/sanitize-git-repo/tests/test_outputs.py
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/sanitize-git-repo/tests/test_outputs.py:generic-api-key:9
+
+# packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py:generic-api-key:638
+
+# packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py:generic-api-key:641
+
+# packages/benchmarks/suites/configbench/tests/eliza-handler.test.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/tests/eliza-handler.test.ts:generic-api-key:146
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:generic-api-key:71
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:generic-api-key:73
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:43
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:48
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:54
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:27
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:30
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:46
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:48
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-security.ts
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-security.ts:generic-api-key:153
+
+# packages/benchmarks/suites/nl2repo/test_files/decouple/start.md
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/decouple/start.md:generic-api-key:551
+
+# packages/benchmarks/suites/nl2repo/test_files/decouple/start.md
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/decouple/start.md:generic-api-key:673
+
+# packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:jwt:1473
+
+# packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:jwt:1521
+
+# packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:generic-api-key:1059
+
+# packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py:generic-api-key:829
+
+# packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py:generic-api-key:845
+
+# packages/benchmarks/suites/orchestrator/tests/test_code_agent_matrix.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/orchestrator/tests/test_code_agent_matrix.py:generic-api-key:1559
+
+# packages/benchmarks/suites/standard/mmlu.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/standard/mmlu.py:generic-api-key:320
+
+# packages/benchmarks/suites/webshop/elizaos_webshop/environment.py
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/webshop/elizaos_webshop/environment.py:generic-api-key:459
+
+# packages/os/android/pixel11pro.lock.json
+8f835a1e0a88856180014675928528f8faba75cd:packages/os/android/pixel11pro.lock.json:generic-api-key:24
+
+# packages/testing/package.json
+8f835a1e0a88856180014675928528f8faba75cd:packages/testing/package.json:generic-api-key:50
+
+# packages/testing/package.json
+8f835a1e0a88856180014675928528f8faba75cd:packages/testing/package.json:generic-api-key:51
+
+# packages/core/src/logger.test.ts
+1047e6d00968eef607e94fe610983b33709f1fc2:packages/core/src/logger.test.ts:generic-api-key:787
+
+# plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts
+1047e6d00968eef607e94fe610983b33709f1fc2:plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts:aws-access-token:28
+
+# plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts
+1047e6d00968eef607e94fe610983b33709f1fc2:plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts:generic-api-key:77
+
+# packages/cloud/shared/src/db/repositories/subscription-checkout.pglite.test.ts
+5c7151839e8a128e071e68e6d457f670f1736245:packages/cloud/shared/src/db/repositories/subscription-checkout.pglite.test.ts:stripe-access-token:10
+
+# packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts
+5c7151839e8a128e071e68e6d457f670f1736245:packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts:stripe-access-token:10
+
+# packages/core/src/__tests__/compose-state-trajectory-recording.test.ts
+c51b94a6fd7726d576f05ea2e09e61c82f8c92c0:packages/core/src/__tests__/compose-state-trajectory-recording.test.ts:generic-api-key:87
+
+# packages/core/src/__tests__/compose-state-trajectory-recording.test.ts
+ec938aa930aad29117d2dc04368d00342df56cb6:packages/core/src/__tests__/compose-state-trajectory-recording.test.ts:generic-api-key:87
+
+# Owner confirmed historical OSWorld Basic-auth values are test-only (2026-10-03).
+# The hardcoded authentication was also removed from current source.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/OSWorld/mm_agents/os_symphony/core/engine.py:generic-api-key:383
+
+# Reviewed historical false positives in the develop-to-staging promotion.
+# Each exception pins commit + path + rule + line. No whole-file, whole-commit,
+# or future-value exclusion is introduced. Changed/new commits remain scanned.
+# Review source with: git show <commit>:<path>. Values are not copied here.
+# The historical OSWorld Basic-auth pair was confirmed test-only by the owner
+# and is exempted by its exact fingerprint above; current source no longer embeds it.
+
+
+# .github/workflows/live-smoke.yml
+# Public minimum API commit SHA.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:.github/workflows/live-smoke.yml:generic-api-key:254
+
+# packages/agent/test/task-trajectory-persistence.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+7210f084193bf69cfb3947a4e6b9dbc87c8d9c25:packages/agent/test/task-trajectory-persistence.test.ts:generic-api-key:49
+
+# packages/app/platforms/electrobun/src/native/browser-bridge-extension-identity.json
+# Public Chrome extension verification key (not a private key).
+55f4f25689160c93d57d50e1691423b0d2395263:packages/app/platforms/electrobun/src/native/browser-bridge-extension-identity.json:generic-api-key:2
+
+# packages/app/scripts/__tests__/static-asset-contract.test.ts
+# Static splash asset filename, not a key.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/app/scripts/__tests__/static-asset-contract.test.ts:generic-api-key:100
+
+# packages/app/scripts/lib/android-cloud-routing-markers.ts
+# Public Coinbase analytics script SHA-256 (same value already reviewed in .gitleaks.toml at its old path).
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/app/scripts/lib/android-cloud-routing-markers.ts:coinbase-access-token:22
+
+# packages/app/scripts/playwright-ui-smoke-api-stub.ts
+# Synthetic wallet export response served only by the UI smoke stub.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/app/scripts/playwright-ui-smoke-api-stub.ts:generic-api-key:3619
+
+# packages/app/test/live-agent/farcaster-connector.live.e2e.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/app/test/live-agent/farcaster-connector.live.e2e.test.ts:generic-api-key:329
+
+# packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts:generic-api-key:1348
+
+# packages/auth/test/inventory.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/auth/test/inventory.test.ts:generic-api-key:203
+
+# packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py
+# Placeholder sk-abcdef1234567890 in API configuration examples.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py:generic-api-key:638
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py:generic-api-key:641
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py:generic-api-key:638
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/OSWorld/mm_agents/coact/autogen/oai/openai_utils.py:generic-api-key:641
+
+# packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:generic-api-key:71
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:generic-api-key:73
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:43
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:48
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:54
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:generic-api-key:71
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:generic-api-key:73
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:43
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:48
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/configbench/src/scenarios/plugin-config.ts:stripe-access-token:54
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:27
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:30
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:46
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:48
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:27
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:30
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:46
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/configbench/src/scenarios/secrets-crud.ts:generic-api-key:48
+
+# packages/benchmarks/suites/configbench/src/scenarios/secrets-security.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/src/scenarios/secrets-security.ts:generic-api-key:153
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/configbench/src/scenarios/secrets-security.ts:generic-api-key:153
+
+# packages/benchmarks/suites/configbench/tests/eliza-handler.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/configbench/tests/eliza-handler.test.ts:generic-api-key:146
+
+# packages/benchmarks/suites/nl2repo/test_files/decouple/start.md
+# Quoted multiline parser input; match spans field names, not a credential.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/decouple/start.md:generic-api-key:551
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/decouple/start.md:generic-api-key:673
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/nl2repo/test_files/decouple/start.md:generic-api-key:551
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/nl2repo/test_files/decouple/start.md:generic-api-key:673
+
+# packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md
+# Documented sample JWTs with example signing keys and Ed25519PrivateKey type name.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:generic-api-key:1059
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:jwt:1473
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:jwt:1521
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:generic-api-key:1059
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:jwt:1473
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/nl2repo/test_files/pyjwt/start.md:jwt:1521
+
+# packages/benchmarks/suites/orchestrator/tests/test_code_agent_matrix.py
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/orchestrator/tests/test_code_agent_matrix.py:generic-api-key:1559
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/orchestrator/tests/test_code_agent_matrix.py:generic-api-key:1559
+
+# packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py:generic-api-key:829
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py:generic-api-key:845
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py:generic-api-key:831
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/orchestrator/tests/test_latest_snapshots.py:generic-api-key:847
+
+# packages/benchmarks/suites/standard/mmlu.py
+# Python self.config.expand_scenarios expression after max_tokens.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/standard/mmlu.py:generic-api-key:320
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/standard/mmlu.py:generic-api-key:320
+
+# packages/benchmarks/suites/terminal-bench/tasks/get-bitcoin-nodes/tests/test_outputs.py
+# Public Bitcoin genesis coinbase transaction ID.
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/get-bitcoin-nodes/tests/test_outputs.py:coinbase-access-token:96
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/terminal-bench/tasks/get-bitcoin-nodes/tests/test_outputs.py:coinbase-access-token:96
+
+# packages/benchmarks/suites/terminal-bench/tasks/install-windows-xp/tests/test_outputs.py
+# Expected advapi32.dll file digest.
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/install-windows-xp/tests/test_outputs.py:generic-api-key:239
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/terminal-bench/tasks/install-windows-xp/tests/test_outputs.py:generic-api-key:239
+
+# packages/benchmarks/suites/terminal-bench/tasks/password-recovery/setup.sh
+# Intentionally generated benchmark launchcode puzzle input.
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/password-recovery/setup.sh:generic-api-key:25
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/terminal-bench/tasks/password-recovery/setup.sh:generic-api-key:25
+
+# packages/benchmarks/suites/terminal-bench/tasks/sanitize-git-repo/tests/test_outputs.py
+# Explicit FAKE_AWS_SECRET_ACCESS_KEY benchmark input.
+55f4f25689160c93d57d50e1691423b0d2395263:packages/benchmarks/suites/terminal-bench/tasks/sanitize-git-repo/tests/test_outputs.py:generic-api-key:9
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/terminal-bench/tasks/sanitize-git-repo/tests/test_outputs.py:generic-api-key:9
+
+# packages/benchmarks/suites/webshop/elizaos_webshop/environment.py
+# _StubBM25Okapi Python type assignment.
+8f835a1e0a88856180014675928528f8faba75cd:packages/benchmarks/suites/webshop/elizaos_webshop/environment.py:generic-api-key:459
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/benchmarks/suites/webshop/elizaos_webshop/environment.py:generic-api-key:459
+
+# packages/browser-bridge-extension/scripts/chromium/upstream.json
+# Public upstream Java file SHA-256 values.
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/browser-bridge-extension/scripts/chromium/upstream.json:generic-api-key:16
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/browser-bridge-extension/scripts/chromium/upstream.json:generic-api-key:17
+
+# packages/cloud/api/__tests__/shared-eliza-runtime.miniflare.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/__tests__/shared-eliza-runtime.miniflare.test.ts:discord-client-id:1049
+
+# packages/cloud/api/test/e2e/preload.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/test/e2e/preload.ts:generic-api-key:37
+
+# packages/cloud/api/wrangler.toml
+# Public Base/BSC USDC contract addresses and Solana USDC mint.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/wrangler.toml:generic-api-key:298
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/wrangler.toml:generic-api-key:303
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/wrangler.toml:generic-api-key:308
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/wrangler.toml:generic-api-key:681
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/wrangler.toml:generic-api-key:686
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/wrangler.toml:generic-api-key:691
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/wrangler.toml:generic-api-key:971
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/wrangler.toml:generic-api-key:976
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/api/wrangler.toml:generic-api-key:981
+
+# packages/cloud/e2e/src/fixtures/env.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/e2e/src/fixtures/env.ts:generic-api-key:19
+
+# packages/cloud/infra/cloud/tests/08-redis/chainsaw-test.yaml
+# Local test-only local_dev_token in Kubernetes fixture.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/infra/cloud/tests/08-redis/chainsaw-test.yaml:curl-auth-header:56
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/infra/cloud/tests/08-redis/chainsaw-test.yaml:curl-auth-header:64
+
+# packages/cloud/services/vast-pyworker/manifests/eliza-1-27b-256k-3090.json
+# Public model registry key eliza-1-27b-256k.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/services/vast-pyworker/manifests/eliza-1-27b-256k-3090.json:generic-api-key:9
+
+# packages/cloud/shared/src/db/repositories/subscription-checkout.pglite.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+5c7151839e8a128e071e68e6d457f670f1736245:packages/cloud/shared/src/db/repositories/subscription-checkout.pglite.test.ts:stripe-access-token:10
+
+# packages/cloud/shared/src/lib/fragments/api-context.ts
+# eliza_your_api_key placeholder in generated curl documentation.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/cloud/shared/src/lib/fragments/api-context.ts:curl-auth-header:119
+
+# packages/cloud/shared/src/lib/services/agent-google-connector/gmail.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+67580d208dad5269a7df2c87bb2a9e8e245c0612:packages/cloud/shared/src/lib/services/agent-google-connector/gmail.test.ts:generic-api-key:41
+
+# packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+435deee5637f30dd698eba9a8534961325fe36a1:packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts:stripe-access-token:131
+435deee5637f30dd698eba9a8534961325fe36a1:packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts:stripe-access-token:276
+5c7151839e8a128e071e68e6d457f670f1736245:packages/cloud/shared/src/lib/services/subscription-checkout.pglite.test.ts:stripe-access-token:10
+
+# packages/core/src/__tests__/compose-state-trajectory-recording.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+c51b94a6fd7726d576f05ea2e09e61c82f8c92c0:packages/core/src/__tests__/compose-state-trajectory-recording.test.ts:generic-api-key:87
+ec938aa930aad29117d2dc04368d00342df56cb6:packages/core/src/__tests__/compose-state-trajectory-recording.test.ts:generic-api-key:87
+
+# packages/core/src/logger.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+1047e6d00968eef607e94fe610983b33709f1fc2:packages/core/src/logger.test.ts:generic-api-key:787
+
+# packages/core/src/providers/recent-errors.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/core/src/providers/recent-errors.test.ts:generic-api-key:316
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/core/src/providers/recent-errors.test.ts:generic-api-key:326
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/core/src/providers/recent-errors.test.ts:generic-api-key:353
+
+# packages/core/src/security/pii-detectors.ts
+# Regular-expression source matching private-key envelopes, not PEM material.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/core/src/security/pii-detectors.ts:private-key:325
+
+# packages/core/src/validation/secrets.ts
+# Documented Slack token shape using x characters.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/core/src/validation/secrets.ts:slack-app-token:170
+
+# packages/os/android/pixel11pro.lock.json
+# Public verification-key SHA-256.
+8f835a1e0a88856180014675928528f8faba75cd:packages/os/android/pixel11pro.lock.json:generic-api-key:24
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/pixel11pro.lock.json:generic-api-key:26
+
+# packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml
+# Vendor file SHA-256 inventory, including filenames containing key/auth.
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3087
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3105
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3308
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3639
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3741
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3745
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3806
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3913
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3924
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3925
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4212
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4213
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4313
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4485
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4496
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4528
+04c5080663faa99eccbfb5af5750f12d6cdc6a45:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4539
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3087
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3105
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3308
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3639
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3741
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3745
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3806
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3913
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3924
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:3925
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4212
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4213
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4313
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4485
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4496
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4528
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/android/vendor-specs/grizzly-cd1a.260905.001.b1.yml:generic-api-key:4539
+
+# packages/os/browser/identity.json
+# Public Chrome extension verification key (not a private key).
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/browser/identity.json:generic-api-key:2
+
+# packages/os/browser/scripts/chromium/upstream.json
+# Public upstream Java file SHA-256 values.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/browser/scripts/chromium/upstream.json:generic-api-key:16
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/os/browser/scripts/chromium/upstream.json:generic-api-key:17
+
+# packages/scripts/__tests__/check-prompt-secrets.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/scripts/__tests__/check-prompt-secrets.test.ts:aws-access-token:20
+
+# packages/scripts/launch-qa/check-model-data.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/scripts/launch-qa/check-model-data.test.ts:generic-api-key:137
+
+# packages/scripts/vast/run-certification.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/scripts/vast/run-certification.test.ts:generic-api-key:180
+
+# packages/testing/package.json
+# Empty Cerebras environment assignments; scanner consumes the next variable name.
+8f835a1e0a88856180014675928528f8faba75cd:packages/testing/package.json:generic-api-key:50
+8f835a1e0a88856180014675928528f8faba75cd:packages/testing/package.json:generic-api-key:51
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/testing/package.json:generic-api-key:50
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/testing/package.json:generic-api-key:51
+
+# packages/testing/scenario-runner/test/mocks/mockoon/_generate.mjs
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/testing/scenario-runner/test/mocks/mockoon/_generate.mjs:generic-api-key:1445
+
+# packages/training/scripts/eval_loop.sh
+# Empty REGISTRY_KEY assignment followed by another shell variable.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/eval_loop.sh:generic-api-key:25
+
+# packages/training/scripts/quantization/qjl/qjl_kernel.py
+# torch.bfloat16 type comparison.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/quantization/qjl/qjl_kernel.py:generic-api-key:71
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/quantization/qjl/qjl_kernel.py:generic-api-key:73
+
+# packages/training/scripts/synthesize_action_pairs.py
+# Synthetic secret-redaction examples and public Solana mint addresses.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1078
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1082
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1801
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1804
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1805
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1808
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1813
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1816
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1817
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1836
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1842
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1845
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_action_pairs.py:generic-api-key:1848
+
+# packages/training/scripts/synthesize_core_prompts.py
+# Synthetic SECRET_CASES redaction dataset: placeholder keys, abbreviated PEM, sample JWT and webhook.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_core_prompts.py:generic-api-key:665
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_core_prompts.py:jwt:717
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_core_prompts.py:jwt:719
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_core_prompts.py:private-key:679
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_core_prompts.py:slack-webhook-url:703
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_core_prompts.py:slack-webhook-url:705
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_core_prompts.py:stripe-access-token:644
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/training/scripts/synthesize_core_prompts.py:stripe-access-token:646
+
+# packages/ui/src/cloud/organization/__e2e__/run-credentials-e2e.mjs
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/ui/src/cloud/organization/__e2e__/run-credentials-e2e.mjs:generic-api-key:51
+
+# packages/ui/src/components/accounts/ConsumerKeyPanel.test.tsx
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/ui/src/components/accounts/ConsumerKeyPanel.test.tsx:generic-api-key:272
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/ui/src/components/accounts/ConsumerKeyPanel.test.tsx:generic-api-key:81
+
+# packages/ui/src/components/settings/DesktopWorkspaceDisplay.stories.tsx
+# Repeated abcdef0123456789 token in Storybook fixture.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:packages/ui/src/components/settings/DesktopWorkspaceDisplay.stories.tsx:generic-api-key:53
+
+# plugins/plugin-agent-orchestrator/__tests__/unit/subagent-stdout-log.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-agent-orchestrator/__tests__/unit/subagent-stdout-log.test.ts:generic-api-key:131
+
+# plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+1047e6d00968eef607e94fe610983b33709f1fc2:plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts:aws-access-token:28
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-assistant/src/features/secrets/actions/mask.test.ts:aws-access-token:28
+
+# plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+1047e6d00968eef607e94fe610983b33709f1fc2:plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts:generic-api-key:77
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-assistant/src/features/secrets/setup/state-machine.test.ts:generic-api-key:77
+
+# plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.live.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.live.test.ts:generic-api-key:38
+dce4782e174a0038259318f0f9fa8dec189f7864:plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.live.test.ts:generic-api-key:38
+
+# plugins/plugin-coding-tools/src/actions/edit.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-coding-tools/src/actions/edit.test.ts:aws-access-token:222
+
+# plugins/plugin-coding-tools/src/actions/write.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-coding-tools/src/actions/write.test.ts:aws-access-token:235
+
+# plugins/plugin-elizacloud/__tests__/cloud-setup-failures.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-elizacloud/__tests__/cloud-setup-failures.test.ts:generic-api-key:547
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-elizacloud/__tests__/cloud-setup-failures.test.ts:generic-api-key:669
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-elizacloud/__tests__/cloud-setup-failures.test.ts:generic-api-key:735
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-elizacloud/__tests__/cloud-setup-failures.test.ts:generic-api-key:786
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-elizacloud/__tests__/cloud-setup-failures.test.ts:generic-api-key:816
+
+# plugins/plugin-native-phone/src/companion/services/navigation.ts
+# eliza.companion.nav.v1 local storage key.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-native-phone/src/companion/services/navigation.ts:generic-api-key:18
+
+# plugins/plugin-personal-assistant/test/scheduled-task-trigger-boundary.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-personal-assistant/test/scheduled-task-trigger-boundary.test.ts:generic-api-key:225
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-personal-assistant/test/scheduled-task-trigger-boundary.test.ts:generic-api-key:236
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-personal-assistant/test/scheduled-task-trigger-boundary.test.ts:generic-api-key:314
+
+# plugins/plugin-scheduling/src/shared-reminder-relative-delay.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-scheduling/src/shared-reminder-relative-delay.test.ts:discord-client-id:297
+
+# plugins/plugin-scheduling/src/shared-reminders.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-scheduling/src/shared-reminders.test.ts:discord-client-id:258
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-scheduling/src/shared-reminders.test.ts:discord-client-id:262
+
+# plugins/plugin-telegram/src/account-setup-routes.test.ts
+# Existing public bundled Telegram Desktop application identity (app ID 2040), not an account/session credential.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-telegram/src/account-setup-routes.test.ts:generic-api-key:15
+
+# plugins/plugin-wallet/src/chains/__tests__/wallet-router.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/__tests__/wallet-router.test.ts:generic-api-key:230
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/__tests__/wallet-router.test.ts:generic-api-key:242
+
+# plugins/plugin-wallet/src/chains/evm/__tests__/custom-chain.ts
+# Public default Anvil second-account development key.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/evm/__tests__/custom-chain.ts:generic-api-key:33
+
+# plugins/plugin-wallet/src/chains/evm/actions/swap.timeout.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/evm/actions/swap.timeout.test.ts:generic-api-key:110
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/evm/actions/swap.timeout.test.ts:generic-api-key:111
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/evm/actions/swap.timeout.test.ts:generic-api-key:154
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/evm/actions/swap.timeout.test.ts:generic-api-key:155
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/evm/actions/swap.timeout.test.ts:generic-api-key:211
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/evm/actions/swap.timeout.test.ts:generic-api-key:212
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/evm/actions/swap.timeout.test.ts:generic-api-key:70
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/evm/actions/swap.timeout.test.ts:generic-api-key:71
+
+# plugins/plugin-wallet/src/chains/solana/__tests__/integration/birdeye-direct.live.test.ts
+# Deterministic test input, mocked credential, public address, or named fixture; reviewed in the pinned source.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/solana/__tests__/integration/birdeye-direct.live.test.ts:generic-api-key:141
+
+# plugins/plugin-wallet/src/chains/solana/prompts.ts
+# Public Solana mint addresses in prompt examples.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/solana/prompts.ts:generic-api-key:16
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/chains/solana/prompts.ts:generic-api-key:42
+
+# plugins/plugin-wallet/src/sdk/bridge/solana.ts
+# Public Circle CCTP token messenger program address.
+b2453df4d8e39f16086fadf9d5d99f598fb63e87:plugins/plugin-wallet/src/sdk/bridge/solana.ts:generic-api-key:69
+
+# Existing synthetic swap-user-reply test fixture at its squash-merge commit.
+df90e84500df616bd4c170f364a3a7f1dfed13b8:packages/core/src/__tests__/swap-user-reply.test.ts:generic-api-key:65
+
+# Synthetic wrong-key-kind checkout fixture; current source constructs this invalid test value.
+5f2752a4cf26901bb35d38b58e5b8d4aa77d1e6c:packages/cloud/shared/src/lib/services/subscription-checkout-recovery.pglite.test.ts:stripe-access-token:655
+
+# Synthetic token in the moved benchmark redaction regression; current fixture assembles it.
+9081c5542f90843d1d97a7aaaccdeae440b0e3f2:packages/benchmarks/orchestrator/tests/test_code_agent_matrix.py:generic-api-key:1640
+
+# Empty shell assignments were parsed as the following environment-variable name.
+# These immutable findings contain no credential; current commands use env -u.
+dfc0e413cecb2c8ee6d43ec0bffbb71bdfcecba8:packages/testing/package.json:generic-api-key:52
+dfc0e413cecb2c8ee6d43ec0bffbb71bdfcecba8:packages/testing/package.json:generic-api-key:53
+
+# Quoted empty assignments triggered the same variable-name false positives.
+659da6db1a80d06efd9e10f0a8ad90317d2a6221:packages/testing/package.json:generic-api-key:52
+659da6db1a80d06efd9e10f0a8ad90317d2a6221:packages/testing/package.json:generic-api-key:53

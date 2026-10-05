@@ -8,9 +8,9 @@
 // the section still degrades to running/favorited apps. State + catalog-loader
 // mocked; logger spied.
 
-import { logger } from "@elizaos/logger";
 import { render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../../logger.ts";
 
 const mocks = vi.hoisted(() => ({
   loadMergedCatalogApps: vi.fn(),
@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../apps/catalog-loader", () => ({
   loadMergedCatalogApps: mocks.loadMergedCatalogApps,
 }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (sel: (s: unknown) => unknown) => sel(mocks.store),
 }));
 

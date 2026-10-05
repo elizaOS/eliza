@@ -29,7 +29,7 @@ import type {
   ListLifeOpsCalendarsRequest,
   SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsCalendarIncludedResponse,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
 
 export interface LifeOpsCalendarService {
   listCalendars(

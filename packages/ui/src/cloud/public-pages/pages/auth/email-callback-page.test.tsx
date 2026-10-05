@@ -8,7 +8,7 @@
  * authorize-return module are doubled to isolate the mount.
  */
 
-import { LoginApiError } from "@elizaos/login";
+import { LoginApiError } from "@elizaos/auth";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -35,7 +35,7 @@ const sessionSpies = vi.hoisted(() => ({
 // Import only the button primitive this page uses. The broad primitives barrel
 // also evaluates unrelated controls, which would make this focused callback
 // test depend on every optional UI peer being installed.
-vi.mock("../../../../components/primitives", async () => {
+vi.mock("../../../../components/ui/button", async () => {
   const { Button } = await import("../../../../components/ui/button");
   return { Button };
 });
@@ -75,7 +75,9 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
   useCloudT: () => (_key: string, opts?: { defaultValue?: string }) =>
     opts?.defaultValue ?? _key,
 }));
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 vi.mock("../../lib/steward-session", () => ({
   syncStewardSessionCookie: sessionSpies.sync,
 }));

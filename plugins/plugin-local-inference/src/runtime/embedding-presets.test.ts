@@ -32,7 +32,7 @@ describe("embedding preset hardware selection", () => {
 		["vulkan", "linux"],
 		["metal", "darwin"],
 	] as const)(
-		"uses an accelerated preset when a %s backend is detected",
+		"uses a verified accelerated candidate when a %s backend is detected",
 		(backend, platform) => {
 			const hardware = probe({
 				platform,

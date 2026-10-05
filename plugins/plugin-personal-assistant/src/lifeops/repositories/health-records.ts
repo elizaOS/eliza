@@ -5,7 +5,7 @@ import type {
   LifeOpsHealthSleepStageSample,
   LifeOpsHealthSyncState,
   LifeOpsHealthWorkout,
-} from "../../contracts/index.js";
+} from "@elizaos/contracts";
 import {
   parseJsonArray,
   parseJsonRecord,

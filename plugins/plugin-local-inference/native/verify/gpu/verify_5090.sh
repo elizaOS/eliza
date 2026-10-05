@@ -3,7 +3,7 @@
 #
 # Wraps _common.sh with the 5090-specific GPU/CUDA arch constants.
 # Requires CUDA Toolkit 12.8+ for sm_120 support. See
-# packages/shared/src/local-inference-gpu/profiles/rtx-5090.yaml
+# plugins/plugin-native-inference/src/model-gpu/profiles/rtx-5090.yaml
 # for the canonical per-bundle deployment recommendations.
 set -euo pipefail
 PROFILE_ID="rtx-5090"

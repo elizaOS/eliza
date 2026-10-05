@@ -1,12 +1,12 @@
 /**
- * Account page body: the profile form + a read-only account-details card. Live
- * MFA / privacy / delete controls live in the Security section instead. The
- * console presents plain per-user accounts, so no org/welcome cards here.
+ * Account page body: profile, account details, and server-authoritative privacy
+ * controls. The console presents plain per-user accounts.
  */
 
-import { DashboardPageContainer } from "../../../cloud-ui";
+import { DashboardPageContainer } from "../../../cloud-ui/components/layout/dashboard-page";
 import type { UserProfile } from "../data/user";
 import { AccountDetails } from "./account-details";
+import { PrivacyPanel } from "./privacy-panel";
 import { ProfileForm } from "./profile-form";
 
 interface AccountPageClientProps {
@@ -21,6 +21,9 @@ export function AccountPageClient({ user }: AccountPageClientProps) {
     >
       <ProfileForm user={user} />
       <AccountDetails user={user} />
+      <div className="lg:col-span-2">
+        <PrivacyPanel />
+      </div>
     </DashboardPageContainer>
   );
 }

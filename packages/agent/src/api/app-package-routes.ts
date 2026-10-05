@@ -3,18 +3,16 @@
  * ships with each installed app package. Reserved top-level slugs (info,
  * installed, launch, …) are excluded so they fall through to their own
  * handlers; for any other slug it lazy-imports the app's route module, resolves
- * either its `handleAppRoutes` export or a legacy `handleApps<Slug>Routes`
- * name, and calls it with a `readJsonBody` pre-bound to the current request.
+ * its `handleAppRoutes` export, and calls it with a `readJsonBody` pre-bound to the current request.
  */
+
+import { isValidAppRouteSlug } from "@elizaos/core";
 import type {
   AppPackageRouteContext,
   AppPackageRouteDispatchContext,
-} from "@elizaos/core";
-import { isValidAppRouteSlug } from "@elizaos/shared";
-import {
-  type AppRouteModule,
-  importAppRouteModule,
-} from "../services/app-package-modules.ts";
+} from "@elizaos/host/protocol";
+
+import { importAppRouteModule } from "../services/app-package-modules.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 
 const RESERVED_APP_ROUTE_SLUGS = new Set([
@@ -32,31 +30,6 @@ const RESERVED_APP_ROUTE_SLUGS = new Set([
 function extractEncodedAppSlug(pathname: string): string | null {
   const match = pathname.match(/^\/api\/apps\/([^/]+)(?:\/|$)/);
   return match?.[1] ?? null;
-}
-
-function toLegacyHandlerName(slug: string): string {
-  const normalized = slug
-    .split(/[^a-zA-Z0-9]+/)
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join("");
-  return `handleApps${normalized}Routes`;
-}
-
-function resolveAppRouteHandler(
-  routeModule: AppRouteModule,
-  slug: string,
-): ((ctx: AppPackageRouteContext) => Promise<boolean>) | null {
-  if (typeof routeModule.handleAppRoutes === "function") {
-    return routeModule.handleAppRoutes;
-  }
-
-  const legacyHandler = routeModule[toLegacyHandlerName(slug)];
-  if (typeof legacyHandler === "function") {
-    return legacyHandler as (ctx: AppPackageRouteContext) => Promise<boolean>;
-  }
-
-  return null;
 }
 
 export async function handleAppPackageRoutes(
@@ -80,8 +53,8 @@ export async function handleAppPackageRoutes(
   const routeModule = await importAppRouteModule(slug);
   if (!routeModule) return false;
 
-  const handler = resolveAppRouteHandler(routeModule, slug);
-  if (!handler) return false;
+  const handler = routeModule.handleAppRoutes;
+  if (typeof handler !== "function") return false;
 
   // App route handlers expect readJsonBody pre-bound to the current request,
   // but the server-level helper requires (req, res) arguments.  Wrap it so

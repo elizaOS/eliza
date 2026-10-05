@@ -4,17 +4,22 @@
  * validates structured inputs, and exposes streaming results to the runtime.
  */
 
+import { nativeApplicationOperationHeaders, getNativeApplicationSlot } from "../utils/config";
+import { nativeFundingFailure, withNativeFundingAuthority } from "../utils/native-funding";
 import type {
   GenerateTextParams,
   IAgentRuntime,
   ModelTypeName,
   TextStreamResult,
   TokenUsage,
+  ToolCall,
+  JsonValue,
 } from "@elizaos/core";
 import {
 	assertModelOutputComplete,
   buildCanonicalSystemPrompt,
-  ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+  MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
+  createPreparedModelRequestGuard,
   ElizaError,
   logger,
   ModelType,
@@ -49,6 +54,20 @@ const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeNa
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
   "RESPONSE_HANDLER") as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+
+function createCloudPreparedRequestGuard(
+  model: string,
+  body: Record<string, unknown>
+) {
+  const outputReserve = body.max_output_tokens ?? body.max_tokens;
+  return createPreparedModelRequestGuard({
+    provider: "eliza-cloud",
+    model,
+    serializeRequest: () => JSON.stringify(body),
+    outputReserveTokens:
+      typeof outputReserve === "number" ? outputReserve : undefined,
+  });
+}
 
 /**
  * Per-process cap on CONCURRENT native cloud text calls.
@@ -126,8 +145,7 @@ export function resolveStreamingEnabled(): boolean {
 /**
  * Combine the runtime's abort signal with the client-side timeout into one
  * signal for `requestRaw`. A stream is long-lived, so it should abort on EITHER
- * a caller cancel OR the timeout — `requestRaw` honors only a single signal, so
- * merge them here.
+ * a caller cancel OR the timeout.
  */
 export function buildStreamAbortSignal(
   abortSignal: AbortSignal | undefined,
@@ -260,20 +278,13 @@ type NativeTokenUsage = {
 
 type NativeGenerateTextResult = {
   text: string;
-  toolCalls: unknown[];
+  toolCalls: ToolCall[];
   finishReason?: string;
   usage?: NativeTokenUsage;
   providerMetadata?: unknown;
 };
 
 type NativeGenerateTextModelResult = NativeGenerateTextResult & string;
-
-type NativeToolCall = {
-  type: "tool-call";
-  toolCallId: string;
-  toolName: string;
-  input: unknown;
-};
 
 type ChatCompletionsResponse = Record<string, unknown> & {
   error?: {
@@ -504,7 +515,7 @@ export class ElizaCloudGatewayWarmingExhaustedError extends ElizaError {
 
   constructor(label: string, attempts: number) {
     super("elizaOS Cloud gateway remained unavailable after cache warming retries", {
-      code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+      code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
       context: { attempts, provider: "elizaOSCloud", route: label, status: 503 },
       severity: "ephemeral",
     });
@@ -605,7 +616,9 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
  */
 export async function requestNativeWithWarmingRetry(
   doRequest: () => Promise<Response>,
-  label: string
+  label: string,
+  /** The caller's cancellation signal; it also ends a warming backoff sleep. */
+  signal?: AbortSignal
 ): Promise<{ response: Response; bodyText: string }> {
   const state: WarmingRetryState = { attempt: 0 };
   for (;;) {
@@ -626,7 +639,7 @@ export async function requestNativeWithWarmingRetry(
     logger.warn(
       `[ELIZAOS_CLOUD] cloud gateway is warming (503) on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
     );
-    await sleepMs(delayMs);
+    await sleepMs(delayMs, signal);
   }
 }
 
@@ -651,7 +664,7 @@ function invalidNativeStream(reason: string, cause?: unknown): ElizaError {
   });
 }
 
-function parseNativeToolCallInput(value: unknown): Record<string, unknown> {
+function parseNativeToolCallInput(value: unknown): Record<string, JsonValue> {
   let parsed = value;
   if (typeof value === "string") {
     if (value.trim() === "") {
@@ -670,7 +683,7 @@ function parseNativeToolCallInput(value: unknown): Record<string, unknown> {
   if (!isRecord(parsed)) {
     throw invalidNativeToolCall("tool-call arguments must be a JSON object");
   }
-  return parsed;
+  return parsed as Record<string, JsonValue>;
 }
 
 function stringifyMessageContent(content: unknown): string {
@@ -1097,7 +1110,7 @@ function extractChatCompletionText(data: ChatCompletionsResponse): string {
   return firstString(firstChoice.text, extractTextFromContent(firstChoice.message?.content)) ?? "";
 }
 
-function extractNativeToolCalls(data: ChatCompletionsResponse): NativeToolCall[] {
+function extractNativeToolCalls(data: ChatCompletionsResponse): ToolCall[] {
   const rawCalls = data.choices?.[0]?.message?.tool_calls;
   if (rawCalls === undefined) {
     return [];
@@ -1142,10 +1155,9 @@ function extractNativeToolCalls(data: ChatCompletionsResponse): NativeToolCall[]
     }
 
     return {
-      type: "tool-call",
-      toolCallId,
-      toolName,
-      input: parseNativeToolCallInput(input),
+      id: toolCallId,
+      name: toolName,
+      arguments: parseNativeToolCallInput(input),
     };
   });
 }
@@ -1160,14 +1172,19 @@ function convertNativeUsage(usage: unknown): NativeTokenUsage | undefined {
   const promptTokenDetails = recordAt(root, "prompt_tokens_details");
   const inputTokenDetailsSnake = recordAt(root, "input_tokens_details");
   const promptTokens =
-    firstNumber(root.inputTokens, root.input_tokens, root.promptTokens, root.prompt_tokens) ?? 0;
+    firstNumber(root.inputTokens, root.input_tokens, root.promptTokens, root.prompt_tokens);
   const completionTokens =
     firstNumber(
       root.outputTokens,
       root.output_tokens,
       root.completionTokens,
       root.completion_tokens
-    ) ?? 0;
+    );
+  // Incomplete gateway usage cannot support a token-based cost estimate.
+  // Preserve the same unavailable state as an entirely missing usage object.
+  if (promptTokens === undefined || completionTokens === undefined) {
+    return undefined;
+  }
   const cacheReadInputTokens = firstNumber(
     root.cacheReadInputTokens,
     root.cache_read_input_tokens,
@@ -1201,6 +1218,19 @@ function convertNativeUsage(usage: unknown): NativeTokenUsage | undefined {
     cachedPromptTokens: cacheReadInputTokens,
     cacheReadInputTokens,
     cacheCreationInputTokens,
+  };
+}
+
+/** Map complete normalized gateway counts onto the shared usage-event contract. */
+function toUsageEventTokens(usage: NativeTokenUsage): {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+} {
+  return {
+    inputTokens: usage.promptTokens,
+    outputTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens,
   };
 }
 
@@ -1347,8 +1377,10 @@ async function generateTextWithModel(
   if (!reasoning && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
+  const preparedRequest = createCloudPreparedRequestGuard(modelName, requestBody);
 
   const responsesHeaders: Record<string, string> = withInferenceTraceHeader({
+    ...nativeApplicationOperationHeaders(runtime),
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   });
@@ -1363,13 +1395,17 @@ async function generateTextWithModel(
   // A cold gateway's warming 503 is retried in place instead of throwing into
   // the runtime failover ladder (see requestNativeWithWarmingRetry).
   const { response, bodyText: responseText } = await requestNativeWithWarmingRetry(
-    () =>
-      createCloudApiClient(runtime).requestRaw("POST", "/responses", {
+    () => {
+      preparedRequest.assertBeforeAttempt();
+      return createCloudApiClient(runtime).requestRaw("POST", "/responses", {
         headers: responsesHeaders,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
-      }),
-    "responses"
+        ...(params.signal ? { signal: params.signal } : {}),
+      });
+    },
+    "responses",
+    params.signal
   );
   let data: ResponsesApiResponse = {};
   if (responseText) {
@@ -1415,16 +1451,13 @@ async function generateTextWithModel(
 		);
 	}
 
-  if (data.usage) {
+  const usage = convertNativeUsage(data.usage);
+  if (usage) {
     emitModelUsageEvent(
       runtime,
       modelType,
       prompt,
-      {
-        inputTokens: data.usage.input_tokens ?? 0,
-        outputTokens: data.usage.output_tokens ?? 0,
-        totalTokens: data.usage.total_tokens ?? 0,
-      },
+      toUsageEventTokens(usage),
       {
         modelName: getModelNameForType(runtime, modelType),
         ...(() => {
@@ -1462,7 +1495,9 @@ export async function generateNativeChatCompletion(
     context.systemPrompt,
     runtime
   );
+  const preparedRequest = createCloudPreparedRequestGuard(context.modelName, requestBody);
   const headers: Record<string, string> = withInferenceTraceHeader({
+    ...nativeApplicationOperationHeaders(runtime),
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   });
@@ -1485,13 +1520,17 @@ export async function generateNativeChatCompletion(
   // warming 503 is retried in place instead of throwing into the runtime
   // failover ladder (see requestNativeWithWarmingRetry).
   const { response, bodyText: responseText } = await requestNativeWithWarmingRetry(
-    () =>
-      createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+    () => {
+      preparedRequest.assertBeforeAttempt();
+      return createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
-      }),
-    "chat/completions"
+        ...(params.signal ? { signal: params.signal } : {}),
+      });
+    },
+    "chat/completions",
+    params.signal
   );
   let data: ChatCompletionsResponse = {};
   if (responseText) {
@@ -1525,7 +1564,7 @@ export async function generateNativeChatCompletion(
 
   const usage = convertNativeUsage(data.usage);
   if (usage) {
-    emitModelUsageEvent(runtime, modelType, context.prompt, usage, {
+    emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(usage), {
       modelName: context.modelName,
       ...(() => {
         const costUsd = extractCostUsd(data.usage, response);
@@ -1836,8 +1875,8 @@ export function lowestIndexToolCallArgs(acc: Map<number, StreamingToolCallAcc>):
 /** Materialize accumulated tool-call deltas into the buffered-path shape. */
 export function finalizeStreamedToolCalls(
   acc: Map<number, StreamingToolCallAcc>
-): NativeToolCall[] {
-  const out: NativeToolCall[] = [];
+): ToolCall[] {
+  const out: ToolCall[] = [];
   const ids = new Set<string>();
   for (const [index, c] of [...acc.entries()].sort((a, b) => a[0] - b[0])) {
     if (!Number.isInteger(index) || index < 0) {
@@ -1854,10 +1893,9 @@ export function finalizeStreamedToolCalls(
       throw invalidNativeToolCall(`tool-call index ${index} is missing a function name`);
     }
     out.push({
-      type: "tool-call",
-      toolCallId: c.id,
-      toolName: c.name,
-      input: parseNativeToolCallInput(c.args),
+      id: c.id,
+      name: c.name,
+      arguments: parseNativeToolCallInput(c.args),
     });
   }
   return out;
@@ -1888,9 +1926,12 @@ export async function streamNativeChatCompletion(
   requestBody.stream = true;
   // OpenAI-compatible: ask the server to include a final usage-only frame so we
   // can meter the streamed call accurately.
+  const selectedFundingSlot = getNativeApplicationSlot(runtime);
   requestBody.stream_options = { include_usage: true };
+  const preparedRequest = createCloudPreparedRequestGuard(context.modelName, requestBody);
 
   const headers: Record<string, string> = withInferenceTraceHeader({
+    ...nativeApplicationOperationHeaders(runtime),
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   });
@@ -1928,6 +1969,7 @@ export async function streamNativeChatCompletion(
       route: "chat/completions:stream",
     });
     try {
+      preparedRequest.assertBeforeAttempt();
       response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,
@@ -2033,7 +2075,7 @@ export async function streamNativeChatCompletion(
 			model: context.modelName,
 		});
     if (usage) {
-      emitModelUsageEvent(runtime, modelType, context.prompt, usage, {
+      emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(usage), {
         modelName: context.modelName,
         ...(() => {
           const costUsd = extractCostUsd(data.usage, response);
@@ -2067,7 +2109,7 @@ export async function streamNativeChatCompletion(
   const textD = deferred<string>();
   const usageD = deferred<TokenUsage | undefined>();
   const finishD = deferred<string | undefined>();
-  const toolCallsD = deferred<NativeToolCall[]>();
+  const toolCallsD = deferred<ToolCall[]>();
   const rejectDeferreds = (reason: unknown): void => {
     textD.reject(reason);
     usageD.reject(reason);
@@ -2219,15 +2261,16 @@ export async function streamNativeChatCompletion(
       // its deferred result fields, so one transport failure must reject all of
       // them before the original error propagates to the stream consumer.
       failed = true;
-      rejectDeferreds(error);
-      throw error;
+      const failure = nativeFundingFailure(selectedFundingSlot, error);
+      rejectDeferreds(failure);
+      throw failure;
     } finally {
       releasePermit();
       if (!completed && !failed) {
         rejectDeferreds(streamCancellationError(signal));
       }
       if (nativeUsage) {
-        emitModelUsageEvent(runtime, modelType, context.prompt, nativeUsage, {
+        emitModelUsageEvent(runtime, modelType, context.prompt, toUsageEventTokens(nativeUsage), {
           modelName: context.modelName,
           ...(() => {
             const costUsd = extractCostUsd(rawUsage, response);
@@ -2252,47 +2295,47 @@ export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_SMALL_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_SMALL_MODEL_TYPE, params));
 }
 
 export async function handleTextNano(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_NANO_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_NANO_MODEL_TYPE, params));
 }
 
 export async function handleTextMedium(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_MEDIUM_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_MEDIUM_MODEL_TYPE, params));
 }
 
 export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_LARGE_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_LARGE_MODEL_TYPE, params));
 }
 
 export async function handleTextMega(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, TEXT_MEGA_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, TEXT_MEGA_MODEL_TYPE, params));
 }
 
 export async function handleResponseHandler(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, RESPONSE_HANDLER_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, RESPONSE_HANDLER_MODEL_TYPE, params));
 }
 
 export async function handleActionPlanner(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextWithModel(runtime, ACTION_PLANNER_MODEL_TYPE, params);
+  return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, ACTION_PLANNER_MODEL_TYPE, params));
 }

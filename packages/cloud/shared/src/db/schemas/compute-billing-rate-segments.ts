@@ -15,6 +15,8 @@ export const computeBillingRateSegments = pgTable(
     workload_kind: text("workload_kind").$type<"agent" | "container">().notNull(),
     workload_id: uuid("workload_id").notNull(),
     lifecycle_revision: bigint("lifecycle_revision", { mode: "number" }).notNull(),
+    /** Null identifies historical segments whose source lifecycle status was not recorded. */
+    lifecycle_status: text("lifecycle_status"),
     billing_state: text("billing_state").notNull(),
     rate_per_hour: numeric("rate_per_hour", { precision: 16, scale: 6 }).notNull(),
     effective_at: timestamp("effective_at", { withTimezone: true }).notNull().defaultNow(),

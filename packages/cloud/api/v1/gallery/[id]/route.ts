@@ -3,16 +3,21 @@
  *
  * Soft-deletes a media item from the gallery. Verifies ownership, removes
  * the underlying R2 object if the storage URL is a trusted blob URL, then
- * marks the generation record as `deleted`.
+ * marks the generation record as `deleted`. Generated media counts toward the
+ * organization storage quota (#20956), so its reservation is released once the
+ * object is confirmed deleted and the record transitions to `deleted`.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  ApiError,
+  failureResponse,
+  NotFoundError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { deleteBlob, isValidBlobUrl } from "@elizaos/cloud-shared/lib/blob";
+import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { deleteBlob, isValidBlobUrl } from "@/lib/blob";
-import { generationsService } from "@/lib/services/generations";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -26,25 +31,30 @@ app.delete("/", async (c) => {
       throw NotFoundError("Media not found or access denied");
     }
 
-    if (generation.storage_url && isValidBlobUrl(generation.storage_url)) {
-      try {
-        await deleteBlob(generation.storage_url);
-      } catch (error) {
-        // Log and proceed with the soft delete so the row is removed from
-        // the gallery even if R2 object deletion fails. An out-of-band
-        // sweeper can reconcile orphaned objects later.
-        logger.error(
-          "[GALLERY API] R2 delete failed; marking generation deleted only",
-          {
-            id,
-            storageUrl: generation.storage_url,
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
-      }
+    const storageQuotaBytes = generation.result?.storageQuotaBytes;
+    const reservedBytes =
+      typeof storageQuotaBytes === "string" && /^\d+$/.test(storageQuotaBytes)
+        ? storageQuotaBytes
+        : undefined;
+    const trustedObject =
+      generation.storage_url && isValidBlobUrl(generation.storage_url);
+    if (reservedBytes && BigInt(reservedBytes) > 0n && !trustedObject) {
+      throw new ApiError({
+        status: 503,
+        code: "service_unavailable",
+        message:
+          "Stored media cannot be deleted with the current storage configuration",
+      });
     }
-
-    await generationsService.updateStatus(id, "deleted");
+    if (trustedObject && generation.storage_url) {
+      // Keep the row retryable when deletion fails. Object deletion is
+      // idempotent if the subsequent database transaction must be retried.
+      await deleteBlob(generation.storage_url);
+    }
+    await generationsService.markDeletedOnce(
+      id,
+      trustedObject ? reservedBytes : undefined,
+    );
 
     return c.json({ success: true });
   } catch (error) {

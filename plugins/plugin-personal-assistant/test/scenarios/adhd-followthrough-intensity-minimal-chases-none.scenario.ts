@@ -28,8 +28,8 @@
  *     `no_reply_retry_1` timeout appears instead.
  */
 
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 type JsonRecord = Record<string, unknown>;
 

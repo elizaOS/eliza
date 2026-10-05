@@ -14,8 +14,10 @@ import {
   parseAgentBackupRestoreV3AuthorityFence,
   parseAgentBackupRestoreV3SourceAuthority,
   parseAgentBackupRestoreV3StagingSession,
-} from "@elizaos/shared";
-import { and, eq } from "drizzle-orm";
+} from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
+import { and, eq, sql } from "drizzle-orm";
+import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import { agentBackupRestoreOperations } from "../schemas/agent-backup-catalog";
 import {
@@ -47,6 +49,11 @@ import {
   snapshotAgentBackupRestoreV3OperationControl,
   throwIfAgentBackupRestoreV3DatabaseDeadline,
 } from "./agent-backup-restore-v3-candidate-database-control";
+import {
+  type AgentBackupRestoreV3CandidateAssembler,
+  assembleAndSealAgentBackupRestoreV3Candidate,
+  assembleAndSealAgentBackupRestoreV3CandidateWithTransaction,
+} from "./agent-backup-restore-v3-candidate-seal-authority";
 
 type CandidateBeginRequest = Parameters<AgentBackupRestoreV3IsolatedCandidateStaging["begin"]>[0];
 type CandidateRecordReceipt = Awaited<
@@ -60,6 +67,36 @@ export type AgentBackupRestoreV3CandidateExecution = Pick<
   AgentBackupRestoreV3IsolatedCandidateStaging,
   "begin" | "stageRecord" | "finishComponent" | "abort"
 >;
+
+/**
+ * Trusted Agent transport. Calls run while PRIMARY source/lease and stage
+ * authority locks remain held. Implementations must honor control, reap pending
+ * writes before settling, and make exact partial-effect retries idempotent.
+ * They must not issue coordinator DB queries through a separate transaction.
+ */
+export type AgentBackupRestoreV3CandidateMaterializer = Pick<
+  AgentBackupRestoreV3IsolatedCandidateStaging,
+  "stageRecord" | "finishComponent"
+> & { readonly assembleCandidate: AgentBackupRestoreV3CandidateAssembler };
+
+/** Acquires exact target authority before candidate locks and lends one transaction. */
+export interface AgentBackupRestoreV3CandidateMaterializationTransaction {
+  run<T>(
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    use: (
+      transaction: DbTransaction,
+      materializer: AgentBackupRestoreV3CandidateMaterializer,
+      boundedControl: Readonly<AgentBackupRestoreV3OperationControl>,
+    ) => Promise<T>,
+  ): Promise<T>;
+}
+
+function materializationError(message: string): never {
+  throw new ElizaError(message, {
+    code: "AGENT_BACKUP_RESTORE_V3_MATERIALIZATION_CONFLICT",
+    severity: "fatal",
+  });
+}
 
 export class AgentBackupRestoreV3CandidateExecutionConflictError extends Error {
   readonly code = "AGENT_BACKUP_RESTORE_V3_CANDIDATE_CONFLICT";
@@ -258,9 +295,70 @@ function exactFinishMatches(
 
 class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecution {
   readonly #bound: BoundCandidateExecution;
+  readonly #materializer: AgentBackupRestoreV3CandidateMaterializer | undefined;
+  readonly #transaction: AgentBackupRestoreV3CandidateMaterializationTransaction | undefined;
 
-  constructor(bound: BoundCandidateExecution) {
+  constructor(
+    bound: BoundCandidateExecution,
+    materializer?: AgentBackupRestoreV3CandidateMaterializer,
+    transaction?: AgentBackupRestoreV3CandidateMaterializationTransaction,
+  ) {
     this.#bound = bound;
+    this.#materializer = materializer;
+    this.#transaction = transaction;
+  }
+
+  #transact<T>(
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+    use: (
+      tx: DbTransaction,
+      materializer: AgentBackupRestoreV3CandidateMaterializer | undefined,
+      boundedControl: Readonly<AgentBackupRestoreV3OperationControl>,
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.#transaction
+      ? this.#transaction.run(control, use)
+      : dbWrite.transaction((tx) => use(tx, this.#materializer, control));
+  }
+
+  async #materializationControl(
+    tx: DbTransaction,
+    control: Readonly<AgentBackupRestoreV3OperationControl>,
+  ): Promise<Readonly<AgentBackupRestoreV3OperationControl>> {
+    // Reuse the canonical backup -> operation -> lease -> catalogue -> objects
+    // lock order BEFORE the stage trigger takes the candidate lock. The metadata
+    // ledger alone checks active execution, not current source/lease authority.
+    const c = agentBackupRestoreV3Candidates;
+    const [candidate] = await tx
+      .select({
+        leaseExpiresAt: sql<Date | string>`lock_agent_backup_restore_v3_current_authority(
+          ${c.organization_id}, ${c.agent_id}, ${c.backup_id}, ${c.restore_attempt_id},
+          ${c.operation_id}, ${c.restore_operation_id}, ${c.lease_id}, ${c.lease_owner_id},
+          ${c.lease_generation}, ${c.catalog_epoch}, ${c.source_copy_role},
+          ${c.source_activation_generation}, ${c.source_lifecycle_revision},
+          ${c.expected_manifest_sha256}, ${c.key_bundle_generation_id},
+          ${c.source_authority_canonical}, ${c.source_authority_sha256},
+          ${c.object_count}, NULL)`,
+      })
+      .from(c)
+      .where(
+        and(
+          eq(c.id, this.#bound.candidateId),
+          eq(c.execution_token_sha256, this.#bound.executionTokenSha256),
+          eq(c.state, "active"),
+        ),
+      )
+      .limit(1);
+    if (!candidate) materializationError("Materialization lost its locked candidate authority");
+    const bounded = Object.freeze({
+      signal: control.signal,
+      deadlineEpochMs: Math.min(
+        control.deadlineEpochMs,
+        asDate(candidate.leaseExpiresAt).getTime(),
+      ),
+    });
+    assertAgentBackupRestoreV3OperationControl(bounded, "Restore-v3 Agent materialization");
+    return bounded;
   }
 
   async begin(
@@ -303,14 +401,14 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     const keyBundleGenerationId = manifest.encryption.operationKeyBundle.generationId;
     let restoreOperationId: string | undefined;
     try {
-      const created = await dbWrite.transaction(async (tx) => {
+      const created = await this.#transact(control, async (tx, _materializer, control) => {
         await applyAgentBackupRestoreV3TransactionDeadline(
           tx,
           control,
           "Restore-v3 candidate begin",
         );
-        // This is deliberately the first durable write. No repository lock is
-        // taken: the candidate INSERT trigger alone owns authority lock order.
+        // The candidate trigger owns source/candidate locks. A remote target
+        // guard, when supplied, has acquired its outer authority in canonical order.
         await tx.insert(agentBackupRestoreV3CandidateCleanupOutbox).values({
           id: this.#bound.cleanupOutboxId,
           organization_id: authority.organizationId,
@@ -511,13 +609,11 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
       entry,
       payload,
     };
-    try {
-      return this.#stageRecord(sessionInput, copied, control);
-    } finally {
-      // #stageRecord hashes and validates the copy before its first await. No
-      // plaintext is needed while PostgreSQL settles the durable receipt.
+    return this.#stageRecord(sessionInput, copied, control).finally(() => {
+      // The Agent consumes this owned copy inside the authority transaction.
+      // Keep it through acknowledgement/rollback, then zeroize on every exit.
       payload.fill(0);
-    }
+    });
   }
 
   async #stageRecord(
@@ -526,7 +622,8 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ): Promise<CandidateRecordReceipt> {
     assertAgentBackupRestoreV3OperationControl(control, "Restore-v3 record stage");
-    this.#requireExactSession(sessionInput);
+    const session = parseAgentBackupRestoreV3StagingSession(sessionInput);
+    this.#requireExactSession(session);
     const receipt = freezeRecordReceipt(
       AgentBackupRestoreV3StageRecordReceiptSchema.parse({
         componentIndex: record.componentIndex,
@@ -544,8 +641,11 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     const receiptSha256 = sha256Utf8(canonicalAgentBackupRestoreV3StageRecordReceipt(receipt));
     const commandSha256 = computeAgentBackupRestoreV3RecordCommandSha256(this.#bound, receipt);
     try {
-      await dbWrite.transaction(async (tx) => {
+      await this.#transact(control, async (tx, materializer, control) => {
         await applyAgentBackupRestoreV3TransactionDeadline(tx, control, "Restore-v3 record stage");
+        const effectControl = materializer
+          ? await this.#materializationControl(tx, control)
+          : undefined;
         await tx.insert(agentBackupRestoreV3CandidateStageLedger).values({
           candidate_id: this.#bound.candidateId,
           organization_id: this.#bound.organizationId,
@@ -570,6 +670,25 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
           command_sha256: commandSha256,
           receipt_sha256: receiptSha256,
         });
+        if (materializer && effectControl) {
+          const acknowledged = freezeRecordReceipt(
+            AgentBackupRestoreV3StageRecordReceiptSchema.parse(
+              await materializer.stageRecord(session, record, effectControl),
+            ),
+          );
+          if (
+            canonicalAgentBackupRestoreV3StageRecordReceipt(acknowledged) !==
+            canonicalAgentBackupRestoreV3StageRecordReceipt(receipt)
+          )
+            materializationError(
+              "Agent record acknowledgement differs from the exact staged command",
+            );
+          await applyAgentBackupRestoreV3TransactionDeadline(
+            tx,
+            effectControl,
+            "Restore-v3 Agent record acknowledgement",
+          );
+        }
         assertAgentBackupRestoreV3OperationControl(control, "Restore-v3 record stage");
       });
       return receipt;
@@ -672,7 +791,8 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     control: Readonly<AgentBackupRestoreV3OperationControl>,
   ): Promise<CandidateComponentReceipt> {
     assertAgentBackupRestoreV3OperationControl(control, "Restore-v3 component finish");
-    this.#requireExactSession(sessionInput);
+    const session = parseAgentBackupRestoreV3StagingSession(sessionInput);
+    this.#requireExactSession(session);
     const receipt = freezeComponentReceipt(
       AgentBackupRestoreV3ComponentReceiptSchema.parse(receiptInput),
     );
@@ -682,12 +802,15 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
     const receiptSha256 = sha256Utf8(canonicalAgentBackupRestoreV3ComponentReceipt(receipt));
     const commandSha256 = computeAgentBackupRestoreV3FinishCommandSha256(this.#bound, receipt);
     try {
-      await dbWrite.transaction(async (tx) => {
+      await this.#transact(control, async (tx, materializer, control) => {
         await applyAgentBackupRestoreV3TransactionDeadline(
           tx,
           control,
           "Restore-v3 component finish",
         );
+        const effectControl = materializer
+          ? await this.#materializationControl(tx, control)
+          : undefined;
         await tx.insert(agentBackupRestoreV3CandidateStageLedger).values({
           candidate_id: this.#bound.candidateId,
           organization_id: this.#bound.organizationId,
@@ -711,6 +834,25 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
           command_sha256: commandSha256,
           receipt_sha256: receiptSha256,
         });
+        if (materializer && effectControl) {
+          const acknowledged = freezeComponentReceipt(
+            AgentBackupRestoreV3ComponentReceiptSchema.parse(
+              await materializer.finishComponent(session, receipt, effectControl),
+            ),
+          );
+          if (
+            canonicalAgentBackupRestoreV3ComponentReceipt(acknowledged) !==
+            canonicalAgentBackupRestoreV3ComponentReceipt(receipt)
+          )
+            materializationError(
+              "Agent component acknowledgement differs from the exact finish command",
+            );
+          await applyAgentBackupRestoreV3TransactionDeadline(
+            tx,
+            effectControl,
+            "Restore-v3 Agent component acknowledgement",
+          );
+        }
         assertAgentBackupRestoreV3OperationControl(control, "Restore-v3 component finish");
       });
       return receipt;
@@ -904,6 +1046,72 @@ class CandidateExecutionRepository implements AgentBackupRestoreV3CandidateExecu
 export function createAgentBackupRestoreV3CandidateExecution(
   sourceAuthorityInput: Readonly<AgentBackupRestoreV3SourceAuthority>,
 ): AgentBackupRestoreV3CandidateExecution {
+  return createCandidateExecution(sourceAuthorityInput);
+}
+
+/** Explicit materializing variant; omitting Agent effects is never a fallback. */
+export function createAgentBackupRestoreV3MaterializingCandidateExecution(
+  sourceAuthority: Readonly<AgentBackupRestoreV3SourceAuthority>,
+  materializer: AgentBackupRestoreV3CandidateMaterializer,
+): AgentBackupRestoreV3IsolatedCandidateStaging {
+  if (
+    !materializer ||
+    typeof materializer.stageRecord !== "function" ||
+    typeof materializer.finishComponent !== "function" ||
+    typeof materializer.assembleCandidate !== "function"
+  )
+    materializationError("Restore candidate requires an explicit Agent materializer");
+  const effects = Object.freeze({
+    stageRecord: materializer.stageRecord.bind(materializer),
+    finishComponent: materializer.finishComponent.bind(materializer),
+    assembleCandidate: materializer.assembleCandidate.bind(materializer),
+  });
+  const staging: AgentBackupRestoreV3IsolatedCandidateStaging = {
+    ...createCandidateExecution(sourceAuthority, effects),
+    seal: (session, receipt, authorization, control) =>
+      assembleAndSealAgentBackupRestoreV3Candidate(
+        session,
+        receipt,
+        authorization,
+        control,
+        effects.assembleCandidate,
+      ),
+  };
+  return Object.freeze(staging);
+}
+
+/** The target guard and candidate journal share one transaction for every effect. */
+export function createAgentBackupRestoreV3GuardedMaterializingCandidateExecution(
+  sourceAuthority: Readonly<AgentBackupRestoreV3SourceAuthority>,
+  transactionInput: AgentBackupRestoreV3CandidateMaterializationTransaction,
+): AgentBackupRestoreV3IsolatedCandidateStaging {
+  if (!transactionInput || typeof transactionInput.run !== "function")
+    materializationError("Restore candidate requires an explicit target transaction");
+  const transaction = Object.freeze({ run: transactionInput.run.bind(transactionInput) });
+  const staging: AgentBackupRestoreV3IsolatedCandidateStaging = {
+    ...createCandidateExecution(sourceAuthority, undefined, transaction),
+    seal: (session, receipt, authorization, control) =>
+      assembleAndSealAgentBackupRestoreV3CandidateWithTransaction(
+        session,
+        receipt,
+        authorization,
+        control,
+        {
+          run: (bounded, use) =>
+            transaction.run(bounded, (tx, materializer, effectControl) =>
+              use(tx, materializer.assembleCandidate, effectControl),
+            ),
+        },
+      ),
+  };
+  return Object.freeze(staging);
+}
+
+function createCandidateExecution(
+  sourceAuthorityInput: Readonly<AgentBackupRestoreV3SourceAuthority>,
+  materializer?: AgentBackupRestoreV3CandidateMaterializer,
+  transaction?: AgentBackupRestoreV3CandidateMaterializationTransaction,
+): AgentBackupRestoreV3CandidateExecution {
   const sourceAuthority = parseAgentBackupRestoreV3SourceAuthority(sourceAuthorityInput);
   const sourceAuthorityCanonical = canonicalizeAgentBackupRestoreV3SourceAuthority(sourceAuthority);
   const executionToken = randomBytes(32).toString("base64url");
@@ -931,6 +1139,8 @@ export function createAgentBackupRestoreV3CandidateExecution(
         repository ??
         new CandidateExecutionRepository(
           Object.freeze({ ...bound, restoreAttemptId: authority.restoreAttemptId }),
+          materializer,
+          transaction,
         );
       return Promise.resolve(selected.begin(request, control)).then((session) => {
         // Bind only after a successful durable begin/replay. Malformed first

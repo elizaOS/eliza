@@ -7,9 +7,10 @@
 
 import { Download, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client, type LocalAgentBackupMetadata } from "../../api";
-import { useAppSelectorShallow } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { LocalAgentBackupMetadata } from "../../api/client-types-cloud";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { isDedicatedCloudAgentBase } from "../../utils/cloud-agent-base";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -32,6 +33,26 @@ function formatBackupSize(sizeBytes: number): string {
 
 function backupErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
+}
+
+/**
+ * The agent answers a deterministic refusal (e.g. state over the backup size
+ * limit, HTTP 413) with `retryable: false` and a server-authored explanation
+ * of what must change; show it as-is. Any other failure may be transient
+ * (transport, storage, runtime not ready), so say that a retry can succeed.
+ */
+function createBackupErrorMessage(err: unknown): string {
+  const message = backupErrorMessage(err, "Backup failed.");
+  const data =
+    err && typeof err === "object" ? (err as { data?: unknown }).data : null;
+  if (
+    data &&
+    typeof data === "object" &&
+    (data as { retryable?: unknown }).retryable === false
+  ) {
+    return message;
+  }
+  return `${/[.!?]$/.test(message) ? message : `${message}.`} This may be temporary; try again.`;
 }
 
 function backupOptionInputId(fileName: string): string {
@@ -178,7 +199,7 @@ export function AdvancedSection() {
         )}).`,
       );
     } catch (err) {
-      setBackupError(backupErrorMessage(err, "Backup failed."));
+      setBackupError(createBackupErrorMessage(err));
     } finally {
       setCreateBackupBusy(false);
     }

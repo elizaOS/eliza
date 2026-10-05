@@ -5,12 +5,13 @@
 
 "use client";
 
-import { Card, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { ArrowLeft, Download, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "../../../bridge/toast";
 import { Button } from "../../../components/ui/button";
-import { isSafeNavigationUrl } from "../../lib/navigation-url";
+import { Card } from "../../../components/ui/card";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
+import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { InvoiceDto } from "../types";
 
@@ -228,6 +229,49 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                 </div>
               </div>
             )}
+
+            {invoice.charge_breakdown?.surchargeApplies
+              ? [
+                  {
+                    key: "affiliate",
+                    label: t("cloud.invoiceDetail.affiliateMarkup", {
+                      defaultValue: "Affiliate markup",
+                    }),
+                    value: invoice.charge_breakdown.affiliateMarkupUsd,
+                  },
+                  {
+                    key: "platform",
+                    label: t("cloud.invoiceDetail.platformFee", {
+                      defaultValue: "Platform fee",
+                    }),
+                    value: invoice.charge_breakdown.platformFeeUsd,
+                  },
+                  {
+                    key: "total",
+                    label: t("cloud.invoiceDetail.totalCharged", {
+                      defaultValue: "Total charged",
+                    }),
+                    value: invoice.charge_breakdown.totalChargeUsd,
+                  },
+                ].map((line) => (
+                  <div
+                    key={line.key}
+                    className="flex w-full"
+                    data-testid={`invoice-charge-${line.key}`}
+                  >
+                    <div className="bg-card border-l border-r border-b border-brand-surface flex-1 p-4">
+                      <p className="text-base font-mono text-txt-strong">
+                        {line.label}
+                      </p>
+                    </div>
+                    <div className="bg-card border-r border-b border-brand-surface flex-1 p-4">
+                      <p className="text-base font-mono text-txt-strong tabular-nums">
+                        {`$${line.value}`}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              : null}
 
             {paidDate && (
               <div className="flex w-full">

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import {
   canonicalRouteMethods,
   extractMethods,
-} from "../scripts/route-discovery.mjs";
+} from "../../scripts/sdk/route-discovery.ts";
 import { ELIZA_CLOUD_PUBLIC_ENDPOINTS } from "./public-routes.js";
 
 const ALL_HONO_METHODS = ["DELETE", "GET", "PATCH", "POST", "PUT"];
@@ -166,7 +166,7 @@ describe("Hono route method discovery", () => {
 
 describe("generated public endpoint inventory matches the live route tree", () => {
   // The generated `file` fields are repo-root-relative (see
-  // generate-public-routes.mjs: path.relative(cloudRoot, ...) where cloudRoot
+  // generate-public-routes.ts: path.relative(cloudRoot, ...) where cloudRoot
   // is the repository root).
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 

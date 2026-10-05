@@ -36,25 +36,29 @@
  *   - POST   /api/v1/containers/credentials      createContainerCredentials
  */
 
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { containersEnv } from "@/lib/config/containers-env";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
+import { BillingHoldActiveError } from "@elizaos/cloud-shared/lib/services/billing-hold";
 import {
   imageRequiresDigestPin,
   isCodingContainerImageAllowed,
-} from "@/lib/services/coding-containers";
-import { QuotaExceededError } from "@/lib/services/container-quota";
-import { type Container, containersService } from "@/lib/services/containers";
-import { getHetznerContainersClient } from "@/lib/services/containers/hetzner-client/client";
+} from "@elizaos/cloud-shared/lib/services/coding-containers";
+import { QuotaExceededError } from "@elizaos/cloud-shared/lib/services/container-quota";
+import {
+  type Container,
+  containersService,
+} from "@elizaos/cloud-shared/lib/services/containers";
+import { getHetznerContainersClient } from "@elizaos/cloud-shared/lib/services/containers/hetzner-client/client";
 import {
   type ContainerSummary,
   HetznerClientError,
-} from "@/lib/services/containers/hetzner-client/types";
-import { getOrgImageNamespaces } from "@/lib/services/org-image-namespaces";
-import { findReservedEnvKeys } from "@/lib/services/reserved-env-keys";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/containers/hetzner-client/types";
+import { getOrgImageNamespaces } from "@elizaos/cloud-shared/lib/services/org-image-namespaces";
+import { findReservedEnvKeys } from "@elizaos/cloud-shared/lib/services/reserved-env-keys";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 import { CreateContainerSchema } from "./schema";
 
 const app = new Hono<AppEnv>();
@@ -365,6 +369,12 @@ app.post("/", async (c) => {
     });
     return c.json({ success: true, data: toContainerDto(container) }, 201);
   } catch (error) {
+    if (error instanceof BillingHoldActiveError) {
+      return c.json(
+        { success: false, code: error.code, error: error.message },
+        402,
+      );
+    }
     if (error instanceof QuotaExceededError) {
       const quota = {
         availability: "ready" as const,

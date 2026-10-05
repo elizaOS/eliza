@@ -35,8 +35,8 @@
  *     tracks the wake anchor and the noon-window fire turn fails.
  */
 
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+import type { ScenarioContext } from "@elizaos/testing";
+import { scenario } from "@elizaos/testing";
 
 type JsonRecord = Record<string, unknown>;
 

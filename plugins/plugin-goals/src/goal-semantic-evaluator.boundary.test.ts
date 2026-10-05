@@ -3,8 +3,9 @@
  * The deterministic runtime spy proves an invalid evidence graph is rejected
  * before model dispatch and translated to the evaluator's unavailable result.
  */
+
+import type { LifeOpsGoalDefinition } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsGoalDefinition } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { evaluateGoalProgressWithLlm } from "./goal-semantic-evaluator.ts";
 

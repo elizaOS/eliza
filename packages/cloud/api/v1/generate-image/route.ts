@@ -1,5 +1,24 @@
 /** Authenticates image requests and delegates the canonical Cloud image transaction. */
 
+import {
+  ApiError,
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { admitAppInferenceCacheOnly } from "@elizaos/cloud-shared/lib/services/app-inference-admission";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import {
+  executeImageGeneration,
+  imageGenerationRequestSchema,
+  imageProviderKeysFromCloudEnvironment,
+} from "@elizaos/cloud-shared/lib/services/image-generation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
   admitFlatGenerativeOperation,
@@ -8,22 +27,6 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import {
-  ApiError,
-  failureResponse,
-  jsonError,
-} from "@/lib/api/cloud-worker-errors";
-import { admitAppInferenceCacheOnly } from "@/lib/services/app-inference-admission";
-import { appsService } from "@/lib/services/apps";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import {
-  executeImageGeneration,
-  imageGenerationRequestSchema,
-  imageProviderKeysFromCloudEnvironment,
-} from "@/lib/services/image-generation";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

@@ -2,4 +2,4 @@
 export type {
   AppBlockerSettingsCardProps,
   AppBlockerSettingsMode,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";

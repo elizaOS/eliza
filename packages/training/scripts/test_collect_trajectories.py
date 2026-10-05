@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import collect_trajectories as c
+import eliza_training.collect_trajectories as c
 
 
 def _manifest(path: Path, run_id: str) -> dict:
@@ -49,7 +49,7 @@ def test_dry_run_plans_only_current_scenario_entry_points(tmp_path: Path) -> Non
     assert commands["scenario-runner"]["command"][0:4] == [
         "bun",
         "--bun",
-        "packages/scenario-runner/src/cli.ts",
+        "packages/testing/scenario-runner/src/cli.ts",
         "run",
     ]
     assert all(command["supports_cost_cap"] is False for command in commands.values())

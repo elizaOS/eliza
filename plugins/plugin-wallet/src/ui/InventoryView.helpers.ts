@@ -1,12 +1,15 @@
 // Shared wallet data helpers for InventoryView and the `interact` capability
 // handler. Kept out of the .tsx so that file exports only React components and
 // stays Fast-Refresh-compatible in dev.
+// Shared wallet data helpers for InventoryView and the `interact` capability
+// handler. Kept out of the .tsx so that file exports only React components and
+// stays Fast-Refresh-compatible in dev.
 import type {
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
-} from "@elizaos/shared";
-import { client } from "@elizaos/ui/api";
+} from "@elizaos/contracts";
+import { client } from "@elizaos/ui";
 
 export function resolveWalletAddresses({
   walletAddresses,

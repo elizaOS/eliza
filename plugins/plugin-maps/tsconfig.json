@@ -6,7 +6,7 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "react", "react-dom"],
+    "types": ["node", "react", "react-dom", "vite/client"],
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "noEmit": true,
@@ -14,17 +14,9 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/cloud-routing": ["../../packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["../../packages/cloud/routing/src/*"],
-      "@elizaos/cloud-test-mocks": [
-        "../../packages/cloud/test-mocks/src/index.ts"
-      ],
       "@elizaos/cloud-test-mocks/*": ["../../packages/cloud/test-mocks/src/*"],
-      "@elizaos/scenario-runner/scenario-assertions": [
-        "../../packages/scenario-runner/src/scenario-assertions.ts"
-      ]
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": [

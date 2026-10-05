@@ -16,14 +16,14 @@
  */
 
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsActor,
   LifeOpsAuditEventType,
   LifeOpsGoalDefinition,
   LifeOpsGoalLink,
   LifeOpsOwnerType,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   parseJsonRecord,

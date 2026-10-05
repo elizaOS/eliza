@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[1]
-if str(_TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT))
-if str(_TRAINING_ROOT / "scripts") not in sys.path:
-    sys.path.insert(0, str(_TRAINING_ROOT / "scripts"))
 
-from scripts import emit_eliza1_catalog as emit  # noqa: E402
-from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
+from eliza_training import emit_eliza1_catalog as emit  # noqa: E402
+from eliza_training.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
 
 
 def test_known_base_models_match_active_eliza1_tiers() -> None:

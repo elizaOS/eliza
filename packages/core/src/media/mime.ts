@@ -2,7 +2,7 @@
  * Detects media MIME types and extensions from magic bytes, headers, and paths.
  */
 
-import { sniffMime } from "./mime-sniffer.ts";
+import { sniffMime } from "./mime-sniffer.js";
 
 /** Media kind categories */
 export type MediaKind = "image" | "audio" | "video" | "document" | "unknown";

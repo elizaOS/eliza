@@ -1,12 +1,12 @@
 /** Exercises undated owner todo creation, completion and reopening through canonical dispatch and real PGlite. */
 import {
   ChannelType,
+  executePlannedToolCall,
   type JsonValue,
   type Memory,
   type UUID,
 } from "@elizaos/core";
 import { expect, it } from "vitest";
-import { executePlannedToolCall } from "../../../../packages/core/src/runtime/execute-planned-tool-call.ts";
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import { ownerTodosAction } from "../actions/owner-surfaces.js";
 import { LifeOpsService } from "./service.js";

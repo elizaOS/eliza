@@ -1,6 +1,6 @@
 /** Resolves and prices the guarded Seedance 2.5 controls exposed to Personal Shared chats. */
 
-import type { MediaGenerationRequest } from "@elizaos/core/edge";
+import type { MediaGenerationRequest } from "@elizaos/core";
 
 export const PERSONAL_SHARED_TEXT_VIDEO_MODEL_ID = "bytedance/seedance-2.5/text-to-video";
 export const PERSONAL_SHARED_IMAGE_VIDEO_MODEL_ID = "bytedance/seedance-2.5/image-to-video";

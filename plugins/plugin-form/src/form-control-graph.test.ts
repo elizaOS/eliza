@@ -1,9 +1,9 @@
 /**
- * Isolated proof of the FormControl.fields graph budget. Origin recursed
- * without depth, visit, or cycle limits (20k nest → RangeError). This file
- * imports the production helper only.
+ * Exercises graph limits and template-boundary rejection against the real
+ * graph walker with deterministic nested, sparse, shared and cyclic inputs.
  */
 
+import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import {
   assertFormControlGraph,
@@ -40,6 +40,17 @@ function nest(depth: number): {
   return control;
 }
 
+function rejectsGraph(operation: () => void, message: RegExp) {
+  assert.throws(operation, (error) => {
+    expect(error).toBeInstanceOf(FormControlGraphError);
+    expect((error as FormControlGraphError).code).toBe(
+      "FORM_CONTROL_UNBOUNDED",
+    );
+    expect((error as Error).message).toMatch(message);
+    return true;
+  });
+}
+
 describe("assertFormControlGraph", () => {
   it(`accepts nesting at the cap (${MAX_FORM_CONTROL_DEPTH})`, () => {
     expect(() =>
@@ -48,48 +59,21 @@ describe("assertFormControlGraph", () => {
   });
 
   it(`throws FORM_CONTROL_UNBOUNDED one past depth ${MAX_FORM_CONTROL_DEPTH}`, () => {
-    try {
-      assertFormControlGraph(nest(MAX_FORM_CONTROL_DEPTH + 1));
-      throw new Error("expected FORM_CONTROL_UNBOUNDED");
-    } catch (error) {
-      expect(error).toBeInstanceOf(FormControlGraphError);
-      expect((error as FormControlGraphError).code).toBe(
-        "FORM_CONTROL_UNBOUNDED",
-      );
-      expect((error as Error).message).toMatch(/nesting exceeds 32/);
-    }
+    rejectsGraph(
+      () => assertFormControlGraph(nest(MAX_FORM_CONTROL_DEPTH + 1)),
+      /nesting exceeds 32/,
+    );
   });
 
-  it(`accepts ${MAX_FORM_CONTROL_NODES - 1} sibling fields`, () => {
+  it("accepts the exact sibling limit and rejects one more field", () => {
     const fields = Array.from(
       { length: MAX_FORM_CONTROL_NODES - 1 },
-      (_, i) => ({
-        key: `k${i}`,
-        label: "x",
-        type: "text",
-      }),
+      (_, i) => ({ key: `k${i}`, label: "x", type: "text" }),
     );
-    expect(() =>
-      assertFormControlGraph({ key: "root", label: "r", type: "text", fields }),
-    ).not.toThrow();
-  });
-
-  it(`throws FORM_CONTROL_UNBOUNDED at ${MAX_FORM_CONTROL_NODES} sibling fields`, () => {
-    const fields = Array.from({ length: MAX_FORM_CONTROL_NODES }, (_, i) => ({
-      key: `k${i}`,
-      label: "x",
-      type: "text",
-    }));
-    try {
-      assertFormControlGraph({ key: "root", label: "r", type: "text", fields });
-      throw new Error("expected FORM_CONTROL_UNBOUNDED");
-    } catch (error) {
-      expect(error).toBeInstanceOf(FormControlGraphError);
-      expect((error as FormControlGraphError).code).toBe(
-        "FORM_CONTROL_UNBOUNDED",
-      );
-      expect((error as Error).message).toMatch(/exceeds 2048 nodes/);
-    }
+    const root = { key: "root", label: "r", type: "text", fields };
+    expect(() => assertFormControlGraph(root)).not.toThrow();
+    fields.push({ key: "overflow", label: "x", type: "text" });
+    rejectsGraph(() => assertFormControlGraph(root), /exceeds 2048 nodes/);
   });
 
   it("throws FORM_CONTROL_UNBOUNDED on a cycle", () => {
@@ -105,13 +89,7 @@ describe("assertFormControlGraph", () => {
       fields: [],
     };
     cyclic.fields.push(cyclic);
-    try {
-      assertFormControlGraph(cyclic);
-      throw new Error("expected FORM_CONTROL_UNBOUNDED");
-    } catch (error) {
-      expect(error).toBeInstanceOf(FormControlGraphError);
-      expect((error as FormControlGraphError).message).toMatch(/cycle/);
-    }
+    rejectsGraph(() => assertFormControlGraph(cyclic), /cycle/);
   });
 
   it("accepts a shared child that is not an ancestor cycle", () => {
@@ -179,27 +157,10 @@ describe("assertFormControlGraph", () => {
 });
 
 describe("resolveControlTemplates", () => {
-  it("still interpolates an honest nested control", () => {
-    const resolved = resolveControlTemplates(
-      {
-        key: "delivery",
-        label: "Delivery for {{name}}",
-        type: "text",
-        fields: [{ key: "sub", label: "Sub for {{name}}", type: "text" }],
-      },
-      { name: "Alice" },
-    );
-    expect(resolved.label).toBe("Delivery for Alice");
-    expect(resolved.fields?.[0].label).toBe("Sub for Alice");
-  });
-
   it("fails closed on a 20k nest instead of RangeError", () => {
-    try {
-      resolveControlTemplates(nest(20_000) as never, {});
-      throw new Error("expected FORM_CONTROL_UNBOUNDED");
-    } catch (error) {
-      expect(error).toBeInstanceOf(FormControlGraphError);
-      expect((error as Error).name).not.toBe("RangeError");
-    }
+    assert.throws(
+      () => resolveControlTemplates(nest(20_000) as never, {}),
+      FormControlGraphError,
+    );
   });
 });

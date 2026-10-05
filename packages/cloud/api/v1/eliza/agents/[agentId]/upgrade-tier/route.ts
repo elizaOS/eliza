@@ -36,45 +36,51 @@
  *    re-arms, for stopped/sleeping/dead-job targets) durable state.
  */
 
-import { type Context, Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
-import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
-import { checkAgentTierUpgradeCreditGate } from "@/lib/services/agent-billing-gate";
-import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
+import { AGENT_PRICING } from "@elizaos/cloud-sdk/browser-contracts";
+import { provisioningJobService } from "@elizaos/cloud-shared/agents";
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { getMaxNonTerminalAgentsForOrg } from "@elizaos/cloud-shared/lib/constants/agent-sandbox-quota";
+import { checkAgentTierUpgradeCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
+import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
 import {
   createTierUpgradeTargetWithProvision,
   findLiveTierUpgradeTarget,
   PersonalDedicatedAuthorityRetainedError,
   PersonalDedicatedSelectionRequiredError,
-} from "@/lib/services/agent-tier-upgrade-target";
-import { buildDefaultAgentCharacterConfig } from "@/lib/services/default-agent-character";
+} from "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target";
+import { buildDefaultAgentCharacterConfig } from "@elizaos/cloud-shared/lib/services/default-agent-character";
 import {
   AgentQuotaExceededError,
   elizaSandboxService,
-} from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+} from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
-} from "@/lib/services/provisioning-worker-health";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { stripReservedEnvKeys } from "@/lib/services/reserved-env-keys";
+} from "@elizaos/cloud-shared/lib/services/provisioning-worker-health";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { stripReservedEnvKeys } from "@elizaos/cloud-shared/lib/services/reserved-env-keys";
 import {
   isPersonalSharedAgentId,
   personalSharedAgentId,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { type Context, Hono } from "hono";
+import { z } from "zod";
 
 const CORS_METHODS = "GET, POST, OPTIONS";
-const DEDICATED_QUOTE_VERSION = "personal-dedicated-v1";
+const DEDICATED_QUOTE_VERSION = "personal-dedicated-v2";
 
 const ActivationBody = z.object({
   action: z.literal("activate_dedicated"),
   quoteId: z.string().regex(/^[a-f0-9]{64}$/),
+  minimumActivationChargeUsd: z.literal(
+    AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE,
+  ),
 });
 
 type AgentRow = NonNullable<
@@ -198,6 +204,7 @@ async function quoteIdFor(
     sourceAgentId,
     balance.toFixed(6),
     AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6),
+    AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE.toFixed(6),
     AGENT_PRICING.UPGRADE_MINIMUM_BALANCE.toFixed(6),
   ].join(":");
   const digest = await crypto.subtle.digest(
@@ -234,6 +241,7 @@ async function dedicatedQuote(
     currentMode: "shared" as const,
     targetMode: "dedicated" as const,
     hourlyRateUsd: AGENT_PRICING.RUNNING_HOURLY_RATE,
+    minimumActivationChargeUsd: AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE,
     dailyRateUsd: AGENT_PRICING.DAILY_RUNNING_COST,
     minimumBalanceUsd,
     minimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,

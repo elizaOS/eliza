@@ -15,13 +15,9 @@
  * This module is the pure merge/dedupe so it can be unit-tested without React.
  */
 
-import {
-  dedupeModalities,
-  type EnabledViewKinds,
-  isViewVisible,
-  type ViewKind,
-} from "@elizaos/core";
-import type { RegistryAppInfo } from "../api";
+import type { EnabledViewKinds, ViewKind } from "@elizaos/core";
+import type { RegistryAppInfo } from "@elizaos/core/protocol";
+import { dedupeModalities, isViewVisible } from "@elizaos/core/protocol";
 import { resolveViewIconId } from "../components/views/view-icon-aliases";
 import { viewIconDataUri } from "../components/views/view-icons.generated";
 import type { ViewModality } from "../platform/platform-guards";
@@ -80,7 +76,7 @@ export interface ViewEntry {
   launchType?: string;
   launchUrl?: string | null;
   builtin?: boolean;
-  developerOnly?: boolean;
+
   /** Four-tier visibility category resolved from the source declaration. */
   viewKind?: ViewKind;
   /** Sort priority for launcher/nav surfaces (lower = earlier). */
@@ -130,7 +126,7 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     pluginName: view.pluginName,
     path: view.path,
     builtin: view.builtin,
-    developerOnly: view.developerOnly,
+
     viewKind: view.viewKind,
     order: view.order,
     group: view.group,
@@ -165,7 +161,7 @@ function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
     pluginName: app.name,
     launchType: app.launchType,
     launchUrl: app.launchUrl,
-    developerOnly: app.developerOnly,
+
     viewKind: app.viewKind,
     app,
   };

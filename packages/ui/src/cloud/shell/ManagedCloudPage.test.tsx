@@ -41,8 +41,8 @@ vi.mock("./CloudRouteErrorBoundary", () => ({
 
 vi.mock("./cloud-route-registry", async () => {
   const { useSetPageHeader } = await vi.importActual<
-    typeof import("../../cloud-ui/components/layout")
-  >("../../cloud-ui/components/layout");
+    typeof import("../../cloud-ui/components/layout/page-header-context.hooks")
+  >("../../cloud-ui/components/layout/page-header-context.hooks");
   return {
     getCloudRouteGate: () => undefined,
     listCloudRoutes: () => [

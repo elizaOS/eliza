@@ -66,7 +66,7 @@ export const GOALS_LOG_PREFIX = "[plugin-goals]" as const;
 // `{ goals: LifeOpsGoalRecord[] }` where each record is
 // `{ goal: LifeOpsGoalDefinition; links: LifeOpsGoalLink[] }`
 // (see LifeOpsGoalDefinition / LifeOpsGoalLink in
-// packages/shared/src/contracts/personal-assistant.ts, served by the
+// packages/core/src/contracts/personal-assistant.ts, served by the
 // `/api/lifeops/goals` branch of
 // plugins/plugin-personal-assistant/src/routes/lifeops-routes.ts).
 //

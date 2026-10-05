@@ -6,15 +6,15 @@
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import http from "node:http";
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { CalendarServiceError } from "@elizaos/plugin-calendar";
 import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarSummary,
   ListLifeOpsCalendarsRequest,
-} from "@elizaos/shared";
+} from "@elizaos/contracts";
+import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import { CalendarServiceError } from "@elizaos/plugin-calendar";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,

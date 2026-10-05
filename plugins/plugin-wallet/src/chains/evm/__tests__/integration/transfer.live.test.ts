@@ -10,7 +10,7 @@ import { formatEther, parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { itIf } from "../../../../../../../packages/app-core/test/helpers/conditional-tests";
+import { itIf } from "../../../../../../../packages/app/test/helpers/conditional-tests";
 import { TransferAction } from "../../actions/transfer";
 import { type ChainRpcConfig, WalletProvider } from "../../providers/wallet";
 import { initRPCProviderManager } from "../../rpc-providers";

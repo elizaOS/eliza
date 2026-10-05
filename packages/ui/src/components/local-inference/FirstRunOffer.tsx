@@ -10,8 +10,12 @@ import type {
   DownloadJob,
   HardwareProbe,
   InstalledModel,
-} from "../../api/client-local-inference";
-import { selectRecommendedModels } from "../../services/local-inference/recommendation";
+} from "@elizaos/contracts";
+import { isSettingsDefaultLocalModel } from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import {
+  selectRecommendedModels,
+  UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
+} from "@elizaos/plugin-native-inference/model-catalog/recommendation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { displayModelName, findInstalled } from "./hub-utils";
@@ -62,7 +66,8 @@ export function FirstRunOffer({
               "Download the default local model ({{model}}) to run chat on this device.",
           })
         : t("firstrunoffer.detailNoModel", {
-            defaultValue: "No local chat model is available on this device.",
+            defaultValue:
+              "No local chat model is available on this device. Use Eliza Cloud or connect another model provider to chat.",
           })
       : anyActiveDownload
         ? t("firstrunoffer.detailRunningModel", {
@@ -82,7 +87,7 @@ export function FirstRunOffer({
     >
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold text-txt">{title}</div>
-        <div className="text-xs text-muted">{detail}</div>
+        <div className="text-xs text-muted-strong">{detail}</div>
       </div>
       {recommended ? (
         <Button
@@ -108,7 +113,9 @@ function pickRecommended(
   installed: InstalledModel[],
   hardware: HardwareProbe,
 ): CatalogModel | null {
-  const recommended = selectRecommendedModels(hardware, catalog);
+  const recommended = selectRecommendedModels(hardware, catalog, {
+    policy: UI_LOCAL_INFERENCE_RECOMMENDATION_POLICY,
+  });
   for (const candidate of [
     recommended.TEXT_LARGE.model,
     recommended.TEXT_SMALL.model,
@@ -119,7 +126,7 @@ function pickRecommended(
   return (
     catalog.find(
       (model) =>
-        model.id.startsWith("eliza-1-") && !findInstalled(model, installed),
+        isSettingsDefaultLocalModel(model) && !findInstalled(model, installed),
     ) ?? null
   );
 }

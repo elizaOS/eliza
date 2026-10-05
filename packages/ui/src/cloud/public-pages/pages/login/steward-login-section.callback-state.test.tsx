@@ -13,7 +13,7 @@
  * options again, so a real failure is never hidden behind the spinner.
  */
 
-import { StewardSessionError } from "@elizaos/shared/steward-session-client";
+import { StewardSessionError } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -48,10 +48,10 @@ vi.mock("../../lib/steward-session", () => ({
   syncStewardSessionCookie: callbackState.sync,
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", async () => {
+vi.mock("@elizaos/plugin-elizacloud/steward-session-client", async () => {
   const actual = await vi.importActual<
-    typeof import("@elizaos/shared/steward-session-client")
-  >("@elizaos/shared/steward-session-client");
+    typeof import("@elizaos/plugin-elizacloud/steward-session-client")
+  >("@elizaos/plugin-elizacloud/steward-session-client");
   return {
     ...actual,
     hasStewardAuthedCookie: () => true,
@@ -63,8 +63,7 @@ vi.mock("@elizaos/shared/steward-session-client", async () => {
   };
 });
 
-vi.mock("@elizaos/login", async () => ({
-  ...(await vi.importActual<typeof import("@elizaos/login")>("@elizaos/login")),
+vi.mock("@elizaos/auth", () => ({
   LoginAuth: class {
     getSession() {
       return null;

@@ -118,6 +118,19 @@ function makeRuntime(
   };
 }
 
+function bindChildEnvironment(service: AcpService) {
+  return (
+    service as unknown as {
+      buildEnv: (
+        extra: Record<string, string>,
+        customCredentials: Record<string, string>,
+        model: string | undefined,
+        agentType: string,
+      ) => NodeJS.ProcessEnv;
+    }
+  ).buildEnv.bind(service);
+}
+
 describe("subscription coding adapter descriptors", () => {
   it("declares only documented CLI and ACP commands", () => {
     expect(SUBSCRIPTION_CODING_ADAPTERS.kimi).toMatchObject({
@@ -460,16 +473,7 @@ describe("subscription billing and error isolation", () => {
     vi.stubEnv("ELIZA_MODEL_GATEWAY_URL", "https://gateway.example.test");
     vi.stubEnv("ELIZA_MODEL_GATEWAY_TOKEN", "parent-gateway-secret");
     const service = new AcpService(makeRuntime() as never);
-    const buildEnv = (
-      service as unknown as {
-        buildEnv: (
-          extra: Record<string, string>,
-          customCredentials: Record<string, string>,
-          model: string | undefined,
-          agentType: string,
-        ) => NodeJS.ProcessEnv;
-      }
-    ).buildEnv.bind(service);
+    const buildEnv = bindChildEnvironment(service);
 
     const kimiEnv = buildEnv(
       {
@@ -532,16 +536,7 @@ describe("subscription billing and error isolation", () => {
         GROK_HOME: "/tenant-a/grok",
       }) as never,
     );
-    const buildEnv = (
-      service as unknown as {
-        buildEnv: (
-          extra: Record<string, string>,
-          customCredentials: Record<string, string>,
-          model: string | undefined,
-          agentType: string,
-        ) => NodeJS.ProcessEnv;
-      }
-    ).buildEnv.bind(service);
+    const buildEnv = bindChildEnvironment(service);
 
     const kimiEnv = buildEnv(
       {
@@ -682,12 +677,30 @@ describe("Kimi user-attended spawn policy", () => {
     );
   });
 
-  it("rejects expired or structurally forged attendance proofs", () => {
+  it("does not mint attendance for empty request or subject identifiers", () => {
+    expect(
+      createSubscriptionExecutionAuthorization("", "sub-456"),
+    ).toBeUndefined();
+    expect(
+      createSubscriptionExecutionAuthorization("req-123", "   "),
+    ).toBeUndefined();
+  });
+
+  it("round-trips minted attendance and rejects expired or forged proofs", () => {
     const fresh = createSubscriptionExecutionAuthorization(
       "request-24096",
       "user-24096",
       1_000,
     );
+    expect(fresh).toEqual({
+      version: 1,
+      mode: "user-attended",
+      source: "interactive-message",
+      requestId: "request-24096",
+      subjectId: "user-24096",
+      issuedAtMs: 1_000,
+      expiresAtMs: 121_000,
+    });
     expect(
       subscriptionExecutionAuthorizationFromMetadata(
         { subscriptionExecutionAuthorization: fresh },

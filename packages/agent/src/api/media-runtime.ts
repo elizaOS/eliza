@@ -1,6 +1,7 @@
 /**
- * Runtime wiring for the local media store: a public route so on-device iOS
- * (in-process dispatch, no HTTP server) can serve media, an outgoing hook that
+ * Runtime wiring for the local media store: a media route so on-device iOS
+ * (in-process dispatch, no HTTP server) can serve media (public except under
+ * the protected profile), an outgoing hook that
  * persists inline `data:` URLs to the store before they hit the DB/context, and
  * a periodic GC task that sweeps orphaned files.
  *
@@ -8,17 +9,21 @@
  * the runtime (routes / pipeline hooks / tasks).
  */
 
-import type { IAgentRuntime, Memory, Route } from "@elizaos/core";
 import {
   fetchRemoteMedia,
+  type IAgentRuntime,
   logger,
+  type Memory,
   nodeLookupFn,
   nodePinnedFetch,
 } from "@elizaos/core";
+import type { Route } from "@elizaos/host/protocol";
+
 import {
   ensureThumbnailForStoredFile,
   gcUnreferencedMedia,
   handleMediaRouteRequest,
+  isMediaAuthRequired,
   isStoredMediaUrl,
   MEDIA_URL_IN_TEXT_RE,
   mediaFileNameFromUrl,
@@ -28,9 +33,7 @@ import {
 
 /** Cap on bytes pulled while rehosting a remote attachment into the store. */
 const REHOST_MAX_BYTES = 50 * 1024 * 1024;
-
-export const DEFAULT_MEDIA_REHOST_FETCH_TIMEOUT_MS = 10_000;
-
+export const DEFAULT_MEDIA_REHOST_FETCH_TIMEOUT_MS = 10000;
 /** Media content types worth rehosting (skip `link` and unknown). */
 const REHOSTABLE_CONTENT_TYPES = new Set([
   "image",
@@ -38,7 +41,6 @@ const REHOSTABLE_CONTENT_TYPES = new Set([
   "audio",
   "document",
 ]);
-
 /**
  * Rehost a remote (http/https) media URL into the content-addressed store via
  * the SSRF-guarded fetcher (blocks private/loopback) with a hard size cap, so an
@@ -48,7 +50,10 @@ const REHOSTABLE_CONTENT_TYPES = new Set([
  */
 async function rehostRemoteMediaUrl(
   url: string,
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  options: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+  } = {},
 ): Promise<string | null> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_MEDIA_REHOST_FETCH_TIMEOUT_MS;
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -68,20 +73,15 @@ async function rehostRemoteMediaUrl(
       .url;
   } catch (err) {
     logger.warn(
-      `[media-persist] failed to rehost ${url}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[media-persist] failed to rehost ${url}: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
   }
 }
-
 const MEDIA_URL_PREFIX = "/api/media/";
-
 /**
- * Public GET route for stored media. On HTTP platforms with a listening port
- * the pre-auth `serveMediaFile` handler answers first and this route is never
- * reached; it exists for the port-free native IPC path — iOS/desktop/Android
+ * GET route for stored media. On HTTP platforms with a listening port the
+ * `serveMediaFile` handler answers first and this route is never reached; it exists for the port-free native IPC path — iOS/desktop/Android
  * native scheme handlers (`eliza-local-agent://ipc/api/media/…`) that dispatch
  * in-process over `runtime.routes` with no HTTP server. The native bridge
  * base64-encodes the returned `Buffer` body losslessly.
@@ -89,13 +89,21 @@ const MEDIA_URL_PREFIX = "/api/media/";
  * The `Range` request header is forwarded so `handleMediaRouteRequest` can
  * answer `206 Partial Content`, which is what lets `<audio>`/`<video>` seek
  * over the native scheme handler.
+ *
+ * `public` is a getter so it is resolved from the frozen protected-profile
+ * capture, not at module load (route registration copies the value). Under
+ * the protected profile (`isMediaAuthRequired`) the route is private, so the
+ * native dispatcher and the HTTP runtime-route gate require an authorized
+ * caller.
  */
-export const mediaFileRoute: Route = {
+export const mediaFileRoute = {
   type: "GET",
   path: "/api/media/:filename",
   // Serve at the literal path, not under the plugin-name prefix.
   rawPath: true,
-  public: true,
+  get public(): boolean {
+    return !isMediaAuthRequired();
+  },
   name: "media-file",
   publicReason:
     "Media URLs are content-addressed capability links served pre-auth.",
@@ -113,8 +121,7 @@ export const mediaFileRoute: Route = {
       ...(result.body !== undefined ? { body: result.body } : {}),
     };
   },
-};
-
+} as Route;
 /**
  * Persist agent-generated / inline `data:` URL attachments to the content-
  * addressed store before the response is delivered + persisted, so a compact
@@ -150,7 +157,11 @@ export function registerMediaPipelineHook(runtime: IAgentRuntime): void {
           if (rehosted) {
             attachment.url = rehosted;
           } else {
-            (attachment as { ephemeral?: boolean }).ephemeral = true;
+            (
+              attachment as {
+                ephemeral?: boolean;
+              }
+            ).ephemeral = true;
           }
         }
         // Pre-compute a thumbnail for stored images lacking one (generated
@@ -166,17 +177,19 @@ export function registerMediaPipelineHook(runtime: IAgentRuntime): void {
     },
   });
 }
-
 const MEDIA_GC_TASK_NAME = "MEDIA_GC";
 const MEDIA_GC_TAGS = ["queue", "repeat", "media-gc"];
 const MEDIA_GC_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
-
 type MediaGcDiagnostics = Pick<IAgentRuntime, "logger" | "reportError">;
-
 function transcriptContentFromMemory(memory: Memory): unknown {
-  return (memory.content as { transcript?: unknown } | undefined)?.transcript;
+  return (
+    memory.content as
+      | {
+          transcript?: unknown;
+        }
+      | undefined
+  )?.transcript;
 }
-
 function collectTranscriptAudioReference(
   memory: Memory,
   addUrl: (value: unknown) => void,
@@ -185,14 +198,26 @@ function collectTranscriptAudioReference(
   const raw = transcriptContentFromMemory(memory);
   if (raw === undefined) return;
   if (raw && typeof raw === "object") {
-    addUrl((raw as { audioUrl?: unknown }).audioUrl);
+    addUrl(
+      (
+        raw as {
+          audioUrl?: unknown;
+        }
+      ).audioUrl,
+    );
     return;
   }
   if (typeof raw !== "string") return;
   try {
     const parsed: unknown = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
-      addUrl((parsed as { audioUrl?: unknown }).audioUrl);
+      addUrl(
+        (
+          parsed as {
+            audioUrl?: unknown;
+          }
+        ).audioUrl,
+      );
     }
   } catch (err) {
     // error-policy:J7 diagnostics-must-not-kill-the-loop — malformed transcript
@@ -201,12 +226,14 @@ function collectTranscriptAudioReference(
     const context = {
       memoryId: memory.id,
       roomId: memory.roomId,
-      tableName: (memory as { tableName?: unknown }).tableName,
+      tableName: (
+        memory as {
+          tableName?: unknown;
+        }
+      ).tableName,
       field: "content.transcript",
     };
-    const message = `[media-gc] failed to parse transcript media reference${
-      memory.id ? ` for memory ${memory.id}` : ""
-    }: ${err instanceof Error ? err.message : String(err)}`;
+    const message = `[media-gc] failed to parse transcript media reference${memory.id ? ` for memory ${memory.id}` : ""}: ${err instanceof Error ? err.message : String(err)}`;
     if (diagnostics) {
       diagnostics.logger.warn(message);
       diagnostics.reportError("media-gc.transcript-reference", err, context);
@@ -215,7 +242,6 @@ function collectTranscriptAudioReference(
     }
   }
 }
-
 export function collectReferencedMedia(
   memories: Memory[],
   diagnostics?: MediaGcDiagnostics,
@@ -258,7 +284,6 @@ export function collectReferencedMedia(
         addUrl(attachment?.redactedUrl);
       }
     }
-
     // Document-linked original-bytes files: a knowledge document references its
     // stored original via `metadata.mediaUrl` (no content.attachments entry).
     // Collect it so the file survives GC while the document still references it.
@@ -267,23 +292,30 @@ export function collectReferencedMedia(
     // look up. Collect it too so a producer that set only `audioUrl` doesn't
     // leave its WAV invisible to the sweep and deleted after the grace window.
     const metadata = memory.metadata as
-      | { mediaUrl?: unknown; audioUrl?: unknown }
+      | {
+          mediaUrl?: unknown;
+          audioUrl?: unknown;
+        }
       | undefined;
     addUrl(metadata?.mediaUrl);
     addUrl(metadata?.audioUrl);
-
     // Re-shared media: a message can reference a stored file by pasting its
     // `/api/media/<sha256>.<ext>` capability URL into the body text with no
     // attachment/metadata field pointing at it. The export capture already
     // treats such text URLs as live references; the GC must agree, or the
     // sweep unlinks the file and the visible chat reference 404s.
-    const text = (memory.content as { text?: unknown } | undefined)?.text;
+    const text = (
+      memory.content as
+        | {
+            text?: unknown;
+          }
+        | undefined
+    )?.text;
     if (typeof text === "string" && text.includes("/api/media/")) {
       for (const match of text.matchAll(MEDIA_URL_IN_TEXT_RE)) {
         addUrl(match[0]);
       }
     }
-
     // Transcript rows persist the rich record as JSON in `content.transcript`.
     // Voice captures can retain their WAV solely through the record's `audioUrl`,
     // so the collector has to understand that shared transcript row shape rather
@@ -292,7 +324,6 @@ export function collectReferencedMedia(
   }
   return referenced;
 }
-
 /**
  * Register the orphan-media GC worker. Queue-row creation happens after SQL
  * migrations at the awaited startup-maintenance boundary so plugin
@@ -315,7 +346,6 @@ export function registerMediaGcWorker(runtime: IAgentRuntime): void {
     },
   });
 }
-
 /** Ensure the daily media GC has one queue row after SQL is ready. */
 export async function scheduleMediaGc(runtime: IAgentRuntime): Promise<void> {
   const existing = await runtime.getTasks({

@@ -22,16 +22,6 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  createRealTestRuntime,
-  type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
-import { todoAction } from "../src/actions/todo.ts";
-import { todosTable } from "../src/db/schema.ts";
-import todosPlugin from "../src/index.ts";
-import { currentTodosProvider } from "../src/providers/current-todos.ts";
 import {
   deserializeTodoMutationRecord,
   importTodoMutationRecordsInTransaction,
@@ -41,7 +31,17 @@ import {
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
   TodosService,
-} from "../src/service.ts";
+} from "@elizaos/plugin-todos";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  createRealTestRuntime,
+  type RealTestRuntimeResult,
+} from "../../../packages/app/test/helpers/real-runtime.ts";
+import { todoAction } from "../src/actions/todo.ts";
+import { todosTable } from "../src/db/schema.ts";
+import todosPlugin from "../src/index.ts";
+import { currentTodosProvider } from "../src/providers/current-todos.ts";
 
 // Stable per-user (entityId) UUID; agentId comes from the runtime.
 const ENTITY_ID = "11111111-1111-4111-8111-111111111111" as UUID;
@@ -408,6 +408,66 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
           .sort(),
       ).toEqual(expectedIds);
     }
+  });
+
+  it("action=clear from one room removes the user's cross-room list only (#28006)", async () => {
+    const entityId = "3b3b3b3b-3b3b-4b3b-8b3b-3b3b3b3b3b3b" as UUID;
+    const otherEntity = "6e6e6e6e-6e6e-4e6e-8e6e-6e6e6e6e6e6e" as UUID;
+    const roomA = "aaaa1111-aaaa-4aaa-8aaa-aaaa1111aaaa" as UUID;
+    const roomB = "bbbb2222-bbbb-4bbb-8bbb-bbbb2222bbbb" as UUID;
+    for (const roomId of [roomA, roomB]) {
+      await service.create({
+        entityId,
+        agentId: runtime.agentId,
+        roomId,
+        content: `Todo made in ${roomId}`,
+      });
+    }
+    const survivor = await service.create({
+      entityId: otherEntity,
+      agentId: runtime.agentId,
+      roomId: roomB,
+      content: "Other user, same room",
+    });
+
+    const preview = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId: roomB,
+        content: { text: "clear my todos" },
+      } as Memory,
+      { action: "clear" },
+    );
+    expect(preview.data).toMatchObject({
+      action: "clear",
+      count: 0,
+      requiresConfirmation: true,
+    });
+    expect(
+      ((preview.data?.preview ?? []) as Array<{ roomId: string }>).map(
+        (todo) => todo.roomId,
+      ),
+    ).toEqual([roomA, roomB]);
+    const result = await invokeTodoAction(
+      {
+        id: crypto.randomUUID() as UUID,
+        entityId,
+        roomId: roomB,
+        content: { text: "yes" },
+      } as Memory,
+      { action: "clear" },
+    );
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ action: "clear", count: 2 });
+    expect(await service.list({ entityId, agentId: runtime.agentId })).toEqual(
+      [],
+    );
+    expect(
+      (
+        await service.list({ entityId: otherEntity, agentId: runtime.agentId })
+      ).map((todo) => todo.id),
+    ).toEqual([survivor.id]);
   });
 
   it("deletes a todo and clear() removes the remaining rows for a scope", async () => {

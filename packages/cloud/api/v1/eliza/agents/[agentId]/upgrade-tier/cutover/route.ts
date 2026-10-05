@@ -5,48 +5,51 @@
  * early or lose the working Shared fallback on failure.
  */
 
-import {
-  createSharedTodoCutoverSnapshot,
-  type SharedTodoCutoverSnapshot,
-} from "@elizaos/shared/todo-cutover";
-import { type Context, Hono } from "hono";
-import { z } from "zod";
-import { usersRepository } from "@/db/repositories/users";
-import { errorToResponse } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
+import { errorToResponse } from "@elizaos/cloud-shared/lib/api/errors";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   finalizePersonalTierUpgradeCutover,
   findActivePersonalDedicatedTarget,
   findLiveTierUpgradeTarget,
-} from "@/lib/services/agent-tier-upgrade-target";
-import { readPersonalElizaCutover } from "@/lib/services/eliza-agent-config";
-import { invalidatePersonalDeliveryProjection } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
-import { SandboxTransport } from "@/lib/services/eliza-sandbox/bridge/transport";
-import type { AgentNetworkTarget } from "@/lib/services/eliza-sandbox/bridge/transport-contract";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+} from "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target";
+import { readPersonalElizaCutover } from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
+import { invalidatePersonalDeliveryProjection } from "@elizaos/cloud-shared/lib/services/eliza-app/personal-delivery-projection-contract";
+import { SandboxTransport } from "@elizaos/cloud-shared/lib/services/eliza-sandbox/bridge/transport";
+import type { AgentNetworkTarget } from "@elizaos/cloud-shared/lib/services/eliza-sandbox/bridge/transport-contract";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   coordinateSharedCutoverCommit,
   coordinateSharedCutoverRelease,
   coordinateSharedCutoverSeal,
-} from "@/lib/services/shared-runtime/conversation-coordinator";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
 import {
   dedicatedAgentTransportToken,
   personalDedicatedAgentApiBase,
   personalDedicatedClientApiBase,
   personalSharedAgentId,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
-import { SharedRuntimeCacheWarmingError } from "@/lib/services/shared-runtime/shared-runtime-errors";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { SharedRuntimeCacheWarmingError } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-errors";
 import {
   commitSharedReminderCutover,
   releaseSharedReminderCutover,
   reserveSharedRemindersForCutover,
   SHARED_CUTOVER_GATEWAY_CHANNEL,
   SharedReminderCutoverConflictError,
-} from "@/lib/services/shared-runtime/shared-scheduling";
-import { readSharedTodoCutoverState } from "@/lib/services/shared-runtime/shared-todos";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-scheduling";
+import { readSharedTodoCutoverState } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-todos";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import {
+  createSharedTodoCutoverSnapshot,
+  type SharedTodoCutoverSnapshot,
+} from "@elizaos/core";
+import { type Context, Hono } from "hono";
+import { z } from "zod";
 
 const CORS_METHODS = "POST, OPTIONS";
 const CUTOVER_SEAL_LEASE_MS = 60_000;

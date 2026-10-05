@@ -21,7 +21,7 @@
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
-} from "@elizaos/shared/steward-session-client";
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import { cloudTokenSecsRemaining } from "../api/client-cloud";
 
 export interface StewardLoginResult {
