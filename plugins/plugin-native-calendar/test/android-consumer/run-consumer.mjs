@@ -18,6 +18,10 @@ for (let i = 2; i < process.argv.length; i += 2) {
       "--serial",
       "--avd",
       "--abi",
+      "--case",
+      "--apk",
+      "--test-apk",
+      "--output-root",
       "--command-timeout-ms",
       "--instrumentation-timeout-ms",
     ].includes(key) &&
@@ -46,6 +50,52 @@ const instrumentationTimeoutMs = Number(
 for (const deadline of [commandTimeoutMs, instrumentationTimeoutMs])
   assert.ok(Number.isSafeInteger(deadline) && deadline > 0);
 const repo = fileURLToPath(new URL("../../../../", import.meta.url));
+const cases = {
+  read: [
+    "ConsumerReadAccessTest",
+    "completeReadAndReviewIntentDoNotWrite",
+    "calendarReadAccess",
+    true,
+  ],
+  recovery: [
+    "ConsumerCreationRecoveryTest",
+    "committedMarkerRecoveryAndMissingMarkerNeverReplay",
+    "calendarCreationRecovery",
+    true,
+  ],
+  bridge: [
+    "ConsumerBridgeFlowTest",
+    "permissionAndReviewedProviderLifecycle",
+    "calendarBridge",
+    false,
+  ],
+  "workflow-permission": [
+    "ConsumerBridgeFlowTest",
+    "workflowPermissionCallback",
+    "calendarWorkflowPermission",
+    false,
+  ],
+};
+const selectedCase = options.get("--case") ?? "read";
+assert.ok(Object.hasOwn(cases, selectedCase), "Unknown Calendar consumer case");
+const [testClass, testMethod, flag, grantPermissions] = cases[selectedCase];
+const apk =
+  options.get("--apk") ??
+  path.join(
+    repo,
+    "plugins/plugin-native-calendar/test/android-consumer/build/outputs/apk/debug/android-consumer-debug.apk",
+  );
+const testApk =
+  options.get("--test-apk") ??
+  path.join(
+    repo,
+    "plugins/plugin-native-calendar/test/android-consumer/build/outputs/apk/androidTest/debug/android-consumer-debug-androidTest.apk",
+  );
+for (const file of [apk, testApk])
+  assert.ok(path.isAbsolute(file), "APK paths must be absolute");
+const outputRoot =
+  options.get("--output-root") ?? testOutputPath("isolated-calendar-consumer");
+assert.ok(path.isAbsolute(outputRoot), "Report root must be absolute");
 const hostCancellation = new AbortController();
 process.once("SIGINT", () => hostCancellation.abort());
 process.once("SIGTERM", () => hostCancellation.abort());
@@ -61,16 +111,24 @@ const deviceLease = await acquireDeviceLease(`android:${serial}`, {
 try {
   assert.equal(run("emu", "avd", "name").split(/\r?\n/)[0], avd);
   assert.equal(run("shell", "am", "get-current-user"), "0");
-  const parent = testOutputPath(
-    "isolated-calendar-consumer",
+  const parent = path.join(
+    outputRoot,
     `${new Date().toISOString().replaceAll(":", "-")}-${process.pid}`,
   );
   fs.mkdirSync(parent, { recursive: true });
   const receipts = [];
-  for (const mode of ["cancelled", "complete"]) {
+  for (const mode of selectedCase === "read"
+    ? ["cancelled", "complete"]
+    : ["complete"]) {
     hostCancellation.signal.throwIfAborted();
     let user, timer, failure;
-    const receipt = { mode, originalForegroundUser: 0, fixtureAvd: avd };
+    const receipt = {
+      mode,
+      selectedCase,
+      originalForegroundUser: 0,
+      fixtureAvd: avd,
+    };
+    const directory = path.join(parent, mode);
     receipts.push(receipt);
     try {
       const result = run(
@@ -93,14 +151,14 @@ try {
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
       const controller = new AbortController();
-      const directory = path.join(parent, mode);
       const execute = () =>
         runIsolatedAndroidTest({
           serial,
           adb,
           aapt,
           packageName: "example.calendar.consumer",
-          testClass: "example.calendar.ConsumerReadAccessTest",
+          testClass: `example.calendar.${testClass}`,
+          testMethod,
           requiredAbi: abi,
           deviceLease,
           expectedAvdName: avd,
@@ -112,31 +170,26 @@ try {
           directory,
           evidence:
             "Fresh host-owned secondary-user CalendarProvider fixture. No live account or primary-user calendar access.",
-          runnerArgs: ["-e", "calendarReadAccess", "1"],
+          runnerArgs: ["-e", flag, "1"],
           variants: [
             {
               name: mode,
-              apk: path.join(
-                repo,
-                "plugins/plugin-native-calendar/test/android-consumer/build/outputs/apk/debug/android-consumer-debug.apk",
-              ),
-              testApk: path.join(
-                repo,
-                "plugins/plugin-native-calendar/test/android-consumer/build/outputs/apk/androidTest/debug/android-consumer-debug-androidTest.apk",
-              ),
+              apk,
+              testApk,
             },
           ],
           prepareVariant: () => {
-            for (const permission of ["READ_CALENDAR", "WRITE_CALENDAR"])
-              run(
-                "shell",
-                "pm",
-                "grant",
-                "--user",
-                String(user),
-                "example.calendar.consumer",
-                `android.permission.${permission}`,
-              );
+            if (grantPermissions)
+              for (const permission of ["READ_CALENDAR", "WRITE_CALENDAR"])
+                run(
+                  "shell",
+                  "pm",
+                  "grant",
+                  "--user",
+                  String(user),
+                  "example.calendar.consumer",
+                  `android.permission.${permission}`,
+                );
             if (mode === "cancelled")
               timer = setTimeout(() => controller.abort(), 100);
           },
@@ -167,7 +220,14 @@ try {
       } catch (error) {
         cleanupErrors.push(error);
       }
-      if (user)
+      const verification = path.join(directory, "verification.json");
+      const deferred =
+        fs.existsSync(verification) &&
+        JSON.parse(fs.readFileSync(verification)).cleanupDeferred === true;
+      if (deferred)
+        receipt.cleanupDeferred =
+          "Owned user retained: process termination needs fixture recovery";
+      if (user && !deferred)
         try {
           receipt.userRemoval = run("shell", "pm", "remove-user", String(user));
           assert.match(receipt.userRemoval, /Success/);
