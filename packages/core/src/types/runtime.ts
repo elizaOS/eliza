@@ -1114,7 +1114,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	structuredPromptExecutor?: IAgentRuntime["dynamicPromptExecFromState"];
 	/** Record generic model/provider trace data for later enrichment. */
 	recordPromptTrace(
-		trace: import("./prompt-optimization-trace").ExecutionTrace,
+		trace: import("../prompt-optimization").ExecutionTrace,
 	): void;
 	purgePromptTraces(): void;
 
@@ -1167,18 +1167,18 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	enrichTrace(
 		runId: string,
-		signal: import("./prompt-optimization-trace").ScoreSignal,
+		signal: import("../prompt-optimization").ScoreSignal,
 	): void;
 
 	/** Retrieve the most recent in-flight optimization trace for a runId. */
 	getActiveTrace(
 		runId: string,
-	): import("./prompt-optimization-trace").ExecutionTrace | undefined;
+	): import("../prompt-optimization").ExecutionTrace | undefined;
 
 	/** Retrieve all in-flight optimization traces for a runId (multiple DPE calls per run). */
 	getActiveTracesForRun?(
 		runId: string,
-	): import("./prompt-optimization-trace").ExecutionTrace[];
+	): import("../prompt-optimization").ExecutionTrace[];
 
 	/** Remove all in-flight optimization traces for a runId after finalization. */
 	deleteActiveTrace(runId: string): void;
@@ -1192,12 +1192,12 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	registerPromptOptimizationHooks(
 		hooks:
-			| import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks
+			| import("../prompt-optimization").PromptOptimizationRuntimeHooks
 			| null,
 	): void;
 
 	getPromptOptimizationHooks():
-		| import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks
+		| import("../prompt-optimization").PromptOptimizationRuntimeHooks
 		| null;
 
 	/** Resolved `OPTIMIZATION_DIR` (see `getOptimizationRootDir`). */

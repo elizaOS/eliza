@@ -13,7 +13,6 @@
 	"include": ["src/**/*.ts"],
 	"exclude": [
 		"src/catalog/generate.ts",
-		"src/**/__tests__/**",
 		"src/**/*.bench.ts",
 		"src/**/*.test.ts",
 		"src/**/*.fixture.ts",
