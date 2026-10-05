@@ -77,24 +77,22 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     await db.query(`DROP SCHEMA ${schema} CASCADE`);
     await db.end();
   });
-  async function providerCreated(period?: { start: Date; end: Date }) {
+  async function providerCreated(period?: { start: Date; end: Date }, record = true) {
     const f = await claimed(60000, period);
     const { originalScheduleTestInput } = await import(
       "../../lib/services/organization-schedule-provider-test-fixture"
     );
     const { completeScheduleSubscriptionTestObservation, scheduleCustomerTestObservation } =
       await import("../../lib/services/organization-schedule-test-fixture");
-    const start = await repo.markOrganizationScheduleEffectDispatch(
-      f.identity,
-      f.claim,
-      f.effect.id,
-    );
+    const start = record
+      ? await repo.markOrganizationScheduleEffectDispatch(f.identity, f.claim, f.effect.id)
+      : f.effect;
     const rawCreate = structuredClone(originalScheduleTestInput().rawCurrentSchedule);
     rawCreate.id = "sub_sched_owned";
     rawCreate.default_settings.description = null;
     rawCreate.customer = f.source.stripe_customer_id;
     rawCreate.subscription = f.source.stripe_subscription_id;
-    rawCreate.created = Math.floor(start.started_at!.getTime() / 1000);
+    rawCreate.created = Math.floor((start.started_at ?? new Date()).getTime() / 1000);
     rawCreate.current_phase = {
       start_date: f.source.current_period_start.getTime() / 1000,
       end_date: f.source.current_period_end.getTime() / 1000,
@@ -110,12 +108,13 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
       kind: "response" as const,
       raw: transport(rawCreate, "req_create", start.provider_idempotency_key),
     };
-    await repo.recordAuthenticatedOrganizationScheduleEvidence(
-      f.identity,
-      f.claim,
-      start.id,
-      createEvidence,
-    );
+    if (record)
+      await repo.recordAuthenticatedOrganizationScheduleEvidence(
+        f.identity,
+        f.claim,
+        start.id,
+        createEvidence,
+      );
     return {
       ...f,
       rawCreate,
@@ -527,18 +526,22 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
         raw: f.input.rawCurrentSchedule,
         key: f.configurationEffect.provider_idempotency_key,
         requestId: "req_configured",
-        created: Math.floor(f.configurationEffect.started_at!.getTime() / 1000),
+        created: f.configurationEffect.started_at
+          ? Math.floor(f.configurationEffect.started_at.getTime() / 1000)
+          : null,
       },
-    ].map((e) => ({
-      id: e.id,
-      object: "event",
-      type: e.type,
-      livemode: false,
-      api_version: "2024-11-20.acacia",
-      created: e.created,
-      request: { id: e.requestId, idempotency_key: e.key },
-      data: { object: structuredClone(e.raw) },
-    }));
+    ]
+      .filter((e) => e.created !== null)
+      .map((e) => ({
+        id: e.id,
+        object: "event",
+        type: e.type,
+        livemode: false,
+        api_version: "2024-11-20.acacia",
+        created: e.created,
+        request: { id: e.requestId, idempotency_key: e.key },
+        data: { object: structuredClone(e.raw) },
+      }));
   }
   async function publication() {
     return (await import("../../lib/services/organization-schedule-publication"))
@@ -732,7 +735,7 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
       ).rows[0].state,
     ).toBe("observed");
   });
-  function recurringInvoice(f: Awaited<ReturnType<typeof configured>>) {
+  function recurringInvoice(f: Pick<Awaited<ReturnType<typeof configured>>, "source">) {
     const start = Math.floor(f.source.current_period_end.getTime() / 1000);
     return {
       id: "upcoming_in_lower",
@@ -786,16 +789,7 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
       },
     };
   }
-  function dispatchProvider(f: Awaited<ReturnType<typeof configured>>, loseResponse = false) {
-    process.env.STRIPE_SECRET_KEY = ["sk", "test", "schedulepublication"].join("_");
-    process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
-    process.env.STRIPE_PLUS_PRODUCT_ID = "prod_plus";
-    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro";
-    process.env.STRIPE_PRO_PRODUCT_ID = "prod_pro";
-    let updated = false,
-      updates = 0;
-    const calls = providerFor(f, []);
-    const stripe = stripeMock as Record<string, unknown>;
+  function installTestCatalog(stripe: Record<string, unknown>) {
     stripe.prices = {
       retrieve: async (id: string) => ({
         id,
@@ -817,6 +811,18 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
       }),
     };
     stripe.products = { retrieve: async (id: string) => ({ id, active: true, livemode: false }) };
+  }
+  function dispatchProvider(f: Awaited<ReturnType<typeof configured>>, loseResponse = false) {
+    process.env.STRIPE_SECRET_KEY = ["sk", "test", "schedulepublication"].join("_");
+    process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
+    process.env.STRIPE_PLUS_PRODUCT_ID = "prod_plus";
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro";
+    process.env.STRIPE_PRO_PRODUCT_ID = "prod_pro";
+    let updated = false,
+      updates = 0;
+    const calls = providerFor(f, []);
+    const stripe = stripeMock as Record<string, unknown>;
+    installTestCatalog(stripe);
     stripe.invoices = {
       createPreview: async (request: unknown) => {
         expect(request).toEqual({
@@ -906,6 +912,158 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     expect((await (await publication())(f.identity, f.claim)).command.status).toBe("APPLIED");
     expect(provider.updates()).toBe(1);
   });
+  test("interactive original confirmation creates and configures through real journal ownership", async () => {
+    const f = await providerCreated(undefined, false);
+    await repo.finishOrganizationScheduleAttempt(f.identity, f.claim);
+    process.env.STRIPE_SECRET_KEY = ["sk", "test", "schedulepublication"].join("_");
+    process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
+    process.env.STRIPE_PLUS_PRODUCT_ID = "prod_plus";
+    process.env.STRIPE_PRO_MONTHLY_PRICE_ID = "price_pro";
+    process.env.STRIPE_PRO_PRODUCT_ID = "prod_pro";
+    const { oneMonthlySchedulePhaseEnd } = await import(
+      "../../lib/services/organization-schedule-configuration-proof"
+    );
+    let creates = 0,
+      updates = 0,
+      snapshot: unknown = f.rawCreate;
+    const stripe: Record<string, unknown> = {
+      customers: { retrieve: async () => f.rawCustomer },
+      subscriptions: { retrieve: async () => f.rawSubscription },
+      invoices: { createPreview: async () => recurringInvoice(f) },
+      events: {
+        list: async () => {
+          throw Error("Original response must suffice");
+        },
+      },
+      subscriptionSchedules: {
+        retrieve: async () => snapshot,
+        create: async (
+          _params: unknown,
+          options: { idempotencyKey: string; maxNetworkRetries: number },
+        ) => {
+          creates++;
+          expect(options.idempotencyKey).toBe(f.effect.provider_idempotency_key);
+          expect(options.maxNetworkRetries).toBe(0);
+          Reflect.set(f.rawSubscription, "schedule", f.rawCreate.id);
+          f.rawCreate.created = Math.floor(Date.now() / 1000);
+          return f.transport(
+            structuredClone(f.rawCreate),
+            "req_initialCreate",
+            options.idempotencyKey,
+          );
+        },
+        update: async (
+          _id: string,
+          params: {
+            phases: { start_date: number; end_date?: number; items: { price: string }[] }[];
+          },
+          options: { idempotencyKey: string; maxNetworkRetries: number },
+        ) => {
+          updates++;
+          expect(options.maxNetworkRetries).toBe(0);
+          snapshot = {
+            ...structuredClone(f.rawCreate),
+            phases: params.phases.map((phase, index) => {
+              const mapped = {
+                ...f.rawCreate.phases[0],
+                ...phase,
+                end_date:
+                  index === 0 ? phase.end_date : oneMonthlySchedulePhaseEnd(phase.start_date),
+                items: phase.items.map((item) => ({
+                  ...(f.rawCreate.phases[0]!.items as Record<string, unknown>[])[0],
+                  ...item,
+                  plan: item.price,
+                })),
+              };
+              Reflect.deleteProperty(mapped, "iterations");
+              return mapped;
+            }),
+          };
+          return f.transport(
+            structuredClone(snapshot) as object,
+            "req_initialConfigure",
+            options.idempotencyKey,
+          );
+        },
+        release: async () => {
+          throw Error("Successful configuration must not compensate");
+        },
+      },
+    };
+    installTestCatalog(stripe);
+    stripeMock = stripe;
+    const { confirmOrganizationSubscriptionDowngrade: confirm } = await import(
+      "../../lib/services/organization-downgrade-command"
+    );
+    const input = { ...f.input, quoteId: f.quote.id, idempotencyKey: randomUUID() };
+    const result = await confirm(input, async () => {});
+    expect(result.status).toBe("APPLIED");
+    expect(result.effect).toEqual({ kind: "schedule_configure", state: "observed" });
+    expect(creates).toBe(1);
+    expect(updates).toBe(1);
+    expect((await confirm(input, async () => {})).commandId).toBe(result.commandId);
+    expect(creates).toBe(1);
+    expect(updates).toBe(1);
+    const journal = (
+      await db.query(
+        "SELECT kind,state FROM organization_schedule_effects WHERE command_id=$1 ORDER BY created_at",
+        [result.commandId],
+      )
+    ).rows;
+    expect(journal).toEqual([
+      { kind: "schedule_create", state: "observed" },
+      { kind: "schedule_configure", state: "observed" },
+    ]);
+  });
+  for (const lostResponse of [false, true])
+    test(`interactive downgrade resumes original configuration and never redispatches: lost=${lostResponse}`, async () => {
+      const f = await configured(false, false);
+      const provider = dispatchProvider(f, lostResponse);
+      provider.stripe.events = {
+        list: async () => ({ object: "list", has_more: false, data: originalEvents(f) }),
+      };
+      await repo.finishOrganizationScheduleAttempt(f.identity, f.claim);
+      const {
+        confirmOrganizationSubscriptionDowngrade: confirm,
+        readOrganizationSubscriptionDowngrade: read,
+      } = await import("../../lib/services/organization-downgrade-command");
+      const input = { ...f.input, quoteId: f.quote.id, idempotencyKey: randomUUID() };
+      const before = await state(f);
+      const first = await confirm(input, async () => {});
+      expect(first.status).toBe(lostResponse ? "OUTCOME_UNKNOWN" : "APPLIED");
+      expect(provider.updates()).toBe(1);
+      expect(JSON.stringify(first)).not.toContain("provider_idempotency_key");
+      if (lostResponse) {
+        f.configurationEffect = (
+          await db.query("SELECT * FROM organization_schedule_effects WHERE id=$1", [
+            f.configurationEffect.id,
+          ])
+        ).rows[0];
+        expect((await state(f)).source).toEqual(before.source);
+        expect(
+          (await confirm({ ...input, idempotencyKey: randomUUID() }, async () => {})).status,
+        ).toBe("APPLIED");
+      }
+      const after = await state(f);
+      expect(after.source.pending_plan_key).toBe("plus_monthly");
+      expect(after.allowance).toEqual(before.allowance);
+      expect(after.periods).toEqual(before.periods);
+      const noRead = () => {
+        throw Error("Terminal status must not query provider");
+      };
+      provider.stripe.events = { list: noRead };
+      provider.stripe.customers = { retrieve: noRead };
+      expect((await read(f.identity, async () => {})).status).toBe("APPLIED");
+      expect((await confirm(input, async () => {})).status).toBe("APPLIED");
+      expect(provider.updates()).toBe(1);
+      expect(await state(f)).toEqual(after);
+      await expect(
+        read({ ...f.identity, actorId: randomUUID() }, async () => {}),
+      ).rejects.toThrow();
+      await expect(
+        read({ ...f.identity, organizationId: randomUUID() }, async () => {}),
+      ).rejects.toThrow();
+    });
   for (const liveStatus of ["active", "past_due", "unpaid", "grace"] as const)
     test(`historical target payment preserves later ${liveStatus} with a controlled database clock`, async () => {
       const boundary = Math.floor(Date.now() / 1000) + 5;

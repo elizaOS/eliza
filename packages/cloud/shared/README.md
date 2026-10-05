@@ -160,3 +160,12 @@ dispatch window, every paid source field and entitlement deadline, and forbids a
 postings. Pending publication does not fund the target or revive an expired entitlement;
 chronological invoice reconciliation still owns payment and dunning. Recovery depends
 on available authenticated original evidence, not indefinite provider event retention.
+
+The private downgrade command coordinator now composes original quote admission,
+leased creation/configuration, authenticated original-event recovery and proven
+partial-create cleanup. A started effect is never dispatched again. Same-quote
+retries keep the original command even with another retry key; occupied leases
+return durable status. Session failure survives cleanup, and status reads perform
+no provider work. Public routes, native/product adoption and unattended recovery
+scheduling still need integration; this internal coordinator does not close those
+gates or the retained-adjustment payment limitation.

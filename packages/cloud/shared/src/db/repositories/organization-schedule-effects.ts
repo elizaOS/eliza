@@ -988,3 +988,28 @@ export async function readOrganizationSchedulePublicationSource(input: Identity,
     };
   });
 }
+
+/** Original actor/current manager status; no provider request and no dispatch authority. */
+export function readOrganizationScheduleCommand(input: Identity) {
+  return writeTransaction(async (tx) => {
+    const locked = await lockOriginal(tx, input, true);
+    const existing = await rows(tx, input);
+    return { command: locked.command, effects: existing };
+  });
+}
+
+/** Read-only original effect scope under its current lease, including after manager loss. */
+export function readOrganizationScheduleRecoverySource(input: Identity, claim: Claim) {
+  return writeTransaction(async (tx) => {
+    const locked = await lockOriginal(tx, input, false);
+    assertLease(input, locked, claim, await readPostLockDatabaseNow(tx));
+    const existing = await rows(tx, input);
+    for (const effect of existing)
+      scope(
+        locked,
+        effect,
+        existing.find((e) => e.id === effect.predecessor_id),
+      );
+    return { effects: existing, apiVersion: locked.binding.apiVersion };
+  });
+}
