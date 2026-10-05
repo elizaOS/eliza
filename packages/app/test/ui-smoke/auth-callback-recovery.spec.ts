@@ -5,6 +5,7 @@
  */
 
 import { expect, type Locator, test } from "@playwright/test";
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { installDefaultAppRoutes } from "./helpers";
 
 type FocusStyle = {
@@ -48,6 +49,8 @@ for (const callback of INVALID_CALLBACKS) {
   test(`${callback.name} provides an accessible recovery action`, async ({
     page,
   }) => {
+    const shortViewport = callback.path === "/auth/cli-login";
+    if (shortViewport) await page.setViewportSize({ width: 390, height: 360 });
     await page.goto(callback.path, { waitUntil: "domcontentloaded" });
 
     await expect(page.getByRole("main")).toHaveCount(1);
@@ -56,6 +59,23 @@ for (const callback of INVALID_CALLBACKS) {
     ).toBeVisible();
     const recovery = page.getByRole("link", { name: "Sign In Again" });
     await expect(recovery).toHaveAttribute("href", "/login");
+    if (shortViewport) {
+      const heading = page.getByRole("heading", {
+        level: 1,
+        name: callback.heading,
+      });
+      await heading.scrollIntoViewIfNeeded();
+      await expect(heading).toBeInViewport();
+      await recovery.scrollIntoViewIfNeeded();
+      await expect(recovery).toBeInViewport();
+      await recovery.click({ trial: true });
+      await page.screenshot({
+        path: testOutputPath(
+          "auth-callback-recovery",
+          "cli-short-viewport.png",
+        ),
+      });
+    }
     await expect(recovery).toHaveClass(/hosted-signin-focus-emphasis/);
     const resting = await readFocusStyle(recovery);
     await page.keyboard.press("Tab");

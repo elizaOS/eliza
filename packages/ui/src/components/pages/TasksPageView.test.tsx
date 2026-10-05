@@ -174,10 +174,11 @@ describe("TasksPageView", () => {
   });
 });
 
-it("mounts the task panel when its plugin registers after the page", async () => {
-  const slots = await vi.importActual<
-    typeof import("../../slots/task-coordinator-slots.js")
-  >("../../slots/task-coordinator-slots.js");
+const slots = await vi.importActual<
+  typeof import("../../slots/task-coordinator-slots.js")
+>("../../slots/task-coordinator-slots.js");
+
+it("mounts the task panel when its plugin registers after the page", () => {
   render(<slots.CodingAgentTasksPanel fullPage />);
   expect(screen.queryByText("Registered tasks")).toBeNull();
   act(() =>
