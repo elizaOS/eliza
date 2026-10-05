@@ -555,6 +555,17 @@ test("read-only private JSON enforces real file owner, mode, symlink and byte bo
     { code: "ENOENT" },
   );
   assert.equal(await readFile(file, "utf8"), text);
+  const large = { value: "é".repeat(40000) };
+  const largeText = JSON.stringify(large);
+  await writeFile(file, largeText);
+  await chmod(file, 0o400);
+  assert.deepEqual(
+    await readPrivateRuntimeJson(file, {
+      maxBytes: Buffer.byteLength(largeText),
+    }),
+    large,
+  );
+  assert.equal((await stat(file)).mode & 0o777, 0o400);
 });
 
 test("private JSON rejects invalid policy and parse errors without creating or repairing files", async (t) => {
