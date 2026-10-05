@@ -171,7 +171,6 @@ export type {
   PluginEntry,
   PluginParamDef,
   StreamEventType,
-  TradePermissionMode,
 } from "./api/server-types.ts";
 export { injectApiBaseIntoHtml } from "./api/static-file-server.ts";
 export * from "./api/subscription-routes.ts";
@@ -781,8 +780,4 @@ export * from "./triggers/humanize.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";
 export * from "./triggers/types.ts";
-export type {
-  AutonomousConfigLike,
-  CloudProxyConfigLike,
-} from "./types/config-like.ts";
 export * from "./version-resolver.ts";

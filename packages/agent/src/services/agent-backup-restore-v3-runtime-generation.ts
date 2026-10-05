@@ -15,8 +15,10 @@ import {
   parseAndValidateCharacter,
   resolveStateDir,
 } from "@elizaos/core";
-import { resolveAliasedEnvValue } from "@elizaos/host/protocol";
-import type { ElizaConfig } from "../config/config";
+import {
+  type ElizaConfig,
+  resolveAliasedEnvValue,
+} from "@elizaos/host/protocol";
 import {
   type CandidateFsDirectoryAuthority,
   controlled,

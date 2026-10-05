@@ -73,6 +73,7 @@ import {
   withRoomDeliverySettlement,
 } from "@elizaos/core";
 import {
+  type ElizaConfig,
   isLinkedAccountProviderId,
   type ReadJsonBodyOptions,
   type RouteRequestContext,
@@ -82,7 +83,6 @@ import {
   persistInferenceTimingSummary,
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
-import type { ElizaConfig } from "../config/config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type CapturedModelUsage,
