@@ -1399,6 +1399,11 @@ export {
   encodeMonoPcm16WavChunks,
 } from "./voice/pcm-wave.js";
 export {
+  attachProgressiveSpeech,
+  type CompletedSpeechAudio,
+  type ProgressiveSpeechSource,
+} from "./voice/progressive-speech-playback.js";
+export {
   RecordedTranscriptionController,
   RecordedTranscriptionError,
   type RecordedTranscriptionOptions,
