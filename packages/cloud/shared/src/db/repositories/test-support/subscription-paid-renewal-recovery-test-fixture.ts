@@ -100,6 +100,12 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     );
     for (const statement of journalMigration.split("--> statement-breakpoint"))
       if (statement.trim()) await database.exec(statement);
+    const claimMigration = await readFile(
+      new URL("../../migrations/0529_subscription_adjustment_recovery.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of claimMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await database.exec(statement);
     service = await import("../../../lib/services/subscription-reconciliation");
   });
   beforeEach(async () => {
@@ -834,6 +840,106 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
             expect(await sourceRevision(f.command.id)).toBe(2);
             expect(await fundingSnapshot()).toEqual(fundingBefore);
             expect(writes).toBe(0);
+            const {
+              claimRenewalAdjustment,
+              failRenewalAdjustment,
+              listDueRenewalAdjustmentGrants,
+            } = await import("../subscription-adjustment-recovery");
+            const work = { organizationId: f.orgId, grantId: grant.id };
+            expect(await listDueRenewalAdjustmentGrants(5)).toContainEqual(work);
+            const claim = await claimRenewalAdjustment(work);
+            if (!claim) throw new Error("Expected initial adjustment claim");
+            expect(await claimRenewalAdjustment(work)).toBeNull();
+            expect(await listDueRenewalAdjustmentGrants(5)).not.toContainEqual(work);
+            const recorded = await observeAndRecordRenewalAdjustment(
+              claim.request,
+              stripe,
+              claim.identity,
+            );
+            expect(recorded.observation.version).toBe(3);
+            const completedReads = requests.length;
+            expect(
+              (await observeAndRecordRenewalAdjustment(claim.request, stripe, claim.identity))
+                .replayed,
+            ).toBe(true);
+            expect(requests.length).toBe(completedReads);
+            expect(await claimRenewalAdjustment(work)).toBeNull();
+            await database.query(
+              "UPDATE subscription_adjustment_scans SET next_due_at=clock_timestamp() WHERE grant_id=$1",
+              [grant.id],
+            );
+            const expiring = await claimRenewalAdjustment({ ...work, leaseDurationMs: 1000 });
+            if (!expiring) throw new Error("Expected expiring adjustment claim");
+            let delayed = false;
+            const delayedStripe = new Stripe("sk_test_cloud_e2e", {
+              host: "127.0.0.1",
+              port: address.port,
+              protocol: "http",
+              maxNetworkRetries: 0,
+              httpClient: Stripe.createFetchHttpClient(
+                Object.assign(
+                  async (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+                    if (!delayed) {
+                      delayed = true;
+                      await new Promise((resolve) => setTimeout(resolve, 1100));
+                    }
+                    return fetch(url, init);
+                  },
+                  { preconnect: fetch.preconnect },
+                ),
+              ),
+            });
+            await expect(
+              observeAndRecordRenewalAdjustment(expiring.request, delayedStripe, expiring.identity),
+            ).rejects.toThrow();
+            expect(delayed).toBe(true);
+            const reclaimed = await claimRenewalAdjustment(work);
+            if (!reclaimed) throw new Error("Expected expired claim replacement");
+            expect(reclaimed.identity.generation).toBe(expiring.identity.generation + 1);
+            await expect(
+              observeAndRecordRenewalAdjustment(expiring.request, stripe, expiring.identity),
+            ).rejects.toThrow();
+            expect(
+              (
+                await observeAndRecordRenewalAdjustment(
+                  reclaimed.request,
+                  stripe,
+                  reclaimed.identity,
+                )
+              ).observation.version,
+            ).toBe(4);
+            expect(
+              (
+                await database.query(
+                  "SELECT disposition FROM subscription_adjustment_attempts WHERE grant_id=$1 ORDER BY generation",
+                  [grant.id],
+                )
+              ).rows,
+            ).toEqual([
+              { disposition: "recorded" },
+              { disposition: "superseded" },
+              { disposition: "recorded" },
+            ]);
+            expect(await fundingSnapshot()).toEqual(fundingBefore);
+            await database.query(
+              "UPDATE subscription_adjustment_scans SET next_due_at=clock_timestamp() WHERE grant_id=$1",
+              [grant.id],
+            );
+            const failed = await claimRenewalAdjustment(work);
+            if (!failed) throw new Error("Expected failure-bookkeeping claim");
+            await failRenewalAdjustment(failed.identity, "provider_unavailable");
+            await expect(
+              failRenewalAdjustment(failed.identity, "provider_unavailable"),
+            ).rejects.toThrow();
+            expect(await claimRenewalAdjustment(work)).toBeNull();
+            expect(
+              (
+                await database.query(
+                  "SELECT failures,next_due_at>clock_timestamp() AS delayed FROM subscription_adjustment_scans WHERE grant_id=$1",
+                  [grant.id],
+                )
+              ).rows,
+            ).toEqual([{ failures: 1, delayed: true }]);
             const head = (
               await database.query<{ id: string }>(
                 "SELECT id FROM subscription_adjustment_observations WHERE grant_id=$1 ORDER BY version DESC LIMIT 1",
@@ -876,7 +982,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
                   [grant.id],
                 )
               ).rows,
-            ).toEqual([{ count: 2 }]);
+            ).toEqual([{ count: 4 }]);
             expect(await fundingSnapshot()).toEqual(fundingBefore);
             await expect(observeAndRecordRenewalAdjustment(request, stripe)).rejects.toThrow();
           }

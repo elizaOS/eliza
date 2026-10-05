@@ -3494,6 +3494,13 @@
       "when": 1796083200146,
       "tag": "0528_subscription_adjustment_observations",
       "breakpoints": true
+    },
+    {
+      "idx": 499,
+      "version": "7",
+      "when": 1796083200147,
+      "tag": "0529_subscription_adjustment_recovery",
+      "breakpoints": true
     }
   ]
 }

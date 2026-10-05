@@ -247,3 +247,10 @@ fences and the journal head before append. A stable request UUID replays the fir
 saved result without provider reads. This records evidence only: callers still
 own authentication, orchestration and explicit correction policy; no allowance
 posting or public adjustment endpoint is enabled.
+
+Migration 0529 adds grant-scoped observation claims with database-time leases,
+generations, immutable attempt receipts and bounded failure backoff. Discovery
+uses original funded periods without excluding terminal subscription history.
+Journal append, completion and next-due scheduling commit together; expired
+workers cannot publish. These private primitives do not enable automatic polling,
+change allowance policy or reconstruct missing legacy evidence.

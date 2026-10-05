@@ -4,6 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
 import { observeRetainedRenewalAdjustments } from "../../lib/services/renewal-adjustment-observation";
+import { settlementDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
 import {
@@ -15,6 +16,11 @@ import { subscriptionAdjustmentObservations as observations } from "../schemas/s
 import { subscriptionAllowancePeriods as periods } from "../schemas/subscription-allowance-periods";
 import { subscriptionAllowanceTransactions as grants } from "../schemas/subscription-allowance-transactions";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
+import {
+  type AdjustmentRecoveryIdentity,
+  completeAdjustmentLease,
+  requireAdjustmentLease,
+} from "./subscription-adjustment-lease";
 
 const request = z
   .object({
@@ -29,7 +35,10 @@ function unavailable(): never {
     code: "SUBSCRIPTION_ADJUSTMENT_OBSERVATION_UNAVAILABLE",
   });
 }
-async function load(tx: DbTransaction, input: z.infer<typeof request>) {
+export async function loadOriginalAdjustmentGrant(
+  tx: DbTransaction,
+  input: z.infer<typeof request>,
+) {
   const [org] = await tx
     .select({
       id: organizations.id,
@@ -141,11 +150,33 @@ async function load(tx: DbTransaction, input: z.infer<typeof request>) {
 export async function observeAndRecordRenewalAdjustment(
   value: z.infer<typeof request>,
   stripe: Parameters<typeof observeRetainedRenewalAdjustments>[1],
+  recovery?: AdjustmentRecoveryIdentity,
 ) {
   const parsed = request.safeParse(value);
   if (!parsed.success) unavailable();
   const input = parsed.data;
-  const before = await writeTransaction((tx) => load(tx, input));
+  if (
+    recovery &&
+    (recovery.organizationId !== input.organizationId ||
+      recovery.grantId !== input.grantId ||
+      recovery.attemptId !== input.requestId)
+  )
+    unavailable();
+  const before = await writeTransaction(async (tx) => {
+    const loaded = await loadOriginalAdjustmentGrant(tx, input);
+    if (recovery) {
+      if (loaded.existing) await completeAdjustmentLease(tx, recovery, loaded.existing.id);
+      else {
+        const lease = await requireAdjustmentLease(tx, recovery);
+        if (
+          lease.attempt.expected_previous_id !== input.expectedPreviousId ||
+          recovery.originalDigest !== settlementDigest(loaded.grant.metadata)
+        )
+          unavailable();
+      }
+    }
+    return loaded;
+  });
   if (before.existing) return { observation: before.existing, replayed: true };
   const evidence = await observeRetainedRenewalAdjustments(
     {
@@ -157,8 +188,19 @@ export async function observeAndRecordRenewalAdjustment(
     stripe,
   );
   return writeTransaction(async (tx) => {
-    const after = await load(tx, input);
-    if (after.existing) return { observation: after.existing, replayed: true };
+    const after = await loadOriginalAdjustmentGrant(tx, input);
+    if (after.existing) {
+      if (recovery) await completeAdjustmentLease(tx, recovery, after.existing.id);
+      return { observation: after.existing, replayed: true };
+    }
+    if (recovery) {
+      const lease = await requireAdjustmentLease(tx, recovery);
+      if (
+        lease.attempt.expected_previous_id !== input.expectedPreviousId ||
+        recovery.originalDigest !== settlementDigest(after.grant.metadata)
+      )
+        unavailable();
+    }
     if (
       after.grant.request_digest !== before.grant.request_digest ||
       after.version !== before.version ||
@@ -179,6 +221,7 @@ export async function observeAndRecordRenewalAdjustment(
       })
       .returning();
     if (!saved) unavailable();
+    if (recovery) await completeAdjustmentLease(tx, recovery, saved.id);
     return { observation: saved, replayed: false };
   });
 }
