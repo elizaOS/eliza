@@ -135,6 +135,8 @@ import {
   type OpenApiSpec,
   type OrganizationSubscriptionCancellationRequest,
   type OrganizationSubscriptionCancellationResponse,
+  type OrganizationSubscriptionDowngradeQuoteRequest,
+  type OrganizationSubscriptionDowngradeQuoteResponse,
   type OrganizationSubscriptionRenewalReviewResponse,
   type OrganizationSubscriptionReviewedUndoRequest,
   type OrganizationSubscriptionUpgradeCommandResponse,
@@ -602,6 +604,15 @@ export class ElizaCloudClient {
     input: OrganizationSubscriptionUpgradeQuoteRequest,
   ): Promise<OrganizationSubscriptionUpgradeQuoteResponse> {
     return this.v1.requestData("POST", "/subscriptions/upgrade/review", {
+      json: input,
+    });
+  }
+
+  /** Reviews a lower plan at the current period boundary; creates no provider schedule or charge. */
+  createOrganizationSubscriptionDowngradeQuote(
+    input: OrganizationSubscriptionDowngradeQuoteRequest,
+  ): Promise<OrganizationSubscriptionDowngradeQuoteResponse> {
+    return this.v1.requestData("POST", "/subscriptions/downgrade/review", {
       json: input,
     });
   }

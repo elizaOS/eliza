@@ -1278,24 +1278,42 @@ describe("App navigate-view event wiring", () => {
         .paddingTop,
     ).not.toBe("0px");
   });
-  it("renders the canonical Knowledge plugin surface", async () => {
-    registerAppShellPage({
-      id: "documents",
-      pluginId: "@elizaos/plugin-knowledge",
-      label: "Knowledge",
-      path: "/character/documents",
-      surface: { header: "fullscreen" },
-      tabAffinity: "documents",
-      Component: () => <div data-testid="documents-view" />,
-    });
-    appState.tab = "documents";
-    window.history.replaceState(null, "", "/character/documents");
-    const { findByTestId, queryByTestId } = render(<App />);
-    expect(
-      await findByTestId("documents-view", undefined, { timeout: 5000 }),
-    ).toBeTruthy();
-    expect(queryByTestId("dynamic-view-loader")).toBeNull();
-  });
+  it.each([
+    { path: "/character/documents", remote: true },
+    { path: "/character/documents", remote: false },
+  ])(
+    "keeps Knowledge route $path on its plugin surface (remote=$remote)",
+    async ({ path, remote }) => {
+      if (!remote)
+        mockAvailableViews.splice(mockAvailableViews.indexOf(documentsView), 1);
+      registerAppShellPage({
+        id: "documents",
+        pluginId: "@elizaos/plugin-knowledge",
+        label: "Knowledge",
+        path: "/character/documents",
+        pathPatterns: ["/character/documents"],
+        surface: { header: "fullscreen" },
+        tabAffinity: "documents",
+        Component: () => <div data-testid="documents-view" />,
+      });
+      appState.tab = "documents";
+      window.history.replaceState(null, "", path);
+      const { findByTestId, queryByTestId } = render(<App />);
+      if (remote) {
+        // Exact remote plugin routes take precedence on web/desktop.
+        expect(
+          (await findByTestId("dynamic-view-loader")).getAttribute(
+            "data-view-id",
+          ),
+        ).toBe("documents");
+        expect(queryByTestId("documents-view")).toBeNull();
+      } else {
+        expect(await findByTestId("documents-view")).toBeTruthy();
+        expect(queryByTestId("dynamic-view-loader")).toBeNull();
+      }
+    },
+  );
+
   it("prefers an exact remote plugin route over its native wallet fallback", async () => {
     mockAvailableViews.push(walletMarketView);
     registerAppShellPage({

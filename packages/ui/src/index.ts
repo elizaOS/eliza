@@ -1,4 +1,8 @@
 /** Public UI APIs. Internal modules import their owning files directly. */
+
+export { AgentSurfaceProvider } from "./agent-surface/AgentSurfaceContext.js";
+export { AgentButton } from "./agent-surface/components.js";
+export { getViewRegistry } from "./agent-surface/registry.js";
 export { useAgentElement } from "./agent-surface/useAgentElement.js";
 export { completeAndroidCloudSignIn } from "./android-cloud/android-cloud-auth.js";
 export { shouldAcknowledgeAndroidCloudCallback } from "./android-cloud/android-cloud-client.js";
@@ -610,6 +614,7 @@ export {
 export {
   type AppBootConfig,
   type CharacterCatalogData,
+  DEFAULT_BOOT_CONFIG,
   getBootConfig,
   setBootConfig,
 } from "./config/boot-config-store.js";
@@ -1020,6 +1025,7 @@ export {
   type TaskCoordinatorPtyConsoleBaseProps,
 } from "./slots/task-coordinator-slots.helpers.js";
 export { CodingAgentSettingsSection } from "./slots/task-coordinator-slots.js";
+export { SpatialSurface } from "./spatial/dom.js";
 export type { SpatialTone } from "./spatial/ir.js";
 export {
   Button as SpatialButton,

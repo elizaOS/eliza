@@ -67,7 +67,7 @@ The current billing manager session is required and revalidated after provider
 reads. The no-store response contains `quoteId` and `review`, separating due-now
 proration/tax/discount/customer-balance terms from a long-term recurring estimate.
 The exact reviewed timestamp and prorated additional allowance are retained.
-Apply organization-upgrade migrations 0511 through 0519 before deployment.
+Apply organization-upgrade migrations 0511 through 0520 before deployment.
 Saving a quote creates no charge, command or allowance grant. Confirmation and
 payment continuation use the separate endpoints below; scheduled downgrade remains
 separate lifecycle work.
@@ -87,3 +87,10 @@ continuation. It checks the original invoice, reviewed amount, pending target an
 unpaid payment intent, then revalidates manager/source/session authority. It never
 creates or pays an invoice. The no-store URL must stay out of logs, model context
 and history. Call again after browser return; return alone does not prove payment.
+
+`POST /api/v1/subscriptions/downgrade/review` uses the same authenticated catalog
+intent and returns an immutable lower-plan quote. `effectiveAt` is the current
+period end and `amountDueNowCents` is zero. `recurringEstimate` is a long-term
+estimate, not a guaranteed next invoice. This endpoint creates no provider
+schedule, command, charge or allowance change; downgrade confirmation is not
+yet exposed. Upgrade confirmation rejects a downgrade quote.

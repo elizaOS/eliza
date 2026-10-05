@@ -88,3 +88,8 @@ These methods require a current organization billing-manager session.
 original-invoice continuation or reconciled command status. Treat its URL as
 private ephemeral payment UI data; never persist or log it. Call again after the
 provider UI returns and use the durable command result to determine completion.
+
+`createOrganizationSubscriptionDowngradeQuote` reviews a lower catalog plan at
+the existing period end. The quote expires within 60 seconds and reports no
+immediate charge plus a long-term recurring estimate. Saving it does not schedule
+a downgrade; do not show the plan as changed or scheduled after this call.

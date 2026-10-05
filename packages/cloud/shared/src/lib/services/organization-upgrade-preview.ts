@@ -1,6 +1,5 @@
 /** Read-only provider review for organization upgrades. No subscription mutation or funding. */
 import { ElizaError } from "@elizaos/core";
-import { z } from "zod";
 import { readOrganizationPlanChangeSource } from "../../db/repositories/organization-plan-change";
 import type { OrganizationSubscriptionSourceInput } from "../../db/repositories/organization-subscription-manager";
 import { saveOrganizationUpgradeQuote } from "../../db/repositories/organization-upgrade-quotes";
@@ -9,12 +8,12 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { GENERIC_BILLING_STRIPE_API_VERSION } from "./generic-billing-provider-types";
 import { organizationUpgradeReviewSchema } from "./organization-plan-change-contract";
+import { projectOrganizationPlanInvoice } from "./organization-plan-invoice-review";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   assertOrganizationUpgradeProviderBindingCurrent,
   resolveOrganizationUpgradeProviderBinding,
 } from "./organization-upgrade-provider-binding";
-import { invoiceSchema, projectSubscriptionUpdateInvoice } from "./stripe-invoice-observation";
 import {
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
@@ -33,28 +32,6 @@ function reject(reason: string): never {
     context: { reason },
   });
 }
-const cents = z.number().int().safe();
-const previewTermsSchema = invoiceSchema.extend({
-  id: z.string().startsWith("upcoming_in_"),
-  status: z.literal("draft"),
-  paid: z.literal(false),
-  paid_out_of_band: z.literal(false),
-  amount_paid: z.literal(0),
-  charge: z.null(),
-  payment_intent: z.null(),
-  collection_method: z.literal("charge_automatically"),
-  on_behalf_of: z.null(),
-  transfer_data: z.null(),
-  application_fee_amount: z.null(),
-  lines: z.object({
-    has_more: z.literal(false),
-    data: z.array(z.object({ currency: z.literal("usd") })),
-  }),
-  starting_balance: cents,
-  total_tax_amounts: z.array(
-    z.object({ amount: cents.nonnegative(), inclusive: z.boolean(), tax_rate: z.string() }),
-  ),
-});
 
 export function projectOrganizationUpgradeReview(input: {
   source: BillingSubscription;
@@ -99,73 +76,18 @@ export function projectOrganizationUpgradeReview(input: {
     binding.expectedLivemode !== (source.provider_environment === "live")
   )
     reject("source_or_target_unavailable");
-  const invoice = (raw: unknown, recurring: boolean) => {
-    const parsed = previewTermsSchema.safeParse(raw);
-    if (!parsed.success) reject("incomplete_preview");
-    const wire = parsed.data;
-    const preview = projectSubscriptionUpdateInvoice({
+  const invoice = (raw: unknown, recurring: boolean) =>
+    projectOrganizationPlanInvoice({
       raw,
+      source,
       livemode: binding.expectedLivemode,
-      customerId: source.stripe_customer_id,
-      subscriptionId: source.stripe_subscription_id,
-      currency: "usd",
+      sourcePriceId: oldBinding.priceId,
+      targetPriceId: binding.priceId,
+      targetAmountCents: target.amountCents,
       prorationDate,
+      periodEndMs: end,
+      kind: recurring ? "recurring" : "proration",
     });
-    const lines = preview.lines;
-    const tax = wire.total_tax_amounts.reduce((sum, x) => sum + x.amount, 0);
-    const exclusiveTax = wire.total_tax_amounts.reduce(
-      (sum, x) => sum + (x.inclusive ? 0 : x.amount),
-      0,
-    );
-    const subtotal = lines.reduce((sum, x) => sum + x.amountCents, 0);
-    if (
-      !Number.isSafeInteger(tax) ||
-      !Number.isSafeInteger(exclusiveTax) ||
-      !Number.isSafeInteger(subtotal) ||
-      subtotal !== preview.subtotalCents ||
-      (wire.tax === null ? tax !== 0 : wire.tax !== tax) ||
-      wire.total !== wire.subtotal - preview.discountCents + exclusiveTax ||
-      !lines.every(
-        (line) =>
-          line.lineType === "subscription" &&
-          line.subscriptionId === source.stripe_subscription_id &&
-          line.subscriptionItemId === source.stripe_subscription_item_id &&
-          line.quantity === 1,
-      )
-    )
-      reject("mixed_or_inconsistent_invoice");
-    if (recurring) {
-      if (
-        lines.length !== 1 ||
-        lines[0]!.proration ||
-        lines[0]!.priceId !== binding.priceId ||
-        lines[0]!.amountCents !== target.amountCents ||
-        lines[0]!.periodEnd <= lines[0]!.periodStart
-      )
-        reject("recurring_terms_changed");
-    } else {
-      if (
-        lines.length !== 2 ||
-        !lines.every(
-          (line) =>
-            line.proration && line.periodStart === prorationDate && line.periodEnd * 1000 === end,
-        ) ||
-        lines.filter((line) => line.priceId === oldBinding.priceId && line.amountCents <= 0)
-          .length !== 1 ||
-        lines.filter((line) => line.priceId === binding.priceId && line.amountCents >= 0).length !==
-          1
-      )
-        reject("proration_terms_changed");
-    }
-    return {
-      amountDueCents: preview.amountDueCents,
-      subtotalCents: preview.subtotalCents,
-      discountCents: preview.discountCents,
-      taxCents: tax,
-      totalCents: preview.totalCents,
-      startingBalanceCents: wire.starting_balance,
-    };
-  };
   const additionalAllowanceUsd = proratedAllowanceIncrease({
     previousUsd: previous.allowance.amountUsd,
     targetUsd: target.allowance.amountUsd,

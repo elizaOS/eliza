@@ -11,6 +11,7 @@ import type {
   Component,
   IAgentRuntime,
   Memory,
+  UUID,
 } from "@elizaos/core";
 import { ServiceType } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
@@ -21,6 +22,7 @@ const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 const ROOM_ID = "00000000-0000-0000-0000-0000000000bb";
 const SENDER_ID = "00000000-0000-0000-0000-0000000000cc";
 const SHADOW_ID = "00000000-0000-0000-0000-0000000000e7";
+const WORLD_ID = "00000000-0000-0000-0000-0000000000e8";
 const DISCORD_ACCOUNT_ID = "00000000-0000-0000-0000-0000000000d1";
 const TELEGRAM_ACCOUNT_ID = "00000000-0000-0000-0000-0000000000d2";
 
@@ -289,9 +291,18 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
     };
   }
 
-  function harness(options: { withPreference: boolean }) {
+  function harness(options: {
+    withPreference: boolean;
+    storedPreference?: Component;
+    roomWorldId?: UUID | null;
+  }) {
     const sends: SentMessage[] = [];
-    const upserts: Component[] = [];
+    const components: Component[] = options.storedPreference
+      ? [options.storedPreference]
+      : [];
+    const created: Component[] = [];
+    const updated: Component[] = [];
+    const reported: unknown[] = [];
     const entity = shadowEntity(options.withPreference);
     const runtime = createMockRuntime({
       agentId: AGENT_ID,
@@ -384,7 +395,14 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
       }) as IAgentRuntime["getService"],
       // The room's source has no registered connector, so the room-first
       // member path stays out of the way and the entity path is exercised.
-      getRoom: async () => ({ id: ROOM_ID, name: "app", source: "app" }),
+      getRoom: async () => ({
+        id: ROOM_ID,
+        name: "app",
+        source: "app",
+        ...(options.roomWorldId === null
+          ? {}
+          : { worldId: options.roomWorldId ?? WORLD_ID }),
+      }),
       getEntitiesForRoom: async () => [entity],
       getWorld: (async () => null) as IAgentRuntime["getWorld"],
       getEntityById: (async (id: string) =>
@@ -398,15 +416,23 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
         });
         return { id: "00000000-0000-0000-0000-0000000000ff" } as Memory;
       },
-      upsertComponent: (async (component: Component) => {
-        upserts.push(component);
-      }) as IAgentRuntime["upsertComponent"],
+      getComponents: (async () => components) as IAgentRuntime["getComponents"],
+      createComponent: (async (component: Component) => {
+        created.push(component);
+        components.push(component);
+        return true;
+      }) as IAgentRuntime["createComponent"],
+      updateComponent: (async (component: Component) => {
+        updated.push(component);
+      }) as IAgentRuntime["updateComponent"],
       // findEntityByName degrades to its sole-candidate heuristic on
       // unparseable model output — resolution stays deterministic.
       useModel: (async () => "not-json") as IAgentRuntime["useModel"],
-      reportError: () => undefined,
+      reportError: ((_scope: string, error: unknown) => {
+        reported.push(error);
+      }) as IAgentRuntime["reportError"],
     });
-    return { runtime, sends, upserts };
+    return { runtime, sends, created, updated, reported };
   }
 
   it("without a recorded preference, two verified connector claims stay ambiguous", async () => {
@@ -468,7 +494,7 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
   });
 
   it("a successful entity delivery records the channel for next time", async () => {
-    const { runtime, upserts } = harness({ withPreference: true });
+    const { runtime, created, updated } = harness({ withPreference: true });
     const message = {
       ...baseMessage,
       content: { text: "tell shadow to stop smoking", source: "app" },
@@ -480,12 +506,82 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(upserts).toHaveLength(1);
-    expect(upserts[0]).toMatchObject({
+    expect(updated).toHaveLength(0);
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({
       entityId: SHADOW_ID,
+      worldId: WORLD_ID,
       type: "message_delivery_preference",
       data: { source: "telegram" },
     });
+  });
+
+  it("updates the person's one preference in place when reached from another world", async () => {
+    // A preference first recorded from a different world; the adapter's upsert
+    // keys on worldId, so writing the same fixed id from this world inserted a
+    // duplicate primary key.
+    const storedPreference = {
+      id: "00000000-0000-0000-0000-0000000000a1",
+      entityId: SHADOW_ID,
+      agentId: AGENT_ID,
+      roomId: "00000000-0000-0000-0000-0000000000a2",
+      worldId: "00000000-0000-0000-0000-0000000000a3",
+      sourceEntityId: AGENT_ID,
+      type: "message_delivery_preference",
+      createdAt: 1,
+      data: { source: "telegram" },
+    } as unknown as Component;
+    const { runtime, created, updated } = harness({
+      withPreference: true,
+      storedPreference,
+    });
+    const message = {
+      ...baseMessage,
+      content: { text: "tell shadow to stop smoking", source: "app" },
+    } as Memory;
+    const result = await send(
+      runtime,
+      { target: "shadow", message: "stop smoking" },
+      message,
+    );
+
+    expect(result.success).toBe(true);
+    expect(created).toHaveLength(0);
+    expect(updated).toEqual([
+      expect.objectContaining({
+        id: storedPreference.id,
+        worldId: storedPreference.worldId,
+        roomId: ROOM_ID,
+        data: expect.objectContaining({ source: "telegram" }),
+      }),
+    ]);
+  });
+
+  it("records no preference under an invented world when the room has none", async () => {
+    const { runtime, created, updated, reported } = harness({
+      withPreference: true,
+      roomWorldId: null,
+    });
+    const message = {
+      ...baseMessage,
+      content: { text: "tell shadow to stop smoking", source: "app" },
+    } as Memory;
+    const result = await send(
+      runtime,
+      { target: "shadow", message: "stop smoking" },
+      message,
+    );
+
+    expect(result.success).toBe(true);
+    expect(created).toHaveLength(0);
+    expect(updated).toHaveLength(0);
+    expect(reported).toContainEqual(
+      expect.objectContaining({
+        message: expect.stringContaining(
+          "no world to record the delivery preference",
+        ),
+      }),
+    );
   });
 });
 

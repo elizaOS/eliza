@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.KeyguardManager;
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import java.util.function.LongSupplier;
@@ -39,7 +38,7 @@ public final class DeviceCredentialSession implements AutoCloseable {
   }
   private final Challenge challenge;
   private final Listener listener;
-  private final Handler timer = new Handler(Looper.getMainLooper());
+  private final NativeDeadlineTimer timer = new NativeDeadlineTimer();
   private final CredentialAccessSession access;
   private final int firstCode, lastCode;
   private final String stateKey;
@@ -47,7 +46,6 @@ public final class DeviceCredentialSession implements AutoCloseable {
   private long ticket;
   private Runnable continuation;
   private boolean closed;
-  private final Runnable expire = this::checkExpiry;
 
   /** Codes in the inclusive range must be reserved by the host for this Activity instance. */
   public DeviceCredentialSession(Activity activity, long durationMillis, int firstCode, int lastCode, Bundle savedState, Listener listener) {
@@ -81,7 +79,7 @@ public final class DeviceCredentialSession implements AutoCloseable {
       if (!challenge.secure()) { lock(); listener.unavailable(Unavailable.DEVICE_LOCK_REQUIRED); return; }
       Intent intent = challenge.create(title, message);
       if (intent == null) { lock(); listener.unavailable(Unavailable.CHALLENGE_UNAVAILABLE); return; }
-      timer.removeCallbacks(expire);
+      timer.cancel();
       ticket = access.begin();
       if (ticket == 0) return;
       continuation = next;
@@ -100,8 +98,9 @@ public final class DeviceCredentialSession implements AutoCloseable {
       requestCode = -1;
       if (!access.complete(ticket, result == Activity.RESULT_OK) || next == null) { lock(); return true; }
       ticket = 0;
-      timer.postDelayed(expire, access.remainingMillis());
-      next.run();
+      timer.watch(access::remainingMillis, this::lock);
+      // Arming can expire synchronously; never enter the unlocked destination then.
+      if (authenticated()) next.run();
       return true;
     }
     return false;
@@ -122,29 +121,23 @@ public final class DeviceCredentialSession implements AutoCloseable {
     return allowed;
   }
 
-  private void checkExpiry() {
-    if (closed) return;
-    long remaining = access.remainingMillis();
-    if (remaining == 0) lock(); else timer.postDelayed(expire, remaining);
-  }
-
   public void lock() {
     mainThread();
     access.lock(); ticket = 0; requestCode = -1; continuation = null;
-    timer.removeCallbacks(expire);
+    timer.cancel();
     if (!closed) listener.locked();
   }
 
   public void onStop() {
     mainThread();
     if (closed) return;
-    access.stop(); timer.removeCallbacks(expire);
+    access.stop(); timer.cancel();
     if (!access.pending()) { ticket = 0; requestCode = -1; continuation = null; }
     listener.locked();
   }
 
   @Override public void close() {
     mainThread(); closed = true; access.close(); ticket = 0; requestCode = -1; continuation = null;
-    timer.removeCallbacksAndMessages(null);
+    timer.close();
   }
 }
