@@ -3393,11 +3393,19 @@ function resolveTripWindowRequest(
 }
 
 function eventDateSearchTerms(event: LifeOpsCalendarEvent): Set<string> {
+  const searchDate = event.isAllDay
+    ? (() => {
+        const { year, month, day } = allDayCivilDate(event.startAt);
+        return new Date(Date.UTC(year, month - 1, day));
+      })()
+    : new Date(event.startAt);
   const formatter = (options: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat("en-US", {
-      timeZone: event.timezone || undefined,
+      // All-day startAt values carry a civil date, not an instant. Keep their
+      // search labels on that date just as mutation selection and rendering do.
+      timeZone: event.isAllDay ? "UTC" : event.timezone || undefined,
       ...options,
-    }).format(new Date(event.startAt));
+    }).format(searchDate);
 
   const monthLong = normalizeText(
     formatter({ month: "long" }).replace(/\./g, ""),
