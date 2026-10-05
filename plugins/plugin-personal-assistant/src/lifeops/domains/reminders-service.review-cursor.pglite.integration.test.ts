@@ -775,7 +775,11 @@ function requestMarker() {
     fingerprint: "a".repeat(64),
   };
 }
-function bindCreateRequest(message: Memory, intents: string[]) {
+function bindCreateRequest(
+  message: Memory,
+  intents: string[],
+  historyMode = "selected",
+) {
   if (!message.id) throw new Error("Missing request id");
   const state: State = { text: "current request", values: {}, data: {} };
   const original: ContextObject = {
@@ -797,10 +801,14 @@ function bindCreateRequest(message: Memory, intents: string[]) {
         id: "handler",
         type: "message_handler",
         source: "message-service",
-        metadata: { processMessage: true, plan: { intents } },
+        metadata: { processMessage: "RESPOND", plan: { intents } },
       },
     ],
   };
+  if (historyMode === "none")
+    original.events = original.events.filter(
+      (event) => event.source !== "prior-dialogue",
+    );
   original.metadata = {
     ...original.metadata,
     completionContext: {
@@ -817,7 +825,9 @@ function bindCreateRequest(message: Memory, intents: string[]) {
     state,
     message,
     original,
-    selectCompletionContext(original).context,
+    historyMode === "selected"
+      ? selectCompletionContext(original).context
+      : original,
   );
   expect(readTaskExtractionRequestIntents(state, message)).toEqual(intents);
   return state;
@@ -890,6 +900,9 @@ it.each([
   "failed_refresh",
   "same_reminder",
   "queue_live_during_refresh",
+  "no_history",
+  "full_history",
+  "full_history_compound",
 ])(
   "current creation through the raw host summary preserves %s ownership",
   async (kind) => {
@@ -926,9 +939,14 @@ it.each([
         ? undefined
         : bindCreateRequest(
             f.message,
-            kind === "compound"
+            ["compound", "full_history_compound"].includes(kind)
               ? ["Create reminder", "Snooze an older reminder"]
               : ["Create reminder"],
+            kind === "no_history"
+              ? "none"
+              : ["full_history", "full_history_compound"].includes(kind)
+                ? "full"
+                : "selected",
           );
     const result = await runLifeOperationHandler(
       fixture.runtime,
@@ -954,7 +972,7 @@ it.each([
       [{ ...result, actionName: "OWNER_REMINDERS_CREATE" }],
     );
     expect(actionResults[0].values?.ownerRequestHandling !== undefined).toBe(
-      !["compound", "missing_binding"].includes(kind),
+      !["compound", "full_history_compound", "missing_binding"].includes(kind),
     );
     if (kind === "foreign")
       marker.scope = `${fixture.runtime.agentId}:${roomId}:foreign`;
@@ -1062,7 +1080,9 @@ it.each([
       return;
     }
     expect(review.decision).toBe("unrelated");
-    if (kind === "single" || kind === "stale_pending") {
+    if (
+      ["single", "stale_pending", "no_history", "full_history"].includes(kind)
+    ) {
       expect(review.reason).toBe("foreground_single_create_owned");
       expect(judge).not.toHaveBeenCalled();
     } else expect(judge).toHaveBeenCalled();

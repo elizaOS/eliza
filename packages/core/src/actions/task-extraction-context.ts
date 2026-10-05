@@ -21,6 +21,7 @@ type Binding = {
 	projectionHash: string;
 	requestHash: string;
 	stateHash: string;
+	extractionProjectionAuthorized: boolean;
 };
 const key = Symbol.for("eliza.task-extraction-context");
 const bindings = () =>
@@ -58,15 +59,20 @@ export function bindTaskExtractionContext(
 				.filter((event) => sourceIds.has(event.id))
 				.map((event) => event.id),
 		);
-		if (!sources.length || included.size === sources.length) return;
+		// Exact full views bind current decision metadata without granting an
+		// extraction projection; only the existing partial-history rule can do so.
+		const extractionProjectionAuthorized =
+			sources.length > 0 && included.size !== sources.length;
 		// A producer may remove only reviewed dialogue and its unambiguously bound
 		// historical evidence. Current providers, instructions and effects stay exact.
-		const expected = {
-			...original,
-			events: selectHistoricalNavigation(original, included).events.filter(
-				(event) => !sourceIds.has(event.id) || included.has(event.id),
-			),
-		};
+		const expected = extractionProjectionAuthorized
+			? {
+					...original,
+					events: selectHistoricalNavigation(original, included).events.filter(
+						(event) => !sourceIds.has(event.id) || included.has(event.id),
+					),
+				}
+			: original;
 		if (hashStableJson(expected) !== hashStableJson(projected)) return;
 		bindings().set(state.data, {
 			original,
@@ -75,6 +81,7 @@ export function bindTaskExtractionContext(
 			projectionHash: hashStableJson(projected),
 			requestHash: hashStableJson(message),
 			stateHash: stateFingerprint(state),
+			extractionProjectionAuthorized,
 		});
 	} catch {
 		// Invalid optional projection cannot remove any extractor context.
@@ -114,7 +121,7 @@ export function readTaskExtractionRequestIntents(
 		(event) =>
 			event.type === "message_handler" && event.source === "message-service",
 	);
-	if (events.length !== 1 || events[0].metadata?.processMessage !== true)
+	if (events.length !== 1 || events[0].metadata?.processMessage !== "RESPOND")
 		return undefined;
 	const plan = events[0].metadata?.plan;
 	if (!plan || typeof plan !== "object" || Array.isArray(plan))
@@ -139,7 +146,7 @@ export function readTaskExtractionContext(
 	expectedSystem?: string,
 ): { text: string; originalText: string; system?: string } | undefined {
 	const binding = readBinding(state, message);
-	if (!binding) return undefined;
+	if (!binding?.extractionProjectionAuthorized) return undefined;
 	try {
 		// Keep the trusted canonical prefix on the model's system surface once,
 		// rather than flattening it into user context and adding it again at dispatch.
