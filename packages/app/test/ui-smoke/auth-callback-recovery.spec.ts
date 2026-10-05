@@ -59,6 +59,19 @@ for (const callback of INVALID_CALLBACKS) {
     ).toBeVisible();
     const recovery = page.getByRole("link", { name: "Sign In Again" });
     await expect(recovery).toHaveAttribute("href", "/login");
+    await expect(recovery).toHaveClass(/hosted-signin-focus-emphasis/);
+    const resting = await readFocusStyle(recovery);
+    await page.keyboard.press("Tab");
+    await expect(recovery).toBeFocused();
+    expect(
+      await recovery.evaluate((element) => element.matches(":focus-visible")),
+    ).toBe(true);
+    await page.waitForTimeout(200);
+    const focused = await readFocusStyle(recovery);
+    expect(focused.borderColor).not.toBe(resting.borderColor);
+    expect(focused.backgroundColor).not.toBe(resting.backgroundColor);
+    // Check initial keyboard order before scrolling or pointer actionability changes
+    // Chromium's sequential-focus starting point. Keep viewport checks afterward.
     if (shortViewport) {
       const heading = page.getByRole("heading", {
         level: 1,
@@ -76,17 +89,6 @@ for (const callback of INVALID_CALLBACKS) {
         ),
       });
     }
-    await expect(recovery).toHaveClass(/hosted-signin-focus-emphasis/);
-    const resting = await readFocusStyle(recovery);
-    await page.keyboard.press("Tab");
-    await expect(recovery).toBeFocused();
-    expect(
-      await recovery.evaluate((element) => element.matches(":focus-visible")),
-    ).toBe(true);
-    await page.waitForTimeout(200);
-    const focused = await readFocusStyle(recovery);
-    expect(focused.borderColor).not.toBe(resting.borderColor);
-    expect(focused.backgroundColor).not.toBe(resting.backgroundColor);
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/login$/);
   });
