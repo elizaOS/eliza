@@ -112,3 +112,7 @@ provider-free status read; OUTCOME_UNKNOWN does not authorize a replacement quot
 or charge. APPLIED means the lower plan is scheduled; renewal payment still owns
 plan/allowance advancement. These session-authenticated methods preserve typed
 transport errors and do not put provider receipt/request payloads in the response.
+
+Native management projects the validated pending plan for host presentation without
+changing cancellation eligibility. Hosts can explain a scheduled change and prevent
+duplicate reviews while leaving current paid-plan authority intact.

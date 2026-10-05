@@ -167,6 +167,11 @@ export function projectSubscriptionManagement(
     typeof sub.subscriptionId !== "string" ||
     !uuid.test(sub.subscriptionId) ||
     !planKeys.includes(sub.planKey) ||
+    !(
+      sub.pendingPlanKey === null ||
+      (planKeys.includes(sub.pendingPlanKey) &&
+        sub.pendingPlanKey !== sub.planKey)
+    ) ||
     ![
       "pending",
       "incomplete",
@@ -214,6 +219,7 @@ export function projectSubscriptionManagement(
       status: sub.state,
       periodEnd: sub.currentPeriodEnd,
       cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+      pendingPlanKey: sub.pendingPlanKey,
     },
     control: {
       action: control.action,
