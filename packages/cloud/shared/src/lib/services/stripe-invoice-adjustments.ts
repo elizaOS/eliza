@@ -96,10 +96,7 @@ export function proveInvoiceAdjustments(invoiceInput: unknown, lineInput: unknow
     inclusive > base - discounts ||
     BigInt(invoice.subtotal) !== base - itemDiscounts ||
     BigInt(invoice.total) !== base - discounts + exclusive ||
-    BigInt(invoice.tax ?? 0) !== inclusive + exclusive ||
-    invoice.total <= 0 ||
-    invoice.amount_due !== invoice.total ||
-    invoice.amount_paid !== invoice.total
+    BigInt(invoice.tax ?? 0) !== inclusive + exclusive
   )
     reject();
   if (!ids.length && !taxes.length && !invoice.automatic_tax.enabled) return undefined;

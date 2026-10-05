@@ -1,6 +1,6 @@
 /** Captured invoice evidence must remain bound to its original interval, regardless of later subscription state. */
 import { expect, test } from "bun:test";
-import { validateCapturedRenewalPayment as prove } from "./stripe-paid-renewal-validation";
+import { validateSettledRenewalPayment as prove } from "./stripe-paid-renewal-validation";
 
 function fixture() {
   const start = 1700000000,
@@ -517,4 +517,189 @@ test("uses exact integer sums even when individually safe taxes overflow the saf
   f.invoice.total_tax_amounts = taxes;
   f.invoice.lines.data[0]!.tax_amounts = structuredClone(taxes);
   expect(() => prove(f)).toThrow();
+});
+
+function credited(credit = 500) {
+  const f = fixture(),
+    used = Math.min(credit, 3000),
+    due = 3000 - used;
+  return {
+    ...f,
+    invoice: {
+      ...f.invoice,
+      starting_balance: -credit,
+      ending_balance: -credit + used,
+      amount_due: due,
+      amount_paid: due,
+      payment_intent: due ? f.invoice.payment_intent : null,
+      charge: due ? f.invoice.charge : null,
+    },
+    paymentIntent: due ? { ...f.paymentIntent, amount: due, amount_received: due } : null,
+    charge: due ? { ...f.charge, amount: due, amount_captured: due } : null,
+    balanceHistory: {
+      object: "list",
+      has_more: false,
+      data: [
+        {
+          id: "cbtxn_applied",
+          object: "customer_balance_transaction",
+          customer: f.invoice.customer,
+          invoice: f.invoice.id,
+          livemode: false,
+          currency: "usd",
+          type: "applied_to_invoice",
+          amount: used,
+          ending_balance: -credit + used,
+          created: f.invoice.status_transitions.paid_at,
+          credit_note: null,
+        },
+      ],
+    },
+  };
+}
+for (const credit of [500, 3000, 4000])
+  test(`proves ${credit} cents of starting credit without inventing captured money`, () => {
+    const f = credited(credit),
+      proof = prove(f);
+    expect(proof.settlementDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(proof.payment?.amount ?? 0).toBe(Math.max(3000 - credit, 0));
+    expect(proof.charge?.amount_captured ?? 0).toBe(Math.max(3000 - credit, 0));
+  });
+test("fully discounted renewal settles at zero without fabricated payment authority", () => {
+  const f = adjusted(true, true);
+  f.invoice.total_discount_amounts[0]!.amount = 3000;
+  f.invoice.subtotal =
+    f.invoice.total =
+    f.invoice.amount_due =
+    f.invoice.amount_paid =
+    f.invoice.tax =
+      0;
+  f.invoice.total_tax_amounts = [];
+  f.invoice.lines.data[0]!.tax_amounts = [];
+  const zero = {
+    ...f,
+    invoice: { ...f.invoice, payment_intent: null, charge: null },
+    paymentIntent: null,
+    charge: null,
+  };
+  expect(prove(zero).payment).toBeNull();
+  expect(prove(zero).adjustmentDigest).toBeDefined();
+  expect(() => prove({ ...zero, paymentIntent: fixture().paymentIntent })).toThrow();
+});
+const creditChanges: Array<[string, (f: ReturnType<typeof credited>) => void]> = [
+  [
+    "incomplete history",
+    (f) => {
+      f.balanceHistory.has_more = true;
+    },
+  ],
+  [
+    "missing application",
+    (f) => {
+      f.balanceHistory.data = [];
+    },
+  ],
+  [
+    "foreign invoice",
+    (f) => {
+      f.balanceHistory.data[0]!.invoice = "in_other";
+    },
+  ],
+  [
+    "foreign customer",
+    (f) => {
+      f.balanceHistory.data[0]!.customer = "cus_other";
+    },
+  ],
+  [
+    "foreign mode",
+    (f) => {
+      f.balanceHistory.data[0]!.livemode = true;
+    },
+  ],
+  [
+    "foreign currency",
+    (f) => {
+      f.balanceHistory.data[0]!.currency = "eur";
+    },
+  ],
+  [
+    "wrong credit amount",
+    (f) => {
+      f.balanceHistory.data[0]!.amount--;
+    },
+  ],
+  [
+    "wrong ending balance",
+    (f) => {
+      f.balanceHistory.data[0]!.ending_balance--;
+    },
+  ],
+  [
+    "late application",
+    (f) => {
+      f.balanceHistory.data[0]!.created++;
+    },
+  ],
+  [
+    "carried debt",
+    (f) => {
+      f.balanceHistory.data[0]!.type = "invoice_too_small";
+    },
+  ],
+  [
+    "reversal",
+    (f) => {
+      f.balanceHistory.data.push({
+        ...f.balanceHistory.data[0]!,
+        id: "cbtxn_reversal",
+        type: "unapplied_from_invoice",
+        amount: -500,
+      });
+    },
+  ],
+  [
+    "duplicate transaction",
+    (f) => {
+      f.balanceHistory.data.push(f.balanceHistory.data[0]!);
+    },
+  ],
+  [
+    "unexplained due",
+    (f) => {
+      f.invoice.amount_due--;
+    },
+  ],
+  [
+    "unexplained balance",
+    (f) => {
+      f.invoice.ending_balance--;
+    },
+  ],
+];
+for (const [name, change] of creditChanges)
+  test(`rejects credit settlement with ${name}`, () => {
+    const f = credited();
+    change(f);
+    expect(() => prove(f)).toThrow();
+  });
+test("discounts, tax and credit compose without granting twice or changing the base", () => {
+  const f = adjusted(),
+    credit = credited();
+  const proof = prove({
+    ...f,
+    invoice: {
+      ...f.invoice,
+      starting_balance: -500,
+      ending_balance: 0,
+      amount_due: 2470,
+      amount_paid: 2470,
+    },
+    paymentIntent: { ...f.paymentIntent, amount: 2470, amount_received: 2470 },
+    charge: { ...f.charge, amount: 2470, amount_captured: 2470 },
+    balanceHistory: credit.balanceHistory,
+  });
+  expect(proof.line.amount).toBe(3000);
+  expect(proof.adjustmentDigest).toBeDefined();
+  expect(proof.settlementDigest).toBeDefined();
 });
