@@ -499,7 +499,7 @@ export interface WalletRouteContext
     Pick<RouteHelpers, "readJsonBody" | "json" | "error"> {
   config: ElizaConfig;
   saveConfig: (config: ElizaConfig) => void;
-  ensureWalletKeysInEnvAndConfig: (config: ElizaConfig) => boolean;
+  ensureWalletKeysInEnvAndConfig: (config: ElizaConfig) => Promise<boolean>;
   resolveWalletExportRejection: (
     req: http.IncomingMessage,
     body: WalletExportRequestBody,

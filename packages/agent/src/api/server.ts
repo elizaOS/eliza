@@ -54,11 +54,7 @@ import {
   resolveTradePermissionMode,
 } from "@elizaos/plugin-wallet/transactions";
 import { WebSocket, WebSocketServer } from "ws";
-import {
-  isWalletOsStoreEnabledInConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   createDevCloudConfigAuthorityView,
   materializeDevCloudConfigAuthorityView,
@@ -75,7 +71,6 @@ import { pickRandomNames } from "../runtime/first-run-names.ts";
 import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,
-  hasDurableHostVault,
 } from "../runtime/host-bridge.ts";
 import {
   resolvePreferredProviderId,
@@ -382,6 +377,7 @@ import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
+import { persistWalletPrivateKeys } from "./wallet-key-store.ts";
 import {
   applyWalletRpcConfigUpdate,
   getInventoryProviderOptions,
@@ -2135,40 +2131,49 @@ async function handleRequestForViewClient(
     pathname === "/api/wallet/keys"
       ? (await getCoreWalletApi()).getWalletAddresses
       : null;
-  if (
-    await handleFirstRunRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      state,
-      json,
-      error,
-      readJsonBody,
-      isCloudProvisionedContainer,
-      hasPersistedFirstRunState,
-      ensureWalletKeysInEnvAndConfig,
-      getWalletAddresses: firstRunGetWalletAddresses
-        ? () => firstRunGetWalletAddresses(state.runtime?.agentId)
-        : () => ({
-            evmAddress: null,
-            solanaAddress: null,
-          }),
-      pickRandomNames,
-      getStylePresets,
-      getProviderOptions,
-      getCloudProviderOptions,
-      getModelOptions,
-      getInventoryProviderOptions,
-      resolveConfiguredCharacterLanguage,
-      normalizeCharacterLanguage,
-      readUiLanguageHeader,
-      applyFirstRunVoicePreset,
-      saveElizaConfig,
-    })
-  ) {
-    return;
+  const releaseFirstRunWalletKeys =
+    (method === "GET" && pathname === "/api/wallet/keys") ||
+    (method === "POST" && pathname === "/api/first-run")
+      ? await acquireWalletKeyMutation()
+      : undefined;
+  try {
+    if (
+      await handleFirstRunRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state,
+        json,
+        error,
+        readJsonBody,
+        isCloudProvisionedContainer,
+        hasPersistedFirstRunState,
+        ensureWalletKeysInEnvAndConfig,
+        getWalletAddresses: firstRunGetWalletAddresses
+          ? () => firstRunGetWalletAddresses(state.runtime?.agentId)
+          : () => ({
+              evmAddress: null,
+              solanaAddress: null,
+            }),
+        pickRandomNames,
+        getStylePresets,
+        getProviderOptions,
+        getCloudProviderOptions,
+        getModelOptions,
+        getInventoryProviderOptions,
+        resolveConfiguredCharacterLanguage,
+        normalizeCharacterLanguage,
+        readUiLanguageHeader,
+        applyFirstRunVoicePreset,
+        saveElizaConfig,
+      })
+    ) {
+      return;
+    }
+  } finally {
+    releaseFirstRunWalletKeys?.();
   }
   // POST /api/first-run is now handled by first-run-routes.ts above.
   if (
@@ -2658,57 +2663,8 @@ async function handleRequestForViewClient(
             }),
             isCloudWalletEnabled,
             persistConfigEnv,
-            persistWalletPrivateKeys: async (config, keys) => {
-              // saveElizaConfig strips wallet keys from disk in OS-store mode;
-              // boot hydration then reads them back from the host vault.
-              if (!isWalletOsStoreEnabledInConfig(config)) return;
-              const entries = Object.entries(keys);
-              if (!hasDurableHostVault()) {
-                throw new ElizaError(
-                  `${entries.map(([key]) => key).join(", ")} cannot be stored: ELIZA_WALLET_OS_STORE keeps wallet keys out of config and this host has no durable vault`,
-                  { code: "WALLET_KEY_STORE_UNAVAILABLE" },
-                );
-              }
-              const empty = entries.find(([, value]) => !value?.trim());
-              if (empty) {
-                throw new ElizaError(`${empty[0]} is empty`, {
-                  code: "WALLET_KEY_EMPTY",
-                });
-              }
-              const vault = getAgentHostBridge().sharedVault();
-              const options = { sensitive: true, caller: "wallet-routes" };
-              const previous: Array<[string, string | null]> = [];
-              for (const [key] of entries) {
-                previous.push([
-                  key,
-                  (await vault.has(key))
-                    ? await vault.reveal(key, "wallet-routes")
-                    : null,
-                ]);
-              }
-              try {
-                for (const [key, value] of entries) {
-                  await vault.set(key, value as string, options);
-                }
-              } catch (err) {
-                const rollbackFailures: unknown[] = [];
-                for (const [key, value] of previous) {
-                  try {
-                    if (value === null) await vault.remove(key);
-                    else await vault.set(key, value, options);
-                  } catch (rollbackError) {
-                    rollbackFailures.push(rollbackError);
-                  }
-                }
-                if (rollbackFailures.length > 0) {
-                  throw new AggregateError(
-                    [err, ...rollbackFailures],
-                    "Wallet key store failed and prior vault keys could not be restored",
-                  );
-                }
-                throw err;
-              }
-            },
+            persistWalletPrivateKeys: (config, keys) =>
+              persistWalletPrivateKeys(config, keys, "wallet-routes"),
             createIntegrationTelemetrySpan: (args) =>
               createIntegrationTelemetrySpan({
                 boundary: "wallet",
@@ -3631,13 +3587,30 @@ export async function startApiServer(opts?: {
     walletAutoProvisionRaw === "true" ||
     walletAutoProvisionRaw === "on" ||
     walletAutoProvisionRaw === "yes";
-  if (walletAutoProvisionEnabled && ensureWalletKeysInEnvAndConfig(config)) {
+  if (walletAutoProvisionEnabled) {
+    const releaseWalletKeys = await acquireWalletKeyMutation();
+    const walletEnvBefore = Object.fromEntries(
+      [
+        "EVM_PRIVATE_KEY",
+        "SOLANA_PRIVATE_KEY",
+        "SOLANA_PUBLIC_KEY",
+        "WALLET_PUBLIC_KEY",
+      ].map((name) => [name, process.env[name]]),
+    );
     try {
-      saveElizaConfig(config);
+      if (await ensureWalletKeysInEnvAndConfig(config)) {
+        saveElizaConfig(config);
+      }
     } catch (err) {
-      logger.warn(
+      for (const [name, value] of Object.entries(walletEnvBefore)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      logger.error(
         `[eliza-api] Failed to persist generated wallet keys: ${err instanceof Error ? err.message : err}`,
       );
+    } finally {
+      releaseWalletKeys();
     }
   }
   const blockOnStewardWalletCache =
