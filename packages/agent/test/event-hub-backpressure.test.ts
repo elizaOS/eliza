@@ -103,6 +103,16 @@ it("terminates a peer that stops reading with its buffer bounded and still deliv
     );
     clock += CLOCK_STEP_MS;
     await new Promise<void>((resolve) => setImmediate(resolve));
+    // The fake clock charges CLOCK_STEP_MS per frame whether or not the
+    // loopback drained. Give the healthy peer real time to drain before the
+    // next frame, so only the paused peer can outlast the grace window.
+    await waitFor(
+      () =>
+        healthy.serverSide.readyState !== WebSocket.OPEN ||
+        healthy.serverSide.bufferedAmount <=
+          EVENT_SOCKET_BACKPRESSURE_SOFT_LIMIT_BYTES,
+      "the healthy peer to drain",
+    );
   }
 
   expect(maxStalledBuffered).toBeGreaterThan(
