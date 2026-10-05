@@ -299,7 +299,8 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
         lines: { data: Array<{ id: string }> };
       };
     };
-    expect(details.authorityDigest).toEqual(retained.digest);
+    if (typeof retained.digest !== "string") throw new Error("Missing retained authority digest");
+    expect(details.authorityDigest).toBe(retained.digest);
     expect(details.invoice.id).toBe(f.invoice.id);
     expect(details.invoice.total).toBe(f.invoice.total);
     expect(details.invoice.amount_paid).toBe(f.invoice.amount_paid);
