@@ -629,9 +629,16 @@
       ]
     },
     "@elizaos/plugin-todos#build": {
-      "dependsOn": ["^build", "@elizaos/ui#build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"],
+      "dependsOn": [
+        "^build",
+        "@elizaos/ui#build"
+      ],
+      "env": [
+        "LOG_LEVEL"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!dist/**",
