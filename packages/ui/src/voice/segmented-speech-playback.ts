@@ -70,10 +70,15 @@ export class SegmentedSpeechPlayback {
       this.options.changed({ phase: "idle", caption: "" });
     }
   }
-  async speak(text: string): Promise<void> {
+  /** Optional observer receives only the current operation's settled result, after cleanup. */
+  async speak(
+    text: string,
+    settled?: (error: unknown | null) => void,
+  ): Promise<void> {
     if (this.running || !text) return;
     this.running = true;
     const ticket = ++this.generation;
+    let failure: unknown | null = null;
     try {
       for (const segment of splitSpeechSegments(text)) {
         if (ticket !== this.generation) return;
@@ -153,16 +158,22 @@ export class SegmentedSpeechPlayback {
         this.release();
       }
     } catch (error) {
-      if (ticket === this.generation) throw error;
+      if (ticket === this.generation)
+        failure = error ?? new SpeechPlaybackError("playback");
     } finally {
       if (ticket === this.generation) {
         this.running = false;
         try {
           this.release();
-        } finally {
-          this.options.changed({ phase: "idle", caption: "" });
+        } catch (error) {
+          failure ??= error ?? new SpeechPlaybackError("playback");
         }
+        this.options.changed({ phase: "idle", caption: "" });
       }
+    }
+    if (ticket === this.generation) {
+      if (settled) settled(failure);
+      else if (failure !== null) throw failure;
     }
   }
 }

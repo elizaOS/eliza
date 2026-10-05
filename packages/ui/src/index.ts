@@ -1367,6 +1367,17 @@ export {
   type DeviceSpeechState,
 } from "./voice/device-speech-controller.js";
 export {
+  DraftTranscriptGuard,
+  type DraftTranscriptResult,
+} from "./voice/draft-transcript-guard.js";
+export {
+  RecordedTranscriptionController,
+  RecordedTranscriptionError,
+  type RecordedTranscriptionOptions,
+  type RecordedTranscriptionState,
+  type RecordingPhase,
+} from "./voice/recorded-transcription-controller.js";
+export {
   type SegmentedSpeechOptions,
   SegmentedSpeechPlayback,
   type SegmentedSpeechState,
