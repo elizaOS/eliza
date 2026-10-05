@@ -11,6 +11,7 @@ import {
   assertOrganizationPlanChangeProviderBindingCurrent,
   resolveOrganizationPlanChangeProviderBinding,
 } from "./organization-plan-change-provider-binding";
+import { observeOrganizationScheduleRetainedTerms } from "./organization-schedule-retained-terms";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
   validateCancellationCustomer,
@@ -61,15 +62,23 @@ export async function createOrganizationDowngradeQuote(
     environment,
     raw: await stripe.customers.retrieve(source.stripe_customer_id, {}, options),
   });
+  const rawSubscription = await stripe.subscriptions.retrieve(
+    source.stripe_subscription_id,
+    {},
+    options,
+  );
   const observedAt = new Date();
   validatePeriodEndCancellationObservation({
     ...captured,
     environment,
-    raw: await stripe.subscriptions.retrieve(source.stripe_subscription_id, {}, options),
+    raw: rawSubscription,
     observedAt,
     requireScheduled: false,
     allowRetainedCanceledAt: source.canceled_at,
   });
+  // Check support before offering a review that cannot be safely scheduled. The eventual
+  // dispatcher must reobserve and durably bind these terms before the first provider write.
+  observeOrganizationScheduleRetainedTerms({ raw: rawSubscription, observedAt });
   const binding = resolveSubscriptionProviderBinding(
     environment,
     target.key,

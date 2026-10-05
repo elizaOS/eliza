@@ -127,6 +127,35 @@ beforeAll(async () => {
 beforeEach(async () => {
   process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
   f = await seedCancellationTestAccount(undefined, undefined, "pro_monthly");
+  Object.assign(f.provider, {
+    application: null,
+    currency: "usd",
+    collection_method: "charge_automatically",
+    days_until_due: null,
+    automatic_tax: { enabled: false, liability: null },
+    billing_cycle_anchor: f.provider.current_period_start,
+    billing_cycle_anchor_config: null,
+    billing_thresholds: null,
+    default_payment_method: "pm_original",
+    default_source: null,
+    default_tax_rates: [],
+    description: null,
+    discount: null,
+    discounts: [],
+    invoice_settings: { account_tax_ids: null, issuer: { type: "self" } },
+    metadata: {},
+    next_pending_invoice_item_invoice: null,
+    pending_invoice_item_interval: null,
+    pending_setup_intent: null,
+    payment_settings: null,
+  });
+  Object.assign(f.provider.items.data[0]!.price, { tax_behavior: "unspecified" });
+  Object.assign(f.provider.items.data[0]!, {
+    billing_thresholds: null,
+    discounts: [],
+    tax_rates: [],
+    metadata: {},
+  });
   afterRead = async () => {};
   mutate = (raw) => raw;
   preview.mockClear();
@@ -285,3 +314,18 @@ test("provider catalog drift during review cannot replace its captured binding",
   await expect(quote()).rejects.toThrow();
   expect(write).not.toHaveBeenCalled();
 });
+
+test.each([
+  { default_source: "src_legacy" },
+  { collection_method: "send_invoice" },
+  { automatic_tax: { enabled: true, liability: { type: "account", account: "acct_foreign" } } },
+  { discount: "di_legacy", discounts: [] },
+])(
+  "unsupported retained billing terms reject review before invoice preview: %j",
+  async (change) => {
+    Object.assign(f.provider, change);
+    await expect(quote()).rejects.toMatchObject({ code: "SUBSCRIPTION_PLAN_CHANGE_REOBSERVE" });
+    expect(preview).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  },
+);
