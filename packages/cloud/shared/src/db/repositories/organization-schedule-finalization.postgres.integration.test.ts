@@ -284,6 +284,60 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
       ),
     ).rejects.toThrow("immutable");
   });
+  test("management offers configured cancellation only from original published schedule proof", async () => {
+    const f = await configured();
+    await f.finalize(f.input);
+    const { dbWrite } = await import("../helpers");
+    const { readPrimaryOrganizationSubscription } = await import(
+      "./account-billing-snapshot-subscription"
+    );
+    const { buildOrganizationSubscriptionSnapshot } = await import(
+      "../../lib/services/account-subscription-snapshot"
+    );
+    const primary = await dbWrite.transaction(
+      (tx) => readPrimaryOrganizationSubscription(tx, f.identity.organizationId),
+      { isolationLevel: "repeatable read", accessMode: "read only" },
+    );
+    expect(primary.state).toBe("current");
+    if (primary.state !== "current") throw new Error("Expected published authority");
+    expect(primary.configuredCancellation).toBe(true);
+    const reader = {
+      authMethod: "session" as const,
+      role: "owner",
+      userActive: true,
+      userAnonymous: false,
+      organizationActive: true,
+    };
+    const observed = new Date().toISOString();
+    const funding = { status: "unavailable" as const, code: "test_not_spendable" };
+    const view = buildOrganizationSubscriptionSnapshot(primary, observed, funding, reader);
+    expect(view.status).toBe("available");
+    if (view.status !== "available") throw new Error("Expected projected authority");
+    expect(view.value.planKey).toBe("pro_monthly");
+    expect(view.value.pendingPlanKey).toBe("plus_monthly");
+    expect(view.value.cancellationControl).toMatchObject({
+      eligible: true,
+      blockers: [],
+      action: "cancel",
+    });
+    const denied = buildOrganizationSubscriptionSnapshot(primary, observed, funding, {
+      ...reader,
+      role: "member",
+    });
+    if (denied.status !== "available") throw new Error("Expected member projection");
+    expect(denied.value.cancellationControl.eligible).toBe(false);
+    expect(denied.value.cancellationControl.blockers).toContain("owner_or_admin_role_required");
+    const unproven = buildOrganizationSubscriptionSnapshot(
+      { ...primary, configuredCancellation: false },
+      observed,
+      funding,
+      reader,
+    );
+    if (unproven.status !== "available") throw new Error("Expected unproven projection");
+    expect(unproven.value.cancellationControl.blockers).toContain("subscription_state_unsupported");
+    // No provider call or command mutation is used to project management authority.
+    expect((await state(f)).command.status).toBe("APPLIED");
+  });
   for (const lostResponse of [false, true])
     test(`configured cancellation preserves paid phase and recovers without redispatch: lost=${lostResponse}`, async () => {
       process.env.STRIPE_SECRET_KEY = ["sk", "test", "schedulepublication"].join("_");
