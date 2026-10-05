@@ -27,7 +27,7 @@ import {
 import {
   getKeyboardDictationBridge,
   type KeyboardDictationBridge,
-} from "./native/keyboard-dictation-bridge";
+} from "./platform/keyboard-dictation-bridge";
 
 export type KeyboardDictationOutcome = "ready" | "error" | "cancelled";
 
