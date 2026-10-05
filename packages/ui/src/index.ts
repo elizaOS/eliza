@@ -1418,6 +1418,10 @@ export {
   SpeechPlaybackError,
 } from "./voice/segmented-speech-playback.js";
 export { splitSpeechSegments } from "./voice/speech-segments.js";
+export {
+  createSpeechWordTimeline,
+  type SpeechWordRange,
+} from "./voice/speech-word-timeline.js";
 export { useVoiceConfig } from "./voice/useVoiceConfig.js";
 export {
   createVoiceCapture,
