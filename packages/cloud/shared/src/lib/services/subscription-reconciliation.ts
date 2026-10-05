@@ -27,6 +27,7 @@ import { resolveSubscriptionProviderBinding } from "./subscription-catalog";
 import { assertCheckoutProviderAuthority } from "./subscription-checkout-contract";
 import { openSubscriptionIncident } from "./subscription-event-incidents";
 import { subscriptionPolicyFailureReason, typedFailure } from "./subscription-lifecycle-failures";
+import { findNextRenewalInvoice } from "./subscription-next-invoice";
 
 export async function recoverMissedSubscriptionEvents() {
   const deadline = Date.now() + 20_000;
@@ -73,8 +74,31 @@ export async function recoverMissedSubscriptionEvents() {
           code: "SUBSCRIPTION_RECONCILIATION_UNAVAILABLE",
           context: { reason: "unsupported_live_status", status: raw.status },
         });
-      const receipt =
-        raw.status === "canceled" || raw.status === "incomplete_expired"
+      const livePeriod = z
+        .object({ current_period_start: z.number().int().nonnegative().safe() })
+        .safeParse(raw);
+      const missedInterval =
+        ["active", "past_due", "unpaid"].includes(raw.status) &&
+        livePeriod.success &&
+        claim.source.current_period_end !== null &&
+        livePeriod.data.current_period_start * 1000 > claim.source.current_period_end.getTime();
+      const nextInvoice = missedInterval
+        ? await findNextRenewalInvoice({
+            reader: stripe.invoices,
+            subscriptionId: claim.source.stripe_subscription_id,
+            customerId: claim.source.stripe_customer_id,
+            livemode: claim.source.provider_environment === "live",
+            paidPeriodEnd: claim.source.current_period_end!,
+            observedAt: claim.observedAt,
+          })
+        : null;
+      const receipt = nextInvoice
+        ? await finalizeSubscriptionReconciliation(claim, {
+            kind: "paid_renewal",
+            invoiceId: nextInvoice.invoiceId,
+            objects: await retrievePaidRenewalObjects(claim.source, nextInvoice.invoiceId, stripe),
+          })
+        : raw.status === "canceled" || raw.status === "incomplete_expired"
           ? await finalizeSubscriptionReconciliation(claim, {
               kind: "terminal",
               value: validateStripeTerminalObservation(raw, claim.source, environment),
