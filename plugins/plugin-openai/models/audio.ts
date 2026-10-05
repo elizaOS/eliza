@@ -71,6 +71,18 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
   );
 }
 
+function isCoreInProcessAudio(
+  value: unknown
+): value is CoreTranscriptionParams & { audio: Uint8Array | ArrayBuffer } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "audio" in value &&
+    ((value as { audio?: unknown }).audio instanceof Uint8Array ||
+      (value as { audio?: unknown }).audio instanceof ArrayBuffer)
+  );
+}
+
 /** Enough leading bytes for every `detectAudioMimeType` magic-byte probe. */
 const AUDIO_SNIFF_BYTES = 64;
 
@@ -138,6 +150,18 @@ export async function handleTranscription(
     } else {
       blob = input.audio;
     }
+  } else if (isCoreInProcessAudio(input)) {
+    // In-process audio wins over any audioUrl: core TranscriptionParams
+    // requires an audioUrl, so callers that already hold the media send
+    // `{ audioUrl: "", audio }` (audio redaction verification). Transcribe
+    // the bytes instead of fetching the (possibly empty) URL.
+    const rawAudio = input.audio;
+    const bytes =
+      rawAudio instanceof ArrayBuffer ? new Uint8Array(rawAudio) : new Uint8Array(rawAudio);
+    const inProcessMimeType = input.mimeType ?? detectAudioMimeType(bytes);
+    logger.debug(`[OpenAI] Using MIME type: ${inProcessMimeType}`);
+    blob = new Blob([bytes], { type: inProcessMimeType });
+    extraParams = { prompt: input.prompt };
   } else if (isCoreTranscriptionParams(input)) {
     logger.debug(`[OpenAI] Fetching audio from URL: ${input.audioUrl}`);
     blob = await fetchAudioFromUrl(input.audioUrl, callerSignal);
