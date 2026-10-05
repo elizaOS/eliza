@@ -158,6 +158,12 @@
       "types": "./dist/testing/mock-cloud-setup-session.d.ts",
       "import": "./dist/testing/mock-cloud-setup-session.js",
       "default": "./dist/testing/mock-cloud-setup-session.js"
+    },
+    "./native-speech-stream": {
+      "eliza-source": "./src/native-speech-stream.ts",
+      "types": "./dist/native-speech-stream.d.ts",
+      "import": "./dist/native-speech-stream.js",
+      "default": "./dist/native-speech-stream.js"
     }
   },
   "elizaos": {
