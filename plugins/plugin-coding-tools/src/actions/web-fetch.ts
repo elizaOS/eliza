@@ -45,7 +45,11 @@ function decodeHtmlEntity(entity: string): string {
       code >= 0 &&
       code <= 0x10ffff &&
       (code < 0xd800 || code > 0xdfff);
-    return isUnicodeScalarValue ? String.fromCodePoint(code) : `&${entity};`;
+    // The numeric spellings of U+00A0 (&#160; / &#xA0;) decode to the same
+    // character as &nbsp;, so they must become the same readable plain space.
+    return isUnicodeScalarValue
+      ? String.fromCodePoint(code).replace(/\u00a0/g, " ")
+      : `&${entity};`;
   }
   return decodeHTML(`&${entity};`).replace(/\u00a0/g, " ");
 }
