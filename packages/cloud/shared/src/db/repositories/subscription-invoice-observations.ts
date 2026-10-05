@@ -2,7 +2,7 @@
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { observeRetainedCollectingInvoiceCapture } from "../../lib/services/retained-collecting-invoice-capture";
+import { observeOriginalInvoiceDebt } from "../../lib/services/observed-invoice-debt";
 import { observeRetainedInvoiceBalance } from "../../lib/services/retained-invoice-balance-observation";
 import { settlementDigest } from "../../lib/services/settlement-digest";
 import { bindSubscriptionInvoiceEventEvidence } from "../../lib/services/subscription-invoice-event-evidence";
@@ -16,6 +16,7 @@ import {
   billingSubscriptionEventReceipts as receipts,
 } from "../schemas/subscription-billing-operations";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
+import { loadOriginalInvoiceContributors } from "./subscription-invoice-contributors";
 
 const request = z
   .object({
@@ -29,7 +30,11 @@ function unavailable(): never {
     code: "SUBSCRIPTION_INVOICE_OBSERVATION_UNAVAILABLE",
   });
 }
-async function load(tx: DbTransaction, input: z.infer<typeof request>) {
+async function load(
+  tx: DbTransaction,
+  input: z.infer<typeof request>,
+  contributorInvoiceIds?: string[],
+) {
   const [org] = await tx
     .select({
       is_active: organizations.is_active,
@@ -106,7 +111,26 @@ async function load(tx: DbTransaction, input: z.infer<typeof request>) {
       and(eq(observations.receipt_id, receipt.id), eq(observations.request_id, input.leaseToken)),
     );
   // A completed attempt is immutable. Replay never takes or releases a newer worker's lease.
-  if (existing) return { existing } as const;
+  if (existing) {
+    if (existing.observation.kind === "observed_original_invoice_debt") {
+      const saved = existing.observation;
+      const current = await loadOriginalInvoiceContributors(tx, evidence, [
+        evidence.scope.invoiceId,
+        ...saved.originals.map((row) => row.invoiceId),
+      ]);
+      for (const row of saved.originals)
+        for (const digest of row.originalEvidenceDigests)
+          if (
+            !current.some(
+              (source) =>
+                source.evidence.digest === digest &&
+                source.evidence.scope.invoiceId === row.invoiceId,
+            )
+          )
+            unavailable();
+    }
+    return { existing } as const;
+  }
   const now = await readPostLockDatabaseNow(tx);
   if (
     receipt.status !== "processing" ||
@@ -123,6 +147,10 @@ async function load(tx: DbTransaction, input: z.infer<typeof request>) {
     .limit(1);
   return {
     evidence,
+    contributors:
+      evidence.event.data.object.starting_balance > 0 && evidence.event.data.object.amount_due > 0
+        ? await loadOriginalInvoiceContributors(tx, evidence, contributorInvoiceIds)
+        : [],
     now,
     version: (head?.version ?? 0) + 1,
     previousId: head?.id ?? null,
@@ -135,7 +163,7 @@ async function load(tx: DbTransaction, input: z.infer<typeof request>) {
  * may make the original invoice terminal. Caller handles provider failures with existing retry ownership. */
 export async function observeAndRecordOriginalInvoice(
   value: z.infer<typeof request>,
-  stripe: Parameters<typeof observeRetainedCollectingInvoiceCapture>[1],
+  stripe: Parameters<typeof observeOriginalInvoiceDebt>[1],
 ) {
   const parsed = request.safeParse(value);
   if (!parsed.success) unavailable();
@@ -146,16 +174,29 @@ export async function observeAndRecordOriginalInvoice(
   // Select from immutable original facts. Never promote a deferred original using later payment pointers.
   const evidence =
     initial.starting_balance > 0 && initial.amount_due > 0
-      ? await observeRetainedCollectingInvoiceCapture(before.evidence, stripe)
+      ? await observeOriginalInvoiceDebt(
+          { collector: before.evidence, originals: before.contributors.map((row) => row.evidence) },
+          stripe,
+        )
       : await observeRetainedInvoiceBalance(before.evidence, stripe);
   return writeTransaction(async (tx) => {
-    const after = await load(tx, input);
+    const contributorIds =
+      evidence.kind === "observed_original_invoice_debt"
+        ? [evidence.invoiceId, ...evidence.originals.map((row) => row.invoiceId)]
+        : undefined;
+    const after = await load(tx, input, contributorIds);
     if (after.existing) return { observation: after.existing, replayed: true };
     if (
       after.evidence.digest !== before.evidence.digest ||
       after.version !== before.version ||
       after.previousId !== before.previousId ||
-      settlementDigest(after.fence) !== settlementDigest(before.fence)
+      settlementDigest(after.fence) !== settlementDigest(before.fence) ||
+      settlementDigest(after.contributors) !==
+        settlementDigest(
+          before.contributors.filter(
+            (row) => !contributorIds || contributorIds.includes(row.evidence.scope.invoiceId),
+          ),
+        )
     )
       unavailable();
     const [saved] = await tx

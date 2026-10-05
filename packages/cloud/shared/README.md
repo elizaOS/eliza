@@ -284,7 +284,7 @@ Observations never mark financial application complete or grant allowance. The
 existing authenticated Stripe maintenance endpoint invokes an independent lane of
 at most five original receipts under one 20-second read-only provider deadline.
 Expected observation failures retain receipt-attributed incidents before retry
-release; database failures fail the lane visibly. Deploy migrations through 0532
+release; database failures fail the lane visibly. Deploy migrations through 0533
 before enabling this handler. Migration 0532 preserves earlier balance rows and
 admits the collecting-capture shape under the same immutable journal and receipt
 lease. Only retained original positive starting balance and amount due select
@@ -301,14 +301,18 @@ duplicate components. Missing/conflicting originals, reversed or partial
 applications, unsupported credit movements and broken arithmetic fail explicitly.
 This is provenance evidence only: provider-shape qualification, fresh capture and
 original-invoice observations, durable attribution, source fencing and allowance
-policy remain required before financial publication. No maintenance lane calls
-this calculation yet.
+policy remain required before financial publication. The original-invoice maintenance lane now uses this calculation through the
+combined current-observation path described below.
 
 `observeOriginalInvoiceDebt` brackets two current reads of every traced original
 with repeated authenticated collecting-capture observations. Current projected
 collector and original invoice fields must still equal retained facts. It reuses
 the read-only absolute-deadline transport with four concurrent component readers,
 awaits outstanding readers on failure, and returns only a complete, consistent
-observation. Provider changes and private response errors reject. This helper is
-not yet wired to journal/maintenance and does not grant allowance; repeated reads
-are not an atomic provider snapshot.
+observation. Provider changes and private response errors reject. Migration 0533 retains this combined evidence in the existing receipt journal.
+Publication rechecks original receipts and locks the billing fences of all
+contributing subscriptions; unrelated sources do not block it. The existing
+maintenance lane records unsupported traces and missing originals as incidents.
+Earlier balance/capture versions remain immutable and replayable. This does not
+grant allowance; repeated reads are not an atomic provider snapshot. Deploy
+migration 0533 before the updated maintenance handler.

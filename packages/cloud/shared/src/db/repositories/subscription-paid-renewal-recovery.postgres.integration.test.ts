@@ -242,6 +242,55 @@ async function publicationSnapshot(organizationId: string) {
       });
     }
 
+  for (const state of ["quarantined", "open"] as const)
+    test(`debt attribution rejects contributing ${state} fence after an independent lock wait`, async () => {
+      const holder = await connection();
+      const x = await contract.prepareInvoiceObservation(async () => {
+        await holder.query("BEGIN");
+        await holder.query(
+          "SELECT id FROM subscription_billing_fences WHERE subscription_id=$1 FOR UPDATE",
+          [x.priorSourceId],
+        );
+      }, true);
+      const pending = x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe).then(
+        (value) => ({ value }),
+        (error) => ({ error }),
+      );
+      try {
+        let waited = false;
+        for (let attempt = 0; attempt < 500; attempt++) {
+          const blocked = await query(
+            "SELECT pid FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock' AND query ILIKE '%subscription_billing_fences%FOR UPDATE%'",
+            [schema],
+          );
+          if (blocked.rows.length) {
+            waited = true;
+            break;
+          }
+          await Bun.sleep(20);
+        }
+        expect(waited).toBe(true);
+        await holder.query(
+          "UPDATE subscription_billing_fences SET state=$2,fence_revision=fence_revision+1 WHERE subscription_id=$1",
+          [x.priorSourceId, state],
+        );
+        await holder.query("COMMIT");
+        expect(await pending).toMatchObject({
+          error: {
+            code:
+              state === "open"
+                ? "SUBSCRIPTION_INVOICE_OBSERVATION_UNAVAILABLE"
+                : "SUBSCRIPTION_INVOICE_DEBT_SOURCES_UNAVAILABLE",
+          },
+        });
+        expect(await x.rows()).toHaveLength(0);
+      } finally {
+        await holder.query("ROLLBACK");
+        await holder.end();
+        await pending;
+      }
+    });
+
   test("attempt completion failure rolls back paid source, grant and entitlement together", async () => {
     const fixture = await contract.seed();
     const before = await publicationSnapshot(fixture.source.organization_id);

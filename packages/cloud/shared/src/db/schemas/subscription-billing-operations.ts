@@ -18,6 +18,7 @@ import type {
   GenericBillingCommandPayload,
   GenericBillingCommandResult,
 } from "../../lib/services/generic-billing-command-types";
+import type { observeOriginalInvoiceDebt } from "../../lib/services/observed-invoice-debt";
 import type { observeRetainedCollectingInvoiceCapture } from "../../lib/services/retained-collecting-invoice-capture";
 import type { observeRetainedInvoiceBalance } from "../../lib/services/retained-invoice-balance-observation";
 import type { CheckoutContract } from "../../lib/services/subscription-checkout-contract";
@@ -744,7 +745,10 @@ export const subscriptionInvoiceObservations = pgTable(
     observation: jsonb("observation")
       .$type<
         | Awaited<ReturnType<typeof observeRetainedInvoiceBalance>>
-        | Awaited<ReturnType<typeof observeRetainedCollectingInvoiceCapture>>
+        | Awaited<
+            | ReturnType<typeof observeRetainedCollectingInvoiceCapture>
+            | ReturnType<typeof observeOriginalInvoiceDebt>
+          >
       >()
       .notNull(),
     observed_at: timestamp("observed_at", { withTimezone: true }).notNull(),
