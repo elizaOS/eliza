@@ -15,6 +15,9 @@ defaults:
 permissions:
   contents: read
 
+env:
+  ELIZA_APT_UBUNTU_ONLY: "true"
+
 jobs:
   verify:
     runs-on: ubuntu-24.04
@@ -58,7 +61,7 @@ jobs:
         run: node packages/scripts/run-turbo.ts run build --filter=@elizaos/ui
       - name: Install native compilation prerequisites
         run: |
-          bash scripts/install-ci-ubuntu-packages.sh gcc g++ libc6-dev libssl-dev default-jdk-headless zstd e2fsprogs binutils python3-cryptography
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends gcc g++ libc6-dev libssl-dev default-jdk-headless zstd e2fsprogs binutils python3-cryptography
       - name: Verify installers and release scripts
         # OTA publisher tests run once in the dedicated ota-publisher job.
         run: |
@@ -92,7 +95,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install desktop metadata validators
         run: |
-          bash scripts/install-ci-ubuntu-packages.sh appstream desktop-file-utils dpkg-dev
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends appstream desktop-file-utils dpkg-dev
       - name: Validate architecture and native-payload contract
         run: bash scripts/linux/verify-debian-packaging.sh
 
@@ -110,7 +113,7 @@ jobs:
 
       - name: Qualify cross-process AF_UNIX credentials and pidfd lifecycle
         run: |
-          bash scripts/install-ci-ubuntu-packages.sh gcc libc6-dev libssl-dev
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends gcc libc6-dev libssl-dev
           linux/installer/native/test-qualify.sh
 
   linux-static-smoke:
@@ -145,7 +148,7 @@ jobs:
       - name: Install Linux verification prerequisites
         run: |
           set -euo pipefail
-          bash scripts/install-ci-ubuntu-packages.sh python3-cryptography fdisk e2fsprogs
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends python3-cryptography fdisk e2fsprogs
 
       - run: bun run verify:linux
 
@@ -184,7 +187,7 @@ jobs:
 
       - name: Install unprivileged VM tools
         run: |
-          bash scripts/install-ci-ubuntu-packages.sh qemu-system-x86 qemu-utils genisoimage fdisk
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends qemu-system-x86 qemu-utils genisoimage fdisk
 
       - name: Download pinned qualification inputs
         shell: bash

@@ -6,6 +6,9 @@ on:
 permissions:
   contents: read
 
+env:
+  ELIZA_APT_UBUNTU_ONLY: "true"
+
 defaults:
   run:
     working-directory: packages/os
@@ -37,7 +40,7 @@ jobs:
         working-directory: .
       - name: Install VM tools
         run: |
-          bash scripts/install-ci-ubuntu-packages.sh qemu-system-x86 qemu-utils genisoimage
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends qemu-system-x86 qemu-utils genisoimage
       - name: Resolve output and bundle the actual signed-image pipeline
         env:
           SECTOR_BYTES: ${{ matrix.sector-size }}
