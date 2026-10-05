@@ -91,6 +91,13 @@ const phase = z
       });
   });
 export const organizationScheduleEffectRequestSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("schedule_release"),
+      scheduleId: id("sub_sched"),
+      params: z.object({ preserve_cancel_date: z.literal(true) }).strict(),
+    })
+    .strict(),
   z.object({ kind: z.literal("schedule_create"), subscriptionId: id("sub") }).strict(),
   z
     .object({
@@ -150,6 +157,10 @@ export function assertScheduleRequestScope(input: {
   };
   if (r.kind === "schedule_create") {
     if (r.subscriptionId !== input.subscriptionId || input.predecessorScheduleId !== null) reject();
+    return r;
+  }
+  if (r.kind === "schedule_release") {
+    if (r.scheduleId !== input.predecessorScheduleId) reject();
     return r;
   }
   const [current, target] = r.params.phases;

@@ -24,7 +24,9 @@ export async function installOrganizationUpgradeTestSchema(
           "0519_organization_upgrade_void_result",
           "0520_organization_downgrade_quotes",
           "0521_organization_schedule_effects",
-          ...(includeRetainedTerms ? ["0522_organization_schedule_quote_terms"] : []),
+          ...(includeRetainedTerms
+            ? ["0522_organization_schedule_quote_terms", "0523_organization_schedule_compensation"]
+            : []),
         ]
       : []),
   ]) {
