@@ -50,6 +50,10 @@ export default defineConfig({
         replacement: sourceOf("src/db/schema.ts"),
       },
       {
+        find: /^@elizaos\/plugin-goals\/db\/goals-repository$/,
+        replacement: sourceOf("src/db/goals-repository.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-reminders\/db\/schema$/,
         replacement: sourceOf("../plugin-reminders/src/db/schema.ts"),
       },
