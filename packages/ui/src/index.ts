@@ -1374,6 +1374,10 @@ export {
   type DeviceSpeechState,
 } from "./voice/device-speech-controller.js";
 export {
+  DraftTranscriptGuard,
+  type DraftTranscriptResult,
+} from "./voice/draft-transcript-guard.js";
+export {
   audioBlobBase64,
   type CumulativeCaptureOptions,
   observeMicrophonePause,
@@ -1384,6 +1388,13 @@ export {
   encodeMonoPcm16Wav,
   encodeMonoPcm16WavChunks,
 } from "./voice/pcm-wave.js";
+export {
+  RecordedTranscriptionController,
+  RecordedTranscriptionError,
+  type RecordedTranscriptionOptions,
+  type RecordedTranscriptionState,
+  type RecordingPhase,
+} from "./voice/recorded-transcription-controller.js";
 export {
   type SegmentedSpeechOptions,
   SegmentedSpeechPlayback,
