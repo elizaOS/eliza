@@ -10,8 +10,9 @@ import { seedCancellationTestAccount } from "./subscription-cancellation-test-fi
 export async function buildOrganizationDowngradeTestAccount(
   query: (text: string, values: unknown[]) => Promise<unknown>,
   validityMs = 60000,
+  period?: { start: Date; end: Date },
 ) {
-  const f = await seedCancellationTestAccount(query, undefined, "pro_monthly");
+  const f = await seedCancellationTestAccount(query, period, "pro_monthly");
   const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
   const captured = await readOrganizationPlanChangeSource(f.input);
   const now = new Date();
@@ -38,7 +39,9 @@ export async function buildOrganizationDowngradeTestAccount(
       startingBalanceCents: 0,
     },
     observedAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + validityMs).toISOString(),
+    expiresAt: new Date(
+      Math.min(now.getTime() + validityMs, f.source.current_period_end.getTime()),
+    ).toISOString(),
   };
   const retainedTerms = captureOrganizationScheduleQuoteTerms({
     rawSubscription: completeScheduleSubscriptionTestObservation(f.provider),
@@ -58,8 +61,9 @@ export async function buildOrganizationDowngradeTestAccount(
 export async function seedOrganizationDowngradeTestAccount(
   query: (text: string, values: unknown[]) => Promise<unknown>,
   validityMs = 60000,
+  period?: { start: Date; end: Date },
 ) {
-  const f = await buildOrganizationDowngradeTestAccount(query, validityMs);
+  const f = await buildOrganizationDowngradeTestAccount(query, validityMs, period);
   const { saveOrganizationDowngradeQuote } = await import("./organization-downgrade-quotes");
   const quote = await saveOrganizationDowngradeQuote({
     identity: f.input,

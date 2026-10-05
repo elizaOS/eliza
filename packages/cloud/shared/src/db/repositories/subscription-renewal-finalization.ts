@@ -1,6 +1,7 @@
 /** Publishes verified paid renewal source, immutable allowance grant, entitlement generation and receipt in one organization-fenced transaction. */
 import { and, eq, isNull } from "drizzle-orm";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
+import { proveOriginalConfiguredTarget } from "../../lib/services/organization-schedule-target-authority";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
 import {
   type PaidRenewalObjects,
@@ -18,6 +19,7 @@ import {
 import { organizations } from "../schemas/organizations";
 import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
 import { billingSubscriptionEventReceipts } from "../schemas/subscription-billing-operations";
+import { readOriginalScheduledRenewalAuthority } from "./organization-schedule-renewal-authority";
 import { listUnsettledOrganizationUpgrades } from "./organization-upgrade-renewal-ordering";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import { subscriptionAllowanceRepository } from "./subscription-allowance";
@@ -26,6 +28,7 @@ import { subscriptionBillingOperationsRepository as operations } from "./subscri
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
 import { findSubscriptionRenewalBinding } from "./subscription-purchased-binding";
 import type { ReconciliationIdentity } from "./subscription-reconciliation-lease";
+import { replayFundedRenewalInTransaction } from "./subscription-renewal-replay";
 export const PAID_RENEWAL_DISPOSITION = "paid_renewal_finalized";
 export interface FinalizePaidRenewalInput extends PaidRenewalObjects {
   organizationId: string;
@@ -38,7 +41,30 @@ export interface FinalizePaidRenewalInput extends PaidRenewalObjects {
   providerEventId: string;
   eventCreatedAt: Date;
 }
+type RecordedPaidRenewalInput = Pick<
+  FinalizePaidRenewalInput,
+  | "organizationId"
+  | "subscriptionId"
+  | "invoiceId"
+  | "receiptId"
+  | "leaseToken"
+  | "expectedSubscriptionRevision"
+  | "expectedProjectionRevision"
+  | "providerEventId"
+  | "eventCreatedAt"
+  | "invoice"
+> & { replayOnly: true };
+export async function finalizeRecordedPaidRenewal(
+  input: Omit<RecordedPaidRenewalInput, "replayOnly">,
+) {
+  return finalizeRenewal({ ...input, replayOnly: true });
+}
 export async function finalizePaidRenewal(input: FinalizePaidRenewalInput) {
+  const result = await finalizeRenewal(input);
+  if (!result) renewalUnavailable("paid_renewal_not_published");
+  return result;
+}
+async function finalizeRenewal(input: FinalizePaidRenewalInput | RecordedPaidRenewalInput) {
   if (
     !Number.isSafeInteger(input.expectedSubscriptionRevision) ||
     input.expectedSubscriptionRevision < 1 ||
@@ -126,17 +152,28 @@ export async function finalizePaidRenewal(input: FinalizePaidRenewalInput) {
       receipt.livemode !== (source.provider_environment === "live")
     )
       renewalUnavailable("source_revision_changed");
-    const result = await publishPaidRenewalInTransaction(tx, {
-      ...input,
+    const replay = await replayFundedRenewalInTransaction(tx, {
       source,
-      organizationCustomerId: org.stripe_customer_id,
+      invoiceId: input.invoiceId,
+      invoice: input.invoice,
       databaseNow: now,
-      provenance: {
-        kind: "webhook",
-        providerEventId: input.providerEventId,
-        eventCreatedAt: input.eventCreatedAt,
-      },
     });
+    if (!replay && "replayOnly" in input) return null;
+    const result =
+      replay ??
+      ("replayOnly" in input
+        ? renewalUnavailable("funded_invoice_missing")
+        : await publishPaidRenewalInTransaction(tx, {
+            ...input,
+            source,
+            organizationCustomerId: org.stripe_customer_id,
+            databaseNow: now,
+            provenance: {
+              kind: "webhook",
+              providerEventId: input.providerEventId,
+              eventCreatedAt: input.eventCreatedAt,
+            },
+          }));
     const applied = await operations.applyEventInTransaction(tx, {
       organizationId: input.organizationId,
       receiptId: receipt.id,
@@ -164,7 +201,7 @@ export async function publishPaidRenewalInTransaction(
   tx: DbTransaction,
   input: PaidRenewalPublication,
 ) {
-  const { source, databaseNow: now } = input;
+  const { source } = input;
   assertOrganizationSubscription(source);
   const [existing] = await tx
     .select()
@@ -188,6 +225,15 @@ export async function publishPaidRenewalInTransaction(
     if (!input.providerAccountId) renewalUnavailable("purchased_binding_account_missing");
     assertCheckoutProviderAuthority(contract, input.providerAccountId, configuredEnvironment);
   }
+  const scheduledContext = await readOriginalScheduledRenewalAuthority(source, tx);
+  const now = await readPostLockDatabaseNow(tx);
+  const scheduledTarget = scheduledContext
+    ? proveOriginalConfiguredTarget({
+        ...scheduledContext,
+        rawCurrentSchedule: input.scheduledSchedule,
+        observedAt: now,
+      })
+    : undefined;
   const verified = validatePaidRenewal({
     ...input,
     source,
@@ -195,6 +241,7 @@ export async function publishPaidRenewalInTransaction(
     environment,
     databaseNow: now,
     replayPeriod: existing !== undefined,
+    scheduledTarget,
   });
   if (verified.invoiceId !== input.invoiceId) renewalUnavailable("invoice_receipt_mismatch");
   if (existing) {
@@ -231,9 +278,9 @@ export async function publishPaidRenewalInTransaction(
     provider_environment: source.provider_environment,
     stripe_customer_id: source.stripe_customer_id,
     stripe_subscription_id: source.stripe_subscription_id,
-    stripe_subscription_item_id: source.stripe_subscription_item_id,
+    stripe_subscription_item_id: verified.subscriptionItemId,
     catalog_version: source.catalog_version,
-    plan_key: source.plan_key,
+    plan_key: verified.planKey,
     // A verified paid renewal settles any dunning the source was in.
     status: "active" as const,
     current_period_start: verified.start,
@@ -243,7 +290,7 @@ export async function publishPaidRenewalInTransaction(
     ended_at: source.ended_at,
     dunning_started_at: null,
     grace_expires_at: null,
-    pending_plan_key: source.pending_plan_key,
+    pending_plan_key: verified.scheduledTarget ? null : source.pending_plan_key,
     last_provider_event_id:
       input.provenance.kind === "webhook"
         ? input.provenance.providerEventId
