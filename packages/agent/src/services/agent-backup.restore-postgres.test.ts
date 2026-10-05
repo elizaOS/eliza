@@ -55,10 +55,8 @@ vi.mock("pg", () => {
   return { default: { Pool } };
 });
 
-import {
-  type AgentBackupPostgresDump,
-  restorePostgresRows,
-} from "./agent-backup.ts";
+import type { AgentBackupPostgresDump } from "@elizaos/contracts";
+import { restorePostgresRows } from "./agent-backup.ts";
 
 const AGENT_ID = "00000000-0000-4000-8000-000000000001";
 
