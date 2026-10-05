@@ -1,6 +1,11 @@
 /** Configuration, plugin, connector, and character client DTOs. */
 
-import type { ConfigUiHint, ReleaseChannel, WorkbenchTask, WorkbenchTodo } from "@elizaos/contracts";
+import type {
+  ConfigUiHint,
+  ReleaseChannel,
+  WorkbenchTask,
+  WorkbenchTodo,
+} from "@elizaos/contracts";
 
 import type {
   SurfaceManifest,
