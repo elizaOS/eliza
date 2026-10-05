@@ -13,12 +13,11 @@
 
 import { type AgentRuntime, ModelType } from "@elizaos/core";
 import {
+  type ElizaConfig,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/host/protocol";
-
-import type { ElizaConfig } from "../config/config.ts";
 
 /**
  * The provider name the elizacloud plugin registers its chat-brain handlers

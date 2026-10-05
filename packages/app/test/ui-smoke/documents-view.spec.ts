@@ -13,6 +13,7 @@ import {
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
+import { assertHeaderlessViewChrome } from "./helpers/view-header";
 
 /**
  * Visual + smoke coverage for the builtin standalone Knowledge surface at
@@ -187,6 +188,9 @@ test.describe("Knowledge/Documents view visual + smoke (desktop + mobile)", () =
         exact: true,
       });
       await expect(uploaded).toBeVisible();
+      await assertHeaderlessViewChrome(page, {
+        within: '[data-testid="documents-view"]',
+      });
       const facets = viewRoot.getByRole("navigation", {
         name: "Filter knowledge by media type",
       });
@@ -200,6 +204,9 @@ test.describe("Knowledge/Documents view visual + smoke (desktop + mobile)", () =
       ).toBeVisible();
       await facets.getByRole("button", { name: /^All/ }).click();
       await expect(uploaded).toBeVisible();
+      await assertHeaderlessViewChrome(page, {
+        within: '[data-testid="documents-view"]',
+      });
       await expect
         .poll(
           async () =>

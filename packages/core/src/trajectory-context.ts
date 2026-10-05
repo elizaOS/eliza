@@ -23,7 +23,7 @@ export interface TrajectoryContext {
 		{ trajectoryId: string; trajectoryStepId: string } | undefined
 	>;
 	/**
-	 * Root-turn correlation id (#13775). Minted at the message.ts turn boundary
+	 * Root-turn correlation id. Minted at the message.ts turn boundary
 	 * so DB persistence and sub-agent spawns downstream can read one shared
 	 * `traceId` and stitch the file, DB, and orchestrator trace stores together.
 	 */
@@ -58,7 +58,7 @@ export interface TrajectoryContext {
 	/** Minimal State used to re-locate provider spans for a consuming model call. */
 	providerAttributionState?: State;
 	/**
-	 * Turn-scoped secret-swap session (#10469). Minted on the first `useModel`
+	 * Turn-scoped secret-swap session. Minted on the first `useModel`
 	 * call of a turn when secret-swap is enabled, then reused by every subsequent
 	 * model call so all share one nonce, and read at the action-execution boundary
 	 * (`executePlannedToolCall`) to restore real secrets into handler args. Absent
@@ -66,7 +66,7 @@ export interface TrajectoryContext {
 	 */
 	secretSwapSession?: SecretSwapSession;
 	/**
-	 * Turn-scoped PII pseudonymization session (#10469 / #7007). Minted on the
+	 * Turn-scoped PII pseudonymization session. Minted on the
 	 * first `useModel` call of a turn when PII swap is enabled, then reused by
 	 * every subsequent model call so a real entity maps to the same surrogate all
 	 * turn, and read at the action-execution boundary (`executePlannedToolCall`)

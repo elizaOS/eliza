@@ -9,9 +9,7 @@
  */
 import type http from "node:http";
 import { PutUpdateChannelRequestSchema } from "@elizaos/contracts";
-import type { ReadJsonBodyOptions } from "@elizaos/host/protocol";
-
-import type { ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig, ReadJsonBodyOptions } from "@elizaos/host/protocol";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

@@ -1,49 +1,7 @@
-/**
- * Local types for the `/api/automations` response surface.
- *
- * These mirror the consumer-side shapes in @elizaos/ui's
- * `client-types-config.ts`. We can't import @elizaos/ui from plugin-workflow
- * (UI is a frontend package) and we can't import @elizaos/agent (would
- * create a dependency cycle). The producer just needs to emit the right
- * JSON; consumers retain their own view.
- */
+/** Types and projections for the `/api/automations` response. */
 
+import type { ConversationMetadata, ConversationScope } from '@elizaos/contracts';
 import type { Task } from '@elizaos/core';
-
-// ---------------------------------------------------------------------------
-// Conversation metadata (mirrors @elizaos/agent server-types.ts)
-// ---------------------------------------------------------------------------
-
-export type ConversationScope =
-  | 'general'
-  | 'automation-coordinator'
-  | 'automation-workflow'
-  | 'automation-workflow-draft'
-  | 'automation-draft'
-  | 'page-character'
-  | 'page-apps'
-  | 'page-connectors'
-  | 'page-phone'
-  | 'page-plugins'
-  | 'page-settings'
-  | 'page-wallet'
-  | 'page-browser'
-  | 'page-automations';
-
-export type ConversationAutomationType = 'coordinator_text' | 'workflow';
-
-export interface ConversationMetadata {
-  scope?: ConversationScope;
-  automationType?: ConversationAutomationType;
-  taskId?: string;
-  triggerId?: string;
-  workflowId?: string;
-  workflowName?: string;
-  draftId?: string;
-  pageId?: string;
-  sourceConversationId?: string;
-  terminalBridgeConversationId?: string;
-}
 
 export function isAutomationConversationMetadata(
   metadata: ConversationMetadata | null | undefined

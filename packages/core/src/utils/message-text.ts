@@ -1,7 +1,7 @@
 /**
  * Extracts the user's actual request text from a message `Memory`. Unwraps the
  * document-augmentation `<user_request>` envelope, strips a trailing
- * `[language instruction: ...]` suffix. Prefers a
+ * `[language instruction:...]` suffix. Prefers a
  * connector's `currentMessageText` over the rendered `text`, and offers a
  * lowercased, whitespace-collapsed variant for matching.
  */
@@ -57,7 +57,7 @@ export function normalizeUserMessageText(
 /**
  * Returns true when a message's rendered `content.text` carries the document
  * augmentation envelope (the `Answer the user request using the contextual
- * documents ...` preamble wrapping the real text in `<user_request>` tags).
+ * documents...` preamble wrapping the real text in `<user_request>` tags).
  *
  * The envelope is a model-facing wrapper: it is added right before the LLM
  * prompt is assembled so retrieved document context reaches the model. It must

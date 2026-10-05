@@ -40,7 +40,7 @@ import {
   FramedPage,
   FramedPageBody,
   FramedPageHeader,
-} from "../../layouts/framed-page/framed-page";
+} from "../../layouts/framed-page";
 import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import { useWorkspaceMobileSidebarHeader } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import { WorkspaceMobileSidebarScope } from "../../layouts/workspace-layout/workspace-mobile-sidebar-scope";
@@ -1440,7 +1440,6 @@ function MemoryViewerViewForAuthority({
     <ShellViewAgentSurface viewId="memories">
       <FramedPage gutterOwner="framed-page">
         <FramedPageHeader
-          title={t("memoryviewer.title", { defaultValue: "Memories" })}
           actions={
             memoryRuntimeUnavailable ? undefined : (
               <ViewHeaderSidebarTrigger

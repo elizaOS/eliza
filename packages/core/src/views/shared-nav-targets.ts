@@ -1,19 +1,6 @@
 /**
- * Canonical navigation vocabulary for Tier-0 shared-runtime agents: the map
- * from a view-command-matcher id to the CLIENT view id + human label a turn may
- * emit in a VIEWS handoff. The shared tier emits only these ids; the client
- * resolves each id against its routable view registry (#17020, PR #17021), but
- * an id that registry cannot resolve still falls back to a blind /apps/<id>
- * navigation — the designed not-found render for unclaimed /apps/<slug> routes
- * is #17033 — so every entry here must be client-resolvable. Matcher ids and
- * client ids are separate namespaces — the matcher's "wallet" resolves to the
- * builtin "inventory" tab — so this table is the single translation point.
- * Host-owned destinations also carry their canonical path because they are not
- * guaranteed to exist in every platform's in-process view registry. Matcher
- * ids with no shared-tier client surface (e.g. "help", "camera") are omitted
- * so those utterances fall through to the normal LLM turn instead of navigating
- * nowhere (#17032). The vocabulary is pinned by the cross-package contract test
- * packages/ui/src/shared-nav-contract.test.ts.
+ * Maps shared-runtime navigation commands to declared client view IDs and labels. Hosts
+ * resolve each ID against their installed view registry.
  */
 
 /** A client-resolvable navigation target for one matcher id. */

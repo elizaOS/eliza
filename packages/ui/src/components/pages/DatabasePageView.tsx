@@ -12,7 +12,7 @@ import {
   FramedPageBody,
   FramedPageHeader,
   FramedPageNavigation,
-} from "../../layouts/framed-page/framed-page";
+} from "../../layouts/framed-page";
 import { DATABASE_VECTOR_VIEW } from "../../navigation/builtin-route-descriptors";
 import { useAppSelector } from "../../state/app-store";
 import { SegmentedControl } from "../ui/segmented-control";
@@ -95,7 +95,7 @@ export function DatabasePageView({
   return (
     <ShellViewAgentSurface viewId="database">
       <FramedPage gutterOwner="framed-page">
-        <FramedPageHeader title="Databases" actions={contentHeader} />
+        <FramedPageHeader actions={contentHeader} />
         <FramedPageNavigation>{leftNav}</FramedPageNavigation>
         <FramedPageBody scroll="view" padded={false}>
           {content}

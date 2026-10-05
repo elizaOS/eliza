@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import * as elizaCore from "@elizaos/core";
-import { resolveUserPath } from "../config/paths.ts";
+import { resolveUserPath } from "@elizaos/core";
 import {
   DEFAULT_AGENT_WORKSPACE_DIR,
   resolveDefaultAgentWorkspaceDir,

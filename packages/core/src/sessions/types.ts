@@ -8,18 +8,14 @@
 
 import type { SessionOrigin, SessionSkillsSnapshot } from "../types/memory.js";
 
-// ============================================================================
 // Chat Types
-// ============================================================================
 
 /**
  * Normalized chat type for session classification.
  */
 export type SessionChatType = "dm" | "group" | "channel" | "thread";
 
-// ============================================================================
 // Delivery Context
-// ============================================================================
 
 /**
  * Delivery context for routing responses.
@@ -35,9 +31,7 @@ export type SessionDeliveryContext = {
 	threadId?: string | number;
 };
 
-// ============================================================================
 // Session Entry
-// ============================================================================
 
 /**
  * Core session entry representing a conversation session.
@@ -227,18 +221,14 @@ export type SessionEntry = {
 	cliSessionIds?: Record<string, string>;
 };
 
-// ============================================================================
 // Session Store Types
-// ============================================================================
 
 /**
  * Session store mapping session keys to entries.
  */
 export type SessionStore = Record<string, SessionEntry>;
 
-// ============================================================================
 // Utility Functions
-// ============================================================================
 
 /**
  * Merge a session entry with a partial update.
@@ -301,9 +291,7 @@ export function isValidSessionEntry(entry: unknown): entry is SessionEntry {
 	);
 }
 
-// ============================================================================
 // Session Resolution
-// ============================================================================
 
 /**
  * Result of resolving a session key.
@@ -317,9 +305,7 @@ export type SessionResolution = {
 	entry: SessionEntry;
 };
 
-// ============================================================================
 // Group Key Resolution
-// ============================================================================
 
 /**
  * Result of resolving a group session key.
@@ -335,9 +321,7 @@ export type GroupKeyResolution = {
 	chatType?: SessionChatType;
 };
 
-// ============================================================================
 // Constants
-// ============================================================================
 
 /** Default trigger for resetting a session */
 export const DEFAULT_RESET_TRIGGER = "/new";

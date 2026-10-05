@@ -10,6 +10,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { assertHeaderlessViewChrome } from "./helpers/view-header";
 
 for (const viewport of [
   { width: 1440, height: 1000 },
@@ -62,6 +63,7 @@ for (const viewport of [
           }),
         );
       }
+      await openAppPath(page, "/views");
       await openAppPath(page, routePath);
       await expect(page.getByTestId(view.root)).toBeVisible({
         timeout: 60_000,
@@ -93,6 +95,12 @@ for (const viewport of [
         await expect(page.getByTestId("settings-shell")).toBeVisible();
         await expect(page.getByTestId(view.root)).toHaveCount(0);
       }
+      await openAppPath(page, "/views");
+      await openAppPath(page, routePath);
+      await assertHeaderlessViewChrome(page);
+      await page.goBack();
+      await expect(page).toHaveURL(/\/views(?:[?#]|$)/);
+      await expect(page.getByTestId(view.root)).toHaveCount(0);
     });
   }
 }
@@ -107,8 +115,19 @@ test("Calendar landscape scrolling exposes an event for opening", async ({
   await expect(page.getByTestId("lifeops-calendar-section")).toBeVisible();
   const event = page.getByRole("button", { name: /Design sync/ }).first();
   await expect(event).toBeAttached();
-  await event.scrollIntoViewIfNeeded();
-  await expect(event).toBeInViewport();
+  const beforeScroll = await event.boundingBox();
+  if (!beforeScroll)
+    throw new Error("Calendar event must have laid-out geometry");
+  await page.mouse.move(400, 260);
+  // Bring the 9 AM event toward the middle of this short screen. A fixed
+  // 500px wheel delta overshoots it into the afternoon after header removal.
+  await page.mouse.wheel(0, Math.max(40, beforeScroll.y - 170));
+  await expect
+    .poll(
+      async () => (await event.boundingBox())?.y ?? Number.POSITIVE_INFINITY,
+    )
+    .toBeLessThan(beforeScroll.y);
+  await expect(event).toBeInViewport({ ratio: 1 });
   await event.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   const cancel = page.getByRole("button", {

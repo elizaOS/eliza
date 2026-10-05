@@ -55,7 +55,7 @@ export function resolveOptimizedPrompt(
 	return injectDemonstrations(optimized.prompt, optimized.fewShotExamples);
 }
 
-/** Retain the complete recorded input. The legacy export name remains compatible. */
+/** Retains the complete recorded input. */
 export function trimDemonstrationInput(rawInput: string): string {
 	return completeDemonstrationText(rawInput);
 }

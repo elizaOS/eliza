@@ -13,16 +13,8 @@ import { renderToString } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 
 const { useAuth } = await import("../hooks/useAuth.js");
-const { useLogin } = await import("../hooks/useLogin.js");
+const { useLogin } = await import("../provider.js");
 const { LoginAuthContext } = await import("../provider.js");
-
-// useLogin reads the *non-exported* StewardContext via useLoginContext().
-// Since we can't import that context directly, we drive the happy path of
-// useLogin only through <LoginProvider>-equivalent wrapping is not
-// possible here without the real provider tree; instead we assert the throw
-// path (no provider) which is the branch with real guard logic. The happy
-// path for the steward context is covered indirectly by the hook tests that
-// mock ../provider.js.
 
 function AuthProbe({ sink }: { sink: (v: unknown) => void }) {
   const value = useAuth();
@@ -91,7 +83,7 @@ describe("useAuth()", () => {
 describe("useLogin()", () => {
   test("throws when used outside a <LoginProvider>", () => {
     expect(() => renderToString(React.createElement(LoginProbe))).toThrow(
-      /useLoginContext must be used within a <LoginProvider>/,
+      /useLogin must be used within a <LoginProvider>/,
     );
   });
 });

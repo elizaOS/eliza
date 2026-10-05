@@ -4,32 +4,32 @@
  * Destructive actions (delete X, clear Y, uninstall Z, send public post,
  * sign transaction, etc.) should not fire on the first invocation.
  * Instead they should:
- *   1. Stash a pending-confirmation record in the runtime cache.
- *   2. Emit a callback message describing the operation and asking the
- *      user to confirm.
- *   3. On the next turn, if the user message reads as "yes", proceed;
- *      otherwise cancel.
+ * 1. Stash a pending-confirmation record in the runtime cache.
+ * 2. Emit a callback message describing the operation and asking the
+ * user to confirm.
+ * 3. On the next turn, if the user message reads as "yes", proceed;
+ * otherwise cancel.
  *
  * This module centralizes that pattern so every destructive action
  * follows the same UX, the same TTL behavior, and the same cancel
  * semantics.
  *
  * Usage:
- *   const decision = await requireConfirmation({
- *     runtime,
- *     message,
- *     actionName: "DELETE_LINEAR_ISSUE",
- *     pendingKey: `delete:${issueId}`,
- *     prompt: `Permanently delete issue ${humanId}? This cannot be undone.`,
- *     callback,
- *   });
- *   if (decision.status === "pending") {
- *     return { success: true, data: { awaitingUserInput: true } };
- *   }
- *   if (decision.status === "cancelled") {
- *     return { success: true, text: "Cancelled." };
- *   }
- *   // status === "confirmed" — proceed with the destructive op
+ * const decision = await requireConfirmation({
+ * runtime,
+ * message,
+ * actionName: "DELETE_LINEAR_ISSUE",
+ * pendingKey: `delete:${issueId}`,
+ * prompt: `Permanently delete issue ${humanId}? This cannot be undone.`,
+ * callback,
+ * });
+ * if (decision.status === "pending") {
+ * return { success: true, data: { awaitingUserInput: true } };
+ * }
+ * if (decision.status === "cancelled") {
+ * return { success: true, text: "Cancelled." };
+ * }
+ * // status === "confirmed" — proceed with the destructive op
  */
 
 import { unwrapUserMessageText } from "../security/incoming-message-security";
@@ -120,17 +120,17 @@ export function isAffirmativeConfirmationReply(
  * Two-phase destructive-action helper.
  *
  * Returns:
- *   - `{ status: "pending" }` on the FIRST invocation (no record in cache yet).
- *     The helper has stashed the record and (if `callback` is provided) emitted
- *     the prompt. Caller should return early without performing the op.
+ * - `{ status: "pending" }` on the FIRST invocation (no record in cache yet).
+ * The helper has stashed the record and (if `callback` is provided) emitted
+ * the prompt. Caller should return early without performing the op.
  *
- *   - `{ status: "confirmed", metadata }` on the SECOND invocation when the user
- *     replied with a yes-shaped message. The pending record has been cleared.
- *     Caller should perform the destructive op.
+ * - `{ status: "confirmed", metadata }` on the SECOND invocation when the user
+ * replied with a yes-shaped message. The pending record has been cleared.
+ * Caller should perform the destructive op.
  *
- *   - `{ status: "cancelled", metadata }` on the SECOND invocation when the user
- *     replied with a no-shaped message OR anything not matching yes. The pending
- *     record has been cleared. Caller should not perform the op.
+ * - `{ status: "cancelled", metadata }` on the SECOND invocation when the user
+ * replied with a no-shaped message OR anything not matching yes. The pending
+ * record has been cleared. Caller should not perform the op.
  *
  * Expired pending records (older than ttlMs) are treated as fresh first calls.
  */

@@ -1,8 +1,6 @@
 /** Builds, parses, and normalizes `agent:{agentId}:{rest}` session identifiers. */
 
-// ============================================================================
 // Constants
-// ============================================================================
 
 export const DEFAULT_AGENT_ID = "main";
 export const DEFAULT_MAIN_KEY = "main";
@@ -18,9 +16,7 @@ function trimOptionalString(value: string | undefined | null): string {
 	return value ? value.trim() : "";
 }
 
-// ============================================================================
 // Parsing Types
-// ============================================================================
 
 /**
  * Parsed agent session key components.
@@ -42,9 +38,7 @@ export type ParsedAgentSessionKey = {
 	parentKey?: string;
 };
 
-// ============================================================================
 // Parsing Functions
-// ============================================================================
 
 /**
  * Parse an agent session key into its components.
@@ -153,9 +147,7 @@ export function resolveThreadParentSessionKey(
 	return parsed.raw;
 }
 
-// ============================================================================
 // Normalization Functions
-// ============================================================================
 
 function normalizeToken(value: string | undefined | null): string {
 	return trimOptionalString(value).toLowerCase();
@@ -238,9 +230,7 @@ export function normalizeAccountId(value: string | undefined | null): string {
 	);
 }
 
-// ============================================================================
 // Building Functions
-// ============================================================================
 
 /**
  * Build an agent session key from components.
@@ -407,9 +397,7 @@ function resolveLinkedPeerId(params: {
 	return null;
 }
 
-// ============================================================================
 // Conversion Functions
-// ============================================================================
 
 /**
  * Convert a store session key to a request session key.
@@ -468,9 +456,7 @@ export function resolveAgentIdFromSessionKey(
 	return normalizeAgentId(parsed?.agentId ?? DEFAULT_AGENT_ID);
 }
 
-// ============================================================================
 // Group/Thread Keys
-// ============================================================================
 
 /**
  * Build a group history key.

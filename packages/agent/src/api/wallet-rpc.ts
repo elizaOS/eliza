@@ -17,16 +17,15 @@ import {
 } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
 import {
+  type ElizaConfig,
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,
 } from "@elizaos/host/protocol";
-
 import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-import type { ElizaConfig } from "../config/config.ts";
 
 function normalizeSecret(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;

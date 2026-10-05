@@ -22,11 +22,11 @@ import {
   type AgentConfig,
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
+  type ElizaConfig,
   getStylePresets,
   migrateLegacyRuntimeConfig,
   type StylePreset,
 } from "@elizaos/host/protocol";
-
 import { persistConfigEnv } from "@elizaos/plugin-elizacloud/lib/config-env";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,
@@ -34,7 +34,7 @@ import {
   WALLET_SOURCE_EVM_ENV_KEY,
   WALLET_SOURCE_SOLANA_ENV_KEY,
 } from "../api/wallet.ts";
-import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { saveElizaConfig } from "../config/config.ts";
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import { pickRandomNames } from "./first-run-names.ts";
 

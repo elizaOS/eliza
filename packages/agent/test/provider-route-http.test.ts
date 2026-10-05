@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import openaiPlugin from "../../../plugins/plugin-openai/index.ts";
@@ -11,7 +12,6 @@ import {
   getBaseURL,
 } from "../../../plugins/plugin-openai/utils/config.ts";
 import { startApiServer } from "../src/api/server.ts";
-import type { ElizaConfig } from "../src/config/config.ts";
 import { buildRuntimeSettingsProjection } from "../src/runtime/runtime-settings.ts";
 
 let directory: string;

@@ -1,22 +1,4 @@
-/**
- * Action-scoped routing context.
- *
- * The runtime wraps every action handler invocation in
- * {@link runWithActionRoutingContext}, exposing the executing action's
- * `modelClass` (if any) to any `useModel` call made transitively. The
- * `useModel` resolver reads {@link getActionRoutingContext} to decide whether
- * to reroute via the strategy registry in {@link ./action-model-routing}.
- *
- * Node.js: AsyncLocalStorage for async-safe propagation across `await`s
- * inside action handlers.
- * Node AsyncLocalStorage is required.
- *
- * Why a separate context (rather than threading an extra `useModel` param):
- *   - `useModel` callers inside action handlers are deep call chains — every
- *     helper would have to take an extra param. The async-context pattern
- *     keeps the call sites unchanged and back-compat clean.
- *   - The trajectory recorder already uses the same pattern; this matches.
- */
+/** AsyncLocalStorage propagates the executing action’s modelClass to nested useModel calls across asynchronous boundaries. */
 
 import { getAmbientSingleton, setAmbientSingleton } from "../ambient-context";
 import type { ActionModelClass } from "../types/components";

@@ -136,7 +136,7 @@ function ipv4FromWords(high: number, low: number): string {
 
 function embeddedIpv4(words: number[]): string | null {
 	const zeroPrefix = words.slice(0, 5).every((word) => word === 0);
-	// IPv4-mapped ::ffff:0:0/96. OS resolvers may return this form for a
+	// IPv4-mapped::ffff:0:0/96. OS resolvers may return this form for a
 	// perfectly public A record, so classify the embedded address itself.
 	if (zeroPrefix && words[5] === 0xffff)
 		return ipv4FromWords(words[6], words[7]);
@@ -158,8 +158,8 @@ function isPublicIpv6(address: string, allowTranslatedIpv4: boolean): boolean {
 	const words = expandIpv6Words(address);
 	if (words?.length !== 8) return false;
 
-	// Webhook integrations historically permit globally routable IPv4-translated
-	// literals; identity-provider endpoints retain their stricter default.
+	// Webhook endpoints permit globally routable IPv4-translated literals; identity-provider
+	// endpoints use stricter admission.
 	if (
 		allowTranslatedIpv4 &&
 		words.slice(0, 4).every((word) => word === 0) &&
@@ -171,8 +171,8 @@ function isPublicIpv6(address: string, allowTranslatedIpv4: boolean): boolean {
 	const embedded = embeddedIpv4(words);
 	if (embedded) return isPublicIpv4(embedded);
 
-	// IPv4-compatible ::/96 is deprecated special-use space. In particular,
-	// forms such as ::127.0.0.1 must not bypass the IPv4 loopback classifier.
+	// IPv4-compatible::/96 is deprecated special-use space. In particular,
+	// forms such as::127.0.0.1 must not bypass the IPv4 loopback classifier.
 	if (words.slice(0, 6).every((word) => word === 0)) return false;
 
 	// Global unicast allocations are currently within 2000::/3. Rejecting

@@ -19,7 +19,7 @@ const {
   registerEvmWalletPanel,
   registerSolanaWalletPanel,
   _resetWalletPanelRegistry,
-} = await import("../internal/walletPanelRegistry.js");
+} = await import("../walletPanelRegistry.js");
 
 // Register dummy panel loaders. The registry isolates root entry from
 // wallet peer deps; tests just need a pair of registered loaders so the

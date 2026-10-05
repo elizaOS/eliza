@@ -4,9 +4,9 @@ import { delegationRecords } from "./db/delegation-records";
  * account providers, services, lifecycle hooks, and its app-shell view manifest.
  */
 
-import type { IAgentRuntime, ProcessEnvLike } from "@elizaos/core";
-import type { Plugin } from "@elizaos/core";
-import { ElizaError, logger, ModelType, registerProviderModels } from "@elizaos/core";
+import { type IAgentRuntime, type ProcessEnvLike, type Plugin, ElizaError, logger, ModelType, registerProviderModels } from "@elizaos/core";
+
+
 // Cloud account actions
 import { cloudAccountStatusAction } from "./actions/cloud-account-status";
 import { createCloudApiKeyAction } from "./actions/create-cloud-api-key";
@@ -629,3 +629,5 @@ export { validateCloudBaseUrl } from "./cloud/validate-url";
 export * from "./plugin";
 export * from "./register-routes";
 export * from "./cloud";
+
+export type { CloudProxyConfigLike } from "./lib/config-like";

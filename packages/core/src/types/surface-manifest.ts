@@ -24,11 +24,11 @@ export type SurfaceCapability =
  * no longer the foreground surface. Purely declarative; the shell's view cache
  * (`DynamicViewLoader`) reads it to decide retention.
  *
- *  - `ephemeral` (default) — dropped/cleaned up when navigated away from, after
- *                            the shell's idle grace window.
- *  - `retained`            — kept warm in the background (e.g. a running
- *                            browser/workbench a user tabs back to). The shell
- *                            still evicts it under real memory pressure.
+ * - `ephemeral` (default) — dropped/cleaned up when navigated away from, after
+ * the shell's idle grace window.
+ * - `retained` — kept warm in the background (e.g. a running
+ * browser/workbench a user tabs back to). The shell
+ * still evicts it under real memory pressure.
  */
 export type SurfaceLifecyclePolicy = "ephemeral" | "retained";
 
@@ -73,7 +73,7 @@ export interface SurfaceManifest {
 	 * `"opaque"`. Defaults to `"opaque"`.
 	 */
 	background?: AppShellBackgroundPolicy;
-	/** Top-bar framing policy (#13586). Defaults to `"normal"`. */
+	/** Top-bar framing policy. Defaults to `"normal"`. */
 	header?: ViewHeaderPolicy;
 	/** How the view is isolated from the host and other views. Default `"in-process"`. */
 	isolation?: SurfaceIsolationLevel;

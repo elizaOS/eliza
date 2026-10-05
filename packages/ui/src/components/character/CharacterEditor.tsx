@@ -37,10 +37,7 @@ import {
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
-import {
-  FramedPage,
-  FramedPageBody,
-} from "../../layouts/framed-page/framed-page";
+import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { logger } from "../../logger.ts";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { Button } from "../ui/button";

@@ -114,19 +114,7 @@ export function canReadScope(
 	}
 }
 
-/**
- * Filter retrieval records down to the disclosure scopes `ctx`'s requester may
- * read. A pure, strictly subtractive `.filter()` that composes with (never
- * duplicates) Postgres RLS and with the adapter-bound location filter below.
- * An ABSENT scope fails CLOSED to `private` (author-scoped):
- * an unstamped legacy row must never be treated as globally readable, because
- * a write path that forgot to stamp a scope would otherwise silently publish
- * private data to every actor. `private` (rather than `owner-private`) keeps
- * the author's own rows and the agent's self-recall working on legacy
- * unstamped data while still denying strangers. Malformed scopes also fail
- * closed. The owning entity is taken from `metadata.scopedToEntityId`, else
- * `metadata.addedBy`, else `entityId` (mirroring the documents plugin).
- */
+/** Filters records by requester disclosure authority, in addition to storage RLS. Missing or malformed scope is author-private. Ownership resolves from scopedToEntityId, addedBy, then entityId. */
 export function filterByAccessContext<T extends AccessScopedRecord>(
 	memories: T[],
 	ctx: AccessContext,
@@ -138,14 +126,8 @@ export function filterByAccessContext<T extends AccessScopedRecord>(
 		if (rawScope !== undefined && !isMemoryScope(rawScope)) {
 			return false;
 		}
-		// Fail closed: no stamp = `private` (author-scoped), never `global`. The
-		// author (via the scopedToEntityId -> addedBy -> entityId resolution
-		// below), the agent, and the runtime can still read an unstamped row;
-		// strangers (USER/GUEST/unresolved) cannot. This deliberately DIVERGES
-		// from normalizeScope (artifact-disclosure.ts), which defaults absent
-		// scopes to owner-private: artifacts have no agent-self-recall
-		// requirement, but messages do — legacy unstamped message rows must stay
-		// readable to their author and to the agent, or recall silently breaks.
+		// Unstamped messages default to author-private so the author and agent can recall them
+		// without exposing them to other requesters.
 		const scope = rawScope ?? "private";
 		const meta = memory.metadata;
 		const scopedTo = meta?.scopedToEntityId;
@@ -160,17 +142,7 @@ export function filterByAccessContext<T extends AccessScopedRecord>(
 	});
 }
 
-/**
- * Adapter-bound memory filter. Unlike {@link filterByAccessContext}, which is
- * also used after explicitly authorized cross-world recall, this variant
- * treats `worldId` and `authorizedRoomIds` as storage-query intersections and
- * rejects rows stamped for another agent. Adapters call it before any
- * ordering, ranking, cursor, offset, or limit operation. Message-table callers
- * with an explicit authorized-room set may pass `room` for `unstampedScope`:
- * legacy transcript rows predate disclosure stamps, and verified room
- * membership is their read boundary. Other tables retain author-private
- * fail-closed behavior.
- */
+/** Applies agent, world, and authorized-room intersections before ranking or pagination. Message queries with verified room membership may use room scope for unstamped rows; other queries default to author-private. */
 export function filterMemoryReadByAccessContext<T extends AccessScopedRecord>(
 	memories: T[],
 	ctx: AccessContext,

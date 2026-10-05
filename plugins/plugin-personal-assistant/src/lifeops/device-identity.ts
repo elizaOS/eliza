@@ -8,7 +8,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/agent";
+import { resolveStateDir } from "@elizaos/core";
 
 const ENV_KEYS = ["ELIZA_DEVICE_ID", "ELIZA_DEVICE_ID"] as const;
 const CACHE_FILE_NAME = "device-id";

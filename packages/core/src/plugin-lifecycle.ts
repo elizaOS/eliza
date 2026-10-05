@@ -1,28 +1,6 @@
 /**
- * Installs per-plugin ownership tracking and hot lifecycle (unload / reload /
- * reconfigure) onto an {@link IAgentRuntime}. {@link installRuntimePluginLifecycle}
- * wraps the runtime's `register*` methods so that, during a `registerPlugin`
- * call, every action, provider, evaluator, route, event, model, service,
- * send-handler, and database adapter the plugin contributes is
- * attributed to it — captured through async-context storage
- * (`AsyncLocalStorage`) rather than by name.
- * The resulting {@link PluginOwnership} record is the reverse index that makes
- * teardown possible.
- *
- * It then adds `unloadPlugin`, `reloadPlugin`, `applyPluginConfig`,
- * `getPluginOwnership`, and `getAllPluginOwnership` to the runtime. Teardown
- * removes exactly the tracked references by identity, stops owned service
- * instances and classes, and runs each plugin's optional `dispose` hook; a
- * failed `registerPlugin` rolls its partial registration back through the same
- * path.
- *
- * Invariants: install is idempotent (guarded by
- * `__elizaPluginLifecycleInstalled`); a plugin that registers a database adapter
- * cannot be hot-unloaded and forces a full runtime reload; and an action's
- * effective role gate is derived through the PER-RUNTIME context registry so
- * contexts registered at runtime by plugins participate in access control (a
- * module-level snapshot would silently collapse a stricter gate to USER — a
- * permission bypass, #12089).
+ * Tracks plugin-owned components through load, unload, reload, reconfiguration, and
+ * rollback. Teardown removes only the owning plugin’s registrations.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { unregisterConnectorSourceMetadataOwner } from "./connectors";
@@ -228,24 +206,7 @@ function pushUniqueRef<T extends object>(items: T[], item: T): void {
 	}
 }
 
-/**
- * Neutralizes a declared `override: true` on a component being registered
- * through the plugin lifecycle (#12658).
- *
- * The explicit override contract lets a LATER registrant intentionally supersede
- * an already-registered component of the same name. On the direct host/core
- * registration path that is safe. Across `registerPlugin` boundaries it is NOT:
- * an override replaces the incumbent in place, but hot plugin teardown
- * (unloadPlugin / reloadPlugin / failed-registration rollback) removes owned
- * components by reference and does not restore a displaced incumbent. So a
- * plugin overriding another plugin's component and then unloading would leave
- * the still-loaded original plugin without its action/provider/evaluator.
- *
- * Until incumbent save/restore is implemented, plugin-boundary overrides are
- * downgraded to the safe deterministic first-wins policy (the incumbent is kept
- * and the register method WARNs). Direct (non-plugin) registration keeps
- * override.
- */
+/** Plugin registration uses first-wins collision handling because teardown cannot restore displaced components. Direct host registration may explicitly override an incumbent. */
 function withoutPluginOverride<T extends { override?: boolean }>(
 	component: T,
 ): T {
@@ -302,7 +263,7 @@ function applyEffectiveActionContexts(
  * `runtime.contexts.register(...)` participate — not just the first-party
  * defaults. Reading a module-level snapshot of only the defaults would leave a
  * plugin-registered context declaring `minRole: OWNER` invisible and collapse
- * the gate to USER — a permission bypass (#12089).
+ * the gate to USER — a permission bypass.
  */
 function roleGateForActionContexts(
 	contexts: readonly AgentContext[] | undefined,
@@ -369,7 +330,7 @@ export function _resetProviderContextWarningsForTests(): void {
  * from the gate's anyOf surface — falling back to allOf when the gate is
  * allOf-only — instead of the `["general"]` default, which would invert the
  * declared routing (ride ordinary chat turns, miss its own gated turns,
- * #13203). Everything else resolves declared → catalog → `["general"]`; the
+ * ). Everything else resolves declared → catalog → `["general"]`; the
  * uncataloged general fallback logs a one-time nudge so plugin authors declare
  * `contexts`/`contextGate` or opt into `alwaysInResponseState`.
  */
@@ -863,7 +824,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 	runtimeWithLifecycle.registerAction = ((action: RuntimeAction) => {
 		const capture = pluginRegistrationContext.getStore();
 		const actionsBefore = runtimeWithLifecycle.actions.length;
-		// Plugin-boundary overrides are unsafe for hot teardown (#12658); downgrade
+		// Plugin-boundary overrides are unsafe for hot teardown; downgrade
 		// to first-wins so a plugin never destructively displaces another's action.
 		// Direct (non-plugin, no capture) registration keeps the override contract.
 		originalRegisterAction(
@@ -1009,7 +970,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		}
 		// register() is an id-keyed upsert. Across plugin boundaries that would
 		// displace another owner's handler, which teardown cannot restore
-		// (#12658), so plugin registration is first-wins like actions/providers/
+		//, so plugin registration is first-wins like actions/providers/
 		// evaluators. Re-registering an id this plugin already owns stays safe.
 		if (
 			runtimeWithLifecycle.chatPreHandlerRegistry?.has(handler.id) &&

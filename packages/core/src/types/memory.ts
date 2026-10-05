@@ -107,7 +107,7 @@ export interface BaseMetadata {
 export interface DocumentMetadata {
 	base?: BaseMetadata;
 	type?: "document";
-	/** Legacy agent-wide discovery pin, used only when pinTargets is absent. */
+	/** Agent-wide discovery pin, used only when pinTargets is absent. */
 	pinned?: boolean;
 	/** Discovery placement only; every reader must independently satisfy document access. */
 	pinTargets?: { agent: boolean; roomIds: UUID[] };
@@ -229,9 +229,7 @@ export interface SessionOrigin {
 	threadId?: string | number;
 }
 
-// =========================================================================
 // Session Context - First-class session support for filtering and state
-// =========================================================================
 
 export interface SessionModelOverride {
 	provider?: string;
@@ -321,7 +319,7 @@ export interface MessageMetadata {
 		/**
 		 * Stable platform id of the sender, mirroring `userId` — role
 		 * resolution's connector identity matching compares the `userId`/`id`
-		 * pair (#14711).
+		 * pair.
 		 */
 		id?: string | number;
 		chatId?: string | number;
@@ -454,7 +452,7 @@ export interface MessageMetadata {
 	/**
 	 * Short topic labels extracted for this turn at Stage-1 (the `topics`
 	 * field-evaluator). Stamped onto the inbound message so the dashboard can
-	 * group the transcript by topic and surface a topic chips bar (#8928).
+	 * group the transcript by topic and surface a topic chips bar.
 	 * Mirrors the per-room LRU in `ChannelTopicsService`.
 	 */
 	topics?: string[];

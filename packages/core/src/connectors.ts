@@ -1,6 +1,6 @@
 /**
  * Connector source registry: canonicalizes and classifies the `source` tag
- * carried on inbound messages (discord, telegram, farcaster, ...). Owners
+ * carried on inbound messages (discord, telegram, farcaster,...). Owners
  * register a canonical source with aliases and metadata (`sourceKind`
  * active/passive, `isPassive`); lookups normalize a raw source to its canonical
  * form, expand a source filter across all known aliases, and report whether a
@@ -13,13 +13,7 @@
 export type ConnectorSourceKind = "passive" | "active";
 
 /**
- * Declares how a connector projects the flat identity fields it stamps on a
- * Memory's top-level metadata into the nested `metadata[source]` identity object
- * that role resolution consumes (`{ userId, id, name, username }`). Owning this
- * mapping on the connector's registered source metadata is what lets core stop
- * special-casing individual connectors (e.g. Discord's `fromId`/`entityName`)
- * inside `roles.ts` — the projection lives with the connector, not in a trunk
- * `source === "discord"` branch (#12090 item 22 / #12087).
+ * Connector-owned mapping from flat memory metadata to normalized source identity fields.
  */
 export interface ConnectorIdentityMetadataMapping {
 	/** Flat metadata key holding the stable platform user id (maps to `userId` + `id`). */
@@ -263,25 +257,11 @@ export function expandConnectorSourceFilter(
 	return expanded;
 }
 
-/**
- * Owner key for the built-in, legacy Discord connector-source metadata registered
- * below. The Discord plugin lives outside this monorepo, so the flat-field →
- * identity / world-id projection it needs is registered here as an explicit,
- * grep-able legacy default instead of remaining as `source === "discord"`
- * literal branches inside core's `roles.ts` (#12090 item 22 / #12087). When the
- * Discord plugin registers its own `connectorSources` mapping at runtime, that
- * owner-scoped registration merges over this default (registered metadata wins in
- * {@link mergeMetadata}); this default only backstops back-compat.
- */
+/** Owner key for the built-in Discord source metadata projection. */
 export const LEGACY_DISCORD_CONNECTOR_SOURCE_OWNER =
 	"core:legacy-discord-metadata";
 
-/**
- * The Discord identity/world-id field projection previously hardcoded in
- * `roles.ts`. Declared here as connector-owned registry metadata so core reads it
- * generically. `fromId`/`entityName` were the flat Memory metadata keys Discord
- * stamps; `discordServerId`/`discordChannelId` were the world-id derivation keys.
- */
+/** Discord source-field mappings for identity and world derivation. Core resolves connector metadata through the registry. */
 export const LEGACY_DISCORD_CONNECTOR_SOURCE_METADATA: ConnectorSourceMetadata =
 	{
 		identityMetadataMapping: {

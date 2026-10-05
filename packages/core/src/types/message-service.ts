@@ -203,22 +203,22 @@ export type MessageProcessingMode = "simple" | "actions" | "none" | "blocked";
  * ```typescript
  * // Custom implementation
  * class CustomMessageService implements IMessageService {
- *   async handleMessage(runtime, message, callback) {
- *     // Your custom message handling logic
- *     return {
- *       outcome: { status: "completed", effects: [] },
- *       didRespond: true,
- *       responseContent: { text: "Custom response" },
- *       responseMessages: [],
- *       state: {},
- *       mode: 'simple'
- *     };
- *   }
+ * async handleMessage(runtime, message, callback) {
+ * // Your custom message handling logic
+ * return {
+ * outcome: { status: "completed", effects: [] },
+ * didRespond: true,
+ * responseContent: { text: "Custom response" },
+ * responseMessages: [],
+ * state: {},
+ * mode: 'simple'
+ * };
+ * }
  *
- *   shouldRespond(runtime, message, room, mentionContext) {
- *     // Your custom response decision logic
- *     return { shouldRespond: true, skipEvaluation: true, reason: "custom" };
- *   }
+ * shouldRespond(runtime, message, room, mentionContext) {
+ * // Your custom response decision logic
+ * return { shouldRespond: true, skipEvaluation: true, reason: "custom" };
+ * }
  * }
  *
  * // Register in runtime
@@ -273,14 +273,7 @@ export interface IMessageService {
 		attachments: Media[],
 	): Promise<Media[]>;
 
-	/**
-	 * Deletes a message from the agent's memory.
-	 * This method handles the actual deletion logic that was previously in event handlers.
-	 *
-	 * @param runtime - The agent runtime instance
-	 * @param message - The message memory to delete
-	 * @returns Promise resolving when deletion is complete
-	 */
+	/** Deletes the message from the agent’s memory. */
 	deleteMessage(runtime: IAgentRuntime, message: Memory): Promise<void>;
 
 	/**

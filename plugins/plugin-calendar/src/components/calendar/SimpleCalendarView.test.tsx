@@ -109,9 +109,9 @@ afterEach(() => {
 });
 
 describe("SimpleCalendarView", () => {
-  it("keeps standalone calendar content free of redundant route chrome", () => {
+  it("keeps calendar content free of redundant route chrome", () => {
     fixtures.calendar.mockReturnValue(calendarState());
-    render(<SimpleCalendarView standalone />);
+    render(<SimpleCalendarView />);
 
     expect(
       screen.getByRole("main", { name: "Calendar. 0 events" }),

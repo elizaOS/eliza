@@ -1,25 +1,5 @@
 /**
- * Canonical contract for connector setup HTTP routes.
- *
- * This is the single source of truth for the connector-setup wire shapes.
- * It lives in `@elizaos/core` — the innermost package every connector plugin
- * and the API host (`@elizaos/app`) already depend on — so both the
- * server that mounts the routes and the plugins that implement them agree on
- * one definition instead of mirroring it locally (see #10201).
- *
- * Every connector plugin's setup-routes export MUST satisfy:
- *
- *   GET  /api/setup/<connector>/status   → SetupStatusResponse
- *   POST /api/setup/<connector>/start    → SetupStatusResponse (state: 'configuring')
- *   POST /api/setup/<connector>/cancel   → SetupStatusResponse (state: 'idle')
- *
- * Error responses follow `{ error: { code, message } }` — never bare strings.
- *
- * This contract is pinned by `plugins/__tests__/setup-routes-contract.test.ts`.
- * `docs/first-run-contracts.md` covers the connector setup surface.
- *
- * Distinct from `./setup` (the onboarding state machine for the first-run
- * wizard) — that models CLI/DM setup steps, this models connector HTTP routes.
+ * Serialized connector-setup contracts shared by hosts and clients.
  */
 
 /** Setup lifecycle states a connector can be in. */

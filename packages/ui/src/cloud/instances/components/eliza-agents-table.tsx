@@ -31,7 +31,7 @@ import {
   BulkDeleteDialog,
   BulkSelectionBar,
   runBulkDelete,
-} from "../../../cloud-ui/components/bulk/bulk-select";
+} from "../../../cloud-ui/components/bulk-select";
 import {
   DashboardDataList,
   DashboardDataListDesktop,
@@ -66,7 +66,7 @@ import {
 import { currentElizaAppOrigin } from "../../../utils/cloud-agent-base";
 import { api, apiWithStatus } from "../../lib/api-client";
 import { useCloudT as useT } from "../../shell/CloudI18nProvider";
-import { parseAgentsResponse } from "../lib/data/eliza-agents";
+import { parseAgentsResponse } from "../lib/eliza-agents";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import { statusDotColor } from "../lib/sandbox-status";
 import { type TrackedJob, useJobPoller } from "../lib/use-job-poller";

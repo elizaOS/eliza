@@ -57,11 +57,11 @@ function asString(value: unknown): string {
  * Run the canonical extractor pipeline.
  *
  * Order of operations:
- *   1. Call the model with `prompt`.
- *   2. Run `parser` on the result. If it returns non-null, return that.
- *   3. Otherwise, if `buildRepairPrompt` is provided, call the model again
- *      with the repair prompt and run `parser` on that result.
- *   4. Model and transport failures propagate after being reported.
+ * 1. Call the model with `prompt`.
+ * 2. Run `parser` on the result. If it returns non-null, return that.
+ * 3. Otherwise, if `buildRepairPrompt` is provided, call the model again
+ * with the repair prompt and run `parser` on that result.
+ * 4. Model and transport failures propagate after being reported.
  */
 export async function runExtractorPipeline<TParsed>(
 	args: RunExtractorPipelineArgs<TParsed>,

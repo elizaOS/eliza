@@ -3,9 +3,7 @@
 import MarkdownIt from "markdown-it";
 import { assertValidMarkdownChunkLimit, chunkText } from "./chunk.js";
 
-// ============================================================================
 // Types
-// ============================================================================
 
 type ListState = {
 	type: "bullet" | "ordered";
@@ -136,9 +134,7 @@ export type MarkdownParseOptions = {
 	tableMode?: MarkdownTableMode;
 };
 
-// ============================================================================
 // Parser Setup
-// ============================================================================
 
 function createMarkdownIt(
 	options: MarkdownParseOptions,
@@ -226,9 +222,7 @@ function injectSpoilersIntoInline(tokens: MarkdownToken[]): MarkdownToken[] {
 	return result;
 }
 
-// ============================================================================
 // Render Target Management
-// ============================================================================
 
 function initRenderTarget(): RenderTarget {
 	return {
@@ -337,9 +331,7 @@ function handleLinkClose(state: RenderState) {
 	target.links.push({ start, end, href });
 }
 
-// ============================================================================
 // Table Handling
-// ============================================================================
 
 function initTableState(): TableState {
 	return {
@@ -566,9 +558,7 @@ function renderTableAsCode(state: RenderState) {
 	}
 }
 
-// ============================================================================
 // Token Rendering
-// ============================================================================
 
 function renderTokens(tokens: MarkdownToken[], state: RenderState): void {
 	for (const token of tokens) {
@@ -762,9 +752,7 @@ function closeRemainingStyles(target: RenderTarget) {
 	target.openStyles = [];
 }
 
-// ============================================================================
 // Style/Link Span Utilities
-// ============================================================================
 
 function clampStyleSpans(
 	spans: MarkdownStyleSpan[],
@@ -867,9 +855,7 @@ function sliceLinkSpans(
 	return sliced;
 }
 
-// ============================================================================
 // Public API
-// ============================================================================
 
 /**
  * Convert markdown text to Intermediate Representation.

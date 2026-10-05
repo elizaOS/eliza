@@ -19,12 +19,12 @@ export function isValidAppRouteSlug(value: unknown): value is string {
 		value !== ".."
 	);
 }
-// ---------------------------------------------------------------------------
+
 // Runtime-registered curated apps — keyed on a global Symbol so the same
 // store is shared across @elizaos/core, @elizaos/app, and any plugin
 // that wires in additional curated entries. Owning the helpers here removes
 // shared's dependency on the @elizaos/core export.
-// ---------------------------------------------------------------------------
+
 const ELIZA_CURATED_APP_REGISTRY_KEY = Symbol.for(
 	"elizaos.curated-app-registry",
 );
@@ -770,10 +770,10 @@ export function normalizeElizaCuratedAppName(value: string): string | null {
 export function isElizaCuratedAppName(value: string): boolean {
 	return normalizeElizaCuratedAppName(value) !== null;
 }
-// ---------------------------------------------------------------------------
+
 // Curated app registry — allows plugins to register additional curated app
 // definitions at runtime without modifying the hardcoded list.
-// ---------------------------------------------------------------------------
+
 /**
  * Register an additional curated app definition at runtime.
  * Plugins should call this during initialization to add their app to the

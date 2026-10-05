@@ -3,7 +3,7 @@
  * and provides the composition primitives (schema, prompt, dispatch) used by
  * the Stage-1 response handler.
  *
- * See ./response-handler-field-evaluator.ts for the contract.
+ * See./response-handler-field-evaluator.ts for the contract.
  */
 
 import type { Memory } from "../types/memory";
@@ -20,9 +20,7 @@ import type {
 	ResponseHandlerSenderRole,
 } from "./response-handler-field-evaluator.js";
 
-// ---------------------------------------------------------------------------
 // Registration
-// ---------------------------------------------------------------------------
 
 /**
  * Stable registration. The registry de-dupes by `name` (first-wins, matches
@@ -77,9 +75,7 @@ export class ResponseHandlerFieldRegistry {
 		return this.evaluators.size;
 	}
 
-	// -------------------------------------------------------------------------
 	// Schema composition — byte-stable across turns
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Build the composed HANDLE_RESPONSE schema. Cached across calls; the
@@ -92,7 +88,7 @@ export class ResponseHandlerFieldRegistry {
 	 *
 	 * Canonical-source note: this is the schema the Stage-1 LLM actually
 	 * receives in production — `services/message.ts` passes it to
-	 * `createHandleResponseTool({ parameters: ... })`, and `buildResponseGrammar`
+	 * `createHandleResponseTool({ parameters:... })`, and `buildResponseGrammar`
 	 * (`./response-grammar.ts`) composes the GBNF skeleton from the same
 	 * registered field set. The static `HANDLE_RESPONSE_SCHEMA` in
 	 * `../actions/to-tool.ts` mirrors the builtin shape for older callers that
@@ -136,9 +132,7 @@ export class ResponseHandlerFieldRegistry {
 		return this.cachedSchemaSignature ?? "";
 	}
 
-	// -------------------------------------------------------------------------
 	// Prompt composition — slices per active evaluator
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Compose the per-turn system-prompt slices. Each active evaluator
@@ -191,9 +185,7 @@ export class ResponseHandlerFieldRegistry {
 		};
 	}
 
-	// -------------------------------------------------------------------------
 	// Dispatch — parse + handle each field
-	// -------------------------------------------------------------------------
 
 	/**
 	 * Parse the LLM's structured output and dispatch each field's slice to
@@ -364,9 +356,7 @@ export class ResponseHandlerFieldRegistry {
 		};
 	}
 
-	// -------------------------------------------------------------------------
 	// Internal helpers
-	// -------------------------------------------------------------------------
 
 	private sortedEvaluators(
 		options: ResponseHandlerFieldSelectionOptions = {},

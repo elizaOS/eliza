@@ -1,5 +1,5 @@
 /**
- * Audio PII redaction — span production (#14807).
+ * Audio PII redaction — span production.
  *
  * Pure, browser- + node-safe span math for the corpus PII scrub's audio lane:
  * text-PII verdicts (the matched surface strings from the tier-0 detectors /
@@ -11,27 +11,27 @@
  *
  * Design constraints this module honors:
  *
- *  - **Raw word spans in, no anchor seam dependency.** Input is the raw timed
- *    ASR word list (any producer that satisfies the {@link TranscriptWord}
- *    contract — fused `eliza_inference_asr_transcribe_timed`, an
- *    OpenAI-compatible STT with `timestamp_granularities=word`, …), not a
- *    transcript-fragment anchor record.
- *  - **Fail-closed on unlocatable PII.** A PII span that cannot be located in
- *    the word stream is returned in `unmatched` — the caller MUST treat a
- *    non-empty `unmatched` as a hard failure (typed error, quarantined item),
- *    never as "nothing to mute". Silence here would leak audible PII.
- *  - **Over-redaction is the safe direction.** Matching is
- *    separator-insensitive (normalized concatenation), so "555 0123" in the
- *    verdict matches an ASR word "5550123." and vice versa; a rare over-broad
- *    match mutes a little extra audio, never leaks any.
- *  - **Labels are plain input.** Pseudonym/cluster labels (corpus map,
- *    #14805) ride through untouched for observability; they never influence
- *    the produced windows.
+ * - **Raw word spans in, no anchor seam dependency.** Input is the raw timed
+ * ASR word list (any producer that satisfies the {@link TranscriptWord}
+ * contract — fused `eliza_inference_asr_transcribe_timed`, an
+ * OpenAI-compatible STT with `timestamp_granularities=word`, …), not a
+ * transcript-fragment anchor record.
+ * - **Fail-closed on unlocatable PII.** A PII span that cannot be located in
+ * the word stream is returned in `unmatched` — the caller MUST treat a
+ * non-empty `unmatched` as a hard failure (typed error, quarantined item),
+ * never as "nothing to mute". Silence here would leak audible PII.
+ * - **Over-redaction is the safe direction.** Matching is
+ * separator-insensitive (normalized concatenation), so "555 0123" in the
+ * verdict matches an ASR word "5550123." and vice versa; a rare over-broad
+ * match mutes a little extra audio, never leaks any.
+ * - **Labels are plain input.** Pseudonym/cluster labels (corpus map,
+ * ) ride through untouched for observability; they never influence
+ * the produced windows.
  *
  * The re-transcribe verifier is deliberately a SEPARATE module
  * (`audio-redaction-verify.ts`) with its own provider contract, so the span
  * producer and the verifier can run on different ASR backends (see the
- * acceptance note on #14807).
+ * acceptance note on ).
  */
 
 import { ElizaError } from "./errors.js";
@@ -49,7 +49,7 @@ export interface AudioRedactionSpan {
 export interface PiiTextSpan {
 	/** The matched PII surface text (`Tier0Span.span` / `PiiScrubVerdict.span`). */
 	text: string;
-	/** Pseudonym/cluster label from the corpus map (#14805) — plain input. */
+	/** Pseudonym/cluster label from the corpus map — plain input. */
 	label?: string;
 }
 

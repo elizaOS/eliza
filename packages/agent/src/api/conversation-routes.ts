@@ -48,6 +48,7 @@ import {
   getInferenceTimer,
   hasAtLeastRole,
   InferenceTurnTimer,
+  type AgentLogEntry as LogEntry,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -82,6 +83,7 @@ import {
   withStandaloneTrajectory,
 } from "@elizaos/core";
 import {
+  type ElizaConfig,
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
   LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
   type RouteRequestContext,
@@ -101,7 +103,6 @@ import {
   isScheduledTask,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import type { ElizaConfig } from "../config/config.ts";
 import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,
@@ -132,7 +133,6 @@ import {
   getChatFailureReply,
   getChatMessageIdOutcome,
   isIntentionalNoResponseResult,
-  type LogEntry,
   normalizeAccountConnectRequest,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
@@ -146,6 +146,7 @@ import {
   resolveTrustedApiPrincipal,
   setChatMessageIdOutcome,
 } from "./chat-routes.ts";
+
 import {
   createChatTokenStreamWriter,
   initSse,

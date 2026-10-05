@@ -18,7 +18,7 @@ import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route
 import { EnsurePageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
 import { usePageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 import { ViewBackButton, ViewHeader } from "../../components/shared/ViewHeader";
-import { PageFrame } from "../../layouts/page-frame/page-frame";
+import { PageFrame } from "../../layouts/page-frame";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { CloudAccountMenu } from "./CloudAccountMenu";
 import { CloudRouteErrorBoundary } from "./CloudRouteErrorBoundary";
@@ -104,7 +104,6 @@ function ManagedCloudRouteFrame({
           />
         ) : null}
         <ViewHeader
-          title={pageInfo?.title ?? "Cloud"}
           right={
             <div className="flex items-center gap-2">
               {pageInfo?.actions}

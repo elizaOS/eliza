@@ -1,7 +1,4 @@
-/**
- * Shared value-comparison and revision helpers protect world metadata across
- * compare-and-swap and legacy whole-world adapter writes.
- */
+/** Revision and comparison helpers for atomic and whole-world metadata writes. */
 
 import { ElizaError } from "../errors";
 import type { Metadata } from "../types/primitives";
@@ -62,10 +59,7 @@ export function getWorldMetadataRevision(
 		: null;
 }
 
-/**
- * Require a legacy whole-world writer to carry the revision it read. A stale
- * or malformed request is an observable failure, never a silent lost update.
- */
+/** Requires whole-world writers to carry the revision they read. Stale or malformed requests fail explicitly. */
 export function requireFreshWorldMetadataRevision(
 	storedMetadata: Metadata | undefined,
 	writerMetadata: Metadata | undefined,

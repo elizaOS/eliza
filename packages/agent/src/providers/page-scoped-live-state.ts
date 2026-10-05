@@ -17,6 +17,7 @@
  */
 
 import type {
+  ConversationScope,
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
@@ -30,8 +31,6 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { createSelfApiRequestHeaders } from "@elizaos/host/protocol";
-
-import type { ConversationScope } from "../api/server-types.ts";
 
 async function renderCharacterLiveState(
   runtime: IAgentRuntime,

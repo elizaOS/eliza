@@ -18,7 +18,7 @@ import type { Memory } from "../types/memory";
  *
  * The marker is trustworthy here because inbound messages are stripped of a
  * forged `isAutonomous` upstream: `hardenIncomingUserMessage`
- * (security/incoming-message-security.ts, #12087 Item 7) removes it from every
+ * removes it from every
  * message whose source is not the autonomy service, so a connector forwarding
  * client-supplied metadata cannot use it to unlock private actions.
  */

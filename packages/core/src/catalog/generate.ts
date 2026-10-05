@@ -12,8 +12,8 @@
  * alongside an on-device bundle), plus the derived curated-app / channel /
  * provider maps. `--check` re-runs the generator and fails on drift for CI.
  *
- *   bun run --cwd packages/core generate:first-party           # rewrite generated.json
- *   bun run --cwd packages/core generate:first-party --check   # CI drift gate
+ * bun run --cwd packages/core generate:first-party # rewrite generated.json
+ * bun run --cwd packages/core generate:first-party --check # CI drift gate
  */
 
 import { execFileSync } from "node:child_process";
@@ -104,9 +104,8 @@ export function collectCuratedAppDefinitions(
 			aliases: e.curatedApp?.aliases ?? [],
 		}));
 }
-// Derive the channel -> plugin-package map from connector entries' `channels`.
-// This replaces the hand-maintained CHANNEL_PLUGIN_MAP duplicated in agent +
-// app. Keys are sorted for a stable artifact; consumers read by key.
+// Derive the channel-to-package map from connector declarations; sort keys for reproducible
+// output.
 export function collectChannelPluginMap(
 	entries: RegistryEntry[],
 ): Record<string, string> {
@@ -128,11 +127,7 @@ export function collectChannelPluginMap(
 			.map((k) => [k, map[k]]),
 	);
 }
-// Derive the short-id -> plugin-package map from entries' `shortIds`. This
-// replaces the hand-maintained OPTIONAL_PLUGIN_MAP alias table for entries that
-// declare a registry entry. Keys are sorted for a stable artifact. Conflicting
-// claims fail loudly at generation time so drift cannot silently ship — the
-// same guarantee CHANNEL_PLUGIN_MAP gives channel aliases.
+// Derive short-ID aliases from catalog declarations; conflicting claims fail generation.
 export function collectShortIdPluginMap(
 	entries: RegistryEntry[],
 ): Record<string, string> {

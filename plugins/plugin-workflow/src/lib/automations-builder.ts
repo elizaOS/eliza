@@ -12,8 +12,16 @@
  * because plugin-workflow cannot depend on @elizaos/agent.
  */
 
-import type { AgentRuntime, Room, Task, UUID } from '@elizaos/core';
-import { ElizaError, stringToUuid } from '@elizaos/core';
+import type { ConversationMetadata, ConversationScope } from '@elizaos/contracts';
+import {
+  type AgentRuntime,
+  ElizaError,
+  type Room,
+  stringToUuid,
+  type Task,
+  type UUID,
+} from '@elizaos/core';
+
 import { getRouteOwnerEntityId } from '../routes/_helpers';
 import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
@@ -29,8 +37,6 @@ import {
   type AutomationListResponse,
   type AutomationRoomBinding,
   type AutomationSummary,
-  type ConversationMetadata,
-  type ConversationScope,
   isAutomationConversationMetadata,
   type TriggerSummary,
   taskToTriggerSummary,

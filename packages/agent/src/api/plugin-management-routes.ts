@@ -5,8 +5,8 @@ import {
   PutSecretsRequestSchema,
 } from "@elizaos/contracts";
 import { ElizaError, logger } from "@elizaos/core";
-
-import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "@elizaos/host/protocol";
+import { saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
   resolveDevCloudEnvAuthority,

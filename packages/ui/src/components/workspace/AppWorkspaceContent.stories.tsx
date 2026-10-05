@@ -1,7 +1,6 @@
 /** Storybook coverage for the router-owned workspace content boundary. */
 
 import type { Meta, StoryObj } from "@storybook/react";
-import { ViewHeader } from "../shared/ViewHeader";
 import { AppWorkspaceContent } from "./AppWorkspaceContent";
 
 const rows = Array.from({ length: 12 }, (_, index) => ({
@@ -36,7 +35,7 @@ const meta = {
   ],
   args: {
     children: body,
-    header: <ViewHeader title="Activity" />,
+    header: null,
   },
 } satisfies Meta<typeof AppWorkspaceContent>;
 

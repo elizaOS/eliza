@@ -57,7 +57,6 @@ function sidebarElement() {
 function UnscopedFixture() {
   return (
     <div>
-      <ViewHeader title="Fixture" />
       <PageLayout sidebar={sidebarElement()}>
         <div>content</div>
       </PageLayout>
@@ -71,7 +70,6 @@ function ScopedFixture() {
   return (
     <div>
       <ViewHeader
-        title="Fixture"
         right={
           <ViewHeaderSidebarTrigger control={mobileSidebarHeader.control} />
         }

@@ -1,28 +1,28 @@
 /**
- * Content-addressed done-markers for the async PII scrub rails (#14808).
+ * Content-addressed done-markers for the async PII scrub rails.
  *
  * The scrub job is long-running compute that must survive crash/restart with
  * ZERO lost or duplicated work. The issue's chosen resume mechanism is a
  * content-addressed per-item done-marker keyed
  *
- *     pii:<sha256(content)>:v<rulesetVersion>
+ * pii:<sha256(content)>:v<rulesetVersion>
  *
  * exactly like the media store's content-addressing and the compensating-write
  * `recon:<txid>:refund` precedent. It has two properties the job relies on:
  *
- *   1. **Content-addressed idempotency.** The key is derived only from the
- *      content bytes + the active ruleset version. Re-enqueuing the SAME content
- *      under the SAME ruleset resolves to the SAME marker, so a re-scrub of
- *      unchanged content is a no-op (`isScrubDone` short-circuits before any
- *      model call). Editing the content (different sha) OR bumping the ruleset
- *      (different `v<...>`) produces a NEW key, so genuinely-changed content is
- *      re-scrubbed rather than incorrectly skipped.
+ * 1. **Content-addressed idempotency.** The key is derived only from the
+ * content bytes + the active ruleset version. Re-enqueuing the SAME content
+ * under the SAME ruleset resolves to the SAME marker, so a re-scrub of
+ * unchanged content is a no-op (`isScrubDone` short-circuits before any
+ * model call). Editing the content (different sha) OR bumping the ruleset
+ * (different `v<...>`) produces a NEW key, so genuinely-changed content is
+ * re-scrubbed rather than incorrectly skipped.
  *
- *   2. **Crash-and-rerun with zero cursor state.** The marker is written to the
- *      runtime cache (a DB-backed durable store), so a `kill -9` mid-run loses
- *      only in-flight work: on restart every already-completed item's marker is
- *      still present and its re-drain skips. There is no cursor/offset to
- *      corrupt - resume is implicit in the content-addressed key space.
+ * 2. **Crash-and-rerun with zero cursor state.** The marker is written to the
+ * runtime cache (a DB-backed durable store), so a `kill -9` mid-run loses
+ * only in-flight work: on restart every already-completed item's marker is
+ * still present and its re-drain skips. There is no cursor/offset to
+ * corrupt - resume is implicit in the content-addressed key space.
  *
  * The marker is written ONLY after the scrub for that item has fully succeeded
  * (verdicts applied / write-back done). A crash between "model returned" and
@@ -75,8 +75,8 @@ export function hashScrubContent(content: string): string {
  * you have the raw content instead.
  *
  * @throws when `rulesetVersion` is empty - an empty version would collapse the
- *   marker namespace across ruleset upgrades and let a stale-ruleset scrub be
- *   treated as current (a fail-open we refuse to allow).
+ * marker namespace across ruleset upgrades and let a stale-ruleset scrub be
+ * treated as current (a fail-open we refuse to allow).
  */
 export function scrubMarkerKey(
 	contentHash: string,

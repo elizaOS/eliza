@@ -1,26 +1,8 @@
-/**
- * The agent's role/permission authorization system: the OWNER > ADMIN > USER >
- * GUEST tier vocabulary, the canonical rank table every gate compares against,
- * and the resolution that turns a sender + world into an effective role. A role
- * is merged here from four sources — an explicit grant stored on world metadata
- * (`roles`/`roleSources`), the configured or world-recorded canonical owner, a
- * connector-admin whitelist match on a stable platform id, and identity
- * evidence selected by the active authority cutover state. `canModifyRole`
- * is the privilege-escalation gate (OWNER may change anyone; ADMIN only
- * strictly-lower ranks and never grants OWNER); `hasRoleAccess` is the read-time
- * gate callers use to admit or deny an action.
- *
- * Consumed by access-context.ts, the runtime context-gates, and plugin-manager
- * security wrappers. Load-bearing invariants an editor must preserve: rank lives
- * only in CANONICAL_ROLE_RANK, shared with runtime/context-gates.ts so the two
- * never drift (#9948); MEMBER is an alias of USER, not a demotion to GUEST, so
- * both resolution paths agree (#12087 Item 6); resolution trusts ONLY connector
- * identity stamped into the Memory, never client-supplied content.metadata; and
- * every access check fails CLOSED — an unknown role ranks below GUEST and an
- * unresolvable connector sender is treated as GUEST while local/API messages
- * keep the USER fallback they historically used. Owner and role grants are
- * recorded explicitly with their source so they stay auditable.
- */
+import {
+	isAdminRank,
+	ROLE_RANK,
+	type RoleName,
+} from "./access-control/role-primitives.js";
 import {
 	getConnectorIdentityMetadataMapping,
 	getConnectorWorldIdMetadataKeys,
@@ -49,16 +31,11 @@ import type { UUID } from "./types/primitives.js";
 import type { IAgentRuntime } from "./types/runtime.js";
 import { ServiceType } from "./types/service";
 import { formatError } from "./utils/format-error";
+import { stringToUuid } from "./utils/string-to-uuid.js";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
-import { stringToUuid, validateUuid } from "./utils.ts";
+import { validateUuid } from "./utils/uuid.js";
 
 export type { RoleName } from "./access-control/role-primitives.js";
-
-import {
-	isAdminRank,
-	ROLE_RANK,
-	type RoleName,
-} from "./access-control/role-primitives.js";
 
 /**
  * Provenance of an explicit `roles[entityId]` grant. "session" marks a grant
@@ -74,16 +51,7 @@ export type RoleGrantSource =
 	| "connector_admin"
 	| "session";
 
-/**
- * Canonical rank for every role tier across the codebase — the single source of
- * truth for role ordering (#9948). It spans both vocabularies that historically
- * disagreed: the `NONE` floor and the `MEMBER` alias (`environment.ts` `Role`)
- * plus `USER`/`GUEST` (`RoleName`). `USER` and `MEMBER` are the same tier.
- *
- * `roles.ts` and `runtime/context-gates.ts` both derive their ranking from this
- * constant rather than each keeping a private rank literal — two rank tables
- * that could silently drift apart is the authz hazard #9948 calls out.
- */
+/** Shared role ranking. USER and MEMBER denote the same tier; NONE is the floor. */
 export {
 	CANONICAL_ROLE_RANK,
 	hasAtLeastRole,
@@ -298,12 +266,8 @@ function getConnectorMetadataFromMemory(
 		}
 	}
 
-	// No nested `metadata[source]` object present. Fall back to the connector's
-	// DECLARED flat-field -> identity projection from the connector-source
-	// registry (owner metadata), instead of a connector-specific literal branch
-	// baked into core (#12090 item 22 / #12087). The Discord legacy mapping
-	// (fromId/entityName) is registered as connector-owned metadata in
-	// connectors.ts, so this path is generic across connectors.
+	// Resolve flat identity fields through the connector-owned projection when nested source
+	// metadata is absent.
 	const mapping = getConnectorIdentityMetadataMapping(source);
 	if (!mapping) {
 		return undefined;
@@ -427,9 +391,7 @@ export function resolveCanonicalOwnerId(
 		return configuredOwnerIds[0] ?? null;
 	}
 
-	// Connector platform identifiers are not entity IDs. Legacy connector worlds
-	// sometimes persisted numeric provider IDs here; reject them before any role
-	// path can pass the value into UUID-backed entity/relationship queries.
+	// Reject provider identifiers before UUID-backed entity or relationship queries.
 	return validateUuid(metadata?.ownership?.ownerId);
 }
 
@@ -527,8 +489,8 @@ async function getConfirmedLinkedEntityIds(
 		}
 		return [...linkedIds];
 	} catch (error) {
-		// error-policy:J2 identity links participate in the pre-cutover
-		// authorization path, so a failed read must not become an empty result.
+		// error-policy:J2 identity links authorize access; a failed read must not become an empty
+		// result.
 		throw new ElizaError("Failed to load confirmed identity links", {
 			code: "IDENTITY_LINK_QUERY_FAILED",
 			cause: error,
@@ -644,11 +606,7 @@ function resolveWorldIdFromMessageMetadata(
 	}
 	const metadata = getMemoryMetadata(message);
 
-	// Derive the world id from the connector's DECLARED flat world-id keys
-	// (registry, owner metadata) instead of a connector-specific literal that
-	// hardcodes per-connector world-id fields in core (#12090 item 22 / #12087).
-	// The Discord legacy keys are registered as connector-owned metadata in
-	// connectors.ts; first present, non-empty string wins.
+	// Resolve the first nonempty world-ID field declared by the connector owner.
 	const worldIdKeys = getConnectorWorldIdMetadataKeys(source);
 	for (const key of worldIdKeys) {
 		const value = metadata?.[key];
@@ -726,10 +684,10 @@ export function matchEntityToConnectorAdminWhitelist(
 export function normalizeRole(raw: string | undefined | null): RoleName {
 	const upper = (raw ?? "").toUpperCase();
 	if (upper === "OWNER" || upper === "ADMIN" || upper === "USER") return upper;
-	// MEMBER is the USER-tier alias (CANONICAL_ROLE_RANK.MEMBER === .USER). Folding
+	// MEMBER is the USER-tier alias (CANONICAL_ROLE_RANK.MEMBER ===.USER). Folding
 	// it to GUEST here (rank 2 → 1) silently demoted a stored "MEMBER" world role
 	// below a `minRole: USER` gate that the context-gate path (normalizeGateRole
-	// folds USER→MEMBER) would grant — the #12087 Item 6 asymmetry. Resolve MEMBER
+	// folds USER→MEMBER) would grant — the asymmetry. Resolve MEMBER
 	// to its canonical USER tier so both paths agree.
 	if (upper === "MEMBER") return "USER";
 	return "GUEST";
@@ -870,13 +828,8 @@ export async function resolveEntityRole(
 
 	if (explicitRole !== "GUEST") {
 		if (explicitRole === "OWNER") {
-			// A stored OWNER grant is honored only when it was made deliberately
-			// through the role-management gate (source "manual", writable solely by
-			// an existing OWNER via canModifyRole). Connector-written and sourceless
-			// legacy grants fold to GUEST: worlds persisted before #14845 still
-			// carry OWNER grants the old Discord code wrote for every guild owner,
-			// and honoring them whenever no canonical owner is configured made any
-			// guild owner hosting the bot the app-level OWNER (#14707).
+			// Only manually granted OWNER roles confer ownership. Connector-written or sourceless
+			// grants fold to GUEST.
 			return explicitSource === "manual" ? "OWNER" : "GUEST";
 		}
 
@@ -1163,7 +1116,7 @@ export function isAgentSelf(
 }
 
 /**
- * Injectable role-resolution seam for {@link hasRoleAccess} (#12087 Item 18).
+ * Injectable role-resolution seam for {@link hasRoleAccess}.
  * Lets callers (e.g. plugin-manager/security.ts wrappers, and tests) substitute
  * the sender-role check / canonical-owner resolution without monkey-patching the
  * module.
@@ -1259,15 +1212,8 @@ export async function hasRoleAccess(
 }
 
 /**
- * Persist the deployed-app owner as an EXPLICIT, auditable grant on a world's
- * metadata: `roles[ownerId] = "OWNER"` together with `roleSources[ownerId] =
- * "owner"`. Before this, the owner's OWNER status was emergent — inferred from
- * `ownership.ownerId` at read time and (at best) a bare `roles` entry with no
- * recorded source — so it could not be audited or distinguished from a manual /
- * connector grant (#9948). This records the grant and its provenance.
- *
- * Pure + idempotent: mutates `metadata` in place and returns `true` iff it
- * actually changed something (so callers only persist on a real change).
+ * Records the owner role and its source on world metadata. Mutates metadata
+ * and returns whether anything changed, allowing callers to persist only changes.
  */
 export function recordOwnerGrant(
 	metadata: RolesWorldMetadata,
@@ -1293,7 +1239,7 @@ export function recordOwnerGrant(
  * source, matching {@link setEntityRole}). Use when you hold the metadata but not
  * a Memory — {@link setEntityRole} needs a message and {@link recordOwnerGrant}
  * only records the canonical OWNER. Pure + idempotent: mutates `metadata` in place
- * and returns `true` iff it changed something (#12087 Item 11).
+ * and returns `true` iff it changed something.
  */
 export function recordRoleGrant(
 	metadata: RolesWorldMetadata,
@@ -1346,7 +1292,7 @@ export async function setEntityRole(
 }
 
 /**
- * Typed outcome of one atomic role-write attempt (#23100). `conflict` means a
+ * Typed outcome of one atomic role-write attempt. `conflict` means a
  * concurrent metadata write landed between the caller's authorized read and
  * the compare-and-swap; the caller must re-resolve and re-authorize before
  * retrying — never retry with the original snapshot.
@@ -1396,7 +1342,7 @@ function requireWorldMetadataCasCapability(
 }
 
 /**
- * Atomically set one entity's world role under compare-and-swap (#23100).
+ * Atomically set one entity's world role under compare-and-swap.
  *
  * Unlike {@link setEntityRole} (a blind read-merge-write of whole-world
  * metadata), this resolves the world fresh on EVERY attempt, re-invokes the
@@ -1407,7 +1353,7 @@ function requireWorldMetadataCasCapability(
  * inserts the durable `role_audit` log row. A concurrent writer therefore
  * turns into a typed `conflict` the caller can retry after re-authorizing,
  * instead of being silently overwritten (the revoked-ADMIN resurrection
- * hazard named in #23100 and the #24243 review).
+ * hazard named in and the review).
  *
  * The `authorize` predicate is re-evaluated on every attempt against the
  * freshly resolved world — never trust an authorization verdict computed
@@ -1477,14 +1423,8 @@ export async function setEntityRoleCas(
 			: await resolveWorldForMessage(runtime, message);
 		if (!resolved?.world) return { status: "world_not_found" };
 		const { world } = resolved;
-		// Freeze an independent snapshot the moment the world is resolved:
-		// the memory adapters return LIVE stored objects, so a legacy
-		// whole-world writer mutating metadata in place during the awaited
-		// authorize predicate would otherwise change both sides of the CAS
-		// comparison together and the concurrent write would go undetected.
-		// Authorization evaluates against this SAME frozen view — the
-		// authorize predicate and the CAS comparison must never observe
-		// different metadata states for one attempt.
+		// Authorization and compare-and-swap use the same detached metadata snapshot; live adapter
+		// objects may mutate during awaits.
 		const resolvedWorld = structuredClone(world);
 		const expectedSnapshot = (resolvedWorld.metadata ??
 			{}) as RolesWorldMetadata;
@@ -1534,4 +1474,22 @@ export async function setEntityRoleCas(
 	// batch caller reports it as an explicit skipped failure, never a silent
 	// success or overwrite.
 	return { status: "conflict" };
+}
+
+export type SecurityDeps = RoleAccessDeps;
+
+export function hasOwnerAccess(
+	runtime: IAgentRuntime | undefined,
+	message: Memory | undefined,
+	deps: SecurityDeps = {},
+): Promise<boolean> {
+	return hasRoleAccess(runtime, message, "OWNER", deps);
+}
+
+export function hasAdminAccess(
+	runtime: IAgentRuntime | undefined,
+	message: Memory | undefined,
+	deps: SecurityDeps = {},
+): Promise<boolean> {
+	return hasRoleAccess(runtime, message, "ADMIN", deps);
 }

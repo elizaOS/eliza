@@ -6,7 +6,7 @@
  * origin) qualify — credentials, query strings, fragments, and every other
  * path are rejected so a persisted attachment row can never induce an
  * authenticated internal request. Mirrors the boundary predicate used at the
- * local-inference vision input (#18760); keep the two in sync by importing
+ * local-inference vision input; keep the two in sync by importing
  * this module rather than re-deriving the pattern.
  */
 import { getLocalServerUrl } from "../utils/node.js";

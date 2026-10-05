@@ -5,6 +5,7 @@
  */
 import {
   AgentEventService,
+  getSessionProviders,
   type IAgentRuntime,
   NotificationService,
   PairingService,
@@ -55,6 +56,7 @@ import {
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
 import { dstackOperatorAttestationRoute } from "../api/tee-attestation-routes.ts";
+import { resolveDefaultSessionStorePath } from "../config/paths.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -66,10 +68,6 @@ import { relevantConversationsProvider } from "../providers/relevant-conversatio
 import { roleBackfillProvider } from "../providers/role-backfill.ts";
 import { rolodexProvider } from "../providers/rolodex.ts";
 import { createSessionKeyProvider } from "../providers/session-bridge.ts";
-import {
-  getSessionProviders,
-  resolveDefaultSessionStorePath,
-} from "../providers/session-utils.ts";
 import { createOngoingTasksProvider } from "../providers/tasks.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";

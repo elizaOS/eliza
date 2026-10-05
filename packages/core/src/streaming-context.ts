@@ -149,11 +149,11 @@ export function getStreamingContextManager(): IStreamingContextManager {
  * @example
  * ```typescript
  * await runWithStreamingContext(
- *   { onStreamChunk: async (chunk) => sendSSE(chunk), messageId },
- *   async () => {
- *     // All useModel calls here will stream automatically
- *     await runtime.processMessage(message);
- *   }
+ * { onStreamChunk: async (chunk) => sendSSE(chunk), messageId },
+ * async () => {
+ * // All useModel calls here will stream automatically
+ * await runtime.processMessage(message);
+ * }
  * );
  * ```
  *
@@ -251,7 +251,7 @@ const discardStreamChunk: StreamChunkCallback = async () => undefined;
  * abort signal and structured tool/evaluation hooks, but its raw tokens no
  * longer reach the turn's visible reply channel — `onStreamChunk` becomes a
  * no-op. This is the seam that keeps an action handler's *internal* model
- * calls off the user-visible reply (#16230): only the top-level response
+ * calls off the user-visible reply: only the top-level response
  * generation streams raw tokens, while an action delivers its own output
  * through the HandlerCallback. The visible stream would otherwise surface an
  * action's intermediate model output as though it were the action's final
@@ -288,9 +288,8 @@ export function getStreamingContext(): StreamingContext | undefined {
 	return getOrCreateContextManager().active();
 }
 
-// ---------------------------------------------------------------------------
 // useModel → chunk callback delivery (dedupe `model_stream_chunk` hooks)
-// ---------------------------------------------------------------------------
+
 // The same provider chunk is often forwarded from useModel's textStream loop *and* from
 // DefaultMessageService. Without a turn-scoped marker, pipeline hooks would run twice per
 // token (inflated metrics, duplicate side effects). Node uses AsyncLocalStorage depth so

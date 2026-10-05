@@ -176,6 +176,39 @@ describe("durable SQLite agent adapter", () => {
     expect(remaining.map((row) => row.id)).toEqual([unrelatedId]);
   });
 
+  it("stores memories without a uniqueness flag as unique, like plugin-sql", async () => {
+    const adapter = await open();
+    const plain = (text: string) => ({ ...memory(text), embedding: undefined });
+    const created = plain("created");
+    const duplicate = plain("duplicate");
+    const published = plain("published");
+    await adapter.createMemories([
+      { memory: created, tableName: "messages" },
+      { memory: duplicate, tableName: "messages", unique: false },
+    ]);
+    await adapter.publishMessageContentSegments({
+      mode: "create",
+      parent: published,
+      segments: [],
+    });
+
+    const unique = await adapter.getMemories({
+      roomId,
+      unique: true,
+      tableName: "messages",
+    });
+    expect(unique.map((row) => row.id).sort()).toEqual(
+      [created.id, published.id].sort(),
+    );
+    expect(
+      await adapter.countMemories({
+        roomIds: [roomId],
+        unique: true,
+        tableName: "messages",
+      }),
+    ).toBe(2);
+  });
+
   it("pages tasks by creation time when the later id sorts first", async () => {
     const adapter = await open();
     const earlyId = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
@@ -381,7 +414,7 @@ describe("durable SQLite agent adapter", () => {
     ).toContain(record.id);
   });
 
-  it("deletes an entity's components, sourced components and memberships with it", async () => {
+  it("deletes an entity's components, memberships, memories, relationships and logs with it", async () => {
     const adapter = await open();
     const worldId = id();
     const otherEntityId = id();
@@ -419,6 +452,34 @@ describe("durable SQLite agent adapter", () => {
       component(unrelated, otherEntityId, agentId),
     ]);
 
+    const deletedMemory = { ...memory("from the deleted contact") };
+    const keptMemory = {
+      ...memory("from the other contact"),
+      entityId: otherEntityId,
+    };
+    await adapter.ensureEmbeddingDimension(3);
+    await adapter.createMemories([
+      { memory: deletedMemory, tableName: "messages" },
+      { memory: keptMemory, tableName: "messages" },
+    ]);
+    await adapter.createRelationships([
+      { sourceEntityId: agentId, targetEntityId: entityId, tags: ["friend"] },
+      {
+        sourceEntityId: entityId,
+        targetEntityId: otherEntityId,
+        tags: ["peer"],
+      },
+      {
+        sourceEntityId: agentId,
+        targetEntityId: otherEntityId,
+        tags: ["kept"],
+      },
+    ]);
+    await adapter.createLogs([
+      { body: {}, entityId, roomId, type: "contact-log" },
+      { body: {}, entityId: otherEntityId, roomId, type: "contact-log" },
+    ]);
+
     await adapter.deleteEntities([entityId]);
 
     expect(await adapter.getEntitiesByIds([entityId])).toEqual([]);
@@ -431,6 +492,21 @@ describe("durable SQLite agent adapter", () => {
     expect(await adapter.getRoomsForParticipants([otherEntityId])).toEqual([
       roomId,
     ]);
+    expect(
+      (await adapter.getMemoriesByIds([deletedMemory.id, keptMemory.id])).map(
+        (row) => row.id,
+      ),
+    ).toEqual([keptMemory.id]);
+    expect(
+      (
+        await adapter.getRelationships({ entityIds: [agentId, otherEntityId] })
+      ).flatMap((row) => row.tags),
+    ).toEqual(["kept"]);
+    expect(
+      (await adapter.getLogs({ type: "contact-log" })).map(
+        (row) => row.entityId,
+      ),
+    ).toEqual([otherEntityId]);
   });
 
   it("rolls back domain records and runtime semantic state in one native transaction", async () => {
@@ -496,6 +572,57 @@ describe("durable SQLite agent adapter", () => {
         })
       ).map((m) => m.id),
     ).toEqual([original.id]);
+  });
+
+  it("deletes a room's components and logs with it", async () => {
+    const adapter = await open();
+    const worldId = id();
+    const otherRoomId = id();
+    await adapter.createAgents([{ id: agentId, name: "Conversation agent" }]);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["User"] }]);
+    await adapter.createWorlds([{ id: worldId, name: "Chats", agentId }]);
+    await adapter.createRooms([
+      { id: roomId, agentId, worldId, type: ChannelType.DM, source: "test" },
+      {
+        id: otherRoomId,
+        agentId,
+        worldId,
+        type: ChannelType.DM,
+        source: "test",
+      },
+    ]);
+    const component = (componentId: UUID, room: UUID) => ({
+      id: componentId,
+      entityId,
+      agentId,
+      roomId: room,
+      worldId,
+      sourceEntityId: agentId,
+      type: "room_state",
+      createdAt: 1,
+      data: {},
+    });
+    const deleted = id();
+    const kept = id();
+    await adapter.createComponents([
+      component(deleted, roomId),
+      component(kept, otherRoomId),
+    ]);
+    await adapter.createLogs([
+      { body: {}, entityId, roomId, type: "conversation-log" },
+      { body: {}, entityId, roomId: otherRoomId, type: "conversation-log" },
+    ]);
+
+    await adapter.deleteRooms([roomId]);
+
+    expect(
+      (await adapter.getComponentsByIds([deleted, kept])).map((row) => row.id),
+    ).toEqual([kept]);
+    expect(
+      (await adapter.getLogs({ type: "conversation-log" })).map(
+        (row) => row.roomId,
+      ),
+    ).toEqual([otherRoomId]);
   });
 
   it("keeps outside reads behind an awaiting transaction and supports nested rollback", async () => {
@@ -1448,6 +1575,22 @@ it("keeps another agent's tasks out of name lookup, id lookup, and writes", asyn
   expect(named.map((task) => task.id).sort()).toEqual(
     [ownedId, unscopedId].sort(),
   );
+  // A row written before create stamped the agent is still this database's.
+  const legacyId = id();
+  await storage.set("tasks", legacyId, {
+    id: legacyId,
+    name: "Legacy",
+    tags: ["queue"],
+    metadata: {},
+  });
+  const queued = await adapter.getTasks({
+    agentIds: [agentId],
+    tags: ["queue"],
+  });
+  expect(queued.map((task) => task.id).sort()).toEqual(
+    [ownedId, unscopedId, legacyId].sort(),
+  );
+  expect(await storage.get("tasks", unscopedId)).toMatchObject({ agentId });
   expect(await adapter.getTasksByIds([foreignId, ownedId])).toEqual([
     expect.objectContaining({ id: ownedId }),
   ]);

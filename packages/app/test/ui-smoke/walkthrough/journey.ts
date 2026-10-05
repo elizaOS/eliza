@@ -44,6 +44,7 @@ import {
   seedAppStorage,
   seedFirstRunCompleteBeforeLoad,
 } from "../helpers";
+import { injectFullCapabilityHost } from "../onboarding-to-home.shared";
 export type Lane = "mock" | "live";
 export const WALKTHROUGH_ACCOUNTS_RESPONSE = {
   providers: [],
@@ -369,44 +370,6 @@ async function installMutableFirstRun(page: Page): Promise<FirstRunControl> {
     },
   };
 }
-async function injectFullCapabilityHost(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const secureStore = new Map<string, string>();
-    const win = window as unknown as Record<string, unknown>;
-    win.__ELIZA_APP_API_BASE__ = window.location.origin;
-    win.__electrobunWindowId = 1;
-    // The journey advertises desktop capability so local onboarding remains
-    // selectable. Mirror the minimum native host contract as well: production
-    // now validates the bridge before registering shortcuts and tray handlers.
-    win.__ELIZA_ELECTROBUN_RPC__ = {
-      request: {
-        desktopGetVersion: async () => ({ runtime: "walkthrough-test" }),
-        desktopRegisterShortcut: async () => ({ success: true }),
-        desktopSetTrayMenu: async () => undefined,
-        secureStoreGet: async ({ kind }: { kind: string }) =>
-          secureStore.has(kind)
-            ? { ok: true, value: secureStore.get(kind) }
-            : { ok: false, reason: "not_found" },
-        secureStoreSet: async ({
-          kind,
-          value,
-        }: {
-          kind: string;
-          value: string;
-        }) => {
-          secureStore.set(kind, value);
-          return { ok: true };
-        },
-        secureStoreDelete: async ({ kind }: { kind: string }) => ({
-          ok: true,
-          deleted: secureStore.delete(kind),
-        }),
-      },
-      onMessage: () => undefined,
-      offMessage: () => undefined,
-    };
-  });
-}
 export interface ConversationStore {
   /** Names of the conversations the mock has created, in order. */
   ids(): string[];
@@ -570,6 +533,16 @@ export async function installJourneyRoutes(
     "eliza:permissions-primed": "1",
   });
   await installDefaultAppRoutes(page);
+  // The real composer reports activity to the agent host. This mock lane
+  // acknowledges the same telemetry contract without starting agent work.
+  await page.route("**/api/interactions/composer", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await fulfillJson(route, 200, {
+      ok: true,
+      activity: route.request().postDataJSON().activity,
+    });
+  });
+
   // The agent's TTS playback (e.g. the tutorial tour narrating) posts far-end
   // reference frames to this OPTIONAL echo-cancellation route. The keyless stub
   // 501s it; the route is explicitly fire-and-forget ("a missing backend must

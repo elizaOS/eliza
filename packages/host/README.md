@@ -57,3 +57,20 @@ The helper never enrolls participants or returns plaintext operator credentials.
 After validating the new key against retained data and backups, the operator
 must retire the private recovery files explicitly. Until then they retain old
 key material and block another rotation; rotation alone does not remove it.
+
+`native-host/gateway-lifecycle.mjs` acquires configured helper, task gateway,
+optional capture, reputation and HTTP server resources through explicit host
+factories. It waits for listening before reporting readiness and rolls back
+acquired resources on startup or bind failure. Shutdown attempts every release
+in reverse order, collects errors, and returns the same completion promise to
+concurrent callers. The consumer retains configuration, credentials, route
+policy, names and diagnostics; factories must clean up partial acquisitions if
+they fail before returning a resource. Real HTTP/file lifecycle regressions run
+in `test:native-host`.
+
+`native-host/gateway-bootstrap.mjs` assembles a local or native gateway from
+explicit configuration and host factories. It reads selected token/binding files,
+chooses the file store or native credential broker, prepares desktop task runtime,
+and hands resources to the shared gateway lifecycle. It does not read environment
+variables or choose product identities. Native admission validates the private
+inbound token, broker endpoint and gateway port before acquiring helpers.

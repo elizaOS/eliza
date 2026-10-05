@@ -8,9 +8,9 @@
  * with no LLM calls.
  *
  * Priority order applied by `resolveOwnerLocale`:
- *   1. `ownerLocale` (canonical, when the owner has set it)
- *   2. `detectLocaleFromText(recentMessage)` (heuristic on most-recent message)
- *   3. `defaultLocale` (caller-provided, defaults to `"en"`)
+ * 1. `ownerLocale` (canonical, when the owner has set it)
+ * 2. `detectLocaleFromText(recentMessage)` (heuristic on most-recent message)
+ * 3. `defaultLocale` (caller-provided, defaults to `"en"`)
  */
 
 /**

@@ -1,7 +1,7 @@
 import { ElizaError } from "../errors";
 import { readReminderPresentation } from "../types/reminder-presentation";
 /**
- * The humanness voice gate (#14873): the single canonical last-mile pass that
+ * The humanness voice gate: the single canonical last-mile pass that
  * rewrites any outbound literal into the agent's own natural voice before it
  * reaches a user, so a user never sees a hardcoded template, a canned status
  * string, or a raw `error.message`. The owner directive is absolute — "we
@@ -41,8 +41,8 @@ import { stripReasoningBlocks } from "./model-failure.ts";
 
 export interface EnsureAgentVoiceOptions {
 	/** Origin of the outbound text (connector source, `autonomy`, `escalation`,
-	 *  …). Part of the cache key and the reportError context so the same literal
-	 *  from two surfaces rephrases independently. */
+	 * …). Part of the cache key and the reportError context so the same literal
+	 * from two surfaces rephrases independently. */
 	source: string;
 }
 
@@ -73,8 +73,8 @@ function cacheSet(key: string, value: string): void {
 }
 
 /** Non-cryptographic FNV-1a string hash. A cache key only needs low collision
- *  probability, not cryptographic strength, and this keeps the module free of
- *  `node:crypto` so it stays safe in the browser/edge core bundles. */
+ * probability, not cryptographic strength, and this keeps the module free of
+ * `node:crypto` so it stays safe in the browser/edge core bundles. */
 function hashText(text: string): string {
 	let h = 0x811c9dc5;
 	for (let i = 0; i < text.length; i++) {

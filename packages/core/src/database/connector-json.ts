@@ -88,16 +88,16 @@ function chargeText(
 	// UTF-8 never encodes a JS string to fewer bytes than its UTF-16 code-unit
 	// length (every unit costs at least one byte, and an unpaired surrogate
 	// becomes a 3-byte U+FFFD), so a string longer than the byte ceiling is
-	// already over budget. Rejecting on .length first avoids forcing a
+	// already over budget. Rejecting on.length first avoids forcing a
 	// proportional UTF-8 allocation and full scan for a value whose rejection is
-	// certain (#24778). Strings that might still fit fall through to the precise
+	// certain. Strings that might still fit fall through to the precise
 	// byte check below, so multibyte values on the boundary stay accepted.
 	//
 	// That early rejection never measured bytes, so its context must not claim
 	// a byte count: `value.length` can understate multibyte input ("é" is 1
 	// unit / 2 bytes, "🦊" is 2 units / 4 bytes). It reports the code-unit
 	// count it measured plus the lower bound that count proves, and flags that
-	// no exact byte count exists (#24888). Only the encoded path reports
+	// no exact byte count exists. Only the encoded path reports
 	// `keyBytes` / `stringBytes`.
 	if (value.length > MAX_CONNECTOR_JSON_STRING_BYTES) {
 		return overflow(options, "leaf", {

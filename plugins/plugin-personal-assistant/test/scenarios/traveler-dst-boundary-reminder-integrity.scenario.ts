@@ -25,7 +25,7 @@
  * zone. Run keyless with `TZ=UTC`.
  *
  * Fail-without-fix anchor: replace the tz-aware `computeNextCronRunAtMs`
- * (`packages/core/src/services/triggerScheduling.ts`) with a fixed-offset
+ * (`packages/core/src/services/trigger-scheduling.ts`) with a fixed-offset
  * computation and the post-DST occurrence renders to 07:00 (not 08:00) in
  * America/New_York — the second-day local-time assertion fails.
  */

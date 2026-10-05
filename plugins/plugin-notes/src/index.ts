@@ -1,7 +1,7 @@
 /** Public runtime and domain exports for the managed Cloud Notes view. */
 
 export { notesAction } from "./action.js";
-export { NotesView, type NotesViewProps } from "./components/NotesView.js";
+export { NotesView } from "./components/NotesView.js";
 export {
   fetchNotesState,
   interact,

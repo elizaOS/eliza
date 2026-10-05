@@ -33,7 +33,7 @@ import { readFileSync } from "node:fs";
 import { isAbsolute, resolve as resolvePath } from "node:path";
 
 import { logger } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 
 /**
  * Default canonical file set, resolved relative to

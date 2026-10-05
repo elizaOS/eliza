@@ -6,6 +6,8 @@ import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 
+import { parseXmlTree } from "../../lib/android-manifest-facts.mjs";
+
 const executeFile = promisify(execFile);
 
 /** Async inspection preserves caller cancellation and optional command deadlines. */
@@ -116,35 +118,22 @@ export function parseAaptAttributeValue(encodedValue) {
 }
 
 function androidManifestTagsFromAapt(manifestText) {
+  const tree = parseXmlTree(String(manifestText), {
+    decodeAttribute: parseAaptAttributeValue,
+  });
   const tags = [];
-  const stack = [];
-  for (const line of String(manifestText).split(/\r?\n/)) {
-    const element = line.match(/^(\s*)E: ([^\s(]+)(?:\s|$)/);
-    if (element) {
-      const indent = element[1].length;
-      while (stack.length > 0 && stack.at(-1).indent >= indent) stack.pop();
-      const tag = {
-        ancestors: stack.map((ancestor) => ancestor.name),
-        attributes: new Map(),
-        indent,
-        name: element[2],
-      };
-      tags.push(tag);
-      stack.push(tag);
-      continue;
+  function visit(node, ancestors) {
+    for (const child of node.children) {
+      tags.push({
+        ancestors,
+        attributes: new Map(Object.entries(child.attrs)),
+        indent: child.indent,
+        name: child.name,
+      });
+      visit(child, [...ancestors, child.name]);
     }
-    const attribute = line.match(
-      /^(\s*)A: ([^=(]+?)(?:\(0x[0-9a-f]+\))?=(.*)$/i,
-    );
-    if (!attribute || stack.length === 0) continue;
-    const qualifiedName = attribute[2].trim();
-    stack
-      .at(-1)
-      .attributes.set(
-        qualifiedName.split(":").at(-1),
-        parseAaptAttributeValue(attribute[3]),
-      );
   }
+  visit(tree, []);
 
   return tags;
 }

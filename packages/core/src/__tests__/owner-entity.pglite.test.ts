@@ -11,7 +11,7 @@ import { resolveOwnerEntityId } from "../owner-entity";
 import { resolveOwnerEntityIdOrDefault } from "../roles";
 import { AgentRuntime } from "../runtime";
 import { ChannelType, type UUID } from "../types/primitives";
-import { stringToUuid } from "../utils";
+import { stringToUuid } from "../utils/string-to-uuid.js";
 
 const SNOWFLAKE = "123456789012345678";
 const WORLD_OWNER = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";

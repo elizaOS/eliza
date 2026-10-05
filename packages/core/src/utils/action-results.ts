@@ -49,10 +49,7 @@ export interface ActionResultReferences {
 	error?: string;
 }
 
-/**
- * Serializes complete action data for model context. `maxChars` remains in the
- * signature for source compatibility but no longer authorizes content loss.
- */
+/** Serializes complete action data for model context; maxChars does not limit content. */
 export function formatActionResultDataForPrompt(
 	data: ProviderDataRecord,
 	_maxChars?: number,

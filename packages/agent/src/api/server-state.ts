@@ -3,13 +3,9 @@
  * initialization contract separate from the HTTP listener makes first-run,
  * runtime-backed, and stopped-server states deterministic and testable.
  */
-import type { AgentRuntime } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
-import type {
-  AgentAutomationMode,
-  PluginEntry,
-  ServerState,
-} from "./server-types.ts";
+import type { AgentAutomationMode, AgentRuntime } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
+import type { PluginEntry, ServerState } from "./server-types.ts";
 
 export type InitialAgentState = Extract<
   ServerState["agentState"],

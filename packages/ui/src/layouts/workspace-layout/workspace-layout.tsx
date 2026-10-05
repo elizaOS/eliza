@@ -3,12 +3,31 @@
  * outside header placement and a mobile drawer.
  */
 import * as React from "react";
+import type { SidebarProps } from "../../components/composites/sidebar/sidebar-types";
 import { Card } from "../../components/ui/card";
 import { assignRef } from "../../lib/refs";
 import { cn } from "../../lib/utils";
 import { PageLayoutHeader } from "../page-layout/page-layout-header";
 import { PageLayoutMobileDrawer } from "../page-layout/page-layout-mobile-drawer";
-import type { WorkspaceLayoutProps } from "./workspace-layout-types";
+
+export type WorkspaceLayoutHeaderPlacement = "inside" | "outside";
+
+export interface WorkspaceLayoutProps
+  extends React.HTMLAttributes<HTMLDivElement> {
+  sidebar?: React.ReactElement<SidebarProps> | null;
+  contentHeader?: React.ReactNode;
+  contentHeaderClassName?: string;
+  contentClassName?: string;
+  contentInnerClassName?: string;
+  contentRef?: React.Ref<HTMLElement>;
+  sidebarCollapsible?: boolean;
+  mobileSidebarLabel?: React.ReactNode;
+  mobileSidebarTriggerClassName?: string;
+  contentPadding?: boolean;
+  headerPlacement?: WorkspaceLayoutHeaderPlacement;
+  footer?: React.ReactNode;
+  footerClassName?: string;
+}
 
 function useWorkspaceLayoutDesktopMode() {
   const [isDesktop, setIsDesktop] = React.useState(() => {

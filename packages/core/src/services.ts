@@ -11,7 +11,7 @@ import type { IAgentRuntime } from "./types/runtime.js";
 import type { ServiceTypeName } from "./types/service.js";
 import { Service } from "./types/service.js";
 
-// ServiceClass is exported from ./types/plugin.ts - don't re-define here
+// ServiceClass is exported from./types/plugin.ts - don't re-define here
 // to avoid duplicate export errors. The generic version is defined below.
 
 /**

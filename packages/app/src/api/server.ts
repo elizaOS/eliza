@@ -43,7 +43,6 @@ import {
   resolveDefaultAgentWorkspaceDir,
   resolveMcpServersRejection,
   resolvePluginConfigMutationRejections,
-  resolveUserPath,
   routeAutonomyTextToUser,
   saveElizaConfig,
   streamResponseBodyWithByteLimit,
@@ -56,9 +55,15 @@ import {
   createRuntimeAccountStoragePolicy,
   DIRECT_ACCOUNT_PROVIDER_ENV,
 } from "@elizaos/auth/auth";
+import {
+  type AgentRuntime,
+  logger,
+  resolveStateDir,
+  resolveUserPath,
+} from "@elizaos/core";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
-import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
+
 import {
   type ElizaConfig,
   getHttpRuntime,

@@ -141,6 +141,120 @@ describe("GoogleGmailAdapter", () => {
     const bounded = await new GoogleGmailAdapter().listMessages(runtime, { limit: 3 });
     expect(bounded.map((message) => message.externalId).sort()).toEqual(ids.slice(0, 3));
   });
+  it("filters channels and time at the provider before applying the limit", async () => {
+    // Newest first: three sent-only matches, then inbox mail whose first
+    // label is not INBOX, then a user-labelled message.
+    const mailbox = [
+      { id: "sent_3", labelIds: ["SENT"], at: 9_000 },
+      { id: "sent_2", labelIds: ["SENT"], at: 8_000 },
+      { id: "sent_mid", labelIds: ["SENT"], at: 7_500 },
+      { id: "sent_1", labelIds: ["SENT"], at: 7_000 },
+      { id: "inbox_2", labelIds: ["UNREAD", "IMPORTANT", "INBOX"], at: 6_000 },
+      { id: "inbox_1", labelIds: ["CATEGORY_UPDATES", "INBOX"], at: 5_000 },
+      { id: "custom", labelIds: ["Label_7"], at: 1_000 },
+      { id: "trash", labelIds: ["TRASH"], at: 500 },
+    ];
+    const listCalls: Array<{ q: string; labelIds?: string[] }> = [];
+    const client = new GoogleGmailClient({
+      gmail: async () => ({
+        users: {
+          messages: {
+            list: async (request: {
+              q: string;
+              labelIds?: string[];
+              maxResults: number;
+              includeSpamTrash?: boolean;
+            }) => {
+              listCalls.push({ q: request.q, labelIds: request.labelIds });
+              const after = /after:(\d+)/.exec(request.q);
+              const rows = mailbox.filter(
+                (row) =>
+                  (!request.q.includes("in:inbox") || row.labelIds.includes("INBOX")) &&
+                  (request.includeSpamTrash ||
+                    !row.labelIds.some((label) => ["SPAM", "TRASH"].includes(label))) &&
+                  (request.labelIds ?? []).every((label) => row.labelIds.includes(label)) &&
+                  (!after || row.at / 1000 > Number(after[1]))
+              );
+              return { data: { messages: rows.slice(0, request.maxResults) } };
+            },
+            get: async ({ id }: { id: string }) => {
+              const row = mailbox.find((candidate) => candidate.id === id);
+              return {
+                data: {
+                  id,
+                  threadId: `thread_${id}`,
+                  snippet: "invoice",
+                  labelIds: row?.labelIds,
+                  internalDate: String(row?.at),
+                  payload: {
+                    headers: [
+                      { name: "Subject", value: `subject ${id}` },
+                      { name: "From", value: "sender@example.com" },
+                      { name: "To", value: "owner@example.com" },
+                    ],
+                  },
+                },
+              };
+            },
+          },
+        },
+      }),
+    } as unknown as GoogleApiClientFactory);
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: client.listGmailTriageMessages.bind(client),
+      searchGmailMessages: client.searchGmailMessages.bind(client),
+    });
+    const adapter = new GoogleGmailAdapter();
+
+    const inbox = await adapter.searchMessages(runtime, {
+      content: "invoice",
+      channelIds: ["INBOX"],
+      limit: 2,
+    });
+    expect(inbox.map((message) => message.externalId)).toEqual(["inbox_2", "inbox_1"]);
+    // The channel is the mailbox, not the first (state) label.
+    expect(inbox.map((message) => message.channelId)).toEqual(["INBOX", "INBOX"]);
+
+    const either = await adapter.listMessages(runtime, {
+      channelIds: ["Label_7", "INBOX"],
+      limit: 3,
+    });
+    expect(either.map((message) => message.externalId).sort()).toEqual([
+      "custom",
+      "inbox_1",
+      "inbox_2",
+    ]);
+    expect(either.find((message) => message.externalId === "custom")?.channelId).toBe("Label_7");
+
+    const trash = await adapter.listMessages(runtime, { channelIds: ["TRASH"], limit: 1 });
+    expect(trash.map((message) => message.externalId)).toEqual(["trash"]);
+
+    const defaultInbox = await adapter.listMessages(runtime, { sinceMs: 4_500, limit: 2 });
+    expect(defaultInbox.map((message) => message.externalId).sort()).toEqual([
+      "inbox_1",
+      "inbox_2",
+    ]);
+
+    const recent = await adapter.searchMessages(runtime, { sinceMs: 7_500, limit: 5 });
+    expect(recent.map((message) => message.externalId).sort()).toEqual([
+      "sent_2",
+      "sent_3",
+      "sent_mid",
+    ]);
+    expect(listCalls.at(-1)?.q).toBe("in:anywhere after:6");
+
+    const wholeSecondBoundary = await adapter.searchMessages(runtime, {
+      sinceMs: 7_000,
+      limit: 5,
+    });
+    expect(wholeSecondBoundary.map((message) => message.externalId).sort()).toEqual([
+      "sent_1",
+      "sent_2",
+      "sent_3",
+      "sent_mid",
+    ]);
+    expect(listCalls.at(-1)?.q).toBe("in:anywhere after:6");
+  });
   it.each(["byte", "line", "fragment"] as const)(
     "returns complete %s content with no implicit limit",
     async (unit) => {

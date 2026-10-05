@@ -258,8 +258,8 @@ function buildAbortSignal(params: {
  * - Validates URL protocol (http/https only)
  * - With a `lookupFn`: resolves and pins DNS to also defend against rebinding
  * - Without a `lookupFn`: synchronous literal-host checks (blocks private/
- *   loopback/link-local IPs and internal hostnames) — usable from
- *   environment-agnostic core, but no rebinding protection
+ * loopback/link-local IPs and internal hostnames) — usable from
+ * environment-agnostic core, but no rebinding protection
  * - Follows redirects manually, re-validating every hop
  * - Supports timeout and abort signals
  */
@@ -278,7 +278,7 @@ export async function fetchWithSsrfGuard(
 	const pinnedFetchImpl =
 		params.pinnedFetchImpl ?? nodeDefaults?.pinnedFetchImpl;
 
-	// Fail CLOSED on the footgun that re-creates #11147: a `lookupFn` computes a
+	// Fail CLOSED on the footgun that re-creates: a `lookupFn` computes a
 	// DNS pin, but without a `pinnedFetchImpl` to connect to that pinned IP the
 	// request falls through to the unpinned `fetcher` — the pin is computed and
 	// then silently discarded, re-opening the DNS-rebinding race the lookup was
@@ -359,7 +359,7 @@ export async function fetchWithSsrfGuard(
 				// (Cloudflare Workers / environment-agnostic core). It blocks literal
 				// internal targets but CANNOT defend against DNS rebinding (a public
 				// name that flips to a private address between check and connect,
-				// #12229 M5); on the edge that residual must be closed by a Cloudflare
+				// M5); on the edge that residual must be closed by a Cloudflare
 				// egress policy denying RFC1918/link-local, or by routing outbound
 				// through a resolve-and-connect-by-IP proxy. Operator follow-up.
 				//

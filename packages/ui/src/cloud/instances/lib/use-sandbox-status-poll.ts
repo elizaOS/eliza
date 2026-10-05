@@ -11,7 +11,7 @@
 import type { NormalizedAgentListItemDto } from "@elizaos/cloud-sdk";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api-client";
-import { parseAgentsResponse } from "./data/eliza-agents";
+import { parseAgentsResponse } from "./eliza-agents";
 
 export type SandboxStatus =
   | "pending"

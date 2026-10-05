@@ -469,11 +469,8 @@ export type TrajectoryAnnotateParams = {
 	appendChildSteps?: string[];
 	usedSkills?: string[];
 	/**
-	 * Per-skill invocation records to append to the step. Closes M13
-	 * (W1-T5). Each record carries the (skillSlug, args, result,
-	 * durationMs, parentStepId) shape produced by `captureSkillInvocationIO`.
-	 * Implementations must append (not replace) so multiple skill invocations
-	 * inside the same step accumulate.
+	 * Per-skill invocation records with arguments, result, duration, success, and invocation
+	 * identity.
 	 */
 	appendSkillInvocations?: TrajectorySkillInvocationRecord[];
 };
@@ -920,7 +917,7 @@ export type ModelCallRecordingState = { recorded: boolean };
  * Open a request-local recording scope around a single `useModel()` call.
  *
  * Returns the live mutable store so the caller can read `.recorded` at the
- * actual decision point — which may be AFTER streaming completes (#17532).
+ * actual decision point — which may be AFTER streaming completes.
  *
  * For deferred-streaming providers (e.g. plugin-xai grok.ts), the handler
  * returns a TextStreamResult immediately, but `recordLlmCall` only resolves
@@ -944,7 +941,7 @@ export async function runWithModelCallRecordingScope<T>(
  * consume a deferred stream whose provider finalizer calls
  * `markProviderRecordedCall()`. Async generators do not retain
  * AsyncLocalStorage context from their creation, so we must re-establish the
- * scope around stream consumption (#17532).
+ * scope around stream consumption.
  */
 export function runInModelCallRecordingScope<T>(
 	recordingState: ModelCallRecordingState,
@@ -1256,7 +1253,7 @@ export function logActiveTrajectoryLlmCall(
 	// single chokepoint for ALL provider-level trajectory logging — whether
 	// called via `recordLlmCall` or directly (e.g. plugin-openai live
 	// streaming). Centralizing here ensures every successful provider record
-	// suppresses the generic `useModel` fallback (#17532).
+	// suppresses the generic `useModel` fallback.
 	markProviderRecordedCall();
 
 	return true;
@@ -1350,7 +1347,7 @@ export async function recordLlmCall<T>(
 	// entirely from its recordLlmCall detail, and plugin-openai's buffered-stream
 	// path records before the buffered usage resolves. Because the generic
 	// useModel fallback is suppressed once this provider record lands
-	// (#17532), failing to backfill here would silently lose token/cost
+	//, failing to backfill here would silently lose token/cost
 	// attribution for those providers. Normalize result.usage into any missing
 	// token field, never overwriting an explicitly provider-supplied value.
 	const tokenFields = normalizeTokenFieldsFromResult(result, details);
@@ -1370,7 +1367,7 @@ export async function recordLlmCall<T>(
  * preserving any value the caller already supplied in `details`. AI SDK
  * `usage` carries `promptTokens`/`completionTokens` plus the cache variants;
  * older shapes use `input`/`output` aliases. Returns only the fields that were
- * missing, so the caller controls what wins (#17532 token backfill).
+ * missing, so the caller controls what wins.
  */
 function normalizeTokenFieldsFromResult(
 	result: unknown,
@@ -1753,7 +1750,7 @@ export async function spawnWithTrajectoryLink<T>(
  * Bench-eval harnesses, optimizer self-judge calls, etc. register themselves
  * once at module load:
  *
- *   registerTrajectorySource("plugin-action-bench", {excludeFromTraining: true});
+ * registerTrajectorySource("plugin-action-bench", {excludeFromTraining: true});
  *
  * Then any pipeline that reads trajectories before training (the privacy
  * filter / nightly export / on-demand orchestrator) checks

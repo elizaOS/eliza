@@ -54,11 +54,11 @@ export type ClientCommandAction =
 
 /**
  * Where a command executes — the single discriminant every surface routes on:
- *   - `agent`    → the command runs through the agent (a deterministic command
- *                  action handles it; `action` names that handler when known).
- *   - `navigate` → opens a destination in the Eliza app; `path` is the in-app
- *                  deep link, `tab`/`viewId`/`section` are routing hints.
- *   - `client`   → a GUI/TUI-only behavior with no remote surface.
+ * - `agent` → the command runs through the agent (a deterministic command
+ * action handles it; `action` names that handler when known).
+ * - `navigate` → opens a destination in the Eliza app; `path` is the in-app
+ * deep link, `tab`/`viewId`/`section` are routing hints.
+ * - `client` → a GUI/TUI-only behavior with no remote surface.
  */
 export type CommandTarget =
 	| { kind: "agent"; action?: string }
@@ -123,7 +123,7 @@ export interface CommandDefinition {
 	 * the command catalog while one of these views is the active (foreground)
 	 * surface. Omitted/undefined = globally available (the default). A non-empty
 	 * list scopes the command to those views — e.g. a `/calendar add` command that
-	 * only makes sense while the calendar view is open. (#8798)
+	 * only makes sense while the calendar view is open.
 	 */
 	views?: string[];
 }

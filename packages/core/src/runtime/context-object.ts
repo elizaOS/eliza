@@ -1,8 +1,5 @@
 /**
- * Constructors for the per-turn `ContextObject` — the accumulator holding the
- * static and trajectory prefixes plus the append-only event log the renderer
- * replays into a stage's messages. `createContextObject` seeds one at schema
- * version "v5"; `appendContextEvent` returns a copy with one event added.
+ * Constructs per-turn context objects with static prefixes and an append-only event log.
  */
 import type { ContextEvent, ContextObject } from "../types/context-object";
 

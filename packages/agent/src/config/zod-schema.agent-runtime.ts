@@ -201,26 +201,11 @@ const makeToolPolicySchema = (scope: string) =>
     validateStoredToolPolicy(scope, value, ctx);
   });
 
-// `provider`, `apiKey` and `perplexity` are retired: WEB_SEARCH is keyless and
-// no runtime path reads them. They stay accepted so an existing config file
-// that still carries them keeps validating; the settings surface no longer
-// offers them.
 export const ToolsWebSearchSchema = z
   .object({
-    enabled: z.boolean().optional(),
-    provider: z.union([z.literal("brave"), z.literal("perplexity")]).optional(),
-    apiKey: z.string().optional(),
     maxResults: z.number().int().positive().optional(),
     timeoutSeconds: z.number().int().positive().optional(),
     cacheTtlMinutes: z.number().nonnegative().optional(),
-    perplexity: z
-      .object({
-        apiKey: z.string().optional(),
-        baseUrl: z.string().optional(),
-        model: z.string().optional(),
-      })
-      .strict()
-      .optional(),
   })
   .strict()
   .optional();

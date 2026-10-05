@@ -81,18 +81,7 @@ export class TaskService extends Service {
 	private executingTaskPromises = new Set<Promise<void>>();
 	/** When false, checkTasks skips the DB query. Set true by markDirty(); start true so first tick always queries. WHY: avoid redundant getTasks every second when nothing changed. */
 	private tasksDirty = true;
-	/**
-	 * Task IDs already self-healed for a missing worker (#SHADOW-ACCOUNT-DEBUG).
-	 * WHY: an orphaned task — one whose worker is not registered in THIS build
-	 * (e.g. a repeat task created by an older build whose worker name changed, or
-	 * a plugin that no longer loads) — otherwise fails validation every 1s tick
-	 * FOREVER: it never reaches executeTask (the only place that deletes/pauses),
-	 * so it re-emits TASK_WORKER_MISSING → TASK_TICK_FAILED every second. That
-	 * loop is what narrated into Shadow's chat 9× via the RECENT_ERRORS provider
-	 * + repeat-failure escalation. Self-heal (pause repeat / delete non-repeat)
-	 * fixes the source; this set makes the ONE diagnostic per orphan idempotent
-	 * so a transient getTasks/update failure can't re-narrate on the next tick.
-	 */
+	/** Tracks tasks quarantined for missing workers, preventing repeated diagnostics while pause/delete operations settle. */
 	private quarantinedOrphans = new Set<string>();
 	/**
 	 * Service construction time (epoch-ms). A missing worker inside
@@ -645,7 +634,7 @@ export class TaskService extends Service {
 				// execute-and-delete lifecycle — pauseTask() promises that ticks
 				// after the pause skip the row until resumeTask(). The repeat
 				// branch below has its own paused skip; this mirrors it for
-				// one-shots (#24277). A tick that captured this snapshot before
+				// one-shots. A tick that captured this snapshot before
 				// pauseTask persisted may still run once — documented as
 				// already-selected-work semantics on pauseTask().
 				if (task.metadata?.paused === true) {
@@ -676,7 +665,7 @@ export class TaskService extends Service {
 				continue;
 			}
 
-			// Resolve lastRan (updatedAt) with backward-compat fallback
+			// Use updatedAt for lastRan, then the stored fallback.
 			let lastRan: number;
 			if (
 				task.metadata?.updatedAt != null &&

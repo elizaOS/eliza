@@ -304,24 +304,12 @@ export type ToolsConfig = {
   byProvider?: Record<string, ToolPolicyConfig>;
   web?: {
     search?: {
-      /** @deprecated Accepted for legacy configuration compatibility; does not control WEB_SEARCH availability. */
-      enabled?: boolean;
-      /** @deprecated Accepted for legacy configuration compatibility; WEB_SEARCH is keyless. */
-      provider?: "brave" | "perplexity";
-      /** @deprecated Accepted for legacy configuration compatibility; unused by WEB_SEARCH. */
-      apiKey?: string;
       /** Default search results count (1-10). */
       maxResults?: number;
       /** Timeout in seconds for search requests. */
       timeoutSeconds?: number;
       /** Cache TTL in minutes for search results. */
       cacheTtlMinutes?: number;
-      /** @deprecated Accepted for legacy configuration compatibility; unused by WEB_SEARCH. */
-      perplexity?: {
-        apiKey?: string;
-        baseUrl?: string;
-        model?: string;
-      };
     };
     fetch?: {
       /** Enable web fetch tool (default: true). */

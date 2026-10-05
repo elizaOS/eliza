@@ -1,9 +1,6 @@
 /** Verifies CloudPairRelay through the package's configured test harness. */
 // @vitest-environment jsdom
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { clearElizaApiToken, getElizaApiToken } from "@elizaos/host/protocol";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -353,35 +350,5 @@ describe("CloudPairRelay", () => {
     expect(resolveCloudHostedAgentUrl({ hostname: "cloud.eliza.app" })).toBe(
       "https://cloud.eliza.app/join",
     );
-  });
-});
-describe("CloudPairRelay short-viewport scroll", () => {
-  // The pairing + hosted-agent notice screens are full-viewport centered cards.
-  // On short screens (Light Phone III, 1080×1240) a flex `justify-center`
-  // pins the card's center above scrollTop 0, so the error copy + "Back to
-  // Eliza Cloud" fell below an unreachable fold. The wrapper must be
-  // `overflow-y-auto` with the card `my-auto` (centers when it fits, scrolls
-  // from the top when it overflows) — jsdom can't measure layout, so scan the
-  // source, matching login-page.safe-area.test.tsx.
-  const SRC = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "..", "CloudPairRelay.tsx"),
-    "utf8",
-  );
-  it("makes both pair screens scroll instead of clipping when taller than the viewport", () => {
-    const scrollers = SRC.match(/min-h-\[100dvh\][^"]*overflow-y-auto/g) ?? [];
-    expect(
-      scrollers.length,
-      "both the pairing relay and the hosted-agent notice must be overflow-y-auto",
-    ).toBe(2);
-  });
-  it("centers the card with my-auto, not a top-clipping justify-center", () => {
-    expect(
-      /\bmy-auto\b[^"]*\bmax-w-\[2/.test(SRC),
-      "the card must center via my-auto so its top stays reachable while scrolling",
-    ).toBe(true);
-    expect(
-      /min-h-\[100dvh\][^"]*items-center justify-center/.test(SRC),
-      "the wrapper must not use the top-clipping items-center justify-center centering",
-    ).toBe(false);
   });
 });

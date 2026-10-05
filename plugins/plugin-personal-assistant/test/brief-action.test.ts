@@ -1346,8 +1346,8 @@ describe("BRIEF umbrella action — Daily Operations", () => {
           },
         );
         const google = {
-          listGmailTriageMessages: fetchMessages,
-          searchGmailMessages: vi.fn(async () => []),
+          listGmailTriageMessages: vi.fn(async () => []),
+          searchGmailMessages: fetchMessages,
           getGmailMessageDetail: vi.fn(async () => null),
           getGmailMessageRevision: vi.fn(async () => "v1"),
           sendGmailReply: vi.fn(),
@@ -1458,6 +1458,15 @@ describe("BRIEF umbrella action — Daily Operations", () => {
           });
           const briefing = result.data?.briefing as LifeOpsBriefing;
           expect(result.success).toBe(true);
+          // A time-bounded brief filters at the provider before pagination.
+          expect(google.listGmailTriageMessages).not.toHaveBeenCalled();
+          for (const [request] of fetchMessages.mock.calls) {
+            expect(request).toEqual(
+              expect.objectContaining({
+                query: expect.stringMatching(/^in:inbox after:\d+$/),
+              }),
+            );
+          }
           if (
             [
               "default-disconnected",

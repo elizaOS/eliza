@@ -1,12 +1,4 @@
-/**
- * Canonical type definitions shared between the agent API server and the UI
- * client. These types describe the HTTP contract and must not contain
- * Node.js-only imports or React-specific code so they remain importable in
- * both environments.
- *
- * Previously each package held its own copy. The authoritative definitions
- * live here; agent and UI now import from @elizaos/core.
- */
+/** HTTP contracts shared by the agent server and browser clients. Keep this module free of Node and UI dependencies. */
 
 import type { UUID } from "../types/primitives.js";
 import type {
@@ -17,14 +9,7 @@ import type {
 	TriggerType,
 	TriggerWakeMode,
 } from "../types/trigger.js";
-/**
- * Wire protocol a chat client advertises in the stream POST body to opt into
- * delta framing (deltas + geometric snapshots instead of a full-text snapshot
- * per token). The server only switches framing when this exact literal is
- * present, so old servers ignore the unknown field and old clients keep the
- * legacy per-token `fullText`. Single source of truth for both the agent SSE
- * writer (`@elizaos/agent` chat-routes) and the UI stream client.
- */
+/** Clients request delta framing with this exact protocol literal. Without it, the server emits full-text snapshots. */
 export const DELTA_STREAM_PROTOCOL = "delta-v2" as const;
 
 export type DeltaStreamProtocol = typeof DELTA_STREAM_PROTOCOL;
@@ -41,12 +26,7 @@ export interface StreamEventEnvelope {
 	runId?: string;
 	/** Per-event ordinal within an agent run (NOT the buffer sequence). */
 	seq?: number;
-	/**
-	 * Monotonic per-agent buffer sequence, mirroring the integer portion of
-	 * `eventId`. Used as the cursor for WS reconnect replay so a client can ask
-	 * the server to replay only events with `bufferSeq > lastApplied`. Optional
-	 * for backward compatibility with envelopes that predate the cursor.
-	 */
+	/** Monotonic per-agent sequence for reconnect replay. Request entries with bufferSeq greater than the last applied value; envelopes may omit the cursor. */
 	bufferSeq?: number;
 	stream?: string;
 	sessionKey?: string;

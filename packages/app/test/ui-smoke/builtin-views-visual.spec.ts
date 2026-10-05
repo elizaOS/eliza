@@ -13,6 +13,7 @@ import {
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
+import { assertHeaderlessViewChrome } from "./helpers/view-header";
 
 /**
  * Visual coverage for the BUILTIN views — the pages rendered directly by the
@@ -34,6 +35,7 @@ const BUILTIN_VIEW_CASES: Array<{
   id: string;
   path: string;
   readySelector?: string;
+  headerless?: boolean;
 }> = [
   { id: "chat", path: "/chat" },
   { id: "phone", path: "/phone" },
@@ -52,6 +54,7 @@ const BUILTIN_VIEW_CASES: Array<{
     id: "documents",
     path: "/character/documents",
     readySelector: '[data-testid="documents-view"]',
+    headerless: true,
   },
   { id: "files", path: "/apps/files" },
   { id: "plugins", path: "/apps/plugins" },
@@ -112,6 +115,11 @@ test.describe("builtin views visual coverage (desktop + mobile)", () => {
         if (view.readySelector) {
           await expect(page.locator(view.readySelector)).toBeVisible({
             timeout: 60_000,
+          });
+        }
+        if (view.headerless) {
+          await assertHeaderlessViewChrome(page, {
+            within: view.readySelector,
           });
         }
         // A view is "rendered" if it shows readable text OR interactive/visual

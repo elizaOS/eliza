@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { DEFAULT_THEME, mergeTheme } from "./theme.js";
 import type {
   LoginAuthConfig,
   LoginAuthContextValue,
@@ -24,7 +25,6 @@ import type {
   TenantFeatureFlags,
   TenantTheme,
 } from "./types.js";
-import { DEFAULT_THEME, mergeTheme } from "./utils/theme.js";
 
 const DEFAULT_FEATURES: TenantFeatureFlags = {
   showFundingQR: true,
@@ -892,10 +892,10 @@ export function LoginProvider({
 /**
  * Access the elizaOS context. Must be used inside <LoginProvider>.
  */
-export function useLoginContext(): LoginContextValue {
+export function useLogin(): LoginContextValue {
   const ctx = useContext(LoginContext);
   if (!ctx) {
-    throw new Error("useLoginContext must be used within a <LoginProvider>");
+    throw new Error("useLogin must be used within a <LoginProvider>");
   }
   return ctx;
 }

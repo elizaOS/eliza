@@ -1,48 +1,9 @@
 /**
- * ResponseHandlerFieldEvaluator — registration pattern for the Stage-1 response
- * handler's structured output.
- *
- * The Stage-1 LLM call (`ModelType.RESPONSE_HANDLER`) populates a single flat
- * JSON object via the HANDLE_RESPONSE tool. Each top-level property of that
- * object is owned by a registered `ResponseHandlerFieldEvaluator`. The runtime:
- *
- *   1. Collects all registered evaluators (core + plugins).
- *   2. Filters by `shouldRun(ctx)` — per-turn activation gate.
- *   3. Composes ONE JSON schema (all active evaluators contribute one slice).
- *   4. Composes ONE prompt (each active evaluator contributes one slice).
- *   5. Calls the LLM once.
- *   6. Dispatches each parsed field value to its owning evaluator's
- *      `handle(value, ctx)` in priority order. Handlers mutate the
- *      MessageHandlerResult and may emit side effects (abort, retrieval,
- *      memory writes, etc).
- *
- * Schema stability for caching:
- *
- * - The composed schema is BYTE-STABLE across turns provided the registered
- *   set is stable. Plugin load is the only time the schema changes.
- * - `shouldRun` does NOT add or remove fields from the schema — it controls
- *   whether the field's prompt slice is included (so the LLM is instructed
- *   to populate it) and whether the field's handler runs after parse.
- *   The field stays declared in the schema (typed as the field's `schema` |
- *   the empty default), so the schema bytes are identical every turn.
- *
- * Required-by-default:
- *
- * - All fields are REQUIRED. The LLM must populate every field. For N/A
- *   the LLM emits the field's declared empty value (empty array, empty
- *   string, "IGNORE", etc.). This eliminates the "did the model skip this
- *   field?" failure mode and maps cleanly to OpenAI strict mode and
- *   Anthropic tool-use schema validation.
- *
- * Pipeline handler semantics:
- *
- * - Handlers run in priority order. Earlier handlers can short-circuit the
- *   rest by calling `ctx.preempt(reason)` — this is how abort works: the
- *   threadOps handler calls `runtime.abortTurn` and preempts, suppressing
- *   the subsequent route-to-planner step.
- * - Handlers receive the FULL parsed object plus their own field's value.
- *   They can read sibling values but should not mutate them — mutations
- *   go through the messageHandler result object.
+ * Field evaluators own the schema, prompt contribution, and handler for each structured
+ * response field. All fields remain required for stable schema bytes; shouldRun controls
+ * prompt and handler activation, with empty defaults for inactive fields. Handlers run in
+ * priority order, mutate the shared result, and may abort further processing. Sibling parsed
+ * values remain read-only.
  */
 
 import type { ReplyEffectStatus } from "../types/components";
@@ -51,9 +12,7 @@ import type { JSONSchema } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
-// ---------------------------------------------------------------------------
 // Result shape
-// ---------------------------------------------------------------------------
 
 /**
  * Sender-role classification piped through Stage 1. Re-exported here as a
@@ -71,16 +30,16 @@ export type ResponseHandlerSenderRole =
  * The flat, all-required result of one Stage-1 LLM call.
  *
  * Field ownership:
- *   shouldRespond        - core
- *   contexts             - core
- *   intents              - core
- *   candidateActionNames - core
- *   replyText            - core
- *   facts                - core (memory pipeline)
- *   relationships        - core (memory pipeline)
- *   addressedTo          - core (memory pipeline)
- *   threadOps            - app-lifeops (includes abort)
- *   <plugin fields>      - registered by plugins
+ * shouldRespond - core
+ * contexts - core
+ * intents - core
+ * candidateActionNames - core
+ * replyText - core
+ * facts - core (memory pipeline)
+ * relationships - core (memory pipeline)
+ * addressedTo - core (memory pipeline)
+ * threadOps - app-lifeops (includes abort)
+ * <plugin fields> - registered by plugins
  *
  * The type is open at the top level (other plugins can contribute arbitrary
  * additional fields) but is keyed by `string` so all paths through the
@@ -104,9 +63,7 @@ export interface ResponseHandlerResult {
 	[extra: string]: unknown;
 }
 
-// ---------------------------------------------------------------------------
 // Context passed to evaluators
-// ---------------------------------------------------------------------------
 
 /**
  * Context passed to `shouldRun` and `handle`. Read-only view of the runtime
@@ -136,19 +93,17 @@ export interface ResponseHandlerFieldHandleContext<TValue>
 	readonly parsed: Readonly<ResponseHandlerResult>;
 }
 
-// ---------------------------------------------------------------------------
 // Per-field result emitted by handlers
-// ---------------------------------------------------------------------------
 
 /**
  * What a handler can affect:
  *
  * - `mutateResult(result)` — patch the running ResponseHandlerResult.
- *   Use sparingly; prefer letting downstream consumers read the parsed
- *   value directly.
+ * Use sparingly; prefer letting downstream consumers read the parsed
+ * value directly.
  * - `preempt: {reason}` — stop processing remaining handlers and route to
- *   a terminal outcome. Used by abort (skip planner, skip reply send) and
- *   by IGNORE/STOP equivalents.
+ * a terminal outcome. Used by abort (skip planner, skip reply send) and
+ * by IGNORE/STOP equivalents.
  * - `debug` — strings recorded into the trace for observability.
  */
 export interface ResponseHandlerFieldEffect {
@@ -157,10 +112,10 @@ export interface ResponseHandlerFieldEffect {
 		/**
 		 * What to do instead of the default route-to-planner / send-reply flow.
 		 *
-		 *   - "ack-and-stop": agent emits a short ack reply and stops (used by
-		 *     abort, where the abort handler has already shut down in-flight work).
-		 *   - "ignore": agent emits nothing.
-		 *   - "direct-reply": agent uses the current `replyText` as the final reply.
+		 * - "ack-and-stop": agent emits a short ack reply and stops (used by
+		 * abort, where the abort handler has already shut down in-flight work).
+		 * - "ignore": agent emits nothing.
+		 * - "direct-reply": agent uses the current `replyText` as the final reply.
 		 */
 		mode: "ack-and-stop" | "ignore" | "direct-reply";
 		reason: string;
@@ -168,9 +123,7 @@ export interface ResponseHandlerFieldEffect {
 	debug?: string[];
 }
 
-// ---------------------------------------------------------------------------
 // The evaluator contract
-// ---------------------------------------------------------------------------
 
 /**
  * A ResponseHandlerFieldEvaluator owns one top-level property of the
@@ -196,16 +149,16 @@ export interface ResponseHandlerFieldEvaluator<TValue = unknown> {
 	 */
 	description: string;
 
-	/** Legacy short description retained for data compatibility; prompt rendering always uses `description`. */
+	/** Short description for stored metadata; prompt rendering uses description. */
 	descriptionCompressed?: string;
 
 	/**
 	 * Execution order. Lower runs first. Defaults to 100. Conventions:
 	 *
-	 *   0-19   - core routing fields (shouldRespond, contexts)
-	 *   20-49  - plugin-contributed action surfaces (threadOps, calendar, etc.)
-	 *   50-79  - retrieval hints (candidateActionNames)
-	 *   80-99  - extract/memory pipeline (facts, relationships, addressedTo)
+	 * 0-19 - core routing fields (shouldRespond, contexts)
+	 * 20-49 - plugin-contributed action surfaces (threadOps, calendar, etc.)
+	 * 50-79 - retrieval hints (candidateActionNames)
+	 * 80-99 - extract/memory pipeline (facts, relationships, addressedTo)
 	 */
 	priority?: number;
 
@@ -226,12 +179,12 @@ export interface ResponseHandlerFieldEvaluator<TValue = unknown> {
 	 * Per-turn activation gate.
 	 *
 	 * - When `true` (default if omitted): the evaluator's prompt slice is
-	 *   included in the system prompt; the LLM is instructed to populate
-	 *   the field. The field's handler runs after parse.
+	 * included in the system prompt; the LLM is instructed to populate
+	 * the field. The field's handler runs after parse.
 	 * - When `false`: the prompt slice is omitted (no instruction to
-	 *   populate); after parse, the handler is skipped. The field stays
-	 *   declared in the schema for cache stability — the LLM emits the
-	 *   declared empty value.
+	 * populate); after parse, the handler is skipped. The field stays
+	 * declared in the schema for cache stability — the LLM emits the
+	 * declared empty value.
 	 *
 	 * Must be cheap. Avoid LLM calls or heavy I/O. Database lookups acceptable
 	 * if cached.
@@ -249,12 +202,12 @@ export interface ResponseHandlerFieldEvaluator<TValue = unknown> {
 	 * Two failure modes (lifted from BAML's @check vs @assert):
 	 *
 	 * - Return `null` — soft fail. The field is treated as empty; the
-	 *   evaluator's handler is skipped. Logged for observability. Other
-	 *   fields still process.
+	 * evaluator's handler is skipped. Logged for observability. Other
+	 * fields still process.
 	 * - Throw — hard fail. The whole Stage-1 call surfaces an error to the
-	 *   caller. Use this for invariants you absolutely cannot proceed past
-	 *   (e.g., schema parse succeeded but the value references a forbidden
-	 *   resource).
+	 * caller. Use this for invariants you absolutely cannot proceed past
+	 * (e.g., schema parse succeeded but the value references a forbidden
+	 * resource).
 	 */
 	parse?(value: unknown, ctx: ResponseHandlerFieldContext): TValue | null;
 
@@ -274,10 +227,8 @@ export interface ResponseHandlerFieldEvaluator<TValue = unknown> {
 		| Promise<ResponseHandlerFieldEffect | undefined>;
 }
 
-// ---------------------------------------------------------------------------
 // Run trace — recorded per turn for observability and InterruptBench
 // assertions.
-// ---------------------------------------------------------------------------
 
 export interface ResponseHandlerFieldTrace {
 	fieldName: string;

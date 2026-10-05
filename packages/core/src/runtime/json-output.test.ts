@@ -1,6 +1,6 @@
 /**
  * A shared non-cyclic reference (the same object reachable from two keys) must
- * be preserved by diagnostic serialization; only true cycles collapse (#31004).
+ * be preserved by diagnostic serialization; only true cycles collapse.
  */
 import { describe, expect, it } from "vitest";
 import { stringifyForDiagnostics } from "./json-output.js";
