@@ -200,55 +200,12 @@ describe("unified host migration", () => {
   it("redirects legacy browser routes while preserving path and query", () => {
     expect(
       resolveCanonicalPageRedirect(
-        "https://elizacloud.ai/dashboard/billing?source=legacy",
-      ),
-    ).toBe("https://cloud.eliza.app/cloud/billing?source=legacy");
-    expect(
-      resolveCanonicalPageRedirect(
         "https://app.elizacloud.ai/settings?tab=billing",
       ),
     ).toBe("https://cloud.eliza.app/settings?tab=billing");
     expect(
       resolveCanonicalPageRedirect("https://www.eliza.app/downloads"),
     ).toBe("https://eliza.app/downloads");
-    expect(
-      resolveCanonicalPageRedirect(
-        "https://eliza.app/dashboard/agents?source=bookmark",
-      ),
-    ).toBe("https://cloud.eliza.app/cloud/agents?source=bookmark");
-  });
-
-  it.each([
-    [
-      "https://elizacloud.ai/dashboard/image?source=bookmark",
-      "https://cloud.eliza.app/cloud/api-explorer?source=bookmark",
-    ],
-    [
-      "https://app.elizacloud.ai/dashboard/build/new?template=starter",
-      "https://cloud.eliza.app/cloud/my-agents?template=starter",
-    ],
-    [
-      "https://staging.eliza.app/dashboard/containers/agents/agent-7",
-      "https://cloud-staging.eliza.app/cloud/agents/agent-7",
-    ],
-    [
-      "https://app-staging.elizacloud.ai/dashboard/agents/agent-8/chat?room=1",
-      "https://cloud-staging.eliza.app/cloud/agents/agent-8?room=1",
-    ],
-    [
-      "https://eliza.app/dashboard/settings?tab=billing&payment=success",
-      "https://cloud.eliza.app/cloud/billing?tab=billing&payment=success",
-    ],
-    [
-      "https://cloud.eliza.app/dashboard/voices?source=bookmark",
-      "https://cloud.eliza.app/cloud/api-explorer?source=bookmark",
-    ],
-    [
-      "https://elizacloud.ai/dashboard/api-keys?source=legacy",
-      "https://cloud.eliza.app/cloud/api-keys?source=legacy",
-    ],
-  ])("semantically migrates live-shaped dashboard URL %s", (legacy, target) => {
-    expect(resolveCanonicalPageRedirect(legacy)).toBe(target);
   });
 
   it("moves protocol paths on legacy hosts to the canonical API", () => {

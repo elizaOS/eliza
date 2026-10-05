@@ -8,14 +8,19 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationMessage } from "../api/client-types-chat";
+import type {
+  Conversation,
+  ConversationMessage,
+} from "../api/client-types-chat";
 
 const mocks = vi.hoisted(() => ({
   client: {
     // This fixture keeps one stable runtime authority throughout each scenario.
     onAuthorityChange: vi.fn(() => () => {}),
     getConversationMessages: vi.fn(),
-    listConversations: vi.fn(async () => ({ conversations: [] })),
+    listConversations: vi.fn<() => Promise<{ conversations: Conversation[] }>>(
+      async () => ({ conversations: [] }),
+    ),
     getConfig: vi.fn(async () => ({ ui: {} })),
     repointBaseUrl: vi.fn(),
     setBaseUrl: vi.fn(),
@@ -119,6 +124,40 @@ beforeEach(() => {
 });
 
 describe("useDataLoaders — conversation message prefetch cache", () => {
+  it("preserves user titles while excluding explicitly scoped surface conversations", async () => {
+    const conversation = (
+      id: string,
+      title: string,
+      metadata?: Conversation["metadata"],
+    ): Conversation => ({
+      id,
+      title,
+      roomId: id,
+      createdAt: "2026-10-04T12:00:00Z",
+      updatedAt: "2026-10-04T12:00:00Z",
+      metadata,
+    });
+    const visible = [
+      conversation("user-wallet", "wallet"),
+      conversation("user-browser", "browser", { scope: "general" }),
+    ];
+    mocks.client.listConversations.mockResolvedValue({
+      conversations: [
+        ...visible,
+        conversation("page", "Research", { scope: "page-browser" }),
+        conversation("automation", "Schedule", {
+          scope: "automation-workflow",
+        }),
+      ],
+    });
+    const { deps } = makeDeps();
+    const { result } = renderHook(() => useDataLoaders(deps));
+    await act(async () => {
+      expect(await result.current.loadConversations()).toEqual(visible);
+    });
+    expect(deps.setConversations).toHaveBeenCalledWith(visible);
+  });
+
   it("places a later-arriving same-millisecond message by UUID order", async () => {
     const sharedAt = 1_700_000_000_000;
     const lower = {

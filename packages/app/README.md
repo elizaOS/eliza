@@ -282,8 +282,28 @@ lease follows the caller environment and remains held for a live process, rather
 than expiring during long instrumentation. Product callbacks own controlled
 fixture provisioning; this runner does not authorize live integrations. Use `testOutputPath` for reports produced inside this checkout.
 
+`scripts/lib/isolated-android-user.mjs` supplies the secondary-user lifecycle for
+caller-owned emulators. Hold the canonical device lease across the entire call;
+supply the exact AVD, stock HOME package, a bounded command executor and a durable
+record callback. It restores owner 0 independently of cancellation. The scenario
+must settle device work and return `{cleaned: true}` only after proving its package
+cleanup; missing proof or a thrown scenario retains the user for explicit recovery.
+It does not provision providers, grant permissions or install product packages.
+
+For installed upgrades, each variant supplies baseline `apk`/`testApk` and an
+`upgrade: {apk, testApk}` candidate pair. Both pairs are admitted before device
+mutation. `runnerArgs` seeds the baseline; `upgradeRunnerArgs` verifies the
+candidate with the same strict class/method selection. `beforeUpgrade` runs after
+baseline instrumentation; `afterUpgrade` runs after replacing the app but before
+replacing the test APK, allowing product intent-preservation checks. Separate
+phase logs and hashes retain evidence. Installed APK bytes are verified after
+installation, before replacement and before removal. Changed installed code
+retains both packages for explicit recovery instead of deleting an unknown build.
+
 The isolated Android harness also accepts an explicit unique `testClasses` list
 instead of `testClass`, with the complete `expectedTests` count across that suite.
+For one exact method, supply `testMethod` with one class and `expectedTests: 1`;
+the completed method identity must match before acceptance.
 It freezes the selection before asynchronous work, checks every requested class
 through the same strict instrumentation parser, and rejects missing or unexpected
 classes while retaining owned-installation cleanup. This supports product

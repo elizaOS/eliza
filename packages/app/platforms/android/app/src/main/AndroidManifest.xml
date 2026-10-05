@@ -38,6 +38,7 @@
         <service
             android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
             tools:node="remove" />
+        <receiver android:name=".ReminderNotificationDismissReceiver" android:exported="false" />
         <service android:name=".ElizaReminderMessagingService" android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />

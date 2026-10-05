@@ -13,8 +13,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentCard } from "./agent-card";
 
-vi.mock("../lib/i18n", () => ({
-  useT:
+vi.mock("../../shell/CloudI18nProvider", () => ({
+  useCloudT:
     () =>
     (
       key: string,

@@ -11,6 +11,7 @@ import { settlementDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { writeTransaction } from "../helpers";
 import { organizationPlanChangeQuotes } from "../schemas/organization-plan-change-quotes";
+import { organizations } from "../schemas/organizations";
 import { billingSubscriptionCommands as commands } from "../schemas/subscription-billing-operations";
 import { lockOrganizationPlanChangeSource } from "./organization-plan-change";
 import {
@@ -31,6 +32,19 @@ function reject(reason: string): never {
 }
 async function lockExecution(tx: DbTransaction, input: Identity) {
   const manager = await lockOrganizationSubscriptionManager(tx, input, reject);
+  return { ...(await lockOriginalExecution(tx, input)), manager };
+}
+/** Cleanup cannot grant an effect. Original identity and current lease survive manager revocation. */
+async function lockCleanup(tx: DbTransaction, input: Identity) {
+  const [organization] = await tx
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.id, input.organizationId))
+    .for("update");
+  if (!organization) reject("organization_authority_unavailable");
+  return lockOriginalExecution(tx, input);
+}
+async function lockOriginalExecution(tx: DbTransaction, input: Identity) {
   const [command] = await tx
     .select()
     .from(commands)
@@ -47,6 +61,7 @@ async function lockExecution(tx: DbTransaction, input: Identity) {
   if (
     !command ||
     command.kind !== "upgrade" ||
+    command.merchant_key !== "platform" ||
     !command.subscription_id ||
     command.expected_subscription_revision === null ||
     command.organization_upgrade_dispatch_state === null
@@ -80,8 +95,8 @@ async function lockExecution(tx: DbTransaction, input: Identity) {
       })
   )
     reject("command_review_changed");
-  organizationUpgradeReviewSchema.parse(quote.review);
-  return { command, quote, manager };
+  const review = organizationUpgradeReviewSchema.parse(quote.review);
+  return { command, quote: { ...quote, review } };
 }
 async function currentSource(
   tx: DbTransaction,
@@ -236,7 +251,7 @@ export async function failOrganizationUpgradeBeforeDispatch(
 ) {
   return writeTransaction(async (tx) => {
     if (input.commandId !== claim.command.id) reject("claim_identity_changed");
-    const locked = await lockExecution(tx, input);
+    const locked = await lockCleanup(tx, input);
     assertLease(locked.command, claim, await readPostLockDatabaseNow(tx));
     if (locked.command.organization_upgrade_dispatch_state !== "ready")
       reject("dispatch_already_started");
@@ -267,7 +282,7 @@ export async function failOrganizationUpgradeBeforeDispatch(
 export async function releaseOrganizationUpgrade(input: Identity, claim: OrganizationUpgradeClaim) {
   return writeTransaction(async (tx) => {
     if (input.commandId !== claim.command.id) reject("claim_identity_changed");
-    const locked = await lockExecution(tx, input);
+    const locked = await lockCleanup(tx, input);
     assertLease(locked.command, claim, await readPostLockDatabaseNow(tx));
     await tx
       .update(commands)
@@ -279,5 +294,51 @@ export async function releaseOrganizationUpgrade(input: Identity, claim: Organiz
           eq(commands.execution_generation, claim.command.execution_generation),
         ),
       );
+  });
+}
+
+/** Cleans up this attempt after an error without masking a concurrent terminal result or newer lease. */
+export async function finishOrganizationUpgradeAttempt(
+  input: Identity,
+  claim: OrganizationUpgradeClaim,
+) {
+  return writeTransaction(async (tx) => {
+    if (input.commandId !== claim.command.id) reject("claim_identity_changed");
+    const { command } = await lockCleanup(tx, input);
+    const now = await readPostLockDatabaseNow(tx);
+    if (
+      command.status !== "OUTCOME_UNKNOWN" ||
+      command.lease_token !== claim.command.lease_token ||
+      command.execution_generation !== claim.command.execution_generation ||
+      !command.lease_expires_at ||
+      command.lease_expires_at <= now
+    )
+      return command;
+    const ready = command.organization_upgrade_dispatch_state === "ready";
+    const [updated] = await tx
+      .update(commands)
+      .set({
+        ...(ready
+          ? {
+              status: "FAILED" as const,
+              error_code: "UPGRADE_REVIEW_REJECTED_BEFORE_DISPATCH",
+              completed_at: sql`clock_timestamp()`,
+            }
+          : {}),
+        state_revision: command.state_revision + 1,
+        lease_token: null,
+        lease_expires_at: null,
+        updated_at: sql`clock_timestamp()`,
+      })
+      .where(
+        and(
+          eq(commands.id, command.id),
+          eq(commands.lease_token, claim.command.lease_token!),
+          eq(commands.execution_generation, claim.command.execution_generation),
+          gt(commands.lease_expires_at, sql`clock_timestamp()`),
+        ),
+      )
+      .returning();
+    return updated ?? command;
   });
 }

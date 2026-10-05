@@ -1991,11 +1991,12 @@ function calendarEventLocalDate(
   timeZone: string,
 ): LocalDateOnly {
   // An all-day event carries a calendar date rather than an instant (see the
-  // all-day occurrence identity in CalendarService), so reading it in another
-  // zone can shift it a day; timed events are compared in the requester's zone
+  // all-day occurrence identity in CalendarService): its date is the date part
+  // of startAt, as the calendar views read it, and reading the instant in any
+  // zone can shift it a day. Timed events are compared in the requester's zone
   // because that is the frame the user said "friday" in.
-  const readZone = (event.isAllDay ? event.timezone : "") || timeZone;
-  const parts = getZonedDateParts(new Date(event.startAt), readZone);
+  if (event.isAllDay) return allDayCivilDate(event.startAt);
+  const parts = getZonedDateParts(new Date(event.startAt), timeZone);
   return { year: parts.year, month: parts.month, day: parts.day };
 }
 
@@ -3392,11 +3393,19 @@ function resolveTripWindowRequest(
 }
 
 function eventDateSearchTerms(event: LifeOpsCalendarEvent): Set<string> {
+  const searchDate = event.isAllDay
+    ? (() => {
+        const { year, month, day } = allDayCivilDate(event.startAt);
+        return new Date(Date.UTC(year, month - 1, day));
+      })()
+    : new Date(event.startAt);
   const formatter = (options: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat("en-US", {
-      timeZone: event.timezone || undefined,
+      // All-day startAt values carry a civil date, not an instant. Keep their
+      // search labels on that date just as mutation selection and rendering do.
+      timeZone: event.isAllDay ? "UTC" : event.timezone || undefined,
       ...options,
-    }).format(new Date(event.startAt));
+    }).format(searchDate);
 
   const monthLong = normalizeText(
     formatter({ month: "long" }).replace(/\./g, ""),
@@ -4549,13 +4558,26 @@ function resolveTripWindowEvents(
 
 function formatCalendarMoment(event: LifeOpsCalendarEvent): string {
   if (event.isAllDay) {
+    // The civil date, rendered without moving it through any zone.
+    const { year, month, day } = allDayCivilDate(event.startAt);
     return new Intl.DateTimeFormat("en-US", {
-      timeZone: event.timezone || undefined,
+      timeZone: "UTC",
       month: "short",
       day: "numeric",
-    }).format(new Date(event.startAt));
+    }).format(new Date(Date.UTC(year, month - 1, day)));
   }
   return formatCalendarEventDateTime(event);
+}
+
+/** The calendar date an all-day `startAt`/`endAt` carries in its date part. */
+function allDayCivilDate(value: string): LocalDateOnly {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) throw new Error(`All-day event date is not ISO: ${value}`);
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  };
 }
 
 function formatTripWindowResults(

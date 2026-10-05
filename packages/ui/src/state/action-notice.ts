@@ -1,10 +1,3 @@
-/**
- * Defines shared action feedback and the dwell times for its app fallback.
- * Completed feedback uses native delivery; ShellOverlays renders live progress
- * and unavailable-native feedback. Settings hooks share the callback contract.
- */
-import type { NotificationPriority } from "@elizaos/core";
-
 /** The three visual tones a transient shell toast can render in. */
 export type ActionTone = "info" | "success" | "error";
 
@@ -42,15 +35,3 @@ export const TOAST_TTL_MS = {
   /** A system-warning banner — stays up long enough to be read + acted on. */
   systemWarning: 20_000,
 } as const;
-
-/**
- * Map a notification's delivery priority to its toast tone. `urgent` surfaces as
- * an error tone (red, demands attention); everything else is informational.
- * This is the one place priority→tone is decided so the inbox, the toast, and
- * any future surface agree.
- */
-export function toastToneForPriority(
-  priority: NotificationPriority,
-): ActionTone {
-  return priority === "urgent" ? "error" : "info";
-}

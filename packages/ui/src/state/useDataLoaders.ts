@@ -63,14 +63,14 @@ import {
 import { normalizeConversationList } from "./chat-conversation-guards";
 import { markConversationHistoryApplied } from "./conversation-hydration-readiness";
 import {
-  applyStreamingTextModification,
   filterRenderableConversationMessages,
   shouldKeepConversationMessage,
-} from "./internal";
+} from "./conversation-message-filter";
 import { clearSettledPendingChatTurns } from "./pending-chat-turns";
 import { subscribeRuntimeAuthoritySwitch } from "./switch-runtime";
 import type { LoadConversationMessagesResult } from "./types";
 import type { StreamingTextModification } from "./useStreamingText";
+import { applyStreamingTextModification } from "./useStreamingText";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
 function hasConversationBootstrapMessage(

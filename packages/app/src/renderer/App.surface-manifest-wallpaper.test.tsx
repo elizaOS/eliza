@@ -208,8 +208,6 @@ vi.mock("@elizaos/ui", async (importOriginal) => ({
       setState: vi.fn(),
       setTab: appState.setTab,
       setUiLanguage: vi.fn(),
-      setUiTheme: vi.fn(),
-      setUiThemeMode: vi.fn(),
       startupCoordinator: {
         phase: "ready",
         isShellPaintable: true,
@@ -223,7 +221,6 @@ vi.mock("@elizaos/ui", async (importOriginal) => ({
       uiLanguage: "en",
       uiShellMode: "default",
       uiTheme: "light",
-      uiThemeMode: "system",
     });
     return {
       ACCENT_PRESETS,

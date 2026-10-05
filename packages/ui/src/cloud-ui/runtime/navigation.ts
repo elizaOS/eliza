@@ -3,7 +3,6 @@
  */
 import { useMemo } from "react";
 import {
-  useLocation,
   useNavigate,
   useParams as useReactRouterParams,
   useSearchParams as useReactRouterSearchParams,
@@ -85,10 +84,6 @@ export function useRouter(): ClientRouter {
     }),
     [navigate],
   );
-}
-
-export function usePathname(): string {
-  return useLocation().pathname;
 }
 
 export function useSearchParams(): URLSearchParams {

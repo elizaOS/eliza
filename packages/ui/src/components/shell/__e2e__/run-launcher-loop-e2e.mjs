@@ -40,10 +40,8 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
-import {
-  stubNodeBuiltins,
-  writeFixturePage,
-} from "../../../testing/e2e-runner/index.ts";
+import { stubNodeBuiltins } from "../../../testing/e2e-runner/esbuild-stubs";
+import { writeFixturePage } from "../../../testing/e2e-runner/fixture-bundle";
 import { LAUNCHER_LOOP_INIT_SCRIPT } from "../../../testing/launcher-loop/cdp-gestures.ts";
 import {
   DEFAULT_WEIGHTS,

@@ -395,20 +395,8 @@ export function sharedRestConfig(): {
 } {
   return { websocket: false, streaming: false };
 }
-/**
- * GET .../api/auth/me — the app's HARD startup gate (App.tsx auth gate →
- * useAuthStatus → authMe(), ui/src/api/auth-client.ts). A shared agent has no
- * agent server and no owner-password flow; it is reached purely through the
- * caller's authenticated API key, which the route already validated
- * (resolveSharedAgent → requireUserOrApiKeyWithOrg). So the caller is, by
- * construction, an authed machine identity — return it in the agent-server's
- * `bearer-agent` shape (auth-routes.ts authorized branch: identity.kind
- * "machine", session machine with no expiry, access mode "bearer"). Without an
- * `ok:true` body here, the client maps the 404 to status 503 →
- * "server_unavailable" → StartupFailureView and never reaches chat. The identity
- * is the agent itself (id = agentId, displayName = agentName) — the only stable
- * identity this adapter owns.
- */
+/** Machine identity for a caller admitted by the shared-agent auth boundary.
+ * Shared runtimes expose USER capabilities and have no local owner session. */
 export function sharedRestAuthMe(
   agentId: string,
   agentName: string,
@@ -425,6 +413,7 @@ export function sharedRestAuthMe(
   };
   access: {
     mode: "bearer";
+    role: "USER";
     passwordConfigured: false;
     ownerConfigured: false;
   };
@@ -436,7 +425,7 @@ export function sharedRestAuthMe(
       kind: "machine",
     },
     session: { id: "bearer", kind: "machine", expiresAt: null },
-    access: { mode: "bearer", passwordConfigured: false, ownerConfigured: false },
+    access: { mode: "bearer", role: "USER", passwordConfigured: false, ownerConfigured: false },
   };
 }
 /**

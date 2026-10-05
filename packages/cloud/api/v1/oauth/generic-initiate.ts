@@ -103,7 +103,7 @@ export async function handleGenericOAuthInitiate(
       // Empty body is fine — defaults apply.
     }
 
-    const redirectUrl = body.redirectUrl || "/cloud/settings?tab=connections";
+    const redirectUrl = body.redirectUrl || "/cloud/connectors";
     if (redirectUrl.startsWith("http")) {
       const allowedAbsoluteOrigins = [
         ...getDefaultPlatformRedirectOrigins(),

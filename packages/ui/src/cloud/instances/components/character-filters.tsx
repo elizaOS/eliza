@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select";
-import { useT } from "../lib/i18n";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 import type { SortOption, ViewMode } from "./types";
 
 interface CharacterFiltersProps {

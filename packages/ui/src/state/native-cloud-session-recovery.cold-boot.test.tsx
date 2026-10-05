@@ -58,9 +58,13 @@ import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "@elizaos/plugin-browser/remot
 import type { PollingBackendDeps } from "../../../app/src/renderer/startup/startup-phase-poll";
 import { runPollingBackend } from "../../../app/src/renderer/startup/startup-phase-poll";
 import type { RestoringSessionCtx } from "../../../app/src/renderer/startup/startup-phase-restore";
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { useAgentSessionRecovery } from "../hooks/useAgentSessionRecovery";
-import { getActiveProfile, loadAgentProfileRegistry } from "./agent-profiles";
+import {
+  getActiveProfile,
+  loadAgentProfileRegistry,
+  upsertAndActivateAgentProfile,
+} from "./agent-profiles";
 import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
@@ -154,8 +158,7 @@ describe("managed-native stale-session cold boot", () => {
       accessToken: "stale-agent-bearer",
     };
     savePersistedActiveServer(activeServer);
-    // Exercise the real legacy-active-server migration so the recovery commit
-    // must update both the active-server record and its active profile.
+    upsertAndActivateAgentProfile({ ...activeServer, cloudAgentId: AGENT_ID });
     expect(loadAgentProfileRegistry().profiles).toHaveLength(1);
 
     const fetchMock = vi.fn(

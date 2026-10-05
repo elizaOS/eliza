@@ -15,6 +15,7 @@
  */
 
 import crypto from "node:crypto";
+import type { PageScope } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   ChannelType,
@@ -28,11 +29,6 @@ import {
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { trajectoriesPlugin } from "../../../../plugins/plugin-assistant/src/features/trajectories/index.ts";
 import { pageScopedContextProvider } from "../../../agent/src/providers/page-scoped-context.js";
-import {
-  buildPageScopedRoutingMetadata,
-  PAGE_SCOPE_VERSION,
-  type PageScope,
-} from "../../../ui/src/components/pages/page-scoped-conversations";
 import { itIf } from "../helpers/conditional-tests.ts";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
 import { selectLiveProvider } from "../helpers/live-provider";
@@ -50,18 +46,55 @@ const selectedLiveProvider = liveModelTestsEnabled
   : null;
 const canRunLiveTests = liveModelTestsEnabled && selectedLiveProvider !== null;
 
+type TestPageScope = Extract<
+  PageScope,
+  "page-browser" | "page-character" | "page-automations" | "page-apps"
+>;
+const routingContexts: Record<
+  TestPageScope,
+  {
+    primaryContext: string;
+    secondaryContexts: string[];
+  }
+> = {
+  "page-browser": {
+    primaryContext: "browser",
+    secondaryContexts: ["page", "page-browser", "browser", "documents"],
+  },
+  "page-character": {
+    primaryContext: "character",
+    secondaryContexts: [
+      "page",
+      "page-character",
+      "character",
+      "documents",
+      "social_posting",
+    ],
+  },
+  "page-automations": {
+    primaryContext: "automation",
+    secondaryContexts: ["page", "page-automations", "automation"],
+  },
+  "page-apps": {
+    primaryContext: "apps",
+    secondaryContexts: ["page", "page-apps", "apps"],
+  },
+};
 function buildTestRoutingMetadata(
-  scope: PageScope,
+  scope: TestPageScope,
   options: { sourceConversationId?: string; pageId?: string } = {},
 ): Partial<MessageMetadata> {
-  return buildPageScopedRoutingMetadata(
-    scope,
-    options,
-  ) as Partial<MessageMetadata>;
+  return {
+    __responseContext: routingContexts[scope],
+    taskId: scope,
+    surface: "page-scoped",
+    surfaceVersion: 15,
+    ...options,
+  };
 }
 
 interface ScopeCase {
-  scope: PageScope;
+  scope: TestPageScope;
   prompt: string;
 }
 
@@ -316,8 +349,3 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
     180_000,
   );
 });
-
-// Reference PAGE_SCOPE_VERSION so the import is retained — surfaceVersion is a
-// frontend stamp, but pinning it here means a bump triggers a test churn that
-// reminds us to also bump the trajectory cohort assumptions in this file.
-void PAGE_SCOPE_VERSION;

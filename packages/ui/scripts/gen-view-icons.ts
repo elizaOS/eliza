@@ -74,7 +74,6 @@ const SUBJECTS = {
   character: "a simple friendly smiling robot head, front view",
   "character-select": "two person head avatars side by side inside circles",
   automations: "a lightning bolt over gears",
-  triggers: "a lightning bolt",
   inventory: "stacked storage boxes",
   documents:
     "a single sheet of white paper with a folded corner and a few horizontal lines",
@@ -86,7 +85,6 @@ const SUBJECTS = {
   transcripts: "a document with an audio waveform",
   relationships: "connected people forming a network",
   memories: "a simple rounded cartoon brain",
-  rolodex: "a stack of contact cards",
   voice: "a handheld microphone",
   runtime: "a terminal command prompt",
   database: "a database cylinder stack",

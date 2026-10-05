@@ -30,15 +30,14 @@ import {
   GoalsView,
 } from "../src/components/goals/GoalsView.tsx";
 
-// `@elizaos/ui` is the giant renderer barrel; GoalsView only touches
-// `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
-// `client.sendChatMessage()` (set-a-goal affordance).
-const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
+const { dispatchChatPrefill } = vi.hoisted(() => ({
+  dispatchChatPrefill: vi.fn(),
+}));
 vi.mock("@elizaos/ui", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  dispatchChatPrefill,
   client: {
     getBaseUrl: () => "http://test.local",
-    sendChatMessage,
   },
 }));
 // ---------------------------------------------------------------------------
@@ -123,7 +122,7 @@ async function selectStatus(label: string): Promise<void> {
 }
 afterEach(() => {
   cleanup();
-  sendChatMessage.mockClear();
+  dispatchChatPrefill.mockClear();
 });
 describe("GoalsView — spatial GUI wrapper", () => {
   it("shows the loading line while the first fetch is in flight", () => {
@@ -193,7 +192,7 @@ describe("GoalsView — spatial GUI wrapper", () => {
       expect(queryAgent("new")).not.toBeNull();
     });
     fireEvent.click(agent("new"));
-    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+    expect(dispatchChatPrefill).toHaveBeenCalledTimes(1);
   });
   it("shows the error state with a Retry that refetches into the populated list", async () => {
     let attempt = 0;

@@ -1,3 +1,5 @@
+import type { RoleGateRole } from "@elizaos/core/protocol";
+import type { DetachedSurface } from "./surface-windows";
 /**
  * elizaOS Desktop RPC Schema for Electrobun
  *
@@ -1024,6 +1026,7 @@ export interface AuthMeSnapshot {
 	};
 	access?: {
 		mode: string;
+		role: RoleGateRole;
 		passwordConfigured: boolean;
 		ownerConfigured: boolean;
 	};
@@ -1032,6 +1035,7 @@ export interface AuthMeSnapshot {
 		reason: string;
 		access: {
 			mode: string;
+			role: RoleGateRole;
 			passwordConfigured: boolean;
 			ownerConfigured: boolean;
 		};
@@ -1915,14 +1919,7 @@ export type ElizaDesktopRPCSchema = {
 			};
 			desktopOpenSurfaceWindow: {
 				params: {
-					surface:
-						| "chat"
-						| "browser"
-						| "release"
-						| "triggers"
-						| "plugins"
-						| "connectors"
-						| "cloud";
+					surface: DetachedSurface;
 					browse?: string;
 					alwaysOnTop?: boolean;
 				};

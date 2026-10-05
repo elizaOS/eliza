@@ -21,7 +21,7 @@ import {
   loadLastNativeTab,
   saveLastNativeTab,
   saveUiShellMode,
-} from "./internal";
+} from "./persistence";
 import { getTabForShellView } from "./shell-routing";
 import type { SetTabOptions, ShellView } from "./types";
 import type { UiShellMode } from "./ui-preferences";

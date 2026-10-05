@@ -59,24 +59,7 @@ export function applyThemeToDocument(
     removeFontLink();
   };
 }
-/**
- * Remove all theme-applied CSS custom properties from the document root,
- * restoring base.css defaults.
- */
-export function clearThemeOverrides(): void {
-  if (typeof document === "undefined") return;
-  const root = document.documentElement;
-  for (const cssVar of Object.values(THEME_CSS_VAR_MAP)) {
-    root.style.removeProperty(cssVar);
-  }
-  // Aliases
-  root.style.removeProperty("--txt");
-  // Font vars
-  for (const cssVar of Object.values(THEME_FONT_CSS_VARS)) {
-    root.style.removeProperty(cssVar);
-  }
-  removeFontLink();
-}
+
 // ── Font helpers ───────────────────────────────────────────────────
 function applyThemeFonts(fonts: ThemeFonts, applied: string[]): void {
   if (typeof document === "undefined") return;

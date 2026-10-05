@@ -15,7 +15,7 @@ import {
 } from "@elizaos/host/protocol";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
-import { useBranding } from "../../config/branding";
+import { useBranding } from "../../config/branding-react.hooks";
 import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
 import {
   getFirstRunProviderOption,

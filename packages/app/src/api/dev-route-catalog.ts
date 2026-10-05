@@ -360,16 +360,6 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
-    tabId: "triggers",
-    path: "/automations",
-    label: "Automations",
-    group: "Automations",
-    visibility: "all",
-    featureFlag: null,
-    requiresAuth: true,
-    platformGate: null,
-  },
-  {
     tabId: "settings",
     path: "/settings",
     label: "Settings",
@@ -381,20 +371,10 @@ const ROUTES: DevRouteEntry[] = [
   },
   {
     // Owner-only vault workspace — reachable directly at /vault; not
-    // in any ALL_TAB_GROUPS launcher group, like rolodex/desktop/background.
+    // in any ALL_TAB_GROUPS launcher group, like desktop/background.
     tabId: "vault",
     path: "/vault",
     label: "Vault",
-    group: "Hidden",
-    visibility: "all",
-    featureFlag: null,
-    requiresAuth: true,
-    platformGate: null,
-  },
-  {
-    tabId: "rolodex",
-    path: "/apps/relationships",
-    label: "Rolodex",
     group: "Hidden",
     visibility: "all",
     featureFlag: null,

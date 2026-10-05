@@ -1,12 +1,7 @@
-/**
- * Config-domain client DTOs: Config*, Plugin*, Secret*, Connector*, Trigger*,
- * Update*, Extension*, Workbench*, Character*, Voice*, Skill*. One
- * slice of the ElizaClient type surface, re-exported through client-types.ts.
- */
+/** Configuration, plugin, connector, and character client DTOs. */
 
 import type { ConfigUiHint, ReleaseChannel } from "@elizaos/contracts";
 import type {
-  AppShellBackgroundPolicy,
   SurfaceManifest,
   TriggerRunRecord,
   ViewKind,
@@ -34,10 +29,7 @@ export type {
   CloudVfsFile,
   CloudVfsFileEncoding,
   CloudVfsSourceKind,
-  CompleteLifeOpsBrowserSessionRequest as CompleteBrowserBridgeSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
-  ConfirmLifeOpsBrowserSessionRequest as ConfirmBrowserBridgeSessionRequest,
-  CreateLifeOpsBrowserSessionRequest as CreateBrowserBridgeSessionRequest,
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
@@ -45,7 +37,6 @@ export type {
   DisconnectLifeOpsGoogleConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
-  LifeOpsBrowserSession as BrowserBridgeSession,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsDefinitionRecord,
@@ -180,7 +171,7 @@ export interface PluginInfo {
     order?: number;
     defaultEnabled?: boolean;
     navGroup?: string;
-    developerOnly?: boolean;
+
     viewKind?: ViewKind;
     componentExport?: string;
     signalKinds?: readonly string[];
@@ -194,7 +185,7 @@ export interface PluginInfo {
     displayName?: string;
     category?: string;
     icon?: string | null;
-    developerOnly?: boolean;
+
     viewKind?: ViewKind;
     visibleInAppStore?: boolean;
     navTabs?: Array<{
@@ -204,10 +195,10 @@ export interface PluginInfo {
       path: string;
       tabAffinity?: string;
       order?: number;
-      developerOnly?: boolean;
+
       viewKind?: ViewKind;
       group?: string;
-      backgroundPolicy?: AppShellBackgroundPolicy;
+
       surface?: SurfaceManifest;
       componentExport?: string;
     }>;

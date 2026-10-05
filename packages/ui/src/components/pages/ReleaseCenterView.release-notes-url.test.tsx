@@ -25,7 +25,7 @@ vi.mock("../../bridge/electrobun-rpc", () => ({
 vi.mock("../../bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => true,
 }));
-vi.mock("../../config/branding", () => ({
+vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({ appUrl: "https://app.example/" }),
 }));
 vi.mock("../../services/app-updates/update-policy", () => ({

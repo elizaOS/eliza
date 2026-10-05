@@ -247,11 +247,23 @@ export interface PushNotificationsPluginLike extends NativePlugin {
   getReminderDataCapabilities?: () => Promise<{
     reminderDataNotifications: boolean;
     reminderChannelSelection?: boolean;
+    reminderPresentation?: boolean;
   }>;
   resolveReminderChannel?: (request: {
     priority: "urgent" | "high" | "normal" | "low";
     ownerType: "occurrence" | "calendar_event";
   }) => Promise<{ channelId: string; blocked: boolean }>;
+  presentReminderNotification?: (request: {
+    notificationId: string;
+    groupKey?: string;
+    title: string;
+    body: string;
+    priority: "urgent" | "high" | "normal" | "low";
+    ownerType: "occurrence" | "calendar_event";
+    deepLink?: string;
+    conversationId?: string;
+    messageId?: string;
+  }) => Promise<{ accepted: boolean }>;
   checkPermissions?: () => Promise<PushNotificationPermissionStatus>;
   requestPermissions?: () => Promise<PushNotificationPermissionStatus>;
   register?: () => Promise<void>;

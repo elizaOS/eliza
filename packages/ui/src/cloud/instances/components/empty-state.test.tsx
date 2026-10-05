@@ -11,8 +11,8 @@ const translate = vi.hoisted(
     options?.defaultValue ?? _key,
 );
 
-vi.mock("../lib/i18n", () => ({
-  useT: () => translate,
+vi.mock("../../shell/CloudI18nProvider", () => ({
+  useCloudT: () => translate,
 }));
 
 describe("AgentsEmptyState (agent library, zero agents)", () => {

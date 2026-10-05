@@ -255,8 +255,3 @@ export function SubagentBlock({ agent }: { agent: SubagentActivity }) {
     </Card>
   );
 }
-
-export {
-  STATUS_ICON as PIPELINE_STATUS_ICON,
-  STATUS_TONE as PIPELINE_STATUS_TONE,
-};

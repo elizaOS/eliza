@@ -431,6 +431,10 @@ jobs:
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.test.ts
           bun test --config=/dev/null --isolate \
+            packages/cloud/api/v1/subscriptions/upgrade/confirm/route.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/sdk/src/organization-upgrade.test.ts
+          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-dispatch.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-invoice-search.test.ts
@@ -461,7 +465,20 @@ jobs:
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-preview.pglite.test.ts
           bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-downgrade-review.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-downgrade-preview.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-downgrade-quotes.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/repositories/organization-schedule-effects.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-schedule-effect-contract.test.ts \
+            packages/cloud/shared/src/lib/services/organization-schedule-effect-origin.test.ts
+          bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/lib/services/organization-upgrade-invoice.pglite.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/lib/services/organization-upgrade-payment-observation.pglite.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/repositories/organization-upgrade-binding-migration.pglite.test.ts
           bun test --config=/dev/null --isolate \

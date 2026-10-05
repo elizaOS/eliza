@@ -1,57 +1,14 @@
 /** Character action helpers — CRUD and draft management. */
 
-import type { ElizaClient } from "../api/client";
+import { ElizaError, tokenizeNameOccurrences } from "@elizaos/core/protocol";
 import type { CharacterData } from "../api/client-types-config";
-import { tokenizeNameOccurrences } from "../utils/name-tokens";
 
 type MessageExampleGroup = {
-  examples: Array<{ name: string; content: { text: string } }>;
+  examples: Array<{
+    name: string;
+    content: { text: string; actions?: string[] };
+  }>;
 };
-
-export interface CharacterActionContext {
-  client: ElizaClient;
-  setCharacterData: (data: CharacterData | null) => void;
-  setCharacterDraft: (
-    fn: CharacterData | ((prev: CharacterData) => CharacterData),
-  ) => void;
-  setCharacterLoading: (loading: boolean) => void;
-  setCharacterSaving: (saving: boolean) => void;
-  setCharacterSaveError: (error: string | null) => void;
-  setCharacterSaveSuccess: (message: string | null) => void;
-}
-
-export async function loadCharacter(
-  ctx: CharacterActionContext,
-): Promise<void> {
-  ctx.setCharacterLoading(true);
-  ctx.setCharacterSaveError(null);
-  ctx.setCharacterSaveSuccess(null);
-  try {
-    const { character } = await ctx.client.getCharacter();
-    ctx.setCharacterData(character);
-    ctx.setCharacterDraft({
-      name: character.name ?? "",
-      username: character.username ?? "",
-      bio: Array.isArray(character.bio)
-        ? character.bio.join("\n")
-        : (character.bio ?? ""),
-      system: character.system ?? "",
-      adjectives: character.adjectives ?? [],
-      topics: character.topics ?? [],
-      style: {
-        all: character.style?.all ?? [],
-        chat: character.style?.chat ?? [],
-        post: character.style?.post ?? [],
-      },
-      messageExamples: character.messageExamples ?? [],
-      postExamples: character.postExamples ?? [],
-    });
-  } catch {
-    ctx.setCharacterData(null);
-    ctx.setCharacterDraft({});
-  }
-  ctx.setCharacterLoading(false);
-}
 
 function extractLikelyJson(input: string): string {
   const trimmed = input.trim();
@@ -146,6 +103,17 @@ function normalizeConversation(
         content?.text ?? record.text ?? record.message ?? record.content,
       );
       if (!text) return null;
+      const actions = content?.actions;
+      if (
+        actions !== undefined &&
+        (!Array.isArray(actions) ||
+          !actions.every((action) => typeof action === "string"))
+      ) {
+        throw new ElizaError(
+          "Message example actions must be an array of strings.",
+          { code: "INVALID_MESSAGE_EXAMPLE_ACTIONS" },
+        );
+      }
 
       return {
         name: normalizeSpeakerName(
@@ -153,10 +121,10 @@ function normalizeConversation(
           fallbackAgentName,
           options,
         ),
-        content: { text },
+        content: { text, ...(actions === undefined ? {} : { actions }) },
       };
     })
-    .filter((message): message is { name: string; content: { text: string } } =>
+    .filter((message): message is MessageExampleGroup["examples"][number] =>
       Boolean(message?.name && message.content.text),
     );
 
@@ -279,36 +247,11 @@ export function prepareDraftForSave(
       draft.messageExamples,
       draft.name?.trim() || "Agent",
       { fallbackMissingSpeaker: false },
-    ).map((group, groupIndex) => ({
-      examples: group.examples
-        .map((msg) => {
-          const originalGroup =
-            Array.isArray(draft.messageExamples) &&
-            draft.messageExamples[groupIndex] &&
-            typeof draft.messageExamples[groupIndex] === "object"
-              ? (draft.messageExamples[groupIndex] as {
-                  examples?: Array<{
-                    name?: string;
-                    content?: { text?: string; actions?: string[] };
-                  }>;
-                })
-              : null;
-          const originalMessage = originalGroup?.examples?.find(
-            (candidate) =>
-              candidate?.name?.trim() === msg.name &&
-              candidate?.content?.text?.trim() === msg.content.text,
-          );
-          return {
-            name: msg.name.trim(),
-            content: {
-              text: tokenize(msg.content.text.trim()),
-              ...(originalMessage?.content?.actions
-                ? { actions: originalMessage.content.actions }
-                : {}),
-            },
-          };
-        })
-        .filter((msg) => msg.name && msg.content.text),
+    ).map((group) => ({
+      examples: group.examples.map((msg) => ({
+        name: msg.name,
+        content: { ...msg.content, text: tokenize(msg.content.text) },
+      })),
     }));
     if (cleaned.length > 0) result.messageExamples = cleaned;
   }
@@ -325,7 +268,10 @@ export function prepareDraftForSave(
 }
 
 export function parseMessageExamplesInput(value: string): Array<{
-  examples: Array<{ name: string; content: { text: string } }>;
+  examples: Array<{
+    name: string;
+    content: { text: string; actions?: string[] };
+  }>;
 }> {
   if (!value.trim()) return [];
   const blocks = value.split(/\n\s*\n/).filter((b) => b.trim().length > 0);

@@ -15,12 +15,14 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
+const { dispatchChatPrefill } = vi.hoisted(() => ({
+  dispatchChatPrefill: vi.fn(),
+}));
 vi.mock("@elizaos/ui", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  dispatchChatPrefill,
   client: {
     getBaseUrl: () => "http://test.local",
-    sendChatMessage,
   },
 }));
 
@@ -137,7 +139,7 @@ function makeFetchers(overrides: Partial<InboxFetchers> = {}): InboxFetchers {
 
 afterEach(() => {
   cleanup();
-  sendChatMessage.mockClear();
+  dispatchChatPrefill.mockClear();
 });
 
 describe("InboxView — populated list", () => {
@@ -170,8 +172,10 @@ describe("InboxView — populated list", () => {
     render(<InboxView fetchers={makeFetchers()} />);
     await screen.findByText("Invoice 42 overdue");
     fireEvent.click(agent("open:gmail:msg-1"));
-    expect(sendChatMessage).toHaveBeenCalledTimes(1);
-    expect(sendChatMessage.mock.calls[0]?.[0]).toContain("Acme Billing");
+    expect(dispatchChatPrefill).toHaveBeenCalledTimes(1);
+    expect(dispatchChatPrefill.mock.calls[0]?.[0]?.text).toContain(
+      "Acme Billing",
+    );
   });
 });
 
@@ -211,7 +215,7 @@ describe("InboxView — empty states", () => {
     );
     await screen.findByText("No inboxes connected");
     fireEvent.click(agent("connect"));
-    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+    expect(dispatchChatPrefill).toHaveBeenCalledTimes(1);
   });
 
   it("shows the inbox-zero empty state when channels are connected but nothing to triage", async () => {
@@ -274,8 +278,8 @@ describe("InboxView — degraded connector", () => {
     );
     await screen.findByText("Gmail unavailable");
     fireEvent.click(agent("reconnect:gmail"));
-    expect(sendChatMessage).toHaveBeenCalledTimes(1);
-    const prompt = String(sendChatMessage.mock.calls[0]?.[0]);
+    expect(dispatchChatPrefill).toHaveBeenCalledTimes(1);
+    const prompt = String(dispatchChatPrefill.mock.calls[0]?.[0]?.text);
     expect(prompt).toContain("Reconnect Gmail");
     expect(prompt).toContain("Gmail authorization has expired");
   });
