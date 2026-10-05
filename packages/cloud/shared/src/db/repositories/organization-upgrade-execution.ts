@@ -296,3 +296,49 @@ export async function releaseOrganizationUpgrade(input: Identity, claim: Organiz
       );
   });
 }
+
+/** Cleans up this attempt after an error without masking a concurrent terminal result or newer lease. */
+export async function finishOrganizationUpgradeAttempt(
+  input: Identity,
+  claim: OrganizationUpgradeClaim,
+) {
+  return writeTransaction(async (tx) => {
+    if (input.commandId !== claim.command.id) reject("claim_identity_changed");
+    const { command } = await lockCleanup(tx, input);
+    const now = await readPostLockDatabaseNow(tx);
+    if (
+      command.status !== "OUTCOME_UNKNOWN" ||
+      command.lease_token !== claim.command.lease_token ||
+      command.execution_generation !== claim.command.execution_generation ||
+      !command.lease_expires_at ||
+      command.lease_expires_at <= now
+    )
+      return command;
+    const ready = command.organization_upgrade_dispatch_state === "ready";
+    const [updated] = await tx
+      .update(commands)
+      .set({
+        ...(ready
+          ? {
+              status: "FAILED" as const,
+              error_code: "UPGRADE_REVIEW_REJECTED_BEFORE_DISPATCH",
+              completed_at: sql`clock_timestamp()`,
+            }
+          : {}),
+        state_revision: command.state_revision + 1,
+        lease_token: null,
+        lease_expires_at: null,
+        updated_at: sql`clock_timestamp()`,
+      })
+      .where(
+        and(
+          eq(commands.id, command.id),
+          eq(commands.lease_token, claim.command.lease_token!),
+          eq(commands.execution_generation, claim.command.execution_generation),
+          gt(commands.lease_expires_at, sql`clock_timestamp()`),
+        ),
+      )
+      .returning();
+    return updated ?? command;
+  });
+}

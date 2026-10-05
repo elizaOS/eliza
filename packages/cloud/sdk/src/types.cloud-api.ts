@@ -96,6 +96,24 @@ export interface OrganizationSubscriptionUpgradeQuoteDto {
 export type OrganizationSubscriptionUpgradeQuoteResponse =
   ApiSuccessEnvelope<OrganizationSubscriptionUpgradeQuoteDto>;
 
+/** Durable server-owned outcome; OUTCOME_UNKNOWN never authorizes a new payment or intent. */
+export interface OrganizationSubscriptionUpgradeCommandDto {
+  commandId: string;
+  subscriptionId: string;
+  targetPlanKey: "plus_monthly" | "pro_monthly";
+  status: "PREPARED" | "OUTCOME_UNKNOWN" | "APPLIED" | "FAILED" | "SUPERSEDED";
+  dispatchState: "ready" | "started";
+  expectedSubscriptionRevision: string;
+  resultSubscriptionRevision: string | null;
+  failure: "review_required" | "invoice_void" | null;
+}
+export interface OrganizationSubscriptionUpgradeConfirmRequest {
+  quoteId: string;
+  idempotencyKey: string;
+}
+export type OrganizationSubscriptionUpgradeCommandResponse =
+  ApiSuccessEnvelope<OrganizationSubscriptionUpgradeCommandDto>;
+
 export interface CurrentUserOrganizationDto {
   id: string;
   name: string;
