@@ -64,7 +64,7 @@ async function exercise(
 
 describe("Phone host-view ABI", () => {
   it("keeps native entry points framed and the dynamic bundle embeddable", async () => {
-    await import("./register-phone-page.ts");
+    (await import("./register.ts")).registerApp();
     const registrationCall = registration.register.mock.calls[0]?.[0];
     expect(registrationCall).toBeDefined();
 

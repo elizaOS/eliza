@@ -22,17 +22,11 @@ export const VIEW_KINDS = [
 	"preview",
 ] as const;
 
-/**
- * Resolve the effective kind of a view-like declaration. Explicit `viewKind`
- * wins; a legacy `developerOnly: true` maps to `"developer"`; everything else
- * defaults to `"release"` (public). `"system"` is always explicit — a view is
- * never silently promoted to always-on.
- */
+/** Missing kinds default to release; system views must opt in explicitly. */
 export function resolveViewKind(
 	decl: ViewKindBearer | null | undefined,
 ): ViewKind {
 	if (decl?.viewKind) return decl.viewKind;
-	if (decl?.developerOnly) return "developer";
 	return "release";
 }
 

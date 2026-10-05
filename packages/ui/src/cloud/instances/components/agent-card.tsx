@@ -42,7 +42,7 @@ import { Skeleton } from "../../../components/ui/skeleton";
 import { StatusBadge } from "../../../components/ui/status-badge";
 import { Switch } from "../../../components/ui/switch";
 import { cn } from "../../../lib/utils";
-import { useT } from "../lib/i18n";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 
 export interface AgentCardData {
   id: string;

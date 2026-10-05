@@ -38,7 +38,7 @@ import {
   refreshCloudStewardSession,
 } from "../../api/client-cloud";
 import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
-import { getBootConfig } from "../../config/boot-config";
+import { getBootConfig } from "../../config/boot-config-store";
 import { logger } from "../../logger.ts";
 import { decodeJwtPayload } from "../lib/jwt";
 import { queryClient } from "../lib/query-client";

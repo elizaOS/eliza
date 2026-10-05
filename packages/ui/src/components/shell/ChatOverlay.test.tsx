@@ -867,7 +867,7 @@ describe("ChatOverlay", () => {
         new CustomEvent(NAVIGATE_VIEW_EVENT, {
           detail: {
             viewId: "chat",
-            viewPath: "/home",
+            viewPath: "/chat",
             source: "agent",
           },
         }),

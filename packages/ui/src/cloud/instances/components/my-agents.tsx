@@ -21,7 +21,7 @@ import { Button } from "../../../components/ui/button";
  * controls and the create entry point.
  */
 import { logger } from "../../../logger.ts";
-import { useT } from "../lib/i18n";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 import { CharacterFilters } from "./character-filters";
 import type { AgentWithOwnership } from "./character-library-grid";
 import { CharacterLibraryGrid } from "./character-library-grid";

@@ -1,7 +1,5 @@
 /** Ensures installable/installed launcher catalogs never cross agent bases. */
 // @vitest-environment jsdom
-
-// @vitest-environment jsdom
 import type { RegistryAppInfo } from "@elizaos/core/protocol";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +18,8 @@ const mocks = vi.hoisted(() => {
     networkReady: { value: true },
     client: {
       getBaseUrl: vi.fn(() => authority.value),
-      onBaseUrlChange: vi.fn((onChange: () => void) => {
+      getAuthorityRevision: vi.fn(() => 0),
+      onAuthorityChange: vi.fn((onChange: () => void) => {
         authority.listeners.add(onChange);
         return () => authority.listeners.delete(onChange);
       }),

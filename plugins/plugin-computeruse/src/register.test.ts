@@ -14,7 +14,7 @@ describe("Computer Sessions app registration", () => {
   });
 
   it("registers a packaged page with a local component loader", async () => {
-    await import("./register.js");
+    (await import("./register.js")).registerApp();
 
     expect(registerAppShellPage).toHaveBeenCalledOnce();
     expect(registerAppShellPage).toHaveBeenCalledWith(

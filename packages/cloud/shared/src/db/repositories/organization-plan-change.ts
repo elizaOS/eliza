@@ -43,7 +43,7 @@ export async function lockOrganizationPlanChangeSource(
     .update(billingSubscriptionCommands)
     .set({
       status: sql`CASE WHEN ${billingSubscriptionCommands.status} = 'PREPARED' THEN 'SUPERSEDED' ELSE 'FAILED' END`,
-      error_code: "UPGRADE_REVIEW_EXPIRED_BEFORE_DISPATCH",
+      error_code: sql`CASE WHEN ${billingSubscriptionCommands.kind} = 'upgrade' THEN 'UPGRADE_REVIEW_EXPIRED_BEFORE_DISPATCH' ELSE 'DOWNGRADE_REVIEW_EXPIRED_BEFORE_DISPATCH' END`,
       completed_at: sql`clock_timestamp()`,
       updated_at: sql`clock_timestamp()`,
       state_revision: sql`${billingSubscriptionCommands.state_revision} + 1`,
@@ -55,8 +55,18 @@ export async function lockOrganizationPlanChangeSource(
         eq(billingSubscriptionCommands.organization_id, input.organizationId),
         isNull(billingSubscriptionCommands.app_id),
         isNull(billingSubscriptionCommands.billing_scope_id),
-        eq(billingSubscriptionCommands.kind, "upgrade"),
-        eq(billingSubscriptionCommands.organization_upgrade_dispatch_state, "ready"),
+        or(
+          and(
+            eq(billingSubscriptionCommands.kind, "upgrade"),
+            eq(billingSubscriptionCommands.organization_upgrade_dispatch_state, "ready"),
+          ),
+          and(
+            eq(billingSubscriptionCommands.kind, "downgrade"),
+            eq(billingSubscriptionCommands.status, "PREPARED"),
+            eq(billingSubscriptionCommands.execution_generation, 0),
+            isNull(billingSubscriptionCommands.provider_started_at),
+          ),
+        ),
         inArray(billingSubscriptionCommands.status, ["PREPARED", "OUTCOME_UNKNOWN"]),
         or(
           isNull(billingSubscriptionCommands.lease_expires_at),

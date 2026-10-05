@@ -10,7 +10,7 @@
 import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setBootConfig } from "../config/boot-config";
+import { setBootConfig } from "../config/boot-config-store";
 
 const clientCloudMocks = vi.hoisted(() => ({
   refreshCloudStewardSession: vi.fn(),

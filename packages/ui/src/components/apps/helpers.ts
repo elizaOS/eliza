@@ -20,8 +20,7 @@ import {
   getInternalToolAppCatalogOrder,
   isInternalToolApp,
 } from "./internal-tool-apps";
-export const DEFAULT_VIEWER_SANDBOX =
-  "allow-scripts allow-same-origin allow-popups";
+
 export const CATEGORY_LABELS: Record<string, string> = {
   game: "Game",
   social: "Social",
@@ -104,16 +103,7 @@ export interface AppCatalogSection {
   label: string;
   apps: RegistryAppInfo[];
 }
-const SESSION_MODE_LABELS: Record<string, string> = {
-  "spectate-and-steer": "Spectate + steer",
-};
-const SESSION_FEATURE_LABELS: Record<string, string> = {
-  commands: "Commands",
-  telemetry: "Telemetry",
-  pause: "Pause",
-  resume: "Resume",
-  suggestions: "Suggestions",
-};
+
 interface AppsCatalogFilterOptions {
   activeAppNames?: ReadonlySet<string>;
   isProd?: boolean;
@@ -294,20 +284,7 @@ export function filterAppsForCatalog(
     return true;
   });
 }
-export function getDefaultAppsCatalogSelection(
-  apps: RegistryAppInfo[],
-  options: {
-    isProd?: boolean;
-    showAllApps?: boolean;
-    walletEnabled?: boolean;
-  } = {},
-): string | null {
-  return (
-    filterAppsForCatalog(apps, {
-      ...options,
-    })[0]?.name ?? null
-  );
-}
+
 export function getAppCatalogSectionKey(
   app: Pick<
     RegistryAppInfo,
@@ -450,9 +427,7 @@ export function getAppShortName(app: RegistryAppInfo): string {
   const clean = display.replace(/^@[^/]+\/app-/, "");
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
-export function getAppEmoji(app: RegistryAppInfo): string {
-  return getAppIconName(app);
-}
+
 export function getAppIconName(app: RegistryAppInfo): string {
   const sectionKey = getAppCatalogSectionKey(app);
   if (sectionKey === "featured") return "Star";
@@ -461,20 +436,7 @@ export function getAppIconName(app: RegistryAppInfo): string {
   if (sectionKey === "finance") return "Wallet";
   return "Package";
 }
-export function getAppSessionModeLabel(
-  app: Pick<RegistryAppInfo, "session">,
-): string | null {
-  const mode = app.session?.mode;
-  if (!mode) return null;
-  return SESSION_MODE_LABELS[mode] ?? mode;
-}
-export function getAppSessionFeatureLabels(
-  app: Pick<RegistryAppInfo, "session">,
-): string[] {
-  return (app.session?.features ?? []).map(
-    (feature) => SESSION_FEATURE_LABELS[feature] ?? feature,
-  );
-}
+
 /* ── App URL slugs ──────────────────────────────────────────────────── */
 /**
  * Derive a URL slug from an app's package name.

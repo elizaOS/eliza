@@ -5,13 +5,7 @@
  * rejects ambiguous handler ids before mounting either surface family.
  */
 
-import type {
-  AppShellBackgroundPolicy,
-  SurfaceManifest,
-  ViewCapability,
-  ViewHeaderPolicy,
-  ViewKind,
-} from "@elizaos/core";
+import type { SurfaceManifest, ViewCapability, ViewKind } from "@elizaos/core";
 import { packageNameToAppRouteSlug } from "@elizaos/core/protocol";
 import type { ComponentType } from "react";
 import type { OverlayApp } from "./apps/overlay-app-api.js";
@@ -59,32 +53,13 @@ export interface AppShellPageRegistration {
   tabAffinity?: string;
   /** Sort priority within the nav (lower = first). Default 100. */
   order?: number;
-  /**
-   * When true, only visible when Developer Mode is enabled in Settings.
-   * Equivalent to `viewKind: "developer"`.
-   */
-  developerOnly?: boolean;
-  /**
-   * Four-tier visibility category. Supersedes `developerOnly` when set.
-   * See {@link ViewKind}.
-   */
+
+  /** Four-tier visibility category; absent values default to release. */
   viewKind?: ViewKind;
   /** Optional named group the tab belongs to. */
   group?: string;
-  /**
-   * When true, the shell mounts this page edge-to-edge with no host
-   * top-bar/chrome — for views that own their full window, e.g. the
-   * orchestrator workbench.
-   */
-  fullBleed?: boolean;
-  /**
-   * Declared surface contract for this page (#13452) — background/header/
-   * isolation/lifecycle policy and capability grants. The single source of truth
-   * the shell derives surface decisions from; the standalone `backgroundPolicy`
-   * / `headerPolicy` below are the legacy fallback used only when the matching
-   * manifest field is absent. `surface.background: "shared"` paints the wallpaper
-   * only when `surface.capabilities` also grants `wallpaper`.
-   */
+
+  /** Declared surface policies and capability grants. */
   surface?: SurfaceManifest;
   /** Shares the plugin view's typed authority catalog with the bundled renderer. */
   capabilities?: readonly ViewCapability[];
@@ -93,18 +68,7 @@ export interface AppShellPageRegistration {
     capability: string,
     params?: Record<string, unknown>,
   ) => Promise<unknown>;
-  /**
-   * Screen background policy for this page. Defaults to `"opaque"`. Superseded
-   * by `surface.background` when a manifest is declared.
-   */
-  backgroundPolicy?: AppShellBackgroundPolicy;
-  /**
-   * Top-bar framing policy (#13586). Defaults to `"normal"`; the shell enforces
-   * the shared `ViewHeader` on every `normal` page. `fullscreen`/`modal`/
-   * `immersive` opt a page out of the uniform top bar. Superseded by
-   * `surface.header` when a manifest is declared.
-   */
-  headerPolicy?: ViewHeaderPolicy;
+
   /**
    * The React component the shell mounts when this page is active.
    * Prefer `loader` for heavy pages so boot only pays metadata cost.

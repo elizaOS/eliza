@@ -34,6 +34,11 @@ import fs from "node:fs/promises";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import path from "node:path";
 import type { Duplex } from "node:stream";
+import type {
+	DeviceBridgeStatus,
+	DeviceCapabilities,
+	DeviceSummary,
+} from "@elizaos/contracts";
 import { ElizaError, logger } from "@elizaos/core";
 import {
 	computeGenerationThroughput,
@@ -98,27 +103,6 @@ function resolveDeviceTimeoutMs(envKey: string, fallback: number): number {
 		);
 	}
 	return parsed;
-}
-interface DeviceCapabilities {
-	platform: "ios" | "android" | "web" | "electrobun" | "desktop";
-	deviceModel: string;
-	machineId?: string;
-	osVersion?: string;
-	isSimulator?: boolean;
-	totalRamGb: number;
-	availableRamGb?: number | null;
-	freeStorageGb?: number | null;
-	cpuCores: number;
-	gpu: {
-		backend: "metal" | "vulkan" | "gpu-delegate" | "cuda";
-		available: boolean;
-		totalVramGb?: number;
-	} | null;
-	gpuSupported?: boolean;
-	lowPowerMode?: boolean;
-	thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
-	mtpSupported?: boolean;
-	mtpReason?: string;
 }
 interface DeviceRegistration {
 	deviceId: string;
@@ -334,30 +318,6 @@ interface ConnectedDevice {
 	lastHeartbeatAt: number;
 	heartbeatTimer: ReturnType<typeof setInterval>;
 }
-export interface DeviceSummary {
-	deviceId: string;
-	capabilities: DeviceCapabilities;
-	loadedPath: string | null;
-	connectedSince: string;
-	score: number;
-	activeRequests: number;
-	isPrimary: boolean;
-}
-export interface DeviceBridgeStatus {
-	/** True if any device is currently connected. */
-	connected: boolean;
-	devices: DeviceSummary[];
-	/** Device id of the current best-score device, or null when none. */
-	primaryDeviceId: string | null;
-	/** Total generates/loads/unloads queued (either in-flight or awaiting a device). */
-	pendingRequests: number;
-	// Legacy single-device fields — kept for UI backward compat. These mirror
-	// the primary device so old `DeviceBridgeStatusBar` code keeps working.
-	deviceId: string | null;
-	capabilities: DeviceCapabilities | null;
-	loadedPath: string | null;
-	connectedSince: string | null;
-}
 interface PersistedGenerateRequest {
 	correlationId: string;
 	request: AgentOutbound;
@@ -458,12 +418,10 @@ export class DeviceBridge {
 				connectedSince: new Date(device.connectedAt).toISOString(),
 				score,
 				activeRequests,
-				isPrimary: false,
 			});
 		}
 		// Sort desc by score so the UI can just render in order.
 		summaries.sort((a, b) => b.score - a.score);
-		if (summaries[0]) summaries[0].isPrimary = true;
 		const primary = summaries[0] ?? null;
 		const pendingRequests =
 			this.pendingGenerates.size +
@@ -473,12 +431,8 @@ export class DeviceBridge {
 		return {
 			connected: summaries.length > 0,
 			devices: summaries,
-			primaryDeviceId: primary?.deviceId,
+			primaryDeviceId: primary?.deviceId ?? null,
 			pendingRequests,
-			deviceId: primary?.deviceId,
-			capabilities: primary?.capabilities,
-			loadedPath: primary?.loadedPath ?? null,
-			connectedSince: primary?.connectedSince,
 		};
 	}
 	private countRouted<

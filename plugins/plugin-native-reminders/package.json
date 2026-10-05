@@ -64,9 +64,6 @@
   "author": "elizaOS",
   "license": "MIT",
   "eliza": {
-    "platforms": [
-      "darwin"
-    ],
     "runtime": "node",
     "platformDetails": {
       "darwin": "Shared Apple Reminders native bridge policy for macOS host runtimes."
@@ -82,5 +79,10 @@
     "@capacitor/core": {
       "optional": true
     }
+  },
+  "elizaos": {
+    "platforms": [
+      "darwin"
+    ]
   }
 }

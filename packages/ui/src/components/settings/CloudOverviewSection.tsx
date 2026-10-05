@@ -203,11 +203,7 @@ export function CloudOverviewSection() {
           </Button>
         }
       >
-        {/* Account state only. This row used to read "Cloud is connected" /
-            "Local mode is active", which conflated three separate facts — the
-            account session, where the agent process runs, and which models
-            answer chat. Runtime and inference live in Models & Providers,
-            where `resolveServingAxes` states both axes (#20045 follow-up). */}
+        {/* Account state only; Models & Providers shows runtime and inference. */}
         <SettingsRow
           icon={Rocket}
           label={

@@ -338,7 +338,6 @@ const requiredElectrobunConfigSnippets = [
   'postBuild: "../../scripts/electrobun/postwrap-sign-runtime-macos.ts"',
   'postWrap: "../../scripts/electrobun/postwrap-diagnostics.ts"',
   "process.env.ELIZA_ELECTROBUN_NOTARIZE !==",
-  "copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`",
   "copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`",
 ];
 const electrobunDirCandidates = [

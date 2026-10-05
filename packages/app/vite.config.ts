@@ -1695,10 +1695,7 @@ function buildViteDevSettingsRows(
       effective:
         mode === "dev-server" ? "vite dev (HMR)" : "vite build --watch",
       source: "derived",
-      change:
-        mode === "dev-server"
-          ? `bun run dev (default); ${APP_ENV_PREFIX}_DESKTOP_VITE_BUILD_WATCH=1 for Rollup watch`
-          : `${APP_ENV_PREFIX}_DESKTOP_VITE_WATCH=1 + ${APP_ENV_PREFIX}_DESKTOP_VITE_BUILD_WATCH=1`,
+      change: mode === "dev-server" ? "bun run dev" : "bunx vite build --watch",
     },
   ];
 }
@@ -2037,15 +2034,6 @@ export default defineConfig(({ command, mode }) => ({
             enforce: "pre" as const,
             load(id: string) {
               const p = id.split("?")[0]?.split(path.sep).join("/") ?? "";
-              // The agent app's SettingsView pulls `listExtraSettingsGroups` from
-              // the cloud settings barrel, which in turn imports the broken cloud
-              // feature subtrees. Provide it directly (no cloud groups when the
-              // cloud surface is excluded) so the whole subtree drops out.
-              if (
-                /\/packages\/ui\/src\/cloud\/settings\/index\.tsx?$/.test(p)
-              ) {
-                return "export function listExtraSettingsGroups() { return []; }";
-              }
               const uiCloudRoot = path
                 .join(uiPkgRoot, "src/cloud")
                 .split(path.sep)
@@ -2668,10 +2656,6 @@ export const INVALID_TRACER_PROVIDER = {};
             ),
           },
           // Desktop shell resolves through its own renderer entry.
-          {
-            find: /^@elizaos\/app\/desktop-shell$/,
-            replacement: path.join(appCoreSrcRoot, "desktop-shell.ts"),
-          },
         ];
       })(),
     ],

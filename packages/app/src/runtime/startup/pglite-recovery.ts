@@ -14,7 +14,11 @@ import {
   resolveUserPath,
 } from "@elizaos/agent";
 import { formatError, logger } from "@elizaos/core";
-import { PGLITE_ERROR_CODES } from "@elizaos/plugin-sql";
+import {
+  createPgliteInitError,
+  getPgliteErrorCode,
+  PGLITE_ERROR_CODES,
+} from "@elizaos/plugin-sql/errors";
 import { resetPluginSqlPgliteSingleton } from "../pglite-auto-reset.js";
 
 type ErrorWithCause = Error & {
@@ -47,15 +51,6 @@ function collectErrorObjects(err: unknown): ErrorWithCause[] {
   return chain;
 }
 
-function getPgliteErrorCode(err: unknown): string | null {
-  for (const current of collectErrorObjects(err)) {
-    if (typeof current.code === "string" && current.code) {
-      return current.code;
-    }
-  }
-  return null;
-}
-
 function collectErrorMessages(err: unknown): string[] {
   const messages: string[] = [];
   for (const current of collectErrorObjects(err)) {
@@ -66,28 +61,11 @@ function collectErrorMessages(err: unknown): string[] {
   return messages;
 }
 
-function hasLegacyManualResetPgliteMessage(err: unknown): boolean {
-  // Old plugin-sql errors and raw WASM aborts predate structured PGlite codes,
-  // so recovery retains these narrow signatures until those versions age out.
-  return collectErrorMessages(err).some((message) => {
-    const normalized = message.toLowerCase();
-    return (
-      normalized.includes(
-        "rename or delete only this directory before retrying",
-      ) ||
-      (normalized.includes("@elizaos/plugin-sql") &&
-        normalized.includes("migrations._migrations")) ||
-      normalized.includes("aborted()")
-    );
-  });
-}
-
 function isManualResetPgliteError(err: unknown): boolean {
   const code = getPgliteErrorCode(err);
   return (
     code === PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED ||
-    code === PGLITE_ERROR_CODES.CORRUPT_DATA ||
-    hasLegacyManualResetPgliteMessage(err)
+    code === PGLITE_ERROR_CODES.CORRUPT_DATA
   );
 }
 
@@ -96,20 +74,6 @@ function getPgliteDataDirFromError(err: unknown): string | null {
     if (typeof current.dataDir === "string" && current.dataDir.trim()) {
       return current.dataDir;
     }
-  }
-
-  for (const rawMessage of collectErrorMessages(err)) {
-    const message =
-      rawMessage.length > 4096 ? rawMessage.slice(0, 4096) : rawMessage;
-    const retryPathMatch = message.match(
-      /before retrying:[ \t]{0,16}([^\n]{1,1024}?)(?:[ \t]*$|\.)/,
-    );
-    if (retryPathMatch?.[1]) return retryPathMatch[1].trim();
-
-    const initPathMatch = message.match(
-      /PGlite initialization failed for ([^:\n]{1,1024}):/i,
-    );
-    if (initPathMatch?.[1]) return initPathMatch[1].trim();
   }
 
   return null;
@@ -153,7 +117,7 @@ async function quarantinePgliteDataDir(
   throw new Error(`Could not allocate a backup path for ${dataDir}`);
 }
 
-/** Preserve structured recovery metadata while normalizing older failures. */
+/** Preserve typed storage recovery metadata through host error wrapping. */
 export function normalizePgliteStartupError(err: unknown): unknown {
   if (!isManualResetPgliteError(err)) return err;
   if (
@@ -166,15 +130,13 @@ export function normalizePgliteStartupError(err: unknown): unknown {
   const dataDir =
     getPgliteDataDirFromError(err) ?? resolveManagedPgliteDataDir();
   const detail = collectErrorMessages(err)[0] ?? formatError(err);
-  const wrapped = new Error(
+  return createPgliteInitError(
+    PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED,
     dataDir
       ? `PGlite initialization failed for ${dataDir}: ${detail}. Stop the app, then rename or delete only this directory before retrying: ${dataDir}`
       : `PGlite initialization failed: ${detail}. Stop the app, then rename or delete only the managed PGlite data directory before retrying.`,
-    { cause: err },
-  ) as ErrorWithCause;
-  wrapped.code = PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED;
-  if (dataDir) wrapped.dataDir = dataDir;
-  return wrapped;
+    { cause: err, ...(dataDir ? { dataDir } : {}) },
+  );
 }
 
 /** Quarantine a managed corrupt database and reset plugin-sql before retry. */

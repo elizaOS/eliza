@@ -4,23 +4,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/host/protocol";
-import { test } from "vitest";
+import { config as loadEnv } from "dotenv";
 
-// Load `.env` from the repo root when `dotenv` is available.
-const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-);
-try {
-  const { config } = await import("dotenv");
-  config({ path: path.join(REPO_ROOT, ".env") });
-} catch {
-  // dotenv optional
-}
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
+loadEnv({ path: path.join(REPO_ROOT, ".env"), quiet: true });
+
 function getTrimmedEnv(name: string): string | null {
   const value = process.env[name]?.trim();
   return value ? value : null;
@@ -125,13 +113,7 @@ function getLiveTestBaseUrlOverride(
   providerName: LiveProviderName,
 ): string | null {
   const suffix = providerName.toUpperCase().replace(/-/g, "_");
-  for (const name of [`ELIZA_LIVE_TEST_${suffix}_BASE_URL`]) {
-    const value = getTrimmedEnv(name);
-    if (value) {
-      return value;
-    }
-  }
-  return null;
+  return getTrimmedEnv(`ELIZA_LIVE_TEST_${suffix}_BASE_URL`);
 }
 export type LiveProviderName =
   | "cerebras"
@@ -426,20 +408,6 @@ export async function selectLiveProviderAsync(
     return buildLiveProviderConfig(def, apiKey);
   }
   return null;
-}
-/**
- * Select a live provider. If none is available, register a skipped test and
- * return null so callers can branch explicitly.
- */
-export function requireLiveProvider(
-  preferredProvider?: LiveProviderName,
-): LiveProviderConfig | null {
-  const provider = selectLiveProvider(preferredProvider);
-  if (!provider) {
-    test.skip("No LLM provider API key available");
-    return null;
-  }
-  return provider;
 }
 /**
  * Check if ELIZA_LIVE_TEST is enabled.

@@ -71,13 +71,6 @@ export function publishNativeTranscriptEvents(
   return stream;
 }
 
-/** Append one typed transcript snapshot. */
-export function publishNativeTranscriptEvent(
-  input: NativeTranscriptEventInput,
-): TranscriptEvent {
-  return publishNativeTranscriptEvents([input]).events[0];
-}
-
 /** Test-only reset for deterministic stream sequence assertions. */
 export function resetNativeTranscriptSequenceForTests(): void {
   nextSequence = 1;

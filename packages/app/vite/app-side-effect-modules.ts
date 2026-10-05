@@ -5,72 +5,15 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/**
- * Manifest-driven discovery of renderer side-effect app modules.
- *
- * App plugins that need to register UI surfaces/pages at app boot self-declare
- * `"elizaos": { "appRegister": { "export": "registerApp" } }` names an
- * explicit function on the package root, or an exported browser leaf named by
- * optional `subpath`. Legacy `"register"` and `"ui"`
- * markers remain readable while those plugins migrate their public surfaces.
- * The renderer build scans for that marker instead of the app shell hardcoding a
- * loader list, so adding or deleting a plugin directory needs zero app-side edits.
- *
- * `"register"` imports the plugin's `src/register.ts`; `"ui"` imports its
- * `src/ui.ts` (or `src/ui/index.ts`). The module is imported by absolute path so
- * no per-plugin Vite alias is required for the boot set.
- */
-
-export type AppRegisterMode = "register" | "ui" | "root";
-
+/** A callable browser registration export declared by a package manifest. */
 export type SideEffectAppModule = {
-  /**
-   * Role-qualified loader identity: `<packageName>#<mode>`. The app shell's
-   * dynamic-import cache is keyed by this string, and the role suffix is what
-   * keeps a generated side-effect loader from ever sharing a cached promise
-   * with a package-root facade import of the same package — with a bare-name
-   * key, whichever loader won would suppress the other and hand consumers the
-   * wrong module namespace (#16504).
-   */
   key: string;
-  /** Canonical package name (workspace dependency name). */
   packageName: string;
-  /** Declared registration mode from `elizaos.appRegister`. */
-  /** Absolute path to the renderer registration entry imported at boot. */
-  entry: string;
-} & (
-  | { mode: "register" | "ui" }
-  | { mode: "root"; exportName: string; subpath?: string }
-);
+  exportName: string;
+  subpath?: string;
+};
 
-const UI_ENTRY_CANDIDATES = ["src/ui.ts", "src/ui/index.ts"];
-const REGISTER_ENTRY = "src/register.ts";
-
-function resolveRegistrationEntry(
-  pkgDir: string,
-  mode: "register" | "ui",
-): string | null {
-  if (mode === "register") {
-    const candidate = path.join(pkgDir, REGISTER_ENTRY);
-    return fs.existsSync(candidate) ? candidate : null;
-  }
-  for (const relative of UI_ENTRY_CANDIDATES) {
-    const candidate = path.join(pkgDir, relative);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-/**
- * Scan the given package roots (e.g. `plugins/`, `packages/`) for app plugins
- * that declare `elizaos.appRegister`, returning a role-qualified loader
- * identity (`<name>#<mode>`) plus the absolute path to import for renderer
- * side-effect registration. Sorted by key so the generated module is
- * deterministic.
- *
- * Throws if a plugin declares the marker but its entry file is missing — a
- * broken pipeline should fail the build loudly, not silently drop the plugin.
- */
+/** Discover callable browser registration exports, rejecting missing source entries. */
 export function discoverSideEffectAppModules(
   packageRoots: readonly string[],
 ): SideEffectAppModule[] {
@@ -133,31 +76,16 @@ export function discoverSideEffectAppModules(
         discovered.push({
           key: `${name}#${subpath ? `leaf:${subpath}` : "root"}:${declaration.export}`,
           packageName: name,
-          mode: "root",
-          entry,
           exportName: declaration.export,
           ...(subpath ? { subpath } : {}),
         });
         continue;
       }
-      const mode = declaration;
-      if (mode !== "register" && mode !== "ui") continue;
-      const name = pkg.name;
-      if (typeof name !== "string" || seen.has(name)) continue;
-
-      const entry = resolveRegistrationEntry(pkgDir, mode);
-      if (!entry) {
+      if (declaration !== undefined) {
         throw new Error(
-          `[app-side-effect-modules] ${name} declares elizaos.appRegister:"${mode}" but no ${mode === "register" ? REGISTER_ENTRY : UI_ENTRY_CANDIDATES.join(" / ")} exists under ${pkgDir}`,
+          `[app-side-effect-modules] ${pkg.name} appRegister must name a root export`,
         );
       }
-      seen.add(name);
-      discovered.push({
-        key: `${name}#${mode}`,
-        packageName: name,
-        mode,
-        entry,
-      });
     }
   }
 
@@ -193,15 +121,12 @@ export function appSideEffectModulesPlugin(packageRoots: readonly string[]) {
       const entries = modules
         .map((module) => {
           const key = JSON.stringify(module.key);
-          if (module.mode === "root") {
-            const specifier = JSON.stringify(
-              module.subpath
-                ? `${module.packageName}/${module.subpath}`
-                : module.packageName,
-            );
-            return `  { key: ${key}, load: () => import(${specifier}).then(({ ${module.exportName}: register }) => { if (typeof register !== "function") throw new Error(${JSON.stringify(`${module.packageName} must export callable ${module.exportName}`)}); return register(); }) },`;
-          }
-          return `  { key: ${key}, load: () => import(${JSON.stringify(module.entry)}) },`;
+          const specifier = JSON.stringify(
+            module.subpath
+              ? `${module.packageName}/${module.subpath}`
+              : module.packageName,
+          );
+          return `  { key: ${key}, load: () => import(${specifier}).then(({ ${module.exportName}: register }) => { if (typeof register !== "function") throw new Error(${JSON.stringify(`${module.packageName} must export callable ${module.exportName}`)}); return register(); }) },`;
         })
         .join("\n");
       return {

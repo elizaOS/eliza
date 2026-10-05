@@ -122,7 +122,7 @@ app.post("/", async (c) => {
         return c.json(
           {
             error: "Insufficient credits",
-            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+            topUpUrl: "https://cloud.eliza.app/cloud/billing",
           },
           402,
         );

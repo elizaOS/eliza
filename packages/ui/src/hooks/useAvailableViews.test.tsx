@@ -31,7 +31,8 @@ const { authorityState, client, fetchWithCsrf, getFrontendPlatform } =
         sendWsMessage: vi.fn(),
         clientId: "native-client",
         getBaseUrl: vi.fn(() => ""),
-        onBaseUrlChange: vi.fn((onChange: () => void) => {
+        getAuthorityRevision: vi.fn(() => 0),
+        onAuthorityChange: vi.fn((onChange: () => void) => {
           authorityState.listeners.add(onChange);
           return () => authorityState.listeners.delete(onChange);
         }),
@@ -223,7 +224,7 @@ describe("useAvailableViews", () => {
       const { ShellViewAgentSurface } = await import(
         "../components/views/ShellViewAgentSurface"
       );
-      const { AgentButton } = await import("../agent-surface");
+      const { AgentButton } = await import("../agent-surface/components");
       const { dispatchViewInteract } = await import(
         "../components/views/view-interact-registry"
       );
@@ -322,7 +323,8 @@ describe("useAvailableViews", () => {
       const { ShellViewAgentSurface } = await import(
         "../components/views/ShellViewAgentSurface"
       );
-      const { AgentButton, getViewRegistry } = await import("../agent-surface");
+      const { AgentButton } = await import("../agent-surface/components");
+      const { getViewRegistry } = await import("../agent-surface/registry");
       getFrontendPlatform.mockReturnValue(platform);
       const NativeCalendar = () => (
         <AgentButton agentId="native-save">Save</AgentButton>

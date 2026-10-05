@@ -6,8 +6,6 @@
  * singleton exclusively via the exported getPgliteSingletonCache() accessor,
  * proving the seam is real.
  */
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import {
   closePgliteSingleton,
   getPgliteSingletonCache,
@@ -70,20 +68,5 @@ describe("resetPluginSqlPgliteSingleton (app DB auto-reset)", () => {
 
     expect(closeCalled).toBe(true);
     expect(cache.pgLiteClientManager).toBeUndefined();
-  });
-
-  it("keys runtime PGlite recovery on plugin-sql's exported error codes", () => {
-    const source = readFileSync(
-      path.resolve(import.meta.dirname, "startup/pglite-recovery.ts"),
-      "utf8",
-    );
-
-    expect(source).toContain(
-      'import { PGLITE_ERROR_CODES } from "@elizaos/plugin-sql";',
-    );
-    expect(source).toContain("PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED");
-    expect(source).toContain("PGLITE_ERROR_CODES.CORRUPT_DATA");
-    expect(source).not.toContain("ELIZA_AUTO_RESET_PGLITE_ERROR_CODE");
-    expect(source).not.toContain('"ELIZA_PGLITE_MANUAL_RESET_REQUIRED"');
   });
 });

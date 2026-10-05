@@ -169,7 +169,6 @@ export function useLocalModelDownloads(): LocalModelDownloads {
       runtimeMode.isCloudMode ||
       runtimeMode.isRemoteMode ||
       mobileRuntimeMode === "remote-mac" ||
-      mobileRuntimeMode === "tunnel-to-mobile" ||
       !supportsLocalInferenceStatus()
     ) {
       setState(SETTLED_NOT_REQUIRED);

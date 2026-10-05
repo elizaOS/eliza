@@ -5,8 +5,8 @@
  * the startup sequence — triggers are only loaded post-ready.
  */
 
+import type { TriggerRunRecord } from "@elizaos/core";
 import { useCallback, useState } from "react";
-import type { TriggerRunRecord } from "../api/client";
 import { client } from "../api/client";
 import type {
   CreateTriggerRequest,

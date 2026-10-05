@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop voice playback adapter ts behavior for app shell integration. */
 import { VoiceError } from "./errors";
 import type { VoicePlayAudioParams, VoicePlaybackEvent } from "./types";
 

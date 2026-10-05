@@ -2579,14 +2579,21 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             exact: true,
           });
           await lastRowAction.scrollIntoViewIfNeeded();
+          await lastRowAction.click();
+          const composer = page
+            .getByTestId("chat-composer-textarea")
+            .filter({ visible: true });
+          await expect(composer).toHaveValue(
+            "Tell me about ent-acme in my relationships graph.",
+          );
           const messageResponse = page.waitForResponse(
             (response) =>
               response.request().method() === "POST" &&
-              /\/api\/conversations\/[^/]+\/messages$/.test(
+              /\/api\/conversations\/[^/]+\/messages\/stream$/.test(
                 new URL(response.url()).pathname,
               ),
           );
-          await lastRowAction.click();
+          await composer.press("Enter");
           const response = await messageResponse;
           expect(response.status()).toBe(200);
           expect(response.request().postDataJSON()).toMatchObject({

@@ -19,7 +19,7 @@ import { client } from "../../api/client";
 import type { LogEntry } from "../../api/client-types-core";
 import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { useBranding } from "../../config/branding";
+import { useBranding } from "../../config/branding-react.hooks";
 import {
   useDocumentVisibility,
   useIntervalWhenDocumentVisible,

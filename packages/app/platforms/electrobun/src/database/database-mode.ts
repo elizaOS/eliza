@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop database mode ts behavior for app shell integration. */
 import type { DatabaseMode } from "./database-snapshot";
 import {
 	isMemoryPgliteDataDir,

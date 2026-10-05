@@ -232,7 +232,7 @@ test("legacy rolodex URL opens the working relationship graph", async ({
     page,
     /\/api\/lifeops\/(entities|relationships)(?:\?|$)/,
   );
-  await openAppPath(page, "/rolodex");
+  await openAppPath(page, "/apps/relationships");
   await expect(page.getByTestId("relationships-view")).toBeVisible({
     timeout: 60_000,
   });

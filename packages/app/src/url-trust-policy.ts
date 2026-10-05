@@ -1,7 +1,7 @@
 /** Pure host classifiers shared by the live shell network policy. */
 import {
+  classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
-  LEGACY_ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 
 export function isTrustedPrivateHttpHost(host: string): boolean {
@@ -38,12 +38,11 @@ const ELIZA_CLOUD_SHARED_HOSTS: ReadonlySet<string> = new Set([
     new URL(contract.cloudAppOrigin).hostname,
     new URL(contract.cloudApiOrigin).hostname,
   ]),
-  ...Object.values(LEGACY_ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
-    ...contract.marketingHostnames,
-    ...contract.cloudAppHostnames,
-    ...contract.cloudApiHostnames,
-  ]),
 ]);
+
+export function isElizaCloudAgentHost(host: string): boolean {
+  return classifyElizaHostname(host).role === "dedicated-agent";
+}
 
 export function isElizaCloudSharedHost(host: string): boolean {
   return ELIZA_CLOUD_SHARED_HOSTS.has(host.toLowerCase());

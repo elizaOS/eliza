@@ -39,7 +39,10 @@ interface DatabaseRowsCompatRouteDeps {
 // migration alters the table. Caching it skips the two information_schema
 // lookups on every table-browser request (the count + rows queries still run).
 // Short TTL bounds staleness if a table changes at runtime; bounded size.
-const tableIntrospectionCache = new Map<string, TableIntrospection>();
+const runtimeIntrospectionCaches = new WeakMap<
+  NonNullable<CompatRuntimeState["current"]>,
+  Map<string, TableIntrospection>
+>();
 const TABLE_INTROSPECTION_TTL_MS = 30000;
 const TABLE_INTROSPECTION_CACHE_LIMIT = 256;
 /**
@@ -75,20 +78,21 @@ function decodeTableName(raw: string): string | null {
   }
 }
 function rememberTableIntrospection(
+  cache: Map<string, TableIntrospection>,
   key: string,
   resolvedSchema: string,
   columns: string[],
   nowMs: number,
 ): void {
-  tableIntrospectionCache.set(key, {
+  cache.set(key, {
     resolvedSchema,
     columns,
     expiresAt: nowMs + TABLE_INTROSPECTION_TTL_MS,
   });
-  if (tableIntrospectionCache.size > TABLE_INTROSPECTION_CACHE_LIMIT) {
-    const oldest = tableIntrospectionCache.keys().next().value;
+  if (cache.size > TABLE_INTROSPECTION_CACHE_LIMIT) {
+    const oldest = cache.keys().next().value;
     if (typeof oldest === "string") {
-      tableIntrospectionCache.delete(oldest);
+      cache.delete(oldest);
     }
   }
 }
@@ -144,6 +148,11 @@ export async function handleDatabaseRowsCompatRoute(
   const schemaParam = schemaName ?? "";
   const introspectionKey = `${schemaParam}:${tableName}`;
   const nowMs = Date.now();
+  let tableIntrospectionCache = runtimeIntrospectionCaches.get(runtime);
+  if (!tableIntrospectionCache) {
+    tableIntrospectionCache = new Map();
+    runtimeIntrospectionCaches.set(runtime, tableIntrospectionCache);
+  }
   const cachedIntrospection = tableIntrospectionCache.get(introspectionKey);
   let resolvedSchema: string;
   let columns: string[];
@@ -204,6 +213,7 @@ export async function handleDatabaseRowsCompatRoute(
     // Only successful introspection is cached (never 404/409) — a table that
     // appears later must not be shadowed by a negative entry.
     rememberTableIntrospection(
+      tableIntrospectionCache,
       introspectionKey,
       resolvedSchema,
       columns,

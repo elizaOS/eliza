@@ -34,7 +34,9 @@ function getCalendarYearForDisplay(date: Date, timeZone?: string): number {
 }
 
 export function formatCalendarEventDateTime(
-  event: Pick<LifeOpsCalendarEvent, "startAt" | "timezone">,
+  event: Pick<LifeOpsCalendarEvent, "startAt" | "timezone"> & {
+    isAllDay?: boolean;
+  },
   options?: {
     includeYear?: boolean;
     includeTimeZoneName?: boolean;
@@ -49,6 +51,23 @@ export function formatCalendarEventDateTime(
     timeZone?: string;
   },
 ): string {
+  if (event.isAllDay) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(event.startAt);
+    if (match) {
+      const year = Number(match[1]);
+      const civil = new Date(
+        Date.UTC(year, Number(match[2]) - 1, Number(match[3])),
+      );
+      const currentYear = getCalendarYearForDisplay(new Date(), "UTC");
+      const includeYear = options?.includeYear ?? year !== currentYear;
+      const month = options?.numericDate ? "numeric" : "short";
+      return formatCalendarDatePart(civil, "UTC", {
+        month,
+        day: "numeric",
+        ...(includeYear ? { year: "numeric" } : {}),
+      });
+    }
+  }
   const start = new Date(event.startAt);
   const timeZone = options?.timeZone || event.timezone || undefined;
   const currentYear = getCalendarYearForDisplay(new Date(), timeZone);

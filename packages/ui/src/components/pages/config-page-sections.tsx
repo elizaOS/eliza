@@ -24,7 +24,7 @@ export type RpcProviderOption<T extends string> = {
   id: T;
   label: string;
 };
-export type TranslateOptions = Record<string, unknown>;
+
 export type TranslateFn = AppTranslateFn;
 export type RpcFieldDefinition = {
   configKey: string;

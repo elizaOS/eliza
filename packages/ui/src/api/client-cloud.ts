@@ -33,7 +33,7 @@ import {
   startCloudConversationHandoff,
 } from "../cloud/handoff/cloud-handoff-supervisor";
 import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { isMobileLocalAgentUrl } from "../first-run/mobile-runtime-mode";
 import { isLoopbackStagingStewardDevelopment } from "../state/loopback-steward-development";
 import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";

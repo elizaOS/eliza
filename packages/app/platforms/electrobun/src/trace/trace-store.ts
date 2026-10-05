@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop trace store ts behavior for app shell integration. */
 import { randomUUID } from "node:crypto";
 import type { JsonValue } from "@elizaos/core";
 import { TraceError } from "./errors";

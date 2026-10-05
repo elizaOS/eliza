@@ -68,10 +68,6 @@ const useApp = () => fixtureState;
 const useAppSelector = <T,>(sel: (s: Record<string, unknown>) => T): T =>
   sel(fixtureState);
 const useAppSelectorShallow = useAppSelector;
-const useIsDeveloperMode = () => false;
-const useIsPreviewMode = () => false;
-const setDeveloperMode = () => {};
-const setPreviewMode = () => {};
 
 // Appearance owns a real content-pack hook in production. The browser fixture
 // intentionally has no files/URLs to load, but it must still expose the full
@@ -108,10 +104,6 @@ module.exports = new Proxy(
     useAppSelector,
     useAppSelectorShallow,
     useContentPack,
-    useIsDeveloperMode,
-    useIsPreviewMode,
-    setDeveloperMode,
-    setPreviewMode,
     __esModule: true,
   },
   {

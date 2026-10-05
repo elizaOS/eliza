@@ -21,7 +21,7 @@
  * fields the route emits — no fabricated rows.
  */
 
-import { client } from "@elizaos/ui";
+import { client, dispatchChatPrefill } from "@elizaos/ui";
 
 import {
   type ReactNode,
@@ -238,10 +238,7 @@ type SearchState =
 
 /** Route an open-document request through the assistant chat (no fabricated nav). */
 function requestOpenDocument(id: string): void {
-  const chatClient = client as {
-    sendChatMessage?: (text: string) => void;
-  };
-  chatClient.sendChatMessage?.(`Open the document ${id}.`);
+  dispatchChatPrefill({ text: `Open the document ${id}.` });
 }
 
 export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {

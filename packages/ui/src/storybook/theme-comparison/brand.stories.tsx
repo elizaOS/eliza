@@ -17,7 +17,6 @@ import {
   BrandTabsResponsive,
   type TabItem,
 } from "../../cloud-ui/components/brand/brand-tabs-responsive.tsx";
-import { CornerBrackets } from "../../cloud-ui/components/brand/corner-brackets.tsx";
 import { DashboardSection } from "../../cloud-ui/components/brand/dashboard-section.tsx";
 import { DashboardStatCard } from "../../cloud-ui/components/brand/dashboard-stat-card.tsx";
 import { ElizaCloudLockup } from "../../cloud-ui/components/brand/eliza-cloud-lockup.tsx";
@@ -37,6 +36,7 @@ import {
   SectionLabel,
 } from "../../cloud-ui/components/brand/section-header.tsx";
 import { Button } from "../../components/ui/button.tsx";
+import { CornerBrackets } from "../../components/ui/corner-brackets";
 import { ThemeComparison } from "./ThemeComparison";
 
 const sampleMetrics: KeyMetric[] = [

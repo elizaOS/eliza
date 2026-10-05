@@ -1,4 +1,3 @@
-/** Exercises agent source watcher behavior with deterministic app test fixtures. */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";

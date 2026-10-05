@@ -15,12 +15,12 @@ import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboa
 import { Badge } from "../../components/ui/badge";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
+import { useCloudT as useT } from "../shell/CloudI18nProvider";
 import { ElizaAgentActions } from "./components/agent-actions";
 import { ElizaAgentPricingBanner } from "./components/eliza-agent-pricing-banner";
 import { ElizaAgentsTable } from "./components/eliza-agents-table";
 import { useCreditsBalance } from "./lib/data/credits";
 import { useAgents, usePersonalElizaIdentity } from "./lib/data/eliza-agents";
-import { useT } from "./lib/i18n";
 
 export default function AgentsPage() {
   const t = useT();

@@ -33,8 +33,6 @@ export {
   useExplorerApiKey,
 } from "./use-explorer-api-key";
 
-/** Stable view/section id + URL path slug for the API Explorer surface. */
-export const API_EXPLORER_SECTION_ID = "api-explorer";
 export const API_EXPLORER_ROUTE_PATH = "cloud/api-explorer";
 
 /** Lazy route element for the standalone API Explorer surface (code-split). */

@@ -219,7 +219,7 @@ import {
 } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
-import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
+import { deleteWalletSecrets } from "../security/wallet-secrets";
 
 // ---------------------------------------------------------------------------
 // Import from extracted modules for use within this file
@@ -803,7 +803,7 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         saveElizaConfig(config);
         clearCloudSecrets();
         await removeResetCredentialsFromVault(sharedVault());
-        await deleteWalletSecretsFromOsStore();
+        await deleteWalletSecrets();
         logger.info(
           "[eliza][reset] POST /api/agent/reset: eliza.json saved; renderer should restart API process if embedded/third-party dev",
         );

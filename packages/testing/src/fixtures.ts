@@ -1,5 +1,6 @@
-/** Pure test data and harness configuration, without runtime or database setup. */
+/** Test data, process fixtures and harness configuration without database setup. */
 export { buildMeetingArtifactFixtures } from "./meeting-artifact-fixtures.ts";
+export { getFreePort, waitForChildExit } from "./process-fixtures.ts";
 export {
   progressiveConformanceAdapter,
   progressiveConformanceFixture,

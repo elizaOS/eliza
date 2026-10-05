@@ -202,7 +202,3 @@ export const SUPPORTED_UI_COMPONENT_TYPES = [
 ] as const;
 export type SupportedUiComponentType =
   (typeof SUPPORTED_UI_COMPONENT_TYPES)[number];
-/** Get the full list of supported component types. */
-export function getSupportedComponents(): string[] {
-  return [...SUPPORTED_UI_COMPONENT_TYPES];
-}

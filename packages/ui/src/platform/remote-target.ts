@@ -269,22 +269,6 @@ export async function compensateRemoteTargetActivation(
   return result;
 }
 
-export async function commitRemoteTargetActivation(
-  sessionId: string,
-): Promise<{ status: "active"; alreadyCommitted: boolean }> {
-  const result = await invokeRemoteTargetRequest<{
-    sessionId: string;
-    status: "active";
-    alreadyCommitted: boolean;
-  }>({
-    rpcMethod: "remoteTargetCommitActivation",
-    ipcChannel: "remoteTarget:commitActivation",
-    params: { sessionId },
-  });
-  if (!result)
-    throw new Error("Remote-target activation commit is unavailable.");
-  return result;
-}
 export async function getRemoteTargetStatus(): Promise<RemoteTargetStatus> {
   return (
     (await invokeRemoteTargetRequest<RemoteTargetStatus>({
@@ -317,16 +301,7 @@ export async function stopRemoteTarget(): Promise<boolean> {
   });
   return result ? !result.running : false;
 }
-export async function revokeRemoteTargetSession(
-  sessionId: string,
-): Promise<boolean> {
-  const result = await invokeRemoteTargetRequest<{ revoked: true }>({
-    rpcMethod: "remoteTargetRevoke",
-    ipcChannel: "remoteTarget:revoke",
-    params: { sessionId },
-  });
-  return result?.revoked ?? false;
-}
+
 export async function finalizeRemoteTargetHostRevoke(
   hostId: string,
 ): Promise<boolean> {

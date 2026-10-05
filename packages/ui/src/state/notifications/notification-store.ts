@@ -24,12 +24,12 @@ import {
   DEFAULT_NOTIFICATION_PRIORITY,
 } from "@elizaos/core/protocol";
 import type { StewardSessionChangeDetail } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { deliverSystemNotification } from "../../bridge/notification-delivery";
 import { APP_RESUME_EVENT } from "../../events";
-import { STEWARD_SESSION_CHANGE_EVENT } from "../../events/steward-session-event";
 import type { AuthStatusState } from "../../hooks/useAuthStatus";
 import {
   getAuthStatusSnapshot,
@@ -225,6 +225,7 @@ async function deliver(notification: AgentNotification): Promise<void> {
       deepLink: notification.deepLink,
       data: notification.data,
       priority: notification.priority,
+      category: notification.category,
       groupKey: notification.groupKey,
     },
     { allowHiddenWeb: true },

@@ -8,11 +8,11 @@ import {
   createSensitiveRequestDispatchRegistry,
   type SensitiveRequestDeliveryAdapter,
 } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
 import {
   createCredentialTunnelService,
   createSubAgentCredentialBridgeAdapter,
-} from "../../../../packages/app/src/services/credential-tunnel-service.ts";
+} from "@elizaos/plugin-assistant";
+import { describe, expect, it, vi } from "vitest";
 import {
   type BridgeCredentialAdapter,
   handleBridgeRoutes,

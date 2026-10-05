@@ -1,28 +1,6 @@
-/**
- * InboxView — the GUI data wrapper for the cross-channel inbox.
- *
- * It owns the live inbox data (the single read-only endpoint served by the
- * personal-assistant routes, the background poll, the channel-filter selection,
- * and the loading/error/empty/ready state machine) and renders the one
- * presentational {@link InboxSpatialView} inside a {@link SpatialSurface}.
- * Omitting the `modality` prop lets `SpatialSurface` render the browser DOM
- * surface today while the retained modality contract stays available for future
- * adapters.
- *
- * Data source (PA owns the persistence + connector pulls; this plugin renders):
- *   GET {base}/api/lifeops/inbox?channels=
- *
- * The default fetcher builds its URL from `client.getBaseUrl()`; tests inject
- * the fetcher seam so they stay offline. The wire payload is a flat list of
- * messages plus per-channel counts; we map each message to a flat display item
- * at the fetch boundary so the rest of the view renders display-only.
- *
- * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
- * DTOs below are declared locally to match the JSON shape PA emits
- * (`LifeOpsInbox` / `LifeOpsInboxMessage` in @elizaos/core).
- */
+/** Inbox view: fetches scoped records and opens assistant requests in chat. */
 
-import { client } from "@elizaos/ui";
+import { client, dispatchChatPrefill } from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,
@@ -215,14 +193,7 @@ function unreadNudge(items: InboxItem[]): string | null {
 /** Single chat-handoff seam: search, reload, connect, and open all live in the
  * floating chat, so the view routes user intent there rather than computing. */
 function sendChatPrompt(prompt: string): void {
-  // `client` is the shared ElizaClient; its published type does not surface
-  // `sendChatMessage`, so read it through a narrow optional-method view (the
-  // floating chat injects it at runtime) rather than widening the client type.
-  (
-    client as {
-      sendChatMessage?: (text: string) => void;
-    }
-  ).sendChatMessage?.(prompt);
+  dispatchChatPrefill({ text: prompt });
 }
 function requestConnect(): void {
   sendChatPrompt("Connect a messaging channel so you can triage my inbox.");
