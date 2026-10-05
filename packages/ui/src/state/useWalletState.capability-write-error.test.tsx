@@ -13,6 +13,9 @@ import { logger } from "../logger.ts";
 
 const mocks = vi.hoisted(() => ({
   client: {
+    getBaseUrl: () => "",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: () => () => {},
     updateConfig: vi.fn(),
     getConfig: vi.fn(async () => ({ ui: {} })),
   },

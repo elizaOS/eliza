@@ -10,7 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
-	"time"
 )
 
 // PreparedStager downloads one authenticated pair, recovery first. Its private
@@ -33,10 +32,6 @@ type StagedPair struct {
 	RecoveryPath    string
 	Descriptor      []byte
 	Generation      int64
-}
-
-func NewPreparedStager(enrollmentDirectory string) (*PreparedStager, error) {
-	return newPreparedStager(enrollmentDirectory, NewArtifactDownloader)
 }
 
 // NewPreparedStagerWithTimeSource shares one qualified source with HTTPS and
@@ -104,12 +99,12 @@ func (s *PreparedStager) validate(directory, admissionDirectory, identity string
 	if record.Generation != generation || record.Baseline != device.Installed || record.BaselineVersion != device.Version || record.Descriptor.Channel != device.Channel || !reflect.DeepEqual(record.Hosts, s.config.Hosts) {
 		return nil, errors.New("stale prepared staging decision")
 	}
-	policy, _ := json.Marshal(admissionPolicy{Repository: s.config.Repository, Hosts: s.config.Hosts, Now: bounds.LowerMillis, Sequence: 1, Revision: 1, SecurityFloor: floor})
+	policy := admissionPolicy{Repository: s.config.Repository, Hosts: s.config.Hosts, Lower: bounds.LowerMillis, Upper: bounds.UpperMillis, Sequence: 1, Revision: 1, SecurityFloor: floor}
 	descriptor, err := json.Marshal(record.Descriptor)
 	if err != nil {
 		return nil, err
 	}
-	decision, err := evaluateRememberedRelease(admissionDirectory, descriptor, deviceJSON, policy, &bounds.UpperMillis)
+	decision, err := evaluateRememberedRelease(admissionDirectory, descriptor, deviceJSON, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -119,33 +114,14 @@ func (s *PreparedStager) validate(directory, admissionDirectory, identity string
 	return record, nil
 }
 
-// Stage returns only after both cached artifacts are fully hashed and current
-// enrollment/admission still permit this exact saved pair. The native caller
-// supplies qualified time and rechecks live generation after this long-running
-// operation; Close cancels when activity/policy/job observations change.
-func (s *PreparedStager) Stage(authorizationDirectory, admissionDirectory, cacheDirectory, identity string, deviceJSON []byte, trustedUnixMillis, securityFloor, generation, reserveBytes int64) (*StagedPair, error) {
-	if s.source != nil {
-		s.Close()
-		return nil, errors.New("use StageWithTimeSource for source-bound staging")
-	}
-	return s.stage(authorizationDirectory, admissionDirectory, cacheDirectory, identity, deviceJSON, trustedUnixMillis, securityFloor, generation, reserveBytes)
-}
-
 // StageWithTimeSource accepts no point-time override. Qualified source failure
 // prevents returning a pair, even when artifact bytes already exist in cache.
 func (s *PreparedStager) StageWithTimeSource(authorizationDirectory, admissionDirectory, cacheDirectory, identity string, deviceJSON []byte, securityFloor, generation, reserveBytes int64) (*StagedPair, error) {
-	if s.source == nil {
-		s.Close()
-		return nil, errors.New("qualified staging source not configured")
-	}
 	bounds, err := readTimeBounds(s.source)
 	if err != nil {
 		s.Close()
 		return nil, err
 	}
-	return s.stage(authorizationDirectory, admissionDirectory, cacheDirectory, identity, deviceJSON, bounds.LowerMillis, securityFloor, generation, reserveBytes)
-}
-func (s *PreparedStager) stage(authorizationDirectory, admissionDirectory, cacheDirectory, identity string, deviceJSON []byte, trustedUnixMillis, securityFloor, generation, reserveBytes int64) (*StagedPair, error) {
 	s.mu.Lock()
 	if s.used || s.closed.Load() {
 		s.mu.Unlock()
@@ -154,20 +130,14 @@ func (s *PreparedStager) stage(authorizationDirectory, admissionDirectory, cache
 	s.used = true
 	s.mu.Unlock()
 	defer s.Close()
-	if !validScheduleTime(trustedUnixMillis) || !bounded(securityFloor, 1, safeInteger) || generation < 0 || reserveBytes < 0 || reserveBytes > safeInteger {
+	if !bounded(securityFloor, 1, safeInteger) || generation < 0 || reserveBytes < 0 || reserveBytes > safeInteger {
 		return nil, errors.New("invalid staging observations")
 	}
-	started := time.Now()
-	lastLower := trustedUnixMillis
+	lastLower := bounds.LowerMillis
 	validateCurrent := func() (*preparedAuthorization, error) {
-		point := trustedUnixMillis + time.Since(started).Milliseconds()
-		bounds := &TrustedTimeInterval{LowerMillis: point, UpperMillis: point}
-		if s.source != nil {
-			var err error
-			bounds, err = readTimeBounds(s.source)
-			if err != nil {
-				return nil, err
-			}
+		bounds, err := readTimeBounds(s.source)
+		if err != nil {
+			return nil, err
 		}
 		if err := narrowTimeFloor(bounds, lastLower); err != nil {
 			return nil, err

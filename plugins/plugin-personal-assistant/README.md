@@ -49,3 +49,15 @@ runtime, SQLite stores, workflow policy and four required presentation strings
 from the host. Authorization is rechecked after asynchronous work; source
 selection and duplicate choice delivery retain their durable task bindings.
 Product helper descriptions, support/study routes and UI copy stay with hosts.
+
+The native bill-outcome store's `loadEvidence()` returns the current observation
+and whether that exact validated record is persisted. Host reports can distinguish
+pending observations from durable evidence without querying the store's tables.
+
+`native-host/bill-client.ts` is a browser-safe client leaf for these routes. It
+validates response snapshots with injected shared choice/money validators, owns
+request state and task-switch cancellation, and never replays uncertain source
+selection. Source-link opening requires an explicit call and validated provider
+URL. Hosts supply transport and UI wording; owner authorization and durable effect
+controls remain on the host. Stopping a client suppresses late replies, not host
+effects already dispatched. The leaf is exported as `./native-host/bill-client`.

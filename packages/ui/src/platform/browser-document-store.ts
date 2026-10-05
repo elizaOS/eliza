@@ -131,6 +131,46 @@ export class BrowserDocumentStore {
     );
   }
 
+  /** Initialize absent bytes once; existing records (including tombstones) keep their receipt. */
+  async readOrCreate(
+    key: string,
+    raw: string | null,
+    signal?: AbortSignal,
+  ): Promise<BrowserDocumentSnapshot> {
+    if (raw !== null && typeof raw !== "string")
+      throw new TypeError("Expected document bytes or null.");
+    const initialize = () =>
+      this.transact<BrowserDocumentSnapshot>(
+        "readwrite",
+        (store, result, fail) => {
+          const request = store.get(key);
+          request.onsuccess = () => {
+            if (request.result !== undefined) {
+              result(request.result);
+              return;
+            }
+            try {
+              const next = { revision: crypto.randomUUID(), raw };
+              store.put(next, key);
+              result(next);
+            } catch (error) {
+              fail(error);
+            }
+          };
+        },
+        signal,
+      );
+    // Share edit ownership so a first import cannot invalidate a pending editor.
+    // Without Web Locks, the IndexedDB transaction still admits exactly one creator.
+    return navigator.locks?.request
+      ? navigator.locks.request(
+          JSON.stringify(["browser-document", this.databaseName, key]),
+          { mode: "exclusive", ...(signal ? { signal } : {}) },
+          initialize,
+        )
+      : initialize();
+  }
+
   /** Raw bytes survive corrupt JSON; reset also advances the receipt (ABA safe). */
   async compareExchange(
     key: string,

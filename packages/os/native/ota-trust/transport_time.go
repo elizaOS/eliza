@@ -40,7 +40,7 @@ func NewHTTPTransportWithTimeSource(approvedHosts string, source TrustedTimeSour
 	if _, err := readTimeBounds(source); err != nil {
 		return nil, err
 	}
-	t, err := NewHTTPTransport(approvedHosts)
+	t, err := newHTTPTransport(approvedHosts)
 	if err != nil {
 		return nil, err
 	}

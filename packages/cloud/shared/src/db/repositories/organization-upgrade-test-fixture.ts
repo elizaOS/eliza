@@ -7,6 +7,7 @@ import {
 export async function installOrganizationUpgradeTestSchema(
   execute: (query: string) => Promise<unknown>,
   includeProviderBinding = true,
+  includeRetainedTerms = true,
 ) {
   await installCancellationTestSchema(execute);
   for (const name of [
@@ -20,6 +21,10 @@ export async function installOrganizationUpgradeTestSchema(
           "0516_organization_upgrade_paid_finalization",
           "0517_organization_upgrade_historical_targets",
           "0518_organization_upgrade_historical_settlement",
+          "0519_organization_upgrade_void_result",
+          "0520_organization_downgrade_quotes",
+          "0521_organization_schedule_effects",
+          ...(includeRetainedTerms ? ["0522_organization_schedule_quote_terms"] : []),
         ]
       : []),
   ]) {
@@ -28,6 +33,10 @@ export async function installOrganizationUpgradeTestSchema(
       if (q.trim())
         await execute(
           q
+            .replace(
+              "ADD COLUMN organization_upgrade_failure_evidence",
+              "ADD COLUMN IF NOT EXISTS organization_upgrade_failure_evidence",
+            )
             .replace(
               "ADD COLUMN organization_upgrade_settlement_evidence",
               "ADD COLUMN IF NOT EXISTS organization_upgrade_settlement_evidence",

@@ -24,20 +24,17 @@ import {
   resolveStateDir,
   resolveTrajectoryGate,
   sanitizeTrajectoryJsonObject,
+  type TrajectoryActionAttemptRecord as TrajectoryActionAttempt,
+  type TrajectoryLlmCallRecord as TrajectoryLlmCall,
+  type TrajectoryProviderAccessRecord as TrajectoryProviderAccess,
+  type TrajectorySkillInvocationRecord as TrajectorySkillInvocation,
+  type TrajectoryStatus,
+  type TrajectoryStepRecord as TrajectoryStep,
+  type TrajectoryStepKind,
   timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
-
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
-import type {
-  TrajectoryActionAttempt,
-  TrajectoryLlmCall,
-  TrajectoryProviderAccess,
-  TrajectorySkillInvocation,
-  TrajectoryStatus,
-  TrajectoryStep,
-  TrajectoryStepKind,
-} from "../types/trajectory.ts";
 import { observationExtractionTemplate } from "./observation-prompt.js";
 
 export { asRecord };

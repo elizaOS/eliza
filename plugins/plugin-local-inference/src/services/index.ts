@@ -42,7 +42,6 @@ export {
 } from "./context-fit";
 export {
 	buildDeviceResourceMetricsDevPayload,
-	type DeviceBridgeStatus,
 	type DeviceGenerationMetrics,
 	type DeviceResourceMetricsDevPayload,
 	deviceBridge,

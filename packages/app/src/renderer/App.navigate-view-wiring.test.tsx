@@ -13,6 +13,12 @@
 import { Capacitor } from "@capacitor/core";
 import type { PluginAppNavTab } from "@elizaos/core";
 import {
+  AgentButton,
+  DEFAULT_BOOT_CONFIG,
+  getViewRegistry,
+  setBootConfig,
+} from "@elizaos/ui";
+import {
   act,
   cleanup,
   fireEvent,
@@ -23,10 +29,6 @@ import {
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  AgentButton,
-  getViewRegistry,
-} from "../../../ui/src/agent-surface/index";
-import {
   listAppShellPages,
   registerAppShellPage,
 } from "../../../ui/src/app-shell-registry";
@@ -35,10 +37,6 @@ import {
   ViewBackButton,
 } from "../../../ui/src/components/shared/ViewHeader";
 import { invokeViewInteract } from "../../../ui/src/components/views/view-interact-registry";
-import {
-  DEFAULT_BOOT_CONFIG,
-  setBootConfig,
-} from "../../../ui/src/config/boot-config";
 import { DEFAULT_BRANDING } from "../../../ui/src/config/branding-base";
 import { BrandingContext } from "../../../ui/src/config/branding-react.hooks";
 import {
@@ -137,6 +135,7 @@ const authenticatedAuthStatus = vi.hoisted(
       },
       access: {
         mode: "local",
+        role: "OWNER",
         passwordConfigured: true,
         ownerConfigured: true,
       },
@@ -283,7 +282,7 @@ const sharedCanvasView = {
   viewType: "gui" as const,
   // Sharing the Home/Launcher wallpaper is grant-gated (#13452): the surface
   // manifest must declare `background: "shared"` AND the `wallpaper`
-  // capability. A bare `backgroundPolicy: "shared"` resolves to opaque by
+  // capability. A surface without a wallpaper grant resolves to opaque by
   // design (no view opts into the wallpaper by accident).
   surface: {
     background: "shared" as const,
@@ -444,8 +443,6 @@ function getAppValue() {
     setState: vi.fn(),
     setTab: appState.setTab,
     setUiLanguage: vi.fn(),
-    setUiTheme: vi.fn(),
-    setUiThemeMode: vi.fn(),
     startupCoordinator: {
       phase: appState.startupPhase,
       isShellPaintable: [
@@ -468,7 +465,6 @@ function getAppValue() {
     uiLanguage: "en",
     uiShellMode: "default",
     uiTheme: "light",
-    uiThemeMode: "system",
   };
 }
 function useAppValue() {
@@ -1282,24 +1278,34 @@ describe("App navigate-view event wiring", () => {
         .paddingTop,
     ).not.toBe("0px");
   });
-  it("renders the canonical Knowledge plugin surface", async () => {
-    registerAppShellPage({
-      id: "documents",
-      pluginId: "@elizaos/plugin-knowledge",
-      label: "Knowledge",
-      path: "/character/documents",
-      surface: { header: "fullscreen" },
-      tabAffinity: "documents",
-      Component: () => <div data-testid="documents-view" />,
-    });
-    appState.tab = "documents";
-    window.history.replaceState(null, "", "/character/documents");
-    const { findByTestId, queryByTestId } = render(<App />);
-    expect(
-      await findByTestId("documents-view", undefined, { timeout: 5000 }),
-    ).toBeTruthy();
-    expect(queryByTestId("dynamic-view-loader")).toBeNull();
-  });
+  it.each([
+    { path: "/character/documents", remote: true },
+    { path: "/character/documents", remote: false },
+  ])(
+    "keeps Knowledge route $path on its plugin surface (remote=$remote)",
+    async ({ path, remote }) => {
+      if (!remote)
+        mockAvailableViews.splice(mockAvailableViews.indexOf(documentsView), 1);
+      registerAppShellPage({
+        id: "documents",
+        pluginId: "@elizaos/plugin-knowledge",
+        label: "Knowledge",
+        path: "/character/documents",
+        pathPatterns: ["/character/documents"],
+        surface: { header: "fullscreen" },
+        tabAffinity: "documents",
+        Component: () => <div data-testid="documents-view" />,
+      });
+      appState.tab = "documents";
+      window.history.replaceState(null, "", path);
+      const { findByTestId, queryByTestId } = render(<App />);
+      // The canonical character route is shell-reserved, even when a remote
+      // registry advertises the same path. Preserve the signed plugin owner.
+      expect(await findByTestId("documents-view")).toBeTruthy();
+      expect(queryByTestId("dynamic-view-loader")).toBeNull();
+    },
+  );
+
   it("prefers an exact remote plugin route over its native wallet fallback", async () => {
     mockAvailableViews.push(walletMarketView);
     registerAppShellPage({

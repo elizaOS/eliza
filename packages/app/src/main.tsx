@@ -10,9 +10,9 @@ import "./renderer/transports/configure";
 import {
   AGENT_READY_EVENT,
   type AppBootConfig,
+  applyAppTheme,
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
-  applyUiTheme,
   type BrandingConfig,
   COMMAND_PALETTE_EVENT,
   clearStandaloneBottomReclaim,
@@ -61,7 +61,6 @@ import {
   loadPersistedActiveServer,
   loadShellViewAgentSurface,
   loadUiLanguage,
-  loadUiThemeMode,
   logger,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
@@ -78,7 +77,6 @@ import {
   RemoteAgentPairingError,
   RenderTelemetryProfiler,
   resolveDedicatedAgentId,
-  resolveUiTheme,
   resolveWindowShellRoute,
   routeFirstRunDeepLink,
   SHARE_TARGET_EVENT,
@@ -156,6 +154,13 @@ import {
 import type { PushToTalkHoldDetail } from "@elizaos/core/protocol";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
+import {
+  apiBaseToDeviceBridgeUrl,
+  type IosRuntimeConfig,
+  resolveCloudApiBase,
+  resolveIosRuntimeConfig,
+  resolveMobileApiConnection,
+} from "@elizaos/ui";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
 import {
@@ -194,12 +199,6 @@ import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
 import { runIosFullBunEntrypoint } from "./ios-full-bun-entrypoint";
-import {
-  apiBaseToDeviceBridgeUrl,
-  assertSupportedIosRuntimeConfig,
-  type IosRuntimeConfig,
-  resolveIosRuntimeConfig,
-} from "./ios-runtime";
 import { startKeyboardDictationSession } from "./keyboard-dictation";
 import {
   type AndroidDeepLinkBuffer,
@@ -457,7 +456,16 @@ const isAndroid = platform === "android";
 const isStoreBuild =
   typeof __ELIZA_BUILD_VARIANT__ === "string" &&
   __ELIZA_BUILD_VARIANT__ === "store";
-const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
+const IOS_RUNTIME_ENV_CONFIG = isIOS
+  ? resolveIosRuntimeConfig(import.meta.env)
+  : {
+      ...resolveIosRuntimeConfig({}),
+      cloudApiBase: resolveCloudApiBase(import.meta.env),
+    };
+const MOBILE_API_CONNECTION = resolveMobileApiConnection(
+  isAndroid ? "android" : "ios",
+  import.meta.env,
+);
 configureStoredStewardTokenScope(IOS_RUNTIME_ENV_CONFIG.cloudApiBase);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
@@ -2106,11 +2114,10 @@ function getCurrentIosRuntimeConfig(): IosRuntimeConfig {
       );
     }
   }
-  assertSupportedIosRuntimeConfig(config);
   return config;
 }
 
-function applyBuildTimeIosConnection(): void {
+function applyBuildTimeMobileConnection(): void {
   if (!isNative) return;
 
   const current = getBootConfig();
@@ -2119,18 +2126,17 @@ function applyBuildTimeIosConnection(): void {
     ...(isIOS && IOS_RUNTIME_ENV_CONFIG.mode === "local"
       ? { apiBase: IOS_LOCAL_AGENT_IPC_BASE }
       : {}),
-    ...(IOS_RUNTIME_ENV_CONFIG.apiToken
-      ? { apiToken: IOS_RUNTIME_ENV_CONFIG.apiToken }
+    ...(MOBILE_API_CONNECTION.apiToken
+      ? { apiToken: MOBILE_API_CONNECTION.apiToken }
       : {}),
   };
   setBootConfig(next);
 
   if (isIOS && IOS_RUNTIME_ENV_CONFIG.mode === "local") return;
-  if (!IOS_RUNTIME_ENV_CONFIG.apiBase && !IOS_RUNTIME_ENV_CONFIG.apiToken)
-    return;
+  if (!MOBILE_API_CONNECTION.apiBase && !MOBILE_API_CONNECTION.apiToken) return;
 
-  if (IOS_RUNTIME_ENV_CONFIG.apiBase) {
-    validateAndSetApiBase(IOS_RUNTIME_ENV_CONFIG.apiBase);
+  if (MOBILE_API_CONNECTION.apiBase) {
+    validateAndSetApiBase(MOBILE_API_CONNECTION.apiBase);
   }
 }
 
@@ -2371,7 +2377,7 @@ function initializeMobileRuntimeModeListener(): void {
 }
 
 function applyStoredDetachedShellTheme(): void {
-  applyUiTheme(resolveUiTheme(loadUiThemeMode()));
+  applyAppTheme();
 }
 
 /**
@@ -2424,7 +2430,7 @@ async function main(): Promise<void> {
   }
 
   setupPlatformStyles();
-  applyBuildTimeIosConnection();
+  applyBuildTimeMobileConnection();
 
   try {
     await applyLaunchConnectionFromUrl();

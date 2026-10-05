@@ -1,4 +1,3 @@
-// Exposes the USB installer app entrypoint and backend surface.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { HttpUsbInstallerBackend } from "./backend/http-backend";

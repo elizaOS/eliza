@@ -2,7 +2,7 @@
 import {
   loadPinnedEd25519PublicKey,
   publicKeyFingerprint,
-} from "../../usb-installer/src/backend/ed25519-trust";
+} from "../../trust/ed25519-trust.ts";
 
 const key = loadPinnedEd25519PublicKey();
 if (!/^[a-f0-9]{64}$/.test(publicKeyFingerprint(key))) {

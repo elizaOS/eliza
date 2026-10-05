@@ -51,7 +51,10 @@ public final class RuntimeBundleStoreTest {
     };
   }
   private static Path prepare(Path root, Map<String, byte[]> assets) throws Exception {
-    return RuntimeBundleStore.prepare(root.resolve("versions"), manifest(assets), source(assets), root.resolve("native"), SYNC);
+    byte[] inventory = manifest(assets);
+    return ai.eliza.plugins.agent.runtime.RuntimeBundleStore.prepareFromAsset(root.resolve("versions"), "inventory",
+      name -> "inventory".equals(name) ? new ByteArrayInputStream(inventory) : source(assets).open(name),
+      root.resolve("native"), SYNC, "eliza-runtime-v1");
   }
   public static void main(String[] args) throws Exception {
     if (args.length == 3 && args[0].equals("crash")) {

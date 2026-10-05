@@ -95,6 +95,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
+        ElizaReminderMessagingService.onReminderOpened(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(AgentPlugin.class);
         registerPlugin(BatteryOptimizationPlugin.class);
@@ -167,6 +168,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         DeepLinkBufferPlugin.captureIntent(this, intent);
+        ElizaReminderMessagingService.onReminderOpened(this, intent);
         super.onNewIntent(intent);
     }
 

@@ -11,6 +11,8 @@ export class RuntimeLaunchError extends Error {
   }
 }
 
+export { readPrivateRuntimeJson } from "./private-runtime-json.mjs";
+
 /** Literal private settings only: never expand variables or execute shell text. */
 export async function readPrivateRuntimeEnvironment(
   file,
@@ -38,9 +40,29 @@ async function privateFile(file, initial) {
   let handle;
   try {
     handle = await open(file, "wx", 0o600);
-    await handle.writeFile(initial);
+    await handle.writeFile(typeof initial === "function" ? initial() : initial);
   } catch (error) {
-    if (handle || error.code !== "EEXIST") throw error;
+    if (handle) {
+      const failures = [error];
+      try {
+        await handle.close();
+      } catch (closeError) {
+        failures.push(closeError);
+      }
+      handle = undefined;
+      try {
+        await unlink(file);
+      } catch (cleanupError) {
+        failures.push(cleanupError);
+      }
+      if (failures.length > 1)
+        throw new AggregateError(
+          failures,
+          "Private file creation and cleanup failed",
+        );
+      throw error;
+    }
+    if (error.code !== "EEXIST") throw error;
   } finally {
     // The creation path also reopens below, so all reads validate the same way.
     await handle?.close();
@@ -76,6 +98,30 @@ export async function writePrivateRuntimeJson(file, value) {
   }
 }
 
+/** Persistent host profile for runtimes that own updates to their config file. */
+export async function preparePrivateRuntimeProfile({
+  tokenPath,
+  configPath,
+  initialConfig,
+  createToken = () => randomBytes(48).toString("base64url"),
+}) {
+  const validateToken = (value) => {
+    if (typeof value !== "string")
+      throw new RuntimeLaunchError("INVALID_RUNTIME_TOKEN");
+    const token = value.trim();
+    if (!token || /[\r\n\0]/.test(token))
+      throw new RuntimeLaunchError("INVALID_RUNTIME_TOKEN");
+    return token;
+  };
+  const token = validateToken(
+    await privateFile(tokenPath, () => validateToken(createToken())),
+  );
+  const config = JSON.parse(
+    await privateFile(configPath, JSON.stringify(initialConfig, null, 2)),
+  );
+  return { token, config };
+}
+
 /** Keep user-authored configuration separate from each selected launch. */
 export async function preparePrivateRuntimeFiles({
   tokenPath,
@@ -83,16 +129,15 @@ export async function preparePrivateRuntimeFiles({
   launchConfigPath,
   initialConfig,
   selectConfig,
+  createToken,
 }) {
-  const token = (
-    await privateFile(tokenPath, randomBytes(48).toString("base64url"))
-  ).trim();
-  if (!token || /[\r\n\0]/.test(token))
-    throw new RuntimeLaunchError("INVALID_RUNTIME_TOKEN");
-  const existing = JSON.parse(
-    await privateFile(configPath, JSON.stringify(initialConfig, null, 2)),
-  );
-  await writePrivateRuntimeJson(launchConfigPath, await selectConfig(existing));
+  const { token, config } = await preparePrivateRuntimeProfile({
+    tokenPath,
+    configPath,
+    initialConfig,
+    createToken,
+  });
+  await writePrivateRuntimeJson(launchConfigPath, await selectConfig(config));
   return { token, launchConfigPath };
 }
 

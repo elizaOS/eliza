@@ -19,6 +19,22 @@ it.each([
     ).rejects.toThrow(message);
   },
 );
+it.each(["", "first failure"])(
+  "retains a failed result with detail %j",
+  async (detail) => {
+    const events = [
+      { status: "failed", detail },
+      { status: "failed", detail: "" },
+      { done: true },
+    ];
+    const body = events
+      .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+      .join("");
+    await expect(
+      readExecutionStream(new Response(body), vi.fn()),
+    ).rejects.toThrow(detail);
+  },
+);
 it("accepts split UTF-8 and CRLF only after the sole success terminal", async () => {
   const bytes = new TextEncoder().encode(
     'data: {"detail":"😀"}\r\n\r\ndata: {"done":true}\r\n\r\n',

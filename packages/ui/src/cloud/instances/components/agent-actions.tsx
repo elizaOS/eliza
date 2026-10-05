@@ -25,7 +25,6 @@
 
 import type { AgentExecutionTier } from "@elizaos/cloud-sdk";
 import {
-  AGENT_PRICING,
   DEDICATED_COMPUTE_PRICE_HEADER,
   formatHourlyRate,
   formatUSD,
@@ -58,15 +57,16 @@ import {
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
-import { getBootConfig } from "../../../config/boot-config";
+import { getBootConfig } from "../../../config/boot-config-store";
 import { dispatchCloudHandoffPhase } from "../../../events";
 import { directCloudSharedAgentIdFromBase } from "../../../utils/cloud-agent-base";
 import { silentlyRepointToDedicated } from "../../handoff/silent-repoint";
 import { runSharedToDedicatedUpgradeHandoff } from "../../handoff/start-tier-upgrade";
 import { apiWithStatus, readCloudBearerToken } from "../../lib/api-client";
-import { useT } from "../lib/i18n";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import { useJobPoller } from "../lib/use-job-poller";
+import { AgentDeactivationDetails } from "./agent-deactivation-details";
 import { DedicatedStartConfirmation } from "./dedicated-start-confirmation";
 
 interface ElizaAgentActionsProps {
@@ -1027,40 +1027,7 @@ export function ElizaAgentActions({
         onOpenChange={setShowDeactivateConfirm}
       >
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-txt-strong">
-              {t("cloud.containers.agentActions.deactivateTitle", {
-                defaultValue: "Deactivate this agent?",
-              })}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-muted">
-              <span className="block">
-                {t("cloud.containers.agentActions.deactivateBody1", {
-                  defaultValue:
-                    "Your agent stops running and stops consuming hourly credits (currently {{rate}} while running).",
-                  rate: formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE),
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateBody2", {
-                  defaultValue:
-                    "Eliza retains your agent data during deactivation. If deactivation cannot complete, the agent stays running and billing continues.",
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateMinimum", {
-                  defaultValue:
-                    "Any remaining activation minimum is charged when you stop.",
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateBody3", {
-                  defaultValue:
-                    "Reactivation restores the agent's retained data and can take a few minutes; it requires available credits.",
-                })}
-              </span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+          <AgentDeactivationDetails />
           <AlertDialogFooter>
             <AlertDialogCancel asChild>
               <Button variant="outline">

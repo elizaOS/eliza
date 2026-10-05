@@ -17,7 +17,7 @@ import { getHostRequestTransport } from "./host-transport";
 
 import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
 import { getElizaApiToken } from "@elizaos/host/protocol";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { resolveApiUrl } from "../utils/asset-url.js";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";

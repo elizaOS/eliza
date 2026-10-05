@@ -1,7 +1,4 @@
 :root {
-  /* Kept as a compatibility alias for older flasher selectors. Eliza's
-     current product palette is neutral black, white, and orange only. */
-  --brand-blue: #ff6a1f;
   --brand-orange: #ff6a1f;
   --brand-white: #fdfaf7;
   --brand-black: #050506;
@@ -36,18 +33,13 @@ input {
   outline-offset: 2px;
 }
 
-/* --------------------------------------------------------------------------
-   Shell
-   -------------------------------------------------------------------------- */
-
 .flasher-shell {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--brand-blue);
+  background: var(--brand-orange);
 }
 
-/* Header */
 .header-band {
   align-items: center;
   background: var(--brand-black);
@@ -111,17 +103,12 @@ h3 {
   white-space: nowrap;
 }
 
-/* Body */
 .workspace-body {
   flex: 1;
   background: var(--brand-white);
   color: var(--brand-black);
   padding: 0;
 }
-
-/* --------------------------------------------------------------------------
-   Screen container
-   -------------------------------------------------------------------------- */
 
 .screen {
   max-width: 680px;
@@ -141,10 +128,6 @@ h3 {
 .screen-header h2 {
   margin-bottom: 0;
 }
-
-/* --------------------------------------------------------------------------
-   Device detection
-   -------------------------------------------------------------------------- */
 
 .device-list {
   display: grid;
@@ -177,10 +160,6 @@ h3 {
   padding: 16px 20px;
   margin-top: 16px;
 }
-
-/* --------------------------------------------------------------------------
-   Spec list
-   -------------------------------------------------------------------------- */
 
 .spec-list {
   list-style: none;
@@ -215,10 +194,6 @@ h3 {
 .spec-locked {
   background: rgba(176, 64, 0, 0.06);
 }
-
-/* --------------------------------------------------------------------------
-   Build selection
-   -------------------------------------------------------------------------- */
 
 .build-list {
   display: grid;
@@ -274,13 +249,9 @@ h3 {
 }
 
 .channel-nightly {
-  background: var(--brand-blue);
+  background: var(--brand-orange);
   color: var(--brand-white);
 }
-
-/* --------------------------------------------------------------------------
-   Pre-flash confirmation
-   -------------------------------------------------------------------------- */
 
 .confirm-box {
   border: 2px solid var(--brand-black);
@@ -337,10 +308,6 @@ h3 {
   background: rgba(224, 32, 32, 0.06);
   border: 1px solid rgba(224, 32, 32, 0.2);
 }
-
-/* --------------------------------------------------------------------------
-   Bootloader unlock guide
-   -------------------------------------------------------------------------- */
 
 .unlock-warning {
   background: rgba(176, 64, 0, 0.08);
@@ -428,10 +395,6 @@ h3 {
   font-size: 1.2rem;
 }
 
-/* --------------------------------------------------------------------------
-   Flashing progress
-   -------------------------------------------------------------------------- */
-
 .flash-progress-bar {
   height: 6px;
   background: var(--brand-gray);
@@ -440,7 +403,7 @@ h3 {
 
 .flash-progress-fill {
   height: 100%;
-  background: var(--brand-blue);
+  background: var(--brand-orange);
 }
 
 .step-list {
@@ -465,7 +428,7 @@ h3 {
 }
 
 .step-running {
-  border-left-color: var(--brand-blue);
+  border-left-color: var(--brand-orange);
   background: rgba(11, 53, 241, 0.06);
 }
 
@@ -533,10 +496,6 @@ h3 {
   overflow-wrap: anywhere;
 }
 
-/* --------------------------------------------------------------------------
-   Complete screen
-   -------------------------------------------------------------------------- */
-
 .screen-complete {
   text-align: center;
 }
@@ -566,10 +525,6 @@ h3 {
 .complete-next li {
   margin-bottom: 6px;
 }
-
-/* --------------------------------------------------------------------------
-   Common elements
-   -------------------------------------------------------------------------- */
 
 .muted {
   color: #555;
@@ -620,7 +575,6 @@ h3 {
   justify-content: space-between;
 }
 
-/* Buttons */
 button,
 a.btn-primary {
   display: inline-flex;
@@ -664,7 +618,6 @@ button:disabled {
   padding: 0 12px;
 }
 
-/* Checkboxes */
 .ack-row {
   align-items: start;
   display: grid;
@@ -673,14 +626,13 @@ button:disabled {
   cursor: pointer;
 }
 
-/* Spinner */
 .spinner {
   display: inline-block;
   width: 16px;
   height: 16px;
   margin-right: 7px;
   border: 2px solid rgba(11, 53, 241, 0.18);
-  border-top-color: var(--brand-blue);
+  border-top-color: var(--brand-orange);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   vertical-align: -3px;
@@ -691,10 +643,6 @@ button:disabled {
     transform: rotate(360deg);
   }
 }
-
-/* --------------------------------------------------------------------------
-   Footer
-   -------------------------------------------------------------------------- */
 
 .footer-band {
   background: var(--brand-black);
@@ -715,7 +663,7 @@ button:disabled {
 
 .cta-link {
   display: inline-block;
-  background: var(--brand-blue);
+  background: var(--brand-orange);
   color: var(--brand-white);
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -723,10 +671,6 @@ button:disabled {
   text-decoration: none;
   text-transform: uppercase;
 }
-
-/* --------------------------------------------------------------------------
-   Responsive
-   -------------------------------------------------------------------------- */
 
 @media (max-width: 640px) {
   .header-band {
@@ -756,10 +700,6 @@ button:disabled {
     gap: 16px;
   }
 }
-
-/* --------------------------------------------------------------------------
-   Guided installer shell
-   -------------------------------------------------------------------------- */
 
 html,
 body,
@@ -1114,10 +1054,6 @@ button.footer-link:hover {
   border-color: rgba(255, 106, 31, 0.22);
   border-top-color: var(--brand-orange);
 }
-
-/* --------------------------------------------------------------------------
-   iPhone and iPad guided flow
-   -------------------------------------------------------------------------- */
 
 .ios-section-header {
   width: min(720px, 100%);

@@ -30,10 +30,6 @@ vi.mock("../state/app-store", () => ({
     selector(mockAppState),
 }));
 
-vi.mock("../state/useDeveloperMode", () => ({
-  useIsDeveloperMode: () => false,
-}));
-
 /** A minimal uiSpec home widget keyed by id + base `order`. */
 function homeDecl(id: string, order: number): PluginWidgetDeclaration {
   return {

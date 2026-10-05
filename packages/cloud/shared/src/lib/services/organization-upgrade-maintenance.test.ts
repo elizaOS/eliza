@@ -39,6 +39,7 @@ test("one unavailable command is recorded without starving the next applied comm
   expect(await run()).toEqual({
     inspected: 2,
     applied: 1,
+    failed: 0,
     pending: 0,
     unavailable: 1,
     deferred: 0,
@@ -78,6 +79,7 @@ test("a healthy prior observation does not impose a separate deadline on the nex
     expect(await run()).toEqual({
       inspected: 2,
       applied: 0,
+      failed: 0,
       pending: 2,
       unavailable: 0,
       deferred: 0,
@@ -87,4 +89,10 @@ test("a healthy prior observation does not impose a separate deadline on the nex
   } finally {
     timer.mockRestore();
   }
+});
+
+test("definitive void result closes its incident and is counted separately", async () => {
+  behavior = async () => ({ status: "failed" });
+  expect((await run()).failed).toBe(2);
+  expect(record).toHaveBeenCalledTimes(2);
 });

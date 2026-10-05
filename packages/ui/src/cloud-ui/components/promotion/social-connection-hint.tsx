@@ -12,10 +12,10 @@ import { ArrowRight, Bot, MessageSquare, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
 import { shellLocalStorage } from "../../../surface-realm-channel";
-import { CornerBrackets } from "../brand/corner-brackets";
 import { DiscordIcon } from "../icons";
-import { Card } from "../primitives";
 
 const STORAGE_KEY_DISCORD = "eliza_dismiss_discord_hint";
 const STORAGE_KEY_TELEGRAM = "eliza_dismiss_telegram_hint";

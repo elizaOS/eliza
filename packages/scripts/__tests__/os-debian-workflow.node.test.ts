@@ -12,7 +12,6 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
-import { readElizaSourceLock } from "../../os/scripts/read-eliza-source-lock.ts";
 import { validateHetznerFleetRouting } from "../hetzner-fleet-routing-contract.ts";
 
 const workflowPath = new URL(
@@ -139,30 +138,30 @@ test("native Debian fleet exception rejects missing guards and unrelated pools",
   }
 });
 
-test("Debian release comparison reads the commit rather than the lock JSON", () => {
-  const workflow = readFileSync(
-    new URL(
-      "../../../.github/workflows/build-debian-package.yml",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-  const command =
-    /pinned_commit="\$\(node --input-type=module -e '([^']+)'\)"/.exec(
-      workflow,
+for (const name of ["build-debian-package.yml", "build-linux-mkosi.yml"]) {
+  test(`${name} rejects desktop artifacts from another source commit`, () => {
+    const workflow = readFileSync(
+      new URL(`../../../.github/workflows/${name}`, import.meta.url),
+      "utf8",
     );
-  assert.ok(
-    command,
-    "Debian workflow must resolve the validated source commit",
-  );
-  const output = execFileSync(
-    process.execPath,
-    ["--input-type=module", "-e", command[1]],
-    {
-      cwd: fileURLToPath(new URL("../../os/", import.meta.url)),
+    const comparison = workflow
+      .split("\n")
+      .find((line) => line.trim().startsWith('test "$DESKTOP_SOURCE_SHA" ='));
+    assert.ok(comparison, "release must compare the desktop source commit");
+    const cwd = fileURLToPath(new URL("../../os/", import.meta.url));
+    const head = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd,
       encoding: "utf8",
-    },
-  );
-  assert.equal(output, readElizaSourceLock().commit);
-  assert.match(output, /^[a-f0-9]{40}$/);
-});
+    }).trim();
+    for (const source of [head, "0".repeat(40), ""]) {
+      const run = () =>
+        execFileSync("bash", ["-e", "-c", comparison], {
+          cwd,
+          env: { ...process.env, DESKTOP_SOURCE_SHA: source },
+          stdio: "pipe",
+        });
+      if (source === head) assert.doesNotThrow(run);
+      else assert.throws(run, (error) => error.status === 1);
+    }
+  });
+}

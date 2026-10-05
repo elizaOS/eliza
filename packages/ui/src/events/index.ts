@@ -111,9 +111,7 @@ export function dispatchVoiceControl(detail: VoiceControlEventDetail): void {
  * First-run provisions a personal cloud agent and lands the user in chat on the
  * shared REST adapter while the dedicated container boots; a background
  * supervisor then copies the conversation into the container and swaps the live
- * client over. That swap used to be silent (`.catch(() => {})`). This event is
- * the typed seam onto which the handoff's lifecycle is surfaced so chat-state /
- * a progress indicator can render it instead of the user seeing nothing.
+ * client over. This event exposes the handoff lifecycle to chat and progress UI.
  */
 export const CLOUD_HANDOFF_PHASE_EVENT = "eliza:cloud-handoff-phase" as const;
 /**
@@ -464,9 +462,8 @@ function dropOldestPendingNavigateViewRequest(): void {
   const dropped = pendingNavigateViewRequests.shift();
   if (!dropped) return;
   // error-policy:J4 bounded FIFO — an OS can deliver intents faster than a
-  // listener claims them (or none ever mounts); silently dropping one here
-  // used to be indistinguishable from a healthy delivery. Surface it, and
-  // resolve the dispatcher's promise `false` so a caller gating a native ack
+  // listener claims them (or none ever mounts). Report the drop and resolve
+  // the dispatcher's promise `false` so a caller gating a native ack
   // on "applied" (mobile-lifecycle's Android intent buffer) never
   // acknowledges a request this store just discarded.
   logger.warn(

@@ -51,18 +51,7 @@ export function clearStewardSession(opts: ClearOpts = {}): void {
   invalidateStewardServerCookieSyncMarker();
   clearCanonicalStewardSession(opts);
 }
-/**
- * Read the current Steward access token (JWT) from localStorage, or `null`
- * under SSR / when no session is present. Convenience alias over
- * {@link readStoredStewardToken} for cloud call sites that just want the token.
- */
-export function getStewardToken(): string | null {
-  return readStoredStewardToken();
-}
-/** Whether a Steward session token is currently stored in the browser. */
-export function hasStewardToken(): boolean {
-  return readStoredStewardToken() !== null;
-}
+
 /**
  * Whether a stored Steward token is worth holding the console auth gate for.
  * Raw presence is not enough: expired, malformed, and identity-less tokens read

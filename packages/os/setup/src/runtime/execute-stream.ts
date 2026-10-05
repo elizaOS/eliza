@@ -55,7 +55,7 @@ export async function readExecutionStream(
         } else {
           onProgress(event);
           if (event.status === "failed")
-            failure =
+            failure ??=
               typeof event.detail === "string"
                 ? event.detail
                 : "Execution failed.";
@@ -65,7 +65,7 @@ export async function readExecutionStream(
     buffer += decoder.decode();
     if (buffer.trim())
       throw new ExecutionStreamError("Truncated execution progress event.");
-    if (failure) throw new ExecutionStreamError(failure);
+    if (failure !== undefined) throw new ExecutionStreamError(failure);
     if (!completed)
       throw new ExecutionStreamError(
         "Execution ended without a completion event.",

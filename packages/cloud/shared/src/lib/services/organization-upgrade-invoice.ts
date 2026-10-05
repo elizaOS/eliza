@@ -16,12 +16,10 @@ import { invoiceSchema, projectSubscriptionUpdateInvoice } from "./stripe-invoic
 
 const cents = z.number().int().safe();
 const seconds = z.number().int().positive().safe();
-const settledInvoiceSchema = invoiceSchema.extend({
+const originalInvoiceSchema = invoiceSchema.extend({
   id: z.string().regex(/^in_[A-Za-z0-9]+$/),
-  status: z.literal("paid"),
-  paid: z.literal(true),
   paid_out_of_band: z.literal(false),
-  amount_remaining: z.literal(0),
+  amount_remaining: cents.nonnegative(),
   billing_reason: z.literal("subscription_update"),
   collection_method: z.literal("charge_automatically"),
   on_behalf_of: z.null(),
@@ -33,7 +31,7 @@ const settledInvoiceSchema = invoiceSchema.extend({
   created: seconds,
   status_transitions: z.object({
     finalized_at: seconds,
-    paid_at: seconds,
+    paid_at: seconds.nullable(),
     voided_at: z.null(),
     marked_uncollectible_at: z.null(),
   }),
@@ -45,6 +43,30 @@ const settledInvoiceSchema = invoiceSchema.extend({
     z.object({ amount: cents.nonnegative(), inclusive: z.boolean(), tax_rate: z.string().min(1) }),
   ),
 });
+const settledInvoiceSchema = originalInvoiceSchema.extend({
+  status: z.literal("paid"),
+  paid: z.literal(true),
+  amount_remaining: z.literal(0),
+  status_transitions: originalInvoiceSchema.shape.status_transitions.extend({ paid_at: seconds }),
+});
+const openInvoiceSchema = originalInvoiceSchema.extend({
+  status: z.literal("open"),
+  paid: z.literal(false),
+  amount_paid: z.literal(0),
+  amount_due: cents.positive(),
+  amount_remaining: cents.positive(),
+  payment_intent: z.string().regex(/^pi_[A-Za-z0-9]+$/),
+  hosted_invoice_url: z.string(),
+  status_transitions: originalInvoiceSchema.shape.status_transitions.extend({ paid_at: z.null() }),
+});
+type InvoiceObservationInput = {
+  raw: unknown;
+  expectedInvoiceId: string;
+  source: BillingSubscription;
+  review: OrganizationUpgradeReview;
+  binding: OrganizationUpgradeProviderBinding;
+  observedAt: Date;
+};
 function reject(reason: string): never {
   throw new ElizaError("Organization upgrade payment requires its original verified invoice", {
     code: "SUBSCRIPTION_UPGRADE_INVOICE_UNVERIFIED",
@@ -52,20 +74,13 @@ function reject(reason: string): never {
   });
 }
 /** Invoice identity and non-secret price binding come from durable dispatch provenance, never from a caller, current environment or latest-invoice lookup. */
-export function observePaidOrganizationUpgradeInvoice(input: {
-  raw: unknown;
-  expectedInvoiceId: string;
-  source: BillingSubscription;
-  review: OrganizationUpgradeReview;
-  binding: OrganizationUpgradeProviderBinding;
-  observedAt: Date;
-}) {
+function observeReviewedInvoice(
+  input: InvoiceObservationInput,
+  wire: z.infer<typeof originalInvoiceSchema>,
+) {
   const { source } = input;
   assertOrganizationSubscription(source);
   const review = organizationUpgradeReviewSchema.parse(input.review);
-  const parsed = settledInvoiceSchema.safeParse(input.raw);
-  if (!parsed.success) reject("incomplete_or_unpaid_invoice");
-  const wire = parsed.data;
   const binding = organizationUpgradeProviderBindingSchema.parse(input.binding);
   const observed = Math.floor(input.observedAt.getTime() / 1000);
   if (
@@ -87,10 +102,7 @@ export function observePaidOrganizationUpgradeInvoice(input: {
     !Number.isSafeInteger(observed) ||
     wire.created < review.prorationDate ||
     wire.status_transitions.finalized_at < wire.created ||
-    wire.status_transitions.paid_at < wire.status_transitions.finalized_at ||
-    wire.status_transitions.paid_at > observed ||
-    wire.amount_paid !== wire.amount_due ||
-    (wire.amount_due > 0 && wire.payment_intent === null)
+    wire.status_transitions.finalized_at > observed
   )
     reject("invoice_identity_or_payment_mismatch");
   const invoice = projectSubscriptionUpdateInvoice({
@@ -152,10 +164,66 @@ export function observePaidOrganizationUpgradeInvoice(input: {
     amountPaidCents: wire.amount_paid,
     paymentIntentId: wire.payment_intent,
     chargeId: wire.charge,
-    paidAt: new Date(wire.status_transitions.paid_at * 1000).toISOString(),
     terms,
     reviewDigest: settlementDigest(review),
     bindingDigest: settlementDigest(binding),
     invoiceDigest: settlementDigest({ invoice: wire, projection: invoice }),
+  };
+}
+
+/** Paid publication keeps its stricter settlement checks; an open observation cannot grant allowance. */
+export function observePaidOrganizationUpgradeInvoice(input: InvoiceObservationInput) {
+  const parsed = settledInvoiceSchema.safeParse(input.raw);
+  if (!parsed.success) reject("incomplete_or_unpaid_invoice");
+  const wire = parsed.data;
+  if (
+    wire.status_transitions.paid_at < wire.status_transitions.finalized_at ||
+    wire.status_transitions.paid_at > Math.floor(input.observedAt.getTime() / 1000) ||
+    wire.amount_paid !== wire.amount_due ||
+    (wire.amount_due > 0 && wire.payment_intent === null)
+  )
+    reject("invoice_identity_or_payment_mismatch");
+  return {
+    ...observeReviewedInvoice(input, wire),
+    paidAt: new Date(wire.status_transitions.paid_at * 1000).toISOString(),
+  };
+}
+
+/** Sensitive, ephemeral continuation only. Callers must additionally verify the pending target and current authority. Never persist or log this result. */
+export function observeOpenOrganizationUpgradeInvoice(
+  input: InvoiceObservationInput & { expectedCreated: number },
+) {
+  const parsed = openInvoiceSchema.safeParse(input.raw);
+  if (!parsed.success) reject("incomplete_or_nonpayable_invoice");
+  const wire = parsed.data;
+  if (wire.created !== input.expectedCreated || wire.amount_remaining !== wire.amount_due)
+    reject("original_invoice_or_remaining_amount_changed");
+  const observation = observeReviewedInvoice(input, wire);
+  let url: URL;
+  try {
+    url = new URL(wire.hosted_invoice_url);
+  } catch {
+    // error-policy:J1 keep private provider URLs out of parser errors.
+    reject("unsupported_hosted_invoice_url");
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "invoice.stripe.com" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.hash !== "" ||
+    !url.pathname.startsWith("/i/") ||
+    url.pathname.length <= 3 ||
+    wire.hosted_invoice_url !== url.href
+  )
+    reject("unsupported_hosted_invoice_url");
+  return {
+    invoiceId: observation.invoiceId,
+    paymentIntentId: wire.payment_intent,
+    amountDueCents: wire.amount_due,
+    currency: observation.currency,
+    terms: observation.terms,
+    hostedInvoiceUrl: url.href,
   };
 }

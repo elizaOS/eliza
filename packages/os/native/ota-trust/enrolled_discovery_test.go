@@ -50,11 +50,12 @@ func enrolledTest(t *testing.T) *enrolledFixture {
 	if e != nil {
 		t.Fatal(e)
 	}
+	session.session.source = &fixtureTimeSource{bounds: TrustedTimeInterval{now.UnixMilli(), now.UnixMilli()}}
 	schedule, cache := discoveryDirs(t)
 	return &enrolledFixture{directory, schedule, cache, state, privateDir(t), data, session, transport}
 }
 func (f *enrolledFixture) run() (*DiscoveryResult, error) {
-	return f.session.Run(f.schedule, f.cache, f.admission, f.prepared, f.device, now.UnixMilli(), 1, 0)
+	return f.session.RunWithTimeSource(f.schedule, f.cache, f.admission, f.prepared, f.device, 1, 0)
 }
 func TestEnrolledDiscoveryAuthenticatesAndPrepares(t *testing.T) {
 	f := enrolledTest(t)
@@ -141,7 +142,8 @@ func TestEnrolledDiscoveryHonorsClockFloorAndCancellation(t *testing.T) {
 			case "cancel":
 				f.session.Close()
 			}
-			result, e := f.session.Run(f.schedule, f.cache, f.admission, f.prepared, f.device, stamp, floor, generation)
+			f.session.session.source = &fixtureTimeSource{bounds: TrustedTimeInterval{stamp, stamp}}
+			result, e := f.session.RunWithTimeSource(f.schedule, f.cache, f.admission, f.prepared, f.device, floor, generation)
 			if e == nil || result != nil {
 				t.Fatal("invalid invocation accepted")
 			}
@@ -149,7 +151,7 @@ func TestEnrolledDiscoveryHonorsClockFloorAndCancellation(t *testing.T) {
 	}
 	// A valid raised floor defers, rather than bypassing remembered policy.
 	f := enrolledTest(t)
-	result, e := f.session.Run(f.schedule, f.cache, f.admission, f.prepared, f.device, now.UnixMilli(), 100, 0)
+	result, e := f.session.RunWithTimeSource(f.schedule, f.cache, f.admission, f.prepared, f.device, 100, 0)
 	if e != nil || result.Status != "deferred" || len(result.Descriptor) != 0 || result.AuthorizationID != "" {
 		t.Fatalf("raised floor bypassed %+v %v", result, e)
 	}

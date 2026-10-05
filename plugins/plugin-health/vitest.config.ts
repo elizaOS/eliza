@@ -23,12 +23,6 @@ const aliases = [
       new URL("../../packages/ui/src/index.ts", import.meta.url),
     ),
   },
-  {
-    find: /^@elizaos\/ui\/spatial$/,
-    replacement: fileURLToPath(
-      new URL("../../packages/ui/src/spatial/index.ts", import.meta.url),
-    ),
-  },
   ...buildWorkspaceSourceAliases(),
 ];
 export default defineConfig({

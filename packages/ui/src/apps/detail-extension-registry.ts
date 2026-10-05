@@ -1,9 +1,3 @@
-/**
- * Process-scoped registry mapping an app's `uiExtension.detailPanelId` to the
- * React component that renders its custom detail panel. Apps self-register on
- * startup via side-effect import; the app-details UI looks up components here.
- */
-import type { RegistryAppInfo } from "@elizaos/core/protocol";
 import type { AppDetailExtensionComponent } from "./detail-extension-types.js";
 
 /**
@@ -29,12 +23,4 @@ export function registerDetailExtension(
   component: AppDetailExtensionComponent,
 ): void {
   DETAIL_EXTENSION_COMPONENTS.set(detailPanelId, component);
-}
-
-export function getAppDetailExtension(
-  app: RegistryAppInfo,
-): AppDetailExtensionComponent | null {
-  const detailPanelId = app.uiExtension?.detailPanelId;
-  if (!detailPanelId) return null;
-  return DETAIL_EXTENSION_COMPONENTS.get(detailPanelId) ?? null;
 }

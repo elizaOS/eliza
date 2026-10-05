@@ -109,8 +109,8 @@ vi.mock("./lib/data/credits", () => ({
     isLoading: false,
   }),
 }));
-vi.mock("./lib/i18n", () => ({
-  useT: () => (_key: string, options?: { defaultValue?: string }) =>
+vi.mock("../shell/CloudI18nProvider", () => ({
+  useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
     options?.defaultValue ?? _key,
 }));
 

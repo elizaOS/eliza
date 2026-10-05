@@ -3,7 +3,7 @@ set -euo pipefail
 
 OS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LINUX_DIR="${OS_ROOT}/linux/elizaos"
-RM_PATH_RECURSIVE_SCRIPT="${OS_ROOT}/scripts/rm-path-recursive.ts"
+RM_PATH_RECURSIVE_SCRIPT="${OS_ROOT}/../scripts/rm-path-recursive.ts"
 
 ARCH="amd64"
 SKIP_BUILD=0

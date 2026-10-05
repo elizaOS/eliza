@@ -1,4 +1,8 @@
 /** Public UI APIs. Internal modules import their owning files directly. */
+
+export { AgentSurfaceProvider } from "./agent-surface/AgentSurfaceContext.js";
+export { AgentButton } from "./agent-surface/components.js";
+export { getViewRegistry } from "./agent-surface/registry.js";
 export { useAgentElement } from "./agent-surface/useAgentElement.js";
 export { completeAndroidCloudSignIn } from "./android-cloud/android-cloud-auth.js";
 export { shouldAcknowledgeAndroidCloudCallback } from "./android-cloud/android-cloud-client.js";
@@ -7,14 +11,7 @@ export {
   runAbortableRequest,
 } from "./api/abortable-request.js";
 export { supportsFullAppShellRoutes } from "./api/app-shell-capabilities.js";
-export {
-  ApiError,
-  client,
-  ElizaClient,
-  isApiError,
-  isCloudAgentGoneError,
-  isRateLimitedError,
-} from "./api/client.js";
+export { client, ElizaClient } from "./api/client.js";
 export {
   cloudTokenSecsRemaining,
   type DedicatedAdoptionConfirmationQuote,
@@ -72,6 +69,19 @@ export type {
   ScheduledTaskView,
   StreamEventEnvelope,
 } from "./api/client-types-core.js";
+export {
+  ApiError,
+  isApiError,
+  isCloudAgentGoneError,
+  isRateLimitedError,
+} from "./api/client-types-core.js";
+export {
+  type ConversationRoom,
+  type ConversationStopResult,
+  ConversationTurnController,
+  type ConversationTurnObserver,
+  type ConversationTurnTransport,
+} from "./api/conversation-turn-controller.js";
 export { fetchWithCsrf } from "./api/csrf-client.js";
 export type {
   DedicatedActivationConfirmationQuote,
@@ -96,6 +106,20 @@ export {
   createDefaultRemoteControlCloudClient,
   getDefaultRemoteControlCloudConnection,
 } from "./api/remote-control-cloud-default.js";
+export {
+  createRuntimeJsonClient,
+  type RuntimeJsonBridge,
+  type RuntimeJsonResponse,
+  RuntimeRequestError,
+  type RuntimeStatus,
+} from "./api/runtime-json-client.js";
+export {
+  TaskLifecycle,
+  type TaskLifecycleMessages,
+  type TaskLifecycleRequest,
+  type TaskLifecycleState,
+  type TaskView,
+} from "./api/task-lifecycle.js";
 export {
   type AgentRequestTransport,
   awaitBridgeRequest,
@@ -169,7 +193,6 @@ export {
   isImmersiveWallpaperRoute,
   resolveBuiltinBackgroundPolicy,
   resolveBuiltinRoutedViewManifest,
-  resolveBuiltinTabId,
 } from "./builtin-tab-registry.js";
 export type { ServerTask } from "./chat/coding-agent-session-state.js";
 export {
@@ -598,6 +621,7 @@ export {
 export {
   type AppBootConfig,
   type CharacterCatalogData,
+  DEFAULT_BOOT_CONFIG,
   getBootConfig,
   setBootConfig,
 } from "./config/boot-config-store.js";
@@ -912,6 +936,7 @@ export {
   type IosRuntimeMode,
   resolveCloudApiBase,
   resolveIosRuntimeConfig,
+  resolveMobileApiConnection,
 } from "./platform/ios-runtime.js";
 export { isCapacitorNativeRuntime } from "./platform/native-probe.js";
 export {
@@ -1007,6 +1032,7 @@ export {
   type TaskCoordinatorPtyConsoleBaseProps,
 } from "./slots/task-coordinator-slots.helpers.js";
 export { CodingAgentSettingsSection } from "./slots/task-coordinator-slots.js";
+export { SpatialSurface } from "./spatial/dom.js";
 export type { SpatialTone } from "./spatial/ir.js";
 export {
   Button as SpatialButton,
@@ -1114,7 +1140,7 @@ export {
   parseStreamEventEnvelopeEvent,
 } from "./state/parsers.js";
 export {
-  applyUiTheme,
+  applyAppTheme,
   clearPersistedActiveServer,
   createPersistedActiveServer,
   hydratePersistedFirstRunCompleteFromNativeStore,
@@ -1122,9 +1148,7 @@ export {
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
   loadUiLanguage,
-  loadUiThemeMode,
   type PersistedActiveServer,
-  resolveUiTheme,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "./state/persistence.js";
@@ -1293,7 +1317,19 @@ export { formatByteSize } from "./utils/format.js";
 export { isSafeNavigationUrl } from "./utils/navigation-url.js";
 export { openExternalUrl } from "./utils/openExternalUrl.js";
 export { reportRendererDiagnostic } from "./utils/renderer-diagnostics.js";
+export {
+  editTextControl,
+  isEditableTextControl,
+  type TextControl,
+  type TextControlEdit,
+} from "./utils/text-control-editing.js";
 export { isTransientOptionalFetchFailure } from "./utils/transient-fetch.js";
+export {
+  formatMinorCurrency,
+  isIsoCalendarDate,
+  isOrderedIsoDateRange,
+  type MinorCurrencyValue,
+} from "./utils/value-formatting";
 export { recoverMissedCurrentView } from "./view-action-handoff.js";
 export {
   loadAppWindowRenderer,
@@ -1330,7 +1366,7 @@ export {
   loadTriggersView,
   loadVaultPageView,
   loadViewInteractRegistry,
-  loadVoice,
+  loadVoiceBootstrap,
   loadWebAppsStudio,
 } from "./view-loaders.js";
 export { emitViewEvent } from "./views/view-event-bus.js";
@@ -1338,6 +1374,40 @@ export {
   playCaptureSendCue,
   playCaptureStartCue,
 } from "./voice/capture-cues.js";
+export {
+  DeviceSpeechController,
+  type DeviceSpeechEnvironment,
+  type DeviceSpeechState,
+} from "./voice/device-speech-controller.js";
+export {
+  DraftTranscriptGuard,
+  type DraftTranscriptResult,
+} from "./voice/draft-transcript-guard.js";
+export {
+  audioBlobBase64,
+  type CumulativeCaptureOptions,
+  observeMicrophonePause,
+  type SpeechPauseOptions,
+  startCumulativeMicrophoneCapture,
+} from "./voice/microphone-capture.js";
+export {
+  encodeMonoPcm16Wav,
+  encodeMonoPcm16WavChunks,
+} from "./voice/pcm-wave.js";
+export {
+  RecordedTranscriptionController,
+  RecordedTranscriptionError,
+  type RecordedTranscriptionOptions,
+  type RecordedTranscriptionState,
+  type RecordingPhase,
+} from "./voice/recorded-transcription-controller.js";
+export {
+  type SegmentedSpeechOptions,
+  SegmentedSpeechPlayback,
+  type SegmentedSpeechState,
+  type SpeechAudioEnvironment,
+  SpeechPlaybackError,
+} from "./voice/segmented-speech-playback.js";
 export { splitSpeechSegments } from "./voice/speech-segments.js";
 export { useVoiceConfig } from "./voice/useVoiceConfig.js";
 export {

@@ -33,7 +33,7 @@ func mutateAdmission(t *testing.T, data []byte, change func(map[string]any)) []b
 func TestRememberedAdmissionRejectsRollbackAndEquivocation(t *testing.T) {
 	dir, v := rememberedFixture(t)
 	run := func(data []byte) (*AdmissionResult, error) {
-		return EvaluateRememberedRelease(dir, data, v.Device, v.Policy)
+		return EvaluateRememberedReleaseInterval(dir, data, v.Device, v.Policy)
 	}
 	if result, err := run(v.Release); err != nil || result.Decision != "eligible" {
 		t.Fatalf("%+v %v", result, err)
@@ -73,14 +73,14 @@ func TestRememberedAdmissionChannelsAndSecurity(t *testing.T) {
 		}
 	})
 	device := mutateAdmission(t, v.Device, func(d map[string]any) { d["requestedChannel"] = "beta" })
-	if result, err := EvaluateRememberedRelease(dir, beta, device, v.Policy); err != nil || result.Decision != "eligible" {
+	if result, err := EvaluateRememberedReleaseInterval(dir, beta, device, v.Policy); err != nil || result.Decision != "eligible" {
 		t.Fatalf("%+v %v", result, err)
 	}
-	if result, err := EvaluateRememberedRelease(dir, v.Release, v.Device, v.Policy); err != nil || result.Decision != "eligible" {
+	if result, err := EvaluateRememberedReleaseInterval(dir, v.Release, v.Device, v.Policy); err != nil || result.Decision != "eligible" {
 		t.Fatalf("Beta changed Stable authority: %+v %v", result, err)
 	}
 	lower := mutateAdmission(t, v.Release, func(r map[string]any) { r["channel"] = "beta"; r["sequence"] = 21 })
-	if result, err := EvaluateRememberedRelease(dir, lower, device, v.Policy); err != nil || result.Reason != "security-floor" {
+	if result, err := EvaluateRememberedReleaseInterval(dir, lower, device, v.Policy); err != nil || result.Reason != "security-floor" {
 		t.Fatalf("%+v %v", result, err)
 	}
 }
@@ -88,7 +88,7 @@ func TestRememberedAdmissionMissingCorruptAndWrongEnrollment(t *testing.T) {
 	for _, mode := range []string{"missing", "corrupt", "symlink", "repository", "distribution", "invalid-observation"} {
 		t.Run(mode, func(t *testing.T) {
 			dir, v := rememberedFixture(t)
-			if _, err := EvaluateRememberedRelease(dir, v.Release, v.Device, v.Policy); err != nil {
+			if _, err := EvaluateRememberedReleaseInterval(dir, v.Release, v.Device, v.Policy); err != nil {
 				t.Fatal(err)
 			}
 			switch mode {
@@ -106,7 +106,7 @@ func TestRememberedAdmissionMissingCorruptAndWrongEnrollment(t *testing.T) {
 			case "invalid-observation":
 				v.Policy = mutateAdmission(t, v.Policy, func(p map[string]any) { p["minimumSequence"] = 0 })
 			}
-			if result, err := EvaluateRememberedRelease(dir, v.Release, v.Device, v.Policy); err == nil || result != nil {
+			if result, err := EvaluateRememberedReleaseInterval(dir, v.Release, v.Device, v.Policy); err == nil || result != nil {
 				t.Fatal("invalid persistent authority accepted")
 			}
 		})
@@ -131,7 +131,7 @@ func TestAdmissionKilledWriter(t *testing.T) {
 	for _, point := range []string{"before-sync", "before-rename", "published"} {
 		t.Run(point, func(t *testing.T) {
 			dir, v := rememberedFixture(t)
-			if _, err := EvaluateRememberedRelease(dir, v.Release, v.Device, v.Policy); err != nil {
+			if _, err := EvaluateRememberedReleaseInterval(dir, v.Release, v.Device, v.Policy); err != nil {
 				t.Fatal(err)
 			}
 			child := exec.Command(os.Args[0], "-test.run=^TestAdmissionKilledWriter$")
@@ -160,11 +160,11 @@ func TestRememberedRevocationsCannotDisappear(t *testing.T) {
 	revoked := mutateAdmission(t, v.Release, func(r map[string]any) {
 		r["rollout"].(map[string]any)["revokedSha256"] = []string{"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
 	})
-	if result, err := EvaluateRememberedRelease(dir, revoked, v.Device, v.Policy); err != nil || result.Reason != "revoked-artifact" {
+	if result, err := EvaluateRememberedReleaseInterval(dir, revoked, v.Device, v.Policy); err != nil || result.Reason != "revoked-artifact" {
 		t.Fatalf("%+v %v", result, err)
 	}
 	cleared := mutateAdmission(t, v.Release, func(r map[string]any) { r["rollout"].(map[string]any)["revision"] = 2 })
-	if result, err := EvaluateRememberedRelease(dir, cleared, v.Device, v.Policy); err == nil || result != nil {
+	if result, err := EvaluateRememberedReleaseInterval(dir, cleared, v.Device, v.Policy); err == nil || result != nil {
 		t.Fatal("revoked recovery silently reenabled")
 	}
 }

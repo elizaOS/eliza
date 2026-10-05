@@ -3,12 +3,14 @@ import http from "node:http";
 import {
   type JsonObject,
   type Memory,
+  type PlannerToolResult,
   resolveOwnerEntityIdOrDefault,
   type Task,
   type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { runPlannerLoop } from "../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import {
   handleTriggerRoutes,
   type TriggerRouteContext,
@@ -65,7 +67,159 @@ it("does not persist an invented interval when captured reminder arguments omit 
       },
     },
   );
-  expect(result).toMatchObject({ success: false });
+  expect(result).toMatchObject({
+    success: false,
+    error: "MISSING_SCHEDULE",
+    failureProvenance: {
+      kind: "handler_error",
+      boundary: "handler",
+      code: "MISSING_SCHEDULE",
+      retryable: true,
+    },
+    data: { acceptance: "rejected", executionStatus: "not_started" },
+  });
+  expect(result?.effectReceipts).toBeUndefined();
+  expect(await fixture.runtime.getTasks({ tags: ["trigger"] })).toEqual(before);
+});
+it.each([true, false])(
+  "keeps actual schedule rejection evidence and reports creation truthfully (corrected=%s)",
+  async (corrected) => {
+    const before = await fixture.runtime.getTasks({ tags: ["trigger"] });
+    const roomId = randomUUID() as UUID;
+    const instructions = `Send a short shoulder-stretch nudge ${randomUUID()}`;
+    let plans = 0;
+    const results: PlannerToolResult[] = [];
+    const expectedMessage = corrected
+      ? "Your reminder is set for two minutes from now."
+      : "Your reminder wasn't created because its time was missing.";
+    const result = await runPlannerLoop({
+      codingMode: false,
+      context: { id: `trigger-schedule-recovery-${corrected}`, events: [] },
+      runtime: {
+        useModel: async () => {
+          if (!corrected && plans === 1) {
+            plans++;
+            return { text: expectedMessage };
+          }
+          if (++plans > (corrected ? 2 : 1))
+            throw new Error("Unexpected failure-authority synthesis");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `trigger-${plans}`,
+                name: "TRIGGER_CREATE",
+                arguments: {
+                  displayName: "Stretch your shoulders",
+                  instructions:
+                    plans === 1
+                      ? "Remind the user to stretch their shoulders. Message: Stretch your shoulders."
+                      : instructions,
+                  ...(plans === 2 ? { delayMinutes: 2 } : {}),
+                  eliza_turn_scope: "final",
+                },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        const executed = await triggerAction.handler(
+          fixture.runtime,
+          {
+            entityId: fixture.runtime.agentId,
+            agentId: fixture.runtime.agentId,
+            roomId,
+            content: {
+              text: "Remind me here to stretch my shoulders in two minutes.",
+            },
+          } as Memory,
+          undefined,
+          { parameters: { ...call.params, action: "create" } },
+        );
+        if (!executed) throw new Error("Trigger returned no result");
+        results.push(executed as PlannerToolResult);
+        return executed as PlannerToolResult;
+      },
+      evaluate: async () => {
+        if (corrected && results.length === 1)
+          return {
+            decision: "CONTINUE",
+            success: false,
+            thought: "Provide the requested relative delay.",
+          };
+        return {
+          decision: "FINISH",
+          success: corrected,
+          thought: corrected
+            ? "The corrected trigger has a durable receipt."
+            : "No trigger was created.",
+          messageToUser: expectedMessage,
+          requestFullyCovered: corrected,
+          ...(corrected
+            ? {
+                replyEffectStatus: "applied" as const,
+                effectReceiptIds: results[1].effectReceipts?.map(
+                  (receipt) => receipt.receiptId,
+                ),
+              }
+            : {}),
+        };
+      },
+    });
+    expect(result.finalMessage).toBe(expectedMessage);
+    if (corrected) expect(result.evaluator?.success).toBe(true);
+    else expect(result.evaluator?.success).not.toBe(true);
+    expect(
+      result.trajectory.steps.some(
+        (step) => step.result?.error === "MISSING_SCHEDULE",
+      ),
+    ).toBe(true);
+    expect(results[0].effectReceipts).toBeUndefined();
+    const after = await fixture.runtime.getTasks({ tags: ["trigger"] });
+    expect(after).toHaveLength(before.length + (corrected ? 1 : 0));
+    if (corrected) {
+      expect(results[1].effectReceipts).toEqual([
+        expect.objectContaining({
+          operation: "trigger.create",
+          outcome: "applied",
+          commit: expect.objectContaining({ kind: "durable" }),
+        }),
+      ]);
+      expect(
+        after.find(
+          (task) => task.metadata?.trigger?.instructions === instructions,
+        )?.metadata?.trigger?.triggerType,
+      ).toBe("once");
+    } else expect(after).toEqual(before);
+  },
+);
+it("does not label disabled trigger creation as a retryable schedule rejection", async () => {
+  const before = await fixture.runtime.getTasks({ tags: ["trigger"] });
+  const runtime = Object.create(fixture.runtime);
+  runtime.getSetting = (key: string) =>
+    key === "ELIZA_TRIGGERS_ENABLED" ? false : fixture.runtime.getSetting(key);
+  const result = await triggerAction.handler(
+    runtime,
+    {
+      entityId: fixture.runtime.agentId,
+      agentId: fixture.runtime.agentId,
+      roomId: randomUUID() as UUID,
+      content: { text: "Create a reminder." },
+    } as Memory,
+    undefined,
+    {
+      parameters: {
+        action: "create",
+        instructions: "Do not run",
+        delayMinutes: 2,
+      },
+    },
+  );
+  expect(result).toMatchObject({ success: false, error: "TRIGGERS_OFF" });
+  expect(result?.failureProvenance?.retryable).not.toBe(true);
+  expect(result?.data?.executionStatus).not.toBe("not_started");
+  expect(result?.effectReceipts).toBeUndefined();
   expect(await fixture.runtime.getTasks({ tags: ["trigger"] })).toEqual(before);
 });
 it.each([

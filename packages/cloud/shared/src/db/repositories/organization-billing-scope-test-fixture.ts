@@ -44,4 +44,13 @@ export async function installOrganizationBillingScopeTestColumns(
       .split("--> statement-breakpoint")[0]!
       .replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"),
   );
+  const voidResult = await readFile(
+    new URL("../migrations/0519_organization_upgrade_void_result.sql", import.meta.url),
+    "utf8",
+  );
+  await execute(
+    voidResult
+      .split("--> statement-breakpoint")[0]!
+      .replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"),
+  );
 }

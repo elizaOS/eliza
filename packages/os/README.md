@@ -7,7 +7,7 @@ Chromium patch tests with `bun run --cwd packages/os test:browser`.
 
 Application and native-runtime sources belong to `packages/app` and its plugins.
 Builders use the enclosing Eliza checkout, or `ELIZAOS_ELIZA_ROOT` when explicitly
-set. Standalone OS checkouts use `.eliza-source` by default.
+set.
 
 Install workspace dependencies with Bun 1.4.2 at the repository root. Use Node
 24.15.0 for scripts. From the repository root:
@@ -26,8 +26,7 @@ OS image builds are separate from the installer frontend build. See
 [Linux](linux/README.md), [Android](android/README.md), and the
 [USB installer](usb-installer/README.md) for their entrypoints.
 
-The Linux tree currently retains both mkosi and older live-build paths; mkosi is
-the persistent workstation image. Release builds require signed desktop artifacts
+mkosi builds the persistent workstation image. Release builds require signed desktop artifacts
 and the control-broker inputs checked by `mkosi.postinst.chroot`. Those inputs are
 not supplied by a frontend build. A successful configuration or planner test does
 not demonstrate boot, persistence, or installation onto an internal disk.

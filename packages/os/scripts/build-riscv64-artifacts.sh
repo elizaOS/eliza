@@ -98,7 +98,7 @@ if ! command -v cmake >/dev/null 2>&1; then
     exit 2
 fi
 
-RM_PATH_RECURSIVE="$repo_root/scripts/rm-path-recursive.ts"
+RM_PATH_RECURSIVE="$repo_root/../scripts/rm-path-recursive.ts"
 
 remove_path_recursive() {
     "$NODE_BIN" "$RM_PATH_RECURSIVE" "$@"

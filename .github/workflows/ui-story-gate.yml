@@ -109,7 +109,6 @@ jobs:
         run: >-
           node packages/ui/test/story-gate/run-story-gate.mjs
           --static-dir packages/ui/storybook-static
-          --out test/story-gate/output
           --shard ${{ matrix.shard }}/${{ env.STORY_SHARDS }}
           --concurrency 6
 
@@ -118,7 +117,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: story-gate-shard-${{ matrix.shard }}-of-4
-          path: packages/ui/test/story-gate/output
+          path: test-results/ui-story-gate/output
           if-no-files-found: ignore
           retention-days: 3
 
@@ -145,7 +144,7 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           pattern: story-gate-shard-*-of-4
-          path: packages/ui/test/story-gate/shards
+          path: test-results/ui-story-gate/shards
           merge-multiple: false
 
       - name: Merge and validate complete catalog coverage
@@ -153,8 +152,8 @@ jobs:
         run: >-
           node packages/ui/test/story-gate/merge-story-gate.mjs
           --catalog packages/ui/storybook-static/index.json
-          --input packages/ui/test/story-gate/shards
-          --out packages/ui/test/story-gate/output
+          --input test-results/ui-story-gate/shards
+          --out test-results/ui-story-gate/output
           --shards 4
 
       - name: Upload aggregate Story Gate output
@@ -162,6 +161,6 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: story-gate-output
-          path: packages/ui/test/story-gate/output
+          path: test-results/ui-story-gate/output
           if-no-files-found: ignore
           retention-days: 14

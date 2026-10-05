@@ -4,8 +4,6 @@
  * messages and custom-action params). No React, no I/O.
  */
 
-import type { CustomActionDef } from "@elizaos/contracts";
-
 import { parseChatFailureKind } from "@elizaos/contracts";
 import type { ConversationMessage } from "../api/client-types-chat";
 import type {
@@ -380,84 +378,7 @@ export function shouldApplyFinalStreamText(
 // followed by a value that is either a quoted string (quotes stripped, inner
 // spaces preserved) or a bare run of non-space chars. Keeping `key="multi word"`
 // and `key='multi word'` as a single `key=multi word` token lets a named arg
-// carry spaces — the previous regex split it at the quote, binding `key=""`.
-function splitCommandArgs(text: string): string[] {
-  const parts: string[] = [];
-  const regex = /([^\s"'=]+=)?(?:"([^"]*)"|'([^']*)'|([^\s"']+))/g;
-  let match: RegExpExecArray | null = regex.exec(text);
-  while (match !== null) {
-    const prefix = match[1] ?? "";
-    const value = match[2] ?? match[3] ?? match[4] ?? "";
-    parts.push(prefix + value);
-    match = regex.exec(text);
-  }
-  return parts;
-}
-export function normalizeCustomActionName(value: string): string {
-  return value
-    .trim()
-    .replace(/[\s-]+/g, "_")
-    .toUpperCase();
-}
-export function parseCustomActionParams(
-  action: CustomActionDef,
-  argsRaw: string,
-): {
-  params: Record<string, string>;
-  missingRequired: string[];
-} {
-  const tokens = splitCommandArgs(argsRaw);
-  const named = new Map<string, string>();
-  const positional: string[] = [];
-  for (const token of tokens) {
-    const eq = token.indexOf("=");
-    if (eq > 0) {
-      const key = token.slice(0, eq).trim().toLowerCase();
-      const value = token.slice(eq + 1).trim();
-      if (key) {
-        named.set(key, value);
-        continue;
-      }
-    }
-    positional.push(token);
-  }
-  const params: Record<string, string> = {};
-  const defs = Array.isArray(action.parameters) ? action.parameters : [];
-  const defsByLower = new Map(
-    defs.map((def) => [def.name.trim().toLowerCase(), def.name]),
-  );
-  for (const [key, value] of named) {
-    const canonical = defsByLower.get(key);
-    if (canonical) {
-      params[canonical] = value;
-    } else {
-      params[key] = value;
-    }
-  }
-  for (const def of defs) {
-    if (params[def.name] == null && positional.length > 0) {
-      params[def.name] = positional.shift() as string;
-    }
-  }
-  if (positional.length > 0) {
-    const sink = defs.find((def) =>
-      ["input", "text", "query", "message", "prompt"].includes(
-        def.name.toLowerCase(),
-      ),
-    );
-    if (sink) {
-      const existing = params[sink.name];
-      params[sink.name] = existing
-        ? `${existing} ${positional.join(" ")}`
-        : positional.join(" ");
-    }
-  }
-  const missingRequired = defs
-    .filter((def) => def.required)
-    .map((def) => def.name)
-    .filter((name) => !(params[name] ?? "").trim());
-  return { params, missingRequired };
-}
+
 /** Plain-text variant of formatSearchBullet (uses `- ` bullets, no bold). */
 export function formatSearchBullet(label: string, items: string[]): string {
   if (items.length === 0) return `${label}: none`;

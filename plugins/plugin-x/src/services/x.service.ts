@@ -1152,8 +1152,15 @@ export class XService extends Service {
     // empty inbox.
     const messages = await this.listRecentDirectMessages(accountId);
 
+    // A conversation with the target includes the account's own replies, so
+    // match on participants, not only on who sent each message.
     const matches = messages
-      .filter((message) => !targetUserId || message.senderId === targetUserId)
+      .filter(
+        (message) =>
+          !targetUserId ||
+          message.senderId === targetUserId ||
+          (message.participantIds ?? []).includes(targetUserId),
+      )
       .map((message) =>
         this.buildXDirectMessageMemory(
           runtime,

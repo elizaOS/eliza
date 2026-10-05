@@ -225,3 +225,17 @@ credential-binding.json names; hosts retain storage layout and binding schema.
 Endpoints alone do not prove readiness: requests still need session fencing.
 Portable tests use real authenticated loopback child processes and verify broker
 cleanup and cancellation between startup stages.
+
+`RuntimeAssets` supplies bounded, closing asset reads and presence-only checks.
+`RuntimeBundleStore.prepareFromAsset` bounds inventory reads before invoking the
+same verified immutable bundle preparation path. Hosts retain asset names,
+required library lists, storage layout and inventory format; presence does not
+establish integrity or readiness.
+
+Source-checkout consumers can use `scripts/updater-contract-fixtures.mjs` to stage
+or run the five portable updater contracts in their adapter namespace. This keeps
+all assertions and subprocess crash cases upstream while exercising the actual
+consumer adapters, including static imports. The caller owns the temporary
+directory when staging, or supplies a compiler/JVM budget to the runner, which
+owns temporary-directory cleanup and propagates compilation/assertion failures.
+Staging rejects unknown fixtures, invalid packages and existing output files; it never rewrites production source.

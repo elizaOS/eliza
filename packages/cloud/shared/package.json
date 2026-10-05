@@ -557,6 +557,7 @@
     "./lib/services/stripe-paid-renewal": "./src/lib/services/stripe-paid-renewal.ts",
     "./lib/services/stripe-scheduled-cancellation-lifecycle": "./src/lib/services/stripe-scheduled-cancellation-lifecycle.ts",
     "./lib/services/stripe-terminal-lifecycle": "./src/lib/services/stripe-terminal-lifecycle.ts",
+    "./lib/services/organization-upgrade-subscription-event": "./src/lib/services/organization-upgrade-subscription-event.ts",
     "./lib/services/organization-upgrade-invoice-event": "./src/lib/services/organization-upgrade-invoice-event.ts",
     "./lib/services/organization-upgrade-maintenance": "./src/lib/services/organization-upgrade-maintenance.ts",
     "./lib/services/subscription-cancellation": "./src/lib/services/subscription-cancellation.ts",
@@ -656,8 +657,11 @@
     "./types/cloud-api": "./src/types/cloud-api.ts",
     "./types/cloud-worker-env": "./src/types/cloud-worker-env.ts",
     "./types/stripe-queue-message": "./src/types/stripe-queue-message.ts",
+    "./lib/services/organization-downgrade-preview": "./src/lib/services/organization-downgrade-preview.ts",
     "./lib/services/organization-upgrade-preview": "./src/lib/services/organization-upgrade-preview.ts",
-    "./lib/services/subscription-renewal-review": "./src/lib/services/subscription-renewal-review.ts"
+    "./lib/services/subscription-renewal-review": "./src/lib/services/subscription-renewal-review.ts",
+    "./lib/services/organization-upgrade-payment": "./src/lib/services/organization-upgrade-payment.ts",
+    "./lib/services/organization-upgrade-command": "./src/lib/services/organization-upgrade-command.ts"
   },
   "scripts": {
     "build:linked-workspaces": "bun run --cwd ../../.. build:core",

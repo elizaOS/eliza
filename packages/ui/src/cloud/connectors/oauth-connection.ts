@@ -12,12 +12,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "../../bridge/toast";
+import { isSafeNavigationUrl } from "../../utils/navigation-url";
 import {
   ApiError,
   api,
   apiErrorMessage as errorBodyMessage,
 } from "../lib/api-client";
-import { isSafeNavigationUrl } from "../lib/navigation-url";
 
 /**
  * A single OAuth connection row returned by

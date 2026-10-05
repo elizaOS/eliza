@@ -142,6 +142,8 @@ export * from "./organization-invites";
 export * from "./organization-payment-reversal-holds";
 export * from "./organization-plan-change-quotes";
 export * from "./organization-policy-audit";
+export * from "./organization-schedule-effects";
+export * from "./organization-schedule-quote-terms";
 export * from "./organization-upgrade-historical-targets";
 export * from "./organization-upgrade-invoice-origins";
 export * from "./organizations";

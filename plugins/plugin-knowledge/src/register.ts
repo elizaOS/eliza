@@ -15,6 +15,7 @@ export function registerKnowledgeApp(): void {
     label: "Knowledge",
     icon: "Files",
     path: "/character/documents",
+    pathPatterns: ["/character/documents"],
     tabAffinity: "documents",
     order: 120,
     viewKind: "system",

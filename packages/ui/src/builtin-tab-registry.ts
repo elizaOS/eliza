@@ -18,35 +18,11 @@ import {
   resolveBuiltinRouteDescriptor,
 } from "./navigation/builtin-route-descriptors";
 
-/**
- * How a builtin tab declares its surface manifest across its routes.
- *
- *  - A single {@link SurfaceManifest} — one manifest for every route under the
- *    tab (e.g. chat/background always paint the shared wallpaper).
- *  - `{ shared: (path) => boolean }` — the tab paints the shared wallpaper only
- *    when the live navigation path satisfies the predicate (e.g. the launcher
- *    root of a tab that owns opaque sub-routes), otherwise it falls through to
- *    the caller's downstream resolution. Matches the two path-conditional
- *    surfaces (`views`, `apps`) whose launcher root is immersive but whose
- *    sub-routes are opaque.
- *
- * Either form is resolved through the grant-gated {@link resolveSurfaceManifest}
- * so a builtin tab paints the wallpaper only when its manifest explicitly grants
- * `wallpaper` — the same accidental-opt-in guard the per-view manifest enforces
- * (#13452). A tab with no `surface` field declares no builtin-level policy and
- * falls through to the caller's downstream resolution (registered views etc.).
- */
 export type BuiltinTabSurfaceDecl = BuiltinRouteSurfaceDeclaration;
 
 export interface BuiltinTabMetadata {
   /** Canonical builtin tab id (the id the render map is keyed by). */
   readonly id: string;
-  /**
-   * Legacy tab ids that resolve onto this canonical id. Kept as an explicit,
-   * tested host-owned alias table (e.g. `triggers` -> `automations`) rather
-   * than duplicated if-branches.
-   */
-  readonly aliases?: readonly string[];
   /** Semantic page topology consumed by canonical shell implementations. */
   readonly layout: PageLayoutManifest;
   /**
@@ -57,76 +33,22 @@ export interface BuiltinTabMetadata {
   readonly surface?: BuiltinTabSurfaceDecl;
 }
 
-/**
- * The canonical builtin-tab table. IDs here are the keys the `App.tsx` render
- * map uses; aliases and surface manifests are consumed by the resolvers below.
- *
- * Every canonical route is represented because layout classification is
- * exhaustive. Optional aliases and surface policies are folded in from the
- * same React-free route descriptor authority.
- */
-const BUILTIN_ALIAS_IDS_BY_CANONICAL = new Map<string, string[]>();
-for (const id of BUILTIN_ROUTE_IDS) {
-  const descriptor = resolveBuiltinRouteDescriptor(id);
-  if (descriptor && descriptor.canonicalId !== id) {
-    const aliases = BUILTIN_ALIAS_IDS_BY_CANONICAL.get(descriptor.canonicalId);
-    if (aliases) aliases.push(id);
-    else BUILTIN_ALIAS_IDS_BY_CANONICAL.set(descriptor.canonicalId, [id]);
-  }
-}
-
-/**
- * Canonical built-in metadata derived from the route descriptors. Alias rows
- * are folded into their owner so every resolver inherits one classification.
- */
 export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] =
-  BUILTIN_ROUTE_IDS.flatMap((id) => {
+  BUILTIN_ROUTE_IDS.map((id) => {
     const descriptor = resolveBuiltinRouteDescriptor(id);
-    if (!descriptor || descriptor.canonicalId !== id) return [];
-
-    const aliases = BUILTIN_ALIAS_IDS_BY_CANONICAL.get(id);
-    const surface = descriptor.surface;
-    const metadata: BuiltinTabMetadata = {
+    if (!descriptor) throw new Error(`Builtin tab "${id}" has no descriptor`);
+    return {
       id,
       layout: descriptor.layout,
-      ...(aliases ? { aliases } : {}),
-      ...(surface ? { surface } : {}),
+      ...(descriptor.surface ? { surface: descriptor.surface } : {}),
     };
-    return [metadata];
   });
 
-/** Fast id -> metadata lookup, including alias ids. */
-const BUILTIN_TAB_BY_ID: ReadonlyMap<string, BuiltinTabMetadata> = (() => {
-  const map = new Map<string, BuiltinTabMetadata>();
-  for (const entry of BUILTIN_TAB_METADATA) {
-    if (map.has(entry.id)) {
-      throw new Error(
-        `Duplicate builtin tab id "${entry.id}" in BUILTIN_TAB_METADATA`,
-      );
-    }
-    map.set(entry.id, entry);
-    for (const alias of entry.aliases ?? []) {
-      if (map.has(alias)) {
-        throw new Error(
-          `Builtin tab alias "${alias}" (of "${entry.id}") collides with an existing id/alias`,
-        );
-      }
-      map.set(alias, entry);
-    }
-  }
-  return map;
-})();
+const BUILTIN_TAB_BY_ID = new Map(
+  BUILTIN_TAB_METADATA.map((entry) => [entry.id, entry]),
+);
 
-/**
- * Resolve a (possibly aliased) tab id to its canonical builtin id. Tabs that
- * are not declared builtin aliases are returned unchanged, so plugin/dynamic
- * tabs pass straight through.
- */
-export function resolveBuiltinTabId(tab: string): string {
-  return resolveBuiltinRouteDescriptor(tab)?.canonicalId ?? tab;
-}
-
-/** The semantic page layout for a built-in tab, inherited through aliases. */
+/** The semantic page layout for a built-in tab. */
 export function resolveBuiltinPageLayout(
   tab: string,
 ): PageLayoutManifest | null {

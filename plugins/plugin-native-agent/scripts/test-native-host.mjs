@@ -16,11 +16,13 @@ try {
       path.join(root, "test/native-host/android-runtime-inventory.node.mjs"),
       path.join(root, "test/native-host/local-credential-client.node.mjs"),
       path.join(root, "test/native-host/gateway-artifact.node.mjs"),
+      path.join(root, "test/native-host/updater-contract-fixtures.node.mjs"),
     ],
     { stdio: "inherit", timeout: 60000 },
   );
   const shared = [
     "runtime/RuntimeBundleStore",
+    "runtime/RuntimeAssets",
     "runtime/PrivateOAuthCallback",
     "runtime/NativeProcessSupervisor",
     "runtime/NativeRuntimeSession",
@@ -54,6 +56,7 @@ try {
   });
   for (const [group, name] of [
     ["runtime.test", "RuntimeBundleStoreTest"],
+    ["runtime.test", "RuntimeAssetsTest"],
     ["runtime.test", "PrivateOAuthCallbackTest"],
     ["runtime.test", "NativeProcessSupervisorTest"],
     ["runtime.test", "NativeRuntimeSessionTest"],

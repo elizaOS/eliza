@@ -28,7 +28,7 @@
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
+    "test": "bun run test:node && NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
     "test:browser-document-store": "node src/platform/__e2e__/run-browser-document-store.mjs",
     "test:voice-playback-e2e": "node src/voice/__e2e__/run-playback-sample-rate-e2e.mjs",
     "test:slow": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.e2e.config.ts",
@@ -87,7 +87,8 @@
     "audit:surface-realm-writers": "node scripts/scan-reserved-storage-writers.ts",
     "audit:design": "node scripts/audit-design.ts",
     "test:design-audit": "node --test scripts/audit-design.test.ts",
-    "design:build": "vite build --config stories/vite.config.ts"
+    "design:build": "vite build --config stories/vite.config.ts",
+    "test:node": "node --test --experimental-transform-types src/api/runtime-json-client.node.test.ts src/utils/value-formatting.node.test.ts test/api/conversation-turn-controller.test.mjs test/api/recorded-transcription-controller.test.mjs test/api/speech-playback-controllers.test.mjs test/api/text-control-editing.test.mjs"
   },
   "exports": {
     ".": {
@@ -97,18 +98,6 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
-    "./voice/pcm-wave": {
-      "eliza-source": "./src/voice/pcm-wave.ts",
-      "types": "./dist/voice/pcm-wave.d.ts",
-      "import": "./dist/voice/pcm-wave.js",
-      "default": "./dist/voice/pcm-wave.js"
-    },
-    "./api/task-lifecycle": {
-      "eliza-source": "./src/api/task-lifecycle.ts",
-      "types": "./dist/api/task-lifecycle.d.ts",
-      "import": "./dist/api/task-lifecycle.js",
-      "default": "./dist/api/task-lifecycle.js"
-    },
     "./styles": "./dist/styles.js",
     "./styles/*.css": "./dist/styles/*.css",
     "./cloud-ui/index.css": "./dist/cloud-ui/index.css",
@@ -118,12 +107,6 @@
     "./brand.css": "./dist/brand/brand.css",
     "./brand-classic.css": "./dist/brand-classic/brand.css",
     "./assets/*": "./dist/assets/*",
-    "./voice/microphone-capture": {
-      "eliza-source": "./src/voice/microphone-capture.ts",
-      "types": "./dist/voice/microphone-capture.d.ts",
-      "import": "./dist/voice/microphone-capture.js",
-      "default": "./dist/voice/microphone-capture.js"
-    },
     "./voice/microphone-samples.worklet.mjs": {
       "eliza-source": "./src/voice/microphone-samples.worklet.mjs",
       "import": "./dist/voice/microphone-samples.worklet.mjs",

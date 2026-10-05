@@ -255,10 +255,11 @@ export type RemotePluginSurfaceManifest = JsonObject & {
 };
 
 export type RemotePluginViewManifest = {
+	viewKind?: import("../types/view-kind.js").ViewKind;
 	id: string;
 	label: string;
 	viewType?: "gui" | "tui" | "xr";
-	backgroundPolicy?: RemotePluginBackgroundPolicy;
+
 	surface?: RemotePluginSurfaceManifest;
 	bundlePath?: string;
 	bundleUrl?: string;
@@ -335,7 +336,7 @@ export type RemotePluginWidgetManifest = {
 	order?: number;
 	defaultEnabled?: boolean;
 	navGroup?: string;
-	developerOnly?: boolean;
+	viewKind?: import("../types/view-kind.js").ViewKind;
 	componentExport?: string;
 };
 
@@ -359,9 +360,9 @@ export type RemotePluginAppNavTabManifest = {
 	icon?: string;
 	path: string;
 	order?: number;
-	developerOnly?: boolean;
+	viewKind?: import("../types/view-kind.js").ViewKind;
 	group?: string;
-	backgroundPolicy?: RemotePluginBackgroundPolicy;
+
 	surface?: RemotePluginSurfaceManifest;
 	componentExport?: string;
 };
@@ -382,7 +383,7 @@ export type RemotePluginAppManifest = {
 	uiExtension?: {
 		detailPanelId?: string;
 	};
-	developerOnly?: boolean;
+	viewKind?: import("../types/view-kind.js").ViewKind;
 	visibleInAppStore?: boolean;
 	navTabs?: RemotePluginAppNavTabManifest[];
 };

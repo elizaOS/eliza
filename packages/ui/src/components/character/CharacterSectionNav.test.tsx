@@ -36,11 +36,10 @@ afterEach(() => {
 });
 
 describe("isCharacterSectionPath", () => {
-  it("matches every family section route and the relationships alias", () => {
+  it("matches every family section route", () => {
     for (const path of [
       "/character",
       "/apps/relationships",
-      "/character/relationships",
       "/character/skills",
       "/character/experience",
       "/character/skills?focus=1",
@@ -104,8 +103,8 @@ describe("CharacterSectionNav", () => {
     ).toBeNull();
   });
 
-  it("marks Relationships active on both its canonical route and the legacy alias", () => {
-    for (const path of ["/apps/relationships", "/character/relationships"]) {
+  it("marks Relationships active on its canonical route", () => {
+    for (const path of ["/apps/relationships"]) {
       renderCharacterSectionNav(path);
       const strip = screen.getByTestId("section-nav-character");
       expect(

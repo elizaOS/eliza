@@ -290,6 +290,12 @@ export default defineConfig({
       "test/**/*.test.mjs",
     ],
     exclude: [
+      // Owned by test:node, which runs before this suite in the package test command.
+      "**/*.node.test.ts",
+      "test/api/conversation-turn-controller.test.mjs",
+      "test/api/recorded-transcription-controller.test.mjs",
+      "test/api/speech-playback-controllers.test.mjs",
+      "test/api/text-control-editing.test.mjs",
       "dist/**",
       "**/node_modules/**",
       "**/*.live.test.{ts,tsx}",

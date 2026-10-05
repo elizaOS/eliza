@@ -22,7 +22,7 @@ func TestHostPolicyFailsClosed(t *testing.T) {
 	v := admissionVectors(t)[0]
 	for _, value := range []string{"", "invalid", base64.RawURLEncoding.EncodeToString([]byte(`{"schema":1}`))} {
 		compiledHostPolicyBase64 = value
-		if _, err := EvaluateRelease(v.Release, v.Device, v.Policy); err == nil {
+		if _, err := EvaluateReleaseInterval(v.Release, v.Device, v.Policy); err == nil {
 			t.Fatal("unconfigured host admitted release")
 		}
 		if err := VerifyRuntimeArtifact("unused", nil, "github.com", "arm64-v8a"); err == nil {
@@ -44,12 +44,12 @@ func TestIndependentHostCannotAdmitLegacyProduct(t *testing.T) {
 	data, _ := json.Marshal(policy)
 	compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString(data)
 	v := admissionVectors(t)[0]
-	if _, err := EvaluateRelease(v.Release, v.Device, v.Policy); err == nil {
+	if _, err := EvaluateReleaseInterval(v.Release, v.Device, v.Policy); err == nil {
 		t.Fatal("another product admitted")
 	}
 	release := bytes.ReplaceAll(v.Release, []byte(`"senior-care"`), []byte(`"independent-host"`))
 	release = bytes.ReplaceAll(release, []byte(`"ai.elizaresearch.seniorcare"`), []byte(`"org.example.independent"`))
-	result, err := EvaluateRelease(release, v.Device, v.Policy)
+	result, err := EvaluateReleaseInterval(release, v.Device, v.Policy)
 	if err != nil || result.Decision != "eligible" {
 		t.Fatalf("independent policy rejected: %+v %v", result, err)
 	}

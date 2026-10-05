@@ -5,7 +5,6 @@
 
 import type { PluginWidgetDeclaration as CorePluginWidgetDeclaration } from "@elizaos/core";
 import type { UiSpec } from "@elizaos/host/protocol";
-import type { ComponentType } from "react";
 import type { PluginInfo } from "../api/client-types-config";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 /** Named injection points where plugin widgets can render. */
@@ -64,16 +63,4 @@ export interface WidgetProps {
    * applies this to its single root grid-item element. Absent off the home slot.
    */
   spanClassName?: string;
-}
-/**
- * Client-side registration mapping a widget declaration to a React component.
- * Bundled plugins register these statically; third-party plugins rely on uiSpec.
- */
-export interface WidgetRegistration {
-  /** Must match `PluginWidgetDeclaration.id`. */
-  declarationId: string;
-  /** Must match `PluginWidgetDeclaration.pluginId`. */
-  pluginId: string;
-  /** The React component to render. */
-  Component: ComponentType<WidgetProps>;
 }

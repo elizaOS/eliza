@@ -1185,7 +1185,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/plugin-browser": "workspace:*",
-        "@elizaos/ui": "workspace:*",
         "punycode": "2.3.1",
         "tldts": "7.4.16",
       },
@@ -1204,7 +1203,7 @@
       "name": "@elizaos/linux-installer-plan",
       "version": "0.1.0",
       "dependencies": {
-        "@elizaos/os-usb-installer": "workspace:*",
+        "@elizaos/os": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^25.0.0",
@@ -1242,8 +1241,8 @@
       "name": "@elizaos/os-usb-installer",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/host": "workspace:*",
         "@elizaos/os": "workspace:*",
-        "@elizaos/ui": "workspace:*",
         "@fontsource/poppins": "^5.2.7",
         "vite": "^8.0.0",
       },
@@ -1258,7 +1257,6 @@
         "jsdom": "^30.1.1",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "sharp": "^0.35.3",
         "typescript": "^6.0.3",
         "vitest": "^5.0.2",
       },

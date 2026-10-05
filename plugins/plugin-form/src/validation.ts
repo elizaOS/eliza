@@ -518,28 +518,55 @@ function validateFile(
   value: JsonValue,
   control: FormControl,
 ): ValidationResult {
-  if (!control.file) {
-    return { valid: true };
-  }
   // Value should be an array of file metadata
   const files = Array.isArray(value) ? value : [value];
+  if (files.length === 0) {
+    return control.required
+      ? {
+          valid: false,
+          error: `${control.label || control.key} is required`,
+        }
+      : { valid: true };
+  }
   // Check max files
-  if (control.file.maxFiles && files.length > control.file.maxFiles) {
+  if (
+    control.file?.maxFiles !== undefined &&
+    files.length > control.file.maxFiles
+  ) {
     return {
       valid: false,
       error: `Maximum ${control.file.maxFiles} files allowed`,
     };
   }
   for (const file of files) {
-    if (!file || typeof file !== "object") continue;
+    if (!file || typeof file !== "object" || Array.isArray(file)) {
+      return { valid: false, error: "Invalid file data" };
+    }
     const fileObj = file as {
+      id?: unknown;
+      name?: unknown;
       size?: number;
-      mimeType?: string;
+      mimeType?: unknown;
+      url?: unknown;
     };
+    if (
+      typeof fileObj.id !== "string" ||
+      fileObj.id.trim().length === 0 ||
+      typeof fileObj.name !== "string" ||
+      fileObj.name.trim().length === 0 ||
+      typeof fileObj.mimeType !== "string" ||
+      fileObj.mimeType.trim().length === 0 ||
+      typeof fileObj.size !== "number" ||
+      !Number.isFinite(fileObj.size) ||
+      fileObj.size < 0 ||
+      typeof fileObj.url !== "string" ||
+      fileObj.url.trim().length === 0
+    ) {
+      return { valid: false, error: "Invalid file data" };
+    }
     // Check file size
     if (
-      control.file.maxSize &&
-      fileObj.size &&
+      control.file?.maxSize !== undefined &&
       fileObj.size > control.file.maxSize
     ) {
       return {
@@ -548,7 +575,7 @@ function validateFile(
       };
     }
     // Check accepted MIME types
-    if (control.file.accept && fileObj.mimeType) {
+    if (control.file?.accept) {
       const { mimeType } = fileObj;
       const accepted = control.file.accept.some((pattern) =>
         matchesMimeType(mimeType, pattern),

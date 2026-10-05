@@ -37,7 +37,7 @@ import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-hando
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { runJoinFlow } from "../cloud/join/lib/run-join-flow";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { clearForceFreshFirstRun } from "../platform/first-run-reset";
 import {
   isAndroid,
@@ -49,7 +49,6 @@ import { addAgentProfile, removeAgentProfile } from "../state/agent-profiles";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import {
   createPersistedActiveServer,
-  loadPersistedActiveServer,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "../state/persistence";
@@ -906,14 +905,4 @@ export async function runFirstRunFinish(
       message: err instanceof Error ? err.message : "First-run setup failed.",
     };
   }
-}
-
-/** Re-read the active cloud agent id (for the picker's "already bound" guard). */
-export function readActiveCloudAgentId(): string | null {
-  const active = loadPersistedActiveServer();
-  if (active?.kind !== "cloud") return null;
-  const id = active.id?.startsWith("cloud:")
-    ? active.id.slice("cloud:".length)
-    : "";
-  return id && !id.includes("/") ? id : null;
 }

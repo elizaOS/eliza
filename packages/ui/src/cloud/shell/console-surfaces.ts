@@ -5,14 +5,7 @@
  * agent, billing, key, and account paths are promoted here.
  */
 
-import {
-  Bot,
-  CreditCard,
-  Home,
-  KeyRound,
-  type LucideIcon,
-  User,
-} from "lucide-react";
+import { Bot, CreditCard, KeyRound, type LucideIcon, User } from "lucide-react";
 
 export interface ConsoleSurface {
   id: string;
@@ -26,14 +19,6 @@ export interface ConsoleSurface {
   descKey: string;
   descDefault: string;
 }
-
-/** Overview is nav-only: it IS the page the cards live on. */
-export const CONSOLE_OVERVIEW_NAV_ITEM = {
-  id: "overview",
-  label: "Overview",
-  href: "/cloud",
-  icon: Home,
-} as const;
 
 export const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
   {

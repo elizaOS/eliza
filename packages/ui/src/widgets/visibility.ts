@@ -136,9 +136,7 @@ export function applyChatSidebarVisibility<
   );
 }
 
-export const applyWidgetVisibility = applyChatSidebarVisibility;
 export const loadChatSidebarVisibility = loadWidgetVisibility;
-export const saveChatSidebarVisibility = saveWidgetVisibility;
 
 export {
   CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY,
