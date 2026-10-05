@@ -381,6 +381,58 @@ describe("durable SQLite agent adapter", () => {
     ).toContain(record.id);
   });
 
+  it("deletes an entity's components, sourced components and memberships with it", async () => {
+    const adapter = await open();
+    const worldId = id();
+    const otherEntityId = id();
+    const owned = id();
+    const sourced = id();
+    const unrelated = id();
+    await adapter.createAgents([{ id: agentId, name: "Contacts agent" }]);
+    await adapter.createEntities([
+      { id: entityId, agentId, names: ["Pat"] },
+      { id: otherEntityId, agentId, names: ["Sam"] },
+    ]);
+    await adapter.createWorlds([{ id: worldId, name: "Contacts", agentId }]);
+    await adapter.createRooms([
+      { id: roomId, agentId, worldId, type: ChannelType.DM, source: "test" },
+    ]);
+    await adapter.createRoomParticipants([entityId, otherEntityId], roomId);
+    const component = (
+      componentId: UUID,
+      owner: UUID,
+      sourceEntityId: UUID,
+    ) => ({
+      id: componentId,
+      entityId: owner,
+      agentId,
+      roomId,
+      worldId,
+      sourceEntityId,
+      type: "contact_info",
+      createdAt: 1,
+      data: {},
+    });
+    await adapter.createComponents([
+      component(owned, entityId, agentId),
+      component(sourced, otherEntityId, entityId),
+      component(unrelated, otherEntityId, agentId),
+    ]);
+
+    await adapter.deleteEntities([entityId]);
+
+    expect(await adapter.getEntitiesByIds([entityId])).toEqual([]);
+    expect(
+      (await adapter.getComponentsByIds([owned, sourced, unrelated])).map(
+        (row) => row.id,
+      ),
+    ).toEqual([unrelated]);
+    expect(await adapter.getRoomsForParticipants([entityId])).toEqual([]);
+    expect(await adapter.getRoomsForParticipants([otherEntityId])).toEqual([
+      roomId,
+    ]);
+  });
+
   it("rolls back domain records and runtime semantic state in one native transaction", async () => {
     const adapter = await open();
     await adapter.ensureEmbeddingDimension(3);
