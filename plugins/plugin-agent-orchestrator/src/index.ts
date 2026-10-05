@@ -13,7 +13,6 @@ import {
   createUniqueUuid,
   EventType,
   type IAgentRuntime,
-  isLocalCodeExecutionAllowed,
   type Memory,
   ModelType,
   promoteSubactionsToActions,
@@ -24,6 +23,7 @@ import {
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
+import { isLocalCodeExecutionAllowed } from "@elizaos/host";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   createTerminalUnsupportedTasksAction,

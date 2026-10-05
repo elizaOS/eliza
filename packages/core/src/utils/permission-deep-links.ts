@@ -12,7 +12,7 @@
  * surface advertises the limitation up-front.
  */
 
-import type { PermissionId } from "../contracts/permissions.js";
+import type { PermissionId } from "../types/permissions.js";
 
 const ROOT_PRIVACY =
 	"x-apple.systempreferences:com.apple.preference.security?Privacy";

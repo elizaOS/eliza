@@ -3,8 +3,9 @@
 Shared host configuration, boot aliases and HTTP plugin lifecycle. Hosts install
 route lifecycle explicitly and own authentication, storage and model composition.
 
-Use `@elizaos/host` for Node HTTP helpers and `@elizaos/host/protocol` for
-browser-safe contracts and configuration. `@elizaos/host/native-host` exposes
+Use `@elizaos/host` for Node HTTP helpers, build variants and native library
+policy; use `@elizaos/host/protocol` for browser-safe contracts, platform detection
+and configuration. `@elizaos/host/native-host` exposes
 Node-only SQLite task gateways, research collection and trace transport, database
 leases, and verified document-runtime packaging. Consumers supply authentication,
 consent, measurement policy and lifecycle ownership. Internal code imports defining files.

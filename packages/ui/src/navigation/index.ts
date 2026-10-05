@@ -10,7 +10,7 @@
  * present on native WebViews, absent on web and node (→ "web", not native).
  */
 
-import { userAgentHasElizaOSMarker } from "@elizaos/core/protocol";
+import { userAgentHasElizaOSMarker } from "@elizaos/host/protocol";
 import {
   Clock3,
   LayoutGrid,

@@ -1,6 +1,30 @@
 import * as fs from "node:fs";
 import { hostname } from "node:os";
 import * as pathMod from "node:path";
+import adze, {
+	type ConsoleStyle,
+	type LevelConfiguration,
+	type Method,
+	setup,
+	type UserConfiguration,
+} from "adze";
+import type Log from "adze/dist/log.js";
+import {
+	REDACTION_FAILED_VALUE,
+	redactLogValue,
+	redactSensitiveLogText,
+	redactTrailingArgs,
+} from "./security/log-redaction.js";
+
+/** Controls construction of debug-only model diagnostics across shared runtime targets. */
+
+// Whether debug-level logs are emitted, captured once at load (mirrors the
+// logger's static LOG_LEVEL read; debug is on only for trace/verbose/debug).
+// Lets hot paths skip building expensive debug-only payloads.
+export const RUNTIME_DEBUG_LOG_ENABLED = ["trace", "verbose", "debug"].includes(
+	String(process.env.LOG_LEVEL || "info").toLowerCase(),
+);
+
 /**
  * elizaOS's standard structured logger, built on Adze. Exposes the `Logger`
  * interface and the `createLogger` factory (plus the default `logger` /
@@ -25,21 +49,6 @@ import * as pathMod from "node:path";
 export const __loggerTestHooks = {
 	stripAnsi: (str: string): string => stripAnsi(str),
 };
-
-import adze, {
-	type ConsoleStyle,
-	type LevelConfiguration,
-	type Method,
-	setup,
-	type UserConfiguration,
-} from "adze";
-import type Log from "adze/dist/log.js";
-import {
-	REDACTION_FAILED_VALUE,
-	redactLogValue,
-	redactSensitiveLogText,
-	redactTrailingArgs,
-} from "./security/log-redaction.js";
 
 const getEnvironmentVar = (
 	key: string,

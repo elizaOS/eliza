@@ -4,6 +4,7 @@
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
+
 import type {
 	ActionFailureKind,
 	ActionFailureProvenance,
@@ -15,7 +16,6 @@ import type {
 	EvaluationResult,
 	ReplyEffectStatus,
 } from "../types/components";
-import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
 import type {
 	ChatMessage,
@@ -28,10 +28,11 @@ import type {
 	ToolDefinition,
 } from "../types/model";
 import type { State } from "../types/state";
+import type { ContextObject } from "./context-object";
 import type { ChainingLoopConfig } from "./limits";
 import type { TrajectoryRecorder } from "./trajectory-recorder";
 
-export type { ContextObject } from "../types/context-object";
+export type { ContextObject } from "./context-object";
 
 export interface PlannerToolCall {
 	id?: string;

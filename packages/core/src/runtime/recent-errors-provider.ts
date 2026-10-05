@@ -12,7 +12,7 @@ import type { State } from "../types/state.js";
 import {
 	deepToWellFormedUnicode,
 	toWellFormedUnicode,
-} from "../utils/well-formed.ts";
+} from "../utils/unicode.ts";
 
 /** Entries older than this are ignored (stale failures shouldn't linger). */
 const ERROR_MAX_AGE_MS = 30 * 60 * 1000;

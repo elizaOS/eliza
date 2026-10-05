@@ -3,8 +3,8 @@ import {
 	completionContextSources,
 	selectCompletionContext,
 } from "../runtime/completion-context";
+import type { ContextObject } from "../runtime/context-object";
 import { renderContextObject, segmentBlock } from "../runtime/context-renderer";
-import type { ContextObject } from "../types/context-object";
 import type { Memory } from "../types/memory";
 import type { State } from "../types/state";
 import {

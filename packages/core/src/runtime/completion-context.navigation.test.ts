@@ -1,12 +1,13 @@
 /** Verifies lossless receipt selection/restoration across the combined runtime. */
+
 import { describe, expect, it } from "vitest";
 import { renderMessageHandlerModelInput } from "../../../../plugins/plugin-assistant/src/services/message/stage1-input";
 import type { CompletionContextSelection } from "../types/components";
-import type { ContextObject } from "../types/context-object";
 import {
 	completionContextSources,
 	selectCompletionContext,
 } from "./completion-context";
+import type { ContextObject } from "./context-object";
 
 function historyContext(): ContextObject {
 	return {

@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
+import * as catalog from "../index.js";
 import {
 	getElizaCuratedAppDefinition,
 	getRegisteredCuratedApps,
 	registerCuratedApp,
-} from "../contracts/apps.js";
-import * as catalog from "./index.js";
+} from "./apps.js";
 
 const key = Symbol.for("elizaos.curated-app-registry");
 const slot = globalThis as Record<PropertyKey, unknown>;
@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe("canonical curated app registration", () => {
-	it("shares registration, replacement, and lookup across catalog and contracts", () => {
+	it("shares registration, replacement, and lookup through the public barrel and catalog owner", () => {
 		slot[key] = { entries: [] };
 		expect(catalog.registerCuratedApp).toBe(registerCuratedApp);
 		expect(catalog.getRegisteredCuratedApps).toBe(getRegisteredCuratedApps);

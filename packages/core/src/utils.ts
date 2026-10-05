@@ -2,19 +2,16 @@
 
 import { ElizaError } from "./errors";
 import logger from "./logger";
+import { unwrapWholeCodeFence } from "./markdown/code.ts";
 import { renderStoredEnvelopesForPrompt } from "./security/external-content";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
 import type { ModelRegistrationMetadata } from "./types/model";
 import { type Content, ContentType, type JsonValue } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
-import { unwrapWholeCodeFence } from "./utils/code-fence.ts";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "./utils/well-formed.js";
+import { toWellFormedUnicode, truncateWellFormed } from "./utils/unicode.js";
 
 // Text Utils
 

@@ -5,7 +5,7 @@
  */
 
 import type { JsonValue } from "../types/primitives.ts";
-import { toWellFormedUnicode } from "../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../utils/unicode.ts";
 
 const utf8Encoder = new TextEncoder();
 

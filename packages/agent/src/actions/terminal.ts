@@ -10,13 +10,11 @@ import {
   type Action,
   type ActionExample,
   buildReadView,
-  buildStoreVariantBlockedMessage,
   ContentType,
   type EffectReceipt,
   ElizaError,
   type HandlerOptions,
   type IAgentRuntime,
-  isLocalCodeExecutionAllowed,
   type JsonValue,
   logger,
   type Media,
@@ -24,8 +22,11 @@ import {
   redactSensitiveText,
   stringToUuid,
 } from "@elizaos/core";
+import {
+  buildStoreVariantBlockedMessage,
+  isLocalCodeExecutionAllowed,
+} from "@elizaos/host";
 import { readAliasedEnv, resolveSelfApiBaseUrl } from "@elizaos/host/protocol";
-
 import {
   capturedTerminalOutputIsSafe,
   TERMINAL_REJECTIONS,

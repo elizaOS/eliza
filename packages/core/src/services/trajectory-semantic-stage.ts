@@ -1,18 +1,29 @@
+import { ElizaError } from "../errors.ts";
+import type { RecordedStage } from "../runtime/trajectory-recorder.ts";
+import type { JsonValue } from "../types/primitives.ts";
+import { asRecord } from "../utils/type-guards.ts";
+import { sanitizeTrajectoryJsonObject } from "./trajectory-json.ts";
+
+/** Defines the canonical semantic stage-kind vocabulary shared by trajectory producers and transports. */
+
+export const RECORDED_STAGE_KINDS = [
+	"messageHandler",
+	"planner",
+	"tool",
+	"toolSearch",
+	"evaluation",
+	"subPlanner",
+	"compaction",
+	"factsAndRelationships",
+] as const;
+
+export type RecordedStageKind = (typeof RECORDED_STAGE_KINDS)[number];
+
 /**
  * Defines the versioned semantic-stage envelope shared by trajectory storage,
  * exports, and viewer read contracts, adapting the richer runtime recorder
  * stages without creating a second stage vocabulary.
  */
-
-import { ElizaError } from "../errors.ts";
-import type { RecordedStage } from "../runtime/trajectory-recorder.ts";
-import {
-	RECORDED_STAGE_KINDS,
-	type RecordedStageKind,
-} from "../runtime/trajectory-stage-kind.ts";
-import type { JsonValue } from "../types/primitives.ts";
-import { asRecord } from "../utils/type-guards.ts";
-import { sanitizeTrajectoryJsonObject } from "./trajectory-json.ts";
 
 export const TRAJECTORY_SEMANTIC_STAGE_SCHEMA_VERSION = 1 as const;
 

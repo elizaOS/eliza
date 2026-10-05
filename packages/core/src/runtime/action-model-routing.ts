@@ -25,10 +25,13 @@
  */
 
 import { isModelProviderFallbackError } from "../security/model-failure.ts";
+import { LOCAL_MODEL_PROVIDERS } from "../security/secrets";
 import type { ActionModelClass } from "../types/components";
-import type { ModelHandler, ModelRegistrationMetadata } from "../types/model";
-import { ModelType } from "../types/model";
-import { LOCAL_MODEL_PROVIDERS } from "../validation/secret-catalog";
+import {
+	type ModelHandler,
+	type ModelRegistrationMetadata,
+	ModelType,
+} from "../types/model";
 
 /**
  * Minimal capability view of a model registration, used by routing predicates.

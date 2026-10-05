@@ -30,11 +30,11 @@
  * selects the progress mode the hook resolves at registration time.
  */
 
+import { ModelType } from "@elizaos/core";
 import {
   _resetBuildVariantForTests,
   isLocalCodeExecutionAllowed,
-  ModelType,
-} from "@elizaos/core";
+} from "@elizaos/host";
 import {
   afterEach,
   beforeEach,
