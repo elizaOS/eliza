@@ -75,6 +75,13 @@ export {
   isCloudAgentGoneError,
   isRateLimitedError,
 } from "./api/client-types-core.js";
+export {
+  type ConversationRoom,
+  type ConversationStopResult,
+  ConversationTurnController,
+  type ConversationTurnObserver,
+  type ConversationTurnTransport,
+} from "./api/conversation-turn-controller.js";
 export { fetchWithCsrf } from "./api/csrf-client.js";
 export type {
   DedicatedActivationConfirmationQuote,
@@ -1362,6 +1369,11 @@ export {
   playCaptureStartCue,
 } from "./voice/capture-cues.js";
 export {
+  DeviceSpeechController,
+  type DeviceSpeechEnvironment,
+  type DeviceSpeechState,
+} from "./voice/device-speech-controller.js";
+export {
   audioBlobBase64,
   type CumulativeCaptureOptions,
   observeMicrophonePause,
@@ -1372,6 +1384,13 @@ export {
   encodeMonoPcm16Wav,
   encodeMonoPcm16WavChunks,
 } from "./voice/pcm-wave.js";
+export {
+  type SegmentedSpeechOptions,
+  SegmentedSpeechPlayback,
+  type SegmentedSpeechState,
+  type SpeechAudioEnvironment,
+  SpeechPlaybackError,
+} from "./voice/segmented-speech-playback.js";
 export { splitSpeechSegments } from "./voice/speech-segments.js";
 export { useVoiceConfig } from "./voice/useVoiceConfig.js";
 export {
