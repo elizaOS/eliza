@@ -108,3 +108,9 @@ subscription, customer and failed invoice under the organization lock. Dunning p
 the previous paid plan/period and pending target without granting allowance; subsequent
 captured payment proves the contiguous dunning history before settling the lower plan.
 The original grace window cannot be reset by a later revision.
+
+Target terms survive a verified schedule release/completion through the retained original
+snapshot and explicitly checked lifecycle changes. Released targets can settle within their
+original invoice period. Historical grants expire atomically through the existing ledger;
+payment publication after that period still requires separate historical invoice and live
+compatibility proof and remains unavailable until that owner is implemented.
