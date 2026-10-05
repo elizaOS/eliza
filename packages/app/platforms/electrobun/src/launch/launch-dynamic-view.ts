@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop launch dynamic view ts behavior for app shell integration. */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

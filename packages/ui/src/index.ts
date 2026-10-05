@@ -1217,10 +1217,8 @@ export type {
 } from "./state/types.js";
 export { ACCENT_PRESETS } from "./state/ui-preferences.js";
 export { useFirstRunChatRelease } from "./state/use-first-run-chat-release.js";
-export {
-  isBootstrapGateRequired,
-  isLoopbackGatewayHost,
-} from "./state/use-startup-shell-controller.js";
+export { useRemoteConnectRequests } from "./state/use-remote-connect-requests.js";
+export { isBootstrapGateRequired } from "./state/use-startup-shell-controller.js";
 export { AppContext, useApp } from "./state/useApp.js";
 export { useAppLifecycleEvents } from "./state/useAppLifecycleEvents.js";
 export {

@@ -140,7 +140,6 @@ import "./renderer-build-stamp";
 import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
-import type { DetachedShellRootProps } from "@elizaos/app/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import type {
   AppBlockerSettingsCardProps,
@@ -153,7 +152,6 @@ import {
   isCloudPairLoopbackOrigin,
 } from "@elizaos/contracts";
 import type { PushToTalkHoldDetail } from "@elizaos/core/protocol";
-import { isElizaDedicatedAgentHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { configureStoredStewardTokenScope } from "@elizaos/plugin-elizacloud/steward-session-client";
 import type { DeviceBridgeClient } from "@elizaos/plugin-native-inference/llama";
 import {
@@ -231,11 +229,13 @@ import {
   PHONE_COMPANION_AGENT_VIEW_ID,
   resolveRendererShellKind,
 } from "./renderer-shell-scope";
+import type { DetachedShellRootProps } from "./runtime/desktop";
 import {
   applyRuntimeChooserOverrideFromUrl,
   removeUrlParameter,
 } from "./runtime-chooser-override";
 import {
+  isElizaCloudAgentHost,
   isElizaCloudSharedHost,
   isLoopbackApiHost,
   isPrivateOrLoopbackApiHost,
@@ -356,18 +356,18 @@ const ShellViewAgentSurface = lazyNamedComponent<{
 const DesktopSurfaceNavigationRuntime = lazyNamedComponent<
   Record<string, never>
 >(async () => {
-  const mod = await import("@elizaos/app/desktop-shell");
+  const mod = await import("./runtime/desktop");
   return mod.DesktopSurfaceNavigationRuntime;
 });
 const DesktopTrayRuntime = lazyNamedComponent<Record<string, never>>(
   async () => {
-    const mod = await import("@elizaos/app/desktop-shell");
+    const mod = await import("./runtime/desktop");
     return mod.DesktopTrayRuntime;
   },
 );
 const DetachedShellRoot = lazyNamedComponent<DetachedShellRootProps>(
   async () => {
-    const mod = await import("@elizaos/app/desktop-shell");
+    const mod = await import("./runtime/desktop");
     return mod.DetachedShellRoot;
   },
 );
@@ -376,17 +376,15 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
 
-async function runIosFullBunSmokeFromDesktopShell(): Promise<boolean> {
-  const mod = await import("@elizaos/app/desktop-shell");
+async function runIosFullBunSmoke(): Promise<boolean> {
+  const mod = await import("./platform/ios-runtime-bridge");
   return mod.runIosFullBunSmokeIfRequested();
 }
 
 async function buildLocalizedTrayMenuAsync(
-  ...args: Parameters<
-    typeof import("@elizaos/app/desktop-shell").buildLocalizedTrayMenu
-  >
+  ...args: Parameters<typeof import("./runtime/desktop").buildLocalizedTrayMenu>
 ) {
-  const mod = await import("@elizaos/app/desktop-shell");
+  const mod = await import("./runtime/desktop");
   return mod.buildLocalizedTrayMenu(...args);
 }
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
@@ -472,7 +470,6 @@ configureStoredStewardTokenScope(IOS_RUNTIME_ENV_CONFIG.cloudApiBase);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
-const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let cameraBridgeResponderStop: (() => void) | null = null;
@@ -583,49 +580,6 @@ function applyCloudPairSessionToken(): void {
       } catch {
         // error-policy:J4 migration is best-effort; the same-tab token still
         // authenticates this launch.
-      }
-    }
-  }
-  // Gate 4 — legacy single-key migration with target equality. A pre-#17579
-  // install stored the bearer under the global `eliza:cloud-pair:api-token`
-  // key with no owner binding. That key is adopted ONLY when the persisted
-  // active server for THIS agent still carries the identical bearer — i.e.
-  // the local record proves the legacy credential belongs to the agent being
-  // booted. Without that proof the legacy key is left untouched (never
-  // mirrored onto an agent that cannot claim it) and the pairing flow writes
-  // the scoped key on the next explicit pair.
-  if (!token) {
-    let legacyToken: string | null = null;
-    try {
-      legacyToken =
-        window.localStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() ||
-        null;
-    } catch {
-      // error-policy:J4 unreadable legacy storage — no adoption.
-    }
-    if (legacyToken) {
-      try {
-        const activeServer = loadPersistedActiveServer();
-        const ownedByTarget =
-          activeServer !== null &&
-          resolveDedicatedAgentId(activeServer) === agentId &&
-          activeServer.accessToken === legacyToken;
-        if (ownedByTarget) {
-          token = legacyToken;
-          try {
-            shellLocalStorage.setItem(agentTokenKey, token);
-          } catch {
-            // error-policy:J4 best-effort migration write.
-          }
-          try {
-            shellLocalStorage.removeItem(CLOUD_PAIR_SESSION_TOKEN_KEY);
-          } catch {
-            // error-policy:J3 best-effort legacy cleanup.
-          }
-        }
-      } catch {
-        // error-policy:J4 unreadable active-server record — legacy key stays
-        // unadopted rather than being stamped onto an unproven target.
       }
     }
   }
@@ -885,15 +839,6 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
 
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (() => {
-    // app owns the AppBootConfig singleton and is already evaluated: this
-    // module statically imports its desktop bindings, so the whole package
-    // loads with the entry chunk before main() runs. A dynamic
-    // import("@elizaos/app") here would be a runtime no-op, but its
-    // escaping namespace would force Rollup to retain every export of the
-    // barrel (`export * from "@elizaos/ui/browser"`) in the startup-critical
-    // entry chunk (#13187). Everything else exposed through the boot config is
-    // a React.lazy handle that loads on render, so its import is deferred onto
-    // the idle path instead of gating the first visible shell (#9565).
     setBootConfig(buildAppBootConfig());
     return Promise.resolve();
   })();
@@ -962,7 +907,7 @@ async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
   installNativeTranscriptPlatformBridge();
-  void runIosFullBunSmokeFromDesktopShell();
+  void runIosFullBunSmoke();
   if (isIOS) {
     void import("./native-smoke")
       .then((smoke) =>
@@ -1752,34 +1697,12 @@ function setupPlatformStyles(): void {
     document.body.classList.add("native");
   }
 
-  // Installed PWA on the WEB platform (iOS home-screen app, chrome-less Android
-  // PWA): tag the body so base.css/styles.css apply the mobile touch-viewport
-  // lockdown + #14319 large-viewport geometry. This is the SECONDARY path: the
-  // CSS-first `@media (display-mode: standalone) and (pointer: coarse)` rules
-  // are the source of truth (they land even when this class does not), but the
-  // class is kept for back-compat (legacy iOS Safari signalling only via
-  // navigator.standalone) and parity with the @elizaos/ui setupPlatformStyles.
-  // Scoped to `platform === "web"`: the native build already locks via `native`
-  // and desktop (electrobun) must keep its window scroll/trackpad behavior.
+  // Web PWAs share touch-viewport styles; native and desktop shells own theirs.
   if (platform === "web" && isStandalonePwa()) {
     document.body.classList.add("pwa-standalone");
   }
 
-  // JS-MEASURED BOTTOM RECLAIM — THE LOAD-BEARING INSTALL POINT ON THE REAL
-  // PWA BOOT PATH (#15103/#15136/#15178). This local `setupPlatformStyles` is
-  // the function `main()` actually calls on the installed standalone PWA (the
-  // `@elizaos/ui` init.ts `setupPlatformStyles` is NOT on this entry graph — it
-  // is only reachable from unit tests). If the installer is not called HERE it
-  // never runs on device: the layout viewport collapses to the small box
-  // (`documentElement.clientHeight` = 873 while `screen.height` = 932) so every
-  // pure-CSS reclaim (`100lvh - 100dvh`) resolves to 0 and is a device no-op,
-  // leaving the black home-indicator strip. #15178's WIP (f903c59) dropped this
-  // block and the restore landed only in the orphaned ui copy, reproducing the
-  // regression (device chip read `rc?` = var never set). The platform gate lives
-  // INSIDE `shouldInstallStandaloneBottomReclaim` (standalone + iOS only), so
-  // this is a hard 0 no-op everywhere else and a future refactor of this entry
-  // cannot silently orphan the installer without turning the app-entry lockdown
-  // contract test RED. See standalone-bottom-reclaim.ts + standalone-pwa-lockdown.test.ts.
+  // Install the iOS standalone viewport correction on the actual app entry.
   if (
     shouldInstallStandaloneBottomReclaim({
       standalonePwa: isStandalonePwa(),
@@ -1995,15 +1918,6 @@ function isPopoutWindow(): boolean {
   return getWindowUrlSearchParams().has("popout");
 }
 
-/**
- * Dedicated Cloud agents serve their runtime on the canonical managed-agent
- * hostname family. The shared classifier also recognizes legacy agent hosts
- * during the DNS migration; control-plane hosts never match this predicate.
- */
-function isElizaCloudAgentSubdomain(host: string): boolean {
-  return isElizaDedicatedAgentHostname(host);
-}
-
 function isNativeIosStoreBuild(): boolean {
   return isNative && isIOS && isStoreBuild;
 }
@@ -2070,7 +1984,7 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
       isCurrentOriginHost(host) ||
       isConfiguredCloudApiHost(host) ||
       isElizaCloudSharedHost(host) ||
-      isElizaCloudAgentSubdomain(host)
+      isElizaCloudAgentHost(host)
     );
   }
   if (isPopoutWindow() && parsed.protocol === "https:") return true;
@@ -2081,7 +1995,7 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
     (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
-    (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host)) ||
+    (parsed.protocol === "https:" && isElizaCloudAgentHost(host)) ||
     isTrustedPrivateHttpHost(host)
   );
 }
@@ -2102,14 +2016,14 @@ function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
       isCurrentOriginHost(host) ||
       (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
       (parsed.protocol === "https:" && isElizaCloudSharedHost(host)) ||
-      (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host))
+      (parsed.protocol === "https:" && isElizaCloudAgentHost(host))
     );
   }
   return (
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
     (parsed.protocol === "https:" && isConfiguredCloudApiHost(host)) ||
-    (parsed.protocol === "https:" && isElizaCloudAgentSubdomain(host)) ||
+    (parsed.protocol === "https:" && isElizaCloudAgentHost(host)) ||
     isTrustedPrivateHttpHost(host)
   );
 }
@@ -2509,7 +2423,7 @@ async function main(): Promise<void> {
       initializeCapacitorBridge,
       installNativeRequestBridge: installIosLocalAgentNativeRequestBridge,
       installFetchBridge: installIosLocalAgentFetchBridge,
-      runSmoke: runIosFullBunSmokeFromDesktopShell,
+      runSmoke: runIosFullBunSmoke,
     })
   ) {
     return;

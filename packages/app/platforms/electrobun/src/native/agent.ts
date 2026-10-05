@@ -955,11 +955,6 @@ export function resolveRuntimeDistPath(opts?: {
 		if (fs.existsSync(runtimeDist)) {
 			return runtimeDist;
 		}
-		// Legacy eliza-dist sibling (existing packaged builds)
-		const legacyDist = joinPortable(dir, "eliza-dist");
-		if (fs.existsSync(legacyDist)) {
-			return legacyDist;
-		}
 		// Dev monorepo: dist/ sibling containing the canonical CLI entrypoint
 		const devDist = joinPortable(dir, "dist");
 		if (fs.existsSync(joinPortable(devDist, "entry.js"))) {

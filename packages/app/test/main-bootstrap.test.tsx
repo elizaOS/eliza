@@ -151,7 +151,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
         "initializeCapacitorBridge",
         "installIosLocalAgentNativeRequestBridge",
         "installIosLocalAgentFetchBridge",
-        "runIosFullBunSmokeFromDesktopShell",
+        "runIosFullBunSmoke",
         "scheduleDeferredAppModuleLoadsAfterPaint",
       ].map((name) => [name, vi.fn()]),
     ),

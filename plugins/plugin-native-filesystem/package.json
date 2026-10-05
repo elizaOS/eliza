@@ -72,16 +72,18 @@
 		"pluginParameters": {}
 	},
 	"eliza": {
-		"platforms": [
-			"node",
-			"ios",
-			"android"
-		],
 		"runtime": "node",
 		"platformDetails": {
 			"node": "Filesystem rooted under resolveStateDir()/workspace",
 			"ios": "Capacitor Filesystem Directory.Documents",
 			"android": "Capacitor Filesystem Directory.Documents"
 		}
+	},
+	"elizaos": {
+		"platforms": [
+			"node",
+			"ios",
+			"android"
+		]
 	}
 }

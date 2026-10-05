@@ -4,7 +4,7 @@
  * Proves the renderer registration entry through the REAL renderer-service
  * registry (`@elizaos/ui/platform/renderer-services` is anchored to source in
  * this package's vitest config — no mocked lifecycle) driving the REAL capture
- * controller: importing `register.ts` registers a main-scoped service without
+ * controller: calling `registerApp` registers a main-scoped service without
  * starting any work, a popout/detached host never starts the capture, a main
  * host starts it, and disposing the host stops it (listeners removed, restart
  * possible). Only the HTTP client and native bridges are stubbed.
@@ -126,8 +126,10 @@ import {
   isLifeOpsActivitySignalCaptureActive,
   startLifeOpsActivitySignalCapture,
 } from "./lifeops/activity-signals-capture.js";
-// Side-effect import under test: registers the renderer service definition.
-import "./register.js";
+// Register the renderer service definition.
+import { registerApp } from "./register.js";
+
+registerApp();
 
 const spiedStartCapture = vi.mocked(startLifeOpsActivitySignalCapture);
 
@@ -189,7 +191,7 @@ describe("personal-assistant renderer registration entry", () => {
     expect(isLifeOpsActivitySignalCaptureActive()).toBe(false);
   });
 
-  it("registers the main-scoped service at import time without starting capture", () => {
+  it("registers the main-scoped service without starting capture", () => {
     const state = serviceState();
     expect(state).toBeDefined();
     expect(state?.shells).toEqual(["main"]);

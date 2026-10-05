@@ -156,7 +156,6 @@ export type FirstRunFinishOutcome =
   | { kind: "done" }
   | { kind: "handoff-started" }
   | { kind: "needs-cloud-login"; fallbackUrl?: string }
-  | { kind: "pick-cloud-agent"; agents: CloudCompatAgent[] }
   | { kind: "error"; message: string };
 
 // ── Exactly-once POST funnel ─────────────────────────────────────────────────

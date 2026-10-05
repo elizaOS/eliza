@@ -35,14 +35,14 @@ import {
 import { createIsolatedAccountStoragePolicy } from "@elizaos/auth/auth";
 import { createDeterministicModelPlugin } from "@elizaos/testing/models";
 import {
-  _clearCompatPgliteDataDirForTests,
-  startApiServer,
-} from "../src/api/server.ts";
-import {
   createConversation,
   postConversationMessage,
   req,
-} from "../test/helpers/http.ts";
+} from "@elizaos/testing/runtime";
+import {
+  _clearCompatPgliteDataDirForTests,
+  startApiServer,
+} from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
 

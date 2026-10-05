@@ -94,7 +94,7 @@ const STEWARD_RESTORE_REFRESH_TIMEOUT_MS =
   STARTUP_TIMING_POLICY.stewardRestoreRefreshTimeoutMs;
 /** Bound the non-blocking legacy runtime-tier repair lookup. */
 const CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS =
-  STARTUP_TIMING_POLICY.cloudAgentTierProbeTimeoutMs;
+  STARTUP_TIMING_POLICY.probeRequestTimeoutMs;
 /** Steward refresh endpoint path (same-origin on web; `api.` host on native). */
 const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
 /** Default direct Cloud site base used to derive the native refresh endpoint. */
@@ -619,11 +619,13 @@ export async function applyRestoredConnection(args: {
       if (!isTrustedCloudApiBaseUrl(repaired.apiBase, agentId)) return;
       const current = loadPersistedActiveServer();
       // A user can switch agents while the compatibility probe is in flight.
-      // Never overwrite a newer selection; null is allowed for direct unit
-      // callers that did not seed persistence.
+      // A cleared selection is logout, not permission to restore the old one.
       if (
-        current &&
-        (current.id !== resolved.id || current.apiBase !== resolved.apiBase)
+        !current ||
+        current.id !== resolved.id ||
+        current.apiBase !== resolved.apiBase ||
+        current.accessToken !== resolved.accessToken ||
+        (stewardToken && readStoredStewardToken() !== stewardToken)
       ) {
         return;
       }

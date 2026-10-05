@@ -294,7 +294,7 @@ const documentsView = {
   label: "Knowledge",
   available: true,
   pluginName: "@elizaos/plugin-knowledge",
-  path: "/documents",
+  path: "/character/documents",
   bundleUrl: "/api/views/documents/bundle.js",
   viewType: "gui" as const,
 };
@@ -1279,10 +1279,8 @@ describe("App navigate-view event wiring", () => {
     ).not.toBe("0px");
   });
   it.each([
-    { path: "/documents", remote: true },
-    { path: "/knowledge", remote: true },
-    { path: "/documents", remote: false },
-    { path: "/knowledge", remote: false },
+    { path: "/character/documents", remote: true },
+    { path: "/character/documents", remote: false },
   ])(
     "keeps Knowledge route $path on its plugin surface (remote=$remote)",
     async ({ path, remote }) => {
@@ -1292,7 +1290,7 @@ describe("App navigate-view event wiring", () => {
         id: "documents",
         pluginId: "@elizaos/plugin-knowledge",
         label: "Knowledge",
-        path: "/documents",
+        path: "/character/documents",
         pathPatterns: ["/character/documents"],
         surface: { header: "fullscreen" },
         tabAffinity: "documents",
@@ -1301,20 +1299,13 @@ describe("App navigate-view event wiring", () => {
       appState.tab = "documents";
       window.history.replaceState(null, "", path);
       const { findByTestId, queryByTestId } = render(<App />);
-      if (remote && path === "/documents") {
-        // Exact remote plugin routes take precedence on web/desktop.
-        expect(
-          (await findByTestId("dynamic-view-loader")).getAttribute(
-            "data-view-id",
-          ),
-        ).toBe("documents");
-        expect(queryByTestId("documents-view")).toBeNull();
-      } else {
-        expect(await findByTestId("documents-view")).toBeTruthy();
-        expect(queryByTestId("dynamic-view-loader")).toBeNull();
-      }
+      // The canonical character route is shell-reserved, even when a remote
+      // registry advertises the same path. Preserve the signed plugin owner.
+      expect(await findByTestId("documents-view")).toBeTruthy();
+      expect(queryByTestId("dynamic-view-loader")).toBeNull();
     },
   );
+
   it("prefers an exact remote plugin route over its native wallet fallback", async () => {
     mockAvailableViews.push(walletMarketView);
     registerAppShellPage({
@@ -1524,7 +1515,9 @@ describe("App navigate-view event wiring", () => {
     const platform = vi
       .spyOn(Capacitor, "getPlatform")
       .mockReturnValue("android");
-    await import("../../../../plugins/plugin-native-contacts/src/register");
+    (
+      await import("../../../../plugins/plugin-native-contacts/src/register")
+    ).registerApp();
     const registration = listAppShellPages().find(
       (entry) => entry.id === "contacts",
     );

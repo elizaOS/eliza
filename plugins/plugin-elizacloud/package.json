@@ -107,7 +107,10 @@
     "auto-enable.ts"
   ],
   "elizaos": {
-    "appRegister": "register",
+    "appRegister": {
+      "subpath": "register",
+      "export": "registerApp"
+    },
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
       "capabilities": [

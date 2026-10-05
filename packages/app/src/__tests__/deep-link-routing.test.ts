@@ -5,12 +5,62 @@ import {
   resolveDeepLinkNavigationIntent,
 } from "../deep-link-routing";
 import {
+  isElizaCloudAgentHost,
+  isElizaCloudSharedHost,
   isLoopbackApiHost,
   isPrivateOrLoopbackApiHost,
+  isTrustedCloudOnlyApiBaseUrl,
   isTrustedPrivateHttpHost,
 } from "../url-trust-policy";
 
 describe("shared app link and host classification", () => {
+  it("trusts only current shared Cloud hosts in Cloud-only mode", () => {
+    for (const host of [
+      "eliza.app",
+      "cloud.eliza.app",
+      "api.eliza.app",
+      "api-staging.eliza.app",
+    ]) {
+      expect(isElizaCloudSharedHost(host)).toBe(true);
+      expect(
+        isTrustedCloudOnlyApiBaseUrl(new URL(`https://${host}`), true),
+      ).toBe(true);
+      expect(
+        isTrustedCloudOnlyApiBaseUrl(new URL(`http://${host}`), true),
+      ).toBe(false);
+      expect(
+        isTrustedCloudOnlyApiBaseUrl(new URL(`https://${host}`), false),
+      ).toBe(false);
+    }
+    for (const host of [
+      "elizacloud.ai",
+      "app.elizacloud.ai",
+      "api.elizacloud.ai",
+      "api-staging.elizacloud.ai",
+      "api.eliza.app.attacker.example",
+    ]) {
+      expect(isElizaCloudSharedHost(host)).toBe(false);
+    }
+  });
+
+  it("distinguishes current dedicated agents from retired and control-plane hosts", () => {
+    for (const host of [
+      "agent-one.cloud.eliza.app",
+      "agent-one.cloud-staging.eliza.app",
+    ]) {
+      expect(isElizaCloudAgentHost(host)).toBe(true);
+    }
+    for (const host of [
+      "agent-one.elizacloud.ai",
+      "agent-one.staging.elizacloud.ai",
+      "cloud.eliza.app",
+      "api.eliza.app",
+      "nested.agent-one.cloud.eliza.app",
+    ]) {
+      expect(isElizaCloudAgentHost(host)).toBe(false);
+    }
+  });
+
   it.each([
     ["https://eliza.app/chat", true],
     ["https://child.eliza.app/chat", true],

@@ -1,4 +1,3 @@
-/** Exercises stage android agent behavior with deterministic app test fixtures. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";

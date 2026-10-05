@@ -4,10 +4,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { buildTaskRuntime as build } from "../scripts/build-consumer-task-runtime.mjs";
-import { createTaskGateway } from "./task-runtime-gateway.mjs";
+import { createTaskGateway } from "@elizaos/host/native-host";
+import { buildTaskRuntime as build } from "../../scripts/build-consumer-task-runtime.mjs";
 
-const sourceRoot = resolve(import.meta.dirname, "../../..");
+const sourceRoot = resolve(import.meta.dirname, "../../../..");
 const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], {
   cwd: sourceRoot,
   encoding: "utf8",

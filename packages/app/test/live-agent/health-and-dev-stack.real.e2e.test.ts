@@ -21,10 +21,10 @@
  *                                 + packages/app/src/api/dev-route-catalog.ts:466
  */
 
+import { req } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ELIZA_DEV_ROUTE_CATALOG_SCHEMA_VERSION } from "../../src/api/dev-route-catalog.ts";
 import { ELIZA_DEV_STACK_SCHEMA } from "../../src/api/dev-stack.ts";
-import { req } from "../helpers/http.ts";
 import {
   type RuntimeHarness,
   startLiveRuntimeServer,

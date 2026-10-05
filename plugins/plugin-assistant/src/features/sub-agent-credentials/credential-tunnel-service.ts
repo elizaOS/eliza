@@ -49,20 +49,16 @@ import {
   TRACE_ENV,
 } from "@elizaos/core";
 import {
-  SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE as CORE_SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
-  SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE as CORE_SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
-  type SubAgentCredentialBridge as CoreSubAgentCredentialBridge,
-  type SubAgentCredentialRequestOrigin as CoreSubAgentCredentialRequestOrigin,
-} from "@elizaos/plugin-assistant";
+  SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
+  SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
+  type SubAgentCredentialBridge,
+  type SubAgentCredentialRequestOrigin,
+} from "./types.ts";
 
 const TOKEN_BYTES = 32; // 256-bit
 const IV_BYTES = 12;
 const AUTH_TAG_BYTES = 16;
 const SCOPE_TTL_MS = 30 * 60 * 1000;
-export const SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE =
-  CORE_SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE;
-export const SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE =
-  CORE_SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE;
 
 export interface DeclareScopeInput {
   childSessionId: string;
@@ -89,9 +85,6 @@ export interface RetrieveCredentialInput {
   scopedToken: string;
 }
 
-export type SubAgentCredentialRequestOrigin =
-  CoreSubAgentCredentialRequestOrigin;
-
 export interface SubAgentCredentialScopeResult extends DeclareScopeResult {
   sensitiveRequestIds: readonly string[];
 }
@@ -111,8 +104,6 @@ export interface BridgeCredentialAdapter {
     | { status: "rejected"; reason: string }
   >;
 }
-
-export type SubAgentCredentialBridge = CoreSubAgentCredentialBridge;
 
 interface ScopeEntryKeyState {
   /** Hex-encoded `IV || ciphertext || authTag`. Cleared after redemption. */

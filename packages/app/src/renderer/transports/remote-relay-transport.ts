@@ -373,8 +373,6 @@ function responseFromRemoteResult(
 }
 export const remoteRelayTransportInternals = {
   normalizeRelayAgentRequest,
-  // Backward-compatible test seam retained while the route contract expands.
-  normalizeRelayHealthRequest: normalizeRelayAgentRequest,
   responseFromRemoteResult,
   sendCommand,
   withSessionEnqueue,
