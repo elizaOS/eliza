@@ -1,5 +1,10 @@
 /** Actual SDK read serialization and linked financial evidence, without live financial actions. */
 import { expect, test } from "bun:test";
+import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
+import { observeRetainedRenewalAdjustments } from "./renewal-adjustment-observation";
+import { createRenewalInvoiceAuthority } from "./renewal-invoice-authority";
+import { createRenewalInvoiceDetails } from "./renewal-invoice-details";
+import { createRenewalSettlementDetails } from "./renewal-settlement-details";
 import { fixture, line, note, scope } from "./stripe-credit-note.fixture";
 import { retrieveInvoiceCreditNoteDispositions } from "./stripe-credit-note-dispositions";
 
@@ -516,4 +521,178 @@ test("retained scope cannot be redirected by caller mutation during provider rea
   expect(result.noteObservation.invoice.customer).toBe("cus_owner");
   expect(result.noteObservation.invoiceLineIds).toEqual(["il_original"]);
   expect(f.requests.some((value) => value.url.pathname.includes("other"))).toBe(false);
+});
+
+function retainedGrant(
+  f: ReturnType<typeof linkedFixture>,
+  providerAccountId: string | null = "acct_owner",
+) {
+  const start = 1700000000,
+    end = start + 2592000;
+  const authority = createRenewalInvoiceAuthority({
+    kind: "renewal_invoice_authority",
+    version: 1,
+    organizationId: "00000000-0000-4000-8000-000000000001",
+    subscriptionId: "00000000-0000-4000-8000-000000000002",
+    providerAccountId,
+    invoiceId: "in_original",
+    customerId: "cus_owner",
+    providerSubscriptionId: "sub_owner",
+    subscriptionItemId: "si_original",
+    invoiceLineId: "il_original",
+    priceId: "price_original",
+    productId: "prod_original",
+    livemode: false,
+    currency: "usd",
+    periodStart: start,
+    periodEnd: end,
+    invoiceTotal: 1000,
+    amountPaid: 1000,
+    paymentIntentId: "pi_original",
+    chargeId: "ch_original",
+    adjustmentDigest: null,
+    settlementDigest: null,
+    grantDigest: "a".repeat(64),
+  });
+  const invoice = createRenewalInvoiceDetails(
+    {
+      ...f.state.invoice,
+      ...f.linked.invoiceBinding,
+      subscription: "sub_owner",
+      billing_reason: "subscription_cycle",
+      paid: true,
+      subtotal: 1000,
+      post_payment_credit_notes_amount: 0,
+      discount: null,
+      discounts: [],
+      total_discount_amounts: [],
+      tax: null,
+      total_tax_amounts: [],
+      automatic_tax: { enabled: false },
+      status_transitions: { paid_at: start + 1 },
+      lines: {
+        has_more: false,
+        data: [
+          {
+            id: "il_original",
+            type: "subscription",
+            subscription: "sub_owner",
+            subscription_item: "si_original",
+            quantity: 1,
+            proration: false,
+            currency: "usd",
+            amount: 1000,
+            discount_amounts: [],
+            tax_amounts: [],
+            period: { start, end },
+            price: { id: "price_original", product: "prod_original" },
+          },
+        ],
+      },
+    },
+    authority,
+  );
+  const settlement = createRenewalSettlementDetails(
+    {
+      payment: f.linked.payment,
+      charge: {
+        ...f.linked.charge,
+        amount_refunded: 0,
+        refunded: false,
+        refunds: { has_more: false, data: [] },
+      },
+    },
+    invoice,
+    authority,
+  );
+  return {
+    // Only original revision identity fields are used by this pure observation boundary.
+    source: {
+      id: authority.subscriptionId,
+      organization_id: authority.organizationId,
+      stripe_customer_id: authority.customerId,
+      stripe_subscription_id: authority.providerSubscriptionId,
+      stripe_subscription_item_id: authority.subscriptionItemId,
+      provider_environment: "test",
+      current_period_start: new Date(start * 1000),
+      current_period_end: new Date(end * 1000),
+    } as BillingSubscription,
+    invoiceId: authority.invoiceId,
+    grantDigest: authority.grantDigest,
+    metadata: {
+      renewalInvoiceAuthority: authority,
+      renewalInvoiceDetails: invoice,
+      renewalSettlementDetails: settlement,
+    } as Record<string, unknown>,
+  };
+}
+test("subsequent adjustment observations retain the original grant and settlement binding", async () => {
+  const f = linkedFixture(),
+    original = retainedGrant(f);
+  const result = await observeRetainedRenewalAdjustments(original, f.stripe);
+  expect(result.grantDigest).toBe(original.grantDigest);
+  expect(result.organizationId).toBe(original.source.organization_id);
+  expect(result.observation.dispositions[0]!.refund!.amount).toBe(250);
+  expect(result.observation.dispositions[0]!.customerBalance!.amount).toBe(-150);
+  expect(JSON.stringify(result)).not.toContain("private");
+  expect(f.requests.every((request) => request.method === "GET")).toBe(true);
+});
+for (const field of [
+  "renewalInvoiceAuthority",
+  "renewalInvoiceDetails",
+  "renewalSettlementDetails",
+])
+  test(`missing original ${field} fails before provider access`, async () => {
+    const f = linkedFixture(),
+      original = retainedGrant(f);
+    delete original.metadata[field];
+    await expect(observeRetainedRenewalAdjustments(original, f.stripe)).rejects.toThrow();
+    expect(f.requests).toHaveLength(0);
+  });
+test("foreign organization and later period cannot borrow original grant observation authority", async () => {
+  for (const change of [
+    { organization_id: "00000000-0000-4000-8000-000000000003" },
+    { current_period_end: new Date(1800000000000) },
+  ]) {
+    const f = linkedFixture(),
+      original = retainedGrant(f);
+    Object.assign(original.source, change);
+    await expect(observeRetainedRenewalAdjustments(original, f.stripe)).rejects.toThrow();
+    expect(f.requests).toHaveLength(0);
+  }
+});
+for (const change of [{ total: 1100 }, { starting_balance: -1 }, { ending_balance: -1 }])
+  test(`later invoice cannot rewrite original settlement ${JSON.stringify(change)}`, async () => {
+    const f = linkedFixture(),
+      original = retainedGrant(f);
+    Object.assign(f.state.invoice, change);
+    await expect(observeRetainedRenewalAdjustments(original, f.stripe)).rejects.toThrow();
+  });
+
+test("unknown legacy merchant cannot acquire adjustment read authority", async () => {
+  const f = linkedFixture(),
+    original = retainedGrant(f, null);
+  await expect(observeRetainedRenewalAdjustments(original, f.stripe)).rejects.toThrow();
+  expect(f.requests).toHaveLength(0);
+});
+test("a consistent later replacement capture cannot replace the original grant capture", async () => {
+  const f = linkedFixture(),
+    original = retainedGrant(f);
+  f.linked.invoiceBinding.charge = "ch_replaced";
+  f.linked.charge.id = "ch_replaced";
+  f.linked.payment.latest_charge = "ch_replaced";
+  f.linked.refunds[0]!.charge = "ch_replaced";
+  f.linked.extra.set("/v1/charges/ch_replaced", f.linked.charge);
+  expect((await f.reconcile()).charge?.id).toBe("ch_replaced");
+  await expect(observeRetainedRenewalAdjustments(original, f.stripe)).rejects.toThrow();
+});
+test("original input is copied before provider awaits", async () => {
+  const f = linkedFixture(),
+    original = retainedGrant(f);
+  f.before(() => {
+    original.source.organization_id = "00000000-0000-4000-8000-000000000003";
+    original.metadata = {};
+  });
+  const result = await observeRetainedRenewalAdjustments(original, f.stripe);
+  expect(result.organizationId).toBe("00000000-0000-4000-8000-000000000001");
 });
