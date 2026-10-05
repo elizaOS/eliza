@@ -86,6 +86,7 @@ function ctx(over: Partial<RouteHandlerContext>): RouteHandlerContext {
 		headers: {},
 		method: "GET",
 		path: "/api/transcripts",
+		signal: new AbortController().signal,
 		inProcess: true,
 		...over,
 	} as RouteHandlerContext;

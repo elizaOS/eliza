@@ -31,6 +31,7 @@ function makeContext(overrides: Record<string, unknown> = {}) {
     method: "GET",
     path: "/api/lifeops/inbox/triage",
     runtime: { agentId: "agent-inbox-test" },
+    signal: new AbortController().signal,
     inProcess: false,
     isTrustedLocal: false,
     ...overrides,

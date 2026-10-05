@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AccessContext, UUID } from "@elizaos/core";
 import { getHttpRuntime } from "@elizaos/host/protocol";
+import { dispatchBufferedRequest } from "@elizaos/plugin-native-inference/android/dispatch";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   resetHonoMountCache,
   tryHandleHonoRuntimeRoute,
 } from "./hono-mount.ts";
+import { dispatchApiRoute, registerInProcessApi } from "./in-process-api.ts";
 
 let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
 let server: Server;
@@ -136,4 +138,240 @@ it("keeps trusted contexts complete and isolated despite forged headers and over
   }
   expect(arrivals).toBe(2);
   expect(contexts).toEqual(original);
+});
+
+it("cancels a streaming producer when its HTTP client disconnects", async () => {
+  let finish!: () => void;
+  const finalized = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let routeSignal: AbortSignal | undefined;
+  getHttpRuntime(fixture.runtime).routes.push({
+    type: "GET",
+    path: "/api/cancellation-http",
+    routeHandler: async ({ signal }) => {
+      routeSignal = signal;
+      return {
+        status: 200,
+        stream: (async function* () {
+          try {
+            yield "first";
+            await new Promise<void>((resolve) => {
+              if (signal.aborted) resolve();
+              else
+                signal.addEventListener("abort", () => resolve(), {
+                  once: true,
+                });
+            });
+          } finally {
+            finish();
+          }
+        })(),
+      };
+    },
+  });
+  resetHonoMountCache();
+  const controller = new AbortController();
+  try {
+    const response = await fetch(new URL("/api/cancellation-http", base), {
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${tokens[0]}` },
+    });
+    if (!response.body) throw new Error("Missing response stream");
+    const reader = response.body.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("first");
+    controller.abort();
+    await finalized;
+    expect(routeSignal?.aborted).toBe(true);
+  } finally {
+    controller.abort();
+  }
+});
+
+it("propagates native cancellation through the registered HTTP kernel", async () => {
+  const controller = new AbortController();
+  const reason = new Error("Native caller cancelled");
+  let finalized = false;
+  let routeSignal: AbortSignal | undefined;
+  getHttpRuntime(fixture.runtime).routes.push({
+    type: "GET",
+    path: "/api/cancellation-native",
+    routeHandler: async ({ signal }) => {
+      routeSignal = signal;
+      return {
+        status: 200,
+        stream: (async function* () {
+          try {
+            yield "first";
+            await new Promise<void>((resolve) => {
+              if (signal.aborted) resolve();
+              else
+                signal.addEventListener("abort", () => resolve(), {
+                  once: true,
+                });
+            });
+          } finally {
+            finalized = true;
+          }
+        })(),
+      };
+    },
+  });
+  resetHonoMountCache();
+  const unregister = registerInProcessApi(fixture.runtime, {
+    handle: async (req, res) => {
+      await tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime: fixture.runtime,
+        isAuthorized: () => true,
+      });
+    },
+  });
+  try {
+    await expect(
+      dispatchApiRoute({
+        runtime: fixture.runtime,
+        method: "GET",
+        path: "/api/cancellation-native",
+        headers: {},
+        inProcess: true,
+        isAuthorized: () => true,
+        signal: controller.signal,
+        onChunk: () => controller.abort(reason),
+      }),
+    ).rejects.toBe(reason);
+    expect(routeSignal?.aborted).toBe(true);
+    expect(finalized).toBe(true);
+  } finally {
+    unregister();
+  }
+});
+
+it("rejects a partial producer failure over HTTP and native dispatch", async () => {
+  let fail!: () => void;
+  let finalized = 0;
+  getHttpRuntime(fixture.runtime).routes.push({
+    type: "GET",
+    path: "/api/failed-stream",
+    routeHandler: async () => ({
+      status: 200,
+      stream: (async function* () {
+        try {
+          const proceed = new Promise<void>((resolve) => {
+            fail = resolve;
+          });
+          yield "partial";
+          await proceed;
+          throw new Error("Producer failed");
+        } finally {
+          finalized++;
+        }
+      })(),
+    }),
+  });
+  resetHonoMountCache();
+  const response = await fetch(new URL("/api/failed-stream", base), {
+    headers: { Authorization: `Bearer ${tokens[0]}` },
+  });
+  if (!response.body) throw new Error("Missing response stream");
+  const reader = response.body.getReader();
+  expect(new TextDecoder().decode((await reader.read()).value)).toBe("partial");
+  fail();
+  await expect(reader.read()).rejects.toThrow();
+  const unregister = registerInProcessApi(fixture.runtime, {
+    handle: async (req, res) => {
+      await tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime: fixture.runtime,
+        isAuthorized: () => true,
+      });
+    },
+  });
+  try {
+    await expect(
+      dispatchApiRoute({
+        runtime: fixture.runtime,
+        method: "GET",
+        path: "/api/failed-stream",
+        headers: {},
+        inProcess: true,
+        isAuthorized: () => true,
+        onChunk: () => fail(),
+      }),
+    ).rejects.toMatchObject({ code: "PLUGIN_ROUTE_STREAM_FAILED" });
+    expect(finalized).toBe(2);
+    expect(
+      fixture.runtime
+        .getRecentReportedErrors()
+        .filter((error) => error.scope === "http.pluginStream"),
+    ).toHaveLength(2);
+  } finally {
+    unregister();
+  }
+});
+
+it("cancels Android buffered dispatch and refuses a pre-aborted request", async () => {
+  let started!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let invocations = 0;
+  let finalized = false;
+  getHttpRuntime(fixture.runtime).routes.push({
+    type: "GET",
+    path: "/api/android-cancellation",
+    routeHandler: async ({ signal }) => {
+      invocations++;
+      started();
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) resolve();
+        else signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      finalized = true;
+      return { status: 200, body: "must not be returned" };
+    },
+  });
+  resetHonoMountCache();
+  const unregister = registerInProcessApi(fixture.runtime, {
+    handle: async (req, res) => {
+      await tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime: fixture.runtime,
+        isAuthorized: () => true,
+      });
+    },
+  });
+  const controller = new AbortController();
+  const reason = new Error("Android caller cancelled");
+  const call = () =>
+    dispatchBufferedRequest(
+      fixture.runtime,
+      dispatchApiRoute,
+      { path: "/api/android-cancellation" },
+      {
+        fullApiKernel: true,
+        configFileExists: () => false,
+        loadElizaConfig: () => ({}),
+        saveElizaConfig: () => {
+          throw new Error("Unexpected config save");
+        },
+        hasPersistedFirstRunState: () => false,
+      },
+      controller.signal,
+    );
+  try {
+    const pending = call();
+    await entered;
+    controller.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+    await expect(call()).rejects.toBe(reason);
+    expect(invocations).toBe(1);
+    expect(finalized).toBe(true);
+  } finally {
+    controller.abort(reason);
+    unregister();
+  }
 });

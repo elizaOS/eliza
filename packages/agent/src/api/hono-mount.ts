@@ -1,6 +1,11 @@
 import { Buffer } from "node:buffer";
+import { once } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { AccessContext, IAgentRuntime } from "@elizaos/core";
+import {
+  type AccessContext,
+  ElizaError,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { getHttpRuntime, type Route } from "@elizaos/host/protocol";
 
 import type { Hono } from "hono";
@@ -129,52 +134,35 @@ function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
 async function pipeWebBodyToNodeResponse(
   body: ReadableStream<Uint8Array>,
   res: ServerResponse,
+  signal: AbortSignal,
+  runtime: IAgentRuntime,
 ): Promise<void> {
   const reader = body.getReader();
+  const cancel = () => {
+    void reader.cancel(signal.reason).catch((error: unknown) => {
+      // error-policy:J6 Cancellation cleanup failures remain observable.
+      runtime.reportError("http.pluginStream.cancel", error);
+    });
+  };
+  signal.addEventListener("abort", cancel, { once: true });
+  if (signal.aborted) cancel();
   try {
+    signal.throwIfAborted();
     for (;;) {
       const { done, value } = await reader.read();
+      signal.throwIfAborted();
       if (done) {
-        if (!res.writableEnded) res.end();
+        res.end();
         return;
       }
-      if (!res.write(Buffer.from(value))) {
-        await new Promise<void>((resolve, reject) => {
-          function cleanup() {
-            res.off("drain", onDrain);
-            res.off("error", onError);
-          }
-          function onDrain() {
-            cleanup();
-            resolve();
-          }
-          function onError(error: Error) {
-            cleanup();
-            reject(error);
-          }
-          res.once("drain", onDrain);
-          res.once("error", onError);
-        });
-      }
+      if (!res.write(Buffer.from(value))) await once(res, "drain", { signal });
     }
-  } catch {
-    if (!res.writableEnded) res.end();
   } finally {
+    signal.removeEventListener("abort", cancel);
     reader.releaseLock();
   }
 }
-/**
- * Try to dispatch a request through the runtime-routes Hono app. Returns
- * `true` if Hono produced a response (including 404 from Hono itself for any
- * registered method-mismatch case), `false` if no route matched.
- */
-/**
- * Returns true when the runtime has a route registered for this method+path
- * that has a `routeHandler` (the new return-shape contract). The legacy
- * Express-shaped `handler` field is already covered by
- * `tryHandleRuntimePluginRoute`, so we let that path own it for the duration
- * of the migration.
- */
+
 /**
  * Normalize a request pathname to the same shape the canonical
  * `matchPluginRoutePath` matcher tolerates (it splits on `/` and drops empty
@@ -232,55 +220,91 @@ export async function tryHandleHonoRuntimeRoute(options: {
   if (!matchedRoute) {
     return false;
   }
-  const app = getHonoApp(runtime);
-  const maxBodyBytes = matchedRoute.maxBodyBytes ?? DEFAULT_MAX_HONO_BODY_BYTES;
-  const { body: bodyBytes, tooLarge } = await readNodeBody(req, maxBodyBytes);
-  if (tooLarge) {
-    // The request body exceeded this route's cap. Respond 413 without
-    // dispatching to Hono. Remaining bytes are discarded without retention.
-    res.statusCode = 413;
-    res.setHeader("content-type", "application/json");
-    res.setHeader("connection", "close");
-    res.end(
-      JSON.stringify({
-        error: "Request body too large",
-        maxBytes: maxBodyBytes,
-      }),
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const disconnected = () => {
+    if (!res.writableEnded) abort();
+  };
+  req.once("aborted", abort);
+  res.once("close", disconnected);
+  if (req.aborted || res.destroyed) abort();
+  try {
+    controller.signal.throwIfAborted();
+    const app = getHonoApp(runtime);
+    const maxBodyBytes =
+      matchedRoute.maxBodyBytes ?? DEFAULT_MAX_HONO_BODY_BYTES;
+    const { body: bodyBytes, tooLarge } = await readNodeBody(req, maxBodyBytes);
+    if (tooLarge) {
+      // The request body exceeded this route's cap. Respond 413 without
+      // dispatching to Hono. Remaining bytes are discarded without retention.
+      res.statusCode = 413;
+      res.setHeader("content-type", "application/json");
+      res.setHeader("connection", "close");
+      res.end(
+        JSON.stringify({
+          error: "Request body too large",
+          maxBytes: maxBodyBytes,
+        }),
+      );
+      return true;
+    }
+    const url = new URL(
+      req.url ?? "/",
+      `http://${req.headers.host ?? "localhost"}`,
+    );
+    // Hand Hono the normalized path so its strict router agrees with the
+    // tolerant eligibility gate above (and with dispatchRoute inside the
+    // handler, which re-matches against the same normalized path).
+    url.pathname = pathname;
+    const headers = nodeHeadersToWeb(req.headers);
+    // Hono needs a Web Request. Avoid leaking the body to GET/HEAD.
+    const request = new Request(url, {
+      signal: controller.signal,
+      method: req.method ?? "GET",
+      headers,
+      body: bodyBytes ?? undefined,
+    });
+    const accessContext = options.accessContext?.();
+    requestContexts.set(request, {
+      authorized: options.isAuthorized(),
+      inProcess: isAuthenticatedInProcessRequest(req),
+      trustedLocal: options.isTrustedLocal?.() === true,
+      ...(accessContext
+        ? { accessContext: structuredClone(accessContext) }
+        : {}),
+    });
+    const response: Response = await app.fetch(request);
+    res.statusCode = response.status;
+    response.headers.forEach((value, key) => {
+      res.setHeader(key, value);
+    });
+    if (!response.body) {
+      res.end();
+      return true;
+    }
+    // Stream the body through the Node response.
+    await pipeWebBodyToNodeResponse(
+      response.body,
+      res,
+      controller.signal,
+      runtime,
     );
     return true;
-  }
-  const url = new URL(
-    req.url ?? "/",
-    `http://${req.headers.host ?? "localhost"}`,
-  );
-  // Hand Hono the normalized path so its strict router agrees with the
-  // tolerant eligibility gate above (and with dispatchRoute inside the
-  // handler, which re-matches against the same normalized path).
-  url.pathname = pathname;
-  const headers = nodeHeadersToWeb(req.headers);
-  // Hono needs a Web Request. Avoid leaking the body to GET/HEAD.
-  const request = new Request(url, {
-    method: req.method ?? "GET",
-    headers,
-    body: bodyBytes ?? undefined,
-  });
-  const accessContext = options.accessContext?.();
-  requestContexts.set(request, {
-    authorized: options.isAuthorized(),
-    inProcess: isAuthenticatedInProcessRequest(req),
-    trustedLocal: options.isTrustedLocal?.() === true,
-    ...(accessContext ? { accessContext: structuredClone(accessContext) } : {}),
-  });
-  const response: Response = await app.fetch(request);
-  res.statusCode = response.status;
-  response.headers.forEach((value, key) => {
-    res.setHeader(key, value);
-  });
-  if (!response.body) {
-    res.end();
+  } catch (error) {
+    // error-policy:J1 A partial response cannot become a successful end-of-stream.
+    if (!controller.signal.aborted) {
+      if (!res.headersSent) throw error;
+      const failure = new ElizaError("Plugin response stream failed", {
+        code: "PLUGIN_ROUTE_STREAM_FAILED",
+        cause: error,
+        context: { method, pathname },
+      });
+      runtime.reportError("http.pluginStream", failure);
+      res.destroy(failure);
+    }
     return true;
+  } finally {
+    req.off("aborted", abort);
+    res.off("close", disconnected);
   }
-  // Stream the body through the Node response.
-  void pipeWebBodyToNodeResponse(response.body, res);
-  return true;
 }
