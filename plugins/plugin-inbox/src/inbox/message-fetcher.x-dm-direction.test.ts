@@ -63,11 +63,14 @@ describe("fetchXDmMessages", () => {
     ]);
   });
 
-  it("widens the sync window so owner replies cannot crowd inbound DMs out of the cache", async () => {
+  it("syncs beyond a fixed multiple of the limit so owner replies cannot hide inbound DMs", async () => {
     // Mirrors the connector contract: the newest mixed-direction rows exist,
     // but the fetch slices to the sync limit before anything is cached, and
     // the read filters direction before its limit (like listXDms).
     const newestMixed = [
+      ...Array.from({ length: 12 }, (_, index) =>
+        dm(`new-reply-${index}`, false, 60 - index),
+      ),
       dm("reply-6", false, 36),
       dm("reply-5", false, 35),
       dm("reply-4", false, 34),
@@ -107,7 +110,7 @@ describe("fetchXDmMessages", () => {
 
     const result = await fetchXDmMessages(source, { limit: 3 });
 
-    expect(syncCalls).toEqual([{ limit: 9 }]);
+    expect(syncCalls).toEqual([{}]);
     expect(result.messages.map((message) => message.text)).toEqual([
       "question-3",
       "question-2",

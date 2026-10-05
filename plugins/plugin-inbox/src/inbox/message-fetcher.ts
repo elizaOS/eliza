@@ -716,13 +716,9 @@ export async function fetchXDmMessages(
   const limit = opts.limit;
   let dms: LifeOpsXDm[];
   try {
-    // The sync window must cover `limit` inbound rows, but the connector's
-    // fetch is mixed-direction: the owner's own newer replies share it, so a
-    // limit-sized sync can cache zero inbound rows behind them. Widen the
-    // sync window (limit * 3); the inbound-filtered read still applies the
-    // caller's limit.
-    const page = limit === undefined ? undefined : { limit: limit * 3 };
-    await source.syncXDms(page);
+    // Sync the complete available mixed-direction history before applying the
+    // inbound-only result limit; owner replies must not hide candidates.
+    await source.syncXDms();
     dms = await source.getXDms({
       ...(limit === undefined ? {} : { limit }),
       inbound: true,

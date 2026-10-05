@@ -346,15 +346,9 @@ export class XReadDomain {
   }
 
   async readXInboundDms(opts: { limit?: number } = {}): Promise<LifeOpsXDm[]> {
-    // The DM cache stores the owner's outbound replies beside inbound ones,
-    // and the connector fetch slices its mixed-direction results to the sync
-    // limit, so a limit-sized sync can cache zero inbound rows behind a
-    // block of owner replies. Widen the sync window (limit * 3) so inbound
-    // rows reach the cache; the inbound-filtered listXDms read still applies
-    // the caller's limit after the direction filter.
-    const syncWindow =
-      opts.limit === undefined ? undefined : { limit: opts.limit * 3 };
-    await this.syncXDms(syncWindow);
+    // The connector already reads available history before slicing. Retain all
+    // directions in the cache, then apply the limit to inbound messages only.
+    await this.syncXDms();
     return this.ctx.repository.listXDms(this.ctx.agentId(), {
       ...opts,
       inbound: true,

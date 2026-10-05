@@ -691,7 +691,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
 
     expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith("acct-x-owner", {
       participantId: undefined,
-      limit: 9,
+      limit: undefined,
     });
     expect(inbound.map((dm) => dm.text)).toEqual([
       "when can we ship?",
