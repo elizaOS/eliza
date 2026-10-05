@@ -22,7 +22,11 @@ interface RuntimeHonoCache {
   signature: string;
   app: Hono;
 }
-const apps = new WeakMap<IAgentRuntime, RuntimeHonoCache>();
+let apps = new WeakMap<IAgentRuntime, RuntimeHonoCache>();
+/** Explicit invalidation retained for existing API consumers. */
+export function resetHonoMountCache(): void {
+  apps = new WeakMap();
+}
 const requestContexts = new WeakMap<
   Request,
   {
