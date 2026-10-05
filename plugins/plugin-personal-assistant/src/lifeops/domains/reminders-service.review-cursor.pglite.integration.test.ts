@@ -888,6 +888,8 @@ it.each([
   "stale_pending",
   "missing_refresh",
   "failed_refresh",
+  "same_reminder",
+  "queue_live_during_refresh",
 ])(
   "current creation through the raw host summary preserves %s ownership",
   async (kind) => {
@@ -896,6 +898,29 @@ it.each([
       "Remind me here to stretch my shoulders in two minutes.",
       { channelType: ChannelType.DM, chatIdempotency: marker },
     );
+    if (kind === "same_reminder") {
+      const source: Memory = {
+        id: crypto.randomUUID() as UUID,
+        agentId: fixture.runtime.agentId,
+        entityId: fixture.runtime.agentId,
+        roomId,
+        createdAt: (f.message.createdAt ?? 0) - 1,
+        content: {
+          text: "The old reminder is due",
+          source: "reminder",
+          metadata: {
+            ownerType: f.attempt.ownerType,
+            ownerId: f.attempt.ownerId,
+          },
+        },
+      };
+      await fixture.runtime.createMemory(source, "messages");
+      f.message.content.inReplyTo = source.id;
+      await fixture.runtime.updateMemory({
+        id: f.message.id as UUID,
+        content: f.message.content,
+      });
+    }
     const state =
       kind === "missing_binding"
         ? undefined
@@ -963,7 +988,15 @@ it.each([
         },
       },
     });
-    if (["stale_pending", "missing_refresh", "failed_refresh"].includes(kind)) {
+    let releaseRefreshLease: (() => Promise<void>) | undefined;
+    if (
+      [
+        "stale_pending",
+        "missing_refresh",
+        "failed_refresh",
+        "queue_live_during_refresh",
+      ].includes(kind)
+    ) {
       const readSnapshot = fixture.runtime.getMemoriesByRoomIds.bind(
         fixture.runtime,
       );
@@ -975,6 +1008,15 @@ it.each([
       );
       if (kind === "missing_refresh")
         vi.spyOn(fixture.runtime, "getMemoryById").mockResolvedValue(null);
+      if (kind === "queue_live_during_refresh")
+        vi.spyOn(fixture.runtime, "getMemoryById").mockImplementation(
+          async () => {
+            const lease =
+              await fixture.runtime.roomHandlerQueue.acquire(roomId);
+            releaseRefreshLease = () => lease.release();
+            return f.message;
+          },
+        );
       if (kind === "failed_refresh")
         vi.spyOn(fixture.runtime, "getMemoryById").mockRejectedValue(
           Error("Read unavailable"),
@@ -992,11 +1034,24 @@ it.each([
         confidence: 1,
         reason: "Unrelated new request",
       });
-    const review = await service.reviewOwnerResponseAfterReminderAttempt({
-      subjectType: "owner",
-      attempt: f.attempt,
-      now: f.now,
-    });
+    const review = await service
+      .reviewOwnerResponseAfterReminderAttempt({
+        subjectType: "owner",
+        attempt: f.attempt,
+        now: f.now,
+      })
+      .finally(async () => {
+        await releaseRefreshLease?.();
+      });
+    if (kind === "queue_live_during_refresh") {
+      expect(review).toMatchObject({
+        decision: "no_response",
+        classifierSource: "none",
+        reason: "foreground_request_pending",
+      });
+      expect(judge).not.toHaveBeenCalled();
+      return;
+    }
     if (["missing_refresh", "failed_refresh"].includes(kind)) {
       expect(review).toMatchObject({
         decision: "no_response",

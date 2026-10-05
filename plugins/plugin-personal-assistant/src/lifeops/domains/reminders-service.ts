@@ -1652,6 +1652,12 @@ export class RemindersDomain {
               agentId,
               ownerEntityId,
             );
+            if (
+              foregroundHandling === "pending" &&
+              this.ctx.runtime.roomHandlerQueue.pendingFor(response.roomId) > 0
+            ) {
+              return { ...noResponse, reason: "foreground_request_pending" };
+            }
           } catch {
             return {
               ...noResponse,
@@ -1666,8 +1672,16 @@ export class RemindersDomain {
           source && isRecord(source.content.metadata)
             ? source.content.metadata
             : null;
+        const explicitlyBoundToThisReminder =
+          source?.entityId === agentId &&
+          source.agentId === agentId &&
+          source.roomId === response.roomId &&
+          source.content.source === "reminder" &&
+          reference?.ownerType === args.attempt.ownerType &&
+          reference.ownerId === args.attempt.ownerId;
         const skipReason =
-          foregroundHandling === "single_create"
+          foregroundHandling === "single_create" &&
+          !explicitlyBoundToThisReminder
             ? "foreground_single_create_owned"
             : response.metadata &&
                 Object.hasOwn(response.metadata, "reminderChoiceId")
