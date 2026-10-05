@@ -179,3 +179,35 @@ it("does not let delayed refresh cleanup invalidate a newer workspace snapshot",
   expect(current.has("@elizaos/app-refresh-second-probe")).toBe(true);
   expect(await getRegistryPlugins()).toBe(current);
 });
+
+it("uses the project registry across selection migration and bookmark revocation", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "eliza-project-selection-"));
+  roots.push(root);
+  const env = { ELIZA_STATE_DIR: root };
+  vi.stubEnv("ELIZA_STATE_DIR", root);
+  const { selectProjectFolder, revokeProjectBookmark } = await import(
+    "@elizaos/host"
+  );
+  const { resolveDefaultAgentWorkspaceDir } = await import(
+    "../src/shared/workspace-resolution.ts"
+  );
+  const original = path.join(root, "original");
+  const source = path.join(root, "workspace-folder.json");
+  await writeFile(
+    source,
+    JSON.stringify({
+      path: original,
+      bookmark: "original-bookmark",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }),
+  );
+  expect(resolveDefaultAgentWorkspaceDir(env)).toBe(original);
+  await expect(fs.stat(source)).rejects.toMatchObject({ code: "ENOENT" });
+  const selected = path.join(root, "selected");
+  selectProjectFolder(selected, "selected-bookmark", env);
+  expect(resolveDefaultAgentWorkspaceDir(env)).toBe(selected);
+  revokeProjectBookmark("selected-bookmark", env);
+  expect(resolveDefaultAgentWorkspaceDir(env)).toBe(
+    path.join(root, "workspace"),
+  );
+});
