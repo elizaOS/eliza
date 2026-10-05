@@ -8,7 +8,6 @@ import {
   isApiError,
   PagePanel,
   useAgentElement,
-  ViewHeader,
 } from "@elizaos/ui";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { type CSSProperties, useEffect } from "react";
@@ -475,7 +474,7 @@ export function NotesSurface({
       data-testid="simple-notes-view"
       className="relative flex-col overflow-hidden text-txt"
     >
-      {standalone ? <ViewHeader title="Notes" /> : null}
+      {standalone ? null : null}
       <PagePanel.ContentArea data-testid="simple-notes-scroll-region">
         <PagePanel.ContentRail
           width="wide"

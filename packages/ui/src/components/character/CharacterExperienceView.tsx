@@ -6,10 +6,7 @@ import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import type { ExperienceRecord } from "../../api/client-types-experience";
 import { useFetchData } from "../../hooks/useFetchData";
-import {
-  FramedPage,
-  FramedPageBody,
-} from "../../layouts/framed-page/framed-page";
+import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { CharacterExperienceWorkspace } from "./CharacterExperienceWorkspace";
 import { mapExperienceRecordToHubRecord } from "./character-hub-helpers";

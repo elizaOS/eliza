@@ -22,13 +22,13 @@ import {
   TelegramIcon,
   XIcon,
 } from "../icons/index.js";
+import { LoginAuthContext } from "../provider.js";
+import type { LoginFormProps } from "../types.js";
 import {
   getEvmWalletPanel,
   getSolanaWalletPanel,
   type WalletPanelLoader,
-} from "../internal/walletPanelRegistry.js";
-import { LoginAuthContext } from "../provider.js";
-import type { LoginFormProps } from "../types.js";
+} from "../walletPanelRegistry.js";
 import type { WalletLoginPanelProps } from "./WalletLogin.js";
 
 type LoginStep =

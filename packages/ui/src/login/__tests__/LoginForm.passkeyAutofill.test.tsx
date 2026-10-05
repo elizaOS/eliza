@@ -25,7 +25,7 @@ Object.defineProperty(window.navigator, "credentials", {
 const { LoginForm } = await import("../components/LoginForm.js");
 const { LoginAuthContext } = await import("../provider.js");
 const { registerEvmWalletPanel, registerSolanaWalletPanel } = await import(
-  "../internal/walletPanelRegistry.js"
+  "../walletPanelRegistry.js"
 );
 
 const dummyPanel: React.ComponentType<unknown> = () => null;

@@ -21,7 +21,6 @@ import {
   useAgentElement,
   useViewEvent,
   VIEW_EVENTS,
-  ViewHeader,
 } from "@elizaos/ui";
 
 import {
@@ -857,7 +856,7 @@ export function SimpleCalendarView({
           .eliza-calendar-day { transition: none !important; }
         }
       `}</style>
-      {standalone ? <ViewHeader title="Calendar" /> : null}
+      {standalone ? null : null}
       <PagePanel.ContentArea data-testid="simple-calendar-scroll-region">
         <PagePanel.ContentRail
           width="wide"
