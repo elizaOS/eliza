@@ -3,7 +3,8 @@
  * A raw window of limit*3 that is filled by the agent's own replies, or a
  * newer blank text that is discarded after the cut, used to hide older user
  * messages. The store stub honors limit and offset so a missing second page
- * fails the test.
+ * fails the test. Deterministic harness: stubbed runtime and in-memory rows,
+ * no database or network.
  */
 import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
@@ -114,6 +115,67 @@ describe("fetchChatMessages candidate window", () => {
     const page = Array.from({ length: 6 }, (_, index) =>
       memory(`agent-${index}`, 1_000 - index, `agent reply ${index}`, AGENT),
     );
+    const reads: Array<{ limit?: number; offset?: number }> = [];
+    const room: Room = {
+      id: ROOM,
+      name: "general",
+      source: "discord",
+      type: ChannelType.GROUP,
+      channelId: "100",
+      serverId: "200",
+    };
+    const runtime = {
+      agentId: AGENT,
+      getRoomsForParticipant: async () => [ROOM],
+      getRoomsByIds: async () => [room],
+      getMemoriesByRoomIds: async (params: {
+        limit?: number;
+        offset?: number;
+      }) => {
+        reads.push({ limit: params.limit, offset: params.offset });
+        return page;
+      },
+      getParticipantsForRooms: async (ids: UUID[]) =>
+        ids.map((roomId) => ({ roomId, entityIds: [AGENT, USER] })),
+      getWorldsByIds: async () => [],
+    } as unknown as IAgentRuntime;
+
+    const messages = await fetchChatMessages(runtime, { limit: 2 });
+
+    expect(messages).toEqual([]);
+    expect(reads).toEqual([
+      { limit: 6, offset: 0 },
+      { limit: 6, offset: 6 },
+    ]);
+  });
+
+  it("stops after one read when history is entirely older than sinceIso", async () => {
+    const now = Date.now();
+    const stored = Array.from({ length: 6 }, (_, index) =>
+      memory(`old-${index}`, now - 86_400_000 - index, `old message ${index}`),
+    );
+    const { runtime, reads } = runtimeFor(stored);
+
+    const messages = await fetchChatMessages(runtime, {
+      limit: 2,
+      sinceIso: new Date(now - 3_600_000).toISOString(),
+    });
+
+    expect(messages).toEqual([]);
+    expect(reads).toEqual([{ limit: 6, offset: 0 }]);
+  });
+
+  it("stops when an offset-ignoring store repeats rows without ids", async () => {
+    const page = Array.from({ length: 6 }, (_, index) => {
+      const row = memory(
+        `agent-${index}`,
+        1_000 - index,
+        `agent reply ${index}`,
+        AGENT,
+      );
+      delete (row as { id?: unknown }).id;
+      return row;
+    });
     const reads: Array<{ limit?: number; offset?: number }> = [];
     const room: Room = {
       id: ROOM,
