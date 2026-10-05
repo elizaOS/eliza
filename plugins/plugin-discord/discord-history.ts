@@ -347,14 +347,11 @@ export async function saveSpiderState(
 }
 
 /**
- * Builds a Memory object from a Discord Message.
- */
-/**
  * Runtime entity for a Discord author. This account's own bot user is the
  * agent: the send path stores its messages as `runtime.agentId`, so history
  * reads and backfill must attribute the same messages to the agent too.
  */
-function resolveHistoryAuthorEntityId(
+export function resolveHistoryAuthorEntityId(
 	service: HistoryServiceInternals,
 	authorId: string,
 ): UUID {
@@ -363,6 +360,9 @@ function resolveHistoryAuthorEntityId(
 		: service.resolveDiscordEntityId(authorId);
 }
 
+/**
+ * Builds a Memory object from a Discord Message.
+ */
 export async function buildMemoryFromMessage(
 	service: HistoryServiceInternals,
 	message: Message,

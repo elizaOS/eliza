@@ -4,15 +4,23 @@
  * keep their own derived entities.
  */
 
-import { ChannelType, stringToUuid, type UUID } from "@elizaos/core";
+import {
+	ChannelType,
+	createUniqueUuid,
+	stringToUuid,
+	type UUID,
+} from "@elizaos/core";
 import type { Message } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
+import { DiscordAccountClientPool } from "../account-client-pool.ts";
+import { DEFAULT_ACCOUNT_ID } from "../accounts.ts";
 import {
 	buildMemoryFromMessage,
 	ensureConnectionsForMessages,
 	type HistoryServiceInternals,
 } from "../discord-history.ts";
+import { DiscordService } from "../service.ts";
 
 const AGENT_ID = stringToUuid("discord-history-agent") as UUID;
 const BOT_USER_ID = "1000000000000000001";
@@ -22,8 +30,11 @@ const USER_ID = "1000000000000000003";
 const guild = { id: "1000000000000000010", name: "Guild", ownerId: USER_ID };
 const channel = {
 	id: "1000000000000000020",
+	name: "general",
 	type: DiscordChannelType.GuildText,
 	guild,
+	isTextBased: () => true,
+	isVoiceBased: () => false,
 };
 
 function discordMessage(id: string, authorId: string, bot: boolean): Message {
@@ -55,6 +66,7 @@ function service() {
 		runtime: {
 			agentId: AGENT_ID,
 			ensureConnections,
+			getSetting: vi.fn(() => undefined),
 			logger: { debug: vi.fn(), warn: vi.fn() },
 		} as unknown as HistoryServiceInternals["runtime"],
 		messageManager: undefined,
@@ -62,7 +74,8 @@ function service() {
 			stringToUuid(`discord-${userId}`) as UUID,
 		isOwnerAliasedDiscordUser: () => false,
 		getChannelType: async () => ChannelType.GROUP,
-		isGuildTextBasedChannel: (c): c is never => Boolean(c),
+		isGuildTextBasedChannel: (candidate): candidate is never =>
+			Boolean(candidate),
 	};
 	return { internals, ensureConnections };
 }
@@ -106,6 +119,61 @@ describe("Discord history author attribution", () => {
 			expect.objectContaining({
 				id: stringToUuid(`discord-${USER_ID}`),
 				names: [`user-${USER_ID}`, `User ${USER_ID}`],
+			}),
+		]);
+	});
+
+	it("attributes the cached chat context for this account's bot to the agent", async () => {
+		const { internals } = service();
+		const own = discordMessage("1000000000000000301", BOT_USER_ID, true);
+		const other = discordMessage("1000000000000000302", OTHER_BOT_ID, true);
+		const fetchedChannel = {
+			...channel,
+			messages: {
+				cache: new Map([
+					[own.id, own],
+					[other.id, other],
+				]),
+			},
+		};
+		const client = {
+			user: { id: BOT_USER_ID },
+			channels: { fetch: vi.fn(async () => fetchedChannel) },
+		};
+		const accountPool = new DiscordAccountClientPool();
+		accountPool.set({
+			accountId: DEFAULT_ACCOUNT_ID,
+			account: { id: DEFAULT_ACCOUNT_ID, token: "token", enabled: true },
+			client,
+			settings: {},
+			dynamicChannelIds: new Set<string>(),
+			clientReadyPromise: null,
+			loginFailed: false,
+		} as never);
+		const discordService = Object.assign(
+			Object.create(DiscordService.prototype),
+			{
+				runtime: internals.runtime,
+				accountPool,
+				defaultAccountId: DEFAULT_ACCOUNT_ID,
+				ownerDiscordUserIds: [] as string[],
+			},
+		) as DiscordService;
+
+		const context = await discordService.getConnectorChatContext(
+			{
+				source: "discord",
+				accountId: DEFAULT_ACCOUNT_ID,
+				channelId: channel.id,
+			},
+			{ runtime: internals.runtime },
+		);
+
+		expect(context?.recentMessages).toEqual([
+			expect.objectContaining({ entityId: AGENT_ID, text: own.content }),
+			expect.objectContaining({
+				entityId: createUniqueUuid(internals.runtime, OTHER_BOT_ID),
+				text: other.content,
 			}),
 		]);
 	});
