@@ -3806,6 +3806,26 @@ describeIfPosix("shellAction", () => {
 });
 
 describe("shell structured operation routing", () => {
+  it("rejects an unknown explicit action instead of running its command", async () => {
+    const calls: Array<{ command: string }> = [];
+    const router = makeShellRouter(async (params) => {
+      calls.push(params);
+      return { output: "must not run\n", exitCode: 0, timedOut: false };
+    });
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        action: "poll_backgroud",
+        command: "printf must-not-run",
+      }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("invalid_param");
+    expect(calls).toHaveLength(0);
+  });
+
   it.each([
     [
       "show command history under /tmp/history",

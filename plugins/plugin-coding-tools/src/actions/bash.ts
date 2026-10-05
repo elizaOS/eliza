@@ -317,7 +317,7 @@ const VENDORED_OPENCODE_SOURCE_ROOT =
 
 function normalizeShellSubaction(
   value: string | undefined,
-): ShellActionSubaction {
+): ShellActionSubaction | undefined {
   const normalized = value
     ?.trim()
     .toLowerCase()
@@ -365,7 +365,7 @@ function normalizeShellSubaction(
     case "read_output_artifact":
       return "read_output_artifact";
     default:
-      return "run";
+      return undefined;
   }
 }
 
@@ -1347,9 +1347,17 @@ export const shellAction: Action = {
     // History operations mutate or disclose session state, so only the
     // validated structured action may select them. Message prose and path
     // names cannot override an explicit command.
-    const subaction = explicitSubaction
-      ? normalizeShellSubaction(explicitSubaction)
-      : "run";
+    const subaction =
+      explicitSubaction === undefined
+        ? "run"
+        : normalizeShellSubaction(explicitSubaction);
+    if (!subaction) {
+      return failureToActionResult({
+        reason: "invalid_param",
+        message:
+          "action must be run, clear_history, view_history, start_background, poll_background, write_background, kill_background, list_background, or read_output_artifact",
+      });
+    }
 
     if (subaction === "read_output_artifact") {
       if (!message.roomId) {
