@@ -1542,6 +1542,22 @@ it("keeps another agent's tasks out of name lookup, id lookup, and writes", asyn
   expect(named.map((task) => task.id).sort()).toEqual(
     [ownedId, unscopedId].sort(),
   );
+  // A row written before create stamped the agent is still this database's.
+  const legacyId = id();
+  await storage.set("tasks", legacyId, {
+    id: legacyId,
+    name: "Legacy",
+    tags: ["queue"],
+    metadata: {},
+  });
+  const queued = await adapter.getTasks({
+    agentIds: [agentId],
+    tags: ["queue"],
+  });
+  expect(queued.map((task) => task.id).sort()).toEqual(
+    [ownedId, unscopedId, legacyId].sort(),
+  );
+  expect(await storage.get("tasks", unscopedId)).toMatchObject({ agentId });
   expect(await adapter.getTasksByIds([foreignId, ownedId])).toEqual([
     expect.objectContaining({ id: ownedId }),
   ]);
