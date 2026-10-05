@@ -2,8 +2,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
-import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 import { validatePeriodEndCancellationObservation } from "../../lib/services/stripe-period-end-cancellation";
+import { resolveSubscriptionLifecycleBinding } from "../../lib/services/subscription-lifecycle-provider-binding";
 import {
   type SubscriptionRenewalReview,
   subscriptionRenewalReviewSchema,
@@ -345,6 +345,7 @@ export async function finalizeCancellation(
   input: CancellationIdentity,
   claim: CancellationClaim,
   raw: unknown,
+  providerAccountId?: string,
 ) {
   return writeTransaction(async (tx) => {
     const locked = await lockActor(tx, input);
@@ -389,7 +390,7 @@ export async function finalizeCancellation(
     const observed = validatePeriodEndCancellationObservation({
       source,
       organizationCustomerId: locked.organization.customer,
-      environment: getCloudAwareEnv(),
+      environment: await resolveSubscriptionLifecycleBinding(source, providerAccountId, tx),
       raw,
       observedAt: now,
       requireScheduled: command.kind === "cancel",
