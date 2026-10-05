@@ -4122,6 +4122,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/lifeops/family-workflows/email-options"
+  ) {
+    sendJson(req, res, 200, { options: { accounts: [], recipients: [] } });
+    return;
+  }
+
   // Decomposed domain-view read routes — return 200-empty so the views render
   // their EMPTY state (not the catch-all 501 error state) in the visual smoke.
   if (req.method === "GET" && url.pathname === "/api/lifeops/goals") {
