@@ -341,11 +341,14 @@ export class XDomain {
       fail(409, "X is not connected.");
     }
     const accountId = xGrantRuntimeAccountId(grant, requestedAccountId);
+    // Sync the complete available history: the connector slices to `limit`
+    // before returning, and a preview-bounded sync would leave older DMs out
+    // of the cache entirely. The requested limit bounds only the `recent`
+    // preview below, never the sync or the digest counts.
     const delegated = await fetchXDirectMessagesWithRuntimeService({
       runtime: this.ctx.runtime,
       grant,
       accountId,
-      limit: opts.limit,
     });
     if (delegated.status === "handled") {
       const syncedAt = new Date().toISOString();
@@ -410,34 +413,31 @@ export class XDomain {
           updatedAt: syncedAt,
         });
       }
-    } else {
-      const cached = await this.ctx.repository.listXDms(this.ctx.agentId(), {
-        conversationId: opts.conversationId,
-        limit: opts.limit,
-      });
-      if (cached.length === 0) {
-        fail(
-          xDelegationFailureStatus(delegated.reason),
-          delegated.error instanceof Error
-            ? delegated.error.message
-            : delegated.reason,
-        );
-      }
     }
+    // Counts describe curation state over the whole conversation-filtered
+    // cache; the caller's limit bounds only the returned preview list.
     const dms = await this.ctx.repository.listXDms(this.ctx.agentId(), {
       conversationId: opts.conversationId,
-      limit: opts.limit,
     });
+    if (delegated.status !== "handled" && dms.length === 0) {
+      fail(
+        xDelegationFailureStatus(delegated.reason),
+        delegated.error instanceof Error
+          ? delegated.error.message
+          : delegated.reason,
+      );
+    }
     const unread = dms.filter((dm) => dm.isInbound && dm.readAt === null);
     const read = dms.filter((dm) => dm.readAt !== null);
     const replied = dms.filter((dm) => dm.repliedAt !== null);
+    const recent = opts.limit === undefined ? dms : dms.slice(0, opts.limit);
     return {
       generatedAt: new Date().toISOString(),
       conversationId: opts.conversationId ?? null,
       unreadCount: unread.length,
       readCount: read.length,
       repliedCount: replied.length,
-      recent: dms,
+      recent,
     };
   }
 

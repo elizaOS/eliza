@@ -322,11 +322,16 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       unreadCount: 0,
       recent: [],
     });
+    // The digest syncs the complete available history — the connector slices
+    // to a limit before returning, so forwarding the preview limit here would
+    // leave older DMs out of the cache. The limit reaches only the digest's
+    // recent preview, asserted against the real repository in
+    // test/x-dm-digest-counts.pglite.test.ts.
     expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith(
       "acct-x-secondary",
       {
         participantId: undefined,
-        limit: 5,
+        limit: undefined,
       },
     );
 
