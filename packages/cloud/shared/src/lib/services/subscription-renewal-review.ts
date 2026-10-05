@@ -8,7 +8,6 @@ import {
   readCancellationUndoReviewSource,
 } from "../../db/repositories/subscription-cancellation";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
@@ -20,6 +19,7 @@ import {
   resolveSubscriptionPlanDefinition,
   resolveSubscriptionProviderBinding,
 } from "./subscription-catalog";
+import { retrieveSubscriptionLifecycleBinding } from "./subscription-lifecycle-provider-binding";
 import type { SubscriptionRenewalReview } from "./subscription-renewal-review-contract";
 
 const cents = z.number().int().safe();
@@ -186,7 +186,7 @@ export async function previewSubscriptionRenewalTerms(captured: {
   organizationCustomerId: string | null;
 }): Promise<SubscriptionRenewalReview> {
   const stripe = requireStripe();
-  const environment = getCloudAwareEnv();
+  const { environment } = await retrieveSubscriptionLifecycleBinding(captured.source, stripe);
   const startedAt = new Date();
   const customer = await stripe.customers.retrieve(captured.source.stripe_customer_id);
   validateCancellationCustomer({ ...captured, environment, raw: customer });

@@ -180,3 +180,9 @@ configures a schedule. Recovery retains scoped incidents with backoff and resolv
 them atomically with the original terminal command, without borrowing a manager
 session. Native/product adoption and retained-adjustment payment authority still
 need integration and qualification.
+
+Cancellation, reviewed resumption and cancellation-event reconciliation resolve the
+retained purchased/current paid-plan binding instead of newly configured catalog IDs.
+Purchased account identity is retrieved before provider work and checked again against
+locked retained authority at publication. Legacy subscriptions keep catalog validation;
+this does not enable cancellation of a still-configured pending plan schedule.

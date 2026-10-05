@@ -19,7 +19,6 @@ import {
   rotateCancellationRecovery,
 } from "../../db/repositories/subscription-cancellation";
 import type { BillingSubscriptionCommand } from "../../db/schemas/subscription-billing-operations";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
 import {
@@ -27,6 +26,7 @@ import {
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
 } from "./stripe-period-end-cancellation";
+import { retrieveSubscriptionLifecycleBinding } from "./subscription-lifecycle-provider-binding";
 
 import {
   previewSubscriptionRenewalTerms,
@@ -82,13 +82,17 @@ async function executeClaim(
     if (renewalReview !== null && claim.canDispatch && revalidateSession === null)
       cancellationReobserve("reviewed_undo_requires_fresh_interactive_dispatch");
     const stripe = requireStripe();
+    const { environment, providerAccountId } = await retrieveSubscriptionLifecycleBinding(
+      claim.source,
+      stripe,
+    );
     async function verifyCustomer() {
       const raw = await stripe.customers.retrieve(claim.source.stripe_customer_id);
       validateCancellationCustomer({
         raw,
         source: claim.source,
         organizationCustomerId: claim.organizationCustomerId,
-        environment: getCloudAwareEnv(),
+        environment,
       });
     }
     await verifyCustomer();
@@ -96,7 +100,7 @@ async function executeClaim(
     const initial = validatePeriodEndCancellationObservation({
       source: claim.source,
       organizationCustomerId: claim.organizationCustomerId,
-      environment: getCloudAwareEnv(),
+      environment,
       raw,
       observedAt: new Date(),
       requireScheduled: false,
@@ -141,7 +145,7 @@ async function executeClaim(
     }
     await verifyCustomer();
     await verifySession();
-    return toDto(await finalizeCancellation(input, claim, raw));
+    return toDto(await finalizeCancellation(input, claim, raw, providerAccountId));
   } catch (error) {
     // Only a still-ready lease can prove no provider dispatch began. Started attempts retain uncertainty.
     if (renewalReview !== null && (await failReviewedCancellationBeforeDispatch(input, claim))) {

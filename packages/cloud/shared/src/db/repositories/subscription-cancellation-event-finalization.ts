@@ -1,11 +1,11 @@
 /** Reconciles only the latest immutable applied cancellation or undo result with a fresh scheduled provider observation, publishing source, projection and receipt atomically. */
 import { and, eq, isNull } from "drizzle-orm";
-import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 import {
   cancellationReobserve,
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
 } from "../../lib/services/stripe-period-end-cancellation";
+import { resolveSubscriptionLifecycleBinding } from "../../lib/services/subscription-lifecycle-provider-binding";
 import { writeTransaction } from "../helpers";
 import {
   billingSubscriptions,
@@ -38,6 +38,7 @@ function rejectConflict(message: string, context: Record<string, unknown>): neve
   return lifecycleFailure(SUBSCRIPTION_LIFECYCLE_REOBSERVE, message, context);
 }
 export interface FinalizeCancellationEventInput {
+  providerAccountId?: string;
   organizationId: string;
   subscriptionId: string;
   commandId: string;
@@ -195,16 +196,21 @@ export async function finalizeCancellationEvent(
       input.eventCreatedAt < current.last_provider_event_created_at
     )
       cancellationReobserve("out_of_order_event");
+    const environment = await resolveSubscriptionLifecycleBinding(
+      current,
+      input.providerAccountId,
+      tx,
+    );
     validateCancellationCustomer({
       raw: input.customer,
       source: current,
       organizationCustomerId: organization.stripe_customer_id,
-      environment: getCloudAwareEnv(),
+      environment,
     });
     const observed = validatePeriodEndCancellationObservation({
       source: current,
       organizationCustomerId: organization.stripe_customer_id,
-      environment: getCloudAwareEnv(),
+      environment,
       raw: input.raw,
       observedAt: databaseNow,
       requireScheduled: latest.kind === "cancel",

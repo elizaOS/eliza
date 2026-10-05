@@ -30,12 +30,34 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
   const objects = new Map<string, object>();
   const objectSequences = new Map<string, object[]>();
   const requests: string[] = [];
+  const mutations = new Map<string, (body: URLSearchParams) => object>();
   let writes = 0;
   let beforeChargeResponse: (() => Promise<void>) | null = null;
   const server = createServer((request, response) => {
     requests.push(`${request.method} ${request.url}`);
     if (request.method !== "GET") writes++;
     response.setHeader("Content-Type", "application/json");
+    const mutation = mutations.get(request.url ?? "");
+    if (request.method === "POST" && mutation) {
+      let body = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        try {
+          response.end(JSON.stringify(mutation(new URLSearchParams(body))));
+        } catch {
+          response.writeHead(400);
+          response.end(
+            JSON.stringify({
+              error: { message: "Controlled mutation did not match expected input" },
+            }),
+          );
+        }
+      });
+      return;
+    }
     const sequence = objectSequences.get(request.url ?? "");
     const value = sequence?.length ? sequence.shift() : objects.get(request.url ?? "");
     if (request.method !== "GET" || !value) {
@@ -77,6 +99,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
   beforeEach(async () => {
     await database.exec("UPDATE organizations SET is_active=false");
     objects.clear();
+    mutations.clear();
     objectSequences.clear();
     requests.length = 0;
     writes = 0;
@@ -262,6 +285,149 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       ).rows[0]!.count,
     ).toBe(0);
   });
+
+  for (const account of ["retained", "foreign"] as const) {
+    test(`cancellation and reviewed resume use ${account} purchase authority after catalog rotation`, async () => {
+      const f = await seedPurchasedCheckout();
+      const { finalizeSubscriptionCheckout } = await import(
+        "../subscription-checkout-finalization"
+      );
+      await finalizeSubscriptionCheckout(f);
+      await database.query("UPDATE organizations SET is_active=false WHERE id<>$1", [f.orgId]);
+      let live = {
+        ...f.subscription,
+        canceled_at: null as number | null,
+        cancel_at: null as number | null,
+      };
+      const path = `/v1/subscriptions/${live.id}`;
+      objects.set(path, live);
+      objects.set(`/v1/customers/${f.customer.id}`, f.customer);
+      objects.set("/v1/account", {
+        id: account === "retained" ? "acct_checkoutfixture" : "acct_foreign",
+      });
+      mutations.set(path, (body) => {
+        expect([...body.keys()]).toEqual(["cancel_at_period_end"]);
+        const canceled = body.get("cancel_at_period_end") === "true";
+        live = {
+          ...live,
+          cancel_at_period_end: canceled,
+          cancel_at: canceled ? live.current_period_end : null,
+          canceled_at: canceled ? Math.floor(Date.now() / 1000) : live.canceled_at,
+        };
+        objects.set(path, live);
+        return live;
+      });
+      mutations.set("/v1/invoices/create_preview", (body) => {
+        expect(body.get("subscription")).toBe(live.id);
+        expect(body.get("subscription_details[cancel_at_period_end]")).toBe("false");
+        return {
+          ...f.invoice,
+          id: "upcoming_in_retained",
+          status: "draft",
+          automatic_tax: { enabled: false, status: null },
+          lines: {
+            ...f.invoice.lines,
+            data: [
+              {
+                ...f.invoice.lines.data[0]!,
+                period: {
+                  start: live.current_period_end,
+                  end: live.current_period_end + 30 * 86400,
+                },
+              },
+            ],
+          },
+        };
+      });
+      const input = {
+        organizationId: f.orgId,
+        actorId: f.command.requested_by_user_id,
+        subscriptionId: f.command.id,
+        expectedSubscriptionRevision: 1,
+        idempotencyKey: randomUUID(),
+      };
+      const cancellation = await import("../../../lib/services/subscription-cancellation");
+      process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_rotated";
+      process.env.STRIPE_PLUS_PRODUCT_ID = "prod_rotated";
+      try {
+        if (account === "retained") {
+          const repository = await import("../subscription-cancellation");
+          const command = await repository.prepareCancellation(input);
+          const claim = await repository.claimCancellation({ ...input, commandId: command.id });
+          if (!claim) throw new Error("Cancellation fixture claim missing");
+          const scheduled = {
+            ...live,
+            cancel_at_period_end: true,
+            cancel_at: live.current_period_end,
+            canceled_at: Math.floor(Date.now() / 1000),
+          };
+          await expect(
+            repository.finalizeCancellation(input, claim, scheduled, "acct_foreign"),
+          ).rejects.toThrow();
+          await expect(repository.finalizeCancellation(input, claim, scheduled)).rejects.toThrow();
+          expect(await sourceRevision(f.command.id)).toBe(1);
+          await repository.releaseCancellation(input, claim);
+        }
+        const result = await cancellation.submitOrganizationSubscriptionCancellation(
+          input,
+          async () => {},
+        );
+        if (account === "foreign") {
+          expect(result.status).toBe("OUTCOME_UNKNOWN");
+          expect(writes).toBe(0);
+          expect(await sourceRevision(f.command.id)).toBe(1);
+          return;
+        }
+        expect(result.status).toBe("APPLIED");
+        expect(writes).toBe(1);
+        const { reconcileStripeScheduledCancellationLifecycle } = await import(
+          "../../../lib/services/stripe-scheduled-cancellation-lifecycle"
+        );
+        const eventId = `evt_${randomUUID().replaceAll("-", "")}`;
+        const event = {
+          id: eventId,
+          type: "customer.subscription.updated",
+          created: Math.floor(Date.now() / 1000),
+          livemode: false,
+          data: { object: live },
+        };
+        await reconcileStripeScheduledCancellationLifecycle({
+          eventId,
+          eventType: event.type,
+          event,
+        } as Parameters<typeof reconcileStripeScheduledCancellationLifecycle>[0]);
+        const revision = await sourceRevision(f.command.id);
+        const { readOrganizationSubscriptionRenewalReview } = await import(
+          "../../../lib/services/subscription-renewal-review"
+        );
+        const resume = {
+          ...input,
+          expectedSubscriptionRevision: revision,
+          idempotencyKey: randomUUID(),
+        };
+        const review = await readOrganizationSubscriptionRenewalReview(resume, async () => {});
+        expect(review.planKey).toBe("plus_monthly");
+        const resultUndo =
+          await cancellation.submitReviewedOrganizationSubscriptionCancellationUndo(
+            { ...resume, expectedRenewalTermsDigest: review.termsDigest },
+            async () => {},
+          );
+        expect(resultUndo.status).toBe("APPLIED");
+        expect(await allowanceCount(f.orgId)).toBe(1);
+        expect(
+          (
+            await database.query(
+              "SELECT cancel_at_period_end FROM billing_subscriptions WHERE id=$1",
+              [f.command.id],
+            )
+          ).rows,
+        ).toEqual([{ cancel_at_period_end: false }]);
+      } finally {
+        process.env.STRIPE_PLUS_MONTHLY_PRICE_ID = "price_plus";
+        process.env.STRIPE_PLUS_PRODUCT_ID = "prod_plus";
+      }
+    });
+  }
 
   for (const scenario of ["partial", "full", "excess", "waived", "reversed", "changing"] as const) {
     test(`canonical SDK recovery proves ${scenario} credit settlement without synthetic payments`, async () => {
