@@ -61,3 +61,16 @@ selection. Source-link opening requires an explicit call and validated provider
 URL. Hosts supply transport and UI wording; owner authorization and durable effect
 controls remain on the host. Stopping a client suppresses late replies, not host
 effects already dispatched. The leaf is exported as `./native-host/bill-client`.
+
+
+`native-host/bill-review-controller.ts` sequences explicitly requested bill metadata
+search, message read, review admission, observation and submission through host ports.
+Cancellation and bill identity changes suppress stale callbacks; cancellation drops
+cached message selection but retains durable uncertainty. Submission ports must call
+`beforeDispatch` immediately before the effect and abort if it throws. A pending marker
+forces observation-only reconciliation; null, failed or unknown observations never
+clear that marker or trigger automatic resubmission. The host scopes storage to owner,
+account and bill and supplies authorization, provider matching, UI stages and copy.
+`LatestOutcomeController` admits task identifiers and fences stale read-only results.
+These clients do not grant payment authority or start work without an explicit call.
+Run `npm run test:bill-host` for their sequencing and uncertainty regressions.
