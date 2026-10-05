@@ -10,7 +10,7 @@ const url = process.env.SUBSCRIPTION_AUTHORITY_POSTGRES_URL;
 const schema = `lower_${randomUUID().replaceAll("-", "_")}`;
 let db: Client;
 let close: typeof import("../client").closeDatabaseConnectionsForTests;
-async function seed() {
+async function seed(validityMs = 60000) {
   const f = await seedCancellationTestAccount((q, v) => db.query(q, v), undefined, "pro_monthly");
   const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
   const captured = await readOrganizationPlanChangeSource(f.input);
@@ -38,7 +38,7 @@ async function seed() {
       startingBalanceCents: 0,
     },
     observedAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + 60000).toISOString(),
+    expiresAt: new Date(now.getTime() + validityMs).toISOString(),
   };
   const { saveOrganizationDowngradeQuote } = await import("./organization-downgrade-quotes");
   const quote = await saveOrganizationDowngradeQuote({
@@ -119,4 +119,155 @@ async function seed() {
       code: "SUBSCRIPTION_PLAN_CHANGE_FORBIDDEN",
     });
   });
+  test("concurrent lower confirmations consume the quote once and retain the original command", async () => {
+    const f = await seed();
+    const { prepareOrganizationDowngrade: prepare } = await import(
+      "./organization-downgrade-commands"
+    );
+    const input = { ...f.input, quoteId: f.quote.id, idempotencyKey: randomUUID() };
+    const results = await Promise.all([
+      prepare(input),
+      prepare({ ...input, idempotencyKey: randomUUID() }),
+    ]);
+    expect(results.filter((x) => x.created)).toHaveLength(1);
+    expect(new Set(results.map((x) => x.command.id)).size).toBe(1);
+    expect(results[0]!.command).toMatchObject({
+      kind: "downgrade",
+      status: "PREPARED",
+      provider_started_at: null,
+      organization_upgrade_dispatch_state: null,
+    });
+    expect(
+      (
+        await db.query(
+          "SELECT consumed_by_command_id FROM organization_plan_change_quotes WHERE id=$1",
+          [f.quote.id],
+        )
+      ).rows[0].consumed_by_command_id,
+    ).toBe(results[0]!.command.id);
+    expect(
+      (
+        await db.query(
+          "SELECT plan_key,pending_plan_key,lifecycle_revision FROM billing_subscriptions WHERE id=$1",
+          [f.input.subscriptionId],
+        )
+      ).rows[0],
+    ).toMatchObject({ plan_key: "pro_monthly", pending_plan_key: null, lifecycle_revision: "1" });
+    expect(
+      (await db.query("SELECT count(*)::int n FROM subscription_allowance_transactions")).rows[0],
+    ).toEqual({ n: 0 });
+  });
+  test("an existing retry key cannot switch lower quotes and another quote cannot create a competing intent", async () => {
+    const f = await seed();
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    const { saveOrganizationDowngradeQuote } = await import("./organization-downgrade-quotes");
+    const second = await saveOrganizationDowngradeQuote({
+      identity: f.input,
+      captured: await readOrganizationPlanChangeSource(f.input),
+      review: f.quote.review,
+      providerBinding: f.quote.provider_binding!,
+    });
+    const { prepareOrganizationDowngrade: prepare } = await import(
+      "./organization-downgrade-commands"
+    );
+    const input = { ...f.input, quoteId: f.quote.id, idempotencyKey: randomUUID() };
+    await prepare(input);
+    await expect(prepare({ ...input, quoteId: second.id })).rejects.toMatchObject({
+      code: "SUBSCRIPTION_PLAN_CHANGE_CONFLICT",
+    });
+    await expect(
+      prepare({ ...input, quoteId: second.id, idempotencyKey: randomUUID() }),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_PLAN_CHANGE_CONFLICT" });
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int n FROM billing_subscription_commands WHERE organization_id=$1",
+          [f.input.organizationId],
+        )
+      ).rows[0],
+    ).toEqual({ n: 1 });
+  });
+  test("a quote or retry never transfers manager, actor or tenant authority", async () => {
+    const f = await seed();
+    const { prepareOrganizationDowngrade: prepare } = await import(
+      "./organization-downgrade-commands"
+    );
+    const input = { ...f.input, quoteId: f.quote.id, idempotencyKey: randomUUID() };
+    await prepare(input);
+    await expect(prepare({ ...input, actorId: randomUUID() })).rejects.toThrow();
+    await expect(prepare({ ...input, organizationId: randomUUID() })).rejects.toThrow();
+    await db.query("UPDATE users SET role='member' WHERE id=$1", [f.input.actorId]);
+    await expect(prepare(input)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_PLAN_CHANGE_FORBIDDEN",
+    });
+  });
+  test("lower admission cannot consume an upgrade review", async () => {
+    const { seedOrganizationUpgradeTestAccount } = await import(
+      "./organization-upgrade-test-fixture"
+    );
+    const f = await seedOrganizationUpgradeTestAccount((q, v) => db.query(q, v));
+    const { saveOrganizationUpgradeQuote } = await import("./organization-upgrade-quotes");
+    const q = await saveOrganizationUpgradeQuote({
+      identity: f.input,
+      captured: f.captured,
+      review: f.review,
+      providerBinding: f.providerBinding,
+    });
+    const { prepareOrganizationDowngrade } = await import("./organization-downgrade-commands");
+    await expect(
+      prepareOrganizationDowngrade({ ...f.input, quoteId: q.id, idempotencyKey: randomUUID() }),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_PLAN_CHANGE_CONFLICT" });
+  });
+  test("an expired unclaimed lower intent retires without resetting its original quote", async () => {
+    const f = await seed(2500);
+    const { prepareOrganizationDowngrade: prepare } = await import(
+      "./organization-downgrade-commands"
+    );
+    const input = { ...f.input, quoteId: f.quote.id, idempotencyKey: randomUUID() };
+    const original = await prepare(input);
+    await Bun.sleep(2600);
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    await readOrganizationPlanChangeSource(f.input);
+    const replay = await prepare({ ...input, idempotencyKey: randomUUID() });
+    expect(replay.created).toBe(false);
+    expect(replay.command.id).toBe(original.command.id);
+    expect(replay.command.status).toBe("SUPERSEDED");
+    expect(replay.command.error_code).toBe("DOWNGRADE_REVIEW_EXPIRED_BEFORE_DISPATCH");
+  }, 20000);
+  test("expiry never retires an uncertain lower effect or grants a competing intent", async () => {
+    const f = await seed(2500);
+    const { prepareOrganizationDowngrade: prepare } = await import(
+      "./organization-downgrade-commands"
+    );
+    const input = { ...f.input, quoteId: f.quote.id, idempotencyKey: randomUUID() };
+    const original = await prepare(input);
+    await db.query(
+      "UPDATE billing_subscription_commands SET status='OUTCOME_UNKNOWN',execution_generation=1,provider_started_at=clock_timestamp(),state_revision=state_revision+1 WHERE id=$1",
+      [original.command.id],
+    );
+    await Bun.sleep(2600);
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    await expect(readOrganizationPlanChangeSource(f.input)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_PLAN_CHANGE_CONFLICT",
+    });
+    expect((await prepare(input)).command.status).toBe("OUTCOME_UNKNOWN");
+  }, 20000);
+  test("expiry cannot retire a lower intent while its original lease remains live", async () => {
+    const f = await seed(2500);
+    const { prepareOrganizationDowngrade: prepare } = await import(
+      "./organization-downgrade-commands"
+    );
+    const input = { ...f.input, quoteId: f.quote.id, idempotencyKey: randomUUID() };
+    const original = await prepare(input);
+    await db.query(
+      "UPDATE billing_subscription_commands SET lease_token=$2,lease_expires_at=clock_timestamp()+interval '60 seconds',state_revision=state_revision+1 WHERE id=$1",
+      [original.command.id, randomUUID()],
+    );
+    await Bun.sleep(2600);
+    const { readOrganizationPlanChangeSource } = await import("./organization-plan-change");
+    await expect(readOrganizationPlanChangeSource(f.input)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_PLAN_CHANGE_CONFLICT",
+    });
+    expect((await prepare(input)).command.status).toBe("PREPARED");
+  }, 20000);
 });
