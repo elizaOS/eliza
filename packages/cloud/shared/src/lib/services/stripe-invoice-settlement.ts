@@ -17,7 +17,7 @@ const transaction = z.object({
   type: z.string(),
   credit_note: z.string().nullable(),
 });
-const page = z.object({
+export const invoiceBalanceHistorySchema = z.object({
   object: z.literal("list"),
   has_more: z.boolean(),
   data: z.array(transaction),
@@ -47,7 +47,7 @@ export async function retrieveInvoiceBalanceHistory(
     seen = new Set<string>();
   let cursor: string | undefined;
   for (let index = 0; index < 100; index++) {
-    const result = page.safeParse(
+    const result = invoiceBalanceHistorySchema.safeParse(
       await list(customerId, { limit: 100, ...(cursor ? { starting_after: cursor } : {}) }),
     );
     if (!result.success || result.data.data.length > 100) unavailable("invalid_balance_page");
@@ -58,7 +58,7 @@ export async function retrieveInvoiceBalanceHistory(
       rows.push(row);
     }
     if (!result.data.has_more) {
-      const head = page.safeParse(await list(customerId, { limit: 1 }));
+      const head = invoiceBalanceHistorySchema.safeParse(await list(customerId, { limit: 1 }));
       if (
         !head.success ||
         head.data.data.length > 1 ||
@@ -97,7 +97,7 @@ export function proveInvoiceSettlement(
   if (end !== start + credit || due !== total - credit)
     unavailable("invoice_balance_arithmetic_mismatch");
   if (start === 0n) return undefined;
-  const parsed = page.safeParse(history);
+  const parsed = invoiceBalanceHistorySchema.safeParse(history);
   if (!parsed.success || parsed.data.has_more) unavailable("complete_balance_history_required");
   const ids = new Set<string>();
   for (const row of parsed.data.data) {

@@ -224,3 +224,10 @@ New grants also retain the normalized original invoice's financial fields, bound
 to that identity, without private provider descriptions or metadata. Replay keeps
 the first details and never backfills missing historical records. Complete payment,
 credit-ledger and subsequent adjustment evidence remain separate requirements.
+
+New grants additionally retain normalized original PaymentIntent/capture fields and,
+for credit-bearing invoices, the complete observed customer-balance history. Replay
+revalidates this evidence against the original invoice and settlement digest without
+provider reads or historical backfill. Private payment and balance descriptions are
+excluded. These original observations do not establish current refund health or
+implement later adjustment policy; subsequent evidence must remain separate.

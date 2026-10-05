@@ -2,6 +2,10 @@
 import { expect, test } from "bun:test";
 import { createRenewalInvoiceAuthority } from "./renewal-invoice-authority";
 import { bindRenewalInvoiceDetails, createRenewalInvoiceDetails } from "./renewal-invoice-details";
+import {
+  bindRenewalSettlementDetails,
+  createRenewalSettlementDetails,
+} from "./renewal-settlement-details";
 import { settlementDigest } from "./settlement-digest";
 import { validateSettledRenewalPayment as prove } from "./stripe-paid-renewal-validation";
 
@@ -846,3 +850,145 @@ for (const credit of [3000, 4000])
     expect(details.invoice.ending_balance).toBe(3000 - credit);
     expect(bindRenewalInvoiceDetails(details, authority)).toEqual(details);
   });
+
+for (const [name, factory] of [
+  ["captured", fixture],
+  ["adjusted", adjusted],
+  ["partial credit", credited],
+  ["full credit", () => credited(3000)],
+  ["excess credit", () => credited(4000)],
+] as const)
+  test(`retains original ${name} settlement inputs and revalidates them`, () => {
+    const f = factory();
+    const { authority, details } = retainInvoice(f);
+    const retained = createRenewalSettlementDetails(
+      {
+        payment: f.paymentIntent,
+        charge: f.charge,
+        balanceHistory: "balanceHistory" in f ? f.balanceHistory : undefined,
+      },
+      details,
+      authority,
+    );
+    expect(bindRenewalSettlementDetails(retained, details, authority)).toEqual(retained);
+    expect(retained.payment?.amount ?? 0).toBe(f.invoice.amount_due);
+    expect(retained.charge?.amount_captured ?? 0).toBe(f.invoice.amount_due);
+    expect(retained.balanceHistory === null).toBe(f.invoice.starting_balance === 0);
+    expect(() =>
+      bindRenewalSettlementDetails({ ...retained, digest: "0".repeat(64) }, details, authority),
+    ).toThrow();
+    if (retained.payment) {
+      const altered = { ...retained, payment: { ...retained.payment, amount_received: 1 } };
+      const { digest: _, ...body } = altered;
+      expect(() =>
+        bindRenewalSettlementDetails(
+          { ...altered, digest: settlementDigest(body) },
+          details,
+          authority,
+        ),
+      ).toThrow();
+    }
+  });
+test("settlement retention strips private payment, capture and balance descriptions", () => {
+  const f = credited();
+  const { authority, details } = retainInvoice(f);
+  const retained = createRenewalSettlementDetails(
+    {
+      payment: { ...f.paymentIntent, client_secret: "PRIVATE", metadata: { value: "PRIVATE" } },
+      charge: { ...f.charge, billing_details: { name: "PRIVATE" }, receipt_url: "PRIVATE" },
+      balanceHistory: {
+        ...f.balanceHistory,
+        data: f.balanceHistory.data.map((row) => ({
+          ...row,
+          description: "PRIVATE",
+          metadata: { value: "PRIVATE" },
+        })),
+      },
+    },
+    details,
+    authority,
+  );
+  expect(JSON.stringify(retained)).not.toContain("PRIVATE");
+  expect(bindRenewalSettlementDetails(retained, details, authority)).toEqual(retained);
+  expect(() =>
+    bindRenewalSettlementDetails(
+      { ...retained, charge: { ...retained.charge, receipt_url: "PRIVATE" } },
+      details,
+      authority,
+    ),
+  ).toThrow();
+  f.balanceHistory.data[0]!.amount = 999;
+  expect(retained.balanceHistory?.data[0]?.amount).not.toBe(999);
+});
+test("settlement retention rejects missing, foreign or truncated credit history", () => {
+  const f = credited();
+  const { authority, details } = retainInvoice(f);
+  for (const balanceHistory of [
+    undefined,
+    { ...f.balanceHistory, has_more: true },
+    { ...f.balanceHistory, data: [] },
+    {
+      ...f.balanceHistory,
+      data: f.balanceHistory.data.map((row) => ({ ...row, customer: "cus_foreign" })),
+    },
+  ])
+    expect(() =>
+      createRenewalSettlementDetails(
+        { payment: f.paymentIntent, charge: f.charge, balanceHistory },
+        details,
+        authority,
+      ),
+    ).toThrow();
+});
+
+test("stored settlement cannot be rebound to another invoice or authority", () => {
+  const f = credited();
+  const { authority, details } = retainInvoice(f);
+  const retained = createRenewalSettlementDetails(
+    { payment: f.paymentIntent, charge: f.charge, balanceHistory: f.balanceHistory },
+    details,
+    authority,
+  );
+  const altered = {
+    ...retained,
+    balanceHistory: {
+      ...retained.balanceHistory!,
+      data: retained.balanceHistory!.data.map((row) => ({ ...row, amount: row.amount + 1 })),
+    },
+  };
+  const { digest: _, ...body } = altered;
+  expect(() =>
+    bindRenewalSettlementDetails(
+      { ...altered, digest: settlementDigest(body) },
+      details,
+      authority,
+    ),
+  ).toThrow();
+  expect(() =>
+    bindRenewalSettlementDetails(
+      { ...retained, invoiceDetailsDigest: "f".repeat(64) },
+      details,
+      authority,
+    ),
+  ).toThrow();
+  const { authority: otherAuthority, details: otherDetails } = retainInvoice(fixture());
+  expect(() => bindRenewalSettlementDetails(retained, otherDetails, otherAuthority)).toThrow();
+});
+test("initial captured settlement retains its separate positive-payment contract", () => {
+  const f = fixture();
+  const original = {
+    ...f,
+    initialPayment: true,
+    invoice: { ...f.invoice, billing_reason: "subscription_create" },
+  };
+  const { authority, details } = retainInvoice(original);
+  const retained = createRenewalSettlementDetails(
+    { payment: f.paymentIntent, charge: f.charge },
+    details,
+    authority,
+  );
+  expect(bindRenewalSettlementDetails(retained, details, authority)).toEqual(retained);
+  expect(() =>
+    createRenewalSettlementDetails({ payment: null, charge: null }, details, authority),
+  ).toThrow();
+});

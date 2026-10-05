@@ -4,6 +4,7 @@ import { z } from "zod";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
 import type { RenewalInvoiceAuthority } from "../../lib/services/renewal-invoice-authority";
 import type { RenewalInvoiceDetails } from "../../lib/services/renewal-invoice-details";
+import type { RenewalSettlementDetails } from "../../lib/services/renewal-settlement-details";
 import { renewalUnavailable } from "../../lib/services/stripe-paid-renewal-validation";
 import type { DbTransaction } from "../client";
 import {
@@ -106,6 +107,9 @@ export async function replayFundedRenewalInTransaction(
       : {}),
     ...(grant.metadata.renewalInvoiceDetails !== undefined
       ? { invoiceDetails: grant.metadata.renewalInvoiceDetails as RenewalInvoiceDetails }
+      : {}),
+    ...(grant.metadata.renewalSettlementDetails !== undefined
+      ? { settlementDetails: grant.metadata.renewalSettlementDetails as RenewalSettlementDetails }
       : {}),
     databaseNow: input.databaseNow,
   });
