@@ -42,3 +42,9 @@ key; configuration requires the original observed create receipt. An observation
 can retain evidence after manager revocation but cannot authorize another write.
 The journal does not perform provider calls or publish a pending plan; receipt
 provenance must be verified by the provider response/event observer before storage.
+
+Original schedule evidence is projected from authenticated Acacia create/update
+responses or request-attributed events. The journal reads original scope and first
+dispatch time under lock and preserves the first receipt on exact replay. Attribution
+is not configured-phase validation: callers still must verify retained terms and
+current provider state before configuration, compensation or pending-plan publication.

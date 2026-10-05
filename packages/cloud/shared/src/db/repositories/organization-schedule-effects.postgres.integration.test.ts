@@ -491,4 +491,127 @@ async function state(commandId: string) {
     ).rejects.toMatchObject({ code: "23514" });
     expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
   });
+  test("authenticated evidence uses stored identity and retains its first observation on replay", async () => {
+    const f = await claimed();
+    const started = await repo.markOrganizationScheduleEffectDispatch(
+      f.identity,
+      f.claim,
+      f.effect.id,
+    );
+    const raw = {
+      id: "sub_sched_authenticated",
+      object: "subscription_schedule",
+      customer: f.effect.customer_id,
+      subscription: f.effect.subscription_id,
+      livemode: f.effect.livemode,
+      created: Math.floor(started.started_at!.getTime() / 1000),
+      application: null,
+      status: "active",
+      canceled_at: null,
+      completed_at: null,
+      released_at: null,
+      released_subscription: null,
+      end_behavior: "release",
+      current_phase: {
+        start_date: f.source.current_period_start.getTime() / 1000,
+        end_date: f.source.current_period_end.getTime() / 1000,
+      },
+      phases: [{ items: [{ price: "price_pro", quantity: 1 }] }],
+      default_settings: { default_payment_method: "pm_original" },
+    };
+    const transport = {
+      requestId: "req_authenticated",
+      statusCode: 200,
+      apiVersion: "2024-11-20.acacia",
+      idempotencyKey: f.effect.provider_idempotency_key,
+    };
+    Object.defineProperty(raw, "lastResponse", { value: transport });
+    const evidence = { kind: "response" as const, raw };
+    const first = await repo.recordAuthenticatedOrganizationScheduleEvidence(
+      f.identity,
+      f.claim,
+      f.effect.id,
+      evidence,
+    );
+    const replay = await repo.recordAuthenticatedOrganizationScheduleEvidence(
+      f.identity,
+      f.claim,
+      f.effect.id,
+      evidence,
+    );
+    expect(first.state).toBe("observed");
+    expect(replay.receipt).toEqual(first.receipt);
+    expect(replay.observed_at).toEqual(first.observed_at);
+    expect(replay.observation_generation).toBe(first.observation_generation);
+    raw.default_settings.default_payment_method = "pm_changed";
+    await expect(
+      repo.recordAuthenticatedOrganizationScheduleEvidence(
+        f.identity,
+        f.claim,
+        f.effect.id,
+        evidence,
+      ),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_PLAN_CHANGE_CONFLICT" });
+    expect((await state(f.identity.commandId)).status).toBe("OUTCOME_UNKNOWN");
+  });
+  test("foreign authenticated event cannot mark a started effect observed", async () => {
+    const f = await claimed();
+    const started = await repo.markOrganizationScheduleEffectDispatch(
+      f.identity,
+      f.claim,
+      f.effect.id,
+    );
+    const created = Math.floor(started.started_at!.getTime() / 1000);
+    const raw = {
+      id: "evt_schedule",
+      object: "event",
+      type: "subscription_schedule.created",
+      api_version: "2024-11-20.acacia",
+      created,
+      livemode: f.effect.livemode,
+      request: { id: "req_schedule", idempotency_key: "another-command" },
+      data: {
+        object: {
+          id: "sub_sched_event",
+          object: "subscription_schedule",
+          customer: f.effect.customer_id,
+          subscription: f.effect.subscription_id,
+          livemode: f.effect.livemode,
+          created,
+          application: null,
+          status: "active",
+          canceled_at: null,
+          completed_at: null,
+          released_at: null,
+          released_subscription: null,
+          end_behavior: "release",
+          current_phase: { start_date: created - 100, end_date: created + 100 },
+          phases: [{}],
+          default_settings: {},
+        },
+      },
+    };
+    const evidence = { kind: "event" as const, raw };
+    await expect(
+      repo.recordAuthenticatedOrganizationScheduleEvidence(
+        f.identity,
+        f.claim,
+        f.effect.id,
+        evidence,
+      ),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_SCHEDULE_ORIGIN_UNVERIFIED" });
+    expect(
+      (await db.query("SELECT state FROM organization_schedule_effects WHERE id=$1", [f.effect.id]))
+        .rows[0].state,
+    ).toBe("started");
+    raw.request.idempotency_key = f.effect.provider_idempotency_key;
+    const saved = await repo.recordAuthenticatedOrganizationScheduleEvidence(
+      f.identity,
+      f.claim,
+      f.effect.id,
+      evidence,
+    );
+    expect(saved.state).toBe("observed");
+    expect(saved.receipt?.eventId).toBe("evt_schedule");
+  });
 });
