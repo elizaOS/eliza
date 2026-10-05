@@ -114,6 +114,12 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
   personalRequests: string[];
 }> {
   await installDefaultAppRoutes(page);
+  await page.route("**/api/interactions/composer", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const { activity } = route.request().postDataJSON();
+    expect(typeof activity).toBe("string");
+    await fulfillJson(route, { ok: true, activity });
+  });
   let conversationCreated = false;
   let messageSequence = 0;
   const streamRequests: string[] = [];
