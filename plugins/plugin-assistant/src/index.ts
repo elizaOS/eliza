@@ -135,10 +135,8 @@ export { ignoreAction } from "./features/basic-capabilities/actions/ignore.ts";
 export { noneAction } from "./features/basic-capabilities/actions/none.ts";
 export { replyAction } from "./features/basic-capabilities/actions/reply.ts";
 export { linkExtractionEvaluator } from "./features/basic-capabilities/evaluators/link-extraction.ts";
-export {
-  basicEvaluators as basicCapabilitiesEvaluators,
-} from "./features/basic-capabilities/index.ts";
 export * from "./features/basic-capabilities/index.ts";
+export { basicEvaluators as basicCapabilitiesEvaluators } from "./features/basic-capabilities/index.ts";
 export { actionStateProvider } from "./features/basic-capabilities/providers/actionState.ts";
 export { actionsProvider } from "./features/basic-capabilities/providers/actions.ts";
 export { anxietyProvider } from "./features/basic-capabilities/providers/anxiety.ts";
