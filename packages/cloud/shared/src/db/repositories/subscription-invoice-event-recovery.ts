@@ -42,6 +42,7 @@ function dueOriginals(executor: typeof dbWrite | DbTransaction = dbWrite) {
       fences,
       and(
         eq(fences.organization_id, receipts.organization_id),
+        eq(fences.subscription_id, receipts.subscription_id),
         isNull(fences.billing_scope_id),
         eq(fences.merchant_key, "platform"),
       ),
