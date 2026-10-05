@@ -584,9 +584,7 @@ it("upgrades persisted workbench schedules without losing timing or duplicating 
   const { runRuntimeStartupMaintenance } = await import(
     "../src/runtime/runtime-maintenance.ts"
   );
-  const { WORKBENCH_TASK_TAG } = await import(
-    "../src/api/workbench-helpers.ts"
-  );
+  const { WORKBENCH_TASK_TAG } = await import("@elizaos/host/protocol");
   const taskId = await fixture.runtime.createTask({
     name: "Retained morning reminder",
     description: "Read the retained morning note",

@@ -3,7 +3,7 @@ import type { WorkbenchTask, WorkbenchTodo } from "@elizaos/contracts";
 import type { Task } from "@elizaos/core";
 
 export const WORKBENCH_TODO_TAG = "workbench-todo";
-const WORKBENCH_TASK_TAG = "workbench-task";
+export const WORKBENCH_TASK_TAG = "workbench-task";
 
 function hasTaskTrigger(task: Task): boolean {
   return Boolean(asObject(readTaskMetadata(task).trigger)?.triggerId);
