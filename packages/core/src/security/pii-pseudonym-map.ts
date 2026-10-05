@@ -17,7 +17,7 @@ export interface PseudonymClusterIdentity {
 /**
  * One persisted cluster of the corpus pseudonym map:
  * `{clusterId → pseudonym, aliases[], identities[], evidence[], firstSeen,
- * rulesetVersion}` (the issue's map shape). `supersededPseudonyms` is the audit
+ * rulesetVersion}`. `supersededPseudonyms` is the audit
  * trail of pseudonyms this cluster previously held — non-empty only after a
  * re-mint (a newly learned real alias collided with the old pseudonym), so the
  * write-back stage can repair artifacts written under the old value.

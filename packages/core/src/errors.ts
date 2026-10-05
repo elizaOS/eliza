@@ -24,12 +24,7 @@ export interface ElizaErrorOptions {
 	severity?: ElizaErrorSeverity;
 }
 
-/**
- * Process-wide brand shared by every bundled copy of this module. The package
- * root, the lean `./errors` subpath and other compiled entrypoints each inline
- * their own `ElizaError` class, so prototype identity alone would make an error
- * thrown through one entrypoint fail `instanceof` against another.
- */
+/** Process-wide branding preserves instanceof across separately bundled copies. */
 const ELIZA_ERROR_BRAND: unique symbol = Symbol.for("elizaos.core.ElizaError");
 
 /**

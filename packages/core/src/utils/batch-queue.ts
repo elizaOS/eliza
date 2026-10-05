@@ -32,7 +32,7 @@ export interface BatchQueueOptions<T> {
 	 * embeddings — sends one call instead of N). If it throws, every item falls
 	 * back to the per-item {@link process} path; failed item outcomes it returns
 	 * fall back the same way, so retry / `onExhausted` semantics are preserved.
-	 * Existing per-item callers that don't set this are completely unaffected.
+	 * Without a batch processor, items use the per-item path.
 	 */
 	processBatch?: (items: T[]) => Promise<BatchItemOutcome<T>[]>;
 	maxParallel?: number;
