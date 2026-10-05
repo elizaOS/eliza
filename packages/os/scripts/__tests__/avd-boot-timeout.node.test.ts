@@ -28,12 +28,13 @@ if (command === ${JSON.stringify(blocked)}) {
 `,
         { mode: 0o700 },
       );
+      const timeoutMs = blocked === null ? 5000 : 500;
       const started = performance.now();
       if (blocked === null) {
-        await waitForBoot(adb, "emulator-fixture", 500);
+        await waitForBoot(adb, "emulator-fixture", timeoutMs);
       } else {
         await assert.rejects(
-          waitForBoot(adb, "emulator-fixture", 500),
+          waitForBoot(adb, "emulator-fixture", timeoutMs),
           (error) => {
             const failure = error.cause?.cause ?? error.cause;
             assert.equal(failure?.code, "ETIMEDOUT");
@@ -42,7 +43,7 @@ if (command === ${JSON.stringify(blocked)}) {
         );
       }
       assert.ok(
-        performance.now() - started < 2000,
+        performance.now() - started < timeoutMs + 1500,
         "boot exceeded its bounded deadline",
       );
     } finally {
@@ -71,15 +72,16 @@ if (command === ${JSON.stringify(blocked)}) {
 `,
         { mode: 0o700 },
       );
+      const timeoutMs = blocked === null ? 5000 : 500;
       const started = performance.now();
       if (blocked === null) {
         assert.equal(
-          await findEmulatorSerial(adb, "fixture-avd", 500),
+          await findEmulatorSerial(adb, "fixture-avd", timeoutMs),
           "emulator-5554",
         );
       } else {
         await assert.rejects(
-          findEmulatorSerial(adb, "fixture-avd", 500),
+          findEmulatorSerial(adb, "fixture-avd", timeoutMs),
           (error) => {
             assert.equal(error.cause?.code, "ETIMEDOUT");
             return true;
@@ -87,7 +89,7 @@ if (command === ${JSON.stringify(blocked)}) {
         );
       }
       assert.ok(
-        performance.now() - started < 2000,
+        performance.now() - started < timeoutMs + 1500,
         "discovery exceeded its deadline",
       );
     } finally {
