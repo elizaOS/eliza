@@ -260,6 +260,10 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
   });
   test("missed paid renewal heals through the existing cron without a webhook delivery", async () => {
     const f = await seed();
+    Object.assign(f.invoice, {
+      description: "PRIVATE_INVOICE_NOTE",
+      metadata: { secret: "PRIVATE_INVOICE_NOTE" },
+    });
     expect(await allowanceCount(f.source.organization_id)).toBe(0);
     const result = await service.recoverMissedSubscriptionEvents();
     expect(await allowanceCount(f.source.organization_id)).toBe(1);
@@ -278,6 +282,38 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     expect(retained.invoiceLineId).toBe(f.invoice.lines.data[0]!.id);
     expect(retained.digest).toMatch(/^[a-f0-9]{64}$/);
     expect(retained.grantDigest).toMatch(/^[a-f0-9]{64}$/);
+    const metadataBeforeReplay = (
+      await database.query<{ metadata: Record<string, unknown> }>(
+        "SELECT metadata FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+        [f.source.organization_id],
+      )
+    ).rows[0]!.metadata;
+    expect(JSON.stringify(metadataBeforeReplay)).not.toContain("PRIVATE_INVOICE_NOTE");
+    const details = metadataBeforeReplay.renewalInvoiceDetails as {
+      authorityDigest: string;
+      digest: string;
+      invoice: {
+        id: string;
+        total: number;
+        amount_paid: number;
+        lines: { data: Array<{ id: string }> };
+      };
+    };
+    if (typeof retained.digest !== "string") throw new Error("Missing retained authority digest");
+    expect(details.authorityDigest).toBe(retained.digest);
+    expect(details.invoice.id).toBe(f.invoice.id);
+    expect(details.invoice.total).toBe(f.invoice.total);
+    expect(details.invoice.amount_paid).toBe(f.invoice.amount_paid);
+    expect(details.invoice.lines.data[0]!.id).toBe(f.invoice.lines.data[0]!.id);
+    expect(details.digest).toMatch(/^[a-f0-9]{64}$/);
+    await service.recoverMissedSubscriptionEvents();
+    const replayMetadata = (
+      await database.query<{ metadata: Record<string, unknown> }>(
+        "SELECT metadata FROM subscription_allowance_transactions WHERE organization_id=$1 AND kind='grant'",
+        [f.source.organization_id],
+      )
+    ).rows[0]!.metadata;
+    expect(replayMetadata).toEqual(metadataBeforeReplay);
 
     expect(writes).toBe(0);
     const revisions = (

@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
 import type { RenewalInvoiceAuthority } from "../../lib/services/renewal-invoice-authority";
+import type { RenewalInvoiceDetails } from "../../lib/services/renewal-invoice-details";
 import { renewalUnavailable } from "../../lib/services/stripe-paid-renewal-validation";
 import type { DbTransaction } from "../client";
 import {
@@ -102,6 +103,9 @@ export async function replayFundedRenewalInTransaction(
     requestDigest: grant.request_digest,
     ...(grant.metadata.renewalInvoiceAuthority !== undefined
       ? { invoiceAuthority: grant.metadata.renewalInvoiceAuthority as RenewalInvoiceAuthority }
+      : {}),
+    ...(grant.metadata.renewalInvoiceDetails !== undefined
+      ? { invoiceDetails: grant.metadata.renewalInvoiceDetails as RenewalInvoiceDetails }
       : {}),
     databaseNow: input.databaseNow,
   });

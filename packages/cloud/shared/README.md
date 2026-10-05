@@ -220,3 +220,7 @@ identity and settlement digests in the existing grant metadata, atomically with
 publication. Replay validates and preserves that first record; legacy grants are
 not backfilled from current provider objects. An unknown legacy merchant remains
 null. This identity record is not complete adjustment evidence or refund policy.
+New grants also retain the normalized original invoice's financial fields, bound
+to that identity, without private provider descriptions or metadata. Replay keeps
+the first details and never backfills missing historical records. Complete payment,
+credit-ledger and subsequent adjustment evidence remain separate requirements.

@@ -1,5 +1,8 @@
 /** Captured invoice evidence must remain bound to its original interval, regardless of later subscription state. */
 import { expect, test } from "bun:test";
+import { createRenewalInvoiceAuthority } from "./renewal-invoice-authority";
+import { bindRenewalInvoiceDetails, createRenewalInvoiceDetails } from "./renewal-invoice-details";
+import { settlementDigest } from "./settlement-digest";
 import { validateSettledRenewalPayment as prove } from "./stripe-paid-renewal-validation";
 
 function fixture() {
@@ -345,9 +348,13 @@ test("reconciles stacked item and invoice discounts with mixed tax and order-ind
   f.invoice.total_tax_amounts = structuredClone(line.tax_amounts);
   f.invoice.tax = 370;
   const digest = prove(f).adjustmentDigest;
+  const retained = retainInvoice(f).details;
   f.invoice.total_discount_amounts.reverse();
   f.invoice.total_tax_amounts.reverse();
+  line.discount_amounts.reverse();
+  line.tax_amounts.reverse();
   expect(prove(f).adjustmentDigest).toBe(digest);
+  expect(retainInvoice(f).details).toEqual(retained);
 });
 const adjustmentChanges: Array<[string, (f: ReturnType<typeof adjusted>) => void]> = [
   [
@@ -703,3 +710,139 @@ test("discounts, tax and credit compose without granting twice or changing the b
   expect(proof.adjustmentDigest).toBeDefined();
   expect(proof.settlementDigest).toBeDefined();
 });
+
+function retainInvoice(input: Parameters<typeof prove>[0] = fixture()) {
+  const proof = prove(input),
+    invoice = proof.invoice,
+    line = proof.line;
+  const authority = createRenewalInvoiceAuthority({
+    kind: "renewal_invoice_authority",
+    version: 1,
+    organizationId: "00000000-0000-4000-8000-000000000001",
+    subscriptionId: "00000000-0000-4000-8000-000000000002",
+    providerAccountId: "acct_original",
+    invoiceId: invoice.id,
+    customerId: invoice.customer,
+    providerSubscriptionId: invoice.subscription,
+    subscriptionItemId: line.subscription_item,
+    invoiceLineId: line.id,
+    priceId: line.price.id,
+    productId: line.price.product,
+    livemode: invoice.livemode,
+    currency: invoice.currency,
+    periodStart: line.period.start,
+    periodEnd: line.period.end,
+    invoiceTotal: invoice.total,
+    amountPaid: invoice.amount_paid,
+    paymentIntentId: invoice.payment_intent,
+    chargeId: invoice.charge,
+    adjustmentDigest: proof.adjustmentDigest ?? null,
+    settlementDigest: proof.settlementDigest ?? null,
+    grantDigest: "a".repeat(64),
+  });
+  return { authority, details: createRenewalInvoiceDetails(input.invoice, authority) };
+}
+for (const [name, factory] of [
+  ["captured", fixture],
+  ["discounted and taxed", adjusted],
+  ["invoice-credit", credited],
+] as const)
+  test(`retains normalized original ${name} invoice facts`, () => {
+    const f = factory(),
+      { authority, details } = retainInvoice(f);
+    expect(bindRenewalInvoiceDetails(details, authority)).toEqual(details);
+    expect(details.invoice.total).toBe(f.invoice.total);
+    expect(details.invoice.starting_balance).toBe(f.invoice.starting_balance);
+    expect(details.invoice.lines.data[0]!.amount).toBe(3000);
+    f.invoice.total = 1;
+    expect(details.invoice.total).not.toBe(1);
+  });
+test("retained invoice strips private expanded fields at every provider boundary", () => {
+  const f = fixture();
+  const raw = {
+    ...f.invoice,
+    description: "PRIVATE",
+    metadata: { secret: "PRIVATE" },
+    customer_email: "PRIVATE",
+    lines: {
+      ...f.invoice.lines,
+      data: [
+        {
+          ...f.invoice.lines.data[0],
+          description: "PRIVATE",
+          price: { ...f.invoice.lines.data[0]!.price, nickname: "PRIVATE" },
+        },
+      ],
+    },
+  };
+  const { authority, details } = retainInvoice({ ...f, invoice: raw });
+  expect(JSON.stringify(details)).not.toContain("PRIVATE");
+  expect(() =>
+    bindRenewalInvoiceDetails(
+      { ...details, invoice: { ...details.invoice, description: "PRIVATE" } },
+      authority,
+    ),
+  ).toThrow();
+});
+test("retained invoice rejects both stale hashes and rehashed foreign invoice identity", () => {
+  const { authority, details } = retainInvoice();
+  const changed = { ...details, invoice: { ...details.invoice, id: "in_foreign" } };
+  expect(() => bindRenewalInvoiceDetails(changed, authority)).toThrow();
+  const { digest: _, ...body } = changed;
+  expect(() =>
+    bindRenewalInvoiceDetails({ ...changed, digest: settlementDigest(body) }, authority),
+  ).toThrow();
+  const { digest: __, ...owner } = authority;
+  const foreign = createRenewalInvoiceAuthority({
+    ...owner,
+    organizationId: "00000000-0000-4000-8000-000000000003",
+  });
+  expect(() => bindRenewalInvoiceDetails(details, foreign)).toThrow();
+});
+test("original invoice details cannot change dates, paid amounts, tax or balances", () => {
+  const { authority, details } = retainInvoice();
+  for (const change of [
+    { amount_paid: 1 },
+    { amount_due: 1 },
+    { total: 1 },
+    { tax: 1 },
+    { starting_balance: -1 },
+    { ending_balance: -1 },
+  ])
+    expect(() =>
+      createRenewalInvoiceDetails({ ...details.invoice, ...change }, authority),
+    ).toThrow();
+  const line = details.invoice.lines.data[0]!;
+  expect(() =>
+    createRenewalInvoiceDetails(
+      {
+        ...details.invoice,
+        lines: {
+          has_more: false,
+          data: [{ ...line, period: { ...line.period, end: line.period.end + 1 } }],
+        },
+      },
+      authority,
+    ),
+  ).toThrow();
+});
+test("initial invoice details retain their original reason and never become a cycle invoice", () => {
+  const f = fixture();
+  const { authority, details } = retainInvoice({
+    ...f,
+    initialPayment: true,
+    invoice: { ...f.invoice, billing_reason: "subscription_create" },
+  });
+  expect(details.invoice.billing_reason).toBe("subscription_create");
+  expect(bindRenewalInvoiceDetails(details, authority)).toEqual(details);
+});
+
+for (const credit of [3000, 4000])
+  test(`retains ${credit}-cent original credit settlement without invented capture`, () => {
+    const { authority, details } = retainInvoice(credited(credit));
+    expect(details.invoice.amount_paid).toBe(0);
+    expect(details.invoice.payment_intent).toBeNull();
+    expect(details.invoice.charge).toBeNull();
+    expect(details.invoice.ending_balance).toBe(3000 - credit);
+    expect(bindRenewalInvoiceDetails(details, authority)).toEqual(details);
+  });
