@@ -316,3 +316,10 @@ letters/digits/underscores/hyphens starting with a letter. Results are recorded 
 `variants[].phases` and output in `<variant>-phase-<name>.log`. Runner extras
 cannot override test selection. Cleanup hooks may run a final fixture phase even
 after cancellation; failed or partial installs do not expose this function.
+
+Consumer APK audits can import `parseXmlTree` and `manifestFacts` from
+`scripts/lib/android-manifest-facts.mjs`. These pure helpers decode aapt xmltree
+and badging output without invoking an SDK or reading files. They report explicit
+manifest declarations, not Android's effective permission/export defaults or a
+release verdict. Missing application attributes remain null; hosts own component
+allowlists, expected package identity and release policy.
