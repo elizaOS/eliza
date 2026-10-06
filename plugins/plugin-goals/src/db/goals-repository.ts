@@ -238,6 +238,35 @@ export class GoalsRepository {
     return rows.map(parseGoal);
   }
 
+  /**
+   * Record a check-in without rewriting the rest of the goal: only
+   * `review_state`, `updated_at` and `metadata.checkinLog` change, merged into
+   * the stored metadata in SQL, so an edit or review written while the
+   * check-in's task completion ran is kept.
+   */
+  async updateGoalCheckin(
+    agentId: string,
+    goalId: string,
+    checkin: {
+      reviewState: LifeOpsGoalDefinition["reviewState"];
+      checkinLog: readonly unknown[];
+      updatedAt: string;
+    },
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_goals.life_goal_definitions
+          SET review_state = ${sqlQuote(checkin.reviewState)},
+              metadata_json = (
+                COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb
+                  || ${sqlJson({ checkinLog: checkin.checkinLog })}::jsonb
+              )::text,
+              updated_at = ${sqlQuote(checkin.updatedAt)}
+        WHERE id = ${sqlQuote(goalId)}
+          AND agent_id = ${sqlQuote(agentId)}`,
+    );
+  }
+
   async deleteGoal(agentId: string, goalId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
