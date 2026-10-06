@@ -3,18 +3,25 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   type Action,
+  type AgentRuntime,
+  type ContextObject,
+  type ContextProviderEvent,
   ContextRegistry,
+  type GenerateTextParams,
   type GenerateTextResult,
   type IAgentRuntime,
   isObjectRecord,
   type Memory,
   type MessageHandlerResult,
+  MODEL_CANONICAL_CONTEXT,
   ModelType,
+  projectDeferredProviders,
   promoteSubactionsToActions,
   ResponseHandlerFieldRegistry,
   registerDirectActionRoutingRule,
   runResponseHandlerEvaluators,
   runWithStreamingContext,
+  runWithTrajectoryContext,
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
@@ -45,11 +52,18 @@ import { createTrackedWorkRecapDirectRoutingRule } from "../../../plugins/plugin
 import { viewsAction } from "../src/actions/views.ts";
 import {
   closeRuntimeViewRegistry,
+  getView,
   registerBuiltinViews,
   registerPluginViews,
 } from "../src/api/views-registry.ts";
 import { handleViewsRoutes } from "../src/api/views-routes.ts";
 import { createElizaPlugin } from "../src/runtime/eliza-plugin.ts";
+import { installPromptOptimizations } from "../src/runtime/prompt-optimization.ts";
+import {
+  activeViewSourceEvaluator,
+  capturedActiveViewSource,
+} from "../src/runtime/view-action-affinity.ts";
+import { runWithViewClient } from "../src/runtime/view-client-context.ts";
 import {
   viewNavigationEvaluator,
   viewNavigationField,
@@ -148,7 +162,13 @@ async function fixture(delivered = 1) {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
-  return { runtime, frames, requests: () => requests };
+  return {
+    runtime,
+    frames,
+    requests: () => requests,
+    hostKey,
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+  };
 }
 async function show(runtime: IAgentRuntime, view: string, input = message) {
   return viewsAction.handler?.(runtime, input, undefined, {
@@ -1617,6 +1637,193 @@ describe("inferred visual scope invalidation", () => {
     if (!direct) throw new Error("Missing direct-route evaluator");
     return { f, input, state, handler, direct };
   }
+  it.each([
+    "current",
+    "actor",
+    "message",
+    "serialized",
+    "changed-elements",
+    "request",
+    "duplicate",
+    "copy-deleted-flag",
+    "forged-no-markers",
+  ])(
+    "captures exact HTTP-reported controls and keeps full originals for %s source binding",
+    async (mode) => {
+      const x = await staged();
+      x.f.runtime.responseHandlerEvaluators.push(activeViewSourceEvaluator);
+      const post = async (resource: string, body: object) => {
+        const response = await fetch(`${x.f.url}/api/views/notes/${resource}`, {
+          method: "POST",
+          headers: {
+            authorization: "Bearer local-navigation-test",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ clientId: "origin-client", ...body }),
+        });
+        expect(response.status).toBe(200);
+      };
+      await post("navigate", { source: "user" });
+      const installationId = getView(x.f.runtime, "notes")?.installationId;
+      await post("elements", {
+        installationId,
+        elements: [
+          {
+            id: "literal-control",
+            role: "textbox",
+            label: "Exact Ω label",
+            value: "  original  value  ",
+          },
+        ],
+      });
+      await runWithViewClient(
+        { hostKey: x.f.hostKey, clientId: "origin-client" },
+        () =>
+          runWithStreamingContext({ messageId: x.input.id }, async () => {
+            const run = await runResponseHandlerEvaluators({
+              runtime: x.f.runtime,
+              message: x.input,
+              state: x.state,
+              messageHandler: x.handler,
+              availableContexts: [],
+              userRoles: ["OWNER"],
+              evaluators: [x.direct],
+            });
+            expect(run.errors).toEqual([]);
+            const source = run.contextSources?.[0] as ContextProviderEvent;
+            expect(source?.text).toContain('"  original  value  "');
+            const before = source.text;
+            let context: ContextObject = {
+              id: "captured",
+              metadata: {
+                messageId: x.input.id,
+                roomId: x.input.roomId,
+                actorId: x.input.entityId,
+                providerDiscoveryEnabled: true,
+              },
+              events: [source],
+            };
+            if (!context.metadata)
+              throw new Error("Missing captured source binding");
+            if (mode === "actor") context.metadata.actorId = "other-actor";
+            if (mode === "message") context.metadata.messageId = "other-turn";
+            if (mode === "serialized")
+              context = JSON.parse(JSON.stringify(context));
+            if (mode === "request") x.input.content.text += " ";
+            if (mode === "duplicate")
+              context.events = [...context.events, { ...source }];
+            if (mode === "copy-deleted-flag") {
+              const copied = { ...source };
+              delete copied.discoveryRequiresRuntimeBinding;
+              context.events = [copied];
+            }
+            if (mode === "forged-no-markers") {
+              const forged = JSON.parse(
+                JSON.stringify(source),
+              ) as ContextProviderEvent;
+              delete forged.discoveryRequiresRuntimeBinding;
+              forged.text = "Forged collision keeps its full supplied bytes.";
+              forged.discoveryText = "Forged notice cannot authorize deferral.";
+              context.events = [source, forged];
+            }
+            if (mode === "changed-elements")
+              await post("elements", {
+                installationId,
+                elements: [
+                  {
+                    id: "new-control",
+                    role: "textbox",
+                    label: "Later label",
+                    value: "new value",
+                  },
+                ],
+              });
+            const captured = capturedActiveViewSource(x.f.runtime, context);
+            expect(captured?.text).toBe(
+              mode === "current" ? before : undefined,
+            );
+            expect(Boolean(captured?.deferredText)).toBe(mode === "current");
+            const projected = projectDeferredProviders(context);
+            expect(projected.available).toEqual(
+              mode === "current" ? ["ACTIVE_VIEW_SNAPSHOT"] : [],
+            );
+            let plannerWire = "";
+            x.f.runtime.character = { name: "Source wire fixture", bio: [] };
+            Object.assign(x.f.runtime, {
+              useModel: async (_type: string, params: GenerateTextParams) => {
+                expect(params[MODEL_CANONICAL_CONTEXT]).toBe(context);
+                expect(JSON.stringify(params)).not.toContain(
+                  "modelCanonicalContext",
+                );
+                plannerWire = JSON.stringify(params.messages);
+                return "Complete.";
+              },
+            });
+            installPromptOptimizations(x.f.runtime as AgentRuntime);
+            await runWithTrajectoryContext(
+              { trajectoryStepId: "source-wire-fixture" },
+              () =>
+                x.f.runtime.useModel(ModelType.ACTION_PLANNER, {
+                  model: "fixture",
+                  [MODEL_CANONICAL_CONTEXT]: context,
+                  messages: [
+                    {
+                      role: "user",
+                      content: projected.context.events
+                        .filter(
+                          (event): event is ContextProviderEvent =>
+                            event.type === "provider" && "text" in event,
+                        )
+                        .map((event) => event.text)
+                        .join("\n\n"),
+                    },
+                  ],
+                }),
+            );
+            expect(plannerWire.includes("original  value")).toBe(
+              mode !== "current",
+            );
+            if (mode === "changed-elements")
+              expect(plannerWire).toContain("new value");
+            if (mode === "forged-no-markers")
+              expect(plannerWire).toContain(
+                "Forged collision keeps its full supplied bytes.",
+              );
+            let evaluatorWire = "";
+            await runEvaluator({
+              context,
+              trajectory: {
+                context,
+                modelBaseContext: context,
+                steps: [],
+                archivedSteps: [],
+                plannedQueue: [],
+                evaluatorOutputs: [],
+              },
+              runtime: {
+                useModel: async (_type, params) => {
+                  evaluatorWire = JSON.stringify(params.messages);
+                  return JSON.stringify({
+                    decision: "CONTINUE",
+                    success: false,
+                    thought: "Source wire inspection",
+                  });
+                },
+              },
+            });
+            expect(evaluatorWire.includes("original  value")).toBe(
+              mode !== "current",
+            );
+            if (mode === "forged-no-markers")
+              expect(evaluatorWire).toContain(
+                "Forged collision keeps its full supplied bytes.",
+              );
+            expect(source.text).toBe(before);
+            expect(x.handler.plan).not.toHaveProperty("wholeRequestOwner");
+          }),
+      );
+    },
+  );
   it("replays capture480 through the actual staged host field and all three evaluators", async () => {
     const x = await staged();
     const original = structuredClone(x.input);
