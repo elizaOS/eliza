@@ -308,14 +308,35 @@ function foregroundRequestHandling(
     if (
       !isRecord(outcome) ||
       outcome.userMessageId !== memory.id ||
-      !Array.isArray(outcome.actionResults) ||
-      outcome.actionResults.length !== 1
+      !Array.isArray(outcome.actionResults)
     )
       return undefined;
-    const result = outcome.actionResults[0];
+    let result: Record<string, unknown> | undefined;
+    for (const actionResult of outcome.actionResults) {
+      if (!isRecord(actionResult)) return undefined;
+      // Discovery loads the existing tool catalog without performing domain
+      // work. Its successful receipt-free host summary may accompany the one
+      // certified create; failed discovery and every other action stay open
+      // to semantic review rather than granting creation-only ownership.
+      if (
+        actionResult.actionName === "DISCOVER_ACTIONS" &&
+        actionResult.success === true &&
+        actionResult.error === undefined &&
+        actionResult.values === undefined &&
+        (actionResult.effectReceipts === undefined ||
+          (Array.isArray(actionResult.effectReceipts) &&
+            actionResult.effectReceipts.length === 0))
+      )
+        continue;
+      if (
+        result !== undefined ||
+        actionResult.actionName !== "OWNER_REMINDERS_CREATE"
+      )
+        return undefined;
+      result = actionResult;
+    }
     if (
-      !isRecord(result) ||
-      result.success !== true ||
+      result?.success !== true ||
       result.actionName !== "OWNER_REMINDERS_CREATE" ||
       !isRecord(result.values)
     )
