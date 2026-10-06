@@ -966,22 +966,18 @@ export function buildNarrativePrompt(args: {
         pushback: args.editorial.pushback,
       }
     : undefined;
-  const payload = JSON.stringify(
-    {
-      kind: args.kind,
-      period: args.period,
-      sections,
-      sourceErrors: args.sourceErrors,
-      lifeSummary: args.lifeSummary,
-      timeZone: args.timeZone,
-      asOf,
-      localAsOf: describeTime(asOf)?.localTime,
-      localAsOfDate,
-      editorial,
-    },
-    null,
-    2,
-  );
+  const payload = JSON.stringify({
+    kind: args.kind,
+    period: args.period,
+    sections,
+    sourceErrors: args.sourceErrors,
+    lifeSummary: args.lifeSummary,
+    timeZone: args.timeZone,
+    asOf,
+    localAsOf: describeTime(asOf)?.localTime,
+    localAsOfDate,
+    editorial,
+  });
   const optimizationTask = args.optimizationTask ?? "morning_brief";
   const instructions =
     optimizationTask === "meeting_prep"
