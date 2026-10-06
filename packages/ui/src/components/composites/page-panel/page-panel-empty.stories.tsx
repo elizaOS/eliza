@@ -4,7 +4,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "../../ui/button";
-import { PageEmptyState } from "./page-panel-empty";
+import { PageEmptyState } from "./content-state";
 
 const meta = {
   title: "Composites/PagePanel/PagePanelEmpty",

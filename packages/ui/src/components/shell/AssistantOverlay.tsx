@@ -6,9 +6,9 @@ import { X } from "lucide-react";
 import * as React from "react";
 
 import { useBranding } from "../../config/branding-react.hooks";
+import { NATIVE_GLASS_DARK_TINT } from "../../config/theme.js";
 import { useNativeGlassAnchor } from "../../glass/GlassSurface";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
-import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
 import { Z_SHELL_OVERLAY } from "../../utils/floating-layers";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

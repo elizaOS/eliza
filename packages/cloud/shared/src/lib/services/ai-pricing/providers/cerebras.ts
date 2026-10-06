@@ -2,6 +2,7 @@
 import { logger } from "../../../utils/logger";
 import { getCachedExternalEntries } from "../cache";
 import { parseNumericPrice } from "../dimensions";
+import { fetchJson } from "../fetch";
 import {
   type BitRouterCatalogModel,
   EXTERNAL_CACHE_TTL_MS,
@@ -49,27 +50,9 @@ export function buildCerebrasPreparedEntries(model: CerebrasPublicModel): Prepar
   return entries;
 }
 
-async function fetchCerebrasJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent": "ElizaCloudPricingBot/1.0",
-      Accept: "application/json",
-    },
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Request failed for ${url}: ${response.status}`);
-  }
-
-  return (await response.json()) as T;
-}
-
 export async function fetchCerebrasPublicCatalogEntries(): Promise<PreparedPricingEntry[]> {
   return await getCachedExternalEntries("cerebras", async () => {
-    const payload = await fetchCerebrasJson<{ data?: CerebrasPublicModel[] }>(
-      CEREBRAS_PUBLIC_MODELS_URL,
-    );
+    const payload = await fetchJson<{ data?: CerebrasPublicModel[] }>(CEREBRAS_PUBLIC_MODELS_URL);
     const models = Array.isArray(payload.data) ? payload.data : [];
     const entries = models.flatMap((model) => buildCerebrasPreparedEntries(model));
     if (entries.length === 0) {

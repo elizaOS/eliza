@@ -41,7 +41,7 @@ mock.module("@elizaos/cloud-shared/db/repositories/webhook-events", () => ({
 mock.module("@elizaos/cloud-shared/lib/api/cloud-worker-errors", () => ({
   failureResponse: (c: Context) => c.json({ success: false }, 401),
 }));
-mock.module("@elizaos/cloud-shared/lib/queue/redis-queue", () => ({
+mock.module("@elizaos/cloud-shared/lib/redis-queue", () => ({
   queueLength: async () => 0,
   drain: async () => ({ processed: 0 }),
 }));
