@@ -858,10 +858,31 @@ async function handleGetRows(
   const total = Number(
     (countResult.rows[0] as Record<string, unknown>)?.total ?? 0,
   );
+  // OFFSET pages are separate queries, so the order must be total: a sort
+  // column with ties (or no ORDER BY at all) lets rows trade places between
+  // pages and be shown twice or never. The primary key breaks ties; a table
+  // without one falls back to its physical row id.
+  const pkResult = await executeRawSql(
+    runtime,
+    `SELECT kcu.column_name
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+     WHERE tc.constraint_type = 'PRIMARY KEY'
+       AND tc.table_name = '${safeTableName}'
+       AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+     ORDER BY kcu.ordinal_position`,
+  );
+  const tieBreak = pkResult.rows.length
+    ? pkResult.rows.map((r) => quoteIdent(String(r.column_name)))
+    : ["ctid"];
+  const orderTerms = [
+    ...(validSort ? [quoteIdent(validSort)] : []),
+    ...tieBreak.filter((term) => !validSort || term !== quoteIdent(validSort)),
+  ].map((term) => `${term} ${sortOrder}`);
   // Fetch rows
-  const orderClause = validSort
-    ? `ORDER BY ${quoteIdent(validSort)} ${sortOrder}`
-    : "";
+  const orderClause = `ORDER BY ${orderTerms.join(", ")}`;
   const query = `SELECT * FROM ${quoteIdent(tableName)} ${whereClause} ${orderClause} LIMIT ${limit} OFFSET ${offset}`;
   const result = await executeRawSql(runtime, query);
   sendJson(res, {
