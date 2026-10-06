@@ -339,7 +339,7 @@ export class BillWorkflow {
       return blocked("The existing-method control is not unambiguous.");
     if (!isCurrent() || !(await this.stillAuthorized()))
       return blocked("Task authorization changed.");
-    const result = await this.runtime.execute(task.id, task.revision, {
+    const proposal = {
       id: operationId,
       taskId: task.id,
       epoch: task.epoch,
@@ -350,7 +350,20 @@ export class BillWorkflow {
       capability: "browser.click",
       authorizationId: task.authorization.decisionId,
       expiresAt: Date.now() + 10000,
-    });
+    };
+    if (!this.outcomes?.recordMethodSelection) {
+      await this.clearGuidance();
+      return blocked("Durable method selection storage is unavailable.");
+    }
+    try {
+      this.outcomes.recordMethodSelection(decision, proposal, snapshot);
+    } catch {
+      await this.clearGuidance();
+      return blocked(
+        "The reviewed method could not be saved. No selection was sent.",
+      );
+    }
+    const result = await this.runtime.execute(task.id, task.revision, proposal);
     if (
       result.operations.find(
         (operation) => operation.proposal.id === operationId,

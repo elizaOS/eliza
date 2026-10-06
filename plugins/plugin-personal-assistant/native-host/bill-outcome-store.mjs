@@ -12,6 +12,9 @@ export function createBillOutcomeStore(db, tasks) {
   db.exec(
     "CREATE TABLE IF NOT EXISTS bill_reviews_v1 (task_id TEXT PRIMARY KEY, owner_key TEXT NOT NULL, document TEXT NOT NULL)",
   );
+  db.exec(
+    "CREATE TABLE IF NOT EXISTS bill_method_selections_v1 (task_id TEXT NOT NULL, operation_id TEXT NOT NULL, owner_key TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(task_id,operation_id))",
+  );
   const pending = new Map();
   const pendingAttempts = new Map();
   const key = (owner) =>
@@ -232,6 +235,82 @@ export function createBillOutcomeStore(db, tasks) {
             record,
             persisted: saved !== null && isDeepStrictEqual(record, saved),
           };
+        },
+        loadMethodSelection(operationId) {
+          const task = requireOwned();
+          const row = db
+            .prepare(
+              "SELECT document FROM bill_method_selections_v1 WHERE task_id=? AND operation_id=? AND owner_key=?",
+            )
+            .get(taskId, operationId, ownerKey);
+          if (!row) return null;
+          const record = validateReview(JSON.parse(row.document), task);
+          if (
+            record.schemaVersion !== 1 ||
+            record.operationId !== operationId ||
+            record.taskId !== taskId ||
+            typeof record.observationId !== "string" ||
+            !record.observationId ||
+            typeof record.targetRef !== "string" ||
+            !record.targetRef ||
+            typeof record.authorizationId !== "string" ||
+            !record.authorizationId
+          )
+            throw new BillHostError("Invalid method selection record");
+          return record;
+        },
+        recordMethodSelection(decision, proposal, snapshot) {
+          const task = requireOwned();
+          if (
+            decision.kind !== "choose-existing-method" ||
+            task.status !== "active" ||
+            task.authorization?.state !== "active" ||
+            proposal.authorizationId !== task.authorization.decisionId ||
+            proposal.taskId !== taskId ||
+            proposal.epoch !== task.epoch ||
+            proposal.capability !== "browser.click" ||
+            task.observation?.id !== proposal.observationId ||
+            task.observation?.version !== proposal.observationVersion ||
+            task.observation?.inputRevision !== proposal.inputRevision ||
+            !/^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}$/.test(proposal.id) ||
+            typeof proposal.targetRef !== "string" ||
+            !proposal.targetRef ||
+            proposal.targetRef.length > 512 ||
+            !snapshot.documentId
+          )
+            throw new BillHostError(
+              "Method selection has no current authorization and observation",
+            );
+          const source = new URL(snapshot.url);
+          source.search = "";
+          source.hash = "";
+          const record = {
+            schemaVersion: 1,
+            taskId,
+            operationId: proposal.id,
+            observationId: proposal.observationId,
+            targetRef: proposal.targetRef,
+            authorizationId: proposal.authorizationId,
+            reviewKey: decision.reviewKey,
+            documentId: snapshot.documentId,
+            epoch: task.epoch,
+            observedAt: Date.now(),
+            source: source.href,
+            review: structuredClone(decision.review),
+          };
+          record.review.source = source.href;
+          validateReview(record, task);
+          // Immutable before-dispatch evidence. An existing operation identity cannot
+          // be rebound to a new review, including after a crash or a failed dispatch.
+          db.prepare(
+            "INSERT INTO bill_method_selections_v1 VALUES (?,?,?,?)",
+          ).run(taskId, proposal.id, ownerKey, JSON.stringify(record));
+          if (
+            JSON.stringify(this.loadMethodSelection(proposal.id)) !==
+            JSON.stringify(record)
+          )
+            throw new BillHostError("Method selection record conflict");
+          return record;
         },
         loadReview() {
           const task = requireOwned();
