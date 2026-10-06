@@ -301,7 +301,30 @@ export function formatCalendarEventTimeRange(
     Partial<Pick<LifeOpsCalendarEvent, "isAllDay" | "timezone">>,
 ): string {
   if (event.isAllDay) {
-    return "all day";
+    // Calendar all-day bounds are civil dates; never shift them into the
+    // owner's timezone. The stored end is exclusive, including across DST.
+    const civilDate = (value: string): Date | null => {
+      const key = /^(\d{4}-\d{2}-\d{2})(?:$|T)/.exec(value)?.[1];
+      if (!key || !Number.isFinite(Date.parse(value))) return null;
+      const date = new Date(`${key}T00:00:00.000Z`);
+      return Number.isFinite(date.getTime()) &&
+        date.toISOString().slice(0, 10) === key
+        ? date
+        : null;
+    };
+    const start = civilDate(event.startAt);
+    const exclusiveEnd = civilDate(event.endAt);
+    if (!start || !exclusiveEnd) return "all day (date unavailable)";
+    if (exclusiveEnd.getTime() <= start.getTime())
+      return "all day (date range unavailable)";
+    const end = new Date(exclusiveEnd.getTime() - 24 * 60 * 60 * 1000);
+    const format = (date: Date) =>
+      formatCalendarDatePart(date, "UTC", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    return `${format(start)}${end.getTime() === start.getTime() ? "" : ` – ${format(end)}`}, all day`;
   }
   const start = new Date(event.startAt);
   const end = new Date(event.endAt);

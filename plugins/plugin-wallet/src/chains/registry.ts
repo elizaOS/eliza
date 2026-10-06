@@ -820,6 +820,31 @@ async function getSolanaTokenDecimals(
   throw new Error(`Unable to fetch token decimals for ${mintAddress}`);
 }
 
+function parseSolanaTransferLamports(amount: string | undefined): number {
+  let lamports: InstanceType<typeof BigNumber>;
+  try {
+    lamports = new BigNumber(amount ?? "0").multipliedBy(LAMPORTS_PER_SOL);
+  } catch (cause) {
+    // error-policy:J2 Preserve malformed decimal input as a typed validation failure.
+    throw new ElizaError("SOL transfer amount is not a valid decimal value.", {
+      code: "SOLANA_TRANSFER_AMOUNT_INVALID",
+      cause,
+    });
+  }
+  if (
+    !lamports.isFinite() ||
+    lamports.lte(0) ||
+    !lamports.isInteger() ||
+    lamports.gt(Number.MAX_SAFE_INTEGER)
+  ) {
+    throw new ElizaError(
+      "SOL transfer amount must be a positive finite value exactly representable in safe integer lamports.",
+      { code: "SOLANA_TRANSFER_AMOUNT_INVALID" },
+    );
+  }
+  return lamports.toNumber();
+}
+
 async function executeSolanaTransfer(
   params: WalletRouterParams,
   context: WalletRouterContext,
@@ -827,36 +852,23 @@ async function executeSolanaTransfer(
   if (!params.recipient) {
     throw new Error("recipient is required for Solana transfer.");
   }
+  const tokenMint = resolveSolanaMint(params.fromToken);
+  const lamports =
+    tokenMint === SOL_MINT ? parseSolanaTransferLamports(params.amount) : null;
   const { keypair: senderKeypair } = await getWalletKey(context.runtime, true);
   if (!senderKeypair) {
     throw new Error("Solana keypair is not available.");
   }
   const connection = getSolanaConnection(context.runtime);
   const recipientPubkey = new PublicKey(params.recipient);
-  const tokenMint = resolveSolanaMint(params.fromToken);
   const instructions: TransactionInstruction[] = [];
 
-  if (tokenMint === SOL_MINT) {
-    const lamports = new BigNumber(params.amount ?? "0").multipliedBy(
-      LAMPORTS_PER_SOL,
-    );
-    if (!lamports.isFinite() || lamports.lte(0)) {
-      throw new Error("SOL transfer amount must be a positive finite value.");
-    }
-    const roundedLamports = lamports.integerValue(BigNumber.ROUND_HALF_UP);
-    if (
-      roundedLamports.lte(0) ||
-      roundedLamports.gt(Number.MAX_SAFE_INTEGER)
-    ) {
-      throw new Error(
-        "SOL transfer amount cannot be represented safely in lamports.",
-      );
-    }
+  if (lamports !== null) {
     instructions.push(
       SystemProgram.transfer({
         fromPubkey: senderKeypair.publicKey,
         toPubkey: recipientPubkey,
-        lamports: roundedLamports.toNumber(),
+        lamports,
       }),
     );
   } else {
