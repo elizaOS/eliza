@@ -837,11 +837,26 @@ async function executeSolanaTransfer(
   const instructions: TransactionInstruction[] = [];
 
   if (tokenMint === SOL_MINT) {
+    const lamports = new BigNumber(params.amount ?? "0").multipliedBy(
+      LAMPORTS_PER_SOL,
+    );
+    if (!lamports.isFinite() || lamports.lte(0)) {
+      throw new Error("SOL transfer amount must be a positive finite value.");
+    }
+    const roundedLamports = lamports.integerValue(BigNumber.ROUND_HALF_UP);
+    if (
+      roundedLamports.lte(0) ||
+      roundedLamports.gt(Number.MAX_SAFE_INTEGER)
+    ) {
+      throw new Error(
+        "SOL transfer amount cannot be represented safely in lamports.",
+      );
+    }
     instructions.push(
       SystemProgram.transfer({
         fromPubkey: senderKeypair.publicKey,
         toPubkey: recipientPubkey,
-        lamports: Math.round(Number(params.amount) * LAMPORTS_PER_SOL),
+        lamports: roundedLamports.toNumber(),
       }),
     );
   } else {
