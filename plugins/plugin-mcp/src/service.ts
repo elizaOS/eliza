@@ -47,7 +47,7 @@ import {
 import {
   BACKOFF_MULTIPLIER,
   type ConnectionState,
-  DEFAULT_MCP_TIMEOUT_SECONDS,
+  DEFAULT_MCP_TIMEOUT_MS,
   DEFAULT_PING_CONFIG,
   type HttpMcpServerConfig,
   INITIAL_RETRY_DELAY,
@@ -64,6 +64,8 @@ import {
   type StdioMcpServerConfig,
 } from "./types";
 import { buildMcpProviderData } from "./utils/mcp";
+
+const MAX_DISCOVERY_PAGES = 1000;
 /** Route every MCP HTTP request through core's DNS-pinned SSRF transport. */
 export async function guardedMcpFetch(input: string | URL, init?: RequestInit): Promise<Response> {
   const guarded = await fetchWithSsrfGuard({
@@ -490,13 +492,53 @@ export class McpService extends Service {
     const newError = connection.server.error ? `${connection.server.error}\n${error}` : error;
     connection.server.error = newError;
   }
+  private async fetchAllPages<T>(
+    serverName: string,
+    list: string,
+    fetchPage: (cursor?: string) => Promise<{ items: readonly T[]; nextCursor?: string }>
+  ): Promise<T[]> {
+    const items: T[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+    let pageCount = 0;
+    do {
+      if (pageCount++ === MAX_DISCOVERY_PAGES) {
+        throw new ElizaError("MCP discovery exceeded its pagination limit", {
+          code: "MCP_PAGINATION_LIMIT_EXCEEDED",
+          context: { serverName, list, maxPages: MAX_DISCOVERY_PAGES },
+          severity: "ephemeral",
+        });
+      }
+      const page = await fetchPage(cursor);
+      for (const item of page.items) items.push(item);
+      cursor = page.nextCursor;
+      // Cursors are opaque: an empty string is still a continuation, and an
+      // empty page does not terminate discovery while nextCursor is present.
+      if (cursor !== undefined) {
+        if (seenCursors.has(cursor)) {
+          throw new ElizaError("MCP server repeated a pagination cursor", {
+            code: "MCP_PAGINATION_CURSOR_REPEATED",
+            context: { serverName, list },
+            severity: "ephemeral",
+          });
+        }
+        seenCursors.add(cursor);
+      }
+    } while (cursor !== undefined);
+    return items;
+  }
   private async fetchToolsList(serverName: string): Promise<Tool[]> {
     const connection = this.getServerConnection(serverName);
     if (!connection) {
       return [];
     }
-    const response = await connection.client.listTools();
-    const tools = (response?.tools ?? []).flatMap((tool) => {
+    const discovered = await this.fetchAllPages(serverName, "tools/list", async (cursor) => {
+      const response = await connection.client.listTools(
+        cursor === undefined ? undefined : { cursor }
+      );
+      return { items: response?.tools ?? [], nextCursor: response?.nextCursor };
+    });
+    const tools = discovered.flatMap((tool) => {
       const processedTool = { ...tool };
       if (tool.inputSchema) {
         if (!this.compatibilityInitialized) {
@@ -533,16 +575,24 @@ export class McpService extends Service {
     if (!connection) {
       return [];
     }
-    const response = await connection.client.listResources();
-    return response?.resources ?? [];
+    return this.fetchAllPages(serverName, "resources/list", async (cursor) => {
+      const response = await connection.client.listResources(
+        cursor === undefined ? undefined : { cursor }
+      );
+      return { items: response?.resources ?? [], nextCursor: response?.nextCursor };
+    });
   }
   private async fetchResourceTemplatesList(serverName: string): Promise<ResourceTemplate[]> {
     const connection = this.getServerConnection(serverName);
     if (!connection) {
       return [];
     }
-    const response = await connection.client.listResourceTemplates();
-    return response?.resourceTemplates ?? [];
+    return this.fetchAllPages(serverName, "resources/templates/list", async (cursor) => {
+      const response = await connection.client.listResourceTemplates(
+        cursor === undefined ? undefined : { cursor }
+      );
+      return { items: response?.resourceTemplates ?? [], nextCursor: response?.nextCursor };
+    });
   }
   public getServers(): McpServer[] {
     return Array.from(this.connections.values())
@@ -568,11 +618,11 @@ export class McpService extends Service {
     if (connection.server.disabled) {
       throw new Error(`Server "${serverName}" is disabled`);
     }
-    let timeout = DEFAULT_MCP_TIMEOUT_SECONDS;
     const config = JSON.parse(connection.server.config) as McpServerConfig;
-    if (config.type === "stdio" && config.timeoutInMillis) {
-      timeout = config.timeoutInMillis;
-    }
+    const timeout =
+      config.type === "stdio"
+        ? (config.timeoutInMillis ?? DEFAULT_MCP_TIMEOUT_MS)
+        : (config.timeout ?? DEFAULT_MCP_TIMEOUT_MS);
     const result = await connection.client.callTool(
       {
         name: toolName,

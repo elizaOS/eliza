@@ -9,6 +9,7 @@
 
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { emitViewEvent } from "../events/view-events";
 import {
   loadContinuousChatMode,
   loadOsIntentAutoStartConsent,
@@ -16,7 +17,6 @@ import {
   saveContinuousChatMode,
   saveVadAutoStop,
 } from "../state/persistence";
-import { emitViewEvent } from "../views/view-event-bus";
 import {
   useVoiceSettingsApplyChannel,
   VOICE_SETTINGS_APPLY_EVENT,

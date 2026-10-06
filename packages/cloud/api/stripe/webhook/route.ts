@@ -6,7 +6,7 @@ import {
   moneyRateLimit,
   RateLimitPresets,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
-import { enqueue } from "@elizaos/cloud-shared/lib/queue/redis-queue";
+import { enqueue } from "@elizaos/cloud-shared/lib/redis-queue";
 import { appBillingTriggerFromVerifiedEvent } from "@elizaos/cloud-shared/lib/services/app-billing-webhook-intake";
 import {
   isStripeConfigured,

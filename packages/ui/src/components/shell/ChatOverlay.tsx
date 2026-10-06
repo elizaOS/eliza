@@ -53,6 +53,7 @@ import type {
 } from "../../api/client-types-chat";
 import { useComposerKeydown, useComposerPaste } from "../../chat/composer-core";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
+import { NATIVE_GLASS_DARK_TINT } from "../../config/theme.js";
 import {
   type BackIntentEventDetail,
   CHAT_CLOSE_EVENT,
@@ -110,7 +111,6 @@ import { readNotificationChatTarget } from "../../state/notifications/navigate-d
 import { markNotificationRead } from "../../state/notifications/notification-store";
 import { goHome } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
-import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
 import { tryHandleTutorialText } from "../../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { cn } from "../../utils/cn";

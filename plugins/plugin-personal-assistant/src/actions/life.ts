@@ -1370,6 +1370,9 @@ function formatOccurrenceDisambiguationLabel(
           day: "numeric",
           hour: "numeric",
           minute: "2-digit",
+          // The item's own zone: the host's zone (UTC on a cloud host) would
+          // show a 07:00 dose as 2:00 PM.
+          timeZone: explicitCadenceTimeZone(occurrence.timezone),
         }),
       );
     }

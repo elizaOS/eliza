@@ -640,7 +640,19 @@ export class GoalsDomain {
         : mergedMetadata,
       updatedAt: now.toISOString(),
     };
-    await this.ctx.repository.updateGoal(nextGoal);
+    // Only the review's own metadata keys are written back: the rest of
+    // `goal` may be stale by now (this can follow an LLM evaluation).
+    const metadataPatch = Object.fromEntries(
+      Object.entries(nextGoal.metadata ?? {}).filter(
+        ([key, value]) =>
+          JSON.stringify(goal.metadata?.[key]) !== JSON.stringify(value),
+      ),
+    );
+    await this.ctx.repository.updateGoalReview(this.ctx.agentId(), goal.id, {
+      reviewState,
+      metadataPatch,
+      updatedAt: nextGoal.updatedAt,
+    });
     await this.ctx.repository.createAuditEvent(
       createLifeOpsAuditEvent({
         agentId: this.ctx.agentId(),

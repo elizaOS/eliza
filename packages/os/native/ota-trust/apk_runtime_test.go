@@ -3,6 +3,7 @@ package otatrust
 import (
 	"archive/zip"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -54,9 +55,13 @@ func runtimeAPKFixture(t *testing.T, mutation string) (string, []byte) {
 	if mutation == "traversal" {
 		rows[0] = strings.Replace(rows[0], "agent/", "agent/../", 1)
 	}
-	inventory := []byte("senior-care-runtime-v1\n" + strings.Join(rows, "\n") + "\n")
+	host, err := requiredHostPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory := []byte(host.RuntimeInventoryHeader + "\n" + strings.Join(rows, "\n") + "\n")
 	a.Runtime.Inventory = bytesHash(inventory)
-	assets["assets/runtime-payload.tsv"] = inventory
+	assets[runtimeInventoryAsset] = inventory
 	switch mutation {
 	case "unlisted":
 		assets["assets/agent/unlisted.js"] = []byte("unexpected")
@@ -89,7 +94,7 @@ func runtimeAPKFixture(t *testing.T, mutation string) (string, []byte) {
 		}
 	}
 	if mutation == "duplicate-zip" {
-		entry, _ := writer.Create("assets/runtime-payload.tsv")
+		entry, _ := writer.Create(runtimeInventoryAsset)
 		entry.Write(inventory)
 	}
 	if err = writer.Close(); err != nil {
@@ -155,7 +160,7 @@ func TestActualPackagedRuntime(t *testing.T) {
 			defer archive.Close()
 			var inventory []byte
 			for _, entry := range archive.File {
-				if entry.Name == "assets/runtime-payload.tsv" {
+				if entry.Name == runtimeInventoryAsset {
 					inventory, err = readAPKEntry(entry, 2*1024*1024)
 					if err != nil {
 						t.Fatal(err)
@@ -223,4 +228,143 @@ func fixtureELF(machine uint16) []byte {
 	binary.LittleEndian.PutUint16(b[54:56], 56)
 	binary.LittleEndian.PutUint16(b[56:58], 1)
 	return b
+}
+
+// packagedRuntimeAPK zips testdata/runtime-apk, whose inventory and blobs were
+// written by plugin-native-agent's stageAndroidRuntimeInventory (the plugin's
+// native-host suite fails if they drift). Ignored packager inputs are restored:
+// the original archive (the blob's bytes) and an excluded model directory.
+func packagedRuntimeAPK(t *testing.T, mutate func(map[string][]byte)) string {
+	t.Helper()
+	root := filepath.Join("testdata", "runtime-apk")
+	files := map[string][]byte{}
+	err := filepath.WalkDir(root, func(name string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		data, err := os.ReadFile(name)
+		relative, _ := filepath.Rel(root, name)
+		files[filepath.ToSlash(relative)] = data
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		if strings.HasPrefix(name, "assets/runtime-blobs/") {
+			files["assets/agent/extension.tar.gz"] = data
+		}
+	}
+	files["assets/agent/models/model.bin"] = []byte("excluded synthetic model read directly from assets\n")
+	if mutate != nil {
+		mutate(files)
+	}
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	apk := filepath.Join(t.TempDir(), "packaged.apk")
+	file, err := os.Create(apk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(file)
+	for _, name := range names {
+		entry, err := writer.Create(name)
+		if err == nil {
+			_, err = entry.Write(files[name])
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return apk
+}
+
+func TestPackagerProducedRuntimeInventory(t *testing.T) {
+	var release releaseDescriptor
+	if err := json.Unmarshal(admissionVectors(t)[0].Release, &release); err != nil {
+		t.Fatal(err)
+	}
+	verify := func(apk string) error {
+		metadata, err := json.Marshal(preparationArtifact(t, apk, release.Candidate))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return VerifyRuntimeArtifact(apk, metadata, "github.com,updates.example.com", "arm64-v8a")
+	}
+	if err := verify(packagedRuntimeAPK(t, nil)); err != nil {
+		t.Fatalf("packager-produced runtime rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(map[string][]byte){
+		"legacy-inventory-path": func(files map[string][]byte) {
+			files["assets/runtime-payload.tsv"] = files[runtimeInventoryAsset]
+			delete(files, runtimeInventoryAsset)
+		},
+		"unlisted-agent-file": func(files map[string][]byte) { files["assets/agent/gateway/extra.mjs"] = []byte("unlisted") },
+		"unlisted-blob": func(files map[string][]byte) {
+			files["assets/runtime-blobs/"+strings.Repeat("0", 64)+".bin"] = []byte("unlisted")
+		},
+		"archive-without-blob": func(files map[string][]byte) { files["assets/agent/other.tar"] = []byte("unlisted") },
+		"excluded-prefix-only": func(files map[string][]byte) { files["assets/agent/models.txt"] = []byte("not excluded") },
+		"tampered-listed-asset": func(files map[string][]byte) {
+			files["assets/agent/gateway/bootstrap.mjs"] = []byte("synthetic bootstrap?")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			apk := packagedRuntimeAPK(t, mutate)
+			if name == "tampered-listed-asset" || name == "legacy-inventory-path" {
+				// Expectations come from the untampered inventory, as a signed release would.
+				metadata, _ := json.Marshal(preparationArtifact(t, packagedRuntimeAPK(t, nil), release.Candidate))
+				var artifact releaseArtifact
+				json.Unmarshal(metadata, &artifact)
+				data, _ := os.ReadFile(apk)
+				artifact.SHA256, artifact.Length = bytesHash(data), int64(len(data))
+				metadata, _ = json.Marshal(artifact)
+				if err := VerifyRuntimeArtifact(apk, metadata, "github.com,updates.example.com", "arm64-v8a"); err == nil {
+					t.Fatal("altered packaged runtime accepted")
+				}
+				return
+			}
+			if err := verify(apk); err == nil {
+				t.Fatal("unlisted packaged runtime asset accepted")
+			}
+		})
+	}
+	saved := compiledHostPolicyBase64
+	defer func() { compiledHostPolicyBase64 = saved }()
+	for name, change := range map[string]func(*hostPolicy){
+		"other-header":      func(p *hostPolicy) { p.RuntimeInventoryHeader = "independent-runtime-v1" },
+		"models-not-exempt": func(p *hostPolicy) { p.RuntimeExcludedAgentDirectories = []string{} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			compiledHostPolicyBase64 = saved
+			policy, err := requiredHostPolicy()
+			if err != nil {
+				t.Fatal(err)
+			}
+			change(&policy)
+			data, _ := json.Marshal(policy)
+			compiledHostPolicyBase64 = base64.RawURLEncoding.EncodeToString(data)
+			if err = verify(packagedRuntimeAPK(t, nil)); err == nil {
+				t.Fatal("runtime accepted outside host policy")
+			}
+		})
+	}
+}
+
+func TestReaddressedArchive(t *testing.T) {
+	destinations := map[string]string{"vector.tar.gz": strings.Repeat("a", 64), "bundle/plain.js": strings.Repeat("b", 64)}
+	for name, want := range map[string]bool{"vector.tar": true, "nested/vector.tar": true, "vector.tar.gz": true, "other.tar": false, "plain.js": false, "vector.tar.gz.bak": false} {
+		if readdressedArchive(name, destinations) != want {
+			t.Fatalf("%s: want %v", name, want)
+		}
+	}
 }

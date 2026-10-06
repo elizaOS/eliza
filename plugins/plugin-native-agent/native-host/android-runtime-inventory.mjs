@@ -13,6 +13,13 @@ export class RuntimeInventoryError extends Error {
 const fail = (message) => {
   throw new RuntimeInventoryError(message);
 };
+/** APK asset path (relative to `assets/`) that RuntimeBundleStore and the
+ * ota-trust `VerifyRuntimeArtifact` read. Hosts must not rename it. */
+export const ANDROID_RUNTIME_INVENTORY_ASSET = "agent-runtime.inventory";
+/** Default first-line format. A host that sets another format must pass the same
+ * value here, to RuntimeBundleStore and as its ota-trust `runtimeInventoryHeader`. */
+export const DEFAULT_ANDROID_RUNTIME_INVENTORY_FORMAT = "eliza-runtime-v1";
+const formatPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const safe = (value) =>
   typeof value === "string" &&
@@ -53,7 +60,10 @@ export function stageAndroidRuntimeInventory({
   assetsDirectory,
   nativeLibraryDirectory,
   excludedAgentDirectories = [],
+  format = DEFAULT_ANDROID_RUNTIME_INVENTORY_FORMAT,
 }) {
+  if (typeof format !== "string" || !formatPattern.test(format))
+    fail("Invalid runtime inventory format");
   directory(assetsDirectory);
   directory(nativeLibraryDirectory);
   const agent = path.join(assetsDirectory, "agent");
@@ -139,7 +149,7 @@ export function stageAndroidRuntimeInventory({
     if (!destinations.has(required)) fail("Incomplete runtime asset inventory");
   for (const required of ["libeliza_bun.so", "libeliza_ld_musl_aarch64.so"])
     if (!libraries.has(required)) fail("Incomplete runtime native inventory");
-  const manifest = Buffer.from(`eliza-runtime-v1\n${entries.join("\n")}\n`);
+  const manifest = Buffer.from(`${format}\n${entries.join("\n")}\n`);
   if (manifest.length > 2 * 1024 * 1024)
     fail("Runtime manifest exceeds size limit");
   const blobDirectory = path.join(assetsDirectory, "runtime-blobs");
@@ -164,7 +174,7 @@ export function stageAndroidRuntimeInventory({
       if (hash(read(file)) !== digest) fail("Existing runtime blob changed");
     } else fs.writeFileSync(file, bytes, { flag: "wx", mode: 0o600 });
   }
-  const target = path.join(assetsDirectory, "agent-runtime.inventory");
+  const target = path.join(assetsDirectory, ANDROID_RUNTIME_INVENTORY_ASSET);
   const temporary = `${target}.${randomUUID()}.tmp`;
   try {
     fs.writeFileSync(temporary, manifest, { flag: "wx", mode: 0o600 });

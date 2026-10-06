@@ -325,21 +325,25 @@ export function MediaGalleryView({
 
       // Scan the candidate tables concurrently — they are independent queries,
       // and the sequential loop made the gallery wait on up to 10 round-trips.
-      const scanResults = await Promise.all(
-        tablesToScan.slice(0, 10).map(async (tableName) => {
-          try {
-            const result: QueryResult = await client.executeDatabaseQuery(
-              `SELECT * FROM "${tableName}" LIMIT ${scanLimit}`,
-            );
-            const rows = Array.isArray(result.rows) ? result.rows : [];
-            return extractMediaFromRows(rows, tableName);
-          } catch {
-            // skip tables that fail
-            return [] as MediaItem[];
-          }
-        }),
-      );
-      for (const items of scanResults) allMedia.push(...items);
+      // Keep concurrency bounded while covering every candidate table. A
+      // fixed first-ten slice silently hid media in later plugin tables.
+      for (let offset = 0; offset < tablesToScan.length; offset += 10) {
+        const scanResults = await Promise.all(
+          tablesToScan.slice(offset, offset + 10).map(async (tableName) => {
+            try {
+              const result: QueryResult = await client.executeDatabaseQuery(
+                `SELECT * FROM "${tableName}" LIMIT ${scanLimit}`,
+              );
+              const rows = Array.isArray(result.rows) ? result.rows : [];
+              return extractMediaFromRows(rows, tableName);
+            } catch {
+              // skip tables that fail
+              return [] as MediaItem[];
+            }
+          }),
+        );
+        for (const items of scanResults) allMedia.push(...items);
+      }
 
       // Sort by date descending
       allMedia.sort((a, b) => {

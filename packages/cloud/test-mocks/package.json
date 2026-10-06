@@ -8,9 +8,9 @@
     ".": "./src/index.ts",
     "./hetzner": "./src/hetzner/index.ts",
     "./control-plane": "./src/control-plane/index.ts",
-    "./steward": "./src/steward/index.ts",
+    "./steward": "./src/steward.ts",
     "./provider-contract": "./src/provider-contract/index.ts",
-    "./stripe": "./src/stripe/index.ts"
+    "./stripe": "./src/stripe.ts"
   },
   "bin": {
     "hetzner-mock": "./bin/hetzner-mock.ts",

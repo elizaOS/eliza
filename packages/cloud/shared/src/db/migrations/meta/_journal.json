@@ -3529,6 +3529,13 @@
       "when": 1796083200151,
       "tag": "0533_subscription_invoice_debt_observations",
       "breakpoints": true
+    },
+    {
+      "idx": 504,
+      "version": "7",
+      "when": 1796083200152,
+      "tag": "0534_subscription_allowance_invoice_authority",
+      "breakpoints": true
     }
   ]
 }

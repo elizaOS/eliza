@@ -6,7 +6,7 @@ import {
   PagePanelContentArea,
   PagePanelContentRail,
   PagePanelFrame,
-} from "./page-panel-frame";
+} from "./page-panel-layout";
 
 describe("PagePanel routed-view layout", () => {
   afterEach(cleanup);

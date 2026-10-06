@@ -218,7 +218,14 @@ func TestTransportHasWholeSessionDeadline(t *testing.T) {
 	}
 }
 func TestRequestDeadlineInterruptsSlowBody(t *testing.T) {
-	transport, _ := localHTTPS(t, func(w http.ResponseWriter, r *http.Request) { w.(http.Flusher).Flush(); <-r.Context().Done() })
+	release := make(chan struct{})
+	transport, _ := localHTTPS(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.(http.Flusher).Flush()
+		// Keep the body open until cleanup. Returning on request cancellation
+		// can send a clean EOF that races the client's timeout assertion.
+		<-release
+	})
+	t.Cleanup(func() { close(release) })
 	transport.client.Timeout = 50 * time.Millisecond
 	started := time.Now()
 	if _, err := transport.Fetch("https://example.com/", 16); err == nil {

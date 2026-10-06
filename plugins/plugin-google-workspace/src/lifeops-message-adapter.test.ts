@@ -167,13 +167,15 @@ describe("GoogleGmailAdapter", () => {
             }) => {
               listCalls.push({ q: request.q, labelIds: request.labelIds });
               const after = /after:(\d+)/.exec(request.q);
+              const before = /before:(\d+)/.exec(request.q);
               const rows = mailbox.filter(
                 (row) =>
                   (!request.q.includes("in:inbox") || row.labelIds.includes("INBOX")) &&
                   (request.includeSpamTrash ||
                     !row.labelIds.some((label) => ["SPAM", "TRASH"].includes(label))) &&
                   (request.labelIds ?? []).every((label) => row.labelIds.includes(label)) &&
-                  (!after || row.at / 1000 > Number(after[1]))
+                  (!after || row.at / 1000 > Number(after[1])) &&
+                  (!before || row.at / 1000 < Number(before[1]))
               );
               return { data: { messages: rows.slice(0, request.maxResults) } };
             },
@@ -254,6 +256,25 @@ describe("GoogleGmailAdapter", () => {
       "sent_mid",
     ]);
     expect(listCalls.at(-1)?.q).toBe("in:anywhere after:6");
+
+    const older = await adapter.searchMessages(runtime, { untilMs: 7_500, limit: 2 });
+    expect(older.map((message) => message.externalId).sort()).toEqual(["sent_1", "sent_mid"]);
+    expect(listCalls.at(-1)?.q).toBe("in:anywhere before:8");
+
+    const boundary = await adapter.searchMessages(runtime, { untilMs: 7_499, limit: 2 });
+    expect(boundary.map((message) => message.externalId)).toEqual(["sent_1", "inbox_2"]);
+
+    const window = await adapter.searchMessages(runtime, {
+      sinceMs: 5_000,
+      untilMs: 7_499,
+      limit: 5,
+    });
+    expect(window.map((message) => message.externalId).sort()).toEqual([
+      "inbox_1",
+      "inbox_2",
+      "sent_1",
+    ]);
+    expect(listCalls.at(-1)?.q).toBe("in:anywhere after:4 before:8");
   });
   it.each(["byte", "line", "fragment"] as const)(
     "returns complete %s content with no implicit limit",
@@ -318,6 +339,47 @@ describe("GoogleGmailAdapter", () => {
       code: "GMAIL_MESSAGE_ACCOUNT_AMBIGUOUS",
     });
     expect((await adapter.getMessage(second, "gmail:msg_1"))?.id).toBe(peer.id);
+  });
+
+  it("lists and searches every requested Gmail account, newest first", async () => {
+    const byAccount: Record<string, ReturnType<typeof gmailMessage>[]> = {
+      work: [
+        gmailMessage({ externalId: "work_new", receivedAt: "2026-06-01T12:00:00.000Z" }),
+        gmailMessage({ externalId: "work_old", receivedAt: "2026-06-01T08:00:00.000Z" }),
+      ],
+      personal: [
+        gmailMessage({ externalId: "personal_mid", receivedAt: "2026-06-01T10:00:00.000Z" }),
+      ],
+    };
+    const fromAccount = vi.fn(
+      async ({ accountId }: { accountId: string }) => byAccount[accountId] ?? []
+    );
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: fromAccount,
+      searchGmailMessages: fromAccount,
+    });
+    const adapter = new GoogleGmailAdapter();
+
+    const listed = await adapter.listMessages(runtime, {
+      worldIds: ["work", "personal"],
+      limit: 2,
+    });
+    expect(listed.map((ref) => [ref.worldId, ref.externalId])).toEqual([
+      ["work", "work_new"],
+      ["personal", "personal_mid"],
+    ]);
+
+    const found = await adapter.searchMessages(runtime, {
+      content: "meet",
+      worldIds: ["work", "personal"],
+    });
+    expect(found.map((ref) => ref.externalId)).toEqual(["work_new", "personal_mid", "work_old"]);
+    expect(fromAccount.mock.calls.map(([params]) => params.accountId)).toEqual([
+      "work",
+      "personal",
+      "work",
+      "personal",
+    ]);
   });
 
   it("maps triage messages from the Google service into message refs", async () => {
