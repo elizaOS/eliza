@@ -99,34 +99,16 @@ export const listInboxAction: Action = {
         ? cached.filter((m) => requestedSources.includes(m.source))
         : cached;
 
-      if (messages.length === 0) {
-        messages = await service.triage(runtime, {
-          sources: params.sources,
-          sinceMs: params.sinceMs,
-          limit: params.limit,
-        });
-      } else {
-        messages = rankScored(messages);
-        // The live pull applies `sinceMs` inside the adapters; the cached
-        // path must enforce the same documented floor itself, or one
-        // identical request returns unfiltered rows when the store is warm
-        // and filtered rows when it is cold.
-        const sinceMs = params.sinceMs;
-        if (sinceMs !== undefined) {
-          messages = messages.filter((m) => m.receivedAtMs >= sinceMs);
-        }
+      messages = rankScored(messages);
+      const sinceMs = params.sinceMs;
+      if (sinceMs !== undefined) {
+        messages = messages.filter((m) => m.receivedAtMs >= sinceMs);
       }
-
       let unread = messages.filter((m) => !m.isRead);
 
-      // The store keeps every ref a sweep ever handed it and never prunes
-      // read rows, so a warm cache can stay all-read for the rest of the
-      // process while the connectors hold new mail. A cached view with zero
-      // unread falls through to the same live pull an empty cache gets; the
-      // action claims "no unread" only after the authoritative sources
-      // agree. A cache-empty start already pulled above, so the guard skips
-      // a duplicate sweep for that path.
-      if (unread.length === 0 && messages.length > 0) {
+      // A cold, all-read, or out-of-window cache needs exactly one live pull
+      // before it can establish that no unread messages match the request.
+      if (unread.length === 0) {
         messages = await service.triage(runtime, {
           sources: params.sources,
           sinceMs: params.sinceMs,
