@@ -123,6 +123,7 @@ export function buildTaskRuntime(
       const files = {};
       for (const name of [
         "errors.ts",
+        "utils/errors.ts",
         "messaging/task-events.ts",
         "messaging/task-widgets.ts",
         "types/interactions.ts",
