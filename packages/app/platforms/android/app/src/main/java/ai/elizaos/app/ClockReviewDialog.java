@@ -33,6 +33,11 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
         void completed(ClockConsentCoordinator.Result result, String reviewToken);
         void failed(Exception error);
     }
+    interface ClaimedPreparation {
+        /** Start asynchronous authenticated server approval/claim after this native gesture. */
+        void prepare(Completion completion);
+        interface Completion { void ready(); void failed(Exception error); }
+    }
     private static final class Pending {
         final ClockConsentCoordinator.Identity identity;
         final Callback callback;
@@ -99,6 +104,56 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
         if (state.result != null) callback.completed(state.result, null);
     }
 
+    /** Present a pending server proposal once; preparation runs off-thread and returns to this Activity. */
+    void reviewPending(ClockConsentCoordinator.Identity identity, ClockHandoff.Request request, String scopeDescription,
+                       ClaimedPreparation preparation, Callback callback) {
+        Pending review = new Pending(identity, Objects.requireNonNull(callback));
+        String key = key(identity);
+        try {
+            current(); request.requireCurrentTimeZone(ZoneId.systemDefault().getId());
+            if (pending.containsKey(key) || active.containsKey(key)) throw new IllegalStateException("Clock native review already pending");
+            pending.put(key, review); active.put(key, identity);
+            review.dialog = new AlertDialog.Builder(activity).setTitle("Review Clock request")
+                    .setMessage(description(request) + "\n\n" + scopeDescription)
+                    .setPositiveButton("Open Clock", (dialog, which) -> {
+                        try {
+                            current(); request.requireCurrentTimeZone(ZoneId.systemDefault().getId());
+                            preparation.prepare(new ClaimedPreparation.Completion() {
+                                @Override public void ready() { activity.runOnUiThread(() -> claimed(review, request)); }
+                                @Override public void failed(Exception error) { activity.runOnUiThread(() -> preparationFailed(review, error)); }
+                            });
+                        } catch (RuntimeException error) {
+                            // error-policy:J1 stale gestures cannot authorize a server decision.
+                            preparationFailed(review, error);
+                        }
+                    }).setNegativeButton("Cancel", (dialog, which) -> cancel(review))
+                    .setOnCancelListener(dialog -> cancel(review)).create();
+            review.dialog.show();
+        } catch (RuntimeException error) {
+            // error-policy:J1 native presentation failures settle the renderer call.
+            if (pending.get(key) == review) { pending.remove(key); active.remove(key); }
+            callback.failed(error);
+        }
+    }
+    private void claimed(Pending review, ClockHandoff.Request request) {
+        if (pending.get(key(review.identity)) != review) return;
+        try {
+            current();
+            ClockConsentCoordinator.Review state = coordinator.reviewClock(review.identity, request);
+            if (state.result != null) {
+                pending.remove(key(review.identity)); active.remove(key(review.identity));
+                review.callback.completed(state.result, null);
+            } else approve(review, request);
+        } catch (IOException | RuntimeException error) {
+            // error-policy:J1 failed admission must cancel native consent before reporting.
+            preparationFailed(review, error);
+        }
+    }
+    private void preparationFailed(Pending review, Exception error) {
+        if (pending.remove(key(review.identity)) != review) return;
+        cancelAfterFailure(review.identity, error); review.callback.failed(error);
+    }
+
     private void approve(Pending review, ClockHandoff.Request request) {
         if (pending.remove(key(review.identity)) != review) return;
         String token;
@@ -117,12 +172,18 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
     }
 
     void confirmClock(ClockConsentCoordinator.Identity identity, String token, Callback callback) {
+        confirmClock(identity, token, callback, () -> {});
+    }
+    void confirmClock(ClockConsentCoordinator.Identity identity, String token, Callback callback, Runnable dispatchFence) {
         ClockConsentCoordinator.Result result;
         try {
             current();
             result = coordinator.confirmClock(identity, token, (request, consent) -> {
                 current();
-                return ClockHandoff.dispatch(activity, request, consent);
+                dispatchFence.run();
+                return ClockHandoff.dispatch(activity, request, reviewed -> {
+                    current(); dispatchFence.run(); consent.consume(reviewed);
+                });
             });
             active.remove(key(identity));
             current();
@@ -190,11 +251,18 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
     private static String key(ClockConsentCoordinator.Identity identity) {
         return identity.scope + ":" + identity.proposalId + ":" + identity.operationId;
     }
-    private static String description(ClockHandoff.Request request) {
+    static String description(ClockHandoff.Request request) {
         switch (request.action) {
             case SET:
-                return String.format(Locale.ROOT, "Set alarm for %02d:%02d\nLabel: %s\nPhone timezone: %s\n\nOpening Clock may set or update the alarm immediately. No second confirmation is guaranteed.",
-                        request.hour, request.minute, request.label, request.timeZone);
+                String repeat = "Once (no repeat days)";
+                if (request.days != null && !request.days.isEmpty()) {
+                    String[] names = {"", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+                    ArrayList<String> selected = new ArrayList<>();
+                    for (int day : request.days) selected.add(names[day]);
+                    repeat = String.join(", ", selected) + " (every week)";
+                }
+                return String.format(Locale.ROOT, "Set alarm for %02d:%02d\nRepeat: %s\nLabel: %s\nPhone timezone: %s\n\nOpening Clock may set or update the alarm immediately. Clock owns this alarm and its repeat schedule. No second confirmation is guaranteed.",
+                        request.hour, request.minute, repeat, request.label, request.timeZone);
             case SHOW: return "Open the external Clock alarm list. This app cannot confirm alarm state.";
             case DISMISS: return "Ask the external Clock app to dismiss an alarm. No specific alarm is selected; Clock determines the affected alarm. It may act immediately.";
             case SNOOZE: return "Ask the external Clock app to snooze an alarm for " + request.snoozeMinutes

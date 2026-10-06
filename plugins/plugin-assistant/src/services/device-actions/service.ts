@@ -20,6 +20,8 @@ import {
 import {
   assertClockObservation,
   CLOCK_CAPABILITY,
+  CLOCK_REPEAT_CAPABILITY,
+  clockCapabilityAvailable,
   isClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
@@ -190,6 +192,7 @@ export class DeviceActionService {
           REMINDER_TIMING_CAPABILITY,
           REMINDER_CREATE_CAPABILITY,
           CLOCK_CAPABILITY,
+          CLOCK_REPEAT_CAPABILITY,
           MAPS_CAPABILITY,
         ],
       };
@@ -202,7 +205,7 @@ export class DeviceActionService {
     const hash = keyHash(c.deviceKey);
     const rows = await executeRawSqlTx(
       tx,
-      `SELECT enrollment_id, key_hash, revoked, workflow_protocol, view_profile FROM client_devices WHERE ${scope(c, this.runtime.agentId)} FOR UPDATE`,
+      `SELECT agent_id, subject_user_id, installation_id, enrollment_id, key_hash, revoked, workflow_protocol, view_profile FROM client_devices WHERE ${scope(c, this.runtime.agentId)} FOR UPDATE`,
     );
     const row = rows[0];
     if (
@@ -232,6 +235,24 @@ export class DeviceActionService {
   }
   async authenticate(c: DeviceCredential): Promise<void> {
     await this.access(c, async () => {});
+  }
+  /** Canonical enrollment identity for a native journal, authenticated by the existing device store. */
+  async context(c: DeviceCredential): Promise<{
+    agentId: string;
+    subjectUserId: string;
+    installationId: string;
+    enrollmentId: string;
+    scope: string;
+  }> {
+    return this.access(c, async (_q, row) => {
+      const identity = {
+        agentId: identifier(row.agent_id),
+        subjectUserId: text(row.subject_user_id, 256),
+        installationId: identifier(row.installation_id),
+        enrollmentId: identifier(row.enrollment_id),
+      };
+      return { ...identity, scope: digest(identity) };
+    });
   }
   async viewProfile(c: DeviceCredential): Promise<DeviceViewProfile | null> {
     return this.access(c, async (_q, row) =>
@@ -323,7 +344,7 @@ export class DeviceActionService {
     const validated = validateDeviceOperation(operation);
     if (
       isClockOperation(validated) &&
-      !c.capabilities?.includes(CLOCK_CAPABILITY)
+      !clockCapabilityAvailable(validated, c.capabilities)
     )
       throw new DeviceActionError("Clock capability unavailable");
     if (isMapsOperation(validated)) {
@@ -660,7 +681,7 @@ export class DeviceActionService {
     const payload = validateDevicePayload(request.payload);
     if (
       isClockOperation(payload.operation) &&
-      !c.capabilities?.includes(CLOCK_CAPABILITY)
+      !clockCapabilityAvailable(payload.operation, c.capabilities)
     )
       throw new DeviceActionError("Clock capability unavailable");
     if (
@@ -795,7 +816,7 @@ export class DeviceActionService {
       const payload = validateDevicePayload(request.payload);
       if (
         isClockOperation(payload.operation) &&
-        !c.capabilities?.includes(CLOCK_CAPABILITY)
+        !clockCapabilityAvailable(payload.operation, c.capabilities)
       )
         throw new DeviceActionError("Clock capability unavailable");
       if (
@@ -957,7 +978,7 @@ export class DeviceActionService {
       const payload = validateDevicePayload(request.payload);
       if (
         isClockOperation(payload.operation) &&
-        !c.capabilities?.includes(CLOCK_CAPABILITY)
+        !clockCapabilityAvailable(payload.operation, c.capabilities)
       )
         throw new DeviceActionError("Clock capability unavailable");
       if (

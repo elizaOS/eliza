@@ -4,6 +4,16 @@ import {
   validateClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
+
+export type { ClockOperation, ClockResult } from "./clock-contract.ts";
+export {
+  CLOCK_CAPABILITY,
+  CLOCK_REPEAT_CAPABILITY,
+  clockCapabilityAvailable,
+  clockTimeZone,
+  validateClockOperation,
+  validateClockResult,
+} from "./clock-contract.ts";
 export interface ClockJournalIdentity {
   scope: string;
   proposalId: string;

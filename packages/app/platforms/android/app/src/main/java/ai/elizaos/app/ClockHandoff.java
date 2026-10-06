@@ -14,6 +14,7 @@ import android.content.pm.ResolveInfo;
 import android.provider.AlarmClock;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -24,18 +25,36 @@ final class ClockHandoff {
         final Action action;
         final int hour, minute, snoozeMinutes;
         final String label, timeZone;
+        /** null preserves legacy omitted repeat; explicit empty means one-off. Calendar days are 1..7. */
+        final List<Integer> days;
 
         private Request(Action action, int hour, int minute, int snoozeMinutes,
-                        String label, String timeZone) {
+                        String label, String timeZone, List<Integer> days) {
             this.action = Objects.requireNonNull(action);
             this.hour = hour;
             this.minute = minute;
             this.snoozeMinutes = snoozeMinutes;
             this.label = label;
             this.timeZone = timeZone;
+            this.days = days;
         }
 
         static Request set(int hour, int minute, String label, String timeZone) {
+            return setRequest(hour, minute, label, timeZone, null);
+        }
+
+        static Request set(int hour, int minute, String label, String timeZone, List<Integer> days) {
+            List<Integer> copy = Collections.unmodifiableList(new ArrayList<>(Objects.requireNonNull(days)));
+            boolean[] seen = new boolean[8];
+            for (int day : copy) {
+                if (day < 1 || day > 7 || seen[day])
+                    throw new IllegalArgumentException("Invalid Clock repeat days");
+                seen[day] = true;
+            }
+            return setRequest(hour, minute, label, timeZone, copy);
+        }
+
+        private static Request setRequest(int hour, int minute, String label, String timeZone, List<Integer> days) {
             if (hour < 0 || hour > 23 || minute < 0 || minute > 59)
                 throw new IllegalArgumentException("Invalid Clock time");
             Objects.requireNonNull(label);
@@ -45,17 +64,17 @@ final class ClockHandoff {
                     || !timeZone.matches("[A-Za-z_]+(?:/[A-Za-z0-9_+.-]+)*"))
                 throw new IllegalArgumentException("Invalid Clock timezone");
             ZoneId.of(timeZone);
-            return new Request(Action.SET, hour, minute, 0, label, timeZone);
+            return new Request(Action.SET, hour, minute, 0, label, timeZone, days);
         }
 
         static Request snooze(int minutes) {
             if (minutes < 1 || minutes > 60)
                 throw new IllegalArgumentException("Invalid Clock snooze duration");
-            return new Request(Action.SNOOZE, 0, 0, minutes, null, null);
+            return new Request(Action.SNOOZE, 0, 0, minutes, null, null, null);
         }
 
-        static Request show() { return new Request(Action.SHOW, 0, 0, 0, null, null); }
-        static Request dismiss() { return new Request(Action.DISMISS, 0, 0, 0, null, null); }
+        static Request show() { return new Request(Action.SHOW, 0, 0, 0, null, null, null); }
+        static Request dismiss() { return new Request(Action.DISMISS, 0, 0, 0, null, null, null); }
 
         void requireCurrentTimeZone(String observed) {
             if (action == Action.SET && !timeZone.equals(observed))
@@ -110,11 +129,14 @@ final class ClockHandoff {
     private static Intent intentFor(Request request) {
         switch (request.action) {
             case SET:
-                return new Intent(AlarmClock.ACTION_SET_ALARM)
+                Intent alarm = new Intent(AlarmClock.ACTION_SET_ALARM)
                         .putExtra(AlarmClock.EXTRA_HOUR, request.hour)
                         .putExtra(AlarmClock.EXTRA_MINUTES, request.minute)
                         .putExtra(AlarmClock.EXTRA_MESSAGE, request.label)
                         .putExtra(AlarmClock.EXTRA_SKIP_UI, false);
+                if (request.days != null && !request.days.isEmpty())
+                    alarm.putIntegerArrayListExtra(AlarmClock.EXTRA_DAYS, new ArrayList<>(request.days));
+                return alarm;
             case SHOW: return new Intent(AlarmClock.ACTION_SHOW_ALARMS);
             case DISMISS: return new Intent(AlarmClock.ACTION_DISMISS_ALARM);
             case SNOOZE:

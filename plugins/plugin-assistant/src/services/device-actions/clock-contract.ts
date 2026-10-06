@@ -1,5 +1,10 @@
 /** Approved Android Clock requests may mutate alarms. A dispatch receipt never proves the final alarm state. */
 export const CLOCK_CAPABILITY = "clock.handoff.v1";
+/** Explicit days require v2 so an older adapter cannot silently drop recurrence. */
+export const CLOCK_REPEAT_CAPABILITY = "clock.handoff.v2";
+/** Android AlarmClock.EXTRA_DAYS uses Calendar.SUNDAY=1 through SATURDAY=7. */
+export const CLOCK_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+export type ClockDay = (typeof CLOCK_DAYS)[number];
 export type ClockOperation =
   | {
       type: "clock_handoff";
@@ -8,6 +13,8 @@ export type ClockOperation =
       minute: number;
       label: string;
       timeZone: string;
+      /** Omitted: legacy v1 one-off. []: explicit one-off. Otherwise exact weekly days. */
+      days?: ClockDay[];
     }
   | { type: "clock_handoff"; action: "snooze"; snoozeMinutes: number }
   | { type: "clock_handoff"; action: "show" | "dismiss" };
@@ -38,6 +45,25 @@ function integer(value: unknown, min: number, max: number): number {
     throw Error("Invalid Clock number");
   return value;
 }
+export function clockDays(value: unknown): ClockDay[] {
+  if (!Array.isArray(value) || value.length > CLOCK_DAYS.length)
+    throw Error("Invalid Clock repeat days");
+  const days = Array.from(value, (day) => integer(day, 1, 7) as ClockDay);
+  if (new Set(days).size !== days.length)
+    throw Error("Duplicate Clock repeat days");
+  return days;
+}
+export function clockCapabilityAvailable(
+  operation: ClockOperation,
+  capabilities: readonly string[] | undefined,
+): boolean {
+  if (operation.action === "set" && Object.hasOwn(operation, "days"))
+    return capabilities?.includes(CLOCK_REPEAT_CAPABILITY) === true;
+  return (
+    capabilities?.includes(CLOCK_CAPABILITY) === true ||
+    capabilities?.includes(CLOCK_REPEAT_CAPABILITY) === true
+  );
+}
 export function clockTimeZone(value: unknown): string {
   if (
     typeof value !== "string" ||
@@ -63,7 +89,16 @@ export function validateClockOperation(value: unknown): ClockOperation {
   const v = object(value);
   if (v.type !== "clock_handoff") throw Error("Invalid Clock operation");
   if (v.action === "set") {
-    keys(v, ["type", "action", "hour", "minute", "label", "timeZone"]);
+    const hasDays = Object.hasOwn(v, "days");
+    keys(v, [
+      "type",
+      "action",
+      "hour",
+      "minute",
+      "label",
+      "timeZone",
+      ...(hasDays ? ["days"] : []),
+    ]);
     if (
       typeof v.label !== "string" ||
       v.label.length > 200 ||
@@ -80,6 +115,7 @@ export function validateClockOperation(value: unknown): ClockOperation {
       minute: integer(v.minute, 0, 59),
       label: v.label,
       timeZone: clockTimeZone(v.timeZone),
+      ...(hasDays ? { days: clockDays(v.days) } : {}),
     };
   }
   if (v.action === "snooze") {

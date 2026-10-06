@@ -6,12 +6,20 @@
 package ai.elizaos.app;
 
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Arrays;
+import java.util.HexFormat;
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -61,15 +69,161 @@ public final class ClockConsentCoordinatorTest {
         return (request, consumed) -> { consumed.consume(request); effects.incrementAndGet(); return ClockHandoff.Outcome.OPENED; };
     }
     private static Path journal(Path root, String name) { return root.resolve(name); }
+    private static Path stored(Path directory) throws IOException {
+        try (var files = Files.list(directory)) {
+            return files.filter(path -> path.getFileName().toString().matches("[a-f0-9]{64}")).findFirst().orElseThrow();
+        }
+    }
+    /** Independent old-format fixture: no recurrence field existed in CLK1. */
+    private static Path legacy(Path directory, ClockConsentCoordinator.Identity id,
+                               ClockHandoff.Request request, String phase, String result, String token) throws Exception {
+        ByteArrayOutputStream payload = new ByteArrayOutputStream();
+        try (DataOutputStream output = new DataOutputStream(payload)) {
+            output.writeInt(0x434c4b31);
+            output.writeUTF(id.scope); output.writeUTF(id.proposalId); output.writeUTF(id.operationId);
+            output.writeUTF("owner"); output.writeUTF(DIGEST); output.writeUTF("SET");
+            output.writeInt(request.hour); output.writeInt(request.minute); output.writeUTF(request.label); output.writeUTF(request.timeZone);
+            output.writeUTF(phase);
+            output.writeUTF(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8))));
+            output.writeLong(1000); output.writeLong(121000); output.writeUTF(result);
+        }
+        Path file = directory.resolve(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest((id.scope + ":" + id.proposalId).getBytes(StandardCharsets.UTF_8))));
+        savePayload(file, payload.toByteArray());
+        return file;
+    }
+    private static void savePayload(Path file, byte[] payload) throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        bytes.write(payload); bytes.write(MessageDigest.getInstance("SHA-256").digest(payload));
+        Files.write(file, bytes.toByteArray());
+    }
+    private static void repeatContracts(Path root) throws Exception {
+        AtomicLong clock = new AtomicLong(1000);
+        AtomicInteger effects = new AtomicInteger();
+        for (List<Integer> days : List.of(List.<Integer>of(), List.of(1, 2, 3, 4, 5, 6, 7),
+                List.of(2, 3, 4, 5, 6), List.of(7, 1, 3))) {
+            ClockConsentCoordinator.Identity id = identity("repeat-" + effects.get());
+            ClockHandoff.Request request = ClockHandoff.Request.set(9, 0, "Wake up", "UTC", days);
+            AtomicReference<ClockConsentCoordinator.ApprovedEntry> authority = new AtomicReference<>(approved(id, request, "owner"));
+            Path directory = journal(root, id.proposalId);
+            ClockConsentCoordinator coordinator = coordinator(directory, "owner", authority, clock);
+            String token = consent(coordinator, id, request);
+            ClockConsentCoordinator restarted = coordinator(directory, "owner", authority, clock);
+            check(restarted.reviewClock(id, request).request.days.equals(days), "Exact repeat must survive restart");
+            ClockHandoff.Request omitted = ClockHandoff.Request.set(9, 0, "Wake up", "UTC");
+            rejects(() -> restarted.reviewClock(id, omitted));
+            ClockHandoff.Request changed = ClockHandoff.Request.set(9, 0, "Wake up", "UTC", days.equals(List.of(2)) ? List.of(3) : List.of(2));
+            authority.set(approved(id, changed, "owner"));
+            rejects(() -> restarted.confirmClock(id, token, dispatch(effects)));
+            authority.set(approved(id, request, "owner"));
+            rejects(() -> restarted.confirmClock(id, token, (operation, consume) -> {
+                consume.consume(changed); effects.incrementAndGet(); return ClockHandoff.Outcome.OPENED;
+            }));
+            int before = effects.get();
+            check(restarted.confirmClock(id, token, (operation, consume) -> {
+                check(operation.days.equals(days), "Dispatcher must receive exactly reviewed repeat");
+                consume.consume(operation); effects.incrementAndGet(); return ClockHandoff.Outcome.OPENED;
+            }) == ClockConsentCoordinator.Result.OPENED, "Repeat should dispatch once");
+            check(coordinator(directory, "owner", authority, clock).confirmClock(id, token, dispatch(effects))
+                    == ClockConsentCoordinator.Result.OPENED && effects.get() == before + 1, "Repeat receipt must prevent replay");
+        }
+        ClockConsentCoordinator.Identity id = identity("repeat-tamper");
+        ClockHandoff.Request request = ClockHandoff.Request.set(9, 0, "Wake up", "UTC", List.of(2, 3, 4, 5, 6));
+        AtomicReference<ClockConsentCoordinator.ApprovedEntry> authority = new AtomicReference<>(approved(id, request, "owner"));
+        Path directory = journal(root, id.proposalId);
+        ClockConsentCoordinator coordinator = coordinator(directory, "owner", authority, clock);
+        String token = consent(coordinator, id, request);
+        Path file = stored(directory);
+        byte[] original = Files.readAllBytes(file);
+        byte[] payload = Arrays.copyOf(original, original.length - 32);
+        int dayOffset;
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(payload))) {
+            check(input.readInt() == 0x434c4b32, "New recurrence entries must use CLK2");
+            for (int field = 0; field < 6; field++) input.readUTF();
+            input.readInt(); input.readInt(); input.readUTF(); input.readUTF();
+            check(input.readInt() == 5, "Journal must retain explicit repeat count");
+            dayOffset = payload.length - input.available();
+        }
+        java.nio.ByteBuffer.wrap(payload).putInt(dayOffset, 1);
+        savePayload(file, payload);
+        rejects(() -> coordinator(directory, "owner", authority, clock).confirmClock(id, token, dispatch(effects)));
+        java.nio.ByteBuffer.wrap(payload).putInt(dayOffset, 0);
+        savePayload(file, payload);
+        rejects(() -> coordinator(directory, "owner", authority, clock).reviewClock(id, request));
+        java.nio.ByteBuffer.wrap(payload).putInt(dayOffset, 3);
+        savePayload(file, payload);
+        rejects(() -> coordinator(directory, "owner", authority, clock).reviewClock(id, request));
+        java.nio.ByteBuffer.wrap(payload).putInt(dayOffset - 4, 8);
+        savePayload(file, payload);
+        rejects(() -> coordinator(directory, "owner", authority, clock).reviewClock(id, request));
+        Files.write(file, original);
+        check(coordinator(directory, "owner", authority, clock).confirmClock(id, token, dispatch(effects))
+                == ClockConsentCoordinator.Result.OPENED && effects.get() == 5, "Tampered repeat must cause no effect");
+
+        for (String phase : List.of("DISPATCHED", "COMPLETE", "CANCELLED")) {
+            ClockConsentCoordinator.Identity oldId = identity("legacy-" + phase);
+            ClockHandoff.Request oldRequest = ClockHandoff.Request.set(9, 0, "Old", "UTC");
+            AtomicReference<ClockConsentCoordinator.ApprovedEntry> oldAuthority = new AtomicReference<>(approved(oldId, oldRequest, "owner"));
+            Path oldDirectory = journal(root, oldId.proposalId);
+            ClockConsentCoordinator old = coordinator(oldDirectory, "owner", oldAuthority, clock);
+            String oldToken = "c".repeat(64);
+            Path oldFile = legacy(oldDirectory, oldId, oldRequest, phase, phase.equals("COMPLETE") ? "OPENED" : "", oldToken);
+            byte[] oldBytes = Files.readAllBytes(oldFile);
+            ClockConsentCoordinator.Result expected = phase.equals("DISPATCHED") ? ClockConsentCoordinator.Result.UNKNOWN
+                    : phase.equals("COMPLETE") ? ClockConsentCoordinator.Result.OPENED : ClockConsentCoordinator.Result.DENIED;
+            check(old.reviewClock(oldId, oldRequest).result == expected, "Legacy receipt must reconcile unchanged");
+            check(coordinator(oldDirectory, "owner", oldAuthority, clock).confirmClock(oldId, oldToken, dispatch(effects))
+                    == expected && effects.get() == 5, "Legacy consumed/cancelled receipt must never replay");
+            old.cancelClock(oldId);
+            check(Arrays.equals(oldBytes, Files.readAllBytes(oldFile)), "Legacy consumed receipt bytes must stay untouched");
+            ClockHandoff.Request explicit = ClockHandoff.Request.set(9, 0, "Old", "UTC", List.of());
+            oldAuthority.set(approved(oldId, explicit, "owner"));
+            rejects(() -> old.reviewClock(oldId, explicit));
+            check(Arrays.equals(oldBytes, Files.readAllBytes(oldFile)), "Changed repeat cannot overwrite old receipt");
+        }
+        ClockConsentCoordinator.Identity pendingId = identity("legacy-consent");
+        ClockHandoff.Request pendingRequest = ClockHandoff.Request.set(9, 0, "Old", "UTC");
+        AtomicReference<ClockConsentCoordinator.ApprovedEntry> pendingAuthority = new AtomicReference<>(approved(pendingId, pendingRequest, "owner"));
+        Path pendingDirectory = journal(root, pendingId.proposalId);
+        ClockConsentCoordinator pending = coordinator(pendingDirectory, "owner", pendingAuthority, clock);
+        String oldToken = "d".repeat(64);
+        Path pendingFile = legacy(pendingDirectory, pendingId, pendingRequest, "CONSENT", "", oldToken);
+        check(pending.confirmClock(pendingId, oldToken, dispatch(effects)) == ClockConsentCoordinator.Result.OPENED,
+                "Previously approved legacy consent should retain its one-off contract");
+        try (DataInputStream input = new DataInputStream(Files.newInputStream(pendingFile))) {
+            check(input.readInt() == 0x434c4b31, "Legacy pending transitions must retain CLK1 encoding");
+        }
+        check(coordinator(pendingDirectory, "owner", pendingAuthority, clock).confirmClock(pendingId, oldToken, dispatch(effects))
+                == ClockConsentCoordinator.Result.OPENED && effects.get() == 6, "Legacy transition receipt must never replay");
+
+        ClockConsentCoordinator.Identity crashId = identity("repeat-crash");
+        ClockHandoff.Request crashRequest = ClockHandoff.Request.set(9, 0, "Daily", "UTC", List.of(1, 2, 3, 4, 5, 6, 7));
+        AtomicReference<ClockConsentCoordinator.ApprovedEntry> crashAuthority = new AtomicReference<>(approved(crashId, crashRequest, "owner"));
+        Path crashDirectory = journal(root, crashId.proposalId);
+        ClockConsentCoordinator crash = coordinator(crashDirectory, "owner", crashAuthority, clock);
+        String crashToken = consent(crash, crashId, crashRequest);
+        Process child = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-cp", System.getProperty("java.class.path"), ClockConsentCoordinatorTest.class.getName(),
+                "crash-repeat", crashDirectory.toString(), crashToken).inheritIO().start();
+        check(child.waitFor() == 19, "Recurring child must die after durable consume");
+        ClockConsentCoordinator afterCrash = coordinator(crashDirectory, "owner", crashAuthority, clock);
+        check(afterCrash.reviewClock(crashId, crashRequest).result == ClockConsentCoordinator.Result.UNKNOWN,
+                "Recurring process death must reconcile unknown");
+        check(afterCrash.confirmClock(crashId, crashToken, dispatch(effects)) == ClockConsentCoordinator.Result.UNKNOWN
+                && effects.get() == 6, "Recurring process death must never replay");
+    }
 
     public static void main(String[] args) throws Exception {
-        if (args.length > 0 && args[0].equals("crash")) {
+        if (args.length > 0 && (args[0].equals("crash") || args[0].equals("crash-repeat"))) {
             Path directory = Path.of(args[1]);
-            ClockConsentCoordinator.Identity id = identity("crash");
-            AtomicReference<ClockConsentCoordinator.ApprovedEntry> authority = new AtomicReference<>(approved(id, ClockHandoff.Request.show(), "owner"));
+            boolean repeat = args[0].equals("crash-repeat");
+            ClockConsentCoordinator.Identity id = identity(repeat ? "repeat-crash" : "crash");
+            ClockHandoff.Request request = repeat ? ClockHandoff.Request.set(9, 0, "Daily", "UTC", List.of(1, 2, 3, 4, 5, 6, 7))
+                    : ClockHandoff.Request.show();
+            AtomicReference<ClockConsentCoordinator.ApprovedEntry> authority = new AtomicReference<>(approved(id, request, "owner"));
             ClockConsentCoordinator coordinator = coordinator(directory, "owner", authority, new AtomicLong(1000));
-            coordinator.confirmClock(id, args[2], (request, consume) -> {
-                consume.consume(request);
+            coordinator.confirmClock(id, args[2], (operation, consume) -> {
+                consume.consume(operation);
                 Runtime.getRuntime().halt(19);
                 throw new AssertionError("halt returned");
             });
@@ -77,6 +231,7 @@ public final class ClockConsentCoordinatorTest {
         }
         Path root = Files.createTempDirectory("eliza-clock-consent-contract-").toRealPath();
         try {
+            repeatContracts(root);
             AtomicLong clock = new AtomicLong(1000);
             ClockHandoff.Request request = ClockHandoff.Request.set(7, 30, "Wake up", "America/Los_Angeles");
             ClockConsentCoordinator.Identity id = identity("one");
@@ -85,8 +240,16 @@ public final class ClockConsentCoordinatorTest {
             AtomicReference<ClockConsentCoordinator.ApprovedEntry> authority = new AtomicReference<>(approved(id, request, "owner"));
             Path one = journal(root, "one");
             ClockConsentCoordinator first = coordinator(one, "owner", authority, clock);
+            rejects(() -> first.reconcileClock(firstId, firstRequest));
+            try (var files = Files.list(one)) {
+                check(files.noneMatch(path -> path.getFileName().toString().matches("[a-f0-9]{64}")),
+                        "Read-only reconciliation must not create native consent for a server claim");
+            }
             rejects(() -> first.confirmClock(firstId, "c".repeat(64), dispatch(new AtomicInteger())));
             String token = consent(first, id, request);
+            byte[] consentBytes = Files.readAllBytes(stored(one));
+            check(first.reconcileClock(id, request).result == null && Arrays.equals(consentBytes, Files.readAllBytes(stored(one))),
+                    "Pending reconciliation must not change or remint native consent");
             check(token.matches("[a-f0-9]{64}"), "Native token must be bounded random bytes");
             ClockConsentCoordinator restarted = coordinator(one, "owner", authority, clock);
             AtomicInteger effects = new AtomicInteger();
@@ -94,6 +257,8 @@ public final class ClockConsentCoordinatorTest {
             check(first.confirmClock(id, token, dispatch(effects)) == ClockConsentCoordinator.Result.OPENED, "Reply retry should return stored receipt");
             check(effects.get() == 1, "Intent must dispatch at most once");
             check(restarted.reviewClock(id, request).result == ClockConsentCoordinator.Result.OPENED, "Review retry should reconcile receipt");
+            check(restarted.reconcileClock(id, request).result == ClockConsentCoordinator.Result.OPENED,
+                    "Read-only reconciliation must return consumed receipt");
             rejects(() -> restarted.confirmClock(firstId, "d".repeat(64), dispatch(effects)));
             rejects(() -> coordinator(one, "intruder", authority, clock).reviewClock(firstId, firstRequest));
             rejects(() -> coordinator(one, "intruder", authority, clock).cancelClock(firstId));

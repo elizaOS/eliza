@@ -139,6 +139,8 @@ remain inline; stored receipts are unchanged.
 
 `@elizaos/plugin-assistant/device-clock-review` exposes the renderer-safe review coordinator. The host supplies durable approved-journal checks, one-use native consent, dispatch and receipts. Await `retire()` before changing the session owner; failed cancellation remains retryable. An opened receipt confirms dispatch, not final alarm state. Set, dismiss and snooze may mutate alarms immediately after approval.
 
+`clock.handoff.v1` retains its one-off set payload without `days`. Explicit `days` requires `clock.handoff.v2`, including `[]` for one-off; daily is `[1,2,3,4,5,6,7]` and weekdays is `[2,3,4,5,6]`. Values follow [Android AlarmClock.EXTRA_DAYS](https://developer.android.com/reference/android/provider/AlarmClock#EXTRA_DAYS), Sunday=1 through Saturday=7. The exact unique integer array stays bound to the approved proposal; unsupported capabilities or repeat patterns are rejected instead of discarding recurrence.
+
 Run `bun run --cwd plugins/plugin-assistant test:clock-review-export` for source and packed-consumer checks. This uses a controlled host adapter and does not qualify Android Clock behavior.
 
 ## Authenticated device scope

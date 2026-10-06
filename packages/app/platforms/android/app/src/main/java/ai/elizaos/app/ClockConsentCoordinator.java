@@ -24,7 +24,9 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
@@ -75,6 +77,7 @@ final class ClockConsentCoordinator {
         Review(ClockHandoff.Request request, Result result) { this.request = request; this.result = result; }
     }
     private static final class Entry {
+        int magic = MAGIC_V2;
         ApprovedEntry approved;
         Phase phase;
         String tokenHash = "";
@@ -84,7 +87,7 @@ final class ClockConsentCoordinator {
     private interface Locked<T> { T run() throws IOException; }
     private static final ConcurrentHashMap<Path, Object> LOCKS = new ConcurrentHashMap<>();
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final int MAGIC = 0x434c4b31, MAX_BYTES = 16384;
+    private static final int MAGIC_V1 = 0x434c4b31, MAGIC_V2 = 0x434c4b32, MAX_BYTES = 16384;
     private static final long CONSENT_MILLIS = 120000;
     private final Path directory;
     private final String owner;
@@ -118,6 +121,15 @@ final class ClockConsentCoordinator {
                 write(entry);
             } else requireBinding(entry, approved);
             return new Review(approved.request, outcome(entry));
+        });
+    }
+
+    /** A server claim alone cannot create or replace native consent after a lost response/restart. */
+    Review reconcileClock(Identity identity, ClockHandoff.Request request) throws IOException {
+        return locked(() -> {
+            Entry entry = required(identity);
+            requireBinding(entry, approved(identity, request));
+            return new Review(entry.approved.request, outcome(entry));
         });
     }
 
@@ -197,7 +209,7 @@ final class ClockConsentCoordinator {
             if (!owner.equals(entry.approved.owner)) throw new SecurityException("Clock native owner changed");
             if (entry.phase == Phase.REVIEW || entry.phase == Phase.CONSENT) {
                 entry.phase = Phase.CANCELLED; write(entry);
-            }
+            } else if (entry.phase == Phase.CANCELLED) durability.sync(directory);
             return null;
         });
     }
@@ -226,7 +238,8 @@ final class ClockConsentCoordinator {
     }
     private static boolean sameRequest(ClockHandoff.Request a, ClockHandoff.Request b) {
         return a.action == b.action && a.hour == b.hour && a.minute == b.minute && a.snoozeMinutes == b.snoozeMinutes
-                && Objects.equals(a.label, b.label) && Objects.equals(a.timeZone, b.timeZone);
+                && Objects.equals(a.label, b.label) && Objects.equals(a.timeZone, b.timeZone)
+                && Objects.equals(a.days, b.days);
     }
     private <T> T locked(Locked<T> action) throws IOException {
         synchronized (LOCKS.computeIfAbsent(directory, ignored -> new Object())) {
@@ -259,14 +272,28 @@ final class ClockConsentCoordinator {
         if (!MessageDigest.isEqual(hash(payload), Arrays.copyOfRange(bytes, bytes.length - 32, bytes.length)))
             throw new IOException("Corrupt Clock consent journal");
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(payload))) {
-            if (input.readInt() != MAGIC) throw new IOException("Unsupported Clock consent journal");
+            int magic = input.readInt();
+            if (magic != MAGIC_V1 && magic != MAGIC_V2) throw new IOException("Unsupported Clock consent journal");
             Entry entry = new Entry();
+            // Keep legacy records in their original format, including consumed receipts.
+            entry.magic = magic;
             Identity stored = new Identity(input.readUTF(), input.readUTF(), input.readUTF());
             String storedOwner = input.readUTF(), digest = input.readUTF();
             ClockHandoff.Action action = ClockHandoff.Action.valueOf(input.readUTF());
             ClockHandoff.Request request;
             switch (action) {
-                case SET: request = ClockHandoff.Request.set(input.readInt(), input.readInt(), input.readUTF(), input.readUTF()); break;
+                case SET:
+                    int hour = input.readInt(), minute = input.readInt();
+                    String label = input.readUTF(), timeZone = input.readUTF();
+                    int count = magic == MAGIC_V2 ? input.readInt() : -1;
+                    if (count < -1 || count > 7) throw new IOException("Invalid Clock repeat count");
+                    if (count == -1) request = ClockHandoff.Request.set(hour, minute, label, timeZone);
+                    else {
+                        List<Integer> days = new ArrayList<>(count);
+                        for (int day = 0; day < count; day++) days.add(input.readInt());
+                        request = ClockHandoff.Request.set(hour, minute, label, timeZone, days);
+                    }
+                    break;
                 case SNOOZE: request = ClockHandoff.Request.snooze(input.readInt()); break;
                 case SHOW: request = ClockHandoff.Request.show(); break;
                 case DISMISS: request = ClockHandoff.Request.dismiss(); break;
@@ -291,12 +318,16 @@ final class ClockConsentCoordinator {
     private void write(Entry entry) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (DataOutputStream output = new DataOutputStream(bytes)) {
-            output.writeInt(MAGIC);
+            output.writeInt(entry.magic);
             output.writeUTF(entry.approved.identity.scope); output.writeUTF(entry.approved.identity.proposalId); output.writeUTF(entry.approved.identity.operationId);
             output.writeUTF(entry.approved.owner); output.writeUTF(entry.approved.claimDigest);
             ClockHandoff.Request request = entry.approved.request; output.writeUTF(request.action.name());
             if (request.action == ClockHandoff.Action.SET) {
                 output.writeInt(request.hour); output.writeInt(request.minute); output.writeUTF(request.label); output.writeUTF(request.timeZone);
+                if (entry.magic == MAGIC_V2) {
+                    output.writeInt(request.days == null ? -1 : request.days.size());
+                    if (request.days != null) for (int day : request.days) output.writeInt(day);
+                } else if (request.days != null) throw new IOException("Legacy Clock consent cannot acquire repeat days");
             } else if (request.action == ClockHandoff.Action.SNOOZE) output.writeInt(request.snoozeMinutes);
             output.writeUTF(entry.phase.name()); output.writeUTF(entry.tokenHash); output.writeLong(entry.issued); output.writeLong(entry.expires);
             output.writeUTF(entry.result == null ? "" : entry.result.name());

@@ -1,6 +1,10 @@
 /** Runs production native request validation on the JVM; Android activity launch and ringing remain untested. */
 package ai.elizaos.app;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 public final class ClockHandoffRequestTest {
     private static int checks;
     private static void rejects(Runnable operation) {
@@ -24,6 +28,30 @@ public final class ClockHandoffRequestTest {
         if (ClockHandoff.Request.snooze(60).snoozeMinutes != 60) throw new AssertionError(); checks++;
         if (ClockHandoff.Request.show().action != ClockHandoff.Action.SHOW) throw new AssertionError(); checks++;
         if (ClockHandoff.Request.dismiss().action != ClockHandoff.Action.DISMISS) throw new AssertionError(); checks++;
+        if (request.days != null) throw new AssertionError("Legacy repeat must remain omitted"); checks++;
+        List<Integer> weekdays = new ArrayList<>(List.of(2, 3, 4, 5, 6));
+        ClockHandoff.Request recurring = ClockHandoff.Request.set(9, 0, "Weekdays", "UTC", weekdays);
+        weekdays.clear();
+        if (!recurring.days.equals(List.of(2, 3, 4, 5, 6))) throw new AssertionError("Caller changed repeat"); checks++;
+        rejects(() -> recurring.days.add(1));
+        rejects(() -> ClockHandoff.Request.set(9, 0, "", "UTC", null));
+        rejects(() -> ClockHandoff.Request.set(9, 0, "", "UTC", Arrays.asList(2, null)));
+        rejects(() -> ClockHandoff.Request.set(9, 0, "", "UTC", List.of(0)));
+        rejects(() -> ClockHandoff.Request.set(9, 0, "", "UTC", List.of(8)));
+        rejects(() -> ClockHandoff.Request.set(9, 0, "", "UTC", List.of(2, 2)));
+        ClockHandoff.Request once = ClockHandoff.Request.set(9, 0, "Once", "UTC", List.of());
+        if (once.days == null || !once.days.isEmpty()) throw new AssertionError("Explicit one-off lost"); checks++;
+        List<Integer> daily = List.of(1, 2, 3, 4, 5, 6, 7);
+        if (!ClockHandoff.Request.set(9, 0, "Daily", "UTC", daily).days.equals(daily)) throw new AssertionError(); checks++;
+        List<Integer> custom = List.of(7, 1, 3);
+        if (!ClockHandoff.Request.set(9, 0, "Custom", "UTC", custom).days.equals(custom))
+            throw new AssertionError("Exact repeat order lost"); checks++;
+        String review = ClockReviewDialog.description(recurring);
+        if (!review.contains("Monday, Tuesday, Wednesday, Thursday, Friday (every week)")
+                || !review.contains("Clock owns this alarm and its repeat schedule")) throw new AssertionError("Incomplete review"); checks++;
+        review = ClockReviewDialog.description(ClockHandoff.Request.set(9, 0, "Daily", "UTC", daily));
+        if (!review.contains("Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday")) throw new AssertionError(); checks++;
+        if (!ClockReviewDialog.description(once).contains("Once (no repeat days)")) throw new AssertionError(); checks++;
         System.out.println("Native request checks passed: " + checks + "; no Android dispatch performed");
     }
 }

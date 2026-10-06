@@ -7,6 +7,7 @@ import {
   androidNativeAgentLifecycleForUrl,
   androidNativeAgentTransportForUrl,
 } from "./android-native-agent-transport";
+import { nativeClockTransportForUrl } from "./clock-native-host";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
 import {
@@ -34,7 +35,11 @@ configureHostTransport(async (url, purpose) => {
       remoteRelayTransportForUrl(url) ?? sshRuntimeTransportForUrl(url);
     if (remote) return remote;
   }
-  return desktopHttpTransportForUrl(url) ?? nativeCloudHttpTransportForUrl(url);
+  return (
+    desktopHttpTransportForUrl(url) ??
+    (await nativeClockTransportForUrl(url)) ??
+    nativeCloudHttpTransportForUrl(url)
+  );
 });
 
 configureHostAgentCapabilities({
