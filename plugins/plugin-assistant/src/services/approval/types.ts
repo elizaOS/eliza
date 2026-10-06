@@ -343,6 +343,8 @@ export interface ApprovalListFilter {
   readonly subjectUserId: string | null;
   readonly state: ApprovalRequestState | null;
   readonly action: ApprovalAction | null;
+  /** Omit requests of this action; applied before `limit`. */
+  readonly excludeAction?: ApprovalAction | null;
   /** Optional caller-requested page size; omit or pass null for the complete set. */
   readonly limit?: number | null;
 }

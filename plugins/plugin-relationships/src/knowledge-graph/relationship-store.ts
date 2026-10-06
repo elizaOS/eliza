@@ -234,6 +234,24 @@ export class RelationshipStore {
     }
     return fetched;
   }
+  /**
+   * Read, change and write one edge under the same per-edge serialization as
+   * `observe`, so a concurrent observation or retirement between the read and
+   * the write is not overwritten by a stale copy. Null when the edge is absent.
+   */
+  async patch(
+    relationshipId: string,
+    mutate: (
+      existing: Relationship,
+    ) => Parameters<RelationshipStore["upsert"]>[0],
+  ): Promise<Relationship | null> {
+    const current = await this.get(relationshipId);
+    if (!current) return null;
+    return this.edgeOperation(current, async () => {
+      const existing = await this.getOperation(relationshipId);
+      return existing ? this.upsertOperation(mutate(existing)) : null;
+    });
+  }
   async get(relationshipId: string): Promise<Relationship | null> {
     return this.operation(() => this.getOperation(relationshipId));
   }
@@ -257,9 +275,18 @@ export class RelationshipStore {
   private async listOperation(
     filter?: RelationshipFilter,
   ): Promise<Relationship[]> {
+    // metadataMatch and cadenceOverdueAsOf are applied below, after the read.
+    // Limiting the read first would keep only the most recently updated edges,
+    // and overdue edges are by definition the stale ones, so the limit is
+    // applied to the filtered result instead.
+    const postFiltered = Boolean(
+      filter?.metadataMatch || filter?.cadenceOverdueAsOf,
+    );
+    const readFilter =
+      postFiltered && filter ? { ...filter, limit: undefined } : filter;
     let results: Relationship[];
     if (this.records) {
-      results = await this.records.listRelationships(filter);
+      results = await this.records.listRelationships(readFilter);
     } else {
       const clauses = [`agent_id = ${sqlQuote(this.agentId)}`];
       if (!filter?.includeRetired) {
@@ -277,8 +304,9 @@ export class RelationshipStore {
         clauses.push(`type IN (${list})`);
       }
       const limitClause =
-        typeof filter?.limit === "number" && Number.isFinite(filter.limit)
-          ? `LIMIT ${sqlInteger(filter.limit)}`
+        typeof readFilter?.limit === "number" &&
+        Number.isFinite(readFilter.limit)
+          ? `LIMIT ${sqlInteger(readFilter.limit)}`
           : "";
       const rows = await executeRawSql(
         this.runtime,
@@ -317,6 +345,13 @@ export class RelationshipStore {
         const overdueAtMs = lastMs + cadenceDays * 24 * 60 * 60 * 1000;
         return overdueAtMs <= asOfMs;
       });
+    }
+    if (
+      postFiltered &&
+      typeof filter?.limit === "number" &&
+      Number.isFinite(filter.limit)
+    ) {
+      results = results.slice(0, Math.max(0, Math.trunc(filter.limit)));
     }
     return results;
   }

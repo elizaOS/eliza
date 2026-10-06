@@ -143,7 +143,9 @@ function aggregateByApp(
     }))
     .sort((a, b) => b.totalMs - a.totalMs);
   return {
-    apps: limit ? apps.slice(0, limit) : apps,
+    // An omitted limit is the full breakdown. An explicit limit, including 0,
+    // is a page — `limit ?` treated 0 as "no page" and returned every app.
+    apps: limit === undefined ? apps : apps.slice(0, Math.max(0, limit)),
     totalMs,
   };
 }

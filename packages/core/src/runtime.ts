@@ -1741,6 +1741,11 @@ export class AgentRuntime implements IAgentRuntime {
 				{ src: "agent", agentId: this.agentId },
 				"Agent entity created",
 			);
+		} else if (this.character.name) {
+			// A rename persisted before the entity followed it (or by an older
+			// build) would otherwise keep labelling the agent's turns with the
+			// old name forever, since creation is skipped once the entity exists.
+			await this.syncAgentEntityName(agentEntity, this.character.name);
 		}
 
 		// Room creation and participant setup
@@ -4037,7 +4042,32 @@ export class AgentRuntime implements IAgentRuntime {
 		return ids.length > 0;
 	}
 	async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-		return this.adapter.updateAgents([{ agentId, agent }]);
+		const updated = await this.adapter.updateAgents([{ agentId, agent }]);
+		const name = typeof agent.name === "string" ? agent.name.trim() : "";
+		if (updated && agentId === this.agentId && name) {
+			const [agentEntity] = await this.adapter.getEntitiesByIds([agentId]);
+			if (agentEntity) await this.syncAgentEntityName(agentEntity, name);
+		}
+		return updated;
+	}
+
+	/**
+	 * Keeps the agent's own entity named after its character. Prompts label
+	 * speakers with `entity.names[0]`, so a rename (character PUT, CHARACTER
+	 * action, first-run) must move the new name to the front of `names`.
+	 */
+	private async syncAgentEntityName(
+		agentEntity: Entity,
+		name: string,
+	): Promise<void> {
+		if (agentEntity.names[0] === name) return;
+		await this.updateEntity({
+			...agentEntity,
+			names: [
+				name,
+				...agentEntity.names.filter((existing) => existing !== name),
+			],
+		});
 	}
 	async deleteAgent(agentId: UUID): Promise<boolean> {
 		return this.adapter.deleteAgents([agentId]);

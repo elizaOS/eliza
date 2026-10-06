@@ -98,30 +98,17 @@ export const listInboxAction: Action = {
       let messages = requestedSources
         ? cached.filter((m) => requestedSources.includes(m.source))
         : cached;
-      // The empty-cache branch below is already a live pull. Record that
-      // before `messages` is replaced, or a live all-read result looks like
-      // a warm cache and the guard sweeps the connector again.
-      const pulledLive = messages.length === 0;
 
-      if (pulledLive) {
-        messages = await service.triage(runtime, {
-          sources: params.sources,
-          sinceMs: params.sinceMs,
-          limit: params.limit,
-        });
-      } else {
-        messages = rankScored(messages);
+      messages = rankScored(messages);
+      const sinceMs = params.sinceMs;
+      if (sinceMs !== undefined) {
+        messages = messages.filter((m) => m.receivedAtMs >= sinceMs);
       }
-
       let unread = messages.filter((m) => !m.isRead);
 
-      // The store keeps every ref a sweep ever handed it and never prunes
-      // read rows, so a warm cache can stay all-read for the rest of the
-      // process while the connectors hold new mail. A cached view with zero
-      // unread falls through to the same live pull an empty cache gets; the
-      // action claims "no unread" only after the authoritative sources
-      // agree.
-      if (!pulledLive && unread.length === 0 && messages.length > 0) {
+      // A cold, all-read, or out-of-window cache needs exactly one live pull
+      // before it can establish that no unread messages match the request.
+      if (unread.length === 0) {
         messages = await service.triage(runtime, {
           sources: params.sources,
           sinceMs: params.sinceMs,

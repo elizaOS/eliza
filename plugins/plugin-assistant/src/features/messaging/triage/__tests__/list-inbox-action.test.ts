@@ -344,6 +344,35 @@ describe("listInboxAction", () => {
     });
   });
 
+  it("pulls once when every cached row is older than the requested window", async () => {
+    getDefaultMessageRefStore().saveMessages([
+      messageRef({ id: "old", externalId: "old", receivedAtMs: 1_000 }),
+    ]);
+    const adapter = new FixedListAdapter([
+      messageRef({ id: "fresh", externalId: "fresh", receivedAtMs: 9_000 }),
+    ]);
+    await registerAdapter(adapter);
+    const result = await listInboxAction.handler(
+      createFakeRuntime(), messageRef({ id: "turn" }) as never, undefined,
+      { parameters: { sinceMs: 5_000 } } as never,
+    );
+    expect(adapter.seenOptions).toHaveLength(1);
+    expect(adapter.seenOptions[0]?.sinceMs).toBe(5_000);
+    expect(result.data).toMatchObject({ messages: [{ id: "fresh" }] });
+  });
+
+  it("does not repeat a cold pull whose result contains only read messages", async () => {
+    const adapter = new FixedListAdapter([
+      messageRef({ id: "read", externalId: "read", isRead: true }),
+    ]);
+    await registerAdapter(adapter);
+    const result = await listInboxAction.handler(
+      createFakeRuntime(), messageRef({ id: "turn" }) as never,
+    );
+    expect(adapter.seenOptions).toHaveLength(1);
+    expect(result.data).toMatchObject({ total: 0, returned: 0, messages: [] });
+  });
+
   it("returns the explicit empty-inbox result when no source has messages", async () => {
     const result = await listInboxAction.handler(
       createFakeRuntime(),

@@ -1770,8 +1770,9 @@ function chargePaymentIntentId(charge: Stripe.Charge): string | undefined {
 
 /**
  * Claw back org credits for the portion of a top-up charge that Stripe reversed.
- * Durable pack orders claw back the exact granted credits in proportion to the
- * reversed provider charge; legacy balance top-ups remain 1:1. Credits are
+ * Durable pack orders and fee-inclusive auto top-ups claw back the exact granted
+ * credits in proportion to the reversed provider charge; legacy balance top-ups
+ * remain 1:1. Credits are
  * removed up to the original grant and the org's current balance. Any
  * unrecovered portion is recorded on the clawback transaction metadata because
  * the organizations table has a nonnegative balance constraint. Only the DELTA
@@ -1810,7 +1811,15 @@ async function clawbackForReversal(params: {
 
   const checkoutOrder =
     await stripeCheckoutOrdersService.getByPaymentIntent(paymentIntentId);
-  const chargeAmountCents = checkoutOrder?.charge_amount_cents ?? null;
+  const autoTopUpCharge = checkoutOrder
+    ? null
+    : autoTopUpChargeBreakdownFromMetadata(grant.metadata);
+  const autoTopUpChargeMicros = autoTopUpCharge
+    ? parseCreditMicros(autoTopUpCharge.totalChargeUsd)
+    : null;
+  const chargeAmountCents =
+    checkoutOrder?.charge_amount_cents ??
+    (autoTopUpChargeMicros ? autoTopUpChargeMicros / 10_000n : null);
   const reversedCents = BigInt(Math.round(usdReversed * 100));
   const reversedMicros = reversedCents * 10_000n;
   const targetMicros =
@@ -1841,7 +1850,13 @@ async function clawbackForReversal(params: {
             original_charge_usd: (Number(chargeAmountCents) / 100).toFixed(2),
             original_credits_granted: formatCreditMicros(grantAmountMicros),
           }
-        : {}),
+        : autoTopUpCharge
+          ? {
+              auto_top_up_attempt_id: grant.metadata.auto_top_up_attempt_id,
+              original_charge_usd: autoTopUpCharge.totalChargeUsd,
+              original_credits_granted: formatCreditMicros(grantAmountMicros),
+            }
+          : {}),
       source,
       reference,
     },

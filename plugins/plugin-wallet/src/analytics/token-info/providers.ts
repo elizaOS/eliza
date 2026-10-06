@@ -214,7 +214,10 @@ async function executeDexScreener(
       }
       case "trending": {
         const timeframe = params.timeframe ?? "24h";
-        const limit = Math.min(25, Math.max(1, params.limit ?? 10));
+        const limit = Math.min(
+          25,
+          params.limit === undefined ? 10 : Math.max(0, params.limit),
+        );
         const pairs = requireDexResult(
           await service.getTrending({ timeframe, limit }),
           "DEXSCREENER_TRENDING_FAILED",
@@ -233,7 +236,10 @@ async function executeDexScreener(
         );
       }
       case "new_pairs": {
-        const limit = Math.min(25, Math.max(1, params.limit ?? 10));
+        const limit = Math.min(
+          25,
+          params.limit === undefined ? 10 : Math.max(0, params.limit),
+        );
         const pairs = requireDexResult(
           await service.getNewPairs({ chain: params.chain, limit }),
           "DEXSCREENER_NEW_PAIRS_FAILED",
@@ -258,7 +264,10 @@ async function executeDexScreener(
             failure("Provide chain for chain_pairs.", "MISSING_CHAIN"),
           );
         }
-        const limit = Math.min(25, Math.max(1, params.limit ?? 10));
+        const limit = Math.min(
+          25,
+          params.limit === undefined ? 10 : Math.max(0, params.limit),
+        );
         const sortBy = params.sortBy ?? "volume";
         const pairs = requireDexResult(
           await service.getPairsByChain({ chain: params.chain, sortBy, limit }),
