@@ -21,7 +21,9 @@ import {
   clearPendingChatTurn,
   clearSettledPendingChatTurns,
   listPendingChatTurns,
+  markPendingChatTurnRestored,
   PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS,
+  PENDING_CHAT_TURN_SETTLED_EVENT,
   persistPendingChatTurn,
 } from "./pending-chat-turns";
 
@@ -325,6 +327,152 @@ describe("ChatComposerContext draft persistence", () => {
     ]);
   });
 
+  it("preserves a fresh identical draft when a never-restored send settles", () => {
+    const sentAt = Date.now();
+    persistPendingChatTurn({
+      conversationId: "conversation-1",
+      clientMessageId: "older-send",
+      text: "continue",
+      sentAt,
+    });
+    writeChatDraft("conversation-1", "continue");
+    const setChatInput = vi.fn();
+    render(
+      <DraftHarness
+        activeConversationId="conversation-1"
+        chatInput="continue"
+        setChatInput={setChatInput}
+      />,
+    );
+    setChatInput.mockClear();
+    act(() =>
+      clearSettledPendingChatTurns("conversation-1", [
+        {
+          id: "server-older",
+          role: "user",
+          text: "continue",
+          timestamp: sentAt,
+        },
+      ]),
+    );
+    expect(readChatDraft("conversation-1")).toBe("continue");
+    expect(setChatInput).not.toHaveBeenCalledWith("");
+    expect(listPendingChatTurns("conversation-1")).toEqual([]);
+  });
+
+  it.each(["different draft", ""])(
+    "preserves recovery ownership revocation after editing to %j and back, including reload",
+    async (edited) => {
+      vi.useFakeTimers();
+      const sentAt = Date.now();
+      persistPendingChatTurn({
+        conversationId: "conversation-1",
+        clientMessageId: "recovered-send",
+        text: "continue",
+        sentAt,
+      });
+      const setChatInput = vi.fn();
+      const view = render(
+        <DraftHarness
+          activeConversationId="conversation-1"
+          chatInput=""
+          setChatInput={setChatInput}
+        />,
+      );
+      await act(async () =>
+        vi.advanceTimersByTimeAsync(PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS),
+      );
+      view.rerender(
+        <DraftHarness
+          activeConversationId="conversation-1"
+          chatInput="continue"
+          setChatInput={setChatInput}
+        />,
+      );
+      view.rerender(
+        <DraftHarness
+          activeConversationId="conversation-1"
+          chatInput={edited}
+          setChatInput={setChatInput}
+        />,
+      );
+      view.rerender(
+        <DraftHarness
+          activeConversationId="conversation-1"
+          chatInput="continue"
+          setChatInput={setChatInput}
+        />,
+      );
+      await act(async () => vi.advanceTimersByTimeAsync(500));
+      expect(listPendingChatTurns("conversation-1")).toEqual([
+        expect.objectContaining({
+          clientMessageId: "recovered-send",
+          restoredToDraft: false,
+        }),
+      ]);
+      view.unmount();
+      render(
+        <DraftHarness
+          activeConversationId="conversation-1"
+          chatInput="continue"
+          setChatInput={setChatInput}
+        />,
+      );
+      setChatInput.mockClear();
+      act(() =>
+        clearSettledPendingChatTurns("conversation-1", [
+          {
+            id: "server-older",
+            role: "user",
+            text: "continue",
+            timestamp: sentAt,
+          },
+        ]),
+      );
+      expect(readChatDraft("conversation-1")).toBe("continue");
+      expect(setChatInput).not.toHaveBeenCalledWith("");
+      expect(listPendingChatTurns("conversation-1")).toEqual([]);
+    },
+  );
+
+  it("ignores a same-text settlement belonging to another recovered receipt", () => {
+    persistPendingChatTurn({
+      conversationId: "conversation-1",
+      clientMessageId: "current-owner",
+      text: "continue",
+      sentAt: Date.now(),
+    });
+    expect(markPendingChatTurnRestored("conversation-1", "current-owner")).toBe(
+      true,
+    );
+    writeChatDraft("conversation-1", "continue");
+    const setChatInput = vi.fn();
+    render(
+      <DraftHarness
+        activeConversationId="conversation-1"
+        chatInput="continue"
+        setChatInput={setChatInput}
+      />,
+    );
+    setChatInput.mockClear();
+    act(() =>
+      window.dispatchEvent(
+        new CustomEvent(PENDING_CHAT_TURN_SETTLED_EVENT, {
+          detail: {
+            conversationId: "conversation-1",
+            clientMessageId: "other-owner",
+            text: "continue",
+          },
+        }),
+      ),
+    );
+    expect(readChatDraft("conversation-1")).toBe("continue");
+    expect(setChatInput).not.toHaveBeenCalledWith("");
+    expect(listPendingChatTurns("conversation-1")[0]?.clientMessageId).toBe(
+      "current-owner",
+    );
+  });
+
   it("removes a recovered draft when later server history confirms that send", () => {
     const sentAt = Date.now();
     persistPendingChatTurn({
@@ -333,6 +481,9 @@ describe("ChatComposerContext draft persistence", () => {
       text: "accepted prompt",
       sentAt,
     });
+    expect(
+      markPendingChatTurnRestored("conversation-1", "client-original"),
+    ).toBe(true);
     writeChatDraft("conversation-1", "accepted prompt");
     const setChatInput = vi.fn();
     render(
