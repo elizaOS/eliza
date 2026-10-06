@@ -317,7 +317,18 @@ export function VoicePresetSettingsContent() {
   }, [activeVoicePreset, stopVoicePreview, t]);
   const performSave = useCallback(async () => {
     if (!voiceDirty) return;
-    const config = await client.getConfig();
+    let config: Awaited<ReturnType<typeof client.getConfig>>;
+    try {
+      config = await client.getConfig();
+    } catch (error) {
+      // The in-memory selection is only the voice the operator just picked.
+      // Writing that over a failed read drops fields this panel never loaded,
+      // including an ElevenLabs key already stored on the server.
+      throw new Error(
+        "Voice settings could not be read, so the save was skipped and the existing key was left unchanged.",
+        { cause: error },
+      );
+    }
     const messages = (config.messages ?? {}) as Record<string, unknown>;
     const storedVoiceConfig =
       messages.tts && typeof messages.tts === "object"
