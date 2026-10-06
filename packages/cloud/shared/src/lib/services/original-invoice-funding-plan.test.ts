@@ -1,6 +1,8 @@
 /** Pure calculation fixtures; authenticated receipt selection and provider transport have their own integration suites. */
+
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { traceOriginalInvoiceDebt } from "./original-invoice-debt-trace";
 import { planOriginalInvoiceFunding as plan } from "./original-invoice-funding-plan";
 import { settlementDigest } from "./settlement-digest";
@@ -18,7 +20,9 @@ function rehash(value: { digest: string }) {
   const { digest: _, ...body } = value;
   value.digest = settlementDigest(body);
 }
-function fixture(options: { zeroCollector?: boolean; duplicatePeriod?: boolean } = {}): Input {
+function fixture(
+  options: { zeroCollector?: boolean; duplicatePeriod?: boolean | "provider" } = {},
+): Input {
   const sharedSource = randomUUID();
   const raw = invoiceDebtFixture();
   const all = [...raw.originals, raw.collector].map((original, index) => {
@@ -35,7 +39,11 @@ function fixture(options: { zeroCollector?: boolean; duplicatePeriod?: boolean }
     }
     let scope = { ...original.scope, subscriptionId: randomUUID() };
     if (options.duplicatePeriod) {
-      scope = { ...scope, subscriptionId: sharedSource, providerSubscriptionId: "sub_same" };
+      scope = {
+        ...scope,
+        ...(options.duplicatePeriod === true ? { subscriptionId: sharedSource } : {}),
+        providerSubscriptionId: "sub_same",
+      };
       invoice.subscription = "sub_same";
       invoice.lines.data[0]!.subscription = "sub_same";
       invoice.lines.data[0]!.subscription_item = "si_same";
@@ -396,6 +404,21 @@ test("different invoice IDs cannot fund the same subscription interval twice", (
   expect(() => plan(fixture({ duplicatePeriod: true }))).toThrow(
     "Original invoice funding allocation is unavailable",
   );
+});
+test("distinct local subscription ids cannot fund one provider interval twice", () => {
+  let reason = "";
+  try {
+    plan(fixture({ duplicatePeriod: "provider" }));
+  } catch (error) {
+    reason =
+      error instanceof ElizaError &&
+      typeof error.context === "object" &&
+      error.context !== null &&
+      "reason" in error.context
+        ? String(error.context.reason)
+        : "";
+  }
+  expect(reason).toBe("subscription_identity_conflict");
 });
 for (const level of ["capture", "balance"] as const)
   for (const field of [
