@@ -53,6 +53,7 @@ import {
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
   type Memory,
   mergeEffectReceipts,
   nextInferenceTurnId,
@@ -3577,6 +3578,13 @@ async function listConversationMessages(
     // context and serves the full DTO unchanged.
     const viewerAccessContext = resolveHttpAccessContext(req);
     const messages = memories
+      // Scheduler instructions are model input, not a user-authored chat turn.
+      // Project them out only here; stored history and assistant replies stay intact.
+      .filter(
+        (m) =>
+          m.entityId === agentId ||
+          m.content.source !== MESSAGE_SOURCE_TRIGGER_PROMPT,
+      )
       .map((m) => {
         const contentSource = (m.content as Record<string, unknown>)?.source;
         const content = m.content as Record<string, unknown>;
