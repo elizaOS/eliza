@@ -493,7 +493,9 @@ export async function finalizePlannerReply(
   // request, while leaving successful handoffs unassessed until completion.
   const terminalToolResult = plannerResult.trajectory.steps.at(-1)?.result;
   const requestFulfilled =
-    plannerResult.evaluator?.success ??
+    (plannerResult.evaluator?.requestFullyCovered === false
+      ? false
+      : plannerResult.evaluator?.success) ??
     (terminalToolResult?.continueChain === false &&
     terminalToolResult.success === false
       ? false

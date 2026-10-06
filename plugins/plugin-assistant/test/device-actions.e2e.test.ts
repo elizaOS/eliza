@@ -6,9 +6,13 @@ import { join } from "node:path";
 import {
   type ActionResult,
   activeCommittedEffectReceipts,
+  ChannelType,
   type Memory,
+  ModelType,
+  type UUID,
 } from "@elizaos/core";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
+import { viewsAction } from "../../../packages/agent/src/actions/views.ts";
 import { handleApprovalRoute } from "../../../packages/agent/src/api/approval-routes.ts";
 import { readChatRequestPayload } from "../../../packages/agent/src/api/chat-routes.ts";
 import {
@@ -17,6 +21,10 @@ import {
   requiresDeviceIdentity,
 } from "../../../packages/agent/src/api/device-action-routes.ts";
 import { buildUserMessages } from "../../../packages/agent/src/api/server-helpers.ts";
+import {
+  closeRuntimeViewRegistry,
+  registerBuiltinViews,
+} from "../../../packages/agent/src/api/views-registry.ts";
 import { createMachineSession } from "../../../packages/app/src/api/auth/sessions.ts";
 import { resolveAuthorizedRouteRole } from "../../../packages/app/src/api/auth.ts";
 import { CORS_ALLOWED_HEADERS } from "../../../packages/app/src/api/server-cors.ts";
@@ -25,6 +33,10 @@ import {
   type DrizzleDatabase,
 } from "../../../packages/app/src/services/auth-store.ts";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
+import { calendarAction } from "../../plugin-personal-assistant/src/actions/calendar.ts";
+import { ownerDocumentsAction } from "../../plugin-personal-assistant/src/actions/document.ts";
+import { ownerRemindersAction } from "../../plugin-personal-assistant/src/actions/owner-surfaces.ts";
+import { stage1Response } from "../src/__tests__/stage1/fixtures.ts";
 import { runEvaluator } from "../src/runtime/evaluator.ts";
 import {
   APPROVAL_SERVICE,
@@ -36,6 +48,7 @@ import {
   withDeviceActionTurn,
 } from "../src/services/device-actions/service.ts";
 import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
+import { runV5MessageRuntimeStage1 } from "../src/services/message.ts";
 
 // Real HTTP, session authentication, registered proposal tool, SQL migrations,
 // and on-disk PGlite. All identities and requested content are synthetic.
@@ -1058,6 +1071,74 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       const clockRequest = (path: string, body?: unknown) =>
         request(path, body, "a", deviceKey, capability);
       const service = new DeviceActionService(runtimeState.runtime);
+      const broaderBefore = await service.list(credentials);
+      for (const operation of [
+        { type: "open_view", view: "home" },
+        { type: "create_note", title: "Scope fixture", body: "Exact fixture" },
+        {
+          type: "create_reminder",
+          title: "Scope fixture",
+          dueAt: "2030-01-01T12:00:00Z",
+        },
+        { type: "browser_navigate", url: "https://example.com/" },
+      ])
+        await expect(
+          service.propose(
+            c,
+            operation,
+            `clock-only-${operation.type}`,
+            "Scope fixture",
+          ),
+        ).rejects.toThrow("capability unavailable");
+      expect((await service.list(credentials)).map((item) => item.id)).toEqual(
+        broaderBefore.map((item) => item.id),
+      );
+      expect(
+        (await service.list(c)).every(
+          (item) => item.payload.operation.type === "clock_handoff",
+        ),
+      ).toBe(true);
+      const globalSchema = JSON.stringify(proposeDeviceAction.parameters);
+      const clockContext = await withDeviceActionTurn(
+        runtimeState.runtime,
+        c,
+        () =>
+          createV5MessageContextObject({
+            runtime: runtimeState.runtime,
+            message: {
+              id: randomUUID(),
+              roomId: randomUUID(),
+              entityId: ownerA,
+              agentId: runtimeState.runtime.agentId,
+              content: {
+                text: "Go home.",
+                source: "client_chat",
+                channelType: "DM",
+                metadata: { uiView: "chat", uiViewPath: "/chat" },
+              },
+            } as Memory,
+            state: { values: {}, data: {}, text: "" },
+            selectedContexts: ["general"],
+            includeTools: true,
+            userRoles: ["OWNER"],
+            preselectedActions: [proposeDeviceAction],
+          }),
+      );
+      const inferredClock = clockContext.events.find(
+        (event: any) =>
+          event.type === "tool" && event.tool.name === "PROPOSE_DEVICE_ACTION",
+      ) as any;
+      expect(
+        inferredClock.tool.parameters.properties.operation.anyOf.every(
+          (branch: any) => branch.properties.type.enum[0] === "clock_handoff",
+        ),
+      ).toBe(true);
+      expect(
+        inferredClock.tool.parameters.properties.operation.anyOf.some(
+          (branch: any) => branch.properties.days,
+        ),
+      ).toBe(false);
+      expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(globalSchema);
       const set = {
         type: "clock_handoff",
         action: "set",
@@ -2650,3 +2731,308 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     await rm(directory, { recursive: true, force: true });
   }
 }, 120_000);
+
+// Complete Core Stage-1, discovery, planner, evaluator and reply-egress path
+// with a real durable queue. Only model judgments are offline fixtures.
+test("Clock-only enrollment scopes actual planner discovery and preserves pending reply egress", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "ClockScopePipelineFixture",
+  });
+  const runtime = fixture.runtime;
+  const credential = {
+    subjectUserId: runtime.agentId,
+    installationId: randomUUID(),
+    deviceKey: "b".repeat(64),
+    capabilities: ["clock.handoff.v1"],
+  };
+  const service = new DeviceActionService(runtime);
+  let navigationServer: Server | undefined;
+  const originalPort = process.env.ELIZA_API_PORT;
+  try {
+    await service.register(credential, "Clock scope fixture");
+    runtime.registerAction(proposeDeviceAction);
+    runtime.registerAction(viewsAction);
+    for (const action of [
+      calendarAction,
+      ownerDocumentsAction,
+      ownerRemindersAction,
+    ])
+      runtime.registerAction(action);
+    registerBuiltinViews(runtime, { indexEmbeddings: false });
+    const roomId = randomUUID() as UUID;
+    const worldId = randomUUID() as UUID;
+    await runtime.createWorld({
+      id: worldId,
+      name: "Clock scope",
+      agentId: runtime.agentId,
+      metadata: { ownership: { ownerId: runtime.agentId } },
+    });
+    await runtime.createRoom({
+      id: roomId,
+      worldId,
+      name: "Clock scope",
+      source: "client_chat",
+      type: ChannelType.DM,
+    });
+    const globalSchema = JSON.stringify(proposeDeviceAction.parameters);
+    const pendingText =
+      "The Clock proposal is awaiting your approval on the phone.";
+    const outputs: unknown[] = [
+      stage1Response({
+        contexts: ["general"],
+        intents: ["Open Clock after my approval"],
+        candidateActionNames: ["PROPOSE_DEVICE_ACTION"],
+        extra: { replyEffectStatus: "none" },
+      }),
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "discover-clock",
+            name: "DISCOVER_ACTIONS",
+            arguments: {
+              names: [
+                "PROPOSE_DEVICE_ACTION",
+                "VIEWS",
+                "CALENDAR",
+                "OWNER_DOCUMENTS",
+                "OWNER_REMINDERS",
+              ],
+              eliza_turn_scope: "more_work_pending",
+            },
+          },
+        ],
+      },
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "propose-clock",
+            name: "PROPOSE_DEVICE_ACTION",
+            arguments: {
+              operation: { type: "clock_handoff", action: "show" },
+              operationKey: "scope-pending",
+              reason: "Open requested Clock view after approval",
+              eliza_turn_scope: "final",
+            },
+          },
+        ],
+      },
+      JSON.stringify({
+        thought: "A durable proposal exists; no Clock request was executed.",
+        decision: "FINISH",
+        success: true,
+        requestFullyCovered: false,
+        messageToUser: pendingText,
+        replyEffectStatus: "non_applied",
+      }),
+    ];
+    const calls: Array<{ type: string; parameters: unknown }> = [];
+    const useModel = vi
+      .spyOn(runtime, "useModel")
+      .mockImplementation(async (type, parameters) => {
+        calls.push({ type, parameters });
+        if (!outputs.length) throw new Error(`Unexpected model call: ${type}`);
+        return outputs.shift() as never;
+      });
+    const message: Memory = {
+      id: randomUUID(),
+      roomId,
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      content: {
+        text: "Open Clock after my approval.",
+        source: "client_chat",
+        channelType: ChannelType.DM,
+        metadata: {
+          uiView: "chat",
+          uiTab: "chat",
+          uiViewPath: "/chat",
+          uiViewCapabilities: [],
+          uiViewActionNames: [],
+          viewClientId: "fixture-renderer",
+          clientDevice: {
+            context: {
+              sensitive: false,
+              revision: 1,
+              timeZone: "America/Los_Angeles",
+            },
+          },
+        },
+      },
+    };
+    const pending = await withDeviceActionTurn(runtime, credential, () =>
+      runV5MessageRuntimeStage1({
+        runtime,
+        message,
+        state: { values: { availableContexts: "general" }, data: {}, text: "" },
+        responseId: randomUUID() as UUID,
+      }),
+    );
+    expect(outputs).toHaveLength(0);
+    expect(pending.kind).toBe("planned_reply");
+    if (pending.kind === "planned_reply") {
+      expect(
+        pending.result.responseContent?.text,
+        JSON.stringify(pending.result.actionResults),
+      ).toBe(pendingText);
+      expect(pending.result.requestFulfilled).toBe(false);
+      expect(pending.result.responseContent?.transcriptVisibility).not.toBe(
+        "internal",
+      );
+    }
+    const proposals = await service.list(credential);
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].state).toBe("pending");
+    expect(proposals[0].execution).toBeNull();
+    const plannerCalls = calls.filter(
+      ({ type }) => type === ModelType.ACTION_PLANNER,
+    );
+    expect(plannerCalls).toHaveLength(2);
+    for (const { parameters } of plannerCalls) {
+      const tools = (
+        parameters as { tools: Array<{ name: string; parameters: any }> }
+      ).tools;
+      const native = tools.find(({ name }) => name === "PROPOSE_DEVICE_ACTION");
+      expect(native).toBeDefined();
+      expect(
+        native!.parameters.properties.operation.anyOf.every(
+          (branch: any) => branch.properties.type.enum[0] === "clock_handoff",
+        ),
+      ).toBe(true);
+      expect(
+        native!.parameters.properties.operation.anyOf.some(
+          (branch: any) => branch.properties.days,
+        ),
+      ).toBe(false);
+    }
+    const reloaded = (
+      plannerCalls[1].parameters as { tools: Array<{ name: string }> }
+    ).tools;
+    expect(reloaded.map(({ name }) => name)).toEqual(
+      expect.arrayContaining([
+        "VIEWS",
+        "CALENDAR",
+        "OWNER_DOCUMENTS",
+        "OWNER_REMINDERS",
+      ]),
+    );
+    expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(globalSchema);
+    const navigationBodies: Array<Record<string, unknown>> = [];
+    navigationServer = createServer(async (req, res) => {
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      const body = JSON.parse(raw);
+      navigationBodies.push(body);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          viewId: "chat",
+          completedActionHandoffId: body.completedActionHandoffId,
+          completedActionDelivered: true,
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      navigationServer!.listen(0, "127.0.0.1", resolve),
+    );
+    const address = navigationServer.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing fixture port");
+    process.env.ELIZA_API_PORT = String(address.port);
+    outputs.push(
+      stage1Response({
+        contexts: ["general"],
+        intents: ["Show Home"],
+        candidateActionNames: ["VIEWS"],
+        extra: { replyEffectStatus: "none" },
+      }),
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "show-home",
+            name: "VIEWS",
+            arguments: {
+              action: "show",
+              view: "home",
+              eliza_turn_scope: "final",
+            },
+          },
+        ],
+      },
+      JSON.stringify({
+        decision: "FINISH",
+        success: true,
+        thought: "The originating renderer acknowledged navigation.",
+        messageToUser: "Home is open.",
+        replyEffectStatus: "non_applied",
+      }),
+    );
+    const errors = vi.spyOn(runtime, "reportError");
+    const navigation = await withDeviceActionTurn(runtime, credential, () =>
+      runV5MessageRuntimeStage1({
+        runtime,
+        message: {
+          ...message,
+          id: randomUUID(),
+          content: {
+            ...message.content,
+            text: "Go home.",
+            metadata: {
+              ...message.content.metadata,
+              uiView: "notes",
+              uiTab: "notes",
+              uiViewPath: "/notes",
+            },
+          },
+        },
+        state: { values: { availableContexts: "general" }, data: {}, text: "" },
+        responseId: randomUUID() as UUID,
+      }),
+    );
+    expect(outputs).toHaveLength(0);
+    expect(
+      navigationBodies,
+      JSON.stringify(
+        navigation.kind === "planned_reply"
+          ? navigation.result.actionResults
+          : navigation.kind,
+      ),
+    ).toHaveLength(1);
+    expect(navigationBodies[0].clientId).toBe("fixture-renderer");
+    expect(navigationBodies[0]).not.toHaveProperty("closeChat");
+    const navigationWire = calls
+      .filter(({ type }) => type === ModelType.ACTION_PLANNER)
+      .at(-1)!.parameters as { tools: Array<{ name: string }> };
+    expect(navigationWire.tools.map(({ name }) => name)).toContain("VIEWS");
+    expect(navigationWire.tools.map(({ name }) => name)).not.toContain(
+      "PROPOSE_DEVICE_ACTION",
+    );
+    expect(
+      navigation.kind,
+      JSON.stringify(
+        errors.mock.calls.map(([where, error]) => ({
+          where,
+          error: String(error),
+        })),
+      ),
+    ).toBe("planned_reply");
+    if (navigation.kind === "planned_reply")
+      expect(navigation.result.responseContent?.text).toBe("Home is open.");
+    expect((await service.list(credential)).map((item) => item.id)).toEqual(
+      proposals.map((item) => item.id),
+    );
+    useModel.mockRestore();
+  } finally {
+    if (originalPort === undefined) delete process.env.ELIZA_API_PORT;
+    else process.env.ELIZA_API_PORT = originalPort;
+    if (navigationServer)
+      await new Promise<void>((resolve, reject) =>
+        navigationServer!.close((error) => (error ? reject(error) : resolve())),
+      );
+    closeRuntimeViewRegistry(runtime);
+    await fixture.cleanup();
+  }
+});

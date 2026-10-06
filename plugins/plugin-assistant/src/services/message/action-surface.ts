@@ -813,6 +813,8 @@ export type V5PlannerActionSurface = {
 
 export async function collectV5PlannerCandidateActions(args: {
   runtime: IAgentRuntime;
+  /** Per-turn schema scope; registered catalog remains immutable. */
+  actions?: readonly Action[];
   message: Memory;
   state: State;
   selectedContexts?: readonly AgentContext[];
@@ -860,7 +862,7 @@ export async function collectV5PlannerCandidateActions(args: {
   // an action outside its declared context, while avoiding dead tools the planner
   // could select but execution would immediately reject.
   // Lifecycle hooks keep their automatic execution owner.
-  const allRuntimeActions = args.runtime.actions.filter(
+  const allRuntimeActions = (args.actions ?? args.runtime.actions).filter(
     (action) => (action.mode ?? "PLANNER") === "PLANNER",
   );
   const declaredAdmissionDomains = new Set(

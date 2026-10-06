@@ -28,6 +28,7 @@ import {
 import {
   DeviceActionError,
   type DeviceActionPayload,
+  deviceOperationSupportedByCapabilities,
   exactKeys,
   identifier,
   object,
@@ -342,6 +343,8 @@ export class DeviceActionService {
     observation?: unknown,
   ): Promise<ApprovalEnqueueResult> {
     const validated = validateDeviceOperation(operation);
+    if (!deviceOperationSupportedByCapabilities(validated.type, c.capabilities))
+      throw new DeviceActionError("Device operation capability unavailable");
     if (
       isClockOperation(validated) &&
       !clockCapabilityAvailable(validated, c.capabilities)
@@ -664,7 +667,15 @@ export class DeviceActionService {
         (request) =>
           request.payload.action === "device_action" &&
           request.payload.installationId === c.installationId &&
-          request.payload.enrollmentId === row.enrollment_id,
+          request.payload.enrollmentId === row.enrollment_id &&
+          (deviceOperationSupportedByCapabilities(
+            "open_view",
+            c.capabilities,
+          ) ||
+            deviceOperationSupportedByCapabilities(
+              validateDevicePayload(request.payload).operation.type,
+              c.capabilities,
+            )),
       ),
     );
   }
@@ -679,6 +690,13 @@ export class DeviceActionService {
     const request = await queue.byId(identifier(id), c.subjectUserId);
     if (!request) throw new DeviceActionError("Proposal unavailable");
     const payload = validateDevicePayload(request.payload);
+    if (
+      !deviceOperationSupportedByCapabilities(
+        payload.operation.type,
+        c.capabilities,
+      )
+    )
+      throw new DeviceActionError("Device operation capability unavailable");
     if (
       isClockOperation(payload.operation) &&
       !clockCapabilityAvailable(payload.operation, c.capabilities)

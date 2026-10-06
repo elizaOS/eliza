@@ -3,7 +3,10 @@ import {
   validateCalendarOperation,
 } from "./calendar-contract.ts";
 import {
+  CLOCK_CAPABILITY,
+  CLOCK_REPEAT_CAPABILITY,
   type ClockOperation,
+  isClockOperation,
   validateClockOperation,
 } from "./clock-contract.ts";
 import { type MapsOperation, validateMapsOperation } from "./maps-contract.ts";
@@ -65,6 +68,29 @@ export type DeviceOperation =
   | { type: "create_reminder"; title: string; dueAt: string }
   | { type: "open_view"; view: (typeof DEVICE_VIEWS)[number] }
   | { type: "browser_navigate"; url: string };
+
+/** Clock-only executors do not inherit the legacy phone executor's base operations. */
+export function deviceOperationSupportedByCapabilities(
+  type: string,
+  capabilities?: readonly string[],
+): boolean {
+  if (isClockOperation({ type }))
+    return (
+      capabilities?.some(
+        (capability) =>
+          capability === CLOCK_CAPABILITY ||
+          capability === CLOCK_REPEAT_CAPABILITY,
+      ) === true
+    );
+  const clockOnly =
+    capabilities?.length &&
+    capabilities.every(
+      (capability) =>
+        capability === CLOCK_CAPABILITY ||
+        capability === CLOCK_REPEAT_CAPABILITY,
+    );
+  return !clockOnly;
+}
 export type DeviceActionPayload = {
   action: "device_action";
   version: 1;
