@@ -473,6 +473,56 @@ describe("request-bound Calendar read coverage", () => {
       calendarReadCoverage(f.output, f.context, f.trajectory).verified,
     ).toBe(true);
   });
+  it.each([
+    ["One line", ""],
+    ["Heading", "\nBody"],
+    ["  Heading ", "\n\nBody  \n"],
+  ])(
+    "preserves exact Notes content when Calendar remains unverified: %j",
+    async (title, body) => {
+      const f = fixture();
+      f.trajectory.outcomeIntents = [
+        ...(f.trajectory.outcomeIntents ?? []),
+        "Read the saved note",
+      ];
+      f.trajectory.steps[0].toolCall.name = "CALENDAR_FEED";
+      f.trajectory.steps[0].result.data = {
+        replyContext: {
+          domain: "calendar",
+          scenario: "feed_results",
+          userFacingFacts: "Only the checked Calendar window was read.",
+          context: {
+            asOf: "2026-10-04T01:19:36Z",
+            selection: "bounded_agenda",
+          },
+        },
+      };
+      f.trajectory.steps.push({
+        iteration: 1,
+        toolCall: { id: "note", name: "NOTES_GET", params: {} },
+        result: { success: true, data: { note: { title, body } } },
+      });
+      f.output.outcomeCoverage?.push({
+        intentId: "intent:2",
+        status: "completed",
+        evidenceStepIds: ["step:2"],
+      });
+      const model = vi.fn(async () => JSON.stringify(f.output));
+      const result = await runEvaluator({
+        runtime: { useModel: model },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(false);
+      expect(result.requestFullyCovered).toBe(false);
+      expect(result.messageToUser).toBe(
+        `Only the checked Calendar window was read. ${title}${body} I couldn't confirm that Calendar request. Those Calendar results cover only the connected sources and dates checked.`,
+      );
+      expect(result.outcomeCoverage?.[0].status).toBe("blocked");
+      expect(result.outcomeCoverage?.[1].status).toBe("completed");
+      expect(model).toHaveBeenCalledTimes(1);
+    },
+  );
   it("replaces unsupported prose with cited current Notes/navigation and bounded Calendar facts", async () => {
     const f = fixture();
     const bindings = f.context.metadata
