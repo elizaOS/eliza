@@ -61,3 +61,51 @@ it("returns every row exactly once when paging a sort with ties", async () => {
     await cleanup();
   }
 }, 120_000);
+
+it("pages the visible same-named table when another schema has a different primary key", async () => {
+  const { runtime, cleanup } = await createRealTestRuntime({
+    characterName: "DbViewerSchema",
+  });
+  const server = http.createServer((req, res) => {
+    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    void handleDatabaseRoute(req, res, runtime, pathname);
+  });
+  try {
+    const db = runtime.adapter.db as {
+      execute(query: unknown): Promise<unknown>;
+    };
+    await db.execute(sql.raw("CREATE SCHEMA s2"));
+    await db.execute(
+      sql.raw("CREATE TABLE s2.dup (uid integer PRIMARY KEY, extra text)"),
+    );
+    await db.execute(
+      sql.raw("INSERT INTO s2.dup (uid, extra) VALUES (9, 'other')"),
+    );
+    await db.execute(
+      sql.raw("CREATE TABLE dup (id integer PRIMARY KEY, kind text)"),
+    );
+    await db.execute(
+      sql.raw("INSERT INTO dup (id, kind) VALUES (1, 'a'), (2, 'a')"),
+    );
+    // Both schemas are on the path. Unqualified FROM "dup" still resolves to
+    // public.dup, the first visible relation. The tie-break must not pick up
+    // s2.dup's uid column.
+    await db.execute(sql.raw("SET search_path TO public, s2"));
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/database/tables/dup/rows?limit=25&offset=0&sort=kind`,
+    );
+    const body = (await response.json()) as {
+      rows?: Array<{ id: number }>;
+      error?: string;
+    };
+    expect(response.status).toBe(200);
+    expect(body.rows?.map((row) => Number(row.id)).sort()).toEqual([1, 2]);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await cleanup();
+  }
+}, 120_000);

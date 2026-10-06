@@ -861,7 +861,11 @@ async function handleGetRows(
   // OFFSET pages are separate queries, so the order must be total: a sort
   // column with ties (or no ORDER BY at all) lets rows trade places between
   // pages and be shown twice or never. The primary key breaks ties; a table
-  // without one falls back to its physical row id.
+  // without one falls back to its physical row id. ctid can move after an
+  // UPDATE or VACUUM FULL, so that fallback is stable only inside one query.
+  // The probe must use the same relation an unqualified FROM resolves: a
+  // same-named table in another schema would otherwise add columns the read
+  // does not have, and the page query would fail.
   const pkResult = await executeRawSql(
     runtime,
     `SELECT kcu.column_name
@@ -871,7 +875,15 @@ async function handleGetRows(
       AND tc.table_schema = kcu.table_schema
      WHERE tc.constraint_type = 'PRIMARY KEY'
        AND tc.table_name = '${safeTableName}'
-       AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+       AND tc.table_schema = (
+         SELECT n.nspname
+         FROM pg_catalog.pg_class c
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relname = '${safeTableName}'
+           AND c.relkind = 'r'
+           AND pg_catalog.pg_table_is_visible(c.oid)
+         LIMIT 1
+       )
      ORDER BY kcu.ordinal_position`,
   );
   const tieBreak = pkResult.rows.length
