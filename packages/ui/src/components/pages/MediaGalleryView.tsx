@@ -20,7 +20,6 @@ import {
 
 import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
-import type { QueryResult } from "../../api/client-types-core";
 import { PageLayout } from "../../layouts/page-layout";
 import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
@@ -68,6 +67,7 @@ const DATA_URI_VID = /^data:video\//i;
 const DATA_URI_AUD = /^data:audio\//i;
 const MEDIA_URL_PREFIX =
   /^(https?:|data:|blob:|file:|capacitor:|electrobun:|app:|\/|\.\/|\.\.\/)/i;
+const MEDIA_SCAN_PAGE_SIZE = 500;
 
 function classifyUrl(url: string): "image" | "video" | "audio" | null {
   if (IMAGE_EXTS.test(url) || DATA_URI_IMG.test(url)) return "image";
@@ -124,9 +124,9 @@ function isMediaType(value: string): value is MediaType {
 function extractMediaFromRows(
   rows: Record<string, unknown>[],
   tableName: string,
+  seen = new Set<string>(),
 ): MediaItem[] {
   const items: MediaItem[] = [];
-  const seen = new Set<string>();
 
   for (const row of rows) {
     const createdAt = String(
@@ -318,12 +318,11 @@ export function MediaGalleryView({
           );
         });
 
-      // If no likely tables found, scan all tables with modest limits
+      // If no likely tables are found, scan every table for media values.
       const tablesToScan =
         mediaTableNames.length > 0
           ? mediaTableNames
           : tables.map((t) => t.name);
-      const scanLimit = mediaTableNames.length > 0 ? 500 : 100;
 
       // Scan the candidate tables concurrently — they are independent queries,
       // and the sequential loop made the gallery wait on up to 10 round-trips.
@@ -332,16 +331,28 @@ export function MediaGalleryView({
       for (let offset = 0; offset < tablesToScan.length; offset += 10) {
         const scanResults = await Promise.all(
           tablesToScan.slice(offset, offset + 10).map(async (tableName) => {
-            try {
-              const result: QueryResult = await client.executeDatabaseQuery(
-                `SELECT * FROM "${tableName}" LIMIT ${scanLimit}`,
-              );
-              const rows = Array.isArray(result.rows) ? result.rows : [];
-              return extractMediaFromRows(rows, tableName);
-            } catch {
-              // skip tables that fail
-              return [] as MediaItem[];
+            const items: MediaItem[] = [];
+            const seen = new Set<string>();
+            let rowOffset = 0;
+
+            while (true) {
+              const result = await client.getDatabaseRows(tableName, {
+                offset: rowOffset,
+                limit: MEDIA_SCAN_PAGE_SIZE,
+              });
+              const rows = result.rows;
+              items.push(...extractMediaFromRows(rows, tableName, seen));
+              rowOffset += rows.length;
+
+              if (rows.length === 0 && rowOffset < result.total) {
+                throw new Error(
+                  `Media scan for "${tableName}" stopped at row ${rowOffset} of ${result.total}`,
+                );
+              }
+              if (rowOffset >= result.total) break;
             }
+
+            return items;
           }),
         );
         for (const items of scanResults) allMedia.push(...items);
