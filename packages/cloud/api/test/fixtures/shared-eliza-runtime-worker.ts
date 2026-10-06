@@ -496,6 +496,8 @@ const worker = {
           execution_tier: "shared",
           ...(project === "network" ? { project } : {}),
         } satisfies SharedRuntimeAgent;
+        const live = url.searchParams.get("live") === "1";
+        const turnIndex = Number(url.searchParams.get("i") ?? "0");
         const network = sharedNetworkExecution(
           agent,
           isCanonicalPersonalSharedAgent(agent),
@@ -506,15 +508,17 @@ const worker = {
         const result = await runSharedAgentTurn({
           character: {
             name: "The Network",
-            system: "You are The Network, a warm, brief connector.",
+            // The marker routes live-mode model calls to the real endpoint.
+            system: `You are The Network, a warm, brief connector.${live ? " (network-live-probe)" : ""}`,
             model: "local/shared-runtime-probe",
           },
           history: [],
           message:
+            url.searchParams.get("message") ??
             "swamped at work and I will be in Austin next week, pause my network intros until oct 20",
           messageIds: {
-            user: "70000000-0000-5000-8000-0000000000a3",
-            assistant: "70000000-0000-5000-8000-0000000000a4",
+            user: `70000000-0000-5000-8000-${(0xa3 + turnIndex * 2).toString(16).padStart(12, "0")}`,
+            assistant: `70000000-0000-5000-8000-${(0xa4 + turnIndex * 2).toString(16).padStart(12, "0")}`,
           },
           execution: {
             channel: { type: ChannelType.DM, source: "twilio" },

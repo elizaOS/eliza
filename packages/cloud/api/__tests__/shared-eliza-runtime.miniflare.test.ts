@@ -49,6 +49,19 @@ describe("Shared Eliza runtime in Workerd", () => {
     "",
   );
   const liveModelId = process.env.SHARED_ELIZA_LIVE_MODEL_ID;
+  // Opt-in real-model latency run for Network SET_STATE turns. The key is read
+  // from the environment only and never logged.
+  const networkLive = {
+    url: process.env.NETWORK_LIVE_MODEL_URL?.replace(/\/+$/, ""),
+    model: process.env.NETWORK_LIVE_MODEL_ID,
+    key: process.env.NETWORK_LIVE_MODEL_KEY,
+  };
+  const networkLiveCalls: Array<{
+    ms: number;
+    status: number;
+    tool?: string;
+    contexts?: unknown;
+  }> = [];
 
   beforeAll(async () => {
     networkDb = new PGlite();
@@ -95,8 +108,58 @@ describe("Shared Eliza runtime in Workerd", () => {
     modelServer = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
+      idleTimeout: 120,
       async fetch(request) {
         const body = (await request.json()) as Record<string, unknown>;
+        if (
+          networkLive.url &&
+          networkLive.model &&
+          networkLive.key &&
+          JSON.stringify(body).includes("network-live-probe")
+        ) {
+          const started = performance.now();
+          const live = await fetch(`${networkLive.url}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${networkLive.key}`,
+            },
+            body: JSON.stringify({ ...body, model: networkLive.model }),
+          });
+          const text = await live.text();
+          let tool: string | undefined;
+          let contexts: unknown;
+          try {
+            const call = (
+              JSON.parse(text) as {
+                choices?: Array<{
+                  message?: {
+                    tool_calls?: Array<{
+                      function?: { name?: string; arguments?: string };
+                    }>;
+                  };
+                }>;
+              }
+            ).choices?.[0]?.message?.tool_calls?.[0]?.function;
+            tool = call?.name ?? "text";
+            if (call?.name === "HANDLE_RESPONSE" && call.arguments) {
+              contexts = (JSON.parse(call.arguments) as { contexts?: unknown })
+                .contexts;
+            }
+          } catch {
+            tool = "unparsed";
+          }
+          networkLiveCalls.push({
+            ms: Math.round(performance.now() - started),
+            status: live.status,
+            tool,
+            contexts,
+          });
+          return new Response(text, {
+            status: live.status,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
         modelRequests.push(body);
         // SPIKE (The Network): deterministic SET_STATE turn.
         const networkSerialized = JSON.stringify(body);
@@ -1664,4 +1727,102 @@ describe("Shared Eliza runtime in Workerd", () => {
       })}`,
     );
   }, 300_000);
+
+  test.skipIf(!(networkLive.url && networkLive.model && networkLive.key))(
+    "LIVE: Network SET_STATE turn latency against a real OpenAI-compatible model",
+    async () => {
+      const messages = [
+        "pause my network intros until oct 20, work is insane",
+        "I'm traveling to New York until November 3",
+        "I'm back, open to intros again",
+        "super busy this week, hold off on new intros",
+        "taking a break from the network until december",
+        "in Austin until the 25th",
+        "ok I'm free now, send me intros",
+        "can you pause everything for two weeks",
+        "busy with a launch until friday",
+        "I'll be in London from next monday until the 15th",
+        "back from London, open again",
+        "please hold intros, family stuff, until the end of the month",
+        "I'm open for intros",
+        "traveling to Tokyo until oct 30",
+        "slammed at work, mark me busy",
+        "pause me until january 5",
+        "I'm available again",
+        "heading to Lisbon until the 12th",
+        "busy until next tuesday",
+        "resume my intros please",
+      ];
+      const turns: Array<{
+        wallMs: number;
+        roundTripMs: number;
+        modelCalls: number;
+        setStateCalled: boolean;
+        degraded: boolean;
+        state: string;
+        reply?: string;
+        calls: typeof networkLiveCalls;
+      }> = [];
+      for (const [index, message] of messages.entries()) {
+        networkLiveCalls.length = 0;
+        const eventsBefore = (
+          await networkDb.query(`SELECT 1 FROM network.member_events`)
+        ).rows.length;
+        const started = performance.now();
+        const response = await miniflare.dispatchFetch(
+          `https://runtime.test/network-pg-turn?live=1&i=${index}&message=${encodeURIComponent(message)}`,
+        );
+        const roundTripMs = performance.now() - started;
+        const body = await response.text();
+        expect(response.status, body).toBe(200);
+        const payload = JSON.parse(body) as {
+          result: {
+            degraded: boolean;
+            actionResults?: Array<{ data?: { actionName?: string } }>;
+          };
+          wallMs: number;
+        };
+        const member = await networkDb.query<{ state: string }>(
+          `SELECT state FROM network.members`,
+        );
+        turns.push({
+          wallMs: payload.wallMs,
+          roundTripMs: Math.round(roundTripMs),
+          modelCalls: networkLiveCalls.length,
+          // A committed SET_STATE writes exactly one member_events row.
+          setStateCalled:
+            (await networkDb.query(`SELECT 1 FROM network.member_events`)).rows
+              .length > eventsBefore,
+          degraded: payload.result.degraded,
+          state: member.rows[0]?.state ?? "",
+          reply: (payload.result as { reply?: string }).reply?.slice(0, 120),
+          calls: networkLiveCalls.map((call) => ({ ...call })),
+        });
+      }
+      const sorted = (values: number[]) => [...values].sort((a, b) => a - b);
+      const percentile = (values: number[], p: number) =>
+        sorted(values)[
+          Math.min(values.length - 1, Math.ceil((p / 100) * values.length) - 1)
+        ];
+      const walls = turns.map((turn) => turn.wallMs);
+      const calls = turns.map((turn) => turn.modelCalls);
+      console.info(
+        `NETWORK_LIVE_LATENCY ${JSON.stringify({
+          model: networkLive.model,
+          turns: turns.length,
+          p50Ms: percentile(walls, 50),
+          p95Ms: percentile(walls, 95),
+          maxMs: Math.max(...walls),
+          modelCallsP50: percentile(calls, 50),
+          modelCallsMax: Math.max(...calls),
+          modelCallsMean: calls.reduce((a, b) => a + b, 0) / calls.length,
+          setStateTurns: turns.filter((turn) => turn.setStateCalled).length,
+          degradedTurns: turns.filter((turn) => turn.degraded).length,
+          perTurn: turns,
+        })}`,
+      );
+      expect(turns.every((turn) => !turn.degraded)).toBe(true);
+    },
+    1_200_000,
+  );
 });
