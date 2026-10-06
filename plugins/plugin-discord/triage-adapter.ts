@@ -152,6 +152,9 @@ export function mapDiscordMemoryToRef(memory: Memory): MessageRef | null {
 	};
 }
 
+/** Discord's maximum messages per channel history request. */
+const DISCORD_HISTORY_PAGE = 100;
+
 export class DiscordTriageAdapter extends BaseMessageAdapter {
 	readonly source: MessageSource = "discord";
 
@@ -199,6 +202,11 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 			// candidates, runs out, or falls behind `sinceMs`.
 			let candidates = 0;
 			let before: string | undefined;
+			// Each read asks for a full Discord history page (100 per request)
+			// even for a small limit, so agent-heavy history costs one round
+			// trip per 100 messages rather than one per `limit`.
+			const pageSize =
+				limit === undefined ? undefined : Math.max(limit, DISCORD_HISTORY_PAGE);
 			while (true) {
 				let memories: Memory[];
 				try {
@@ -206,7 +214,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 						{ runtime },
 						{
 							channelId,
-							...(limit === undefined ? {} : { limit }),
+							...(pageSize === undefined ? {} : { limit: pageSize }),
 							...(before ? { before } : {}),
 						},
 					);
@@ -253,7 +261,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 				if (
 					limit === undefined ||
 					candidates >= limit ||
-					memories.length < limit ||
+					memories.length < (pageSize ?? limit) ||
 					!oldest ||
 					// A page that does not move strictly older would repeat forever.
 					(before !== undefined && oldest.id >= BigInt(before)) ||

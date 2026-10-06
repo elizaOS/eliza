@@ -107,6 +107,14 @@ export const listInboxAction: Action = {
         });
       } else {
         messages = rankScored(messages);
+        // The live pull applies `sinceMs` inside the adapters; the cached
+        // path must enforce the same documented floor itself, or one
+        // identical request returns unfiltered rows when the store is warm
+        // and filtered rows when it is cold.
+        const sinceMs = params.sinceMs;
+        if (sinceMs !== undefined) {
+          messages = messages.filter((m) => m.receivedAtMs >= sinceMs);
+        }
       }
 
       let unread = messages.filter((m) => !m.isRead);

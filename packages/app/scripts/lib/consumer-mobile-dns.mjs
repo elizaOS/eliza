@@ -13,7 +13,7 @@ const baseSources = [
   "packages/agent/src/runtime/mobile-dns-decode-budget.ts",
   "packages/host/src/runtime-env.ts",
   "packages/host/src/config/boot-config-store.ts",
-  ...["errors.ts", "env-utils.ts", "security/bind-host.ts"].map(
+  ...["errors.ts", "security/bind-host.ts"].map(
     (name) => `packages/core/src/${name}`,
   ),
 ];
@@ -39,7 +39,7 @@ export function buildConsumerMobileDns(output, { sourceRoot, sourceCommit }) {
     // entrypoint independent of unrelated exports in the full protocol barrels.
     fs.writeFileSync(
       path.join(temporary, "core.ts"),
-      ["errors.ts", "env-utils.ts", envModule, "security/bind-host.ts"]
+      ["errors.ts", envModule, "security/bind-host.ts"]
         .map((name) => `export * from './packages/core/src/${name}';`)
         .join("\n"),
     );
