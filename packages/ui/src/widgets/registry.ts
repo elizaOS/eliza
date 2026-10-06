@@ -215,9 +215,7 @@ const RETIRED_WIDGET_KEYS = new Set([
 function isRetiredWidget(declaration: PluginWidgetDeclaration): boolean {
   return (
     RETIRED_WIDGET_KEYS.has(`${declaration.pluginId}/${declaration.id}`) ||
-    (declaration.slot === "home" &&
-      declaration.pluginId === "todo" &&
-      declaration.id === "todo.items")
+    (declaration.slot === "home" && declaration.id === "todo.items")
   );
 }
 
