@@ -356,8 +356,8 @@ export function renderMorningCheckinReport(
   const lists = [
     {
       key: "todaysMeetings" as const,
-      title: "Meetings today",
-      empty: "No meetings listed for today.",
+      title: "Calendar today",
+      empty: "No Calendar events listed for today.",
       rows: report.todaysMeetings,
     },
     {
@@ -396,7 +396,8 @@ export function renderMorningCheckinReport(
           parseMs(event.endAt) !== null &&
           parseMs(event.endAt) === parseMs(row.endAt) &&
           row.status !== undefined &&
-          event.status === row.status
+          event.status === row.status &&
+          event.isAllDay === row.isAllDay
         );
       });
       if (calendarItem) combinedCalendarItems.add(calendarItem);
@@ -574,6 +575,18 @@ function localDayWindow(
     end,
     key: `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`,
   };
+}
+
+/** All-day bounds are civil dates encoded at UTC midnight, not zoned instants. */
+function calendarDayPredicate(day: ReturnType<typeof localDayWindow>): string {
+  return `(
+    (is_all_day = true
+     AND LEFT(start_at, 10) <= ${sqlQuote(day.key)}
+     AND LEFT(end_at, 10) > ${sqlQuote(day.key)})
+    OR (is_all_day = false
+        AND start_at >= ${sqlQuote(day.start.toISOString())}
+        AND start_at < ${sqlQuote(day.end.toISOString())})
+  )`;
 }
 function unavailableSection(
   key: CheckinBriefingSection["key"],
@@ -885,11 +898,10 @@ async function collectTodaysMeetings(
   try {
     const rows = await executeRawSql(
       runtime,
-      `SELECT id, title, start_at, end_at, status
+      `SELECT id, title, start_at, end_at, status, is_all_day
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
-          AND start_at >= ${sqlQuote(day.start.toISOString())}
-          AND start_at < ${sqlQuote(day.end.toISOString())}
+          AND ${calendarDayPredicate(day)}
         ORDER BY start_at ASC
         LIMIT 50`,
     );
@@ -900,6 +912,7 @@ async function collectTodaysMeetings(
         startAt: toText(row.start_at),
         endAt: toText(row.end_at),
         status: toText(row.status),
+        isAllDay: toBoolean(row.is_all_day),
       })),
       error: null,
     };
@@ -1276,17 +1289,18 @@ async function collectCalendarChangeSection(
 ): Promise<CheckinBriefingSection> {
   const agentId = String(runtime.agentId);
   const day = localDayWindow(now, timezone);
+  const today = calendarDayPredicate(day);
   const sinceIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   try {
     const rows = await executeRawSql(
       runtime,
-      `SELECT id, title, start_at, end_at, status, html_link, updated_at
+      `SELECT id, title, start_at, end_at, status, is_all_day, html_link, updated_at,
+              ${today} AS is_today
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND side = 'owner'
           AND (
-            (start_at >= ${sqlQuote(day.start.toISOString())}
-             AND start_at < ${sqlQuote(day.end.toISOString())})
+            ${today}
             OR updated_at >= ${sqlQuote(sinceIso)}
           )
         ORDER BY
@@ -1294,14 +1308,7 @@ async function collectCalendarChangeSection(
           start_at ASC
         LIMIT 40`,
     );
-    const todayCount = rows.filter((row) => {
-      const startMs = parseMs(toText(row.start_at));
-      return (
-        startMs !== null &&
-        startMs >= day.start.getTime() &&
-        startMs < day.end.getTime()
-      );
-    }).length;
+    const todayCount = rows.filter((row) => toBoolean(row.is_today)).length;
     const changedCount = rows.filter(
       (row) => (parseMs(toText(row.updated_at)) ?? 0) >= Date.parse(sinceIso),
     ).length;
@@ -1329,6 +1336,7 @@ async function collectCalendarChangeSection(
             startAt: toText(row.start_at),
             endAt: toText(row.end_at),
             status,
+            isAllDay: toBoolean(row.is_all_day),
           },
           occurredAt: updatedAt ?? toText(row.start_at),
           href: toText(row.html_link) || null,
