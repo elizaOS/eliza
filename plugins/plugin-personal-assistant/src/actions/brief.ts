@@ -10,9 +10,9 @@
  *
  * Pulls from each domain (calendar feed, inbox triage, life-domain due items,
  * regret-audited commitment-ledger obligations) per
- * the `include` arg, then runs a single LLM
- * compose pass to render a narrative over the structured `LifeOpsBriefing`
- * shape. Briefings are kept in-memory.
+ * the `include` arg. Standalone callers compose the narrative locally; planned
+ * turns defer complete narrative grounding to final reply composition.
+ * Briefings are kept in-memory.
  *
  * Owner-only — `hasLifeOpsAccess` (which delegates to `hasOwnerAccess`).
  */
@@ -33,9 +33,14 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import {
+  ActionMode,
+  applyGroundedActionReply,
+  createUnavailableGroundedActionReply,
   ElizaError,
+  getActionReplyOwner,
   getTrajectoryContext,
   logger,
   ModelType,
@@ -555,8 +560,8 @@ async function loadEngagementSummariesFromLifeOps(args: {
 
 /**
  * Persist one `rendered` impression per surfaced (non-omitted) editorial item.
- * Called only after the callback delivery of the composed brief resolved, so a
- * failed delivery never fabricates visibility. Returns the number of rows
+ * Called only after standalone callback delivery or the planner turn
+ * delivery boundary resolved, so a failed delivery never fabricates visibility. Returns the number of rows
  * written so callers and tests can assert the ledger reflects the delivery.
  */
 async function recordRenderedImpressionsInLifeOps(args: {
@@ -660,7 +665,7 @@ export interface BriefComposers {
   loadEngagementSummaries: (args: {
     runtime: IAgentRuntime;
   }) => Promise<readonly LifeOpsBriefItemEngagementSummary[]>;
-  /** Ledger write for delivered brief items; runs only after callback delivery. */
+  /** Ledger write for brief items after their owning delivery boundary. */
   recordRenderedImpressions: (args: {
     runtime: IAgentRuntime;
     briefing: LifeOpsBriefing;
@@ -1431,15 +1436,82 @@ export const briefAction: Action & {
     const format: "narrative" | "json" =
       params.format === "json" ? "json" : "narrative";
     const optimizationTask = resolveBriefOptimizationTask({ params, message });
+    const deferReply =
+      format === "narrative" && getActionReplyOwner(message.id) === "planner";
 
     const briefing = await assembleBriefing({
       runtime,
       subaction,
       period,
       include,
-      format,
+      format: deferReply ? "json" : format,
       optimizationTask,
     });
+
+    const result: ActionResult = {
+      success: true,
+      data: {
+        subaction,
+        optimizationTask,
+        briefing,
+        briefingId: briefing.id,
+        replyContext: {
+          domain: "briefing",
+          sourceScope: BRIEF_SOURCE_SCOPE_INSTRUCTIONS,
+        },
+      },
+    };
+    if (deferReply) {
+      try {
+        const prompt = buildNarrativePrompt({
+          kind: briefing.kind,
+          period: briefing.period,
+          sections: briefing.sections,
+          sourceErrors: briefing.sourceErrors,
+          lifeSummary: briefing.lifeSummary,
+          editorial: briefing.editorial,
+          asOf: briefing.generatedAt,
+          timeZone: (
+            await resolveCalendarTimeZone(
+              runtime,
+              new Date(briefing.generatedAt),
+            )
+          ).timeZone,
+          runtime,
+          optimizationTask,
+        });
+        // The complete briefing prompt is the sole model-facing representation.
+        // Keep the original snapshot in data for post-delivery impressions.
+        return applyGroundedActionReply(
+          {
+            ...result,
+            promptData: {
+              subaction,
+              optimizationTask,
+              briefingId: briefing.id,
+            },
+            promptDataMode: "replace-data",
+          },
+          {
+            kind: "deferred",
+            grounding: JSON.stringify({ domain: "briefing", prompt }),
+          },
+        );
+      } catch (error) {
+        // error-policy:J1 preserve collected sources when presentation context fails.
+        // Never retry collection or substitute an ungrounded owner-local clock.
+        runtime.reportError("Brief.replyGrounding", error, {
+          briefingId: briefing.id,
+        });
+        return applyGroundedActionReply(
+          result,
+          createUnavailableGroundedActionReply({
+            kind: "reply_generation_error",
+            code: "BRIEF_REPLY_GROUNDING_FAILED",
+          }),
+        );
+      }
+    }
 
     const text =
       briefing.narrative ??
@@ -1479,23 +1551,74 @@ export const briefAction: Action & {
     }
 
     return {
-      success: true,
+      ...result,
       text,
       userFacingText: text,
       // Generated narrative is licensed reply material, not mandatory verbatim
       // output. Preserve exact structured JSON while the evaluator owns prose.
       ...(format === "json" ? { verifiedUserFacing: true } : {}),
       turnComplete: true,
-      data: {
-        subaction,
-        optimizationTask,
-        briefing,
-        briefingId: briefing.id,
-        replyContext: {
-          domain: "briefing",
-          sourceScope: BRIEF_SOURCE_SCOPE_INSTRUCTIONS,
-        },
-      },
     };
+  },
+};
+
+/** Current-turn results come from the executor, never message-supplied metadata. */
+function deferredBriefings(state: State | undefined): LifeOpsBriefing[] {
+  const results = state?.data?.actionResults;
+  if (!Array.isArray(results)) return [];
+  return results.flatMap((result: ActionResult) => {
+    const data = result?.data;
+    const subaction = data?.subaction;
+    const briefing = data?.briefing as LifeOpsBriefing | undefined;
+    return result?.success === true &&
+      result.transcriptVisibility === "internal" &&
+      result.turnComplete === false &&
+      !result.replyFailure &&
+      typeof data?.replyGrounding === "string" &&
+      typeof subaction === "string" &&
+      COMPOSE_SUBACTIONS.some((value) => value === subaction) &&
+      (data.actionName === ACTION_NAME ||
+        data.actionName === `${ACTION_NAME}_${subaction.toUpperCase()}`) &&
+      briefing &&
+      briefing.id === data.briefingId
+      ? [briefing]
+      : [];
+  });
+}
+
+/** The existing post-delivery lifecycle supplies final text and exact source results. */
+export const briefDeliveredImpressionsAction: Action = {
+  name: "BRIEF_RECORD_DELIVERED_IMPRESSIONS",
+  description:
+    "Record surfaced briefing items after the owner's reply is delivered.",
+  mode: ActionMode.ALWAYS_AFTER,
+  roleGate: { minRole: "OWNER" },
+  validate: async (runtime, message, state) =>
+    deferredBriefings(state).length > 0 && hasLifeOpsAccess(runtime, message),
+  handler: async (runtime, message, state, _options, _callback, responses) => {
+    // Final planner replies carry simple=true; early response-handler acks do not.
+    // Never fall back to an earlier ack when the final response is withheld.
+    const response = responses?.at(-1);
+    const content = response?.content;
+    if (
+      !response ||
+      response.entityId !== runtime.agentId ||
+      response.roomId !== message.roomId ||
+      content?.simple !== true ||
+      content.transcriptVisibility === "internal" ||
+      content?.elizaSyntheticFailure === true ||
+      typeof content?.text !== "string" ||
+      !content.text.trim()
+    )
+      return { success: true };
+    for (const briefing of deferredBriefings(state)) {
+      await activeComposers.recordRenderedImpressions({
+        runtime,
+        briefing,
+        deliveredText: content.text,
+        format: "narrative",
+      });
+    }
+    return { success: true };
   },
 };

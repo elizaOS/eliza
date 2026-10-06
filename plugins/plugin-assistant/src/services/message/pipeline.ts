@@ -1120,17 +1120,19 @@ export async function runV5MessageRuntimeStage1(
     // per-turn profile. Generic coding mode keeps the complete authorized surface.
     const useFullSurface = args.codingMode === true;
     const authorizedCodingActions = useFullSurface
-      ? (args.runtime.actions ?? []).filter((action) =>
-          // The execution gates are the authority for a focused coding turn.
-          // Absent an explicit profile, names cannot form a second fixed allowlist
-          // that silently hides newly registered coding capabilities.
-          canActionRun(action, {
-            activeContexts: CODING_SUB_AGENT_CONTEXTS,
-            userRoles: [senderRole],
-            // There is no concrete turn message in this static surface build;
-            // execution still enforces the private gate.
-            skipPrivateGate: true,
-          }),
+      ? (args.runtime.actions ?? []).filter(
+          (action) =>
+            // The execution gates are the authority for a focused coding turn.
+            // Absent an explicit profile, names cannot form a second fixed allowlist
+            // that silently hides newly registered coding capabilities.
+            (action.mode ?? "PLANNER") === "PLANNER" &&
+            canActionRun(action, {
+              activeContexts: CODING_SUB_AGENT_CONTEXTS,
+              userRoles: [senderRole],
+              // There is no concrete turn message in this static surface build;
+              // execution still enforces the private gate.
+              skipPrivateGate: true,
+            }),
         )
       : undefined;
     const plannerCandidateActions = authorizedCodingActions
