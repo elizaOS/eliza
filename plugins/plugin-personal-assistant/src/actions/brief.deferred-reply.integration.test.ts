@@ -532,6 +532,63 @@ describe("planner-owned BRIEF", () => {
     },
   );
 
+  it("hands the final composer an as-of preview without moving today's source window", async () => {
+    vi.setSystemTime(new Date("2026-10-06T05:00:00.000Z"));
+    const calendar = vi.fn(async () => []);
+    const dueTimes = [
+      "2026-10-06T01:01:00.000Z",
+      "2026-10-06T01:11:00.000Z",
+      "2026-10-06T02:23:00.000Z",
+      "2026-10-06T03:17:00.000Z",
+      "2026-10-06T04:51:00.000Z",
+    ];
+    setBriefComposers({
+      loadCalendar: calendar,
+      loadInbox: async () => undefined,
+      loadLife: async () =>
+        dueTimes.map((dueAt, index) => ({
+          id: `preview-${index}`,
+          title: `Delivery check ${index}`,
+          kind: "reminder" as const,
+          dueAt,
+          state: "visible" as const,
+        })),
+    });
+    const { result } = await invoke("planner", undefined, {
+      text: "Give me my morning briefing.",
+      parameters: { action: "compose_morning", period: "today" },
+    });
+    expect(calendar).toHaveBeenCalledWith(
+      expect.objectContaining({ period: "today" }),
+    );
+    const wire = projectToolResultForModel(
+      actionResultToPlannerToolResult(result),
+    );
+    const prompt = JSON.parse(String(wire.data?.replyGrounding))
+      .prompt as string;
+    const payload = JSON.parse(prompt.split("Data:\n")[1]);
+    expect(payload).toMatchObject({
+      kind: "morning",
+      period: "today",
+      localAsOfDate: "2026-10-05",
+      asOf: "2026-10-06T05:00:00.000Z",
+      sections: { calendar: [] },
+    });
+    expect(
+      payload.sections.life.map(
+        (item: { timeContext: { dueAt: { dateRelationToAsOf: string } } }) =>
+          item.timeContext.dueAt.dateRelationToAsOf,
+      ),
+    ).toEqual(dueTimes.map(() => "same_local_date"));
+    expect(prompt).toContain("identify it as a preview as of localAsOf");
+    expect(result.data?.briefing).toMatchObject({
+      kind: "morning",
+      period: "today",
+      sections: { calendar: [] },
+    });
+    expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+  });
+
   it("defers complete local-time grounding once and leaves standalone JSON semantics intact", async () => {
     const { result, callback } = await invoke();
     expect(result).toMatchObject({

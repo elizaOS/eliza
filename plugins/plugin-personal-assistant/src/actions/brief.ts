@@ -856,16 +856,31 @@ export function buildNarrativePrompt(args: {
 }): string {
   const asOf = args.asOf ?? new Date().toISOString();
   const asOfMs = Date.parse(asOf);
+  const localAsOfDate =
+    args.timeZone && Number.isFinite(asOfMs)
+      ? calendarDateKey(new Date(asOfMs), args.timeZone)
+      : undefined;
   const describeTime = (value: string | null | undefined) => {
     if (!value || !args.timeZone || !Number.isFinite(Date.parse(value)))
       return undefined;
     const instant = new Date(value);
+    const localDate = calendarDateKey(instant, args.timeZone);
     return {
       localTime: formatCalendarEventDateTime(
         { startAt: value, timezone: args.timeZone },
         { includeYear: true, includeTimeZoneName: true },
       ),
-      localDate: calendarDateKey(instant, args.timeZone),
+      localDate,
+      ...(localAsOfDate
+        ? {
+            dateRelationToAsOf:
+              localDate === localAsOfDate
+                ? "same_local_date"
+                : localDate < localAsOfDate
+                  ? "earlier_local_date"
+                  : "later_local_date",
+          }
+        : {}),
       relationToAsOf:
         instant.getTime() < asOfMs
           ? "before_as_of"
@@ -963,6 +978,7 @@ export function buildNarrativePrompt(args: {
       timeZone: args.timeZone,
       asOf,
       localAsOf: describeTime(asOf)?.localTime,
+      localAsOfDate,
       editorial,
     },
     null,
@@ -990,7 +1006,7 @@ export function buildNarrativePrompt(args: {
 ${instructions}
 ${BRIEF_SOURCE_SCOPE_INSTRUCTIONS}
 Write directly to the owner in ordinary conversational language, not a tracking or status report. For an evening brief with completedToday items, start with what was marked done today; the editorial lead then guides the still-open items. Keep item names and categories faithful. Do not narrate which records went active or contrast open carryovers with finished tasks. An uncompleted reminder record does not prove that its real-world activity is unfinished; its dueAt is a scheduled time, not activation or delivery time. When timing matters, use the supplied owner-local clock times rather than guessing dayparts or elapsed time.
-Use asOf as the briefing clock and timeContext.localTime/localDate as the authoritative owner-local display. Use relationToAsOf rather than converting UTC timestamps or guessing the current day. Describe completion timing only from completedAt and its local timeContext, never dueAt or updatedAt. Completion and delivery cannot be inferred from a timestamp; before_as_of alone does not mean an item remains outstanding. Item state and lifeSummary counts are canonical source facts. Express them in ordinary language: visible means still open, snoozed means postponed but still open, completed means done, and skipped remains distinct. A notification does not make an item completed. Describe source coverage and item status conversationally; do not use source/status labels. An omitted section was not selected: do not discuss omitted domains or claim they were checked, empty, or unavailable.${args.sourceErrors ? "\nRequested sources marked unavailable are unavailable, not empty; partial means some inboxes could not be checked while supplied items remain valid. not_connected means no readable inbox connection: say the inbox is not connected and suggest connecting an email/message account to include its messages. Do not say a not_connected inbox check failed. Say what could not be checked in one compact, ordinary-language clause. Name the unavailable domain as supplied; do not rename an inbox error as an email/social-provider failure. Never claim it has no items or nothing due." : ""}
+Use asOf/localAsOfDate as the briefing clock and timeContext.localTime/localDate as the authoritative owner-local display. The requested briefing kind does not change the current date, daypart or selected period. When a named morning/evening brief is requested outside that daypart, identify it as a preview as of localAsOf and describe only the supplied period. An empty today-only calendar does not establish tomorrow's or the next morning's availability. Use relationToAsOf for before/after the clock and dateRelationToAsOf for the local day: same_local_date with before_as_of means earlier today, not yesterday or last evening; earlier_local_date requires its supplied date, not a guessed daypart. Prefer exact local dates/times when relative wording is ambiguous. Describe completion timing only from completedAt and its local timeContext, never dueAt or updatedAt. Completion and delivery cannot be inferred from a timestamp; before_as_of alone does not mean an item remains outstanding. Item state and lifeSummary counts are canonical source facts. Express them in ordinary language: visible means still open, snoozed means postponed but still open, completed means done, and skipped remains distinct. A notification does not make an item completed. Describe source coverage and item status conversationally; do not use source/status labels. An omitted section was not selected: do not discuss omitted domains or claim they were checked, empty, or unavailable.${args.sourceErrors ? "\nRequested sources marked unavailable are unavailable, not empty; partial means some inboxes could not be checked while supplied items remain valid. not_connected means no readable inbox connection: say the inbox is not connected and suggest connecting an email/message account to include its messages. Do not say a not_connected inbox check failed. Say what could not be checked in one compact, ordinary-language clause. Name the unavailable domain as supplied; do not rename an inbox error as an email/social-provider failure. Never claim it has no items or nothing due." : ""}
 
 Data:
 ${payload}`;
