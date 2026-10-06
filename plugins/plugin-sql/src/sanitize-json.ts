@@ -180,6 +180,72 @@ export function serializeDocumentJsonb(value: unknown): string | undefined {
   return serializeJsonbWithBudget(value, MAX_DOCUMENT_JSON_BYTES);
 }
 
+/**
+ * Rejects NUL characters and lone surrogates anywhere `JSON.stringify` would
+ * emit them for a jsonb bind, with the typed errors strict memory writes use.
+ * Unlike `serializeJsonb`, it applies no structural budget and never rewrites
+ * the value, so it adds no size limit to writes that had none.
+ */
+export function assertJsonbStorableText(value: unknown): void {
+  const seen = new WeakSet<object>();
+  // `callToJson` is false for an object that is itself a toJSON result:
+  // JSON.stringify walks that object's contents and only calls toJSON on values
+  // it reaches as properties.
+  const pending: Array<{ value: unknown; callToJson: boolean }> = [{ value, callToJson: true }];
+  while (pending.length > 0) {
+    const next = pending.pop();
+    if (!next) continue;
+    let current = next.value;
+    if (current !== null && typeof current === "object") {
+      if (seen.has(current)) continue;
+      seen.add(current);
+      if (next.callToJson) {
+        const toJSON = (current as { toJSON?: unknown }).toJSON;
+        if (typeof toJSON === "function") {
+          current = toJSON.call(current);
+          if (current !== next.value) {
+            pending.push({ value: current, callToJson: false });
+            continue;
+          }
+        }
+      }
+      if (Array.isArray(current)) {
+        for (const item of current) pending.push({ value: item, callToJson: true });
+        continue;
+      }
+      for (const [key, item] of Object.entries(current as Record<string, unknown>)) {
+        rejectUnstorableJsonbText(key);
+        pending.push({ value: item, callToJson: true });
+      }
+      continue;
+    }
+    if (typeof current === "string") rejectUnstorableJsonbText(current);
+  }
+}
+
+/** True for the typed rejections thrown by {@link assertJsonbStorableText}. */
+export function isUnstorableJsonbTextError(error: unknown): error is ElizaError {
+  return (
+    error instanceof ElizaError &&
+    (error.code === "SQL_JSON_UNSUPPORTED_NUL" || error.code === "SQL_JSON_UNSUPPORTED_SURROGATE")
+  );
+}
+
+function rejectUnstorableJsonbText(value: string): void {
+  if (value.includes(NUL)) {
+    throw new ElizaError(
+      "JSON value contains NUL, which PostgreSQL jsonb cannot store; remove it before retrying the write",
+      { code: "SQL_JSON_UNSUPPORTED_NUL", severity: "fatal" }
+    );
+  }
+  if (!value.isWellFormed()) {
+    throw new ElizaError(
+      "JSON value contains a lone UTF-16 surrogate, which PostgreSQL jsonb cannot store; repair the text before retrying the write",
+      { code: "SQL_JSON_UNSUPPORTED_SURROGATE", severity: "fatal" }
+    );
+  }
+}
+
 function serializeJsonbWithBudget(
   value: unknown,
   maxBytes: number,
