@@ -1679,8 +1679,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         const briefing = result.data?.briefing as LifeOpsBriefing;
         expect(result.success).toBe(true);
         expect(briefing.sourceErrors).toBeUndefined();
-        expect(batches).toHaveBeenCalledTimes(2);
-        batches.mockRestore();
+        expect(batches).toHaveBeenCalledTimes(1);
         expect(briefing.lifeSummary).toEqual(overview.summary);
         expect(
           new Map(briefing.sections.life?.map((item) => [item.id, item.kind])),
@@ -1732,8 +1731,91 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             before.map((record) => record.definition.id),
           ),
         ).toEqual(beforeOccurrences);
+        await service.createDefinition({
+          title: "Added after the first brief",
+          kind: "habit",
+          timezone: "Asia/Tokyo",
+          cadence: { kind: "once", dueAt, visibilityLeadMinutes: 0 },
+          metadata: {
+            ownerSurface: "OWNER_TODOS",
+            nativeProjection: "in_app_only",
+          },
+          reminderPlan: null,
+        });
+        batches.mockClear();
+        const fresh = await callBrief(fixture.runtime, makeMessage(), {
+          action: "DAILY_DIGEST",
+          format: "json",
+        });
+        expect(batches).toHaveBeenCalledTimes(1);
+        expect(
+          (fresh.data?.briefing as LifeOpsBriefing | undefined)?.sections.life,
+        ).toContainEqual(
+          expect.objectContaining({
+            title: "Added after the first brief",
+            kind: "todo",
+          }),
+        );
         expect(native).not.toHaveBeenCalled();
         expect(model).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
+        await fixture.cleanup();
+      }
+    }, 120000);
+
+    it("does not load definitions for empty, excluded, or overridden life collectors", async () => {
+      const fixture = await createLifeOpsTestRuntime();
+      const { LifeOpsService } = await import("../src/lifeops/service.js");
+      const batches = vi.spyOn(LifeOpsService.prototype, "listDefinitions");
+      const overview = vi.spyOn(LifeOpsService.prototype, "getOverview");
+      const completed = vi.spyOn(
+        LifeOpsService.prototype,
+        "listOwnerOccurrencesCompletedToday",
+      );
+      setBriefComposers({
+        loadCalendar: async () => [],
+        loadInbox: async () => [],
+        loadCommitments: async () => [],
+      });
+      try {
+        const empty = await callBrief(fixture.runtime, makeMessage(), {
+          action: "compose_evening",
+          format: "json",
+        });
+        expect(
+          (empty.data?.briefing as LifeOpsBriefing | undefined)?.sections,
+        ).toMatchObject({
+          life: [],
+          completedToday: [],
+        });
+        expect(batches).not.toHaveBeenCalled();
+        overview.mockClear();
+        completed.mockClear();
+        await callBrief(fixture.runtime, makeMessage(), {
+          action: "compose_evening",
+          format: "json",
+          include: { life: false },
+        });
+        expect(overview).not.toHaveBeenCalled();
+        expect(completed).not.toHaveBeenCalled();
+        const loadLife = vi.fn(async () => []);
+        const loadCompletedToday = vi.fn(async () => []);
+        setBriefComposers({ loadLife, loadCompletedToday });
+        await callBrief(fixture.runtime, makeMessage(), {
+          action: "compose_evening",
+          format: "json",
+        });
+        expect(loadLife).toHaveBeenCalledWith({
+          runtime: fixture.runtime,
+          period: "today",
+        });
+        expect(loadCompletedToday).toHaveBeenCalledWith({
+          runtime: fixture.runtime,
+        });
+        expect(overview).not.toHaveBeenCalled();
+        expect(completed).not.toHaveBeenCalled();
+        expect(batches).not.toHaveBeenCalled();
       } finally {
         vi.restoreAllMocks();
         await fixture.cleanup();
