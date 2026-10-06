@@ -59,9 +59,8 @@
  * (fail-open), with no silent middle ground.
  */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
-  EmbeddingGenerationService,
   extractUserText,
   getStreamingContext,
   isCanonicalModelCapabilityDisabled,
@@ -108,18 +107,6 @@ interface TurnEmbedCache {
   results: Map<string, number[]>;
   /** In-flight embeds keyed by normalized query text (dedupe concurrent calls). */
   inFlight: Map<string, Promise<number[]>>;
-  /** Actual dispatch source, never the normalized/aliased recall key. */
-  sources: Map<
-    string,
-    {
-      text: string;
-      messageId?: string;
-      memoryKey?: string;
-      identity: string | undefined;
-      handler: ReturnType<IAgentRuntime["getModel"]>;
-      signal?: AbortSignal;
-    }
-  >;
 }
 
 /**
@@ -220,7 +207,6 @@ function getTurnCache(
     messageId,
     results: new Map(),
     inFlight: new Map(),
-    sources: new Map(),
   };
   if (runId !== "") caches.byRunId.set(runId, fresh);
   if (messageId !== undefined) caches.byMessageId.set(messageId, fresh);
@@ -244,7 +230,7 @@ function getTurnCache(
 export async function embedRecallQuery(
   runtime: IAgentRuntime,
   queryText: string,
-  options?: { messageId?: string; signal?: AbortSignal; memory?: Memory },
+  options?: { messageId?: string; signal?: AbortSignal },
 ): Promise<number[] | null> {
   const signal = options?.signal ?? getStreamingContext()?.abortSignal;
   if (signal?.aborted) {
@@ -286,46 +272,8 @@ export async function embedRecallQuery(
       ? getTurnCache(runtime, runId, messageId)
       : null;
 
-  const offer = (result: Promise<number[]>) => {
-    const memory = options?.memory;
-    const source = cache?.sources.get(normalized);
-    if (
-      !memory ||
-      memory.id !== messageId ||
-      !source ||
-      source.messageId !== messageId ||
-      source.signal?.aborted ||
-      source.text !== memory.content.text ||
-      source.identity !== JSON.stringify(runtime.getEmbeddingIdentity?.()) ||
-      source.handler !== runtime.getModel(ModelType.TEXT_EMBEDDING)
-    )
-      return;
-    const memoryKey = JSON.stringify([
-      memory.id,
-      memory.agentId ?? runtime.agentId,
-      memory.roomId,
-      memory.entityId,
-      memory.content.text,
-    ]);
-    if (source.memoryKey !== undefined && source.memoryKey !== memoryKey)
-      return;
-    source.memoryKey = memoryKey;
-    runtime
-      .getService<EmbeddingGenerationService>(
-        EmbeddingGenerationService.serviceType,
-      )
-      ?.offerPreparedEmbedding(
-        memory,
-        result,
-        signal && source.signal && signal !== source.signal
-          ? AbortSignal.any([signal, source.signal])
-          : (signal ?? source.signal),
-      );
-  };
-
   const cached = cache?.results.get(normalized);
   if (cached) {
-    offer(Promise.resolve(cached));
     recordInferenceSpan("embedding-cache:recall", 0, {
       outcome: "cache_hit",
     });
@@ -341,24 +289,6 @@ export async function embedRecallQuery(
   }
   if (!pending) {
     try {
-      cache?.sources.set(normalized, {
-        text: extractUserText(queryText),
-        messageId,
-        ...(options?.memory
-          ? {
-              memoryKey: JSON.stringify([
-                options.memory.id,
-                options.memory.agentId ?? runtime.agentId,
-                options.memory.roomId,
-                options.memory.entityId,
-                options.memory.content.text,
-              ]),
-            }
-          : {}),
-        identity: JSON.stringify(runtime.getEmbeddingIdentity?.()),
-        handler: runtime.getModel(ModelType.TEXT_EMBEDDING),
-        signal,
-      });
       // Promise.resolve guards a model handler that returns a bare value (or
       // nothing); the catch guards one that throws synchronously. Both are the
       // same failure as a rejected embed and must fail OPEN here — several
@@ -399,8 +329,6 @@ export async function embedRecallQuery(
         cache?.inFlight.delete(normalized);
       });
   }
-
-  offer(pending);
 
   try {
     const vector = await pending;
@@ -469,8 +397,6 @@ export function aliasRecallQuery(
 
   const cache = getTurnCache(runtime, runId, options.messageId);
   const resolved = cache.results.get(sourceKey);
-  const source = cache.sources.get(sourceKey);
-  if (source) cache.sources.set(aliasKey, source);
   if (resolved) {
     cache.results.set(aliasKey, resolved);
     return;

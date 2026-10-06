@@ -256,26 +256,6 @@ export class RuntimeEmbeddings {
 		return this.pinnedEmbeddingProvider;
 	}
 
-	getIdentity():
-		| {
-				provider: string;
-				dimensions: number;
-				vectorSpace?: string;
-		  }
-		| undefined {
-		if (
-			this.embeddingGenerationDisabledReason !== null ||
-			this.pinnedEmbeddingProvider === undefined ||
-			this.pinnedEmbeddingDimension === undefined
-		)
-			return undefined;
-		return {
-			provider: this.pinnedEmbeddingProvider,
-			dimensions: this.pinnedEmbeddingDimension,
-			vectorSpace: this.pinnedEmbeddingSpace,
-		};
-	}
-
 	/**
 	 * Provider that answered the boot-time TEXT_EMBEDDING dimension probe. The
 	 * SQL adapter's vector column is sized from that provider's output, so all

@@ -885,20 +885,6 @@ export class MessageTurnLifetime {
           );
           throw error;
         } finally {
-          try {
-            await opts.enqueueIncomingEmbedding?.();
-          } catch (error) {
-            // error-policy:J7 preserve the turn's outcome while reporting a
-            // storage-enqueue failure on every early/error/cancellation path.
-            runtime.reportError(
-              "MessageService.incomingEmbeddingEnqueue",
-              error,
-              {
-                messageId: message.id,
-                roomId: message.roomId,
-              },
-            );
-          }
           // Close + emit the per-turn latency breakdown. Detached side
           // effects (post-turn evaluators) intentionally run after this and
           // are NOT counted in turn latency — that is the proof they don't

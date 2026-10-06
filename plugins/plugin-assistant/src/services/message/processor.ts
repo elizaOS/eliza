@@ -224,10 +224,8 @@ export class MessageProcessor {
       { src: "service:message" },
       "Saving message to memory",
     );
-    let incomingEmbeddingMemory: Memory | undefined;
     await timeInferenceSpan("message:ingress:persistence", async () => {
       let memoryToQueue: Memory;
-      const priority = message.id ? "high" : "normal";
 
       // The document augmentation envelope
       // (`<contextual_documents>...</contextual_documents>` + `<user_request>`)
@@ -246,6 +244,7 @@ export class MessageProcessor {
           persistableMessage,
         );
         memoryToQueue = { ...persistableMessage, id: createdMemoryId };
+        await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
       } else {
         const memoryId = await persistIncomingMessageMemory(
           runtime,
@@ -253,15 +252,8 @@ export class MessageProcessor {
         );
         message.id = memoryId;
         memoryToQueue = { ...persistableMessage, id: memoryId };
+        await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
       }
-      incomingEmbeddingMemory = {
-        ...memoryToQueue,
-        content: { ...memoryToQueue.content },
-      };
-      const snapshot = incomingEmbeddingMemory;
-      let enqueued: Promise<void> | undefined;
-      opts.enqueueIncomingEmbedding = () =>
-        (enqueued ??= runtime.queueEmbeddingGeneration(snapshot, priority));
     });
 
     // Participant state and room are independent reads. Resolving them together
@@ -499,7 +491,6 @@ export class MessageProcessor {
         typeof message.id === "string" ? message.id : undefined;
       const recallWarmTask = embedRecallQuery(runtime, recallWarmText, {
         messageId: recallWarmMessageId,
-        memory: incomingEmbeddingMemory,
         ...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
       }).catch((error) => {
         if (opts.abortSignal?.aborted) {
@@ -514,9 +505,6 @@ export class MessageProcessor {
       });
       runTerminalOwner.adopt("recall-embed-prefetch", recallWarmTask);
     }
-    // Register the advisory foreground result before the storage drain can win.
-    // Early gates/errors still enqueue this exact snapshot in turn finalization.
-    await opts.enqueueIncomingEmbedding?.();
 
     // Process attachments before state composition / incoming hooks
     if (message.content.attachments && message.content.attachments.length > 0) {

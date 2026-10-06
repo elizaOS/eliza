@@ -40,8 +40,6 @@ export type ResolvedMessageOptions = {
   onTrajectoryTerminalOwner?: (owner: "run") => void;
   onInferenceTimingSummary?: (summary: InferenceTurnSummary) => void;
   runTerminalOwner?: RunTerminalOwner;
-  /** Once-only storage enqueue, finalized even when pre-compose gates exit early. */
-  enqueueIncomingEmbedding?: () => Promise<void>;
   /** Turn-owned authorized originals for reply-only delivery recovery. */
   prepareReplyRecovery?: () => Promise<MessageReplyRecoveryContext>;
 };

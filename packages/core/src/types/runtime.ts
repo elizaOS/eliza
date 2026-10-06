@@ -992,15 +992,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		modelType: TextGenerationModelType | string,
 	): string | undefined;
 
-	/** The committed embedding representation; unavailable until its probe succeeds. */
-	getEmbeddingIdentity?():
-		| {
-				provider: string;
-				dimensions: number;
-				vectorSpace?: string;
-		  }
-		| undefined;
-
 	generateText(
 		input: string,
 		options?: GenerateTextOptions,
