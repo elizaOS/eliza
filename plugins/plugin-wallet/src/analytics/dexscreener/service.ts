@@ -194,7 +194,7 @@ export class DexScreenerService extends Service {
         ? responseData
         : [responseData];
       const pairPromises = boostedTokens
-        .slice(0, params.limit || 10)
+        .slice(0, params.limit === undefined ? 10 : Math.max(0, params.limit))
         .map(async (token) => {
           try {
             const pairData = await this.get<TokensV1Wire>(
@@ -258,9 +258,10 @@ export class DexScreenerService extends Service {
           }
         });
       }
-      const limitedPairs = params.limit
-        ? pairs.slice(0, params.limit)
-        : pairs.slice(0, 20);
+      const limitedPairs = pairs.slice(
+        0,
+        params.limit === undefined ? 20 : Math.max(0, params.limit),
+      );
       return {
         success: true,
         data: limitedPairs,
@@ -293,7 +294,7 @@ export class DexScreenerService extends Service {
           )
         : profiles;
       const pairPromises = filteredProfiles
-        .slice(0, params.limit || 10)
+        .slice(0, params.limit === undefined ? 10 : Math.max(0, params.limit))
         .map(async (profile) => {
           try {
             const pairData = await this.get<TokensV1Wire>(
