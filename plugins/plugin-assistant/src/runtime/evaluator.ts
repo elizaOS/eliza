@@ -1969,7 +1969,11 @@ export function calendarReadCoverage(
         )
       )
         return false;
-      if (data.event === null) return scope.exhaustive === true;
+      // A fresh bounded NEXT lookup can successfully return no event. Its
+      // non-exhaustive window limits what the reply may claim; it does not
+      // turn the requested read into a failed operation. The producer supplies
+      // those bounds to the evaluator alongside its user-facing source facts.
+      if (data.event === null) return typeof scope.exhaustive === "boolean";
       const event = data.event;
       if (!isObjectRecord(event)) return false;
       const start =
