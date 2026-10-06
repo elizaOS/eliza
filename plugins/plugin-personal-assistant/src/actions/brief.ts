@@ -410,8 +410,14 @@ async function loadInboxFromTriage(args: {
   };
 }
 
+type BriefDefinitions = ReadonlyMap<
+  string,
+  LifeOpsDefinitionRecord["definition"]
+>;
+
 async function loadLifeFromOverview(args: {
   runtime: IAgentRuntime;
+  loadDefinitions: () => Promise<BriefDefinitions>;
 }): Promise<LifeOpsBriefingLifeCollection> {
   const service = await getBriefLifeOpsService(args.runtime);
   const overview = await service.getOverview();
@@ -431,11 +437,8 @@ async function loadLifeFromOverview(args: {
   const goals = Array.isArray(overview.goals) ? overview.goals : [];
   // This public batch read uses the caller's definition scopes and includes
   // archived rows; never infer human item kinds from storage's raw kind.
-  const definitions =
-    occurrences.length > 0 ? await service.listDefinitions() : [];
-  const definitionsById = new Map(
-    definitions.map(({ definition }) => [definition.id, definition]),
-  );
+  const definitionsById =
+    occurrences.length > 0 ? await args.loadDefinitions() : new Map();
   const records = [...occurrences, ...reminders, ...goals];
   const items = records.map((item, index) => {
     const record = asRecord(item);
@@ -477,14 +480,12 @@ async function loadLifeFromOverview(args: {
  */
 async function loadCompletedTodayFromService(args: {
   runtime: IAgentRuntime;
+  loadDefinitions: () => Promise<BriefDefinitions>;
 }): Promise<readonly LifeOpsBriefingLifeItem[]> {
   const service = await getBriefLifeOpsService(args.runtime);
   const completed = await service.listOwnerOccurrencesCompletedToday();
   if (completed.length === 0) return [];
-  const definitions = await service.listDefinitions();
-  const definitionsById = new Map(
-    definitions.map(({ definition }) => [definition.id, definition]),
-  );
+  const definitionsById = await args.loadDefinitions();
   return completed.map((occurrence) => ({
     id: occurrence.id,
     kind: briefingDefinitionKind(definitionsById.get(occurrence.definitionId)),
@@ -679,17 +680,20 @@ export interface BriefComposers {
   }) => Promise<number>;
 }
 
-const defaultComposers: BriefComposers = {
+const defaultComposers: Omit<
+  BriefComposers,
+  "loadLife" | "loadCompletedToday"
+> = {
   loadCalendar: loadCalendarFromLifeOps,
   loadInbox: loadInboxFromTriage,
-  loadLife: loadLifeFromOverview,
-  loadCompletedToday: loadCompletedTodayFromService,
   loadCommitments: loadCommitmentsFromLedger,
   loadEngagementSummaries: loadEngagementSummariesFromLifeOps,
   recordRenderedImpressions: recordRenderedImpressionsInLifeOps,
 };
 
-let activeComposers: BriefComposers = defaultComposers;
+let activeComposers: typeof defaultComposers &
+  Partial<Pick<BriefComposers, "loadLife" | "loadCompletedToday">> =
+  defaultComposers;
 
 /**
  * Override the briefing composers. Service-backed loaders can be injected
@@ -1084,6 +1088,16 @@ async function assembleBriefing(args: {
 }): Promise<LifeOpsBriefing> {
   const { asOf } = args;
   const composers = activeComposers;
+  // Both built-in collectors classify the same owner's definitions. Share only
+  // this assembly's lazy read, including failures; later briefs read afresh.
+  let definitions: Promise<BriefDefinitions> | undefined;
+  const loadDefinitions = () =>
+    (definitions ??= getBriefLifeOpsService(args.runtime)
+      .then((service) => service.listDefinitions())
+      .then(
+        (records) =>
+          new Map(records.map(({ definition }) => [definition.id, definition])),
+      ));
   const sourceErrors: NonNullable<LifeOpsBriefing["sourceErrors"]> = {};
   const collectSource = async <T>(
     source: keyof LifeOpsBriefingSections,
@@ -1129,7 +1143,9 @@ async function assembleBriefing(args: {
       : Promise.resolve([] as readonly LifeOpsBriefingInboxItem[]),
     args.include.life
       ? collectSource("life", () =>
-          composers.loadLife({ runtime: args.runtime, period: args.period }),
+          composers.loadLife
+            ? composers.loadLife({ runtime: args.runtime, period: args.period })
+            : loadLifeFromOverview({ runtime: args.runtime, loadDefinitions }),
         )
       : Promise.resolve([] as readonly LifeOpsBriefingLifeItem[]),
     args.include.commitments
@@ -1165,7 +1181,12 @@ async function assembleBriefing(args: {
   const completedToday =
     kind === "evening" && args.include.life
       ? await collectSource("completedToday", () =>
-          composers.loadCompletedToday({ runtime: args.runtime }),
+          composers.loadCompletedToday
+            ? composers.loadCompletedToday({ runtime: args.runtime })
+            : loadCompletedTodayFromService({
+                runtime: args.runtime,
+                loadDefinitions,
+              }),
         )
       : [];
 
