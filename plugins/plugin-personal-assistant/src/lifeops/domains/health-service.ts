@@ -173,9 +173,12 @@ function dateOnlyFromMs(ms: number): string {
 }
 
 /**
- * The requested health window. `ownerToday` is the owner's local date: health
- * rows are keyed by the provider's local day, so a UTC "today" ends the
- * default window a day early or late for owners away from UTC.
+ * The requested health window. Daily samples and sleep are keyed by the
+ * provider's local day, so the default `endDate` is the owner's local date
+ * (a UTC "today" is a day early or late away from UTC). Workouts and the
+ * connector APIs bound by instants, reading dates as UTC days; for them the
+ * default window ends on the later of the owner's and the UTC date
+ * (`instantEndDate`), so it still reaches the present for owners west of UTC.
  */
 function resolveHealthWindow(
   request: {
@@ -183,10 +186,18 @@ function resolveHealthWindow(
     endDate?: string | null;
     days?: number;
   },
-  ownerToday: string,
-): { startDate: string; endDate: string; days: number } {
+  today: { owner: string; utc: string },
+): {
+  startDate: string;
+  endDate: string;
+  instantEndDate: string;
+  days: number;
+} {
   const days = normalizeDays(request.days);
-  const endDate = normalizeDateOnly(request.endDate, "endDate") ?? ownerToday;
+  const explicitEnd = normalizeDateOnly(request.endDate, "endDate");
+  const endDate = explicitEnd ?? today.owner;
+  const instantEndDate =
+    explicitEnd ?? (today.owner > today.utc ? today.owner : today.utc);
   const startDate =
     normalizeDateOnly(request.startDate, "startDate") ??
     dateOnlyFromMs(
@@ -195,7 +206,7 @@ function resolveHealthWindow(
   if (startDate > endDate) {
     fail(400, "startDate must be on or before endDate");
   }
-  return { startDate, endDate, days };
+  return { startDate, endDate, instantEndDate, days };
 }
 
 function normalizeHealthMetrics(
@@ -558,9 +569,9 @@ export class HealthDomain {
     const side =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-    const { startDate, endDate } = resolveHealthWindow(
+    const { startDate, instantEndDate } = resolveHealthWindow(
       request,
-      await this.ownerToday(),
+      await this.today(),
     );
     const requestUrl = new URL("http://127.0.0.1/");
     const statuses = provider
@@ -590,7 +601,7 @@ export class HealthDomain {
           token,
           grantId: grant.id,
           startDate,
-          endDate,
+          endDate: instantEndDate,
         });
         for (const sample of payload.samples) {
           await this.ctx.repository.upsertHealthMetricSample(sample);
@@ -673,20 +684,24 @@ export class HealthDomain {
         }
       }
     }
+    // The summary resolves the same window from the request itself, so its
+    // workouts keep the instant-bounded end.
     return this.getHealthSummary({
+      ...request,
       provider,
       side,
       mode,
-      startDate,
-      endDate,
       forceSync: false,
     });
   }
 
-  private async ownerToday(): Promise<string> {
+  private async today(): Promise<{ owner: string; utc: string }> {
     const now = new Date();
     const timeZone = await resolveOwnerTimeZone(this.ctx.runtime, now);
-    return getLocalDateKey(getZonedDateParts(now, timeZone));
+    return {
+      owner: getLocalDateKey(getZonedDateParts(now, timeZone)),
+      utc: dateOnlyFromMs(now.getTime()),
+    };
   }
 
   async getHealthSummary(
@@ -696,17 +711,19 @@ export class HealthDomain {
     const side =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-    const { startDate, endDate } = resolveHealthWindow(
+    const { startDate, endDate, instantEndDate } = resolveHealthWindow(
       request,
-      await this.ownerToday(),
+      await this.today(),
     );
     if (request.forceSync) {
+      // The request's own dates, so the sync resolves the same window and
+      // keeps its instant-bounded end.
       return this.syncHealthConnectors({
         provider,
         side,
         mode,
-        startDate,
-        endDate,
+        startDate: request.startDate,
+        endDate: request.endDate,
         days: request.days,
       });
     }
@@ -735,7 +752,7 @@ export class HealthDomain {
       this.ctx.repository.listHealthWorkouts(this.ctx.agentId(), {
         provider,
         startDate,
-        endDate,
+        endDate: instantEndDate,
         limit: 500,
       }),
       this.ctx.repository.listHealthSleepEpisodes(this.ctx.agentId(), {
