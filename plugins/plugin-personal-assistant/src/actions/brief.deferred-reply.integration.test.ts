@@ -5,12 +5,14 @@ import {
   type ActionResult,
   attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
+  createContextObject,
   executePlannedToolCall,
   type Memory,
   ModelType,
   RunTerminalOwner,
   type State,
   TaskService,
+  type ToolDefinition,
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
@@ -32,8 +34,16 @@ import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
 } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
-import { projectToolResultForModel } from "../../../plugin-assistant/src/runtime/planner-rendering.ts";
-import { collectPreviousActionResults } from "../../../plugin-assistant/src/services/message/planned-tool.ts";
+import {
+  compactCanonicalToolMessagesForModel,
+  projectToolResultForModel,
+  trajectoryStepsToMessages,
+} from "../../../plugin-assistant/src/runtime/planner-rendering.ts";
+import {
+  collectPlannerTools,
+  collectPreviousActionResults,
+  executeV5PlannedToolCall,
+} from "../../../plugin-assistant/src/services/message/planned-tool.ts";
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.ts";
 import { resolveOwnerFactStore } from "../lifeops/owner/fact-store.ts";
 import { LifeOpsRepository } from "../lifeops/repository.ts";
@@ -622,7 +632,27 @@ describe("planner-owned BRIEF", () => {
     expect(prompt).toContain(
       "Completion and delivery cannot be inferred from a timestamp",
     );
-    const payload = JSON.parse(prompt.split("\nData:\n")[1]);
+    const encoded = prompt.split("\nData:\n")[1];
+    const payload = JSON.parse(encoded);
+    expect(encoded).toBe(JSON.stringify(payload));
+    const native = compactCanonicalToolMessagesForModel(
+      trajectoryStepsToMessages([
+        {
+          iteration: 1,
+          toolCall: { id: "brief-complete-data", name: "BRIEF" },
+          result: actionResultToPlannerToolResult(result),
+        },
+      ]),
+    );
+    const tool = native.find((message) => message.role === "tool");
+    if (!tool || !Array.isArray(tool.content))
+      throw new Error("Missing native result");
+    const part = tool.content.find((part) => part.type === "tool-result");
+    if (part?.type !== "tool-result" || part.output.type !== "text")
+      throw new Error("Missing native text result");
+    expect(JSON.parse(part.output.value).data.replyGrounding).toBe(
+      projected.data?.replyGrounding,
+    );
     expect(payload).toMatchObject({
       asOf: "2026-10-06T01:30:00.000Z",
       timeZone: "America/Los_Angeles",
@@ -648,36 +678,178 @@ describe("planner-owned BRIEF", () => {
     expect(fixture.runtime.useModel).not.toHaveBeenCalled();
   });
 
-  it("requires final evaluation to compose the reply without a second planner or inner narrative call", async () => {
-    const { result } = await invoke();
-    const plan = vi.fn(async () => ({
-      text: "",
-      toolCalls: [
-        {
-          id: "brief",
-          name: "BRIEF",
-          arguments: { eliza_turn_scope: "final" },
-        },
-      ],
-    }));
+  it("requires the operation on the canonical planner wire and executes one authorized brief before final composition", async () => {
+    const message: Memory = {
+      id: crypto.randomUUID() as UUID,
+      agentId: fixture.runtime.agentId,
+      entityId: ownerId,
+      roomId,
+      content: {
+        text: "Give me my morning brief using the connected sources available now.",
+        source: "client_chat",
+        channelType: ChannelType.DM,
+      },
+    };
+    await attestDeliveryAudienceFromCanonicalRoom(fixture.runtime, message);
+    const actions = fixture.runtime.actions.filter(
+      (action) =>
+        action.name === "BRIEF" ||
+        briefAction.subActions?.includes(action.name),
+    );
+    const context = createContextObject({
+      id: "brief-native-operation",
+      events: actions.map((action) => ({
+        id: `tool:${action.name}`,
+        type: "tool",
+        tool: { name: action.name, action },
+      })),
+    });
+    const tools = collectPlannerTools(context, actions, {
+      canonicalFamilies: true,
+    });
+    expect(tools.filter((tool) => tool.name.startsWith("BRIEF"))).toHaveLength(
+      1,
+    );
+    const plan = vi.fn(
+      async (_type: string, input: Record<string, unknown>) => {
+        const wire = (input.tools as ToolDefinition[]).find(
+          (tool) => tool.name === "BRIEF",
+        );
+        expect(wire?.parameters?.required).toContain("action");
+        expect(wire?.parameters?.properties?.action.enum).toEqual([
+          "compose_morning",
+          "compose_evening",
+          "compose_weekly",
+          "recalibrate",
+          "reset_recalibration",
+        ]);
+        return {
+          text: "",
+          toolCalls: [
+            {
+              id: "brief",
+              name: "BRIEF",
+              arguments: {
+                action: "compose_morning",
+                eliza_turn_scope: "final",
+              },
+            },
+          ],
+        };
+      },
+    );
     const evaluate = vi.fn(async () => ({
       success: true,
       decision: "FINISH" as const,
       messageToUser: finalText,
     }));
+    const executions: unknown[] = [];
     const outcome = await runPlannerLoop({
-      context: { id: "brief-test", events: [] },
-      tools: [{ name: "BRIEF" }],
+      context,
+      tools,
       runtime: { useModel: plan },
-      executeToolCall: async () => actionResultToPlannerToolResult(result),
+      executeToolCall: async (toolCall) => {
+        const result = await executeV5PlannedToolCall({
+          runtime: fixture.runtime,
+          plannerRuntime: { useModel: plan },
+          plannerContext: context,
+          toolCall,
+          executorCtx: {
+            message,
+            replyOwner: "planner",
+            userRoles: ["OWNER"],
+            activeContexts: ["productivity"],
+            state: { values: {}, data: {}, text: "" },
+          },
+          executorOptions: { actions },
+        });
+        executions.push(result);
+        return result;
+      },
       deferInternalReplyRecoveryToCaller: true,
       evaluate,
     });
     expect(plan).toHaveBeenCalledTimes(1);
     expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(executions).toEqual([
+      expect.objectContaining({ success: true, modelReplyRequired: true }),
+    ]);
     expect(outcome.finalMessage).toBe(finalText);
     expect(fixture.runtime.useModel).not.toHaveBeenCalled();
   });
+
+  it.each([undefined, "not-a-brief-operation"])(
+    "does not complete or replay BRIEF when the planner supplies operation %s",
+    async (operation) => {
+      const message: Memory = {
+        id: crypto.randomUUID() as UUID,
+        agentId: fixture.runtime.agentId,
+        entityId: ownerId,
+        roomId,
+        content: {
+          text: "Give me my morning brief using the connected sources available now.",
+          source: "client_chat",
+          channelType: ChannelType.DM,
+        },
+      };
+      await attestDeliveryAudienceFromCanonicalRoom(fixture.runtime, message);
+      const actions = fixture.runtime.actions.filter(
+        (action) =>
+          action.name === "BRIEF" ||
+          briefAction.subActions?.includes(action.name),
+      );
+      const parent = actions.find((action) => action.name === "BRIEF");
+      if (!parent) throw new Error("Missing registered BRIEF");
+      const handler = vi.spyOn(parent, "handler");
+      const context = createContextObject({
+        id: "brief-missing-operation",
+        events: actions.map((action) => ({
+          id: `tool:${action.name}`,
+          type: "tool",
+          tool: { name: action.name, action },
+        })),
+      });
+      const execute = executeV5PlannedToolCall({
+        runtime: fixture.runtime,
+        plannerRuntime: fixture.runtime,
+        plannerContext: context,
+        toolCall: {
+          name: "BRIEF",
+          params: operation === undefined ? {} : { action: operation },
+        },
+        executorCtx: {
+          message,
+          replyOwner: "planner",
+          userRoles: ["OWNER"],
+          activeContexts: ["productivity"],
+          state: { values: {}, data: {}, text: "" },
+        },
+        executorOptions: { actions },
+      });
+      if (operation === undefined) {
+        // Missing operation still enters the existing family subplanner; its
+        // model is blocked locally, so no handler or successful receipt exists.
+        await expect(execute).rejects.toThrow("No inner model call allowed");
+        expect(fixture.runtime.useModel).toHaveBeenCalledTimes(1);
+        const input = vi.mocked(fixture.runtime.useModel).mock.calls[0]?.[1];
+        const tool = ((input?.tools ?? []) as ToolDefinition[]).find(
+          (entry) => entry.name === "BRIEF",
+        );
+        expect(tool?.parameters?.required).toContain("action");
+      } else {
+        const result = await execute;
+        expect(result.success).toBe(false);
+        expect(result.modelReplyRequired).not.toBe(true);
+        expect(result.verifiedUserFacing).not.toBe(true);
+        expect(result.turnComplete).not.toBe(true);
+        expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+      }
+      expect(handler).not.toHaveBeenCalled();
+      expect(
+        await repository.listBriefItemEngagements(fixture.runtime.agentId),
+      ).toHaveLength(0);
+    },
+  );
 
   it.each([
     new Error("delivery rejected"),

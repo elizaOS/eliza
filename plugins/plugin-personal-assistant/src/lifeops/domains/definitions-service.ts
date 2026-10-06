@@ -134,11 +134,15 @@ export class DefinitionsDomain {
     private readonly deps: DefinitionsDeps,
   ) {}
 
+  /** Caller-authorized rows, including archived definitions, without derived data.
+   * Cost: one definition query per existing caller scope; no plan/occurrence reads.
+   */
+  listDefinitionRows(): Promise<LifeOpsTaskDefinition[]> {
+    return listCallerDefinitions(this.ctx.repository, this.ctx);
+  }
+
   async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
-    const definitions = await listCallerDefinitions(
-      this.ctx.repository,
-      this.ctx,
-    );
+    const definitions = await this.listDefinitionRows();
     const plans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "definition",

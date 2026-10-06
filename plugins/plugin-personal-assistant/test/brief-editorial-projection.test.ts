@@ -18,6 +18,86 @@ const engagementSummaries = [
 ];
 
 describe("brief editorial rendering projection", () => {
+  it("encodes complete typed data compactly without changing Unicode, escapes or source scope", () => {
+    const sections: LifeOpsBriefingSections = {
+      calendar: [
+        {
+          id: 'calendar:"雪"\\id',
+          title: 'Café 🛰️\n"Quoted" \\ path',
+          startAt: "2026-10-06T03:00:00.000Z",
+          endAt: "2026-10-06T03:15:00.000Z",
+        },
+      ],
+      life: [
+        {
+          id: "reminder-exact",
+          kind: "reminder",
+          title: "First line\nSecond line\t<not-markup>",
+          state: "visible",
+          dueAt: "2026-10-06T01:00:00.000Z",
+        },
+      ],
+      commitments: [],
+    };
+    const sourceErrors = { inbox: "not_connected" as const };
+    const lifeSummary = {
+      activeOccurrenceCount: 1,
+      overdueOccurrenceCount: 1,
+      snoozedOccurrenceCount: 0,
+      activeReminderCount: 1,
+      activeGoalCount: 0,
+    };
+    const editorial = buildBriefEditorialContract({
+      sections,
+      engagementSummaries: [],
+    });
+    const before = structuredClone({
+      sections,
+      sourceErrors,
+      lifeSummary,
+      editorial,
+    });
+    const prompt = buildNarrativePrompt({
+      kind: "morning",
+      period: "today",
+      sections,
+      sourceErrors,
+      lifeSummary,
+      editorial,
+      asOf,
+      timeZone: "America/Los_Angeles",
+    });
+    const [instructions, encoded] = prompt.split("\nData:\n");
+    const payload = JSON.parse(encoded);
+    expect(encoded).toBe(JSON.stringify(payload));
+    expect(payload).toMatchObject({
+      kind: "morning",
+      period: "today",
+      sections,
+      sourceErrors,
+      lifeSummary,
+      asOf,
+      timeZone: "America/Los_Angeles",
+      localAsOfDate: "2026-10-05",
+    });
+    expect(payload.sections.calendar[0].timeContext.startAt).toMatchObject({
+      localDate: "2026-10-05",
+      relationToAsOf: "after_as_of",
+    });
+    expect(payload.sections.life[0].timeContext.dueAt).toMatchObject({
+      localDate: "2026-10-05",
+      relationToAsOf: "before_as_of",
+    });
+    expect(payload.editorial.decisions).toEqual(
+      editorial.decisions.map(({ itemId, action }) => ({ itemId, action })),
+    );
+    expect(instructions).toContain(
+      "not_connected means no readable inbox connection",
+    );
+    expect(instructions).toContain("End after the verified facts");
+    expect({ sections, sourceErrors, lifeSummary, editorial }).toEqual(before);
+  });
+
   it.each([undefined, { inbox: "not_connected" as const }])(
     "applies ordinary status and exact local-time presentation with source errors %j",
     (sourceErrors) => {

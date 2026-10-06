@@ -18,7 +18,6 @@
  */
 
 import type {
-  LifeOpsDefinitionRecord,
   LifeOpsGoogleConnectorStatus,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
@@ -190,7 +189,9 @@ interface BriefLifeOpsService {
   listOwnerOccurrencesCompletedToday(): Promise<
     readonly LifeOpsOccurrenceView[]
   >;
-  listDefinitions(): Promise<readonly LifeOpsDefinitionRecord[]>;
+  definitions: {
+    listDefinitionRows(): Promise<readonly LifeOpsTaskDefinition[]>;
+  };
   getGoogleConnectorAccounts(
     requestUrl: URL,
     side?: "owner" | "agent",
@@ -410,10 +411,7 @@ async function loadInboxFromTriage(args: {
   };
 }
 
-type BriefDefinitions = ReadonlyMap<
-  string,
-  LifeOpsDefinitionRecord["definition"]
->;
+type BriefDefinitions = ReadonlyMap<string, LifeOpsTaskDefinition>;
 
 async function loadLifeFromOverview(args: {
   runtime: IAgentRuntime;
@@ -968,22 +966,18 @@ export function buildNarrativePrompt(args: {
         pushback: args.editorial.pushback,
       }
     : undefined;
-  const payload = JSON.stringify(
-    {
-      kind: args.kind,
-      period: args.period,
-      sections,
-      sourceErrors: args.sourceErrors,
-      lifeSummary: args.lifeSummary,
-      timeZone: args.timeZone,
-      asOf,
-      localAsOf: describeTime(asOf)?.localTime,
-      localAsOfDate,
-      editorial,
-    },
-    null,
-    2,
-  );
+  const payload = JSON.stringify({
+    kind: args.kind,
+    period: args.period,
+    sections,
+    sourceErrors: args.sourceErrors,
+    lifeSummary: args.lifeSummary,
+    timeZone: args.timeZone,
+    asOf,
+    localAsOf: describeTime(asOf)?.localTime,
+    localAsOfDate,
+    editorial,
+  });
   const optimizationTask = args.optimizationTask ?? "morning_brief";
   const instructions =
     optimizationTask === "meeting_prep"
@@ -1109,10 +1103,10 @@ async function assembleBriefing(args: {
   let definitions: Promise<BriefDefinitions> | undefined;
   const loadDefinitions = () =>
     (definitions ??= getBriefLifeOpsService(args.runtime)
-      .then((service) => service.listDefinitions())
+      .then((service) => service.definitions.listDefinitionRows())
       .then(
         (records) =>
-          new Map(records.map(({ definition }) => [definition.id, definition])),
+          new Map(records.map((definition) => [definition.id, definition])),
       ));
   const sourceErrors: NonNullable<LifeOpsBriefing["sourceErrors"]> = {};
   const collectSource = async <T>(
@@ -1443,6 +1437,7 @@ export const briefAction: Action & {
   parameters: [
     {
       name: "action",
+      required: true,
       description:
         "Brief op: compose_morning | compose_evening | compose_weekly | recalibrate | reset_recalibration. Unnamed daily dossiers use morning before the owner-local evening-window start, then evening; explicitly named kinds are retained.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },

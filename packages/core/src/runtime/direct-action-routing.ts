@@ -38,6 +38,8 @@ export interface DirectActionRoutingRule {
 	readonly wholeRequest?: {
 		matches(messageText: string, message?: Memory): boolean;
 		readonly invalidateFields: readonly string[];
+		/** The closed request has no visible-surface dependency. Never inferred from model output. */
+		readonly inputScope?: "domain-only";
 	};
 	/**
 	 * Fail-closed reply used when this exact intent is owned by the rule but no
