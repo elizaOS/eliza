@@ -337,6 +337,88 @@ describe("chunkSlackText", () => {
     expect((thrown as ElizaError).code).toBe("SLACK_CHUNK_LIMIT_TOO_SMALL");
   });
 
+  const emptyCodeBlocks = (chunk: string) => {
+    const parts = chunk.split("```");
+    let count = 0;
+    for (let i = 1; i < parts.length - 1; i += 2) {
+      if (parts[i].trim() === "") count++;
+    }
+    return count;
+  };
+  const withoutFencesOrWhitespace = (s: string) =>
+    s.replace(/```/g, "").replace(/\s+/g, "");
+
+  it("does not send an empty code block when the opener lands at the break", () => {
+    const text = "Lead paragraph text.\n\n```\nconst x = 1;\n```";
+    const chunks = chunkSlackText(text, 30);
+    expect(chunks.map(emptyCodeBlocks)).toEqual(chunks.map(() => 0));
+    expect(chunks[0]).toBe("Lead paragraph text.\n\n");
+    expect(chunks[1].startsWith("```\nconst")).toBe(true);
+  });
+
+  it("does not reopen a code block whose closer is all that is left", () => {
+    const text = `\`\`\`\n${"a".repeat(20)}\n\n\`\`\`\nOutro.`;
+    const chunks = chunkSlackText(text, 30);
+    expect(chunks).toEqual([`\`\`\`\n${"a".repeat(20)}\n\n\n\`\`\``, "Outro."]);
+  });
+
+  it("never splits a ``` marker across chunks", () => {
+    const text = `${"w".repeat(4)}\n\`\`\`\nab\n\`\`\`\nOutro text here.`;
+    for (let limit = 10; limit <= 40; limit++) {
+      for (const chunk of chunkSlackText(text, limit)) {
+        expect(chunk.replace(/```/g, "")).not.toContain("`");
+      }
+    }
+  });
+
+  it.each(["\n", "\n\n", "\n  \n"])(
+    "keeps every chunk a well-formed, non-empty code block across a sweep (gap %j)",
+    (gap) => {
+      for (let intro = 0; intro <= 30; intro += 3) {
+        for (let lines = 1; lines <= 6; lines++) {
+          const code = Array.from(
+            { length: lines },
+            (_, i) => `ln${i} vv`,
+          ).join("\n");
+          const text = `${"w".repeat(intro)}\n\n\`\`\`\n${code}${gap}\`\`\`\nOutro.`;
+          for (let limit = 12; limit <= 80; limit++) {
+            const chunks = chunkSlackText(text, limit);
+            const where = JSON.stringify({ text, limit, chunks });
+            for (const chunk of chunks) {
+              expect(chunk.length, where).toBeLessThanOrEqual(limit);
+              expect((chunk.match(/```/g) || []).length % 2, where).toBe(0);
+              expect(emptyCodeBlocks(chunk), where).toBe(0);
+            }
+            expect(withoutFencesOrWhitespace(chunks.join("")), where).toBe(
+              withoutFencesOrWhitespace(text),
+            );
+          }
+        }
+      }
+    },
+  );
+
+  it.each([
+    ["a reopened fence", `\`\`\`\n${"x".repeat(40)}\n\`\`\``, 8],
+    [
+      "a reopened fence before an emoji",
+      `\`\`\`\n${"😀".repeat(20)}\n\`\`\``,
+      9,
+    ],
+  ])(
+    "fails closed instead of looping when maxChars can't fit %s plus code",
+    (_label, text, maxChars) => {
+      let thrown: unknown;
+      try {
+        chunkSlackText(text, maxChars);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(ElizaError);
+      expect((thrown as ElizaError).code).toBe("SLACK_CHUNK_LIMIT_TOO_SMALL");
+    },
+  );
+
   it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])(
     "rejects an invalid maxChars (%s) instead of silently coercing it",
     (maxChars) => {

@@ -301,6 +301,7 @@ export interface ChunkSlackTextOpts {
 }
 
 const DEFAULT_MAX_CHARS = 40_000;
+const REOPEN_FENCE = "```\n";
 
 /**
  * A hard per-chunk cap can never be honored for arbitrary text unless it's a
@@ -329,9 +330,10 @@ function chunkLimitTooSmall(
   fnName: string,
   effectiveLimit: number,
   maxChars: number,
+  reason = "cannot hold the next well-formed character without splitting a surrogate pair",
 ): never {
   throw new ElizaError(
-    `${fnName}: a chunk limit of ${effectiveLimit} (from maxChars=${maxChars}) cannot hold the next well-formed character without splitting a surrogate pair`,
+    `${fnName}: a chunk limit of ${effectiveLimit} (from maxChars=${maxChars}) ${reason}`,
     {
       code: "SLACK_CHUNK_LIMIT_TOO_SMALL",
       context: { fnName, effectiveLimit, maxChars },
@@ -413,6 +415,7 @@ export function chunkSlackText(
   const chunks: string[] = [];
   let remaining = text;
   let inCodeBlock = false;
+  let reopenedFence = false;
 
   while (remaining.length > 0) {
     if (remaining.length <= maxChars) {
@@ -442,6 +445,13 @@ export function chunkSlackText(
     // fence budget is spent, pushing the emitted chunk to maxChars + 1.
     breakPoint = Math.min(breakPoint, hardLimit);
 
+    // Cutting through a ``` marker would leave "`" and "``" fragments that no
+    // longer count as fences, so the code-block state below would be wrong.
+    const straddledFence = fenceStraddling(remaining, breakPoint);
+    if (straddledFence > 0) {
+      breakPoint = straddledFence;
+    }
+
     // truncateWellFormed backs the cut off by one unit instead of splitting a
     // surrogate pair; consumedLength (not breakPoint) is how far `remaining`
     // must advance, since the fence suffix appended below isn't part of it.
@@ -449,13 +459,37 @@ export function chunkSlackText(
     if (chunk.length === 0) {
       chunkLimitTooSmall("chunkSlackText", breakPoint, maxChars);
     }
-    const consumedLength = chunk.length;
+    let consumedLength = chunk.length;
+    if (reopenedFence && consumedLength <= REOPEN_FENCE.length) {
+      chunkLimitTooSmall(
+        "chunkSlackText",
+        breakPoint,
+        maxChars,
+        "cannot hold a reopened code fence plus any of the code inside it",
+      );
+    }
 
     // Check if this chunk ends inside a code block — count fences in the
     // actual emitted chunk, not the max-size window, so a fence that sits
     // between the break point and maxChars doesn't flip the state.
     const codeBlockCount = (chunk.match(/```/g) || []).length;
     inCodeBlock = codeBlockCount % 2 !== 0;
+
+    // A block whose opener is followed only by whitespace in this chunk would
+    // be sent as an empty code block; start it in the next chunk instead.
+    if (inCodeBlock) {
+      const opener = chunk.lastIndexOf("```");
+      if (opener > 0 && chunk.slice(opener + 3).trim() === "") {
+        if (chunk.slice(0, opener).trim() === "") {
+          remaining = remaining.slice(opener);
+          reopenedFence = false;
+          continue;
+        }
+        chunk = chunk.slice(0, opener);
+        consumedLength = opener;
+        inCodeBlock = false;
+      }
+    }
 
     // If we're breaking inside a code block, close it
     if (inCodeBlock) {
@@ -466,13 +500,32 @@ export function chunkSlackText(
 
     remaining = remaining.slice(consumedLength);
 
-    // If we were in a code block, reopen it
+    // If we were in a code block, reopen it — unless only whitespace and the
+    // block's own closer are left, which would be sent as an empty code block.
     if (inCodeBlock) {
-      remaining = `\`\`\`\n${remaining}`;
+      const closer = remaining.match(/^\s*(?:```|$)/);
+      reopenedFence = !closer;
+      remaining = closer
+        ? remaining
+            .slice(closer[0].length)
+            .replace(/^\r?\n/, "")
+            .replace(/^\s+$/, "")
+        : `${REOPEN_FENCE}${remaining}`;
+    } else {
+      reopenedFence = false;
     }
   }
 
   return chunks;
+}
+
+function fenceStraddling(text: string, index: number): number {
+  for (let start = index - 2; start < index; start++) {
+    if (start >= 0 && text.startsWith("```", start)) {
+      return start;
+    }
+  }
+  return -1;
 }
 
 /**
