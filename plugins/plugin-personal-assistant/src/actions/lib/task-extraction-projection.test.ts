@@ -156,6 +156,7 @@ async function run(mode: string, outputs: string[]) {
         expect(params).toHaveProperty("responseFormat", {
           type: "json_object",
         });
+        expect(`${params.system ?? ""}\n${params.prompt}`).toMatch(/json/i);
         expect(params).not.toHaveProperty("responseSchema");
         prompts.push(params.prompt);
         systems.push(params.system);
