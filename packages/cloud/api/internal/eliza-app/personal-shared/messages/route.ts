@@ -33,6 +33,11 @@ import { isAllowedBlooioMediaUrl } from "@/lib/services/eliza-app/blooio-media-a
 import { MAX_INBOUND_MEDIA_IMAGES } from "@/lib/services/eliza-app/describe-inbound-media";
 import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-enrichment";
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
+import {
+  evaluateNetworkInboundGate,
+  isNetworkProject,
+} from "@/lib/network/inbound-gate";
+import { networkInviteLookup } from "@/lib/network/invite-lookup";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
@@ -715,6 +720,43 @@ app.post("/", async (c) => {
         data: { code: "group_delivery_receipt_recorded", ...receipt },
       });
     }
+    // The Network is invite-only. Gate before the worker context, account
+    // resolution (which auto-creates a Cloud account for any phone) and any
+    // model turn. Other projects skip this block entirely.
+    const networkProject =
+      "project" in parsed.data && isNetworkProject(parsed.data.project);
+    if (networkProject) {
+      stage = "account_resolution";
+      const gate = await evaluateNetworkInboundGate(
+        isGroupMessage(parsed.data)
+          ? {
+              project: parsed.data.project,
+              platform: parsed.data.platform,
+              chatType: parsed.data.chatType,
+            }
+          : parsed.data.platform === "twilio" ||
+              parsed.data.platform === "blooio"
+            ? {
+                project: parsed.data.project,
+                platform: parsed.data.platform,
+                phoneNumber: parsed.data.phoneNumber,
+              }
+            : { project: "network", platform: parsed.data.platform },
+        networkInviteLookup,
+      );
+      if (gate.kind !== "allow") {
+        return c.json({
+          success: true,
+          data: {
+            code: gate.code,
+            // A dropped group message gets no reply at all, so nothing is
+            // ever posted into a group on The Network's behalf.
+            reply: gate.kind === "reply" ? gate.reply : "",
+          },
+        });
+      }
+      stage = "validation";
+    }
     let telegramVoiceBytes: Uint8Array | undefined;
     if (
       parsed.data.platform === "telegram" &&
@@ -1354,9 +1396,13 @@ app.post("/", async (c) => {
       dedicated = delivery.dedicatedTarget;
       isNewPersonalAccount = delivery.isNew;
     }
+    // A project-scoped product (The Network) gets its own `personal:` identity,
+    // Durable Object and history for the same account. Eliza projects derive
+    // the original unscoped id.
     const agent = personalSharedAgent({
       userId: account.userId,
       organizationId: account.organizationId,
+      project: "project" in parsed.data ? parsed.data.project : undefined,
     });
     if (groupConversationId && !groupConversationId.startsWith("group:")) {
       throw new Error("Invalid Personal Shared group conversation authority");
@@ -1368,6 +1414,7 @@ app.post("/", async (c) => {
     }
 
     const directJoinCode =
+      !networkProject &&
       !isGroupMessage(parsed.data) &&
       (parsed.data.platform === "telegram" || parsed.data.platform === "blooio")
         ? groupJoinCodeCommand(parsed.data.message ?? "")
@@ -1445,6 +1492,7 @@ app.post("/", async (c) => {
     }
 
     const requestedGroupClaim =
+      !networkProject &&
       !isGroupMessage(parsed.data) &&
       (parsed.data.platform === "telegram" || parsed.data.platform === "blooio")
         ? groupClaimRequest(parsed.data.message ?? "")
@@ -1541,6 +1589,9 @@ app.post("/", async (c) => {
         },
       });
     }
+    // A Network turn always runs on the Network-scoped Shared identity, never
+    // on the member's Dedicated Eliza container.
+    if (networkProject) dedicated = null;
     if (dedicated === undefined) {
       dedicated = await findActivePersonalDedicatedTarget(
         account.organizationId,
