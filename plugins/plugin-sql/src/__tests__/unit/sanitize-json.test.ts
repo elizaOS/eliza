@@ -15,8 +15,8 @@
 import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
-  assertJsonbStorableText,
-  isUnstorableJsonbTextError,
+  assertJsonbStorable,
+  isUnsupportedJsonTextError,
   MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS,
   MAX_SQL_JSON_SANITIZE_BYTES,
   MAX_SQL_JSON_SANITIZE_DEPTH,
@@ -530,14 +530,14 @@ describe("lone UTF-16 surrogates", () => {
   });
 });
 
-describe("assertJsonbStorableText", () => {
+describe("assertJsonbStorable", () => {
   const nul = String.fromCharCode(0);
   const codeOf = (value: unknown) => {
     try {
-      assertJsonbStorableText(value);
+      assertJsonbStorable(value);
       return "ok";
     } catch (error) {
-      expect(isUnstorableJsonbTextError(error)).toBe(true);
+      expect(isUnsupportedJsonTextError(error)).toBe(true);
       return (error as ElizaError).code;
     }
   };

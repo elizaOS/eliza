@@ -34,8 +34,9 @@ import {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
 } from "@elizaos/testing/runtime";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ownerGoalsAction } from "../actions/goals.ts";
+import { GoalsRepository } from "../db/goals-repository.ts";
 import { executeRawSql } from "../db/sql.ts";
 import { createOwnerGoalsService } from "../goals-runtime.ts";
 import { goalsPlugin } from "../plugin.ts";
@@ -318,6 +319,56 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
     );
     expect(auditRows).toHaveLength(1);
     expect(() => harness.assertFixturesConsumed()).not.toThrow();
+  });
+
+  it("keeps a goal edit made while a check-in response is being recorded", async () => {
+    const harness = await makeHarness();
+    const goals = createOwnerGoalsService(harness.runtime);
+    const record = await goals.createGoal({
+      title: "Run a 5k",
+      description: "Three runs a week",
+    });
+    const goalId = record.goal.id;
+    const checkin = getGoalsCheckinService(harness.runtime);
+    if (!checkin) throw new Error("GoalsCheckinService is not registered");
+
+    // The owner renames the goal right after the check-in read it, while the
+    // check-in is still completing its task.
+    const getGoal = GoalsRepository.prototype.getGoal;
+    const spy = vi
+      .spyOn(GoalsRepository.prototype, "getGoal")
+      .mockImplementationOnce(async function (
+        this: GoalsRepository,
+        agentId,
+        id,
+      ) {
+        const snapshot = await getGoal.call(this, agentId, id);
+        await executeRawSql(
+          harness.runtime,
+          `UPDATE app_goals.life_goal_definitions
+              SET title = 'Run a 10k'
+            WHERE id = '${goalId}'`,
+        );
+        return snapshot;
+      });
+    try {
+      await checkin.recordCheckinResponse({
+        goalId,
+        note: "first run done",
+        progress: "on_track",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    const stored = await goals.getGoal(goalId);
+    expect(stored.goal.title).toBe("Run a 10k");
+    expect(stored.goal.reviewState).toBe("on_track");
+    expect(
+      (stored.goal.metadata.checkinLog as GoalCheckinLogEntry[]).map(
+        (entry) => entry.note,
+      ),
+    ).toEqual(["first run done"]);
   });
 
   it("records a check-in response from natural language via the OWNER_GOALS checkin subaction", async () => {

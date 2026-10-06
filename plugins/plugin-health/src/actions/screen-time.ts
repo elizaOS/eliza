@@ -135,6 +135,7 @@ type BrowserActivitySnapshot = {
 export interface ScreenTimeActionService {
   getScreenTimeDaily(opts: {
     date: string;
+    timeZone?: string;
     source?: LifeOpsScreenTimeSource;
     identifier?: string;
     limit?: number;
@@ -611,6 +612,7 @@ export function createScreenTimeActionRunner(
         const date = params.date ?? localTodayKey(timeZone);
         const daily = await service.getScreenTimeDaily({
           date,
+          timeZone,
           source: params.source,
           identifier: params.identifier,
         });
