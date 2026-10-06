@@ -21,7 +21,9 @@ strings:
 TELEGRAM_ALLOWED_CHATS='["123456789", "-1001234567890"]'
 ```
 
-When set, this allowlist is authoritative for DMs, groups, channels, and topics.
+In the full bot service, a non-empty per-account `allowedChats` list takes
+precedence over `TELEGRAM_ALLOWED_CHATS`. Otherwise, the global allowlist is
+authoritative for DMs, groups, channels, and topics.
 A malformed value blocks all chats until corrected. An unset or empty string
 leaves non-private chats open and applies `TELEGRAM_DM_POLICY` to private chats;
 the valid JSON value `[]` instead denies every chat. Set `TELEGRAM_DM_POLICY`
