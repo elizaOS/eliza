@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { ChannelType, type UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { DocumentService } from "./service.ts";
 

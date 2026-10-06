@@ -1,3 +1,4 @@
+import { getDefaultAccountPool } from "@elizaos/auth/accounts";
 /**
  * Server-side credential resolver — scans local credential stores
  * and hydrates credentials into the canonical server config + secret state.
@@ -13,16 +14,14 @@
  * exposed by this resolver as API keys.
  */
 
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
 import {
-  getAccessToken,
-  listProviderAccounts,
-} from "@elizaos/auth/auth/credentials";
-import {
+  createRuntimeAccountStoragePolicy,
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
+  getAccessToken,
   isDirectAccountProvider,
-} from "@elizaos/auth/auth/types";
+  listProviderAccounts,
+} from "@elizaos/auth/auth";
 import {
   logger,
   MODEL_PROVIDER_SECRETS,
@@ -34,8 +33,7 @@ import {
   getFirstRunProviderOption,
   getStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId,
-} from "@elizaos/core/contracts/first-run-options";
-import { getDefaultAccountPool } from "../account-pool.js";
+} from "@elizaos/host/protocol";
 
 // ── Credential source registry ───────────────────────────────────────
 interface CredentialSource {

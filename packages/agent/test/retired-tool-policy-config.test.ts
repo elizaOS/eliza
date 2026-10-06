@@ -53,7 +53,7 @@ it("rejects shared connector policy restrictions", () => {
   );
 });
 
-it("keeps unrestricted historical config and ordinary tool settings valid", () => {
+it("keeps unrestricted policies and supported tool settings valid", () => {
   expect(
     ElizaSchema.safeParse({
       tools: {
@@ -61,7 +61,7 @@ it("keeps unrestricted historical config and ordinary tool settings valid", () =
         allow: [],
         deny: [],
         alsoAllow: [],
-        web: { search: { enabled: true } },
+        web: { search: { maxResults: 5 } },
       },
     }).success,
   ).toBe(true);

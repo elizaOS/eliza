@@ -18,13 +18,7 @@
  * fails the function throws.
  */
 
-// `@elizaos/app` is the host layer ABOVE `@elizaos/agent`, so importing
-// agent here is the legal downward edge. Agent no longer imports app (the
-// former cycle is broken — see runtime/host-bridge.ts), so these are plain
-// static imports: no re-entrant ESM evaluation, no TDZ, no dynamic-import dodge.
-import { persistConfigEnv, readConfigEnv } from "@elizaos/agent/api/config-env";
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
 import {
   formatVaultRef,
   isVaultRef,
@@ -34,7 +28,16 @@ import {
   type Vault,
   writeSensitiveValueIfAbsentVerified,
 } from "@elizaos/auth/vault";
-import { type ElizaConfig, loadRegistry, logger } from "@elizaos/core";
+import { loadRegistry, logger, resolveStateDir } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
+// `@elizaos/app` is the host layer ABOVE `@elizaos/agent`, so importing
+// agent here is the legal downward edge. Agent no longer imports app (the
+// former cycle is broken — see runtime/host-bridge.ts), so these are plain
+// static imports: no re-entrant ESM evaluation, no TDZ, no dynamic-import dodge.
+import {
+  persistConfigEnv,
+  readConfigEnv,
+} from "@elizaos/plugin-elizacloud/lib/config-env";
 
 import {
   CONNECTOR_SECRET_FIELDS,

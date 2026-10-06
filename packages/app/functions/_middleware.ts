@@ -30,7 +30,6 @@
 //   an edge-cached .js response has its browser TTL rewritten to the zone
 //   default (max-age=14400), which would delay SW update propagation by hours.
 import {
-  canonicalCloudPathForLegacyDashboard,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
   LANDING_AB_HOSTNAMES,
@@ -66,33 +65,19 @@ export function resolveCanonicalPageRedirect(
   const classified = classifyElizaHostname(url.hostname);
   if (!classified.environment) return null;
   const contract = ELIZA_DOMAIN_CONTRACTS[classified.environment];
-  const canonicalDashboardPath = canonicalCloudPathForLegacyDashboard(
-    url.pathname,
-    url.search,
-  );
   let origin: string | null = null;
   if (classified.role === "legacy-marketing" && isProtocolPath(url.pathname)) {
     origin = contract.cloudApiOrigin;
-  } else if (classified.role === "legacy-marketing" && canonicalDashboardPath) {
-    origin = contract.cloudAppOrigin;
-    url.pathname = canonicalDashboardPath;
-  } else if (classified.role === "marketing" && canonicalDashboardPath) {
-    origin = contract.cloudAppOrigin;
-    url.pathname = canonicalDashboardPath;
   } else if (
     classified.role === "legacy-marketing" ||
     (classified.role === "marketing" &&
       url.hostname !== new URL(contract.marketingOrigin).hostname)
   ) {
     origin = contract.marketingOrigin;
-  } else if (classified.role === "cloud-app" && canonicalDashboardPath) {
-    origin = contract.cloudAppOrigin;
-    url.pathname = canonicalDashboardPath;
   } else if (classified.role === "legacy-cloud-app") {
     origin = isProtocolPath(url.pathname)
       ? contract.cloudApiOrigin
       : contract.cloudAppOrigin;
-    if (canonicalDashboardPath) url.pathname = canonicalDashboardPath;
   } else if (classified.role === "legacy-cloud-api") {
     origin = contract.cloudApiOrigin;
   }

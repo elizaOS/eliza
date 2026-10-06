@@ -46,7 +46,7 @@ import { getSupportedVideoModelDefinition } from "../ai-pricing-definitions";
 import { chatSseFrame } from "../chat-sse-frames";
 import { contentSafetyService } from "../content-safety";
 import type { CreditReconciliationResult, CreditReservation } from "../credits";
-import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
 import { generationsService } from "../generations";
 import {
   executeImageGeneration,

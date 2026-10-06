@@ -14,6 +14,7 @@ import type {
 import {
   actionGateRejection,
   evaluateConnectorAccountPolicies,
+  getDirectActionRoutingRules,
   getInferenceTimer,
   getUserMessageText,
   type LocalizedActionExampleResolver,
@@ -39,6 +40,7 @@ import {
   resolveRuntimeAction,
 } from "./action-identifiers.js";
 import {
+  getActionInferenceMessageText,
   getRecentConversationSearchText,
   isTaskCompleteRelayTurn,
 } from "./dialogue-context.ts";
@@ -123,6 +125,7 @@ const GENERIC_OPERATION_WORDS = new Set([
   "find",
   "lookup",
   "create",
+  "schedule",
   "add",
   "write",
   "save",
@@ -800,6 +803,7 @@ export async function collectV5PlannerCandidateActions(args: {
     ]),
   );
   const selectedActions: Action[] = [];
+  const explicitActionNames = new Set<string>();
   const seen = new Set<string>();
   const timer = getInferenceTimer();
   type Gate = "connector-policy" | "validate";
@@ -1075,6 +1079,9 @@ export async function collectV5PlannerCandidateActions(args: {
       continue;
     }
     for (const action of resolved) {
+      // Preserve exact operations selected through aliases as well as names.
+      // The admission/execution gates below still determine their availability.
+      explicitActionNames.add(normalizeActionIdentifier(action.name));
       await appendIfAllowed(
         action,
         undefined,
@@ -1125,7 +1132,53 @@ export async function collectV5PlannerCandidateActions(args: {
         ...(checks ? { checks: JSON.stringify(checks) } : {}),
       },
     );
-  return selectedActions;
+  // A plugin-declared owner that passed every admission gate keeps its
+  // replacement authority on the planner/discovery surface, not just Stage 1.
+  // A whole-message route does not establish ownership of independent
+  // declared outcomes. Keep adjacent capabilities for compound work.
+  if ((args.intents?.filter((intent) => intent.trim()).length ?? 0) > 1)
+    return selectedActions;
+  const replacedActionNames = new Set<string>();
+  const currentText = getActionInferenceMessageText(args.message);
+  for (const rule of getDirectActionRoutingRules(args.runtime)) {
+    if (
+      !rule.replacesActionNames?.length ||
+      !rule.matches(currentText, args.message)
+    )
+      continue;
+    const ownerNames = new Set(rule.actionNames.map(normalizeActionIdentifier));
+    const requiredTags = rule.requiredActionTags.map((tag) =>
+      tag.trim().toLowerCase(),
+    );
+    const ownerAdmitted = selectedActions.some((action) => {
+      if (!ownerNames.has(normalizeActionIdentifier(action.name))) return false;
+      const tags = new Set(
+        (action.tags ?? []).map((tag) => tag.trim().toLowerCase()),
+      );
+      return requiredTags.every((tag) => tags.has(tag));
+    });
+    if (ownerAdmitted) {
+      for (const name of rule.replacesActionNames) {
+        const replaced = normalizeActionIdentifier(name);
+        replacedActionNames.add(replaced);
+        // A fallback parent can already have promoted children on this surface.
+        // Suppress only its registered siblings, not an explicitly named
+        // independent operation; unknown families retain exact-name behavior.
+        const parent = actionsByNormalizedName.get(replaced);
+        for (const child of parent?.subActions ?? []) {
+          const childName = normalizeActionIdentifier(
+            typeof child === "string" ? child : child.name,
+          );
+          if (!explicitActionNames.has(childName))
+            replacedActionNames.add(childName);
+        }
+      }
+    }
+  }
+  return selectedActions.filter(
+    (action) =>
+      !replacedActionNames.has(normalizeActionIdentifier(action.name)),
+  );
 }
 
 export function stringArrayProperty(value: unknown): string[] {

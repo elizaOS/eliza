@@ -6,14 +6,21 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AgentsPage from "./AgentsPage";
 
-vi.mock("@elizaos/ui/cloud-ui", () => ({
-  ContainersSkeleton: () => <div>Loading agents</div>,
+vi.mock(
+  "../../cloud-ui/components/dashboard/cloud-dashboard-components",
+  () => ({
+    ContainersSkeleton: () => <div>Loading agents</div>,
+    ElizaAgentsPageWrapper: ({ children }: { children: ReactNode }) => children,
+  }),
+);
+vi.mock("../../cloud-ui/components/dashboard/route-placeholders", () => ({
   DashboardErrorState: ({ message }: { message: string }) => (
     <div role="alert">{message}</div>
   ),
   DashboardLoadingState: ({ label }: { label: string }) => <div>{label}</div>,
+}));
+vi.mock("../../cloud-ui/components/layout/dashboard-page", () => ({
   DashboardPageContainer: ({ children }: { children: ReactNode }) => children,
-  ElizaAgentsPageWrapper: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("../lib/use-document-title", () => ({ useDocumentTitle: vi.fn() }));
 vi.mock("../lib/use-session-auth", () => ({
@@ -43,7 +50,7 @@ vi.mock("./components/eliza-agents-table", () => ({
     <div>{agents.map((agent) => agent.agentName).join(", ")}</div>
   ),
 }));
-vi.mock("./lib/data/eliza-agents", () => ({
+vi.mock("./lib/eliza-agents", () => ({
   usePersonalElizaIdentity: () => ({
     data: { id: "personal:test", displayName: "Eliza", runtime: "dedicated" },
     error: null,
@@ -94,7 +101,7 @@ vi.mock("./lib/data/eliza-agents", () => ({
     isLoading: false,
   }),
 }));
-vi.mock("./lib/data/credits", () => ({
+vi.mock("./lib/credits", () => ({
   useCreditsBalance: () => ({
     data: undefined,
     error: new Error("balance service unavailable"),
@@ -102,8 +109,8 @@ vi.mock("./lib/data/credits", () => ({
     isLoading: false,
   }),
 }));
-vi.mock("./lib/i18n", () => ({
-  useT: () => (_key: string, options?: { defaultValue?: string }) =>
+vi.mock("../shell/CloudI18nProvider", () => ({
+  useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
     options?.defaultValue ?? _key,
 }));
 

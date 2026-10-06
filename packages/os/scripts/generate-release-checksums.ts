@@ -66,6 +66,9 @@ if (updateManifest) {
     }
     artifact.sizeBytes = record.sizeBytes;
     artifact.sha256 = record.sha256;
+    if (!artifact.validation.evidence.includes("sha256-generated")) {
+      artifact.validation.evidence.push("sha256-generated");
+    }
   }
   await writeJson(manifestPath, manifest);
 }

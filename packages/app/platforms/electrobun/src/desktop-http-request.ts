@@ -1,9 +1,4 @@
-/** Implements Electrobun desktop desktop http request ts behavior for app shell integration. */
-
-import {
-	isLoopbackBindHost,
-	isWildcardBindHost,
-} from "@elizaos/core/runtime-env";
+import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/core/protocol";
 import {
 	isElizaCloudControlPlaneHostname,
 	isElizaDedicatedAgentHostname,

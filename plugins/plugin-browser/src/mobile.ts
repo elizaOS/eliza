@@ -7,10 +7,12 @@ import {
   promoteSubactionsToActions,
   Service,
 } from "@elizaos/core";
-import type { HttpPlugin } from "@elizaos/core/api/http-plugin";
-import { resolveAliasedEnvValue } from "@elizaos/core/config/boot-config-store";
-import { asRecord } from "@elizaos/core/type-guards";
-import { readViewInteractionClientId } from "@elizaos/core/views/view-interact-protocol";
+import {
+  asObjectRecord as asRecord,
+  readViewInteractionClientId,
+} from "@elizaos/core/protocol";
+import type { HttpPlugin } from "@elizaos/host/protocol";
+import { resolveAppAliasedEnvValue as resolveAliasedEnvValue } from "@elizaos/host/protocol";
 import {
   browserDomainPolicyRequestForCommand,
   evaluateBrowserDomainPolicies,

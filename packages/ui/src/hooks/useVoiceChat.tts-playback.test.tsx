@@ -1112,6 +1112,14 @@ describe("useVoiceChat TTS playback across providers", () => {
     ],
     ["The measured value is 3.", "The measured value is 3.14159 today."],
     [
+      "The final price comes to $1,2",
+      "The final price comes to $1,299.99 today.",
+    ],
+    [
+      "The city population is now 1,234,5",
+      "The city population is now 1,234,567 people.",
+    ],
+    [
       "Please open https://example.",
       "Please open https://example.com/path now.",
     ],

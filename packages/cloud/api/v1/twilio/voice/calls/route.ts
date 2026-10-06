@@ -4,26 +4,32 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { requireSessionUserWithOrg } from "@elizaos/cloud-shared/auth";
+import { dbWrite, writeTransaction } from "@elizaos/cloud-shared/db/helpers";
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
+import {
+  idempotencyKeys,
+  twilioOutboundCalls,
+} from "@elizaos/cloud-shared/db/schemas";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import {
+  isValidE164,
+  normalizePhoneNumber,
+} from "@elizaos/cloud-shared/lib/utils/phone-normalization";
+import { twilioApiRequest } from "@elizaos/cloud-shared/lib/utils/twilio-api";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ElizaError, isElizaError } from "@elizaos/core";
 import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbWrite, writeTransaction } from "@/db/helpers";
-import { usersRepository } from "@/db/repositories/users";
-import { idempotencyKeys, twilioOutboundCalls } from "@/db/schemas";
-import { requireSessionUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import {
-  isValidE164,
-  normalizePhoneNumber,
-} from "@/lib/utils/phone-normalization";
-import { twilioApiRequest } from "@/lib/utils/twilio-api";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import {
   TWILIO_CALL_FENCE_EXPIRY,
   twilioCallFenceKey,

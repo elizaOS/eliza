@@ -53,9 +53,21 @@ Run `bun run --cwd packages/os test:browser` for protocol tests.
 Installed-browser and signed Android native-host verification are separate required
 integration checks; a built extension alone does not prove those paths work.
 
-Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
-test:browser:page` for real isolated-world DOM freshness tests. This uses a fresh
-test profile and local controlled page, not the installed native-message path.
+Run the isolated-world DOM freshness tests with a fresh profile and local
+controlled page. In Bash or Zsh, run:
+
+```sh
+ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os test:browser:page
+```
+
+In PowerShell, set the executable and run the test separately:
+
+```powershell
+$env:ELIZA_BROWSER_EXECUTABLE = 'C:\absolute\test\chromium.exe'
+bun run --cwd packages/os test:browser:page
+```
+
+These tests do not exercise the installed native-message path.
 
 
 Owned Chromium component builds can preserve the extension ID without the old
@@ -96,7 +108,7 @@ This is an internal OS component, not a standalone workspace or installable
 product. The OS package builds it against the locked
 `@elizaos/plugin-browser/native-wire` dependency. Linux assembly and signed AOSP
 provisioning live in `../scripts/linux/assemble-browser-payload.py` and
-`../scripts/distro-android/prepare-chromium-browser.ts`. Preserve those existing
+`../scripts/android/prepare-chromium-browser.ts`. Preserve those existing
 signed-artifact and certificate checks when changing the component.
 
 For installed Linux acceptance, set `ELIZA_BROWSER_EXECUTABLE` to the OS-built
@@ -131,14 +143,34 @@ prevents dispatch. The brief tap marker represents dispatch, not verified succes
 normal readback still determines the outcome. Raw task-guide calls cannot request
 an action pointer. Cleanup uses the same acknowledged removal/recovery path.
 Product Pause/Close integration remains required before enabling it in a product.
-Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
-test:browser:guidance` for actual Chromium renderer tests. These do not establish
-native-host, Android or pre-action pointer integration.
+Run the actual Chromium renderer guidance tests. In Bash or Zsh, run:
 
-Run `ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os
-test:browser:task-guidance` for actual Chromium binding/removal checks. Socket
-framing is covered by the browser plugin tests; installed native transport and
-Android are separate acceptance gates.
+```sh
+ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os test:browser:guidance
+```
+
+In PowerShell, set the executable as above, then run:
+
+```powershell
+bun run --cwd packages/os test:browser:guidance
+```
+
+These do not establish native-host, Android or pre-action pointer integration.
+
+Run the actual Chromium binding/removal checks. In Bash or Zsh, run:
+
+```sh
+ELIZA_BROWSER_EXECUTABLE=/absolute/test/chromium bun run --cwd packages/os test:browser:task-guidance
+```
+
+In PowerShell, with `ELIZA_BROWSER_EXECUTABLE` set as above, run:
+
+```powershell
+bun run --cwd packages/os test:browser:task-guidance
+```
+
+Socket framing is covered by the browser plugin tests; installed native
+transport and Android are separate acceptance gates.
 
 Task snapshots now attach `manualActivity` from a value-free extension journal.
 The isolated main-frame listener records a form-submit attempt following recent
@@ -165,8 +197,9 @@ qualification remain separate.
 
 
 Android component generation accepts `--embed-host` only as an explicit build
-option. It adds `knownActivityEmbeddingCerts` to the standard Custom Tab and main
-tabbed activities, using the same provisioned host certificate as native messaging.
+option. It adds `knownActivityEmbeddingCerts` to the intent dispatcher target, standard Custom Tab and main
+tabbed activities, plus the dispatcher alias (Android 15 does not inherit its
+certificate set). It uses the provisioned host certificate from native messaging.
 It does not enable untrusted embedding or change activity exports/launch modes.
 Android enforces this opt-in by signer, not package name: every app sharing that
 signer is trusted for embedding. Use a dedicated host signer for a production
@@ -174,3 +207,79 @@ distribution. Native messaging still checks its separate host application ID.
 The default remains disabled. Host WindowManager support, actual split bounds,
 existing-tab continuity, input and lifecycle must be qualified on the installed
 browser; a generated manifest is only one prerequisite for a native dock.
+
+The Android overlay includes full-origin Autofill transport (including ports and
+per-field origins). The original patch provenance is in `scripts/chromium/autofill`.
+The Java regression requires JDK 21. Consumers must not apply a second Autofill patch.
+
+Products may add the complete reviewed protection resource set exposed by
+`protectionAssetNames`. This opts the component into `declarativeNetRequest` and
+exposes only `warning.html`; partial inventories, extra permissions and other
+web-accessible resources reject. Products retain their policy and warning UI.
+Unprotected builds retain their existing permissions and resource inventory.
+
+Eliza OS owns Android Chromium compilation as well as source preparation. On a
+provisioned Linux Chromium/depot_tools host, run:
+
+```sh
+node packages/os/scripts/android/build-chromium-browser.ts \
+  --source /absolute/chromium/src --extension /absolute/product/extension \
+  --out /absolute/new-overlay --build /absolute/chromium/src/out/Owned \
+  --args-file /absolute/reviewed-args.gn --jobs 8 \
+  --application PRODUCT_APP_ID --certificate APP_CERTIFICATE_SHA256 \
+  --embed-host true
+```
+
+The build requires the pinned pristine sources and a new output directory. GN args
+must explicitly select Android, arm64 or x64, Desktop Android, and package
+`ai.elizaos.chromium`. The command applies the verified overlay, runs GN and bounded
+Ninja, and records APK and GN-input hashes. It does not sign a release, install an
+APK, provision AOSP or qualify a device. Preserve `chromium-build.json` alongside
+the overlay and use the existing signed-artifact admission flow for release.
+
+## Shared host protection
+
+`protection/` provides an opt-in rule compiler, extension-worker engine and Node
+reputation cache. The host owns warning HTML/CSS/copy, reviewed feed selection,
+cache location, user-agent attribution and alarm names. `installBrowserProtection`
+is installed once per extension worker; its warning page must be a local HTML
+filename. The DNR engine reserves IDs 10000–11999 and one session exception at ID
+1; compose other rules outside those ranges. A temporary exception requires a
+message from the host warning page in its top-level tab and permits only the exact
+main-frame GET; navigation failure, commit, expiry or tab removal revokes it.
+
+`createWebsiteReputation` requires explicit feeds and accepts an optional private
+cache directory. It downloads the configured lists, never visited URLs, and never
+reports missing/expired feed data as clean. Feed configuration is trusted host
+policy, not model input. The Phishing.Database mirror adapter pins fallback bytes
+to an official commit. Hosts must ship the selected feeds' required attribution.
+
+These modules are not enabled automatically in Eliza's browser build. Consumers
+bundle the extension engine into their admitted worker resource and include the
+Node module in the verified native gateway dependency closure. Run the protection
+regressions with `node --test browser/src/protection-*.test.mjs` from `packages/os`.
+
+`buildBrowserProtection(output, {warningDirectory, feeds, refreshAlarm, exceptionAlarm})`
+builds the optional unpacked worker using the shared engine. HTML/CSS overrides
+preserve shared messaging and enforcement. The optional builder defaults to the
+reviewed Phishing.Database and HaGeZi lists and ships their license notices.
+`composeProtectionAssets` adds the complete admitted resource inventory to an
+existing component without changing its other capabilities. Keep existing alarm
+names when upgrading an installed consumer. Run `test:browser:protection:network`
+for real Chromium blocking, exception, offline-restart and capacity checks.
+
+`prepareAndroidConsumerInputs` in `scripts/android-consumer-inputs.mjs` builds
+certificate-bound Android assets from a reviewed checkout and signed launcher APK.
+Hosts provide application identity, signer tool/environment and optional asset
+composition; they retain product APK admission, protection policy and report format.
+Source/APK mutation and invalid composed identities reject before returning a result.
+Use a new output directory: failed composition may leave partial files, and no
+Chromium build, installation, atomic publication or device qualification is implied.
+
+`protection/domain-lookalike.mjs` provides a local, renderer-safe similarity
+signal using registrable domains (including private suffixes), common Unicode
+confusables and one-edit brand matching. The host supplies its reviewed reference
+domains and owns warning copy, suggested navigation and any bypass policy. It
+makes no network requests and is neither an allowlist nor a safety verdict.
+Run its contracts with `node --test protection/domain-lookalike.test.mjs` from
+this directory; the package browser suite includes them.

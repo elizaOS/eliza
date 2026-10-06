@@ -17,7 +17,8 @@ const calls = {
   getOrchestratorAccountReadiness: vi.fn(),
 };
 
-vi.mock("@elizaos/ui/api", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   client: {
     listAccounts: () => calls.listAccounts(),
     getOrchestratorAccounts: () => calls.getOrchestratorAccounts(),
@@ -25,10 +26,6 @@ vi.mock("@elizaos/ui/api", () => ({
     getOrchestratorAccountReadiness: () =>
       calls.getOrchestratorAccountReadiness(),
   },
-}));
-
-// Stub the reused presentational view so the test targets THIS panel's wiring.
-vi.mock("@elizaos/ui/components", () => ({
   OrchestratorAccountsView: (props: {
     overview?: { strategy?: string } | null;
     onConnect?: () => void;
@@ -39,6 +36,8 @@ vi.mock("@elizaos/ui/components", () => ({
     />
   ),
 }));
+
+// Stub the reused presentational view so the test targets THIS panel's wiring.
 
 import { OrchestratorAccountHealthPanel } from "./OrchestratorAccountHealthPanel";
 

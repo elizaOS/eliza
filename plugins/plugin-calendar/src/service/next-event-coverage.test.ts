@@ -1,10 +1,11 @@
 /** Verifies the real next-event projection over a supplied multi-event feed;
  * source freshness must never imply that its single result is a full agenda. */
-import { AgentRuntime, type Memory } from "@elizaos/core";
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-} from "@elizaos/core/contracts/calendar";
+} from "@elizaos/contracts";
+import { AgentRuntime, type Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "../actions/calendar-handler.js";
 import { CalendarService } from "./CalendarService.js";
@@ -110,6 +111,9 @@ describe("next-event read coverage", () => {
         scenario: "next_event",
         context: {},
       });
+      const reply = outcome.data?.replyContext as Record<string, unknown>;
+      expect(reply.userFacingFacts).toEqual(expect.any(String));
+      expect(String(reply.userFacingFacts)).not.toContain("Report absence");
       expect(outcome.effectReceipts?.[0].resource.kind).toBe(
         "calendar.next_event",
       );
@@ -131,6 +135,8 @@ describe("next-event read coverage", () => {
         throw new Error("Expected agenda result");
       expect(agenda.data).toMatchObject(feed);
       expect(agenda.data?.replyContext).not.toHaveProperty("context.events");
+      const agendaReply = agenda.data?.replyContext as Record<string, unknown>;
+      expect(agendaReply.userFacingFacts).toBe(agendaReply.facts);
       expect(agenda.effectReceipts?.[0].resource.kind).toBe("calendar.feed");
     },
   );

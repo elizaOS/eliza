@@ -1,18 +1,26 @@
 /** Verifies detached Settings authorization context through the real shell and role gate with a controlled auth snapshot. */
 // @vitest-environment jsdom
+import {
+  resolveDetachedShellTarget,
+  resolveWindowShellRoute,
+} from "@elizaos/ui";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
+import {
+  buildSurfaceWindowRendererUrl,
+  isDetachedSurface,
+} from "../../../platforms/electrobun/src/surface-windows";
 import { DetachedShellRoot } from "./DetachedShellRoot";
 
 const setup = vi.hoisted(() => ({ complete: true }));
 const auth = vi.hoisted(() => ({ phase: "authenticated", role: "OWNER" }));
-vi.mock("@elizaos/ui/hooks/useAuthStatus", () => ({
+vi.mock("../../../../ui/src/hooks/useAuthStatus", () => ({
   useAuthStatus: () => ({
     state: { phase: auth.phase, access: { role: auth.role, mode: "session" } },
   }),
 }));
-vi.mock("@elizaos/ui/state/useApp", () => ({
+vi.mock("../../../../ui/src/state/useApp", () => ({
   useApp: () => ({
     firstRunComplete: setup.complete,
     authRequired: false,
@@ -21,23 +29,23 @@ vi.mock("@elizaos/ui/state/useApp", () => ({
     t: (key: string) => key,
   }),
 }));
-vi.mock("@elizaos/ui/components/workspace/AppWorkspaceChrome", () => ({
+vi.mock("../../../../ui/src/components/workspace/AppWorkspaceChrome", () => ({
   AppWorkspaceChrome: ({ main }: { main: ReactNode }) => main,
 }));
-vi.mock("@elizaos/ui/components/pages/PluginsPageView", () => ({
+vi.mock("../../../../ui/src/components/pages/PluginsPageView", () => ({
   PluginsPageView: () => null,
 }));
-vi.mock("@elizaos/ui/components/shell/ActionNoticeToast", () => ({
+vi.mock("../../../../ui/src/components/shell/ActionNoticeToast", () => ({
   ActionNoticeToast: () => null,
 }));
-vi.mock("@elizaos/ui/components/shell/PairingView", () => ({
+vi.mock("../../../../ui/src/components/shell/PairingView", () => ({
   PairingView: () => null,
 }));
-vi.mock("@elizaos/ui/components/shell/StartupFailureView", () => ({
+vi.mock("../../../../ui/src/components/shell/StartupFailureView", () => ({
   StartupFailureView: () => null,
 }));
-vi.mock("@elizaos/ui/components/pages/SettingsView", async () => {
-  const { RoleGate } = await import("@elizaos/ui/components/RoleGate");
+vi.mock("../../../../ui/src/components/pages/SettingsView", async () => {
+  const { RoleGate } = await import("../../../../ui/src/components/RoleGate");
   return {
     SettingsView: () => (
       <RoleGate minRole="OWNER" fallback={<p>Access denied</p>}>
@@ -94,4 +102,15 @@ it("allows setup recovery in Settings while keeping other windows blocked", asyn
   auth.phase = "authenticated";
   rerender(<DetachedShellRoot route={{ mode: "surface", tab: "chat" }} />);
   expect(screen.getByTestId("first-run-blocked-view")).toBeTruthy();
+});
+
+it("routes a desktop automation window through the renderer surface protocol", () => {
+  expect(isDetachedSurface("automations")).toBe(true);
+  const url = buildSurfaceWindowRendererUrl(
+    "http://localhost/index.html",
+    "automations",
+  );
+  const route = resolveWindowShellRoute(new URL(url).search);
+  expect(route).toEqual({ mode: "surface", tab: "automations" });
+  expect(resolveDetachedShellTarget(route)).toEqual({ tab: "automations" });
 });

@@ -81,7 +81,7 @@ function gmailMessage(overrides: Record<string, unknown> = {}) {
       historyId: "history-1",
       hasAttachments: false,
       messageIdHeader: "<msg_1@example.com>",
-      references: "<root@example.com>",
+      referencesHeader: "<root@example.com>",
       bodyText: "Can we meet tomorrow?",
     },
     ...overrides,
@@ -141,6 +141,120 @@ describe("GoogleGmailAdapter", () => {
     const bounded = await new GoogleGmailAdapter().listMessages(runtime, { limit: 3 });
     expect(bounded.map((message) => message.externalId).sort()).toEqual(ids.slice(0, 3));
   });
+  it("filters channels and time at the provider before applying the limit", async () => {
+    // Newest first: three sent-only matches, then inbox mail whose first
+    // label is not INBOX, then a user-labelled message.
+    const mailbox = [
+      { id: "sent_3", labelIds: ["SENT"], at: 9_000 },
+      { id: "sent_2", labelIds: ["SENT"], at: 8_000 },
+      { id: "sent_mid", labelIds: ["SENT"], at: 7_500 },
+      { id: "sent_1", labelIds: ["SENT"], at: 7_000 },
+      { id: "inbox_2", labelIds: ["UNREAD", "IMPORTANT", "INBOX"], at: 6_000 },
+      { id: "inbox_1", labelIds: ["CATEGORY_UPDATES", "INBOX"], at: 5_000 },
+      { id: "custom", labelIds: ["Label_7"], at: 1_000 },
+      { id: "trash", labelIds: ["TRASH"], at: 500 },
+    ];
+    const listCalls: Array<{ q: string; labelIds?: string[] }> = [];
+    const client = new GoogleGmailClient({
+      gmail: async () => ({
+        users: {
+          messages: {
+            list: async (request: {
+              q: string;
+              labelIds?: string[];
+              maxResults: number;
+              includeSpamTrash?: boolean;
+            }) => {
+              listCalls.push({ q: request.q, labelIds: request.labelIds });
+              const after = /after:(\d+)/.exec(request.q);
+              const rows = mailbox.filter(
+                (row) =>
+                  (!request.q.includes("in:inbox") || row.labelIds.includes("INBOX")) &&
+                  (request.includeSpamTrash ||
+                    !row.labelIds.some((label) => ["SPAM", "TRASH"].includes(label))) &&
+                  (request.labelIds ?? []).every((label) => row.labelIds.includes(label)) &&
+                  (!after || row.at / 1000 > Number(after[1]))
+              );
+              return { data: { messages: rows.slice(0, request.maxResults) } };
+            },
+            get: async ({ id }: { id: string }) => {
+              const row = mailbox.find((candidate) => candidate.id === id);
+              return {
+                data: {
+                  id,
+                  threadId: `thread_${id}`,
+                  snippet: "invoice",
+                  labelIds: row?.labelIds,
+                  internalDate: String(row?.at),
+                  payload: {
+                    headers: [
+                      { name: "Subject", value: `subject ${id}` },
+                      { name: "From", value: "sender@example.com" },
+                      { name: "To", value: "owner@example.com" },
+                    ],
+                  },
+                },
+              };
+            },
+          },
+        },
+      }),
+    } as unknown as GoogleApiClientFactory);
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: client.listGmailTriageMessages.bind(client),
+      searchGmailMessages: client.searchGmailMessages.bind(client),
+    });
+    const adapter = new GoogleGmailAdapter();
+
+    const inbox = await adapter.searchMessages(runtime, {
+      content: "invoice",
+      channelIds: ["INBOX"],
+      limit: 2,
+    });
+    expect(inbox.map((message) => message.externalId)).toEqual(["inbox_2", "inbox_1"]);
+    // The channel is the mailbox, not the first (state) label.
+    expect(inbox.map((message) => message.channelId)).toEqual(["INBOX", "INBOX"]);
+
+    const either = await adapter.listMessages(runtime, {
+      channelIds: ["Label_7", "INBOX"],
+      limit: 3,
+    });
+    expect(either.map((message) => message.externalId).sort()).toEqual([
+      "custom",
+      "inbox_1",
+      "inbox_2",
+    ]);
+    expect(either.find((message) => message.externalId === "custom")?.channelId).toBe("Label_7");
+
+    const trash = await adapter.listMessages(runtime, { channelIds: ["TRASH"], limit: 1 });
+    expect(trash.map((message) => message.externalId)).toEqual(["trash"]);
+
+    const defaultInbox = await adapter.listMessages(runtime, { sinceMs: 4_500, limit: 2 });
+    expect(defaultInbox.map((message) => message.externalId).sort()).toEqual([
+      "inbox_1",
+      "inbox_2",
+    ]);
+
+    const recent = await adapter.searchMessages(runtime, { sinceMs: 7_500, limit: 5 });
+    expect(recent.map((message) => message.externalId).sort()).toEqual([
+      "sent_2",
+      "sent_3",
+      "sent_mid",
+    ]);
+    expect(listCalls.at(-1)?.q).toBe("in:anywhere after:6");
+
+    const wholeSecondBoundary = await adapter.searchMessages(runtime, {
+      sinceMs: 7_000,
+      limit: 5,
+    });
+    expect(wholeSecondBoundary.map((message) => message.externalId).sort()).toEqual([
+      "sent_1",
+      "sent_2",
+      "sent_3",
+      "sent_mid",
+    ]);
+    expect(listCalls.at(-1)?.q).toBe("in:anywhere after:6");
+  });
   it.each(["byte", "line", "fragment"] as const)(
     "returns complete %s content with no implicit limit",
     async (unit) => {
@@ -180,6 +294,73 @@ describe("GoogleGmailAdapter", () => {
     ).rejects.toMatchObject({ code: "GMAIL_READ_PROVIDER_FAILED" });
   });
 
+  it("keeps identical provider message IDs separate by runtime and account", async () => {
+    const first = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async ({ accountId }) => [
+        gmailMessage({ subject: accountId }),
+      ]),
+    });
+    const second = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async ({ accountId }) => [
+        gmailMessage({ subject: accountId }),
+      ]),
+    });
+    second.agentId = "00000000-0000-0000-0000-000000000002";
+    const adapter = new GoogleGmailAdapter();
+    const [one] = await adapter.listMessages(first, { worldIds: ["account-one"] });
+    const [two] = await adapter.listMessages(first, { worldIds: ["account-two"] });
+    const [peer] = await adapter.listMessages(second, { worldIds: ["account-one"] });
+    expect(new Set([one.id, two.id, peer.id]).size).toBe(3);
+    expect((await adapter.getMessage(first, one.id))?.subject).toBe("account-one");
+    expect((await adapter.getMessage(first, two.id))?.subject).toBe("account-two");
+    expect(await adapter.getMessage(first, peer.id)).toBeNull();
+    await expect(adapter.getMessage(first, "gmail:msg_1")).rejects.toMatchObject({
+      code: "GMAIL_MESSAGE_ACCOUNT_AMBIGUOUS",
+    });
+    expect((await adapter.getMessage(second, "gmail:msg_1"))?.id).toBe(peer.id);
+  });
+
+  it("lists and searches every requested Gmail account, newest first", async () => {
+    const byAccount: Record<string, ReturnType<typeof gmailMessage>[]> = {
+      work: [
+        gmailMessage({ externalId: "work_new", receivedAt: "2026-06-01T12:00:00.000Z" }),
+        gmailMessage({ externalId: "work_old", receivedAt: "2026-06-01T08:00:00.000Z" }),
+      ],
+      personal: [
+        gmailMessage({ externalId: "personal_mid", receivedAt: "2026-06-01T10:00:00.000Z" }),
+      ],
+    };
+    const fromAccount = vi.fn(
+      async ({ accountId }: { accountId: string }) => byAccount[accountId] ?? []
+    );
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: fromAccount,
+      searchGmailMessages: fromAccount,
+    });
+    const adapter = new GoogleGmailAdapter();
+
+    const listed = await adapter.listMessages(runtime, {
+      worldIds: ["work", "personal"],
+      limit: 2,
+    });
+    expect(listed.map((ref) => [ref.worldId, ref.externalId])).toEqual([
+      ["work", "work_new"],
+      ["personal", "personal_mid"],
+    ]);
+
+    const found = await adapter.searchMessages(runtime, {
+      content: "meet",
+      worldIds: ["work", "personal"],
+    });
+    expect(found.map((ref) => ref.externalId)).toEqual(["work_new", "personal_mid", "work_old"]);
+    expect(fromAccount.mock.calls.map(([params]) => params.accountId)).toEqual([
+      "work",
+      "personal",
+      "work",
+      "personal",
+    ]);
+  });
+
   it("maps triage messages from the Google service into message refs", async () => {
     const listGmailTriageMessages = vi.fn(async () => [gmailMessage()]);
     const runtime = runtimeWithGoogleService({ listGmailTriageMessages });
@@ -195,7 +376,7 @@ describe("GoogleGmailAdapter", () => {
     });
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({
-      id: "gmail:msg_1",
+      id: "00000000-0000-0000-0000-000000000001:acct_google_1:gmail:msg_1",
       source: "gmail",
       externalId: "msg_1",
       threadId: "thread_1",
@@ -260,18 +441,49 @@ describe("GoogleGmailAdapter", () => {
       subject: "Planning call",
       bodyText: "Tomorrow works.",
       inReplyTo: "<msg_1@example.com>",
-      references: "<root@example.com>",
+      references: "<root@example.com> <msg_1@example.com>",
+      threadId: "thread_1",
     });
     expect(sent.externalId).toBe("sent_1");
     expect(runtime.emitEvent).toHaveBeenCalledWith(
       EventType.MESSAGE_MUTATED,
       expect.objectContaining({
         messageSource: "gmail",
-        messageId: "gmail:msg_1",
+        messageId: "00000000-0000-0000-0000-000000000001:acct_google_1:gmail:msg_1",
         operation: "replied",
         domainEventId: "gmail_reply:acct_google_1:sent_1",
       })
     );
+  });
+
+  it("refuses a reply draft when the listed Gmail message has no thread id", async () => {
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async () => [gmailMessage({ threadId: "" })]),
+    });
+    const adapter = new GoogleGmailAdapter();
+    await adapter.listMessages(runtime, { worldIds: ["acct_google_1"] });
+    await expect(
+      adapter.createDraft(runtime, { inReplyToId: "gmail:msg_1", body: "Tomorrow works." })
+    ).rejects.toMatchObject({ code: "GMAIL_REPLY_THREAD_REQUIRED" });
+  });
+
+  it("refuses a reply draft when the listed Gmail message has no Message-ID header", async () => {
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: vi.fn(async () => [
+        gmailMessage({
+          metadata: {
+            historyId: "history-1",
+            hasAttachments: false,
+            referencesHeader: "<root@example.com>",
+          },
+        }),
+      ]),
+    });
+    const adapter = new GoogleGmailAdapter();
+    await adapter.listMessages(runtime, { worldIds: ["acct_google_1"] });
+    await expect(
+      adapter.createDraft(runtime, { inReplyToId: "gmail:msg_1", body: "Tomorrow works." })
+    ).rejects.toMatchObject({ code: "GMAIL_REPLY_MESSAGE_ID_REQUIRED" });
   });
 
   it("keeps the approved reply envelope and body across caller mutation and inbox refresh", async () => {
@@ -304,7 +516,8 @@ describe("GoogleGmailAdapter", () => {
       subject: "Planning call",
       bodyText: "Approved body.",
       inReplyTo: "<msg_1@example.com>",
-      references: "<root@example.com>",
+      references: "<root@example.com> <msg_1@example.com>",
+      threadId: "thread_1",
     });
   });
 
@@ -323,6 +536,8 @@ describe("GoogleGmailAdapter", () => {
             { name: "From", value: "Sender <sender@example.com>" },
             { name: "Reply-To", value: '"Support, West" <support@example.com>' },
             { name: "To", value: "owner@example.com" },
+            { name: "Message-Id", value: "<msg_1@example.com>" },
+            { name: "References", value: "<root@example.com>" },
           ],
         },
       },
@@ -352,7 +567,12 @@ describe("GoogleGmailAdapter", () => {
     await adapter.sendDraft(runtime, draft.draftId);
 
     expect(sendGmailReply).toHaveBeenCalledWith(
-      expect.objectContaining({ to: ["support@example.com"] })
+      expect.objectContaining({
+        to: ["support@example.com"],
+        threadId: "thread_1",
+        inReplyTo: "<msg_1@example.com>",
+        references: "<root@example.com> <msg_1@example.com>",
+      })
     );
   });
 
@@ -495,7 +715,7 @@ describe("GoogleGmailAdapter", () => {
       EventType.MESSAGE_MUTATED,
       expect.objectContaining({
         messageSource: "gmail",
-        messageId: "gmail:msg_1",
+        messageId: "00000000-0000-0000-0000-000000000001:acct_google_1:gmail:msg_1",
         operation: "mark_read",
         domainEventId: "gmail_mark_read:acct_google_1:msg_1",
       })

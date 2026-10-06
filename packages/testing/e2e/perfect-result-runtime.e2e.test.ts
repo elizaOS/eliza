@@ -298,7 +298,9 @@ test.each([false, true])(
     );
     expect(stored.notes).toHaveLength(1);
     expect(stored.notes[0].title).toBe("Ada");
-    expect(stored.notes[0].body).toBe("Bring the notebook.");
+    // Schema-2 bodies retain their separator so title + body is lossless.
+    expect(stored.notes[0].body).toBe("\nBring the notebook.");
+    expect(stored.notes[0].title + stored.notes[0].body).toBe(content);
     expect(replies.join("\n")).toContain("Saved");
     const history = await runtime.getMemories({
       roomId,

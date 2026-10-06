@@ -14,15 +14,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import type { LogEntry } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import type { LogEntry } from "../../api/client-types-core";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
-import { ContentLayout } from "../../layouts/content-layout/content-layout";
-import { useAppSelectorShallow } from "../../state";
+import { ContentLayout } from "../../layouts/content-layout";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";

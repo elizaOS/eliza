@@ -16,19 +16,19 @@ import {
   useState,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button } from "../../../../components/primitives";
+import { Button } from "../../../../components/ui/button";
 import {
   hasCloudAuthCompleted,
   isCloudAuthHandoffSurface,
   publishCloudAuthComplete,
   subscribeCloudAuthComplete,
-} from "../../../auth/cloud-auth-complete-signal";
+} from "../../../cloud-auth-complete-signal";
 import { ApiError, apiFetch } from "../../../lib/api-client";
+import { useDocumentTitle } from "../../../lib/use-document-title";
 import { useSessionAuth } from "../../../lib/use-session-auth";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { clearStaleStewardSession } from "../../../shell/StewardProvider";
 import { getErrorMessage } from "../../lib/error-message";
-import { usePageTitle } from "../../lib/use-page-title";
 
 type TFn = ReturnType<typeof useCloudT>;
 const COMPLETE_TIMEOUT_MS = 30000;
@@ -304,12 +304,7 @@ function CliLoginPanel({
 }) {
   const toneClasses = PANEL_TONE_CLASSES[tone];
   return (
-    // Scroll — never clip — when the panel is taller than the viewport. A flex
-    // `justify-center` pins the card's center and pushes its top above
-    // scrollTop 0 where it can't be reached; `overflow-y-auto` + the card's
-    // `my-auto` centers when it fits and scrolls-from-top when it overflows.
-    // Regressed on short screens (Light Phone III, 1080×1240) where the action
-    // buttons fell below an unscrollable fold — see cli-login-page.test.tsx.
+    // Auto margins keep oversized panels reachable from the top when scrolling.
     <main className="theme-cloud relative flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-bg p-4">
       <div className="relative my-auto w-full max-w-md bg-card border border-border p-8">
         <div className="flex flex-col items-center gap-6 text-center">
@@ -355,7 +350,7 @@ export default function CliLoginPage() {
   );
   const lastSessionId = useRef(sessionId);
   const completionFiredRef = useRef(false);
-  usePageTitle(
+  useDocumentTitle(
     t("cloud.cliLogin.metaTitle", {
       defaultValue: "Sign in | Eliza Cloud",
     }),

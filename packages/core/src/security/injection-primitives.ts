@@ -1,14 +1,4 @@
-/**
- * Shared prompt-injection / obfuscation primitives.
- *
- * This is the single source of truth for the injection pattern bank and the
- * obfuscation-aware matching helpers. Both the rich `SecurityModule` advisory
- * detector and the fast deterministic should-respond risk gate
- * (`should-respond-risk-gate.ts`) consume these — there is intentionally NO
- * second pattern set (see issue #9949). The external-content `exec` indicator
- * stops each `exec` search at the next `exec`: the legacy `.*` retried the
- * remaining line from every occurrence and hung on a 100k-character flood.
- */
+/** Shared prompt-injection patterns and obfuscation-aware matching. Searches stop at the next exec token to bound repeated-token input. */
 
 /** Regexes for direct prompt-injection phrasing (multi-language + obfuscation). */
 export const INJECTION_PATTERNS: readonly RegExp[] = [

@@ -7,19 +7,19 @@
  *
  * @vitest-environment jsdom
  */
+
+import type { ChatToolCallEvent, ChatTurnStatus } from "@elizaos/contracts";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StreamGenerationError } from "../api/client-base";
 import type {
   ChatActionResultSummary,
-  ChatToolCallEvent,
-  ChatTurnStatus,
-  CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
-} from "../api";
-import { StreamGenerationError } from "../api/client-base";
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
 import { createNavigateViewHandler } from "../app-navigate-view";
 import {
   markPendingCapabilityReady,
@@ -32,15 +32,14 @@ import {
   resetCompletedActionNavigationForTests,
 } from "../completed-action-navigation";
 import { CLOUD_HANDOFF_PHASE_EVENT, NAVIGATE_VIEW_EVENT } from "../events";
-import { onViewEvent } from "../views/view-event-bus";
-import { VIEW_EVENTS } from "../views/view-event-types";
+import { onViewEvent, VIEW_EVENTS } from "../events/view-events";
 import { readChatDraft, writeChatDraft } from "./ChatComposerContext.hooks";
-import type { LoadConversationMessagesResult } from "./internal";
 import { listPendingChatTurns } from "./pending-chat-turns";
 import {
   __resetPersonalFallbackRouteForTests,
   getPersonalFallbackView,
 } from "./personal-fallback-route";
+import type { LoadConversationMessagesResult } from "./types";
 import {
   buildSendFailureNotice,
   createConversationForFirstSend,
@@ -100,9 +99,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../api", () => ({
-  client: mocks.client,
-}));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 
 // Stub Capacitor so the REAL `../api/client-cloud` (imported by useChatSend)
 // loads cleanly under jsdom. We deliberately do NOT mock client-cloud: these
@@ -2963,6 +2960,44 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
     expect(remaining.some((m) => m.id === "a1")).toBe(false);
   });
 
+  it("resends an older failed turn at the end without deleting the later conversation", async () => {
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken("recovered reply", "recovered reply");
+        return { text: "recovered reply", completed: true };
+      },
+    );
+    const deps = makeActiveConversationDeps();
+    seedFailedTurn(deps);
+    deps.conversationMessagesRef.current.push(
+      { id: "u2", role: "user", text: "second question", timestamp: 3 },
+      {
+        id: "a2",
+        role: "assistant",
+        text: "a good answer to the second question",
+        timestamp: 4,
+      },
+    );
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatRetry("a1");
+    });
+
+    expect(mocks.client.truncateConversationMessages).not.toHaveBeenCalled();
+    expect(deps.removeConversationMessageStateMessages).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(mocks.client.sendConversationMessageStream.mock.calls[0][1]).toBe(
+      "hello",
+    );
+    const remainingIds = deps.conversationMessagesRef.current.map((m) => m.id);
+    expect(remainingIds.slice(0, 4)).toEqual(["u1", "a1", "u2", "a2"]);
+  });
+
   it.each([false, true])(
     "retries only the selected optimistic turn without duplicate rows (clientRenderId=%s)",
     async (hasRenderId) => {
@@ -4041,6 +4076,21 @@ describe("useChatSend — sendActionMessage cold-open defers the create like the
       text: "ok",
       completed: true,
     } as never);
+  });
+
+  it("retains reminder source metadata through the action send transport", async () => {
+    const deps = makeActiveConversationDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+    const metadata = {
+      replyToMessageId: "20f881d4-6d80-4f1e-8ea6-dc207d89ddb9",
+      reminderChoiceId: "reminder-source",
+    };
+    await act(async () => {
+      await result.current.sendActionMessage("done", { metadata });
+    });
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls[0]?.[6],
+    ).toMatchObject(metadata);
   });
 
   it("skips the redundant client.createConversation round trip on a shared-agent base", async () => {

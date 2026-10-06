@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 from eliza_adapter.client import ElizaClient
 
 if TYPE_CHECKING:
-    from benchmarks.visualwebbench.types import (
+    from benchmarks.suites.visualwebbench.types import (
         BBox,
         VisualWebBenchConfig,
         VisualWebBenchPrediction,
@@ -71,7 +71,7 @@ class ElizaVisualWebBenchAgent:
         self._client.wait_until_ready(timeout=120)
 
     async def predict(self, task: "VisualWebBenchTask") -> "VisualWebBenchPrediction":
-        from benchmarks.visualwebbench.types import VisualWebBenchPrediction
+        from benchmarks.suites.visualwebbench.types import VisualWebBenchPrediction
 
         started = time.time()
         self._client.reset(task_id=task.id, benchmark="visualwebbench")
@@ -224,7 +224,7 @@ class LocalElizaVisualWebBenchAgent:
         return None
 
     async def predict(self, task: "VisualWebBenchTask") -> "VisualWebBenchPrediction":
-        from benchmarks.visualwebbench.types import VisualWebBenchPrediction
+        from benchmarks.suites.visualwebbench.types import VisualWebBenchPrediction
 
         started = time.time()
         if not task.image_path:
@@ -271,7 +271,7 @@ class ElizaVisualWebBenchAppHarnessAgent:
         return None
 
     async def predict(self, task: "VisualWebBenchTask") -> "VisualWebBenchPrediction":
-        from benchmarks.visualwebbench.types import VisualWebBenchPrediction
+        from benchmarks.suites.visualwebbench.types import VisualWebBenchPrediction
 
         started = time.time()
         invocation = _build_app_harness_invocation(task, self.config)
@@ -438,7 +438,7 @@ def _build_app_harness_prompt(task: "VisualWebBenchTask") -> str:
 
 
 def _fetch_page_meta_description(task: "VisualWebBenchTask") -> str:
-    from benchmarks.visualwebbench.types import VisualWebBenchTaskType
+    from benchmarks.suites.visualwebbench.types import VisualWebBenchTaskType
 
     if task.task_type is not VisualWebBenchTaskType.WEB_CAPTION:
         return ""
@@ -613,15 +613,6 @@ def _parse_int(value: object) -> int | None:
         except ValueError:
             return None
     return None
-
-
-def _env_enabled(name: str) -> bool:
-    return str(__import__("os").environ.get(name, "")).strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
 
 
 def _parse_bbox(value: object) -> "BBox | None":

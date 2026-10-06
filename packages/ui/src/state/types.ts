@@ -5,17 +5,6 @@
  */
 
 import type {
-  WalletChainKind,
-  WalletEntry,
-  WalletPrimaryMap,
-  WalletSource,
-} from "@elizaos/core/contracts/wallet-types";
-import type { Dispatch, SetStateAction } from "react";
-import type {
-  AgentStatus,
-  AppRunSummary,
-  AppSessionState,
-  AppViewerAuthMessage,
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -24,66 +13,82 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
-  CharacterData,
-  ChatTokenUsage,
-  CodingAgentSession,
-  Conversation,
-  ConversationChannelType,
-  ConversationMessage,
-  CreateTriggerRequest,
   DropStatus,
-  FirstRunOptions,
-  ImageAttachment,
-  LogEntry,
-  McpMarketplaceResult,
-  McpRegistryServerDetail,
-  McpServerConfig,
-  McpServerStatus,
   MintResult,
-  PluginInfo,
-  RegistryPlugin,
-  RegistryStatus,
   ReleaseChannel,
-  SkillInfo,
-  SkillScanReportSummary,
-  StewardApprovalActionResponse,
   StewardBalanceResponse,
-  StewardHistoryResponse,
-  StewardPendingResponse,
-  StewardStatusResponse,
   StewardTokenBalancesResponse,
   StewardWalletAddressesResponse,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-  StreamEventEnvelope,
-  TriggerHealthSnapshot,
-  TriggerRunRecord,
-  TriggerSummary,
-  UpdateStatus,
-  UpdateTriggerRequest,
   WalletAddresses,
   WalletBalancesResponse,
+  WalletChainKind,
   WalletConfigStatus,
   WalletConfigUpdateRequest,
-  WalletExportResult,
+  WalletEntry,
   WalletNftsResponse,
+  WalletPrimaryMap,
+  WalletSource,
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
+} from "@elizaos/contracts";
+import type { TriggerRunRecord } from "@elizaos/core";
+import type {
+  AppRunSummary,
+  AppSessionState,
+  AppViewerAuthMessage,
+  UiLanguage,
+} from "@elizaos/core/protocol";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
+import type { Dispatch, SetStateAction } from "react";
+import type {
+  ChatTokenUsage,
+  Conversation,
+  ConversationChannelType,
+  ConversationMessage,
+  ImageAttachment,
+  McpMarketplaceResult,
+  McpRegistryServerDetail,
+  McpServerConfig,
+  McpServerStatus,
+} from "../api/client-types-chat";
+import type {
+  CodingAgentSession,
+  RegistryStatus,
   WhitelistStatus,
+} from "../api/client-types-cloud";
+import type {
+  CharacterData,
+  PluginInfo,
+  RegistryPlugin,
+  SkillInfo,
+  SkillScanReportSummary,
+  UpdateStatus,
+  WalletExportResult,
   WorkbenchOverview,
-} from "../api/client";
+} from "../api/client-types-config";
+import type {
+  AgentStatus,
+  CreateTriggerRequest,
+  LogEntry,
+  StreamEventEnvelope,
+  TriggerHealthSnapshot,
+  TriggerSummary,
+  UpdateTriggerRequest,
+} from "../api/client-types-core";
+import type {
+  StewardApprovalActionResponse,
+  StewardHistoryResponse,
+  StewardPendingResponse,
+  StewardStatusResponse,
+} from "../api/client-types-steward";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
-import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
 import type { ActionNotice, ActionTone } from "./action-notice";
 import type { AgentProfile } from "./agent-profile-types";
-import type {
-  BackgroundConfig,
-  UiShellMode,
-  UiTheme,
-  UiThemeMode,
-} from "./ui-preferences";
+import type { BackgroundConfig, UiShellMode, UiTheme } from "./ui-preferences";
 
 export type { UiShellMode } from "./ui-preferences";
 export type ShellView = "character" | "desktop";
@@ -292,7 +297,6 @@ export interface AppState {
   uiShellMode: UiShellMode;
   uiLanguage: UiLanguage;
   uiTheme: UiTheme;
-  uiThemeMode: UiThemeMode;
   /** The unified home/app background, shared across the home and every view. */
   backgroundConfig: BackgroundConfig;
   /** True when there is a previous background config to undo to. */
@@ -515,7 +519,6 @@ export interface AppState {
   // Workbench
   workbenchLoading: boolean;
   workbench: WorkbenchOverview | null;
-  workbenchTasksAvailable: boolean;
   workbenchTriggersAvailable: boolean;
   workbenchTodosAvailable: boolean;
   // Agent export/import
@@ -643,8 +646,6 @@ export interface AppActions {
   switchShellView: (view: ShellView) => void;
   navigation: NavigationEventsApi;
   setUiLanguage: (language: UiLanguage) => void;
-  setUiTheme: (theme: UiTheme) => void;
-  setUiThemeMode: (mode: UiThemeMode) => void;
   setBackgroundConfig: (config: BackgroundConfig) => void;
   /** Restore the most recent previous background config (no-op when empty). */
   undoBackgroundConfig: () => void;
@@ -695,7 +696,10 @@ export interface AppActions {
   /** Restore the active personal conversation; null means recovery is unavailable. */
   ensureActiveConversation: () => Promise<string | null>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
-  handleSelectConversation: (id: string) => Promise<void>;
+  handleSelectConversation: (
+    id: string,
+    options?: { onRejected: () => void },
+  ) => Promise<void>;
   /**
    * Replace the active thread with a window CENTERED on `messageId` so a
    * keyword-search jump can scroll to a hit older than the most-recent window
@@ -705,13 +709,19 @@ export interface AppActions {
   loadConversationMessagesAround: (
     conversationId: string,
     messageId: string,
+    options?: {
+      onMessages: (messages: readonly ConversationMessage[]) => void;
+    },
   ) => Promise<boolean>;
   handleDeleteConversation: (id: string) => Promise<void>;
   handleRenameConversation: (id: string, title: string) => Promise<void>;
   /** LLM title from recent messages; persists on the server and updates local list. */
   suggestConversationTitle: (id: string) => Promise<string | null>;
   /** Send a programmatic message (e.g. from a UiSpec action) without touching chatInput. */
-  sendActionMessage: (text: string) => Promise<void>;
+  sendActionMessage: (
+    text: string,
+    options?: { metadata?: Record<string, unknown> },
+  ) => Promise<void>;
   /** Send a chat message with optional metadata (e.g. task creation intent). */
   sendChatText: (
     rawInput: string,
@@ -900,4 +910,15 @@ export interface AppActions {
   // Translations
   t: (key: string, values?: Record<string, unknown>) => string;
 }
-export type AppContextValue = AppState & AppActions;
+export type AppContextValue = Omit<
+  AppState,
+  | "autonomousEvents"
+  | "autonomousLatestEventId"
+  | "autonomousRunHealthByRunId"
+  | "chatInput"
+  | "chatPendingImages"
+  | "chatSending"
+  | "conversationMessages"
+  | "ptySessions"
+> &
+  AppActions;

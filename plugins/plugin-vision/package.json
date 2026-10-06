@@ -64,8 +64,10 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "jimp": "^1.6.0",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

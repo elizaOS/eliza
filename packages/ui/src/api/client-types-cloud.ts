@@ -1,8 +1,4 @@
-/**
- * Cloud-domain client DTOs: Cloud*, App*, Trajectory*, Registry*, Whitelist*,
- * Verification*, wallet display types, CodingAgent*, Pty*. One slice of the
- * ElizaClient type surface, re-exported through client-types.ts.
- */
+/** Cloud, billing, application, and coding-agent client DTOs. */
 
 import type {
   TrajectoryExportOptions as CoreTrajectoryExportOptions,
@@ -11,72 +7,10 @@ import type {
   TrajectoryLlmCallRecord as CoreTrajectoryLlmCallRecord,
   TrajectoryProviderAccessRecord as CoreTrajectoryProviderAccessRecord,
   TrajectorySummaryRecord as CoreTrajectorySummaryRecord,
+  TrajectoryExportFormat,
   TrajectorySemanticStageRecord,
 } from "@elizaos/core";
-import type {
-  AppLaunchDiagnostic,
-  AppLaunchDiagnosticSeverity,
-  AppLaunchResult,
-  AppRunActionResult,
-  AppRunAwaySummary,
-  AppRunCapabilityAvailability,
-  AppRunEvent,
-  AppRunEventKind,
-  AppRunEventSeverity,
-  AppRunHealth,
-  AppRunHealthDetails,
-  AppRunHealthFacet,
-  AppRunHealthState,
-  AppRunSummary,
-  AppRunViewerAttachment,
-  AppSessionActionResult,
-  AppSessionActivityItem,
-  AppSessionConfig,
-  AppSessionControlAction,
-  AppSessionFeature,
-  AppSessionJsonValue,
-  AppSessionMode,
-  AppSessionRecommendation,
-  AppSessionState,
-  AppStopResult,
-  AppUiExtensionConfig,
-  AppViewerAuthMessage,
-  AppViewerConfig,
-  RegistryAppInfo,
-} from "@elizaos/core/contracts/apps";
-import type { TrajectoryExportFormat } from "./client-types-core";
 
-export type {
-  AppLaunchDiagnostic,
-  AppLaunchDiagnosticSeverity,
-  AppLaunchResult,
-  AppRunActionResult,
-  AppRunAwaySummary,
-  AppRunCapabilityAvailability,
-  AppRunEvent,
-  AppRunEventKind,
-  AppRunEventSeverity,
-  AppRunHealth,
-  AppRunHealthDetails,
-  AppRunHealthFacet,
-  AppRunHealthState,
-  AppRunSummary,
-  AppRunViewerAttachment,
-  AppSessionActionResult,
-  AppSessionActivityItem,
-  AppSessionConfig,
-  AppSessionControlAction,
-  AppSessionFeature,
-  AppSessionJsonValue,
-  AppSessionMode,
-  AppSessionRecommendation,
-  AppSessionState,
-  AppStopResult,
-  AppUiExtensionConfig,
-  AppViewerAuthMessage,
-  AppViewerConfig,
-  RegistryAppInfo,
-};
 // Cloud
 export interface CloudStatus {
   /** Older servers omit this field; omission must remain visibly unavailable. */
@@ -457,7 +391,7 @@ export interface CloudCompatLaunchResult {
   };
 }
 // App types — the App-run / App-session DTO contract is owned by
-// @elizaos/core/contracts/apps (re-exported from the shared root barrel and
+// @elizaos/core/protocol (re-exported from the shared root barrel and
 // re-exported above). Only InstalledAppInfo is defined here: the client's
 // installed-app view (installPath / isRunning) is a distinct shape from shared's
 // registry-oriented InstalledAppInfo (pluginName), so it stays UI-local.

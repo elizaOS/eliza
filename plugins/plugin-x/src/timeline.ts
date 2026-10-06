@@ -16,7 +16,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core/text/model-output";
+import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
 import {
   type ClientBase,
@@ -24,14 +24,14 @@ import {
   type TwitterAccountSession,
   type TwitterProfile,
 } from "./base";
-import { type Client, type Tweet } from "./client/index";
+import type { Client, Tweet } from "./client/index";
 import { parseTwitterInterval } from "./environment";
 import {
   quoteTweetTemplate,
   replyTweetTemplate,
   twitterActionTemplate,
 } from "./templates";
-import { type ActionResponse, type TwitterClientState } from "./types";
+import type { ActionResponse, TwitterClientState } from "./types";
 import {
   parseActionResponseFromText,
   sendChunkedTweet,

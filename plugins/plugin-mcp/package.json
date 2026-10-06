@@ -107,9 +107,10 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.7.0",
     "ajv": "^8.17.1",
-    "@elizaos/plugin-assistant": "workspace:*",
     "json5": "^2.2.3"
   },
   "devDependencies": {

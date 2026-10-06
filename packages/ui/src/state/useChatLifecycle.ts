@@ -5,20 +5,24 @@
  * desktop notifications, and full-reset flows.
  */
 
-import { getDefaultStylePreset } from "@elizaos/core/character-presets";
+import type { FirstRunOptions } from "@elizaos/host/protocol";
+
+import { getDefaultStylePreset } from "@elizaos/host/protocol";
 import { clearStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
-import {
-  type AgentStatus,
-  type Conversation,
-  type ConversationMessage,
-  client,
-  type FirstRunOptions,
-  type ImageAttachment,
-  type StreamEventEnvelope,
-} from "../api";
-import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
-import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
+import { client } from "../api/client";
+import type {
+  Conversation,
+  ConversationMessage,
+  ImageAttachment,
+} from "../api/client-types-chat";
+import type {
+  AgentStatus,
+  StreamEventEnvelope,
+} from "../api/client-types-core";
+import { isHostInProcessAgentBase } from "../api/host-transport";
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { deliverSystemNotification } from "../bridge/notification-delivery";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import {
@@ -27,21 +31,23 @@ import {
   readPersistedMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
 import { logger } from "../logger.ts";
-import { enableForceFreshFirstRun } from "../platform";
-import { alertDesktopMessage } from "../utils";
+import { enableForceFreshFirstRun } from "../platform/first-run-reset";
+import { alertDesktopMessage } from "../utils/desktop-dialogs";
 import { inferAgentRuntimeTarget } from "./agent-runtime-target";
 import { completeResetLocalStateAfterServerWipe as runCompleteResetLocalStateAfterServerWipe } from "./complete-reset-local-state-after-wipe";
 import { handleResetAppliedFromMainCore } from "./handle-reset-applied-from-main";
+import { parseAgentStatusFromMainMenuResetPayload } from "./parsers";
 import {
-  type AppState,
   clearAvatarIndex,
   clearPersistedActiveServer,
+  loadPersistedActiveServer,
+} from "./persistence";
+import {
+  type AppState,
   LIFECYCLE_MESSAGES,
   type LifecycleAction,
-  loadPersistedActiveServer,
-  parseAgentStatusFromMainMenuResetPayload,
-} from "./internal";
-import { shouldAwaitAgentReadiness } from "./types";
+  shouldAwaitAgentReadiness,
+} from "./types";
 
 // ── Helpers (file-local) ────────────────────────────────────────────
 const RESET_LOG_PREFIX = "[eliza][reset]";
@@ -994,7 +1000,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       // above marked first-run, so the UI returns to onboarding from here.
       const isMobileLocalInProcessReset =
         resetTarget.kind === "local" &&
-        (isIosInProcessLocalAgentBase(resetApiBase) ||
+        (isHostInProcessAgentBase(resetApiBase) ||
           isMobileLocalAgentIpcBase(resetApiBase) ||
           mobileRuntimeModeAtStart === "local");
       if (isMobileLocalInProcessReset) {

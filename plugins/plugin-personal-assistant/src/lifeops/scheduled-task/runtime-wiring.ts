@@ -1,3 +1,4 @@
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 /**
  * Runtime wiring for the ScheduledTask spine.
  *
@@ -15,22 +16,22 @@ import {
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   resolveOwnerContactWithFallback,
-  resolveOwnerEntityId,
 } from "@elizaos/agent";
-import { getHostExecutionCapabilities } from "@elizaos/app/services/task-host-capabilities";
 import {
   ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
   isElizaError,
+  isMessageMetadata,
   logger,
   MESSAGE_SOURCE_OWNER_CHAT,
   requireConfirmedSendHandlerDelivery,
+  resolveOwnerEntityId,
   SEND_HANDLER_NOT_FOUND,
   ServiceType,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveGlobalPauseStore } from "@elizaos/plugin-assistant";
 import type {
   ActivitySignalBusView,
@@ -80,7 +81,10 @@ import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
 import { getConnectorRegistry } from "../connectors/registry.js";
-import { resolveDefaultTimeZone } from "../defaults.js";
+import {
+  resolveConfiguredTimeZone,
+  resolveDefaultTimeZone,
+} from "../defaults.js";
 import { FAMILY_BACKUP_CLEANUP_OPERATION } from "../family-workflows/backup-cleanup-schedule.js";
 import {
   FAMILY_MONTHLY_SYSTEM_OPERATION,
@@ -126,6 +130,7 @@ import {
   prepareDossierAutomaticFire,
   resolveOwnerDossierActivityAnchor,
 } from "./dossier-activity-runtime.js";
+import { getHostExecutionCapabilities } from "./host-capabilities.js";
 import { registerModelMomentCheckGate } from "./moment-judge.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
@@ -461,7 +466,12 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
 }
 
 type OwnerChatDelivery =
-  | { ok: true; roomId: UUID | null; messageId: UUID | null }
+  | {
+      ok: true;
+      roomId: UUID | null;
+      messageId: UUID | null;
+      conversationId: UUID | null;
+    }
   | { ok: false; failure: DispatchResult };
 
 /**
@@ -481,13 +491,16 @@ async function deliverScheduledTaskToOwnerChat(
     metadataString(record.metadata, "dispatchIdempotencyKey") ??
     `${record.taskId}:${record.firedAtIso}`;
   if (typeof runtime.sendMessageToTarget !== "function") {
-    return { ok: true, roomId: null, messageId: null };
+    return { ok: true, roomId: null, messageId: null, conversationId: null };
   }
   try {
     const result = await runtime.sendMessageToTarget(
       { source: MESSAGE_SOURCE_OWNER_CHAT },
       {
         text: message,
+        // Composition already produced owner-facing copy, as on connector sends.
+        // A second cosmetic rewrite can change its source-grounded facts.
+        agentVoiced: true,
         source: "lifeops-scheduled-task",
         deliveryIdempotencyKey,
         scheduledTaskId: record.taskId,
@@ -503,10 +516,18 @@ async function deliverScheduledTaskToOwnerChat(
         context: { taskId: record.taskId },
       });
     }
-    return { ok: true, roomId: memory.roomId, messageId: memory.id ?? null };
+    return {
+      ok: true,
+      roomId: memory.roomId,
+      messageId: validateUuid(memory.id),
+      conversationId:
+        memory.metadata && isMessageMetadata(memory.metadata)
+          ? validateUuid(memory.metadata.conversationId)
+          : null,
+    };
   } catch (error) {
     if (isElizaError(error) && error.code === SEND_HANDLER_NOT_FOUND) {
-      return { ok: true, roomId: null, messageId: null };
+      return { ok: true, roomId: null, messageId: null, conversationId: null };
     }
     // error-policy:J1 boundary translation — the history write failed; the
     // runner retries (the idempotency key keeps redelivery to one row) and
@@ -580,9 +601,16 @@ export async function composeOwnerFacingScheduledTaskText(
   );
 
   if (delegatesAssemblyTo === "lifeops:checkin:morning") {
+    const now = new Date(record.firedAtIso);
+    const facts = ownerFactsToView(
+      await resolveOwnerFactStore(runtime).read(),
+      now,
+    );
+    const { LifeOpsService } = await import("../service.js");
     const assembled = await assembleMorningBrief(runtime, {
-      timezone: resolveDefaultTimeZone(),
-      now: new Date(record.firedAtIso),
+      timezone: facts.timezone ?? resolveConfiguredTimeZone(runtime),
+      now,
+      sources: new LifeOpsService(runtime),
     });
     const summaryText = assembled.report.summaryText.trim();
     if (!summaryText)
@@ -971,6 +999,20 @@ export function createProductionScheduledTaskDispatcher(opts: {
           message,
         );
         if (!history.ok) return history.failure;
+        const morningBrief =
+          record.metadata?.delegatesAssemblyTo === "lifeops:checkin:morning";
+        if (
+          morningBrief &&
+          (!history.roomId || !history.messageId || !history.conversationId)
+        )
+          return {
+            ok: false,
+            reason: "disconnected",
+            acceptance: "not_accepted",
+            userActionable: true,
+            message:
+              "Morning brief has no confirmed owner-chat source to open.",
+          };
         if (history.roomId) surfacesAccepted += 1;
         const eventService = getAgentEventService(opts.runtime) as {
           emit?: (event: {
@@ -1010,15 +1052,19 @@ export function createProductionScheduledTaskDispatcher(opts: {
         const notifier = getNotifier(opts.runtime);
         if (notifier) {
           try {
-            const title = await renderScheduledDispatchTitle(
-              opts.runtime,
-              record,
-              message,
-            );
+            const title = morningBrief
+              ? "Morning brief"
+              : await renderScheduledDispatchTitle(
+                  opts.runtime,
+                  record,
+                  message,
+                );
             const isUrgent = record.intensity === "urgent";
             await notifier.notify({
               title,
-              body: message,
+              body: morningBrief
+                ? "Your morning brief is ready. Open it to see the details."
+                : message,
               category: isUrgent ? "approval" : "reminder",
               priority: isUrgent ? "urgent" : "normal",
               source: "lifeops",
@@ -1028,6 +1074,12 @@ export function createProductionScheduledTaskDispatcher(opts: {
                 taskId: record.taskId,
                 firedAtIso: record.firedAtIso,
                 channelKey: record.channelKey,
+                ...(history.conversationId && history.messageId
+                  ? {
+                      conversationId: history.conversationId,
+                      messageId: history.messageId,
+                    }
+                  : {}),
               },
             });
             surfacesAccepted += 1;
@@ -1065,6 +1117,9 @@ export function createProductionScheduledTaskDispatcher(opts: {
             ? {
                 metadata: {
                   ownerChatRoomId: history.roomId,
+                  ...(history.conversationId
+                    ? { ownerChatConversationId: history.conversationId }
+                    : {}),
                   ...(history.messageId
                     ? { ownerChatMessageId: history.messageId }
                     : {}),
@@ -1313,7 +1368,7 @@ export interface CreateRuntimeRunnerOptions {
   subjectStore?: SubjectStoreView;
   /**
    * Override the host-capability probe. The default reads
-   * `getHostExecutionCapabilities(runtime)` from `@elizaos/app`,
+   * `getHostExecutionCapabilities(runtime)` from this scheduler module,
    * which detects iOS BackgroundRunner / Android FGS / Node desktop. Tests
    * inject a fixed set to exercise substitution behavior.
    */

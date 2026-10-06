@@ -9,12 +9,8 @@
  *
  *  1. the managed Cloud app routing contract — this leg proves (a) each
  *     `/cloud/<surface>` page delegates through the normal app-shell boundary,
- *     (b) only the genuinely-removed spellings
- *     (earnings/affiliates, `/cloud/settings?tab=<x>`) redirect — to their
- *     canonical `/cloud/*` page — and (c) the in-app `/settings#<section>`
- *     hash surface resolves every registered cloud section via
- *     `readSettingsHashSection`, including the legacy `#billing` / `#api-keys`
- *     aliases;
+ *     and the in-app `/settings#<section>` hash surface resolves registered
+ *     cloud sections through `readSettingsHashSection`;
  *  2. each canonical Settings section (billing incl. the relocated
  *     `?canceled=true` banner, monetization tabs, security incl. the
  *     hash-anchor links, api-keys, account) rendering real data from the mock
@@ -407,10 +403,6 @@ const ORIGIN = `http://127.0.0.1:${pageServer.port}`;
 // render a separate ConsoleShell. It delegates every management route into the
 // tab/view app boundary; packages/app's Playwright suite proves the real shell
 // marker + route-specific header while this isolated fixture proves delegation.
-// Only genuinely-removed spellings (earnings/affiliates, the legacy
-// `/cloud/settings?tab=<x>` OAuth/Stripe return shape) still redirect — to
-// their canonical `/cloud/*` page, never to `/settings`. This leg verifies
-// delegation, compatibility redirects, and the retained Settings aliases.
 
 async function assertManagedAppRoute(from, expectedPath) {
   await page.goto(`${ORIGIN}${from}`, { waitUntil: "load" });
@@ -449,31 +441,12 @@ for (const [from, expectedPath] of managementPages) {
   await assertManagedAppRoute(from, expectedPath);
 }
 
-// 1b. The genuinely-removed legacy spellings redirect to their canonical
-//     managed Cloud page (the query string is carried through).
-console.log("== leg 1b: legacy → canonical Cloud redirects ==");
-const redirectCases = [
-  ["/cloud/security", "/cloud/account"],
-  ["/cloud/earnings", "/cloud/monetization"],
-  ["/cloud/affiliates", "/cloud/monetization"],
-  [
-    "/cloud/settings?tab=connections",
-    "/cloud/connectors?tab=connections",
-  ],
-  ["/cloud/settings?tab=billing", "/cloud/billing?tab=billing"],
-];
-for (const [from, expectedPath] of redirectCases) {
-  await assertManagedAppRoute(from, expectedPath);
-}
-
 // Cloud-owned hash sections redirect to their canonical route. App-only
-// sections and legacy aliases remain on the in-app settings surface.
+// sections remain on the in-app settings surface.
 console.log("== leg 1c: settings hash routing ==");
 const hashCases = [
   ["/settings#cloud-billing", "/cloud/billing", "(none)"],
-  ["/settings#billing", "/settings#billing", "cloud-billing"],
   ["/settings#cloud-api-keys", "/cloud/api-keys", "(none)"],
-  ["/settings#api-keys", "/settings#api-keys", "cloud-api-keys"],
   ["/settings#cloud-monetization", "/cloud/monetization", "(none)"],
   ["/settings#cloud-account", "/cloud/account", "(none)"],
   ["/settings#cloud-security", "/settings#cloud-security", "cloud-security"],
@@ -615,9 +588,9 @@ await writeFile(
       failures,
       screenshots: shot,
       managementPages: managementPages.map(([from, to]) => ({ from, to })),
-      redirectCases: redirectCases.map(([from, to]) => ({ from, to })),
-      settingsHashSections: hashCases.map(([from, section]) => ({
+      settingsHashSections: hashCases.map(([from, to, section]) => ({
         from,
+        to,
         section,
       })),
       ranAt: new Date().toISOString(),

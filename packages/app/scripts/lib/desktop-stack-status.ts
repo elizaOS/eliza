@@ -7,11 +7,13 @@
  * and hook flags for screenshot / console log.
  */
 
-import { createConnection } from "node:net";
-import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
+import { isPortOpen } from "./development-probes.ts";
+
+export { isPortOpen } from "./development-probes.ts";
+
+import { resolveDesktopApiPort } from "@elizaos/host/protocol";
 
 const DEFAULT_UI_PORT = 2138;
-const CONNECT_TIMEOUT_MS = 800;
 const FETCH_TIMEOUT_MS = 2500;
 
 function parsePositivePort(value) {
@@ -20,25 +22,6 @@ function parsePositivePort(value) {
   return Number.isInteger(parsed) && parsed > 0 && parsed < 65536
     ? parsed
     : NaN;
-}
-
-/**
- * @param {number} port
- * @param {string} [host]
- * @returns {Promise<boolean>}
- */
-export function isPortOpen(port, host = "127.0.0.1") {
-  return new Promise((resolve) => {
-    const socket = createConnection({ port, host }, () => {
-      socket.end();
-      resolve(true);
-    });
-    socket.on("error", () => resolve(false));
-    socket.setTimeout(CONNECT_TIMEOUT_MS, () => {
-      socket.destroy();
-      resolve(false);
-    });
-  });
 }
 
 /**

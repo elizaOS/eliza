@@ -1,5 +1,6 @@
 "use client";
 
+import type { AdminRole } from "@elizaos/cloud-sdk";
 /**
  * A collapsible titled group of sidebar nav items.
  */
@@ -10,8 +11,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../../../components/ui/collapsible";
-import { cn } from "../../lib/utils";
-import type { AdminRole } from "../../types/cloud-api";
+import { cn } from "../../../utils/cn";
 import { DashboardSidebarNavigationItem } from "./dashboard-sidebar-item";
 import type {
   DashboardSidebarItem,

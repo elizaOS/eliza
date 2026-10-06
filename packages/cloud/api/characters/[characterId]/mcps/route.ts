@@ -1,9 +1,13 @@
 // Handles cloud API characters characterid mcps route traffic with route-local auth expectations.
+
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { charactersService } from "@/lib/services/characters/characters";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

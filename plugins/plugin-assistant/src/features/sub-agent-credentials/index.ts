@@ -15,12 +15,11 @@ export { awaitChildAgentDecisionAction } from "./actions/await-child-agent-decis
 export { declareSubAgentCredentialScopeAction } from "./actions/declare-sub-agent-credential-scope.ts";
 export { retrieveChildAgentResultsAction } from "./actions/retrieve-child-agent-results.ts";
 export { tunnelCredentialToChildSessionAction } from "./actions/tunnel-credential-to-child-session.ts";
-
+export * from "./credential-tunnel-service.ts";
 export {
   subAgentCredentialsPlugin,
   subAgentCredentialsPlugin as default,
 } from "./plugin.ts";
-
 export type {
   ChildAgentDecision,
   ChildAgentResultBundle,
@@ -30,7 +29,6 @@ export type {
   SubAgentCredentialRequestOrigin,
   SubAgentCredentialScope,
 } from "./types.ts";
-
 export {
   SUB_AGENT_CHILD_DECISION_BUS_SERVICE,
   SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE,

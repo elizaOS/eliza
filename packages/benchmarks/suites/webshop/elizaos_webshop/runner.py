@@ -93,14 +93,11 @@ class WebShopRunner:
         config: WebShopConfig,
         *,
         split: str = "test",
-        use_hf: bool = False,
         profile: str = "small",
         use_sample_tasks: bool = False,
     ) -> None:
         self.config = config
         self.split = split
-        self.hf_requested = use_hf
-        self.use_hf = False
         self.profile = profile
         self.use_sample_tasks = use_sample_tasks
 
@@ -308,8 +305,6 @@ class WebShopRunner:
             "split": self.split,
             "profile": self.profile,
             "dataset_source": "sample-files" if self.use_sample_tasks else "upstream-files",
-            "hf_requested": self.hf_requested,
-            "use_hf": False,
             "catalog_product_count": self.dataset.catalog_product_count,
             "published_goal_count": self.dataset.published_goal_count,
             "include_edge_scenarios": self.config.include_edge_scenarios,
@@ -397,8 +392,6 @@ class WebShopRunner:
             "sample": bool(report.summary.get("sample", False)),
             "split": str(report.summary.get("split", "")),
             "profile": str(report.summary.get("profile", "")),
-            "use_hf": bool(report.summary.get("use_hf", False)),
-            "hf_requested": bool(report.summary.get("hf_requested", False)),
             "dataset_source": str(report.summary.get("dataset_source", "")),
             "include_edge_scenarios": bool(report.summary.get("include_edge_scenarios", False)),
             "summary": report.summary,

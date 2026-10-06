@@ -9,35 +9,35 @@
 import {
   CloudApnsProvider,
   resolveCloudApnsConfig,
-} from "@/lib/mobile-push/apns-provider";
+} from "@elizaos/cloud-shared/lib/mobile-push/apns-provider";
 import {
   MAX_MOBILE_PUSH_TOKEN_CHARACTERS,
   type MobilePushMessage,
   type MobilePushPlatform,
   type MobilePushTokenRecord,
-} from "@/lib/mobile-push/types";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
+} from "@elizaos/cloud-shared/lib/mobile-push/types";
+import type { BridgeRequest } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   hydrationSettledWithin,
   SHARED_TURN_HYDRATION_WAIT_MS,
-} from "@/lib/services/shared-runtime/bounded-hydration";
-import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
-import { parsePersonalSharedFallbackAccountState } from "@/lib/services/shared-runtime/personal-fallback-account-state";
-import { isCanonicalPersonalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-identity";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/bounded-hydration";
+import type { CachedAgentSandbox } from "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates";
+import { parsePersonalSharedFallbackAccountState } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-fallback-account-state";
+import { isCanonicalPersonalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import type {
   SharedRuntimeChannel,
   SharedTurnMessage,
-} from "@/lib/services/shared-runtime/run-shared-agent-turn";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
-import { parseSharedRuntimeChannel } from "@/lib/services/shared-runtime/shared-runtime-channel";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/run-shared-agent-turn";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
+import { parseSharedRuntimeChannel } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-channel";
 import type {
   SharedRuntimeHistoryStore,
   SharedTurnClaimStore,
   SharedTurnTerminalResult,
-} from "@/lib/services/shared-runtime/shared-runtime-chat";
-import { SharedRuntimeTurnError } from "@/lib/services/shared-runtime/shared-runtime-errors";
-import { mergeSharedRuntimeHistoryMessages } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import { SharedRuntimeTurnError } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-errors";
+import { mergeSharedRuntimeHistoryMessages } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-history-policy";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 const RELEASE_QUEUE_BEFORE_BODY_HEADER = "X-Eliza-Release-Coordinator-Queue";
 
@@ -400,8 +400,8 @@ export class SharedRuntimeConversation {
   private async runWithBindings<T>(fn: () => Promise<T>): Promise<T> {
     const [{ runWithDbCacheAsync }, { runWithCloudBindingsAsync }] =
       await Promise.all([
-        import("@/db/client"),
-        import("@/lib/runtime/cloud-bindings"),
+        import("@elizaos/cloud-shared/db/client"),
+        import("@elizaos/cloud-shared/lib/runtime/cloud-bindings"),
       ]);
     return await runWithCloudBindingsAsync(this.env, async () =>
       runWithDbCacheAsync(fn),
@@ -439,7 +439,7 @@ export class SharedRuntimeConversation {
     if (!this.hydration) {
       this.hydration = this.runWithBindings(async () => {
         const { sharedRuntimeHistoryRepository } = await import(
-          "@/db/repositories/shared-runtime-history"
+          "@elizaos/cloud-shared/db/repositories/shared-runtime-history"
         );
         const history = await sharedRuntimeHistoryRepository.get(
           agentId,
@@ -466,7 +466,9 @@ export class SharedRuntimeConversation {
         .catch(async (error) => {
           // error-policy:J7 a failed migration leaves the request fail-closed;
           // a later retry starts a fresh hydration instead of losing history.
-          const { logger } = await import("@/lib/utils/logger");
+          const { logger } = await import(
+            "@elizaos/cloud-shared/lib/utils/logger"
+          );
           logger.warn("[SharedRuntimeConversation] history hydration failed", {
             agentId,
             channelId,
@@ -522,13 +524,18 @@ export class SharedRuntimeConversation {
     const historyReadyAt = Date.now();
     await this.runWithBindings(async () => {
       const imports: Promise<unknown>[] = [
-        import("@/lib/services/shared-runtime/shared-runtime-chat"),
-        import("@/lib/services/shared-runtime/cached-agent-dates"),
+        import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
+        ),
+        import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates"
+        ),
       ];
       imports.push(
-        import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
-          ({ prewarmSharedElizaStreamingContext }) =>
-            prewarmSharedElizaStreamingContext(),
+        import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-eliza-runtime"
+        ).then(({ prewarmSharedElizaStreamingContext }) =>
+          prewarmSharedElizaStreamingContext(),
         ),
       );
       await Promise.all(imports);
@@ -536,7 +543,7 @@ export class SharedRuntimeConversation {
     this.prewarmReady = true;
     const completedAt = Date.now();
     this.state.waitUntil(
-      import("@/lib/utils/logger").then(({ logger }) => {
+      import("@elizaos/cloud-shared/lib/utils/logger").then(({ logger }) => {
         logger.info(
           "[SharedRuntimeConversation] conversation prewarm completed",
           {
@@ -920,7 +927,9 @@ export class SharedRuntimeConversation {
       this.dispatchMobilePush(message).catch(async (error: unknown) => {
         // error-policy:J7 APNs fan-out is observed after the owning response;
         // it must not hold the conversation's serialization lock.
-        const { logger } = await import("@/lib/utils/logger");
+        const { logger } = await import(
+          "@elizaos/cloud-shared/lib/utils/logger"
+        );
         logger.warn("[SharedRuntimeConversation] mobile push dispatch failed", {
           error: error instanceof Error ? error.message : String(error),
         });
@@ -946,7 +955,7 @@ export class SharedRuntimeConversation {
           : snapshot.history;
       await this.runWithBindings(async () => {
         const { sharedRuntimeHistoryRepository } = await import(
-          "@/db/repositories/shared-runtime-history"
+          "@elizaos/cloud-shared/db/repositories/shared-runtime-history"
         );
         await sharedRuntimeHistoryRepository.merge(
           snapshot.agentId,
@@ -979,7 +988,7 @@ export class SharedRuntimeConversation {
       // error-policy:J7 the Durable Object copy is authoritative for active
       // chat; a failed reporting mirror is retried by alarm and must not kill
       // or delay the user-visible turn.
-      const { logger } = await import("@/lib/utils/logger");
+      const { logger } = await import("@elizaos/cloud-shared/lib/utils/logger");
       logger.warn("[SharedRuntimeConversation] Postgres mirror failed", {
         agentId: snapshot.agentId,
         channelId: snapshot.channelId,
@@ -1248,7 +1257,7 @@ export class SharedRuntimeConversation {
       const sourceAgentId = seal.sourceAgentId;
       const recovery = await this.runWithBindings(async () => {
         const { resolvePersonalDedicatedCutoverRecovery } = await import(
-          "@/lib/services/agent-tier-upgrade-target"
+          "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target"
         );
         return await resolvePersonalDedicatedCutoverRecovery({
           organizationId,
@@ -1604,7 +1613,7 @@ export class SharedRuntimeConversation {
       await this.state.storage.put(PROVISIONAL_CONVERGENCE_SEAL_KEY, seal);
       const history = await this.runWithBindings(async () => {
         const { sharedRuntimeChatService } = await import(
-          "@/lib/services/shared-runtime/shared-runtime-chat"
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
         );
         return await sharedRuntimeChatService.getHistory(
           payload.agentId,
@@ -1806,7 +1815,7 @@ export class SharedRuntimeConversation {
       }
       await this.runWithBindings(async () => {
         const { sharedRuntimeChatService } = await import(
-          "@/lib/services/shared-runtime/shared-runtime-chat"
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
         );
         await sharedRuntimeChatService.recordLifecycleEvent(
           payload.agentId,
@@ -1855,7 +1864,7 @@ export class SharedRuntimeConversation {
       try {
         const history = await this.runWithBindings(async () => {
           const { sharedRuntimeChatService } = await import(
-            "@/lib/services/shared-runtime/shared-runtime-chat"
+            "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
           );
           return await sharedRuntimeChatService.getHistory(
             payload.agentId,
@@ -1900,7 +1909,7 @@ export class SharedRuntimeConversation {
     if (payload.operation === "history") {
       const history = await this.runWithBindings(async () => {
         const { sharedRuntimeChatService } = await import(
-          "@/lib/services/shared-runtime/shared-runtime-chat"
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
         );
         return await sharedRuntimeChatService.getHistory(
           payload.agentId,
@@ -1939,7 +1948,7 @@ export class SharedRuntimeConversation {
       // the fenced DO operation; retries are intentionally idempotent.
       await this.runWithBindings(async () => {
         const { sharedRuntimeHistoryRepository } = await import(
-          "@/db/repositories/shared-runtime-history"
+          "@elizaos/cloud-shared/db/repositories/shared-runtime-history"
         );
         await sharedRuntimeHistoryRepository.deleteByAgent(payload.agentId);
       });
@@ -1968,13 +1977,14 @@ export class SharedRuntimeConversation {
 
     return await this.runWithBindings(async () => {
       const { sharedRuntimeChatService } = await import(
-        "@/lib/services/shared-runtime/shared-runtime-chat"
+        "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
       );
       const agent = personal
         ? payload.agent
-        : await import("@/lib/services/shared-runtime/cached-agent-dates").then(
-            ({ rehydrateCachedAgentDates }) =>
-              rehydrateCachedAgentDates(payload.agent),
+        : await import(
+            "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates"
+          ).then(({ rehydrateCachedAgentDates }) =>
+            rehydrateCachedAgentDates(payload.agent),
           );
       if (personal) await this.rememberPersonalOwner(agent);
       const executionCtx = {
@@ -2084,7 +2094,9 @@ export class SharedRuntimeConversation {
             // error-policy:J7 a failed checkpoint keeps this object fail-closed;
             // Workers resets it after the failed storage output gate, and the
             // next instance admits only from the prior durable snapshot.
-            const { logger } = await import("@/lib/utils/logger");
+            const { logger } = await import(
+              "@elizaos/cloud-shared/lib/utils/logger"
+            );
             logger.warn(
               "[SharedRuntimeConversation] off-queue stream cancellation failed",
               {
@@ -2198,7 +2210,7 @@ export class SharedRuntimeConversation {
         );
       }
       const { InsufficientCreditsError, RateLimitError } = await import(
-        "@/lib/api/errors"
+        "@elizaos/cloud-shared/lib/api/errors"
       );
       if (error instanceof RateLimitError) {
         return Response.json(

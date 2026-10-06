@@ -3,26 +3,8 @@
  * flow. These hosts serve marketing/auth pages but have no same-origin agent
  * backend; managed app and dedicated-agent hosts are deliberately excluded.
  */
-import {
-  classifyElizaHostname,
-  ELIZA_DOMAIN_CONTRACTS,
-  LEGACY_ELIZA_DOMAIN_CONTRACTS,
-} from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-/** Control-plane hosts minus the API origins (api. / api-staging.), which
- * never serve the UI shell, and minus the app hosts (app. / app-staging.),
- * which serve the agent chat app — not the console. The app hosts sit in
- * ELIZA_CLOUD_CONTROL_PLANE_HOSTS only so canonical and legacy per-agent
- * subdomain detection doesn't misread them as dedicated agent hosts;
- * classifying them as apex here would stop the agent app from ever booting on
- * them (see AppCatchAllRoute) and send their post-login default to the in-app
- * /cloud view. */
-export const APEX_UI_CONTROL_PLANE_HOSTS = new Set([
-  new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname,
-  new URL(ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin).hostname,
-  `www.${new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname}`,
-  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.marketingHostnames,
-  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.marketingHostnames,
-]);
+import { classifyElizaHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+
 /** Pure public-site hostname decision for the host-role route matrix. */
 export function isApexControlPlaneHostname(hostname: string): boolean {
   const role = classifyElizaHostname(hostname).role;

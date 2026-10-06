@@ -6,6 +6,7 @@
  * component and stays React Fast Refresh-compatible.
  */
 
+import type { UiLanguage } from "@elizaos/core/protocol";
 import {
   type ReactNode,
   useCallback,
@@ -13,18 +14,17 @@ import {
   useMemo,
   useState,
 } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import { fetchSuggestedLanguage } from "../api/i18n-locale-client";
+import type { BrandingConfig } from "../config/branding-base";
 import {
   appNameInterpolationVars,
-  type BrandingConfig,
   DEFAULT_BRANDING,
-} from "../config/branding";
+} from "../config/branding-base";
 import {
   createTranslator,
   ensureLanguageLoaded,
   normalizeLanguage,
-  type UiLanguage,
 } from "../i18n";
 import {
   hasStoredUiLanguage,

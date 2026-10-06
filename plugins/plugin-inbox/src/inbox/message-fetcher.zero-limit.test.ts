@@ -4,7 +4,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsXDm } from "@elizaos/core/contracts/personal-assistant";
+import type { LifeOpsXDm } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
   fetchAllMessages,

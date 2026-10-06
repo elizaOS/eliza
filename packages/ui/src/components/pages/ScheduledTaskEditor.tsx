@@ -14,7 +14,7 @@
 
 import { Bell, CalendarClock, Check, Clock, X } from "lucide-react";
 import { useCallback, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type { ScheduledTaskVerbName } from "../../api/client-scheduled-tasks";
 import type { AutomationItem } from "../../api/client-types-config";
 import { useTranslation } from "../../state/TranslationContext.hooks";

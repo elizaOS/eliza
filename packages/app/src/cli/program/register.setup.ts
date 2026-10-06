@@ -19,9 +19,8 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import type { Command } from "commander";
-import { formatDocsLink } from "../../terminal/links.js";
-import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
+import { formatDocsLink, theme } from "../terminal.js";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
 // ---------------------------------------------------------------------------
@@ -340,7 +339,7 @@ export function registerSetupCommand(program: Command) {
             console.log(
               `\n${theme.success("Setup complete.")} Running health check...\n`,
             );
-            const { runAllChecks } = await import("../doctor/checks");
+            const { runAllChecks } = await import("../doctor");
             const results = await runAllChecks({ checkPorts: false });
             for (const result of results) {
               const icon =

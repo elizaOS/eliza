@@ -148,12 +148,12 @@ describe("LifeOpsRepository domain CRUD", () => {
     await repository.updateOccurrence({
       ...occurrence,
       state: "completed",
-      completionPayload: { ok: true },
+      completionPayload: { completedAt: LATER, ok: true },
       updatedAt: LATER,
     });
     // Completed-today read (#16935): the completed occurrence surfaces with
     // its definition title inside the window, and drops out once `sinceIso`
-    // passes its completion bump.
+    // passes its actual completion instant.
     expect(
       await repository.listCompletedOccurrenceViewsSince(runtime.agentId, NOW),
     ).toEqual([
@@ -783,7 +783,7 @@ describe("LifeOpsRepository domain CRUD", () => {
         windowName: null,
         state: "completed",
         snoozedUntil: null,
-        completionPayload: { ok: true },
+        completionPayload: { completedAt: updatedAt, ok: true },
         derivedTarget: null,
         metadata: {},
         createdAt: NOW,
@@ -835,6 +835,95 @@ describe("LifeOpsRepository domain CRUD", () => {
       "owner-2",
     ]);
     expect(ownerOnly.every((view) => view.subjectType === "owner")).toBe(true);
+  });
+
+  it("filters X DM direction before the limit", async () => {
+    const dm = (externalDmId: string, isInbound: boolean, receivedAt: string) =>
+      repository.upsertXDm({
+        id: crypto.randomUUID(),
+        agentId: runtime.agentId,
+        externalDmId,
+        conversationId: "x-conversation-1",
+        senderHandle: isInbound ? "sender" : "owner",
+        senderId: isInbound ? "sender-id" : "owner-id",
+        isInbound,
+        text: externalDmId,
+        receivedAt,
+        readAt: null,
+        repliedAt: null,
+        metadata: { source: "x" },
+        syncedAt: NOW,
+        updatedAt: NOW,
+      } as never);
+    await dm("inbound-old", true, "2026-07-11T07:00:00.000Z");
+    await dm("inbound-new", true, "2026-07-11T07:10:00.000Z");
+    // The owner's replies are newer than every inbound DM.
+    for (let index = 0; index < 3; index += 1) {
+      await dm(`outbound-${index}`, false, `2026-07-11T07:2${index}:00.000Z`);
+    }
+
+    const inbound = await repository.listXDms(runtime.agentId, {
+      inbound: true,
+      limit: 2,
+    });
+    expect(inbound.map((row) => row.externalDmId)).toEqual([
+      "inbound-new",
+      "inbound-old",
+    ]);
+    expect(
+      await repository.listXDms(runtime.agentId, { limit: 2 }),
+    ).toHaveLength(2);
+    expect(
+      (await repository.listXDms(runtime.agentId, { inbound: false })).length,
+    ).toBe(3);
+  });
+
+  it("targets exact X DM ids in SQL instead of a newest-rows window", async () => {
+    const dm = (externalDmId: string, receivedAt: string) =>
+      repository.upsertXDm({
+        id: `curation-${externalDmId}`,
+        agentId: runtime.agentId,
+        externalDmId,
+        conversationId: "x-conversation-ids",
+        senderHandle: "sender",
+        senderId: "sender-id",
+        isInbound: true,
+        text: externalDmId,
+        receivedAt,
+        readAt: null,
+        repliedAt: null,
+        metadata: { source: "x" },
+        syncedAt: NOW,
+        updatedAt: NOW,
+      } as never);
+    for (let index = 0; index < 30; index += 1) {
+      await dm(
+        `dm-${index}`,
+        `2026-07-11T07:${String(index).padStart(2, "0")}:00.000Z`,
+      );
+    }
+
+    // The oldest row is matched by id even under a limit that a window scan
+    // would spend entirely on newer rows.
+    const targeted = await repository.listXDms(runtime.agentId, {
+      ids: ["curation-dm-0", "curation-dm-29"],
+      limit: 2,
+    });
+    expect(targeted.map((row) => row.externalDmId)).toEqual(["dm-29", "dm-0"]);
+    expect(
+      await repository.listXDms(runtime.agentId, {
+        ids: ["curation-dm-0"],
+        limit: 1,
+      }),
+    ).toHaveLength(1);
+    // An empty id list is not a filter: the newest-rows window still applies.
+    expect(
+      await repository.listXDms(runtime.agentId, {
+        ids: [],
+        conversationId: "x-conversation-ids",
+        limit: 2,
+      }),
+    ).toHaveLength(2);
   });
 
   it("round-trips connector sync, schedule, and work-thread records", async () => {

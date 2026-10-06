@@ -10,14 +10,11 @@
  * runs and shell/code custom actions sit behind the local-code-execution gate
  * and terminal-authorization checks.
  */
+
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
   type CustomActionDef,
-  isAndroidMobile,
-  isLocalCodeExecutionAllowed,
-  logger,
-  ModelType,
   PostAgentEventRequestSchema,
   PostCustomActionGenerateRequestSchema,
   PostCustomActionRequestSchema,
@@ -25,12 +22,18 @@ import {
   PostIngestShareRequestSchema,
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
-  parseBooleanValue,
-  type ReadJsonBodyOptions,
+} from "@elizaos/contracts";
+import {
+  logger,
+  ModelType,
   type StreamEventEnvelope,
   validateUuid,
 } from "@elizaos/core";
-
+import { isLocalCodeExecutionAllowed } from "@elizaos/host";
+import {
+  isAndroidMobile,
+  type ReadJsonBodyOptions,
+} from "@elizaos/host/protocol";
 import { composePrompt } from "@elizaos/plugin-assistant/text/template-rendering";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
@@ -39,6 +42,7 @@ import {
 } from "../runtime/custom-actions.ts";
 import { runShell } from "../services/shell-execution-router.ts";
 import { customActionGenerateTemplate } from "./custom-action-prompt.js";
+import { parseOptionalBooleanQuery } from "./query-parameters.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 import {
@@ -180,19 +184,6 @@ function resolveTerminalShellCommand(): {
       (isAndroidMobile() ? "/system/bin/sh" : "/bin/sh"),
     argsFor: (command) => ["-c", command],
   };
-}
-function parseOptionalBooleanQuery(raw: string | null):
-  | {
-      ok: true;
-      value?: boolean;
-    }
-  | {
-      ok: false;
-    } {
-  if (raw === null) return { ok: true };
-  const parsed = parseBooleanValue(raw);
-  if (parsed === undefined) return { ok: false };
-  return { ok: true, value: parsed };
 }
 function toTerminalRunRequestBody(
   body: Record<string, unknown>,

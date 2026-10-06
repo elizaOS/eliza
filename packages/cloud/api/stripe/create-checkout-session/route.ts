@@ -1,3 +1,4 @@
+import { findCheckoutSessionForOrder } from "@/api-app/checkout-reconciliation";
 /**
  * POST /api/stripe/create-checkout-session
  *
@@ -8,6 +9,10 @@
  */
 
 import {
+  requireCurrentBillingManagerSession,
+  requireUserWithOrg,
+} from "@elizaos/cloud-shared/auth";
+import {
   checkoutAmountUsdToCents,
   ORGANIZATION_CREDIT_CHECKOUT_LIMITS,
 } from "@elizaos/cloud-shared/billing";
@@ -15,23 +20,22 @@ import {
   findBySku,
   HARDWARE_SKUS,
 } from "@elizaos/cloud-shared/hardware-catalog";
-import { Hono } from "hono";
-import type Stripe from "stripe";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import {
-  requireCurrentBillingManagerSession,
-  requireUserWithOrg,
-} from "@/lib/auth/workers-hono-auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
   RateLimitPresets,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
-import { stripeCustomerAuthorityService } from "@/lib/services/stripe-customer-authority";
-import { isStripeConfigured, requireStripe } from "@/lib/stripe";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { stripeCheckoutOrdersService } from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
+import { stripeCustomerAuthorityService } from "@elizaos/cloud-shared/lib/services/stripe-customer-authority";
+import {
+  isStripeConfigured,
+  requireStripe,
+} from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import type Stripe from "stripe";
+import { z } from "zod";
 
 // Canonical checkout bounds come from the shared organization-credit contract;
 // this route must not restate the range locally (#22963).
@@ -39,7 +43,6 @@ const CUSTOM_AMOUNT_LIMITS = {
   MIN_AMOUNT: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.minAmountUsd,
   MAX_AMOUNT: ORGANIZATION_CREDIT_CHECKOUT_LIMITS.maxAmountUsd,
 } as const;
-const CHECKOUT_RECONCILIATION_TIMEOUT_MS = 10_000;
 
 const checkoutRequestSchema = z
   .object({
@@ -292,7 +295,7 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     const cancelUrl = hardwareSku
       ? `${baseUrl}/checkout/cancel?sku=${hardwareSku}`
       : returnUrl === "settings"
-        ? `${baseUrl}/cloud/settings?tab=billing`
+        ? `${baseUrl}/cloud/billing`
         : `${baseUrl}/cloud/billing?canceled=true`;
 
     const requestDigest = creditQuote
@@ -460,63 +463,4 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
-}
-
-export async function findCheckoutSessionForOrder(
-  stripe: Stripe,
-  order: {
-    id: string;
-    stripe_customer_id: string | null;
-    updated_at: Date;
-  },
-  now: () => number = Date.now,
-): Promise<Stripe.Checkout.Session | null> {
-  if (!order.stripe_customer_id) {
-    throw new Error("Checkout order has no pinned Stripe customer");
-  }
-  const providerAttemptSeconds = Math.floor(order.updated_at.getTime() / 1000);
-  const deadlineAt = now() + CHECKOUT_RECONCILIATION_TIMEOUT_MS;
-  let startingAfter: string | undefined;
-  const seenCursors = new Set<string>();
-  while (true) {
-    if (now() >= deadlineAt) {
-      throw new Error(
-        "Stripe Checkout reconciliation exceeded its operation deadline",
-      );
-    }
-    const sessions = await stripe.checkout.sessions.list({
-      customer: order.stripe_customer_id,
-      created: {
-        gte: Math.max(0, providerAttemptSeconds - 3600),
-        lte: providerAttemptSeconds + 3600,
-      },
-      limit: 100,
-      ...(startingAfter ? { starting_after: startingAfter } : {}),
-    });
-    if (now() >= deadlineAt) {
-      throw new Error(
-        "Stripe Checkout reconciliation exceeded its operation deadline",
-      );
-    }
-    const match = sessions.data.find(
-      (session) =>
-        session.client_reference_id === order.id &&
-        session.metadata?.checkout_order_id === order.id,
-    );
-    if (match) return match;
-    if (!sessions.has_more) return null;
-    if (sessions.data.length === 0) {
-      throw new Error(
-        "Stripe Checkout reconciliation returned an empty continuation page",
-      );
-    }
-    const nextCursor = sessions.data.at(-1)?.id;
-    if (!nextCursor || seenCursors.has(nextCursor)) {
-      throw new Error(
-        "Stripe Checkout reconciliation returned invalid pagination",
-      );
-    }
-    seenCursors.add(nextCursor);
-    startingAfter = nextCursor;
-  }
 }

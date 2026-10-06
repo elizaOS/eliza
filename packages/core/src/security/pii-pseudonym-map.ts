@@ -1,47 +1,4 @@
-/**
- * Corpus-wide pseudonym consistency for the PII scrub pipeline (#14805).
- *
- * Chunk-local scrubbing produces inconsistent pseudonyms: "John Smith" in a
- * document becomes one surrogate, "Johnny" in a chat room another, "@jsmith" in
- * a transcript mirror survives untouched — the corpus stays linkable and
- * partially unscrubbed. This module owns the fix: **one real-world person — all
- * aliases, nicknames, platform handles — maps to exactly ONE pseudonym across
- * the entire corpus** (text, transcript fragments, and audio-redaction span
- * labels alike).
- *
- * Design points (issue #14805, followed exactly):
- *
- * - **Keyed by entity cluster, not by surface string.** The unit of identity is
- *   a `clusterId` — the caller derives it from the resolved entity (the
- *   `EntityStore` alias backbone, `packages/agent/src/services/knowledge-graph/
- *   entity-store.ts`) or its own clustering. Two distinct people who share a
- *   name are two clusters and get two different pseudonyms; identity merges
- *   keep going through the merge engine, never through this map.
- * - **Surrogate generation seeds from the session pseudonymizer**
- *   ({@link mintSurrogate} in `./pii-pseudonymizer.ts`), extended from
- *   per-session to corpus-persistent: the mint seed is
- *   `(salt, kind, clusterId, attempt)`, so the same cluster deterministically
- *   re-mints the same pseudonym under the same map salt, and the salt is
- *   persisted inside the (secret) snapshot so re-runs are stable.
- * - **The map itself is a secret artifact.** The alias→pseudonym map inverts
- *   the scrub. This class only holds it in memory; persistence goes through a
- *   {@link ./pii-pseudonym-map-store | protected store} that lives OUTSIDE the
- *   retrievable corpus (never a document/memory row, never embedded, never
- *   indexed). Slices handed to a model are {@link PiiPseudonymAssignment}s —
- *   `{entityClusterId, surrogate, kind}` only, never a real alias, and only
- *   for clusters relevant to the chunk at hand.
- * - **Ambiguity is escalated, never guessed.** An alias claimed by two or more
- *   clusters ("John" could be either person) is never blind-substituted; it is
- *   reported as ambiguous so the LLM-pass judges it with the context pack
- *   attached ({@link ./pii-context-pack}).
- *
- * Ruleset interplay: the map records the ruleset version a cluster was first
- * assigned and last touched under, but the pseudonym is STABLE across ruleset
- * bumps — a `v<rulesetVersion>` bump re-scrubs content (the content-hash
- * done-marker `pii:<sha256>:v<ruleset>` no longer matches,
- * `./pii-scrub-markers.ts`) with the SAME pseudonyms, so a re-scrub never
- * re-links or re-shuffles identities.
- */
+/** Assigns one deterministic pseudonym per entity cluster across the corpus. Different people with the same alias remain distinct; ambiguous aliases require contextual resolution. The reversible alias map is a secret artifact stored outside searchable content. Model-facing assignments contain cluster IDs, surrogate values, and kinds only. Ruleset changes preserve pseudonym identity. */
 
 import type { PiiPseudonymAssignment } from "../types/model.js";
 import { BufferUtils } from "../utils/buffer.js";
@@ -60,7 +17,7 @@ export interface PseudonymClusterIdentity {
 /**
  * One persisted cluster of the corpus pseudonym map:
  * `{clusterId → pseudonym, aliases[], identities[], evidence[], firstSeen,
- * rulesetVersion}` (the issue's map shape). `supersededPseudonyms` is the audit
+ * rulesetVersion}`. `supersededPseudonyms` is the audit
  * trail of pseudonyms this cluster previously held — non-empty only after a
  * re-mint (a newly learned real alias collided with the old pseudonym), so the
  * write-back stage can repair artifacts written under the old value.
@@ -231,9 +188,9 @@ export class CorpusPseudonymMap {
 	 * write-back can repair earlier artifacts.
 	 *
 	 * @throws PseudonymMapIntegrityError when a platform identity is claimed by
-	 *   a second cluster. One identity = one person; merging identities is the
-	 *   merge engine's job, and silently re-homing a handle here would either
-	 *   link two people or split one — both corruption.
+	 * a second cluster. One identity = one person; merging identities is the
+	 * merge engine's job, and silently re-homing a handle here would either
+	 * link two people or split one — both corruption.
 	 */
 	assign(input: AssignClusterInput): PseudonymClusterRecord {
 		if (typeof input.clusterId !== "string" || input.clusterId.length === 0) {
@@ -484,7 +441,7 @@ export class CorpusPseudonymMap {
 	}
 
 	/** Serialize the whole map — the SECRET artifact. Persist ONLY via a
-	 * {@link ./pii-pseudonym-map-store | protected store}. */
+	 * {@link./pii-pseudonym-map-store | protected store}. */
 	toSnapshot(): PseudonymMapSnapshot {
 		return {
 			version: 1,
@@ -535,9 +492,7 @@ export class CorpusPseudonymMap {
 		return map;
 	}
 
-	// -------------------------------------------------------------------------
 	// Internals
-	// -------------------------------------------------------------------------
 
 	/** Filter raw alias inputs down to swappable surface forms. */
 	private acceptableAliases(aliases: readonly string[]): string[] {

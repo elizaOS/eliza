@@ -1,14 +1,18 @@
 /** Exercises authenticated deletion HTTP requests and rejects malformed successful replies through the production client. */
-import { client } from "@elizaos/ui/api";
+
+import { client } from "@elizaos/ui";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defaultFamilyDeletionAdapter } from "./deletion-adapter.js";
 
-vi.mock("@elizaos/ui/api", async () => {
-  const { ElizaClient } = await import(
-    "../../../../../packages/ui/src/api/client-base.ts"
-  );
-  return { client: new ElizaClient() };
-});
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  ...(await (async () => {
+    const { ElizaClient } = await import(
+      "../../../../../packages/ui/src/api/client-base"
+    );
+    return { client: new ElizaClient() };
+  })()),
+}));
 beforeEach(() => {
   client.setBaseUrl("https://family-delete.example", { persist: false });
   client.setToken("synthetic-owner");

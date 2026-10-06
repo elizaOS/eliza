@@ -5,18 +5,18 @@
  */
 
 import type {
+  LifeOpsDefinitionRecord,
+  LifeOpsDefinitionStatus,
+  LifeOpsDomain,
+  LifeOpsTaskDefinition,
+} from "@elizaos/contracts";
+import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  LifeOpsDefinitionRecord,
-  LifeOpsDefinitionStatus,
-  LifeOpsDomain,
-  LifeOpsTaskDefinition,
-} from "../contracts/index.js";
 import { runLifeOperationHandler } from "./life.js";
 
 const serviceState = vi.hoisted(() => ({

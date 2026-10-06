@@ -1,28 +1,6 @@
-/**
- * GoalsView — the GUI data wrapper for the Goals surface.
- *
- * Data-fetching view over the single read-only goals endpoint served by the
- * personal-assistant routes (PA owns the persistence; this plugin only renders):
- *   GET {base}/api/lifeops/goals
- *
- * The wire payload is `{ goals: LifeOpsGoalRecord[] }`, where each record is
- * `{ goal: LifeOpsGoalDefinition; links: LifeOpsGoalLink[] }`. We flatten each
- * record to a `GoalItem` at the fetch boundary so the rest of the view renders
- * display-only.
- *
- * It owns the fetch state machine (loading / error / ready), the status-filter
- * selection, and the quiet 20s background poll, then renders the one
- * presentational {@link GoalsSpatialView} inside a {@link SpatialSurface}.
- * Omitting the `modality` prop lets `SpatialSurface` render the browser DOM
- * surface today while the retained modality contract stays available for future
- * adapters.
- *
- * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
- * DTOs below are declared locally to match the JSON shape PA emits
- * (LifeOpsGoalDefinition / LifeOpsGoalLink in @elizaos/core).
- */
+/** Goals view: fetches scoped records and opens assistant requests in chat. */
 
-import { client } from "@elizaos/ui/api";
+import { client, dispatchChatPrefill } from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,
@@ -181,7 +159,9 @@ type LoadState =
       goals: GoalItem[];
     };
 function requestNewGoal(): void {
-  client.sendChatMessage?.("Help me set a goal to head toward this quarter.");
+  dispatchChatPrefill({
+    text: "Help me set a goal to head toward this quarter.",
+  });
 }
 export function GoalsView(props: GoalsViewProps = {}): ReactNode {
   const fetchers = props.fetchers ?? defaultFetchers;

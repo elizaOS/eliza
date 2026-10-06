@@ -3,14 +3,14 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginInfo } from "../../api";
+import type { PluginInfo } from "../../api/client-types-config";
 import { PluginCard } from "./PluginCard";
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: null, agentProps: {} }),
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: () => (key: string, options?: { defaultValue?: string }) =>
     options?.defaultValue ?? (key === "common.on" ? "ON" : "OFF"),
 }));

@@ -5,17 +5,16 @@
  * `LifeOpsCalendarEvent`; every raw statement qualifies its table with the
  * `app_calendar.` prefix.
  */
+
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarProvider,
+  LifeOpsCalendarSourceError,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorSide,
+  LifeOpsIcsSourceSyncStatus,
+} from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarProvider,
-  type LifeOpsCalendarSourceError,
-  type LifeOpsIcsSourceSyncStatus,
-} from "@elizaos/core/contracts/calendar";
-import {
-  type LifeOpsConnectorGrant,
-  type LifeOpsConnectorSide,
-} from "@elizaos/core/contracts/personal-assistant";
 import {
   executeRawSql,
   parseJsonArray,

@@ -30,8 +30,7 @@ import {
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { ElizaClient } from "@elizaos/ui/api";
-import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
+import { ElizaClient, getBootConfig, setBootConfig } from "@elizaos/ui";
 import { authedClient } from "../src/helpers/monetization";
 import {
   pollSandboxStatus,

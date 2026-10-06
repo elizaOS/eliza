@@ -536,3 +536,8 @@ export function buildQuarantinePassArgs(quarantinedSuites, passthroughArgs) {
   }
   return ["--isolate", ...quarantinedSuites, ...forwarded];
 }
+
+/** A watchdog deadline remains a failure even if the child handles termination cleanly. */
+export function supervisedBunExitStatus(result) {
+  return result.timedOut ? 124 : result.status;
+}

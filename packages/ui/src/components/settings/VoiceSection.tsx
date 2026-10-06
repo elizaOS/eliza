@@ -9,10 +9,10 @@
 
 import { Database, Mic, Sliders, Timer } from "lucide-react";
 import * as React from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
-import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { cn } from "../../utils/cn";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { Input } from "../ui/input";

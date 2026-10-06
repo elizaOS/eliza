@@ -14,7 +14,7 @@ import type { SurfaceManifest } from "@elizaos/core";
 import {
   IMMERSIVE_WALLPAPER_SURFACE,
   resolveSurfaceManifest,
-} from "@elizaos/core/views/surface-manifest";
+} from "@elizaos/core/protocol";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CONTACTS_VIEW_CAPABILITIES } from "../../../../../plugins/plugin-native-contacts/src/view-capabilities";
@@ -213,7 +213,7 @@ describe("ViewCapabilityDeniedError", () => {
 
 // ── Real-path: a mounted DynamicViewLoader gated by its manifest ─────────────
 const { sendWsMessage } = vi.hoisted(() => ({ sendWsMessage: vi.fn() }));
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     sendWsMessage,
     fetch: vi.fn(async () => ({ claimId: "execution-claim" })),

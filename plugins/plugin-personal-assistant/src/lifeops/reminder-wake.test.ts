@@ -1,10 +1,10 @@
-import { expect, it, vi } from "vitest";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsOccurrence,
   LifeOpsReminderAttempt,
   LifeOpsReminderPlan,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
+import { expect, it, vi } from "vitest";
 import { nextReminderWakeAt, requestReminderWake } from "./reminder-wake";
 
 const now = Date.parse("2030-01-01T00:00:00Z");

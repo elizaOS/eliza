@@ -198,16 +198,6 @@ export class FakeMicAudioContext implements MicAudioContextLike {
   }
 }
 
-/** Fake mic context that selects the AudioWorklet path and records its URL. */
-export class FakeMicWorkletAudioContext extends FakeMicAudioContext {
-  readonly moduleUrls: string[] = [];
-  readonly audioWorklet = {
-    addModule: async (url: string): Promise<void> => {
-      this.moduleUrls.push(url);
-    },
-  };
-}
-
 class FakeScriptProcessor extends FakeNode implements ScriptProcessorNodeLike {
   onaudioprocess:
     | ((event: {

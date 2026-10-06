@@ -6,6 +6,8 @@
  * `resolveTimeZone` adapter returns, matching the local-day keys screen-time
  * rows are stored under.
  */
+
+import { normalizeTimeZone } from "@elizaos/contracts";
 import type {
   Action,
   ActionParameter,
@@ -19,7 +21,6 @@ import type {
 } from "@elizaos/core";
 import {
   applyGroundedActionReply,
-  normalizeTimeZone,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
@@ -134,6 +135,7 @@ type BrowserActivitySnapshot = {
 export interface ScreenTimeActionService {
   getScreenTimeDaily(opts: {
     date: string;
+    timeZone?: string;
     source?: LifeOpsScreenTimeSource;
     identifier?: string;
     limit?: number;
@@ -610,6 +612,7 @@ export function createScreenTimeActionRunner(
         const date = params.date ?? localTodayKey(timeZone);
         const daily = await service.getScreenTimeDaily({
           date,
+          timeZone,
           source: params.source,
           identifier: params.identifier,
         });

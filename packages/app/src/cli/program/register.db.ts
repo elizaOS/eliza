@@ -11,8 +11,8 @@ import os from "node:os";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme.js";
 import { runCommandWithRuntime } from "../cli-utils";
+import { theme } from "../terminal.js";
 
 const defaultRuntime = {
   error: (message: string) => console.error(message),

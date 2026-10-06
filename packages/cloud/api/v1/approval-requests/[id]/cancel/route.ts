@@ -7,22 +7,23 @@
  * Unlike `deny`, cancel is initiated by the challenger, not the signer.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { approvalRequestsRepository } from "@/db/repositories/approval-requests";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { approvalRequestsRepository } from "@elizaos/cloud-shared/db/repositories/approval-requests";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { approvalCallbackBus } from "@/lib/services/approval-callback-bus";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { approvalCallbackBus } from "@elizaos/cloud-shared/lib/services/approval-callback-bus";
 import {
   type ApprovalRequestsService,
   createApprovalRequestsService,
-} from "@/lib/services/approval-requests";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/approval-requests";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 import { parseApprovalRequestIdParam } from "../../approval-request-id";
 
 const CancelSchema = z.object({
@@ -50,8 +51,11 @@ app.post("/", async (c) => {
     }
     const { id } = parsedId;
 
-    const body = await c.req.json().catch(() => ({}));
-    const parsed = CancelSchema.safeParse(body ?? {});
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ success: false, error: "Invalid JSON body" }, 400);
+    }
+    const parsed = CancelSchema.safeParse(decodedBody.value);
     if (!parsed.success) {
       return c.json(
         {

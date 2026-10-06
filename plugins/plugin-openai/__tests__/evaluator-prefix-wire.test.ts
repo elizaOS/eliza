@@ -8,7 +8,7 @@
 import { createServer } from "node:http";
 import { type Evaluator, type Memory, ModelType, type PromptSegment } from "@elizaos/core";
 
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
 import { handleTextSmall } from "../models/text";

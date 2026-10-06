@@ -18,7 +18,8 @@ import type {
   UiElement,
   UiRenderContext,
   UiSpec,
-} from "@elizaos/core/config/ui-spec";
+} from "@elizaos/host/protocol";
+import { getByPath, setByPath } from "@elizaos/host/protocol";
 import { X } from "lucide-react";
 import type React from "react";
 import {
@@ -28,9 +29,10 @@ import {
   useMemo,
   useState,
 } from "react";
-import { getByPath, setByPath } from "../../config/config-catalog";
-import { useAppSelector } from "../../state";
-import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
+
+import { useAppSelector } from "../../state/app-store";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { Badge } from "../ui/badge";
 import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
@@ -93,11 +95,7 @@ function useUiCtx(): UiRendererContext {
   return ctx;
 }
 // ── Dynamic value resolution ────────────────────────────────────────
-function resolveProp(
-  value: unknown,
-  ctx: UiRendererContext,
-  resolveLegacyPath = true,
-): unknown {
+function resolveProp(value: unknown, ctx: UiRendererContext): unknown {
   if (value == null) return value;
   // $data.path string prefix (simpler syntax for AI)
   if (typeof value === "string" && value.startsWith("$data.")) {
@@ -134,57 +132,35 @@ function resolveProp(
     const cond = expr.$cond;
     let result = false;
     if (cond.eq) {
-      const [a, b] = cond.eq.map((v) => resolveProp(v, ctx, resolveLegacyPath));
+      const [a, b] = cond.eq.map((v) => resolveProp(v, ctx));
       result = a === b;
     } else if (cond.neq) {
-      const [a, b] = cond.neq.map((v) =>
-        resolveProp(v, ctx, resolveLegacyPath),
-      );
+      const [a, b] = cond.neq.map((v) => resolveProp(v, ctx));
       result = a !== b;
     } else if (cond.gt) {
-      const [a, b] = cond.gt.map((v) => resolveProp(v, ctx, resolveLegacyPath));
+      const [a, b] = cond.gt.map((v) => resolveProp(v, ctx));
       result = Number(a) > Number(b);
     } else if (cond.lt) {
-      const [a, b] = cond.lt.map((v) => resolveProp(v, ctx, resolveLegacyPath));
+      const [a, b] = cond.lt.map((v) => resolveProp(v, ctx));
       result = Number(a) < Number(b);
     } else if (cond.truthy) {
-      result = !!resolveProp(cond.truthy, ctx, resolveLegacyPath);
+      result = !!resolveProp(cond.truthy, ctx);
     } else if (cond.falsy) {
-      result = !resolveProp(cond.falsy, ctx, resolveLegacyPath);
+      result = !resolveProp(cond.falsy, ctx);
     } else if (cond.path) {
       result = !!getByPath(ctx.state, cond.path);
     }
-    return result
-      ? resolveProp(expr.$then, ctx, resolveLegacyPath)
-      : resolveProp(expr.$else, ctx, resolveLegacyPath);
-  }
-  // Object with path references
-  if (
-    resolveLegacyPath &&
-    typeof value === "object" &&
-    value !== null &&
-    "path" in (value as Record<string, unknown>)
-  ) {
-    const p = (
-      value as {
-        path: string;
-      }
-    ).path;
-    if (p.startsWith("$item/") && ctx.repeatItem) {
-      return ctx.repeatItem[p.slice(6)];
-    }
-    return getByPath(ctx.state, p);
+    return result ? resolveProp(expr.$then, ctx) : resolveProp(expr.$else, ctx);
   }
   return value;
 }
 function resolveProps(
   props: Record<string, unknown>,
   ctx: UiRendererContext,
-  resolveLegacyPath = true,
 ): Record<string, unknown> {
   const resolved: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(props)) {
-    resolved[k] = resolveProp(v, ctx, resolveLegacyPath);
+    resolved[k] = resolveProp(v, ctx);
   }
   return resolved;
 }
@@ -286,11 +262,7 @@ function resolveActionParams(
 ): ActionParamsResolution {
   if (!params) return { ok: true, params: undefined };
   try {
-    // Action payloads have historically allowed literal objects containing a
-    // `path` field. Resolve only the documented `$path`/`$data`/`$cond`
-    // bindings here; the legacy bare `{ path }` prop shorthand remains scoped
-    // to element props so existing action contracts are not reinterpreted.
-    const resolvedParams = resolveProps(params, ctx, false);
+    const resolvedParams = resolveProps(params, ctx);
     const sensitivePaths = sensitiveStatePaths(ctx);
     const historySafeParams: Record<string, unknown> = {};
     let redacted = false;

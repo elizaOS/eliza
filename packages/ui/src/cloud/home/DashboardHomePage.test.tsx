@@ -30,11 +30,11 @@ const creditsState: {
   data: { balance: number } | undefined;
   isError: boolean;
 } = { data: { balance: 86.72 }, isError: false };
-vi.mock("../instances/lib/data/credits", () => ({
+vi.mock("../instances/lib/credits", () => ({
   useCreditsBalance: () => creditsState,
 }));
 
-import { PageHeaderProvider } from "../../cloud-ui/components/layout";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout/page-header-context";
 import { DashboardHomePage } from "./DashboardHomePage";
 
 function renderHome(): void {

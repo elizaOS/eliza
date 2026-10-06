@@ -44,6 +44,20 @@ never repeat the effect. Revision/epoch and account checks fence late results;
 resolved results require a durable evidence reference. Reconciliation does not
 resume the task. This method is deliberately absent from renderer HTTP routes.
 
+## Optional phone workflows
+
+Lean-chat hosts may set `ELIZA_LEAN_CHAT_WORKFLOWS=1` to retain the workflow
+plugin while keeping the lean profile's desktop actuator exclusions. Android
+hosts may independently set `ELIZA_MOBILE_WORKFLOWS=1`; the default remains
+workflow-free, and iOS remains excluded. An explicit `workflow.enabled: false`
+or disabled `plugins.entries.workflow` overrides either opt-in.
+
+Android bundles include the optional workflow plugin, but execution still
+requires the separately verified workflow worker/compiler resource directory
+and the process-host configuration. Enabling the plugin does not establish
+worker readiness or authorize device effects. Use the existing reviewed
+workflow and device-action permission/receipt boundaries.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
@@ -56,6 +70,10 @@ bun run --cwd packages/agent test   # tests
 Retain real end-to-end scenarios exercising host, transport, and persistence.
 The package test, test:e2e, and test:integration commands share that suite;
 do not reintroduce removed unit, mock, smoke, or source-inspection tests.
+
+Remote push (APNs/FCM) acceptance requires an enrolled device, token registration
+through the authenticated API, and confirmed delivery to that device while the
+app is backgrounded or closed. The local agent suite does not verify device delivery.
 
 Run the native coding CLI end to end with configured provider credentials:
 
@@ -90,8 +108,9 @@ Interactive task events are committed atomically with each SQLite checkpoint.
 The authenticated `GET /tasks/:id/events?after=-1` endpoint returns ordered pages
 of up to 128 events, a cursor and `hasMore`; clients must follow all pages.
 Older journals begin with an explicit `checkpoint` event rather than invented
-history. `@elizaos/core/messaging/task-events` provides a browser-safe validator
-and merge helper that reject gaps, conflicting replay and wrong-task data.
+history. `@elizaos/core/protocol` exports a browser-safe validator and merge
+helper (`validateTaskEvent`, `mergeTaskEvents`) that reject gaps, conflicting
+replay and wrong-task data.
 The feed contains lifecycle metadata, not page text, credentials or transcripts.
 
 `services/sqlite-message-interaction-session-store` adapts the existing
@@ -131,3 +150,69 @@ Each explicit uncertain-operation readback commits a recovery epoch before bindi
 the actuator. An ambiguous result or lost reply therefore cannot strand the next
 readback on a native epoch that was already consumed. The original operation stays
 unknown until evidence resolves it, and recovery never resumes or repeats effects.
+
+Mobile hosts may set `ELIZA_MOBILE_DNS_SERVERS` to one through eight comma-separated
+IP literals from their trusted native network configuration. Missing configuration
+retains the public resolver defaults; malformed addresses reject before installing
+DNS overrides. This startup snapshot does not implement Private DNS, VPN-bound
+resolution or automatic network-change refresh.
+
+## Native host composition
+
+`native-host/gateway.mjs` is a dependency-free Node source entrypoint for native
+hosts shipping a separately verified gateway payload. Supply an explicit
+`hostPolicy`: origins, resetPaths, conversationTitle, abortReason, validateTitle,
+prepareMessage, isPaidAction, formatTaskContext, and optional messages. The policy
+owns product language and view metadata; the gateway owns authenticated loopback
+transport, bounded JSON, conversation ownership, request cancellation, account
+fencing and authenticated task presentation. Only trusted host code provides this
+policy; never accept it from renderer input.
+
+`native-host/account-state.mjs` preserves private credential-derived namespaces
+and configuration migration. `native-host/runtime-supervisor.mjs` serializes
+identity transitions and stops only the child returned by the host launcher.
+These are source entrypoints for explicit payload composition, not additional
+browser SDK or published dist exports. Production consumers must preserve their
+own registration, origin policy, encrypted storage and lifecycle adapters.
+
+The native-host end-to-end test uses real local HTTP, disk restart and child
+processes. Run `node --test packages/agent/native-host/gateway.e2e.test.mjs` from
+the repository root; it is also included by the package's Vitest suite.
+
+`native-host/private-runtime-launch.mjs` composes host-only literal settings,
+allowlisted inherited environment, persistent private tokens and a separate
+generated launch config. The trusted host supplies paths, default configuration,
+provider policy, command and launch-receipt callback. It owns one child and reaps
+it if receipt persistence fails; signal listeners are removed on child closure.
+It does not restart processes or replace the account supervisor. Parent
+directories must be private and host-controlled, and receipt callbacks must
+settle. Hosts with an existing token-format contract may supply a synchronous
+`createToken` factory; it runs only for a newly created token file. Existing
+tokens are preserved and validated regardless of the current factory. The native-host end-to-end suite covers real disk and child-process
+isolation, failure cleanup and cancellation during launch.
+
+`native-host/task-evidence-store.mjs` stores host-validated append-only evidence
+separately from the task transition journal. Supply a trusted table name, source,
+input validator, record limit and authenticated owner. The task reader must use
+the same synchronous SQLite connection without starting its own transaction.
+The store serializes ownership/epoch checks, sequencing and idempotency with
+writes; it never advances tasks or authorizes effects. Keep product measurement
+schemas and summaries in the host. Existing compatible tables are preserved.
+
+Trusted native hosts can use `native-host/private-runtime-launch.mjs`'s
+`readPrivateRuntimeJson` for bounded, read-only POSIX configuration reads. Hosts
+supply the byte budget and own parent-directory trust and schema validation.
+The reader rejects symlink leaves, non-regular files, unexpected ownership and
+group/other permissions; it never creates files or changes their permissions.
+
+Hosts whose runtime writes its own persistent configuration should use
+`preparePrivateRuntimeProfile` and continue passing their original config path
+to that runtime. It returns the saved token and parsed configuration without
+rewriting existing bytes. `preparePrivateRuntimeFiles` composes this primitive
+with a separate generated launch config for hosts that need a per-launch selection.
+
+`SqliteInteractiveTaskStore.readOwnerHistory` supplies complete owner-scoped
+histories within explicit task/event limits to a synchronous, read-only host
+projection. It reuses page validation and rejects revision, cross-connection,
+same-connection or schema changes instead of publishing a partial report. It
+adds no effect authority and must not be called inside an existing transaction.

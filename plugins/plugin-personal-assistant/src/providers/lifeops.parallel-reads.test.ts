@@ -10,6 +10,14 @@
  * service, owner readers, and the account manager are controlled
  * collaborators; Date is pinned so relative-time lines stay deterministic.
  */
+
+import type {
+  LifeOpsGmailTriageSummary,
+  LifeOpsGoogleConnectorStatus,
+  LifeOpsNextCalendarEventContext,
+  LifeOpsOccurrenceView,
+  LifeOpsOverview,
+} from "@elizaos/contracts";
 import {
   type ContextObject,
   type IAgentRuntime,
@@ -18,13 +26,6 @@ import {
   type State,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  LifeOpsGmailTriageSummary,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsNextCalendarEventContext,
-  LifeOpsOccurrenceView,
-  LifeOpsOverview,
-} from "../contracts/index.js";
 import type {
   ConnectorContribution,
   ConnectorStatus,

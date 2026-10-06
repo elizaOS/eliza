@@ -3,17 +3,9 @@
  * to the layout IR. Pure, no renderer.
  */
 import { describe, expect, it } from "vitest";
-import {
-  Button,
-  evaluateToSpatialTree,
-  HStack,
-  List,
-  Stack,
-  Text,
-  useSpatialState,
-} from "../index.ts";
+import { evaluateToSpatialTree, useSpatialState } from "../evaluate";
 import type { SpatialBoxNode } from "../ir.ts";
-import { createSpatialTuiComponent } from "../tui/index.ts";
+import { Button, HStack, List, Stack, Text } from "../primitives";
 
 describe("evaluate — React tree → IR", () => {
   it("evaluates a primitive box with text children", () => {
@@ -97,13 +89,5 @@ describe("evaluate — React tree → IR", () => {
       label: "Save",
       agent: { id: "save" },
     });
-  });
-});
-
-describe("spatial terminal compatibility subpath", () => {
-  it("fails explicitly because no concrete renderer ships", () => {
-    expect(() => createSpatialTuiComponent(() => <Text>unused</Text>)).toThrow(
-      "not shipped",
-    );
   });
 });

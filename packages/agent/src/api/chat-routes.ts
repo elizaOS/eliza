@@ -7,16 +7,22 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isDeepStrictEqual } from "node:util";
 import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  type ChatToolCallEvent,
+  type ChatTurnStatus,
+  type LinkedAccountProviderId,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+} from "@elizaos/contracts";
+import {
   type ActionReplyFailure,
   type ActionResult,
   type AgentRuntime,
   asObjectRecord as asRecord,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
-  type ChatFailureKind,
-  type ChatTerminalFailure,
-  type ChatToolCallEvent,
-  type ChatTurnStatus,
+  type ChatImageAttachment,
   type Content,
   createMessageMemory,
   type EffectReceipt,
@@ -34,10 +40,8 @@ import {
   inheritIncomingMessagePersistence,
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
-  isLinkedAccountProviderId,
   isRateLimitError,
   isTextGenerationModelType,
-  type LinkedAccountProviderId,
   type AgentLogEntry as LogEntry,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
@@ -48,14 +52,9 @@ import {
   normalizeCharacterLanguage,
   normalizeEffectReceipts,
   PRIVACY_DENIED_TEXT,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
-  type ReadJsonBodyOptions,
   type RolesWorldMetadata,
   type RoomHandlerLease,
-  type RouteRequestContext,
   readActionReplyFailure,
-  readAliasedEnv,
   recordOwnerGrant,
   recordRoleGrant,
   renderInteractionsAsPlainText,
@@ -74,13 +73,17 @@ import {
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
-
+import {
+  type ElizaConfig,
+  isLinkedAccountProviderId,
+  type ReadJsonBodyOptions,
+  type RouteRequestContext,
+  readAliasedEnv,
+} from "@elizaos/host/protocol";
 import {
   persistInferenceTimingSummary,
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
-import { DELTA_STREAM_PROTOCOL } from "@elizaos/ui/utils/streaming-text";
-import type { ElizaConfig } from "../config/config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type CapturedModelUsage,
@@ -97,6 +100,10 @@ import {
   createChatIdempotencyStore,
 } from "../services/chat-idempotency-service.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
+import {
+  cloneWithoutBlockedObjectKeys,
+  hasBlockedObjectKeyDeep,
+} from "./blocked-object-keys.ts";
 import {
   maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
@@ -126,24 +133,21 @@ import {
   loadLocalInferenceRouteApi,
 } from "./local-inference-server-api.ts";
 import {
-  cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   getErrorMessage,
-  hasBlockedObjectKeyDeep,
   normalizeIncomingChatPrompt,
   resolveAppUserName,
   validateChatImages,
 } from "./server-helpers.ts";
+
 import {
   isAuthorized,
   isServerTokenAuthorized,
 } from "./server-helpers-auth.ts";
 import { readUiLanguageHeader } from "./server-helpers-config.ts";
-import type { ChatImageAttachment } from "./server-types.ts";
+
 import { listViews } from "./views-registry.ts";
 import { updateWorldMetadataWithRetry } from "./world-metadata-retry.ts";
-
-export type { ChatImageAttachment, LogEntry };
 
 const CHAT_APPEND_ONLY_STREAM_DIVERGENCE = "CHAT_APPEND_ONLY_STREAM_DIVERGENCE";
 type LocalInferenceChatApi = Pick<
@@ -328,40 +332,11 @@ export function admitChatMessageId(
 export function normalizeClientMessageId(value: unknown): string | null {
   return chatIdempotency.normalize(value);
 }
-/**
- * Lifecycle-aware O(1) duplicate check for an HTTP chat send. Active turns
- * remain reserved until their owner either settles or explicitly releases the
- * key; they must not become duplicate work merely because generation is slow.
- * Settled outcomes remain replayable for a bounded retention period.
- *
- * `scope` is the conversation room id (dashboard chat) or the per-user room key
- * (agent-message API) so the key cannot collide across conversations/users.
- */
-export function isDuplicateChatMessage(
-  scope: string,
-  clientMessageId: string | null,
-  now: number = Date.now(),
-): boolean {
-  return chatIdempotency.reserve(scope, clientMessageId, now);
-}
-/**
- * Roll back an idempotency key recorded by {@link isDuplicateChatMessage}.
- *
- * The guard records at request ARRIVAL (so a duplicate landing while the
- * original is still mid-turn is suppressed — that's the blip-retry window it
- * exists for). But when the original turn dies WITHOUT persisting a visible
- * assistant reply — a client disconnect aborts generation, or an error hits
- * after a disconnect so no fallback reply is persisted — a suppressed retry
- * would eat the user's message entirely: no reply, no error, no retry chip.
- * Callers release the key on exactly those paths so the client's single
- * auto-retry legitimately re-runs the turn (it is not a duplicate of any
- * delivered outcome). Releasing is always safe: the worst case is the
- * pre-guard behavior (a second turn) on a turn that produced nothing.
- */
+/** Release an active reservation held by the requesting turn. */
 export function releaseChatMessageId(
   scope: string,
   clientMessageId: string | null,
-  reservation?: ChatMessageIdReservation | null,
+  reservation: ChatMessageIdReservation | null,
 ): void {
   chatIdempotency.release(scope, clientMessageId, reservation);
 }
@@ -389,7 +364,7 @@ export function setChatMessageIdOutcome(
   scope: string,
   clientMessageId: string | null,
   outcome: ChatMessageIdOutcome,
-  reservation?: ChatMessageIdReservation | null,
+  reservation: ChatMessageIdReservation | null,
 ): void {
   chatIdempotency.settle(scope, clientMessageId, outcome, reservation);
 }
@@ -656,7 +631,6 @@ function isAppendOnlyStreamDivergenceError(
     error.code === CHAT_APPEND_ONLY_STREAM_DIVERGENCE
   );
 }
-// LogEntry is canonical in @elizaos/core and re-exported above.
 type CallbackMergeMode = "append" | "replace";
 function resolveCallbackMergeMode(
   content: Content,
@@ -1664,15 +1638,11 @@ function buildUnexecutedActionPayloadReply(actionNames: string[]): string {
 // SSE helpers
 // ---------------------------------------------------------------------------
 export {
-  type ChatTokenStreamProtocol,
   type ChatTokenStreamWriter,
-  type ChatTokenStreamWriterDeps,
   type ChatTokenWriteOptions,
   createChatTokenStreamWriter,
-  DELTA_STREAM_PROTOCOL,
   initSse,
   writeChatStatusSse,
-  writeChatTokenSse,
   writeChatToolSse,
   writeSse,
   writeSseData,
@@ -1841,10 +1811,25 @@ async function hasRecentAssistantMemory(
         createdAt >= sinceMs - 2000
       );
     });
-  } catch {
-    return false;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — this read guards a live chat
+    // write; returning false here would persist a duplicate row and re-send a
+    // prior turn exactly when storage is unhealthy and retries are likely.
+    // Fail closed so the route boundary surfaces a retryable error instead.
+    throw new ElizaError("Failed to read recent assistant memory for dedupe", {
+      code: "ASSISTANT_DEDUPE_READ_FAILED",
+      cause: error,
+      context: { roomId },
+    });
   }
 }
+/**
+ * Reports whether the recent 12-message read contains a visible assistant
+ * reply at or after `sinceMs - 2000`. A failed storage read rejects with `ElizaError`
+ * (`ASSISTANT_MEMORY_READ_FAILED`) instead of resolving `false`: `false`
+ * means no matching reply in that read, and callers must not catch the
+ * rejection and substitute `false`.
+ */
 export async function hasRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1854,6 +1839,13 @@ export async function hasRecentVisibleAssistantMemorySince(
     await getRecentVisibleAssistantMemoryTextSince(runtime, roomId, sinceMs),
   );
 }
+/**
+ * Returns the newest visible assistant reply text at or after
+ * `sinceMs - slackMs` in the recent 12-message read, or `null` when that
+ * successful read contains no matching reply. A storage read
+ * failure rejects with `ElizaError` (`ASSISTANT_MEMORY_READ_FAILED`) rather
+ * than degrading to `null`, which would read as "no prior reply".
+ */
 export async function getRecentVisibleAssistantMemoryTextSince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1906,6 +1898,15 @@ export function compareAssistantTurnRecencyDescending(
     (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
   );
 }
+/**
+ * Reads the most recent visible (non-internal) assistant turn at or after
+ * `sinceMs - slackMs` among the recent 12 messages, newest first, as
+ * `{ id, text }`. Resolves `null` when that successful read has no match; a failed storage read rejects
+ * with `ElizaError` (`ASSISTANT_MEMORY_READ_FAILED`) wrapping the cause.
+ * Fail closed is the contract: a fabricated "no prior reply" would regenerate
+ * and re-send a previous turn's answer on rapid-fire retries. Reachable by
+ * external consumers through `@elizaos/agent/api/chat-routes`.
+ */
 export async function getRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -1947,8 +1948,15 @@ export async function getRecentVisibleAssistantMemorySince(
     return persistedAssistantTurn?.id && text
       ? { id: persistedAssistantTurn.id as UUID, text }
       : null;
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — null means "no prior reply",
+    // so swallowing a storage failure here would regenerate and re-send a
+    // prior turn's answer on rapid-fire retries. Fail closed instead.
+    throw new ElizaError("Failed to read recent visible assistant memory", {
+      code: "ASSISTANT_MEMORY_READ_FAILED",
+      cause: error,
+      context: { roomId },
+    });
   }
 }
 export async function persistAssistantConversationMemory(
@@ -2180,13 +2188,9 @@ export async function readChatRequestPayload(
   preferredLanguage?: string;
   source?: string;
   metadata?: Record<string, unknown>;
-  /** Client-supplied idempotency key (see `isDuplicateChatMessage`); absent
+  /** Client-supplied idempotency key (see `admitChatMessageId`); absent
    *  when the client did not stamp one. */
   clientMessageId?: string;
-  /** Present only when the client advertised the exact delta-v2 wire protocol;
-   *  drives `createChatTokenStreamWriter`. Unknown values are ignored so the
-   *  server stays on legacy framing for un-negotiated clients. */
-  streamProtocol?: typeof DELTA_STREAM_PROTOCOL;
 } | null> {
   const body = await helpers.readJsonBody<{
     text?: string;
@@ -2196,7 +2200,6 @@ export async function readChatRequestPayload(
     source?: string;
     metadata?: Record<string, unknown>;
     clientMessageId?: string;
-    streamProtocol?: string;
   }>(req, res, { maxBytes });
   if (!body) return null;
   const normalizedPrompt = normalizeIncomingChatPrompt(body.text, body.images);
@@ -2256,10 +2259,6 @@ export async function readChatRequestPayload(
     );
     return null;
   }
-  const streamProtocol =
-    body.streamProtocol === DELTA_STREAM_PROTOCOL
-      ? DELTA_STREAM_PROTOCOL
-      : undefined;
   return {
     prompt: normalizedPrompt,
     channelType,
@@ -2268,7 +2267,6 @@ export async function readChatRequestPayload(
     ...(source ? { source } : {}),
     ...(metadata ? { metadata } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
-    ...(streamProtocol ? { streamProtocol } : {}),
   };
 }
 function readMessageTrajectoryStepId(

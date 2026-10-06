@@ -5,7 +5,7 @@
  * state. Consumed by the runtime picker and connect deep-links.
  */
 
-import { client } from "../api";
+import { client } from "../api/client";
 import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,

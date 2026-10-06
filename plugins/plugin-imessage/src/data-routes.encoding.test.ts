@@ -1,8 +1,7 @@
 /** Exercises shared contact identifier parsing through both iMessage HTTP adapters. */
 import type http from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteRequest, RouteResponse } from "@elizaos/core/api/http-plugin";
-import type { RouteHelpers } from "@elizaos/core/api/route-helpers";
+import type { RouteHelpers, RouteRequest, RouteResponse } from "@elizaos/host/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { handleIMessageRoute } from "./api/imessage-routes.ts";
 import { imessageDataRoutes } from "./data-routes.ts";

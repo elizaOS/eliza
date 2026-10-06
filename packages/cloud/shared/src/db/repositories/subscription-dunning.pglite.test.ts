@@ -192,6 +192,12 @@ type Seeded = Awaited<ReturnType<typeof seed>>;
 
 function delivery(type: string, object: object, options: { apiVersion?: string } = {}) {
   const id = `evt_${randomUUID().replaceAll("-", "")}`;
+  // Stripe subscription deliveries carry the complete provider object, including
+  // customer, livemode and latest_invoice used to route original upgrade evidence.
+  const providerObject =
+    "id" in object && typeof object.id === "string" && type.startsWith("customer.subscription.")
+      ? objects.get(object.id)
+      : undefined;
   const event = JSON.parse(
     JSON.stringify({
       id,
@@ -199,7 +205,7 @@ function delivery(type: string, object: object, options: { apiVersion?: string }
       type,
       livemode: false,
       created: Math.floor(Date.now() / 1000),
-      data: { object },
+      data: { object: { ...providerObject, ...object } },
       api_version: options.apiVersion ?? "2024-11-20.acacia",
       pending_webhooks: 1,
       request: null,

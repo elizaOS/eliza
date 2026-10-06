@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-// Deterministically signs the exact three-architecture canonical raw.zst set
-// and its byte-exact discovery manifest. Private material is read only from an
-// environment variable and is never serialized by this tool.
 import {
   createHash,
   createPrivateKey,
@@ -22,6 +19,10 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+// Deterministically signs the exact three-architecture canonical raw.zst set
+// and its byte-exact discovery manifest. Private material is read only from an
+// environment variable and is never serialized by this tool.
+import { artifactSignaturePayload } from "../contracts/index.ts";
 import { parseArgs } from "./os-release-lib.ts";
 import { canonicalBase64, loadReleaseKeyPolicy } from "./release-key-policy.ts";
 
@@ -38,23 +39,6 @@ function canonicalTimestamp(value, label) {
     throw new Error(`${label} must be a canonical UTC ISO timestamp`);
   }
   return value;
-}
-
-function artifactSignaturePayload(artifact) {
-  return Buffer.from(
-    [
-      "elizaOS-artifact-v1",
-      artifact.url,
-      artifact.architecture,
-      String(artifact.sequence),
-      String(artifact.compressedSize),
-      String(artifact.expandedSize),
-      artifact.sha256Compressed,
-      artifact.sha256Expanded,
-      "",
-    ].join("\n"),
-    "utf8",
-  );
 }
 
 function inodeIdentity(stats) {

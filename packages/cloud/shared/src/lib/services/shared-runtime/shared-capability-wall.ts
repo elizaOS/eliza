@@ -4,7 +4,7 @@ import { ElizaError } from "@elizaos/core";
 import {
   type CapabilityHandoffRequest,
   capabilityHandoffTargetAgentId,
-} from "@elizaos/core/capability-catalog";
+} from "@elizaos/core/protocol";
 
 export type SharedDedicatedCapability =
   | "calendar"

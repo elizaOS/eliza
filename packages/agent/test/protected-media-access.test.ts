@@ -12,8 +12,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { installHttpPluginLifecycle } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { installHttpPluginLifecycle } from "@elizaos/host/protocol";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { dispatchRoute } from "../src/api/dispatch-route.ts";
 import { mediaFileRoute } from "../src/api/media-runtime.ts";

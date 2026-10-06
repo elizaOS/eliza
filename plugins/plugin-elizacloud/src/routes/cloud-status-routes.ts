@@ -1,6 +1,6 @@
 /** Reports current Cloud connection and the runtime-owned application billing selection. */
 import { fetchCloudCredits } from "../lib/cloud-connection";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core/contracts/cloud-topology";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/host/protocol";
 import { nativeBillingSelection } from "./native-billing-selection";
 import { resolveCloudBillingUrl } from "../cloud/base-url.js";
 import { resolveCloudConnectionSnapshot } from "../lib/cloud-connection";

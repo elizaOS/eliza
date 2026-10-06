@@ -22,7 +22,7 @@ vi.mock("../../api/client", () => ({
   client: clientMocks,
 }));
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 

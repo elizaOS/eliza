@@ -18,6 +18,18 @@
       "types": "./dist/register.d.ts",
       "import": "./dist/register.js",
       "default": "./dist/register.js"
+    },
+    "./client": {
+      "eliza-source": "./src/client/index.ts",
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "default": "./dist/client/index.js"
+    },
+    "./client/*": {
+      "eliza-source": "./src/client/*.ts",
+      "types": "./dist/client/*.d.ts",
+      "import": "./dist/client/*.js",
+      "default": "./dist/client/*.js"
     }
   },
   "scripts": {
@@ -26,20 +38,23 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "bun run test:client && vitest run --config vitest.config.ts",
     "preview:notes": "bunx --bun vite --config vite.config.preview.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "test:client": "node --test --experimental-transform-types test/device-client.test.mjs"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
     "react": "^19.3.0",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/contracts": "workspace:*"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0"

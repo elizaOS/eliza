@@ -216,7 +216,9 @@ function parseLoginKey(
     const domainPrefix = `${PREFIX}.${knownDomain}.`;
     if (!key.startsWith(domainPrefix)) return null;
     const account = key.slice(domainPrefix.length);
-    if (!account) return null;
+    // Encoded accounts never contain dots; a dotted remainder belongs to a
+    // longer domain such as `amazon.com.au` under `amazon.com`.
+    if (!account || account.includes(".")) return null;
     return { domain: knownDomain, account };
   }
   const rest = key.slice(PREFIX.length + 1);

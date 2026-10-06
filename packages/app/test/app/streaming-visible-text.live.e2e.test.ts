@@ -298,7 +298,7 @@ async function startStack(): Promise<Stack> {
     "node",
     [
       path.join(REPO_ROOT, "packages/app/scripts/run-node-tsx.ts"),
-      path.join(REPO_ROOT, "packages/app/scripts/testing/start-eliza-live.ts"),
+      path.join(REPO_ROOT, "packages/app/test/app/start-eliza-live.ts"),
     ],
     {
       cwd: REPO_ROOT,

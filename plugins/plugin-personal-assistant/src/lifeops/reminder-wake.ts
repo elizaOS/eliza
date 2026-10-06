@@ -1,11 +1,12 @@
 /** Deadline projection for the existing LifeOps task, not another timer/queue. */
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsOccurrence,
   LifeOpsReminderAttempt,
   LifeOpsReminderPlan,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { LIFEOPS_TASK_NAME, LIFEOPS_TASK_TAGS } from "./scheduler-task.js";
 
 export function nextReminderWakeAt(

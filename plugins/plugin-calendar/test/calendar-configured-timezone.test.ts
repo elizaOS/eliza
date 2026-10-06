@@ -1,6 +1,7 @@
 /**
  * Calendar reads and creates default to the agent's configured TIMEZONE when
  * the planner supplies no zone, and to the host zone when none is configured.
+ * Invalid configured zones fail explicitly before a calendar read.
  * CalendarService is stubbed and the feed request it receives is inspected;
  * no model, no database.
  */
@@ -82,11 +83,14 @@ describe("calendar configured timezone", () => {
     );
   });
 
-  it("falls back to the host zone when TIMEZONE is unset or invalid", async () => {
+  it("falls back to the host zone only when TIMEZONE is unset", async () => {
     expect(await feedRequestTimeZone({})).toBe(resolveDefaultTimeZone());
-    expect(await feedRequestTimeZone({ TIMEZONE: "Mars/Olympus" })).toBe(
-      resolveDefaultTimeZone(),
-    );
+    await expect(
+      feedRequestTimeZone({ TIMEZONE: "Mars/Olympus" }),
+    ).rejects.toMatchObject({
+      code: "CALENDAR_TIME_ZONE_INVALID",
+      status: 422,
+    });
   });
 });
 

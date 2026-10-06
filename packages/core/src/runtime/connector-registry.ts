@@ -300,7 +300,7 @@ export class RuntimeConnectorRegistry {
 				context: { source, ...(accountId ? { accountId } : {}) },
 			});
 		}
-		// Humanness voice gate (#14873): this is the connector-transport chokepoint
+		// Humanness voice gate: this is the connector-transport chokepoint
 		// for every agent-initiated outbound message (scheduled dispatches,
 		// escalations, task-agent routing, raw error strings). Rephrase the literal
 		// into the agent's own voice unless it is already model-voiced
@@ -310,7 +310,7 @@ export class RuntimeConnectorRegistry {
 			source,
 		});
 		// Proactive sends bypass the message-turn callback wrap, so the shared
-		// machine-syntax sanitizer (#15888) and the fail-closed envelope guard
+		// machine-syntax sanitizer and the fail-closed envelope guard
 		// apply here — after the voice gate, whose rephrase is itself model text.
 		const outboundContent =
 			typeof voicedContent.text === "string"

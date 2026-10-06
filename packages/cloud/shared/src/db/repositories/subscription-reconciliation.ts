@@ -154,6 +154,7 @@ async function lockOrganization(tx: DbTransaction, organizationId: string) {
   };
 }
 export interface ReconciliationClaim extends ReconciliationIdentity {
+  observedAt: Date;
   source: BillingSubscription;
   organizationCustomerId: string | null;
   expectedProjectionRevision: number | null;
@@ -265,6 +266,7 @@ export async function claimSubscriptionReconciliation(input: {
       ...identity,
       source,
       organizationCustomerId: org.stripe_customer_id,
+      observedAt: now,
       expectedProjectionRevision,
     };
   });

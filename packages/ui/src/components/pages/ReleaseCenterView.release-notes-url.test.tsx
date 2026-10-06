@@ -18,23 +18,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const bridge = vi.hoisted(() => ({ invoke: vi.fn() }));
 
-vi.mock("../../bridge", () => ({
+vi.mock("../../bridge/electrobun-rpc", () => ({
   invokeDesktopBridgeRequest: bridge.invoke,
-  isElectrobunRuntime: () => true,
   subscribeDesktopBridgeEvent: () => () => {},
 }));
-vi.mock("../../config/branding", () => ({
+vi.mock("../../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: () => true,
+}));
+vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({ appUrl: "https://app.example/" }),
 }));
-vi.mock("../../services/app-updates/update-policy", () => ({
+vi.mock("../../platform/app-update-policy", () => ({
   getApplicationUpdateSnapshot: vi.fn().mockResolvedValue(null),
   mapAgentUpdateStatusToSnapshot: () => null,
 }));
-vi.mock("../../utils", () => ({ openExternalUrl: vi.fn() }));
+vi.mock("../../utils/openExternalUrl", () => ({ openExternalUrl: vi.fn() }));
 vi.mock("../../utils/desktop-workspace", () => ({
   openDesktopSurfaceWindow: vi.fn(),
 }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (select: (state: unknown) => unknown) =>
     select({
       loadUpdateStatus: vi.fn().mockResolvedValue(undefined),

@@ -3243,19 +3243,29 @@ export class SlackService extends Service implements ISlackService {
     const historyMessages = threadTs
       ? await this.readThreadReplies(channelId, threadTs, undefined, accountId)
       : await this.readHistory(channelId, undefined, accountId);
+    // Stored history (`slackMessageToMemory`) attributes this account's own
+    // bot posts to the agent; apply the same rule here so the same message
+    // does not surface as a separate participant through cached context.
+    const botUserId = this.getBotUserIdForAccount(accountId);
     const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
     for (const message of historyMessages.slice().reverse()) {
       const text = String(message.text ?? "");
       if (!text.trim()) {
         continue;
       }
-      const userId = message.user;
+      const userId = message.user ?? message.botId;
+      const fromAgent =
+        userId !== undefined && botUserId !== null && userId === botUserId;
       const user =
-        typeof userId === "string"
-          ? await this.getUser(userId, accountId)
+        typeof message.user === "string"
+          ? await this.getUser(message.user, accountId)
           : null;
       recentMessages.push({
-        entityId: userId ? (userId as UUID) : undefined,
+        entityId: fromAgent
+          ? this.runtime.agentId
+          : userId
+            ? (userId as UUID)
+            : undefined,
         name: user ? getSlackUserDisplayName(user) : userId,
         text,
         timestamp: Number(message.ts) * 1000 || undefined,
@@ -3349,11 +3359,13 @@ export class SlackService extends Service implements ISlackService {
       accountId,
     );
     const botUserId = this.getBotUserIdForAccount(accountId);
-    const slackUserId = message.user ?? botUserId ?? "unknown";
-    const entityId =
-      slackUserId === botUserId
-        ? this.runtime.agentId
-        : this.getEntityId(slackUserId, accountId);
+    // Bot and webhook posts carry bot_id and often no user; like the live
+    // message path, attribute them to that bot, never to this agent.
+    const slackUserId = message.user ?? message.botId ?? "unknown";
+    const fromAgent = slackUserId === botUserId;
+    const entityId = fromAgent
+      ? this.runtime.agentId
+      : this.getEntityId(slackUserId, accountId);
     const user = message.user
       ? await this.getUser(message.user, accountId)
       : null;
@@ -3411,7 +3423,7 @@ export class SlackService extends Service implements ISlackService {
         timestamp: this.parseSlackTimestamp(message.ts),
         entityName: displayName,
         entityUserName: user?.name ?? slackUserId,
-        fromBot: slackUserId === botUserId,
+        fromBot: fromAgent || Boolean(message.botId),
         fromId: slackUserId,
         sourceId: entityId,
         chatType: channelType,
@@ -4191,6 +4203,7 @@ export class SlackService extends Service implements ISlackService {
         subtype: item.message.subtype as string | undefined,
         ts: item.message.ts as string,
         user: item.message.user as string | undefined,
+        botId: item.message.bot_id as string | undefined,
         text: item.message.text as string,
         threadTs: item.message.thread_ts as string | undefined,
         replyCount: item.message.reply_count as number | undefined,
@@ -4261,6 +4274,7 @@ export class SlackService extends Service implements ISlackService {
       subtype: msg.subtype as string | undefined,
       ts: msg.ts as string,
       user: msg.user as string | undefined,
+      botId: msg.bot_id as string | undefined,
       text: msg.text as string,
       threadTs: msg.thread_ts as string | undefined,
       replyCount: msg.reply_count as number | undefined,

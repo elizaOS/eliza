@@ -623,4 +623,5 @@ export const openaiPlugin: Plugin = {
 
 export default openaiPlugin;
 
+export * from "./direct-media.ts";
 export * from "./utils/config";

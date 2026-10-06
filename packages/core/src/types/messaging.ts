@@ -24,13 +24,13 @@ export interface TargetInfo {
 	 * and matches the actual drop behavior.
 	 */
 	parentChannelId?: string;
-	/**
-	 * Connector account identifier for multi-account sources.
-	 * Omitted/undefined targets use the legacy source-only route.
-	 */
+	/** Connector account identifier. Omission selects source-only routing. */
 	accountId?: string;
 	roomId?: UUID;
 	entityId?: UUID;
+	/** Internal client_chat callback handoff: the message processor owns this
+	 * simple response's durable row. Not inferred from Content.responseId alone. */
+	responseMemoryId?: UUID;
 }
 
 /** One local bookkeeping failure after the provider accepted a message. */
@@ -132,19 +132,14 @@ export type SendHandlerOutcome =
 			message: string;
 	  };
 
-/**
- * Function result for platform sends. Returning a `Memory` remains the legacy
- * delivered receipt. Connectors that suppress, reject, or accept without a
- * persisted `Memory` return a structural outcome; `undefined` remains supported
- * for legacy connectors but carries no delivery evidence.
- */
+/** A Memory is a persisted delivery receipt. Structural outcomes represent suppression, rejection, or acceptance without a Memory. Undefined carries no delivery evidence. */
 export type SendHandlerResult = Promise<
-	// biome-ignore lint/suspicious/noConfusingVoidType: legacy connectors return Promise<void>; new connectors may return Memory for persistence.
+	// biome-ignore lint/suspicious/noConfusingVoidType: connectors may return void or a persisted Memory.
 	Memory | SendHandlerOutcome | undefined | void
 >;
 
 /** Public-feed handlers may return ordered receipts for multipart delivery. */
-// biome-ignore lint/suspicious/noConfusingVoidType: legacy post connectors return Promise<void>.
+// biome-ignore lint/suspicious/noConfusingVoidType: post connectors may return Promise<void>.
 export type PostHandlerResult = Promise<Memory | Memory[] | undefined | void>;
 
 function isStringArray(value: unknown): value is readonly string[] {
@@ -257,11 +252,7 @@ export function isSendHandlerOutcome(
 	);
 }
 
-/**
- * Exhaustive semantic view of a send-handler return. Downstream callers use
- * this rather than truthiness so explicit refusal, partial acceptance,
- * in-flight work, and legacy `undefined` cannot become fabricated success.
- */
+/** Classifies every send result explicitly so refusal, partial acceptance, in-flight work, and undefined never imply successful delivery. */
 export type SendHandlerDisposition =
 	| {
 			kind: "delivered";
@@ -311,7 +302,7 @@ function memoryProviderMessageId(memory: Memory): string | undefined {
 	return typeof memory.id === "string" ? memory.id : undefined;
 }
 
-/** Convert every legacy and structural handler return into explicit semantics. */
+/** Normalizes handler returns into explicit delivery semantics. */
 export function inspectSendHandlerResult(
 	value: Awaited<SendHandlerResult>,
 ): SendHandlerDisposition {
@@ -563,9 +554,7 @@ export interface MessageResult {
 	usage?: MessageUsage;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Database Messaging Types
-// ─────────────────────────────────────────────────────────────────────────────
 
 import type { Metadata } from "./primitives";
 
@@ -650,11 +639,11 @@ export interface MessagingMessage {
  * ```typescript
  * const messagingAdapter = runtime.getMessagingAdapter();
  * if (messagingAdapter) {
- *   const server = await messagingAdapter.createMessageServer({
- *     name: "Discord Server",
- *     sourceType: "discord",
- *     sourceId: "1234567890"
- *   });
+ * const server = await messagingAdapter.createMessageServer({
+ * name: "Discord Server",
+ * sourceType: "discord",
+ * sourceId: "1234567890"
+ * });
  * }
  * ```
  */
@@ -838,11 +827,16 @@ export interface IMessagingAdapter {
 	 * @param channelId The channel to fetch messages from
 	 * @param limit Max messages to return (default 50)
 	 * @param beforeTimestamp Get messages before this timestamp (for pagination)
+	 * @param beforeMessageId Continue the cursor from the row that carries
+	 * `beforeTimestamp`: rows sharing that timestamp but sorting before this id
+	 * are still returned. Without it a same-timestamp group wider than `limit`
+	 * silently loses its remainder on the next page.
 	 */
 	getMessagesForChannel(
 		channelId: UUID,
 		limit?: number,
 		beforeTimestamp?: Date,
+		beforeMessageId?: UUID,
 	): Promise<MessagingMessage[]>;
 
 	/**

@@ -14,7 +14,7 @@ import {
   type RemoteJsonValue,
   type RemoteTargetPublicIdentity,
   type SignedRemoteCommand,
-} from "@elizaos/core/contracts/remote-control";
+} from "@elizaos/contracts";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 
 interface NativeRemoteControllerPlugin {

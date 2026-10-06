@@ -23,18 +23,15 @@
  * the whole point of the pattern. The BROWSER action stays one action.
  */
 
-import {
-  type AuthorizedInteractionAction,
-  ElizaError,
-  type IAgentRuntime,
-  type InteractionCapabilitySet,
-  type InteractionConfirmationGrant,
-  type InteractionConfirmationGrantConsumer,
-  type InteractionProfileGrantVerifier,
-  type InteractionSession,
-  logger,
-  Service,
-} from "@elizaos/core";
+import type {
+  AuthorizedInteractionAction,
+  InteractionCapabilitySet,
+  InteractionConfirmationGrant,
+  InteractionConfirmationGrantConsumer,
+  InteractionProfileGrantVerifier,
+  InteractionSession,
+} from "@elizaos/contracts/node";
+import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   authorizeBrowserUpload,
   type BrowserAuthorizedUploadExecution,

@@ -109,7 +109,21 @@ function isLive(child) {
  * @param {(message: string) => void} [options.warn]
  * @returns {Promise<DrainResult>}
  */
-export function drainSpawnedChildren(options) {
+export function drainSpawnedChildren(options: {
+  children: {
+    name: string;
+    child: import("node:child_process").ChildProcess | null;
+  }[];
+  drainWindowMs: number;
+  signalTree: (
+    child: import("node:child_process").ChildProcess,
+    signal: "SIGTERM" | "SIGKILL",
+  ) => void;
+  isTargetAlive?: (child: import("node:child_process").ChildProcess) => boolean;
+  killGraceMs?: number;
+  log?: (message: string) => void;
+  warn?: (message: string) => void;
+}): Promise<{ timedOut: boolean; killed: string[] }> {
   const {
     children,
     drainWindowMs,
@@ -121,7 +135,12 @@ export function drainSpawnedChildren(options) {
   } = options;
 
   const live = children.filter(
-    (entry) => Boolean(entry.child) && isTargetAlive(entry.child),
+    (
+      entry,
+    ): entry is {
+      name: string;
+      child: import("node:child_process").ChildProcess;
+    } => entry.child !== null && isTargetAlive(entry.child),
   );
   for (const entry of live) {
     signalTree(entry.child, "SIGTERM");
@@ -138,12 +157,12 @@ export function drainSpawnedChildren(options) {
   return new Promise((resolve) => {
     const remaining = new Set(live);
     /** @type {string[]} */
-    const killed = [];
+    const killed: string[] = [];
     let settled = false;
     /** @type {ReturnType<typeof setTimeout> | null} */
-    let graceTimer = null;
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
     /** @type {ReturnType<typeof setInterval> | null} */
-    let livenessPoller = null;
+    let livenessPoller: ReturnType<typeof setInterval> | null = null;
 
     const refreshRemaining = () => {
       for (const entry of remaining) {

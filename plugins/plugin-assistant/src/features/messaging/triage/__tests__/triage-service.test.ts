@@ -250,6 +250,40 @@ describe("TriageService message reads and search ordering", () => {
     });
   });
 
+  it("filters a listing-only adapter before applying the limit", async () => {
+    const service = new TriageService(new MessageRefStore());
+    const stored = [
+      ...Array.from({ length: 10 }, (_, index) =>
+        message(`recent-${index}`, "discord", {
+          snippet: "unrelated",
+          receivedAtMs: 100 - index,
+        }),
+      ),
+      message("invoice-old", "discord", {
+        snippet: "invoice attached",
+        receivedAtMs: 1,
+      }),
+    ];
+    service.register(
+      adapter("discord", {
+        listMessages: async (_runtime, opts) =>
+          opts.limit === undefined ? stored : stored.slice(0, opts.limit),
+      }),
+    );
+
+    const result = await service.searchWithReceipt(runtime(), {
+      sources: ["discord"],
+      content: "invoice",
+      limit: 3,
+    });
+
+    expect(result.refs.map(({ id }) => id)).toEqual(["invoice-old"]);
+    expect(result.receipt).toMatchObject({
+      succeeded: ["discord"],
+      hasMore: false,
+    });
+  });
+
   it("orders non-finite timestamps as epoch values without corrupting peers", async () => {
     const service = new TriageService(new MessageRefStore());
     service.register(

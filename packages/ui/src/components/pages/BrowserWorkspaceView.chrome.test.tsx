@@ -53,16 +53,14 @@ vi.mock("../../utils/asset-url.js", async (importOriginal) => ({
   resolveApiUrl: (path: string) => `${apiBaseHarness.base}${path}`,
 }));
 
-vi.mock("../../utils", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../utils")>();
-  return {
-    ...actual,
-    openExternalUrl: openExternalUrlMock,
-  };
+vi.mock("../../utils/openExternalUrl", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../utils/openExternalUrl")>();
+  return { ...actual, openExternalUrl: openExternalUrlMock };
 });
 
-vi.mock("../../state", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../state")>();
+vi.mock("../../state/app-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../state/app-store")>();
   const state = {
     getStewardPending: async () =>
       Array.from(
@@ -99,12 +97,14 @@ vi.mock("../../state", async (importOriginal) => {
   };
 });
 
-vi.mock("../../api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../api")>();
+vi.mock("../../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/client")>();
   return {
     ...actual,
     client: {
-      ...actual.client,
+      getBaseUrl: () => "",
+      getAuthorityRevision: () => 0,
+      onAuthorityChange: () => () => {},
       fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
       getWalletConfig: vi.fn().mockRejectedValue(new Error("no api in test")),
       getBrowserWorkspace: vi.fn().mockResolvedValue({ mode: "web", tabs: [] }),
@@ -124,7 +124,7 @@ vi.mock("../../api", async (importOriginal) => {
   };
 });
 
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { ApiError } from "../../api/client-types-core";
 import { shellHistory } from "../../surface-realm-channel";
 import {

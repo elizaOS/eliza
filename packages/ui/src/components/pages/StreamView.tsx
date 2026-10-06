@@ -8,10 +8,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { getBootConfig } from "../../config/boot-config";
+import { getBootConfig } from "../../config/boot-config-store";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "../stream/helpers";
 import { openStreamPopout } from "../stream/popout-url";
@@ -101,7 +101,12 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
           openStreamPopout(getBootConfig().apiBase);
         }
       }
-    } catch {
+    } catch (err: unknown) {
+      // error-policy:J4 — a rejected Go Live/Stop must be visibly distinct,
+      // not silently absorbed as a healthy idle stream. Publish the action
+      // error, then reconcile against authoritative status; the next
+      // successful poll clears it.
+      setStatusError(err instanceof Error ? err.message : String(err));
       try {
         const status = await client.streamStatus();
         setStreamLive(status.running && status.ffmpegAlive);

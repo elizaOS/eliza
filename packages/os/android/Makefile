@@ -27,7 +27,7 @@ endif
 
 HERE      := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT := $(abspath $(HERE)/..)
-DISTRO    := $(REPO_ROOT)/scripts/distro-android
+DISTRO    := $(REPO_ROOT)/scripts/android
 VENDOR    := $(HERE)vendor/eliza
 ELIZAOS_ELIZA_ROOT ?= $(shell node "$(REPO_ROOT)/scripts/eliza-source.ts")
 ANDROID_AGENT_ASSETS := $(ELIZAOS_ELIZA_ROOT)/packages/app/platforms/android/app/src/main/assets/agent
@@ -97,7 +97,7 @@ prepare-grizzly:
 	node "$(DISTRO)/prepare-grizzly.ts" --lock "$(HERE)pixel11pro.lock.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)"
 
 preflight-grizzly:
-	node "$(REPO_ROOT)/scripts/aosp/build-grizzly-bundle.ts" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --preflight-only
+	node "$(REPO_ROOT)/scripts/android/build-grizzly-bundle.ts" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --preflight-only
 
 provision-e1:
 	node "$(DISTRO)/provision-cuttlefish-e1.ts" --lock "$(HERE)cuttlefish-e1.lock.json" --aosp-root "$(AOSP_ROOT)"
@@ -125,7 +125,7 @@ endif
 
 bundle-grizzly: preflight-grizzly prepare-grizzly native-inference-grizzly bootanimation
 	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node "$(DISTRO)/build-aosp.ts" --brand-config "$(DISTRO)/brand.eliza-grizzly.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-privileged-apk --skip-build $(ARGS)
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" node "$(REPO_ROOT)/scripts/aosp/build-grizzly-bundle.ts" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --output-dir "$(BUNDLE_DIR)" --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
+	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" node "$(REPO_ROOT)/scripts/android/build-grizzly-bundle.ts" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --output-dir "$(BUNDLE_DIR)" --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
 
 evidence-grizzly:
 	node "$(DISTRO)/grizzly-evidence.ts" $(ARGS)
@@ -143,7 +143,7 @@ splash:
 	node "$(HERE)../scripts/android/generate-eliza-bootanimation.ts"
 
 bootanimation: splash
-	node "$(HERE)../scripts/android/build-eliza-bootanimation.ts" --frames "$(VENDOR)/bootanimation" --out "$(VENDOR)/bootanimation/bootanimation.zip"
+	node "$(HERE)../scripts/android/build-bootanimation.ts" --frames "$(VENDOR)/bootanimation" --out "$(VENDOR)/bootanimation/bootanimation.zip"
 
 check-arch:
 	$(if $(and $(filter 1,$(words $(ARCH))),$(filter $(SUPPORTED_ARCHES),$(ARCH))),@:, $(error Unsupported ARCH; use x86_64, arm64, or riscv64))

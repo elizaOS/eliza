@@ -2,8 +2,9 @@
  * Exercises GitHub issue Stage-1 hints through the production action
  * promotion, retrieval, and tiering pipeline without invoking GitHub.
  */
+
+import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { promoteSubactionsToActions } from "../../../../packages/core/src/actions/promote-subactions.ts";
 import {
   buildActionCatalog,
   type RuntimeActionLike,

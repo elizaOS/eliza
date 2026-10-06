@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   setState: vi.fn(),
 }));
 
-vi.mock("../content-packs", () => ({
+vi.mock("../config/content-pack", () => ({
   applyColorScheme: vi.fn(() => () => undefined),
   applyContentPack: vi.fn(),
   loadContentPackFromFiles: vi.fn(),

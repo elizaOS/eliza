@@ -1,22 +1,30 @@
 import { randomUUID } from "node:crypto";
-import type http from "node:http";
+import http from "node:http";
 import {
   type JsonObject,
   type Memory,
+  type PlannerToolResult,
   resolveOwnerEntityIdOrDefault,
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { runPlannerLoop } from "../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import {
   handleTriggerRoutes,
   type TriggerRouteContext,
 } from "../../../plugins/plugin-workflow/src/trigger-routes.ts";
 import { triggerAction } from "../src/actions/trigger.ts";
 import {
+  executeTriggerTask,
+  getTriggerHealthSnapshot,
+  getTriggerLimit,
+  listTriggerTasks,
   readTriggerConfig,
   readTriggerRuns,
+  TRIGGER_TASK_NAME,
+  TRIGGER_TASK_TAGS,
   taskToTriggerSummary,
   triggersFeatureEnabled,
 } from "../src/triggers/runtime.ts";
@@ -59,7 +67,159 @@ it("does not persist an invented interval when captured reminder arguments omit 
       },
     },
   );
-  expect(result).toMatchObject({ success: false });
+  expect(result).toMatchObject({
+    success: false,
+    error: "MISSING_SCHEDULE",
+    failureProvenance: {
+      kind: "handler_error",
+      boundary: "handler",
+      code: "MISSING_SCHEDULE",
+      retryable: true,
+    },
+    data: { acceptance: "rejected", executionStatus: "not_started" },
+  });
+  expect(result?.effectReceipts).toBeUndefined();
+  expect(await fixture.runtime.getTasks({ tags: ["trigger"] })).toEqual(before);
+});
+it.each([true, false])(
+  "keeps actual schedule rejection evidence and reports creation truthfully (corrected=%s)",
+  async (corrected) => {
+    const before = await fixture.runtime.getTasks({ tags: ["trigger"] });
+    const roomId = randomUUID() as UUID;
+    const instructions = `Send a short shoulder-stretch nudge ${randomUUID()}`;
+    let plans = 0;
+    const results: PlannerToolResult[] = [];
+    const expectedMessage = corrected
+      ? "Your reminder is set for two minutes from now."
+      : "Your reminder wasn't created because its time was missing.";
+    const result = await runPlannerLoop({
+      codingMode: false,
+      context: { id: `trigger-schedule-recovery-${corrected}`, events: [] },
+      runtime: {
+        useModel: async () => {
+          if (!corrected && plans === 1) {
+            plans++;
+            return { text: expectedMessage };
+          }
+          if (++plans > (corrected ? 2 : 1))
+            throw new Error("Unexpected failure-authority synthesis");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `trigger-${plans}`,
+                name: "TRIGGER_CREATE",
+                arguments: {
+                  displayName: "Stretch your shoulders",
+                  instructions:
+                    plans === 1
+                      ? "Remind the user to stretch their shoulders. Message: Stretch your shoulders."
+                      : instructions,
+                  ...(plans === 2 ? { delayMinutes: 2 } : {}),
+                  eliza_turn_scope: "final",
+                },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        const executed = await triggerAction.handler(
+          fixture.runtime,
+          {
+            entityId: fixture.runtime.agentId,
+            agentId: fixture.runtime.agentId,
+            roomId,
+            content: {
+              text: "Remind me here to stretch my shoulders in two minutes.",
+            },
+          } as Memory,
+          undefined,
+          { parameters: { ...call.params, action: "create" } },
+        );
+        if (!executed) throw new Error("Trigger returned no result");
+        results.push(executed as PlannerToolResult);
+        return executed as PlannerToolResult;
+      },
+      evaluate: async () => {
+        if (corrected && results.length === 1)
+          return {
+            decision: "CONTINUE",
+            success: false,
+            thought: "Provide the requested relative delay.",
+          };
+        return {
+          decision: "FINISH",
+          success: corrected,
+          thought: corrected
+            ? "The corrected trigger has a durable receipt."
+            : "No trigger was created.",
+          messageToUser: expectedMessage,
+          requestFullyCovered: corrected,
+          ...(corrected
+            ? {
+                replyEffectStatus: "applied" as const,
+                effectReceiptIds: results[1].effectReceipts?.map(
+                  (receipt) => receipt.receiptId,
+                ),
+              }
+            : {}),
+        };
+      },
+    });
+    expect(result.finalMessage).toBe(expectedMessage);
+    if (corrected) expect(result.evaluator?.success).toBe(true);
+    else expect(result.evaluator?.success).not.toBe(true);
+    expect(
+      result.trajectory.steps.some(
+        (step) => step.result?.error === "MISSING_SCHEDULE",
+      ),
+    ).toBe(true);
+    expect(results[0].effectReceipts).toBeUndefined();
+    const after = await fixture.runtime.getTasks({ tags: ["trigger"] });
+    expect(after).toHaveLength(before.length + (corrected ? 1 : 0));
+    if (corrected) {
+      expect(results[1].effectReceipts).toEqual([
+        expect.objectContaining({
+          operation: "trigger.create",
+          outcome: "applied",
+          commit: expect.objectContaining({ kind: "durable" }),
+        }),
+      ]);
+      expect(
+        after.find(
+          (task) => task.metadata?.trigger?.instructions === instructions,
+        )?.metadata?.trigger?.triggerType,
+      ).toBe("once");
+    } else expect(after).toEqual(before);
+  },
+);
+it("does not label disabled trigger creation as a retryable schedule rejection", async () => {
+  const before = await fixture.runtime.getTasks({ tags: ["trigger"] });
+  const runtime = Object.create(fixture.runtime);
+  runtime.getSetting = (key: string) =>
+    key === "ELIZA_TRIGGERS_ENABLED" ? false : fixture.runtime.getSetting(key);
+  const result = await triggerAction.handler(
+    runtime,
+    {
+      entityId: fixture.runtime.agentId,
+      agentId: fixture.runtime.agentId,
+      roomId: randomUUID() as UUID,
+      content: { text: "Create a reminder." },
+    } as Memory,
+    undefined,
+    {
+      parameters: {
+        action: "create",
+        instructions: "Do not run",
+        delayMinutes: 2,
+      },
+    },
+  );
+  expect(result).toMatchObject({ success: false, error: "TRIGGERS_OFF" });
+  expect(result?.failureProvenance?.retryable).not.toBe(true);
+  expect(result?.data?.executionStatus).not.toBe("not_started");
+  expect(result?.effectReceipts).toBeUndefined();
   expect(await fixture.runtime.getTasks({ tags: ["trigger"] })).toEqual(before);
 });
 it.each([
@@ -193,6 +353,261 @@ it("persists the timezone through pause and re-enable and schedules in that zone
         expect(hour).toBe("09");
       }
     }
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
+
+async function requestTrigger(
+  method: string,
+  pathname: string,
+  body: JsonObject,
+) {
+  let routeFailure: unknown;
+  const sendJson = (
+    res: http.ServerResponse,
+    payload: unknown,
+    status = 200,
+  ) => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(payload));
+  };
+  const server = http.createServer(async (req, res) => {
+    try {
+      const context: TriggerRouteContext = {
+        method,
+        pathname,
+        req,
+        res,
+        runtime: fixture.runtime,
+        ownerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
+        localOwnerEntityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
+        readJsonBody: async () => {
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) chunks.push(Buffer.from(chunk));
+          return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        },
+        json: sendJson,
+        error: (response, message, status) =>
+          sendJson(response, { error: message }, status),
+        executeTriggerTask,
+        getTriggerHealthSnapshot,
+        getTriggerLimit,
+        listTriggerTasks,
+        readTriggerConfig,
+        readTriggerRuns,
+        taskToTriggerSummary,
+        triggersFeatureEnabled,
+        buildTriggerConfig,
+        buildTriggerMetadata,
+        normalizeTriggerDraft,
+        DISABLED_TRIGGER_INTERVAL_MS,
+        TRIGGER_TASK_NAME,
+        TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
+      };
+      if (!(await handleTriggerRoutes(context)))
+        sendJson(res, { error: "Route not found" }, 404);
+    } catch (error) {
+      routeFailure = error;
+      res.destroy();
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing loopback port");
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}${pathname}`,
+      {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+    const payload = await response.json();
+    if (routeFailure) throw routeFailure;
+    return { status: response.status, payload };
+  } catch (error) {
+    throw routeFailure ?? error;
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+}
+
+it.each([
+  { future: false, enabled: true, status: 400 },
+  { future: true, enabled: true, status: 201 },
+  { future: false, enabled: false, status: 201 },
+])(
+  "validates new once schedules over HTTP: $future / $enabled",
+  async ({ future, enabled, status }) => {
+    const before = await fixture.runtime.getTasks({ tags: ["trigger"] });
+    const instructions = `HTTP once ${randomUUID()}`;
+    const scheduledAtIso = new Date(
+      Date.now() + (future ? 3_600_000 : -60_000),
+    ).toISOString();
+    const response = await requestTrigger("POST", "/api/triggers", {
+      kind: "prompt",
+      displayName: instructions,
+      instructions,
+      triggerType: "once",
+      scheduledAtIso,
+      enabled,
+    });
+    expect(response.status).toBe(status);
+    const after = await fixture.runtime.getTasks({ tags: ["trigger"] });
+    if (status === 400) {
+      expect(response.payload).toEqual({
+        error: "Once trigger requires a future scheduledAtIso",
+      });
+      expect(after).toEqual(before);
+    } else {
+      const saved = after.find(
+        (task) => readTriggerConfig(task)?.instructions === instructions,
+      );
+      if (!saved?.id) throw new Error("Created once task missing");
+      try {
+        expect(readTriggerConfig(saved)).toMatchObject({
+          enabled,
+          scheduledAtIso,
+          runCount: 0,
+        });
+        expect(saved.entityId).toBe(
+          resolveOwnerEntityIdOrDefault(fixture.runtime),
+        );
+      } finally {
+        await fixture.runtime.deleteTask(saved.id);
+      }
+    }
+  },
+);
+
+const onceUpdates: { enabled: boolean; body: JsonObject; status: number }[] = [
+  {
+    enabled: true,
+    body: { displayName: "Rename past completed trigger" },
+    status: 200,
+  },
+  { enabled: true, body: { enabled: true }, status: 200 },
+  {
+    enabled: false,
+    body: { displayName: "Rename paused trigger" },
+    status: 200,
+  },
+  { enabled: true, body: { enabled: false }, status: 200 },
+  { enabled: false, body: { enabled: true }, status: 400 },
+  {
+    enabled: true,
+    body: { scheduledAtIso: "2000-01-01T00:00:00.000Z" },
+    status: 400,
+  },
+  {
+    enabled: false,
+    body: {
+      enabled: true,
+      scheduledAtIso: new Date(Date.now() + 3_600_000).toISOString(),
+    },
+    status: 200,
+  },
+];
+it.each(onceUpdates)(
+  "preserves once update intent over HTTP: $body",
+  async ({ enabled, body, status }) => {
+    const triggerId = randomUUID() as UUID;
+    const normalized = normalizeTriggerDraft({
+      input: {
+        kind: "prompt",
+        triggerType: "once",
+        scheduledAtIso: "2001-01-01T00:00:00.000Z",
+      },
+      fallback: {
+        displayName: "Completed once",
+        instructions: "Do not execute",
+        triggerType: "once",
+        wakeMode: "inject_now",
+        enabled,
+        createdBy: "api",
+      },
+    });
+    if (!normalized.draft) throw new Error(normalized.error ?? "Missing draft");
+    const trigger = {
+      ...buildTriggerConfig({ draft: normalized.draft, triggerId }),
+      runCount: 1,
+      lastStatus: "success" as const,
+      lastRunAtIso: "2001-01-01T00:00:00.000Z",
+    };
+    const taskId = await fixture.runtime.createTask({
+      name: TRIGGER_TASK_NAME,
+      agentId: fixture.runtime.agentId,
+      entityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
+      tags: [...TRIGGER_TASK_TAGS],
+      metadata: {
+        trigger,
+        updatedAt: Date.now(),
+        updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
+      },
+    });
+    try {
+      const before = await fixture.runtime.getTask(taskId);
+      const response = await requestTrigger(
+        "PUT",
+        `/api/triggers/${triggerId}`,
+        body,
+      );
+      expect(response.status).toBe(status);
+      const saved = await fixture.runtime.getTask(taskId);
+      if (!saved) throw new Error("Updated task missing");
+      if (status === 400) expect(saved).toEqual(before);
+      else
+        expect(readTriggerConfig(saved)).toMatchObject({
+          triggerId,
+          runCount: 1,
+          lastStatus: "success",
+          lastRunAtIso: trigger.lastRunAtIso,
+          enabled: "enabled" in body ? body.enabled : enabled,
+          scheduledAtIso:
+            typeof body.scheduledAtIso === "string"
+              ? body.scheduledAtIso
+              : trigger.scheduledAtIso,
+          ...("displayName" in body ? { displayName: body.displayName } : {}),
+        });
+    } finally {
+      await fixture.runtime.deleteTask(taskId);
+    }
+  },
+);
+
+it("upgrades persisted workbench schedules without losing timing or duplicating triggers", async () => {
+  const { runRuntimeStartupMaintenance } = await import(
+    "../src/runtime/runtime-maintenance.ts"
+  );
+  const { WORKBENCH_TASK_TAG } = await import("@elizaos/host/protocol");
+  const taskId = await fixture.runtime.createTask({
+    name: "Retained morning reminder",
+    description: "Read the retained morning note",
+    agentId: fixture.runtime.agentId,
+    entityId: resolveOwnerEntityIdOrDefault(fixture.runtime),
+    tags: [WORKBENCH_TASK_TAG, "schedule:0 9 * * *"],
+    metadata: {},
+  });
+  try {
+    await runRuntimeStartupMaintenance(fixture.runtime);
+    const saved = await fixture.runtime.getTask(taskId);
+    if (!saved) throw new Error("Retained task disappeared");
+    expect(saved.name).toBe(TRIGGER_TASK_NAME);
+    expect(saved.tags).toEqual(expect.arrayContaining([...TRIGGER_TASK_TAGS]));
+    expect(readTriggerConfig(saved)).toMatchObject({
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
+      instructions: "Read the retained morning note",
+    });
+    await runRuntimeStartupMaintenance(fixture.runtime);
+    const reread = await fixture.runtime.getTask(taskId);
+    if (!reread) throw new Error("Migrated task disappeared");
+    expect(readTriggerConfig(reread)).toEqual(readTriggerConfig(saved));
   } finally {
     await fixture.runtime.deleteTask(taskId);
   }

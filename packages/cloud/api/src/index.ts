@@ -20,27 +20,23 @@ import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-co
 import { getCookieValueFromHeader } from "@elizaos/cloud-shared/lib/http/cookie-header";
 import { nativeApplicationSelectionSurfaceError } from "@elizaos/cloud-shared/lib/http/native-application-selection";
 import {
-  canonicalCloudPathForLegacyDashboard,
+  ELIZA_TRACE_ID_HEADER,
+  resolveElizaTraceId,
+  setHttpTelemetryHeaders,
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { shouldDecorateHttpTelemetryStatus } from "@elizaos/cloud-shared/lib/observability/http-telemetry-hono";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import {
   canonicalElizaServiceHostname,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
-import {
-  cloneRequestWithScheduledCronMetadata,
-  makeCronHandler,
-} from "@/lib/cron/cloudflare-cron";
-import {
-  ELIZA_TRACE_ID_HEADER,
-  resolveElizaTraceId,
-  setHttpTelemetryHeaders,
-} from "@/lib/observability/http-telemetry";
-import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-telemetry-hono";
-import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
 import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
+import { cloneRequestWithScheduledCronMetadata, makeCronHandler } from "./cron";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import {
   isPersonalTelegramDeliveryEpoch1CompatEnabled,
@@ -770,10 +766,6 @@ export function redirectFrontendHost(
     );
   }
   const classified = classifyElizaHostname(hostname);
-  const canonicalDashboardPath = canonicalCloudPathForLegacyDashboard(
-    url.pathname,
-    url.search,
-  );
   let canonicalHostname: string | null = null;
   if (hostname === "www.eliza.app") {
     canonicalHostname = new URL(
@@ -784,9 +776,6 @@ export function redirectFrontendHost(
       ELIZA_DOMAIN_CONTRACTS[classified.environment ?? "production"];
     if (isFrontendAliasBackendPath(url)) {
       canonicalHostname = new URL(contract.cloudApiOrigin).hostname;
-    } else if (canonicalDashboardPath) {
-      canonicalHostname = new URL(contract.cloudAppOrigin).hostname;
-      url.pathname = canonicalDashboardPath;
     } else {
       canonicalHostname = classified.canonicalHostname;
     }
@@ -808,13 +797,6 @@ export function redirectFrontendHost(
     }
   }
   if (!canonicalHostname || canonicalHostname === hostname) return null;
-  if (
-    canonicalDashboardPath &&
-    (classified.role === "legacy-marketing" ||
-      classified.role === "legacy-cloud-app")
-  ) {
-    url.pathname = canonicalDashboardPath;
-  }
   const targetUrl = new URL(url);
   targetUrl.hostname = canonicalHostname;
   return Response.redirect(targetUrl.toString(), 308);

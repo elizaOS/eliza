@@ -14,15 +14,11 @@ const calls = vi.hoisted(() => ({
   listCodingAgentTaskThreads: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui/agent-surface", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
-}));
 
-vi.mock("@elizaos/ui/components", () => ({
   ViewBackButton: () => <button type="button">Back</button>,
-}));
-
-vi.mock("@elizaos/ui/api", () => ({
   ApiError: class ApiError extends Error {
     status: number;
     constructor(message: string, status: number) {
@@ -35,9 +31,6 @@ vi.mock("@elizaos/ui/api", () => ({
     listCodingAgentTaskThreads: (options: unknown) =>
       calls.listCodingAgentTaskThreads(options),
   },
-}));
-
-vi.mock("@elizaos/ui", () => ({
   Button: ({
     children,
     ...rest

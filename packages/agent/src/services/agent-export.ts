@@ -937,29 +937,18 @@ async function extractAgentData(
   // 9. Logs (optional)
   const logs: Log[] = [];
   if (options.includeLogs) {
-    const pageSize = 500;
-    let offset = 0;
-    while (true) {
-      const page = await db.getLogs({ limit: pageSize, offset });
-      if (page.length > pageSize) {
-        throw new AgentExportError("Log export returned an oversized page", {
-          code: "AGENT_EXPORT_INVALID_LOG_PAGE",
-          context: { requested: pageSize, received: page.length, offset },
-        });
-      }
-      logs.push(
-        ...page.map(
-          (entry) =>
-            ({
-              ...entry,
-              // The manifest authenticates the JSON wire representation. Normalize
-              // Date objects before hashing so import verifies the same bytes.
-              createdAt: entry.createdAt.toISOString(),
-            }) as unknown as Log,
-        ),
-      );
-      if (page.length < pageSize) break;
-      offset += page.length;
+    // One read is one snapshot. getLogs pages newest-first, so offset pages
+    // taken while the running agent writes logs shift under the reader and
+    // export a row twice in place of another (the retention sweep reads its
+    // inventory in one query for the same reason).
+    const rows = await db.getLogs({ limit: Number.MAX_SAFE_INTEGER });
+    for (const entry of rows) {
+      logs.push({
+        ...entry,
+        // The manifest authenticates the JSON wire representation. Normalize
+        // Date objects before hashing so import verifies the same bytes.
+        createdAt: entry.createdAt.toISOString(),
+      } as unknown as Log);
     }
     logger.info(`[agent-export] Found ${logs.length} logs`);
   }

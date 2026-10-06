@@ -9,7 +9,7 @@ import { chromium } from "playwright";
 import {
   compileTailwindTheme,
   writeFixturePage,
-} from "../../../../../packages/ui/src/testing/e2e-runner/fixture-bundle.ts";
+} from "../../../../../packages/ui/src/testing/e2e-runner/fixture-bundle";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../../../../..");

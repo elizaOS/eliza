@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop update availability ts behavior for app shell integration. */
 import path from "node:path";
 
 export type DesktopUpdateBuildVariant = "direct" | "store";

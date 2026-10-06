@@ -6,21 +6,23 @@
  * surface for Cloud account, billing, app, agent, container, and admin tools.
  */
 
-import { Hono } from "hono";
-
-import { safeUnknownErrorMessage } from "@/lib/api/cloud-worker-errors";
 import {
   requireAdmin,
   requireCurrentBillingManagerSession,
   requireUserOrApiKeyWithOrg,
-} from "@/lib/auth/workers-hono-auth";
-import { forwardMcpUpstreamRequest } from "@/lib/mcp/mcp-upstream-forward";
+} from "@elizaos/cloud-shared/auth";
+import { safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { forwardMcpUpstreamRequest } from "@elizaos/cloud-shared/lib/mcp/mcp-upstream-forward";
 import {
   callPlatformCloudMcpTool,
   listPlatformCloudMcpTools,
-} from "@/lib/mcp/platform-cloud-tools";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/mcp/platform-cloud-tools";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const PLATFORM_UPSTREAM_ENV = "ELIZA_CLOUD_PLATFORM_MCP_UPSTREAM_URL";
 

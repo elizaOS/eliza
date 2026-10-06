@@ -3,7 +3,7 @@
  */
 import type { ReactNode } from "react";
 import { StatusDot } from "../../../components/ui/status-badge";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 interface DashboardSectionProps {
   label: string;

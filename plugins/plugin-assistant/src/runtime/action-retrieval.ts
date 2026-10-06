@@ -5,12 +5,13 @@
  * fusion into a complete relevance-ranked catalog.
  */
 
-import { logger, matchActionWildcardParts } from "@elizaos/core";
 import {
   collectPreparedKeywordTermMatches,
+  logger,
+  matchActionWildcardParts,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
-} from "@elizaos/core/i18n/keyword-matching";
+} from "@elizaos/core";
 import {
   type ActionCatalog,
   type ActionCatalogParent,
@@ -814,6 +815,18 @@ export function preferredOperationNames(
     send: ["send"],
   };
   const wanted = new Set<string>();
+  // An imperative scheduling outcome creates a record. A schedule mentioned
+  // as data ("read my schedule") and rescheduling retain their own operations.
+  if (/^\s*schedule\s+(?:an?\s+|one(?:[- ]time)?\s+|new\s+)?/iu.test(query))
+    wanted.add("create");
+  // "Set a reminder" names creation; setting an existing record's fields or
+  // configuration does not. Unknown/ambiguous wording keeps full discovery.
+  if (
+    /^\s*set\s+(?:(?:an?|new)\s+)?(?:(?:one[- ](?:shot|time)|new)\s+)?(?:reminder|alarm)s?(?=\s+(?:for|to|at|on|in|about|tomorrow|today|next|every)\b|[\s.!?]*$)/iu.test(
+      query,
+    )
+  )
+    wanted.add("create");
   for (const [operation, terms] of Object.entries(operationTerms)) {
     if (!terms.some((term) => words.has(term))) continue;
     wanted.add(operation);

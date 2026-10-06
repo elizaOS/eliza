@@ -44,7 +44,7 @@ import {
   type UUID,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { v4 as uuidv4 } from "uuid";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 import { buildProviderCachePlan } from "../runtime/provider-cache-plan";
@@ -493,9 +493,22 @@ function buildPrompt(params: {
     sections.every((section) => section.contract === sections[0].contract)
       ? sections[0].contract
       : undefined;
+  const contractGroups = new Map<string, string[]>();
+  if (!sharedContract) {
+    // Match the complete contract, including edited/removed source IDs.
+    for (const section of sections) {
+      if (!section.contract) continue;
+      const names = contractGroups.get(section.contract) ?? [];
+      names.push(section.name);
+      contractGroups.set(section.contract, names);
+    }
+    for (const [contract, names] of contractGroups) {
+      if (names.length < 2) contractGroups.delete(contract);
+    }
+  }
   for (const section of sections) {
     dynamic.push({
-      content: `### ${section.name}\n${section.contract && !sharedContract ? `${section.contract}\n` : ""}${section.body}\n\n`,
+      content: `### ${section.name}\n${section.contract && !sharedContract && !contractGroups.has(section.contract) ? `${section.contract}\n` : ""}${section.body}\n\n`,
       stable: false,
     });
   }
@@ -516,7 +529,7 @@ function buildPrompt(params: {
   const promptSegments = [
     ...stable,
     {
-      content: `${sharedContext}${evidenceSets.size ? `\n\nExact selected source sets (each listed once; membership is evaluator-specific):\n${[...evidenceSets.values()].map((set) => `${set.id}: ${stringifyForModel(set.sourceIds)}`).join("\n")}` : ""}${sharedContract ? `\n\nEvery active evaluator below: ${sharedContract}` : ""}\n\n## Active Evaluators\n\n`,
+      content: `${sharedContext}${evidenceSets.size ? `\n\nExact selected source sets (each listed once; membership is evaluator-specific):\n${[...evidenceSets.values()].map((set) => `${set.id}: ${stringifyForModel(set.sourceIds)}`).join("\n")}` : ""}${sharedContract ? `\n\nEvery active evaluator below: ${sharedContract}` : ""}${[...contractGroups].map(([contract, names]) => `\n\nEvaluators ${JSON.stringify(names)} below: ${contract}`).join("")}\n\n## Active Evaluators\n\n`,
       stable: false,
     },
     ...dynamic,

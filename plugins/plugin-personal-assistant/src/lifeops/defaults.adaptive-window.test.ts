@@ -2,11 +2,12 @@
  * Deterministic coverage for adaptive LifeOps window boundaries and their
  * consumption by the real occurrence materializer.
  */
-import { describe, expect, it } from "vitest";
+
 import type {
   LifeOpsTaskDefinition,
   LifeOpsWindowPolicy,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
+import { describe, expect, it } from "vitest";
 import { computeAdaptiveWindowPolicy } from "./defaults.js";
 import { materializeDefinitionOccurrences } from "./engine.js";
 

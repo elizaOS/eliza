@@ -11,15 +11,13 @@
  * resolveProviderFromModel maps a model string to a provider display name.
  */
 
+import { type AgentRuntime, ModelType } from "@elizaos/core";
 import {
-  type AgentRuntime,
-  ModelType,
+  type ElizaConfig,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/core";
-
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/host/protocol";
 
 /**
  * The provider name the elizacloud plugin registers its chat-brain handlers

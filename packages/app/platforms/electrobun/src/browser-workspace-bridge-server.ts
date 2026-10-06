@@ -1,6 +1,6 @@
-/** Implements Electrobun desktop browser workspace bridge server ts behavior for app shell integration. */
 import crypto from "node:crypto";
 import http from "node:http";
+import { readJsonBody } from "./bridge-http.ts";
 import type { BrowserWorkspaceEventType } from "./native/browser-workspace";
 import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { findFirstAvailableLoopbackPort } from "./native/loopback-port";
@@ -83,26 +83,6 @@ function json(
 ): void {
 	res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
 	res.end(JSON.stringify(scrubStack(body)));
-}
-
-async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
-	const chunks: Buffer[] = [];
-	let size = 0;
-
-	for await (const chunk of req) {
-		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-		size += buffer.length;
-		if (size > MAX_BODY_BYTES) {
-			throw new Error("request body too large");
-		}
-		chunks.push(buffer);
-	}
-
-	if (chunks.length === 0) {
-		return null;
-	}
-
-	return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function isAuthorized(req: http.IncomingMessage, token: string): boolean {
@@ -197,7 +177,10 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 
 			if (pathname === "/tabs" && method === "POST") {
 				const body =
-					(await readJsonBody<BrowserWorkspaceCreateBody>(req)) ?? {};
+					(await readJsonBody<BrowserWorkspaceCreateBody>(
+						req,
+						MAX_BODY_BYTES,
+					)) ?? {};
 				json(res, 200, {
 					tab: await manager.openTab({
 						url: body.url,
@@ -216,7 +199,10 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 
 			if (pathname === "/sessions/acquire" && method === "POST") {
 				const body =
-					(await readJsonBody<BrowserWorkspaceAcquireSessionBody>(req)) ?? {};
+					(await readJsonBody<BrowserWorkspaceAcquireSessionBody>(
+						req,
+						MAX_BODY_BYTES,
+					)) ?? {};
 				if (!body.provider?.trim() || !body.accountId?.trim()) {
 					json(res, 400, { error: "provider and accountId are required" });
 					return;
@@ -280,7 +266,10 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 			}
 
 			if (action === "navigate" && method === "POST") {
-				const body = await readJsonBody<BrowserWorkspaceNavigateBody>(req);
+				const body = await readJsonBody<BrowserWorkspaceNavigateBody>(
+					req,
+					MAX_BODY_BYTES,
+				);
 				if (!body?.url) {
 					json(res, 400, { error: "url is required" });
 					return;
@@ -291,7 +280,10 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 			}
 
 			if (action === "eval" && method === "POST") {
-				const body = await readJsonBody<BrowserWorkspaceEvalBody>(req);
+				const body = await readJsonBody<BrowserWorkspaceEvalBody>(
+					req,
+					MAX_BODY_BYTES,
+				);
 				if (!body?.script?.trim()) {
 					json(res, 400, { error: "script is required" });
 					return;

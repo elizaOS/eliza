@@ -24,7 +24,7 @@ const joinSession = vi.hoisted(() => ({
 }));
 
 vi.mock("react-router-dom", () => ({ Navigate: () => null }));
-vi.mock("../../api", () => ({ client: {} }));
+vi.mock("../../api/client", () => ({ client: {} }));
 vi.mock("../../config/boot-config-store", () => ({
   getBootConfig: () => ({}),
 }));

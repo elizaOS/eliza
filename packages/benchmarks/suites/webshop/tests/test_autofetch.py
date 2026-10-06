@@ -376,23 +376,6 @@ def test_streaming_catalog_reader_ignores_nested_customization_asins(
     assert asins == {"B000TOP001", "B000TOP002"}
 
 
-def test_report_metadata_marks_deprecated_hf_flag_as_ignored(tmp_path: Path):
-    from elizaos_webshop.runner import WebShopRunner
-    from elizaos_webshop.types import WebShopConfig
-
-    runner = WebShopRunner(
-        WebShopConfig(output_dir=str(tmp_path), use_mock=True),
-        use_hf=True,
-        use_sample_tasks=True,
-    )
-    runner._env = types.SimpleNamespace(runtime_provenance={})
-    report = runner._generate_report([])
-    payload = runner._report_to_dict(report)
-
-    assert payload["dataset_source"] == "sample-files"
-    assert payload["hf_requested"] is True
-    assert payload["use_hf"] is False
-
 
 def test_spacy_autoinstall_retries_after_oserror():
     """First call OSErrors; we install; retry succeeds."""

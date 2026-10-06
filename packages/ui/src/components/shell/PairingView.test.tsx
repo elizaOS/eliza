@@ -10,15 +10,17 @@ const mocks = vi.hoisted(() => ({
   setState: vi.fn(),
 }));
 
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     getAuthStatus: mocks.getAuthStatus,
     getBaseUrl: () => "http://remote-agent.example",
   },
 }));
 
-vi.mock("../../config/branding", () => ({
+vi.mock("../../config/branding-base", () => ({
   appNameInterpolationVars: () => ({}),
+}));
+vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({
     appName: "Eliza",
     orgName: "elizaOS",
@@ -26,11 +28,11 @@ vi.mock("../../config/branding", () => ({
   }),
 }));
 
-vi.mock("../../platform", () => ({
+vi.mock("../../platform/first-run-reset", () => ({
   startFreshFirstRunReload: vi.fn(),
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (
     selector: (state: Record<string, unknown>) => unknown,
   ) =>

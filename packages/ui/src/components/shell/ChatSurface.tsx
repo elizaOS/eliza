@@ -15,9 +15,9 @@ import * as React from "react";
 import { useComposerKeydown } from "../../chat/composer-core";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
-import { cn } from "../../lib/utils";
 import { useChatComposerOrLocal } from "../../state/ChatComposerContext.hooks";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { cn } from "../../utils/cn";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { FormSubmitReceipt } from "../chat/MessageContent";
 import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
@@ -164,7 +164,11 @@ export function ChatSurface({
                         {isUser ? (
                           <UserMessageContent content={message.content} />
                         ) : (
-                          <InlineWidgetText content={message.content} />
+                          <InlineWidgetText
+                            content={message.content}
+                            messageId={message.id}
+                            producerScope={message.source}
+                          />
                         )}
                       </ChatBubble>
                     )}

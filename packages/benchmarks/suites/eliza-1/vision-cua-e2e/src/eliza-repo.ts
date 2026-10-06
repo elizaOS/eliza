@@ -1,21 +1,12 @@
-/**
- * Locator for real-mode source imports that live in a separate elizaOS
- * checkout (plugin-vision, plugin-computeruse, plugin-anthropic source
- * files that the published bundles do not export). The benchmarks repo is
- * standalone, so there is no valid relative path — real mode requires
- * ELIZA_REPO to point at a github.com/elizaOS/eliza checkout. Stub mode
- * never calls this.
- */
+/** Load a public package API from the checkout selected for real-mode measurement. */
+import { importMeasuredPackage } from "../../../../lib/target-package.ts";
 
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-
-export function elizaSourceUrl(relPath: string): string {
-  const repo = process.env.ELIZA_REPO;
-  if (!repo) {
+export function importElizaPackage<T>(specifier: string): Promise<T> {
+  const repo =
+    process.env.ELIZA_REPO_DIR?.trim() || process.env.ELIZA_REPO?.trim();
+  if (!repo)
     throw new Error(
-      "[vision-cua-e2e] ELIZA_REPO is not set — real mode imports plugin source from an elizaOS checkout; set ELIZA_REPO to its root.",
+      "[vision-cua-e2e] Set ELIZA_REPO_DIR to the checkout being measured.",
     );
-  }
-  return pathToFileURL(join(repo, relPath)).href;
+  return importMeasuredPackage<T>(repo, specifier);
 }

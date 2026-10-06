@@ -1,14 +1,11 @@
+import type { AccessContext, IAgentRuntime } from "@elizaos/core";
 import {
-  type AccessContext,
   getHttpRuntime,
-  type IAgentRuntime,
   type Route,
   type RouteHandlerResult,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { type Context, Hono } from "hono";
-import { stream as honoStream } from "hono/streaming";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { dispatchRoute } from "./dispatch-route.ts";
 /**
  * Hono adapter for plugin routes.
@@ -137,6 +134,7 @@ export function mountRoutesOnHono(
       );
       const result: RouteHandlerResult | null = await dispatchRoute({
         runtime,
+        signal: request.signal,
         method: request.method,
         path: url.pathname,
         headers: headersToRecord(request.headers),
@@ -163,21 +161,29 @@ export function mountRoutesOnHono(
       }
       const headers = new Headers(result.headers ?? {});
       if (result.stream) {
-        const resultStream = result.stream;
-        // Carry the handler's status and headers onto the streamed response —
-        // honoStream builds the Response from the context, so without this an
-        // SSE route loses its `content-type: text/event-stream` (breaking
-        // EventSource clients) and any non-200 status collapses to 200.
-        ctx.status(result.status as ContentfulStatusCode);
-        headers.forEach((value, key) => {
-          ctx.header(key, value);
+        const iterator = result.stream[Symbol.asyncIterator]();
+        const encoder = new TextEncoder();
+        const body = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const next = await iterator.next();
+              if (next.done) controller.close();
+              else
+                controller.enqueue(
+                  typeof next.value === "string"
+                    ? encoder.encode(next.value)
+                    : next.value,
+                );
+            } catch (error) {
+              // error-policy:J2 Preserve producer failure in the response body stream.
+              controller.error(error);
+            }
+          },
+          async cancel() {
+            await iterator.return?.();
+          },
         });
-        return honoStream(ctx, async (stream) => {
-          for await (const chunk of resultStream) {
-            await stream.write(chunk);
-          }
-          await stream.close();
-        });
+        return new Response(body, { status: result.status, headers });
       }
       let bodyOut: BodyInit | null = null;
       // The Fetch Response constructor throws for a body on a null-body status.

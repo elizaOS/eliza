@@ -1,4 +1,3 @@
-/** Exercises restart guard behavior with deterministic app test fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { registerRestartAndShouldAbort } from "./restart-guard.ts";

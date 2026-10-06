@@ -1,40 +1,9 @@
 /**
- * One bounded canonical-JSON walk for every integrity digest in the monorepo.
- *
- * Canonical JSON — recursively key-sorted, `undefined`-dropping — is what makes
- * a content hash reproducible across a serialize → store → `JSON.parse`
- * round-trip regardless of in-memory key ordering. Four hand-rolled copies of
- * the same six-line recursion existed:
- *
- *   - `packages/agent/src/services/agent-export.ts` (bounded by #23127)
- *   - `packages/agent/src/services/agent-backup.ts`
- *   - `packages/cloud/shared/src/lib/services/agent-backup-diff.ts`
- *   - `packages/cloud/shared/src/lib/services/agent-backup-verifier.ts`
- *
- * Only the export copy was ever bounded. The three backup copies still recursed
- * with no depth counter, no node budget and no cycle guard, so a deep or cyclic
- * payload `RangeError`ed the integrity gate instead of rejecting it. This module
- * is that bounded walk, lifted out of `agent-export.ts` unchanged and
- * parameterized on the two things the call sites legitimately disagree about:
- * the budgets, and how a sparse array hole is rendered.
- *
- * Guarantees the call sites depend on:
- *   - Output is byte-identical to the unbounded predecessor for every input the
- *     predecessor accepted, with `sparseArrayHoles` selecting that site's
- *     historical hole rendering. Existing stored digests stay valid.
- *   - Descriptor-only reflection: `Reflect.ownKeys` plus exactly one
- *     `getOwnPropertyDescriptor` per key. An enumerable getter is never
- *     invoked, and a Proxy cannot serve two different descriptors to two reads.
- *   - Breadth is charged to the node budget BEFORE any descriptor trap runs,
- *     before the snapshot array is allocated and before the O(n log n) sort.
- *   - Cycle detection is PATH-LOCAL (`visiting` is popped in a `finally`), so an
- *     honest shared reference — the same object reached twice down two
- *     different branches, i.e. a DAG — still canonicalizes exactly as it always
- *     did. Only a true ancestor cycle fails closed.
- *   - Every rejection is a typed error carrying a machine-classifiable `code`,
- *     structural-only `context` (never a reflected property name: the walk runs
- *     on attacker-supplied payloads and the error reaches logs and API
- *     responses) and a preserved `cause`.
+ * Bounded canonical JSON for stable integrity digests. Keys are sorted, undefined values
+ * omitted, and sparse-array handling is explicit. Descriptor-only reads never invoke
+ * getters; node budgets are charged before reflection and sorting. Ancestor cycles fail
+ * while shared references remain valid. Typed rejections expose structural context without
+ * attacker-controlled property names.
  */
 
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "./agent-backup-limits.js";
@@ -367,14 +336,12 @@ export function canonicalJsonString(
  *
  * `JSON.stringify(undefined)` is `undefined`, not `"null"`, and callers such as
  * the backup differ rely on that to tell an absent config value apart from a
- * `null` one (same for a bare function or symbol at the root). Its declared return type is `string` for the same reason
- * `JSON.stringify`'s most-used overload is: every call site here passes a
- * defined value, and widening it would ripple through unrelated signatures.
+ * `null` one (same for a bare function or symbol at the root).
  */
 export function stableJsonString(
 	value: unknown,
 	options: CanonicalJsonOptions,
-): string {
-	if (isJsonInvisible(value)) return undefined as unknown as string;
+): string | undefined {
+	if (isJsonInvisible(value)) return undefined;
 	return canonicalJsonString(value, options);
 }

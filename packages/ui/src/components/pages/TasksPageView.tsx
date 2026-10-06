@@ -13,7 +13,7 @@
  */
 import { Cloud } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { navigateBrowserPath } from "../../app-navigate-view";
 import {
   getAppShellPageRegistrySnapshot,
@@ -28,8 +28,8 @@ import {
   FramedPageNavigation,
 } from "../../layouts/framed-page";
 import { getWindowNavigationPath } from "../../navigation";
-import { CodingAgentTasksPanel } from "../../slots/task-coordinator-slots.js";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
+import { CodingAgentTasksPanel } from "../chat/task-coordinator-slots.js";
 import {
   AppsManagementActions,
   AppsManagementSection,
@@ -174,7 +174,7 @@ export function TasksPageView() {
   return (
     <ShellViewAgentSurface viewId="tasks">
       <FramedPage gutterOwner="framed-page" data-testid="tasks-view">
-        <FramedPageHeader title="Projects" />
+        <FramedPageHeader />
         <FramedPageNavigation className="flex items-center justify-between gap-2 pt-4 pb-2">
           {segmentControl}
           {segment === "apps" ? (

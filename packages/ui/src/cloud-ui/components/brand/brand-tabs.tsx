@@ -13,7 +13,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "../../../components/ui/tabs";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 const BrandTabs = Tabs;
 

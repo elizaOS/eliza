@@ -14,6 +14,17 @@
 
 import { createHash } from "node:crypto";
 import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
+  LifeOpsNextCalendarEventContext,
+} from "@elizaos/contracts";
+import { resolveCalendarTimeZone as resolveOwnerCalendarTimeZone } from "@elizaos/contracts";
+import type {
   Action,
   ActionExample,
   ActionResult,
@@ -32,20 +43,10 @@ import {
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarRecurrenceScope,
-  LifeOpsCalendarSummary,
-  LifeOpsNextCalendarEventContext,
-} from "@elizaos/core/contracts/calendar";
 import {
   selectUserAuthorizedRecurrence,
   textStatesExplicitRecurrence,
-} from "@elizaos/core/i18n/recurrence-markers";
+} from "@elizaos/core/protocol";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
 import {
   CALENDAR_DETAIL_ALIASES,
@@ -81,6 +82,7 @@ import {
   formatCalendarEventDateTime,
   formatCalendarFeed,
   formatNextEventContext,
+  formatNextEventContextForUser,
 } from "../internal/format.js";
 import { GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX } from "../internal/google-delegates.js";
 import { parseCalendarNoteSource } from "../internal/note-source.js";
@@ -1819,30 +1821,6 @@ function resolveCalendarTimeZone(
   return plannerRequestedTimeZone(details) ?? fallbackTimeZone;
 }
 
-/**
- * The zone calendar work defaults to when the planner supplies none: the
- * agent's configured `TIMEZONE` (the same setting the runtime clock provider
- * reports as the agent zone), else the host zone. Live 2026-09-05 the host was
- * UTC while the owner and the clock provider were in Pacific time, so "tuesday
- * at 7am" was extracted, stored and rendered in UTC and one intent produced a
- * 7 AM and a 2 PM event.
- */
-function configuredCalendarTimeZone(runtime: IAgentRuntime): string | null {
-  const configured =
-    typeof runtime.getSetting === "function"
-      ? runtime.getSetting("TIMEZONE")
-      : undefined;
-  return typeof configured === "string" &&
-    configured.trim().length > 0 &&
-    isValidTimeZone(configured.trim())
-    ? configured.trim()
-    : null;
-}
-
-function resolveConfiguredCalendarTimeZone(runtime: IAgentRuntime): string {
-  return configuredCalendarTimeZone(runtime) ?? resolveDefaultTimeZone();
-}
-
 type LocalDateOnly = Pick<
   ReturnType<typeof getZonedDateParts>,
   "year" | "month" | "day"
@@ -2013,11 +1991,12 @@ function calendarEventLocalDate(
   timeZone: string,
 ): LocalDateOnly {
   // An all-day event carries a calendar date rather than an instant (see the
-  // all-day occurrence identity in CalendarService), so reading it in another
-  // zone can shift it a day; timed events are compared in the requester's zone
+  // all-day occurrence identity in CalendarService): its date is the date part
+  // of startAt, as the calendar views read it, and reading the instant in any
+  // zone can shift it a day. Timed events are compared in the requester's zone
   // because that is the frame the user said "friday" in.
-  const readZone = (event.isAllDay ? event.timezone : "") || timeZone;
-  const parts = getZonedDateParts(new Date(event.startAt), readZone);
+  if (event.isAllDay) return allDayCivilDate(event.startAt);
+  const parts = getZonedDateParts(new Date(event.startAt), timeZone);
   return { year: parts.year, month: parts.month, day: parts.day };
 }
 
@@ -3414,11 +3393,19 @@ function resolveTripWindowRequest(
 }
 
 function eventDateSearchTerms(event: LifeOpsCalendarEvent): Set<string> {
+  const searchDate = event.isAllDay
+    ? (() => {
+        const { year, month, day } = allDayCivilDate(event.startAt);
+        return new Date(Date.UTC(year, month - 1, day));
+      })()
+    : new Date(event.startAt);
   const formatter = (options: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat("en-US", {
-      timeZone: event.timezone || undefined,
+      // All-day startAt values carry a civil date, not an instant. Keep their
+      // search labels on that date just as mutation selection and rendering do.
+      timeZone: event.isAllDay ? "UTC" : event.timezone || undefined,
       ...options,
-    }).format(new Date(event.startAt));
+    }).format(searchDate);
 
   const monthLong = normalizeText(
     formatter({ month: "long" }).replace(/\./g, ""),
@@ -4571,13 +4558,26 @@ function resolveTripWindowEvents(
 
 function formatCalendarMoment(event: LifeOpsCalendarEvent): string {
   if (event.isAllDay) {
+    // The civil date, rendered without moving it through any zone.
+    const { year, month, day } = allDayCivilDate(event.startAt);
     return new Intl.DateTimeFormat("en-US", {
-      timeZone: event.timezone || undefined,
+      timeZone: "UTC",
       month: "short",
       day: "numeric",
-    }).format(new Date(event.startAt));
+    }).format(new Date(Date.UTC(year, month - 1, day)));
   }
   return formatCalendarEventDateTime(event);
+}
+
+/** The calendar date an all-day `startAt`/`endAt` carries in its date part. */
+function allDayCivilDate(value: string): LocalDateOnly {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) throw new Error(`All-day event date is not ISO: ${value}`);
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  };
 }
 
 function formatTripWindowResults(
@@ -5198,9 +5198,13 @@ const calendarAction: CalendarHandlerAction = {
       params.title,
       params.query,
     ]);
+    const calendarZone = await resolveOwnerCalendarTimeZone(
+      runtime,
+      new Date(),
+    );
     const planningTimeZone = resolveCalendarTimeZone(
       details,
-      resolveConfiguredCalendarTimeZone(runtime),
+      calendarZone.timeZone,
     );
     const explicitSubaction = normalizeCalendarSubaction(params.subaction);
     // A promoted CALENDAR_* tool call is already the action planner's typed
@@ -5341,11 +5345,15 @@ const calendarAction: CalendarHandlerAction = {
       scenario: string,
       facts: string,
       context?: Record<string, unknown>,
+      userFacingFacts?: string,
     ) => ({
       domain: "calendar",
       intent,
       scenario,
       facts,
+      ...(userFacingFacts !== undefined || scenario === "feed_results"
+        ? { userFacingFacts: userFacingFacts ?? facts }
+        : {}),
       context: {
         ...context,
         ...(scenario === "feed_results"
@@ -5517,7 +5525,12 @@ const calendarAction: CalendarHandlerAction = {
         const fallback = formatNextEventContext(context);
         return respond({
           success: true,
-          text: await renderReply("next_event", fallback),
+          text: await renderReply(
+            "next_event",
+            fallback,
+            undefined,
+            formatNextEventContextForUser(context),
+          ),
           effectReceipt: calendarNextEventReadReceipt(context),
           data: toActionData(context),
         });
@@ -5531,7 +5544,9 @@ const calendarAction: CalendarHandlerAction = {
           details,
           true,
           planningTimeZone,
-          configuredCalendarTimeZone(runtime),
+          calendarZone.source === "runtime-default"
+            ? null
+            : calendarZone.timeZone,
         );
         if (!calendarContext) {
           throw new CalendarServiceError(

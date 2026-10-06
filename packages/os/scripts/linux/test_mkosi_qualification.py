@@ -126,7 +126,7 @@ class QualificationPreflightTest(unittest.TestCase):
             self.assertFalse(supports_chroot(handler))
 
     def test_recovery_boundary_requires_observable_inactive_services_and_processes(self) -> None:
-        source = HERE.parents[1] / "linux/elizaos/mkosi/mkosi.extra/usr/libexec/elizaos-recovery-verify"
+        source = HERE.parents[1] / "linux/mkosi/mkosi.extra/usr/libexec/elizaos-recovery-verify"
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             proc = root / "proc"
@@ -176,7 +176,7 @@ class QualificationPreflightTest(unittest.TestCase):
             check(True, TEST_PROCESS=str(process))
 
     def test_recovery_menu_does_not_inherit_normal_boot_overrides(self) -> None:
-        source = HERE.parents[1] / "linux/elizaos/mkosi/mkosi.extra/etc/grub.d/42_elizaos_recovery"
+        source = HERE.parents[1] / "linux/mkosi/mkosi.extra/etc/grub.d/42_elizaos_recovery"
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             for name in ("vmlinuz", "initrd"):
@@ -235,7 +235,7 @@ class QualificationPreflightTest(unittest.TestCase):
             for name in disabled:
                 self.assertEqual(systemctl("is-enabled", name).stdout.strip(), "enabled")
             shutil.copyfile(
-                HERE.parents[1] / "linux/elizaos/mkosi/mkosi.extra/usr/lib/systemd/system-preset/00-elizaos-network.preset",
+                HERE.parents[1] / "linux/mkosi/mkosi.extra/usr/lib/systemd/system-preset/00-elizaos-network.preset",
                 presets / "00-elizaos-network.preset")
             for _ in range(2):
                 result = systemctl("preset-all")

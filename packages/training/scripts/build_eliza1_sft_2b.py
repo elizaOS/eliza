@@ -58,17 +58,12 @@ import json
 import logging
 import random
 import re
-import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 TRAINING_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = TRAINING_ROOT.parents[1]
-if str(TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(TRAINING_ROOT))
-if str(TRAINING_ROOT / "scripts") not in sys.path:
-    sys.path.insert(0, str(TRAINING_ROOT / "scripts"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 LOG = logging.getLogger("build-eliza1-sft-2b")
@@ -713,7 +708,7 @@ def _privacy_filter_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any
     uses) over every row. Non-negotiable per the repo's CLAUDE.md. The default
     regex patterns redact API keys / bearer tokens / emails / phones / geo.
     """
-    from privacy_filter_trajectories import redact_value  # type: ignore
+    from eliza_training.privacy_filter_trajectories import redact_value  # type: ignore
 
     before = json.dumps(rows, sort_keys=True)
     filtered = [redact_value(r) for r in rows]
@@ -769,7 +764,7 @@ def main() -> int:
     augmented_n = 0
     if not args.no_augment:
         try:
-            from cerebras_client import CerebrasClient  # type: ignore
+            from eliza_training.cerebras_client import CerebrasClient  # type: ignore
 
             client = CerebrasClient()
         except Exception as exc:  # noqa: BLE001

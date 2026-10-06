@@ -2,10 +2,10 @@
 // @vitest-environment jsdom
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { emitViewEvent } from "../events/view-events";
 import { __setAppValueForTests } from "../state/app-store";
 import type { BackgroundConfig } from "../state/ui-preferences";
 import { DEFAULT_BACKGROUND_CONFIG } from "../state/ui-preferences";
-import { emitViewEvent } from "../views/view-event-bus";
 import { getShaderPreset } from "./shader-presets";
 import { isPlausibleFragmentSource } from "./shader-schema";
 import {

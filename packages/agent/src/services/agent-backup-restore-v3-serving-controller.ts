@@ -7,18 +7,20 @@
  */
 
 import { createHash } from "node:crypto";
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/core";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
+import type {
+  AgentBackupRestoreV3CommittedGeneration,
+  AgentBackupRestoreV3ContainerRoots,
+  AgentBackupRestoreV3ControllerRequest,
+  AgentBackupRestoreV3ControllerResponse,
+  AgentBackupRestoreV3RootIdentities,
+} from "@elizaos/contracts/node";
 import {
   AGENT_BACKUP_RESTORE_V3_SERVING_LIMITS,
-  type AgentBackupRestoreV3CommittedGeneration,
-  type AgentBackupRestoreV3ContainerRoots,
-  type AgentBackupRestoreV3ControllerRequest,
-  type AgentBackupRestoreV3ControllerResponse,
   AgentBackupRestoreV3ControllerResponseSchema,
-  type AgentBackupRestoreV3RootIdentities,
   agentBackupRestoreV3TokenSha256,
   canonicalizeAgentBackupRestoreV3ServingValue,
-} from "@elizaos/core/contracts/agent-backup-restore-v3-serving";
+} from "@elizaos/contracts/node";
 import { assembleAgentBackupRestoreV3Candidate } from "./agent-backup-restore-v3-candidate-assembly";
 import {
   type AgentBackupRestoreV3CandidateFs,

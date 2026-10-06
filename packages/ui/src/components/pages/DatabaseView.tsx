@@ -14,26 +14,35 @@ import {
   ServerOff,
   Table2,
 } from "lucide-react";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  type ColumnInfo,
-  client,
-  type DatabaseStatus,
-  type QueryResult,
-  type TableInfo,
-  type TableRowsResponse,
-} from "../../api";
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import { client } from "../../api/client";
+import type {
+  ColumnInfo,
+  DatabaseStatus,
+  QueryResult,
+  TableInfo,
+  TableRowsResponse,
+} from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useTranslation } from "../../state";
+import { PageLayout } from "../../layouts/page-layout";
+import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import {
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "../composites/sidebar/sidebar-layout";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";

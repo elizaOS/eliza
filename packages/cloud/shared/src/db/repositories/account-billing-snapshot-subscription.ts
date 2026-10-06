@@ -9,6 +9,7 @@ import {
 import { organizationEntitlements } from "../schemas/organization-entitlements";
 import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
 import { subscriptionNoticeIntents } from "../schemas/subscription-notices";
+import { readConfiguredCancellationAuthority } from "./configured-schedule-cancellation-authority";
 
 export async function readPrimaryOrganizationSubscription(
   tx: DbTransaction,
@@ -127,7 +128,21 @@ export async function readPrimaryOrganizationSubscription(
             ),
           )
       : [];
-  return { state: "current" as const, subscription, entitlement, periods, cancellationNotice };
+  // A pending label alone cannot authorize removing a provider schedule. Resolve the
+  // same immutable quote/effect/source proof used by cancellation admission in this
+  // coherent primary transaction; malformed or missing lineage fails the read.
+  const configuredCancellation =
+    subscription.pending_plan_key === null
+      ? false
+      : Boolean(await readConfiguredCancellationAuthority(tx, subscription));
+  return {
+    state: "current" as const,
+    subscription,
+    entitlement,
+    periods,
+    cancellationNotice,
+    configuredCancellation,
+  };
 }
 export type PrimaryOrganizationSubscription = Awaited<
   ReturnType<typeof readPrimaryOrganizationSubscription>

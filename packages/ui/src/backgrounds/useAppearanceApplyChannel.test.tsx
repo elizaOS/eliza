@@ -8,10 +8,10 @@
 
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { emitViewEvent } from "../events/view-events";
 import { UI_LANGUAGES } from "../i18n";
 import { __setAppValueForTests } from "../state/app-store";
 import { ACCENT_PRESETS } from "../state/ui-preferences";
-import { emitViewEvent } from "../views/view-event-bus";
 import {
   APPEARANCE_APPLY_EVENT,
   useAppearanceApplyChannel,
@@ -24,7 +24,6 @@ function Channel(): null {
 
 function mountChannel() {
   const setters = {
-    setUiThemeMode: vi.fn(),
     setUiAccent: vi.fn(),
     setUiLanguage: vi.fn(),
     setHomeTimeWidgetHidden: vi.fn(),
@@ -49,28 +48,24 @@ describe("useAppearanceApplyChannel", () => {
   it("applies valid appearance fields to the persisted preference setters", () => {
     const setters = mountChannel();
     apply({
-      themeMode: "dark",
       accentId: "green",
       language: "es",
       homeTimeWidgetHidden: true,
     });
 
-    expect(setters.setUiThemeMode).toHaveBeenCalledWith("dark");
     expect(setters.setUiAccent).toHaveBeenCalledWith("green");
     expect(setters.setUiLanguage).toHaveBeenCalledWith("es");
     expect(setters.setHomeTimeWidgetHidden).toHaveBeenCalledWith(true);
   });
 
-  it("ignores unrecognised theme, accent, and language tokens", () => {
+  it("ignores unrecognised accent and language tokens", () => {
     const setters = mountChannel();
     apply({
-      themeMode: "sepia",
       accentId: "cyan",
       language: "fr",
       homeTimeWidgetHidden: "false",
     });
 
-    expect(setters.setUiThemeMode).not.toHaveBeenCalled();
     expect(setters.setUiAccent).not.toHaveBeenCalled();
     expect(setters.setUiLanguage).not.toHaveBeenCalled();
     expect(setters.setHomeTimeWidgetHidden).not.toHaveBeenCalled();
@@ -82,7 +77,6 @@ describe("useAppearanceApplyChannel", () => {
 
     expect(setters.setUiAccent).toHaveBeenCalledTimes(1);
     expect(setters.setUiAccent).toHaveBeenCalledWith("amber");
-    expect(setters.setUiThemeMode).not.toHaveBeenCalled();
     expect(setters.setUiLanguage).not.toHaveBeenCalled();
     expect(setters.setHomeTimeWidgetHidden).not.toHaveBeenCalled();
   });
@@ -98,26 +92,12 @@ describe("useAppearanceApplyChannel", () => {
   it("ignores non-string values for the semantic token fields", () => {
     const setters = mountChannel();
     apply({
-      themeMode: null,
       accentId: 7,
       language: { id: "es" },
     });
 
-    expect(setters.setUiThemeMode).not.toHaveBeenCalled();
     expect(setters.setUiAccent).not.toHaveBeenCalled();
     expect(setters.setUiLanguage).not.toHaveBeenCalled();
-  });
-
-  it("applies every supported theme mode token", () => {
-    const setters = mountChannel();
-    apply({ themeMode: "light" });
-    apply({ themeMode: "dark" });
-    apply({ themeMode: "system" });
-
-    expect(setters.setUiThemeMode).toHaveBeenCalledTimes(3);
-    expect(setters.setUiThemeMode).toHaveBeenNthCalledWith(1, "light");
-    expect(setters.setUiThemeMode).toHaveBeenNthCalledWith(2, "dark");
-    expect(setters.setUiThemeMode).toHaveBeenNthCalledWith(3, "system");
   });
 
   it("accepts every configured accent preset id", () => {
@@ -149,10 +129,10 @@ describe("useAppearanceApplyChannel", () => {
 
   it("keeps applying events after the first one", () => {
     const setters = mountChannel();
-    apply({ themeMode: "light" });
-    apply({ themeMode: "dark" });
+    apply({ accentId: "green" });
+    apply({ accentId: "amber" });
 
-    expect(setters.setUiThemeMode).toHaveBeenCalledTimes(2);
-    expect(setters.setUiThemeMode).toHaveBeenLastCalledWith("dark");
+    expect(setters.setUiAccent).toHaveBeenCalledTimes(2);
+    expect(setters.setUiAccent).toHaveBeenLastCalledWith("amber");
   });
 });

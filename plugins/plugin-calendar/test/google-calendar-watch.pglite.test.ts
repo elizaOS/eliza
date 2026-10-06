@@ -5,11 +5,11 @@
  */
 import { createServer, type Server } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
+import type {
+  LifeOpsConnectorGrant,
+  LifeOpsGoogleConnectorStatus,
+} from "@elizaos/contracts";
 import type { ConnectorAccountManager, IAgentRuntime } from "@elizaos/core";
-import {
-  type LifeOpsConnectorGrant,
-  type LifeOpsGoogleConnectorStatus,
-} from "@elizaos/core/contracts/personal-assistant";
 import {
   createGoogleConnectorAccountProvider,
   GoogleCalendarSyncTokenExpiredError,

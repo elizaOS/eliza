@@ -18,6 +18,7 @@ import type {
   ContextObjectTool,
   EffectReceipt,
   EvaluatorOutput,
+  ModelInputBudget,
   PlannerLoopParams,
   PlannerLoopResult,
   PlannerRuntime,
@@ -47,6 +48,7 @@ import {
   COMPLETION_CONTEXT_SCHEMA,
   COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
   captureToolStageIO,
+  compactHistoricalReceiptSegments,
   completionContextSources,
   composeToolDiagnosticRedactor,
   computePrefixHashes,
@@ -126,9 +128,9 @@ import {
   plannerTemplate,
   plannerToolScopedRules,
 } from "../prompts/planner.ts";
-import { compactHistoricalReceiptSegments } from "../services/message/historical-receipt-wire.ts";
 import {
   labelHistorySources,
+  orderHistoryFirst,
   referenceRepeatedHistory,
 } from "../services/message/history-wire.ts";
 import {
@@ -3166,6 +3168,12 @@ function renderPlannerModelInput(params: {
       ? projectDeferredProviders(diagnosticProjection.context)
       : { context: diagnosticProjection.context, available: [] };
   const renderedContext = renderContextObject(deferred.context);
+  if (!params.codingMode) {
+    renderedContext.promptSegments = orderHistoryFirst(
+      deferred.context,
+      renderedContext.promptSegments,
+    );
+  }
   // Domain planning can review originals for the whole pending turn without changing
   // the reply handler or mutating the complete restorable context.
   const actionSources =
@@ -3375,7 +3383,7 @@ export function buildInitialPlannerModelInputBudget(params: {
   config?: PlannerLoopParams["config"];
   tools?: ToolDefinition[];
   codingMode?: boolean;
-}) {
+}): ModelInputBudget {
   const config = mergeChainingLoopConfig(params.config);
   const context = normalizePlannerContext(params.context);
   const trajectory: PlannerTrajectory = {
@@ -4220,7 +4228,7 @@ async function dispatchPlannerModelCall(params: {
         )
           return tool;
         const schema = tool.parameters;
-        if (!schema || schema.type !== "object") return tool;
+        if (schema?.type !== "object") return tool;
         if (schema.properties?.[ACTION_CONTEXT_ARG] !== undefined)
           throw new ElizaError(
             "Action declares reserved planner source metadata",
@@ -4239,6 +4247,100 @@ async function dispatchPlannerModelCall(params: {
         };
       });
     }
+    // Unsupported descriptors stay untouched for the provider's existing
+    // rejection. Inspect only copied containers; never evaluate their getters.
+    const ownDataDescriptors = (value: unknown) => {
+      if (value === null || typeof value !== "object") return undefined;
+      try {
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Object.prototype && prototype !== null)
+          return undefined;
+        if (Object.getOwnPropertySymbols(value).length > 0) return undefined;
+        const descriptors = Object.getOwnPropertyDescriptors(value);
+        if (Object.values(descriptors).some((entry) => !("value" in entry)))
+          return undefined;
+        return { prototype, descriptors };
+      } catch {
+        // Optional representation change cannot conceal inspection failure.
+        return undefined;
+      }
+    };
+    // Keep identical parameter policy complete on its first offered tool.
+    // References are request-local and name that actual tool and parameter;
+    // all validation and nested descriptions remain on every schema.
+    const describedParameters = new Map<
+      string,
+      { tool: string; parameter: string }
+    >();
+    modelParams.tools = modelParams.tools?.map((tool) => {
+      const toolData = ownDataDescriptors(tool);
+      const toolName = toolData?.descriptors.name?.value;
+      const parametersData = ownDataDescriptors(
+        toolData?.descriptors.parameters?.value,
+      );
+      const propertiesData = ownDataDescriptors(
+        parametersData?.descriptors.properties?.value,
+      );
+      if (
+        !toolData ||
+        typeof toolName !== "string" ||
+        !parametersData ||
+        !propertiesData
+      )
+        return tool;
+      let sharedDescriptors = propertiesData.descriptors;
+      for (const [parameter, entry] of Object.entries(
+        propertiesData.descriptors,
+      )) {
+        if (!entry.enumerable) continue;
+        const schemaData = ownDataDescriptors(entry.value);
+        const description = schemaData?.descriptors.description?.value;
+        if (
+          !schemaData?.descriptors.description?.enumerable ||
+          typeof description !== "string"
+        )
+          continue;
+        const first = describedParameters.get(description);
+        if (!first) {
+          describedParameters.set(description, { tool: toolName, parameter });
+          continue;
+        }
+        if (first.tool === toolName) continue;
+        const reference = `Use the identical full description of parameter ${JSON.stringify(first.parameter)} on tool ${first.tool}.`;
+        if (reference.length >= description.length) continue;
+        if (sharedDescriptors === propertiesData.descriptors)
+          sharedDescriptors = { ...propertiesData.descriptors };
+        sharedDescriptors[parameter] = {
+          ...entry,
+          value: Object.defineProperties(Object.create(schemaData.prototype), {
+            ...schemaData.descriptors,
+            description: {
+              ...schemaData.descriptors.description,
+              value: reference,
+            },
+          }),
+        };
+      }
+      if (sharedDescriptors === propertiesData.descriptors) return tool;
+      const properties = Object.defineProperties(
+        Object.create(propertiesData.prototype),
+        sharedDescriptors,
+      );
+      const parameters = Object.defineProperties(
+        Object.create(parametersData.prototype),
+        {
+          ...parametersData.descriptors,
+          properties: {
+            ...parametersData.descriptors.properties,
+            value: properties,
+          },
+        },
+      );
+      return Object.defineProperties(Object.create(toolData.prototype), {
+        ...toolData.descriptors,
+        parameters: { ...toolData.descriptors.parameters, value: parameters },
+      });
+    });
     // Force a native tool call. With actions exposed directly as tools,
     // every viable planner outcome —
     // invoking an action, calling REPLY for a final message, or terminating
@@ -9092,7 +9194,14 @@ function preferredFinalMessageFromToolOrModel(
   //   - `planner-loop-user-facing-text.test.ts` → "delivers verified tool
   //     output AND the evaluator's grounded prose" — both survive when both
   //     exist and neither contains the other.
-  const verifiedToolText = singleVerifiedUserFacingToolResultText(trajectory);
+  const verifiedCandidate = singleVerifiedUserFacingToolResultText(trajectory);
+  // Verification preserves effect authority, but cannot make malformed prose
+  // displayable. Keep a clean synthesis instead of combining it with rejected
+  // native text and forcing another recovery; the original result stays intact.
+  const verifiedToolText =
+    verifiedCandidate && !isUnsafeUserVisibleText(verifiedCandidate)
+      ? verifiedCandidate
+      : undefined;
   return (
     combinedVerifiedToolTextAndProse(
       trajectory,

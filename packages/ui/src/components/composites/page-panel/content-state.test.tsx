@@ -7,9 +7,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { AlertTriangle } from "lucide-react";
 import { afterEach, describe, expect, it } from "vitest";
-import { ContentState } from "./content-state";
-import { PageEmptyState } from "./page-panel-empty";
-import { PageLoadingState } from "./page-panel-loading";
+import {
+  ContentState,
+  PageEmptyState,
+  PageLoadingState,
+} from "./content-state";
 
 afterEach(cleanup);
 

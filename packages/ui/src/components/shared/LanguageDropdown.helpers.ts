@@ -1,6 +1,6 @@
 /** Supported UI languages (flag + native label) and shared trigger styling for the LanguageDropdown. */
 
-import type { UiLanguage } from "../../i18n/messages";
+import type { UiLanguage } from "@elizaos/core/protocol";
 
 /** Language metadata with flag emoji and native label. */
 export const LANGUAGES: { id: UiLanguage; flag: string; label: string }[] = [
@@ -13,6 +13,3 @@ export const LANGUAGES: { id: UiLanguage; flag: string; label: string }[] = [
   { id: "tl", flag: "\u{1F1F5}\u{1F1ED}", label: "Tagalog" },
   { id: "ja", flag: "\u{1F1EF}\u{1F1F5}", label: "日本語" },
 ];
-
-export const LANGUAGE_DROPDOWN_TRIGGER_CLASSNAME =
-  "!h-11 !min-h-11 !rounded-sm !px-3.5";

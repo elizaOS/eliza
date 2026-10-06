@@ -147,9 +147,11 @@ export class GoogleMeetClient {
       });
       participants.push(...(response.data.participants ?? []).map(mapParticipant));
       pageToken = nextMeetPageToken(response.data.nextPageToken, pagination, "participants");
-    } while (pageToken && (!params.limit || participants.length < params.limit));
+    } while (pageToken && (params.limit === undefined || participants.length < params.limit));
 
-    return params.limit ? participants.slice(0, params.limit) : participants;
+    return params.limit === undefined
+      ? participants
+      : participants.slice(0, Math.max(0, params.limit));
   }
 
   async listMeetingParticipantSessions(
@@ -180,9 +182,9 @@ export class GoogleMeetClient {
         pagination,
         "participant sessions"
       );
-    } while (pageToken && (!params.limit || sessions.length < params.limit));
+    } while (pageToken && (params.limit === undefined || sessions.length < params.limit));
 
-    return params.limit ? sessions.slice(0, params.limit) : sessions;
+    return params.limit === undefined ? sessions : sessions.slice(0, Math.max(0, params.limit));
   }
 
   async listMeetingTranscripts(

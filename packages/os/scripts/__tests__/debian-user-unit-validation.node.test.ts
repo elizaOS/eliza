@@ -36,7 +36,7 @@ test("mkosi user units pass the real systemd validator", {
   const valid = runValidator(packaging, [
     join(
       repositoryRoot,
-      "linux/elizaos/mkosi/mkosi.extra/usr/lib/systemd/user",
+      "linux/mkosi/mkosi.extra/usr/lib/systemd/user",
     ),
     "/opt/elizaos",
   ]);

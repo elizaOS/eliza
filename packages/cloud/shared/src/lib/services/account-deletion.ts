@@ -1,16 +1,16 @@
 /** Coordinates fail-closed account-deletion requests and fenced worker claims. */
 
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
-import { accountDeletionRequestsRepository } from "../../db/repositories/account-deletion-requests";
-import type { AccountDeletionExport } from "../../db/schemas/account-deletion-exports";
-import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";
 import type {
   AccountDeletionAcceptedDto,
   AccountDeletionNextAction,
   AccountDeletionStatus,
   AccountDeletionStatusDto,
-} from "../../types/account-lifecycle";
+} from "@elizaos/cloud-sdk/browser-contracts";
+import { ElizaError } from "@elizaos/core";
+import { accountDeletionRequestsRepository } from "../../db/repositories/account-deletion-requests";
+import type { AccountDeletionExport } from "../../db/schemas/account-deletion-exports";
+import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { logger } from "../utils/logger";
 import {

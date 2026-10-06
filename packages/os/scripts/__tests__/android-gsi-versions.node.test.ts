@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { loadProfile } from "../aosp/verify-source-lock.ts";
+import { loadProfile } from "../android/verify-source-lock.ts";
 
 const androidDir = fileURLToPath(new URL("../../android/", import.meta.url));
 const vendorDir = path.join(androidDir, "vendor/eliza");
@@ -13,8 +13,6 @@ const lockPath = path.join(androidDir, "aosp.lock.json");
 const read = (relative: string) =>
   fs.readFileSync(path.join(vendorDir, relative), "utf8");
 const GSI_PROFILES = {
-  "gsi-android15": { tag: /^android-15\.0\.0_r\d+$/, release: "bp1a" },
-  "gsi-android16": { tag: /^android-16\.0\.0_r\d+$/, release: "bp4a" },
   "gsi-android17": { tag: /^android-17\.0\.0_r\d+$/, release: "cp2a" },
 };
 
@@ -42,6 +40,10 @@ function selectPolicy(sdk: string, gsi: boolean) {
     { encoding: "utf8" },
   );
   fs.rmSync(path.dirname(printer), { recursive: true, force: true });
+  assert.ifError(result.error);
+  if (sdk === "37") {
+    assert.equal(result.status, 0, result.stderr);
+  }
   const [vendor = "", systemExt = ""] = result.stdout.trim().split("|");
   return {
     status: result.status,
@@ -51,7 +53,7 @@ function selectPolicy(sdk: string, gsi: boolean) {
   };
 }
 
-test("GSI source profiles pin Android 15, 16 and 17 with matching products", () => {
+test("GSI source profiles pin Android 17 with matching products", () => {
   for (const [name, expected] of Object.entries(GSI_PROFILES)) {
     const profile = loadProfile(name, lockPath);
     assert.equal(profile.kind, "virtual", name);
@@ -97,51 +99,32 @@ test("GSI products inherit the AOSP GSI layers before the shared Eliza layer", (
   }
 });
 
-test("SELinux policy directories follow PLATFORM_SDK_VERSION", () => {
-  for (const sdk of ["35", "36"]) {
-    assert.deepEqual(selectPolicy(sdk, false).vendor, [
-      "vendor/eliza/sepolicy",
-    ]);
-    assert.deepEqual(selectPolicy(sdk, true).systemExt, [
-      "vendor/eliza/sepolicy/system_ext",
-    ]);
-    assert.deepEqual(selectPolicy(sdk, true).vendor, []);
-  }
+test("Android 17 selects policy for the image partition", () => {
   assert.deepEqual(selectPolicy("37", false).vendor, [
     "vendor/eliza/sepolicy",
-    "vendor/eliza/sepolicy/api37",
+    "vendor/eliza/sepolicy/common",
   ]);
-  assert.deepEqual(selectPolicy("37", true).systemExt, [
+  const gsi = selectPolicy("37", true);
+  assert.deepEqual(gsi.systemExt, [
     "vendor/eliza/sepolicy/system_ext",
-    "vendor/eliza/sepolicy/system_ext_api37",
+    "vendor/eliza/sepolicy/common",
   ]);
-  const unset = selectPolicy("", false);
-  assert.notEqual(unset.status, 0);
-  assert.match(unset.stderr, /PLATFORM_SDK_VERSION is unset/);
+  assert.deepEqual(gsi.vendor, []);
+  for (const sdk of ["", "35", "36", "38"]) {
+    const rejected = selectPolicy(sdk, false);
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /Android 17 SDK 37 is required/);
+  }
 });
 
-test("Android 17-only platform_app_36 rules stay out of shared policy", () => {
-  const strip = (text: string) => text.replace(/^\s*#.*$/gm, "");
-  for (const shared of [
-    "sepolicy/eliza_agent.te",
-    "sepolicy/system_ext/eliza_agent.te",
-  ])
-    assert.doesNotMatch(strip(read(shared)), /platform_app_36/, shared);
-  for (const api37 of [
-    "sepolicy/api37/eliza_agent_app36.te",
-    "sepolicy/system_ext_api37/eliza_agent_app36.te",
-  ]) {
-    const policy = strip(read(api37));
-    assert.match(
-      policy,
-      /allow platform_app_36 app_data_file:file \{ execute execute_no_trans \};/,
-      api37,
-    );
-    assert.match(policy, /userdebug_or_eng\(/, api37);
-  }
+test("Android 17 app compatibility rules stay development-only", () => {
+  const policy = read("sepolicy/common/eliza_agent_app.te").replace(
+    /^\s*#.*$/gm,
+    "",
+  );
   assert.match(
-    strip(read("sepolicy/system_ext/eliza_agent.te")),
-    /userdebug_or_eng\([\s\S]*allow platform_app app_data_file:file \{ execute execute_no_trans \};/,
+    policy,
+    /userdebug_or_eng\(`[\s\S]*allow platform_app_36 app_data_file:file \{ execute execute_no_trans \};[\s\S]*allow platform_app_36 app_data_file:file link;/,
   );
 });
 

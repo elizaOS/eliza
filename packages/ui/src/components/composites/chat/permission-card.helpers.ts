@@ -5,12 +5,12 @@
  * and a parser that recovers a structured permission request from agent text.
  * Consumed by permission-card.tsx.
  */
-import {
-  type IPermissionsRegistry,
-  isPermissionId,
-  type PermissionId,
-  type PermissionState,
-} from "@elizaos/core/contracts/permissions";
+import type {
+  IPermissionsRegistry,
+  PermissionId,
+  PermissionState,
+} from "@elizaos/core/protocol";
+import { isPermissionId } from "@elizaos/core/protocol";
 /**
  * Friendly human-readable labels per permission id. Used as the card title
  * (e.g. `reminders` → "Apple Reminders").

@@ -71,11 +71,8 @@ export type CacheScope =
 	| (string & {});
 
 /**
- * Canonical role tiers for gate declarations (#9948). Spans both historical
- * vocabularies — the environment `Role` (OWNER/ADMIN/MEMBER/GUEST/NONE) plus the
- * `USER` alias of MEMBER. `normalizeGateRole` folds USER→MEMBER and uppercases at
- * runtime. The previous `(string & {})` escape — which let a gate name ANY
- * string and silently rank it 0 — is removed: a gate must name a real tier.
+ * Role tiers for context gates. MEMBER and USER share a rank; unknown values resolve to
+ * NONE.
  */
 export type {
 	RoleGate,
@@ -85,7 +82,7 @@ export type {
 import type { RoleGate } from "../access-control/role-primitives.js";
 
 export interface ContextGate {
-	/** Backward-compatible shorthand: any listed context may pass. */
+	/** Any listed context may satisfy the gate. */
 	contexts?: AgentContext[];
 	/** Any one of these contexts may pass. */
 	anyOf?: AgentContext[];

@@ -17,7 +17,7 @@ import {
   AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
   type AgentBackupRestoreV3MaterializerRequest,
   canonicalizeAgentBackupRestoreV3MaterializerReceipt,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import {
   buildExactRestoreQuarantineMaterializerCommand,
   buildExactRestoreQuarantineStartCommand,

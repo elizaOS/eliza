@@ -1,16 +1,17 @@
 /** Translates buyer record requests into the canonical app actor and scoped records service. */
-import { z } from "zod";
-import type { AppBillingReadIdentity } from "@/db/repositories/app-billing-queries";
+
+import type { AppBillingReadIdentity } from "@elizaos/cloud-shared/db/repositories/app-billing-queries";
 import {
   appBillingScopeInput,
   assignAppBillingSeatInput,
   revokeAppBillingSeatInput,
-} from "@/lib/services/generic-billing-input";
+} from "@elizaos/cloud-shared/lib/services/generic-billing-input";
 import {
   type GenericBillingRecordsService,
   genericBillingRecordsService,
-} from "@/lib/services/generic-billing-records";
-import type { AppContext } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/generic-billing-records";
+import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { z } from "zod";
 import { buyerBillingActor } from "./_handlers";
 
 async function recordsIdentity(

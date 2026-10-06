@@ -16,7 +16,7 @@ import {
 } from "../../db/repositories";
 import { CacheInvalidation } from "../cache/invalidation";
 import { invalidateOrganizationCache } from "../cache/organizations-cache";
-import { canSendLowCreditsEmail, markLowCreditsEmailSent } from "../email/utils/rate-limiter";
+import { canSendLowCreditsEmail, markLowCreditsEmailSent } from "../email/rate-limiter";
 import { calculateCost, getProviderFromModel } from "../pricing";
 import { PROVIDER_DEFAULT_MAX_RETRIES, PROVIDER_MAX_BACKOFF_DELAY_MS } from "../providers/_http";
 import { getRequestTaskDefer } from "../runtime/request-context";

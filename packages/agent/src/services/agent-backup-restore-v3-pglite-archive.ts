@@ -6,7 +6,7 @@
  */
 
 import { Buffer } from "node:buffer";
-import type { AgentBackupRestoreV3OperationControl } from "@elizaos/core";
+import type { AgentBackupRestoreV3OperationControl } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
 import {
   assertActive,

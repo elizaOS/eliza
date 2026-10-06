@@ -34,7 +34,8 @@ vi.mock("@elizaos/plugin-native-contacts/bridge", () => ({
   Contacts: contactsBridge,
 }));
 
-vi.mock("@elizaos/ui/platform", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   get isNative() {
     return platform.isNative;
   },

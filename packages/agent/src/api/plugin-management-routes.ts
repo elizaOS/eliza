@@ -1,13 +1,12 @@
 import type http from "node:http";
 import {
-  ElizaError,
-  logger,
   PostPluginCoreToggleRequestSchema,
   PutPluginRequestSchema,
   PutSecretsRequestSchema,
-} from "@elizaos/core";
-
-import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+} from "@elizaos/contracts";
+import { ElizaError, logger } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
+import { saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
   resolveDevCloudEnvAuthority,

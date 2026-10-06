@@ -13,6 +13,10 @@
  */
 import crypto from "node:crypto";
 import {
+  PatchMemoryRequestSchema,
+  PostMemoryRememberRequestSchema,
+} from "@elizaos/contracts";
+import {
   type AgentRuntime,
   BM25,
   ChannelType,
@@ -23,15 +27,13 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   ModelType,
-  PatchMemoryRequestSchema,
-  PostMemoryRememberRequestSchema,
   parseCanonicalInteger,
   parsePositiveInteger,
   projectCompleteToolValueForModel,
-  type RouteRequestContext,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 import {
   type DocumentsServiceResult,

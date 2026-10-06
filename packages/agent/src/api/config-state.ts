@@ -1,5 +1,5 @@
 /** Keeps live configuration references aligned with committed durable state. */
-import type { ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 
 /** Replace a live config in place so references held by callers stay valid. */
 export function replaceConfigInPlace(

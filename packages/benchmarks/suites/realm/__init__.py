@@ -15,10 +15,10 @@ The agent loop targets the eliza TS bridge via
 ``_MockREALMAgent`` is exposed for smoke tests and CI.
 """
 
-from benchmarks.realm.dataset import REALMDataset
-from benchmarks.realm.evaluator import MetricsCalculator, REALMEvaluator
-from benchmarks.realm.runner import REALMRunner
-from benchmarks.realm.types import (
+from benchmarks.suites.realm.dataset import REALMDataset
+from benchmarks.suites.realm.evaluator import MetricsCalculator, REALMEvaluator
+from benchmarks.suites.realm.runner import REALMRunner
+from benchmarks.suites.realm.types import (
     LEADERBOARD_NOTE,
     LEADERBOARD_SCORES,
     MULTI_AGENT_PROBLEMS,

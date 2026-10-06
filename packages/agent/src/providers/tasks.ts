@@ -13,10 +13,7 @@ import type {
   State,
   Task,
 } from "@elizaos/core";
-import {
-  isWorkbenchTodoTask,
-  readTaskCompleted,
-} from "../api/workbench-helpers.ts";
+import { readTaskCompleted, toWorkbenchTask } from "@elizaos/host/protocol";
 import { listTriggerTasks, readTriggerConfig } from "../triggers/runtime.ts";
 
 function formatTaskForContext(task: Task): string {
@@ -73,13 +70,12 @@ export function createOngoingTasksProvider(): Provider {
           agentIds: [runtime.agentId],
         });
 
-        // Separate workbench tasks from triggers and todos
-        const workbenchTasks: Task[] = [];
-        for (const task of allTasks) {
-          if (readTriggerConfig(task)) continue; // skip triggers
-          if (isWorkbenchTodoTask(task)) continue; // skip todos
-          workbenchTasks.push(task);
-        }
+        // Match the automation feed's owner-work contract. Internal queue and
+        // maintenance records are not workbench tasks merely because they lack
+        // trigger or todo metadata. Their execution and stored rows are unchanged.
+        const workbenchTasks = allTasks.filter(
+          (task) => toWorkbenchTask(task) !== null,
+        );
 
         // Active (non-completed) tasks first
         const activeTasks = workbenchTasks.filter((t) => !readTaskCompleted(t));

@@ -41,7 +41,7 @@ import {
   type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { getEntityDetails } from "../entities.ts";
 import {
   buildFactKeywordsForStorage,

@@ -31,7 +31,7 @@
  * caller reads as "this modality should route to Cloud" (the AUTO policy).
  */
 
-import type { CatalogModel } from "@elizaos/core/contracts/local-inference";
+import type { CatalogModel } from "@elizaos/contracts";
 import type { Eliza1TierId } from "./catalog.js";
 import { MODEL_CATALOG } from "./catalog.js";
 

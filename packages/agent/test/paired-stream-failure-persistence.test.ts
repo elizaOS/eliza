@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createCharacter, ModelType } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import {
