@@ -70,6 +70,7 @@ const { strict: AUDIT_STRICT, needsWorkStrict: AUDIT_STRICT_NEEDS_WORK } =
 // un-contained overflow (WS5) blows past this comfortably.
 const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
 const FRAMED_PAGE_SLUGS = new Set([
+  "builtin-clock",
   "builtin-character",
   "builtin-character-skills",
   "builtin-database",

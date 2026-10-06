@@ -49,6 +49,7 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   // slot when it supersedes the connected-calendar surface below.
   "simple-calendar",
   "notes",
+  "clock",
   "automations",
   "browser",
   // Cloud account app — gated to cloud-signed-in sessions below.

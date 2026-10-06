@@ -1342,6 +1342,7 @@ export {
   loadCharacterExperienceView,
   loadCharacterSkillsView,
   loadChatView,
+  loadClockView,
   loadCloudRouterShell,
   loadContextInspectorView,
   loadConversationsSidebar,
