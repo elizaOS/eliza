@@ -3558,6 +3558,10 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.modelDispatch.getLastResolvedModelProvider(modelType);
 	}
 
+	getEmbeddingIdentity() {
+		return this.embeddings.getIdentity();
+	}
+
 	private resolveModelRegistrations(
 		modelType: ModelTypeName | string,
 		provider?: string,

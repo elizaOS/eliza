@@ -9,8 +9,13 @@
  * embedding API handlers registered through the production model router.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
-import { EventType, ModelType } from "@elizaos/core";
+import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  EmbeddingGenerationService,
+  EventType,
+  identifyEmbeddingVector,
+  ModelType,
+} from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, test, vi } from "vitest";
 import { aliasRecallQuery, embedRecallQuery } from "./recall-embed.ts";
@@ -787,3 +792,97 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
     expect(calls.count).toBe(2);
   });
 });
+
+// Exercise the real model dispatcher, per-message recall cache, queue and SQLite
+// conditional write together; an aliased recall key must never become stored text.
+test.each([
+  "pending",
+  "cached",
+  "normalized-mismatch",
+  "alias-mismatch",
+  "message-mismatch",
+  "scope-mismatch",
+])(
+  "prepared storage handoff preserves exact dispatch source (%s)",
+  async (mode) => {
+    const runtime = createSQLiteTestRuntime({
+      character: { name: `PreparedRecall-${mode}`, bio: [] },
+      logLevel: "fatal",
+    });
+    await runtime.adapter.initialize();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    runtime.registerModel(
+      ModelType.TEXT_EMBEDDING,
+      async (_runtime, params) => {
+        if (params !== null && ++calls === 1 && mode === "pending") await gate;
+        return identifyEmbeddingVector([1, 0, 0], "test:prepared-recall:3");
+      },
+      "prepared-recall",
+      100,
+    );
+    await runtime.ensureEmbeddingDimension();
+    const service = (await EmbeddingGenerationService.start(
+      runtime,
+    )) as EmbeddingGenerationService;
+    runtime.services.set(EmbeddingGenerationService.serviceType, [service]);
+    const original = "Exact source text";
+    const text =
+      mode === "normalized-mismatch"
+        ? original.toUpperCase()
+        : mode === "alias-mismatch"
+          ? "wrapped source"
+          : original;
+    const memory: Memory & { id: UUID } = {
+      id: MSG_A as UUID,
+      agentId: runtime.agentId,
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      content: { text },
+    };
+    try {
+      await runtime.createMemory(memory, "messages");
+      if (mode !== "pending") {
+        await embedRecallQuery(runtime, original, {
+          messageId: mode === "message-mismatch" ? MSG_B : memory.id,
+          ...(mode === "scope-mismatch"
+            ? { memory: { ...memory, roomId: MSG_B as UUID } }
+            : {}),
+        });
+        if (mode === "alias-mismatch")
+          aliasRecallQuery(runtime, {
+            messageId: memory.id,
+            sourceText: original,
+            aliasText: text,
+          });
+      }
+      const recall = embedRecallQuery(runtime, text, {
+        messageId: memory.id,
+        memory,
+      });
+      await runtime.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+        runtime,
+        memory,
+        priority: "high",
+      });
+      const [task] = await runtime.getTasksByName("EMBEDDING_DRAIN");
+      const worker = runtime.getTaskWorker("EMBEDDING_DRAIN");
+      if (!task || !worker) throw new Error("Missing embedding task");
+      const draining = worker.execute(runtime, {}, task);
+      release();
+      await Promise.all([recall, draining]);
+      expect(calls).toBe(mode.endsWith("mismatch") ? 2 : 1);
+      expect((await runtime.getMemoryById(memory.id))?.embedding).toEqual([
+        1, 0, 0,
+      ]);
+      expect((await runtime.getMemoryById(memory.id))?.content.text).toBe(text);
+    } finally {
+      release();
+      await service.stop();
+      await runtime.close();
+    }
+  },
+);

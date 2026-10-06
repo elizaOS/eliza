@@ -10,6 +10,11 @@
  * failed activation is withdrawn, so the next registration retries it.
  */
 
+import {
+	copyEmbeddingVectorSpace,
+	getEmbeddingVectorSpace,
+} from "../embedding-vector-space";
+import { recordInferenceSpan } from "../inference-timing";
 import { shouldSkipResponseMemoryPersistence } from "../memory";
 import { isProcessingPolicyDenial } from "../security/processing-policy";
 import type {
@@ -33,6 +38,19 @@ interface EmbeddingQueueItem {
 	pendingKey?: string;
 }
 
+// Only the advisory join expires. The queue still performs its own inference
+// and retains its normal retry budget when foreground work cannot be reused.
+export const PREPARED_EMBEDDING_MAX_AGE_MS = 30_000;
+type EmbeddingIdentity = NonNullable<
+	ReturnType<NonNullable<IAgentRuntime["getEmbeddingIdentity"]>>
+>;
+interface PreparedEmbedding {
+	identity: EmbeddingIdentity;
+	handler: ReturnType<IAgentRuntime["getModel"]>;
+	result: Promise<number[] | null>;
+	release: () => void;
+}
+
 /**
  * Service responsible for generating embeddings asynchronously
  * This service listens for EMBEDDING_GENERATION_REQUESTED events
@@ -46,9 +64,120 @@ export class EmbeddingGenerationService extends Service {
 
 	private batchQueue: BatchQueue<EmbeddingQueueItem> | null = null;
 	private readonly pending = new Set<string>();
+	private readonly prepared = new Map<string, PreparedEmbedding>();
 	private isDisabled = false;
 	private stopped = false;
 	private initialization: Promise<void> | null = null;
+
+	private sourceKey(memory: Memory): string | undefined {
+		if (
+			!memory.id ||
+			!memory.roomId ||
+			!memory.entityId ||
+			(memory.agentId !== undefined &&
+				memory.agentId !== this.runtime.agentId) ||
+			typeof memory.content.text !== "string"
+		)
+			return undefined;
+		return JSON.stringify([
+			memory.id,
+			this.runtime.agentId,
+			memory.roomId,
+			memory.entityId,
+			memory.content.text,
+		]);
+	}
+
+	/** Offer an already-dispatched, exact-source foreground result to the scalar queue.
+	 * No promise enters a Memory/event payload or the database. Unnamed vector
+	 * spaces and batch providers keep their existing inference path. */
+	offerPreparedEmbedding(
+		memory: Memory,
+		result: Promise<number[]>,
+		signal?: AbortSignal,
+	): void {
+		const key = this.sourceKey(memory);
+		const identity = this.runtime.getEmbeddingIdentity?.();
+		const handler = this.runtime.getModel(ModelType.TEXT_EMBEDDING);
+		if (
+			this.stopped ||
+			signal?.aborted ||
+			!key ||
+			!identity?.vectorSpace ||
+			!handler ||
+			this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH) ||
+			this.prepared.has(key)
+		)
+			return;
+		let releaseWait!: () => void;
+		const released = new Promise<null>((resolve) => {
+			releaseWait = () => resolve(null);
+		});
+		const remove = () => {
+			if (this.prepared.get(key) === entry) this.prepared.delete(key);
+			entry.release();
+		};
+		const timeout = setTimeout(remove, PREPARED_EMBEDDING_MAX_AGE_MS);
+		timeout.unref?.();
+		const entry: PreparedEmbedding = {
+			identity,
+			handler,
+			result: Promise.race([
+				result.then(
+					(vector) => {
+						if (
+							signal?.aborted ||
+							!Array.isArray(vector) ||
+							vector.length !== identity.dimensions ||
+							!vector.every(Number.isFinite) ||
+							getEmbeddingVectorSpace(vector) !== identity.vectorSpace
+						)
+							return null;
+						const copy = [...vector];
+						copyEmbeddingVectorSpace(vector, copy);
+						return copy;
+					},
+					() => null,
+				),
+				released,
+			]),
+			release: () => {
+				clearTimeout(timeout);
+				signal?.removeEventListener("abort", remove);
+				releaseWait();
+			},
+		};
+		this.prepared.set(key, entry);
+		signal?.addEventListener("abort", remove, { once: true });
+	}
+
+	private async takePreparedEmbedding(
+		memory: Memory,
+	): Promise<number[] | null> {
+		const key = this.sourceKey(memory);
+		const entry = key ? this.prepared.get(key) : undefined;
+		if (!entry || !key) return null;
+		const start = Date.now();
+		try {
+			const vector = await entry.result;
+			const current = this.runtime.getEmbeddingIdentity?.();
+			const usable =
+				!this.stopped &&
+				this.prepared.get(key) === entry &&
+				vector &&
+				current?.provider === entry.identity.provider &&
+				current?.dimensions === entry.identity.dimensions &&
+				current?.vectorSpace === entry.identity.vectorSpace &&
+				this.runtime.getModel(ModelType.TEXT_EMBEDDING) === entry.handler;
+			recordInferenceSpan("embedding-prepared:storage", Date.now() - start, {
+				outcome: usable ? "reused" : "fallback",
+			});
+			return usable ? vector : null;
+		} finally {
+			if (this.prepared.get(key) === entry) this.prepared.delete(key);
+			entry.release();
+		}
+	}
 	private readonly embeddingRequestHandler = (
 		payload: EmbeddingGenerationPayload,
 	) => this.handleEmbeddingRequest(payload);
@@ -373,9 +502,12 @@ export class EmbeddingGenerationService extends Service {
 		try {
 			const startTime = Date.now();
 
-			const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
-				text: memory.content.text ?? "",
-			});
+			const prepared = await this.takePreparedEmbedding(memory);
+			const embedding: number[] =
+				prepared ??
+				(await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
+					text: memory.content.text ?? "",
+				}));
 
 			const duration = Date.now() - startTime;
 			this.runtime.logger.debug(
@@ -385,10 +517,10 @@ export class EmbeddingGenerationService extends Service {
 					memoryId: memory.id,
 					durationMs: duration,
 				},
-				"Generated embedding",
+				prepared ? "Reused prepared embedding" : "Generated embedding",
 			);
 
-			await this.persistEmbedding(item, embedding, duration);
+			await this.persistEmbedding(item, embedding, duration, prepared !== null);
 		} catch (error) {
 			// error-policy:J2 Queue retry policy needs the original failure; rethrow
 			// unchanged. Expected local backend/capability absence is designed
@@ -421,6 +553,7 @@ export class EmbeddingGenerationService extends Service {
 		item: EmbeddingQueueItem,
 		embedding: number[],
 		durationMs: number,
+		reused = false,
 	): Promise<void> {
 		const { memory } = item;
 		if (!memory.id) {
@@ -472,6 +605,7 @@ export class EmbeddingGenerationService extends Service {
 				memoryId: memory.id,
 				status: "completed",
 				duration: durationMs,
+				metadata: { reused },
 				source: "embeddingService",
 			},
 		});
@@ -580,6 +714,8 @@ export class EmbeddingGenerationService extends Service {
 
 	async stop(): Promise<void> {
 		this.stopped = true;
+		for (const entry of this.prepared.values()) entry.release();
+		this.prepared.clear();
 		this.runtime.unregisterEvent(
 			EventType.MODEL_REGISTERED,
 			this.modelRegistrationHandler,
