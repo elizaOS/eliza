@@ -1,14 +1,13 @@
-/**
- * Owns shared empty, loading, and recovery presentation inside page panels
- * while preserving each placement's container and accessibility behavior.
- */
 import type * as React from "react";
-
 import { cn } from "../../../utils/cn";
 import { Card } from "../../ui/card";
 import { EmptyState } from "../../ui/empty-state";
 import { Spinner } from "../../ui/spinner";
-import { PagePanelRoot } from "./page-panel-root";
+import { PagePanelRoot } from "./page-panel-layout";
+import type {
+  PageEmptyStateProps,
+  PageLoadingStateProps,
+} from "./page-panel-types";
 
 type ContentStatePlacement = "panel" | "inset" | "surface" | "workspace";
 
@@ -324,5 +323,48 @@ export function ContentState(props: ContentStateProps) {
     >
       <LoadingContent description={description} heading={heading} />
     </div>
+  );
+}
+
+export function PageEmptyState({
+  action,
+  children,
+  className,
+  description,
+  title,
+  variant = "panel",
+  ...props
+}: PageEmptyStateProps) {
+  return (
+    <ContentState
+      state="empty"
+      placement={variant}
+      className={className}
+      description={description}
+      action={action}
+      title={title}
+      {...props}
+    >
+      {children}
+    </ContentState>
+  );
+}
+
+export function PageLoadingState({
+  className,
+  description,
+  heading,
+  variant = "panel",
+  ...props
+}: PageLoadingStateProps) {
+  return (
+    <ContentState
+      state="loading"
+      placement={variant}
+      className={className}
+      description={description}
+      heading={heading}
+      {...props}
+    />
   );
 }

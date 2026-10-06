@@ -45,7 +45,7 @@ import {
   subscribeWidgetRegistry,
 } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
-import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
+import { WIDGET_UI_ACTION_EVENT } from "./types";
 
 export interface WidgetUiActionEventDetail {
   pluginId: string;

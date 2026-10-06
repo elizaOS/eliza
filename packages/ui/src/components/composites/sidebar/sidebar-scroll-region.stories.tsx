@@ -4,7 +4,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "../../ui/button";
-import { SidebarScrollRegion } from "./sidebar-scroll-region";
+import { SidebarScrollRegion } from "./sidebar-layout";
 
 const sampleItems = [
   "Design review",

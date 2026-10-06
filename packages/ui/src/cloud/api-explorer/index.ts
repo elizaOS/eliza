@@ -15,11 +15,11 @@
  *    those redirects to land.
  */
 
-import { lazy } from "react";
 import {
   type CloudRouteDef,
   registerCloudRoute,
 } from "../shell/cloud-route-registry";
+import ApiExplorerRoute from "./ApiExplorerPage";
 
 export {
   ApiExplorerSurface,
@@ -35,13 +35,10 @@ export {
 
 export const API_EXPLORER_ROUTE_PATH = "cloud/api-explorer";
 
-/** Lazy route element for the standalone API Explorer surface (code-split). */
-const ApiExplorerRouteLazy = lazy(() => import("./ApiExplorerPage"));
-
 /** Cloud-route definition for the standalone API Explorer surface. */
 export const apiExplorerCloudRoute: CloudRouteDef = {
   path: API_EXPLORER_ROUTE_PATH,
-  element: ApiExplorerRouteLazy,
+  element: ApiExplorerRoute,
   group: "cloud",
 };
 

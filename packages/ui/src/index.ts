@@ -149,8 +149,6 @@ export {
   requireRegisteredAgentSurface,
   subscribeAppShellPages,
 } from "./app-shell-registry.js";
-export { registerDetailExtension } from "./apps/detail-extension-registry.js";
-export type { AppDetailExtensionProps } from "./apps/detail-extension-types.js";
 export type { OverlayApp, OverlayAppContext } from "./apps/overlay-app-api.js";
 export {
   getOverlayApp,
@@ -256,6 +254,10 @@ export {
   isCharacterSectionPath,
 } from "./components/character/CharacterSectionNav.js";
 export {
+  TaskChoice,
+  type TaskChoiceMessages,
+} from "./components/chat/TaskChoice.js";
+export {
   CodingAgentSettingsSection,
   registerTaskCoordinatorSlots,
   type TaskCoordinatorCodingAgentControlChipProps,
@@ -282,15 +284,11 @@ export {
   type ElizaCloudTier,
 } from "./components/cockpit/cockpit-modes.js";
 export { DiffReviewPanel } from "./components/composites/DiffReviewPanel.js";
+export { PageLoadingState } from "./components/composites/page-panel/content-state.js";
 export { PagePanel } from "./components/composites/page-panel/index.js";
-export { PageLoadingState } from "./components/composites/page-panel/page-panel-loading.js";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor.js";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel.js";
 export { DesktopTabBar } from "./components/DesktopTabBar.js";
-export {
-  TaskChoice,
-  type TaskChoiceMessages,
-} from "./components/interactive-task/TaskChoice.js";
 export { AppsPageView } from "./components/pages/AppsPageView.js";
 export { LauncherSurface } from "./components/pages/LauncherSurface.js";
 export { PluginPageFrame } from "./components/pages/PluginPageFrame.js";
@@ -638,6 +636,7 @@ export {
   DEFAULT_BRANDING,
 } from "./config/branding-base.js";
 export { BrandingContext, useBranding } from "./config/branding-react.hooks.js";
+export { applyThemeToDocument, ELIZA_DEFAULT_THEME } from "./config/theme.js";
 export {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
@@ -670,6 +669,7 @@ export {
   useViewEvent,
   VIEW_EVENTS,
 } from "./events/index.js";
+export { emitViewEvent } from "./events/view-events.js";
 export {
   clearPendingRemoteFirstRun,
   completeRemoteAgentFirstRun,
@@ -1254,8 +1254,6 @@ export {
   setActiveSurfaceRealmScope,
 } from "./surface-realm-broker.js";
 export { shellHistory, shellLocalStorage } from "./surface-realm-channel.js";
-export { applyThemeToDocument } from "./themes/apply-theme.js";
-export { ELIZA_DEFAULT_THEME } from "./themes/presets.js";
 export {
   buildTutorialActionValue,
   setTutorialActionHandler,
@@ -1372,7 +1370,6 @@ export {
   loadVoiceBootstrap,
   loadWebAppsStudio,
 } from "./view-loaders.js";
-export { emitViewEvent } from "./views/view-event-bus.js";
 export {
   playCaptureSendCue,
   playCaptureStartCue,
