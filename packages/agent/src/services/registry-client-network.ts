@@ -246,6 +246,8 @@ export async function fetchFromNetwork(
   // Prevent an unhandled rejection if the generated registry wins the race and
   // we never await the index attempt; its failure is only relevant as a
   // fallback when the generated registry is absent.
+  // error-policy:J5 the fallback return below awaits the same promise; this
+  // observer only suppresses the rejection when the generated registry wins.
   indexResult.catch(() => {});
 
   const generated = await generatedResult;
