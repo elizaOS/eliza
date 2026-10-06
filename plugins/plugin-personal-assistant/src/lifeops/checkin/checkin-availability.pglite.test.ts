@@ -71,6 +71,52 @@ describe("check-in source availability and generation failures", () => {
     vi.unstubAllEnvs();
   });
 
+  it("binds Calendar source identity and times before rendering one owner-local agenda entry", async () => {
+    await db.exec(`
+      CREATE SCHEMA app_calendar;
+      CREATE TABLE app_calendar.life_calendar_events (
+        id text PRIMARY KEY, agent_id text, side text, title text,
+        start_at text, end_at text, status text, html_link text, updated_at text
+      );
+      INSERT INTO app_calendar.life_calendar_events VALUES (
+        'calendar-event', 'checkin-availability', 'owner', 'QA walkthrough',
+        '2026-10-06T18:00:00.000Z', '2026-10-06T18:15:00.000Z',
+        'confirmed', null, '2026-10-06T14:00:00.000Z'
+      );
+    `);
+    const report = await new CheckinService(runtime).runMorningCheckin({
+      now: new Date("2026-10-06T15:00:32.103Z"),
+      timezone: "America/Los_Angeles",
+    });
+    const item = report.briefingSections.find(
+      (section) => section.key === "calendar_changes",
+    )?.items[0];
+    expect(item?.calendarEvent).toEqual({
+      id: "calendar-event",
+      startAt: "2026-10-06T18:00:00.000Z",
+      endAt: "2026-10-06T18:15:00.000Z",
+      status: "confirmed",
+    });
+    expect(item?.detail).toBe(
+      "2026-10-06T18:00:00.000Z - 2026-10-06T18:15:00.000Z (confirmed)",
+    );
+    expect(report.summaryText.match(/QA walkthrough/g)).toHaveLength(1);
+    expect(report.summaryText).toContain(
+      "Oct 6, 2026, 11:00 AM – 11:15 AM PDT",
+    );
+    expect(report.summaryText).toContain("11:15 AM PDT");
+    expect(report.summaryText).toContain("added or updated");
+    expect(report.summaryText).not.toContain("confirmed");
+    expect(prompts).toHaveLength(0);
+    const stored = (
+      await db.query<{ payload_json: CheckinReport }>(
+        "SELECT payload_json FROM app_lifeops.life_checkin_reports WHERE id = $1",
+        [report.reportId],
+      )
+    ).rows[0].payload_json;
+    expect(stored.briefingSections).toEqual(report.briefingSections);
+  });
+
   it("keeps morning wins on their actual owner-local completion day despite refreshes", async () => {
     const now = new Date("2026-10-04T06:14:13.975Z");
     await db.exec(`

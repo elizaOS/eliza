@@ -41,6 +41,11 @@ lifetime. Storage failures return a generic error without credential logging.
 the same contract has a `main` entrypoint for JDK 21 with `org.json` on the classpath.
 Consumers should additionally test their real encrypted-store adapter and restart
 lifecycle. This transport does not authenticate a Cloud account by itself.
+The private `native-host/local-credential-client.mjs` exports primary and pending
+store clients (`createLocalCredentialStore`, `createLocalPendingCredentialStore`)
+using the same bounded, non-redirecting, non-retrying loopback transport. Pending
+operations address only the separate enrollment journal; the host retains token,
+encrypted-store identity and revocation policy.
 
 `LocalRuntimeHttp` supplies bounded JSON HTTP exchange with an absolute socket
 deadline and injected monotonic clock. It only connects to loopback; the host

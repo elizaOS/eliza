@@ -253,6 +253,129 @@ describe("listInboxAction", () => {
     });
   });
 
+  it("falls through to a live pull when the cache holds only read messages", async () => {
+    // The store keeps every ref a sweep ever handed it and never prunes read
+    // rows, so a warm all-read cache must not let the action claim an empty
+    // inbox while the connector holds new unread mail.
+    getDefaultMessageRefStore().saveMessages([
+      messageRef({
+        id: "read-1",
+        externalId: "read-external-1",
+        isRead: true,
+        receivedAtMs: 3_000,
+      }),
+    ]);
+    const adapter = new FixedListAdapter([
+      messageRef({
+        id: "live-unread",
+        externalId: "live-unread-external",
+        receivedAtMs: 9_000,
+      }),
+    ]);
+    await registerAdapter(adapter);
+
+    const result = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+      undefined,
+      { parameters: { sources: ["gmail"] } } as never,
+    );
+
+    expect(adapter.seenOptions).toHaveLength(1);
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      total: 1,
+      returned: 1,
+      messages: [{ id: "live-unread" }],
+    });
+  });
+
+  it("does not sweep again when a cold cache live pull is already all read", async () => {
+    const adapter = new FixedListAdapter([
+      messageRef({
+        id: "live-read",
+        externalId: "live-read-external",
+        isRead: true,
+      }),
+    ]);
+    await registerAdapter(adapter);
+
+    const result = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+    );
+
+    expect(adapter.seenOptions).toHaveLength(1);
+    expect(result).toMatchObject({
+      success: true,
+      text: "No unread messages across connected platforms.",
+      data: { total: 0, returned: 0, messages: [] },
+    });
+  });
+
+  it("claims no unread only after a live pull confirms it past an all-read cache", async () => {
+    getDefaultMessageRefStore().saveMessages([
+      messageRef({
+        id: "read-1",
+        externalId: "read-external-1",
+        isRead: true,
+      }),
+    ]);
+    const adapter = new FixedListAdapter([
+      messageRef({
+        id: "also-read",
+        externalId: "also-read-external",
+        isRead: true,
+      }),
+    ]);
+    await registerAdapter(adapter);
+
+    const result = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+    );
+
+    // The empty answer is live-verified: the adapter pull must have run.
+    expect(adapter.seenOptions).toHaveLength(1);
+    expect(result).toMatchObject({
+      success: true,
+      text: "No unread messages across connected platforms.",
+      data: { total: 0, returned: 0, messages: [] },
+    });
+  });
+
+  it("pulls once when every cached row is older than the requested window", async () => {
+    getDefaultMessageRefStore().saveMessages([
+      messageRef({ id: "old", externalId: "old", receivedAtMs: 1_000 }),
+    ]);
+    const adapter = new FixedListAdapter([
+      messageRef({ id: "fresh", externalId: "fresh", receivedAtMs: 9_000 }),
+    ]);
+    await registerAdapter(adapter);
+    const result = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+      undefined,
+      { parameters: { sinceMs: 5_000 } } as never,
+    );
+    expect(adapter.seenOptions).toHaveLength(1);
+    expect(adapter.seenOptions[0]?.sinceMs).toBe(5_000);
+    expect(result.data).toMatchObject({ messages: [{ id: "fresh" }] });
+  });
+
+  it("does not repeat a cold pull whose result contains only read messages", async () => {
+    const adapter = new FixedListAdapter([
+      messageRef({ id: "read", externalId: "read", isRead: true }),
+    ]);
+    await registerAdapter(adapter);
+    const result = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+    );
+    expect(adapter.seenOptions).toHaveLength(1);
+    expect(result.data).toMatchObject({ total: 0, returned: 0, messages: [] });
+  });
+
   it("returns the explicit empty-inbox result when no source has messages", async () => {
     const result = await listInboxAction.handler(
       createFakeRuntime(),

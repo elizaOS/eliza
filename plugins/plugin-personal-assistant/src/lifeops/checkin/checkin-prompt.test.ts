@@ -30,6 +30,210 @@ const baseReport = (
   ...over,
 });
 
+describe("morning Calendar presentation", () => {
+  const event = {
+    id: "calendar-event",
+    title: "QA walkthrough",
+    startAt: "2026-10-06T18:00:00.000Z",
+    endAt: "2026-10-06T18:15:00.000Z",
+    status: "confirmed",
+  };
+  const calendarItem = (calendarEvent = event) => ({
+    title: calendarEvent.title,
+    detail: `${calendarEvent.startAt} - ${calendarEvent.endAt} (${calendarEvent.status})`,
+    calendarEvent,
+    occurredAt: "2026-10-06T14:00:00.000Z",
+    href: null,
+    reason:
+      calendarEvent.status === "cancelled"
+        ? "removed/cancelled"
+        : "added or updated",
+  });
+  const section = {
+    key: "calendar_changes" as const,
+    title: "Calendar and schedule changes",
+    summary:
+      "1 event on today's calendar; 1 calendar item added or updated in the last 24h.",
+    items: [calendarItem()],
+    error: null,
+  };
+
+  it.each([
+    ["America/Los_Angeles", "Oct 6, 2026, 11:00 AM – 11:15 AM PDT"],
+    ["Asia/Tokyo", "Oct 7, 2026, 3:00 AM – 3:15 AM GMT+9"],
+    [
+      "Asia/Kathmandu",
+      "Oct 6, 2026, 11:45 PM – Oct 7, 2026, 12:00 AM GMT+5:45",
+    ],
+  ])("renders the captured event once in %s", (timezone, range) => {
+    const report = baseReport({
+      generatedAt: "2026-10-06T15:00:32.103Z",
+      timezone,
+      todaysMeetings: [event],
+      briefingSections: [section],
+    });
+    const original = structuredClone(report);
+    const text = renderMorningCheckinReport(report);
+    expect(text.match(/QA walkthrough/g)).toHaveLength(1);
+    expect(text).toContain(range);
+    expect(text).toContain("added or updated");
+    expect(text).not.toContain("confirmed");
+    expect(text).toContain(section.summary);
+    expect(text).not.toContain("2026-10-06T18:");
+    expect(report).toEqual(original);
+  });
+
+  it("keeps same-title events and changed times/statuses distinct across DST", () => {
+    const first = {
+      ...event,
+      startAt: "2026-11-01T05:30:00.000Z",
+      endAt: "2026-11-01T05:45:00.000Z",
+    };
+    const second = {
+      ...first,
+      id: "another-calendar-event",
+      startAt: "2026-11-01T06:30:00.000Z",
+      endAt: "2026-11-01T06:45:00.000Z",
+    };
+    const rescheduled = {
+      ...first,
+      startAt: "2026-11-01T07:30:00.000Z",
+      endAt: "2026-11-01T07:45:00.000Z",
+    };
+    const cancelled = { ...first, status: "cancelled" };
+    const text = renderMorningCheckinReport(
+      baseReport({
+        generatedAt: "2026-11-01T04:00:00.000Z",
+        timezone: "America/New_York",
+        todaysMeetings: [first, second],
+        briefingSections: [
+          {
+            ...section,
+            items: [
+              calendarItem(first),
+              calendarItem(second),
+              calendarItem(rescheduled),
+              calendarItem(cancelled),
+            ],
+          },
+        ],
+      }),
+    );
+    expect(text.match(/QA walkthrough/g)).toHaveLength(4);
+    expect(text).toContain("1:30 AM – 1:45 AM EDT");
+    expect(text).toContain("1:30 AM – 1:45 AM EST");
+    expect(text).toContain("2:30 AM – 2:45 AM EST");
+    expect(text).toContain("cancelled");
+    expect(text).toContain("removed/cancelled");
+  });
+
+  it("does not hide changes whose agenda row was outside the displayed highlights", () => {
+    const meetings = Array.from({ length: 4 }, (_, index) => ({
+      ...event,
+      id: `calendar-${index}`,
+      title: `Appointment ${index}`,
+    }));
+    const text = renderMorningCheckinReport(
+      baseReport({
+        timezone: "America/Los_Angeles",
+        todaysMeetings: meetings,
+        briefingSections: [{ ...section, items: meetings.map(calendarItem) }],
+      }),
+    );
+    expect(text).toContain("1 more items.");
+    expect(text).toContain("Appointment 3");
+    for (const meeting of meetings)
+      expect(text.split(meeting.title)).toHaveLength(2);
+  });
+
+  it("omits routine status labels while retaining tentative status and raw Calendar facts", () => {
+    const tentative = { ...event, status: "tentative" };
+    const report = baseReport({
+      timezone: "America/Los_Angeles",
+      todaysMeetings: [tentative],
+      briefingSections: [
+        {
+          ...section,
+          items: [{ ...calendarItem(tentative), reason: "on schedule" }],
+        },
+      ],
+    });
+    const original = structuredClone(report);
+    const text = renderMorningCheckinReport(report);
+    expect(text).toContain("(tentative)");
+    expect(text).not.toContain("on schedule");
+    expect(report).toEqual(original);
+  });
+
+  it("keeps future changes when today's Calendar is empty and discloses source failures", () => {
+    const future = {
+      ...event,
+      title: "Tomorrow's appointment",
+      startAt: "2026-10-07T18:00:00.000Z",
+      endAt: "2026-10-07T18:15:00.000Z",
+    };
+    const report = baseReport({
+      timezone: "America/Los_Angeles",
+      briefingSections: [{ ...section, items: [calendarItem(future)] }],
+    });
+    expect(renderMorningCheckinReport(report)).toContain(
+      "Tomorrow's appointment",
+    );
+    expect(renderMorningCheckinReport(report)).toContain(
+      "Oct 7, 2026, 11:00 AM – 11:15 AM PDT",
+    );
+    const failed = renderMorningCheckinReport({
+      ...report,
+      collectorErrors: {
+        ...report.collectorErrors,
+        todaysMeetings: "Calendar unavailable",
+      },
+      briefingSections: [
+        { ...section, items: [], error: "Calendar unavailable" },
+      ],
+    });
+    expect(failed).toContain(
+      "Meetings today, Calendar and schedule changes unavailable",
+    );
+    expect(failed).not.toContain("No Calendar events");
+    const partial = renderMorningCheckinReport(
+      baseReport({
+        timezone: "America/Los_Angeles",
+        todaysMeetings: [event],
+        briefingSections: [
+          {
+            ...section,
+            coverage: "partial",
+            error: "One calendar couldn't be checked",
+          },
+        ],
+      }),
+    );
+    expect(partial.match(/QA walkthrough/g)).toHaveLength(1);
+    expect(partial).toContain("Some Calendar information unavailable");
+    expect(partial).not.toContain("Gmail");
+  });
+
+  it("renders malformed times without failing and retains legacy detail without guessing identity", () => {
+    const invalid = { ...event, startAt: "not a timestamp", endAt: "invalid" };
+    const report = baseReport({
+      timezone: "America/Los_Angeles",
+      todaysMeetings: [invalid],
+      briefingSections: [{ ...section, items: [calendarItem(invalid)] }],
+    });
+    expect(renderMorningCheckinReport(report)).toContain("time unavailable");
+    const { calendarEvent: _binding, ...legacy } = calendarItem();
+    const legacyReport = baseReport({
+      todaysMeetings: [event],
+      briefingSections: [{ ...section, items: [legacy] }],
+    });
+    const text = renderMorningCheckinReport(legacyReport);
+    expect(text).toContain("UTC");
+    expect(text).toContain(legacy.detail);
+    expect(legacyReport.briefingSections[0].items[0]).toEqual(legacy);
+  });
+});
+
 describe("buildCheckinSummaryPrompt", () => {
   it("marks long display excerpts while preserving complete source items", () => {
     const detail = "😀".repeat(500);

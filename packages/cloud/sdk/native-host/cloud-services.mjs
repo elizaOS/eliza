@@ -11,6 +11,164 @@ import { createSpeechStreamSessions } from "./timed-speech.mjs";
 
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
+// Renderer-safe invoice facts. Merchant metadata and provider identifiers stay private.
+function invoiceProjection(value, id) {
+  if (
+    !value ||
+    value.id !== id ||
+    !["draft", "open", "paid", "void", "uncollectible"].includes(value.status)
+  )
+    throw fail("Invoice details are unavailable.", 502);
+  const currency =
+    typeof value.currency === "string" ? value.currency.toUpperCase() : "";
+  if (!Intl.supportedValuesOf("currency").includes(currency))
+    throw fail("Invoice currency is unavailable.", 502);
+  const digits = new Intl.NumberFormat("en", {
+    style: "currency",
+    currency,
+  }).resolvedOptions().maximumFractionDigits;
+  const amount = (input) => {
+    // Legacy APIs return binary floating-point values. Above this conservative
+    // ceiling adjacent decimal minor units may round to the same number before
+    // this projection receives them. Decimal strings retain the full safe-unit
+    // range checked below; do not present a guessed cent from a large number.
+    if (
+      typeof input === "number" &&
+      digits > 0 &&
+      input > Number.MAX_SAFE_INTEGER / (2 * 10 ** digits)
+    )
+      throw fail("Invoice numeric amount exceeds exact precision.", 502);
+    const source =
+      typeof input === "number" && Number.isFinite(input)
+        ? String(input)
+        : input;
+    if (
+      typeof source !== "string" ||
+      !/^(0|[1-9][0-9]{0,14})(\.[0-9]{1,4})?$/.test(source)
+    )
+      throw fail("Invoice amount is unavailable.", 502);
+    const [whole, fraction = ""] = source.split(".");
+    if (fraction.length > digits && /[1-9]/.test(fraction.slice(digits)))
+      throw fail("Invoice amount has unsupported precision.", 502);
+    const units =
+      BigInt(whole) * 10n ** BigInt(digits) +
+      BigInt(fraction.slice(0, digits).padEnd(digits, "0") || "0");
+    if (units > BigInt(Number.MAX_SAFE_INTEGER))
+      throw fail("Invoice amount is too large.", 502);
+    return digits
+      ? `${whole}.${fraction.slice(0, digits).padEnd(digits, "0")}`
+      : whole;
+  };
+  const date = (input, required = false) => {
+    if (input == null && !required) return null;
+    if (
+      typeof input !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(input) ||
+      !Number.isFinite(Date.parse(input)) ||
+      new Date(input).toISOString().slice(0, 19) !== input.slice(0, 19)
+    )
+      throw fail("Invoice date is unavailable.", 502);
+    return new Date(input).toISOString();
+  };
+  const invoiceNumber =
+    value.invoiceNumber == null ? null : value.invoiceNumber;
+  if (
+    invoiceNumber !== null &&
+    (typeof invoiceNumber !== "string" ||
+      !invoiceNumber.trim() ||
+      invoiceNumber.length > 128 ||
+      [...invoiceNumber].some(
+        (char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,
+      ))
+  )
+    throw fail("Invoice number is unavailable.", 502);
+  let merchantUrl = null;
+  if (
+    typeof value.hostedInvoiceUrl === "string" &&
+    value.hostedInvoiceUrl.length <= 4096
+  ) {
+    try {
+      const u = new URL(value.hostedInvoiceUrl);
+      if (
+        u.origin === "https://invoice.stripe.com" &&
+        u.pathname.startsWith("/i/") &&
+        !u.username &&
+        !u.password &&
+        !u.hash
+      )
+        merchantUrl = u.href;
+    } catch {}
+  }
+  let pdfUrl = null;
+  if (typeof value.invoicePdf === "string" && value.invoicePdf.length <= 4096) {
+    try {
+      const u = new URL(value.invoicePdf);
+      if (
+        u.origin === "https://pay.stripe.com" &&
+        /^\/invoice\/acct_[A-Za-z0-9]+\/[A-Za-z0-9_-]+\/pdf$/.test(
+          u.pathname,
+        ) &&
+        !u.username &&
+        !u.password &&
+        !u.hash
+      )
+        pdfUrl = u.href;
+    } catch {}
+  }
+  const amountDue = amount(value.amountDue),
+    amountPaid = amount(value.amountPaid);
+  // Only the supported paid USD auto-top-up receipt, bound to this invoice.
+  // Missing/malformed optional lines must not hide otherwise valid invoice facts.
+  let chargeBreakdown = null;
+  const breakdown = value.chargeBreakdown;
+  if (
+    value.invoiceType === "auto_top_up" &&
+    value.status === "paid" &&
+    currency === "USD" &&
+    breakdown &&
+    typeof breakdown === "object" &&
+    !Array.isArray(breakdown)
+  ) {
+    const keys = [
+      "creditedBaseUsd",
+      "affiliateMarkupUsd",
+      "platformFeeUsd",
+      "totalChargeUsd",
+    ];
+    const cents = keys.map((key) => {
+      const v = breakdown[key];
+      if (typeof v !== "string" || !/^(0|[1-9][0-9]{0,13})\.[0-9]{2}$/.test(v))
+        return null;
+      const n = BigInt(v.replace(".", ""));
+      return n <= BigInt(Number.MAX_SAFE_INTEGER) ? n : null;
+    });
+    if (
+      cents.every((n) => n !== null) &&
+      cents[0] + cents[1] + cents[2] === cents[3] &&
+      breakdown.totalChargeUsd === amountPaid &&
+      amountPaid === amountDue
+    ) {
+      chargeBreakdown = Object.fromEntries(
+        keys.map((key) => [key, breakdown[key]]),
+      );
+    }
+  }
+  return {
+    id,
+    invoiceNumber,
+    status: value.status,
+    currency,
+    amountDue,
+    amountPaid,
+    createdAt: date(value.createdAt, true),
+    dueDate: date(value.dueDate),
+    paidAt: date(value.paidAt),
+    merchantUrl,
+    pdfUrl,
+    chargeBreakdown,
+  };
+}
+
 const CHECKOUT_SESSION_ID = /^cs_(live|test)_[A-Za-z0-9]+$/;
 function send(res, status, value) {
   res.writeHead(status, {
@@ -1250,6 +1408,24 @@ export function createCloudRoutes({
       const key = await usableCredential();
       current(credentialEpoch);
       if (!key) throw fail(message("signInToElizaCloudFirst"), 401);
+      const invoiceDetail = path.match(
+        /^\/cloud\/account\/invoices\/([A-Za-z0-9_-]{1,128})$/,
+      );
+      if (method === "GET" && invoiceDetail) {
+        if (url.search)
+          throw fail("Invoice query parameters are not supported");
+        const id = invoiceDetail[1];
+        const value = await parse(
+          await request(`/api/invoices/${id}`, {
+            key,
+            signal,
+            authorityGeneration: credentialEpoch,
+          }),
+        );
+        current(credentialEpoch);
+        send(res, 200, { invoice: invoiceProjection(value.invoice, id) });
+        return true;
+      }
       if (method === "GET" && path === "/cloud/account/invoices") {
         const value = await parse(
           await request("/api/invoices/list", {

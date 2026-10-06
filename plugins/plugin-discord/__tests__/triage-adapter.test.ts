@@ -150,8 +150,12 @@ describe("mapDiscordMemoryToRef", () => {
 
 describe("DiscordTriageAdapter", () => {
 	it("stops paging a channel whose reads ignore the before cursor", async () => {
-		const page = ["3", "2", "1"].map((messageId) =>
-			discordMemory({ messageId, channelId: "555", entityId: AGENT_ID }),
+		const page = Array.from({ length: 100 }, (_, index) =>
+			discordMemory({
+				messageId: String(1_000 - index),
+				channelId: "555",
+				entityId: AGENT_ID,
+			}),
 		);
 		let calls = 0;
 		const service = {
@@ -164,28 +168,24 @@ describe("DiscordTriageAdapter", () => {
 
 		const refs = await new DiscordTriageAdapter().listMessages(
 			createRuntime(service),
-			{
-				channelIds: ["555"],
-				limit: 3,
-			},
+			{ channelIds: ["555"], limit: 3 },
 		);
 
 		expect(refs).toEqual([]);
 		expect(calls).toBe(2);
 	});
 
-	it("pages past the agent's own replies to fill the requested limit", async () => {
-		// Newest first, as Discord returns them: ids 10..1, where the agent wrote
-		// 10, 9, 8, 6 and 5.
-		const agentIds = new Set(["10", "9", "8", "6", "5"]);
-		const history = Array.from({ length: 10 }, (_, index) => {
-			const messageId = String(10 - index);
+	it("pages past the agent's own replies in full history pages", async () => {
+		// Newest first, as Discord returns them: ids 250..1, where the agent
+		// wrote everything newer than id 20.
+		const history = Array.from({ length: 250 }, (_, index) => {
+			const id = 250 - index;
 			return discordMemory({
-				messageId,
+				messageId: String(id),
 				channelId: "555",
 				serverId: "777",
-				entityId: agentIds.has(messageId) ? AGENT_ID : USER_ID,
-				createdAt: 1_000 + Number(messageId),
+				entityId: id > 20 ? AGENT_ID : USER_ID,
+				createdAt: 1_000 + id,
 			});
 		});
 		const fetches: Array<{ limit?: number; before?: string }> = [];
@@ -213,17 +213,14 @@ describe("DiscordTriageAdapter", () => {
 
 		const refs = await new DiscordTriageAdapter().listMessages(
 			createRuntime(service),
-			{
-				channelIds: ["555"],
-				limit: 3,
-			},
+			{ channelIds: ["555"], limit: 3 },
 		);
 
-		expect(refs.map((ref) => ref.externalId)).toEqual(["7", "4", "3"]);
+		expect(refs.map((ref) => ref.externalId)).toEqual(["20", "19", "18"]);
 		expect(fetches).toEqual([
-			{ limit: 3, before: undefined },
-			{ limit: 3, before: "8" },
-			{ limit: 3, before: "5" },
+			{ limit: 100, before: undefined },
+			{ limit: 100, before: "151" },
+			{ limit: 100, before: "51" },
 		]);
 	});
 

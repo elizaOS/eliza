@@ -495,6 +495,30 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(data.degraded).toHaveLength(1);
     });
 
+    it("a platform with no registered inbox source degrades instead of reading as a clean empty feed", async () => {
+      // The default whatsapp fetcher drives the real TriageService. No
+      // adapter registers a "whatsapp" inbox source in this deployment, so
+      // the read must surface that coverage gap through `degraded` rather
+      // than masquerade as a checked-and-empty channel.
+      const runtime = {
+        ...makeRuntime(),
+        getService: () => null,
+      } as unknown as IAgentRuntime;
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "list",
+        platforms: ["whatsapp"],
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        items: unknown[];
+        degraded: Array<{ platform: string; error: string }>;
+      };
+      expect(data.items).toEqual([]);
+      expect(data.degraded).toHaveLength(1);
+      expect(data.degraded[0]?.platform).toBe("whatsapp");
+      expect(result.text).toContain("could not check whatsapp");
+    });
+
     it("a healthy fan-out reports an empty degraded list", async () => {
       setInboxFetchers({
         gmail: async () => [makeItem({ platform: "gmail", id: "g-1" })],
@@ -994,6 +1018,41 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
         "inbox archive entry-42",
       ]);
       expect(block.options.map((o) => o.label)).toEqual(["Send", "Discard"]);
+    });
+
+    it("keeps a triage entry created at epoch as received at epoch", async () => {
+      registerFakeGmailAdapter();
+      const { runtime: dbRuntime } = makeDbRuntime((sql) =>
+        sql.includes("WHERE id =")
+          ? [
+              makeTriageRow({
+                id: "entry-epoch",
+                source_message_id: "gmail-epoch",
+                created_at: "1970-01-01T00:00:00.000Z",
+              }),
+            ]
+          : [],
+      );
+      const { runtime, turn } = withOwnerConsent(dbRuntime);
+      const result = await inboxAction.handler(
+        runtime,
+        turn("reply to alice that friday works"),
+        undefined,
+        {
+          parameters: {
+            subaction: "reply",
+            entryId: "entry-epoch",
+            body: "Yes, Friday works.",
+          },
+        } as unknown as HandlerOptions,
+        async () => [],
+      );
+
+      expect(result.success).toBe(true);
+      expect(
+        getDefaultTriageService().getStore().getMessage("gmail-epoch")
+          ?.receivedAtMs,
+      ).toBe(0);
     });
 
     /**

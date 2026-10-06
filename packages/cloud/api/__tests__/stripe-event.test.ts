@@ -15,6 +15,7 @@ const getTransactionByStripePaymentIntent = mock(
     organization_id: string;
     amount: string;
     type?: string;
+    metadata?: Record<string, unknown>;
   } | null> => null,
 );
 const addCredits = mock(async () => ({ newBalance: 10 }));
@@ -839,6 +840,44 @@ describe("processStripeEvent reversal no-ops and retry classification", () => {
       ),
     ).toBe("ack");
     expect(clawbackCredits).not.toHaveBeenCalled();
+  });
+
+  test("claws back an affiliate auto top-up refund in proportion to the fee-inclusive charge", async () => {
+    getTransactionByStripePaymentIntent.mockResolvedValueOnce({
+      id: "tx-auto-top-up",
+      organization_id: "org-1",
+      amount: "10.000000",
+      type: "credit",
+      metadata: {
+        type: "auto_top_up",
+        auto_top_up_attempt_id: "attempt-1",
+        base_amount: "10.00",
+        total_charged: "15.00",
+        platform_fee_amount: "2.00",
+        affiliate_fee_amount: "3.00",
+        fees_included: "true",
+      },
+    });
+    expect(
+      await processStripeEvent(
+        delivery("charge.refunded", {
+          id: "ch_auto_top_up",
+          invoice: null,
+          amount: 1500,
+          amount_refunded: 750,
+          payment_intent: "pi_auto_top_up",
+        }),
+      ),
+    ).toBe("ack");
+    expect(clawbackCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        amount: 5,
+        cumulativeTargetAmount: 5,
+        originalPaymentIntentId: "pi_auto_top_up",
+        stripePaymentIntentId: "stripe:refund:ch_auto_top_up:750",
+      }),
+    );
   });
 
   test("retries funds_reinstated when the matching clawback row is not a clawback", async () => {

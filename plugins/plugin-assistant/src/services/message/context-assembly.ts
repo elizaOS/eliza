@@ -55,7 +55,7 @@ export function buildCurrentTurnBoundary({
   hasOriginalReferences?: boolean;
 }): string {
   const references = hasOriginalReferences
-    ? "Read missing originals through advertised history references; use history:all when their location is unknown. Omitted evidence is not absent evidence."
+    ? "For a specific saved-fact lookup, first read an advertised stored-memory reference, a known history:hN, or a literal search of the fact's subject. Inspect matched originals and their corrections. Use history:all when targeted reads leave dependencies unresolved, for exhaustive coverage, or before claiming something was never discussed. Omitted evidence is not absent evidence."
     : hasMemoryRecallSurface
       ? "Use authorized memory retrieval for missing originals or requested stored-record searches and totals."
       : "If supplied evidence is insufficient, state the gap; do not invent a history search.";

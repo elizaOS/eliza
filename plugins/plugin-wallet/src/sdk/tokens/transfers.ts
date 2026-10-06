@@ -185,16 +185,20 @@ export async function getTokenBalance(
       abi: ERC20_ABI,
       functionName: "decimals",
     }) as Promise<number>,
-    ctx.publicClient.readContract({
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: "symbol",
-    }) as Promise<string>,
-    ctx.publicClient.readContract({
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: "name",
-    }) as Promise<string>,
+    ctx.publicClient
+      .readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "symbol",
+      })
+      .catch(() => "UNKNOWN") as Promise<string>,
+    ctx.publicClient
+      .readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "name",
+      })
+      .catch(() => "Unknown token") as Promise<string>,
   ]);
 
   const humanBalance = toHuman(rawBalance, decimals);

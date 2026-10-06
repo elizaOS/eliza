@@ -48,6 +48,18 @@ source state. Hosted invoice links are temporary private payment UI responses:
 do not persist, log or add them to agent/model context. Returning from payment
 requires fresh command/subscription observation, not a success-URL assumption.
 
+Native `GET /cloud/account/invoices/:id` exposes a read-only account-bound invoice
+projection, with no query parameters. The Cloud API owns organization authorization;
+the native host rejects mismatched IDs, invalid currency, imprecise or unsafe amounts,
+and invalid dates. Fractional-currency numbers above a conservative precision
+ceiling are rejected because a legacy API may already have rounded them; decimal
+strings preserve the full safe minor-unit range. Private provider IDs and metadata are omitted. Approved Stripe
+invoice/PDF links are private ephemeral UI data: do not log, persist or include them
+in agent context. Unsupported links become null. Optional fee lines appear only for
+paid USD auto-top-up receipts whose exact sum equals both due and paid totals;
+malformed optional lines do not suppress valid invoice facts. Hosts own presentation
+and explicit link opening. This route does not pay an invoice or change allowances.
+
 Service-only consumers set `hostPolicy.accountBilling: false` to exclude billing
 routes. Enrollment requires its factory when a pending credential store is supplied.
 Explicit `providerDefaultVoice: true` permits omitted voice IDs; `speechLanguage: null`

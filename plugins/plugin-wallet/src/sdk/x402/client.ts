@@ -22,6 +22,7 @@ import { X402BudgetTracker } from "./budget.js";
 import { resolveAssetAddress } from "./multi-asset.js";
 import type {
   X402ClientConfig,
+  X402PaymentAttempt,
   X402PaymentPayload,
   X402PaymentRequired,
   X402PaymentRequirements,
@@ -99,18 +100,26 @@ export class X402Client {
       throw new X402BudgetExceededError(reservation.reason, urlStr, selected);
     }
     const { reservationId } = reservation;
+    // One id per attempt, passed to every payment callback
+    const attempt: X402PaymentAttempt = { paymentId: crypto.randomUUID() };
 
     let paymentResult: { txHash: Hash; token: Address };
     let transferAttempted = false;
+    let approved = false;
     try {
       // Callback check
       if (this.config.onBeforePayment) {
-        const proceed = await this.config.onBeforePayment(selected, urlStr);
+        const proceed = await this.config.onBeforePayment(
+          selected,
+          urlStr,
+          attempt,
+        );
         if (!proceed) {
           this.budget.releaseReservation(reservationId);
           return response;
         }
       }
+      approved = true;
 
       // Execute payment
       paymentResult = await this.executePayment(selected, () => {
@@ -120,6 +129,16 @@ export class X402Client {
       // A transport/receipt error cannot prove that a submitted transfer failed.
       // Retain the hold after either the fee or principal transfer was attempted.
       if (!transferAttempted) this.budget.releaseReservation(reservationId);
+      if (approved) {
+        try {
+          this.config.onPaymentFailed?.(selected, urlStr, error, {
+            ...attempt,
+            transferAttempted,
+          });
+        } catch {
+          // A failing callback must not hide the payment error
+        }
+      }
       throw error;
     }
     const resolvedToken = paymentResult.token;
@@ -149,7 +168,7 @@ export class X402Client {
       success: true,
     };
     this.budget.recordPayment(log, reservationId);
-    this.config.onPaymentComplete?.(log);
+    this.config.onPaymentComplete?.(log, attempt);
 
     // Retry request with payment proof
     const retryHeaders = new Headers(init?.headers);

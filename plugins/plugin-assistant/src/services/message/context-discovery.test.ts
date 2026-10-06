@@ -11,6 +11,36 @@ import {
 } from "./context-discovery.ts";
 
 describe("native context reads", () => {
+  it("guides specific recall while accepting an advertised full-history request unchanged", () => {
+    const references = new Set(["history:search:demo", "history:all"]);
+    const projected = withAvailableContextRequests(schema(), references);
+    const tool = createContextReadTool(projected);
+    expect(tool?.description).toContain(
+      "For a specific saved-fact lookup, first",
+    );
+    expect(tool?.description).toContain(
+      "when targeted reads leave dependencies unresolved",
+    );
+    const requested = ["history:search:demo", "history:all"];
+    expect(
+      readContextRequests({ contextRequests: requested }, references),
+    ).toEqual(requested);
+    expect(
+      extractContextRead(
+        {
+          toolCalls: [
+            {
+              id: "read-full-history",
+              name: "READ_CONTEXT",
+              arguments: { contextRequests: requested },
+            },
+          ],
+        } as GenerateTextResult,
+        true,
+      )?.contextRequests,
+    ).toEqual(requested);
+  });
+
   it("preserves the existing response schema and only offers nonempty legal reads", () => {
     const original = withAvailableContextRequests(schema(), new Set(["FACTS"]));
     const before = structuredClone(original);

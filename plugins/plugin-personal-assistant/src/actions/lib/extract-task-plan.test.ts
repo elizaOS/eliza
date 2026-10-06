@@ -102,6 +102,45 @@ describe("textStatesExplicitSchedule", () => {
 });
 
 describe("extractTaskCreatePlanWithLlm datetime fields", () => {
+  it.each([false, true])(
+    "requests JSON-only task plans for legacy history (repair=%s)",
+    async (repair) => {
+      let attempts = 0;
+      const runtime = makeRuntime(() => {
+        attempts++;
+        return repair && attempts === 1
+          ? "[OWNER_LIFE title=Call mom]"
+          : JSON.stringify({ ...BASE_PLAN_JSON, dueInMinutes: 2 });
+      });
+      const plan = await extractTaskCreatePlanWithLlm({
+        runtime,
+        intent: "Remind me in two minutes to call mom",
+        state: undefined,
+      });
+      expect(plan).toMatchObject({ mode: "create", dueInMinutes: 2 });
+      expect(runtime.useModel).toHaveBeenCalledTimes(repair ? 2 : 1);
+      for (const [modelType, params] of vi.mocked(runtime.useModel).mock
+        .calls) {
+        expect(modelType).toBe("TEXT_LARGE");
+        expect(params).toHaveProperty("responseFormat", {
+          type: "json_object",
+        });
+        expect(params).not.toHaveProperty("responseSchema");
+      }
+    },
+  );
+
+  it("keeps invalid JSON plans within the existing repair allowance", async () => {
+    const runtime = makeRuntime(() => "[OWNER_LIFE]");
+    const plan = await extractTaskCreatePlanWithLlm({
+      runtime,
+      intent: "Remind me in two minutes to call mom",
+      state: undefined,
+    });
+    expect(plan).toMatchObject({ mode: "respond", title: null });
+    expect(runtime.useModel).toHaveBeenCalledTimes(2);
+  });
+
   it("extracts the exact flexible-quota target, work unit, and check-in policy intent", async () => {
     const runtime = makeRuntime(() =>
       JSON.stringify({

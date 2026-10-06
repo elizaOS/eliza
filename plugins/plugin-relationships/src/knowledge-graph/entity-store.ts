@@ -306,6 +306,25 @@ export class EntityStore {
   async get(entityId: string): Promise<Entity | null> {
     return this.operation(() => this.getOperation(entityId));
   }
+  /**
+   * Read, change and write one entity in a single store operation, so a
+   * concurrent identity or interaction write between the read and the write is
+   * not overwritten by a stale copy. Returns null when the entity is absent.
+   */
+  async patch(
+    entityId: string,
+    mutate: (existing: Entity) => Omit<
+      Entity,
+      "entityId" | "createdAt" | "updatedAt"
+    > & {
+      entityId?: string;
+    },
+  ): Promise<Entity | null> {
+    return this.operation(async () => {
+      const existing = await this.getOperation(entityId);
+      return existing ? this.upsertInternal(mutate(existing)) : null;
+    });
+  }
   private async getOperation(entityId: string): Promise<Entity | null> {
     if (this.records) return this.records.getEntity(entityId);
     const rows = await executeRawSql(

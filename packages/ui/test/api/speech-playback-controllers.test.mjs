@@ -261,3 +261,237 @@ test("settlement observer owns errors and suppresses cancelled operations", asyn
   assert.equal(results.at(-1), null);
   assert.equal(good.controller.pending, false);
 });
+
+function progressive(hook) {
+  const streams = [],
+    players = [],
+    states = [];
+  const controller = new SegmentedSpeechPlayback({
+    segments: (text) => [text],
+    changed: (state) => states.push(state),
+    attach: (_player, text, callbacks) => {
+      const load = deferred();
+      const stream = { text, callbacks, load, disposed: 0 };
+      streams.push(stream);
+      hook?.(stream, controller);
+      return {
+        loaded: load.promise,
+        dispose: () => {
+          stream.disposed++;
+        },
+      };
+    },
+    environment: {
+      createUrl: () => {
+        throw Error("stream owns URL");
+      },
+      revokeUrl: () => {
+        throw Error("stream owns URL");
+      },
+      audio: () => {
+        const player = {
+          currentTime: 0,
+          paused: true,
+          plays: 0,
+          pauses: 0,
+          async play() {
+            this.plays++;
+            this.paused = false;
+          },
+          pause() {
+            this.pauses++;
+            this.paused = true;
+          },
+        };
+        players.push(player);
+        return player;
+      },
+    },
+  });
+  return { controller, streams, players, states };
+}
+const aligned = (text) => ({
+  alignment: {
+    characters: [...text],
+    characterStartTimesSeconds: [...text].map((_, i) => i / 10),
+    characterEndTimesSeconds: [...text].map((_, i) => (i + 1) / 10),
+  },
+});
+test("progressive playback starts before EOF, compensates only acknowledged speed and retains exact captions", async () => {
+  const f = progressive();
+  f.controller.setRate(0.8);
+  const run = f.controller.speak("Hello, world.");
+  const s = f.streams[0],
+    p = f.players[0];
+  s.callbacks.onFrame(aligned("Hello, world."));
+  s.callbacks.onReady(0.8);
+  await tick();
+  assert.equal(p.plays, 1);
+  assert.equal(p.playbackRate, 1);
+  assert.equal(f.controller.pending, true);
+  assert.equal(f.states.at(-1).caption, "Hello, world.");
+  assert.deepEqual(f.states.at(-1).word, {
+    from: 0,
+    to: 6,
+    start: 0,
+    end: 0.6,
+  });
+  p.onpause();
+  assert.equal(f.states.at(-1).word, null);
+  p.onplaying();
+  assert.equal(f.states.at(-1).word.from, 0);
+  f.controller.setRate(1.2);
+  assert.equal(p.playbackRate, 1.2 / 0.8);
+  p.onwaiting();
+  assert.equal(f.states.at(-1).word, null);
+  p.currentTime = 0.8;
+  s.load.resolve();
+  await tick();
+  p.onplaying();
+  assert.deepEqual(f.states.at(-1).word, {
+    from: 7,
+    to: 13,
+    start: 0.7,
+    end: 1.3,
+  });
+  p.onseeking();
+  p.currentTime = 0.1;
+  p.onseeked();
+  assert.equal(f.states.at(-1).word.from, 0);
+  p.onended();
+  await run;
+  assert.equal(s.disposed, 1);
+  assert.equal(p.ontimeupdate, null);
+});
+test("media ending before EOF cannot hide late stream failure", async () => {
+  const f = progressive();
+  const results = [];
+  const run = f.controller.speak("Hello.", (error) => results.push(error));
+  const s = f.streams[0],
+    p = f.players[0];
+  s.callbacks.onReady(null);
+  await tick();
+  p.onended();
+  await tick();
+  assert.equal(f.controller.pending, true);
+  assert.deepEqual(results, []);
+  s.load.reject(Error("truncated"));
+  await run;
+  assert.equal(results[0].cause.message, "truncated");
+  assert.equal(s.disposed, 1);
+});
+test("progressive stop fences opening and playback callbacks and replay owns a fresh attachment", async () => {
+  for (const ready of [false, true]) {
+    const f = progressive();
+    const first = f.controller.speak("Hello.");
+    const s = f.streams[0],
+      p = f.players[0];
+    if (ready) s.callbacks.onReady(null);
+    const latePlaying = p.onplaying;
+    f.controller.stop();
+    await first;
+    assert.equal(s.disposed, 1);
+    const replay = f.controller.speak("Hello.");
+    s.callbacks.onReady(2);
+    s.callbacks.onFrame(aligned("Hello."));
+    latePlaying();
+    s.load.reject(Error("cancelled"));
+    await tick();
+    assert.equal(f.states.at(-1).phase, "preparing");
+    assert.equal(f.controller.pending, true);
+    assert.equal(f.players[1].playbackRate, 1);
+    const next = f.streams[1];
+    next.callbacks.onReady(null);
+    next.load.resolve();
+    await tick();
+    assert.equal(f.states.at(-1).word, null);
+    f.players[1].onended();
+    await replay;
+    assert.equal(next.disposed, 1);
+  }
+});
+test("synchronous attachment cancellation disposes the returned stream and consumes rejection", async () => {
+  const f = progressive((s, controller) => {
+    controller.stop();
+    s.load.reject(Error("opening cancelled"));
+  });
+  await f.controller.speak("Hello.");
+  await tick();
+  assert.equal(f.streams[0].disposed, 1);
+  assert.equal(f.controller.pending, false);
+  assert.equal(f.players[0].plays, 0);
+});
+test("progressive invalid timing keeps plain captions; invalid speed or missing readiness fails", async () => {
+  const f = progressive();
+  const run = f.controller.speak("Hello.");
+  const s = f.streams[0];
+  s.callbacks.onFrame(aligned("Wrong."));
+  s.callbacks.onReady(null);
+  s.load.resolve();
+  await tick();
+  assert.equal(f.states.at(-1).word, null);
+  assert.equal(f.states.at(-1).caption, "Hello.");
+  f.players[0].onended();
+  await run;
+  for (const speed of [0, -1, NaN, Infinity, undefined]) {
+    const bad = progressive();
+    const pending = bad.controller.speak("Hello.");
+    if (speed !== undefined) bad.streams[0].callbacks.onReady(speed);
+    bad.streams[0].load.resolve();
+    await assert.rejects(pending, (e) => e.code === "invalid-audio");
+    assert.equal(bad.streams[0].disposed, 1);
+  }
+});
+
+test("word animation stops on waiting and teardown", async () => {
+  const originalRequest = globalThis.requestAnimationFrame;
+  const originalCancel = globalThis.cancelAnimationFrame;
+  const frames = new Map();
+  let id = 0;
+  globalThis.requestAnimationFrame = (callback) => {
+    frames.set(++id, callback);
+    return id;
+  };
+  globalThis.cancelAnimationFrame = (key) => {
+    frames.delete(key);
+  };
+  try {
+    const f = progressive();
+    const run = f.controller.speak("Hello.");
+    f.streams[0].callbacks.onReady(null);
+    await tick();
+    assert.equal(frames.size, 1);
+    f.players[0].onwaiting();
+    assert.equal(frames.size, 0);
+    f.players[0].onplaying();
+    assert.equal(frames.size, 1);
+    f.controller.stop();
+    await run;
+    assert.equal(frames.size, 0);
+    f.streams[0].load.resolve();
+    await tick();
+    assert.equal(frames.size, 0);
+  } finally {
+    if (originalRequest) globalThis.requestAnimationFrame = originalRequest;
+    else delete globalThis.requestAnimationFrame;
+    if (originalCancel) globalThis.cancelAnimationFrame = originalCancel;
+    else delete globalThis.cancelAnimationFrame;
+  }
+});
+
+test("progressive autoplay rejection retains its cause and never synthesizes a retry", async () => {
+  const f = progressive();
+  const run = f.controller.speak("Hello.");
+  f.players[0].play = () =>
+    Promise.reject(new DOMException("Gesture required", "NotAllowedError"));
+  f.streams[0].callbacks.onReady(null);
+  await assert.rejects(
+    run,
+    (error) =>
+      error.code === "playback" && error.cause.name === "NotAllowedError",
+  );
+  assert.equal(f.streams.length, 1);
+  assert.equal(f.streams[0].disposed, 1);
+  f.streams[0].load.reject(Error("cancelled"));
+  await tick();
+});

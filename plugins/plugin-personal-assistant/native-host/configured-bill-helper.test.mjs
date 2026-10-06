@@ -192,3 +192,57 @@ test("shutdown fences a description waiting for account validation", async (t) =
   assert.equal(await description, null);
   assert.equal(f.disconnected, true);
 });
+
+test("readback stores only projected evidence after a conclusive result", async (t) => {
+  const f = await fixture(t);
+  let status = "unknown";
+  f.args.hostPolicy.reconcileMethod = async () => ({
+    status,
+    rawPage: "private",
+  });
+  f.args.hostPolicy.reconciliationEvidenceRecord = ({
+    task,
+    proposal,
+    status,
+  }) => ({ taskId: task.id, operationId: proposal.id, status });
+  const helper = await createConfiguredBillHelper(f.args);
+  try {
+    const input = {
+      task: { id: "task", owner: { actorId: "owner" }, goalRef: "goal" },
+      proposal: { id: "selection" },
+      snapshot: { text: "private" },
+    };
+    assert.deepEqual(await f.options.reconcileMethod(input), {
+      status: "unknown",
+    });
+    assert.deepEqual(await readdir(f.args.evidenceDirectory), []);
+    status = "succeeded";
+    const result = await f.options.reconcileMethod(input);
+    assert.equal(result.status, "succeeded");
+    assert.match(result.evidenceRef, /^evidence:/);
+    const [file] = await readdir(f.args.evidenceDirectory);
+    assert.deepEqual(
+      JSON.parse(await readFile(join(f.args.evidenceDirectory, file), "utf8")),
+      { taskId: "task", operationId: "selection", status: "succeeded" },
+    );
+    assert.equal(
+      (await stat(join(f.args.evidenceDirectory, file))).mode & 0o777,
+      0o600,
+    );
+    await assert.rejects(
+      f.options.reconcileMethod({
+        ...input,
+        task: { ...input.task, goalRef: "other" },
+      }),
+      /Unconfigured/,
+    );
+    status = "anything";
+    await assert.rejects(
+      f.options.reconcileMethod(input),
+      /Invalid bill reconciliation/,
+    );
+    assert.equal((await readdir(f.args.evidenceDirectory)).length, 1);
+  } finally {
+    await helper.close();
+  }
+});

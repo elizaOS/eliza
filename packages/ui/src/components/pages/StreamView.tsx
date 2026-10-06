@@ -45,6 +45,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
   const [streamAvailable, setStreamAvailable] = useState(true);
   const [initialLoading, setInitialLoading] = useState(!cachedStatus);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [uptime, setUptime] = useState(cachedStatus?.data.uptime ?? 0);
   const [frameCount, setFrameCount] = useState(
     cachedStatus?.data.frameCount ?? 0,
@@ -89,6 +90,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setStreamLoading(true);
+    setActionError(null);
     try {
       if (streamLive) {
         await client.streamGoOffline();
@@ -101,7 +103,9 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
           openStreamPopout(getBootConfig().apiBase);
         }
       }
-    } catch {
+    } catch (err: unknown) {
+      // Keep the action failure visible until retry; status polls are independent.
+      setActionError(err instanceof Error ? err.message : String(err));
       try {
         const status = await client.streamStatus();
         setStreamLive(status.running && status.ffmpegAlive);
@@ -133,7 +137,21 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
         />
 
         <div className="flex flex-1 min-h-0 items-center justify-center">
-          {initialLoading && streamAvailable && !statusError ? (
+          {actionError && streamAvailable ? (
+            <div
+              role="alert"
+              className="max-w-lg rounded-sm border border-danger/45 bg-danger/20 p-6 text-center"
+            >
+              <p className="text-xs-tight uppercase tracking-[0.24em] text-danger">
+                {t("streamview.ActionError", {
+                  defaultValue: "Stream action failed",
+                })}
+              </p>
+              <p className="mt-3 text-sm leading-6 text-danger">
+                {actionError}
+              </p>
+            </div>
+          ) : initialLoading && streamAvailable && !statusError ? (
             /* Flat — no card/border. The shell owns the page's surface. */
             <div className="w-full max-w-md p-6">
               <DetailSkeleton />
