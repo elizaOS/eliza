@@ -452,7 +452,7 @@ export function sharedReminderDispatcher(
           ? delivery.chatId
           : delivery.platform === "telegram"
             ? delivery.chatId
-            : delivery.platform === "blooio"
+            : delivery.platform === "blooio" || delivery.platform === "twilio"
               ? delivery.phoneNumber
               : delivery.discordUserId,
         metadata: {

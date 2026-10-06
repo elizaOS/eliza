@@ -3,7 +3,7 @@
  *
  * The personal-shared route auto-creates a Cloud account for any phone that
  * texts a configured number. For project `network` that must not happen: only a
- * phone with an accepted invite (or an existing member) may reach account
+ * phone with a live or accepted invite (or an existing member) may reach account
  * resolution and a model turn. Everyone else gets one polite canned reply and
  * nothing is written. Group chats are not a Network surface and are dropped
  * silently, so no compliance or invite copy is ever posted into a group.
@@ -21,10 +21,11 @@ export const NETWORK_INVITE_REQUIRED_REPLY =
 /** Looks up invite/membership state for an inbound address. */
 export interface NetworkInviteLookup {
   /**
-   * True when the address has an accepted invite or already belongs to a
+   * True when the address has a live (pending, unexpired) or accepted invite,
+   * or already belongs to a
    * non-removed member. Must not create or mutate anything.
    */
-  hasAcceptedInvite(input: { channel: "phone"; address: string }): Promise<boolean>;
+  isInvitedOrMember(input: { channel: "phone"; address: string }): Promise<boolean>;
 }
 
 /** Minimal inbound shape the gate inspects (a subset of the route's parsed payload). */
@@ -67,7 +68,7 @@ export async function evaluateNetworkInboundGate(
       reply: NETWORK_INVITE_REQUIRED_REPLY,
     };
   }
-  const invited = await lookup.hasAcceptedInvite({
+  const invited = await lookup.isInvitedOrMember({
     channel: "phone",
     address: message.phoneNumber,
   });
@@ -80,7 +81,7 @@ export async function evaluateNetworkInboundGate(
       };
 }
 
-/** Test/simulator store: phones with accepted invites. */
+/** Test/simulator store: invited phones. */
 export class InMemoryNetworkInviteStore implements NetworkInviteLookup {
   readonly lookups: string[] = [];
   readonly #accepted = new Set<string>();
@@ -93,7 +94,7 @@ export class InMemoryNetworkInviteStore implements NetworkInviteLookup {
     this.#accepted.add(phone);
   }
 
-  async hasAcceptedInvite(input: { channel: "phone"; address: string }): Promise<boolean> {
+  async isInvitedOrMember(input: { channel: "phone"; address: string }): Promise<boolean> {
     this.lookups.push(input.address);
     return this.#accepted.has(input.address);
   }

@@ -62,7 +62,7 @@ describe("createPostgresNetworkInviteLookup", () => {
     await Promise.all(databases.splice(0).map((database) => database.close()));
   });
 
-  test("admits accepted invites and live members only", async () => {
+  test("admits live or accepted invites and live members only", async () => {
     const database = new PGlite();
     databases.push(database);
     await database.exec(
@@ -73,14 +73,18 @@ describe("createPostgresNetworkInviteLookup", () => {
         VALUES ('+14155550110', 'accepted', 'accepted', now()),
                ('+14155550111', 'pending', 'pending', NULL),
                ('+14155550112', 'revoked', 'revoked', NULL);
+      INSERT INTO "network"."invites" ("phone_e164", "token_hash", "status", "expires_at")
+        VALUES ('+14155550115', 'expired', 'pending', now() - interval '1 day');
       INSERT INTO "network"."members" ("phone_e164", "state")
         VALUES ('+14155550113', 'paused'), ('+14155550114', 'removed');
     `);
     const lookup = createPostgresNetworkInviteLookup(drizzle(database) as never);
     const admitted = async (address: string) =>
-      await lookup.hasAcceptedInvite({ channel: "phone", address });
+      await lookup.isInvitedOrMember({ channel: "phone", address });
     expect(await admitted("+14155550110")).toBe(true);
-    expect(await admitted("+14155550111")).toBe(false);
+    // A live pending invite admits the first message, which then accepts it.
+    expect(await admitted("+14155550111")).toBe(true);
+    expect(await admitted("+14155550115")).toBe(false);
     expect(await admitted("+14155550112")).toBe(false);
     expect(await admitted("+14155550113")).toBe(true);
     expect(await admitted("+14155550114")).toBe(false);

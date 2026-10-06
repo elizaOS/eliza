@@ -273,6 +273,20 @@ describe("Shared reminders edge plugin", () => {
         project: "eliza-app",
         phoneNumber: "15551234567",
       }),
+    ).toBeUndefined();    // Twilio destinations exist only for The Network's project.
+    expect(
+      parseSharedReminderDelivery({
+        platform: "twilio",
+        project: "network",
+        phoneNumber: "+15551234567",
+      }),
+    ).toEqual({ platform: "twilio", project: "network", phoneNumber: "+15551234567" });
+    expect(
+      parseSharedReminderDelivery({
+        platform: "twilio",
+        project: "eliza-app",
+        phoneNumber: "+15551234567",
+      }),
     ).toBeUndefined();
   });
 

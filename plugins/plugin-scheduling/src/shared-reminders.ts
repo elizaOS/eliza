@@ -269,6 +269,12 @@ export type SharedReminderDelivery =
       phoneNumber: string;
     }
   | {
+      /** Twilio SMS DM; accepted only for The Network's `network` project. */
+      platform: "twilio";
+      project: "network";
+      phoneNumber: string;
+    }
+  | {
       platform: "discord";
       discordUserId: string;
     }
@@ -451,6 +457,20 @@ export function parseSharedReminderDelivery(
     return {
       platform: "blooio",
       project: delivery.project,
+      phoneNumber: delivery.phoneNumber,
+    };
+  }
+  // Twilio reminder delivery exists only for The Network; every other project
+  // keeps rejecting a Twilio destination exactly as before.
+  if (
+    delivery.platform === "twilio" &&
+    delivery.project === "network" &&
+    typeof delivery.phoneNumber === "string" &&
+    /^\+[1-9]\d{6,14}$/.test(delivery.phoneNumber)
+  ) {
+    return {
+      platform: "twilio",
+      project: "network",
       phoneNumber: delivery.phoneNumber,
     };
   }

@@ -28,8 +28,10 @@ import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import {
   evaluateNetworkInboundGate,
   isNetworkProject,
+  NETWORK_INVITE_REQUIRED_REPLY,
 } from "@/lib/network/inbound-gate";
 import { networkInviteLookup } from "@/lib/network/invite-lookup";
+import { networkMembership } from "@/lib/network/membership";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
@@ -652,6 +654,35 @@ app.post("/", async (c) => {
         "Invalid messaging delivery",
         "validation_error",
       );
+    }
+    // The Network has no group surface: membership changes and group delivery
+    // leases for its project are refused before touching any group binding.
+    // The gateway treats an empty reply / unauthorized lease as "send nothing".
+    if ("eventType" in parsed.data && isNetworkProject(parsed.data.project)) {
+      return c.json({
+        success: true,
+        data:
+          parsed.data.eventType === "delivery_authorization"
+            ? {
+                code: "group_delivery_authorization",
+                authorized: false,
+                reason: "network_group_unsupported",
+                reply: "",
+              }
+            : parsed.data.eventType === "delivery_commit"
+              ? {
+                  code: "group_delivery_committed",
+                  committed: false,
+                  reply: "",
+                }
+              : parsed.data.eventType === "delivery_receipt"
+                ? {
+                    code: "group_delivery_receipt_recorded",
+                    recorded: false,
+                    reply: "",
+                  }
+                : { code: "network_group_unsupported", reply: "" },
+      });
     }
     if ("eventType" in parsed.data) {
       if (parsed.data.eventType === "membership") {
@@ -1396,6 +1427,33 @@ app.post("/", async (c) => {
       dedicated = delivery.dedicatedTarget;
       isNewPersonalAccount = delivery.isNew;
     }
+    // The Network: the first admitted message from an invited phone accepts
+    // the invite and links the member to the Cloud account just resolved.
+    // Idempotent, so every later message is a no-op read-modify of nothing.
+    if (
+      networkProject &&
+      (parsed.data.platform === "twilio" ||
+        parsed.data.platform === "blooio") &&
+      !isGroupMessage(parsed.data)
+    ) {
+      const link = await networkMembership.linkInvitedPhone({
+        phoneE164: parsed.data.phoneNumber,
+        cloudUserId: account.userId,
+        organizationId: account.organizationId,
+      });
+      if (link.kind !== "linked") {
+        return c.json({
+          success: true,
+          data: {
+            code:
+              link.kind === "account_mismatch"
+                ? "network_account_mismatch"
+                : "network_invite_required",
+            reply: NETWORK_INVITE_REQUIRED_REPLY,
+          },
+        });
+      }
+    }
     // A project-scoped product (The Network) gets its own `personal:` identity,
     // Durable Object and history for the same account. Eliza projects derive
     // the original unscoped id.
@@ -1918,12 +1976,20 @@ app.post("/", async (c) => {
               project: parsed.data.project,
               phoneNumber: parsed.data.phoneNumber,
             }
-          : parsed.data.platform === "discord"
+          : parsed.data.platform === "twilio" && networkProject
             ? {
-                platform: "discord" as const,
-                discordUserId: parsed.data.discordUserId,
+                // Network SMS reminders fire through the gateway's
+                // network-only Twilio /internal/deliver path.
+                platform: "twilio" as const,
+                project: "network" as const,
+                phoneNumber: parsed.data.phoneNumber,
               }
-            : undefined;
+            : parsed.data.platform === "discord"
+              ? {
+                  platform: "discord" as const,
+                  discordUserId: parsed.data.discordUserId,
+                }
+              : undefined;
     const result = groupConversationId
       ? await sharedRestMessageSend(
           agent,
