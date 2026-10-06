@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+import { BillHostError } from "./errors.mjs";
 
 /** Configured native bill composition. Trusted host policy supplies authority and evidence schema. */
 export async function createConfiguredBillHelper({
@@ -18,6 +19,16 @@ export async function createConfiguredBillHelper({
   documentRuntime,
   documentImages,
 }) {
+  const readback =
+    hostPolicy.reconcileMethod != null ||
+    hostPolicy.reconciliationEvidenceRecord != null;
+  if (
+    readback &&
+    [hostPolicy.reconcileMethod, hostPolicy.reconciliationEvidenceRecord].some(
+      (value) => typeof value !== "function",
+    )
+  )
+    throw new BillHostError("Incomplete bill reconciliation policy");
   const config = hostPolicy.validateConfiguration(configuration);
   const controls = validateBillControls(config.controls);
   const extraction = config.googleSource?.extractionProfile
@@ -129,6 +140,32 @@ export async function createConfiguredBillHelper({
         requireProfile,
         requireTask,
       }),
+      ...(readback
+        ? {
+            reconcileMethod: async (input) => {
+              requireTask(input.task);
+              const result = await hostPolicy.reconcileMethod(input);
+              requireTask(input.task);
+              if (result?.status === "unknown") return { status: "unknown" };
+              if (!["succeeded", "failed"].includes(result?.status))
+                throw new BillHostError("Invalid bill reconciliation result");
+              const id = randomUUID();
+              const record = hostPolicy.reconciliationEvidenceRecord({
+                ...input,
+                status: result.status,
+              });
+              await writeFile(
+                join(evidenceDirectory, `${id}.json`),
+                `${JSON.stringify(record)}\n`,
+                { mode: 0o600, flag: "wx" },
+              );
+              return {
+                status: result.status,
+                evidenceRef: `${hostPolicy.evidenceNamespace}:${id}`,
+              };
+            },
+          }
+        : {}),
       recordEvidence: async (task, proposal, before, after, status) => {
         requireTask(task);
         const id = randomUUID();
