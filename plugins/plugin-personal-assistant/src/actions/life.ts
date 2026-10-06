@@ -1840,6 +1840,7 @@ async function renderLifeActionReply(args: {
       // "don't know your favorite color" from this renderer even though the
       // assistant's own context knew it (the fact lives outside lifeops).
       "Ground every factual claim — counts, progress numbers, item names, schedules, states — in the structured context provided for THIS reply. Never carry numbers or outcomes in from the conversation that the records here do not show; if the records show nothing, say the records show nothing.",
+      "Compare requested reminder text against the persisted created or updated description and current effect record, not attempted tool arguments. Extraction can correct a proposed value before saving. An already matching saved field does not need another write.",
       "Answer only about the user's tracked items (todos, reminders, goals, routines, habits, alarms). If the user's message also asked about something outside these records — a personal fact, general knowledge, another tool — leave that part unaddressed rather than answering or denying it; the assistant covers it separately.",
     ],
   });
@@ -5614,6 +5615,7 @@ async function runLifeOperationHandlerInner(
         context: {
           created: {
             title: created.definition.title,
+            description: created.definition.description,
             cadence: created.definition.cadence,
             timezone: created.definition.timezone,
             notificationChannels:
@@ -6111,8 +6113,14 @@ async function runLifeOperationHandlerInner(
         ) as UpdateLifeOpsDefinitionRequest["checkInPolicy"],
       };
 
-      // If no explicit changes from structured details, try LLM extraction
-      if (request.cadence == null && intent) {
+      const descriptionOnlyUpdate =
+        request.description !== undefined &&
+        requestedTime === undefined &&
+        !hasDefinitionUpdateChanges({ ...request, description: undefined }) &&
+        details !== undefined &&
+        Object.keys(details).every((key) => key === "description");
+      // A complete body-only patch must not reinterpret its original creation time.
+      if (!descriptionOnlyUpdate && request.cadence == null && intent) {
         const llmFields = await extractUpdateFieldsWithLlm({
           runtime,
           intent,
@@ -6216,6 +6224,7 @@ async function runLifeOperationHandlerInner(
           previousTitle: target.definition.title,
           updated: {
             title: updated.definition.title,
+            description: updated.definition.description,
             cadence: updated.definition.cadence,
             timezone: updated.definition.timezone,
             notificationChannels:

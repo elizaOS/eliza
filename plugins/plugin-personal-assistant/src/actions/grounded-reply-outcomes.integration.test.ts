@@ -236,7 +236,7 @@ describe("grounded reply outcomes — real PGlite", () => {
               requestKind: "reminder",
               nativeProjection: "in_app_only",
               title: "Notification grounding fixture",
-              description: null,
+              description: "The exact saved alert body.",
               cadenceKind: "once",
               dueInMinutes: 2,
               timeZone: "UTC",
@@ -251,7 +251,7 @@ describe("grounded reply outcomes — real PGlite", () => {
     if (!definitionId) throw new Error("Missing real create receipt");
     const saved = await service.getDefinition(definitionId);
     const updateMessage = message(
-      "Update this reminder's note and retain its notification schedule.",
+      "In two minutes, remind me here with the exact requested alert body.",
     );
     const updated = await runWithActionRoutingContext(
       {
@@ -267,13 +267,15 @@ describe("grounded reply outcomes — real PGlite", () => {
             target: definitionId,
             details: {
               description: "Updated fixture note",
-              cadence: saved.definition.cadence,
             },
           },
         }),
     );
     expect(updated.success).toBe(true);
     expect(useModel).not.toHaveBeenCalled();
+    const afterUpdate = await service.getDefinition(definitionId);
+    expect(afterUpdate.definition.cadence).toEqual(saved.definition.cadence);
+    expect(afterUpdate.definition.title).toBe(saved.definition.title);
     for (const [result, recordKey] of [
       [created, "created"],
       [updated, "updated"],
@@ -334,6 +336,10 @@ describe("grounded reply outcomes — real PGlite", () => {
       );
       const grounding = JSON.parse(wireResult.data.replyGrounding);
       expect(grounding.context[recordKey]).toMatchObject({
+        description:
+          recordKey === "created"
+            ? "The exact saved alert body."
+            : "Updated fixture note",
         notificationChannels: ["in_app"],
         nativeProjection: "in_app_only",
         nativeAppleReminderId: null,
@@ -349,6 +355,9 @@ describe("grounded reply outcomes — real PGlite", () => {
       );
       expect(grounding.instructions.join("\n")).toContain(
         "unassessed readiness is unknown, not unavailable",
+      );
+      expect(grounding.instructions.join("\n")).toContain(
+        "not attempted tool arguments",
       );
     }
     expect(useModel).toHaveBeenCalledTimes(2);
