@@ -234,6 +234,24 @@ export class RelationshipStore {
     }
     return fetched;
   }
+  /**
+   * Read, change and write one edge under the same per-edge serialization as
+   * `observe`, so a concurrent observation or retirement between the read and
+   * the write is not overwritten by a stale copy. Null when the edge is absent.
+   */
+  async patch(
+    relationshipId: string,
+    mutate: (
+      existing: Relationship,
+    ) => Parameters<RelationshipStore["upsert"]>[0],
+  ): Promise<Relationship | null> {
+    const current = await this.get(relationshipId);
+    if (!current) return null;
+    return this.edgeOperation(current, async () => {
+      const existing = await this.getOperation(relationshipId);
+      return existing ? this.upsertOperation(mutate(existing)) : null;
+    });
+  }
   async get(relationshipId: string): Promise<Relationship | null> {
     return this.operation(() => this.getOperation(relationshipId));
   }
