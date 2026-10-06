@@ -34,6 +34,9 @@ test("treats an explicit earnings history limit of 0 as an empty page", async ()
   await service.getTransactionHistory("app-1");
   expect(listTransactions).toHaveBeenLastCalledWith("app-1", 50, 0);
 
+  await service.getTransactionHistory("app-1", { limit: Number.NaN });
+  expect(listTransactions).toHaveBeenLastCalledWith("app-1", 50, 0);
+
   await service.getTransactionHistory("app-1", {
     limit: 0,
     type: "withdrawal",
