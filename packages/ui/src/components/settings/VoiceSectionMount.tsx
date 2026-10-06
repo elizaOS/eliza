@@ -12,15 +12,13 @@
  *   settings sections use (see `IdentitySettingsSection` for `messages.tts`).
  */
 
-import {
-  VOICE_SETTINGS_APPLY_EVENT,
-  type VoiceSettingsApplyPayload,
-} from "@elizaos/core/events";
+import type { VoiceSettingsApplyPayload } from "@elizaos/core/protocol";
+import { VOICE_SETTINGS_APPLY_EVENT } from "@elizaos/core/protocol";
 import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
-import { useBranding } from "../../config/branding";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import {
   loadContinuousChatMode,

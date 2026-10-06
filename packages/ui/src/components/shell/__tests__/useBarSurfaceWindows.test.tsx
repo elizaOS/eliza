@@ -4,10 +4,13 @@
 // Phase 3 of #9953: the chromeless bottom bar summons views / the launcher as
 // on-demand desktop windows (it has no inline tab system).
 
+// @vitest-environment jsdom
+//
+// Phase 3 of #9953: the chromeless bottom bar summons views / the launcher as
+// on-demand desktop windows (it has no inline tab system).
+import type { NavigateViewDetail } from "@elizaos/core/protocol";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import type { NavigateViewDetail } from "../../../app-navigate-view";
 import { useBarSurfaceWindows } from "../useBarSurfaceWindows";
 
 afterEach(() => cleanup());

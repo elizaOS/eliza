@@ -22,18 +22,16 @@ import type {
 import {
   DEFAULT_NOTIFICATION_CATEGORY,
   DEFAULT_NOTIFICATION_PRIORITY,
-} from "@elizaos/core/types/notification";
+} from "@elizaos/core/protocol";
+import type { StewardSessionChangeDetail } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { STEWARD_SESSION_CHANGE_EVENT } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { deliverSystemNotification } from "../../bridge/notification-delivery";
 import { APP_RESUME_EVENT } from "../../events";
+import type { AuthStatusState } from "../../hooks/useAuthStatus";
 import {
-  STEWARD_SESSION_CHANGE_EVENT,
-  type StewardSessionChangeDetail,
-} from "../../events/steward-session-event";
-import {
-  type AuthStatusState,
   getAuthStatusSnapshot,
   subscribeAuthStatus,
 } from "../../hooks/useAuthStatus";
@@ -43,6 +41,7 @@ import {
   isElizaCloudControlPlaneAgentlessBase,
   isManagedCloudSharedAgentBase,
 } from "../../utils/cloud-agent-base";
+import { hasAndroidPushDelivery } from "./push-registration";
 
 /**
  * Notification center store.
@@ -205,13 +204,28 @@ function upsert(
 /** Deliver interrupt-worthy arrivals once; the inbox remains available under OS suppression. */
 async function deliver(notification: AgentNotification): Promise<void> {
   if (notification.priority === "low") return;
+  const deliveryAuthorityEpoch = authorityEpoch;
+  // FCM remains independent of WebSocket/JS liveness. Once this Android
+  // authority confirms presentation for this category, it owns the OS projection;
+  // the arrival was already committed to the durable in-app center by ingest().
+  if (Capacitor.getPlatform() === "android") {
+    const remotePush = await hasAndroidPushDelivery(notification.category);
+    if (
+      deliveryAuthorityEpoch !== authorityEpoch ||
+      remotePush ||
+      !state.notifications.some((current) => current.id === notification.id)
+    )
+      return;
+  }
   await deliverSystemNotification(
     {
       id: notification.id,
       title: notification.title,
       body: notification.body,
       deepLink: notification.deepLink,
+      data: notification.data,
       priority: notification.priority,
+      category: notification.category,
       groupKey: notification.groupKey,
     },
     { allowHiddenWeb: true },

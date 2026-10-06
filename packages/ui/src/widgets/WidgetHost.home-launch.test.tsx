@@ -18,6 +18,7 @@ import type { AgentNotification } from "@elizaos/core";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../api/client-types-chat";
+import type { PluginWidgetDeclaration } from "./types";
 
 // The home WidgetHost reads `s.plugins` (none active on a cold launch). Empty
 // plugins still resolve the always-visible core widgets.
@@ -39,13 +40,34 @@ const DEFAULT_CONVERSATIONS = [
 ];
 
 const mockState = {
-  plugins: [] as Array<{ id: string; enabled: boolean; isActive: boolean }>,
+  tab: "chat",
+  plugins: [] as Array<{
+    id: string;
+    enabled: boolean;
+    isActive: boolean;
+    widgets?: PluginWidgetDeclaration[];
+  }>,
   conversations: [...DEFAULT_CONVERSATIONS],
   t: (k: string) => k,
 };
 
-vi.mock("../state", () => ({
-  useApp: () => mockState,
+vi.mock("../hooks/useActivityEvents", () => ({
+  useActivityEvents: () => ({ events: [], clearEvents: () => {} }),
+}));
+vi.mock("../hooks/useWeather", () => ({
+  prefers24HourClock: () => true,
+  useWeather: () => ({
+    status: "ready",
+    temp: 68,
+    unit: "°F",
+    condition: "Mostly clear",
+    kind: "clear",
+    approximate: false,
+  }),
+}));
+
+vi.mock("../state/useApp", () => ({ useApp: () => mockState }));
+vi.mock("../state/app-store", () => ({
   useAppSelector: <T,>(sel: (s: typeof mockState) => T): T => sel(mockState),
   useAppSelectorShallow: <T,>(sel: (s: typeof mockState) => T): T =>
     sel(mockState),
@@ -70,6 +92,9 @@ const getConversationMessages = vi.fn<
 vi.mock("../api/client", () => ({
   client: {
     getBaseUrl: () => "http://localhost:3000",
+    getAuthorityRevision: () => 0,
+    getRestAuthToken: () => null,
+    onAuthorityChange: () => () => {},
     listConversations: async () => ({ conversations: mockState.conversations }),
     getConversationMessages: (id: string) => getConversationMessages(id),
     // Retained for callers that still touch task APIs; sparse home no longer
@@ -79,10 +104,13 @@ vi.mock("../api/client", () => ({
   },
 }));
 
+import { HomeScreen } from "../components/shell/HomeScreen";
 import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
+  __setHydratedForTests,
 } from "../state/notifications/notification-store";
+import { resolveWidgetsForSlot } from "./registry";
 import { WidgetHost } from "./WidgetHost";
 
 function notification(id: string, title: string): AgentNotification {
@@ -98,12 +126,18 @@ function notification(id: string, title: string): AgentNotification {
 }
 
 beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({})),
+  );
+  mockState.plugins = [];
   __resetNotificationStoreForTests();
   mockState.conversations = [...DEFAULT_CONVERSATIONS];
   getConversationMessages.mockClear();
 });
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   __resetNotificationStoreForTests();
 });
 
@@ -143,3 +177,59 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
     expect(host.textContent).not.toContain("PR review requested");
   });
 });
+
+it.each(["todo", "todos"])(
+  "keeps real Home notifications without restoring retired Today declarations from %s",
+  (pluginId) => {
+    const stale: PluginWidgetDeclaration = {
+      id: "todo.items",
+      pluginId,
+      slot: "home" as const,
+      label: "Today",
+      defaultEnabled: true,
+      uiSpec: {
+        root: "root",
+        state: {},
+        elements: {
+          root: {
+            type: "Text",
+            props: { text: "Retired Today" },
+            children: [],
+          },
+        },
+      },
+    };
+    const plugins = [{ id: pluginId, enabled: true, isActive: true }];
+    const home = resolveWidgetsForSlot("home", plugins, [stale]);
+    expect(
+      home.some(({ declaration }) => declaration.id === "todo.items"),
+    ).toBe(false);
+    expect(
+      home.some(({ declaration }) => declaration.id === "calendar.upcoming"),
+    ).toBe(true);
+    expect(
+      resolveWidgetsForSlot("chat-sidebar", plugins, [
+        { ...stale, slot: "chat-sidebar" },
+      ]).some(({ declaration }) => declaration.id === "todo.items"),
+    ).toBe(true);
+    mockState.plugins = [{ ...plugins[0], widgets: [stale] }];
+    __setHydratedForTests(true);
+    __ingestNotificationForTests(
+      {
+        ...notification(
+          "11111111-1111-4111-8111-111111111111",
+          "Keep this reminder",
+        ),
+        priority: "high",
+        createdAt: Date.now(),
+      },
+      1,
+    );
+    render(<HomeScreen onOpenTile={() => {}} />);
+    expect(screen.getByText("Keep this reminder")).toBeTruthy();
+    expect(screen.getByText("Mostly clear")).toBeTruthy();
+    expect(screen.getByTestId("home-time-widget")).toBeTruthy();
+    expect(screen.queryByTestId("today-todo-row")).toBeNull();
+    expect(screen.queryByTestId("todo-goal-attention-row")).toBeNull();
+  },
+);

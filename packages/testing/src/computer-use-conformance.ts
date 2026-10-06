@@ -9,7 +9,6 @@ import {
   assertInteractionSessionExecutable,
   assertInteractionSurfaceCurrent,
   authorizeInteractionDispatch,
-  ElizaError,
   type InteractionAction,
   type InteractionAdapter,
   type InteractionCapabilitySet,
@@ -23,7 +22,8 @@ import {
   normalizeInteractionActionResult,
   normalizeInteractionCapabilitySet,
   normalizeInteractionObservation,
-} from "@elizaos/core";
+} from "@elizaos/contracts/node";
+import { ElizaError } from "@elizaos/core";
 
 export const REQUIRED_INTERACTION_CONFORMANCE_CASES = [
   "success",

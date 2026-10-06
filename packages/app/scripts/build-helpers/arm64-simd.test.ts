@@ -1,4 +1,3 @@
-/** Exercises arm64 simd behavior with deterministic app test fixtures. */
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {

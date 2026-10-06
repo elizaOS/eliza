@@ -1,4 +1,4 @@
-/** Exercises checkout selection for embedded and standalone OS builders using real directories. */
+/** Exercises workspace and explicit checkout selection using real directories. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -31,7 +31,7 @@ function app(root) {
 
 test("AOSP smoke loads configuration code from the selected application checkout", (t) => {
   const root = app(fixture(t));
-  const library = path.join(root, "packages/app/scripts/aosp/lib");
+  const library = path.join(root, "packages/app/scripts/aosp");
   mkdirSync(library, { recursive: true });
   writeFileSync(
     path.join(library, "load-variant-config.ts"),
@@ -39,7 +39,7 @@ test("AOSP smoke loads configuration code from the selected application checkout
   );
   const result = spawnSync(
     process.execPath,
-    [fileURLToPath(new URL("../aosp/smoke-cuttlefish.ts", import.meta.url))],
+    [fileURLToPath(new URL("../android/smoke-cuttlefish.ts", import.meta.url))],
     {
       env: { ...process.env, ELIZAOS_ELIZA_ROOT: root },
       encoding: "utf8",
@@ -56,11 +56,6 @@ test("embedded OS builders use the enclosing application checkout", (t) => {
     resolveElizaSourceRoot({ osRoot: path.join(root, "packages/os"), env: {} }),
     root,
   );
-});
-test("standalone builders use their staged source checkout", (t) => {
-  const osRoot = path.join(fixture(t), "standalone");
-  const expected = app(path.join(osRoot, ".eliza-source"));
-  assert.equal(resolveElizaSourceRoot({ osRoot, env: {} }), expected);
 });
 test("explicit checkout takes precedence and an invalid override never falls back", (t) => {
   const root = fixture(t);

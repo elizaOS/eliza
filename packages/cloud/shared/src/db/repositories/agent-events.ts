@@ -118,7 +118,7 @@ export class AgentEventsRepository {
     const rows = await dbRead.query.agentEvents.findMany({
       where: and(...conditions),
       orderBy: desc(agentEvents.created_at),
-      limit: filters?.limit || 50,
+      limit: filters?.limit === undefined ? 50 : Math.max(0, filters.limit),
     });
     return await Promise.all(rows.map(hydrateAgentEvent));
   }
@@ -144,7 +144,7 @@ export class AgentEventsRepository {
     const rows = await dbRead.query.agentEvents.findMany({
       where: and(...conditions),
       orderBy: desc(agentEvents.created_at),
-      limit: filters?.limit || 100,
+      limit: filters?.limit === undefined ? 100 : Math.max(0, filters.limit),
     });
     return await Promise.all(rows.map(hydrateAgentEvent));
   }

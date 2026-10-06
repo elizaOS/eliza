@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import {
   resolveFfmpegBinary,
   resolveFfprobeBinary,
-} from "../testing/evidence/ffmpeg-binaries.ts";
+} from "@elizaos/testing/evidence";
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SCRIPT_PATH), "../..");

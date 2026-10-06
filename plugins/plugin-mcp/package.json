@@ -107,13 +107,15 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.7.0",
     "ajv": "^8.17.1",
-    "@elizaos/plugin-assistant": "workspace:*",
     "json5": "^2.2.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
+    "@elizaos/testing": "workspace:*",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",

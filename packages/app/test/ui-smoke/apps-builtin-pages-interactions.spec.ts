@@ -225,6 +225,63 @@ test("stream view renders the offline status surface", async ({ page }) => {
   });
 });
 
+test("stream view keeps a failed Go Live request visible and retryable", async ({
+  page,
+}, testInfo) => {
+  const statuses: number[] = [];
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname === "/api/stream/live") {
+      statuses.push(response.status());
+    }
+  });
+  await page.route("**/api/stream/live", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Encoder unavailable" }),
+    });
+  });
+
+  await openAppPath(page, "/stream");
+  const goLive = page.getByRole("button", { name: "Go Live" });
+  await expect(goLive).toBeVisible({ timeout: 60_000 });
+  await goLive.click();
+
+  await expect(page.getByRole("alert")).toContainText("Encoder unavailable");
+  await expect(goLive).toBeEnabled();
+  await expect.poll(() => statuses).toEqual([503]);
+
+  const desktopScreenshotPath = testInfo.outputPath(
+    "stream-action-error-desktop.jpg",
+  );
+  await page.screenshot({
+    path: desktopScreenshotPath,
+    type: "jpeg",
+    quality: 85,
+    fullPage: true,
+  });
+  await testInfo.attach("stream-action-error-desktop.jpg", {
+    path: desktopScreenshotPath,
+    contentType: "image/jpeg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("alert")).toBeVisible();
+  const mobileScreenshotPath = testInfo.outputPath(
+    "stream-action-error-mobile.jpg",
+  );
+  await page.screenshot({
+    path: mobileScreenshotPath,
+    type: "jpeg",
+    quality: 85,
+    fullPage: true,
+  });
+  await testInfo.attach("stream-action-error-mobile.jpg", {
+    path: mobileScreenshotPath,
+    contentType: "image/jpeg",
+  });
+});
+
 test("legacy rolodex URL opens the working relationship graph", async ({
   page,
 }) => {
@@ -232,7 +289,7 @@ test("legacy rolodex URL opens the working relationship graph", async ({
     page,
     /\/api\/lifeops\/(entities|relationships)(?:\?|$)/,
   );
-  await openAppPath(page, "/rolodex");
+  await openAppPath(page, "/apps/relationships");
   await expect(page.getByTestId("relationships-view")).toBeVisible({
     timeout: 60_000,
   });

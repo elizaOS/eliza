@@ -6,28 +6,26 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  createRuntimeAccountStoragePolicy,
-  saveAccount,
-} from "@elizaos/auth/auth/account-storage";
-import { afterEach, beforeEach, expect, it } from "vitest";
-import {
   _resetAccountsRoutesPoolCache,
   handleAccountsRoutes,
-} from "../../../agent/src/api/accounts-routes";
+} from "@elizaos/agent/api/accounts-routes";
 import {
   getAgentHostBridge,
   setAgentHostBridge,
-} from "../../../agent/src/runtime/host-bridge";
-import {
-  __resetDefaultAccountPoolForTests,
-  AccountPool,
-  getDefaultAccountPool,
-  type Strategy,
-} from "./account-pool";
+} from "@elizaos/agent/runtime/host-bridge";
 import {
   __resetAccountPoolStatusForTests,
+  AccountPool,
+  getDefaultAccountPool,
   getPublicAccountPoolStatus,
-} from "./account-pool-status";
+  resetDefaultAccountPoolAfterCredentialReset,
+  type Strategy,
+} from "@elizaos/auth/accounts";
+import {
+  createRuntimeAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/auth";
+import { afterEach, beforeEach, expect, it } from "vitest";
 
 let root: string;
 let previousHome: string | undefined;
@@ -38,7 +36,7 @@ beforeEach(() => {
   root = mkdtempSync(path.join(tmpdir(), "pool-snapshot-"));
   process.env.ELIZA_HOME = root;
   process.env.ELIZA_STATE_DIR = root;
-  __resetDefaultAccountPoolForTests();
+  resetDefaultAccountPoolAfterCredentialReset();
   const policy = createRuntimeAccountStoragePolicy(root);
   for (const id of ["personal", "work"]) {
     saveAccount(
@@ -57,7 +55,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   __resetAccountPoolStatusForTests();
-  __resetDefaultAccountPoolForTests();
+  resetDefaultAccountPoolAfterCredentialReset();
   if (previousHome === undefined) delete process.env.ELIZA_HOME;
   else process.env.ELIZA_HOME = previousHome;
   if (previousState === undefined) delete process.env.ELIZA_STATE_DIR;

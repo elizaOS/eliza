@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { generateProgressiveContentCorpus } from "elizaos-benchmarks/content-context";
 import { describe, expect, it } from "vitest";
-import { generateProgressiveContentCorpus } from "../../testing/corpus/progressive-content";
 import {
   PROGRESSIVE_CONTENT_BENCHMARK_BACKENDS,
   PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY,

@@ -8,25 +8,26 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ElizaConfig } from "@elizaos/core";
+import type { TrajectoryLlmCallRecord as TrajectoryLlmCall } from "@elizaos/core";
 import {
   type AgentRuntime,
   assertActiveTrajectoryForLlmCall,
+  type ContextObject,
   ElizaError,
   EventType,
   getTrajectoryContext,
   type IAgentRuntime,
   isLlmGenerationModelType,
   isTextGenerationModelType,
+  MODEL_CANONICAL_CONTEXT,
   normalizeTrajectoryLlmPurpose,
 } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { detectRuntimeModel } from "../api/agent-model.ts";
 import {
   type ModelTokenMetadata,
   resolveModelTokenMetadata,
 } from "../config/model-metadata.ts";
-
-import type { TrajectoryLlmCall } from "../types/trajectory.ts";
 
 type CompactorRole = "system" | "developer" | "user" | "assistant" | "tool";
 
@@ -57,6 +58,7 @@ import {
 } from "./trajectory-internals.ts";
 import {
   applyActiveViewAwareness,
+  capturedActiveViewSource,
   getActiveViewContext,
   renderActiveViewContextBlock,
 } from "./view-action-affinity.ts";
@@ -1468,6 +1470,15 @@ export function installPromptOptimizations(
     // both the action-weighting (keep view-scoped actions at full param detail)
     // and the awareness block below stay consistent for this prompt.
     const activeView = getActiveViewContext(runtime);
+    const capturedView =
+      modelType === "ACTION_PLANNER"
+        ? capturedActiveViewSource(
+            runtime,
+            (payload as { [MODEL_CANONICAL_CONTEXT]?: ContextObject })[
+              MODEL_CANONICAL_CONTEXT
+            ],
+          )
+        : undefined;
 
     if (shouldApplyPromptBudget(modelType)) {
       const budget = resolvePromptBudget(runtime, modelType, {
@@ -1488,7 +1499,36 @@ export function installPromptOptimizations(
     // Inject the "# Active View" awareness block into planner prompts so the
     // model knows which surface the user is looking at and that it can drive
     // every element through the view-interact capabilities.
-    if (
+    if (capturedView) {
+      // Canonical composition already included the exact body or its trusted
+      // source reference. Missing/stale provenance restores the captured full
+      // body inline here; it never substitutes the current mutable view.
+      if (
+        !nextPrompt.includes(capturedView.text) &&
+        !(
+          capturedView.deferredText &&
+          nextPrompt.includes(capturedView.deferredText)
+        )
+      ) {
+        if (promptKey) nextPrompt = `${nextPrompt}\n\n${capturedView.text}`;
+        else if (nextMessages) {
+          const index = nextMessages.findLastIndex(
+            (message) => message.role === "user",
+          );
+          if (index >= 0) {
+            nextMessages = [...nextMessages];
+            nextMessages[index] = {
+              ...nextMessages[index],
+              content: `${nextMessages[index].content}\n\n${capturedView.text}`,
+            };
+            nextPrompt = renderMessagesForTelemetry(nextMessages);
+          }
+        }
+      }
+      promptOptimizationTelemetry.transformations.push(
+        "active-view-canonical-source",
+      );
+    } else if (
       activeView &&
       (nextPrompt.includes("# Available Actions") ||
         modelType === "ACTION_PLANNER")

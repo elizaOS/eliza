@@ -16,14 +16,14 @@
 
 import type { Buffer } from "node:buffer";
 import { logger } from "@elizaos/core";
-import { type MeetingParticipant } from "@elizaos/core/meetings";
 import {
   inferSpeakerName,
+  type MeetingParticipant,
   type SpeakerNameAttribution,
   type SpeakerNameEvidence,
+  type TranscriptSegment,
   toSpeakerNameAttribution,
-} from "@elizaos/core/speaker-name-inference";
-import { type TranscriptSegment } from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import {
   isMeetingInsufficientCreditsError,
   MEETING_AUDIO_SAMPLE_RATE,
@@ -57,6 +57,7 @@ const SELF_INTRODUCTION_STOP_WORDS = new Set([
   "looking",
   "not",
   "of",
+  "ok",
   "on",
   "ready",
   "sorry",
@@ -71,7 +72,10 @@ const SELF_INTRODUCTION_STOP_WORDS = new Set([
 
 const SELF_INTRODUCTION_PATTERNS = [
   /\bmy name is\s+([a-z][a-z'’.-]*(?:\s+[a-z][a-z'’.-]*){0,2})(?=[,.!?]|$|\s+(?:and|from|with|here|speaking|joining)\b)/i,
-  /\b(?:i am|i['’]?m|this is)\s+([a-z][a-z'’.-]*(?:\s+[a-z][a-z'’.-]*)?)(?=[,.!?]|$|\s+(?:and|from|with|here|speaking|joining)\b)/i,
+  // Case-sensitive: after "I'm" / "This is" only capitalized words form a name
+  // ("I'm Mina Chen"), not ordinary speech ("Sorry, I'm late.") or a trailing
+  // cue word ("This is Mina speaking.").
+  /\b(?:[Ii] am|[Ii]['’]?m|[Tt]his is)\s+([A-Z][A-Za-z'’.-]*(?:\s+[A-Z][A-Za-z'’.-]*)?)(?=[,.!?]|$|\s+(?:and|from|with|here|speaking|joining)\b)/,
 ] as const;
 
 interface RetainedChunk {
@@ -377,7 +381,11 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     for (const pattern of SELF_INTRODUCTION_PATTERNS) {
       const name = pattern.exec(text)?.[1]?.trim();
       if (!name) continue;
-      const words = name.toLocaleLowerCase().split(/\s+/);
+      // The capture keeps a sentence-final period ("OK."); compare without it.
+      const words = name
+        .toLocaleLowerCase()
+        .split(/\s+/)
+        .map((word) => word.replace(/\.+$/, ""));
       if (words.some((word) => SELF_INTRODUCTION_STOP_WORDS.has(word))) {
         continue;
       }

@@ -10,7 +10,7 @@ import {
   createPublicKey,
   verify as verifySignature,
 } from "node:crypto";
-import type { ScenarioDefinition } from "@elizaos/testing";
+import type { ScenarioDefinition } from "../../schema/index.ts";
 import type {
   ScenarioEvidenceObservation,
   ScenarioEvidenceObserverProvenance,

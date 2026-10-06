@@ -90,12 +90,7 @@ def build_swe_bench_agent_fn(
     return _swe_text_large
 
 
-# Legacy alias for callers that match the eliza-adapter's naming style.
-make_hermes_swe_bench_model_handler = build_swe_bench_agent_fn
-
-
 __all__ = [
     "build_swe_bench_agent_fn",
-    "make_hermes_swe_bench_model_handler",
     "SWEBenchModelHandler",
 ]

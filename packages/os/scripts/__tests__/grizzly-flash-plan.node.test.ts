@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertSafeFlashMetadata } from "../aosp/build-grizzly-bundle.ts";
+import { assertSafeFlashMetadata } from "../android/flash-metadata.ts";
 
 // Actual generated Android 17 grizzly plan: fastboot flashall adds the final
 // reboot itself (system/core/fastboot/fastboot.cpp, flashall/update branches).

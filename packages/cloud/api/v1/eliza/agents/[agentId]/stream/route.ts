@@ -4,27 +4,34 @@
  * Worker bindings and cache-authorized agent scope are mandatory; the route
  * never falls through to a repository-backed sandbox stream.
  */
-import { Hono } from "hono";
-import { z } from "zod";
-import { errorToResponse, ValidationError } from "@/lib/api/errors";
-import { chatSseFrame } from "@/lib/services/chat-sse-frames";
-import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
+
+import {
+  errorToResponse,
+  ValidationError,
+} from "@elizaos/cloud-shared/lib/api/errors";
+import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
+import type { BridgeRequest } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import {
   personalDirectChatRefusalResponse,
   resolveSharedSurfaceTarget,
-} from "@/lib/services/personal-direct-chat-route";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { coordinateSharedStream } from "@/lib/services/shared-runtime/conversation-coordinator";
+} from "@elizaos/cloud-shared/lib/services/personal-direct-chat-route";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { coordinateSharedStream } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
-} from "@/lib/services/shared-runtime/resolve-shared-agent";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
-import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
+import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import type {
   AppEnv,
   RuntimeDurableObjectNamespace,
-} from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 // Streaming responses can be long-running
 

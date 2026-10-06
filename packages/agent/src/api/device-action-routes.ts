@@ -5,12 +5,14 @@ import {
   ApprovalNotFoundError,
   type ApprovalRequest,
   ApprovalStateTransitionError,
+  DEVICE_VIEWS,
   DeviceActionError,
   DeviceActionService,
   type DeviceCredential,
   deviceProposalDigest,
 } from "@elizaos/plugin-assistant";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
+import { workflowDeviceOwner } from "./workflow-device-owner.ts";
 
 export function requiresDeviceIdentity(
   req: Pick<http.IncomingMessage, "headers">,
@@ -47,7 +49,9 @@ export function deviceRequestCredential(
       ? capabilityHeader.split(",").map((value) => value.trim())
       : [];
   if (
-    capabilities.length > 4 ||
+    capabilities.length > 6 ||
+    (capabilities.includes("reminders.local-record.v1") &&
+      capabilities.includes("reminders.local-record.v2")) ||
     new Set(capabilities).size !== capabilities.length ||
     capabilities.some(
       (value) =>
@@ -55,7 +59,10 @@ export function deviceRequestCredential(
           "calendar.local-event.v1",
           "notes.local-record.v1",
           "reminders.local-record.v1",
+          "reminders.local-record.v2",
+          "reminders.create.v1",
           "maps.selected-read.v1",
+          "clock.handoff.v1",
         ].includes(value),
     )
   )
@@ -117,11 +124,33 @@ export async function handleDeviceActionRoutes(
             "calendar.local-event.v1",
             "notes.local-record.v1",
             "reminders.local-record.v1",
+            "reminders.local-record.v2",
+            "reminders.create.v1",
             "maps.selected-read.v1",
+            "clock.handoff.v1",
           ],
         },
       });
       return true;
+    }
+    if (pathname === "/api/client-devices/view-profile") {
+      if (method === "GET") {
+        json(res, {
+          version: 1,
+          supportedViews: DEVICE_VIEWS,
+          profile: await service.viewProfile(credential),
+        });
+        return true;
+      }
+      if (method === "POST") {
+        const body = await ctx.readJsonBody<unknown>(req, res);
+        if (body)
+          json(res, {
+            version: 1,
+            profile: await service.setViewProfile(credential, body),
+          });
+        return true;
+      }
     }
     if (method === "POST" && pathname === "/api/client-devices/register") {
       const body = await ctx.readJsonBody<{
@@ -135,6 +164,11 @@ export async function handleDeviceActionRoutes(
             credential,
             body.label,
             body.workflowProtocol ?? 0,
+            workflowDeviceOwner(
+              runtime,
+              ctx.authorization,
+              credential.subjectUserId,
+            ),
           ),
         );
       return true;

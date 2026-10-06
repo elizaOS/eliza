@@ -53,7 +53,8 @@ const accounts = vi.hoisted(() => {
 });
 
 vi.mock("../../hooks/useAccounts", () => ({ useAccounts: () => accounts }));
-vi.mock("../../providers", () => ({
+vi.mock("@elizaos/host/protocol", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/host/protocol")>()),
   SUBSCRIPTION_PROVIDER_SELECTIONS: [],
 }));
 vi.mock("../../state/app-store", () => ({

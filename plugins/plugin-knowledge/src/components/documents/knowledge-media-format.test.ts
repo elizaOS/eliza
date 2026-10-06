@@ -6,8 +6,8 @@
  * derivation from mimeType" coverage the slice-2 review asked for.
  */
 
-import type { DocumentRecord } from "@elizaos/ui/api/client-types-chat";
 import { describe, expect, it } from "vitest";
+import type { DocumentRecord } from "../../../../../packages/ui/src/api/client-types-chat";
 import {
   documentMatchesFacet,
   documentMediaFormat,

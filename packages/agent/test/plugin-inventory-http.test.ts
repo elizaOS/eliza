@@ -6,7 +6,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createTestRuntime } from "@elizaos/testing";
+import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { discoverPluginsFromManifest } from "../src/api/plugin-discovery-helpers.ts";
 import { handlePluginInventoryRoutes } from "../src/api/plugin-inventory-routes.ts";
@@ -236,4 +237,56 @@ it("preserves failed registration diagnostics across catalog refresh without lea
       listener.close((error) => (error ? reject(error) : resolve())),
     );
   }
+});
+
+it("returns errors for absent capabilities and serves routes after plugin registration", async () => {
+  for (const route of [
+    "/api/voice/profiles",
+    "/api/discord-local/status",
+    "/api/lifeops/connectors/imessage/status",
+    "/api/signal/status",
+    "/api/setup/telegram-account/status",
+    "/api/whatsapp/status",
+    "/api/coding-agents/preflight",
+    "/api/coding-agents/coordinator/status",
+    "/api/lifeops/activity-signals",
+    "/api/catalog/apps",
+    "/api/drop/status",
+  ]) {
+    const response = await request(route);
+    expect(response.status, route).toBe(404);
+    expect(await response.json(), route).toHaveProperty("error");
+  }
+  const rejectedWrite = await fetch(
+    `http://127.0.0.1:${server.port}/api/lifeops/activity-signals`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ signal: "must not report a fabricated receipt" }),
+    },
+  );
+  expect(rejectedWrite.status).toBe(404);
+  expect(await rejectedWrite.json()).toHaveProperty("error");
+
+  registerHttpPluginRoutes(fixture.runtime, {
+    name: "inventory-route-registration",
+    description: "HTTP registration acceptance",
+    routes: [
+      {
+        type: "GET",
+        path: "/api/voice/profiles",
+        rawPath: true,
+        handler: async (_req, res) => {
+          res.json({ agentId: fixture.runtime.agentId });
+        },
+      },
+    ],
+  });
+  const registered = await request("/api/voice/profiles");
+  expect(registered.status).toBe(200);
+  expect(await registered.json()).toEqual({ agentId: fixture.runtime.agentId });
+  expect((await request("/api/voice/profiles", false)).status).toBe(401);
 });

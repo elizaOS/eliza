@@ -1,14 +1,77 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import {
+  createDevelopmentLauncherDescriptor,
   renderOverlay,
   stageLauncher,
   validateDescriptor,
   validateInspection,
-} from "../distro-android/stage-launcher-overlay.ts";
+} from "../android/stage-launcher-overlay.ts";
+
+test("development descriptor requires opt-in before reading files or invoking tools", () => {
+  assert.throws(
+    () =>
+      createDevelopmentLauncherDescriptor({
+        identity: descriptor,
+        apk: "absent",
+        apksigner: "must-not-run",
+        development: false,
+      }),
+    /explicit development/,
+  );
+});
+
+test("development descriptor verifies a private copy and refuses malformed or multiple signers", () => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "launcher-descriptor-test-"),
+  );
+  try {
+    const apk = path.join(root, "original.apk"),
+      tool = path.join(root, "signer"),
+      record = path.join(root, "inspected");
+    fs.writeFileSync(apk, "fixture-apk");
+    fs.writeFileSync(
+      tool,
+      `#!${process.execPath}\nconst fs=require('node:fs');if(process.argv[2]!=='verify'||process.argv[3]!=='--print-certs')process.exit(2);fs.writeFileSync(process.env.RECORD,process.argv[4]);if(fs.readFileSync(process.argv[4],'utf8')!=='fixture-apk')process.exit(3);console.log(process.env.SIGNATURES);`,
+      { mode: 0o700 },
+    );
+    const options = {
+      identity: descriptor,
+      apk,
+      apksigner: tool,
+      development: true,
+      env: { ...process.env, RECORD: record, SIGNATURES: signer },
+    };
+    const result = createDevelopmentLauncherDescriptor(options);
+    assert.equal(result.certificateSha256, descriptor.certificateSha256);
+    assert.equal(
+      result.apkSha256,
+      createHash("sha256").update("fixture-apk").digest("hex"),
+    );
+    const inspected = fs.readFileSync(record, "utf8");
+    assert.notEqual(inspected, apk);
+    assert.equal(fs.existsSync(inspected), false);
+    for (const signatures of [
+      "",
+      `${signer}\n${signer}`,
+      `certificate SHA-256 digest: ${"b".repeat(64)}g`,
+    ])
+      assert.throws(
+        () =>
+          createDevelopmentLauncherDescriptor({
+            ...options,
+            env: { ...options.env, SIGNATURES: signatures },
+          }),
+        /valid launcher signer/,
+      );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 const descriptor = {
   schemaVersion: 1 as const,

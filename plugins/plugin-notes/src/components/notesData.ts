@@ -4,9 +4,8 @@
  * domain shapes shared with the plugin before exposing them to React or the
  * mounted-view interaction broker.
  */
+import { ApiError, client, fetchWithCsrf } from "@elizaos/ui";
 
-import { ApiError, client } from "@elizaos/ui/api";
-import { fetchWithCsrf } from "@elizaos/ui/api/csrf-client";
 import { NOTES_CAPABILITIES } from "../capabilities.js";
 import type { NotesSnapshot, StickyColor, StickyNote } from "../types.js";
 

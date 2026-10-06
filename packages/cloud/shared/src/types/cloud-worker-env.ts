@@ -71,6 +71,8 @@ export interface Bindings {
   ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
   /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
   ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
+  /** Server-owned registrations for independently branded native clients. */
+  ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
@@ -439,6 +441,8 @@ export interface Bindings {
 
   // ---- Stripe ----
   STRIPE_SECRET_KEY?: string;
+  /** Browser-safe key returned with in-app subscription checkout; pk_live_ only in production, else pk_test_. */
+  STRIPE_PUBLISHABLE_KEY?: string;
   /** Explicit approved per-revision notice dispatches; omission leaves durable notices policy-unavailable. */
   SUBSCRIPTION_NOTICE_APPROVED_DISPATCHES_JSON?: string;
   /** Explicit default app billing mode; live is accepted only in production. */

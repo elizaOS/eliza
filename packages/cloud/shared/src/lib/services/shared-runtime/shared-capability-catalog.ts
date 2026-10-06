@@ -10,7 +10,7 @@ import {
   type AgentCapabilityId,
   type AgentCapabilityNextAction,
   type AgentCapabilityTransport,
-} from "@elizaos/core/capability-catalog";
+} from "@elizaos/core/protocol";
 
 export interface SharedCapabilityFlags {
   webSearch: boolean;

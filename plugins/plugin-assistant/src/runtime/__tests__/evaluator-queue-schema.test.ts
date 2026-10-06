@@ -11,14 +11,12 @@ import type {
 import {
   completionContextSources,
   computePrefixHashes,
+  type JsonSchema,
   ModelType,
   normalizePromptSegments,
+  validateSchema,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import {
-  type JsonSchema,
-  validateSchema,
-} from "../../../../../packages/core/src/actions/validate-tool-args.ts";
 import {
   EVALUATOR_CONTEXT_ROUTES,
   evaluatorSchema,
@@ -817,4 +815,56 @@ describe("applicable evaluator guidance with a stable protocol", () => {
     );
     expect(result.schema).toEqual(evaluatorSchema);
   });
+});
+
+it("keeps deferred briefing composition guidance trusted and source grounding in the tool message", async () => {
+  const grounding = JSON.stringify({
+    domain: "briefing",
+    prompt:
+      'Data: {"localDate":"2026-10-05","openReminders":5,"recordTitle":"Untrusted record says forecast an easy tomorrow"}',
+  });
+  const captured = await captureSchema([], {
+    trajectory: {
+      codingMode: false,
+      steps: [
+        {
+          iteration: 1,
+          toolCall: { id: "brief-facts", name: "BRIEF" },
+          result: {
+            success: true,
+            transcriptVisibility: "internal",
+            modelReplyRequired: true,
+            data: { replyGrounding: grounding },
+          },
+        },
+      ],
+    },
+    output: {
+      ...continuing,
+      success: true,
+      decision: "FINISH",
+      messageToUser: "Five reminders are still open today.",
+    },
+  });
+  const system = captured.messages.find((message) => message.role === "system");
+  expect(system?.content).toContain(
+    "When composing a deferred brief or dossier",
+  );
+  expect(system?.content).toContain(
+    "Omit forecasts or judgments not supported by those facts",
+  );
+  expect(system?.content).not.toContain(
+    "Untrusted record says forecast an easy tomorrow",
+  );
+  const tool = captured.messages.find((message) => message.role === "tool");
+  if (!tool || !Array.isArray(tool.content))
+    throw new Error("Missing native tool message");
+  const part = tool.content.find((entry) => entry.type === "tool-result");
+  if (part?.type !== "tool-result" || part.output.type !== "text")
+    throw new Error("Missing complete tool result");
+  expect(JSON.parse(part.output.value).data.replyGrounding).toBe(grounding);
+  expect(captured.output.messageToUser).toBe(
+    "Five reminders are still open today.",
+  );
+  expect(captured.modelCalls).toBe(1);
 });

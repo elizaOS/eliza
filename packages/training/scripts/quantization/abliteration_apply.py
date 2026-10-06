@@ -38,7 +38,6 @@ import argparse
 import gc
 import json
 import logging
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,15 +46,11 @@ import torch.nn as nn
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 _HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
-if str(_HERE.parent) not in sys.path:
-    sys.path.insert(0, str(_HERE.parent))
 
-from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import model_context_tokens  # noqa: E402
+from eliza_training.training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from eliza_training.lib.generation_integrity import model_context_tokens  # noqa: E402
 
-from _common import (  # noqa: E402
+from eliza_training.quantization._common import (  # noqa: E402
     get_text_config,
     load_model_and_tokenizer,
     save_model,

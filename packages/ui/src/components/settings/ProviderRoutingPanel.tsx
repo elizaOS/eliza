@@ -5,11 +5,11 @@
  * is controlled by the parent via `useCloudModelConfig`.
  */
 
-import type { ModelOption } from "@elizaos/core/contracts/first-run-options";
+import type { ModelOption } from "@elizaos/host/protocol";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { SettingsSelectRow } from "./settings-agent-rows";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";

@@ -1,6 +1,6 @@
 /** Host-only task code lookup. Never register these methods as model actions. */
 import { randomBytes } from "node:crypto";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import type {
   GoogleGmailMessageDetail,
   GoogleGmailMessageSummary,

@@ -1,8 +1,7 @@
 // UI barrel for hosts that import "@elizaos/plugin-wallet/ui".
 
-import "./register-routes.ts";
-
-export { useWalletState } from "@elizaos/ui/state";
+export { useWalletState } from "@elizaos/ui";
+export { registerApp } from "../register.ts";
 export { InventoryAppView } from "./components/InventoryAppView.tsx";
 export { InventoryView } from "./InventoryView.tsx";
 export { ChainIcon } from "./inventory/ChainIcon.tsx";

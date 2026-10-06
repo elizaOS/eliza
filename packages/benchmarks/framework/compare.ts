@@ -7,6 +7,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import type {
   BenchmarkResult,
   ScenarioResult,
@@ -25,7 +26,8 @@ function rpad(str: string, width: number): string {
   return str.padStart(width);
 }
 
-function formatMs(ms: number): string {
+function formatMs(ms: number | null): string {
+  if (ms === null) return "unmeasured";
   if (ms === 0) return "-";
   if (ms < 0.001) return `${(ms * 1_000_000).toFixed(0)}ns`;
   if (ms < 1) return `${(ms * 1000).toFixed(0)}us`;
@@ -293,7 +295,6 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
       for (const [label, key] of pipelineMetrics) {
         const vals = activeRuntimes.map((rt) => getScenario(rt).pipeline[key]);
         if (vals.every((v) => v === 0)) continue;
-        const _best = Math.min(...vals.filter((v) => v > 0));
         console.log(
           pad(label, METRIC_W) +
             activeRuntimes
@@ -386,8 +387,21 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
 const args = process.argv.slice(2);
 const resultsDir =
-  args.find((a) => a.startsWith("--dir="))?.split("=")[1] ??
-  resolve(import.meta.dir, "results");
+  args.find((a) => a.startsWith("--dir="))?.slice("--dir=".length) ??
+  process.env.BENCHMARK_OUTPUT_ROOT ??
+  testOutputPath("benchmark-framework");
 
-const results = findLatestResults(resultsDir);
+const resultFile = args
+  .find((arg) => arg.startsWith("--file="))
+  ?.slice("--file=".length);
+const results = resultFile
+  ? new Map<RuntimeName, BenchmarkResult>()
+  : findLatestResults(resultsDir);
+if (resultFile) {
+  const result: BenchmarkResult = JSON.parse(readFileSync(resultFile, "utf-8"));
+  if (!["typescript", "python", "rust"].includes(result.runtime)) {
+    throw new Error(`Unsupported benchmark runtime: ${result.runtime}`);
+  }
+  results.set(result.runtime, result);
+}
 printComparison(results);

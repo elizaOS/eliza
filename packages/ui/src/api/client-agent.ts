@@ -1,28 +1,32 @@
+import {
+  ElizaClient,
+  invokeLocalDesktopRpc as invokeLocalDesktopAgentRpc,
+  isRemoteRelayRestAdapterBase,
+} from "./client-base";
+import { findSseEventBreak } from "./transport";
+
 /**
  * Agent domain methods — lifecycle, auth, config, connectors, triggers,
  * plugins, streaming, logs, character, permissions, updates.
  */
 
-import type {
-  FirstRunConnectorConfig as ConnectorConfig,
-  FirstRunOptions,
-  SubscriptionStatusResponse,
-} from "@elizaos/core/contracts/first-run-options";
+import type { TriggerLastStatus, TriggerRunRecord } from "@elizaos/core";
 import type {
   AllPermissionsState,
   PermissionId,
   PermissionState,
-} from "@elizaos/core/contracts/permissions";
-import { isTruthyEnvValue } from "@elizaos/core/env-utils";
+} from "@elizaos/core/protocol";
+import { isTruthyEnvValue, resolveEnvAlias } from "@elizaos/core/protocol";
+import type {
+  FirstRunConnectorConfig as ConnectorConfig,
+  FirstRunOptions,
+  SubscriptionStatusResponse,
+} from "@elizaos/host/protocol";
 import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/core/settings-debug";
-import { resolveEnvAlias } from "@elizaos/core/utils/env-alias";
-import {
-  invokeDesktopBridgeRequest,
-  invokeDesktopBridgeRequestWithTimeout,
-} from "../bridge/electrobun-rpc";
+} from "@elizaos/host/protocol";
+import { invokeDesktopBridgeRequestWithTimeout } from "../bridge/electrobun-rpc";
 import {
   type AppBlockerInstalledApp,
   type AppBlockerPermissionResult,
@@ -33,11 +37,10 @@ import {
   type WebsiteBlockerStatusResult,
 } from "../bridge/native-plugins";
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
-import { getBootConfig } from "../config/boot-config";
+import { getBootConfig } from "../config/boot-config-store";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
-import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
 import {
   type ConnectorAccountActionResult,
   type ConnectorAccountAuditEventsQuery,
@@ -54,8 +57,51 @@ import {
   normalizeConnectorAccountRecord,
   normalizeConnectorAccountsListResponse,
 } from "./client-agent-connector-accounts";
-import { ElizaClient, isRemoteRelayRestAdapterBase } from "./client-base";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
+import type { CharacterHistoryResponse } from "./client-types-character";
+import type {
+  CodingAgentAddAgentInput,
+  CodingAgentCreatePlanRevisionInput,
+  CodingAgentCreateTaskInput,
+  CodingAgentForkTaskInput,
+  CodingAgentOrchestratorStatus,
+  CodingAgentRerunFromEventInput,
+  CodingAgentRestartTaskInput,
+  CodingAgentRestartWithEditedPlanInput,
+  CodingAgentRetryTurnInput,
+  CodingAgentScratchWorkspace,
+  CodingAgentStatus,
+  CodingAgentTaskEventRecord,
+  CodingAgentTaskMessageRecord,
+  CodingAgentTaskPage,
+  CodingAgentTaskPlanRevisionRecord,
+  CodingAgentTaskThread,
+  CodingAgentTaskThreadDetail,
+  CodingAgentTaskTimelineItem,
+  CodingAgentUpdateTaskInput,
+  CodingAgentValidateTaskInput,
+  OrchestratorAccountOverview,
+  OrchestratorAccountReadiness,
+  OrchestratorRoomRosterOverview,
+  ProjectListResponse,
+  ProjectSummary,
+  RawAcpSession,
+} from "./client-types-cloud";
+import {
+  mapAcpSessionsToCodingAgentSessions,
+  mapTaskThreadsToCodingAgentSessions,
+} from "./client-types-cloud";
+import type {
+  AppConfigResponse,
+  CharacterData,
+  ConfigSchemaResponse,
+  CorePluginsResponse,
+  PluginInfo,
+  PluginMutationResult,
+  SecretInfo,
+  TriggerEventDispatchResponse,
+  UpdateStatus,
+} from "./client-types-config";
 import {
   type AgentAutomationMode,
   type AgentAutomationModeResponse,
@@ -64,38 +110,8 @@ import {
   type AgentSelfStatusSnapshot,
   type AgentStatus,
   ApiError,
-  type AppConfigResponse,
-  type CharacterData,
-  type CharacterHistoryResponse,
-  type CodingAgentAddAgentInput,
-  type CodingAgentCreatePlanRevisionInput,
-  type CodingAgentCreateTaskInput,
-  type CodingAgentForkTaskInput,
-  type CodingAgentOrchestratorStatus,
-  type CodingAgentRerunFromEventInput,
-  type CodingAgentRestartTaskInput,
-  type CodingAgentRestartWithEditedPlanInput,
-  type CodingAgentRetryTurnInput,
-  type CodingAgentScratchWorkspace,
-  type CodingAgentStatus,
-  type CodingAgentTaskEventRecord,
-  type CodingAgentTaskMessageRecord,
-  type CodingAgentTaskPage,
-  type CodingAgentTaskPlanRevisionRecord,
-  type CodingAgentTaskThread,
-  type CodingAgentTaskThreadDetail,
-  type CodingAgentTaskTimelineItem,
-  type CodingAgentUpdateTaskInput,
-  type CodingAgentValidateTaskInput,
-  type ConfigSchemaResponse,
-  type CorePluginsResponse,
   type CreateTriggerRequest,
-  type ExperienceGraphResponse,
-  type ExperienceListQuery,
-  type ExperienceListResponse,
-  type ExperienceMaintenanceResult,
-  type ExperienceRecord,
-  type ExperienceUpdateInput,
+  isApiError,
   type LaunchSnapshot,
   type LogsFilter,
   type LogsResponse,
@@ -103,43 +119,38 @@ import {
   type ModelsConfigResponse,
   type ModelsConfigWriteRequest,
   type ModelsConfigWriteResult,
-  mapAcpSessionsToCodingAgentSessions,
-  mapTaskThreadsToCodingAgentSessions,
-  type OrchestratorAccountOverview,
-  type OrchestratorAccountReadiness,
-  type OrchestratorRoomRosterOverview,
-  type PluginInfo,
-  type PluginMutationResult,
-  type ProjectListResponse,
-  type ProjectSummary,
   type ProviderModelRecord,
-  type RawAcpSession,
-  type RelationshipsActivityResponse,
-  type RelationshipsGraphQuery,
-  type RelationshipsGraphSnapshot,
-  type RelationshipsGraphStats,
-  type RelationshipsMergeCandidate,
-  type RelationshipsPersonDetail,
-  type RelationshipsPersonSummary,
   type RuntimeDebugSnapshot,
-  type SecretInfo,
   type SecurityAuditFilter,
   type SecurityAuditResponse,
   type SecurityAuditStreamEvent,
   type TradePermissionMode,
   type TradePermissionModeResponse,
-  type TriggerEventDispatchResponse,
   type TriggerHealthSnapshot,
-  type TriggerLastStatus,
-  type TriggerRunRecord,
   type TriggerSummary,
-  type UpdateStatus,
   type UpdateTriggerRequest,
-} from "./client-types";
-import { isApiError } from "./client-types-core";
+} from "./client-types-core";
+import type {
+  ExperienceGraphResponse,
+  ExperienceListQuery,
+  ExperienceListResponse,
+  ExperienceMaintenanceResult,
+  ExperienceRecord,
+  ExperienceUpdateInput,
+} from "./client-types-experience";
+import type {
+  RelationshipsActivityResponse,
+  RelationshipsGraphQuery,
+  RelationshipsGraphSnapshot,
+  RelationshipsGraphStats,
+  RelationshipsMergeCandidate,
+  RelationshipsPersonDetail,
+  RelationshipsPersonSummary,
+} from "./client-types-relationships";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import { waitForFirstRunActivation } from "./first-run-activation";
+import { hostAgentLifecycleForUrl } from "./host-transport";
 import { workflowSurfaceClient } from "./workflow-surface-routing";
 import "./client-agent-accounts";
 
@@ -280,23 +291,7 @@ async function getDesktopStatusRpc<T>(
   });
   return outcome.status === "ok" && outcome.value ? outcome.value : null;
 }
-async function invokeLocalDesktopAgentRpc<T>(
-  baseUrl: string,
-  options: {
-    rpcMethod: string;
-    ipcChannel: string;
-    params?: unknown;
-  },
-): Promise<T | null> {
-  if (
-    !isDesktopLocalApiBaseUrl(baseUrl) ||
-    isDesktopExternalApiBaseUrl(baseUrl) ||
-    isRemoteRelayRestAdapterBase(baseUrl)
-  ) {
-    return null;
-  }
-  return invokeDesktopBridgeRequest<T>(options);
-}
+
 // ---------------------------------------------------------------------------
 // Bootstrap exchange types
 // ---------------------------------------------------------------------------
@@ -322,10 +317,9 @@ export type BootstrapExchangeResult =
 // Connector config still uses `/api/connectors`; account inventory lives under
 // `/api/connectors/:provider/accounts`.
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getStatus(): Promise<AgentStatus>;
     getBootProgress(): Promise<AgentBootProgress | null>;
@@ -1281,9 +1275,7 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
   } catch {
     /* fall through */
   }
-  const nativeAgent = await androidNativeAgentLifecycleForUrl(
-    this.getBaseUrl(),
-  );
+  const nativeAgent = await hostAgentLifecycleForUrl(this.getBaseUrl());
   if (nativeAgent?.getStatus) {
     const native = (await nativeAgent.getStatus()) as AgentStatus;
     // The native lifecycle plugin reports the bun *process* state but not the
@@ -1748,9 +1740,7 @@ ElizaClient.prototype.exchangeOpenAICode = async function (
   });
 };
 ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
-  const nativeAgent = await androidNativeAgentLifecycleForUrl(
-    this.getBaseUrl(),
-  );
+  const nativeAgent = await hostAgentLifecycleForUrl(this.getBaseUrl());
   if (nativeAgent?.start) {
     return (await nativeAgent.start()) as AgentStatus;
   }
@@ -1762,9 +1752,7 @@ ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
   return res.status;
 };
 ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
-  const nativeAgent = await androidNativeAgentLifecycleForUrl(
-    this.getBaseUrl(),
-  );
+  const nativeAgent = await hostAgentLifecycleForUrl(this.getBaseUrl());
   if (nativeAgent?.stop) {
     await nativeAgent.stop();
     return {
@@ -1798,9 +1786,7 @@ ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
   return res.status;
 };
 ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
-  const nativeAgent = await androidNativeAgentLifecycleForUrl(
-    this.getBaseUrl(),
-  );
+  const nativeAgent = await hostAgentLifecycleForUrl(this.getBaseUrl());
   if (nativeAgent?.start) {
     if (nativeAgent.stop) {
       await nativeAgent.stop();
@@ -2429,19 +2415,7 @@ async function throwSecurityAuditResponseError(res: Response): Promise<never> {
   ).status = res.status;
   throw err;
 }
-function findSseEventBreak(chunkBuffer: string): {
-  index: number;
-  length: number;
-} | null {
-  const lfBreak = chunkBuffer.indexOf("\n\n");
-  const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
-  if (lfBreak === -1 && crlfBreak === -1) return null;
-  if (lfBreak === -1) return { index: crlfBreak, length: 4 };
-  if (crlfBreak === -1) return { index: lfBreak, length: 2 };
-  return lfBreak < crlfBreak
-    ? { index: lfBreak, length: 2 }
-    : { index: crlfBreak, length: 4 };
-}
+
 function parseSecurityAuditPayload(
   payload: string,
   onEvent: (event: SecurityAuditStreamEvent) => void,

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -7,27 +8,27 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { client } from "../../api/client";
 import { ReminderEditor, RemindersFeed } from "./RemindersFeed";
 
 const mocks = vi.hoisted(() => ({ request: vi.fn() }));
-vi.mock("../../api", async () => {
+vi.mock("../../api/client", async () => {
   const { ElizaClient } = await import("../../api/client-base");
   const client = new ElizaClient("eliza-remote://session/reminder-relay");
   client.setRequestTransport({ request: mocks.request });
   return { client };
 });
-vi.mock("../../state/TranslationContext.hooks", () => ({
-  useTranslation: () => ({
-    t: (key: string) =>
-      ({
-        "common.save": "Save",
-        "automationsreminders.editMessage": "Edit message",
-        "automationsreminders.message": "Reminder message",
-        "automationsreminders.dueTime": "Due time",
-        "automationsreminders.cancel": "Cancel reminder",
-      })[key] ?? key,
-  }),
-}));
+vi.mock("../../state/TranslationContext.hooks", () => {
+  const t = (key: string) =>
+    ({
+      "common.save": "Save",
+      "automationsreminders.editMessage": "Edit message",
+      "automationsreminders.message": "Reminder message",
+      "automationsreminders.dueTime": "Due time",
+      "automationsreminders.cancel": "Cancel reminder",
+    })[key] ?? key;
+  return { useTranslation: () => ({ t }) };
+});
 const row = {
   definition: {
     id: "reminder-1",
@@ -41,6 +42,7 @@ const row = {
   latestAttempt: null,
 };
 beforeEach(() => {
+  client.setToken("reminder-test-initial");
   mocks.request.mockReset();
   mocks.request.mockImplementation(
     async (_url, init) =>
@@ -142,4 +144,138 @@ it("creates a manual reminder through the installed paired relay transport", asy
   });
   expect(JSON.parse(init.body).idempotencyKey).toBeTruthy();
   expect(globalThis.fetch).not.toHaveBeenCalled();
+});
+
+it("does not submit an old editor draft after a same-URL token change", async () => {
+  client.setToken("reminder-test-owner-a");
+  const baseUrl = client.getBaseUrl();
+  render(<ReminderEditor onSaved={vi.fn()} onCancel={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText("Reminder message"), {
+    target: { value: "Owner A private reminder" },
+  });
+  fireEvent.change(screen.getByLabelText(/Due time/), {
+    target: { value: "2030-10-01T12:30" },
+  });
+  act(() => client.setToken("reminder-test-owner-b"));
+  expect(client.getBaseUrl()).toBe(baseUrl);
+  fireEvent.click(screen.getByRole("button", { name: "common.create" }));
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(mocks.request).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Reminder message")).toHaveProperty("value", "");
+  mocks.request.mockResolvedValueOnce(
+    new Response(JSON.stringify({ definition: { id: "new-owner-reminder" } })),
+  );
+  fireEvent.change(screen.getByLabelText("Reminder message"), {
+    target: { value: "Owner B new reminder" },
+  });
+  fireEvent.change(screen.getByLabelText(/Due time/), {
+    target: { value: "2030-10-01T13:30" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "common.create" }));
+  await waitFor(() => expect(mocks.request).toHaveBeenCalledOnce());
+  expect(JSON.parse(mocks.request.mock.calls[0][1].body).title).toBe(
+    "Owner B new reminder",
+  );
+});
+
+it("drops a late old-authority list response and loads current reminders", async () => {
+  let resolveOld: (response: Response) => void = () => {};
+  mocks.request.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        resolveOld = resolve;
+      }),
+  );
+  mocks.request.mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        reminders: [
+          {
+            ...row,
+            definition: {
+              ...row.definition,
+              id: "new-id",
+              title: "Current owner's reminder",
+            },
+          },
+        ],
+      }),
+    ),
+  );
+  const counts = vi.fn();
+  render(<RemindersFeed onCountsChange={counts} />);
+  await waitFor(() => expect(mocks.request).toHaveBeenCalledOnce());
+  act(() => client.setToken("reminder-test-next"));
+  await screen.findByText("Current owner's reminder");
+  const published = counts.mock.calls.length;
+  await act(async () => {
+    resolveOld(new Response(JSON.stringify({ reminders: [row] })));
+    await Promise.resolve();
+  });
+  expect(screen.queryByText("Call dentist")).toBeNull();
+  expect(counts).toHaveBeenCalledTimes(published);
+});
+
+it("does not complete the new editor when an old-authority creation settles", async () => {
+  let resolveOld: (response: Response) => void = () => {};
+  mocks.request.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        resolveOld = resolve;
+      }),
+  );
+  const saved = vi.fn();
+  render(<ReminderEditor onSaved={saved} onCancel={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText("Reminder message"), {
+    target: { value: "Original owner reminder" },
+  });
+  fireEvent.change(screen.getByLabelText(/Due time/), {
+    target: { value: "2030-10-01T13:30" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "common.create" }));
+  await waitFor(() => expect(mocks.request).toHaveBeenCalledOnce());
+  act(() => client.setToken("reminder-test-next"));
+  await act(async () => {
+    resolveOld(
+      new Response(JSON.stringify({ definition: { id: "old-created" } })),
+    );
+    await Promise.resolve();
+  });
+  expect(saved).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Reminder message")).toHaveProperty("value", "");
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("does not retry an old creation with new authority after an in-flight 401", async () => {
+  client.setToken(null);
+  expect(client.getRestAuthToken()).toBeNull();
+  let resolveOld: (response: Response) => void = () => {};
+  mocks.request.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        resolveOld = resolve;
+      }),
+  );
+  mocks.request.mockResolvedValueOnce(
+    new Response(JSON.stringify({ definition: { id: "retried-old-draft" } })),
+  );
+  const saved = vi.fn();
+  render(<ReminderEditor onSaved={saved} onCancel={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText("Reminder message"), {
+    target: { value: "Original cookie-owner draft" },
+  });
+  fireEvent.change(screen.getByLabelText(/Due time/), {
+    target: { value: "2030-10-01T13:30" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "common.create" }));
+  await waitFor(() => expect(mocks.request).toHaveBeenCalledOnce());
+  act(() => client.setToken("reminder-test-new-principal"));
+  await act(async () => {
+    resolveOld(new Response("Unauthorized", { status: 401 }));
+  });
+  expect(mocks.request.mock.calls[0][1].signal.aborted).toBe(true);
+  expect(mocks.request).toHaveBeenCalledOnce();
+  expect(saved).not.toHaveBeenCalled();
 });

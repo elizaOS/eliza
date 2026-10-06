@@ -6,10 +6,7 @@
  * capability flags) that embedded iframes read to talk to the host wallet.
  */
 
-import type {
-  WalletAddresses,
-  WalletConfigStatus,
-} from "@elizaos/core/contracts/wallet-types";
+import type { WalletAddresses, WalletConfigStatus } from "@elizaos/contracts";
 import type { StewardStatusResponse } from "../../api/client-types-steward";
 
 export type {
@@ -85,10 +82,7 @@ export interface BrowserWorkspaceWalletResponse {
   result?: unknown;
   error?: string;
 }
-export interface BrowserWorkspaceWalletReadyPayload {
-  type: typeof BROWSER_WALLET_READY_TYPE;
-  state: BrowserWorkspaceWalletState;
-}
+
 export const EMPTY_BROWSER_WORKSPACE_WALLET_STATE: BrowserWorkspaceWalletState =
   {
     address: null,

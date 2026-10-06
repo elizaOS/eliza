@@ -14,7 +14,7 @@
  *    regardless of which ASR provider serves it) through an unsupported deep
  *    wildcard subpath (`./services/voice/transcript-store`) — brittle surface.
  *  - (c) is ~100 lines against the SHARED `Transcript` contract
- *    (@elizaos/core/transcripts), which both the write and read sides JSON
+ *    (@elizaos/core/protocol), which both the write and read sides JSON
  *    round-trip. The record-shape golden test in
  *    `meeting-transcript-writer.test.ts` parses the persisted row with the
  *    same reader logic transcripts-routes uses, so drift fails loudly.
@@ -41,7 +41,7 @@ import type {
   MeetingEndReason,
   MeetingParticipant,
   MeetingPlatform,
-} from "@elizaos/core/meetings";
+} from "@elizaos/core/protocol";
 import {
   type Transcript,
   type TranscriptConsentState,
@@ -51,7 +51,7 @@ import {
   transcriptPlainText,
   transcriptPreview,
   transcriptSpeakerCount,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 /** The `type` column partition transcripts live in (sibling to "messages"). */
 export const TRANSCRIPTS_TABLE = "transcripts";
 /** `metadata.source` marker — matches plugin-local-inference's store. */

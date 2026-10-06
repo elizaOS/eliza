@@ -5,7 +5,7 @@
  * model or database is involved.
  */
 
-import { fetchRemoteMedia, getLocalServerUrl } from "@elizaos/core";
+import { fetchRemoteMedia, getLocalServerUrl, ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async (importOriginal) => {
@@ -302,6 +302,13 @@ describe("image attachments without stored text inline bytes before describing (
       getMemories: async () => [],
       getRoom: async () => null,
       logger: { warn: () => undefined, debug: () => undefined },
+      getModelRegistrations: () => [
+        {
+          modelType: ModelType.IMAGE_DESCRIPTION,
+          provider: "fixture",
+          priority: 0,
+        },
+      ],
       getCache: async () => undefined,
       setCache: async () => undefined,
       reportError: (...args: unknown[]) => {

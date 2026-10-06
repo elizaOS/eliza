@@ -12,7 +12,7 @@
  * real approval queue.
  */
 
-import { type TranscriptSegment } from "@elizaos/core/transcripts";
+import type { TranscriptSegment } from "@elizaos/core/protocol";
 import { describe, expect, it } from "vitest";
 import {
   analyzeMeetingGhostTranscript,

@@ -6,7 +6,7 @@
  * fields). No React — the editor imports these to normalize input and to seed
  * itself from `client.generateCustomAction`.
  */
-import type { CustomActionHandler } from "@elizaos/core/contracts/config";
+import type { CustomActionHandler } from "@elizaos/contracts";
 /* ── Types ─────────────────────────────────────────────────────────── */
 export type HandlerType = "http" | "shell" | "code";
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -31,16 +31,12 @@ export interface ParsedGeneration {
 /* ── Constants ─────────────────────────────────────────────────────── */
 export const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"] as const;
 const METHODS_SET = new Set<string>(HTTP_METHODS);
-/* ── CSS class names ───────────────────────────────────────────────── */
-export const editorDialogContentClassName =
-  "w-[min(calc(100%_-_2rem),48rem)] max-h-[min(90vh,56rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0";
+
 export const editorFieldLabelClassName = "text-xs text-muted";
 export const editorInputClassName =
   "rounded-sm border-border bg-surface text-txt placeholder:text-muted/50 ";
 export const editorTextareaClassName = `${editorInputClassName} resize-none`;
-export const editorMonoTextareaClassName = `${editorTextareaClassName} font-mono`;
-export const editorSectionCardClassName =
-  "flex flex-col gap-3 rounded-sm border border-border/70 bg-bg/20 p-3";
+
 /* ── Normalization helpers ─────────────────────────────────────────── */
 export function toNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

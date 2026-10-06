@@ -1,31 +1,25 @@
-/**
- * Config-domain client DTOs: Config*, Plugin*, Secret*, Connector*, Trigger*,
- * Update*, Extension*, Workbench*, Character*, Voice*, Skill*. One
- * slice of the ElizaClient type surface, re-exported through client-types.ts.
- */
+/** Configuration, plugin, connector, and character client DTOs. */
+
 import type {
-  AppShellBackgroundPolicy,
+  ConfigUiHint,
+  ReleaseChannel,
+  WorkbenchTask,
+  WorkbenchTodo,
+} from "@elizaos/contracts";
+
+import type {
   SurfaceManifest,
+  TriggerRunRecord,
   ViewKind,
 } from "@elizaos/core";
-import type { PluginParamDef } from "@elizaos/core/api/agent-api-types";
-import type { MessageExampleContent } from "@elizaos/core/contracts/first-run-options";
-import type { ConfigUiHint } from "../types";
+import type { PluginParamDef } from "@elizaos/core/protocol";
+import type { MessageExampleContent } from "@elizaos/host/protocol";
 import type {
   ConversationScope,
-  ReleaseChannel,
   ScheduledTaskView,
-  TriggerRunRecord,
   TriggerSummary,
 } from "./client-types-core";
 
-export type {
-  CreateLifeOpsCalendarEventRequest,
-  GetLifeOpsCalendarFeedRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsNextCalendarEventContext,
-} from "@elizaos/core/contracts/calendar";
 export type {
   CloudCodingAgent,
   CloudCodingContainerSession,
@@ -41,24 +35,16 @@ export type {
   CloudVfsFile,
   CloudVfsFileEncoding,
   CloudVfsSourceKind,
-  PromoteVfsToCloudContainerRequest,
-  PromoteVfsToCloudContainerResponse,
-  RequestCodingAgentContainerRequest,
-  RequestCodingAgentContainerResponse,
-  SyncCloudCodingContainerRequest,
-  SyncCloudCodingContainerResponse,
-} from "@elizaos/core/contracts/cloud-coding-containers";
-export type {
-  CompleteLifeOpsBrowserSessionRequest as CompleteBrowserBridgeSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
-  ConfirmLifeOpsBrowserSessionRequest as ConfirmBrowserBridgeSessionRequest,
-  CreateLifeOpsBrowserSessionRequest as CreateBrowserBridgeSessionRequest,
+  CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
+  GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
-  LifeOpsBrowserSession as BrowserBridgeSession,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
   LifeOpsDefinitionRecord,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailReplyDraft,
@@ -66,21 +52,28 @@ export type {
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
   LifeOpsGoogleConnectorStatus,
+  LifeOpsNextCalendarEventContext,
   LifeOpsOccurrenceExplanation,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsReminderInspection,
   LifeOpsReminderPlan,
   LifeOpsTaskDefinition,
+  PostWorkbenchVfsPromoteToCloudRequest,
+  PromoteVfsToCloudContainerRequest,
+  PromoteVfsToCloudContainerResponse,
+  RequestCodingAgentContainerRequest,
+  RequestCodingAgentContainerResponse,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
+  SyncCloudCodingContainerRequest,
+  SyncCloudCodingContainerResponse,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/core/contracts/personal-assistant";
-export type { PostWorkbenchVfsPromoteToCloudRequest } from "@elizaos/core/contracts/workbench-routes";
+} from "@elizaos/contracts";
 export type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
@@ -184,7 +177,7 @@ export interface PluginInfo {
     order?: number;
     defaultEnabled?: boolean;
     navGroup?: string;
-    developerOnly?: boolean;
+
     viewKind?: ViewKind;
     componentExport?: string;
     signalKinds?: readonly string[];
@@ -198,7 +191,7 @@ export interface PluginInfo {
     displayName?: string;
     category?: string;
     icon?: string | null;
-    developerOnly?: boolean;
+
     viewKind?: ViewKind;
     visibleInAppStore?: boolean;
     navTabs?: Array<{
@@ -208,10 +201,10 @@ export interface PluginInfo {
       path: string;
       tabAffinity?: string;
       order?: number;
-      developerOnly?: boolean;
+
       viewKind?: ViewKind;
       group?: string;
-      backgroundPolicy?: AppShellBackgroundPolicy;
+
       surface?: SurfaceManifest;
       componentExport?: string;
     }>;
@@ -447,25 +440,7 @@ export interface RegistryPluginItem {
   thirdParty?: boolean;
 }
 // Workbench
-export interface WorkbenchTask {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  isCompleted: boolean;
-  updatedAt?: number;
-}
-export interface WorkbenchTodo {
-  id: string;
-  name: string;
-  description: string;
-  priority: number | null;
-  isUrgent: boolean;
-  isCompleted: boolean;
-  type: string;
-}
 export interface WorkbenchOverview {
-  tasks: WorkbenchTask[];
   triggers: TriggerSummary[];
   todos: WorkbenchTodo[];
   autonomy?: {
@@ -596,7 +571,7 @@ export interface AutomationListResponse {
   workflowFetchError: string | null;
   executionFetchErrors: AutomationExecutionFetchError[];
 }
-export type { LifeOpsOccurrenceActionResult } from "@elizaos/core/contracts/personal-assistant";
+export type { LifeOpsOccurrenceActionResult } from "@elizaos/contracts";
 // Voice / TTS config
 export type VoiceProvider =
   | "eliza-cloud"

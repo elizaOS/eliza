@@ -12,9 +12,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const registration = vi.hoisted(() => ({ register: vi.fn() }));
 
-vi.mock("@elizaos/ui/app-shell-registry", () => ({
-  registerAppShellPage: registration.register,
-}));
 vi.mock("@capacitor/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@capacitor/core")>();
   return {
@@ -22,7 +19,9 @@ vi.mock("@capacitor/core", async (importOriginal) => {
     Capacitor: { ...actual.Capacitor, getPlatform: () => "android" },
   };
 });
-vi.mock("@elizaos/ui/components", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  registerAppShellPage: registration.register,
   PluginPageFrame: ({
     children,
     title,
@@ -65,7 +64,7 @@ async function exercise(
 
 describe("Phone host-view ABI", () => {
   it("keeps native entry points framed and the dynamic bundle embeddable", async () => {
-    await import("./register-phone-page.ts");
+    (await import("./register.ts")).registerApp();
     const registrationCall = registration.register.mock.calls[0]?.[0];
     expect(registrationCall).toBeDefined();
 

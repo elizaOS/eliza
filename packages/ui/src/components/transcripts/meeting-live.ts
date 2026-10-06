@@ -4,13 +4,15 @@
  * semantics ("confirmed appends, pending replaces") are unit-testable without
  * a WebSocket or the data layer.
  */
-import {
-  MEETING_PLATFORMS,
-  type MeetingParticipant,
-  type MeetingPlatform,
-  type MeetingTranscriptEvent,
-} from "@elizaos/core/meetings";
-import type { Transcript, TranscriptSegment } from "@elizaos/core/transcripts";
+
+import type {
+  MeetingParticipant,
+  MeetingPlatform,
+  MeetingTranscriptEvent,
+  Transcript,
+  TranscriptSegment,
+} from "@elizaos/core/protocol";
+import { MEETING_PLATFORMS } from "@elizaos/core/protocol";
 /** The live pane's view of an in-progress meeting transcript. */
 export interface LiveTranscriptState {
   /** Stable, LocalAgreement-confirmed segments (append-only). */
@@ -18,10 +20,7 @@ export interface LiveTranscriptState {
   /** Mutable ASR tail — replaced wholesale by every event/poll. */
   pending: TranscriptSegment[];
 }
-export const EMPTY_LIVE_TRANSCRIPT: LiveTranscriptState = {
-  confirmed: [],
-  pending: [],
-};
+
 /**
  * Apply one `meeting-transcript` ws event: append the confirmed segments the
  * pane hasn't seen yet (deduped by segment id, so replays/backlog are safe)

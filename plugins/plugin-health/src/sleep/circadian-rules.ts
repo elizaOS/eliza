@@ -12,7 +12,7 @@
  * file so spec and code never drift.
  */
 
-import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
+import { parseIsoMs } from "@elizaos/contracts";
 import type {
   LifeOpsActivitySignal,
   LifeOpsCircadianRuleFiring,

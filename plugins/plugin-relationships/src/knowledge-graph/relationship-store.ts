@@ -12,15 +12,15 @@
  * `(from, to, type)` exists.
  */
 import crypto from "node:crypto";
-import { type IAgentRuntime } from "@elizaos/core";
-import {
-  type Relationship,
-  type RelationshipFilter,
-  type RelationshipSentiment,
-  type RelationshipSource,
-  type RelationshipState,
-  type RelationshipStatus,
-} from "@elizaos/core/knowledge-graph/relationship-types";
+import type {
+  KnowledgeGraphRelationship as Relationship,
+  RelationshipFilter,
+  RelationshipSentiment,
+  LifeOpsGraphRelationshipSource as RelationshipSource,
+  LifeOpsGraphRelationshipState as RelationshipState,
+  LifeOpsGraphRelationshipStatus as RelationshipStatus,
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   type GraphRecordRepository,
   graphRecordRepository,
@@ -91,10 +91,41 @@ function rowToRelationship(row: Record<string, unknown>): Relationship {
     updatedAt: toText(row.updated_at),
   };
 }
+/**
+ * Strengthen-or-create reads the matching edge and then writes it. Without a
+ * record transaction (the SQL adapters) two concurrent observations of one
+ * edge would both see "no edge" and insert twice, or both merge into the same
+ * snapshot and lose one's evidence, so they run one at a time per edge.
+ */
+const edgeQueues = new Map<string, Promise<void>>();
+function oneAtATime<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const run = (edgeQueues.get(key) ?? Promise.resolve()).then(work);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  edgeQueues.set(key, settled);
+  void settled.then(() => {
+    if (edgeQueues.get(key) === settled) edgeQueues.delete(key);
+  });
+  return run;
+}
 export class RelationshipStore {
   private readonly records: GraphRecordRepository | null;
   private operation<T>(work: () => Promise<T>): Promise<T> {
     return this.records ? this.records.transaction(work) : work();
+  }
+  private edgeOperation<T>(
+    edge: { fromEntityId: string; toEntityId: string; type: string },
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const key = JSON.stringify([
+      this.agentId,
+      edge.fromEntityId,
+      edge.toEntityId,
+      edge.type,
+    ]);
+    return oneAtATime(key, () => this.operation(work));
   }
   constructor(
     private readonly runtime: IAgentRuntime,
@@ -203,6 +234,24 @@ export class RelationshipStore {
     }
     return fetched;
   }
+  /**
+   * Read, change and write one edge under the same per-edge serialization as
+   * `observe`, so a concurrent observation or retirement between the read and
+   * the write is not overwritten by a stale copy. Null when the edge is absent.
+   */
+  async patch(
+    relationshipId: string,
+    mutate: (
+      existing: Relationship,
+    ) => Parameters<RelationshipStore["upsert"]>[0],
+  ): Promise<Relationship | null> {
+    const current = await this.get(relationshipId);
+    if (!current) return null;
+    return this.edgeOperation(current, async () => {
+      const existing = await this.getOperation(relationshipId);
+      return existing ? this.upsertOperation(mutate(existing)) : null;
+    });
+  }
   async get(relationshipId: string): Promise<Relationship | null> {
     return this.operation(() => this.getOperation(relationshipId));
   }
@@ -226,9 +275,18 @@ export class RelationshipStore {
   private async listOperation(
     filter?: RelationshipFilter,
   ): Promise<Relationship[]> {
+    // metadataMatch and cadenceOverdueAsOf are applied below, after the read.
+    // Limiting the read first would keep only the most recently updated edges,
+    // and overdue edges are by definition the stale ones, so the limit is
+    // applied to the filtered result instead.
+    const postFiltered = Boolean(
+      filter?.metadataMatch || filter?.cadenceOverdueAsOf,
+    );
+    const readFilter =
+      postFiltered && filter ? { ...filter, limit: undefined } : filter;
     let results: Relationship[];
     if (this.records) {
-      results = await this.records.listRelationships(filter);
+      results = await this.records.listRelationships(readFilter);
     } else {
       const clauses = [`agent_id = ${sqlQuote(this.agentId)}`];
       if (!filter?.includeRetired) {
@@ -246,8 +304,9 @@ export class RelationshipStore {
         clauses.push(`type IN (${list})`);
       }
       const limitClause =
-        typeof filter?.limit === "number" && Number.isFinite(filter.limit)
-          ? `LIMIT ${sqlInteger(filter.limit)}`
+        typeof readFilter?.limit === "number" &&
+        Number.isFinite(readFilter.limit)
+          ? `LIMIT ${sqlInteger(readFilter.limit)}`
           : "";
       const rows = await executeRawSql(
         this.runtime,
@@ -287,7 +346,64 @@ export class RelationshipStore {
         return overdueAtMs <= asOfMs;
       });
     }
+    if (
+      postFiltered &&
+      typeof filter?.limit === "number" &&
+      Number.isFinite(filter.limit)
+    ) {
+      results = results.slice(0, Math.max(0, Math.trunc(filter.limit)));
+    }
     return results;
+  }
+  /**
+   * Records an explicit `(from, to, type)` assertion, such as the owner stating
+   * a relationship: the active edge is updated in place with the new evidence
+   * merged in, and created only when none is active. It uses the same
+   * backend-specific operation boundary as `observe`; unlike `observe`, it
+   * does not count an interaction.
+   */
+  async assertEdge(input: {
+    fromEntityId: string;
+    toEntityId: string;
+    type: string;
+    evidence: string[];
+    confidence: number;
+    source: RelationshipSource;
+  }): Promise<Relationship> {
+    return this.edgeOperation(input, () => this.assertEdgeOperation(input));
+  }
+
+  private async assertEdgeOperation(input: {
+    fromEntityId: string;
+    toEntityId: string;
+    type: string;
+    evidence: string[];
+    confidence: number;
+    source: RelationshipSource;
+  }): Promise<Relationship> {
+    const [active] = await this.listOperation({
+      fromEntityId: input.fromEntityId,
+      toEntityId: input.toEntityId,
+      type: input.type,
+    });
+    if (active) {
+      return this.upsertOperation({
+        ...active,
+        evidence: Array.from(new Set([...active.evidence, ...input.evidence])),
+        confidence: Math.max(active.confidence, input.confidence),
+        source: input.source,
+      });
+    }
+    return this.upsertOperation({
+      fromEntityId: input.fromEntityId,
+      toEntityId: input.toEntityId,
+      type: input.type,
+      metadata: {},
+      state: {},
+      evidence: input.evidence,
+      confidence: input.confidence,
+      source: input.source,
+    });
   }
   /**
    * Strengthen-or-create. If an active edge with the same
@@ -308,7 +424,7 @@ export class RelationshipStore {
     occurredAt?: string;
     source?: RelationshipSource;
   }): Promise<Relationship> {
-    return this.operation(() => this.observeOperation(obs));
+    return this.edgeOperation(obs, () => this.observeOperation(obs));
   }
   private async observeOperation(obs: {
     fromEntityId: string;

@@ -20,9 +20,10 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "lucide-react": "^1.0.0",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
     "react": "^19.3.0",

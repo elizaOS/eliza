@@ -12,7 +12,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import { filterInMemory } from "./adapters/base.ts";
+import { searchByListing } from "./adapters/base.ts";
 import { getDeferredMessageScheduler } from "./deferred-send-scheduler.ts";
 import {
   getDefaultMessageRefStore,
@@ -303,15 +303,7 @@ export class TriageService {
         hits =
           adapter.searchMessages != null
             ? await adapter.searchMessages(runtime, probeFilters)
-            : filterInMemory(
-                await adapter.listMessages(runtime, {
-                  sinceMs: probeFilters.sinceMs,
-                  limit: probeFilters.limit,
-                  worldIds: probeFilters.worldIds,
-                  channelIds: probeFilters.channelIds,
-                }),
-                probeFilters,
-              );
+            : await searchByListing(adapter, runtime, probeFilters);
       } catch (error) {
         // error-policy:J4 same partial-degrade contract as triage() above
         failures.push({ source, error });

@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { AuthStore } from "@elizaos/app/services/auth-store";
+import { AuthStore } from "@elizaos/app/auth";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { expect, it } from "vitest";

@@ -13,7 +13,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { ChannelType, createCharacter, ModelType } from "@elizaos/core";
-import { createSQLiteTestRuntime } from "@elizaos/testing";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "../index.ts";
 import { DefaultMessageService } from "./message.ts";

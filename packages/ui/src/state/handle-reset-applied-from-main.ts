@@ -8,7 +8,7 @@
  * and main-process reset must apply the **same** client + first-run + cloud
  * teardown or the two entry points drift.
  */
-import type { AgentStatus } from "../api/client";
+import type { AgentStatus } from "../api/client-types-core";
 import { LIFECYCLE_MESSAGES, type LifecycleAction } from "./types";
 
 export type HandleResetAppliedFromMainDeps = {

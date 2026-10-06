@@ -96,7 +96,7 @@ function parseDisplayDate(
 /**
  * Format a byte count in human-readable units.
  */
-export { formatByteSize } from "@elizaos/core/utils/format-bytes";
+export { formatByteSize } from "@elizaos/core/protocol";
 
 type UsdFormatOptions = {
   /**
@@ -142,12 +142,15 @@ export function formatUsd(
  */
 export function formatDateTime(
   value: number | string | Date | null | undefined,
-  options: DateFormatOptions = {},
+  options: DateFormatOptions & { timeZone?: string } = {},
 ): string {
-  const { fallback = "—", locale } = options;
+  const { fallback = "—", locale, timeZone } = options;
   const parsed = parseDisplayDate(value);
   if (!parsed) return fallback;
-  return parsed.toLocaleString(locale);
+  return parsed.toLocaleString(
+    locale,
+    timeZone ? { timeZone, timeZoneName: "short" } : undefined,
+  );
 }
 
 /**
@@ -161,23 +164,6 @@ export function formatTime(
   const parsed = parseDisplayDate(value);
   if (!parsed) return fallback;
   return parsed.toLocaleTimeString(locale);
-}
-
-/**
- * Format timestamp / date as locale date only (`toLocaleDateString`).
- */
-export function formatShortDate(
-  value: number | string | Date | null | undefined,
-  options: DateFormatOptions = {},
-): string {
-  const { fallback = "—", locale } = options;
-  const parsed = parseDisplayDate(value);
-  if (!parsed) return fallback;
-  return parsed.toLocaleDateString(locale, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 /**

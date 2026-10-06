@@ -6,16 +6,25 @@
  * the Database page surface.
  */
 
+import type { TranslateFn } from "@elizaos/contracts";
 import { Download, Share2 } from "lucide-react";
-import type { ReactNode } from "react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client, type QueryResult } from "../../api";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useAppSelector } from "../../state";
+import {
+  memo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { QueryResult } from "../../api/client-types-core";
+import { PageLayout } from "../../layouts/page-layout";
+import { useAppSelector } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import type { TranslateFn } from "../../types";
-import { resolveAppAssetUrl } from "../../utils";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
 import {
   canShareFiles,
   downloadAttachment,
@@ -26,8 +35,10 @@ import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import {
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "../composites/sidebar/sidebar-layout";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import {
@@ -316,21 +327,25 @@ export function MediaGalleryView({
 
       // Scan the candidate tables concurrently — they are independent queries,
       // and the sequential loop made the gallery wait on up to 10 round-trips.
-      const scanResults = await Promise.all(
-        tablesToScan.slice(0, 10).map(async (tableName) => {
-          try {
-            const result: QueryResult = await client.executeDatabaseQuery(
-              `SELECT * FROM "${tableName}" LIMIT ${scanLimit}`,
-            );
-            const rows = Array.isArray(result.rows) ? result.rows : [];
-            return extractMediaFromRows(rows, tableName);
-          } catch {
-            // skip tables that fail
-            return [] as MediaItem[];
-          }
-        }),
-      );
-      for (const items of scanResults) allMedia.push(...items);
+      // Keep concurrency bounded while covering every candidate table. A
+      // fixed first-ten slice silently hid media in later plugin tables.
+      for (let offset = 0; offset < tablesToScan.length; offset += 10) {
+        const scanResults = await Promise.all(
+          tablesToScan.slice(offset, offset + 10).map(async (tableName) => {
+            try {
+              const result: QueryResult = await client.executeDatabaseQuery(
+                `SELECT * FROM "${tableName}" LIMIT ${scanLimit}`,
+              );
+              const rows = Array.isArray(result.rows) ? result.rows : [];
+              return extractMediaFromRows(rows, tableName);
+            } catch {
+              // skip tables that fail
+              return [] as MediaItem[];
+            }
+          }),
+        );
+        for (const items of scanResults) allMedia.push(...items);
+      }
 
       // Sort by date descending
       allMedia.sort((a, b) => {

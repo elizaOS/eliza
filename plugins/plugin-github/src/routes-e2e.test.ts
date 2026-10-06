@@ -11,7 +11,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime, type IAgentRuntime } from "@elizaos/core";
-import { registerHttpPluginRoutes } from "@elizaos/core/api/http-plugin-runtime";
+import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 // Pin the credential store to an isolated temp dir BEFORE importing any module
@@ -21,8 +21,8 @@ const stateDir = mkdtempSync(path.join(tmpdir(), "gh-routes-e2e-"));
 const priorStateDir = process.env.ELIZA_STATE_DIR;
 process.env.ELIZA_STATE_DIR = stateDir;
 
-const { tryHandleRuntimePluginRoute } = await import(
-  "../../../packages/agent/src/api/runtime-plugin-routes.ts"
+const { tryHandleHonoRuntimeRoute } = await import(
+  "../../../packages/agent/src/api/hono-mount.ts"
 );
 const { githubPlugin } = await import("./index.ts");
 const {
@@ -70,13 +70,9 @@ async function startServer(
 ): Promise<string> {
   const runtime = makeRuntime();
   const server = http_.createServer(async (req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    const handled = await tryHandleRuntimePluginRoute({
+    const handled = await tryHandleHonoRuntimeRoute({
       req,
       res,
-      method: req.method ?? "GET",
-      pathname: url.pathname,
-      url,
       runtime,
       isAuthorized,
     });
@@ -383,3 +379,81 @@ describe("plugin-github routes (real dispatch)", () => {
     expect(res.status).toBe(404);
   });
 });
+
+it("rejects oversized credential bodies before GitHub validation", async () => {
+  let contacted = false;
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) === "https://api.github.com/user") {
+      contacted = true;
+      throw new Error("Unexpected upstream call");
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  const base = await startServer();
+  const response = await rawPost(
+    base,
+    "application/json",
+    JSON.stringify({ token: "x".repeat(8192) }),
+  );
+  expect(response.status).toBe(413);
+  expect(contacted).toBe(false);
+  expect(await loadMetadata()).toBeNull();
+});
+
+it.each(["timeout", "disconnect"])(
+  "cancels an unfinished upstream body on %s",
+  async (mode) => {
+    let ready!: () => void;
+    let closed!: () => void;
+    const received = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    const upstreamClosed = new Promise<void>((resolve) => {
+      closed = resolve;
+    });
+    const upstream = http_.createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write('{"login":');
+      res.once("close", closed);
+      ready();
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve) =>
+      upstream.listen(0, "127.0.0.1", resolve),
+    );
+    const address = upstream.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing upstream listener");
+    globalThis.fetch = (async (input, init) =>
+      realFetch(
+        String(input) === "https://api.github.com/user"
+          ? `http://127.0.0.1:${address.port}`
+          : input,
+        init,
+      )) as typeof fetch;
+    const base = await startServer();
+    const controller = new AbortController();
+    const request = realFetch(`${base}${TOKEN_PATH}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: "synthetic-unfinished" }),
+      signal: controller.signal,
+    });
+    try {
+      await received;
+      if (mode === "disconnect") {
+        controller.abort();
+        await expect(request).rejects.toThrow();
+      } else {
+        const response = await request;
+        expect(response.status).toBe(502);
+        await response.json();
+      }
+      await upstreamClosed;
+      expect(await loadMetadata()).toBeNull();
+    } finally {
+      controller.abort();
+    }
+  },
+  20_000,
+);

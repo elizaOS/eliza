@@ -1,3 +1,4 @@
+import type { DetachedSurface } from "../surface-windows";
 /**
  * Desktop Native Module for Electrobun
  *
@@ -24,10 +25,7 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-	clearWorkspaceFolderConfig,
-	writeWorkspaceFolderConfig,
-} from "@elizaos/core";
+import { revokeProjectBookmark, selectProjectFolder } from "@elizaos/host";
 import Electrobun, {
 	type ApplicationMenuItemConfig,
 	BrowserView,
@@ -155,7 +153,6 @@ interface TrayPopoverConfig {
 	partition?: string | null;
 	rpc?: TrayPopoverRpc;
 	injectApiBase?: (window: BrowserWindow) => void;
-	wireRpc?: (window: BrowserWindow) => void;
 	onWindowFocused?: (window: BrowserWindow) => void;
 	onWindowClosed?: () => void;
 }
@@ -387,14 +384,7 @@ export class DesktopManager {
 	private openSettingsCallback: ((tabHint?: string) => void) | null = null;
 	private openSurfaceWindowCallback:
 		| ((
-				surface:
-					| "chat"
-					| "browser"
-					| "release"
-					| "triggers"
-					| "plugins"
-					| "connectors"
-					| "cloud",
+				surface: DetachedSurface,
 				browse?: string,
 				alwaysOnTop?: boolean,
 		  ) => Promise<DesktopManagedWindowSnapshot> | DesktopManagedWindowSnapshot)
@@ -503,14 +493,7 @@ export class DesktopManager {
 	 */
 	setOpenSurfaceWindowCallback(
 		cb: (
-			surface:
-				| "chat"
-				| "browser"
-				| "release"
-				| "triggers"
-				| "plugins"
-				| "connectors"
-				| "cloud",
+			surface: DetachedSurface,
 			browse?: string,
 			alwaysOnTop?: boolean,
 		) => Promise<DesktopManagedWindowSnapshot> | DesktopManagedWindowSnapshot,
@@ -576,14 +559,7 @@ export class DesktopManager {
 	 * Open a detached surface window via the registered callback.
 	 */
 	openSurfaceWindow(
-		surface:
-			| "chat"
-			| "browser"
-			| "release"
-			| "triggers"
-			| "plugins"
-			| "connectors"
-			| "cloud",
+		surface: DetachedSurface,
 		browse?: string,
 		alwaysOnTop?: boolean,
 	): Promise<DesktopManagedWindowSnapshot | null> {
@@ -2443,7 +2419,6 @@ X-GNOME-Autostart-enabled=true
 			...(config.rpc ? { rpc: config.rpc } : {}),
 		};
 		const win = createElectrobunBrowserWindow(options);
-		config.wireRpc?.(win);
 		win.webview.on("dom-ready", () => {
 			config.injectApiBase?.(win);
 		});
@@ -2762,19 +2737,7 @@ X-GNOME-Autostart-enabled=true
 			process.platform === "darwin"
 				? createSecurityScopedBookmark(selectedPath)
 				: null;
-		// Bridge to the agent runtime via the shared state-dir JSON file so
-		// the separate Node process honors the user's pick when resolving
-		// ELIZA_WORKSPACE_DIR at boot. Renderer-side localStorage is a
-		// separate copy for its own UX (button states, re-prompt logic).
-		try {
-			writeWorkspaceFolderConfig({ path: selectedPath, bookmark });
-		} catch (err) {
-			logger.warn(
-				`[desktop:pickWorkspaceFolder] writeWorkspaceFolderConfig failed: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
-			);
-		}
+		selectProjectFolder(selectedPath, bookmark);
 		return { canceled: false, path: selectedPath, bookmark };
 	}
 
@@ -2789,36 +2752,14 @@ X-GNOME-Autostart-enabled=true
 		}
 		const path = startAccessingSecurityScopedBookmark(options.bookmark);
 		if (!path) {
-			// Bookmark went stale (target moved/trashed). Wipe the shared
-			// config so the agent runtime falls back to the container
-			// default on next boot until the user re-picks.
-			try {
-				clearWorkspaceFolderConfig();
-			} catch (err) {
-				logger.warn(
-					`[desktop:resolveWorkspaceFolderBookmark] clearWorkspaceFolderConfig failed: ${
-						err instanceof Error ? err.message : String(err)
-					}`,
-				);
-			}
+			revokeProjectBookmark(options.bookmark);
 			return {
 				ok: false,
 				path: "",
 				error: "Unable to resolve security-scoped bookmark.",
 			};
 		}
-		// Refresh the shared config with the freshly-resolved path (it
-		// may differ from the originally-picked path if the user renamed
-		// the folder since the bookmark was created).
-		try {
-			writeWorkspaceFolderConfig({ path, bookmark: options.bookmark });
-		} catch (err) {
-			logger.warn(
-				`[desktop:resolveWorkspaceFolderBookmark] writeWorkspaceFolderConfig failed: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
-			);
-		}
+		selectProjectFolder(path, options.bookmark);
 		return { ok: true, path };
 	}
 

@@ -6,9 +6,9 @@
  * affected entry while an action is in flight.
  */
 
+import type { AppRunSummary, RegistryAppInfo } from "@elizaos/core/protocol";
 import { Square } from "lucide-react";
 import { type MouseEvent, memo, useMemo } from "react";
-import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { Button } from "../ui/button";
 import { AppHero, type AppIdentitySource } from "./app-identity";
 import { getRunAttentionReasons } from "./run-attention";

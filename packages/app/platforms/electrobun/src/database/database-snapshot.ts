@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop database snapshot ts behavior for app shell integration. */
 export type DatabaseMode =
 	| "postgres"
 	| "pglite-persistent"

@@ -1,4 +1,5 @@
 /** Runs the google gmail state mock-service support script for deterministic local test fixtures. */
+
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
@@ -9,12 +10,14 @@ import {
   LIFEOPS_SIMULATOR_OWNER,
   type LifeOpsSimulatorEmail,
 } from "../../../../plugins/plugin-personal-assistant/test/support/fixtures/lifeops-simulator.ts";
+import { fixtureNow, fixtureUuid } from "./fixture-context.ts";
 import {
   createGoogleCalendarMockState,
   type GoogleCalendarMockState,
   type GoogleCalendarRequestLedgerMetadata,
   googleCalendarDynamicFixture,
 } from "./google-calendar-state.ts";
+import { GMAIL_FIXTURE_MESSAGE_IDS } from "./google-gmail-fixtures.ts";
 import { MockHttpError } from "./mock-http-error.ts";
 
 type JsonPrimitive = string | number | boolean | null;
@@ -399,21 +402,6 @@ const GMAIL_FIXTURE_MESSAGES: GmailFixtureMessage[] = [
   },
 ];
 
-const BUILTIN_GMAIL_FIXTURE_MESSAGE_IDS: Readonly<
-  Record<string, readonly string[]>
-> = {
-  default: ["msg-finance", "msg-sarah", "msg-newsletter"],
-  "unread-inbox.eml": ["msg-finance", "msg-sarah"],
-  "sarah-product-brief.eml": ["msg-sarah"],
-  "high-priority-client.eml": ["msg-sarah"],
-  "alice-recent.eml": ["msg-sarah"],
-  "followup-14-days-ago.eml": [
-    "msg-unresponded-inbound",
-    "msg-unresponded-sent",
-  ],
-  "injection-fake-wire-instruction": ["msg-injection-wire"],
-};
-
 function simulatorEmailToGmailFixture(
   email: LifeOpsSimulatorEmail,
 ): GmailFixtureMessage {
@@ -612,7 +600,9 @@ function gmailAccountForFixture(
   return account;
 }
 
-function gmailFixtureSubject(message: GmailFixtureMessage): string | null {
+function gmailFixtureSubject(
+  message: GmailFixtureMessage | GmailMockMessage,
+): string | null {
   return gmailHeaderValue(message, "Subject") || null;
 }
 
@@ -622,7 +612,7 @@ function buildGmailFixtureManifest(
 ): GmailFixtureManifest {
   return {
     fixtures: {
-      ...BUILTIN_GMAIL_FIXTURE_MESSAGE_IDS,
+      ...GMAIL_FIXTURE_MESSAGE_IDS,
       ...(corpusFixtureSets ?? {}),
     },
     messages: messages.map((message) => ({
@@ -651,7 +641,7 @@ export function createGoogleMockState(
       threadId: fixture.threadId,
       labelIds: [...(fixture.labelIds ?? [])],
       snippet: fixture.snippet,
-      internalDateMs: Date.now() + fixture.internalDateOffsetMs,
+      internalDateMs: fixtureNow() + fixture.internalDateOffsetMs,
       headers: fixture.headers.map((header) => ({ ...header })),
       bodyText: fixture.bodyText,
       attachments: fixture.attachments?.map((attachment) => ({
@@ -733,7 +723,7 @@ function gmailFixtureInternalDate(
 ): number {
   return "internalDateMs" in message
     ? message.internalDateMs
-    : Date.now() + message.internalDateOffsetMs;
+    : fixtureNow() + message.internalDateOffsetMs;
 }
 
 function gmailFixtureResponse(
@@ -992,7 +982,7 @@ function gmailQueryMatches(
   ]
     .join(" ")
     .toLowerCase();
-  const ageMs = Date.now() - gmailFixtureInternalDate(message);
+  const ageMs = fixtureNow() - gmailFixtureInternalDate(message);
   const tokenMatches = (rawToken: string): boolean => {
     const token = rawToken.trim().toLowerCase();
     if (!token) return true;
@@ -1468,7 +1458,7 @@ function buildGmailMessageFromRaw(args: {
     threadId: args.threadId,
     labelIds: [...args.labelIds],
     snippet: parsed.bodyText.trim().replace(/\s+/g, " ").slice(0, 160),
-    internalDateMs: Date.now(),
+    internalDateMs: fixtureNow(),
     headers:
       parsed.headers.length > 0
         ? parsed.headers
@@ -1745,7 +1735,7 @@ export function googleDynamicFixture(
         ? requestBody.scope
         : GOOGLE_DEFAULT_TOKEN_SCOPES.join(" ");
     const scopes = scopeText.split(/\s+/).filter(Boolean);
-    const accessToken = `fake-${crypto.randomUUID()}`;
+    const accessToken = `fake-${fixtureUuid()}`;
     const gmailAccountId =
       typeof requestBody.gmailAccountId === "string"
         ? requestBody.gmailAccountId
@@ -2257,7 +2247,7 @@ export function googleDynamicFixture(
     };
     return jsonFixture({
       historyId: String(state.gmailHistoryId),
-      expiration: String(Date.now() + 60 * 60 * 1000),
+      expiration: String(fixtureNow() + 60 * 60 * 1000),
     });
   }
 

@@ -18,7 +18,6 @@ import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import { resolveActionRolePolicyRole } from "./action-role-policy";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
-import { privateActionAllowedOnTurn } from "./private-action-gate";
 
 /**
  * The subset of {@link Action} fields the unified gate reads. Keeping the
@@ -68,15 +67,15 @@ export interface ActionGateRejection {
 
 /**
  * The single role/context/policy gate deciding whether `action` may run for
- * `ctx` (#12087 Item 9). Composes, in order:
+ * `ctx`. Composes, in order:
  *
- *   1. the private-action gate (unless `skipPrivateGate`),
- *   2. the non-overridable destination disclosure gate,
- *   3. the operator `ACTION_ROLE_POLICY` override — when set for this action it
- *      **replaces** the declared gates and access is decided solely by the
- *      policy role,
- *   4. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
- *   5. the top-level roleGate.
+ * 1. the private-action gate (unless `skipPrivateGate`),
+ * 2. the non-overridable destination disclosure gate,
+ * 3. the operator `ACTION_ROLE_POLICY` override — when set for this action it
+ * **replaces** the declared gates and access is decided solely by the
+ * policy role,
+ * 4. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
+ * 5. the top-level roleGate.
  *
  * Returns a human-readable failure reason, or `undefined` when the action is
  * allowed. Every exposure and execution path — planner selection, sub-planner
@@ -251,4 +250,49 @@ export async function resolveActionGateFailure(
 				? ctx.userRoles
 				: await resolveActionCallerRoles(runtime, ctx.message),
 	});
+}
+
+/**
+ * Gate that keeps `private` actions off any non-autonomous turn — exposing and
+ * executing them only when the triggering message is one of the autonomy
+ * service's own self-prompts.
+ */
+
+/**
+ * "Private" actions (see {@link Action.private}) may only run inside the
+ * agent's own autonomous loop, never in direct response to a user request.
+ *
+ * A turn is treated as autonomous when the triggering message carries
+ * `content.metadata.isAutonomous === true` — the marker the autonomy service
+ * stamps on its self-prompts. Any other message (a real user turn, a connector
+ * inbound, a sub-agent dispatch) is non-autonomous and a private action must be
+ * withheld.
+ *
+ * The marker is trustworthy here because inbound messages are stripped of a
+ * forged `isAutonomous` upstream: `hardenIncomingUserMessage`
+ * removes it from every
+ * message whose source is not the autonomy service, so a connector forwarding
+ * client-supplied metadata cannot use it to unlock private actions.
+ */
+function isAutonomousTurn(message: Memory | undefined): boolean {
+	const metadata = message?.content?.metadata;
+	if (typeof metadata !== "object" || metadata === null) {
+		return false;
+	}
+	return (metadata as { isAutonomous?: unknown }).isAutonomous === true;
+}
+
+/**
+ * Returns true when `action` is allowed to be exposed/executed on the current
+ * turn given its private-mode flag. Private actions are allowed only on
+ * autonomous turns; non-private actions are always allowed.
+ */
+function privateActionAllowedOnTurn(
+	action: Pick<Action, "private">,
+	message: Memory | undefined,
+): boolean {
+	if (!action.private) {
+		return true;
+	}
+	return isAutonomousTurn(message);
 }

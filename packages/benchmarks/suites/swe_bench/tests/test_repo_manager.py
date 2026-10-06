@@ -7,8 +7,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
-from benchmarks.swe_bench.repo_manager import RepositoryManager
-from benchmarks.swe_bench.types import SWEBenchInstance
+from benchmarks.suites.swe_bench.repo_manager import RepositoryManager
+from benchmarks.suites.swe_bench.types import SWEBenchInstance
 
 
 class TestRepositoryManager:

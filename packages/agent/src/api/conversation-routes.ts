@@ -17,9 +17,19 @@
  */
 
 import crypto from "node:crypto";
-import fs from "node:fs";
 import type http from "node:http";
-import path from "node:path";
+import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  isChatFailureKind,
+  PatchConversationRequestSchema,
+  PostConversationCleanupEmptyRequestSchema,
+  PostConversationRequestSchema,
+  PostConversationTruncateRequestSchema,
+  PostSeedMessagesRequestSchema,
+  parseChatFailureKind,
+  parseChatTerminalFailure,
+} from "@elizaos/contracts";
 import {
   type ActionResult,
   type AgentRuntime,
@@ -27,8 +37,6 @@ import {
   authorizeOwnerExclusiveDisclosure,
   bindIncomingMessagePersistence,
   ChannelType,
-  type ChatFailureKind,
-  type ChatTerminalFailure,
   type Content,
   composeToolDiagnosticRedactor,
   conversationClientUserMemoryId,
@@ -39,26 +47,19 @@ import {
   getEntityRole,
   getInferenceTimer,
   hasAtLeastRole,
+  type IAgentRuntime,
   InferenceTurnTimer,
-  isChatFailureKind,
-  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
-  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+  type AgentLogEntry as LogEntry,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
   type Memory,
   mergeEffectReceipts,
   nextInferenceTurnId,
   normalizeActionFailureProvenance,
   normalizeActionReplyFailure,
   normalizeEffectReceipts,
-  PatchConversationRequestSchema,
-  PostConversationCleanupEmptyRequestSchema,
-  PostConversationRequestSchema,
-  PostConversationTruncateRequestSchema,
-  PostSeedMessagesRequestSchema,
-  parseChatFailureKind,
-  parseChatTerminalFailure,
   parsePositiveInteger,
   parseSharedTodoCutoverSnapshot,
   projectCompleteToolValueForModel,
@@ -68,7 +69,6 @@ import {
   RoomHandlerQueueClosedError,
   RoomHandlerQueueGlobalSaturatedError,
   RoomHandlerQueueSaturatedError,
-  type RouteRequestContext,
   readDurableConversationChatMarker,
   readSystemNotice,
   recordOwnerGrant,
@@ -85,6 +85,12 @@ import {
   withStandaloneTrajectory,
 } from "@elizaos/core";
 import {
+  type ElizaConfig,
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+  type RouteRequestContext,
+} from "@elizaos/host/protocol";
+import {
   DeviceActionError,
   enforceTrustedDeliveryAudienceAtEgress,
   evaluatePlannedReplyEgress,
@@ -99,8 +105,6 @@ import {
   isScheduledTask,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import type { ElizaConfig } from "../config/config.ts";
-import { resolveStateDir } from "../config/paths.ts";
 import {
   type AgentHttpRequestAuthorization,
   getAgentHostBridge,
@@ -131,7 +135,6 @@ import {
   getChatFailureReply,
   getChatMessageIdOutcome,
   isIntentionalNoResponseResult,
-  type LogEntry,
   normalizeAccountConnectRequest,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
@@ -145,11 +148,11 @@ import {
   resolveTrustedApiPrincipal,
   setChatMessageIdOutcome,
 } from "./chat-routes.ts";
+
 import {
   createChatTokenStreamWriter,
   initSse,
   writeChatStatusSse,
-  writeChatTokenSse,
   writeChatToolSse,
   writeSse,
   writeSseJson,
@@ -169,6 +172,7 @@ import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
+import { restoreConversationFromDb } from "./conversation-restore.ts";
 import {
   compareConversationsByRecency,
   compareMemoriesByCreatedAt,
@@ -185,6 +189,8 @@ import {
   buildUserMessages,
   decodePathComponent,
   getErrorMessage,
+  MAX_DELETED_CONVERSATION_IDS,
+  persistDeletedConversationIdsToState,
   resolveAppUserName,
 } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
@@ -262,55 +268,6 @@ function chunkVisibleTextForSse(text: string): string[] {
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence
 // ---------------------------------------------------------------------------
-const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
-const MAX_DELETED_CONVERSATION_IDS = 5000;
-interface DeletedConversationsStateFile {
-  version: 1;
-  updatedAt: string;
-  ids: string[];
-}
-function _readDeletedConversationIdsFromState(): Set<string> {
-  const filePath = path.join(resolveStateDir(), DELETED_CONVERSATIONS_FILENAME);
-  if (!fs.existsSync(filePath)) return new Set();
-  try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<DeletedConversationsStateFile>;
-    const ids = Array.isArray(parsed.ids) ? parsed.ids : [];
-    return new Set(
-      ids
-        .map((id) => (typeof id === "string" ? id.trim() : ""))
-        .filter((id) => id.length > 0),
-    );
-  } catch (error) {
-    // error-policy:J2 an existing but unreadable tombstone file cannot be
-    // treated as an empty deletion history or deleted chats may reappear.
-    throw new ElizaError("Failed to read deleted conversation tombstones", {
-      code: "DELETED_CONVERSATION_STATE_READ_FAILED",
-      cause: error,
-      context: { filePath },
-    });
-  }
-}
-function persistDeletedConversationIdsToState(ids: Set<string>): void {
-  const dir = resolveStateDir();
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-  const normalized = Array.from(ids)
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0)
-    .slice(-MAX_DELETED_CONVERSATION_IDS);
-  const payload: DeletedConversationsStateFile = {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    ids: normalized,
-  };
-  fs.writeFileSync(
-    path.join(dir, DELETED_CONVERSATIONS_FILENAME),
-    JSON.stringify(payload, null, 2),
-    { encoding: "utf-8", mode: 0o600 },
-  );
-}
 // ---------------------------------------------------------------------------
 // State interface required by conversation routes
 // ---------------------------------------------------------------------------
@@ -698,6 +655,48 @@ function createRequestDisconnectAbortTracker({
     },
   };
 }
+/**
+ * The bearer of a revocable, DB-backed paired-device session, or undefined.
+ *
+ * A device paired with a user code gets a USER machine session. One paired
+ * with the operator code gets a machine session bound to the owner identity,
+ * so its principal is `owner_session`. Both are paired devices whose turn
+ * should outlive a dropped socket. For the owner case the bearer must itself
+ * resolve to a live session for the authenticated identity: the static API
+ * token, the trusted-local bypass and cookie sessions keep the existing
+ * disconnect-as-cancel behavior.
+ */
+async function resolvePairedSessionToken(
+  req: http.IncomingMessage,
+  principal: TrustedApiPrincipal,
+  runtime: AgentRuntime | null | undefined,
+): Promise<string | undefined> {
+  const bearer = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1];
+  if (!bearer) return undefined;
+  if (principal.kind === "service_gateway") {
+    return principal.sessionRole === "USER" && principal.sessionIdentityId
+      ? bearer
+      : undefined;
+  }
+  if (principal.kind !== "owner_session") return undefined;
+  try {
+    const authorization =
+      await getAgentHostBridge().resolveSessionTokenAuthorization?.(
+        bearer,
+        runtime ?? null,
+      );
+    return authorization?.ok &&
+      authorization.identityId &&
+      authorization.identityId === principal.principalId
+      ? bearer
+      : undefined;
+  } catch {
+    // error-policy:J7 an unreadable session store denies continuation only;
+    // the request still runs with disconnect-as-cancel.
+    return undefined;
+  }
+}
+
 export function createConversationStreamDisconnectTracker({
   req,
   res,
@@ -1282,13 +1281,16 @@ function markConversationDeleted(
   const normalizedId = conversationId.trim();
   if (!normalizedId) return;
   if (state.deletedConversationIds.has(normalizedId)) return;
-  state.deletedConversationIds.add(normalizedId);
-  while (state.deletedConversationIds.size > MAX_DELETED_CONVERSATION_IDS) {
-    const oldest = state.deletedConversationIds.values().next().value;
+  const nextIds = new Set(state.deletedConversationIds);
+  nextIds.add(normalizedId);
+  while (nextIds.size > MAX_DELETED_CONVERSATION_IDS) {
+    const oldest = nextIds.values().next().value;
     if (!oldest) break;
-    state.deletedConversationIds.delete(oldest);
+    nextIds.delete(oldest);
   }
-  persistDeletedConversationIdsToState(state.deletedConversationIds);
+  persistDeletedConversationIdsToState(nextIds);
+  state.deletedConversationIds.clear();
+  for (const id of nextIds) state.deletedConversationIds.add(id);
 }
 async function deleteConversationRoomData(
   runtime: AgentRuntime,
@@ -2557,7 +2559,9 @@ async function getConversationWithRestore(
   const existing = state.conversations.get(convId);
   if (existing) return existing;
   await waitForConversationRestore(state);
-  return state.conversations.get(convId);
+  const restored = state.conversations.get(convId);
+  if (restored || !state.runtime) return restored;
+  return restoreConversationFromDb(state.runtime, state, convId);
 }
 /** Default recent-window size for GET /messages (the newest N turns). */
 const CONVERSATION_MESSAGE_WINDOW = 200;
@@ -2581,10 +2585,11 @@ const CONVERSATION_AROUND_RADIUS = 100;
  * returns the pivot's own turn plus up to CONVERSATION_AROUND_RADIUS older and
  * newer turns, ordered chronologically by the caller.
  *
- * Bounds are pushed into the store as getMemories `start`/`end` (createdAt
- * range) so there is NO in-process scan. Returns the recent window unchanged
- * when the pivot is missing or lives in another room — the latter prevents a
- * cross-room leak via a forged `around` id.
+ * Each side is a store keyset on `(createdAt, id)` so a burst of messages in
+ * the pivot's millisecond cannot push the pivot itself out of both capped
+ * halves. Returns the recent window unchanged when the pivot is missing or
+ * lives in another room — the latter prevents a cross-room leak via a forged
+ * `around` id.
  */
 async function loadConversationMessagesAround(
   runtime: AgentRuntime,
@@ -2592,7 +2597,7 @@ async function loadConversationMessagesAround(
   aroundMessageId: UUID,
 ): Promise<Memory[]> {
   const [pivot] = await runtime.getMemoriesByIds([aroundMessageId], "messages");
-  if (!pivot || pivot.roomId !== roomId) {
+  if (!pivot || pivot.roomId !== roomId || !pivot.id) {
     logger.warn(
       `[conversations] around=${aroundMessageId} is not in room ${roomId}; serving the recent window instead`,
     );
@@ -2602,32 +2607,27 @@ async function loadConversationMessagesAround(
       limit: CONVERSATION_MESSAGE_WINDOW,
     });
   }
-  const pivotCreatedAt = pivot.createdAt ?? 0;
-  const [olderOrAt, newerOrAt] = await Promise.all([
-    // The pivot and everything before it, newest-first, capped. The pivot is
-    // included because `end` is inclusive of its createdAt.
+  const cursor = { createdAt: pivot.createdAt ?? 0, id: pivot.id };
+  const [older, newer] = await Promise.all([
     runtime.getMemories({
       roomId,
       tableName: "messages",
-      end: pivotCreatedAt,
-      limit: CONVERSATION_AROUND_RADIUS + 1,
+      cursor,
+      limit: CONVERSATION_AROUND_RADIUS,
       orderBy: "createdAt",
       orderDirection: "desc",
     }),
-    // The pivot and everything after it, oldest-first, capped.
     runtime.getMemories({
       roomId,
       tableName: "messages",
-      start: pivotCreatedAt,
-      limit: CONVERSATION_AROUND_RADIUS + 1,
+      cursor,
+      limit: CONVERSATION_AROUND_RADIUS,
       orderBy: "createdAt",
       orderDirection: "asc",
     }),
   ]);
-  // Merge the two half-windows, de-duping the shared pivot (and any createdAt
-  // ties both bounds picked up) by id.
   const byId = new Map<UUID, Memory>();
-  for (const memory of [...olderOrAt, ...newerOrAt]) {
+  for (const memory of [pivot, ...older, ...newer]) {
     if (memory.id) {
       byId.set(memory.id, memory);
     }
@@ -2635,17 +2635,19 @@ async function loadConversationMessagesAround(
   return Array.from(byId.values());
 }
 /**
- * Parse the `?before=<createdAt>` cursor: a positive integer millisecond
+ * Parse the `?before=<createdAt>` cursor: a non-negative integer millisecond
  * timestamp (the createdAt of the client's current oldest message). Returns
- * null for absent / malformed / non-positive values so the handler falls back
- * to the recent window instead of paging from a bogus cursor.
+ * null for absent, malformed, or negative values so the handler falls back
+ * to the recent window instead of paging from a bogus cursor. Zero is the
+ * Unix epoch and must page: treating it as missing reloads the recent window
+ * above a client that already holds that row.
  */
 function parseBeforeCursor(raw: string | null): number | null {
   if (raw === null) return null;
   const trimmed = raw.trim();
   if (trimmed === "" || !/^\d+$/.test(trimmed)) return null;
   const value = Number(trimmed);
-  return Number.isSafeInteger(value) && value > 0 ? value : null;
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 /**
  * Clamp the `?limit=N` older-page size to a sane range. Defaults to
@@ -2661,33 +2663,36 @@ function clampOlderPageLimit(raw: string | null): number {
   return Math.min(Math.floor(parsed), CONVERSATION_MESSAGE_WINDOW);
 }
 /**
- * Load one page of messages STRICTLY OLDER than the `before` cursor for the
- * infinite upward scroll (#13532). `before` is the createdAt of the oldest
- * message the client already holds; this returns up to `limit` turns with a
- * smaller createdAt, newest-first from the store, so the caller can prepend
- * them above the current top.
+ * Load one page of messages strictly older than the cursor for the infinite
+ * upward scroll (#13532). `before` is the createdAt of the oldest message the
+ * client already holds. The page comes back newest-first from the store so the
+ * caller can prepend it above the current top.
  *
- * The bound is pushed into the store as getMemories `end` (an inclusive
- * createdAt upper bound) with `before - 1`, so the cursor row itself is
- * excluded and there is NO in-process scan. One extra row beyond `limit` is
- * requested to compute `hasMore` without a second COUNT query; the caller
- * trims it.
+ * When the client names the cursor row with `beforeId`, the store keyset
+ * `(createdAt, id)` keeps every other message in that millisecond and still
+ * excludes the cursor. A timestamp alone cannot tell those siblings apart, so
+ * that older contract stays `end: before - 1`. One extra row beyond `limit`
+ * computes `hasMore` without a second COUNT query; the caller trims it.
  */
 async function loadConversationMessagesBefore(
   runtime: AgentRuntime,
   roomId: UUID,
   before: number,
   limit: number,
+  beforeId?: UUID,
 ): Promise<{
   memories: Memory[];
   hasMore: boolean;
 }> {
-  // `end` is inclusive, so subtract 1ms to make the cursor exclusive: the
-  // client already holds the message at `before`, we want strictly older.
   const rows = await runtime.getMemories({
     roomId,
     tableName: "messages",
-    end: before - 1,
+    // Timestamp-only callers cannot name one row inside a shared millisecond,
+    // so they keep the exclusive `before - 1` bound. A keyset cursor is already
+    // exclusive and must not also apply that bound, or the siblings disappear.
+    ...(beforeId
+      ? { cursor: { createdAt: before, id: beforeId } }
+      : { end: before - 1 }),
     limit: limit + 1,
     orderBy: "createdAt",
     orderDirection: "desc",
@@ -3142,59 +3147,74 @@ async function searchConversationMessages(
     return true;
   }
   try {
-    // Corpus-wide FTS + trigram ranking in the store (#13534): the DB ranks
-    // by `ts_rank_cd` over a `websearch_to_tsquery` match (multi-word,
-    // non-adjacent, quoted phrases) plus a `pg_trgm` partial-word fallback,
-    // applying access-scoping and LIMIT/OFFSET *after* ranking. A relevant hit
-    // older than any recency window is therefore found and ordered — unlike
-    // the retired `ILIKE '%whole query%'` gate that ranked only a recency-
-    // truncated slice of exact-substring rows.
-    const hits = await runtime.searchMessages({
-      roomIds: accessibleRoomIds,
-      query,
-      tableName: "messages",
-      limit,
-      offset,
-      ...(since !== null ? { since } : {}),
-      ...(until !== null ? { until } : {}),
-    });
-    const results = hits.flatMap(({ memory, ftsRank, trigramSimilarity }) => {
-      const roomId = memory.roomId;
+    // Corpus-wide FTS + trigram ranking in the store (#13534). Visibility
+    // filters used to run after LIMIT, so a page of internal or legacy
+    // inventory rows came back empty even when a visible match existed
+    // further down the ranking. Scan raw hits until the requested visible
+    // page is filled.
+    const batchSize = Math.max(limit, 32);
+    const needed = offset + limit;
+    const visibleHits: Awaited<ReturnType<AgentRuntime["searchMessages"]>> = [];
+    let rawOffset = 0;
+    while (visibleHits.length < needed) {
+      const hits = await runtime.searchMessages({
+        roomIds: accessibleRoomIds,
+        query,
+        tableName: "messages",
+        limit: batchSize,
+        offset: rawOffset,
+        ...(since !== null ? { since } : {}),
+        ...(until !== null ? { until } : {}),
+      });
+      if (hits.length === 0) break;
+      rawOffset += hits.length;
+      for (const hit of hits) {
+        const roomId = hit.memory.roomId;
+        const conversation = roomId
+          ? conversationsByRoomId.get(roomId)
+          : undefined;
+        if (!roomId || !conversation) continue;
+        const content = hit.memory.content as
+          | Record<string, unknown>
+          | undefined;
+        if (content?.transcriptVisibility === "internal") continue;
+        if (
+          content &&
+          hit.memory.entityId === runtime.agentId &&
+          isLegacyViewsInventoryContent(content)
+        ) {
+          continue;
+        }
+        const text = content?.text;
+        if (typeof text !== "string" || !text.trim() || !hit.memory.id)
+          continue;
+        if (typeof hit.memory.createdAt !== "number") continue;
+        visibleHits.push(hit);
+      }
+      if (hits.length < batchSize) break;
+    }
+    const results = visibleHits.slice(offset, offset + limit).flatMap((hit) => {
+      const roomId = hit.memory.roomId;
       const conversation = roomId
         ? conversationsByRoomId.get(roomId)
         : undefined;
-      if (!roomId || !conversation) return [];
-      const content = memory.content as Record<string, unknown> | undefined;
-      if (content?.transcriptVisibility === "internal") return [];
-      if (
-        content &&
-        memory.entityId === runtime.agentId &&
-        isLegacyViewsInventoryContent(content)
-      ) {
-        return [];
-      }
-      const text = content?.text;
+      if (!roomId || !conversation || !hit.memory.id) return [];
+      const content = hit.memory.content as Record<string, unknown>;
+      const text = content.text;
       if (typeof text !== "string") return [];
       const rawText = text.trim();
-      if (!rawText || !memory.id) return [];
-      // A messages memory always carries a numeric createdAt; if it somehow
-      // does not, drop the row rather than inject epoch-0 into the DTO.
-      if (typeof memory.createdAt !== "number") return [];
-      // Rows matched only by the trigram/partial branch have ftsRank 0; expose
-      // the trigram similarity as the score so the client still orders them
-      // meaningfully. Both are real measured signals from the store.
-      const score = ftsRank > 0 ? ftsRank : trigramSimilarity;
+      const score = hit.ftsRank > 0 ? hit.ftsRank : hit.trigramSimilarity;
       return [
         {
-          messageId: memory.id,
+          messageId: hit.memory.id,
           conversationId: conversation.id,
           roomId,
-          role: (memory.entityId === runtime.agentId ? "assistant" : "user") as
-            | "assistant"
-            | "user",
+          role: (hit.memory.entityId === runtime.agentId
+            ? "assistant"
+            : "user") as "assistant" | "user",
           text: rawText,
           snippet: buildMessageSearchSnippet(rawText, query),
-          createdAt: memory.createdAt,
+          createdAt: hit.memory.createdAt as number,
           score,
         },
       ];
@@ -3206,7 +3226,7 @@ async function searchConversationMessages(
         offset,
         ...(since !== null ? { since } : {}),
         ...(until !== null ? { until } : {}),
-        rawHits: hits.length,
+        rawHits: rawOffset,
         results: results.length,
       },
       "[ConversationSearch] FTS message search completed",
@@ -3399,6 +3419,21 @@ const ownerConversationCreations = new WeakMap<
   Map<string, ConversationMeta>,
   Promise<ConversationMeta>
 >();
+/** Bind prompt creation to the admitted runtime across asynchronous restoration. */
+export async function resolvePromptDeliveryRoom(
+  state: ConversationRouteState & { activeConversationId?: string | null },
+  runtime: IAgentRuntime,
+): Promise<UUID> {
+  if (runtime !== state.runtime) {
+    throw new Error("Runtime changed before prompt automation creation");
+  }
+  const conversation = await ensureOwnerConversation(state, state.runtime);
+  if (runtime !== state.runtime) {
+    throw new Error("Runtime changed during prompt automation creation");
+  }
+  return conversation.roomId;
+}
+
 /**
  * Resolve the owner's canonical app conversation: the active one, else the
  * most recently updated, restoring persisted conversations first. When the
@@ -3492,14 +3527,20 @@ async function listConversationMessages(
     // far-back) message so a keyword-search jump can scroll to a hit older
     // than the default recent window (#9955). Absent → unchanged recent window.
     const aroundParam = validateUuid(requestUrl.searchParams.get("around"));
-    // `?before=<createdAt>&limit=N` loads one page STRICTLY OLDER than the
-    // cursor for the infinite upward scroll (#13532): the client passes the
-    // createdAt of its current oldest message and prepends the returned page.
-    // Mutually exclusive with `around` — a centered jump defines its own
-    // window. Returns `hasMore` so the client stops paging at the true top.
+    // `?before=<createdAt>&beforeId=<id>&limit=N` loads one page strictly older
+    // than the cursor for the infinite upward scroll (#13532). `beforeId` is
+    // the oldest message the client already holds, so other messages in that
+    // same millisecond stay reachable. Timestamp-only `before` remains the
+    // previous exclusive bound. Mutually exclusive with `around`.
     const beforeParam = parseBeforeCursor(
       requestUrl.searchParams.get("before"),
     );
+    const beforeIdRaw = requestUrl.searchParams.get("beforeId");
+    const beforeId = beforeIdRaw === null ? null : validateUuid(beforeIdRaw);
+    if (beforeIdRaw !== null && (beforeParam === null || beforeId === null)) {
+      error(res, "beforeId must be a UUID paired with before", 400);
+      return true;
+    }
     const olderLimit = clampOlderPageLimit(
       requestUrl.searchParams.get("limit"),
     );
@@ -3511,6 +3552,7 @@ async function listConversationMessages(
         conv.roomId,
         beforeParam,
         olderLimit,
+        beforeId ?? undefined,
       );
       memories = page.memories;
       hasMore = page.hasMore;
@@ -3536,6 +3578,13 @@ async function listConversationMessages(
     // context and serves the full DTO unchanged.
     const viewerAccessContext = resolveHttpAccessContext(req);
     const messages = memories
+      // Scheduler instructions are model input, not a user-authored chat turn.
+      // Project them out only here; stored history and assistant replies stay intact.
+      .filter(
+        (m) =>
+          m.entityId === agentId ||
+          m.content.source !== MESSAGE_SOURCE_TRIGGER_PROMPT,
+      )
       .map((m) => {
         const contentSource = (m.content as Record<string, unknown>)?.source;
         const content = m.content as Record<string, unknown>;
@@ -5075,12 +5124,11 @@ async function streamConversationMessage(
   if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
     return true;
   }
-  const pairedSessionToken =
-    trustedApiPrincipal.kind === "service_gateway" &&
-    trustedApiPrincipal.sessionRole === "USER" &&
-    trustedApiPrincipal.sessionIdentityId
-      ? /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1]
-      : undefined;
+  const pairedSessionToken = await resolvePairedSessionToken(
+    req,
+    trustedApiPrincipal,
+    state.runtime,
+  );
   const disconnectTracker = createConversationStreamDisconnectTracker({
     req,
     res,
@@ -5129,18 +5177,13 @@ async function streamConversationMessage(
     preferredLanguage,
     source,
     metadata: chatMetadata,
-    streamProtocol,
     clientMessageId,
   } = chatPayload;
   logger.info(
     { traceId: trace.traceId, traceSource: trace.source },
     "[ConversationStream] accepted validated trace context",
   );
-  // Both protocols use the same response writer and delivery boundary.
-  const tokenWriter = createChatTokenStreamWriter(streamProtocol ?? "legacy", {
-    writeChatTokenSse,
-    writeSse,
-  });
+  const tokenWriter = createChatTokenStreamWriter();
   // The SSE channel opens as soon as the request is validated — before
   // runtime resolution, room setup, and user-message persistence — so the
   // client sees headers, an immediate `thinking` status, and heartbeats

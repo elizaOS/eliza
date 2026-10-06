@@ -19,7 +19,9 @@
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/plugin-relationships": "workspace:*",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/contracts": "workspace:*",
+    "@elizaos/voice": "workspace:*"
   },
   "devDependencies": {
     "vitest": "5.0.2"

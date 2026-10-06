@@ -7,8 +7,9 @@
 import {
   type ContextDefinition,
   promoteSubactionsToActions,
+  registerDirectActionRoutingRule,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
@@ -41,6 +42,31 @@ export const notesPlugin: Plugin = {
   contexts: ["notes"],
   async init(_config, runtime) {
     runtime.contexts.tryRegister(NOTES_CONTEXT);
+    registerDirectActionRoutingRule(runtime, {
+      id: "notes.create",
+      actionNames: ["NOTES_CREATE"],
+      requiredActionTags: ["resource:notes", "capability:write"],
+      contexts: ["notes"],
+      // A backend save does not depend on an open Notes view. Only direct
+      // creation commands seed this operation; drafting, reported speech,
+      // explanations and other CRUD requests retain ordinary routing.
+      matches: (text) =>
+        /^\s*(?:please\s+)?(?:create|save|add)\s+(?:(?:a|an|my|new)\s+)*notes?(?:\s|$|[,:])/iu.test(
+          text,
+        ),
+    });
+    registerDirectActionRoutingRule(runtime, {
+      id: "notes.read",
+      actionNames: ["NOTES_LIST"],
+      requiredActionTags: ["resource:notes", "capability:read"],
+      contexts: ["notes"],
+      // Explicit store reads need current records; ordinary recall can still
+      // answer from supplied evidence. The list operation supports a title filter.
+      matches: (text) =>
+        /^\s*(?:please\s+)?(?:read|list|search|find|look\s+up)\s+(?:(?:a|the|my|all|saved|latest)\s+)*notes?(?:\s|$|[,:])/iu.test(
+          text,
+        ),
+    });
   },
   actions: [
     ...promoteSubactionsToActions(notesAction, {

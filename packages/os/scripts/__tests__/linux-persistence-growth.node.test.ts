@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(
   new URL(
-    "../../linux/elizaos/mkosi/mkosi.extra/usr/libexec/elizaos-grow-persistent",
+    "../../linux/mkosi/mkosi.extra/usr/libexec/elizaos-grow-persistent",
     import.meta.url,
   ),
 );

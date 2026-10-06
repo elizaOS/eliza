@@ -92,7 +92,9 @@ class RecordingAdapter extends BaseMessageAdapter {
     opts: ListOptions,
   ): Promise<MessageRef[]> {
     this.listOptions = opts;
-    return this.messages;
+    return opts.limit === undefined
+      ? this.messages
+      : this.messages.slice(0, opts.limit);
   }
 
   protected override async getMessageImpl(
@@ -309,11 +311,33 @@ describe("BaseMessageAdapter", () => {
     ]);
     expect(adapter.listOptions).toEqual({
       sinceMs: 500,
-      limit: 7,
       worldIds: ["world-1"],
       channelIds: ["channel-1"],
     });
     expect(adapter.searchFilters).toBeUndefined();
+  });
+
+  it("finds matches older than the newest `limit` messages without native search", async () => {
+    const newest = Array.from({ length: 20 }, (_, index) =>
+      makeMessage(`recent-${index}`, {
+        snippet: "unrelated",
+        receivedAtMs: 10_000 - index,
+      }),
+    );
+    const older = Array.from({ length: 3 }, (_, index) =>
+      makeMessage(`invoice-${index}`, {
+        snippet: "Invoice attached",
+        receivedAtMs: 5_000 - index,
+      }),
+    );
+    const adapter = new RecordingAdapter(false, [...newest, ...older]);
+
+    const hits = await adapter.searchMessages(runtime, {
+      content: "invoice",
+      limit: 2,
+    });
+
+    expect(hits.map((hit) => hit.id)).toEqual(["invoice-0", "invoice-1"]);
   });
 
   it("uses explicit not-implemented defaults for available adapter hooks", async () => {

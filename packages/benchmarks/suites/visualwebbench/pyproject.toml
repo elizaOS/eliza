@@ -36,7 +36,7 @@ all = [
 ]
 
 [project.scripts]
-visualwebbench = "benchmarks.visualwebbench.cli:main"
+visualwebbench = "benchmarks.suites.visualwebbench.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["benchmarks/visualwebbench"]

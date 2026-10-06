@@ -12,11 +12,21 @@
  * because plugin-workflow cannot depend on @elizaos/agent.
  */
 
-import type { AgentRuntime, Room, Task, UUID } from '@elizaos/core';
-import { ElizaError, stringToUuid } from '@elizaos/core';
+import type { ConversationMetadata, ConversationScope, WorkbenchTask } from '@elizaos/contracts';
+import {
+  type AgentRuntime,
+  ElizaError,
+  type Room,
+  stringToUuid,
+  type Task,
+  type UUID,
+} from '@elizaos/core';
+
+import { toWorkbenchTask } from '@elizaos/host/protocol';
 import { getRouteOwnerEntityId } from '../routes/_helpers';
-import type { WorkflowStatusResponse } from '../routes/workflow-routes';
+import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+import { workflowRuntimeStatus } from '../services/workflow-status';
 import type {
   WorkflowDefinition,
   WorkflowDefinitionResponse,
@@ -28,13 +38,9 @@ import {
   type AutomationListResponse,
   type AutomationRoomBinding,
   type AutomationSummary,
-  type ConversationMetadata,
-  type ConversationScope,
   isAutomationConversationMetadata,
   type TriggerSummary,
   taskToTriggerSummary,
-  toWorkbenchTaskView,
-  type WorkbenchTaskView,
 } from './automations-types';
 import { isAgentOwnedHeartbeat, isTriggerTaskOwnedBy } from './trigger-ownership';
 
@@ -98,7 +104,7 @@ function resolveAgentName(runtime: AgentRuntime): string {
   return runtime.character.name?.trim() || 'Eliza';
 }
 
-function isSystemTask(task: WorkbenchTaskView): boolean {
+function isSystemTask(task: WorkbenchTask): boolean {
   if (SYSTEM_TASK_NAMES.has(task.name)) {
     return true;
   }
@@ -128,9 +134,9 @@ function isTaskVisibleToOwner(task: Task, runtime: AgentRuntime, ownerEntityId: 
 }
 
 function choosePreferredSystemTask(
-  current: WorkbenchTaskView,
-  candidate: WorkbenchTaskView
-): WorkbenchTaskView {
+  current: WorkbenchTask,
+  candidate: WorkbenchTask
+): WorkbenchTask {
   const currentHasDescription = current.description.trim().length > 0;
   const candidateHasDescription = candidate.description.trim().length > 0;
   if (candidateHasDescription && !currentHasDescription) {
@@ -142,9 +148,9 @@ function choosePreferredSystemTask(
   return (candidate.updatedAt ?? 0) > (current.updatedAt ?? 0) ? candidate : current;
 }
 
-function deduplicateSystemTasks(tasks: WorkbenchTaskView[]): WorkbenchTaskView[] {
-  const systemTasksByName = new Map<string, WorkbenchTaskView>();
-  const userTasks: WorkbenchTaskView[] = [];
+function deduplicateSystemTasks(tasks: WorkbenchTask[]): WorkbenchTask[] {
+  const systemTasksByName = new Map<string, WorkbenchTask>();
+  const userTasks: WorkbenchTask[] = [];
 
   for (const task of tasks) {
     if (!isSystemTask(task)) {
@@ -289,7 +295,7 @@ async function listTriggerTasks(runtime: AgentRuntime): Promise<Task[]> {
 }
 
 function buildCoordinatorTaskItem(
-  task: WorkbenchTaskView,
+  task: WorkbenchTask,
   room: AutomationRoomRecord | undefined
 ): AutomationItem {
   const system = isSystemTask(task);
@@ -474,20 +480,6 @@ function getWorkflowService(runtime: AgentRuntime): WorkflowService | null {
   return (candidate as WorkflowService | null) ?? null;
 }
 
-function buildWorkflowStatus(service: WorkflowService | null): WorkflowStatusResponse {
-  return {
-    mode: service ? 'cloud' : 'disabled',
-    host: service ? 'eliza-cloud' : null,
-    status: service ? 'ready' : 'error',
-    cloudConnected: Boolean(service),
-    localEnabled: false,
-    platform: 'cloud',
-    cloudHealth: service ? 'healthy' : 'unknown',
-    engine: 'smthrs',
-    errorMessage: service ? null : 'Workflow service is not registered',
-  };
-}
-
 async function loadWorkflowList(
   service: WorkflowService | null,
   ownerEntityId: string
@@ -588,8 +580,8 @@ export async function buildAutomationListResponse(
   const tasks = deduplicateSystemTasks(
     allTasks
       .filter((task) => isTaskVisibleToOwner(task, runtime, ownerEntityId))
-      .map((task) => toWorkbenchTaskView(task))
-      .filter((task): task is WorkbenchTaskView => task !== null)
+      .map((task) => toWorkbenchTask(task))
+      .filter((task): task is WorkbenchTask => task !== null)
   );
 
   const triggerTaskRecords = await listTriggerTasks(runtime);
@@ -611,7 +603,10 @@ export async function buildAutomationListResponse(
     .map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
 
   const service = getWorkflowService(runtime);
-  const workflowStatus = buildWorkflowStatus(service);
+  const workflowStatus = workflowRuntimeStatus(
+    Boolean(service),
+    Boolean(runtime.getService(EMBEDDED_WORKFLOW_SERVICE_TYPE))
+  );
   const { workflows: workflowList, workflowFetchError } = await loadWorkflowList(
     service,
     ownerEntityId

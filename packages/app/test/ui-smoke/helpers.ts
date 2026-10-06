@@ -1,3 +1,4 @@
+import { fixtureAgentStatus } from "../fixtures/agent-status";
 /**
  * Shared Playwright helpers for app UI-smoke fixtures, navigation, logging,
  * and assertions.
@@ -158,6 +159,13 @@ export function installPageDiagnosticsGuard(page: Page): void {
     issues.push(`pageerror: ${issueMessage(error)}`);
   });
   page.on("console", (message) => {
+    if (
+      message.type() === "warning" &&
+      message.text().includes("Failed to load @elizaos/")
+    ) {
+      issues.push(`module-load: ${message.text()}`);
+      return;
+    }
     if (message.type() !== "error") return;
     // The browser logs an automatic "Failed to load resource" console error for
     // every non-2xx response; its text carries no URL — the resource URL is the
@@ -267,6 +275,17 @@ export async function seedAppStorage(
   overrides: Record<string, string> = {},
 ): Promise<void> {
   const storage = { ...DEFAULT_APP_STORAGE, ...overrides };
+  if (!("elizaos:agent-profiles" in storage)) {
+    const profile = {
+      createdAt: Date.now(),
+      ...JSON.parse(storage["elizaos:active-server"]),
+    };
+    storage["elizaos:agent-profiles"] = JSON.stringify({
+      version: 1,
+      activeProfileId: profile.id,
+      profiles: [profile],
+    });
+  }
   await page.addInitScript(
     ({ entries, seededKey }) => {
       try {
@@ -533,6 +552,9 @@ export async function openSettingsSection(
     await expect(settingsShell.locator(`[id="${sectionId}"]`)).toBeVisible({
       timeout: READY_CHECK_TIMEOUT_MS,
     });
+    await expect(
+      settingsShell.locator(`[data-agent-id="section-${sectionId}"]`),
+    ).toHaveAttribute("aria-current", "page");
     return;
   }
   const sectionHeading = settingsShell.getByText(sectionName).filter({
@@ -1431,9 +1453,12 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   // app resolves branding while its entry module is evaluating.
   await page.addInitScript(() => {
     const host = window as typeof window & {
-      __ELIZA_APP_API_BASE__?: string;
+      __ELIZAOS_APP_BOOT_CONFIG__?: Record<string, unknown>;
     };
-    host.__ELIZA_APP_API_BASE__ = window.location.origin;
+    host.__ELIZAOS_APP_BOOT_CONFIG__ = {
+      ...host.__ELIZAOS_APP_BOOT_CONFIG__,
+      apiBase: window.location.origin,
+    };
   });
   let notesRevision = 4;
   // Schema 2 keeps the authored title/body separator in the body remainder.
@@ -1591,13 +1616,12 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        state: "running",
-        agentName: "Playwright Smoke",
-        model: "ui-smoke",
-        startedAt: Date.parse(SMOKE_GENERATED_AT),
-        uptime: 60000,
-      }),
+      body: JSON.stringify(
+        fixtureAgentStatus({
+          startedAt: Date.parse(SMOKE_GENERATED_AT),
+          uptime: 60000,
+        }),
+      ),
     });
   });
   await page.route("**/api/local-inference/device/stream**", async (route) => {
@@ -2302,6 +2326,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         },
         access: {
           mode: "local",
+          role: "OWNER",
           passwordConfigured: false,
           ownerConfigured: true,
         },

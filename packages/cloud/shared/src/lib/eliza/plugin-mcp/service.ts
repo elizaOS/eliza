@@ -13,8 +13,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import { createMcpToolActions, type McpToolAction } from "./actions/dynamic-tool-actions";
-import { getSchemaCache, McpSchemaCache } from "./cache/schema-cache";
-import { type Tier2ToolEntry, Tier2ToolIndex } from "./search/bm25-index";
+import { type Tier2ToolEntry, Tier2ToolIndex } from "./bm25-index";
+import { getSchemaCache, McpSchemaCache } from "./schema-cache";
 import { createMcpToolCompatibilitySync, type McpToolCompatibility } from "./tool-compatibility";
 import {
   getCrucialToolsForServer,

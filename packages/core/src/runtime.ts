@@ -1,55 +1,7 @@
-import { flattenRuntimeSettings } from "./runtime-settings.ts";
-/** Owns one agent’s public runtime identity, registries, settings, and initialization. Model dispatch, structured prompts, provider composition, service startup, embeddings, and data mutations have dedicated owners that share this runtime’s state. Settings remain agent-scoped, and embedding width stays pinned to the provider that passed the boot probe. */
-
-import { RuntimeDataMutations } from "./runtime/data-mutations.js";
-import {
-	EmbeddingDimensionProbeError,
-	RuntimeEmbeddings,
-} from "./runtime/embeddings.js";
-import { RuntimeRetirement } from "./runtime/retirement.js";
-import {
-	RuntimeServiceLifecycle,
-	type ServicePromiseHandler,
-	type ServiceRejecter,
-	type ServiceResolver,
-} from "./runtime/service-lifecycle.js";
-import type { TaskMetadataPatch, TaskMetadataPatchOutcome } from "./types/task";
-
-export {
-	EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
-	EMBEDDING_STORE_IDENTITY_CACHE_KEY,
-	EmbeddingDimensionProbeError,
-	type EmbeddingProbeAttempt,
-	type EmbeddingStoreIdentity,
-} from "./runtime/embeddings.js";
-
-import { RuntimeModelDispatch } from "./runtime/model-dispatch/dispatcher.js";
-import {
-	type ResolvedModelRegistration,
-	TEXT_GENERATION_MODEL_KEYS,
-} from "./runtime/model-dispatch/policy.js";
-import type { ConfidentialInferenceAuthority } from "./security/confidential-inference.js";
-import {
-	bindProcessingPolicy,
-	type ProcessingPolicy,
-	processingPolicyFor,
-} from "./security/processing-policy.js";
-
-export {
-	NoModelProviderConfiguredError,
-	readReasoningTokensFromResponse,
-} from "./runtime/model-dispatch/policy.js";
-
-import { RuntimePipelineHooks } from "./runtime/pipeline-hooks.js";
-import { ProviderStateComposer } from "./runtime/state-composition/composer.js";
-
-export { calculateProviderOverlaps } from "./runtime/state-composition/provider-execution.js";
-
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID as uuidv4 } from "node:crypto";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
-import { deriveKnownSecrets } from "./constants/secrets";
 import {
 	validateQueryEntitiesPagination,
 	validateTaskQueryPagination,
@@ -62,7 +14,12 @@ import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import { createLogger } from "./logger";
 import type { FetchLike } from "./media/fetch";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
-import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
+import type {
+	ExecutionTrace,
+	PromptOptimizationRuntimeHooks,
+	ScoreSignal,
+} from "./prompt-optimization";
+import { runPluginMigrations } from "./provisioning";
 import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { resolveActionGateFailure } from "./runtime/action-gate";
 import { settleActionHandler } from "./runtime/action-handler-settlement";
@@ -72,18 +29,42 @@ import { ActivePromptTraces } from "./runtime/active-prompt-traces";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
 import { RuntimeConnectorRegistry } from "./runtime/connector-registry.js";
 import { ContextRegistry } from "./runtime/context-registry";
-import { resolveProviderModelString } from "./runtime/model-dispatch/model-name";
+import { RuntimeDataMutations } from "./runtime/data-mutations.js";
+import {
+	EmbeddingDimensionProbeError,
+	RuntimeEmbeddings,
+} from "./runtime/embeddings.js";
+import { RuntimeModelDispatch } from "./runtime/model-dispatch.js";
+import {
+	type ResolvedModelRegistration,
+	resolveProviderModelString,
+	TEXT_GENERATION_MODEL_KEYS,
+} from "./runtime/model-policy.js";
+import { RuntimePipelineHooks } from "./runtime/pipeline-hooks.js";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
-import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
-import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
+import {
+	type ResponseHandlerFieldEvaluator,
+	ResponseHandlerFieldRegistry,
+} from "./runtime/response-handler-fields";
+import { RuntimeRetirement } from "./runtime/retirement.js";
 import { RoomHandlerQueue } from "./runtime/room-handler-queue";
+import {
+	RuntimeServiceLifecycle,
+	type ServicePromiseHandler,
+	type ServiceRejecter,
+	type ServiceResolver,
+} from "./runtime/service-lifecycle.js";
 import { SingleFlightMemo } from "./runtime/single-flight-memo";
+import { ProviderStateComposer } from "./runtime/state-composition.js";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
 import { TurnControllerRegistry } from "./runtime/turn-controller";
+import { flattenRuntimeSettings } from "./runtime-settings.ts";
+import type { ConfidentialInferenceAuthority } from "./security/confidential-inference.js";
+import { createCoreSecurityHooksPlugin } from "./security/core-hooks";
 import {
 	CompositeEntityRecognizer,
 	PII_ENTITY_RECOGNIZER_SERVICE,
@@ -105,6 +86,11 @@ import {
 	PseudonymSession,
 	parsePiiSwapList,
 } from "./security/pii-pseudonymizer.js";
+import {
+	bindProcessingPolicy,
+	type ProcessingPolicy,
+	processingPolicyFor,
+} from "./security/processing-policy.js";
 import { MIN_SECRET_LENGTH, redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
@@ -112,6 +98,7 @@ import {
 	SECRET_SWAP_EXEMPT_VALUES_SETTING,
 	SecretSwapSession,
 } from "./security/secret-swap";
+import { deriveKnownSecrets } from "./security/secrets";
 import {
 	authorizeOwnerExclusiveDisclosure,
 	PRIVACY_DENIED_TEXT,
@@ -215,18 +202,13 @@ import type {
 	RuntimeEventStorage,
 	ServiceClass,
 } from "./types/plugin.js";
-import type { Content } from "./types/primitives.js";
 import {
 	ChannelType,
+	type Content,
 	type JsonValue,
 	type Metadata,
 	type UUID,
 } from "./types/primitives.js";
-import type { PromptOptimizationRuntimeHooks } from "./types/prompt-optimization-hooks";
-import type {
-	ExecutionTrace,
-	ScoreSignal,
-} from "./types/prompt-optimization-trace";
 import type { IAgentRuntime, RuntimeStopOptions } from "./types/runtime.js";
 import {
 	type SearchCategoryEnumerationOptions,
@@ -241,14 +223,36 @@ import {
 } from "./types/service.js";
 import type { RuntimeSettings } from "./types/settings.js";
 import type { State } from "./types/state.js";
-import type { Task, TaskWorker } from "./types/task.js";
-import { stringToUuid, validateUuid } from "./utils";
+import type {
+	Task,
+	TaskMetadataPatch,
+	TaskMetadataPatchOutcome,
+	TaskWorker,
+} from "./types/task";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
-import { isExactTrueEnvFlag } from "./utils/env";
 import { getNumberEnv } from "./utils/environment";
 import { getOptimizationRootDir } from "./utils/state-dir";
+import { stringToUuid } from "./utils/string-to-uuid.js";
 import { isPlainObject } from "./utils/type-guards";
+import { validateUuid } from "./utils/uuid.js";
+
+/** Owns one agent’s public runtime identity, registries, settings, and initialization. Model dispatch, structured prompts, provider composition, service startup, embeddings, and data mutations have dedicated owners that share this runtime’s state. Settings remain agent-scoped, and embedding width stays pinned to the provider that passed the boot probe. */
+
+export {
+	EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
+	EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+	EmbeddingDimensionProbeError,
+	type EmbeddingProbeAttempt,
+	type EmbeddingStoreIdentity,
+} from "./runtime/embeddings.js";
+
+export {
+	NoModelProviderConfiguredError,
+	readReasoningTokensFromResponse,
+} from "./runtime/model-policy.js";
+
+export { calculateProviderOverlaps } from "./runtime/provider-execution.js";
 
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
 const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
@@ -370,6 +374,17 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
 // Its immutable stores retain nested runtimes only for the originating async chain.
 const errorReportScopes = new AsyncLocalStorage<ReadonlySet<AgentRuntime>>();
 
+/**
+ * Egress swap master switches may come from the host process environment.
+ * `getSetting` reads only character/runtime settings, and hosts forward
+ * environment keys into settings through allowlists that reject any key
+ * containing "SECRET", so without this fallback a host could never enable the
+ * secret swap. An explicit runtime setting still wins.
+ */
+function swapEnvSetting(key: string): string | undefined {
+	return typeof process === "undefined" ? undefined : process.env?.[key];
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	private readonly dataMutations = new RuntimeDataMutations(this, {
 		invalidateTurnEntityDetails: (...args) =>
@@ -432,7 +447,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.getFirstUserPromptFromMessages(...args),
 	});
 	private readonly pipelineHooks = new RuntimePipelineHooks(this);
-	// Plugin lifecycle and host send-availability probes share this legacy map.
+	// Plugin lifecycle and host send-availability probes share this map.
 	private sendHandlers = new Map<string, SendHandlerFunction>();
 	readonly #connectorRegistry = new RuntimeConnectorRegistry(
 		this,
@@ -521,7 +536,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private serviceTypes = new Map<ServiceTypeName, ServiceClass[]>();
 
 	/**
-	 * Bounded ring of failures surfaced via {@link reportError} (#12263). Read
+	 * Bounded ring of failures surfaced via {@link reportError}. Read
 	 * by the RECENT_ERRORS provider and the owner-escalation threshold. Oldest
 	 * entries drop once the cap is exceeded.
 	 */
@@ -806,7 +821,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private isSecretSwapEnabled(): boolean {
 		return (
-			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ?? false
+			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ??
+			parseBooleanValue(swapEnvSetting(SECRET_SWAP_ENABLED_SETTING)) ??
+			false
 		);
 	}
 
@@ -833,7 +850,7 @@ export class AgentRuntime implements IAgentRuntime {
 						this.character.settings.secrets as Record<string, unknown>,
 					)
 				: undefined;
-		// Registry/config-derived catalog (#10469): seed every secret-bearing env
+		// Registry/config-derived catalog: seed every secret-bearing env
 		// value so a plugin's `FOO_API_KEY` is swapped even when it never appears
 		// in a recognised inline token shape. Character secrets win on conflict.
 		const envSecrets = deriveKnownSecrets(
@@ -853,12 +870,14 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private isPiiSwapEnabled(): boolean {
 		return (
-			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ?? false
+			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ??
+			parseBooleanValue(swapEnvSetting(PII_SWAP_ENABLED_SETTING)) ??
+			false
 		);
 	}
 
 	/**
-	 * Build the turn's PII pseudonymization session (#10469 / #7007). The
+	 * Build the turn's PII pseudonymization session. The
 	 * recognizer is the composite of the runtime's built-in regex recognizer
 	 * (street addresses) and — if a plugin registered the
 	 * `PII_ENTITY_RECOGNIZER_SERVICE` — the local NER model (person/org/location).
@@ -1496,11 +1515,7 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 	}
 
-	/**
-	 * Slim init: register plugins, ensure adapter ready, create message service.
-	 * Does NOT run migrations, agent/entity/room creation, or embedding dimension.
-	 * WHY: Those belong to provisioning (once at daemon boot); edge/ephemeral skip them.
-	 */
+	/** Initializes plugins, adapter readiness, and runtime services. Hosts own provisioning and embedding setup. */
 	async initialize(options?: { skipMigrations?: boolean }): Promise<void> {
 		this.initializationFailed = false;
 		try {
@@ -1726,6 +1741,11 @@ export class AgentRuntime implements IAgentRuntime {
 				{ src: "agent", agentId: this.agentId },
 				"Agent entity created",
 			);
+		} else if (this.character.name) {
+			// A rename persisted before the entity followed it (or by an older
+			// build) would otherwise keep labelling the agent's turns with the
+			// old name forever, since creation is skipped once the entity exists.
+			await this.syncAgentEntityName(agentEntity, this.character.name);
 		}
 
 		// Room creation and participant setup
@@ -1790,7 +1810,7 @@ export class AgentRuntime implements IAgentRuntime {
 				// probe. Do not abort boot: ensureEmbeddingDimension() has already
 				// flipped the runtime into embedding-disabled mode, so memory writes
 				// skip vector generation instead of emitting vectors the SQL adapter
-				// would silently drop against its default-sized column (#8769). The
+				// would silently drop against its default-sized column. The
 				// deferred boot re-probe (packages/agent) re-runs the probe after
 				// late plugins register and re-enables embeddings on success.
 				const context = {
@@ -1935,69 +1955,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async runPluginMigrations(): Promise<void> {
-		if (!this.adapter) {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId },
-				"Database adapter not found, skipping plugin migrations",
-			);
-			return;
-		}
-
-		if (typeof this.adapter.runPluginMigrations !== "function") {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId },
-				"Database adapter does not support plugin migrations",
-			);
-			return;
-		}
-
-		const pluginsWithSchemas = this.plugins
-			.filter((p) => p.schema)
-			.map((p) => {
-				const schema = p.schema || {};
-				const normalizedSchema: Record<string, JsonValue> = {};
-				for (const [key, value] of Object.entries(schema)) {
-					if (
-						typeof value === "string" ||
-						typeof value === "number" ||
-						typeof value === "boolean" ||
-						value === null ||
-						(typeof value === "object" && value !== null)
-					) {
-						normalizedSchema[key] = value as JsonValue;
-					}
-				}
-				return { name: p.name, schema: normalizedSchema };
-			});
-
-		if (pluginsWithSchemas.length === 0) {
-			this.logger.debug(
-				{ src: "agent", agentId: this.agentId },
-				"No plugins with schemas, skipping migrations",
-			);
-			return;
-		}
-
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, count: pluginsWithSchemas.length },
-			"Found plugins with schemas",
-		);
-
-		const isProduction = process.env.NODE_ENV === "production";
-		const forceDestructive = isExactTrueEnvFlag(
-			process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS,
-		);
-
-		await this.adapter.runPluginMigrations(pluginsWithSchemas, {
-			verbose: !isProduction,
-			force: forceDestructive,
-			dryRun: false,
-		});
-
-		this.logger.debug(
-			{ src: "agent", agentId: this.agentId },
-			"Plugin migrations completed",
-		);
+		await runPluginMigrations(this);
 	}
 
 	async getConnection(): Promise<object> {
@@ -2009,7 +1967,10 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	setSetting(key: string, value: string | boolean | null, secret = false) {
-		if (secret) {
+		const shadowedBySecret =
+			this.character.secrets !== undefined &&
+			Object.hasOwn(this.character.secrets, key);
+		if (secret || shadowedBySecret) {
 			const nestedSecrets =
 				this.character.settings &&
 				typeof this.character.settings.secrets === "object" &&
@@ -2022,10 +1983,11 @@ export class AgentRuntime implements IAgentRuntime {
 			if (value !== null && value !== undefined) {
 				// Secrets are stored as strings
 				this.character.secrets[key] = String(value);
-				// Boot composition may have copied this key into the legacy nested
-				// secret map. Remove that lower-priority snapshot so a later revoke
-				// cannot resurrect it after the live value is cleared.
-				if (nestedSecrets) delete nestedSecrets[key];
+				// Remove a distinct nested snapshot so clearing cannot resurrect a revoked
+				// credential. initialize() can alias these maps; retain the new live value.
+				if (nestedSecrets && nestedSecrets !== this.character.secrets) {
+					delete nestedSecrets[key];
+				}
 			} else {
 				// null clears — callers use setSetting(key, null) to revoke a
 				// previously bridged credential (cloud disconnect, connector
@@ -2314,24 +2276,7 @@ export class AgentRuntime implements IAgentRuntime {
 		return null;
 	}
 
-	/**
-	 * Shared collision policy for the three primary component registries
-	 * (actions, providers, evaluators). Registration is deterministic first-wins:
-	 * the earliest-registered component of a given name is authoritative and the
-	 * order in which plugins register is stable across a boot.
-	 *
-	 * A later registrant of the same name is either:
-	 *  - a DECLARED override (`override: true`) — an intentional supersede. We log
-	 *    the takeover at INFO and instruct the caller to replace the incumbent.
-	 *  - an UNDECLARED collision — two plugins claimed the same name without one
-	 *    declaring precedence. This is the unsafe, order-sensitive case the
-	 *    arch-audit flagged: which component wins used to be decided by a silent
-	 *    first-wins dedupe. We now keep the incumbent (still deterministic) but
-	 *    surface a WARN so the drift is observable instead of silent.
-	 *
-	 * @returns `true` if the caller should REPLACE the incumbent (declared
-	 *   override), `false` if it should keep the incumbent and skip the newcomer.
-	 */
+	/** Resolves component-name collisions. First registration wins unless direct registration declares override; collisions warn and explicit replacements log at info level. */
 	private resolveComponentCollision(
 		kind: "action" | "provider" | "evaluator",
 		name: string,
@@ -2817,7 +2762,7 @@ export class AgentRuntime implements IAgentRuntime {
 									);
 								}
 							: options?.callback;
-					await settleActionHandler({
+					const settled = await settleActionHandler({
 						runtime: this,
 						action,
 						callback: protectedCallback,
@@ -2852,6 +2797,14 @@ export class AgentRuntime implements IAgentRuntime {
 							);
 						},
 					});
+					// Honor explicit success: false returned by handlers as well as thrown failures.
+					if (settled.success === false) {
+						success = false;
+						errorMsg =
+							settled.error instanceof Error
+								? settled.error.message
+								: (settled.error ?? settled.text ?? errorMsg);
+					}
 					if (action.disclosureGate?.require === "owner_exclusive") {
 						const disclosure = await revalidateOwnerExclusiveDisclosure(
 							this,
@@ -2959,7 +2912,7 @@ export class AgentRuntime implements IAgentRuntime {
 				return chunks;
 			}, []);
 
-		// Step 1: Create all rooms FIRST (before adding any participants)
+		// Create rooms before participants.
 		const roomIds = rooms.map((r: { id: UUID }) => r.id);
 		const roomExistsCheck = await this.getRoomsByIds(roomIds);
 		const roomsIdExists = roomExistsCheck.map((r: { id: UUID }) => r.id);
@@ -2985,7 +2938,6 @@ export class AgentRuntime implements IAgentRuntime {
 			await this.createRooms(roomObjsToCreate);
 		}
 
-		// Step 2: Create all entities
 		const entityIds = entities
 			.map((e) => e.id)
 			.filter((id): id is UUID => id !== undefined);
@@ -3031,8 +2983,8 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
-		// Step 3: Now add all participants (rooms and entities must exist by now)
-		// Always add the agent to the first room
+		// Rooms and entities must exist before participant insertion. Add the agent to the first
+		// room.
 		await this.ensureParticipantInRoom(this.agentId, firstRoom.id);
 
 		// Add all entities to the first room
@@ -3255,8 +3207,8 @@ export class AgentRuntime implements IAgentRuntime {
 				) {
 					throw error;
 				}
-				// error-policy:J2 — retry against a fresh snapshot after a concurrent
-				// creator wins the unique insert or a legacy writer advances revision.
+				// error-policy:J2 retry from a fresh snapshot after a concurrent insert or revision
+				// change.
 			}
 		}
 		if (!completed) {
@@ -3603,7 +3555,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * (so callers can fail-closed rather than fabricate a provider). Lets the
 	 * trajectory stage recorders in `services/message.ts` name the real provider
 	 * that answered the messageHandler / factsAndRelationships call instead of
-	 * the hardcoded `"default"` literal (#13623).
+	 * the hardcoded `"default"` literal.
 	 */
 	getLastResolvedModelProvider(
 		modelType: ModelTypeName | string,
@@ -3863,7 +3815,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/**
-	 * Diagnostic boundary for failures outside the action path (#12263). Logs
+	 * Diagnostic boundary for failures outside the action path. Logs
 	 * with a `[scope]` prefix, records the failure in the bounded ring, emits
 	 * {@link EventType.ERROR_REPORTED}, and forwards it into the
 	 * AgentEventService `"error"` stream when that service is registered.
@@ -4090,7 +4042,32 @@ export class AgentRuntime implements IAgentRuntime {
 		return ids.length > 0;
 	}
 	async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-		return this.adapter.updateAgents([{ agentId, agent }]);
+		const updated = await this.adapter.updateAgents([{ agentId, agent }]);
+		const name = typeof agent.name === "string" ? agent.name.trim() : "";
+		if (updated && agentId === this.agentId && name) {
+			const [agentEntity] = await this.adapter.getEntitiesByIds([agentId]);
+			if (agentEntity) await this.syncAgentEntityName(agentEntity, name);
+		}
+		return updated;
+	}
+
+	/**
+	 * Keeps the agent's own entity named after its character. Prompts label
+	 * speakers with `entity.names[0]`, so a rename (character PUT, CHARACTER
+	 * action, first-run) must move the new name to the front of `names`.
+	 */
+	private async syncAgentEntityName(
+		agentEntity: Entity,
+		name: string,
+	): Promise<void> {
+		if (agentEntity.names[0] === name) return;
+		await this.updateEntity({
+			...agentEntity,
+			names: [
+				name,
+				...agentEntity.names.filter((existing) => existing !== name),
+			],
+		});
 	}
 	async deleteAgent(agentId: UUID): Promise<boolean> {
 		return this.adapter.deleteAgents([agentId]);
@@ -4464,13 +4441,17 @@ export class AgentRuntime implements IAgentRuntime {
 		// (packages/agent media-runtime), so a partition missing here makes that
 		// partition's media references invisible to the sweep and its files get
 		// deleted after the grace window — "transcripts" rows anchor retained
-		// recordings via the audioUrl inside content.transcript (#14751). It also
+		// recordings via the audioUrl inside content.transcript. It also
 		// bounds clearAllAgentMemories: an unlisted partition survives a wipe.
+		// document_fragments are the searchable chunks of documents; leaving
+		// them off this list kept deleted-document text and any media they
+		// reference after a wipe.
 		const tables = [
 			"memories",
 			"messages",
 			"facts",
 			"documents",
+			"document_fragments",
 			"transcripts",
 		];
 		const allMemories: Memory[] = [];
@@ -4666,11 +4647,7 @@ export class AgentRuntime implements IAgentRuntime {
 			| UUID
 			| {
 					roomId?: UUID;
-					/** The IAgentRuntime/adapter param form. The implementation
-					 * previously read only `roomId` and silently dropped this,
-					 * turning interface-correct room-scoped counts into TABLE-WIDE
-					 * ones (/reset reported "cleared 31k message(s)" for a
-					 * 40-message room). */
+					/** Adapter count parameters, including roomIds, pass through without widening the query. */
 					roomIds?: UUID[];
 					unique?: boolean;
 					tableName?: string;
@@ -4797,7 +4774,7 @@ export class AgentRuntime implements IAgentRuntime {
 		worldId,
 	}: Room): Promise<UUID> {
 		if (!worldId) throw new Error("worldId is required");
-		const res = await this.adapter.createRooms([
+		const res = await this.createRooms([
 			{
 				id,
 				name,
@@ -4809,15 +4786,15 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 		]);
 		if (!res.length) throw new Error("Failed to create room");
-		// Bust a possibly-memoized null from a pre-creation lookup.
-		this.roomReadMemo.invalidate(res[0]);
-		if (id) this.roomReadMemo.invalidate(id);
 		return res[0];
 	}
 
 	async createRooms(rooms: Room[]): Promise<UUID[]> {
 		const ids = await this.adapter.createRooms(rooms);
 		for (const roomId of ids) this.roomReadMemo.invalidate(roomId);
+		for (const room of rooms) {
+			if (room.id) this.roomReadMemo.invalidate(room.id);
+		}
 		return ids;
 	}
 	async upsertRooms(rooms: Room[]): Promise<void> {
@@ -4948,8 +4925,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async createTask(task: Task): Promise<UUID> {
-		const ids = await this.adapter.createTasks([task]);
-		this._markLocalTasksDirty();
+		const ids = await this.createTasks([task]);
 		return ids[0];
 	}
 
@@ -4984,13 +4960,11 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
-		await this.adapter.updateTasks([{ id, task }]);
-		this._markLocalTasksDirty();
+		await this.updateTasks([{ id, task }]);
 	}
 
 	async deleteTask(id: UUID): Promise<void> {
-		await this.adapter.deleteTasks([id]);
-		this._markLocalTasksDirty();
+		await this.deleteTasks([id]);
 	}
 
 	async log(params: {
@@ -5619,7 +5593,6 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	// Pairing Methods
-	// ===============================
 
 	async getPairingRequestsForChannel(
 		channel: PairingChannel,

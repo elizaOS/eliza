@@ -3,7 +3,7 @@
  * throughput, and ETA. Shared by the download queue and the per-model cards.
  */
 
-import type { DownloadJob } from "../../api/client-local-inference";
+import type { DownloadJob } from "@elizaos/contracts";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Progress } from "../ui/progress";
 import { formatBytes, formatEta, progressPercent } from "./hub-utils";

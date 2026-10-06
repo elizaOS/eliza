@@ -13,25 +13,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const transportFetch = vi.hoisted(() => vi.fn());
 
-vi.mock("@elizaos/ui/api/csrf-client", () => ({
+vi.mock("../../../../packages/ui/src/api/csrf-client", () => ({
   fetchWithCsrf: transportFetch,
 }));
 
-vi.mock("@elizaos/ui/api", () => ({
-  client: {
-    fetch: (url: string, init?: RequestInit) =>
-      transportFetch(url, init).then((response: Response) => response.json()),
-    onWsEvent: vi.fn(() => () => undefined),
-  },
-  isApiError: () => false,
-}));
-
-vi.mock("@elizaos/ui/events", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/ui/events")>();
-  return { ...actual, useViewEvent: vi.fn() };
-});
-
-vi.mock("@elizaos/ui/agent-surface", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  ...(await (async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    client: {
+      fetch: (url: string, init?: RequestInit) =>
+        transportFetch(url, init).then((response: Response) => response.json()),
+      onWsEvent: vi.fn(() => () => undefined),
+    },
+    isApiError: () => false,
+  }))(importOriginal)),
+  useViewEvent: vi.fn(),
   useAgentElement: (definition: { id: string; label: string }) => ({
     ref: { current: null },
     agentProps: {
@@ -42,8 +39,8 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
 }));
 
 vi.mock(
-  "@elizaos/ui/components/shared/ViewHeader",
-  () => import("../../../../packages/ui/src/components/shared/ViewHeader.tsx"),
+  "../../../../packages/ui/src/components/shared/ViewHeader",
+  () => import("../../../../packages/ui/src/components/shared/ViewHeader"),
 );
 
 import { interact as interactWithService } from "../interact.js";

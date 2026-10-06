@@ -5,6 +5,7 @@
  * the server so allowance can never be selected by caller-controlled prose.
  */
 
+import type { OrganizationSubscriptionFundingOperation } from "@elizaos/cloud-sdk/account-billing-snapshot";
 import { ElizaError } from "@elizaos/core";
 
 export const SUBSCRIPTION_FUNDING_CLASSES = ["allowance_eligible", "cash_only"] as const;
@@ -32,7 +33,7 @@ export const SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION = {
   hardware_or_network_access: "cash_only",
   payout_or_transfer: "cash_only",
   unclassified: "cash_only",
-} as const satisfies Record<string, SubscriptionFundingClass>;
+} as const satisfies Record<OrganizationSubscriptionFundingOperation, SubscriptionFundingClass>;
 
 export type SubscriptionFundingOperation = keyof typeof SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION;
 
@@ -270,7 +271,7 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     expectedSignals: { credit_service_deduct: 1 },
   },
   {
-    relativePath: "shared/src/lib/services/x/index.ts",
+    relativePath: "shared/src/lib/services/x.ts",
     operation: "advertising_or_promotion",
     fundingClass: "cash_only",
     expectedSignals: { credit_service_reserve_and_deduct: 1 },

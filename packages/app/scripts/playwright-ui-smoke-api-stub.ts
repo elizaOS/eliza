@@ -17,6 +17,7 @@ import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
 } from "../../agent/src/api/dynamic-view-host-external.ts";
+import { fixtureAgentStatus } from "../test/fixtures/agent-status.ts";
 // The declarations + provenance decision live in one place so a removed plugin
 // cannot linger in the stub and a fabricated bundle can never masquerade as the
 // production one. Audit mode (ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES=1) turns a
@@ -357,6 +358,7 @@ const stubAuthSession = {
 
 const stubAuthAccess = {
   mode: "local",
+  role: "OWNER",
   passwordConfigured: false,
   ownerConfigured: true,
 };
@@ -638,31 +640,6 @@ const emptyLifeOpsSocialSummary = {
   },
   dataSources: [],
   fetchedAt: smokeGeneratedAt,
-};
-
-const emptyBrowserBridgeSettings = {
-  enabled: true,
-  trackingMode: "current_tab",
-  allowBrowserControl: false,
-  requireConfirmationForAccountAffecting: true,
-  incognitoEnabled: false,
-  siteAccessMode: "current_site_only",
-  grantedOrigins: [],
-  blockedOrigins: [],
-  maxRememberedTabs: 10,
-  pauseUntil: null,
-  metadata: {},
-  updatedAt: null,
-};
-
-const emptyBrowserBridgePackageStatus = {
-  extensionPath: null,
-  chromeBuildPath: null,
-  chromePackagePath: null,
-  safariAppPath: null,
-  safariPackagePath: null,
-  safariWebExtensionPath: null,
-  releaseManifest: null,
 };
 
 const stubCharacter = {
@@ -1563,21 +1540,16 @@ async function drainRequest(req) {
 
 function workbenchOverview() {
   return {
-    tasks: [],
     triggers: [],
     todos: [],
     summary: {
-      totalTasks: 0,
-      completedTasks: 0,
       totalTriggers: 0,
       activeTriggers: 0,
       totalTodos: 0,
       completedTodos: 0,
     },
-    tasksAvailable: false,
     triggersAvailable: false,
     todosAvailable: false,
-    lifeopsAvailable: false,
   };
 }
 
@@ -2779,14 +2751,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/status") {
-    sendJson(req, res, 200, {
-      state: "running",
-      agentName: "Playwright Smoke",
-      model: "ui-smoke",
-      startup: { phase: "running", attempt: 0 },
-      pendingRestart: false,
-      pendingRestartReasons: [],
-    });
+    sendJson(
+      req,
+      res,
+      200,
+      fixtureAgentStatus({
+        startup: { phase: "running", attempt: 0 },
+        pendingRestart: false,
+        pendingRestartReasons: [],
+      }),
+    );
     return;
   }
 
@@ -4145,6 +4119,14 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/lifeops/inbox") {
     sendJson(req, res, 200, emptyLifeOpsInbox);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/lifeops/family-workflows/email-options"
+  ) {
+    sendJson(req, res, 200, { options: { accounts: [], recipients: [] } });
     return;
   }
 

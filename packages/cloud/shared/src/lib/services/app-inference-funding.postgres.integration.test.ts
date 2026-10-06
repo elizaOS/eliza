@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { installBillingCommandEvidenceTestColumns } from "../../testing";
 
 const postgresUrl = process.env.APP_FUNDING_TEST_POSTGRES_URL;
 const schema = `app_funding_${randomUUID().replaceAll("-", "_")}`;
@@ -92,6 +93,8 @@ beforeAll(async () => {
     "0428_billing_identity_anchors",
     "0429_billing_identity_backfill",
     "0430_billing_identity_references",
+    "0511_organization_plan_change_quotes",
+    "0512_organization_upgrade_dispatch",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -100,6 +103,7 @@ beforeAll(async () => {
     for (const statement of migration.split("--> statement-breakpoint"))
       if (statement.trim()) await client.exec(statement.replaceAll('"public".', ""));
   }
+  await installBillingCommandEvidenceTestColumns((statement) => client.exec(statement));
   await client.query(
     `INSERT INTO billing_merchants(id,organization_id,provider_account_key,stripe_account_id,livemode,enabled) VALUES ($1,$2,'platform','acct_platform',false,true)`,
     [merchant, org],

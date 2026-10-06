@@ -1,5 +1,7 @@
 /** Creates real historical source authority and complete plain Stripe renewal observations for isolated database and transport tests. */
+
 import { randomUUID } from "node:crypto";
+import type { BillingSubscription } from "../schemas/billing-subscriptions";
 import { subscriptionAuthorityRepository } from "./subscription-authority";
 import { seedCancellationTestAccount } from "./subscription-cancellation-test-fixture";
 import { subscriptionEntitlementsRepository } from "./subscription-entitlements";
@@ -29,15 +31,29 @@ export async function seedRenewalTestAccount(
     sourceSubscriptionRevision: 2,
     expectedProjectionRevision: 1,
   });
+  return { source, ...renewalPaidObjects(source, fixture.provider, { start, end }) };
+}
+/** Provider-only fixture: does not publish or rewrite historical source rows. */
+export function renewalPaidObjects(
+  source: Pick<
+    BillingSubscription,
+    "stripe_customer_id" | "stripe_subscription_id" | "stripe_subscription_item_id" | "plan_key"
+  >,
+  provider: Awaited<ReturnType<typeof seedCancellationTestAccount>>["provider"],
+  period: { start: number; end: number },
+) {
+  const { start, end } = period;
+  const amount = source.plan_key === "pro_monthly" ? 10000 : 3000;
   const suffix = randomUUID().replaceAll("-", ""),
     invoiceId = `in_${suffix}`,
     piId = `pi_${suffix}`,
     chargeId = `ch_${suffix}`;
   const subscription = {
-    ...fixture.provider,
+    ...provider,
     current_period_start: start,
     current_period_end: end,
     latest_invoice: invoiceId,
+    collection_method: "charge_automatically",
   };
   const price = { ...subscription.items.data[0]!.price, active: false, object: "price" };
   const customer = { id: source.stripe_customer_id, object: "customer", livemode: false };
@@ -53,10 +69,10 @@ export async function seedRenewalTestAccount(
     paid_out_of_band: false,
     collection_method: "charge_automatically",
     currency: "usd",
-    amount_paid: 3000,
-    amount_due: 3000,
-    total: 3000,
-    subtotal: 3000,
+    amount_paid: amount,
+    amount_due: amount,
+    total: amount,
+    subtotal: amount,
     amount_remaining: 0,
     starting_balance: 0,
     ending_balance: 0,
@@ -87,7 +103,7 @@ export async function seedRenewalTestAccount(
           quantity: 1,
           proration: false,
           currency: "usd",
-          amount: 3000,
+          amount: amount,
           discount_amounts: [],
           tax_amounts: [],
           period: { start, end },
@@ -105,8 +121,8 @@ export async function seedRenewalTestAccount(
     latest_charge: chargeId,
     livemode: false,
     currency: "usd",
-    amount: 3000,
-    amount_received: 3000,
+    amount: amount,
+    amount_received: amount,
     amount_capturable: 0,
     application: null,
     application_fee_amount: null,
@@ -122,8 +138,8 @@ export async function seedRenewalTestAccount(
     payment_intent: piId,
     livemode: false,
     currency: "usd",
-    amount: 3000,
-    amount_captured: 3000,
+    amount: amount,
+    amount_captured: amount,
     amount_refunded: 0,
     captured: true,
     paid: true,
@@ -138,7 +154,6 @@ export async function seedRenewalTestAccount(
     transfer_data: null,
   };
   return {
-    source,
     subscription,
     invoice,
     customer,

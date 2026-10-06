@@ -10,11 +10,11 @@
  *   job.status:     pending → in_progress → completed | failed
  *   job.type:       agent_provision | agent_delete
  */
-import {
-  type SharedTodoCutoverRecord,
-  type SharedTodoCutoverSnapshot,
-  type SharedTodoMutationCutoverRecord,
-} from "@elizaos/core/todo-cutover";
+import type {
+  SharedTodoCutoverRecord,
+  SharedTodoCutoverSnapshot,
+  SharedTodoMutationCutoverRecord,
+} from "@elizaos/core";
 export type SandboxStatus =
   | "provisioning"
   | "running"

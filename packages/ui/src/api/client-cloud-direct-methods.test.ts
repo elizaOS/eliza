@@ -19,7 +19,7 @@ vi.mock("@capacitor/core", () => ({
   CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
 
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { ElizaClient } from "./client-base";
 // Side-effect import: patches the direct-cloud methods onto the prototype.
 import "./client-cloud";

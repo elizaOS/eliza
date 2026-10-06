@@ -19,11 +19,6 @@ import { shellLocalStorage } from "../../surface-realm-channel";
  */
 export type ConnectorChannelMode = "delegate" | "bot";
 
-export const CONNECTOR_CHANNEL_MODES: readonly ConnectorChannelMode[] = [
-  "delegate",
-  "bot",
-];
-
 const STORAGE_KEY = "eliza:connectors:channelMode";
 const DEFAULT_MODE: ConnectorChannelMode = "delegate";
 
@@ -71,10 +66,6 @@ function getSnapshot(): ConnectorChannelMode {
 
 function getServerSnapshot(): ConnectorChannelMode {
   return DEFAULT_MODE;
-}
-
-export function getConnectorChannelMode(): ConnectorChannelMode {
-  return cachedMode;
 }
 
 export function setConnectorChannelMode(mode: ConnectorChannelMode): void {

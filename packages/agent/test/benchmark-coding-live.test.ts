@@ -6,7 +6,6 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
-import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
   createPlannerTokenPacer,
   plannerRateLimitEvidence,
@@ -14,7 +13,8 @@ import {
   summarizePlannerObservation,
   summarizePlannerTrajectories,
   validatePlannerFixture,
-} from "../scripts/cerebras-planner-workload.ts";
+} from "../../benchmarks/scripts/eliza-benchmark-scripts/agent/cerebras-planner-workload.ts";
+import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const enabled = process.env.BENCHMARK_NATIVE_CODING_E2E === "1";
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
@@ -437,7 +437,7 @@ test.each(["pacing", "request"] as const)(
           "--conditions=eliza-source",
           path.join(
             repoRoot,
-            "packages/agent/scripts/cerebras-planner-workload.ts",
+            "packages/benchmarks/scripts/eliza-benchmark-scripts/agent/cerebras-planner-workload.ts",
           ),
         ],
         {

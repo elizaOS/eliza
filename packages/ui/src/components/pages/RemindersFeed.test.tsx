@@ -39,8 +39,13 @@ vi.mock("../../state/TranslationContext.hooks", () => {
   return { useTranslation: () => ({ t }) };
 });
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
-vi.mock("../../api", () => ({
-  client: { getBaseUrl: () => "http://agent", rawRequest: mocks.fetch },
+vi.mock("../../api/client", () => ({
+  client: {
+    getBaseUrl: () => "http://agent",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: () => () => {},
+    rawRequest: mocks.fetch,
+  },
 }));
 const row = {
   definition: {

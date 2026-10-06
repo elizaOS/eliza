@@ -104,4 +104,80 @@ describe("required fields that are not yet filled", () => {
     const submission = await service.submit(session.id, entityId);
     expect(submission.values.wallet).toBe("0xabc");
   });
+
+  it.each([
+    ["an empty attachment list", []],
+    ["an object without uploaded-file metadata", {}],
+  ])("keeps a required file field active for %s", async (_label, value) => {
+    service.registerForm({
+      id: "identity",
+      name: "Identity",
+      controls: [
+        {
+          key: "document",
+          label: "Document",
+          type: "file",
+          required: true,
+        },
+      ],
+    });
+    const session = await service.startSession("identity", entityId, roomId);
+
+    await service.updateField(
+      session.id,
+      entityId,
+      "document",
+      value,
+      1,
+      "user",
+    );
+
+    const active = await service.getActiveSession(entityId, roomId);
+    expect(active?.status).toBe("active");
+    expect(active?.fields.document).toMatchObject({
+      status: "invalid",
+      error: expect.any(String),
+    });
+    await expect(service.submit(session.id, entityId)).rejects.toThrow(
+      /Not all required fields are filled/,
+    );
+  });
+
+  it("submits complete uploaded-file metadata for a required file", async () => {
+    service.registerForm({
+      id: "identity",
+      name: "Identity",
+      controls: [
+        {
+          key: "document",
+          label: "Document",
+          type: "file",
+          required: true,
+          file: { accept: ["application/pdf"], maxSize: 1_000_000 },
+        },
+      ],
+    });
+    const session = await service.startSession("identity", entityId, roomId);
+    const document = {
+      id: "upload-1",
+      name: "identity.pdf",
+      mimeType: "application/pdf",
+      size: 42,
+      url: "https://files.example/identity.pdf",
+    };
+
+    await service.updateField(
+      session.id,
+      entityId,
+      "document",
+      document,
+      1,
+      "user",
+    );
+
+    const ready = await service.getActiveSession(entityId, roomId);
+    expect(ready?.status).toBe("ready");
+    const submission = await service.submit(session.id, entityId);
+    expect(submission.values.document).toEqual(document);
+  });
 });

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { installBillingCommandEvidenceTestColumns } from "../../testing";
 import type { BuyerBillingIdentity, GenericBillingRuntime } from "./generic-billing-runtime";
 import { createRuntimeStripeFixture } from "./generic-billing-runtime.stripe-fixture";
 import { settlementDigest } from "./settlement-digest";
@@ -122,6 +123,8 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       "0428_billing_identity_anchors",
       "0429_billing_identity_backfill",
       "0430_billing_identity_references",
+      "0511_organization_plan_change_quotes",
+      "0512_organization_upgrade_dispatch",
       "0431_app_billing_deletion_dispositions",
       "0432_app_billing_deletion_disposition_guards",
       "0433_app_billing_customer_closures",
@@ -161,6 +164,7 @@ describe.skipIf(!postgresUrl)("canonical customer closure with PostgreSQL", () =
       for (const statement of migration.split("--> statement-breakpoint"))
         if (statement.trim()) await db.query(statement.replaceAll('"public".', ""));
     }
+    await installBillingCommandEvidenceTestColumns((statement) => db.query(statement));
     await db.query(
       "INSERT INTO organizations(id,stripe_customer_id) VALUES($1,'cus_infrastructure')",
       [org],

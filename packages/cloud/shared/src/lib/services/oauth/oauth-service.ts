@@ -14,8 +14,8 @@ import { logger } from "../../utils/logger";
 import { getOAuthVersion, incrementOAuthVersion } from "./cache-version";
 import { getAdapter, getAllAdapters } from "./connection-adapters";
 import { Errors } from "./errors";
+import { initiateOAuth2 } from "./oauth2";
 import { getProvider, isProviderConfigured, OAUTH_PROVIDERS } from "./provider-registry";
-import { initiateOAuth2 } from "./providers";
 import { tokenCache } from "./token-cache";
 import type {
   GetTokenByPlatformParams,
@@ -31,17 +31,21 @@ import type {
 } from "./types";
 import { formatOAuthConnectionRole, normalizeOAuthConnectionRole } from "./types";
 
-const DEFAULT_REDIRECT = "/cloud/settings?tab=connections";
+const DEFAULT_REDIRECT = "/cloud/connectors";
 const STATE_TTL = 600; // 10 minutes
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type PlatformCredential = typeof platformCredentials.$inferSelect;
 
+function connectionActivityMs(connection: OAuthConnection): number {
+  // A last-used time of epoch 0 is a real timestamp. `getTime() ||` treated it
+  // as missing and sorted the connection by when it was linked instead.
+  const lastUsed = connection.lastUsedAt?.getTime();
+  if (typeof lastUsed === "number" && Number.isFinite(lastUsed)) return lastUsed;
+  return connection.linkedAt.getTime();
+}
+
 export function sortConnectionsByRecency(connections: OAuthConnection[]): OAuthConnection[] {
-  return [...connections].sort((a, b) => {
-    const aTime = a.lastUsedAt?.getTime() || a.linkedAt.getTime();
-    const bTime = b.lastUsedAt?.getTime() || b.linkedAt.getTime();
-    return bTime - aTime;
-  });
+  return [...connections].sort((a, b) => connectionActivityMs(b) - connectionActivityMs(a));
 }
 
 export function getMostRecentActiveConnection(
@@ -49,11 +53,9 @@ export function getMostRecentActiveConnection(
 ): OAuthConnection | null {
   const active = connections.filter((c) => c.status === "active");
   if (active.length === 0) return null;
-  return active.reduce((most, conn) => {
-    const mostTime = most.lastUsedAt?.getTime() || most.linkedAt.getTime();
-    const connTime = conn.lastUsedAt?.getTime() || conn.linkedAt.getTime();
-    return connTime > mostTime ? conn : most;
-  });
+  return active.reduce((most, conn) =>
+    connectionActivityMs(conn) > connectionActivityMs(most) ? conn : most,
+  );
 }
 
 export function getPreferredActiveConnection(

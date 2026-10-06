@@ -1,4 +1,4 @@
-# `apps/api` test suite
+# Cloud API integration tests
 
 Tests for the Eliza Cloud Hono Worker in `packages/cloud/api`.
 
@@ -13,5 +13,5 @@ bun run --cwd packages/cloud/api build
 Test from the repository root:
 
 ```bash
-bun run --cwd packages/cloud/api test
+bun run --cwd packages/cloud/api test:e2e
 ```

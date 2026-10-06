@@ -1,3 +1,4 @@
+import type { WorkbenchTodo } from "@elizaos/contracts";
 /**
  * Handler for the read-only Workbench overview surface. Delegates the VFS routes
  * to `handleWorkbenchVfsRoutes`, then serves `GET /api/workbench/overview` — an
@@ -9,19 +10,8 @@ import type { TriggerSummary } from "../triggers/types.ts";
 
 export type { WorkbenchRouteContext } from "./workbench-context.ts";
 
-import type {
-  WorkbenchRouteContext,
-  WorkbenchTodoView,
-} from "./workbench-context.ts";
+import type { WorkbenchRouteContext } from "./workbench-context.ts";
 import { handleWorkbenchVfsRoutes } from "./workbench-vfs-routes.ts";
-
-// ---------------------------------------------------------------------------
-// Route handler
-// ---------------------------------------------------------------------------
-//
-// Workbench todos CRUD (`/api/workbench/todos*`) lives in
-// `@elizaos/plugin-workflow` (registered on the runtime plugin route system).
-// This handler owns the read-only overview plus the VFS surface.
 
 export async function handleWorkbenchRoutes(
   ctx: WorkbenchRouteContext,
@@ -32,16 +22,10 @@ export async function handleWorkbenchRoutes(
     return true;
   }
 
-  // ── GET /api/workbench/overview ──────────────────────────────────────
-  // Workbench surfaces todos + triggers. Workflow listings live at
-  // /api/automations; the `tasks: []` / `tasksAvailable: false` fields remain in
-  // the response for backward compatibility with clients that still read them.
   if (method === "GET" && pathname === "/api/workbench/overview") {
     const triggers: TriggerSummary[] = [];
-    const todos: WorkbenchTodoView[] = [];
+    const todos: WorkbenchTodo[] = [];
     const summary = {
-      totalTasks: 0,
-      completedTasks: 0,
       totalTriggers: 0,
       activeTriggers: 0,
       totalTodos: 0,
@@ -78,7 +62,7 @@ export async function handleWorkbenchRoutes(
     }
 
     if (todos.length > 1) {
-      const dedupedTodos = new Map<string, WorkbenchTodoView>();
+      const dedupedTodos = new Map<string, WorkbenchTodo>();
       for (const todo of todos) {
         dedupedTodos.set(todo.id, todo);
       }
@@ -96,11 +80,9 @@ export async function handleWorkbenchRoutes(
     summary.completedTodos = todos.filter((todo) => todo.isCompleted).length;
 
     json(res, {
-      tasks: [],
       triggers,
       todos,
       summary,
-      tasksAvailable: false,
       triggersAvailable,
       todosAvailable,
     });

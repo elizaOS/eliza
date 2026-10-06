@@ -21,7 +21,7 @@ import fs, {
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createIsolatedAccountStoragePolicy,

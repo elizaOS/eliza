@@ -178,12 +178,15 @@ try {
         expiresAt: Date.now() + 30000,
       },
     });
-    assert.equal(reply.ok, true);
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    assert.equal(
-      await evaluate("globalThis.__elizaPageGuidanceV1.visible"),
-      true,
-    );
+    assert.equal(reply.ok, true, JSON.stringify(reply));
+    const visibleDeadline = Date.now() + 3000;
+    while (!(await evaluate("globalThis.__elizaPageGuidanceV1.visible"))) {
+      assert.ok(
+        Date.now() < visibleDeadline,
+        "Bound guidance did not become visible",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     return id;
   };
   const hidden = async () =>

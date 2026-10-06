@@ -7,7 +7,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import type { RefObject } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BrowserWorkspaceTab } from "../../api";
+import type { BrowserWorkspaceTab } from "../../api/browser-contracts";
 import {
   BROWSER_WALLET_READY_TYPE,
   BROWSER_WALLET_REQUEST_TYPE,

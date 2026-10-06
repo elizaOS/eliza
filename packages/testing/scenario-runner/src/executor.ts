@@ -10,6 +10,7 @@
  */
 import * as crypto from "node:crypto";
 import * as http from "node:http";
+import { tryHandleHonoRuntimeRoute } from "@elizaos/agent/api/hono-mount";
 import {
   type Action,
   type ActionResult,
@@ -30,18 +31,18 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import {
-  type RouteBodyValue,
-  type RouteRequest,
-  type RouteResponse,
-} from "@elizaos/core/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
-import { type VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
+import type {
+  RouteBodyValue,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/host/protocol";
+import { getHttpRuntime } from "@elizaos/host/protocol";
+import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import { computeIdentityRequestDigest } from "@elizaos/plugin-sql";
+import type { DeterministicModelDiagnostics } from "../../src/deterministic-model-plugin.ts";
 import {
   type CapturedAction,
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
-  type DeterministicModelDiagnostics,
   type ScenarioContext,
   type ScenarioDefinition,
   type ScenarioExecutionProfile,
@@ -51,10 +52,13 @@ import {
   type ScenarioTurn,
   type ScenarioTurnExecution,
   scenarioLane,
-} from "@elizaos/testing";
+} from "../schema/index.ts";
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
-import { runFinalCheck } from "./final-checks/index.ts";
-import { attachInterceptor } from "./interceptor.ts";
+import {
+  type FinalCheckHandlerContext,
+  runFinalCheck,
+} from "./final-checks/index.ts";
+import { type ActionEffectCapture, attachInterceptor } from "./interceptor.ts";
 import {
   type JudgeEvidence,
   JudgeParseError,
@@ -87,10 +91,10 @@ import {
 } from "./scenario-background-memory";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import { resolveScenarioTurnSender } from "./turn-sender.ts";
-import {
-  type FinalCheckReport,
-  type RunnerContext,
-  type ScenarioReport,
+import type {
+  FinalCheckReport,
+  RunnerContext,
+  ScenarioReport,
 } from "./types.ts";
 import { isLoopbackUrl, toRecord } from "./utils.js";
 import { executeVoiceTurn, voiceTurnAssertionFailures } from "./voice-turn.ts";
@@ -115,6 +119,8 @@ export function executorFetch(
   });
 }
 export interface ExecutorOptions {
+  captureActionEffects?: ActionEffectCapture;
+  observeRejectedEffects?: FinalCheckHandlerContext["observeRejectedEffects"];
   providerName: string;
   minJudgeScore: number;
   turnTimeoutMs: number;
@@ -1218,10 +1224,23 @@ async function augmentRequest(
   request.body = { value: rawBody };
   return request;
 }
-async function startScenarioApiServer(
+export async function startScenarioApiServer(
   runtime: AgentRuntime,
 ): Promise<ScenarioApiServer> {
   const server = http.createServer(async (req, res) => {
+    // Migrated plugins expose routeHandler instead of the legacy handler.
+    // Use the real adapter so body limits, cancellation and response serialization
+    // match the host rather than maintaining a second implementation here.
+    if (
+      await tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime,
+        isAuthorized: () => true,
+        isTrustedLocal: () => true,
+      })
+    )
+      return;
     const method = (req.method ?? "GET").toUpperCase();
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     for (const route of getHttpRuntime(runtime).routes ?? []) {
@@ -1648,7 +1667,9 @@ async function runCustomSeeds(
   }
   let currentNow = new Date(initialNow.getTime());
   for (const seed of seeds) {
-    if (seed === null || typeof seed !== "object") continue;
+    if (seed === null || typeof seed !== "object" || Array.isArray(seed)) {
+      return { now: currentNow, error: "scenario seed must be an object" };
+    }
     const resolvedSeed = resolveScenarioTemplates(
       seed,
       currentNow,
@@ -2963,7 +2984,11 @@ async function runObservedScenario(
   // responseJudge + judgeRubric final checks). The minimum — the binding
   // quality constraint — is serialized as report.judgeScore (#8795).
   const judgeScores: number[] = [];
-  let interceptor = attachInterceptor(runtime);
+  let interceptor = attachInterceptor(
+    runtime,
+    opts.captureActionEffects,
+    opts.abortSignal,
+  );
   const rooms = resolveScenarioRooms(scenario);
   const primaryRoom = getDefaultScenarioRoom(rooms);
   // Expose the owner conversation identity to seeds and custom checks:
@@ -3129,7 +3154,11 @@ async function runObservedScenario(
     await waitForScenarioRequiredServices(runtime, scenario, opts.abortSignal);
     // Re-attach interceptor so any actions registered by seed plugins are wrapped.
     interceptor.detach();
-    interceptor = attachInterceptor(runtime);
+    interceptor = attachInterceptor(
+      runtime,
+      opts.captureActionEffects,
+      opts.abortSignal,
+    );
     apiServer = await startScenarioApiServer(runtime);
     const activeApiServer = apiServer;
     ctx.apiBaseUrl = activeApiServer.baseUrl;
@@ -3293,9 +3322,10 @@ async function runObservedScenario(
       // Deterministic turn fixtures own their complete post-delivery effects.
       // Finish those effects before a later input becomes extraction evidence.
       if (
-        kind === "message" &&
-        executionProfile === "simulated" &&
-        (runtime as RuntimeWithScenarioModelFixtures).scenarioModelFixtures
+        opts.captureActionEffects ||
+        (kind === "message" &&
+          executionProfile === "simulated" &&
+          (runtime as RuntimeWithScenarioModelFixtures).scenarioModelFixtures)
       ) {
         const drainFailure = await drainScenarioPostDeliveryTasks(
           runtime,
@@ -3309,6 +3339,7 @@ async function runObservedScenario(
           });
           break;
         }
+        await interceptor.settleEffects();
       }
     }
     ctx.actionsCalled = interceptor.actions;
@@ -3348,7 +3379,12 @@ async function runObservedScenario(
           opts.minJudgeScore,
         );
       } else {
-        result = await runFinalCheck(check, { runtime, ctx });
+        result = await runFinalCheck(check, {
+          runtime,
+          ctx,
+          observeRejectedEffects: opts.observeRejectedEffects,
+          abortSignal: opts.abortSignal,
+        });
       }
       report.finalChecks.push(result);
       if (typeof result.score === "number") {

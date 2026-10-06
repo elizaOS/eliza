@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { Circle } from "lucide-react";
 import * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 const radioGroupVariants = cva("grid gap-2", {
   variants: {

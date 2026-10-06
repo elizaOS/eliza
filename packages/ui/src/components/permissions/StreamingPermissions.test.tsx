@@ -7,7 +7,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (s: {
       t: (key: string, options?: { defaultValue?: string }) => string;

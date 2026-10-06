@@ -7,26 +7,26 @@
  * SQLite operations are atomic and refuse selection of another agent's graph.
  */
 import crypto from "node:crypto";
-import { type IAgentRuntime } from "@elizaos/core";
 import {
-  type Entity,
-  type EntityAttribute,
+  type KnowledgeGraphEntity as Entity,
+  type LifeOpsEntityAttribute as EntityAttribute,
   type EntityFilter,
-  type EntityIdentity,
-  type EntityIdentityAddedVia,
+  type LifeOpsEntityIdentity as EntityIdentity,
+  type LifeOpsEntityIdentityAddedVia as EntityIdentityAddedVia,
   type EntityResolveCandidate,
-  type EntityState,
-  type EntityVisibility,
+  type LifeOpsEntityState as EntityState,
+  type LifeOpsEntityVisibility as EntityVisibility,
   normalizeEntityConnectorAccountId,
   SELF_ENTITY_ID,
-} from "@elizaos/core/knowledge-graph/entity-types";
+} from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   AUTO_MERGE_CONFIDENCE_THRESHOLD,
   decideIdentityOutcome,
   findIdentityMatches,
   foldIdentity,
   mergeEntities,
-} from "@elizaos/core/knowledge-graph/merge";
+} from "../identity-merge.js";
 import {
   type ConfirmEmailRecipientInput,
   type ConfirmedEmailRecipient,
@@ -305,6 +305,25 @@ export class EntityStore {
   }
   async get(entityId: string): Promise<Entity | null> {
     return this.operation(() => this.getOperation(entityId));
+  }
+  /**
+   * Read, change and write one entity in a single store operation, so a
+   * concurrent identity or interaction write between the read and the write is
+   * not overwritten by a stale copy. Returns null when the entity is absent.
+   */
+  async patch(
+    entityId: string,
+    mutate: (existing: Entity) => Omit<
+      Entity,
+      "entityId" | "createdAt" | "updatedAt"
+    > & {
+      entityId?: string;
+    },
+  ): Promise<Entity | null> {
+    return this.operation(async () => {
+      const existing = await this.getOperation(entityId);
+      return existing ? this.upsertInternal(mutate(existing)) : null;
+    });
   }
   private async getOperation(entityId: string): Promise<Entity | null> {
     if (this.records) return this.records.getEntity(entityId);

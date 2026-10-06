@@ -19,10 +19,10 @@ from pathlib import Path
 
 import pytest
 
-from scripts.turn_detector import (
+from eliza_training.turn_detector import (
     eval_turn_detector as evald,
 )
-from scripts.turn_detector import finetune_turn_detector as fld
+from eliza_training.turn_detector import finetune_turn_detector as fld
 
 
 # ---------------------------------------------------------------------------

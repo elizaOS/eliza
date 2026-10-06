@@ -28,7 +28,6 @@ import {
 } from "@elizaos/auth/kms";
 import { defaultMasterKey, type MasterKeyResolver } from "@elizaos/auth/vault";
 import {
-  AGENT_BACKUP_CANONICAL_JSON,
   AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_LIMITS,
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
@@ -38,27 +37,34 @@ import {
   type AgentBackupCaptureV2FileEntry,
   type AgentBackupCaptureV2FrameHeader,
   type AgentBackupCaptureV2Request,
-  type AgentRuntime,
+  type AgentBackupDatabaseComponent,
+  type AgentBackupFileEntry,
+  type AgentBackupFileSet,
+  type AgentBackupManifest,
+  type AgentBackupPgliteDump,
+  type AgentBackupPostgresDump,
+  type AgentBackupPostgresTable,
   compareAgentBackupCaptureV2FilePaths,
-  ElizaError,
-  type IAgentRuntime,
-  logger,
-  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   parseAgentBackupCaptureV2Frames,
   parseAgentBackupCaptureV2Request,
   readAgentBackupCaptureV2FrameDigest,
   serializeAgentBackupCaptureV2Frame,
+} from "@elizaos/contracts";
+import {
+  AGENT_BACKUP_CANONICAL_JSON,
+  type AgentRuntime,
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  resolveStateDir,
+  resolveUserPath,
   stableJsonString,
   timeInferenceSpan,
 } from "@elizaos/core";
-
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import { z } from "zod";
-import type { ElizaConfig } from "../config/config.ts";
-import {
-  resolveConfigPath,
-  resolveStateDir,
-  resolveUserPath,
-} from "../config/paths.ts";
+import { resolveConfigPath } from "../config/paths.ts";
 import { maybeInjectFault } from "../runtime/crash-injection.ts";
 import { cancelAndDrainDeferredBoot } from "../runtime/deferred-boot-owner.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
@@ -74,66 +80,6 @@ import {
 
 type JsonRecord = Record<string, unknown>;
 const EMPTY_LEGACY_CONFIG_SECTION = Object.freeze({});
-export interface AgentBackupFileEntry {
-  path: string;
-  sha256: string;
-  size: number;
-  mode?: number;
-  mtimeMs?: number;
-  bytesBase64: string;
-}
-export interface AgentBackupFileSet {
-  kind: "file-set";
-  rootLabel: "state-dir" | "pglite-dir";
-  rootPath?: string;
-  files: AgentBackupFileEntry[];
-  sha256: string;
-}
-export interface AgentBackupPostgresTable {
-  name: string;
-  columns: string[];
-  rows: JsonRecord[];
-}
-export interface AgentBackupPostgresDump {
-  kind: "postgres-rows";
-  tables: AgentBackupPostgresTable[];
-  sha256: string;
-}
-export interface AgentBackupPgliteDump {
-  kind: "pglite-dump";
-  compression: "gzip";
-  file: AgentBackupFileEntry;
-  sha256: string;
-}
-export interface AgentBackupDatabaseComponent {
-  kind: "pglite-dump" | "pglite-files" | "postgres-rows" | "none";
-  pgliteDump?: AgentBackupPgliteDump;
-  pglite?: AgentBackupFileSet;
-  postgres?: AgentBackupPostgresDump;
-  reason?: string;
-  sha256: string;
-}
-export interface AgentBackupManifest {
-  schemaVersion: 1;
-  format: "elizaos.agent-backup";
-  createdAt: string;
-  agentId: string;
-  restoreGeneration?: string;
-  components: {
-    database: AgentBackupDatabaseComponent;
-    media: AgentBackupFileSet;
-    vault: AgentBackupFileSet;
-    character: {
-      runtimeCharacter: unknown;
-      configFile?: AgentBackupFileEntry;
-      sha256: string;
-    };
-    stateFiles: AgentBackupFileSet;
-  };
-  integrity: {
-    componentHashes: Record<string, string>;
-  };
-}
 export interface AgentBackupStateData {
   memories: Array<{
     role: string;
@@ -443,7 +389,13 @@ function getLocalBackupKmsClient(): Promise<KmsClient> {
  * already-written `stateSha256` envelopes stay verifiable.
  */
 function stableJson(value: unknown): string {
-  return stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON);
+  const serialized = stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON);
+  if (serialized === undefined) {
+    throw new ElizaError("Backup integrity input is not a JSON value", {
+      code: "INVALID_BACKUP_INTEGRITY_INPUT",
+    });
+  }
+  return serialized;
 }
 function sha256Bytes(bytes: Buffer | string): string {
   return crypto.createHash("sha256").update(bytes).digest("hex");

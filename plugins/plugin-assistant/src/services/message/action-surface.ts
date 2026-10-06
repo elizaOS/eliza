@@ -4,6 +4,7 @@ import type {
   Action,
   AgentContext,
   CodingActionProfile,
+  DirectActionRoutingRule,
   IAgentRuntime,
   Memory,
   MessageHandlerResult,
@@ -14,6 +15,7 @@ import type {
 import {
   actionGateRejection,
   evaluateConnectorAccountPolicies,
+  getDirectActionRoutingRules,
   getInferenceTimer,
   getUserMessageText,
   type LocalizedActionExampleResolver,
@@ -39,10 +41,14 @@ import {
   resolveRuntimeAction,
 } from "./action-identifiers.js";
 import {
+  getActionInferenceMessageText,
   getRecentConversationSearchText,
   isTaskCompleteRelayTurn,
 } from "./dialogue-context.ts";
-import { normalizeActionIdentifier } from "./direct-action-heuristics.ts";
+import {
+  intentClauses,
+  normalizeActionIdentifier,
+} from "./direct-action-heuristics.ts";
 import {
   hasUiViewPlannerScope,
   uiViewActionNames,
@@ -123,6 +129,7 @@ const GENERIC_OPERATION_WORDS = new Set([
   "find",
   "lookup",
   "create",
+  "schedule",
   "add",
   "write",
   "save",
@@ -148,6 +155,21 @@ const GENERIC_OPERATION_WORDS = new Set([
   "set",
   "run",
 ]);
+
+function hasDomainOperation(
+  actions: readonly Action[],
+  intent: string,
+  domain: string,
+): boolean {
+  const operations = actions
+    .filter((action) =>
+      actionDiscoveryContexts(action).some(
+        (candidate) => normalizeContextId(candidate) === domain,
+      ),
+    )
+    .map((action) => action.name);
+  return preferredOperationNames(intent, operations).size > 0;
+}
 
 function pendingActionContexts(
   actions: readonly Action[],
@@ -201,15 +223,7 @@ function pendingActionContexts(
         domains.add(domain);
         continue;
       }
-      const operations = actions
-        .filter((action) =>
-          actionDiscoveryContexts(action).some(
-            (candidate) => normalizeContextId(candidate) === domain,
-          ),
-        )
-        .map((action) => action.name);
-      if (preferredOperationNames(intent, operations).size > 0)
-        domains.add(domain);
+      if (hasDomainOperation(actions, intent, domain)) domains.add(domain);
     }
   }
   return [...domains];
@@ -234,6 +248,9 @@ function operationWords(
     (word) => !parentWords.has(word) && !OPERATION_CONNECTORS.has(word),
   );
 }
+
+const COMPOUND_INTENT_BOUNDARY =
+  /\b(?:and|or|also|plus|then|if|when|unless|before|after|while)\b|[;,]/iu;
 
 function positiveIntentText(intent: string): string {
   const unquoted = intent.replace(
@@ -260,6 +277,11 @@ export function retrieveContextualPlannerActions(args: {
   /** Preserve exact hints while filling only domains they do not own. */
   selectedActions?: readonly Action[];
   contextAliases?: (context: string) => readonly string[] | undefined;
+  /** Current-request contracts are used only after their owner passed admission. */
+  directRouting?: {
+    rules: readonly DirectActionRoutingRule[];
+    message: Memory;
+  };
   /** Initial routing may defer ambiguous domains; explicit discovery stays global. */
   deferUnscopedBootstrap?: boolean;
 }): {
@@ -362,6 +384,86 @@ export function retrieveContextualPlannerActions(args: {
     };
   };
   if (args.selectedActions) {
+    // Matching both the current request and its sole intent may narrow initial
+    // preload for that owner; this is not completion evidence.
+    // Multiple clauses or extra candidates retain the existing bootstrap, and
+    // all unselected operations remain available through ordinary discovery.
+    const direct = args.directRouting;
+    const intents = args.intents?.filter((intent) => intent.trim()) ?? [];
+    const request = direct ? getActionInferenceMessageText(direct.message) : "";
+    const singleOutcome =
+      intents.length === 1 &&
+      [request, intents[0]].every((text) => {
+        const positive = positiveIntentText(text);
+        return (
+          positive.length > 0 &&
+          !COMPOUND_INTENT_BOUNDARY.test(positive) &&
+          intentClauses(positive)
+            .flatMap((clause) => clause.split(/[.!?\r\n:&]/u))
+            .filter((clause) => clause.trim()).length === 1
+        );
+      });
+    if (direct && singleOutcome && args.selectedActions.length > 0) {
+      for (const rule of direct.rules) {
+        if (!rule.matches(request, direct.message) || !rule.matches(intents[0]))
+          continue;
+        const owners = new Set(rule.actionNames.map(normalizeActionIdentifier));
+        const hasRequiredTags = (action: Action) =>
+          rule.requiredActionTags.every((tag) =>
+            (action.tags ?? []).some(
+              (actual) =>
+                actual.trim().toLowerCase() === tag.trim().toLowerCase(),
+            ),
+          );
+        // Candidate preparation expands registered umbrella families. Their
+        // admitted children retain the owner's coverage; a name prefix alone
+        // establishes no relationship and cannot bypass admission or tags.
+        const family = args.actions.filter(
+          (action) =>
+            owners.has(normalizeActionIdentifier(action.name)) &&
+            hasRequiredTags(action),
+        );
+        const familyNames = new Set(family.map((action) => action.name));
+        for (const parent of family) {
+          for (const child of parent.subActions ?? []) {
+            const name = typeof child === "string" ? child : child.name;
+            const admitted = actionsByName.get(name);
+            if (
+              admitted &&
+              !familyNames.has(name) &&
+              hasRequiredTags(admitted)
+            ) {
+              family.push(admitted);
+              familyNames.add(name);
+            }
+          }
+        }
+        if (
+          !args.selectedActions.every(
+            (action) =>
+              args.actions.includes(action) &&
+              familyNames.has(action.name) &&
+              hasRequiredTags(action),
+          )
+        )
+          continue;
+        const covered = new Set(rule.contexts.map(normalizeContextId));
+        for (const domain of domains) {
+          // The registered owner can claim this single intent even when its
+          // action name differs from the user's wording. Apply the same
+          // operation check used for lexical claims above; payload nouns alone
+          // do not add another domain. Explicit contexts remain authoritative.
+          if (
+            [domain, ...(args.contextAliases?.(domain) ?? [])].some((context) =>
+              covered.has(normalizeContextId(context)),
+            ) ||
+            (!declaredDomains.has(domain) &&
+              !hasDomainOperation(args.actions, intents[0], domain))
+          )
+            domains.delete(domain);
+        }
+      }
+    }
     for (const domain of domains) {
       const strongest = Math.max(
         0,
@@ -508,9 +610,7 @@ export function retrieveContextualPlannerActions(args: {
       tokenizeActionSearchText(resourceQuery).filter((word) =>
         GENERIC_OPERATION_WORDS.has(word),
       ).length === 1 &&
-      !/\b(?:and|or|also|plus|then|if|when|unless|before|after|while)\b|[;,]/iu.test(
-        resourceQuery,
-      )
+      !COMPOUND_INTENT_BOUNDARY.test(resourceQuery)
     ) {
       const resourceNames = owners
         .filter(
@@ -750,7 +850,7 @@ export async function collectV5PlannerCandidateActions(args: {
   // Exposure gates below are synchronous and reject expired audience
   // evidence; an active long turn renews it from current authority first.
   await renewExpiredTrustedDeliveryAudience(args.runtime, args.message);
-  // The candidate surface starts from every runtime action and applies only the
+  // The candidate surface starts from every planner action and applies only the
   // same execution gates the planner executor will enforce — it deliberately does
   // NOT pre-filter by `action.contexts` against the messageHandler-picked
   // `selectedContexts`. Context pre-filtering excludes owner actions, CALENDAR,
@@ -759,7 +859,10 @@ export async function collectV5PlannerCandidateActions(args: {
   // keeps role-policy overrides working for deployments that intentionally expose
   // an action outside its declared context, while avoiding dead tools the planner
   // could select but execution would immediately reject.
-  const allRuntimeActions = args.runtime.actions;
+  // Lifecycle hooks keep their automatic execution owner.
+  const allRuntimeActions = args.runtime.actions.filter(
+    (action) => (action.mode ?? "PLANNER") === "PLANNER",
+  );
   const declaredAdmissionDomains = new Set(
     (args.selectedContexts ?? []).map(normalizeContextId),
   );
@@ -789,7 +892,7 @@ export async function collectV5PlannerCandidateActions(args: {
         }).actions.map((action) => action.name)
       : [],
   );
-  const actionLookup = buildRuntimeActionLookup(args.runtime);
+  const actionLookup = buildRuntimeActionLookup({ actions: allRuntimeActions });
   const actionsByName = new Map(
     allRuntimeActions.map((action) => [action.name, action]),
   );
@@ -800,6 +903,7 @@ export async function collectV5PlannerCandidateActions(args: {
     ]),
   );
   const selectedActions: Action[] = [];
+  const explicitActionNames = new Set<string>();
   const seen = new Set<string>();
   const timer = getInferenceTimer();
   type Gate = "connector-policy" | "validate";
@@ -857,7 +961,11 @@ export async function collectV5PlannerCandidateActions(args: {
     explicitCandidateName?: string,
   ): Promise<boolean> => {
     const normalizedName = normalizeActionIdentifier(action.name);
-    if (!normalizedName || seen.has(normalizedName)) {
+    if (
+      !normalizedName ||
+      seen.has(normalizedName) ||
+      (action.mode ?? "PLANNER") !== "PLANNER"
+    ) {
       return false;
     }
     // One gate for exposure and execution (#12087 Item 9): private-action gate
@@ -1075,6 +1183,9 @@ export async function collectV5PlannerCandidateActions(args: {
       continue;
     }
     for (const action of resolved) {
+      // Preserve exact operations selected through aliases as well as names.
+      // The admission/execution gates below still determine their availability.
+      explicitActionNames.add(normalizeActionIdentifier(action.name));
       await appendIfAllowed(
         action,
         undefined,
@@ -1125,7 +1236,53 @@ export async function collectV5PlannerCandidateActions(args: {
         ...(checks ? { checks: JSON.stringify(checks) } : {}),
       },
     );
-  return selectedActions;
+  // A plugin-declared owner that passed every admission gate keeps its
+  // replacement authority on the planner/discovery surface, not just Stage 1.
+  // A whole-message route does not establish ownership of independent
+  // declared outcomes. Keep adjacent capabilities for compound work.
+  if ((args.intents?.filter((intent) => intent.trim()).length ?? 0) > 1)
+    return selectedActions;
+  const replacedActionNames = new Set<string>();
+  const currentText = getActionInferenceMessageText(args.message);
+  for (const rule of getDirectActionRoutingRules(args.runtime)) {
+    if (
+      !rule.replacesActionNames?.length ||
+      !rule.matches(currentText, args.message)
+    )
+      continue;
+    const ownerNames = new Set(rule.actionNames.map(normalizeActionIdentifier));
+    const requiredTags = rule.requiredActionTags.map((tag) =>
+      tag.trim().toLowerCase(),
+    );
+    const ownerAdmitted = selectedActions.some((action) => {
+      if (!ownerNames.has(normalizeActionIdentifier(action.name))) return false;
+      const tags = new Set(
+        (action.tags ?? []).map((tag) => tag.trim().toLowerCase()),
+      );
+      return requiredTags.every((tag) => tags.has(tag));
+    });
+    if (ownerAdmitted) {
+      for (const name of rule.replacesActionNames) {
+        const replaced = normalizeActionIdentifier(name);
+        replacedActionNames.add(replaced);
+        // A fallback parent can already have promoted children on this surface.
+        // Suppress only its registered siblings, not an explicitly named
+        // independent operation; unknown families retain exact-name behavior.
+        const parent = actionsByNormalizedName.get(replaced);
+        for (const child of parent?.subActions ?? []) {
+          const childName = normalizeActionIdentifier(
+            typeof child === "string" ? child : child.name,
+          );
+          if (!explicitActionNames.has(childName))
+            replacedActionNames.add(childName);
+        }
+      }
+    }
+  }
+  return selectedActions.filter(
+    (action) =>
+      !replacedActionNames.has(normalizeActionIdentifier(action.name)),
+  );
 }
 
 export function stringArrayProperty(value: unknown): string[] {

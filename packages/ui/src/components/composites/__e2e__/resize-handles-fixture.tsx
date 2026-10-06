@@ -25,7 +25,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../../../cloud-ui/components/resizable";
-import type { AppContextValue } from "../../../state/internal";
+import type { AppContextValue } from "../../../state/types";
 import { seedAppValue } from "../../../state/app-store";
 import { TasksEventsPanel } from "../../chat/TasksEventsPanel";
 import { Sidebar } from "../sidebar/sidebar-root";

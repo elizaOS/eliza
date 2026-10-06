@@ -62,7 +62,7 @@ const { clientMock, agentElements } = vi.hoisted(() => ({
   >(),
 }));
 
-vi.mock("../../state", () => {
+vi.mock("../../state/app-store", () => {
   const t = (key: string, vars?: Record<string, unknown>) => {
     const template =
       typeof vars?.defaultValue === "string" ? vars.defaultValue : key;
@@ -78,9 +78,9 @@ vi.mock("../../state", () => {
   };
 });
 
-vi.mock("../../api", () => ({ client: clientMock }));
+vi.mock("../../api/client", () => ({ client: clientMock }));
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: (spec: CapturedAgentElement) => {
     agentElements.set(spec.id, {
       options: spec.options,

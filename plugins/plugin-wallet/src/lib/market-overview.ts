@@ -3,8 +3,8 @@ import type {
   WalletMarketMover,
   WalletMarketOverviewSource,
   WalletMarketPriceSnapshot,
-} from "@elizaos/core/contracts/wallet";
-import { asRecord } from "@elizaos/core/type-guards";
+} from "@elizaos/contracts";
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 /** Number of top-market-cap rows requested from CoinGecko. */
 export const COINGECKO_MARKET_LIMIT = 80;
 /** Coins surfaced as fixed price snapshots (never as movers). */

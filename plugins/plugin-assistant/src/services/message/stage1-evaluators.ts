@@ -117,7 +117,7 @@ export async function resolveEligibleDirectActionRoutes(args: {
   const found: EligibleDirectActionRoute[] = [];
   const seen = new Set<string>();
   for (const rule of getDirectActionRoutingRules(args.runtime)) {
-    if (!rule.matches(messageText)) continue;
+    if (!rule.matches(messageText, args.message)) continue;
     const requiredTags = new Set(
       rule.requiredActionTags.map((tag) => tag.trim().toLowerCase()),
     );
@@ -262,18 +262,20 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
         const text = getActionInferenceMessageText(message);
         if (text.length === 0) return false;
         const matchingRules = getDirectActionRoutingRules(runtime).filter(
-          (rule) => rule.matches(text),
+          (rule) => rule.matches(text, message),
         );
         if (matchingRules.length === 0) return false;
-        // A plugin may reconcile an already-tool-bearing/non-simple plan only
-        // for the explicit fallback candidates it owns. All other plans keep
-        // their Stage-1 route, even when their text happens to match.
+        // Preserve an already-selected tool surface unless the plugin owns its
+        // fallback. A tool-required plan with no names is still unresolved;
+        // an eligible registered intent can seed it without removing other work.
         if (
-          messageHandler.plan.requiresTool === true ||
-          nonSimpleContexts.length > 0
+          messageHandler.plan.candidateActions?.length &&
+          (messageHandler.plan.requiresTool === true ||
+            nonSimpleContexts.length > 0)
         ) {
           return matchingRules.some(
             (rule) =>
+              rule.wholeRequest?.matches(text, message) ||
               rule.unavailable !== undefined ||
               routeReplacesStage1Candidate(
                 rule,
@@ -292,7 +294,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
       }) => {
         const text = getActionInferenceMessageText(message);
         const matchingRules = getDirectActionRoutingRules(runtime).filter(
-          (rule) => rule.matches(text),
+          (rule) => rule.matches(text, message),
         );
         const declaredReplacementRules = new Set(
           matchingRules.filter((rule) =>
@@ -325,6 +327,37 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
           state,
           userRoles,
         });
+        const wholeRequestRules = matchingRules.filter((rule) =>
+          rule.wholeRequest?.matches(text, message),
+        );
+        // Whole-request ownership comes from the original user text, never
+        // the model's invented decomposition. Ambiguity retains the old plan.
+        if (wholeRequestRules.length > 1) return undefined;
+        const wholeOwner = wholeRequestRules[0];
+        if (wholeOwner?.wholeRequest) {
+          const admittedOwners = routes.filter(
+            ({ rule }) => rule === wholeOwner,
+          );
+          if (admittedOwners.length === 0) return unavailablePatch(wholeOwner);
+          return {
+            requiresTool: true,
+            replaceIntentScope: {
+              intents: [text],
+              invalidateFields: wholeOwner.wholeRequest.invalidateFields,
+              owner: wholeOwner,
+            },
+            setContexts: mergeAgentContexts(wholeOwner.contexts),
+            clearCandidateActions: true,
+            addCandidateActions: uniqueActionNames(
+              admittedOwners.map(({ action }) => action.name),
+            ),
+            clearParentActionHints: true,
+            clearReply: true,
+            debug: [
+              `reconciled whole current request through admitted route: ${wholeOwner.id}`,
+            ],
+          };
+        }
         if (routes.length === 0) {
           const unavailableRule =
             [...authoritativeRules].find((rule) => rule.unavailable) ??

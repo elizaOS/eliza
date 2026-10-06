@@ -10,7 +10,7 @@ import { assetNames, pin } from "../../browser/scripts/chromium-component.mjs";
 
 const browser = fileURLToPath(new URL("../../browser/", import.meta.url));
 const script = fileURLToPath(
-  new URL("../distro-android/prepare-chromium-browser.ts", import.meta.url),
+  new URL("../android/prepare-chromium-browser.ts", import.meta.url),
 );
 const certificate = "a".repeat(64);
 

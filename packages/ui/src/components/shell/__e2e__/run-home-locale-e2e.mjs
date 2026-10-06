@@ -53,7 +53,7 @@ await writeFile(
 const stubState = {
   name: "stub-state",
   setup(b) {
-    b.onResolve({ filter: /\/state$/ }, () => ({ path: stateStub }));
+    b.onResolve({ filter: /\/state(?:\/app-store)?$/ }, () => ({ path: stateStub }));
   },
 };
 const stubWeatherDeps = {

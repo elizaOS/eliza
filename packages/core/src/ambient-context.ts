@@ -1,25 +1,4 @@
-/**
- * Core-owned ambient-context registry.
- *
- * Several core singletons (the trajectory + action-routing context managers,
- * the trajectory-source registry, the curated-app and app-route-plugin
- * registries) must be shared by every consumer regardless of which bundled copy
- * of `@elizaos/core` they imported from. Historically each site hand-rolled its
- * own `Symbol.for(...)` read/write against `globalThis`, plus a module-local
- * cache. The module-local caches were the real hazard: under a duplicated core
- * bundle each copy could cache a *different* instance while a
- * `set…Manager(...)` override wrote only the shared global, so reads and writes
- * disagreed and contexts interleaved.
- *
- * This module centralizes the pattern into one guarded accessor. The global
- * slot is the single source of truth — there is no module-local cache — so all
- * copies always observe the same instance, and an override is immediately
- * visible everywhere.
- *
- * The correct end-state is to externalize `@elizaos/core` in downstream bundle
- * configs so a second copy cannot load at all; until then this module makes the
- * dual-copy path as safe as it can be.
- */
+/** Shares ambient registries across bundled copies of core through global symbol slots. Each registry retains its own runtime-scoped ownership. */
 
 type AmbientSlot = Record<PropertyKey, unknown>;
 

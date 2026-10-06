@@ -14,7 +14,9 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./contracts": "./src/backend/types.ts",
+    "./node": "./src/backend/index.ts"
   },
   "scripts": {
     "dev": "vite",
@@ -31,7 +33,7 @@
     "package:darwin": "bun run verify:release-key && electrobun build --env=stable --platform darwin",
     "package:linux": "bun run verify:release-key && electrobun build --env=stable --platform linux",
     "package:win32": "bun run verify:release-key && electrobun build --env=stable --platform win32",
-    "clean": "node ../scripts/rm-path-recursive.ts dist",
+    "clean": "node ../../scripts/rm-path-recursive.ts dist",
     "lint:check": "bunx @biomejs/biome check src tests electrobun ../scripts/usb-installer server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe src tests electrobun ../scripts/usb-installer server.ts electrobun.config.ts vite.config.ts vitest.config.ts playwright.config.ts",
     "format": "bunx @biomejs/biome format --write src tests server.ts vite.config.ts vitest.config.ts playwright.config.ts",
@@ -40,7 +42,8 @@
   "dependencies": {
     "@fontsource/poppins": "^5.2.7",
     "vite": "^8.0.0",
-    "@elizaos/ui": "workspace:*"
+    "@elizaos/host": "workspace:*",
+    "@elizaos/os": "workspace:*"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
@@ -56,7 +59,6 @@
     "@playwright/test": "^1.59.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "sharp": "^0.35.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2"

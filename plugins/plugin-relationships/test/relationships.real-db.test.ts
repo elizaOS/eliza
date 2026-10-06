@@ -129,6 +129,89 @@ describe("relationships KnowledgeGraph backing — real PGLite", () => {
     ).toBe(false);
   });
 
+  it("set_relationship updates the existing edge instead of adding a duplicate", async () => {
+    const action = runtime.actions.find(
+      (candidate) => candidate.name === "KNOWLEDGE_GRAPH",
+    );
+    if (!action) throw new Error("External graph action was not registered");
+    const relationships = service?.getRelationshipStore();
+    if (!relationships) throw new Error("RelationshipStore unavailable");
+    const toEntityId = `ent_${stringToUuid("relationships-set-relationship-target")}`;
+    const request = (evidence: string) => ({
+      parameters: {
+        op: "set_relationship",
+        toEntityId,
+        relationshipType: "manages",
+        evidence,
+      },
+    });
+    const message: Memory = {
+      id: stringToUuid("relationships-set-relationship-owner"),
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      content: { text: "Pat is my manager", source: "test" },
+    };
+
+    const first = await action.handler(
+      runtime,
+      message,
+      undefined,
+      request("first chat"),
+      undefined,
+    );
+    const second = await action.handler(
+      runtime,
+      message,
+      undefined,
+      request("second chat"),
+      undefined,
+    );
+
+    expect(first).toMatchObject({ success: true });
+    expect(second).toMatchObject({ success: true });
+    const edges = await relationships.list({ toEntityId, type: "manages" });
+    expect(edges).toHaveLength(1);
+    expect(edges[0]?.evidence).toEqual(["first chat", "second chat"]);
+  });
+
+  it("concurrent assertions and observations of one edge keep one edge with every evidence", async () => {
+    const relationships = service?.getRelationshipStore();
+    if (!relationships) throw new Error("RelationshipStore unavailable");
+    const edge = {
+      fromEntityId: `ent_${stringToUuid("relationships-concurrent-from")}`,
+      toEntityId: `ent_${stringToUuid("relationships-concurrent-to")}`,
+      type: "knows",
+    };
+    const evidence = ["a", "b", "c", "d", "e"].map((tag) => `chat ${tag}`);
+
+    await Promise.all(
+      evidence.map((item) =>
+        relationships.assertEdge({
+          ...edge,
+          evidence: [item],
+          confidence: 0.5,
+          source: "user_chat",
+        }),
+      ),
+    );
+    await Promise.all(
+      ["f", "g", "h"].map((tag) =>
+        relationships.observe({
+          ...edge,
+          evidence: [`chat ${tag}`],
+          confidence: 0.5,
+        }),
+      ),
+    );
+
+    const edges = await relationships.list(edge);
+    expect(edges).toHaveLength(1);
+    expect([...(edges[0]?.evidence ?? [])].sort()).toEqual(
+      [...evidence, "chat f", "chat g", "chat h"].sort(),
+    );
+    expect(edges[0]?.state.interactionCount).toBe(3);
+  });
+
   it("entity upsert → get / list / resolve round-trip against the live DB", async () => {
     const store = service?.getEntityStore();
     if (!store) throw new Error("EntityStore unavailable");

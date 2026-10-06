@@ -14,7 +14,7 @@
  * reloads.
  */
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { shellLocalStorage } from "../surface-realm-channel";
 import type { HomeWidgetSunset } from "./types";
 
@@ -102,11 +102,6 @@ export function recordHomeWidgetSeen(key: string): void {
   mutate(key, (prev) => ({ ...prev, seen: prev.seen + 1 }));
 }
 
-/** Mark that the user acted on the widget (taps a chip, follows its CTA). */
-export function markHomeWidgetActed(key: string): void {
-  mutate(key, (prev) => ({ ...prev, acted: true }));
-}
-
 /** Mark that the user explicitly dismissed the widget. */
 export function dismissHomeWidget(key: string): void {
   mutate(key, (prev) => ({ ...prev, dismissed: true }));
@@ -128,13 +123,6 @@ export function useHomeDismissals(): Record<string, HomeWidgetLifecycle> {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-/** Record one session-view on mount; safe to call from any sunset-able widget. */
-export function useRecordHomeWidgetSeen(key: string, enabled = true): void {
-  useEffect(() => {
-    if (enabled) recordHomeWidgetSeen(key);
-  }, [key, enabled]);
-}
-
 /**
  * Decide whether a sunset-able widget should now be retired from the home grid.
  * Pure — the live lifecycle map flows in from {@link useHomeDismissals}. A widget
@@ -152,23 +140,11 @@ export function isHomeWidgetSunset(
   if (
     typeof sunset.afterSeen === "number" &&
     sunset.afterSeen > 0 &&
-    life.seen > sunset.afterSeen
+    life.seen - (seenThisSession.has(key) ? 1 : 0) >= sunset.afterSeen
   ) {
     return true;
   }
   return false;
-}
-
-/**
- * Test-only session boundary: clears the per-session `seen` guard and re-reads
- * persisted state, exactly what a page reload does. Lets a test exercise
- * cross-session sunset behavior (afterSeen retirement) without resetting the
- * module registry.
- */
-export function __simulateNewSessionForTests(): void {
-  seenThisSession.clear();
-  state = readPersisted();
-  emit();
 }
 
 /** Test-only reset (state + session guard + listeners). */

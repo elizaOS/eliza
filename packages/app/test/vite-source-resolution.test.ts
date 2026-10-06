@@ -1,7 +1,11 @@
 /** Verifies the app's real Vite aliases preserve browser-safe package entry contracts. */
 
+import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { runInNewContext } from "node:vm";
 import {
   type Alias,
@@ -10,6 +14,8 @@ import {
   createServer,
   defaultClientConditions,
   normalizePath,
+  optimizeDeps,
+  resolveConfig,
   type UserConfig,
 } from "vite";
 import { describe, expect, test } from "vitest";
@@ -64,6 +70,82 @@ async function createAppResolutionServer(
 }
 
 describe("workspace package resolution", () => {
+  test("dev selector imports use optimized ESM instead of raw CommonJS", async () => {
+    const config = await resolveAppViteConfig("serve");
+    const cacheDir = await mkdtemp(
+      path.join(os.tmpdir(), "eliza-selector-interop-"),
+    );
+    // Exercise the app's exact aliases and optimizer entries with a fresh cache.
+    const include = config.optimizeDeps?.include?.filter(
+      (id) => id === "react" || id.startsWith("use-sync-external-store/"),
+    );
+    const options: UserConfig = {
+      configFile: false,
+      root: appRoot,
+      cacheDir,
+      logLevel: "silent",
+      resolve: {
+        alias: appAliases(config),
+        conditions: config.resolve?.conditions,
+      },
+      optimizeDeps: { noDiscovery: true, entries: [], include },
+      server: { middlewareMode: true, ws: false },
+    };
+    let server: Awaited<ReturnType<typeof createServer>> | undefined;
+    try {
+      const metadata = await optimizeDeps(
+        await resolveConfig(options, "serve"),
+        true,
+      );
+      const entry =
+        metadata.optimized["use-sync-external-store/shim/with-selector.js"];
+      expect(
+        entry,
+        "selector shim must be prebundled when discovery is disabled",
+      ).toBeDefined();
+      const code = await readFile(entry.file, "utf8");
+      expect(code).toMatch(/export[\s\S]*\bdefault\b/);
+      const exports = JSON.parse(
+        execFileSync(
+          process.execPath,
+          [
+            "--input-type=module",
+            "-e",
+            "const m=await import(process.argv[1]); console.log(JSON.stringify({selector:typeof m.default.useSyncExternalStoreWithSelector}));",
+            pathToFileURL(entry.file).href,
+          ],
+          { encoding: "utf8" },
+        ),
+      );
+      expect(exports).toEqual({ selector: "function" });
+      server = await createServer(options);
+      const require = createRequire(path.join(appRoot, "package.json"));
+      const importer = require.resolve("use-sync-external-store/package.json");
+      for (const specifier of [
+        "use-sync-external-store/shim",
+        "use-sync-external-store/shim/with-selector",
+        "use-sync-external-store/shim/with-selector.js",
+        "use-sync-external-store/with-selector",
+        "use-sync-external-store/with-selector.js",
+      ]) {
+        const resolved =
+          await server.environments.client.pluginContainer.resolveId(
+            specifier,
+            importer,
+          );
+        expect(resolved?.id, specifier).toContain(normalizePath(cacheDir));
+        expect(resolved?.id).not.toContain("/shim/with-selector.js?");
+        const transformed = await server.environments.client.transformRequest(
+          `/@fs${resolved?.id}`,
+        );
+        expect(transformed?.code).toMatch(/export[\s\S]*\bdefault\b/);
+      }
+    } finally {
+      await server?.close();
+      await rm(cacheDir, { recursive: true, force: true });
+    }
+  });
+
   test.each([
     ["relationships", "RelationshipsPage"],
     ["calendar", "CalendarPage"],
@@ -246,45 +328,14 @@ describe("workspace package resolution", () => {
     expect(buildConfig.resolve?.conditions).toBeUndefined();
   });
 
-  test("resolves the Cloud SDK redemption contract from workspace source in production builds", async () => {
-    const buildConfig = await resolveAppViteConfig("build");
-    const server = await createServer({
-      configFile: false,
-      root: appRoot,
-      logLevel: "silent",
-      optimizeDeps: { noDiscovery: true },
-      resolve: { alias: buildConfig.resolve?.alias },
-      server: { middlewareMode: true },
-    });
-
-    try {
-      const resolved =
-        await server.environments.client.pluginContainer.resolveId(
-          "@elizaos/cloud-sdk/redemption-contract",
-          path.resolve(
-            appRoot,
-            "../cloud/shared/src/types/redemption-contract.ts",
-          ),
-        );
-      expect(resolved?.id).toBe(
-        normalizePath(
-          path.resolve(appRoot, "../cloud/sdk/src/redemption-contract.ts"),
-        ),
-      );
-    } finally {
-      await server.close();
-    }
-  });
-
   test.each(["serve", "build"] as const)(
-    "resolves Cloud shared wildcard exports from workspace source while %s config resolves",
+    "resolves the Cloud SDK redemption contract from workspace source with %s aliases",
     async (command) => {
       const { server } = await createAppResolutionServer(command);
-
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/cloud-shared/types/redemption-contract",
+            "@elizaos/cloud-sdk/redemption-contract",
             path.resolve(
               appRoot,
               "../ui/src/cloud/monetization/earnings/CreatorEarningsStatement.tsx",
@@ -292,10 +343,7 @@ describe("workspace package resolution", () => {
           );
         expect(resolved?.id).toBe(
           normalizePath(
-            path.resolve(
-              appRoot,
-              "../cloud/shared/src/types/redemption-contract.ts",
-            ),
+            path.resolve(appRoot, "../cloud/sdk/src/redemption-contract.ts"),
           ),
         );
       } finally {
@@ -303,23 +351,6 @@ describe("workspace package resolution", () => {
       }
     },
   );
-
-  test("resolves the canonical UI terminal palette from workspace source while serving", async () => {
-    const { server } = await createAppResolutionServer("serve");
-
-    try {
-      const resolved =
-        await server.environments.client.pluginContainer.resolveId(
-          "@elizaos/ui/terminal/palette",
-          path.resolve(appRoot, "../ui/src/terminal/palette.ts"),
-        );
-      expect(resolved?.id).toBe(
-        normalizePath(path.resolve(appRoot, "../ui/src/terminal/palette.ts")),
-      );
-    } finally {
-      await server.close();
-    }
-  });
 
   test("keeps browser conditional exports on their browser entry", async () => {
     const { server } = await createAppResolutionServer("serve");
@@ -343,16 +374,11 @@ describe("workspace package resolution", () => {
       try {
         const resolved =
           await server.environments.client.pluginContainer.resolveId(
-            "@elizaos/core/views/view-interact-protocol",
+            "@elizaos/core/protocol",
             path.join(appRoot, "src/main.tsx"),
           );
         expect(resolved?.id).toBe(
-          normalizePath(
-            path.resolve(
-              appRoot,
-              "../core/src/views/view-interact-protocol.ts",
-            ),
-          ),
+          normalizePath(path.resolve(appRoot, "../core/src/protocol.ts")),
         );
         for (const runtimeImport of [
           "@elizaos/core",

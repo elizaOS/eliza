@@ -2,10 +2,8 @@
  * Streams task-scoped PTY output into the Cockpit and switches between its
  * readable and raw terminal renderers over the same authorized session.
  */
+import { Button, type CodingAgentSession, useAgentElement } from "@elizaos/ui";
 
-import { Button } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import { TerminalSquare } from "lucide-react";
 import { useState } from "react";
 

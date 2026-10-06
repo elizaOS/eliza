@@ -1,20 +1,5 @@
 "use client";
 
-/**
- * Direct-crypto credit-card entry card for the cloud billing flow.
- */
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui/cloud-ui";
 import { ConnectButton, useConnectModal } from "@rainbow-me/rainbowkit";
 import {
   createAssociatedTokenAccountInstruction,
@@ -36,6 +21,23 @@ import {
   writeContract,
 } from "wagmi/actions";
 import { toast } from "../../../bridge/toast";
+/**
+ * Direct-crypto credit-card entry card for the cloud billing flow.
+ */
+import { Button } from "../../../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../../../components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../components/ui/select";
 import { reportRendererDiagnostic } from "../../../utils/renderer-diagnostics";
 import { api, apiFetch } from "../../lib/api-client";
 import type { CryptoStatusResponse, CryptoStatusTokenOption } from "../types";

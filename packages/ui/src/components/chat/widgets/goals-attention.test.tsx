@@ -22,7 +22,7 @@ vi.mock("../../../hooks/useRole", () => ({
   useRole: () => ({ isOwner: true }),
 }));
 
-vi.mock("../../../hooks", () => ({
+vi.mock("../../../hooks/useDocumentVisibility", () => ({
   useIntervalWhenDocumentVisible: (callback: () => void) => {
     intervalMock.callback = callback;
   },
@@ -33,7 +33,7 @@ const { getBaseUrlMock, publishHomeAttentionSpy } = vi.hoisted(() => ({
   publishHomeAttentionSpy: vi.fn(),
 }));
 
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: { getBaseUrl: getBaseUrlMock },
 }));
 

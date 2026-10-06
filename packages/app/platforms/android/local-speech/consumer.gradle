@@ -1,0 +1,26 @@
+apply plugin: 'com.android.library'
+def speechSource = project.hasProperty('elizaSpeechSourceDir') ? file(project.elizaSpeechSourceDir) : project.projectDir
+android {
+ namespace 'ai.eliza.speech'
+ sourceSets.main {
+  java.srcDirs = [new File(speechSource, 'src/main/java')]
+  manifest.srcFile new File(speechSource, 'src/main/AndroidManifest.xml')
+ }
+ compileSdk 36
+ defaultConfig { minSdk 26; consumerProguardFiles new File(speechSource, 'consumer-rules.pro') }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+// Produced only by the audited no-eSpeak build script, never the stock GPL-containing AAR.
+dependencies {
+ implementation files('libs/sherpa-onnx-1.13.8-no-espeak.aar')
+ implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.20'
+}
+preBuild.doFirst {
+ def runtime = file('libs/sherpa-onnx-1.13.8-no-espeak.aar')
+ def manifest = file('runtime-manifest.json')
+ if (!runtime.isFile() || !manifest.isFile()) throw new GradleException('Build the verified no-eSpeak speech AAR before compiling')
+ def approved = new groovy.json.JsonSlurper().parse(manifest)
+ def digest = java.security.MessageDigest.getInstance('SHA-256')
+ runtime.withInputStream { stream -> byte[] buffer = new byte[65536]; int count; while ((count = stream.read(buffer)) > 0) digest.update(buffer, 0, count) }
+ if (digest.digest().encodeHex().toString() != approved.aarSha256 || approved.noEspeak != true) throw new GradleException('Speech runtime differs from the qualified no-eSpeak build')
+}

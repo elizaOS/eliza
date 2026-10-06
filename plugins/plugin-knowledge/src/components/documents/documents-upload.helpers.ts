@@ -6,7 +6,7 @@
  * upload UI and its tests.
  */
 
-import type { DocumentScope } from "@elizaos/ui/api";
+import type { DocumentScope } from "@elizaos/ui";
 
 export const MAX_UPLOAD_REQUEST_BYTES = 32 * 1_048_576;
 export const BULK_UPLOAD_TARGET_BYTES = 24 * 1_048_576;
@@ -47,6 +47,17 @@ export function getDocumentUploadFilename(file: DocumentUploadFile): string {
   return file.webkitRelativePath?.trim() || file.name;
 }
 
+/** Filenames the documents service already stores as UTF-8 text. */
+const TEXT_BACKED_UPLOAD_EXTENSIONS = [
+  ".md",
+  ".mdx",
+  ".txt",
+  ".json",
+  ".xml",
+  ".csv",
+  ".tsv",
+] as const;
+
 export function shouldReadDocumentFileAsText(
   file: Pick<File, "type" | "name">,
 ): boolean {
@@ -55,14 +66,18 @@ export function shouldReadDocumentFileAsText(
     "text/markdown",
     "text/html",
     "text/csv",
+    "text/xml",
+    "text/tab-separated-values",
     "application/json",
     "application/xml",
   ];
+  const lowerName = file.name.toLowerCase();
 
   return (
     textTypes.some((t) => file.type.includes(t)) ||
-    file.name.endsWith(".md") ||
-    file.name.endsWith(".mdx")
+    TEXT_BACKED_UPLOAD_EXTENSIONS.some((extension) =>
+      lowerName.endsWith(extension),
+    )
   );
 }
 

@@ -3,10 +3,10 @@ export { McpToolCompatibility, type ModelInfo, type ModelProvider } from "./base
 
 import { type IAgentRuntime } from "@elizaos/core";
 import { detectMcpModelProvider } from "@elizaos/plugin-mcp/protocol-utils/model-provider";
+import { AnthropicMcpCompatibility } from "./anthropic";
 import { type ModelInfo } from "./base";
-import { AnthropicMcpCompatibility } from "./providers/anthropic";
-import { GoogleMcpCompatibility } from "./providers/google";
-import { OpenAIMcpCompatibility, OpenAIReasoningMcpCompatibility } from "./providers/openai";
+import { GoogleMcpCompatibility } from "./google";
+import { OpenAIMcpCompatibility, OpenAIReasoningMcpCompatibility } from "./openai";
 export function detectModelProvider(runtime: IAgentRuntime): ModelInfo {
   const detected = detectMcpModelProvider(runtime);
   return {

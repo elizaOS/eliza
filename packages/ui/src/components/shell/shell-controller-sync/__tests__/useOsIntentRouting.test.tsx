@@ -105,6 +105,40 @@ describe("useOsIntentRouting", () => {
     await waitFor(() => expect(window.location.hash).toBe("#chat"));
   });
 
+  it("claims a notification chat launch after late owner mount without sending a turn", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?source=assistant-entry&action=chat&assistant.launchId=cold-reminder-chat&notificationId=11111111-1111-4111-8111-111111111111",
+    );
+    const handled = Promise.withResolvers<void>();
+    const dispatch = vi.fn(
+      (_command: Parameters<ShellControllerSync["dispatch"]>[0]) =>
+        handled.promise,
+    );
+    // The launch was queued while startup/auth gates hid the chat owner.
+    renderHook(() => useOsIntentRouting(syncWith(dispatch)));
+    await waitFor(() => expect(dispatch).toHaveBeenCalledOnce());
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+      kind: "routeOsIntent",
+      intent: {
+        type: "open-chat",
+        source: "assistant-entry",
+        intentId: "cold-reminder-chat",
+      },
+      deliveryPolicy: "execute",
+    });
+    expect(window.location.hash).toContain(
+      "assistant.launchId=cold-reminder-chat",
+    );
+    await act(async () => handled.resolve());
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        "#chat?notificationId=11111111-1111-4111-8111-111111111111",
+      ),
+    );
+  });
+
   it("does not dispatch an unknown source", async () => {
     window.history.replaceState(
       null,

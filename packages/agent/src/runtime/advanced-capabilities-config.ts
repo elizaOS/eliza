@@ -5,7 +5,7 @@
  * back across all three entries, and mirrors it into the ADVANCED_CAPABILITIES /
  * ENABLE_EXTENDED_CAPABILITIES character settings.
  */
-import type { ElizaConfig } from "../config/config.ts";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 
 export const ADVANCED_CAPABILITY_PLUGIN_IDS = [
   "experience",

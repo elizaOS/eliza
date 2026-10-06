@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { type LifeOpsConnectorGrant } from "@elizaos/core/contracts/personal-assistant";
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import {
   type GoogleApiClientFactory,
   GoogleCalendarClient,

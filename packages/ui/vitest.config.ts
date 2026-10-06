@@ -5,7 +5,8 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases";
+import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
+import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
 
 const packageRoot = fileURLToPath(new URL("./", import.meta.url));
 const monorepoRoot = resolve(packageRoot, "../..");
@@ -76,10 +77,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/ui$/,
         replacement: resolve(uiSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/ui\/(.+)$/,
-        replacement: resolve(uiSrc, "$1"),
       },
       {
         find: /^@elizaos\/cloud-routing$/,
@@ -225,6 +222,7 @@ export default defineConfig({
     ],
   },
   test: {
+    ...compoundVitestEvidence(),
     globals: false,
     setupFiles: ["./vitest.setup.ts"],
     // Write worker console output straight to stdout instead of shipping every
@@ -290,6 +288,13 @@ export default defineConfig({
       "test/**/*.test.mjs",
     ],
     exclude: [
+      // Owned by test:node, which runs before this suite in the package test command.
+      "**/*.node.test.ts",
+      "test/api/conversation-turn-controller.test.mjs",
+      "test/api/recorded-transcription-controller.test.mjs",
+      "test/api/speech-playback-controllers.test.mjs",
+      "test/api/text-control-editing.test.mjs",
+      "test/api/json-storage.test.mjs",
       "dist/**",
       "**/node_modules/**",
       "**/*.live.test.{ts,tsx}",

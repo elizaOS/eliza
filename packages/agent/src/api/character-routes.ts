@@ -8,14 +8,15 @@
  * rewrites speaker names and `{{agentName}}`/`{{name}}` tokens in the message
  * examples so the persona stays self-consistent.
  */
+
+import { PostCharacterGenerateRequestSchema } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   ModelType,
-  PostCharacterGenerateRequestSchema,
-  type RouteRequestContext,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 import {
   buildCharacterHistorySnapshot,
@@ -65,9 +66,7 @@ interface AgentConfigLike {
   postExamples?: string[];
 }
 
-import type { AutonomousConfigLike } from "../types/config-like.ts";
-
-export interface CharacterAutonomousConfigLike extends AutonomousConfigLike {
+export interface CharacterAutonomousConfigLike extends Record<string, unknown> {
   agents?: {
     list?: AgentConfigLike[];
   };

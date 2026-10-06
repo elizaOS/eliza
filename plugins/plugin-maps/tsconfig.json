@@ -6,7 +6,7 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "react", "react-dom"],
+    "types": ["node", "react", "react-dom", "vite/client"],
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "noEmit": true,
@@ -14,9 +14,9 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/cloud-routing/*": ["../../packages/cloud/routing/src/*"],
-      "@elizaos/cloud-test-mocks/*": ["../../packages/cloud/test-mocks/src/*"]
+      "@elizaos/cloud-test-mocks/*": ["../../packages/cloud/test-mocks/src/*"],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
     }
   },
   "include": [

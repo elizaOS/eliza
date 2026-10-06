@@ -16,13 +16,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
-  type RouteHelpers,
-  type RouteRequestContext,
-} from "@elizaos/core/api/route-helpers";
-import {
   parseClampedFloat,
   parsePositiveInteger,
-} from "@elizaos/core/utils/number-parsing";
+} from "@elizaos/core/protocol";
+import type { RouteHelpers, RouteRequestContext } from "@elizaos/host/protocol";
 import {
   __setDocumentUrlFetchImplForTests,
   actorCanManageAgentDocuments,
@@ -588,6 +585,11 @@ async function countDocumentFacets({
   return counts;
 }
 export const __setDocumentFetchImplForTests = __setDocumentUrlFetchImplForTests;
+
+/** Re-adding existing content under a different visibility is a client conflict. */
+function isDocumentScopeConflict(err: unknown): err is ElizaError {
+  return err instanceof ElizaError && err.code === "DOCUMENT_SCOPE_CONFLICT";
+}
 export async function handleDocumentsRoutes(
   ctx: DocumentRouteContext,
 ): Promise<boolean> {
@@ -1389,7 +1391,11 @@ export async function handleDocumentsRoutes(
       content = `[Image: ${document.filename}]\n\n${descText}`;
       contentType = "text/plain";
     }
-    if (document.filename.endsWith(".mdx")) {
+    // The upload client reads .md and .mdx files as text whatever their MIME
+    // (browsers often send none for Markdown), so the service must not decode
+    // them as base64 "application/octet-stream" bytes.
+    const lowerFilename = document.filename.toLowerCase();
+    if (lowerFilename.endsWith(".md") || lowerFilename.endsWith(".mdx")) {
       contentType = "text/markdown";
     }
     const textBacked =
@@ -1556,6 +1562,10 @@ export async function handleDocumentsRoutes(
               ? 400
               : 403,
         );
+        return true;
+      }
+      if (isDocumentScopeConflict(err)) {
+        error(res, err.message, 409);
         return true;
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -1758,35 +1768,44 @@ export async function handleDocumentsRoutes(
         ? (scopedToEntityId ?? routeActor.entityId)
         : routeActor.entityId;
     const isYouTubeTranscript = isYouTubeUrl(urlToFetch);
-    const result = await documentsService.addDocument({
-      agentId,
-      worldId,
-      roomId,
-      entityId,
-      clientDocumentId: "" as UUID,
-      contentType,
-      originalFilename: filename,
-      content,
-      scope: uploadFilters.scope,
-      scopedToEntityId,
-      addedBy: routeActor.entityId,
-      addedByRole: routeActorAddedByRole(routeActor),
-      addedFrom: "url",
-      metadata: {
-        ...body.metadata,
-        url: urlToFetch,
-        source: isYouTubeTranscript ? "youtube" : "url",
-        filename,
-        originalFilename: filename,
-        fileType: contentType,
+    let result: Awaited<ReturnType<typeof documentsService.addDocument>>;
+    try {
+      result = await documentsService.addDocument({
+        agentId,
+        worldId,
+        roomId,
+        entityId,
+        clientDocumentId: "" as UUID,
         contentType,
-        textBacked: fetchedContent.contentType !== "binary",
+        originalFilename: filename,
+        content,
         scope: uploadFilters.scope,
-        ...(scopedToEntityId ? { scopedToEntityId } : {}),
+        scopedToEntityId,
         addedBy: routeActor.entityId,
         addedByRole: routeActorAddedByRole(routeActor),
-      },
-    });
+        addedFrom: "url",
+        metadata: {
+          ...body.metadata,
+          url: urlToFetch,
+          source: isYouTubeTranscript ? "youtube" : "url",
+          filename,
+          originalFilename: filename,
+          fileType: contentType,
+          contentType,
+          textBacked: fetchedContent.contentType !== "binary",
+          scope: uploadFilters.scope,
+          ...(scopedToEntityId ? { scopedToEntityId } : {}),
+          addedBy: routeActor.entityId,
+          addedByRole: routeActorAddedByRole(routeActor),
+        },
+      });
+    } catch (err) {
+      if (isDocumentScopeConflict(err)) {
+        error(res, err.message, 409);
+        return true;
+      }
+      throw err;
+    }
     json(res, {
       ok: true,
       documentId: result.clientDocumentId,

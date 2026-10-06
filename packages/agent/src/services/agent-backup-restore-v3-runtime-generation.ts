@@ -13,10 +13,12 @@ import {
   ElizaError,
   isExactTrueEnvFlag,
   parseAndValidateCharacter,
-  resolveAliasedEnvValue,
   resolveStateDir,
 } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config";
+import {
+  type ElizaConfig,
+  resolveAliasedEnvValue,
+} from "@elizaos/host/protocol";
 import {
   type CandidateFsDirectoryAuthority,
   controlled,

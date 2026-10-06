@@ -1,3 +1,4 @@
+import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 /**
  * recall-bench runner (#9956) — drives the REAL `@elizaos/core` recall path over
  * a labelled, document-scale corpus and reports per-`SearchMode` IR quality +
@@ -15,7 +16,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { rankByKeyword } from "@elizaos/agent/api";
+import { rankByKeyword } from "@elizaos/agent";
 import type { Memory, State, UUID } from "@elizaos/core";
 import {
   bm25Scores,
@@ -63,7 +64,7 @@ interface BudgetCheck {
 // ── CLI ───────────────────────────────────────────────────────────────────────
 function parseArgs(argv: string[]): { tier: CorpusTier; out: string } {
   let tier: CorpusTier = "smoke";
-  let out = join(import.meta.dirname, "results");
+  let out = testOutputPath("recall-bench");
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--tier") tier = argv[++i] as CorpusTier;
     else if (argv[i] === "--out") out = argv[++i];

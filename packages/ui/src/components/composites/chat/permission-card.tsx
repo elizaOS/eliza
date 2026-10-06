@@ -12,12 +12,12 @@ import type {
   IPermissionsRegistry,
   PermissionId,
   PermissionState,
-} from "@elizaos/core/contracts/permissions";
-import { openPermissionSettings } from "@elizaos/core/utils/permission-deep-links";
+} from "@elizaos/core/protocol";
+import { openPermissionSettings } from "@elizaos/core/protocol";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { useBranding } from "../../../config/branding";
-import { cn } from "../../../lib/utils";
+import { useBranding } from "../../../config/branding-react.hooks";
+import { cn } from "../../../utils/cn";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";

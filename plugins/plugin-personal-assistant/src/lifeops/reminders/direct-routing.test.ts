@@ -89,7 +89,7 @@ describe("owner reminder direct routing", () => {
     expect(createOwnerReminderDirectRoutingRule()).toMatchObject({
       id: "lifeops.owner-reminder-create",
       actionNames: ["OWNER_REMINDERS"],
-      replacesActionNames: ["TRIGGER_CREATE"],
+      replacesActionNames: ["TRIGGER", "TRIGGER_CREATE"],
       requiredActionTags: expect.arrayContaining([
         "domain:reminders",
         "capability:write",

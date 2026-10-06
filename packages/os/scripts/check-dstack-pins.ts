@@ -14,17 +14,11 @@ const REQUIRED_CLAIMS = ["debugDisabled", "productionLifecycle"];
 // Golden manifest measurements the AppAuth allowlist must mirror (§2.3).
 const ALLOWLIST_MEASUREMENTS = ["agent", "container", "compose"];
 
-// Returns { ok, blocked, errors }. `blocked` is reserved for "data is correct
-// but not yet production-ready"; with the track-latest pin confirmed and the
-// allowlist bound to the golden manifest, the shipped data is no longer blocked.
-// `manifest` is the confidential release manifest used to assert the allowlist
-// mirrors the signed golden measurements.
 export function checkDstackPins(pins, schema, manifest) {
   const structure = validateAgainstSchema(pins, schema);
   if (!structure.ok) {
     return {
       ok: false,
-      blocked: false,
       errors: structure.errors.map((e) => `schema: ${e}`),
     };
   }
@@ -107,7 +101,7 @@ export function checkDstackPins(pins, schema, manifest) {
     }
   }
 
-  return { ok: errors.length === 0, blocked: false, errors };
+  return { ok: errors.length === 0, errors };
 }
 
 async function main() {

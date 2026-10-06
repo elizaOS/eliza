@@ -674,6 +674,25 @@ describe("NativeAcpClient workspace file actions", () => {
     ).resolves.toBe("fresh");
   });
 
+  it("treats an explicit read limit of 0 as an empty window", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "native-acp-"));
+    await writeFile(path.join(cwd, "notes.txt"), "line 1\nline 2\n", "utf8");
+    const client = clientForWorkspace(cwd);
+    const read = (
+      client as unknown as { readTextFile(params: unknown): Promise<unknown> }
+    ).readTextFile.bind(client);
+
+    await expect(read({ path: "notes.txt", limit: 0 })).resolves.toEqual({
+      content: "",
+    });
+    await expect(
+      read({ path: "notes.txt", line: 2, limit: 0 }),
+    ).resolves.toEqual({ content: "" });
+    await expect(read({ path: "notes.txt", line: 2 })).resolves.toEqual({
+      content: "line 2\n",
+    });
+  });
+
   it("rejects path traversal for reads and writes", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "native-acp-"));
     const cwd = path.join(root, "safe");

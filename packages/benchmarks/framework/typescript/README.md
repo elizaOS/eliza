@@ -6,7 +6,7 @@ Install workspace dependencies with `bun install` at the repository root.
 
 No separate build script; this workspace runs from source.
 
-No dedicated test script is defined.
+Run timing regression tests with `bun run test` from this directory.
 
 Validate types:
 

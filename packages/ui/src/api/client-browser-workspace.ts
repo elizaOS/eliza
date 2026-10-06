@@ -12,7 +12,7 @@ import type {
 } from "./browser-contracts";
 import { ElizaClient } from "./client-base";
 
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     getBrowserWorkspace(
       request?: Pick<RequestInit, "signal">,

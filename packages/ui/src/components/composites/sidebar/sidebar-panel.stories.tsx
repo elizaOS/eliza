@@ -4,7 +4,7 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "../../ui/button";
-import { SidebarPanel } from "./sidebar-panel";
+import { SidebarPanel } from "./sidebar-layout";
 
 const meta = {
   title: "Composites/Sidebar/SidebarPanel",

@@ -5,9 +5,9 @@
  * vi.mock), so the assertions isolate the access-control boundary in plugin.ts.
  */
 import type http from "node:http";
-import { _resetAuthRateLimiter } from "@elizaos/app/api/auth";
-import { type AgentRuntime } from "@elizaos/core";
-import { type Route } from "@elizaos/core/api/http-plugin";
+import { _resetAuthRateLimiter } from "@elizaos/app/auth";
+import type { AgentRuntime } from "@elizaos/core";
+import type { Route } from "@elizaos/host/protocol";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   resetDevCloudEnvAuthorityForTests,

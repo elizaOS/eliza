@@ -43,26 +43,6 @@ function getStore(): GenUiActionRegistryStore {
   return created;
 }
 
-/** Allow one exact generated-UI action name. */
-export function registerElizaGenUiActionName(name: string): void {
-  getStore().names.add(name);
-}
-
-/** Allow every generated-UI action name under `prefix` (e.g. `"myplugin."`). */
-export function registerElizaGenUiActionPrefix(prefix: string): void {
-  getStore().prefixes.add(prefix);
-}
-
-/** All currently-registered exact action names (built-ins never seed names). */
-export function listElizaGenUiActionNames(): string[] {
-  return [...getStore().names];
-}
-
-/** All currently-registered action prefixes (includes the built-in seeds). */
-export function listElizaGenUiActionPrefixes(): string[] {
-  return [...getStore().prefixes];
-}
-
 /**
  * Whether `eventName` is allowed by the registry — a registered exact name or a
  * registered prefix (built-in or plugin-contributed). This is the single gate

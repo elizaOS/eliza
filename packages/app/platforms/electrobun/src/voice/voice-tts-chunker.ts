@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop voice tts chunker ts behavior for app shell integration. */
 export type VoiceTtsChunkingConfig = {
 	minChars: number;
 	maxChars: number;

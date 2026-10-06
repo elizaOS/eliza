@@ -1,12 +1,11 @@
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.ts";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.ts";
 import {
 	SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
 	isSensitiveLogKey,
 	redactTrailingArgs,
+	SENSITIVE_ASSIGNMENT_PATTERNS,
 } from "./log-redaction.js";
+
 /** Masks credential patterns and configured character secrets before logging or display. */
 
 /**
@@ -207,15 +206,22 @@ export function redactToolDetail(detail: string): string {
 /**
  * Get the default redaction patterns.
  *
+ * Source reviewers may classify named assignments with their own literal parser.
+ * Runtime redaction keeps broad assignment matching by default. Provider token,
+ * quoted field, header and URL patterns remain present in both modes.
  * @returns Copy of default pattern strings
  */
-export function getDefaultRedactPatterns(): string[] {
-	return [...DEFAULT_REDACT_PATTERNS];
+export function getDefaultRedactPatterns(
+	options: { includeNamedAssignments?: boolean } = {},
+): string[] {
+	return options.includeNamedAssignments === false
+		? DEFAULT_REDACT_PATTERNS.filter(
+				(pattern) => !SENSITIVE_ASSIGNMENT_PATTERNS.includes(pattern),
+			)
+		: [...DEFAULT_REDACT_PATTERNS];
 }
 
-// ============================================================================
 // Secrets-Based Redaction
-// ============================================================================
 
 /**
  * Escape special regex characters in a string.
@@ -384,9 +390,7 @@ export function redactObjectSecrets<T>(
 	return obj;
 }
 
-// ============================================================================
 // Log-Sink Redaction (applied to every log line, not opt-in per call)
-// ============================================================================
 
 /**
  * Redact every argument in a `logger.error(...args)` call before it reaches the

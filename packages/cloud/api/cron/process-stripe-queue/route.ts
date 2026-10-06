@@ -1,18 +1,23 @@
 /** Drains Stripe deliveries, reconciles uncertain cancellation commands, settles stale subscription checkouts and sweeps durable subscription notices through the authenticated cron owner. */
+
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { drain, queueLength } from "@elizaos/cloud-shared/lib/redis-queue";
+import { recoverOrganizationSchedules } from "@elizaos/cloud-shared/lib/services/organization-schedule-maintenance";
+import { recoverOrganizationUpgrades } from "@elizaos/cloud-shared/lib/services/organization-upgrade-maintenance";
+import { recoverOriginalInvoiceObservations } from "@elizaos/cloud-shared/lib/services/original-invoice-maintenance";
+import { recoverRenewalAdjustmentObservations } from "@elizaos/cloud-shared/lib/services/renewal-adjustment-maintenance";
+import { recoverOrganizationSubscriptionCancellations } from "@elizaos/cloud-shared/lib/services/subscription-cancellation";
+import { recoverStaleSubscriptionCheckouts } from "@elizaos/cloud-shared/lib/services/subscription-checkout";
+import { sweepSubscriptionNotices } from "@elizaos/cloud-shared/lib/services/subscription-notices";
+import { recoverMissedSubscriptionEvents } from "@elizaos/cloud-shared/lib/services/subscription-reconciliation";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { processStripeEvent } from "@/api-queue/stripe-event";
-import type { StripeEventMessage } from "@/api-queue/types";
-import { webhookEventsRepository } from "@/db/repositories/webhook-events";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { drain, queueLength } from "@/lib/queue/redis-queue";
-import { recoverOrganizationSubscriptionCancellations } from "@/lib/services/subscription-cancellation";
-import { recoverStaleSubscriptionCheckouts } from "@/lib/services/subscription-checkout";
-import { sweepSubscriptionNotices } from "@/lib/services/subscription-notices";
-import { recoverMissedSubscriptionEvents } from "@/lib/services/subscription-reconciliation";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const STRIPE_QUEUE_KEY = "stripe-events";
 
@@ -70,24 +75,46 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
         return { before, after: await queueLength(STRIPE_QUEUE_KEY), ...stats };
       })(),
       recoverOrganizationSubscriptionCancellations(5),
+      recoverOrganizationUpgrades(5),
+      recoverOrganizationSchedules(5),
       sweepSubscriptionNotices(),
       recoverMissedSubscriptionEvents(),
       recoverStaleSubscriptionCheckouts(10),
+      recoverRenewalAdjustmentObservations(),
+      recoverOriginalInvoiceObservations(),
     ]);
-    const [queue, cancellations, notices, recovery, checkouts] = lanes;
+    const [
+      queue,
+      cancellations,
+      upgrades,
+      schedules,
+      notices,
+      recovery,
+      checkouts,
+      adjustments,
+      originalInvoices,
+    ] = lanes;
     if (
       queue.status !== "fulfilled" ||
       cancellations.status !== "fulfilled" ||
+      upgrades.status !== "fulfilled" ||
+      schedules.status !== "fulfilled" ||
       notices.status !== "fulfilled" ||
       recovery.status !== "fulfilled" ||
-      checkouts.status !== "fulfilled"
+      checkouts.status !== "fulfilled" ||
+      adjustments.status !== "fulfilled" ||
+      originalInvoices.status !== "fulfilled"
     ) {
       const names = [
         "queue",
         "cancellations",
+        "upgrades",
+        "schedules",
         "notices",
         "recovery",
         "checkouts",
+        "adjustments",
+        "originalInvoices",
       ];
       const failures = lanes.flatMap((lane, index) =>
         lane.status === "rejected" ? [names[index]] : [],
@@ -125,9 +152,13 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
       queue: STRIPE_QUEUE_KEY,
       ...queue.value,
       cancellations: cancellations.value,
+      upgrades: upgrades.value,
+      schedules: schedules.value,
       notices: notices.value,
       recovery: recovery.value,
       checkouts: checkouts.value,
+      adjustments: adjustments.value,
+      originalInvoices: originalInvoices.value,
     });
   } catch (error) {
     // error-policy:J1 authenticated cron failures retain a structured retryable boundary.

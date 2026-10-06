@@ -135,7 +135,19 @@ import {
   type OpenApiSpec,
   type OrganizationSubscriptionCancellationRequest,
   type OrganizationSubscriptionCancellationResponse,
+  type OrganizationSubscriptionDowngradeCommandResponse,
+  type OrganizationSubscriptionDowngradeConfirmRequest,
+  type OrganizationSubscriptionDowngradeQuoteRequest,
+  type OrganizationSubscriptionDowngradeQuoteResponse,
+  type OrganizationSubscriptionRenewalReviewResponse,
+  type OrganizationSubscriptionReviewedUndoRequest,
+  type OrganizationSubscriptionUpgradeCommandResponse,
+  type OrganizationSubscriptionUpgradeConfirmRequest,
+  type OrganizationSubscriptionUpgradePaymentResponse,
+  type OrganizationSubscriptionUpgradeQuoteRequest,
+  type OrganizationSubscriptionUpgradeQuoteResponse,
   type PairingTokenResponse,
+  type PendingOrganizationPlanChangeCommandsResponse,
   type PendingSubscriptionCommandsResponse,
   type PollGatewayRelayResponse,
   type RedemptionBalanceResponse,
@@ -590,6 +602,97 @@ export class ElizaCloudClient {
     });
   }
 
+  /** Persists a current manager's upgrade review; no charge or subscription change occurs. */
+  createOrganizationSubscriptionUpgradeQuote(
+    input: OrganizationSubscriptionUpgradeQuoteRequest,
+  ): Promise<OrganizationSubscriptionUpgradeQuoteResponse> {
+    return this.v1.requestData("POST", "/subscriptions/upgrade/review", {
+      json: input,
+    });
+  }
+
+  /** Reviews a lower plan at the current period boundary; creates no provider schedule or charge. */
+  createOrganizationSubscriptionDowngradeQuote(
+    input: OrganizationSubscriptionDowngradeQuoteRequest,
+  ): Promise<OrganizationSubscriptionDowngradeQuoteResponse> {
+    return this.v1.requestData("POST", "/subscriptions/downgrade/review", {
+      json: input,
+    });
+  }
+
+  /** Confirms the original lower-plan quote; retries retain its original durable command. */
+  confirmOrganizationSubscriptionDowngrade(
+    input: OrganizationSubscriptionDowngradeConfirmRequest,
+  ): Promise<OrganizationSubscriptionDowngradeCommandResponse> {
+    return this.v1.requestData("POST", "/subscriptions/downgrade/confirm", {
+      json: input,
+    });
+  }
+
+  /** Reads configuration status only; APPLIED is pending-plan state, not payment. */
+  readOrganizationSubscriptionDowngrade(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionDowngradeCommandResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/downgrade/${encodeURIComponent(commandId)}`,
+    );
+  }
+
+  /** Confirms the original reviewed quote; retries retain its original durable command. */
+  confirmOrganizationSubscriptionUpgrade(
+    input: OrganizationSubscriptionUpgradeConfirmRequest,
+  ): Promise<OrganizationSubscriptionUpgradeCommandResponse> {
+    return this.v1.requestData("POST", "/subscriptions/upgrade/confirm", {
+      json: input,
+    });
+  }
+  /** Reads durable status only; an unknown result never authorizes a new intent. */
+  readOrganizationSubscriptionUpgrade(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionUpgradeCommandResponse> {
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/upgrade/${encodeURIComponent(commandId)}`,
+    );
+  }
+
+  /** Obtains a fresh private original-invoice payment URL; call again after return to reconcile. */
+  continueOrganizationSubscriptionUpgradePayment(
+    commandId: string,
+  ): Promise<OrganizationSubscriptionUpgradePaymentResponse> {
+    return this.v1.requestData(
+      "POST",
+      `/subscriptions/upgrade/${encodeURIComponent(commandId)}/payment`,
+    );
+  }
+
+  /** Reads a short-lived next-renewal estimate for the current manager's scheduled cancellation. */
+  readOrganizationSubscriptionRenewalReview(
+    input: Pick<
+      OrganizationSubscriptionCancellationRequest,
+      "subscriptionId" | "expectedSubscriptionRevision"
+    >,
+  ): Promise<OrganizationSubscriptionRenewalReviewResponse> {
+    const query = new URLSearchParams({
+      subscriptionId: input.subscriptionId,
+      expectedSubscriptionRevision: String(input.expectedSubscriptionRevision),
+    });
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/cancel/undo/review?${query}`,
+    );
+  }
+
+  /** Confirms the exact reviewed terms; replay reads the recorded outcome without redispatch. */
+  submitReviewedOrganizationSubscriptionCancellationUndo(
+    input: OrganizationSubscriptionReviewedUndoRequest,
+  ): Promise<OrganizationSubscriptionCancellationResponse> {
+    return this.v1.requestData("POST", "/subscriptions/cancel/undo/confirm", {
+      json: input,
+    });
+  }
+
   /** Reads the durable command outcome without repeating a provider mutation. */
   readOrganizationSubscriptionCancellationUndo(
     commandId: string,
@@ -608,6 +711,19 @@ export class ElizaCloudClient {
     const query = new URLSearchParams({ limit: String(input.limit) });
     if (input.cursor !== undefined) query.set("cursor", input.cursor);
     return this.v1.requestData("GET", `/subscriptions/commands?${query}`);
+  }
+
+  /** Rediscovers this manager's original pending plan changes without submitting or recovering them. */
+  listPendingOrganizationPlanChangeCommands(input: {
+    limit: number;
+    cursor?: string;
+  }): Promise<PendingOrganizationPlanChangeCommandsResponse> {
+    const query = new URLSearchParams({ limit: String(input.limit) });
+    if (input.cursor !== undefined) query.set("cursor", input.cursor);
+    return this.v1.requestData(
+      "GET",
+      `/subscriptions/plan-change/commands?${query}`,
+    );
   }
 
   getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {

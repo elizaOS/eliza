@@ -12,19 +12,17 @@
  * models, database); provider API keys are synced into process.env.
  */
 import type http from "node:http";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import {
-  type AgentRuntime,
+  type ElizaConfig,
   isElizaSettingsDebugEnabled,
-  logger,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   type ReadJsonBodyOptions,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/core";
-
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/host/protocol";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,

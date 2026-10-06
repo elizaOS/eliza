@@ -414,9 +414,7 @@ export class VideoService extends IVideoService {
   }
 
   private ensureDataDirectoryExists() {
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir);
-    }
+    fs.mkdirSync(this.dataDir, { recursive: true });
   }
 
   public isVideoUrl(url: string): boolean {

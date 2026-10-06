@@ -172,7 +172,6 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   ),
   sessionExact("dev.inference-timing", "GET", "/api/dev/inference-timing"),
   sessionExact("dev.boot-history", "GET", "/api/dev/boot-history"),
-  sessionExact("dev.health", "GET", "/api/dev/health"),
   sessionExact("dev.route-timings", "GET", "/api/dev/route-timings"),
 
   sessionExact("auth.password.change", "POST", "/api/auth/password/change"),
@@ -232,6 +231,8 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
     "/api/asr/local-inference/status",
   ),
   sessionExact("asr.local-inference", "POST", "/api/asr/local-inference"),
+  sessionExact("tts.kokoro.status", "GET", "/api/tts/kokoro/status"),
+  sessionExact("tts.kokoro", "POST", "/api/tts/kokoro"),
   sessionExact("asr.whisper.status", "GET", "/api/asr/whisper/status"),
   sessionExact("asr.whisper", "POST", "/api/asr/whisper"),
   sessionPrefix("workbench", "/api/workbench"),

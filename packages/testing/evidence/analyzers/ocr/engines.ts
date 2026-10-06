@@ -65,8 +65,8 @@ export interface OcrAvailable {
 export interface OcrEngine {
   /** Stable id embedded in the analyzer name, e.g. `tesseract`, `unlimited`. */
   readonly id: string;
-  available(): Promise<OcrAvailable | OcrUnavailable>;
-  recognize(imagePath: string): Promise<OcrRecognition>;
+  available(signal?: AbortSignal): Promise<OcrAvailable | OcrUnavailable>;
+  recognize(imagePath: string, signal?: AbortSignal): Promise<OcrRecognition>;
 }
 
 type FetchLike = (
@@ -108,9 +108,11 @@ export class TesseractOcrEngine implements OcrEngine {
     this.bin = bin;
   }
 
-  async available(): Promise<OcrAvailable | OcrUnavailable> {
+  async available(
+    signal?: AbortSignal,
+  ): Promise<OcrAvailable | OcrUnavailable> {
     try {
-      await execFileAsync(this.bin, ["--version"], { timeout: 10_000 });
+      await execFileAsync(this.bin, ["--version"], { timeout: 10_000, signal });
       return { available: true };
     } catch (error) {
       // error-policy:J4 availability probe — a failed --version IS the
@@ -125,12 +127,15 @@ export class TesseractOcrEngine implements OcrEngine {
     }
   }
 
-  async recognize(imagePath: string): Promise<OcrRecognition> {
+  async recognize(
+    imagePath: string,
+    signal?: AbortSignal,
+  ): Promise<OcrRecognition> {
     const staged = stageTesseractInput(imagePath);
     const { stdout } = await execFileAsync(
       this.bin,
       [staged.path, "-", "--psm", "6"],
-      { timeout: 60_000, maxBuffer: 8 * 1024 * 1024 },
+      { timeout: 60_000, maxBuffer: 8 * 1024 * 1024, signal },
     ).finally(staged.cleanup);
     return { text: normalizeOcrText(stdout) };
   }
@@ -192,7 +197,9 @@ export class AppleVisionOcrEngine implements OcrEngine {
     this.timeoutMs = options.timeoutMs ?? 60_000;
   }
 
-  async available(): Promise<OcrAvailable | OcrUnavailable> {
+  async available(
+    signal?: AbortSignal,
+  ): Promise<OcrAvailable | OcrUnavailable> {
     if (process.platform !== "darwin") {
       return { available: false, reason: "apple-vision requires macOS" };
     }
@@ -203,7 +210,10 @@ export class AppleVisionOcrEngine implements OcrEngine {
       };
     }
     try {
-      await execFileAsync(this.command, ["--version"], { timeout: 10_000 });
+      await execFileAsync(this.command, ["--version"], {
+        timeout: 10_000,
+        signal,
+      });
       return { available: true };
     } catch (error) {
       // error-policy:J4 availability probe — a failed --version IS the
@@ -217,7 +227,10 @@ export class AppleVisionOcrEngine implements OcrEngine {
     }
   }
 
-  async recognize(imagePath: string): Promise<OcrRecognition> {
+  async recognize(
+    imagePath: string,
+    signal?: AbortSignal,
+  ): Promise<OcrRecognition> {
     // The helper reads newline-delimited paths on stdin (one path → one NDJSON
     // record), which execFile cannot supply, so it runs through a stdin-capable
     // spawn.
@@ -226,6 +239,7 @@ export class AppleVisionOcrEngine implements OcrEngine {
       this.scriptPath,
       imagePath,
       this.timeoutMs,
+      signal,
     );
     if (!record.ok) {
       throw new EvidenceError(
@@ -274,10 +288,13 @@ async function runAppleVision(
   scriptPath: string,
   imagePath: string,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<AppleVisionRecord> {
   return await new Promise<AppleVisionRecord>((resolve, reject) => {
     const child = spawn(command, [scriptPath], {
       stdio: ["pipe", "pipe", "pipe"],
+      signal,
+      killSignal: "SIGKILL",
     });
     let out = "";
     let err = "";
@@ -579,7 +596,9 @@ export class UnlimitedOcrEngine implements OcrEngine {
     return { ok: true, baseUrl: `http://127.0.0.1:${port}` };
   }
 
-  async available(): Promise<OcrAvailable | OcrUnavailable> {
+  async available(
+    signal?: AbortSignal,
+  ): Promise<OcrAvailable | OcrUnavailable> {
     const endpoint = await this.resolveEndpoint();
     if (!endpoint.ok) {
       return { available: false, reason: endpoint.reason };
@@ -587,7 +606,9 @@ export class UnlimitedOcrEngine implements OcrEngine {
     try {
       const res = await this.fetchImpl(joinUrl(endpoint.baseUrl, "/health"), {
         method: "GET",
-        signal: AbortSignal.timeout(5_000),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(5_000)])
+          : AbortSignal.timeout(5_000),
       });
       if (!res.ok) {
         return {
@@ -606,7 +627,10 @@ export class UnlimitedOcrEngine implements OcrEngine {
     }
   }
 
-  async recognize(imagePath: string): Promise<OcrRecognition> {
+  async recognize(
+    imagePath: string,
+    signal?: AbortSignal,
+  ): Promise<OcrRecognition> {
     const endpoint = await this.resolveEndpoint();
     if (!endpoint.ok) {
       // available() gates recognize(); this guards direct callers with the
@@ -636,7 +660,9 @@ export class UnlimitedOcrEngine implements OcrEngine {
             },
           ],
         }),
-        signal: AbortSignal.timeout(120_000),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(120_000)])
+          : AbortSignal.timeout(120_000),
       },
     );
     if (!res.ok) {

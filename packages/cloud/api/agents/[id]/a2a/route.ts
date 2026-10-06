@@ -10,6 +10,53 @@
  * the full text before responding rather than streaming back.
  */
 
+import { UntrustedA2AChatMessagesSchema } from "@elizaos/cloud-shared/lib/api/a2a/chat-messages";
+import {
+  A2AJsonRpcRequestSchema,
+  type JsonRpcId,
+  jsonRpcIdFromUnknown,
+} from "@elizaos/cloud-shared/lib/api/a2a/request-validation";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  CORS_ALLOW_HEADERS,
+  CORS_ALLOW_METHODS,
+} from "@elizaos/cloud-shared/lib/cors-constants";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  calculateCost,
+  estimateRequestCost,
+  getProviderFromModel,
+} from "@elizaos/cloud-shared/lib/pricing";
+import {
+  type AnthropicCotEnv,
+  mergeAnthropicCotProviderOptions,
+  parseThinkingBudgetFromCharacterSettings,
+  resolveAnthropicThinkingBudgetTokens,
+} from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
+import {
+  getLanguageModel,
+  resolveAiProviderSource,
+} from "@elizaos/cloud-shared/lib/providers/language-model";
+import {
+  charactersService,
+  type UserCharacter,
+} from "@elizaos/cloud-shared/lib/services/characters";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
+import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { Hono } from "hono";
@@ -20,47 +67,6 @@ import {
   requireGenerativeRouteCaller,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
-import { UntrustedA2AChatMessagesSchema } from "@/lib/api/a2a/chat-messages";
-import {
-  A2AJsonRpcRequestSchema,
-  type JsonRpcId,
-  jsonRpcIdFromUnknown,
-} from "@/lib/api/a2a/request-validation";
-import {
-  ApiError,
-  safeUnknownErrorMessage,
-} from "@/lib/api/cloud-worker-errors";
-import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  calculateCost,
-  estimateRequestCost,
-  getProviderFromModel,
-} from "@/lib/pricing";
-import {
-  type AnthropicCotEnv,
-  mergeAnthropicCotProviderOptions,
-  parseThinkingBudgetFromCharacterSettings,
-  resolveAnthropicThinkingBudgetTokens,
-} from "@/lib/providers/anthropic-thinking";
-import {
-  getLanguageModel,
-  resolveAiProviderSource,
-} from "@/lib/providers/language-model";
-import {
-  charactersService,
-  type UserCharacter,
-} from "@/lib/services/characters/characters";
-import { InsufficientCreditsError } from "@/lib/services/credits";
-import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
-import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
-import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
-import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const A2A_BILLING_OUTPUT_ESTIMATE_TOKENS = 500;
 

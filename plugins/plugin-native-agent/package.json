@@ -18,7 +18,8 @@
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./native-host/*": "./native-host/*.mjs"
   },
   "unpkg": "dist/plugin.js",
   "files": [
@@ -27,7 +28,8 @@
     "dist/",
     "ios/Sources/",
     "*.podspec",
-    "dist"
+    "dist",
+    "native-host/*.mjs"
   ],
   "author": "elizaOS",
   "license": "MIT",
@@ -47,7 +49,8 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:native-host": "node scripts/test-native-host.mjs"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",

@@ -1,7 +1,7 @@
 // Handles v1 cloud API v1 device bus devices deviceid intents route traffic with route-local auth expectations.
-import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * Device Bus — subscribe (via poll) to intents delivered to a device.
@@ -14,10 +14,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * follow-up.
  */
 
+import { dbRead, dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { deviceIntents, devices } from "@elizaos/cloud-shared/db/schemas";
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { and, eq, gt } from "drizzle-orm";
-import { dbRead, dbWrite } from "@/db/helpers";
-import { deviceIntents, devices } from "@/db/schemas";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 
 const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 

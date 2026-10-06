@@ -13,16 +13,15 @@
  * cross-window transport (web, mobile, single-window) the window is a lone owner
  * and this behaves exactly as it did before.
  */
-import * as React from "react";
 
+import { IntentDedupeStore, routeIntent } from "@elizaos/host/protocol";
+import * as React from "react";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
-import { IntentDedupeStore } from "../../os-intent/dedupe";
 import {
   dispatchOsIntentComposerPrefill,
   loadOsIntentDedupeSnapshot,
   saveOsIntentDedupeSnapshot,
-} from "../../os-intent/host";
-import { routeIntent } from "../../os-intent/router";
+} from "../../platform/os-intent";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { loadOsIntentAutoStartConsent } from "../../state/persistence";
 import { ShellControllerContext } from "./ShellControllerContext.hooks";

@@ -5,7 +5,14 @@
  * gates before promoting the turn to planning.
  */
 
-import type { DirectActionRoutingRule } from "@elizaos/core";
+import {
+  type DirectActionRoutingRule,
+  extractUserText,
+  getUserMessageText,
+  isObjectRecord,
+  type ResponseHandlerEvaluator,
+  validateUuid,
+} from "@elizaos/core";
 
 const REMINDER_CREATE_PATTERNS: readonly RegExp[] = [
   /^remind\s+(?:me|myself)\b[\s\S]{0,120}\b(?:to|about|in|at|on|by|for|every|each|tomorrow|tonight|today|next)\b/iu,
@@ -67,7 +74,7 @@ export function createOwnerReminderDirectRoutingRule(): DirectActionRoutingRule 
   return {
     id: "lifeops.owner-reminder-create",
     actionNames: ["OWNER_REMINDERS"],
-    replacesActionNames: ["TRIGGER_CREATE"],
+    replacesActionNames: ["TRIGGER", "TRIGGER_CREATE"],
     requiredActionTags: [
       "domain:reminders",
       "capability:write",
@@ -78,3 +85,78 @@ export function createOwnerReminderDirectRoutingRule(): DirectActionRoutingRule 
     matches: looksLikeOwnerReminderCreateRequest,
   };
 }
+
+/** Typed control replies select a route; the action still authorizes the effect. */
+export const ownerReminderChoiceDirectRoutingRules: readonly DirectActionRoutingRule[] =
+  [
+    ["done", "OWNER_REMINDERS_COMPLETE"],
+    ["skip", "OWNER_REMINDERS_SKIP"],
+    ["10 minutes", "OWNER_REMINDERS_SNOOZE"],
+  ].map<DirectActionRoutingRule>(([value, actionName]) => ({
+    id: `lifeops.owner-reminder-choice.${actionName}`,
+    actionNames: [actionName],
+    requiredActionTags: [
+      "domain:reminders",
+      "capability:write",
+      "effect:receipt-required",
+    ],
+    contexts: ["tasks", "productivity"],
+    unavailable: {
+      code: "OWNER_REMINDER_CHOICE_UNAVAILABLE",
+      reply: "I can't apply that reminder choice in this context.",
+    },
+    matches: (text, message) => {
+      const metadata = message?.content.metadata;
+      return Boolean(
+        isObjectRecord(metadata) &&
+          typeof metadata.reminderChoiceId === "string" &&
+          metadata.reminderChoiceId.trim() &&
+          validateUuid(message?.content.inReplyTo) &&
+          extractUserText(text) === value,
+      );
+    },
+  }));
+
+export const ownerReminderChoiceRoutingEvaluator: ResponseHandlerEvaluator = {
+  name: "lifeops.bound-reminder-choice",
+  // Own the typed envelope after the current core/PA routing enrichers (<=30).
+  priority: 100,
+  deterministicActions: ownerReminderChoiceDirectRoutingRules.flatMap(
+    (rule) => rule.actionNames,
+  ),
+  shouldRun: ({ message }) =>
+    isObjectRecord(message.content.metadata) &&
+    Object.hasOwn(message.content.metadata, "reminderChoiceId"),
+  evaluate: ({ message, messageHandler }) => {
+    const route = ownerReminderChoiceDirectRoutingRules.find(
+      (rule) =>
+        rule.matches(getUserMessageText(message), message) &&
+        messageHandler.plan.candidateActions?.includes(rule.actionNames[0]),
+    );
+    if (
+      !route ||
+      messageHandler.processMessage !== "RESPOND" ||
+      messageHandler.plan.requiresTool !== true
+    ) {
+      return {
+        processMessage: "RESPOND",
+        requiresTool: false,
+        replyEffectStatus: "non_applied",
+        setContexts: ["simple"],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        clearReply: true,
+        reply:
+          "I can't apply that reminder choice in this context. Open the current reminder and try again.",
+      };
+    }
+    // Priority 15's core route evaluator admitted this exact capability through
+    // actor/tag/context/connector/validate gates. Use its existing executor,
+    // which retains source validation; never ask a planner to discover it again.
+    return {
+      requiresTool: true,
+      clearReply: true,
+      deterministicToolCall: { name: route.actionNames[0], params: {} },
+    };
+  },
+};

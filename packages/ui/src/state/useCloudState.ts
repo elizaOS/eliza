@@ -36,8 +36,8 @@ import {
   signOutAndroidCloud,
   takeLatestAndroidCloudCompletion,
 } from "../android-cloud/android-cloud-auth";
-import { type CloudCredits, type CloudStatus, client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import {
   cloudTokenSecsRemaining,
   getCloudAuthToken,
@@ -47,17 +47,21 @@ import {
   resolveDirectCloudWebBase,
   verifyDirectCloudStewardSession,
 } from "../api/client-cloud";
-import {
-  invokeDesktopBridgeRequestWithTimeout,
-  isElectrobunRuntime,
-} from "../bridge";
+import type { CloudCredits, CloudStatus } from "../api/client-types-cloud";
+import { invokeDesktopBridgeRequestWithTimeout } from "../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";
-import { publishCloudAuthComplete } from "../cloud/auth/cloud-auth-complete-signal";
+import { publishCloudAuthComplete } from "../cloud/cloud-auth-complete-signal";
 import { sanitizeLoginReturnTo } from "../cloud/public-pages/lib/login-return-to";
 import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
+import { logger } from "../logger.ts";
+import {
+  isAndroidCloudBuild,
+  isAndroidLauncherBuild,
+} from "../platform/android-runtime";
 import {
   hasIosNativeCloudCredential,
   IosCloudAuthError,
@@ -66,23 +70,20 @@ import {
   revokeIosCloudStagedCredential,
   signInWithIosCloud,
   signOutIosCloud,
-} from "../ios-cloud/ios-cloud-auth";
-import { logger } from "../logger.ts";
-import {
-  isAndroidCloudBuild,
-  isAndroidLauncherBuild,
-} from "../platform/android-runtime";
+} from "../platform/ios-cloud-auth";
 import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
+import { isCloudStatusAuthenticated } from "../utils/cloud-status";
+import {
+  confirmDesktopAction,
+  yieldHttpAfterNativeMessageBox,
+} from "../utils/desktop-dialogs";
+import { isSafeNavigationUrl } from "../utils/navigation-url";
 import {
   closeExternalBrowser,
-  confirmDesktopAction,
-  isCloudStatusAuthenticated,
-  isSafeNavigationUrl,
   listenForExternalBrowserFinished,
   navigatePreOpenedWindow,
   openExternalUrl,
-  yieldHttpAfterNativeMessageBox,
-} from "../utils";
+} from "../utils/openExternalUrl";
 import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import { bindDirectCloudLoginToPersonalAgent } from "./bind-direct-cloud-login";
 import {

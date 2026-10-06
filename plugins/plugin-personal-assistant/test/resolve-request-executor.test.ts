@@ -20,6 +20,7 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
 }));
 
 import { randomUUID } from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type {
   HandlerCallback,
   HandlerOptions,
@@ -28,7 +29,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { parseInteractionBlocks } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RESOURCE_CAPACITY_REVIEW_WORKFLOW_ID } from "../src/lifeops/resource-capacity/types.js";
 import { googleHandoffFixture } from "./helpers/handoff-google.js";
@@ -125,6 +125,7 @@ import {
   __resetDocumentStoreForTests,
   ownerDocumentsAction,
 } from "../src/actions/document.js";
+import { personalAssistantAction } from "../src/actions/owner-surfaces.js";
 import {
   buildResolveRequestChoice,
   executeApprovedRequest,
@@ -138,6 +139,7 @@ import type {
   ApprovalRequestState,
   ApprovalResolution,
 } from "../src/lifeops/approval-queue.types.js";
+import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { attachSchedulingApprovalCorrelation } from "../src/lifeops/scheduling-approval.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
@@ -573,6 +575,9 @@ describe("executeApprovedRequest", () => {
         ...makeRuntime(),
         adapter: { db: {} },
         reportError: vi.fn(),
+        // No owner fact is stored. Pin TIMEZONE so the deadline does not
+        // follow the host zone after resolveOwnerTimeZone.
+        getSetting: (key: string) => (key === "TIMEZONE" ? "UTC" : undefined),
       } as unknown as IAgentRuntime;
       const request = approvedRequest({
         action: "send_email",
@@ -643,6 +648,71 @@ describe("executeApprovedRequest", () => {
       expect(texts.join(" ")).toContain("mira@example.com");
     },
   );
+
+  it("resolves a sent-mail commitment deadline on the owner's civil day", async () => {
+    const cache = new Map<string, unknown>();
+    const runtime = {
+      ...makeRuntime(),
+      adapter: { db: {} },
+      reportError: vi.fn(),
+      // Different from the owner fact, so a mutant that ignores the fact and
+      // reads only TIMEZONE cannot satisfy the Los Angeles assertion.
+      getSetting: (key: string) =>
+        key === "TIMEZONE" ? "Europe/London" : undefined,
+      async getCache<T>(key: string): Promise<T | null> {
+        const value = cache.get(key);
+        return value === undefined ? null : (value as T);
+      },
+      async setCache<T>(key: string, value: T): Promise<boolean> {
+        cache.set(key, value);
+        return true;
+      },
+      async deleteCache(key: string): Promise<boolean> {
+        return cache.delete(key);
+      },
+    } as unknown as IAgentRuntime;
+    await resolveOwnerFactStore(runtime).update(
+      { timezone: "America/Los_Angeles" },
+      { source: "profile_save", recordedAt: "2026-07-01T00:00:00.000Z" },
+    );
+    const request = approvedRequest({
+      action: "send_email",
+      payload: {
+        action: "send_email",
+        to: ["mira@example.com"],
+        cc: [],
+        bcc: [],
+        subject: "Launch deck",
+        body: "I'll send the deck by 2026-07-10 and include the pricing appendix.",
+        threadId: null,
+        replyToMessageId: null,
+      },
+    });
+    vi.spyOn(
+      LifeOpsService.prototype,
+      "requireGoogleGmailSendGrant",
+    ).mockResolvedValue(googleHandoffFixture().grant);
+    vi.spyOn(LifeOpsService.prototype, "sendGmailMessage").mockResolvedValue({
+      ok: true,
+      messageId: "gmail-message-1",
+      threadId: "gmail-thread-1",
+    });
+    const upsertSpy = vi
+      .spyOn(LifeOpsRepository.prototype, "upsertCommitmentLedgerRecord")
+      .mockResolvedValue();
+
+    await executeApprovedRequest({
+      runtime,
+      queue: new RecordingQueue(request),
+      request,
+    });
+
+    // 17:00 on 2026-07-10 in Los Angeles (PDT), not 17:00 UTC.
+    expect(upsertSpy.mock.calls[0]?.[0]).toMatchObject({
+      source: "sent_mail",
+      dueAt: "2026-07-11T00:00:00.000Z",
+    });
+  });
 
   it("refuses altered scheduling content before any connector or queue transition", async () => {
     const runtime = makeRuntime();
@@ -860,6 +930,50 @@ describe("executeApprovedRequest", () => {
       state: "done",
     });
     expect(texts.join(" ")).toContain("Partnership NDA");
+  });
+
+  it("sign_document approval dispatches the DocumentRequest seeded through PERSONAL_ASSISTANT", async () => {
+    const runtime = makeRuntime();
+    const seeded = await personalAssistantAction.handler(
+      runtime,
+      {
+        id: randomUUID() as UUID,
+        entityId: "owner-1" as UUID,
+        roomId: randomUUID() as UUID,
+        content: { text: "Get the partner NDA signed by Friday." },
+      } as Memory,
+      undefined,
+      {
+        parameters: { action: "sign_document", documentName: "Partner NDA" },
+      } as unknown as HandlerOptions,
+      async () => [],
+    );
+    expect(seeded).toMatchObject({ success: true });
+    const enqueued = docMocks.enqueue.mock.calls[0]?.[0];
+    if (!enqueued) throw new Error("sign_document enqueued no approval");
+    const payload = enqueued.payload as ApprovalRequest["payload"];
+    expect(payload).toMatchObject({
+      action: "sign_document",
+      documentName: "Partner NDA",
+    });
+
+    const request = approvedRequest({ action: "sign_document", payload });
+    const queue = new RecordingQueue(request);
+    const { callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(result.success).toBe(true);
+    expect(queue.transitions).toEqual(["executing", "done"]);
+    expect(result.data).toMatchObject({
+      documentStatus: "in_progress",
+      state: "done",
+    });
   });
 
   it("sign_document approval for a vanished DocumentRequest fails honestly and dispatches nothing", async () => {

@@ -77,6 +77,7 @@ test("buildOpenAiRequestBody omits rather than fabricates reasoning_effort", () 
   );
   assert.equal("reasoning_effort" in omitted, false);
   assert.equal(omitted.max_tokens, 512);
+  assert.equal(omitted.temperature, 0);
 
   const disabled = buildOpenAiRequestBody(
     parseProbeCase("zai-glm-4.7@none@512"),
@@ -317,6 +318,8 @@ test("probeOpenAi requires a clean terminal frame and never records prompt text"
   });
   assert.match(requestBody.messages[0].content, /Custom private instruction/);
   assert.match(requestBody.messages[0].content, /proof-clean/);
+  assert.equal(requestBody.temperature, 0);
+  assert.equal(result.temperature, requestBody.temperature);
   assert.match(requestTraceId, /^[0-9a-f]{32}$/);
   assert.equal(result.traceId, requestTraceId);
   const serialized = JSON.stringify(result);

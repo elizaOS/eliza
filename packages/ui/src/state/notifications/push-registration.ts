@@ -26,6 +26,7 @@
  * does not double-register.
  */
 
+import type { NotificationCategory } from "@elizaos/core";
 import { client, ElizaClient } from "../../api/client";
 import {
   getPushNotificationsPlugin,
@@ -40,7 +41,10 @@ import {
   getFrontendPlatform,
 } from "../../platform/platform-guards";
 import { loadAgentProfileRegistry } from "../agent-profiles";
-import { navigateDeepLink } from "./navigate-deep-link";
+import {
+  navigateDeepLink,
+  readNotificationChatTarget,
+} from "./navigate-deep-link";
 
 /**
  * Injectable boundaries. The Capacitor push plugin, the platform detector, the
@@ -55,9 +59,10 @@ export interface PushRegistrationDeps {
   registerToken: (
     platform: "ios" | "android",
     token: string,
+    reminderDataNotifications?: boolean,
   ) => Promise<unknown>;
   unregisterToken: (token: string) => Promise<unknown>;
-  navigate: (deepLink: string) => void;
+  navigate: (deepLink: string, data?: unknown) => void;
   captureAuthority?: () => PushRegistrationAuthority;
   sleep?: (delayMs: number) => Promise<void>;
 }
@@ -75,8 +80,8 @@ function captureClientAuthority(): PushRegistrationAuthority {
   const authorityClient = new ElizaClient(baseUrl, token ?? undefined);
   return {
     key: `${profileId}\u0000${baseUrl}\u0000${token ?? ""}`,
-    registerToken: (platform, value) =>
-      authorityClient.registerPushToken(platform, value),
+    registerToken: (platform, value, capability) =>
+      authorityClient.registerPushToken(platform, value, capability),
     unregisterToken: (value) => authorityClient.unregisterPushToken(value),
   };
 }
@@ -85,7 +90,8 @@ const defaultDeps: PushRegistrationDeps = {
   getPlatform: getFrontendPlatform,
   isRemotePushEnabled: isRemotePushTransportEnabled,
   getPlugin: getPushNotificationsPlugin,
-  registerToken: (platform, token) => client.registerPushToken(platform, token),
+  registerToken: (platform, token, capability) =>
+    client.registerPushToken(platform, token, capability),
   unregisterToken: (token) => client.unregisterPushToken(token),
   navigate: navigateDeepLink,
   captureAuthority: captureClientAuthority,
@@ -102,8 +108,15 @@ let activeAuthorityKey: string | null = null;
 let authorityEpoch = 0;
 let authorityTransition: Promise<void> = Promise.resolve();
 let registrationTransition: Promise<void> = Promise.resolve();
+let registrationOutcome: Promise<void> | null = null;
+let settleRegistrationOutcome: (() => void) | null = null;
 interface RegisteredPushToken {
   value: string;
+  platform?: "ios" | "android";
+  deliveryEnabled?: boolean;
+  reminderDataNotifications?: boolean;
+  epoch?: number;
+  captureAuthority?: PushRegistrationDeps["captureAuthority"];
   authorityKey: string;
   unregister: PushRegistrationDeps["unregisterToken"];
   sleep?: PushRegistrationDeps["sleep"];
@@ -210,6 +223,21 @@ async function onRegistration(
   ) {
     return;
   }
+  let reminderDataNotifications = false;
+  if (platform === "android") {
+    const plugin = deps.getPlugin();
+    try {
+      const capabilities = await plugin.getReminderDataCapabilities?.();
+      reminderDataNotifications =
+        capabilities?.reminderDataNotifications === true;
+    } catch (error) {
+      // error-policy:J4 older native plugins reject unknown methods; retain legacy push.
+      logger.debug(
+        { src: "push-registration", error },
+        "[push-registration] reminder data receiver unavailable",
+      );
+    }
+  }
   let lastError: unknown;
   for (const delayMs of TOKEN_POST_RETRY_DELAYS_MS) {
     if (epoch !== authorityEpoch || authority.key !== activeAuthorityKey)
@@ -217,8 +245,11 @@ async function onRegistration(
     if (delayMs > 0) {
       await (deps.sleep ?? defaultDeps.sleep)?.(delayMs);
     }
+    let registration: unknown;
     try {
-      await authority.registerToken(platform, value);
+      registration = reminderDataNotifications
+        ? await authority.registerToken(platform, value, true)
+        : await authority.registerToken(platform, value);
     } catch (error) {
       lastError = error;
       continue;
@@ -236,6 +267,15 @@ async function onRegistration(
     const previous = registeredToken;
     registeredToken = {
       value,
+      platform,
+      reminderDataNotifications,
+      deliveryEnabled:
+        typeof registration === "object" &&
+        registration !== null &&
+        "deliveryEnabled" in registration &&
+        registration.deliveryEnabled === true,
+      epoch,
+      captureAuthority: deps.captureAuthority,
       authorityKey: authority.key,
       unregister: authority.unregisterToken,
       sleep: deps.sleep,
@@ -262,6 +302,7 @@ function enqueueRegistration(
   platform: "ios" | "android",
   token: PushRegistrationToken,
 ): void {
+  const settle = settleRegistrationOutcome;
   registrationTransition = registrationTransition
     .then(() => onRegistration(deps, platform, token))
     .catch((error: unknown) => {
@@ -271,6 +312,11 @@ function enqueueRegistration(
         { src: "push-registration", platform, error },
         "[push-registration] failed to register device push token",
       );
+    })
+    .finally(() => {
+      settle?.();
+      if (settleRegistrationOutcome === settle)
+        settleRegistrationOutcome = null;
     });
 }
 
@@ -289,6 +335,8 @@ export async function initPushRegistration(
     })
     .catch((error: unknown) => {
       startPromise = null;
+      settleRegistrationOutcome?.();
+      settleRegistrationOutcome = null;
       throw error;
     });
   await startPromise;
@@ -318,6 +366,9 @@ async function startPushRegistration(
     if (status.receive !== "granted") return false;
   }
 
+  registrationOutcome = new Promise((resolve) => {
+    settleRegistrationOutcome = resolve;
+  });
   await ensurePushListeners(deps, plugin, platform);
 
   await plugin.register();
@@ -352,6 +403,9 @@ async function addPushListeners(
   });
 
   await addListener("registrationError", (error: PushRegistrationError) => {
+    if (registeredToken) registeredToken.deliveryEnabled = false;
+    settleRegistrationOutcome?.();
+    settleRegistrationOutcome = null;
     logger.error(
       { src: "push-registration", platform, error: error.error },
       "[push-registration] OS push registration failed",
@@ -362,8 +416,40 @@ async function addPushListeners(
     "pushNotificationActionPerformed",
     (action: PushActionPerformed) => {
       const deepLink = deepLinkFromAction(action);
-      if (deepLink) deps.navigate(deepLink);
+      if (deepLink) {
+        if (readNotificationChatTarget(action.notification.data) === undefined)
+          deps.navigate(deepLink);
+        else deps.navigate(deepLink, action.notification.data);
+      }
     },
+  );
+}
+
+/** Whether the current Android push path owns this category's OS presentation. */
+export async function hasAndroidPushDelivery(
+  category: NotificationCategory,
+): Promise<boolean> {
+  try {
+    await initPushRegistration();
+    await registrationOutcome;
+    await registrationTransition;
+  } catch (error) {
+    // error-policy:J4 registration/provider failure keeps renderer fallback.
+    logger.warn({ error }, "[push-registration] Android push unavailable");
+  }
+  return (
+    registeredToken?.platform === "android" &&
+    registeredToken.deliveryEnabled === true &&
+    // Stock FCM notification payloads display in the background. Foreground
+    // presentation is owned only by our negotiated native reminder receiver.
+    ((typeof document !== "undefined" &&
+      document.visibilityState === "hidden") ||
+      (category === "reminder" &&
+        registeredToken.reminderDataNotifications === true)) &&
+    registeredToken.epoch === authorityEpoch &&
+    registeredToken.authorityKey === activeAuthorityKey &&
+    registeredToken.authorityKey ===
+      (registeredToken.captureAuthority?.() ?? { key: "default" }).key
   );
 }
 
@@ -391,6 +477,8 @@ export function refreshPushRegistrationAuthority(
     return authorityTransition;
   }
   authorityEpoch += 1;
+  settleRegistrationOutcome?.();
+  settleRegistrationOutcome = null;
   const performTransition = async () => {
     const nextAuthorityKey = (deps.captureAuthority?.() ?? { key: "default" })
       .key;
@@ -424,6 +512,9 @@ export function __resetPushRegistrationForTests(): void {
   authorityEpoch = 0;
   authorityTransition = Promise.resolve();
   registrationTransition = Promise.resolve();
+  settleRegistrationOutcome?.();
+  settleRegistrationOutcome = null;
+  registrationOutcome = null;
   registeredToken = null;
   pendingRevocations = [];
 }

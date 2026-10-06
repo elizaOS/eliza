@@ -1,4 +1,4 @@
-import type { RouteHandlerResult } from "@elizaos/core";
+import type { RouteHandlerResult } from "@elizaos/host/protocol";
 import {
   buildLegacyShim,
   capturedToResult,
@@ -22,6 +22,7 @@ export function registerInProcessApi(
 export async function dispatchApiRoute(
   args: DispatchRouteArgs,
 ): Promise<RouteHandlerResult> {
+  args.signal?.throwIfAborted();
   if (!args.inProcess || !args.isAuthorized()) {
     return { status: 401, body: { error: "Unauthorized" } };
   }
@@ -45,13 +46,22 @@ export async function dispatchApiRoute(
     params: {},
     body: args.body,
   });
+  const abort = () => {
+    req.emit("aborted");
+    res.destroy();
+  };
+  args.signal?.addEventListener("abort", abort, { once: true });
   try {
+    args.signal?.throwIfAborted();
     markAuthenticatedInProcessRequest(req);
     await kernel.handle(req, res);
+    args.signal?.throwIfAborted();
+    if (captured.failure) throw captured.failure;
     if (!captured.ended)
       throw new Error("Local API handler did not finish its response");
     return capturedToResult(captured);
   } finally {
+    args.signal?.removeEventListener("abort", abort);
     req.destroy();
     req.socket.destroy();
   }

@@ -1,7 +1,7 @@
 /**
  * Prepares the autonomy service and its private world, room, and entity during
  * desktop runtime startup. The runtime host supplies policy; this module owns
- * the persistence compatibility needed across supported runtime adapters.
+ * its persisted bootstrap context.
  */
 
 import {
@@ -24,55 +24,6 @@ type AutonomyServiceLike = {
   enableAutonomy(): Promise<void>;
 };
 
-interface EntityLike {
-  id: string;
-  agentId?: string;
-  names?: string[];
-  metadata?: Record<string, unknown>;
-}
-
-interface RuntimeAutonomyCompat {
-  getEntityById(id: string): Promise<EntityLike | null>;
-  createEntity(entity: {
-    id: string;
-    names: string[];
-    agentId: string;
-    metadata?: Record<string, unknown>;
-  }): Promise<boolean>;
-  updateEntity?: (entity: EntityLike & { agentId: string }) => Promise<boolean>;
-  ensureWorldExists(world: {
-    id: string;
-    name: string;
-    agentId: string;
-    messageServerId?: string;
-    metadata?: Record<string, unknown>;
-  }): Promise<unknown>;
-  ensureRoomExists(room: {
-    id: string;
-    name: string;
-    worldId: string;
-    source: string;
-    type: ChannelType;
-    metadata?: Record<string, unknown>;
-  }): Promise<unknown>;
-  ensureParticipantInRoom?: (
-    entityId: string,
-    roomId: string,
-  ) => Promise<unknown>;
-  addParticipant?: (entityId: string, roomId: string) => Promise<unknown>;
-}
-
-interface RuntimeAdapterAutonomyCompat {
-  upsertEntities?: (
-    entities: Array<{
-      id: string;
-      names: string[];
-      agentId: string;
-      metadata?: Record<string, unknown>;
-    }>,
-  ) => Promise<unknown>;
-}
-
 function isAutonomyService(value: unknown): value is AutonomyServiceLike {
   return (
     typeof value === "object" &&
@@ -83,10 +34,7 @@ function isAutonomyService(value: unknown): value is AutonomyServiceLike {
 }
 
 function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
-  // Older autonomy plugins registered a lowercase service type. Keep this
-  // lookup until those independently versioned plugins reach the typed key.
-  const service =
-    runtime.getService(AUTONOMY_SERVICE_TYPE) ?? runtime.getService("autonomy");
+  const service = runtime.getService(AUTONOMY_SERVICE_TYPE);
   return isAutonomyService(service) ? service : null;
 }
 
@@ -101,11 +49,9 @@ async function startAndRegisterAutonomyService(
 async function ensureAutonomyBootstrapContext(
   runtime: AgentRuntime,
 ): Promise<void> {
-  const compatibleRuntime = runtime as AgentRuntime & RuntimeAutonomyCompat;
-  const adapter = runtime.adapter as RuntimeAdapterAutonomyCompat | undefined;
   const autonomousRoomId = stringToUuid(`autonomy-room-${runtime.agentId}`);
 
-  await compatibleRuntime.ensureWorldExists({
+  await runtime.ensureWorldExists({
     id: AUTONOMY_WORLD_ID,
     name: "Autonomy World",
     agentId: runtime.agentId,
@@ -115,7 +61,7 @@ async function ensureAutonomyBootstrapContext(
       description: "World for autonomous agent thinking",
     },
   });
-  await compatibleRuntime.ensureRoomExists({
+  await runtime.ensureRoomExists({
     id: autonomousRoomId,
     name: "Autonomous Thoughts",
     worldId: AUTONOMY_WORLD_ID,
@@ -137,53 +83,18 @@ async function ensureAutonomyBootstrapContext(
     },
   };
   const existingEntity =
-    (await compatibleRuntime.getEntityById(AUTONOMY_ENTITY_ID)) ?? null;
+    (await runtime.getEntityById(AUTONOMY_ENTITY_ID)) ?? null;
 
   if (!existingEntity) {
-    const created = await compatibleRuntime.createEntity(autonomyEntity);
-    if (!created && adapter?.upsertEntities) {
-      await adapter.upsertEntities([autonomyEntity]);
+    if (!(await runtime.createEntity(autonomyEntity))) {
+      await runtime.upsertEntities([autonomyEntity]);
     }
   } else if (existingEntity.agentId !== runtime.agentId) {
-    if (compatibleRuntime.updateEntity) {
-      await compatibleRuntime.updateEntity({
-        ...existingEntity,
-        agentId: runtime.agentId,
-      });
-    } else if (adapter?.upsertEntities) {
-      await adapter.upsertEntities([
-        {
-          id: existingEntity.id ?? AUTONOMY_ENTITY_ID,
-          names:
-            existingEntity.names && existingEntity.names.length > 0
-              ? existingEntity.names
-              : autonomyEntity.names,
-          agentId: runtime.agentId,
-          metadata: {
-            ...autonomyEntity.metadata,
-            ...(existingEntity.metadata ?? {}),
-          },
-        },
-      ]);
-    }
+    await runtime.updateEntity({ ...existingEntity, agentId: runtime.agentId });
   }
 
-  if (compatibleRuntime.ensureParticipantInRoom) {
-    await compatibleRuntime.ensureParticipantInRoom(
-      runtime.agentId,
-      autonomousRoomId,
-    );
-    await compatibleRuntime.ensureParticipantInRoom(
-      AUTONOMY_ENTITY_ID,
-      autonomousRoomId,
-    );
-  } else if (compatibleRuntime.addParticipant) {
-    await compatibleRuntime.addParticipant(runtime.agentId, autonomousRoomId);
-    await compatibleRuntime.addParticipant(
-      AUTONOMY_ENTITY_ID,
-      autonomousRoomId,
-    );
-  }
+  await runtime.ensureParticipantInRoom(runtime.agentId, autonomousRoomId);
+  await runtime.ensureParticipantInRoom(AUTONOMY_ENTITY_ID, autonomousRoomId);
 }
 
 /** Starts the autonomy service and optionally enables its continuous loop. */

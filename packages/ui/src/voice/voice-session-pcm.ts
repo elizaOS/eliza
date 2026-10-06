@@ -81,23 +81,13 @@ export function int16BytesToFloatPcm(bytes: Uint8Array): Float32Array {
   return out;
 }
 
-/**
- * Downmix an interleaved/planar set of channel Float32 buffers to mono by
- * averaging. Web Audio worklet inputs arrive as an array of per-channel
- * Float32Arrays; the mic path requests a mono constraint but a device can
- * still hand back stereo, so we average defensively.
- */
-export function downmixChannelsToMono(channels: Float32Array[]): Float32Array {
-  if (channels.length === 0) return new Float32Array(0);
-  if (channels.length === 1) return channels[0];
-  const frames = channels[0].length;
-  const out = new Float32Array(frames);
-  for (let i = 0; i < frames; i += 1) {
-    let sum = 0;
-    for (let ch = 0; ch < channels.length; ch += 1) {
-      sum += channels[ch][i] ?? 0;
-    }
-    out[i] = sum / channels.length;
+export function concatPcm(chunks: Float32Array[]): Float32Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const out = new Float32Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
   }
   return out;
 }

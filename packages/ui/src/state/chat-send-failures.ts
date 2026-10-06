@@ -4,7 +4,7 @@
  * entry point use the same user-visible notice and persistence check.
  */
 
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 
 const VALIDATION_FAILURE_STATUSES: ReadonlySet<number> = new Set([
   400, 413, 415, 422,

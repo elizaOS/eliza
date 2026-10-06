@@ -27,8 +27,8 @@
  * asserted here is create → fetch-by-id rather than create → list.
  */
 
+import { req } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { req } from "../helpers/http.ts";
 import {
   type RuntimeHarness,
   startLiveRuntimeServer,

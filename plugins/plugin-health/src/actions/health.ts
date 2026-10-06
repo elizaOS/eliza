@@ -8,7 +8,15 @@
  * `resolveTimeZone` adapter returns (the owner's configured zone, or the
  * process zone), because HealthKit and connector day keys are device-local
  * days and the UTC day is already tomorrow or still yesterday for most owners.
+ * An adapter that throws `CalendarTimeZoneError` (invalid or unreadable owner
+ * zone) gets a visible failure reply rather than another zone's day.
  */
+
+import {
+  CALENDAR_TIME_ZONE_INVALID,
+  CalendarTimeZoneError,
+  normalizeTimeZone,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionParameter,
@@ -24,7 +32,6 @@ import type {
 import {
   applyGroundedActionReply,
   ModelType,
-  normalizeTimeZone,
   resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/health.js";
@@ -79,12 +86,18 @@ export interface HealthActionService {
     days: number,
     window: { timeZone: string },
   ): Promise<HealthDailySummary[]>;
-  getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]>;
-  getHealthDailySummary(date: string): Promise<HealthDailySummary>;
+  getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]>;
+  getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary>;
 }
 
 export interface HealthActionRunJsonModelArgs {
@@ -537,7 +550,23 @@ export function createHealthActionRunner(
       }
     }
     const service = adapters.createService(runtime);
-    const timeZone = normalizeTimeZone(await adapters.resolveTimeZone(runtime));
+    let timeZone: string;
+    try {
+      timeZone = normalizeTimeZone(await adapters.resolveTimeZone(runtime));
+    } catch (error) {
+      if (!(error instanceof CalendarTimeZoneError)) throw error;
+      // error-policy:J4 the owner's zone is unreadable or invalid; a summary
+      // for another zone's day would be a wrong answer reported as success.
+      return respond({
+        success: false,
+        scenario: "health_time_zone_unavailable",
+        fallback:
+          error.code === CALENDAR_TIME_ZONE_INVALID
+            ? "I can't tell which day is today for you: your saved time zone isn't valid. Tell me your time zone and I'll check your health data."
+            : "I can't read your time zone right now, so I can't tell which day is today for you. Please try again shortly.",
+        data: { error: error.code },
+      });
+    }
 
     const connectorStatus = await service.getHealthConnectorStatus();
     let healthSummary: LifeOpsHealthSummaryResponse | null = null;
@@ -734,11 +763,10 @@ export function createHealthActionRunner(
       const startAt = new Date(
         Date.now() - days * 24 * 60 * 60 * 1000,
       ).toISOString();
-      const points = await service.getHealthDataPoints({
-        metric,
-        startAt,
-        endAt,
-      });
+      const points = await service.getHealthDataPoints(
+        { metric, startAt, endAt },
+        { timeZone },
+      );
       const total = points.reduce((acc, p) => acc + p.value, 0);
       const firstPoint = points[0];
       if (!firstPoint) {
@@ -775,7 +803,7 @@ export function createHealthActionRunner(
     }
 
     const date = params.date ?? localTodayKey(timeZone);
-    const summary = await service.getHealthDailySummary(date);
+    const summary = await service.getHealthDailySummary(date, { timeZone });
     const fallback = `Health summary for ${formatSummary(summary)}`;
     return respond({
       success: true,

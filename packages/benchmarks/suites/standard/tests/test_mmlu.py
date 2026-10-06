@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.standard._base import MockClient
-from benchmarks.standard._cli import main_entry
-from benchmarks.standard.mmlu import (
+from benchmarks.suites.standard._base import MockClient
+from benchmarks.suites.standard._cli import main_entry
+from benchmarks.suites.standard.mmlu import (
     BENCHMARK_ID,
     DEFAULT_MAX_TOKENS,
     SMOKE_FIXTURES,

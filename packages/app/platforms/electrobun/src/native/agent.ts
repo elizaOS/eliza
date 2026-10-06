@@ -26,13 +26,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core/protocol";
 import {
 	resolveApiToken,
 	resolveDesktopApiPort,
 	resolveDisableAutoApiToken,
 	setApiToken,
-} from "@elizaos/core/runtime-env";
+} from "@elizaos/host/protocol";
 import {
 	applyDevCloudAuthoritySnapshotToEnv,
 	captureDevCloudEnvAuthoritySnapshot,
@@ -954,11 +954,6 @@ export function resolveRuntimeDistPath(opts?: {
 		const runtimeDist = joinPortable(dir, distDir);
 		if (fs.existsSync(runtimeDist)) {
 			return runtimeDist;
-		}
-		// Legacy eliza-dist sibling (existing packaged builds)
-		const legacyDist = joinPortable(dir, "eliza-dist");
-		if (fs.existsSync(legacyDist)) {
-			return legacyDist;
 		}
 		// Dev monorepo: dist/ sibling containing the canonical CLI entrypoint
 		const devDist = joinPortable(dir, "dist");

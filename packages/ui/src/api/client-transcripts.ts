@@ -13,7 +13,7 @@ import type {
   TranscriptSegment,
   TranscriptSource,
   TranscriptSummary,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import { ElizaClient } from "./client-base";
 /** Body the recording pipeline POSTs to create a transcript record. The
  *  world/room/entity ids are optional — the server derives them from the agent
@@ -57,7 +57,7 @@ export interface TranscriptRevokeShareResult {
 export interface TranscriptPrivacyUpdateInput {
   sharing: Partial<TranscriptCaptureSharingState>;
 }
-declare module "./client-base" {
+declare module "./client-base.js" {
   interface ElizaClient {
     listTranscripts(roomId?: string): Promise<{
       transcripts: TranscriptSummary[];

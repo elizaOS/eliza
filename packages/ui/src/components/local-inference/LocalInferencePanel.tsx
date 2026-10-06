@@ -5,10 +5,6 @@
  * and falls back to authenticated API snapshots when streaming is unavailable.
  */
 
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
-import type { VoiceModelId } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../../api";
 import type {
   ActiveModelState,
   CatalogModel,
@@ -16,15 +12,19 @@ import type {
   HardwareProbe,
   InstalledModel,
   ModelHubSnapshot,
-} from "../../api/client-local-inference";
-import { isApiError } from "../../api/client-types-core";
-import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { useRole } from "../../hooks/useRole";
+} from "@elizaos/contracts";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import {
   filterSettingsDefaultLocalModels,
   isSettingsDefaultLocalModel,
-} from "../../services/local-inference/catalog-policy";
-import { useAppSelectorShallow } from "../../state";
+} from "@elizaos/plugin-native-inference/model-catalog/catalog";
+import type { VoiceModelId } from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { client } from "../../api/client";
+import { isApiError } from "../../api/client-types-core";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useRole } from "../../hooks/useRole";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import { openEventSource } from "../../utils/event-source";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
@@ -39,11 +39,11 @@ import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { findInstalled } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
-import {
-  ModelUpdatesPanel,
-  type VoiceModelInstallationView,
-  type VoiceUpdatePreferencesView,
+import type {
+  VoiceModelInstallationView,
+  VoiceUpdatePreferencesView,
 } from "./ModelUpdatesPanel";
+import { ModelUpdatesPanel } from "./ModelUpdatesPanel";
 import { useDeviceBridgeStatus } from "./useDeviceBridgeStatus";
 
 type HubTab = "curated" | "downloads";

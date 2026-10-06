@@ -13,7 +13,7 @@ import { collectPluginNames } from "@elizaos/agent/runtime/plugin-collector";
 import type { Plugin } from "@elizaos/core";
 import { calendarPlugin } from "@elizaos/plugin-calendar";
 import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { personalAssistantPlugin } from "./index";
 

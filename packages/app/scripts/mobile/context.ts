@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   loadAospVariantConfig,
   resolveAppConfigPath,
-} from "../aosp/lib/load-variant-config.ts";
+} from "../aosp/load-variant-config.ts";
 import { resolveMainAppDir } from "../lib/app-dir.ts";
 import { androidUsesAppDirFor } from "../lib/mobile-build-decisions.ts";
 import { resolveRepoRootFromImportMeta } from "../lib/repo-root.ts";

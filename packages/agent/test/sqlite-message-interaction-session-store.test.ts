@@ -7,7 +7,7 @@ import {
   encodeMessageInteractionCallback,
   type MessageInteractionSession,
   MessageInteractionSessionAuthority,
-} from "@elizaos/core/messaging/interactions/sessions";
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { SqliteMessageInteractionSessionStore } from "../src/services/sqlite-message-interaction-session-store.ts";
 

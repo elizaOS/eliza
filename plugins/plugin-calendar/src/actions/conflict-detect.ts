@@ -7,6 +7,12 @@
  * not reimplement overlap, privacy, or source-health semantics.
  */
 
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarSourceHealth,
+  SELF_ENTITY_ID,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -17,12 +23,6 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
-  type LifeOpsCalendarSourceHealth,
-} from "@elizaos/core/contracts/calendar";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { calendarAvailabilityKindFromMetadata } from "../internal/availability-metadata.js";
 import { resolveDefaultTimeZone } from "../internal/constants.js";
 import { CalendarServiceError } from "../internal/errors.js";

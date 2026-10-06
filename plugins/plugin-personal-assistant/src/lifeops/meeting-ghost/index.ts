@@ -25,8 +25,8 @@
  * can see.
  */
 
-import { normalizeTimeZone } from "@elizaos/core/lifeops-normalize/time-zone";
-import type { TranscriptSegment } from "@elizaos/core/transcripts";
+import { normalizeTimeZone } from "@elizaos/contracts";
+import type { TranscriptSegment } from "@elizaos/core/protocol";
 import type {
   ApprovalEnqueueInput,
   ApprovalPayload,

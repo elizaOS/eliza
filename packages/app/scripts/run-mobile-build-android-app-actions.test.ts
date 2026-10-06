@@ -1,4 +1,3 @@
-/** Exercises run mobile build android app actions behavior with deterministic app test fixtures. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";

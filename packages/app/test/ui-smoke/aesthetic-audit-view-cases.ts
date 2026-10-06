@@ -27,7 +27,6 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   trajectories: "/apps/trajectories",
   transcripts: "/apps/transcripts",
   memories: "/apps/memories",
-  rolodex: "/apps/relationships",
   runtime: "/apps/runtime",
   database: "/apps/database",
   desktop: "/desktop",
