@@ -136,7 +136,14 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
   shouldRun: ({ messageHandler }) =>
     messageHandler.processMessage === "RESPOND" &&
     !messageHandler.plan.deterministicToolCall,
-  async evaluate({ runtime, message, state, userRoles, messageHandler }) {
+  async evaluate({
+    runtime,
+    message,
+    state,
+    userRoles,
+    messageHandler,
+    invalidatedScopeFields,
+  }) {
     const staged = decisions.get(message);
     decisions.delete(message);
     getStreamingContext()?.abortSignal?.throwIfAborted();
@@ -180,6 +187,9 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       });
       return;
     }
+    // The earlier admitted whole-request route may invalidate a staged model
+    // navigation interpretation. Preserve none/forbidden constraints above.
+    if (invalidatedScopeFields?.has("visualContinuation")) return;
     const plan = messageHandler.plan;
     if (
       (value.disposition !== "direct" &&

@@ -343,7 +343,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
             requiresTool: true,
             replaceIntentScope: {
               intents: [text],
-              invalidateBindings: wholeOwner.wholeRequest.invalidateBindings,
+              invalidateFields: wholeOwner.wholeRequest.invalidateFields,
             },
             setContexts: mergeAgentContexts(wholeOwner.contexts),
             clearCandidateActions: true,

@@ -32,12 +32,12 @@ export interface DirectActionRoutingRule {
 	/**
 	 * Optional, stricter ownership of the complete original request. Only an
 	 * admitted, unambiguous owner may replace model-derived intent scope. The
-	 * broad matches() route remains additive for other requests. Binding fields
-	 * name plugin-derived plan extensions invalidated with the old intents.
+	 * broad matches() route remains additive for other requests. Named fields are
+	 * inferred operation-scope extensions, never core or original source data.
 	 */
 	readonly wholeRequest?: {
 		matches(messageText: string, message?: Memory): boolean;
-		readonly invalidateBindings: readonly `${string}Bindings`[];
+		readonly invalidateFields: readonly string[];
 	};
 	/**
 	 * Fail-closed reply used when this exact intent is owned by the rule but no
