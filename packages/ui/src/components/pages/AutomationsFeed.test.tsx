@@ -29,6 +29,8 @@ const SECOND_AGENT_BASE =
   "https://api.elizacloud.ai/api/v1/eliza/agents/9b0deccb-a884-4149-b91d-328004ac108d";
 
 const clientMock = vi.hoisted(() => ({
+  getAuthorityRevision: () => 0,
+  onAuthorityChange: () => () => {},
   getBaseUrl() {
     return this.baseUrl;
   },
