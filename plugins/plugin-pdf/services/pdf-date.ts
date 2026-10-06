@@ -31,26 +31,6 @@ function matchesUtcWallClock(
   );
 }
 
-function matchesLocalWallClock(
-  date: Date,
-  year: number,
-  monthIndex: number,
-  day: number,
-  hour: number,
-  minute: number,
-  second: number
-): boolean {
-  return (
-    Number.isFinite(date.getTime()) &&
-    date.getFullYear() === year &&
-    date.getMonth() === monthIndex &&
-    date.getDate() === day &&
-    date.getHours() === hour &&
-    date.getMinutes() === minute &&
-    date.getSeconds() === second
-  );
-}
-
 /**
  * Parses the PDF-spec `D:` date string into a {@link Date}. When the string
  * carries a UT relation (`Z`, `+`, or `-`) the declared offset is applied so the
@@ -84,16 +64,6 @@ export function parsePdfSpecDate(value: string): Date | undefined {
   const second = clampInt(matches[6], 0, 59, 0);
   const relation = matches[7];
 
-  if (relation === undefined) {
-    const localDate = new Date(0);
-    localDate.setFullYear(year, monthIndex, day);
-    localDate.setHours(hour, minute, second, 0);
-    if (!matchesLocalWallClock(localDate, year, monthIndex, day, hour, minute, second)) {
-      return undefined;
-    }
-    return localDate;
-  }
-
   // Validate the declared wall-clock before applying any UT offset. Offset
   // math must not be what invents a day — February 30 would otherwise become
   // March 1 (or March 1 minus the offset) and surface as a real document date.
@@ -102,6 +72,15 @@ export function parsePdfSpecDate(value: string): Date | undefined {
   wall.setUTCHours(hour, minute, second, 0);
   if (!matchesUtcWallClock(wall, year, monthIndex, day, hour, minute, second)) {
     return undefined;
+  }
+
+  if (relation === undefined) {
+    // Calendar validity was checked independently of the host zone. Preserve
+    // Date's existing normalization through local daylight-saving gaps.
+    const localDate = new Date(0);
+    localDate.setFullYear(year, monthIndex, day);
+    localDate.setHours(hour, minute, second, 0);
+    return localDate;
   }
 
   if (relation === "Z") {
