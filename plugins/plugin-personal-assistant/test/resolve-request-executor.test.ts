@@ -645,6 +645,53 @@ describe("executeApprovedRequest", () => {
     },
   );
 
+  it("resolves a sent-mail commitment deadline on the owner's civil day", async () => {
+    const runtime = {
+      ...makeRuntime(),
+      adapter: { db: {} },
+      reportError: vi.fn(),
+      getSetting: (key: string) =>
+        key === "TIMEZONE" ? "America/Los_Angeles" : undefined,
+    } as unknown as IAgentRuntime;
+    const request = approvedRequest({
+      action: "send_email",
+      payload: {
+        action: "send_email",
+        to: ["mira@example.com"],
+        cc: [],
+        bcc: [],
+        subject: "Launch deck",
+        body: "I'll send the deck by 2026-07-10 and include the pricing appendix.",
+        threadId: null,
+        replyToMessageId: null,
+      },
+    });
+    vi.spyOn(
+      LifeOpsService.prototype,
+      "requireGoogleGmailSendGrant",
+    ).mockResolvedValue(googleHandoffFixture().grant);
+    vi.spyOn(LifeOpsService.prototype, "sendGmailMessage").mockResolvedValue({
+      ok: true,
+      messageId: "gmail-message-1",
+      threadId: "gmail-thread-1",
+    });
+    const upsertSpy = vi
+      .spyOn(LifeOpsRepository.prototype, "upsertCommitmentLedgerRecord")
+      .mockResolvedValue();
+
+    await executeApprovedRequest({
+      runtime,
+      queue: new RecordingQueue(request),
+      request,
+    });
+
+    // 17:00 on 2026-07-10 in Los Angeles (PDT), not 17:00 UTC.
+    expect(upsertSpy.mock.calls[0]?.[0]).toMatchObject({
+      source: "sent_mail",
+      dueAt: "2026-07-11T00:00:00.000Z",
+    });
+  });
+
   it("refuses altered scheduling content before any connector or queue transition", async () => {
     const runtime = makeRuntime();
     const payload = attachSchedulingApprovalCorrelation(
