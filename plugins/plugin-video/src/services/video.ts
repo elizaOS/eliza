@@ -71,8 +71,8 @@ interface CaptionJson {
 /**
  * Pick the manual subtitle variant `parseSRT` can read. yt-dlp lists YouTube
  * subtitles as json3, srv1-3, ttml, srt, vtt (in that order), so the first
- * usable url is json3, not SRT. Prefer SRT, then WebVTT, then any variant that
- * carries a url (extractors that omit `ext`).
+ * usable url is json3, not SRT. Prefer SRT, then WebVTT, then a URL-bearing
+ * variant without `ext`; known unsupported formats cannot use this parser.
  */
 function manualSubtitleUrl(
   tracks: YtDlpSubtitleTrack[] | undefined,
@@ -82,7 +82,7 @@ function manualSubtitleUrl(
     const track = tracks.find((t) => t?.url && t.ext === ext);
     if (track) return track.url;
   }
-  return tracks.find((t) => t?.url)?.url;
+  return tracks.find((t) => t?.url && !t.ext)?.url;
 }
 
 function loggableError(error: unknown): string {
@@ -601,7 +601,8 @@ export class VideoService extends IVideoService {
       if (manualUrl) {
         elizaLogger.log("Manual subtitles found");
         const srtContent = await this.downloadSRT(manualUrl);
-        return this.parseSRT(srtContent);
+        const transcript = this.parseSRT(srtContent);
+        if (transcript.trim()) return transcript;
       }
 
       // Check for automatic captions (same first-usable-variant scan).
@@ -690,6 +691,10 @@ export class VideoService extends IVideoService {
           .split("\n")
           .map((line) => line.trim())
           .filter((line) => line.length > 0);
+        if (
+          /^(?:NOTE|WEBVTT)(?:[ \t]|$)|^(?:STYLE|REGION)$/.test(lines[0] ?? "")
+        )
+          return "";
         const timing = lines.findIndex((line) => line.includes("-->"));
         return timing === -1 ? "" : lines.slice(timing + 1).join(" ");
       })
