@@ -34,7 +34,23 @@ async function workspace(parent: string, name: string) {
       name: `@elizaos/app-${name}`,
       version: "1.0.0",
       description: name,
-      elizaos: { kind: "app", app: { displayName: name, launchType: "url" } },
+      elizaos: {
+        kind: "app",
+        app: {
+          displayName: name,
+          launchType: "url",
+          ...(name.includes("scope-b")
+            ? {
+                viewer: {
+                  url: "https://example.com/current",
+                  embedParams: { context: "full context 🙂" },
+                },
+              }
+            : {}),
+          session: { mode: "viewer" },
+        },
+        viewer: { url: "https://example.com/retired" },
+      },
     }),
   );
   return root;
@@ -68,12 +84,20 @@ describe("workspace-bound plugin discovery", () => {
       throw new Error("Network disabled in registry isolation test");
     });
     vi.stubEnv("ELIZA_WORKSPACE_ROOT", first);
-    expect((await getRegistryPlugins()).has("@elizaos/app-scope-a-probe")).toBe(
-      true,
-    );
+    const originalCatalog = await getRegistryPlugins();
+    expect(originalCatalog.has("@elizaos/app-scope-a-probe")).toBe(true);
+    expect(
+      originalCatalog.get("@elizaos/app-scope-a-probe")?.appMeta?.viewer,
+    ).toBeUndefined();
     vi.stubEnv("ELIZA_WORKSPACE_ROOT", second);
     const switched = await getRegistryPlugins();
     expect(switched.has("@elizaos/app-scope-b-probe")).toBe(true);
+    expect(switched.get("@elizaos/app-scope-b-probe")?.appMeta?.viewer).toEqual(
+      {
+        url: "https://example.com/current",
+        embedParams: { context: "full context 🙂" },
+      },
+    );
     expect(switched.has("@elizaos/app-scope-a-probe")).toBe(false);
     vi.stubEnv("ELIZA_WORKSPACE_ROOT", first);
     const restored = await getRegistryPlugins();
@@ -178,4 +202,36 @@ it("does not let delayed refresh cleanup invalidate a newer workspace snapshot",
   await oldRefresh;
   expect(current.has("@elizaos/app-refresh-second-probe")).toBe(true);
   expect(await getRegistryPlugins()).toBe(current);
+});
+
+it("uses the project registry across selection migration and bookmark revocation", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "eliza-project-selection-"));
+  roots.push(root);
+  const env = { ELIZA_STATE_DIR: root };
+  vi.stubEnv("ELIZA_STATE_DIR", root);
+  const { selectProjectFolder, revokeProjectBookmark } = await import(
+    "@elizaos/host"
+  );
+  const { resolveDefaultAgentWorkspaceDir } = await import(
+    "../src/shared/workspace-resolution.ts"
+  );
+  const original = path.join(root, "original");
+  const source = path.join(root, "workspace-folder.json");
+  await writeFile(
+    source,
+    JSON.stringify({
+      path: original,
+      bookmark: "original-bookmark",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }),
+  );
+  expect(resolveDefaultAgentWorkspaceDir(env)).toBe(original);
+  await expect(fs.stat(source)).rejects.toMatchObject({ code: "ENOENT" });
+  const selected = path.join(root, "selected");
+  selectProjectFolder(selected, "selected-bookmark", env);
+  expect(resolveDefaultAgentWorkspaceDir(env)).toBe(selected);
+  revokeProjectBookmark("selected-bookmark", env);
+  expect(resolveDefaultAgentWorkspaceDir(env)).toBe(
+    path.join(root, "workspace"),
+  );
 });

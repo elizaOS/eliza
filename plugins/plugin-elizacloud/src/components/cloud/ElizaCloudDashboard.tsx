@@ -18,28 +18,14 @@ import {
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import {
-  type CloudBillingCheckoutResponse,
-  type CloudBillingSettings,
-  type CloudBillingSummary,
-  client,
-  isRateLimitedError,
-} from "@elizaos/ui/api";
-import { useBranding } from "@elizaos/ui/config/branding";
-import { isElizaCloudRuntimeLocked } from "@elizaos/ui/first-run/mobile-runtime-mode";
-import { useAppSelectorShallow } from "@elizaos/ui/state";
-import { claimCloudLoginWindow } from "@elizaos/ui/state/cloud-login-launch";
-import { openExternalUrl } from "@elizaos/ui/utils";
-import { StripeEmbeddedCheckout } from "@elizaos/ui/components/cloud/StripeEmbeddedCheckout";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Switch,
-} from "@elizaos/ui/components";
+import { type CloudBillingCheckoutResponse, type CloudBillingSettings, type CloudBillingSummary, client, isRateLimitedError, useBranding, isElizaCloudRuntimeLocked, useAppSelectorShallow, claimCloudLoginWindow, openExternalUrl, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Switch } from "@elizaos/ui";
+
+
+
+
+
+import { StripeEmbeddedCheckout } from "./StripeEmbeddedCheckout";
+
 import {
   autoTopUpFormReducer,
   BILLING_PRESET_AMOUNTS,

@@ -37,7 +37,7 @@ it("builds Messages with browser contracts and no server async context", () => {
     expect(result.error, result.stderr).toBeUndefined();
     expect(result.status, result.stderr).toBe(0);
     const bundle = readFileSync(path.join(output, "bundle.js"), "utf8");
-    expect(bundle).toContain('from "@elizaos/core/errors"');
+    expect(bundle).toContain('from "@elizaos/core/protocol"');
     expect(bundle).toContain("MessagesView");
     expect(bundle).toContain("interact");
     expect(bundle).not.toMatch(

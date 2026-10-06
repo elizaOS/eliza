@@ -141,7 +141,7 @@ mock.module("./containers/hetzner-client", () => ({
   }),
 }));
 
-mock.module("./provisioning-jobs", () => ({
+mock.module("./provisioning-job-queue", () => ({
   lockAgentSuspendTargetInTx: async () => {},
   provisioningJobService: {
     enqueueAgentSuspendOnce: async (params: Record<string, unknown>) => {

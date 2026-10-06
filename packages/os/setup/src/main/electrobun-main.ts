@@ -1,31 +1,9 @@
-// ---------------------------------------------------------------------------
-// Electrobun main-process entrypoint for elizaos-setup.
-//
-// Responsibilities:
-//   1. Boot the in-process Bun HTTP backend (`createServer()` from server.ts)
-//      on a known port, falling back to an ephemeral port if the default is
-//      already taken.
-//   2. Serve the packaged renderer over loopback HTTP. WKWebView cannot load
-//      Vite's crossorigin ES modules reliably from `file://`.
-//   3. Proxy renderer `/api/*` requests to the in-process backend as a
-//      same-origin fallback.
-//   4. Inject the loopback backend URL before any bundle script runs so every
-//      renderer client uses one consistent API base.
-//
-// This is the only path that produces a working packaged app. If preload
-// injection fails, `getServerUrl()` throws in production rather than
-// silently falling back to a port that doesn't exist.
-// ---------------------------------------------------------------------------
-
 import { randomBytes } from "node:crypto";
-import { createServer as createNetServer } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Electrobun, { BrowserWindow } from "electrobun/bun";
 import { createServer } from "../../server";
 import { createBackendRequest } from "./backend-request";
-
-const DEFAULT_PORT = 3743;
 
 function logEvent(event: string, fields: Record<string, unknown> = {}): void {
   process.stdout.write(
@@ -37,54 +15,6 @@ function logEvent(event: string, fields: Record<string, unknown> = {}): void {
       ...fields,
     })}\n`,
   );
-}
-
-async function isPortFree(port: number): Promise<boolean> {
-  return await new Promise<boolean>((resolve) => {
-    const tester = createNetServer()
-      .once("error", () => resolve(false))
-      .once("listening", () => {
-        tester.close(() => resolve(true));
-      })
-      .listen(port, "127.0.0.1");
-  });
-}
-
-async function startBackend(
-  authToken: string,
-): Promise<{ url: string; port: number }> {
-  const desired = Number(process.env.ELIZA_SETUP_PORT ?? DEFAULT_PORT);
-  const port = (await isPortFree(desired)) ? desired : 0;
-  const server = createServer({ port, authToken });
-  const boundPort = server.port;
-  if (typeof boundPort !== "number") {
-    throw new Error("[elizaos-setup] backend did not bind to a TCP port");
-  }
-  return { url: `http://127.0.0.1:${boundPort}`, port: boundPort };
-}
-
-function buildPreloadScript(serverUrl: string, authToken: string): string {
-  // Runs in the renderer global scope before any other script.
-  // Electrobun passes this string directly to the webview's preload hook.
-  return `(() => {
-  try {
-    Object.defineProperty(window, "__ELIZA_SERVER_URL__", {
-      value: ${JSON.stringify(serverUrl)},
-      writable: false,
-      configurable: false,
-    });
-  } catch (_err) {
-    // If a previous preload (or a bundle race) already defined it, fall back
-    // to a plain assignment. The renderer just needs the value set before
-    // getServerUrl() is called.
-    window.__ELIZA_SERVER_URL__ = ${JSON.stringify(serverUrl)};
-  }
-  Object.defineProperty(window, "__ELIZA_SERVER_TOKEN__", {
-    value: ${JSON.stringify(authToken)},
-    writable: false,
-    configurable: false,
-  });
-})();`;
 }
 
 async function startRendererServer(
@@ -150,14 +80,22 @@ async function startRendererServer(
 
 async function main(): Promise<void> {
   const authToken = randomBytes(32).toString("hex");
-  const { url: backendUrl, port: backendPort } = await startBackend(authToken);
+  const backend = createServer({ port: 0, authToken });
+  const backendPort = backend.port;
+  if (typeof backendPort !== "number") {
+    throw new Error("[elizaos-setup] backend did not bind to a TCP port");
+  }
+  const backendUrl = `http://127.0.0.1:${backendPort}`;
   logEvent("backend.bound", { url: backendUrl, port: backendPort });
 
   const { url: rendererUrl, port: rendererPort } =
     await startRendererServer(backendUrl);
   logEvent("renderer.bound", { url: rendererUrl, port: rendererPort });
 
-  const preload = buildPreloadScript(backendUrl, authToken);
+  const preload = `Object.defineProperties(window, {
+    __ELIZA_SERVER_URL__: { value: ${JSON.stringify(backendUrl)} },
+    __ELIZA_SERVER_TOKEN__: { value: ${JSON.stringify(authToken)} },
+  });`;
 
   const win = new BrowserWindow({
     title: "elizaOS Setup",
@@ -166,8 +104,6 @@ async function main(): Promise<void> {
     frame: { x: 0, y: 0, width: 1100, height: 760 },
   });
 
-  // Surface unhandled errors loudly instead of swallowing them — a broken
-  // window creation should not silently produce a blank packaged app.
   Electrobun.events.on("will-quit", () => {
     logEvent("application.will_quit");
   });

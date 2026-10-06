@@ -5,7 +5,7 @@
  * self-calls must not fall back to the single-process default 2138.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { resolveSelfApiBaseUrl } from "@elizaos/core/runtime-env";
+import { resolveSelfApiBaseUrl } from "@elizaos/host/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { logsAction } from "./logs.ts";
 

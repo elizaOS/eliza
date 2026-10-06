@@ -7,20 +7,23 @@
  * DELETE /api/v1/apps/:id  — full cleanup + delete
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import type { NewApp } from "@elizaos/cloud-shared/db/schemas/apps";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { isSafeRegistrationUrl } from "@elizaos/cloud-shared/lib/security/outbound-url";
+import { appCleanupService } from "@elizaos/cloud-shared/lib/services/app-cleanup";
+import { buildReviewCandidate } from "@elizaos/cloud-shared/lib/services/app-review";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { NewApp } from "@/db/schemas/apps";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { isSafeRegistrationUrl } from "@/lib/security/outbound-url";
-import { appCleanupService } from "@/lib/services/app-cleanup";
-import { buildReviewCandidate } from "@/lib/services/app-review";
-import { appsService } from "@/lib/services/apps";
-import { charactersService } from "@/lib/services/characters/characters";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const optionalUrl = z
   .preprocess((val) => (val === "" ? null : val), z.string().url().nullish())

@@ -5,8 +5,8 @@
  * Capacitor host.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
-import { type RouteHandlerContext } from "@elizaos/core/api/http-plugin";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { describe, expect, it } from "vitest";
 import { screenFrameRoute } from "./routes.js";
 import {
@@ -37,6 +37,7 @@ async function submitFrameRoute(
     runtime: {
       getService: () => bridge,
     } as unknown as IAgentRuntime,
+    signal: new AbortController().signal,
     inProcess: false,
   } satisfies RouteHandlerContext);
 }

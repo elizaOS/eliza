@@ -2,10 +2,8 @@
  * Runs the Cockpit's tap-in PTY session and exposes its lifecycle controls to
  * the active view agent surface without bypassing the server's PTY policy.
  */
+import { Button, client, useAgentElement } from "@elizaos/ui";
 
-import { Button } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PtyTerminalPane } from "./PtyTerminalPane";
 

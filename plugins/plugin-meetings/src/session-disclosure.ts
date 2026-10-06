@@ -24,11 +24,11 @@ import {
   resolveArtifactDisclosure,
   type UUID,
 } from "@elizaos/core";
-import { type MeetingSession } from "@elizaos/core/meetings";
 import {
+  type MeetingSession,
   normalizeTranscriptScope,
   type TranscriptScope,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 
 function transcriptScopeFromRow(row: Memory): TranscriptScope {
   const raw = (

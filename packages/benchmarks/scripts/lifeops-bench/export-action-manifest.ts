@@ -2,14 +2,14 @@
 /**
  * Exports the LifeOps planner action manifest as JSON for the LifeOps bench.
  *
- * Loads the personal-assistant plus its connector plugins (bluebubbles,
- * calendar, contacts, imessage, phone, todos) from a live elizaOS monorepo
+ * Loads the personal-assistant plus its connector plugins (
+ * calendar, native contacts, imessage, native phone, todos) from a live elizaOS monorepo
  * checkout, builds the planner tool definitions from their actions, and emits
  * each as a function-tool entry annotated with the source plugin and planner
  * metadata. The bench consumes the manifest to drive and score action
  * selection.
  *
- * The plugin/action sources live in the elizaOS monorepo, not this repo:
+ * The plugin/action APIs resolve from the selected elizaOS checkout:
  * point ELIZA_REPO_DIR at an elizaOS checkout (with dependencies installed)
  * and run under tsx, e.g.
  *
@@ -20,9 +20,11 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+
+import { importMeasuredPackage as importFromEliza } from "../../lib/target-package.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -113,7 +115,7 @@ function resolveElizaRepoDir(): string {
   const raw =
     process.env.ELIZA_REPO_DIR?.trim() || resolve(benchmarksRepoRoot, "../..");
   const repo = resolve(raw);
-  const probe = resolve(repo, "packages/core/src/actions/to-tool.ts");
+  const probe = resolve(repo, "packages/core/package.json");
   if (!existsSync(probe)) {
     throw new Error(
       `ELIZA_REPO_DIR=${repo} does not look like an elizaOS checkout ` +
@@ -121,10 +123,6 @@ function resolveElizaRepoDir(): string {
     );
   }
   return repo;
-}
-
-async function importFromEliza<T>(repo: string, relPath: string): Promise<T> {
-  return (await import(pathToFileURL(resolve(repo, relPath)).href)) as T;
 }
 
 function usage(): string {
@@ -498,36 +496,31 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const eliza = resolveElizaRepoDir();
 
-  const { promoteSubactionsToActions } = await importFromEliza<{
-    promoteSubactionsToActions: (action: ActionLike) => ActionLike[];
-  }>(eliza, "packages/core/src/actions/promote-subactions.ts");
-  const { buildPlannerToolsFromActions } = await importFromEliza<{
-    buildPlannerToolsFromActions: (actions: ActionLike[]) => PlannerTool[];
-  }>(eliza, "packages/core/src/actions/to-tool.ts");
-  const { default: blueBubblesPlugin } = await importFromEliza<{
-    default: PluginLike;
-  }>(eliza, "plugins/plugin-bluebubbles/src/index.ts");
+  const { promoteSubactionsToActions, buildPlannerToolsFromActions } =
+    await importFromEliza<{
+      promoteSubactionsToActions: (action: ActionLike) => ActionLike[];
+      buildPlannerToolsFromActions: (actions: ActionLike[]) => PlannerTool[];
+    }>(eliza, "@elizaos/core");
   const { calendarSourcesAction } = await importFromEliza<{
     calendarSourcesAction: ActionLike;
-  }>(eliza, "plugins/plugin-calendar/src/actions/calendar-sources.ts");
+  }>(eliza, "@elizaos/plugin-calendar");
   const { appContactsPlugin } = await importFromEliza<{
     appContactsPlugin: PluginLike;
-  }>(eliza, "plugins/plugin-contacts/src/plugin.ts");
+  }>(eliza, "@elizaos/plugin-native-contacts/plugin");
   const { default: imessagePlugin } = await importFromEliza<{
     default: PluginLike;
-  }>(eliza, "plugins/plugin-imessage/src/index.ts");
-  const { ownerScreenTimeAction } = await importFromEliza<{
-    ownerScreenTimeAction: ActionLike;
-  }>(eliza, "plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts");
-  const { personalAssistantPlugin } = await importFromEliza<{
-    personalAssistantPlugin: PluginLike;
-  }>(eliza, "plugins/plugin-personal-assistant/src/plugin.ts");
+  }>(eliza, "@elizaos/plugin-imessage");
+  const { ownerScreenTimeAction, personalAssistantPlugin } =
+    await importFromEliza<{
+      ownerScreenTimeAction: ActionLike;
+      personalAssistantPlugin: PluginLike;
+    }>(eliza, "@elizaos/plugin-personal-assistant");
   const { appPhonePlugin } = await importFromEliza<{
     appPhonePlugin: PluginLike;
-  }>(eliza, "plugins/plugin-phone/src/plugin.ts");
+  }>(eliza, "@elizaos/plugin-native-phone/plugin");
   const { todosPlugin } = await importFromEliza<{
     todosPlugin: PluginLike;
-  }>(eliza, "plugins/plugin-todos/src/index.ts");
+  }>(eliza, "@elizaos/plugin-todos");
 
   const calendarSourcePlugin: PluginLike = {
     name: "@elizaos/plugin-calendar",
@@ -565,7 +558,6 @@ async function main(): Promise<void> {
     personalAssistantPlugin,
     platformIndependentScreenTimePlugin,
     appPhonePlugin,
-    blueBubblesPlugin,
     imessagePlugin,
     todosPlugin,
   ];

@@ -37,7 +37,7 @@ vi.mock("../api/client-cloud", () => ({
 vi.mock("../state/persistence", () => ({
   loadPersistedActiveServer: () => mockActiveServer(),
 }));
-vi.mock("../config/boot-config", () => ({
+vi.mock("../config/boot-config-store", () => ({
   getBootConfig: () => mockBootConfig(),
 }));
 vi.mock("../state/agent-session-recovery-runner", () => ({
@@ -51,7 +51,7 @@ vi.mock("../state/active-server-credential", () => ({
   persistActiveServerCredential: (token: string) =>
     mockPersistActiveServerCredential(token),
 }));
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: { setToken: (token: string) => mockSetAgentToken(token) },
 }));
 vi.mock("../state/cloud-session-refresh-for-repair", () => ({

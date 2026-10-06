@@ -8,17 +8,14 @@ channel, empty content) but add zero signal.
 
 Drop them entirely. Keeps the rest of the entry list intact.
 
-Operates in-place on data/final/train_final.jsonl.
+Requires explicit input and output paths; use --in-place to replace the input.
 """
 from __future__ import annotations
 
-import json
-import os
-import sys
-from pathlib import Path
+from eliza_training.lib.jsonl_transform import transform_cli
 
-ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "data" / "final" / "train_final.jsonl"
+import sys
+
 
 
 def transform_record(rec: dict, stats: dict) -> dict:
@@ -44,27 +41,7 @@ def transform_record(rec: dict, stats: dict) -> dict:
 
 
 def main() -> int:
-    if not SRC.exists():
-        print(f"error: {SRC} missing", file=sys.stderr)
-        return 2
-    tmp = SRC.with_suffix(".jsonl.tmp")
-    stats: dict = {"total": 0, "decode_errors": 0, "records_changed": 0, "entries_dropped": 0}
-    with SRC.open() as fin, tmp.open("w") as fout:
-        for line in fin:
-            stats["total"] += 1
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                stats["decode_errors"] += 1
-                fout.write(line)
-                continue
-            rec = transform_record(rec, stats)
-            fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            if stats["total"] % 200000 == 0:
-                print(f"[{stats['total']}] dropped={stats['entries_dropped']}", file=sys.stderr)
-    os.replace(tmp, SRC)
-    print(json.dumps(stats, indent=2), file=sys.stderr)
-    return 0
+    return transform_cli(lambda rec, _index, stats: transform_record(rec, stats))
 
 
 if __name__ == "__main__":

@@ -12,12 +12,9 @@
 import {
   createSerialise,
   ElizaError,
-  type EscalationConfig,
   type IAgentRuntime,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
-  type OwnerContactEntry,
-  type OwnerContactsConfig,
   readSystemNotice,
   requireConfirmedSendHandlerDelivery,
   resolveOwnerEntityId,
@@ -25,6 +22,11 @@ import {
   systemNoticeText,
   type UUID,
 } from "@elizaos/core";
+import type {
+  EscalationConfig,
+  OwnerContactEntry,
+  OwnerContactsConfig,
+} from "@elizaos/host/protocol";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,

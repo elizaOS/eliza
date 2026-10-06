@@ -6,9 +6,10 @@
  * validation (e.g. cron-expression checking) only.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
-import type { TriggerSummary, WorkflowDefinition } from "../../api/client";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
+import type { WorkflowDefinition } from "../../api/client-types-chat";
+import type { TriggerSummary } from "../../api/client-types-core";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import {
   detectUiHostCapabilities,
@@ -185,7 +186,7 @@ export interface TriggerFormProps {
   /** All triggers (used for looking up the editing trigger's metadata). */
   triggers: TriggerSummary[];
   /** Run history keyed by trigger ID. */
-  triggerRunsById: Record<string, import("../../api").TriggerRunRecord[]>;
+  triggerRunsById: Record<string, import("@elizaos/core").TriggerRunRecord[]>;
   /** Translation function. */
   t: TranslateFn;
   /** Currently selected trigger ID. */

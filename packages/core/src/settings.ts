@@ -1,23 +1,4 @@
-/**
- * At-rest encryption for secret settings and the SECRET_SALT lifecycle. Secret
- * values (API keys and the like) are encrypted with AES-256-GCM keyed by
- * SHA-256(SECRET_SALT) under an "elizaos:settings:v2" AAD; legacy AES-256-CBC
- * ciphertext still decrypts. getSalt() reads the salt once and caches it with a
- * short TTL because it runs on every getSetting string-decrypt — the hot path
- * avoids re-clearing the env cache, and clearSaltCache() is the test seam. In
- * production a non-default SECRET_SALT is required unless
- * ELIZA_ALLOW_DEFAULT_SECRET_SALT overrides the check. Outside production an
- * unset salt no longer falls back to the publicly known constant — a random
- * per-process salt is generated with a loud warning instead, so ciphertext
- * can never be keyed by a published value (and does not survive restart).
- *
- * Consumed by the runtime's getSetting/setSetting path and by world/character
- * setup: saltWorldSettings/unsaltWorldSettings (gated on each setting's `secret`
- * flag) and encryptedCharacter/decryptedCharacter walk their string values,
- * round-tripping non-strings untouched. Authenticated decryption fails closed:
- * callers receive a typed error rather than accidentally consuming ciphertext
- * as a usable secret.
- */
+/** Encrypts secret settings with AES-256-GCM and authenticated versioned envelopes; decrypts supported CBC envelopes. Production requires an explicit salt unless the operator enables the default-salt exception. Development without a salt uses a warned, process-local random key. Decryption errors fail explicitly; non-string settings pass through. */
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors";
 import { logger } from "./logger";
@@ -162,7 +143,7 @@ export function getSalt(): string {
 			saltErrorLogged = true;
 		}
 	} else {
-		// Explicit salt, or the legacy constant under an explicit opt-in.
+		// Use the explicit salt or the default constant under operator opt-in.
 		value = isDefaultOrUnset ? LEGACY_DEFAULT_SECRET_SALT : envSalt;
 		if (isDefaultOrUnset && !saltErrorLogged) {
 			logger.warn(
@@ -529,12 +510,7 @@ export function encryptedCharacter(character: Character): Character {
 	return encryptedChar;
 }
 
-/**
- * Decrypts sensitive data in a Character object
- * @param {Character} character - The character object with encrypted secrets
- * @param {IAgentRuntime} runtime - Retained for backward compatibility; salt resolution is process-scoped
- * @returns {Character} - A copy of the character with decrypted secrets
- */
+/** Returns a character copy with decrypted secrets. Salt resolution is process-scoped. */
 export function decryptedCharacter(
 	character: Character,
 	_runtime?: IAgentRuntime,

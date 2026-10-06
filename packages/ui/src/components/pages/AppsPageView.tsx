@@ -13,7 +13,7 @@ import {
   getWindowNavigationPath,
   shouldUseHashNavigation,
 } from "../../navigation";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { shellHistory } from "../../surface-realm-channel";
 import { FullscreenView } from "../apps/FullscreenView";
 import { getAppSlug } from "../apps/helpers";

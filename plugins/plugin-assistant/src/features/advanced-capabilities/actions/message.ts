@@ -2599,32 +2599,51 @@ async function recordDeliveryPreference(
     candidate.address?.entityId ??
     candidate.identityClaim?.canonicalPrincipalId ??
     (isUuidLike(entityIdRaw) ? (entityIdRaw as UUID) : undefined);
-  if (
-    !entityId ||
-    entityId === runtime.agentId ||
-    typeof runtime.upsertComponent !== "function"
-  ) {
+  if (!entityId || entityId === runtime.agentId) {
     return;
   }
   try {
-    await runtime.upsertComponent({
+    const data = {
+      source: candidate.connector.source,
+      ...(target.accountId ? { accountId: target.accountId } : {}),
+      lastDeliveredAtMs: Date.now(),
+    };
+    // One preference per (entity, agent), as preferredDeliverySource reads it:
+    // update the existing row wherever it was first written. The adapter's
+    // upsert keys on worldId too, so a fixed id written from a second world
+    // was inserted again and collided with itself.
+    const existing = (await runtime.getComponents(entityId)).find(
+      (component) =>
+        component.type === DELIVERY_PREFERENCE_COMPONENT_TYPE &&
+        component.sourceEntityId === runtime.agentId,
+    );
+    if (existing) {
+      await runtime.updateComponent({
+        ...existing,
+        roomId: message.roomId,
+        data,
+      });
+      return;
+    }
+    const worldId =
+      message.worldId ?? (await runtime.getRoom(message.roomId))?.worldId;
+    if (!worldId) {
+      throw new Error(
+        `room ${message.roomId} has no world to record the delivery preference in`,
+      );
+    }
+    await runtime.createComponent({
       id: stringToUuid(
         `delivery-preference-${entityId}-${runtime.agentId}`,
       ) as UUID,
       entityId,
       agentId: runtime.agentId,
       roomId: message.roomId,
-      worldId:
-        message.worldId ??
-        (stringToUuid(`${runtime.agentId}:delivery-preference-world`) as UUID),
+      worldId,
       sourceEntityId: runtime.agentId,
       type: DELIVERY_PREFERENCE_COMPONENT_TYPE,
       createdAt: Date.now(),
-      data: {
-        source: candidate.connector.source,
-        ...(target.accountId ? { accountId: target.accountId } : {}),
-        lastDeliveredAtMs: Date.now(),
-      },
+      data,
     });
   } catch (error) {
     // error-policy:J7 preference recording is delivery telemetry; a failed

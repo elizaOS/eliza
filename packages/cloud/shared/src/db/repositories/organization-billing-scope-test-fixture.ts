@@ -1,5 +1,6 @@
 /** Keeps focused infrastructure fixtures compatible with shared billing columns; app constraints are exercised by the full app migration fixture. */
 import { readFile } from "node:fs/promises";
+import { installBillingCommandEvidenceTestColumns } from "../../testing/billing-migrations";
 
 export async function installOrganizationBillingScopeTestColumns(
   execute: (statement: string) => Promise<unknown>,
@@ -29,4 +30,11 @@ export async function installOrganizationBillingScopeTestColumns(
     if (statement.trim().startsWith('ALTER TABLE "billing_subscription_commands" ADD COLUMN'))
       await execute(statement.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"));
   }
+  const upgradeDispatch = await readFile(
+    new URL("../migrations/0512_organization_upgrade_dispatch.sql", import.meta.url),
+    "utf8",
+  );
+  const column = upgradeDispatch.split("--> statement-breakpoint")[0]!;
+  await execute(column.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"));
+  await installBillingCommandEvidenceTestColumns(execute);
 }

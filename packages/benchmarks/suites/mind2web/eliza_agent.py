@@ -83,9 +83,7 @@ def _format_element(
     )
     lines = [
         f"{index}. backend_node_id={candidate.backend_node_id!r} {choice}"
-        for index, (candidate, choice) in enumerate(
-            zip(candidates, choices, strict=True), start=1
-        )
+        for index, (candidate, choice) in enumerate(zip(candidates, choices, strict=True), start=1)
     ]
     return f"Pruned HTML:\n{tree_repr}\n\nCandidate elements:\n" + "\n".join(lines)
 
@@ -94,10 +92,7 @@ def _format_compatibility_candidates(step_index: int, task: Mind2WebTask) -> str
     """Render the lightweight context-provider view used by offline tests."""
     if step_index >= len(task.actions):
         return "No remaining ground-truth step is available."
-    candidates = (
-        task.actions[step_index].pos_candidates
-        + task.actions[step_index].neg_candidates
-    )
+    candidates = task.actions[step_index].pos_candidates + task.actions[step_index].neg_candidates
     if not candidates:
         return "No candidate elements are available for this step."
     return "\n".join(
@@ -362,9 +357,7 @@ class OpenAICompatibleMind2WebAgent:
         self.ranker_recalls = []
         for step_index, step in enumerate(task.actions[: self.config.max_steps_per_task]):
             # Stage 1: candidate selection (DeBERTa ranker / oracle / none).
-            previous_action_reprs = (
-                task.action_reprs[:step_index] if task.action_reprs else []
-            )
+            previous_action_reprs = task.action_reprs[:step_index] if task.action_reprs else []
             candidates, recall = await asyncio.to_thread(
                 select_candidates_for_step,
                 step,
@@ -405,7 +398,9 @@ class OpenAICompatibleMind2WebAgent:
                 raise RuntimeError("Mind2Web local provider agent was not initialized")
 
             if action is None:
-                logger.warning("Mind2Web provider returned no parseable action at step %d", step_index)
+                logger.warning(
+                    "Mind2Web provider returned no parseable action at step %d", step_index
+                )
                 action = Mind2WebAction(
                     operation=Mind2WebOperation.INVALID,
                     element_id="",
@@ -612,12 +607,4 @@ def parse_mind2web_action(text: str) -> Mind2WebAction | None:
         element_id=_tag("element_id"),
         value=_tag("value"),
         reasoning=_tag("reasoning"),
-    )
-
-
-def create_mind2web_plugin() -> Any:
-    """Compatibility stub for the removed Python Eliza plugin."""
-    raise RuntimeError(
-        "The Python Eliza Mind2Web plugin was removed. Use eliza_adapter.mind2web "
-        "or run the benchmark with model_provider='eliza' to route through the TS bridge."
     )

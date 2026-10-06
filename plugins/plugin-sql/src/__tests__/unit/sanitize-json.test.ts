@@ -15,6 +15,8 @@
 import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  assertJsonbStorable,
+  isUnsupportedJsonTextError,
   MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS,
   MAX_SQL_JSON_SANITIZE_BYTES,
   MAX_SQL_JSON_SANITIZE_DEPTH,
@@ -494,5 +496,102 @@ describe("document content serialization", () => {
     expect(() => serializeDocumentJsonb({ text: "private\u0000tail" })).toThrowError(
       expect.objectContaining({ code: "SQL_JSON_UNSUPPORTED_NUL" })
     );
+  });
+});
+
+describe("lone UTF-16 surrogates", () => {
+  const truncatedEmoji = "hi \ud83d";
+
+  it("rejects them in strict writes with a typed error", () => {
+    for (const write of [
+      () => serializeJsonb({ text: truncatedEmoji }, { memoryContent: true }),
+      () => serializeJsonb({ note: "tail \udc00" }),
+      () => serializeJsonb({ "k\ud800": 1 }),
+      () => serializeJsonb(JSON.stringify({ text: truncatedEmoji })),
+    ]) {
+      expect(write).toThrowError(
+        expect.objectContaining({ code: "SQL_JSON_UNSUPPORTED_SURROGATE" })
+      );
+    }
+  });
+
+  it("keeps well-formed pairs unchanged", () => {
+    const text = "launch 😀 done";
+    expect(JSON.parse(serializeJsonb({ text }, { memoryContent: true }) as string)).toEqual({
+      text,
+    });
+  });
+
+  it("replaces them with U+FFFD in lenient sanitization", () => {
+    expect(sanitizeJsonObject({ t: truncatedEmoji, "k\ud800": 1 })).toEqual({
+      t: "hi \ufffd",
+      "k\ufffd": 1,
+    });
+  });
+});
+
+describe("assertJsonbStorable", () => {
+  const nul = String.fromCharCode(0);
+  const codeOf = (value: unknown) => {
+    try {
+      assertJsonbStorable(value);
+      return "ok";
+    } catch (error) {
+      expect(isUnsupportedJsonTextError(error)).toBe(true);
+      return (error as ElizaError).code;
+    }
+  };
+
+  it.each([
+    ["a nested string", { a: [{ b: `x${nul}y` }] }, "SQL_JSON_UNSUPPORTED_NUL"],
+    ["a key", { [`k${nul}`]: 1 }, "SQL_JSON_UNSUPPORTED_NUL"],
+    ["a top-level string", "cut \ud83d", "SQL_JSON_UNSUPPORTED_SURROGATE"],
+    ["a lone low surrogate in a key", { "\udc00": true }, "SQL_JSON_UNSUPPORTED_SURROGATE"],
+    ["a toJSON result", { toJSON: () => "cut \ud83d" }, "SQL_JSON_UNSUPPORTED_SURROGATE"],
+  ])("rejects %s", (_label, value, code) => {
+    expect(codeOf(value)).toBe(code);
+  });
+
+  it("accepts storable values without rewriting them or applying the serializer budgets", () => {
+    const wide = Array.from({ length: MAX_SQL_JSON_SANITIZE_NODES * 2 }, (_, i) => i);
+    let deep: Record<string, unknown> = { leaf: "🙂" };
+    for (let depth = 0; depth <= MAX_SQL_JSON_SANITIZE_DEPTH * 2; depth += 1) {
+      deep = { child: deep };
+    }
+    const value = {
+      emoji: "x 🙂",
+      wide,
+      deep,
+      long: "a".repeat(MAX_SQL_JSON_SANITIZE_BYTES * 2),
+      when: new Date(0),
+      skipped: undefined,
+    };
+    const before = JSON.stringify(value);
+    expect(codeOf(value)).toBe("ok");
+    expect(JSON.stringify(value)).toBe(before);
+    expect(codeOf(null)).toBe("ok");
+    expect(codeOf(undefined)).toBe("ok");
+  });
+
+  it("walks a toJSON result's own contents", () => {
+    const hidden = { note: "ok", toJSON: () => "cut \ud83d" };
+    expect(codeOf({ toJSON: () => hidden })).toBe("ok");
+    expect(codeOf({ toJSON: () => ({ note: "cut \ud83d" }) })).toBe(
+      "SQL_JSON_UNSUPPORTED_SURROGATE"
+    );
+    const self = {
+      note: `a${nul}`,
+      toJSON() {
+        return self;
+      },
+    };
+    expect(codeOf(self)).toBe("SQL_JSON_UNSUPPORTED_NUL");
+  });
+
+  it("terminates on cycles", () => {
+    const cyclic: Record<string, unknown> = { text: "ok" };
+    cyclic.self = cyclic;
+    // Cycles are not JSON values: preserve JSON.stringify's explicit rejection.
+    expect(() => assertJsonbStorable(cyclic)).toThrow(TypeError);
   });
 });

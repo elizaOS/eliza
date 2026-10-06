@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   ELIZA_BROWSER_EXTENSION_ID,
   patchNativeMessagingAllowlist,
-} from "../distro-android/prepare-chromium-browser.ts";
+} from "../android/prepare-chromium-browser.ts";
 
 const features =
   "BASE_FEATURE(kApiDesktopAndroidNativeMessagingBypassExtensionAllowlist, base::FEATURE_DISABLED_BY_DEFAULT);";

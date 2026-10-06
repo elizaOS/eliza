@@ -12,7 +12,14 @@
  * 2d 4h", making the selection policy legible instead of a black box.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
+import type {
+  LinkedAccountProviderId,
+  SubscriptionProviderSelectionId,
+} from "@elizaos/host/protocol";
+import {
+  requiresAdditionalRuntimeProvider,
+  SUBSCRIPTION_PROVIDER_SELECTIONS,
+} from "@elizaos/host/protocol";
 import { ChevronRight } from "lucide-react";
 import { useMemo } from "react";
 import type { ProviderSelectionState } from "../../api/client-accounts";
@@ -20,15 +27,10 @@ import type {
   AccountStrategy,
   AccountsListProvider,
   AccountWithCredentialFlag,
-} from "../../api/client-agent";
+} from "../../api/client-agent-accounts";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { cn } from "../../lib/utils";
-import {
-  requiresAdditionalRuntimeProvider,
-  SUBSCRIPTION_PROVIDER_SELECTIONS,
-  type SubscriptionProviderSelectionId,
-} from "../../providers";
 import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { AccountCard } from "./AccountCard";
 import { AccountCommandTable } from "./AccountCommandTable";

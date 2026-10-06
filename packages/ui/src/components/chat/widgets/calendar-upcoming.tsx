@@ -12,13 +12,13 @@
  */
 import { CalendarClock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { client } from "../../../api/client";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import {
   useDocumentVisibility,
   useIntervalWhenDocumentVisible,
-} from "../../../hooks";
-import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+} from "../../../hooks/useDocumentVisibility";
 import { useRole } from "../../../hooks/useRole";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";

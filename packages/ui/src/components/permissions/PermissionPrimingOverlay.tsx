@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { useTutorial } from "../../tutorial/tutorial-service";
 import { PermissionPrimingModal } from "./PermissionPrimingModal";
 import {
@@ -39,7 +39,7 @@ export function PermissionPrimingOverlay(): React.JSX.Element | null {
   const eligible =
     authed &&
     firstRunComplete !== false &&
-    !tutorial.active &&
+    tutorial.status !== "active" &&
     ids.length > 0 &&
     !primed;
 

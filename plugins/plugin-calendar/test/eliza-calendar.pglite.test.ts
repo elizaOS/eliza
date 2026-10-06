@@ -6,9 +6,11 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsReminderPlan,
+} from "@elizaos/contracts";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
-import type { LifeOpsReminderPlan } from "@elizaos/core/contracts/personal-assistant";
 import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
@@ -132,6 +134,7 @@ beforeAll(async () => {
     initPromise: Promise.resolve(),
     getCache: async () => undefined,
     setCache: async () => undefined,
+    getSetting: () => undefined,
     getService: (serviceType: string) =>
       serviceType === CalendarService.serviceType ? service : null,
     reportError: async () => {},
@@ -1553,6 +1556,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       };
       const scopedRuntime = {
         ...runtime,
+        getSetting: () => undefined,
         getService: (name: string) =>
           name === "google" ? google : runtime.getService(name),
       } as unknown as IAgentRuntime;
@@ -1736,6 +1740,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     };
     const recoveryRuntime = {
       ...runtime,
+      getSetting: () => undefined,
       getService: (name: string) =>
         name === "google" ? google : runtime.getService(name),
     } as unknown as IAgentRuntime;

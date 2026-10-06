@@ -315,14 +315,12 @@ export async function handleEntityRoutes(
     }
     const store = makeStore(ctx);
     if (!store) return true;
-    const existing = await store.get(entityId);
-    if (!existing) {
-      ctx.error(res, "entity not found", 404);
-      return true;
-    }
+    // The body is read before the entity, and the merge runs inside one store
+    // operation: a stale copy written back after a slow request body would
+    // erase identities and interaction state recorded in the meantime.
     const body = await readJsonBody<Partial<Entity>>(req, res);
     if (!body) return true;
-    const merged: Omit<Entity, "createdAt" | "updatedAt"> = {
+    const updated = await store.patch(entityId, (existing) => ({
       ...existing,
       ...(body.type ? { type: body.type } : {}),
       ...(body.preferredName ? { preferredName: body.preferredName } : {}),
@@ -332,8 +330,11 @@ export async function handleEntityRoutes(
       ...(body.identities ? { identities: body.identities } : {}),
       ...(body.attributes ? { attributes: body.attributes } : {}),
       ...(body.state ? { state: { ...existing.state, ...body.state } } : {}),
-    };
-    const updated = await store.upsert(merged);
+    }));
+    if (!updated) {
+      ctx.error(res, "entity not found", 404);
+      return true;
+    }
     json(res, { entity: updated });
     return true;
   }

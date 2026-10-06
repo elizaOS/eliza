@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop background notice ts behavior for app shell integration. */
 import path from "node:path";
 import { getBrandConfig } from "./brand-config";
 

@@ -37,7 +37,7 @@ import type {
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
-} from "../contracts/index.js";
+} from "@elizaos/contracts";
 
 export interface LifeOpsGmailService {
   seedGmailMessages(

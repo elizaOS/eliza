@@ -59,7 +59,9 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
   const externals = new Set([
     options.packageName,
     "@elizaos/app",
-    "@elizaos/core/errors",
+    "@elizaos/core/protocol",
+    "@elizaos/contracts",
+    "@elizaos/host/protocol",
     "@elizaos/ui",
     "lucide-react",
     "react",

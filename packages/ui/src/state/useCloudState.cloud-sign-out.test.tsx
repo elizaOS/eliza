@@ -12,7 +12,7 @@ import {
   isAndroidCloudAccountSwitchPending,
   signOutAndroidCloud,
 } from "../android-cloud/android-cloud-auth";
-import { client } from "../api";
+import { client } from "../api/client";
 import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import {
   clearPersistedActiveServer,
@@ -58,8 +58,8 @@ vi.mock("../platform/android-runtime", async (importOriginal) => ({
   isAndroidCloudBuild: () => nativePlatformState.platform === "android",
 }));
 
-vi.mock("../ios-cloud/ios-cloud-auth", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../ios-cloud/ios-cloud-auth")>()),
+vi.mock("../platform/ios-cloud-auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../platform/ios-cloud-auth")>()),
   hasIosNativeCloudCredential: () => false,
   isIosNativeCloudAuthAvailable: async () => false,
   recoverIosCloudCredential: async () => "none",
@@ -73,7 +73,7 @@ vi.mock("../android-cloud/android-cloud-auth", async (importOriginal) => ({
   signOutAndroidCloud: signOutAndroidCloudMock,
 }));
 
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: {
     getBaseUrl: vi.fn(() => "https://api.eliza.app"),
     setBaseUrl: vi.fn(),

@@ -5,9 +5,8 @@
  * plugin. Android-only; the platform gate in `../register.ts` decides whether
  * `registerContactsApp` is ever invoked.
  */
+import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 
-import { type OverlayApp } from "@elizaos/ui/apps/overlay-app-api";
-import { registerOverlayApp } from "@elizaos/ui/apps/overlay-app-registry";
 export const CONTACTS_APP_NAME = "@elizaos/plugin-native-contacts";
 export const contactsApp: OverlayApp = {
   name: CONTACTS_APP_NAME,

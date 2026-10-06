@@ -20,17 +20,17 @@ import {
   type ModelTypeName,
 } from "@elizaos/core";
 import {
+  getHttpRuntime,
   type RouteHandlerContext,
   type RouteHandlerResult,
-} from "@elizaos/core/api/http-plugin";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+} from "@elizaos/host/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/app/test/helpers/real-runtime.ts";
 import { InboxRepository } from "../src/inbox/repository.ts";
-import { type InboundMessage, type TriageEntry } from "../src/inbox/types.ts";
+import type { InboundMessage, TriageEntry } from "../src/inbox/types.ts";
 import { inboxPlugin } from "../src/plugin.ts";
 
 /** Deterministic TEXT_SMALL classifier (same contract the triage prompt uses). */
@@ -129,6 +129,7 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       method,
       path,
       runtime,
+      signal: new AbortController().signal,
       inProcess: false,
       isTrustedLocal: opts.trusted !== false,
     };

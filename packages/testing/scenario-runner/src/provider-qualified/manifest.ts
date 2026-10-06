@@ -7,7 +7,10 @@
  */
 
 import { createHash } from "node:crypto";
-import type { ScenarioDefinition, ScenarioFinalCheck } from "@elizaos/testing";
+import type {
+  ScenarioDefinition,
+  ScenarioFinalCheck,
+} from "../../schema/index.ts";
 import {
   PROVIDER_OPERATION_CONTRACT_BY_KIND,
   type ProviderOperationBinding,

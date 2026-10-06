@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/capacitor-calendar",
   "version": "2.0.3-beta.7",
-  "description": "Reads and writes Apple Calendar events through EventKit.",
+  "description": "Apple EventKit Calendar and an explicit host-configured Android CalendarProvider adapter.",
   "keywords": [
     "calendar",
     "eventkit",
@@ -24,14 +24,23 @@
       "import": "./dist/esm/macos-bridge-policy.js",
       "require": "./dist/plugin.cjs.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./android": {
+      "eliza-source": "./src/android.ts",
+      "types": "./dist/esm/android.d.ts",
+      "import": "./dist/esm/android.js"
+    }
   },
   "unpkg": "dist/plugin.js",
   "files": [
     "dist/",
     "ios/Sources/",
     "*.podspec",
-    "dist"
+    "dist",
+    "android/build.gradle",
+    "android/README.md",
+    "android/src/",
+    "src/"
   ],
   "author": "elizaOS",
   "license": "MIT",
@@ -49,12 +58,16 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:android-package": "node test/packed-consumer/check.mjs"
   },
   "capacitor": {
     "ios": {
       "src": "ios",
       "podName": "ElizaosCapacitorCalendar"
+    },
+    "android": {
+      "src": "android"
     }
   },
   "devDependencies": {
@@ -78,7 +91,8 @@
     "platformDetails": {
       "browser": "Graceful unsupported fallback.",
       "ios": true,
-      "node": "macOS uses the Electrobun EventKit dylib instead."
+      "node": "macOS uses the Electrobun EventKit dylib instead.",
+      "android": "Explicit host-configured CalendarProvider adapter through the ./android ESM entrypoint."
     }
   }
 }

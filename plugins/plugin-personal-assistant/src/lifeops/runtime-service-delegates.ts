@@ -4,6 +4,8 @@
  * Telegram, X) and forwards read/send calls, so LifeOps holds no
  * connector transport of its own and never depends on connector internals.
  */
+
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import {
   type Content,
   type IAgentRuntime,
@@ -12,7 +14,6 @@ import {
   type SendHandlerResult,
   type TargetInfo,
 } from "@elizaos/core";
-import type { LifeOpsConnectorGrant } from "../contracts/index.js";
 import {
   assertConnectorSenderIdentity,
   dispatchWithDeliveryEvidence,

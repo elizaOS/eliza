@@ -5,7 +5,7 @@
  * cache on any malformed or unparseable payload.
  */
 
-import type { RegistryAppInfo } from "@elizaos/core/contracts/apps";
+import type { RegistryAppInfo } from "@elizaos/core/protocol";
 import { shellLocalStorage } from "../../surface-realm-channel";
 
 const CACHE_KEY = "eliza:apps:catalog:v1";
@@ -52,13 +52,5 @@ export function writeAppsCache(apps: RegistryAppInfo[]): void {
     shellLocalStorage.setItem(CACHE_KEY, JSON.stringify(envelope));
   } catch {
     /* sandboxed storage — drop silently */
-  }
-}
-export function clearAppsCache(): void {
-  if (typeof window === "undefined") return;
-  try {
-    shellLocalStorage.removeItem(CACHE_KEY);
-  } catch {
-    /* ignore */
   }
 }

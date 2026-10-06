@@ -20,11 +20,8 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  runBrowserFixtureE2E,
-  stubElizaCore,
-  stubNodeBuiltins,
-} from "../../../testing/e2e-runner/index.ts";
+import { runBrowserFixtureE2E } from "../../../testing/e2e-runner/browser-harness";
+import { stubElizaCore, stubNodeBuiltins } from "../../../testing/e2e-runner/esbuild-stubs";
 import {
   shouldReportFrameBudget,
   summarizeFrameSamples,
@@ -32,7 +29,7 @@ import {
 import {
   LAYOUT_SHIFT_OBSERVER_INIT,
   summarizeStability,
-} from "../../../testing/layout-stability.ts";
+} from "../../../perf/layout-stability.ts";
 import { measureInjectedNonTransientShift } from "../../../testing/layout-shift-teeth.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));

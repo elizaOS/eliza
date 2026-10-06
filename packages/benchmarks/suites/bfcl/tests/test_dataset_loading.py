@@ -8,8 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from suites.bfcl.dataset import BFCLDataset
-from suites.bfcl.types import BFCLCategory, BFCLConfig
+from benchmarks.suites.bfcl.dataset import BFCLDataset
+from benchmarks.suites.bfcl.types import BFCLCategory, BFCLConfig
 
 
 def _write_ndjson(path: Path, rows: list[dict[str, object]]) -> None:
@@ -48,7 +48,12 @@ def test_local_loader_only_reads_selected_possible_answer_file(
     )
     _write_ndjson(
         tmp_path / "possible_answer" / "BFCL_v3_simple.json",
-        [{"id": "simple_only_0", "ground_truth": [{"get_weather": {"location": ["SF"]}}]}],
+        [
+            {
+                "id": "simple_only_0",
+                "ground_truth": [{"get_weather": {"location": ["SF"]}}],
+            }
+        ],
     )
     _write_ndjson(
         tmp_path / "possible_answer" / "BFCL_v3_multiple.json",

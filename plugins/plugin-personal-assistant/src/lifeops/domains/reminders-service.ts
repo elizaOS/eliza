@@ -11,26 +11,74 @@
  */
 import crypto from "node:crypto";
 import {
+  AUTONOMY_NOTIFICATION_DELIVERY,
+  type AutonomyNotificationDelivery,
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   registerEscalationChannel,
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
+import type {
+  AcknowledgeLifeOpsReminderRequest,
+  CaptureLifeOpsActivitySignalRequest,
+  CaptureLifeOpsManualOverrideRequest,
+  CaptureLifeOpsPhoneConsentRequest,
+  LifeOpsActivitySignal,
+  LifeOpsCalendarEvent,
+  LifeOpsChannelPolicy,
+  LifeOpsCircadianState,
+  LifeOpsManualOverrideResult,
+  LifeOpsOccurrence,
+  LifeOpsOccurrenceView,
+  LifeOpsOwnership,
+  LifeOpsReminderAttempt,
+  LifeOpsReminderAttemptOutcome,
+  LifeOpsReminderChannel,
+  LifeOpsReminderInspection,
+  LifeOpsReminderIntensity,
+  LifeOpsReminderPlan,
+  LifeOpsReminderPreference,
+  LifeOpsReminderProcessingResult,
+  LifeOpsReminderStep,
+  LifeOpsReminderUrgency,
+  LifeOpsScheduleMealLabel,
+  LifeOpsSubjectType,
+  LifeOpsTaskDefinition,
+  LifeOpsWorkflowDefinition,
+  LifeOpsWorkflowRun,
+  SetLifeOpsReminderPreferenceRequest,
+  SnoozeLifeOpsOccurrenceRequest,
+  UpsertLifeOpsChannelPolicyRequest,
+} from "@elizaos/contracts";
 import {
+  LIFEOPS_CHANNEL_TYPES,
+  LIFEOPS_CIRCADIAN_STATES,
+  LIFEOPS_MANUAL_OVERRIDE_KINDS,
+  LIFEOPS_UNCLEAR_REASONS,
+} from "@elizaos/contracts";
+import {
+  ChannelType,
+  conversationClientUserMemoryId,
   createReminderPresentation,
   ElizaError,
+  extractUserText,
+  hashStableJson,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
+  type Memory,
   ModelType,
+  normalizeEffectReceipts,
   parseJsonModelRecord,
   type ReminderPresentation,
+  readDurableConversationChatMarker,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
   ServiceType,
+  unwrapUserMessageText,
+  validateUuid,
 } from "@elizaos/core";
-import type { LifeOpsScheduleMealLabel } from "@elizaos/core/contracts/personal-assistant";
 import {
   getSelfControlStatus,
   startSelfControlBlock,
@@ -56,43 +104,6 @@ import {
 import { renderOwnerNotificationTitle } from "@elizaos/plugin-scheduling";
 import { readProfileFromMetadata } from "../../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../../activity-profile/types.js";
-import type {
-  AcknowledgeLifeOpsReminderRequest,
-  CaptureLifeOpsActivitySignalRequest,
-  CaptureLifeOpsManualOverrideRequest,
-  CaptureLifeOpsPhoneConsentRequest,
-  LifeOpsActivitySignal,
-  LifeOpsCalendarEvent,
-  LifeOpsChannelPolicy,
-  LifeOpsCircadianState,
-  LifeOpsManualOverrideResult,
-  LifeOpsOccurrence,
-  LifeOpsOccurrenceView,
-  LifeOpsOwnership,
-  LifeOpsReminderAttempt,
-  LifeOpsReminderAttemptOutcome,
-  LifeOpsReminderChannel,
-  LifeOpsReminderInspection,
-  LifeOpsReminderIntensity,
-  LifeOpsReminderPlan,
-  LifeOpsReminderPreference,
-  LifeOpsReminderProcessingResult,
-  LifeOpsReminderStep,
-  LifeOpsReminderUrgency,
-  LifeOpsSubjectType,
-  LifeOpsTaskDefinition,
-  LifeOpsWorkflowDefinition,
-  LifeOpsWorkflowRun,
-  SetLifeOpsReminderPreferenceRequest,
-  SnoozeLifeOpsOccurrenceRequest,
-  UpsertLifeOpsChannelPolicyRequest,
-} from "../../contracts/index.js";
-import {
-  LIFEOPS_CHANNEL_TYPES,
-  LIFEOPS_CIRCADIAN_STATES,
-  LIFEOPS_MANUAL_OVERRIDE_KINDS,
-  LIFEOPS_UNCLEAR_REASONS,
-} from "../../contracts/index.js";
 import {
   buildNativeAppleReminderMetadata,
   createNativeAppleReminderLikeItem,
@@ -265,6 +276,84 @@ import {
 } from "./definition-authorization.js";
 import { resolveReminderNotificationPriority } from "./reminder-notification-priority.js";
 
+/** Host-owned current request outcome, never assistant prose or creation alone. */
+function foregroundRequestHandling(
+  memory: Memory,
+  agentId: string,
+  ownerId: string,
+): "pending" | "single_create" | undefined {
+  if (
+    !memory.id ||
+    memory.agentId !== agentId ||
+    memory.entityId !== ownerId ||
+    ownerId === agentId ||
+    memory.content.source !== "client_chat" ||
+    (memory.content.channelType !== ChannelType.DM &&
+      memory.content.channelType !== ChannelType.VOICE_DM)
+  )
+    return undefined;
+  const marker = readDurableConversationChatMarker(
+    memory.content.chatIdempotency,
+  );
+  const scope = `${agentId}:${memory.roomId}:${ownerId}`;
+  if (
+    !marker ||
+    marker.scope !== scope ||
+    conversationClientUserMemoryId(scope, marker.clientMessageId) !== memory.id
+  )
+    return undefined;
+  if (marker.outcomeJson === undefined) return "pending";
+  try {
+    const outcome: unknown = JSON.parse(marker.outcomeJson);
+    if (
+      !isRecord(outcome) ||
+      outcome.userMessageId !== memory.id ||
+      !Array.isArray(outcome.actionResults) ||
+      outcome.actionResults.length !== 1
+    )
+      return undefined;
+    const result = outcome.actionResults[0];
+    if (
+      !isRecord(result) ||
+      result.success !== true ||
+      result.actionName !== "OWNER_REMINDERS_CREATE" ||
+      !isRecord(result.values)
+    )
+      return undefined;
+    const handling = result.values.ownerRequestHandling;
+    if (
+      !isRecord(handling) ||
+      handling.kind !== "single_create" ||
+      handling.sourceMessageId !== memory.id ||
+      !validateUuid(handling.definitionId) ||
+      Object.keys(handling).length !== 3
+    )
+      return undefined;
+    const receipts = normalizeEffectReceipts(result.effectReceipts);
+    if (
+      hashStableJson(result.effectReceipts) !== hashStableJson(receipts) ||
+      receipts.length !== 1
+    )
+      return undefined;
+    const receipt = receipts[0];
+    if (
+      receipt.operation !== "lifeops.definition.create" ||
+      receipt.resource?.kind !== "lifeops.definition" ||
+      receipt.resource.id !== handling.definitionId ||
+      receipt.receiptId !==
+        `OWNER_LIFE:lifeops.owner.create:${memory.id}:${handling.definitionId}` ||
+      receipt.outcome !== "applied" ||
+      receipt.idempotency.replayed !== false ||
+      receipt.commit?.kind !== "durable" ||
+      !validateUuid(receipt.commit.id)
+    )
+      return undefined;
+    return "single_create";
+  } catch {
+    return undefined;
+  }
+}
+
 export { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
 
 const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
@@ -430,39 +519,6 @@ export interface SleepCycleCheckinDeliveryReport {
   reason: string | null;
   message: string | null;
   persisted: boolean;
-}
-
-function reminderChoiceId(args: {
-  ownerType: "occurrence" | "calendar_event";
-  ownerId: string;
-  scheduledFor: string;
-}): string {
-  const digest = crypto
-    .createHash("sha1")
-    .update(`${args.ownerType}:${args.ownerId}:${args.scheduledFor}`)
-    .digest("hex")
-    .slice(0, 12);
-  return `reminder-${digest}`;
-}
-
-function appendReminderChoiceChips(
-  text: string,
-  args: {
-    ownerType: "occurrence" | "calendar_event";
-    ownerId: string;
-    scheduledFor: string;
-  },
-): string {
-  const choiceId = reminderChoiceId(args);
-  return [
-    text.trim(),
-    "",
-    `[CHOICE:lifeops-reminder id=${choiceId}]`,
-    "done=Done",
-    "10 minutes=Snooze 10m",
-    "skip=Skip",
-    "[/CHOICE]",
-  ].join("\n");
 }
 
 /** Supplied by authenticated owner ingress, independently of the request body. */
@@ -749,28 +805,12 @@ export function readLadderRungTitle(
 }
 
 export function buildReminderBody(args: {
-  timezone?: string;
   title: string;
-  scheduledFor: string;
-  dueAt: string | null;
-  channel: LifeOpsReminderStep["channel"];
-  lifecycle: ReminderAttemptLifecycle;
-  nearbyReminderTitles?: string[];
   derivedTarget?: Record<string, unknown> | null;
 }): string {
-  const focus = readLadderRungTitle(args.derivedTarget) ?? args.title;
-  const parts: string[] = [];
-  if (args.lifecycle === "escalation") {
-    parts.push(`Follow-up reminder: ${focus}`);
-  } else {
-    parts.push(`Reminder: ${focus}`);
-  }
-  if (args.dueAt) {
-    parts.push(
-      `Due: ${args.timezone ? new Date(args.dueAt).toLocaleString("en-US", { timeZone: args.timezone }) : new Date(args.dueAt).toLocaleString()}`,
-    );
-  }
-  return parts.join("\n");
+  // Timing and delivery identity remain on the saved occurrence and receipts.
+  // The alert itself is the owner's message, including the current ladder rung.
+  return readLadderRungTitle(args.derivedTarget) ?? args.title;
 }
 
 // Stretch cadence + walk-out / weekend / late-evening rules live as
@@ -981,6 +1021,8 @@ export function buildReminderDispatchPrompt(args: {
   urgency: LifeOpsReminderUrgency;
   recentConversation: readonly string[];
   nearbyReminderTitles?: string[];
+  /** Owner's IANA zone; the model must anchor spoken times to it, not the host. */
+  timezone?: string;
 }): string {
   const instructions = resolveOptimizedPromptForRuntime(
     args.runtime,
@@ -995,7 +1037,7 @@ export function buildReminderDispatchPrompt(args: {
     "",
     "Current reminder:",
     `- title: ${args.title}`,
-    `- due: ${new Date(args.reminderAt).toLocaleString()}`,
+    `- due: ${args.timezone ? new Date(args.reminderAt).toLocaleString("en-US", { timeZone: args.timezone }) : new Date(args.reminderAt).toLocaleString()}`,
     `- channel: ${args.channel}`,
     `- urgency: ${args.urgency}`,
     `- lifecycle: ${args.lifecycle}`,
@@ -1169,6 +1211,7 @@ export type RemindersDeps = {
     occurrenceId: string,
     request: SnoozeLifeOpsOccurrenceRequest,
     now?: Date,
+    options?: { expectedDefinitionUpdatedAt: string },
   ) => Promise<LifeOpsOccurrenceView>;
   checkinSource: CheckinSourceService;
 };
@@ -1203,17 +1246,8 @@ export class RemindersDomain {
       scheduledFor: args.scheduledFor,
       dueAt: args.dueAt,
     };
-    const chatText = appendReminderChoiceChips(args.text, args);
-    this.ctx.emitAssistantEvent(
-      args.presentation?.chatText ?? chatText,
-      "reminder",
-      {
-        ...metadata,
-        ...(args.presentation
-          ? { reminderPresentation: args.presentation }
-          : {}),
-      },
-    );
+    const chatText = args.text.trim();
+    let notificationDelivery: AutonomyNotificationDelivery | undefined;
     // Also push onto the unified notification rail so the reminder lands in
     // the notification center and reaches desktop/mobile (focus-gated) — not
     // just the in-app assistant stream. groupKey collapses repeat nudges for
@@ -1234,23 +1268,28 @@ export class RemindersDomain {
               ownerId: args.ownerId,
             },
           }));
-        await notifier.notify({
-          title,
-          body: args.text,
-          category: "reminder",
-          // Tier calendar reminders by lead time (#10697): "starting soon" → high,
-          // "tomorrow / further" → low, subsequent-today → normal (non-calendar stays
-          // normal). dueAt is the event start for a calendar_event.
-          priority: resolveReminderNotificationPriority({
-            ownerType: args.ownerType,
-            dueAt: args.dueAt,
-            nowMs: Date.now(),
-          }),
-          source: "lifeops",
-          deepLink: "/chat",
-          groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
-          data: metadata,
-        });
+        const notify = notifier.notify.bind(notifier);
+        let published: Promise<unknown> | undefined;
+        notificationDelivery = {
+          publish: (target) =>
+            (published ??= notify({
+              title,
+              body: args.text,
+              category: "reminder",
+              // Tier calendar reminders by lead time (#10697): "starting soon" → high,
+              // "tomorrow / further" → low, subsequent-today → normal. Occurrence
+              // alerts use high. dueAt is the event start for a calendar_event.
+              priority: resolveReminderNotificationPriority({
+                ownerType: args.ownerType,
+                dueAt: args.dueAt,
+                nowMs: Date.now(),
+              }),
+              source: "lifeops",
+              deepLink: "/chat",
+              groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
+              data: { ...metadata, ...target },
+            })),
+        };
       } catch (error) {
         // error-policy:J4 the assistant stream already accepted the same body;
         // report notification/title degradation without failing the reminder.
@@ -1260,6 +1299,32 @@ export class RemindersDomain {
           { ownerType: args.ownerType, ownerId: args.ownerId },
         );
       }
+    }
+    const handoff =
+      args.ownerType === "occurrence" && args.subjectType === "owner"
+        ? notificationDelivery
+        : undefined;
+    this.ctx.emitAssistantEvent(
+      args.presentation?.chatText ?? chatText,
+      "reminder",
+      {
+        ...metadata,
+        ...(args.presentation
+          ? { reminderPresentation: args.presentation }
+          : {}),
+        ...(handoff ? { [AUTONOMY_NOTIFICATION_DELIVERY]: handoff } : {}),
+      },
+    );
+    try {
+      if (handoff?.routed) await handoff.routed;
+      else await notificationDelivery?.publish();
+    } catch (error) {
+      this.ctx.runtime.reportError(
+        "lifeops:reminder:notification-delivery",
+        error,
+        { ownerType: args.ownerType, ownerId: args.ownerId },
+      );
+      throw error;
     }
   }
 
@@ -1406,6 +1471,8 @@ export class RemindersDomain {
       classifierSource: "none",
       semanticReason: null,
     } satisfies ReminderReviewResponseEvidence;
+    // A closed observation remains evidence; never rejudge or rewrite it.
+    if (isReminderReviewClosed(args.attempt)) return noResponse;
     if (
       args.subjectType !== "owner" ||
       typeof this.ctx.runtime.getRoomsForParticipants !== "function" ||
@@ -1423,6 +1490,27 @@ export class RemindersDomain {
       (await this.ctx.ownerRoutingEntityId()) ?? this.ctx.ownerEntityId();
     const agentId = this.ctx.agentId();
     try {
+      if (args.attempt.ownerType === "occurrence") {
+        const plan = await this.ctx.repository.getReminderPlan(
+          agentId,
+          args.attempt.planId,
+        );
+        const definition =
+          plan?.ownerType === "definition"
+            ? await getCallerDefinition(
+                this.ctx.repository,
+                this.ctx,
+                plan.ownerId,
+              )
+            : null;
+        if (definition && definition.status !== "active") {
+          await this.closeInactiveDefinitionReview(
+            args.attempt,
+            definition.status,
+          );
+          return { ...noResponse, reason: "definition_inactive" };
+        }
+      }
       const roomIds = await this.ctx.runtime.getRoomsForParticipants([
         ownerEntityId,
         agentId,
@@ -1438,22 +1526,82 @@ export class RemindersDomain {
         return noResponse;
       }
       const nowMs = args.now.getTime();
+      const metadata = args.attempt.deliveryMetadata;
+      const observedAt = metadata[REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY];
+      const observedMs =
+        typeof observedAt === "string" ? Date.parse(observedAt) : Number.NaN;
+      const observedDecision = metadata[REMINDER_REVIEW_DECISION_METADATA_KEY];
+      const cachedObservation: ReminderReviewResponseEvidence | null =
+        Number.isFinite(observedMs) &&
+        (observedDecision === "unrelated" ||
+          observedDecision === "needs_clarification")
+          ? {
+              decision: observedDecision,
+              resolution: null,
+              snoozeRequest: null,
+              respondedAt: observedAt as string,
+              responseText:
+                typeof metadata[REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY] ===
+                "string"
+                  ? (metadata[
+                      REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY
+                    ] as string)
+                  : null,
+              confidence:
+                typeof metadata.reviewConfidence === "number"
+                  ? metadata.reviewConfidence
+                  : 0,
+              reason:
+                typeof metadata.reviewReason === "string"
+                  ? metadata.reviewReason
+                  : "observed_owner_response",
+              classifierSource: metadata[
+                REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY
+              ] as ReminderReviewResponseEvidence["classifierSource"],
+              semanticReason:
+                typeof metadata[
+                  REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY
+                ] === "string"
+                  ? (metadata[
+                      REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY
+                    ] as string)
+                  : null,
+            }
+          : null;
+      const memoriesById = new Map(
+        memories.map((memory) => [memory.id, memory]),
+      );
       const ownerResponses = memories
         .filter((memory) => memory.entityId === ownerEntityId)
         .map((memory) => {
           const createdAt = readMemoryCreatedAtMs(memory);
-          const text =
-            typeof memory.content.text === "string"
-              ? memory.content.text.trim()
-              : "";
+          const text = extractUserText(unwrapUserMessageText(memory));
           const roomId =
             typeof memory.roomId === "string" ? memory.roomId : null;
-          return { createdAt, roomId, text };
+          return {
+            foregroundHandling: foregroundRequestHandling(
+              memory,
+              agentId,
+              ownerEntityId,
+            ),
+            memoryId: memory.id ?? null,
+            inReplyTo:
+              typeof memory.content.inReplyTo === "string"
+                ? memory.content.inReplyTo
+                : null,
+            metadata: isRecord(memory.content.metadata)
+              ? memory.content.metadata
+              : null,
+            createdAt,
+            roomId,
+            text,
+          };
         })
         .filter(
           (response): response is typeof response & { createdAt: number } =>
             response.createdAt !== null &&
             response.createdAt > attemptedMs &&
+            (!cachedObservation || response.createdAt > observedMs) &&
             response.createdAt <= nowMs &&
             response.text.length > 0,
         )
@@ -1471,7 +1619,7 @@ export class RemindersDomain {
           return l - r;
         });
       if (ownerResponses.length === 0) {
-        return noResponse;
+        return cachedObservation ?? noResponse;
       }
       const title =
         typeof args.attempt.deliveryMetadata.title === "string"
@@ -1483,6 +1631,96 @@ export class RemindersDomain {
           : [args.attempt];
       let latestUnrelated: ReminderReviewResponseEvidence | null = null;
       for (const response of ownerResponses) {
+        let foregroundHandling = response.foregroundHandling;
+        if (foregroundHandling === "pending" && response.roomId) {
+          if (
+            this.ctx.runtime.roomHandlerQueue.pendingFor(response.roomId) > 0
+          ) {
+            return { ...noResponse, reason: "foreground_request_pending" };
+          }
+          // The snapshot may precede outcome persistence and queue release.
+          // Refresh only this exact host-owned request before classifying it.
+          try {
+            const fresh = response.memoryId
+              ? await this.ctx.runtime.getMemoryById(response.memoryId)
+              : null;
+            const priorMarker = readDurableConversationChatMarker(
+              response.memoryId
+                ? memoriesById.get(response.memoryId)?.content.chatIdempotency
+                : undefined,
+            );
+            const freshMarker = readDurableConversationChatMarker(
+              fresh?.content.chatIdempotency,
+            );
+            if (
+              !fresh ||
+              fresh.id !== response.memoryId ||
+              fresh.agentId !== agentId ||
+              fresh.entityId !== ownerEntityId ||
+              fresh.roomId !== response.roomId ||
+              !freshMarker ||
+              !priorMarker ||
+              freshMarker.scope !== priorMarker.scope ||
+              freshMarker.clientMessageId !== priorMarker.clientMessageId ||
+              freshMarker.fingerprint !== priorMarker.fingerprint
+            ) {
+              return {
+                ...noResponse,
+                reason: "foreground_request_refresh_unknown",
+              };
+            }
+            foregroundHandling = foregroundRequestHandling(
+              fresh,
+              agentId,
+              ownerEntityId,
+            );
+            if (
+              foregroundHandling === "pending" &&
+              this.ctx.runtime.roomHandlerQueue.pendingFor(response.roomId) > 0
+            ) {
+              return { ...noResponse, reason: "foreground_request_pending" };
+            }
+          } catch {
+            return {
+              ...noResponse,
+              reason: "foreground_request_refresh_unknown",
+            };
+          }
+        }
+        const source = response.inReplyTo
+          ? memoriesById.get(response.inReplyTo as Memory["id"])
+          : null;
+        const reference =
+          source && isRecord(source.content.metadata)
+            ? source.content.metadata
+            : null;
+        const explicitlyBoundToThisReminder =
+          source?.entityId === agentId &&
+          source.agentId === agentId &&
+          source.roomId === response.roomId &&
+          source.content.source === "reminder" &&
+          reference?.ownerType === args.attempt.ownerType &&
+          reference.ownerId === args.attempt.ownerId;
+        const skipReason =
+          foregroundHandling === "single_create" &&
+          !explicitlyBoundToThisReminder
+            ? "foreground_single_create_owned"
+            : response.metadata &&
+                Object.hasOwn(response.metadata, "reminderChoiceId")
+              ? "typed_reply_owned_by_action_pipeline"
+              : source?.entityId === agentId &&
+                  source.agentId === agentId &&
+                  source.roomId === response.roomId &&
+                  source.content.source === "reminder" &&
+                  reference &&
+                  ["occurrence", "calendar_event"].includes(
+                    String(reference.ownerType),
+                  ) &&
+                  typeof reference.ownerId === "string" &&
+                  (reference.ownerType !== args.attempt.ownerType ||
+                    reference.ownerId !== args.attempt.ownerId)
+                ? "reply_targets_other_reminder"
+                : null;
         const responseClaim = buildReminderResponseClaim({
           attempt: args.attempt,
           competingAttempts,
@@ -1490,21 +1728,41 @@ export class RemindersDomain {
             text: response.text,
             createdAt: response.createdAt,
             roomId: response.roomId,
+            memoryId: response.memoryId,
           },
           roomIds,
         });
-        const classification = await classifyReminderOwnerResponse({
-          text: response.text,
-          context: {
-            title,
-            attemptedAt,
-            respondedAt: response.createdAt,
-            channel: args.attempt.channel,
-            allowStandaloneResolution: responseClaim.allowStandaloneResolution,
-          },
-          semanticClassifier: (input) =>
-            this.classifyReminderOwnerResponseSemantically(input),
-        });
+        const classification: Awaited<
+          ReturnType<typeof classifyReminderOwnerResponse>
+        > = skipReason
+          ? {
+              decision: "unrelated",
+              resolution: null,
+              snoozeRequest: null,
+              confidence: 1,
+              reason: skipReason,
+              classifierSource: "deterministic",
+            }
+          : await classifyReminderOwnerResponse({
+              text: response.text,
+              context: {
+                title,
+                attemptedAt,
+                respondedAt: response.createdAt,
+                channel: args.attempt.channel,
+                allowStandaloneResolution:
+                  responseClaim.allowStandaloneResolution,
+              },
+              semanticClassifier: (input) =>
+                this.classifyReminderOwnerResponseSemantically(input),
+            });
+        if (
+          classification.classifierSource === "none" &&
+          classification.reason === "no_semantic_verdict"
+        ) {
+          // Unknown evidence must remain retryable; do not advance past it.
+          return { ...noResponse, reason: classification.reason };
+        }
         if (classification.decision === "explicit_resolution") {
           return {
             decision: "explicit_resolution",
@@ -1518,21 +1776,12 @@ export class RemindersDomain {
             semanticReason: classification.semanticReason ?? null,
           };
         }
-        if (classification.decision === "needs_clarification") {
-          return {
-            decision: "needs_clarification",
-            resolution: null,
-            snoozeRequest: null,
-            respondedAt: new Date(response.createdAt).toISOString(),
-            responseText: response.text,
-            confidence: classification.confidence,
-            reason: classification.reason,
-            classifierSource: classification.classifierSource,
-            semanticReason: classification.semanticReason ?? null,
-          };
-        }
-        latestUnrelated = {
-          decision: "unrelated",
+        const observation = {
+          ...classification,
+          decision:
+            classification.decision === "needs_clarification"
+              ? "needs_clarification"
+              : "unrelated",
           resolution: null,
           snoozeRequest: null,
           respondedAt: new Date(response.createdAt).toISOString(),
@@ -1541,7 +1790,15 @@ export class RemindersDomain {
           reason: classification.reason,
           classifierSource: classification.classifierSource,
           semanticReason: classification.semanticReason ?? null,
-        };
+        } satisfies ReminderReviewResponseEvidence;
+        // Consume non-resolving evidence even when the caller has no due review
+        // transition; the existing observed timestamp survives service restart.
+        await this.markReminderReviewObservedResponse({
+          ...observation,
+          attempt: args.attempt,
+        });
+        if (observation.decision === "needs_clarification") return observation;
+        latestUnrelated = observation;
       }
       return (
         latestUnrelated ?? {
@@ -1571,6 +1828,7 @@ export class RemindersDomain {
     subjectType: LifeOpsSubjectType;
     nearbyReminderTitles?: string[];
     derivedTarget?: Record<string, unknown> | null;
+    timezone?: string;
   }): Promise<string> {
     // The laddered rung, when present, is the small step the reminder should be
     // about — both the deterministic fallback and the model prompt lead with it
@@ -1579,11 +1837,6 @@ export class RemindersDomain {
     const reminderFocusTitle = rungTitle ?? args.title;
     const fallback = buildReminderBody({
       title: args.title,
-      scheduledFor: args.scheduledFor,
-      dueAt: args.dueAt,
-      channel: args.channel,
-      lifecycle: args.lifecycle,
-      nearbyReminderTitles: args.nearbyReminderTitles,
       derivedTarget: args.derivedTarget,
     });
     if (typeof this.ctx.runtime.useModel !== "function") {
@@ -1603,6 +1856,7 @@ export class RemindersDomain {
       urgency: args.urgency,
       recentConversation,
       nearbyReminderTitles: args.nearbyReminderTitles,
+      timezone: args.timezone,
     });
 
     try {
@@ -3427,6 +3681,40 @@ export class RemindersDomain {
     classifierSource?: string | null;
     semanticReason?: string | null;
   }): Promise<void> {
+    let admission:
+      | { occurrence: LifeOpsOccurrence; definition: LifeOpsTaskDefinition }
+      | undefined;
+    if (args.ownerType === "occurrence") {
+      // Classification may have awaited a model while the owner cancelled.
+      // Revalidate current scoped policy before any acknowledgement or snooze.
+      const occurrence = await getCallerOccurrence(
+        this.ctx.repository,
+        this.ctx,
+        args.ownerId,
+      );
+      const plan = occurrence
+        ? null
+        : await this.ctx.repository.getReminderPlan(
+            this.ctx.agentId(),
+            args.attempt.planId,
+          );
+      const definitionId =
+        occurrence?.definitionId ??
+        (plan?.ownerType === "definition" ? plan.ownerId : null);
+      const definition = definitionId
+        ? await getCallerDefinition(this.ctx.repository, this.ctx, definitionId)
+        : null;
+      if (!definition) return;
+      if (definition.status !== "active") {
+        await this.closeInactiveDefinitionReview(
+          args.attempt,
+          definition.status,
+        );
+        return;
+      }
+      if (!occurrence) return;
+      admission = { occurrence, definition };
+    }
     if (args.resolution === "snoozed") {
       if (args.ownerType !== "occurrence" || !args.snoozeRequest) {
         await this.markReminderReviewObservedResponse({
@@ -3456,29 +3744,67 @@ export class RemindersDomain {
     const acknowledgementNote = args.responseText
       ? `Owner replied: ${args.responseText}`
       : args.reason;
-    if (args.resolution === "snoozed") {
-      if (!args.snoozeRequest) {
-        // Unreachable: the resolution-validation block above early-returns
-        // when a snoozed resolution lacks a snoozeRequest. Re-assert so the
-        // type system narrows it to non-null for snoozeOccurrence.
-        throw new Error(
-          "snoozeRequest is required to snooze a reminder occurrence",
-        );
+    if (admission) {
+      try {
+        if (args.resolution === "snoozed") {
+          if (!args.snoozeRequest)
+            throw new Error(
+              "snoozeRequest is required to snooze a reminder occurrence",
+            );
+          await this.deps.snoozeOccurrence(
+            args.ownerId,
+            args.snoozeRequest,
+            new Date(args.respondedAt ?? args.reviewedAt),
+            {
+              expectedDefinitionUpdatedAt: admission.definition.updatedAt,
+            },
+          );
+        } else {
+          await this.ctx.repository.updateOccurrence(
+            {
+              ...admission.occurrence,
+              metadata: {
+                ...admission.occurrence.metadata,
+                reminderAcknowledgedAt: args.respondedAt ?? args.reviewedAt,
+                reminderAcknowledgedNote: acknowledgementNote,
+                reminderAcknowledgedResolution: args.resolution,
+              },
+              updatedAt: nextMutationRevision(admission.occurrence.updatedAt),
+            },
+            {
+              definitionScope: {
+                domain: admission.definition.domain,
+                subjectType: admission.definition.subjectType,
+                subjectId: admission.definition.subjectId,
+              },
+              expectedUpdatedAt: admission.occurrence.updatedAt,
+              expectedDefinitionUpdatedAt: admission.definition.updatedAt,
+            },
+          );
+        }
+      } catch (error) {
+        if (
+          error instanceof ElizaError &&
+          error.code === "LIFEOPS_OCCURRENCE_CONFLICT"
+        ) {
+          const definition = await getCallerDefinition(
+            this.ctx.repository,
+            this.ctx,
+            admission.definition.id,
+          );
+          if (definition && definition.status !== "active") {
+            await this.closeInactiveDefinitionReview(
+              args.attempt,
+              definition.status,
+            );
+            return;
+          }
+        }
+        throw error;
       }
-      await this.deps.snoozeOccurrence(
-        args.ownerId,
-        args.snoozeRequest,
-        new Date(args.respondedAt ?? args.reviewedAt),
-      );
-      await this.ctx.repository.updateReminderAttemptOutcome(
-        args.attempt.id,
-        args.attempt.outcome,
-        reviewMetadata,
-      );
-      Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
-      args.attempt.reviewStatus = "resolved";
-      return;
     }
+    // A rejected CAS is not a resolved owner response. Commit job success only
+    // after the admitted occurrence mutation has actually completed.
     await this.ctx.repository.updateReminderAttemptOutcome(
       args.attempt.id,
       args.attempt.outcome,
@@ -3486,24 +3812,8 @@ export class RemindersDomain {
     );
     Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
     args.attempt.reviewStatus = "resolved";
-    if (args.ownerType === "occurrence") {
-      const occurrence = await this.ctx.repository.getOccurrence(
-        this.ctx.agentId(),
-        args.ownerId,
-      );
-      if (occurrence) {
-        await this.ctx.repository.updateOccurrence({
-          ...occurrence,
-          metadata: {
-            ...occurrence.metadata,
-            reminderAcknowledgedAt: args.respondedAt ?? args.reviewedAt,
-            reminderAcknowledgedNote: acknowledgementNote,
-            reminderAcknowledgedResolution: args.resolution,
-          },
-          updatedAt: nextMutationRevision(occurrence.updatedAt),
-        });
-      }
-    } else {
+    if (args.resolution === "snoozed") return;
+    if (args.ownerType === "calendar_event") {
       const event = (
         await this.ctx.repository.listCalendarEvents(
           this.ctx.agentId(),
@@ -3530,6 +3840,26 @@ export class RemindersDomain {
       resolution: args.resolution,
       note: acknowledgementNote,
     });
+  }
+
+  /** Close the review job only; cancellation is not an owner acknowledgement. */
+  private async closeInactiveDefinitionReview(
+    attempt: LifeOpsReminderAttempt,
+    status: LifeOpsTaskDefinition["status"],
+  ): Promise<void> {
+    const metadata = {
+      [REMINDER_REVIEW_STATUS_METADATA_KEY]: "resolved",
+      [REMINDER_REVIEW_DECISION_METADATA_KEY]: "no_response",
+      [REMINDER_REVIEW_REASON_METADATA_KEY]: "definition_inactive",
+      reviewReason: `definition_${status}`,
+    };
+    await this.ctx.repository.updateReminderAttemptOutcome(
+      attempt.id,
+      attempt.outcome,
+      metadata,
+    );
+    Object.assign(attempt.deliveryMetadata, metadata);
+    attempt.reviewStatus = "resolved";
   }
 
   public async markReminderReviewResolvedFromState(args: {
@@ -3615,6 +3945,7 @@ export class RemindersDomain {
     reason: string;
     classifierSource?: string | null;
     semanticReason?: string | null;
+    confidence?: number;
   }): Promise<void> {
     const reviewMetadata = {
       [REMINDER_REVIEW_STATUS_METADATA_KEY]: args.decision,
@@ -3622,6 +3953,9 @@ export class RemindersDomain {
       [REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY]: args.respondedAt,
       [REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY]: args.responseText,
       reviewReason: args.reason,
+      ...(args.confidence !== undefined
+        ? { reviewConfidence: args.confidence }
+        : {}),
       [REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY]:
         args.classifierSource ?? null,
       [REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY]:
@@ -3696,6 +4030,21 @@ export class RemindersDomain {
       }
 
       if (reviewAttempt.ownerType === "occurrence") {
+        const definition =
+          plan.ownerType === "definition"
+            ? await getCallerDefinition(
+                this.ctx.repository,
+                this.ctx,
+                plan.ownerId,
+              )
+            : null;
+        if (definition && definition.status !== "active") {
+          await this.closeInactiveDefinitionReview(
+            reviewAttempt,
+            definition.status,
+          );
+          continue;
+        }
         const occurrence = await getCallerOccurrenceView(
           this.ctx.repository,
           this.ctx,
@@ -3725,13 +4074,18 @@ export class RemindersDomain {
           });
           continue;
         }
-        const definition = await getCallerDefinition(
-          this.ctx.repository,
-          this.ctx,
-          occurrence.definitionId,
+        const occurrenceDefinition =
+          definition?.id === occurrence.definitionId
+            ? definition
+            : await getCallerDefinition(
+                this.ctx.repository,
+                this.ctx,
+                occurrence.definitionId,
+              );
+        if (!occurrenceDefinition) continue;
+        const preference = await this.getReminderPreference(
+          occurrenceDefinition.id,
         );
-        if (!definition) continue;
-        const preference = await this.getReminderPreference(definition.id);
         const attempt = await this.dispatchDueReminderEscalation({
           plan,
           ownerType: "occurrence",
@@ -3756,7 +4110,7 @@ export class RemindersDomain {
           acknowledged: false,
           nearbyReminderTitles: [],
           timezone: args.timezone,
-          definition,
+          definition: occurrenceDefinition,
           reviewAttempt,
         });
         if (attempt) {
@@ -4029,6 +4383,17 @@ export class RemindersDomain {
           now: args.now,
         },
       );
+      if (
+        responseReview.classifierSource === "none" &&
+        (responseReview.reason === "no_semantic_verdict" ||
+          responseReview.reason === "foreground_request_pending" ||
+          responseReview.reason === "foreground_request_refresh_unknown" ||
+          responseReview.reason === "definition_inactive")
+      ) {
+        // Unknown evidence stays retryable. Inactive definitions already closed
+        // their review job and cannot authorize an owner transition.
+        return null;
+      }
       const reviewTransition = decideReminderReviewTransition({
         reviewDue,
         ownerType: args.ownerType,
@@ -4495,7 +4860,23 @@ export class RemindersDomain {
       },
     );
 
-    if (args.acknowledged) {
+    // Background dispatch is agent-wide; refresh the exact linked definition
+    // without narrowing it to the service's synthetic default owner.
+    const definition =
+      args.ownerType === "occurrence" && args.plan.ownerType === "definition"
+        ? await this.ctx.repository.getDefinition(
+            this.ctx.agentId(),
+            args.plan.ownerId,
+          )
+        : null;
+    if (
+      args.ownerType === "occurrence" &&
+      args.plan.ownerType === "definition" &&
+      definition?.status !== "active"
+    ) {
+      outcome = "blocked_policy";
+      deliveryMetadata.reason = "definition_inactive";
+    } else if (args.acknowledged) {
       outcome = "blocked_acknowledged";
       deliveryMetadata.reason = "owner_acknowledged";
     } else if (
@@ -4533,9 +4914,8 @@ export class RemindersDomain {
         args.bodyOverride === undefined;
       reminderBody = exactReminder
         ? buildReminderBody({
-            ...args,
-            dueAt: args.snoozedUntil ?? args.dueAt,
-            lifecycle,
+            title: args.title,
+            derivedTarget: args.derivedTarget,
           })
         : (args.bodyOverride ??
           (await this.renderReminderBody({
@@ -4548,11 +4928,12 @@ export class RemindersDomain {
             subjectType: args.subjectType,
             nearbyReminderTitles: args.nearbyReminderTitles,
             derivedTarget: args.derivedTarget,
+            timezone: args.timezone,
           })));
       if (exactReminder)
         presentation = createReminderPresentation(
           reminderBody,
-          appendReminderChoiceChips(reminderBody, args),
+          reminderBody,
           "Reminder",
         );
       if (args.channel === "in_app") {
@@ -4663,9 +5044,7 @@ export class RemindersDomain {
             },
           };
           const acceptRuntimeSendResult = (
-            result: Awaited<
-              ReturnType<typeof this.ctx.runtime.sendMessageToTarget>
-            >,
+            result: Awaited<ReturnType<IAgentRuntime["sendMessageToTarget"]>>,
           ): boolean => {
             const disposition = inspectSendHandlerResult(result);
             if (

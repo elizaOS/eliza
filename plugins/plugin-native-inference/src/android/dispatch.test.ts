@@ -16,10 +16,10 @@ import {
   ServiceType,
   stringToUuid as sqliteTestAgentId,
 } from "@elizaos/core";
-import { type RouteHandlerResult } from "@elizaos/core/api/http-plugin";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import type { RouteHandlerResult } from "@elizaos/host/protocol";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { describe, expect, it, vi } from "vitest";
-import { type StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
+import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 import {
   type AndroidCoreRouteDeps,
   type AndroidDispatchRoute,
@@ -766,5 +766,151 @@ describe("dispatchStreamingRequest", () => {
       sink,
     );
     expect(events[0]).toMatchObject({ kind: "response", status: 404 });
+  });
+
+  it("serves the notification inbox inline on the streaming channel", async () => {
+    const seeded = [
+      { id: "n1", title: "Take the tour", readAt: null },
+      { id: "n2", title: "Get help", readAt: 123 },
+    ];
+    const notifierRuntime = {
+      getService: (type: string) =>
+        type === "notification"
+          ? {
+              list: () => seeded,
+              getUnreadCount: () => 1,
+              markRead: () => Promise.resolve(true),
+              markAllRead: () => Promise.resolve(1),
+              remove: () => Promise.resolve(true),
+              clear: () => Promise.resolve(),
+            }
+          : null,
+    } as unknown as IAgentRuntime;
+    const { route, calls } = fixedRoute(null);
+    const { sink, events } = collectSink();
+
+    await dispatchStreamingRequest(
+      notifierRuntime,
+      route,
+      { method: "GET", path: "/api/notifications?limit=100" },
+      sink,
+    );
+
+    expect(events[0]).toMatchObject({ kind: "response", status: 200 });
+    const body = JSON.parse(
+      Buffer.from(events[1]?.dataBase64 as string, "base64").toString("utf8"),
+    );
+    expect(body).toEqual({
+      notifications: seeded,
+      unreadCount: 1,
+      serviceStatus: "ready",
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("enforces the wake-token guard on the streaming channel like the buffered one", async () => {
+    // The wake route is an inline transport boundary, so both channels must
+    // validate it before considering the plugin dispatcher.
+    const previousToken = process.env.ELIZA_API_TOKEN;
+    process.env.ELIZA_API_TOKEN = "e".repeat(64);
+    const runDueTasks = vi.fn(async () => {});
+    const wakeRuntime = {
+      getService: (type: ServiceType) =>
+        type === ServiceType.TASK ? { runDueTasks } : null,
+    } as unknown as IAgentRuntime;
+    // Identical request on both channels, with no Authorization header.
+    const payload = {
+      method: "POST",
+      path: "/api/internal/wake",
+      body: JSON.stringify({ kind: "refresh", deadlineMs: Date.now() + 5_000 }),
+    };
+    try {
+      const buffered = fixedRoute(null);
+      const bufferedResponse = await dispatchBufferedRequest(
+        wakeRuntime,
+        buffered.route,
+        payload,
+      );
+      expect(bufferedResponse.status).toBe(401);
+      expect(buffered.calls).toHaveLength(0);
+
+      const streaming = fixedRoute(null);
+      const { sink, events } = collectSink();
+      await dispatchStreamingRequest(
+        wakeRuntime,
+        streaming.route,
+        payload,
+        sink,
+      );
+      expect(events[0]).toMatchObject({ kind: "response", status: 401 });
+      const body = JSON.parse(
+        Buffer.from(events[1]?.dataBase64 as string, "base64").toString("utf8"),
+      );
+      expect(body).toEqual({ ok: false, error: "unauthorized" });
+      expect(streaming.calls).toHaveLength(0);
+      expect(runDueTasks).not.toHaveBeenCalled();
+    } finally {
+      if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
+      else process.env.ELIZA_API_TOKEN = previousToken;
+    }
+  });
+
+  it("runs an authenticated streaming wake through TaskService", async () => {
+    // The positive half of parity: with a valid bearer token the streaming
+    // channel serves the wake inline exactly as the buffered channel does.
+    const previousToken = process.env.ELIZA_API_TOKEN;
+    process.env.ELIZA_API_TOKEN = "f".repeat(64);
+    const runDueTasks = vi.fn(async () => {});
+    const wakeRuntime = {
+      getService: (type: ServiceType) =>
+        type === ServiceType.TASK ? { runDueTasks } : null,
+    } as unknown as IAgentRuntime;
+    const { route, calls } = fixedRoute(null);
+    const { sink, events } = collectSink();
+    try {
+      await dispatchStreamingRequest(
+        wakeRuntime,
+        route,
+        {
+          method: "POST",
+          path: "/api/internal/wake",
+          headers: { Authorization: `Bearer ${"f".repeat(64)}` },
+          body: JSON.stringify({
+            kind: "refresh",
+            deadlineMs: Date.now() + 5_000,
+          }),
+        },
+        sink,
+      );
+      expect(events[0]).toMatchObject({ kind: "response", status: 200 });
+      const body = JSON.parse(
+        Buffer.from(events[1]?.dataBase64 as string, "base64").toString("utf8"),
+      );
+      expect(body).toMatchObject({ ok: true, coalesced: false });
+      expect(runDueTasks).toHaveBeenCalledOnce();
+      // The inline handler served it; the plugin dispatcher was never consulted.
+      expect(calls).toHaveLength(0);
+    } finally {
+      if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
+      else process.env.ELIZA_API_TOKEN = previousToken;
+    }
+  });
+  it("keeps notification authorization in the full API kernel", async () => {
+    const getService = vi.fn();
+    const { route, calls } = fixedRoute({
+      status: 403,
+      body: { error: "forbidden" },
+    });
+    const { sink, events } = collectSink();
+    await dispatchStreamingRequest(
+      { getService } as unknown as IAgentRuntime,
+      route,
+      { method: "GET", path: "/api/notifications" },
+      sink,
+      { fullApiKernel: true } as AndroidCoreRouteDeps,
+    );
+    expect(events[0]).toMatchObject({ kind: "response", status: 403 });
+    expect(calls).toHaveLength(1);
+    expect(getService).not.toHaveBeenCalled();
   });
 });

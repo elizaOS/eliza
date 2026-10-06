@@ -9,7 +9,6 @@ import path from "node:path";
 import {
   getElizaNamespace,
   readEnv,
-  resolveOAuthDir,
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
@@ -19,8 +18,6 @@ const CONFIG_PATH_CANONICAL_KEY = "ELIZA_CONFIG_PATH";
 function readEnvOverride(env: NodeJS.ProcessEnv): string | undefined {
   return readEnv(CONFIG_PATH_CANONICAL_KEY, { env });
 }
-
-export { getElizaNamespace, resolveOAuthDir, resolveStateDir, resolveUserPath };
 
 /**
  * Create a state directory (and parents) owner-only, then heal the mode on
@@ -92,4 +89,14 @@ export function resolveStewardCredentialsPath(
   stateDirPath: string = resolveStateDir(env),
 ): string {
   return path.join(stateDirPath, STEWARD_CREDENTIALS_FILENAME);
+}
+
+export function resolveDefaultSessionStorePath(agentId = "main"): string {
+  return path.join(
+    resolveStateDir(),
+    "agents",
+    agentId,
+    "sessions",
+    "sessions.json",
+  );
 }

@@ -6,12 +6,12 @@ import time
 
 import pytest
 
-from benchmarks.swe_bench.evaluator import (
+from benchmarks.suites.swe_bench.evaluator import (
     PatchQualityResult,
     SimplePatchEvaluator,
     SWEBenchEvaluator,
 )
-from benchmarks.swe_bench.types import PatchStatus, SWEBenchInstance
+from benchmarks.suites.swe_bench.types import PatchStatus, SWEBenchInstance
 
 
 class TestSimplePatchEvaluator:

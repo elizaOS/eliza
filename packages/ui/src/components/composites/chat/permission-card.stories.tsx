@@ -3,7 +3,7 @@
  * conversation and composer surfaces.
  */
 
-import type { PermissionState } from "@elizaos/core/contracts/permissions";
+import type { PermissionState } from "@elizaos/core/protocol";
 import type { Meta, StoryObj } from "@storybook/react";
 import { PermissionCard } from "./permission-card";
 

@@ -16,8 +16,8 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { client } from "../api";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 import { useIsAuthenticated } from "./useAuthStatus";
 

@@ -15,7 +15,7 @@ import {
   startCuttlefish,
   stopCuttlefish,
   systemImgPath,
-} from "../distro-android/sim.ts";
+} from "../android/sim.ts";
 
 const brand = {
   productName: "eliza_cf_x86_64",

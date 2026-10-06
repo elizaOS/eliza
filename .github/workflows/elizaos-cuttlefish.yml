@@ -1,6 +1,6 @@
 name: ElizaOS Cuttlefish
 
-# Brand-aware AOSP builds using the retained application source lock.
+# Brand-aware AOSP builds from the checked-out monorepo.
 on:
   workflow_dispatch:
     inputs:
@@ -8,7 +8,7 @@ on:
         description: "Path to brand config JSON (relative to packages/os). Default: eliza."
         required: false
         type: string
-        default: "scripts/distro-android/brand.eliza.json"
+        default: "scripts/android/brand.eliza.json"
       vendor-source:
         description: "Override path to the vendor tree (relative to packages/os). Defaults to brand.vendorDir."
         required: false
@@ -44,7 +44,7 @@ on:
         description: "Path to brand config JSON (relative to packages/os)."
         required: false
         type: string
-        default: "scripts/distro-android/brand.eliza.json"
+        default: "scripts/android/brand.eliza.json"
       vendor-source:
         description: "Override path to the vendor tree."
         required: false
@@ -110,7 +110,7 @@ jobs:
       AOSP_JOBS: ${{ inputs.jobs }}
       VENDOR_SOURCE: ${{ inputs.vendor-source }}
       CVD_LAUNCH: ${{ inputs.launch }}
-      ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}/.eliza-source
+      ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}
       ZIG_VERSION: "0.13.0"
       ANDROID_NDK_VERSION: "29.0.13113456"
     steps:
@@ -121,18 +121,6 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24.15.0"
-
-      - name: Resolve pinned Eliza source
-        id: eliza-source
-        run: node scripts/read-eliza-source-lock.ts --github-output >> "$GITHUB_OUTPUT"
-
-      - name: Check out retained Android application source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: ${{ steps.eliza-source.outputs.repository }}
-          ref: ${{ steps.eliza-source.outputs.commit }}
-          path: .eliza-source
-          submodules: recursive
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -148,7 +136,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.bun/install/cache
-          key: eliza-bun-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.eliza-source/bun.lock') }}
+          key: eliza-bun-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
           restore-keys: eliza-bun-downloads-${{ runner.os }}-${{ runner.arch }}-
 
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
@@ -157,8 +145,8 @@ jobs:
           java-version: "21"
           cache: gradle
           cache-dependency-path: |
-            .eliza-source/packages/app/platforms/android/**/*.gradle*
-            .eliza-source/packages/app/platforms/android/gradle/wrapper/gradle-wrapper.properties
+            packages/app/platforms/android/**/*.gradle*
+            packages/app/platforms/android/gradle/wrapper/gradle-wrapper.properties
 
       # The brand validator shells out to `aapt` to inspect the staged APK,
       # and the brand `build:android:system` runs Gradle which needs a full SDK.
@@ -167,18 +155,18 @@ jobs:
           packages: "platform-tools build-tools;36.0.0 platforms;android-36 ndk;${{ env.ANDROID_NDK_VERSION }}"
 
       - name: Install workspace dependencies
-        working-directory: .eliza-source
+        working-directory: .
         run: bun install --frozen-lockfile
 
       - name: Run assistant verifier regression canary
-        working-directory: .eliza-source
+        working-directory: .
         run: bun test packages/app/scripts/lib/android-assistant-verify-lib.test.ts
       - name: Resolve brand
         id: brand
         run: |
           node --input-type=module <<'NODE'
           import { appendFileSync } from "node:fs";
-          import { loadBrandConfig } from "./scripts/distro-android/brand-config.ts";
+          import { loadBrandConfig } from "./scripts/android/brand-config.ts";
           const brand = loadBrandConfig(process.env.BRAND_CONFIG);
           const product = brand.productName;
           const target = product.includes("riscv64") ? "android-riscv64-cpu-fused" : product.includes("x86_64") ? "android-x86_64-cpu-fused" : null;
@@ -206,7 +194,7 @@ jobs:
         id: native-inference-fingerprint
         env:
           INFERENCE_TARGETS: ${{ steps.brand.outputs.inference-targets }}
-          ELIZA_SOURCE_COMMIT: ${{ steps.eliza-source.outputs.commit }}
+          ELIZA_SOURCE_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           {
@@ -228,13 +216,13 @@ jobs:
         with:
           path: |
             ~/.cache/eliza-android-agent
-            .eliza-source/packages/app/platforms/android/app/src/main/assets/agent/arm64-v8a
-            .eliza-source/packages/app/platforms/android/app/src/main/assets/agent/x86_64
-            .eliza-source/packages/app/platforms/android/app/src/main/assets/agent/riscv64
+            packages/app/platforms/android/app/src/main/assets/agent/arm64-v8a
+            packages/app/platforms/android/app/src/main/assets/agent/x86_64
+            packages/app/platforms/android/app/src/main/assets/agent/riscv64
           key: cuttlefish-native-${{ runner.os }}-${{ steps.native-inference-fingerprint.outputs.hash }}
 
       - name: Build fused Android inference libraries
-        working-directory: .eliza-source
+        working-directory: .
         shell: bash
         run: |
           set -euo pipefail
@@ -257,7 +245,7 @@ jobs:
             args+=(--target "$target")
           done
           mkdir -p "$CVD_REPORT_DIR"
-          node scripts/aosp/verify-native-runtime.ts \
+          node scripts/android/verify-native-runtime.ts \
             --asset-root "$ELIZAOS_ELIZA_ROOT"/packages/app/platforms/android/app/src/main/assets/agent \
             "${args[@]}" | tee "$CVD_REPORT_DIR"/native-runtime.json
 
@@ -266,9 +254,9 @@ jobs:
           ELIZAOS_OS_REPO_ROOT: ${{ github.workspace }}/packages/os
           ELIZA_BUN_RISCV64_URL: ${{ inputs.bun-riscv64-url }}
           ELIZA_BUN_RISCV64_SHA256: ${{ inputs.bun-riscv64-sha256 }}
-          ELIZA_MTP_ANDROID_LIBDIR: ${{ github.workspace }}/.eliza-source/packages/app/platforms/android/app/src/main/assets/agent/arm64-v8a
-          ELIZA_MTP_ANDROID_LIBDIR_X86_64: ${{ github.workspace }}/.eliza-source/packages/app/platforms/android/app/src/main/assets/agent/x86_64
-          ELIZA_MTP_ANDROID_LIBDIR_RISCV64: ${{ github.workspace }}/.eliza-source/packages/app/platforms/android/app/src/main/assets/agent/riscv64
+          ELIZA_MTP_ANDROID_LIBDIR: ${{ github.workspace }}/packages/app/platforms/android/app/src/main/assets/agent/arm64-v8a
+          ELIZA_MTP_ANDROID_LIBDIR_X86_64: ${{ github.workspace }}/packages/app/platforms/android/app/src/main/assets/agent/x86_64
+          ELIZA_MTP_ANDROID_LIBDIR_RISCV64: ${{ github.workspace }}/packages/app/platforms/android/app/src/main/assets/agent/riscv64
         run: |
           if [ "${{ steps.brand.outputs.requires-riscv64 }}" = "true" ]; then
             if [ -z "$ELIZA_BUN_RISCV64_URL" ] || [ -z "$ELIZA_BUN_RISCV64_SHA256" ]; then
@@ -279,14 +267,14 @@ jobs:
             export ELIZA_BUN_RISCV64_OPTIONAL=1
           fi
           node --input-type=module <<'NODE'
-          import { loadBrandConfig } from "./scripts/distro-android/brand-config.ts";
-          import { rebuildPrivilegedApk } from "./scripts/distro-android/build-aosp.ts";
+          import { loadBrandConfig } from "./scripts/android/brand-config.ts";
+          import { rebuildPrivilegedApk } from "./scripts/android/build-aosp.ts";
           rebuildPrivilegedApk(loadBrandConfig(process.env.BRAND_CONFIG));
           NODE
 
       - name: Static brand validation
         run: |
-          node scripts/distro-android/validate.ts \
+          node scripts/android/validate.ts \
             --brand-config "$BRAND_CONFIG"
 
       - name: Sync the immutable AOSP manifest revision
@@ -312,7 +300,7 @@ jobs:
 
       - name: Verify immutable Cuttlefish AOSP source lock
         run: |
-          node scripts/aosp/verify-source-lock.ts \
+          node scripts/android/verify-source-lock.ts \
             --profile cuttlefish \
             --aosp-root "$AOSP_ROOT" \
             --json
@@ -331,7 +319,7 @@ jobs:
           if [ "$CVD_LAUNCH" = "true" ]; then
             ARGS+=(--launch)
           fi
-          node scripts/distro-android/build-aosp.ts "${ARGS[@]}"
+          node scripts/android/build-aosp.ts "${ARGS[@]}"
 
       - name: Bind validation to the disposable Cuttlefish guest
         if: success() && inputs.launch == true
@@ -344,19 +332,19 @@ jobs:
           case "$device" in vsoc_x86_64|vsoc_x86_64_only) ;; *) echo "::error::Expected a disposable Cuttlefish guest"; exit 1 ;; esac
           test "$(adb -s "$serial" shell getprop ro.build.type | tr -d '\r')" = userdebug
           echo "ANDROID_SERIAL=$serial" >> "$GITHUB_ENV"
-          ANDROID_SERIAL="$serial" node scripts/distro-android/boot-validate.ts --brand-config "$BRAND_CONFIG"
+          ANDROID_SERIAL="$serial" node scripts/android/boot-validate.ts --brand-config "$BRAND_CONFIG"
 
       - name: Verify application-native kernels on Cuttlefish
         if: success() && inputs.launch == true
         env:
-          ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}/.eliza-source
+          ELIZAOS_ELIZA_ROOT: ${{ github.workspace }}
           ELIZA_CUTTLEFISH_OUT_DIR: ${{ env.CVD_REPORT_DIR }}/kernel-parity
           ELIZA_CUTTLEFISH_EVIDENCE_OUT: ${{ env.CVD_REPORT_DIR }}/android-x86_64-cpu.json
-        run: bash scripts/aosp/cuttlefish-native-inference-smoke.sh
+        run: bash scripts/android/cuttlefish-native-inference-smoke.sh
 
       - name: Prove full WAV to ASR to agent to TTS round trip
         if: success() && inputs.launch == true
-        working-directory: .eliza-source/packages/app
+        working-directory: packages/app
         env:
           ELIZA_ANDROID_BACKEND: local
           ELIZA_ANDROID_PLAYWRIGHT_OUTPUT_DIR: ${{ env.CVD_REPORT_DIR }}/voice-selftest
@@ -372,7 +360,7 @@ jobs:
 
       - name: Exercise privileged Android instrumentation on Cuttlefish
         if: success() && inputs.launch == true
-        working-directory: .eliza-source/packages/app/platforms/android
+        working-directory: packages/app/platforms/android
         shell: bash
         run: |
           set -euo pipefail
@@ -484,7 +472,7 @@ jobs:
             cd "$ELIZAOS_ELIZA_ROOT"/packages/app/platforms/android
             ./gradlew :app:connectedDebugAndroidTest --stacktrace
             cd "${GITHUB_WORKSPACE}/packages/os"
-            node scripts/aosp/verify-android-instrumentation-results.ts \
+            node scripts/android/verify-android-instrumentation-results.ts \
               --results "$ELIZAOS_ELIZA_ROOT"/packages/app/platforms/android/app/build/outputs/androidTest-results/connected \
               --required-class ai.elizaos.app.ElizaAssistantSurfaceInstrumentedTest \
               --min-tests 6

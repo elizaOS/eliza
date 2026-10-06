@@ -1,10 +1,10 @@
 /**
  * Behavioral tests for the REPLY_CONTEXT provider: renders nothing on non-reply
- * turns, identifies the replied-to message, pulls the surrounding window, dedupes
- * that window against RECENT_MESSAGES, and refuses a cross-room / missing target.
- * Deterministic — drives `replyContextProvider.get` against a hand-built
- * in-memory runtime of `vi.fn` stubs that answers the two half-window
- * `getMemories` queries from a single sorted message list; no live model or DB.
+ * turns, identifies the replied-to message, dedupes the surrounding window
+ * against RECENT_MESSAGES' complete transcript, and refuses a cross-room /
+ * missing target. Deterministic — drives `replyContextProvider.get` against a
+ * hand-built in-memory runtime of `vi.fn` stubs that answers its `getMemories`
+ * queries from a single sorted message list; no live model or DB.
  */
 
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
@@ -66,13 +66,14 @@ function mem(
 
 /**
  * Runtime whose `getMemories` answers the provider's three queries off ONE
- * sorted list: the recent-window (no start/end), the older half (`end` +
- * desc), and the newer half (`start` + asc). Real filtering (bounds, order,
- * limit) is applied so the dedupe + window assembly is exercised for real.
+ * sorted list, as the adapter does: the recent window (no start/end; every
+ * row newest-first, or the newest `limit` rows when a limit is passed), the
+ * older half (`end` + desc), and the newer half (`start` + asc). Real
+ * filtering (bounds, order, limit) is applied so the dedupe + window assembly
+ * is exercised for real.
  */
 function makeRuntime(
   all: Memory[],
-  recentWindow: Memory[],
   target: Memory | null,
   conversationLength = 50,
 ): IAgentRuntime {
@@ -93,9 +94,12 @@ function makeRuntime(
       }) => {
         // Recent-window query: no bounds, newest-first.
         if (params.start === undefined && params.end === undefined) {
-          return [...recentWindow].sort(
+          const newestFirst = [...all].sort(
             (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
           );
+          return params.limit
+            ? newestFirst.slice(0, params.limit)
+            : newestFirst;
         }
         let rows = [...all];
         if (params.end !== undefined) {
@@ -127,7 +131,7 @@ describe("replyContextProvider", () => {
   it("renders nothing when the incoming turn is not a reply", async () => {
     const incoming = mem("cur", USER_ID, "hi", 100);
     const result = await replyContextProvider.get(
-      makeRuntime([], [], null),
+      makeRuntime([], null),
       incoming,
       { values: {}, data: {}, text: "" },
     );
@@ -135,8 +139,10 @@ describe("replyContextProvider", () => {
     expect(result.data?.replyTargetMessage).toBeNull();
   });
 
-  it("identifies the replied-to message and pulls the surrounding window", async () => {
-    // A ten-turn thread; the reply targets the middle turn (t=500).
+  it("identifies the replied-to message without repeating turns RECENT_MESSAGES shows", async () => {
+    // A ten-turn room, longer than the runtime conversation length (3); the
+    // reply targets an older turn (t=500). RECENT_MESSAGES renders every
+    // retained row, so no surrounding turn may be repeated here.
     const thread = Array.from({ length: 10 }, (_, i) =>
       mem(
         `m${i}`,
@@ -146,65 +152,29 @@ describe("replyContextProvider", () => {
       ),
     );
     const target = thread[4]; // t=500, "turn 4"
-    // RECENT_MESSAGES only shows the tail (t>=900): the window around t=500 is
-    // NOT already visible, so the provider must inject it.
-    const recent = thread.filter((m) => (m.createdAt ?? 0) >= 900);
     const incoming = {
       ...mem("cur", USER_ID, "about that", 1100),
       content: { text: "about that", source: "discord", inReplyTo: target.id },
     } as Memory;
+    const runtime = makeRuntime(thread, target, 3);
 
-    const result = await replyContextProvider.get(
-      makeRuntime(thread, recent, target),
-      incoming,
-      { values: {}, data: {}, text: "" },
-    );
+    const result = await replyContextProvider.get(runtime, incoming, {
+      values: {},
+      data: {},
+      text: "",
+    });
 
     // Identifies the target by sender + snippet.
     expect(result.text).toContain("direct reply to this earlier message");
     expect(result.text).toContain("turn 4");
-    // Every retained turn outside the recent tail is included.
-    const replyContextMessages = result.data?.replyContextMessages;
-    expect(replyContextMessages).toBeDefined();
-    if (!replyContextMessages) {
-      throw new Error("Expected reply-context messages to be returned");
-    }
-    const windowIds = (replyContextMessages as Memory[]).map((m) => m.id);
-    expect(windowIds).toContain(thread[0].id);
-    expect(windowIds).toContain(thread[4].id); // the target itself
-    expect(windowIds).toContain(thread[7].id);
-    expect(windowIds).not.toContain(thread[8].id); // t=900, in the recent tail
-    expect(replyContextMessages).toHaveLength(8);
-  });
-
-  it("dedupes window turns already shown in the recent transcript", async () => {
-    const thread = Array.from({ length: 8 }, (_, i) =>
-      mem(
-        `m${i}`,
-        i % 2 === 0 ? USER_ID : AGENT_ID,
-        `turn ${i}`,
-        (i + 1) * 100,
-      ),
+    expect(result.text).not.toContain("Surrounding messages");
+    expect(result.text).not.toContain("turn 0");
+    expect(result.data?.replyContextMessages).toEqual([]);
+    // The dedupe window is RECENT_MESSAGES' complete window, not the runtime
+    // conversation length.
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.not.objectContaining({ limit: expect.anything() }),
     );
-    const target = thread[7]; // the last turn (t=800)
-    // The window around the last turn is turns 4..7 (t=500..800); RECENT_MESSAGES
-    // already shows all of t>=500, so the entire window overlaps it.
-    const recent = thread.filter((m) => (m.createdAt ?? 0) >= 500);
-    const incoming = {
-      ...mem("cur", USER_ID, "re", 900),
-      content: { text: "re", source: "discord", inReplyTo: target.id },
-    } as Memory;
-
-    const result = await replyContextProvider.get(
-      makeRuntime(thread, recent, target),
-      incoming,
-      { values: {}, data: {}, text: "" },
-    );
-
-    // The recent tail is deduped while every older retained turn is supplied.
-    expect(result.data?.replyContextMessages).toHaveLength(4);
-    expect(result.text).toContain("turn 7");
-    expect(result.text).toContain("turn 0");
   });
 
   it("ignores a reply id that resolves to another room", async () => {
@@ -215,7 +185,7 @@ describe("replyContextProvider", () => {
     } as Memory;
 
     const result = await replyContextProvider.get(
-      makeRuntime([foreign], [], foreign),
+      makeRuntime([foreign], foreign),
       incoming,
       { values: {}, data: {}, text: "" },
     );
@@ -235,7 +205,7 @@ describe("replyContextProvider", () => {
     } as Memory;
 
     const result = await replyContextProvider.get(
-      makeRuntime([], [], null),
+      makeRuntime([], null),
       incoming,
       { values: {}, data: {}, text: "" },
     );

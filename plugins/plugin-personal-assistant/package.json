@@ -43,17 +43,20 @@
       "types": "./dist/email-classification/index.d.ts",
       "import": "./dist/email-classification/index.js",
       "default": "./dist/email-classification/index.js"
-    }
+    },
+    "./native-host/*": "./native-host/*.mjs",
+    "./native-host/bill-client": "./native-host/bill-client.ts",
+    "./native-host/bill-review-controller": "./native-host/bill-review-controller.ts"
   },
   "scripts": {
     "lint:default-packs": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
     "verify": "bun run lint:default-packs && bun run build:types && bun run test",
     "pretest": "node ../../packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "bun run test:bill-host && vitest run --config vitest.config.ts",
     "test:background-real": "vitest run --config vitest.background-real.config.ts test/scheduled-task-end-to-end.e2e.test.ts test/reminder-review-job.real.e2e.test.ts test/lifeops-scheduling.real.test.ts test/schedule-merged-state.real.test.ts",
     "test:integration": "vitest run --config vitest.src-integration.config.ts && cd \"$(git rev-parse --show-toplevel)\" && vitest run --config packages/scripts/vitest/integration.config.ts plugins/plugin-personal-assistant/test/life-smoke.integration.test.ts",
     "test:connections:e2e": "bun test/browser-e2e/run-lifeops-connections-e2e.mjs",
-    "test:scenarios": "cd ../.. && SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override tsconfig.json packages/testing/scenario-runner/src/cli.ts run packages/testing/scenarios/reminders --lane pr-deterministic && cd plugins/plugin-personal-assistant && bun run test:scenarios:lifeops-spine",
+    "test:scenarios": "cd ../.. && SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override tsconfig.json packages/testing/scenario-runner/src/cli.ts run plugins/plugin-personal-assistant/test/scenarios/reminders --lane pr-deterministic && cd plugins/plugin-personal-assistant && bun run test:scenarios:lifeops-spine",
     "test:scenarios:lifeops-spine": "cd ../.. && SCENARIO_USE_DETERMINISTIC_MODEL=1 bun --conditions eliza-source --tsconfig-override tsconfig.json packages/testing/scenario-runner/src/cli.ts run packages/testing/scenario-runner/test/scenarios --lane pr-deterministic --scenario deterministic-lifeops-scheduled-tasks,deterministic-lifeops-dispatch-retry,deterministic-lifeops-recurrence,deterministic-lifeops-concurrent-day,deterministic-lifeops-multiday-journey,deterministic-lifeops-brief-recalibrate",
     "test:scenarios:list": "cd ../.. && bun --conditions eliza-source --tsconfig-override tsconfig.json packages/testing/scenario-runner/src/cli.ts list plugins/plugin-personal-assistant/test/scenarios",
     "bench:work-threads": "cd ../.. && bun packages/scripts/plugins/plugin-personal-assistant/work-thread-benchmark.ts",
@@ -67,7 +70,8 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:bill-host": "node --test native-host/*.test.mjs"
   },
   "dependencies": {
     "@capacitor/core": "8.4.0",
@@ -75,8 +79,10 @@
     "@elizaos/capacitor-calendar": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "@elizaos/macosreminders": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/plugin-blocker": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-calendar": "workspace:*",
@@ -89,8 +95,10 @@
     "@elizaos/plugin-inbox": "workspace:*",
     "@elizaos/plugin-native-phone": "workspace:*",
     "@elizaos/plugin-pdf": "workspace:*",
+    "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/plugin-reminders": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/plugin-vision": "workspace:*",
     "@elizaos/plugin-x": "workspace:*",
@@ -100,9 +108,7 @@
     "react-plaid-link": "^5.0.0",
     "sharp": "^0.35.3",
     "zod": "^4.6.5",
-    "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/plugin-relationships": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",
@@ -135,7 +141,10 @@
     "pluginParameters": {}
   },
   "elizaos": {
-    "appRegister": "register",
+    "appRegister": {
+      "subpath": "register",
+      "export": "registerApp"
+    },
     "app": {
       "heroImage": "assets/hero.png",
       "featured": true,
@@ -160,6 +169,11 @@
   },
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "native-host/*.mjs",
+    "native-host/bill-client.ts",
+    "native-host/*.d.mts",
+    "!native-host/*.test.mjs",
+    "native-host/bill-review-controller.ts"
   ]
 }

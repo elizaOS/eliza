@@ -48,7 +48,7 @@ const appState = vi.hoisted(() => ({
 }));
 const browser = vi.hoisted(() => ({ openExternalUrl: vi.fn() }));
 vi.mock("../../utils/openExternalUrl", () => browser);
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: typeof appState) => unknown) =>
     selector(appState),
 }));

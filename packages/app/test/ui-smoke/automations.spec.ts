@@ -635,7 +635,6 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const origin = window.location.origin;
     const host = window as unknown as Record<string, unknown>;
-    host.__ELIZA_APP_API_BASE__ = origin;
     host.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
   });
   await seedAppStorage(page);

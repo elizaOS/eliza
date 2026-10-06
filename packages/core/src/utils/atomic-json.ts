@@ -1,25 +1,6 @@
 /**
- * Atomic JSON read/write helpers (node-only).
- *
- * Consolidates the write-tmp + rename pattern duplicated across the agent
- * package for tokens, ledgers, config snapshots, and runtime operations.
- *
- * Defaults:
- *   - mode 0o600 on the written file (secret-grade)
- *   - dir mode 0o700 when the parent has to be created
- *   - JSON 2-space indent, no trailing newline
- *   - tmp filename `${filePath}.tmp-${pid}-${Date.now()}-${sequence}`
- *   - parent directory created with mkdir recursive
- *
- * On failure, the temp file is best-effort removed.
- *
- * Only values whose top-level `JSON.stringify` result is `undefined` are
- * rejected — top-level `undefined`, function, and symbol — with a `TypeError`
- * before any filesystem work (no parent-directory creation, no temp file), so
- * a rejected write leaves an existing target byte-identical. Nested
- * function/symbol properties keep standard `JSON.stringify` semantics (object
- * properties omitted, array entries become `null`); ordinary optional object
- * properties are unaffected.
+ * Atomic JSON writes use a sibling temporary file and rename. Defaults are file mode 0600,
+ * directory mode 0700, and two-space JSON without a trailing newline.
  */
 
 import fs from "node:fs";

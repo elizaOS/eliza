@@ -11,7 +11,7 @@ import {
   renderOpenWakeWordValidationMarkdown,
   resolveOpenWakeWordReportPath,
   validateOpenWakeWordReport,
-} from "./lib/voice-openwakeword-eval.ts";
+} from "./openwakeword-report.ts";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

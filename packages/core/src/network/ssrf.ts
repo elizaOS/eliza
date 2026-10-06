@@ -97,15 +97,7 @@ function parseIpv4(address: string): number[] | null {
 	return numbers;
 }
 
-/**
- * Parse the legacy/non-canonical IPv4 forms that the OS resolver
- * (`getaddrinfo`/`inet_aton`) accepts: octal (`0177`), hex (`0x7f`), plain
- * decimal (`2130706433`), and 1-3 part short forms (`127.1`). An SSRF guard
- * must classify these the way the resolver would actually connect, otherwise
- * `http://0177.0.0.1/` (octal localhost) slips past a literal-IP check.
- * Returns the four octets of the resulting 32-bit address, or null when the
- * string is not a numeric IPv4 in any of these encodings.
- */
+/** Parses resolver-accepted IPv4 forms, including octal, hex, integer, and short notation. SSRF checks must classify the destination the OS would connect to. */
 function parseIpv4Loose(address: string): number[] | null {
 	const parts = address.split(".");
 	if (parts.length < 1 || parts.length > 4) {
@@ -288,7 +280,7 @@ function embeddedIpv4ForPolicy(hextets: number[]): number[] | null {
 		(h7 >> 8) & 0xff,
 		h7 & 0xff,
 	];
-	// IPv4-compatible ::/96 and IPv4-mapped ::ffff:0:0/96 spellings that
+	// IPv4-compatible::/96 and IPv4-mapped::ffff:0:0/96 spellings that
 	// survived normalizeIpForPolicy — the embedded address is the low 32 bits.
 	// (`::` and `::1` are classified by the caller before this runs.)
 	if (h0 === 0 && h1 === 0 && h2 === 0 && hextets[3] === 0) {

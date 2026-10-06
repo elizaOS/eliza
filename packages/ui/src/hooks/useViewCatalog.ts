@@ -13,6 +13,7 @@
  * no restart.
  */
 
+import type { AppLaunchResult } from "@elizaos/core/protocol";
 import {
   useCallback,
   useEffect,
@@ -21,8 +22,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { type AppLaunchResult, client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
 import { getActiveViewModality } from "../platform/platform-guards";
 import { useAppSelector } from "../state/app-store";

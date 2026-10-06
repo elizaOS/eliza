@@ -13,14 +13,9 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  FILE_FIXTURE_BOOTSTRAP,
-  bundleFixture,
-  compileTailwindTheme,
-  stubElizaCore,
-  stubNodeBuiltins,
-  withChromium,
-} from "../../../testing/e2e-runner/index.ts";
+import { FILE_FIXTURE_BOOTSTRAP, bundleFixture, compileTailwindTheme } from "../../../testing/e2e-runner/fixture-bundle";
+import { stubElizaCore, stubNodeBuiltins } from "../../../testing/e2e-runner/esbuild-stubs";
+import { withChromium } from "../../../testing/e2e-runner/browser-harness";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-notifications");

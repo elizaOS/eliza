@@ -12,13 +12,6 @@ import type {
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 export const DEFAULT_INPUT_RESERVE_TOKENS = 10_000;
-/** @deprecated Use {@link DEFAULT_INPUT_RESERVE_TOKENS}. */
-export const DEFAULT_COMPACTION_RESERVE_TOKENS = DEFAULT_INPUT_RESERVE_TOKENS;
-/** @deprecated Content projection is retired; retained for source compatibility. */
-export const DEFAULT_CONTENT_PROJECTION_PER_RESULT_TOKENS = 16_000;
-/** @deprecated Content projection is retired; retained for source compatibility. */
-export const DEFAULT_CONTENT_PROJECTION_AGGREGATE_TOKENS = 64_000;
-
 /** Optional reserve fraction for caller-owned planning policy. */
 export const MODEL_WINDOW_RESERVE_FRACTION = 0.2;
 
@@ -27,36 +20,7 @@ export interface ModelInputBudget {
 	contextWindowTokens: number;
 	reserveTokens: number;
 	dispatchThresholdTokens: number;
-	/** @deprecated Estimates are diagnostic only and never authorize rejection. */
-	shouldReject: false;
-	/** @deprecated Alias of dispatchThresholdTokens for source compatibility. */
-	compactionThresholdTokens: number;
-	/** @deprecated Always false; automatic compaction is retired. */
-	shouldCompact: false;
 	estimationMode: "heuristic" | "utf8-upper-bound";
-	/** @deprecated Always null; model-name catalog inference is removed. */
-	resolvedModelKey: string | null;
-}
-
-/** @deprecated Content projection is retired. */
-export interface ContentProjectionBudget {
-	perResultTokens: number;
-	aggregateTokens: number;
-}
-
-/**
- * @deprecated Content projection is retired. Complete input must reach the
- * final runtime boundary, which either dispatches it unchanged or rejects it.
- */
-export function buildContentProjectionBudget(_args: {
-	budget: ModelInputBudget;
-	resultCount: number;
-	perResultCeilingTokens?: number;
-	aggregateCeilingTokens?: number;
-}): never {
-	throw new ElizaError("Automatic content projection is retired", {
-		code: "CONTENT_PROJECTION_RETIRED",
-	});
 }
 
 function serializedText(value: unknown): string {
@@ -91,9 +55,7 @@ export function estimateTokensFromChars(chars: number): number {
 }
 
 export function estimateModelInputTokens(args: {
-	/** The complete immutable handler request. When present, it is the sole
-	 * measurement authority; the legacy field list remains for diagnostic and
-	 * compatibility callers that do not own the final dispatch boundary. */
+	/** Complete immutable handler request. When present, it is the sole measurement authority; individual fields support callers without a final dispatch request. */
 	completeRequest?: unknown;
 	messages?: readonly ChatMessage[];
 	promptSegments?: readonly PromptSegment[];
@@ -160,7 +122,7 @@ export function estimateModelInputTokens(args: {
 }
 
 export function buildModelInputBudget(args: {
-	/** Complete final handler request; measured instead of the legacy fields. */
+	/** Complete handler request, measured in preference to individual fields. */
 	completeRequest?: unknown;
 	messages?: readonly ChatMessage[];
 	promptSegments?: readonly PromptSegment[];
@@ -187,9 +149,8 @@ export function buildModelInputBudget(args: {
 			? Math.max(1, Math.floor(args.contextWindowTokens))
 			: undefined;
 
-	// Model names are opaque provider identifiers. Only registration/caller
-	// metadata supplies a limit; the legacy fallback is diagnostic, never an
-	// authoritative provider limit or permission to discard input.
+	// Only registration or caller metadata establishes model limits. Fallback estimates are
+	// diagnostic and never authorize discarded input.
 	const contextWindowTokens = explicitWindow ?? DEFAULT_CONTEXT_WINDOW_TOKENS;
 	const reserveTokens =
 		Number.isFinite(args.reserveTokens) && args.reserveTokens !== undefined
@@ -207,14 +168,7 @@ export function buildModelInputBudget(args: {
 		contextWindowTokens,
 		reserveTokens,
 		dispatchThresholdTokens,
-		// Token estimates are not provider tokenization. Rejecting from them can
-		// discard valid complete requests, so only the provider's authoritative
-		// boundary may fail this call.
-		shouldReject: false,
-		compactionThresholdTokens: dispatchThresholdTokens,
-		shouldCompact: false,
 		estimationMode,
-		resolvedModelKey: null,
 	};
 }
 

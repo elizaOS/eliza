@@ -1,5 +1,11 @@
 /** Desktop app windows share the declared internal-tool, page and catalog routes. */
-import { formatError } from "@elizaos/core/utils/format-error";
+
+import type {
+  AppLaunchResult,
+  AppRunSummary,
+  RegistryAppInfo,
+} from "@elizaos/core/protocol";
+import { formatError } from "@elizaos/core/protocol";
 import {
   type ComponentType,
   type JSX,
@@ -10,12 +16,7 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  type AppLaunchResult,
-  type AppRunSummary,
-  client,
-  type RegistryAppInfo,
-} from "../../api";
+import { client } from "../../api/client";
 import {
   appShellAgentSurfaceDescriptor,
   listAppShellPages,
@@ -23,7 +24,7 @@ import {
 } from "../../app-shell-registry";
 import type { Tab } from "../../navigation";
 import { useApp } from "../../state/useApp";
-import { openExternalUrl } from "../../utils";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { DatabasePageView } from "../pages/DatabasePageView";
 import { FilesView } from "../pages/FilesView";
 import { LogsView } from "../pages/LogsView";
@@ -243,10 +244,23 @@ export function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
         }
         const launchUrl = result.launchUrl ?? resolvedApp.launchUrl;
         if (launchUrl) {
-          try {
-            await openExternalUrl(launchUrl);
-          } catch {
-            /* ignore — we still surface the link state */
+          // openExternalUrl resolves false when nothing was opened (URL fails
+          // the navigation allowlist, or the desktop bridge refused); only a
+          // real navigation may report "opened in your browser".
+          const opened = await openExternalUrl(launchUrl).catch(() => false);
+          if (cancelled) return;
+          if (!opened) {
+            setRunState({
+              status: "error",
+              run: run ?? null,
+              launchUrl: null,
+              message: t("appwindow.ExternalOpenFailed", {
+                url: launchUrl,
+                defaultValue:
+                  "Could not open this app in your browser: {{url}}",
+              }),
+            });
+            return;
           }
           setRunState({
             status: "external",

@@ -7,7 +7,7 @@
 
 import { X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Z_BUILD_BADGE } from "../../lib/floating-layers";
+import { Z_BUILD_BADGE } from "../../utils/floating-layers";
 import {
   subscribeVoiceCaptureBreadcrumbs,
   type VoiceCaptureBreadcrumb,

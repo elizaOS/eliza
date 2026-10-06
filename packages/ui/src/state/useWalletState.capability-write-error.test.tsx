@@ -13,6 +13,9 @@ import { logger } from "../logger.ts";
 
 const mocks = vi.hoisted(() => ({
   client: {
+    getBaseUrl: () => "",
+    getAuthorityRevision: () => 0,
+    onAuthorityChange: () => () => {},
     updateConfig: vi.fn(),
     getConfig: vi.fn(async () => ({ ui: {} })),
   },
@@ -26,7 +29,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 vi.mock("./persistence", () => mocks.persistence);
 vi.mock("../utils/desktop-dialogs", () => ({
   confirmDesktopAction: vi.fn(async () => true),

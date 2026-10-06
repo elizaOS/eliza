@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Slider } from "../../../components/ui/slider";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 /**
  * Illustrative spend-mix assumptions for the "what if" projection. These are NOT

@@ -19,9 +19,9 @@ import {
   Z_SHELL_OVERLAY,
   Z_VIEW_MODAL,
   Z_VIEW_MODAL_BACKDROP,
-} from "../../lib/floating-layers";
+} from "../../utils/floating-layers";
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 

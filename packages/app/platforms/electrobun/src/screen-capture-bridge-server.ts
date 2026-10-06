@@ -1,6 +1,6 @@
-/** Implements Electrobun desktop screen capture bridge server ts behavior for app shell integration. */
 import crypto from "node:crypto";
 import http from "node:http";
+import { readJsonBody } from "./bridge-http.ts";
 import { findFirstAvailableLoopbackPort } from "./native/loopback-port";
 import { getScreenCaptureManager } from "./native/screencapture";
 
@@ -47,26 +47,6 @@ function json(
 function isAuthorized(req: http.IncomingMessage, token: string): boolean {
 	if (!token) return false;
 	return req.headers.authorization === `Bearer ${token}`;
-}
-
-async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {
-	const chunks: Buffer[] = [];
-	let size = 0;
-
-	for await (const chunk of req) {
-		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-		size += buffer.length;
-		if (size > MAX_BODY_BYTES) {
-			throw new Error("request body too large");
-		}
-		chunks.push(buffer);
-	}
-
-	if (chunks.length === 0) {
-		return null;
-	}
-
-	return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
 }
 
 function pickFiniteNumber(
@@ -177,7 +157,10 @@ export async function startScreenCaptureBridgeServer({
 			}
 
 			if (pathname === "/frame-capture/start" && method === "POST") {
-				const body = await readJsonBody<Record<string, unknown>>(req);
+				const body = await readJsonBody<Record<string, unknown>>(
+					req,
+					MAX_BODY_BYTES,
+				);
 				const result = await manager.startFrameCapture(
 					normalizeStartBody(body),
 				);

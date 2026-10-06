@@ -7,8 +7,8 @@ deliberately unenrolled.
 | Item | Path |
 | --- | --- |
 | Generic key list | [`key-manifest.json`](key-manifest.json) |
-| Generator (offline ceremony) | [`scripts/aosp/generate-release-keys.ts`](../../scripts/aosp/generate-release-keys.ts) |
-| Signing-environment decryptor | [`scripts/aosp/decrypt-release-keys.ts`](../../scripts/aosp/decrypt-release-keys.ts) |
+| Generator (offline ceremony) | [`scripts/android/generate-release-keys.ts`](../../scripts/android/generate-release-keys.ts) |
+| Signing-environment decryptor | [`scripts/android/decrypt-release-keys.ts`](../../scripts/android/decrypt-release-keys.ts) |
 | Tests | `node --test scripts/__tests__/release-key-ceremony.node.test.ts` (from `packages/os`) |
 
 The tests prove that AVB public-key encoding is byte-identical to AOSP
@@ -57,7 +57,7 @@ tamper-evident bags.
    ```
 3. Generate. The output must be a new directory outside any Git working tree:
    ```sh
-   node packages/os/scripts/aosp/generate-release-keys.ts \
+   node packages/os/scripts/android/generate-release-keys.ts \
      --output /media/USB1/release-keys-2026 \
      --passphrase-file /dev/shm/ceremony/pass --organization "<Legal entity>" \
      [--manifest /path/to/product-key-manifest.json]
@@ -87,7 +87,7 @@ Run on an ephemeral machine with no external IP, gated by required reviewers.
    SHA-256 against the build record.
 2. Decrypt into tmpfs (also refused inside any Git working tree):
    ```sh
-   node packages/os/scripts/aosp/decrypt-release-keys.ts --input bundle \
+   node packages/os/scripts/android/decrypt-release-keys.ts --input bundle \
      --output /dev/shm/keys --passphrase-file /dev/shm/pass
    ```
 3. Sign and build the OTA:

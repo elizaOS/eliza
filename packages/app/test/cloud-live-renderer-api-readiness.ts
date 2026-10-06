@@ -3,7 +3,7 @@
  * staging proof cannot mistake the synchronous production default for a build.
  */
 
-import { resolveDirectCloudAuthApiBase } from "@elizaos/ui/api/direct-cloud-endpoints";
+import { resolveDirectCloudAuthApiBase } from "@elizaos/plugin-browser/remote-control/cloud-endpoints";
 
 export interface RendererCloudApiObservation {
   cloudBase: string;

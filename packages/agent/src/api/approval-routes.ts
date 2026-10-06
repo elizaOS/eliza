@@ -12,11 +12,11 @@ import {
   PENDING_USER_ACTION_WEIGHT,
   type PendingUserAction,
   type PendingUserActionOption,
-  type RouteHelpers,
   ServiceType,
   type Task,
   type UUID,
 } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/host/protocol";
 
 import {
   APPROVAL_EXECUTION_CAPABILITY,
@@ -348,16 +348,19 @@ export async function handleApprovalRoute(
     helpers.error(res, parsedState.message, 400);
     return true;
   }
+  // Device payloads require the enrollment credential and are served only by
+  // /api/client-devices; this legacy aggregate has no device authority. They
+  // are excluded in the query so they cannot fill the limit and crowd out
+  // other pending approvals, and filtered again below as defence in depth.
   const filter: ApprovalListFilter = {
     subjectUserId: null,
     state: parsedState.state,
     action: null,
+    excludeAction: "device_action",
     limit,
   };
 
   const queue = getAgentApprovalQueue(state);
-  // Device payloads require the enrollment credential and are served only by
-  // /api/client-devices; this legacy aggregate has no device authority.
   const approvals = queue
     ? (await queue.list(filter)).filter(
         (approval) => approval.action !== "device_action",

@@ -305,7 +305,7 @@
   {
     "file": "packages/scripts/plugins/plugin-local-inference/echo-aec-evidence.ts",
     "tokens": ["plugins/plugin-local-inference"],
-    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+    "reason": "Package-owned acoustic evidence tooling retains local-inference artifact paths; portable helpers live in @elizaos/voice."
   },
   {
     "file": "packages/scripts/plugins/plugin-local-inference/asr-real-smoke.ts",
@@ -335,12 +335,12 @@
   {
     "file": "packages/scripts/plugins/plugin-local-inference/real-robustness-asr.ts",
     "tokens": ["plugins/plugin-local-inference"],
-    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+    "reason": "Package-owned acoustic evidence tooling retains local-inference artifact paths; portable helpers live in @elizaos/voice."
   },
   {
     "file": "packages/scripts/plugins/plugin-local-inference/noise-rejection-real.ts",
     "tokens": ["plugins/plugin-local-inference"],
-    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+    "reason": "Package-owned acoustic evidence tooling retains local-inference artifact paths; portable helpers live in @elizaos/voice."
   },
   {
     "file": "packages/scripts/plugins/plugin-local-inference/memory-benchmark.ts",
@@ -375,7 +375,7 @@
   {
     "file": "packages/scripts/plugins/plugin-local-inference/stt-quant-bench-real.ts",
     "tokens": ["plugins/plugin-local-inference"],
-    "reason": "Package-owned local-inference tooling relocated into repository scripts."
+    "reason": "Package-owned acoustic evidence tooling retains local-inference artifact paths; portable helpers live in @elizaos/voice."
   },
   {
     "file": "packages/scripts/plugins/plugin-local-inference/meeting-acoustic-stress-real.ts",

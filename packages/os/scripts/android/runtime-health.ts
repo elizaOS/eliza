@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { androidSocketFetch } from "../aosp/lib/android-socket-fetch.ts";
+import { androidSocketFetch } from "./android-socket-fetch.ts";
 
 const script = fileURLToPath(import.meta.url);
 

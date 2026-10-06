@@ -22,8 +22,9 @@ describe("Relationships app registration", () => {
     if (!page?.loader)
       throw new Error("Relationships page has no registered loader");
     expect(appShellPageMatchesPath(page, "/apps/relationships")).toBe(true);
+    expect(appShellPageMatchesPath(page, "/relationships")).toBe(true);
     expect(appShellPageMatchesPath(page, "/character/relationships")).toBe(
-      true,
+      false,
     );
     expect(appShellPageMatchesPath(page, "/apps/unrelated")).toBe(false);
     expect(page.surface).toEqual({

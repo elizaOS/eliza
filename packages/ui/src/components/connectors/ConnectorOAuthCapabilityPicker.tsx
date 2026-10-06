@@ -1,6 +1,6 @@
 /** Renders provider-declared least-privilege choices for connector OAuth. */
 
-import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/core/connector-account-catalog";
+import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/core/protocol";
 import { Card } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
 import { Label } from "../ui/label";

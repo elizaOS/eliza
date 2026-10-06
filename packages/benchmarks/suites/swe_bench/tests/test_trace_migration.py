@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 
-from benchmarks.swe_bench.orchestrator.trace_migration import (
+from benchmarks.suites.swe_bench.orchestrator.trace_migration import (
     migrate_trace_directory,
     migrate_trace_payload,
 )

@@ -40,13 +40,7 @@ const eventSourceMock = vi.hoisted(() => ({
 // snapshot reports an authenticated session. Mutable so tests can flip it.
 const authMock = vi.hoisted(() => ({ authenticated: true }));
 const mobileRuntimeModeMock = vi.hoisted(() => ({
-  value: null as
-    | "remote-mac"
-    | "cloud"
-    | "cloud-hybrid"
-    | "local"
-    | "tunnel-to-mobile"
-    | null,
+  value: null as "remote-mac" | "cloud" | "cloud-hybrid" | "local" | null,
 }));
 vi.mock("../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
@@ -58,17 +52,13 @@ vi.mock("../../first-run/mobile-runtime-mode", async (importOriginal) => ({
   ...(await importOriginal()),
   readPersistedMobileRuntimeMode: () => mobileRuntimeModeMock.value,
 }));
-vi.mock("../../api", () => ({
-  client: clientMock,
-}));
-vi.mock("@elizaos/ui/utils/asset-url", async (importOriginal) => ({
+vi.mock("../../api/client", () => ({ client: clientMock }));
+vi.mock("../../utils/asset-url", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/asset-url.js")>()),
   resolveApiUrl: (path: string) => path,
 }));
-vi.mock("@elizaos/core/utils/eliza-globals", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@elizaos/core/utils/eliza-globals")
-  >()),
+vi.mock("@elizaos/host/protocol", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/host/protocol")>()),
   getElizaApiToken: () => null,
 }));
 vi.mock("../../utils/event-source", () => ({
@@ -151,7 +141,7 @@ describe("useHomeModelStatus", () => {
       expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
     },
   );
-  it.each(["remote-mac", "tunnel-to-mobile"] as const)(
+  it.each(["remote-mac"] as const)(
     "does not poll phone-local inference for %s placement on a local Mac server",
     async (mobileRuntimeMode) => {
       mobileRuntimeModeMock.value = mobileRuntimeMode;

@@ -3806,6 +3806,51 @@ describeIfPosix("shellAction", () => {
 });
 
 describe("shell structured operation routing", () => {
+  it.each([undefined, "run", " RUN "])(
+    "executes the supported run action %j",
+    async (action) => {
+      const calls: Array<{ command: string }> = [];
+      const router = makeShellRouter(async (params) => {
+        calls.push(params);
+        return { output: "ran\n", exitCode: 0, timedOut: false };
+      });
+      const { runtime } = await makeRuntime({ capabilityRouter: router });
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, makeMessage(), undefined, {
+          action,
+          command: "printf ran",
+        }),
+      );
+      expect(result.success).toBe(true);
+      expect(calls).toEqual([
+        expect.objectContaining({ command: "printf ran" }),
+      ]);
+    },
+  );
+
+  it.each(["poll_backgroud", "", "   ", 7, {}, ["run"]])(
+    "rejects invalid explicit action %j instead of running its command",
+    async (action) => {
+      const calls: Array<{ command: string }> = [];
+      const router = makeShellRouter(async (params) => {
+        calls.push(params);
+        return { output: "must not run\n", exitCode: 0, timedOut: false };
+      });
+      const { runtime } = await makeRuntime({ capabilityRouter: router });
+
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, makeMessage(), undefined, {
+          action,
+          command: "printf must-not-run",
+        }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("invalid_param");
+      expect(calls).toHaveLength(0);
+    },
+  );
+
   it.each([
     [
       "show command history under /tmp/history",

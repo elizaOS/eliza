@@ -3,8 +3,8 @@
  * household-operation repository, restart, concurrency, privacy, and policy.
  */
 
-import { type AgentRuntime, type Memory } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
+import type { AgentRuntime, Memory } from "@elizaos/core";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
@@ -19,14 +19,14 @@ import {
 import { createHouseholdOperationsAction } from "./action.js";
 import { HouseholdOperationsRepository } from "./repository.js";
 import { HouseholdOperationsService } from "./service.js";
-import {
-  type AlmanacEntryDefinition,
-  type HouseholdObservationInput,
-  type HouseholdSourceProvenance,
-  type ItemReplacementThresholdDefinition,
-  type OpportunityDefinition,
-  type ResponsibilityAssignmentDefinition,
-  type VendorProfileDefinition,
+import type {
+  AlmanacEntryDefinition,
+  HouseholdObservationInput,
+  HouseholdSourceProvenance,
+  ItemReplacementThresholdDefinition,
+  OpportunityDefinition,
+  ResponsibilityAssignmentDefinition,
+  VendorProfileDefinition,
 } from "./types.js";
 
 describe("household operations — real PGlite and runtime graph", () => {

@@ -14,8 +14,8 @@ import { logger } from "../../utils/logger";
 import { getOAuthVersion, incrementOAuthVersion } from "./cache-version";
 import { getAdapter, getAllAdapters } from "./connection-adapters";
 import { Errors } from "./errors";
+import { initiateOAuth2 } from "./oauth2";
 import { getProvider, isProviderConfigured, OAUTH_PROVIDERS } from "./provider-registry";
-import { initiateOAuth2 } from "./providers";
 import { tokenCache } from "./token-cache";
 import type {
   GetTokenByPlatformParams,
@@ -31,7 +31,7 @@ import type {
 } from "./types";
 import { formatOAuthConnectionRole, normalizeOAuthConnectionRole } from "./types";
 
-const DEFAULT_REDIRECT = "/cloud/settings?tab=connections";
+const DEFAULT_REDIRECT = "/cloud/connectors";
 const STATE_TTL = 600; // 10 minutes
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type PlatformCredential = typeof platformCredentials.$inferSelect;

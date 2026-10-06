@@ -4,17 +4,17 @@
  * The provider lookup is read-only and every mismatch fails closed.
  */
 
-import { ElizaError } from "@elizaos/core";
-import type Stripe from "stripe";
-import { z } from "zod";
-import { isProductionDeployment } from "../config/deployment-environment";
-import { canonicalStripeCloudE2ECredential } from "../stripe-cloud-e2e";
 import type {
   SubscriptionPlanDto,
   SubscriptionPlanKey,
   SubscriptionPlansDto,
   SubscriptionResourceCeilingsDto,
-} from "../types/cloud-api";
+} from "@elizaos/cloud-shared/types";
+import { ElizaError } from "@elizaos/core";
+import type Stripe from "stripe";
+import { z } from "zod";
+import { isProductionDeployment } from "../config/deployment-environment";
+import { canonicalStripeCloudE2ECredential } from "../stripe-cloud-e2e";
 import { logger } from "../utils/logger";
 
 const CATALOG_VERSION = "v1" as const;

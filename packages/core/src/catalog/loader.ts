@@ -1,15 +1,4 @@
-/**
- * Registry loader. Validates raw entries and indexes them by id, kind, group,
- * and npm name, and provides the kind-narrowed accessors plus the legacy
- * `auth` → `accounts.agent` normalization.
- *
- * Static data only. Runtime overlay (enabled, configured, isActive) is merged
- * in at the API layer via `mergeWithRuntime()` — the loader never touches it.
- *
- * Validation is fail-loud at boot: bad entries throw with a precise zod
- * message naming the offending file, so a malformed entry can't slip into a
- * running process.
- */
+/** Validates static catalog entries and indexes them by identity and kind. Auth declarations supply accounts.agent when that account is not explicit; hosts add runtime state. */
 
 import {
 	type AccountAuthKind,
@@ -74,16 +63,8 @@ export function loadRegistryFromRawEntries(raws: RawEntry[]): LoadedRegistry {
 	return indexEntries(all);
 }
 
-// Legacy `auth` → `accounts.agent` auto-mapping. Connector manifests that
-// only declared `auth` keep working without edits — the resulting `accounts`
-// shape lets the UI render a single agent section (backwards compatible) and
-// gives downstream code a uniform field to read.
-//
-// The guard checks `accounts?.agent` (not just `accounts`) so that incremental
-// migrations — a manifest that adds `accounts.owner` first while keeping
-// `auth` as the agent credential source — still get the legacy auth mapped
-// onto `accounts.agent`. A pre-existing explicit `accounts.agent` is always
-// preserved.
+// Auth supplies accounts.agent only when that account is absent. Explicit account declarations
+// always win.
 export function normalizeConnectorAuth(entry: ConnectorEntry): ConnectorEntry {
 	if (!entry.auth || entry.accounts?.agent) {
 		return entry;
@@ -104,13 +85,8 @@ export function normalizeConnectorAuth(entry: ConnectorEntry): ConnectorEntry {
 	};
 }
 
-// Maps the legacy four-value auth.kind enum onto the richer AccountAuthKind.
-// `credentials` (username + password) is materially different from `api-key`
-// (a single opaque token) but the current AccountAuthKind enum has no
-// dedicated arm — both flows land on a manual paste of secret fields in the
-// connector setup UI, so they coalesce here. Connectors with username+password
-// flows should declare `accounts.agent.authKind` explicitly in their manifest
-// when they need to distinguish, rather than relying on this auto-mapping.
+// Credential pairs and API keys both use manual secret entry. Owners needing a distinction
+// declare accounts.agent.authKind explicitly.
 function mapLegacyAuthKindToAccountAuthKind(
 	kind: "token" | "oauth" | "credentials" | "none",
 ): AccountAuthKind {
@@ -166,9 +142,7 @@ function compareEntriesForDisplay(a: RegistryEntry, b: RegistryEntry): number {
 	return a.name.localeCompare(b.name);
 }
 
-// ---------------------------------------------------------------------------
 // Typed kind-narrowed accessors. Keeps callers from re-asserting kind.
-// ---------------------------------------------------------------------------
 
 export function getApps(registry: LoadedRegistry): AppEntry[] {
 	return (registry.byKind.get("app") ?? []) as AppEntry[];
@@ -196,10 +170,8 @@ export function getEntryByNpmName(
 	return registry.byNpmName.get(npmName);
 }
 
-// ---------------------------------------------------------------------------
 // Runtime overlay merge. The API calls this once per request after fetching
 // runtime state. Static registry stays pure.
-// ---------------------------------------------------------------------------
 
 export function mergeWithRuntime(
 	entries: RegistryEntry[],

@@ -21,71 +21,54 @@
  *
  * The target directory is created if missing. Existing files are overwritten;
  * files NOT present in `assets/` are left alone (the script only adds/updates),
- * except for `background/` and `clouds/` which are cleaned before sync to drop
- * orphan files.
+ * except for `background/` and `clouds/`, which are replaced after staging
+ * succeeds to drop orphan files.
  */
 
-import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
-  readdirSync,
+  mkdtempSync,
+  renameSync,
   statSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { removePathRecursive } from "../../scripts/rm-path-recursive.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_ROOT = resolve(__dirname, "..", "assets");
-const rmRecursiveScript = resolve(
-  __dirname,
-  "..",
-  "..",
-  "scripts",
-  "rm-path-recursive.ts",
-);
-
-function copyDir(src, dest) {
-  mkdirSync(dest, { recursive: true });
-  for (const entry of readdirSync(src)) {
-    const srcPath = join(src, entry);
-    const destPath = join(dest, entry);
-    const st = statSync(srcPath);
-    if (st.isDirectory()) {
-      copyDir(srcPath, destPath);
-    } else {
-      copyFileSync(srcPath, destPath);
-    }
-  }
+function copyDir(src: string, dest: string): void {
+  cpSync(src, dest, { recursive: true });
 }
 
-function copyDirClean(src, dest, shouldCopy = () => true) {
-  rmRecursive(dest);
-  mkdirSync(dest, { recursive: true });
-  for (const entry of readdirSync(src)) {
-    const srcPath = join(src, entry);
-    const destPath = join(dest, entry);
-    const st = statSync(srcPath);
-    if (st.isDirectory()) {
-      copyDirClean(srcPath, destPath, shouldCopy);
-    } else if (shouldCopy(entry, srcPath)) {
-      copyFileSync(srcPath, destPath);
+async function copyDirClean(
+  src: string,
+  dest: string,
+  shouldCopy: (entry: string, source: string) => boolean = () => true,
+): Promise<void> {
+  mkdirSync(dirname(dest), { recursive: true });
+  const staging = mkdtempSync(join(dirname(dest), ".ui-assets-"));
+  const next = join(staging, "next");
+  const previous = join(staging, "previous");
+  try {
+    cpSync(src, next, {
+      recursive: true,
+      filter: (source) =>
+        statSync(source).isDirectory() || shouldCopy(basename(source), source),
+    });
+    const hadPrevious = existsSync(dest);
+    if (hadPrevious) renameSync(dest, previous);
+    try {
+      renameSync(next, dest);
+    } catch (error) {
+      if (hadPrevious) renameSync(previous, dest);
+      throw error;
     }
-  }
-}
-
-function rmRecursive(targetPath) {
-  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
-    stdio: "inherit",
-  });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(
-      `[sync-to-public] recursive cleanup failed for ${targetPath} with exit code ${result.status ?? "unknown"}`,
-    );
+  } finally {
+    await removePathRecursive(staging);
   }
 }
 
@@ -126,6 +109,17 @@ const categoryFlags = [
   "--concepts",
   "--background",
 ];
+const allowedFlags = new Set([
+  ...categoryFlags,
+  "--clouds",
+  "--background-videos",
+]);
+for (const flag of flags) {
+  if (!allowedFlags.has(flag))
+    throw new Error(`Unknown asset sync flag: ${flag}`);
+}
+if (positional.length !== 1)
+  throw new Error("Expected exactly one public directory");
 const noCategorySpecified = !categoryFlags.some((f) => flags.has(f));
 const include = {
   logos: noCategorySpecified || flags.has("--logos"),
@@ -177,7 +171,7 @@ if (include.concepts) {
   synced.push("concepts");
 }
 if (include.background) {
-  copyDirClean(
+  await copyDirClean(
     join(ASSETS_ROOT, "background"),
     join(resolvedTarget, "brand", "background"),
     (entry) => includeBackgroundVideos || !entry.endsWith(".mp4"),
@@ -191,7 +185,7 @@ if (includeClouds) {
   // caller's log makes the absence obvious.
   const cloudsSrc = join(ASSETS_ROOT, "clouds");
   if (existsSync(cloudsSrc)) {
-    copyDirClean(cloudsSrc, join(resolvedTarget, "clouds"), (entry) => {
+    await copyDirClean(cloudsSrc, join(resolvedTarget, "clouds"), (entry) => {
       if (entry.startsWith("poster-")) {
         return /^poster-(?:640|960)\.jpg$/.test(entry);
       }

@@ -4,11 +4,12 @@
  * an unhandled first delivery instead records its route epoch so intervening
  * user navigation wins over a late fallback.
  */
+
+import type { NavigateViewDetail } from "@elizaos/core/protocol";
 import {
   NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
   normalizeCompletedActionHandoffId,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 import { getWindowNavigationPath } from "./navigation";
 
 const MAX_TRACKED_HANDOFFS = 256;

@@ -12,7 +12,7 @@
 import { Mic, Radio, Volume2 } from "lucide-react";
 import * as React from "react";
 
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,

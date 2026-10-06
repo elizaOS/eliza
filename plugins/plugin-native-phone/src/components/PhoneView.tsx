@@ -9,8 +9,10 @@
  */
 
 import { Phone } from "@elizaos/plugin-native-phone/bridge";
-import { consumeNavigateViewPayload } from "@elizaos/ui/app-navigate-view";
-import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
+import {
+  consumeNavigateViewPayload,
+  dispatchNavigateViewEvent,
+} from "@elizaos/ui";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {

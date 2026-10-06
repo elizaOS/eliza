@@ -6,10 +6,9 @@
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
+import { emitViewEvent, VIEW_EVENTS } from "../events/view-events";
 import { resetUiRegistryHostForTests } from "../registry-host.js";
 import { seedAppValue } from "../state/app-store";
-import { emitViewEvent } from "../views/view-event-bus";
-import { VIEW_EVENTS } from "../views/view-event-types";
 import { __resetResourceCache } from "./resource-cache";
 import {
   mergeViewRegistryEntries,
@@ -31,7 +30,8 @@ const { authorityState, client, fetchWithCsrf, getFrontendPlatform } =
         sendWsMessage: vi.fn(),
         clientId: "native-client",
         getBaseUrl: vi.fn(() => ""),
-        onBaseUrlChange: vi.fn((onChange: () => void) => {
+        getAuthorityRevision: vi.fn(() => 0),
+        onAuthorityChange: vi.fn((onChange: () => void) => {
           authorityState.listeners.add(onChange);
           return () => authorityState.listeners.delete(onChange);
         }),
@@ -40,8 +40,8 @@ const { authorityState, client, fetchWithCsrf, getFrontendPlatform } =
       getFrontendPlatform: vi.fn(() => "desktop"),
     };
   });
-vi.mock("../api", () => ({ client }));
 vi.mock("../api/client", () => ({ client }));
+
 vi.mock("../api/csrf-client", () => ({ fetchWithCsrf }));
 vi.mock("../platform/platform-guards", () => ({ getFrontendPlatform }));
 function response(status: number, body: unknown) {
@@ -223,7 +223,7 @@ describe("useAvailableViews", () => {
       const { ShellViewAgentSurface } = await import(
         "../components/views/ShellViewAgentSurface"
       );
-      const { AgentButton } = await import("../agent-surface");
+      const { AgentButton } = await import("../agent-surface/components");
       const { dispatchViewInteract } = await import(
         "../components/views/view-interact-registry"
       );
@@ -322,7 +322,8 @@ describe("useAvailableViews", () => {
       const { ShellViewAgentSurface } = await import(
         "../components/views/ShellViewAgentSurface"
       );
-      const { AgentButton, getViewRegistry } = await import("../agent-surface");
+      const { AgentButton } = await import("../agent-surface/components");
+      const { getViewRegistry } = await import("../agent-surface/registry");
       getFrontendPlatform.mockReturnValue(platform);
       const NativeCalendar = () => (
         <AgentButton agentId="native-save">Save</AgentButton>

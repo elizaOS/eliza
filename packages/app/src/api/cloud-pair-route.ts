@@ -21,13 +21,13 @@ import {
   isLoopbackRemoteAddress,
   isRemoteAddressInCidrList,
 } from "@elizaos/agent/api/loopback-trust";
-import { logger } from "@elizaos/core";
 import {
   type CloudPairRelaySession,
   parseCloudPairRelaySession,
   renderCloudPairHandoffHtml,
   resolveCloudPairAgentIdFromEnv,
-} from "@elizaos/core/contracts/cloud-pair";
+} from "@elizaos/contracts";
+import { logger } from "@elizaos/core";
 import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
 import {
   resolveDevCloudAuthorityEnvValue,

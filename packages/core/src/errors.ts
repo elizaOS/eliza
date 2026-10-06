@@ -1,13 +1,7 @@
-/**
- * Structured error base for the fast-fail error policy (#12263 / parent #12182).
- *
- * `ElizaError` is the one shared error type new and rewritten throw sites use so
- * failures carry a machine-classifiable `code`, structured `context`, and a
- * preserved `cause` chain instead of a bare string. It is additive: existing
- * ad-hoc error classes (`CapabilityError`, `SecretsError`, …) are not
- * force-migrated and may extend it opportunistically. The runtime is throw-based
- * end to end — this is a plain `Error` subclass, not a `Result<T,E>` wrapper.
- */
+/** Structured errors carry a machine-readable code, contextual data, and the original cause. */
+// Extension-explicit so plain `node --test` lanes can resolve it and the emit
+// config's relative-extension rewrite applies (extensionless would survive emit).
+import { formatError, readDiagnosticProperty } from "./utils/errors.ts";
 
 /**
  * Severity hint for an {@link ElizaError}. `ephemeral` failures are expected to
@@ -33,12 +27,7 @@ export interface ElizaErrorOptions {
 	severity?: ElizaErrorSeverity;
 }
 
-/**
- * Process-wide brand shared by every bundled copy of this module. The package
- * root, the lean `./errors` subpath and other compiled entrypoints each inline
- * their own `ElizaError` class, so prototype identity alone would make an error
- * thrown through one entrypoint fail `instanceof` against another.
- */
+/** Process-wide branding preserves instanceof across separately bundled copies. */
 const ELIZA_ERROR_BRAND: unique symbol = Symbol.for("elizaos.core.ElizaError");
 
 /**
@@ -59,7 +48,7 @@ export class ElizaError extends Error {
 		return (
 			(typeof value === "object" || typeof value === "function") &&
 			value !== null &&
-			(value as { [ELIZA_ERROR_BRAND]?: unknown })[ELIZA_ERROR_BRAND] === true
+			readDiagnosticProperty(value, ELIZA_ERROR_BRAND) === true
 		);
 	}
 
@@ -124,10 +113,7 @@ export function toElizaError(
 	fallbackCode = "UNCLASSIFIED",
 ): ElizaError {
 	if (value instanceof ElizaError) return value;
-	if (value instanceof Error) {
-		return new ElizaError(value.message, { code: fallbackCode, cause: value });
-	}
-	return new ElizaError(typeof value === "string" ? value : String(value), {
+	return new ElizaError(formatError(value), {
 		code: fallbackCode,
 		cause: value,
 	});

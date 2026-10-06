@@ -17,8 +17,6 @@
       "@elizaos/plugin-workflow": [
         "../../../../plugins/plugin-workflow/src/index.ts"
       ],
-      "@elizaos/cloud-sdk": ["../../sdk/src/index.ts"],
-      "@elizaos/cloud-sdk/*": ["../../sdk/src/*"],
       "@elizaos/plugin-browser": [
         "../../../../plugins/plugin-browser/src/index.ts"
       ],
@@ -26,9 +24,6 @@
       "@elizaos/auth/vault": ["../../../../packages/auth/src/vault/index.ts"],
       "@elizaos/plugin-assistant": [
         "../../../../plugins/plugin-assistant/src/index.ts"
-      ],
-      "@elizaos/core/contracts/remote-control": [
-        "../../../../packages/core/src/contracts/remote-control.ts"
       ],
       "@elizaos/plugin-elizacloud/cloud-config/domain-contract": [
         "../../../../plugins/plugin-elizacloud/src/cloud-config/domain-contract.ts"

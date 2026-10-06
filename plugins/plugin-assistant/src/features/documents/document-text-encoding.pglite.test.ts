@@ -1,7 +1,7 @@
 /** Exercises literal and explicitly encoded text through real PGlite ingestion, fragment reads and deduplication. */
 import { randomUUID } from "node:crypto";
 import { ChannelType, type UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it } from "vitest";
 import { DocumentService } from "./service.ts";
 

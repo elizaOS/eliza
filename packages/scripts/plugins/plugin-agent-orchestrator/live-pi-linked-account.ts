@@ -108,8 +108,8 @@ const phases = new Set([
   "child-execution",
 ]);
 const sourcePaths = [
-  "packages/app/src/services/account-pool.ts",
-  "packages/app/src/services/coding-account-bridge.ts",
+  "packages/auth/src/accounts/account-pool.ts",
+  "packages/auth/src/accounts/coding-account-bridge.ts",
   "packages/auth/src/auth/account-storage.ts",
   "plugins/plugin-agent-orchestrator/src/services/pi-provider-config.ts",
   "plugins/plugin-agent-orchestrator/src/services/acp-native-transport.ts",
@@ -143,11 +143,9 @@ async function child() {
   await mkdir(workdir, { mode: 0o700 });
   phase = "import-account-storage";
   const { createRuntimeAccountStoragePolicy, saveAccount, loadAccount } =
-    await import("@elizaos/auth/auth/account-storage");
+    await import("@elizaos/auth/auth");
   phase = "import-account-pool";
-  const { getDefaultAccountPool } = await import(
-    "../../../app/src/services/account-pool.ts"
-  );
+  const { getDefaultAccountPool } = await import("@elizaos/auth/accounts");
   phase = "import-core";
   const { getCodingAgentSelectorBridge } = await import("@elizaos/core");
   phase = "import-provider-route";

@@ -1,10 +1,11 @@
 /**
  * Verifies the desktop renderer static-server response headers never allow
  * cross-origin reads. The static server embeds the local agent API base URL
- * and OWNER-level bearer token into its HTML documents, so any
- * `Access-Control-Allow-Origin` header would let an arbitrary website fetch
- * the index page and extract the credential (elizaOS/eliza#33034). The
- * renderer webview loads these responses same-origin and needs no CORS.
+ * (never the bearer token — it reaches the webview only over the Electrobun
+ * RPC bridge, elizaOS/eliza#33034) into its HTML documents, so any
+ * `Access-Control-Allow-Origin` header would still expose page contents to
+ * arbitrary websites. The renderer webview loads these responses same-origin
+ * and needs no CORS.
  */
 import { describe, expect, it } from "vitest";
 import {

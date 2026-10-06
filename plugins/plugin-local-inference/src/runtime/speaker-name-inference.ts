@@ -19,4 +19,4 @@ export {
 	type SpeakerNameReasonCode,
 	type SpeakerNameResolution,
 	type SpeakerNameVoiceTurnBindingPlan,
-} from "@elizaos/core/speaker-name-inference";
+} from "@elizaos/core/protocol";

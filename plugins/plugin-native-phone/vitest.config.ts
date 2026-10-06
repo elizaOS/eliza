@@ -56,43 +56,12 @@ export default defineConfig({
         replacement: resolve(rootDir, "test/stubs/ui.tsx"),
       },
       {
-        find: /^@elizaos\/ui\/components\/ui\/tabs$/,
-        replacement: resolve(rootDir, "test/stubs/ui-tabs.tsx"),
-      },
-      {
-        find: /^@elizaos\/ui\/components$/,
-        replacement: resolve(rootDir, "test/stubs/ui-components.tsx"),
-      },
-      {
-        find: /^@elizaos\/ui\/events$/,
-        replacement: resolve(rootDir, "../../packages/ui/src/events/index.ts"),
-      },
-      {
-        find: /^@elizaos\/ui\/components\/permissions\/PermissionRecoveryCallout$/,
-        replacement: resolve(
-          rootDir,
-          "../../packages/ui/src/components/permissions/PermissionRecoveryCallout.tsx",
-        ),
-      },
-      {
-        find: /^@elizaos\/ui\/app-shell-registry$/,
-        replacement: resolve(rootDir, "test/stubs/ui.tsx"),
-      },
-      {
-        find: /^@elizaos\/ui\/app-navigate-view$/,
-        replacement: resolve(rootDir, "test/stubs/ui.tsx"),
-      },
-      {
         find: /^@elizaos\/app$/,
         replacement: resolve(rootDir, "../../packages/app/src/index.ts"),
       },
       {
         find: /^@elizaos\/app\/(.+)$/,
         replacement: resolve(rootDir, "../../packages/app/src/$1"),
-      },
-      {
-        find: /^@elizaos\/ui\/spatial$/,
-        replacement: resolve(rootDir, "../../packages/ui/src/spatial/index.ts"),
       },
     ],
   },

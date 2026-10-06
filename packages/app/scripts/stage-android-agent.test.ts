@@ -1,4 +1,3 @@
-/** Exercises stage android agent behavior with deterministic app test fixtures. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -270,7 +269,7 @@ test("runtime downloads exhaust bounded retries without publishing partial bytes
   }
 });
 
-test("bundled Android agent disables auto-install before the script argument", () => {
+test("bundled Android agent preserves sibling processes and disables auto-install", () => {
   const launchSetup = __testables.LAUNCH_SCRIPT.split("\n(\n  setsid ")[0];
   for (const command of ["", "android-bridge"]) {
     const output = execFileSync(
@@ -278,7 +277,7 @@ test("bundled Android agent disables auto-install before the script argument", (
       [
         "-c",
         [
-          "pkill() { :; }; sleep() { :; }",
+          'pkill() { printf "unexpected broad process signal\\n" >&2; exit 97; }; sleep() { :; }',
           launchSetup,
           'printf "%s\\n" "$@"',
         ].join("\n"),

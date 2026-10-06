@@ -20,6 +20,10 @@
  */
 
 import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+} from "@elizaos/contracts";
+import type {
   ActionResult,
   HandlerCallback,
   HandlerOptions,
@@ -36,10 +40,6 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-} from "@elizaos/core/contracts/calendar";
 import {
   buildWideLookupRange,
   resolveCalendarMutationCandidates,

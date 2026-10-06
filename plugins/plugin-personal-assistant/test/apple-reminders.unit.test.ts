@@ -9,10 +9,10 @@
  *   - successful native response -> { ok: true, data: { provider, reminderId } }
  */
 
-import {
-  type IPermissionsRegistry,
-  type PermissionState,
-} from "@elizaos/core/contracts/permissions";
+import type {
+  IPermissionsRegistry,
+  PermissionState,
+} from "@elizaos/core/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __testing,

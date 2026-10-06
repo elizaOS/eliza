@@ -3,7 +3,7 @@
  * single Save button — the shared bottom bar for editable config panels.
  */
 import * as React from "react";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "./button";
 
 export interface SaveFooterProps extends React.HTMLAttributes<HTMLDivElement> {

@@ -11,19 +11,20 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from benchmarks.nl2repo.adapter_matrix import token_metrics_from_usage
-from benchmarks.standard.humaneval import (
+from benchmarks.suites.nl2repo.adapter_matrix import token_metrics_from_usage
+from benchmarks.suites.standard.humaneval import (
     DATASET_VERSION,
     EXPANDED_DATASET_VERSION,
     EMPTY_RETRY_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
+    SMOKE_FIXTURES,
     _build_program,
     _execute_program,
     expand_humaneval_examples,
     _load_dataset_examples,
     validate_humaneval_examples,
 )
-from benchmarks.standard.scenarios import count_dict_examples
+from benchmarks.suites.standard.scenarios import count_dict_examples
 
 
 def _adapter_command_env_name(task_agent: str) -> str:
@@ -280,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output)
     trajectory_dir = Path(args.trajectory_dir) if args.trajectory_dir else None
     output_dir.mkdir(parents=True, exist_ok=True)
-    base_examples = _load_dataset_examples(args.max_tasks)
+    base_examples = list(SMOKE_FIXTURES[:args.max_tasks]) if args.mock else _load_dataset_examples(args.max_tasks)
     examples = expand_humaneval_examples(base_examples) if args.expand_scenarios else base_examples
 
     if args.count_scenarios or args.validate_scenarios:

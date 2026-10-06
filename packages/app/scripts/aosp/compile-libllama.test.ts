@@ -1,4 +1,3 @@
-/** Exercises compile libllama behavior with deterministic app test fixtures. */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -9,7 +8,6 @@ import { resolveElizaWorkspaceRootFromImportMeta } from "../lib/repo-root.ts";
 import {
   buildLibllamaForAbi,
   describeAndroidTargetDryRun,
-  ensureZigDrivers,
   libllamaCmakeConfigureArgs,
   resetIncompatibleCmakeArchiverCache,
   stageStaticFusedRuntimeBackendLibs,
@@ -19,6 +17,7 @@ import {
   resolveDefaultAndroidAssetsDir,
   resolveHomebrewFormulaIncludeDirs,
 } from "./compile-libllama-paths.ts";
+import { ensureZigDrivers } from "./zig-toolchain.ts";
 
 const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
 const cleanupHelperScript = path.join(

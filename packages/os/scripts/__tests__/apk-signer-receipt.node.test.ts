@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apkSignerSha256 } from "../aosp/build-grizzly-bundle.ts";
+import { apkSignerSha256 } from "../android/build-grizzly-bundle.ts";
 
 const digest =
   "c8a2e9bccf597c2fb6dc66bee293fc13f2fc47ec77bc6b2b0d52c11f51192ab8";

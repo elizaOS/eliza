@@ -4,7 +4,7 @@
  * supplies the consistent launcher back affordance for the fullscreen view.
  */
 
-import { PluginPageFrame } from "@elizaos/ui/components";
+import { PluginPageFrame } from "@elizaos/ui";
 import { MessagesView } from "./MessagesView.tsx";
 
 export function MessagesPage(): React.JSX.Element {

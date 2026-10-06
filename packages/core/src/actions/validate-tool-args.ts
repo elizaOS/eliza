@@ -428,7 +428,7 @@ function omitDeclaredModelSentinels(
 	return normalized;
 }
 
-/** Preserve explicitly declared legacy selectors without weakening native wire schemas. */
+/** Admits explicitly declared selector aliases without weakening native wire schemas. */
 function admitLegacyRequiredAlternatives(
 	action: Action,
 	schema: ActionParametersJsonSchema,

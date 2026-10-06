@@ -16,7 +16,11 @@
 
 import { EvidenceError } from "./errors.ts";
 
-function canonicalize(value: unknown, path: string): string {
+function canonicalize(
+  value: unknown,
+  path: string,
+  ancestors: Set<object>,
+): string {
   if (value === null) return "null";
   switch (typeof value) {
     case "string":
@@ -32,37 +36,69 @@ function canonicalize(value: unknown, path: string): string {
       }
       return JSON.stringify(value);
     case "object": {
-      if (Array.isArray(value)) {
-        const items = value.map((item, index) => {
-          if (item === undefined) {
-            throw new EvidenceError(
-              `canonical JSON cannot represent undefined array element at ${path}[${index}]`,
-              { code: "CANONICAL_UNSERIALIZABLE", context: { path, index } },
-            );
-          }
-          return canonicalize(item, `${path}[${index}]`);
-        });
-        return `[${items.join(",")}]`;
-      }
-      const proto = Object.getPrototypeOf(value);
-      if (proto !== Object.prototype && proto !== null) {
+      if (ancestors.has(value)) {
         throw new EvidenceError(
-          `canonical JSON cannot represent a non-plain object at ${path}`,
+          `canonical JSON cannot represent a cycle at ${path}`,
           {
             code: "CANONICAL_UNSERIALIZABLE",
-            context: { path, constructor: proto?.constructor?.name },
+            context: { path },
           },
         );
       }
-      const record = value as Record<string, unknown>;
-      const keys = Object.keys(record)
-        .filter((key) => record[key] !== undefined)
-        .sort();
-      const members = keys.map(
-        (key) =>
-          `${JSON.stringify(key)}:${canonicalize(record[key], `${path}.${key}`)}`,
-      );
-      return `{${members.join(",")}}`;
+      ancestors.add(value);
+      try {
+        if (Array.isArray(value)) {
+          const items: string[] = [];
+          for (let index = 0; index < value.length; index++) {
+            const descriptor = Object.getOwnPropertyDescriptor(value, index);
+            if (
+              !descriptor ||
+              !("value" in descriptor) ||
+              descriptor.value === undefined
+            ) {
+              throw new EvidenceError(
+                `canonical JSON requires a defined data element at ${path}[${index}]`,
+                { code: "CANONICAL_UNSERIALIZABLE", context: { path, index } },
+              );
+            }
+            items.push(
+              canonicalize(descriptor.value, `${path}[${index}]`, ancestors),
+            );
+          }
+          return `[${items.join(",")}]`;
+        }
+        const proto = Object.getPrototypeOf(value);
+        if (proto !== Object.prototype && proto !== null) {
+          throw new EvidenceError(
+            `canonical JSON cannot represent a non-plain object at ${path}`,
+            {
+              code: "CANONICAL_UNSERIALIZABLE",
+              context: { path, constructor: proto?.constructor?.name },
+            },
+          );
+        }
+        const members: string[] = [];
+        for (const key of Object.keys(value).sort()) {
+          const descriptor = Object.getOwnPropertyDescriptor(value, key);
+          if (!descriptor || !("value" in descriptor)) {
+            throw new EvidenceError(
+              `canonical JSON cannot evaluate an accessor at ${path}.${key}`,
+              {
+                code: "CANONICAL_UNSERIALIZABLE",
+                context: { path, key },
+              },
+            );
+          }
+          if (descriptor.value !== undefined) {
+            members.push(
+              `${JSON.stringify(key)}:${canonicalize(descriptor.value, `${path}.${key}`, ancestors)}`,
+            );
+          }
+        }
+        return `{${members.join(",")}}`;
+      } finally {
+        ancestors.delete(value);
+      }
     }
     default:
       throw new EvidenceError(
@@ -82,7 +118,7 @@ export function canonicalJson(value: unknown): string {
       code: "CANONICAL_UNSERIALIZABLE",
     });
   }
-  return canonicalize(value, "$");
+  return canonicalize(value, "$", new Set());
 }
 
 /** Canonical UTF-8 bytes of `value`: canonical JSON plus one trailing newline. */

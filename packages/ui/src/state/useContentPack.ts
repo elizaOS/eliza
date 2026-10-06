@@ -10,7 +10,7 @@
  * - The color-scheme cleanup callback that pack activation registers.
  */
 
-import type { ResolvedContentPack } from "@elizaos/core/contracts/content-pack";
+import type { ResolvedContentPack } from "@elizaos/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyColorScheme,
@@ -18,7 +18,7 @@ import {
   loadContentPackFromFiles,
   loadContentPackFromUrl,
   releaseLoadedContentPack,
-} from "../content-packs";
+} from "../config/content-pack";
 import { useAppSelectorShallow } from "./app-store";
 import {
   loadPersistedActivePackUrl,

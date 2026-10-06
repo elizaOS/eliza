@@ -231,7 +231,7 @@ function notificationsPayload() {
 //
 // The local first-run path resolves the on-device agent base via
 // resolveFirstRunLocalAgentApiBase() → getElizaApiBase() (which reads the
-// boot-config apiBase, NOT __ELIZA_APP_API_BASE__). Seed the boot-config mirror
+// boot-config apiBase). Seed the boot-config mirror
 // with the page origin so
 // client.setBaseUrl() in finishLocal keeps every request on the live preview
 // origin (and the route mocks) instead of falling back to
@@ -242,7 +242,6 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
     const origin = window.location.origin;
     const secureStore = new Map<string, string>();
     const win = window as unknown as Record<string, unknown>;
-    win.__ELIZA_APP_API_BASE__ = origin;
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
     win.__electrobunWindowId = 1;
     win.__ELIZA_ELECTROBUN_RPC__ = {

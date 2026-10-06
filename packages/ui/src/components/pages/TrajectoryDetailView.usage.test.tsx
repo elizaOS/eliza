@@ -14,7 +14,7 @@ import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
 const api = vi.hoisted(() => ({ getTrajectoryDetail: vi.fn(), copy: vi.fn() }));
 vi.mock("../../api/client", () => ({ client: api }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: unknown) => unknown) =>
     selector({
       t: (key: string, options?: { defaultValue?: string }) =>
@@ -22,7 +22,7 @@ vi.mock("../../state", () => ({
       copyToClipboard: api.copy,
     }),
 }));
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 
@@ -468,11 +468,10 @@ describe("TrajectoryDetailView recorded usage", () => {
 
   it("preserves complete model text and selected calls while a live run refreshes, and cancels closed reads", async () => {
     const original = detail();
-    const input =
-      Array.from(
-        { length: 32 },
-        (_, index) => `${index}: ${"context ".repeat(500)}`,
-      ).join("\n") + "\nFINAL_INPUT_SENTINEL";
+    const input = `${Array.from(
+      { length: 32 },
+      (_, index) => `${index}: ${"context ".repeat(500)}`,
+    ).join("\n")}\nFINAL_INPUT_SENTINEL`;
     original.llmCalls[0].userPrompt = input;
     api.getTrajectoryDetail.mockResolvedValue(original);
     const view = render(

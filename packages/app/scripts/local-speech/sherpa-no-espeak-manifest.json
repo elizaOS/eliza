@@ -1,0 +1,37 @@
+[
+  {
+    "path": "CMakeLists.txt",
+    "before": "4df4359dc8ad360eadd0d125059622c12bcac99f32e7cf2aabe44aaa16a0c09c",
+    "after": "969d8950e867a7367cc5837f6d69f67c2f2ce8377e340a7f253df1f2cb58ea5b"
+  },
+  {
+    "path": "sherpa-onnx/csrc/CMakeLists.txt",
+    "before": "3d410a06b24f1af5522d8f03c5277d880bd9616c37ad526951becce8d361cd19",
+    "after": "5885198745d9db18560e11b35ba881bd887bd8f926b35877e617e9b9949ec139"
+  },
+  {
+    "path": "sherpa-onnx/csrc/kokoro-multi-lang-lexicon.h",
+    "before": "1d2bbdf6f9aded55e06413548fa389e07e820389f9ca5cb1ac7ab2846627e337",
+    "after": "b7a47d7d166b0472798db5477a2a53a098b25245ef8005389717fcabca8a33b7"
+  },
+  {
+    "path": "sherpa-onnx/csrc/matcha-tts-lexicon.h",
+    "before": "ccb7c91f1af3e6d0c0341584b60a8568f0244e0f0427236698a6b4305b82f509",
+    "after": "05fcb99e421dd39df953169741dec64c816162bb2cf4b6e2d77fa6492fee03af"
+  },
+  {
+    "path": "sherpa-onnx/csrc/offline-tts-model-config.cc",
+    "before": "23d9262738b4c3f188a6db5b37bba6f0be723f0814ffe21acd7bc2fd9db0792f",
+    "after": "e9d732cc4a2adcc714f766e3212732250d89e58efd7fbdcf0676390b53f2b9bb"
+  },
+  {
+    "path": "sherpa-onnx/csrc/offline-tts-vits-impl.h",
+    "before": "659c7e2201ef41305b3f772a2d836e93e2ce575c93bd9ab3b03ef0d0af6db695",
+    "after": "66e50e93214c988284cd13c5a999d4359536f866d187119a7d74de88cc86d0d1"
+  },
+  {
+    "path": "sherpa-onnx/csrc/piper-phonemize-lexicon.h",
+    "before": "7d32827c7d07d0849884cb2e55b973e252cab9658dcc23a94bfae04cee1637ec",
+    "after": "458267f0e64889b057a167ed0593ab2dc7312aa9ac2730c0d850eecc3fb3f979"
+  }
+]

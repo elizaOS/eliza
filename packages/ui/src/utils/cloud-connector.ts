@@ -4,7 +4,7 @@
  * host-owned surface; the cloud dashboard and its billing helpers live in the
  * Eliza Cloud plugin.
  */
-import type { CloudCompatAgent } from "../api";
+import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { pathForTab } from "../navigation";
 
 const MANAGED_DISCORD_GATEWAY_AGENT_NAME = "Discord Gateway";

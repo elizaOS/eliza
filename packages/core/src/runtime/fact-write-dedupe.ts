@@ -33,16 +33,9 @@ import type { IAgentRuntime } from "../types/runtime";
 
 const DEDUPE_CANDIDATE_POOL = 120;
 
-/**
- * Canonical form for fact-text equality: case-, punctuation-, and
- * whitespace-insensitive, unicode-aware. An empty key never matches (so
- * punctuation-only or empty texts are never deduped against each other).
- */
+/** Exact fact text after trimming outer whitespace; signs, case and spacing carry meaning. */
 export function normalizeFactTextKey(value: string): string {
-	return value
-		.toLowerCase()
-		.replace(/[^\p{L}\p{N}]+/gu, " ")
-		.trim();
+	return value.trim();
 }
 
 /**
@@ -91,12 +84,12 @@ function readFactMetadata(memory: Memory): FactMetadata {
  *
  * - `confidence` — strictly higher (or present where the kept row has none).
  * - `kind` — present where the kept row has none. The FACTS reader defaults a
- *   missing kind to `durable`, so an explicit stamp is always more precise;
- *   an already-set kind is never flipped here (durable/current transitions
- *   belong to the reflection pass).
+ * missing kind to `durable`, so an explicit stamp is always more precise;
+ * an already-set kind is never flipped here (durable/current transitions
+ * belong to the reflection pass).
  * - `validAt` / `lastConfirmedAt` — strictly more recent (or newly present):
- *   a re-asserted `current` fact should not keep decaying from its first
- *   observation's timestamp.
+ * a re-asserted `current` fact should not keep decaying from its first
+ * observation's timestamp.
  */
 export function mergeStrongerFactMetadata(
 	existing: Memory,

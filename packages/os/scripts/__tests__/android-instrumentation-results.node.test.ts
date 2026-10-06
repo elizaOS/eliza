@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { verifyInstrumentationXml } from "../aosp/verify-android-instrumentation-results.ts";
+import { verifyInstrumentationXml } from "../android/verify-android-instrumentation-results.ts";
 
 const requiredClass = "ai.elizaos.app.ElizaAssistantSurfaceInstrumentedTest";
 

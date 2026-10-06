@@ -17,6 +17,7 @@ import type {
   TargetInfo,
   UUID,
 } from "@elizaos/core";
+import { inspectSendHandlerResult } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { ConversationMeta, ServerState } from "../api/server-types.ts";
 import { registerClientChatSendHandler } from "./client-chat-sender.ts";
@@ -87,6 +88,108 @@ function conv(id: string, roomId: string, updatedAt: string): ConversationMeta {
 }
 
 describe("client_chat recency fallback", () => {
+  it("does not infer processor ownership from a proactive responseId", async () => {
+    const { runtime, created } = makeRuntime();
+    const { state, broadcastWs } = makeState([
+      conv("room", "origin", "2026-01-01"),
+    ]);
+    registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
+    const responseId = crypto.randomUUID() as UUID;
+    await runtime.sendMessageToTarget(
+      { source: "client_chat", roomId: "origin" as UUID },
+      { text: "same text", simple: true, responseId },
+    );
+    expect(created).toHaveLength(1);
+    expect(created[0]?.id).not.toBe(responseId);
+    expect(broadcastWs).toHaveBeenCalledTimes(1);
+  });
+
+  it("delivers a declared processor response identity without creating or overwriting its row", async () => {
+    const { runtime, created } = makeRuntime();
+    const { state, broadcastWs } = makeState([
+      conv("room", "origin", "2026-01-01"),
+    ]);
+    registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
+    const responseId = crypto.randomUUID() as UUID;
+    const result = await runtime.sendMessageToTarget(
+      {
+        source: "client_chat",
+        roomId: "origin" as UUID,
+        responseMemoryId: responseId,
+      },
+      { text: "same text", simple: true, responseId },
+    );
+    expect(created).toHaveLength(0);
+    expect(broadcastWs).toHaveBeenCalledTimes(1);
+    expect(broadcastWs.mock.calls[0]?.[0].message.id).toBe(responseId);
+    expect(inspectSendHandlerResult(result)).toMatchObject({
+      kind: "delivered",
+      memories: [],
+      receipt: {
+        evidenceKind: "local-effect",
+        persistence: { status: "not_attempted" },
+      },
+    });
+  });
+
+  it.each(["wrong-room", "wrong-id", "not-simple"])(
+    "rejects an invalid processor handoff (%s)",
+    async (kind) => {
+      const { runtime, created } = makeRuntime();
+      const { state, broadcastWs } = makeState([
+        conv("room", "origin", "2026-01-01"),
+      ]);
+      registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
+      const responseId = crypto.randomUUID() as UUID;
+      await expect(
+        runtime.sendMessageToTarget(
+          {
+            source: "client_chat",
+            roomId: (kind === "wrong-room" ? "missing" : "origin") as UUID,
+            responseMemoryId: responseId,
+          },
+          {
+            text: "same text",
+            simple: kind !== "not-simple",
+            responseId:
+              kind === "wrong-id" ? (crypto.randomUUID() as UUID) : responseId,
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: "CLIENT_CHAT_RESPONSE_OWNERSHIP_INVALID",
+      });
+      expect(created).toHaveLength(0);
+      expect(broadcastWs).not.toHaveBeenCalled();
+    },
+  );
+
+  it("retains registered connector delivery without dashboard persistence", async () => {
+    const { runtime, created } = makeRuntime();
+    const { state, broadcastWs } = makeState([
+      conv("room", "origin", "2026-01-01"),
+    ]);
+    const external = vi.fn(
+      async () =>
+        ({
+          id: crypto.randomUUID(),
+          content: { text: "connector reply" },
+        }) as Memory,
+    );
+    runtime.registerSendHandler("discord", external);
+    registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
+    await runtime.sendMessageToTarget(
+      { source: "discord", roomId: "origin" as UUID },
+      {
+        text: "connector reply",
+        simple: true,
+        responseId: crypto.randomUUID() as UUID,
+      },
+    );
+    expect(external).toHaveBeenCalledTimes(1);
+    expect(created).toHaveLength(0);
+    expect(broadcastWs).not.toHaveBeenCalled();
+  });
+
   it("delivers into the genuinely most-recent conversation, not one whose updatedAt is unparseable", async () => {
     const { runtime, created } = makeRuntime();
     // No active conversation, so the most-recently-updated fallback is what

@@ -27,21 +27,14 @@ const calls = vi.hoisted(() => ({
   activateProject: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui/agent-surface", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
-}));
 
-// Full mock (no importOriginal): the switcher only touches `client`,
-// `useAppSelectorShallow`, and `Button`, so stub them and keep @elizaos/core
-// out of the browser test graph (mirrors use-orchestrator-data.test.ts).
-vi.mock("@elizaos/ui/api", () => ({
   client: {
     listProjects: () => calls.listProjects(),
     activateProject: (id: string) => calls.activateProject(id),
   },
-}));
-
-vi.mock("@elizaos/ui", () => ({
   Button: ({
     children,
     ...rest
@@ -75,12 +68,14 @@ vi.mock("@elizaos/ui", () => ({
       {children}
     </button>
   ),
-}));
-
-// Selector returns a stable no-i18n object so the fallback translate runs.
-vi.mock("@elizaos/ui/state", () => ({
   useAppSelectorShallow: () => ({ t: undefined }),
 }));
+
+// Full mock (no importOriginal): the switcher only touches `client`,
+// `useAppSelectorShallow`, and `Button`, so stub them and keep @elizaos/core
+// out of the browser test graph (mirrors use-orchestrator-data.test.ts).
+
+// Selector returns a stable no-i18n object so the fallback translate runs.
 
 import { ProjectSwitcher } from "./ProjectSwitcher";
 

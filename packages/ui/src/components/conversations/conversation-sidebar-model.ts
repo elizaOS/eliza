@@ -9,11 +9,12 @@
  * ordered under a single numeric `sortKey`.
  */
 
-import { normalizeConnectorSource } from "@elizaos/core/connectors";
+import type { TranslateFn } from "@elizaos/contracts";
+
+import { normalizeConnectorSource } from "@elizaos/core/protocol";
 import type * as React from "react";
 import type { Conversation } from "../../api/client-types-chat";
 import { isMainChatConversation } from "../../state/chat-conversation-guards";
-import type { TranslateFn } from "../../types";
 import { getChatSourceMeta } from "../composites/chat/chat-source.helpers";
 
 import {
@@ -178,8 +179,12 @@ function buildInboxRows(
         typeof chat.lastMessageAt === "number" &&
         Number.isFinite(chat.lastMessageAt)
           ? chat.lastMessageAt
-          : Date.now();
-      const isoDate = new Date(sortKey).toISOString();
+          : 0;
+      const isoDate =
+        typeof chat.lastMessageAt === "number" &&
+        Number.isFinite(chat.lastMessageAt)
+          ? new Date(sortKey).toISOString()
+          : null;
       const normalizedSource = normalizeConnectorSource(chat.source);
       const normalizedWorldLabel = normalizeWorldLabel(chat, t);
       return {
@@ -194,7 +199,7 @@ function buildInboxRows(
         muted: chat.muted === true,
         mutedScope: chat.mutedScope,
         title: chat.title,
-        updatedAtLabel: formatRelativeTime(isoDate, t),
+        updatedAtLabel: isoDate ? formatRelativeTime(isoDate, t) : "",
         ...(chat.worldId ? { worldId: chat.worldId } : {}),
         worldKey: worldKey(chat, normalizedSource),
         worldLabel: normalizedWorldLabel,

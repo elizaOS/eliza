@@ -161,6 +161,7 @@
   "appsview.Stopped": "Đã dừng",
   "appsview.URL": "URL",
   "appsview.Viewer": "Giao diện (Viewer)",
+  "appwindow.ExternalOpenFailed": "Không thể mở ứng dụng này trong trình duyệt: {{url}}",
   "appwindow.LaunchedNoViewer": "App này khởi chạy nhưng không có viewer URL. Hãy mở nó từ catalog apps.",
   "appwindow.RetryingLaunch": "Đang thử khởi chạy lại...",
   "aria.advancedNavigation": "Điều hướng nâng cao",

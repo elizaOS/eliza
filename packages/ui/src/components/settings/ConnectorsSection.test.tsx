@@ -15,7 +15,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginInfo } from "../../api";
+import type { PluginInfo } from "../../api/client-types-config";
 
 const appMock = vi.hoisted(() => ({
   value: {} as {
@@ -33,8 +33,8 @@ const appMock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../state", () => ({
-  useApp: () => appMock.value,
+vi.mock("../../state/useApp", () => ({ useApp: () => appMock.value }));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: typeof appMock.value) => unknown) =>
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: typeof appMock.value) => unknown) =>

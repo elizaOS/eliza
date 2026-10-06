@@ -41,7 +41,10 @@
  * through fakes — not stubs of the client itself.
  */
 
-import { parseVoiceUiContext, type VoiceUiContext } from "@elizaos/core/voice";
+import {
+  parseVoiceUiContext,
+  type VoiceUiContext,
+} from "@elizaos/host/protocol";
 import type { VoiceContinuousStatus } from "./voice-chat-types";
 import {
   type MicAudioContextLike,

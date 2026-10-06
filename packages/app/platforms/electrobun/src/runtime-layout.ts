@@ -1,4 +1,3 @@
-/** Implements Electrobun desktop runtime layout ts behavior for app shell integration. */
 import fs from "node:fs";
 import path from "node:path";
 import { readBuiltPreloadScript } from "./preload-validation";
@@ -9,13 +8,16 @@ function usesWindowsPathSyntax(value: string): boolean {
 	return /^[A-Za-z]:[\\/]/.test(value) || value.includes("\\");
 }
 
-function joinPortable(base: string, ...parts: string[]): string {
+export function joinPortable(base: string, ...parts: string[]): string {
 	return usesWindowsPathSyntax(base)
 		? path.win32.join(base, ...parts)
 		: path.posix.join(base, ...parts);
 }
 
-function resolveRelativePortable(base: string, relativePath: string): string {
+export function resolveRelativePortable(
+	base: string,
+	relativePath: string,
+): string {
 	return usesWindowsPathSyntax(base)
 		? path.win32.resolve(base, relativePath)
 		: path.posix.resolve(base, relativePath);
@@ -36,7 +38,7 @@ function isMacAppBundle(
 	);
 }
 
-function resolvePackagedBundlePath(
+export function resolvePackagedBundlePath(
 	execPath: string,
 	platform: NodeJS.Platform,
 ): string | null {

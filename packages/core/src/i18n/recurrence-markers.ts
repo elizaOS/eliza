@@ -81,7 +81,7 @@ const NAME_LIKE_RECURRENCE_PATTERNS: readonly RegExp[] = [
 
 // Negative/one-shot directives participate in the same ordered intent stream
 // as positive cadence markers. The last explicit directive wins, while a
-// positive marker nested inside "not every ..." is ignored. Cadence
+// positive marker nested inside "not every..." is ignored. Cadence
 // adjectives ("not weekly") and plural weekday nouns ("not on Mondays")
 // negate the same way as determiner forms — a directly negated cadence word
 // is a one-shot statement, not a recurring one. "Only once a week" remains

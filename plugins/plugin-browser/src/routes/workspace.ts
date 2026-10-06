@@ -6,8 +6,8 @@
  * lives in `@elizaos/plugin-browser/workspace`; this is the HTTP edge.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
-import { type RouteRequestContext } from "@elizaos/core/api/route-helpers";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 import { requestBrowserWorkspace } from "../workspace/browser-workspace-desktop.js";
 import {
   type BrowserWorkspaceErrorCode,
@@ -18,7 +18,7 @@ import {
   assertBrowserWorkspaceUserScriptAllowed,
   normalizeBrowserWorkspaceCommand,
 } from "../workspace/browser-workspace-helpers.js";
-import { type BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
+import type { BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
 import {
   type BrowserWorkspaceCommand,
   closeBrowserWorkspaceTab,

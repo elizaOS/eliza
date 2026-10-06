@@ -1,8 +1,6 @@
 /** Runs abortable asynchronous retries with configurable exponential backoff and jitter. */
 
-// ============================================================================
 // Sleep Utilities
-// ============================================================================
 
 /**
  * Sleep for a specified duration.
@@ -24,12 +22,15 @@ export async function sleepWithAbort(
 	ms: number,
 	abortSignal?: AbortSignal,
 ): Promise<void> {
+	abortSignal?.throwIfAborted();
 	if (ms <= 0) {
 		return;
 	}
 	return new Promise((resolve, reject) => {
 		if (abortSignal?.aborted) {
-			return reject(new Error("aborted"));
+			return reject(
+				abortSignal?.reason ?? new DOMException("Aborted", "AbortError"),
+			);
 		}
 
 		const timeoutId = setTimeout(() => {
@@ -44,7 +45,7 @@ export async function sleepWithAbort(
 			if (abortSignal) {
 				abortSignal.removeEventListener("abort", onAbort);
 			}
-			reject(new Error("aborted"));
+			reject(abortSignal?.reason ?? new DOMException("Aborted", "AbortError"));
 		}
 
 		if (abortSignal) {
@@ -53,9 +54,7 @@ export async function sleepWithAbort(
 	});
 }
 
-// ============================================================================
 // Backoff Policy
-// ============================================================================
 
 /**
  * Configuration for exponential backoff.
@@ -84,9 +83,7 @@ export function computeBackoff(policy: BackoffPolicy, attempt: number): number {
 	return Math.min(policy.maxMs, Math.round(base + jitter));
 }
 
-// ============================================================================
 // Retry Configuration
-// ============================================================================
 
 /**
  * Basic retry configuration.
@@ -122,6 +119,8 @@ export type RetryInfo = {
  * Full retry options including callbacks.
  */
 export type RetryOptions = RetryConfig & {
+	/** Cancellation stops waiting and prevents another attempt. */
+	signal?: AbortSignal;
 	/** Label for logging/debugging */
 	label?: string;
 	/** Custom function to determine if error should trigger retry */
@@ -197,7 +196,7 @@ function applyJitter(delayMs: number, jitter: number): number {
  *
  * Supports two calling styles:
  * 1. Simple: `retryAsync(fn, attempts, initialDelayMs)`
- * 2. Full options: `retryAsync(fn, { attempts, minDelayMs, ... })`
+ * 2. Full options: `retryAsync(fn, { attempts, minDelayMs,... })`
  *
  * @example
  * ```ts
@@ -206,15 +205,15 @@ function applyJitter(delayMs: number, jitter: number): number {
  *
  * // Full options
  * const result = await retryAsync(
- *   () => fetch(url),
- *   {
- *     attempts: 5,
- *     minDelayMs: 500,
- *     maxDelayMs: 30000,
- *     jitter: 0.2,
- *     shouldRetry: (err) => isRetryable(err),
- *     onRetry: ({ attempt, delayMs }) => log(`Retry ${attempt} in ${delayMs}ms`)
- *   }
+ * () => fetch(url),
+ * {
+ * attempts: 5,
+ * minDelayMs: 500,
+ * maxDelayMs: 30000,
+ * jitter: 0.2,
+ * shouldRetry: (err) => isRetryable(err),
+ * onRetry: ({ attempt, delayMs }) => log(`Retry ${attempt} in ${delayMs}ms`)
+ * }
  * );
  * ```
  *
@@ -229,27 +228,10 @@ export async function retryAsync<T>(
 	attemptsOrOptions: number | RetryOptions = 3,
 	initialDelayMs = 300,
 ): Promise<T> {
-	if (typeof attemptsOrOptions === "number") {
-		const attempts = Math.max(1, Math.round(attemptsOrOptions));
-		let lastErr: unknown;
-		for (let i = 0; i < attempts; i += 1) {
-			try {
-				return await fn();
-			} catch (err) {
-				// error-policy:J4 Retry attempts are bounded and the final error
-				// is rethrown after exponential backoff.
-				lastErr = err;
-				if (i === attempts - 1) {
-					break;
-				}
-				const delay = initialDelayMs * 2 ** i;
-				await sleep(delay);
-			}
-		}
-		throw lastErr ?? new Error("Retry failed");
-	}
-
-	const options = attemptsOrOptions;
+	const options: RetryOptions =
+		typeof attemptsOrOptions === "number"
+			? { attempts: attemptsOrOptions, minDelayMs: initialDelayMs }
+			: attemptsOrOptions;
 
 	const resolved = resolveRetryConfig(DEFAULT_RETRY_CONFIG, options);
 	const maxAttempts = resolved.attempts;
@@ -263,11 +245,12 @@ export async function retryAsync<T>(
 	let lastErr: unknown;
 
 	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		options.signal?.throwIfAborted();
 		try {
 			return await fn();
 		} catch (err) {
 			// error-policy:J4 Policy-driven retries are bounded and exhaustion
-			// returns an explicit failed RetryResult.
+			// rethrows the final failure.
 			lastErr = err;
 			if (attempt >= maxAttempts || !shouldRetry(err, attempt)) {
 				break;
@@ -290,7 +273,7 @@ export async function retryAsync<T>(
 				err,
 				label: options.label,
 			});
-			await sleep(delay);
+			await sleepWithAbort(delay, options.signal);
 		}
 	}
 

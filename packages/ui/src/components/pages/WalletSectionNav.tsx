@@ -20,17 +20,15 @@ import {
   getAppShellPageRegistrySnapshot,
   subscribeAppShellPages,
 } from "../../app-shell-registry";
-import { cn } from "../../lib/utils";
 import { getFrontendPlatform } from "../../platform/platform-guards";
+import { cn } from "../../utils/cn";
 import {
   isSectionPath,
   normalizeSectionPath,
   SectionNav,
   type SectionPathRewrite,
   type SectionTab,
-  sectionTabs,
 } from "../shared/SectionNav";
-import { ViewHeader } from "../shared/ViewHeader";
 import { Card } from "../ui/card";
 
 const WALLET_SECTION_GROUP = "wallet";
@@ -56,11 +54,6 @@ const walletRewrite: SectionPathRewrite = (
   }
   return null;
 };
-
-/** The Wallet section tabs, sorted and path-normalized. */
-export function walletSectionTabs(): SectionTab[] {
-  return sectionTabs(WALLET_SECTION_GROUP, walletRewrite);
-}
 
 /** True when a route belongs to the Wallet section (wallet + its sub-views). */
 export function isWalletSectionPath(path: string): boolean {
@@ -92,9 +85,7 @@ export function WalletSectionNav({
         <div
           data-testid="wallet-section-header-inset"
           className={cn(isNativeWallet && "pt-[var(--safe-area-top,0px)]")}
-        >
-          <ViewHeader title="Wallet" />
-        </div>
+        ></div>
         <SectionNav
           group={WALLET_SECTION_GROUP}
           activePath={activePath}

@@ -6,10 +6,11 @@
  * passed in as props by the parent PluginsView.
  */
 
+import type { PluginParamDef } from "@elizaos/core/protocol";
 import { CheckCircle2, Puzzle, XCircle } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
-import { useAgentElement } from "../../agent-surface";
-import type { PluginInfo, PluginParamDef } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import type { PluginInfo } from "../../api/client-types-config";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";

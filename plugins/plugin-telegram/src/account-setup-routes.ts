@@ -2,7 +2,7 @@
  * Telegram account (user-account) auth HTTP routes.
  *
  * Implements the shared connector setup contract
- * (`eliza/packages/app/src/api/setup-contract.ts`) with one extra
+ * (`packages/core/src/types/connector-setup.ts`) with one extra
  * connector-specific route for the two-step login flow used by the
  * `telegram` library (GramJS):
  *
@@ -19,12 +19,12 @@
  * canonical `/api/setup/telegram-account/*` paths without the plugin-name prefix.
  */
 
-import { type IAgentRuntime, type SetupState } from "@elizaos/core";
-import {
-  type Route,
-  type RouteRequest,
-  type RouteResponse,
-} from "@elizaos/core/api/http-plugin";
+import type { IAgentRuntime, SetupState } from "@elizaos/core";
+import type {
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/host/protocol";
 import {
   clearTelegramAccountAuthState,
   clearTelegramAccountSession,

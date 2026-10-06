@@ -10,7 +10,7 @@ import type {
   CodingAgentTaskArtifactRecord,
   CodingAgentTaskMessageRecord,
   CodingAgentTaskThread,
-} from "@elizaos/ui/api/client-types-cloud";
+} from "@elizaos/ui";
 import {
   Archive,
   ChevronDown,

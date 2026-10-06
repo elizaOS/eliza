@@ -4,8 +4,8 @@
  */
 import * as React from "react";
 
-import { useRafCoalescer } from "../../gestures";
-import { cn } from "../../lib/utils";
+import { useRafCoalescer } from "../../gestures/useRafCoalescer";
+import { cn } from "../../utils/cn";
 import { Card } from "../ui/card";
 import type { KioskViewSurface } from "./useKioskViewSurfaces";
 

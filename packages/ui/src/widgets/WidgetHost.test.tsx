@@ -9,8 +9,8 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WIDGET_UI_ACTION_EVENT } from "./types";
 import { WidgetHost } from "./WidgetHost";
-import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
 
 const { clientMock, resolveWidgetsForSlotMock } = vi.hoisted(() => ({
   clientMock: {
@@ -38,21 +38,15 @@ const mockAppState = {
   t: (key: string) => key,
 };
 
-vi.mock("../state", () => ({
-  useApp: () => mockAppState,
+vi.mock("../state/useApp", () => ({ useApp: () => mockAppState }));
+vi.mock("../state/app-store", () => ({
   useAppSelector: <T,>(selector: (s: typeof mockAppState) => T): T =>
     selector(mockAppState),
   useAppSelectorShallow: <T,>(selector: (s: typeof mockAppState) => T): T =>
     selector(mockAppState),
 }));
 
-vi.mock("../api", () => ({
-  client: clientMock,
-}));
-
-vi.mock("../state/useDeveloperMode", () => ({
-  useIsDeveloperMode: () => false,
-}));
+vi.mock("../api/client", () => ({ client: clientMock }));
 
 vi.mock("./registry", () => ({
   resolveWidgetsForSlot: resolveWidgetsForSlotMock,

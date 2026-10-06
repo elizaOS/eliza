@@ -72,7 +72,7 @@ export function filterByContextGate<T extends ContextGateCandidate>(
 	userRoles?: readonly RoleGateRole[],
 ): T[] {
 	return items.filter((item) => {
-		// #12087 Item 14: an explicit contextGate must NOT shadow the item's
+		//: an explicit contextGate must NOT shadow the item's
 		// top-level roleGate. A contextGate adds context requirements; it does not
 		// waive the declared role requirement. Fall back to item.roleGate whenever the
 		// contextGate does not specify its own.
@@ -94,14 +94,14 @@ export interface ProviderContextGateCandidate extends ContextGateCandidate {
 }
 
 /**
- * The effective context gate a provider declared, in full (#13203). A declared
+ * The effective context gate a provider declared, in full. A declared
  * `contextGate` with any context terms (contexts/anyOf/allOf/noneOf) is honored
  * verbatim — `filterByContextGate`'s `{contexts, roleGate}` reduction silently
  * dropped anyOf/allOf/noneOf, so a world-style `contextGate: { anyOf: [...] }`
  * provider lost its gate on the v5 planner selection path. Providers declaring
  * no gate terms resolve declared `contexts` → catalog (PROVIDER_CONTEXT_MAP);
  * a provider with neither declares no routing at all, and stays UNGATED
- * (#13204 follow-up): the pre-#13203 selection filter included that class on
+ *: the pre- selection filter included that class on
  * every turn, and an injected `["general"]` here would silently drop
  * undeclared plugin providers (TWITTER_IDENTITY-shaped) from the narrow turns
  * they rode before. Only an explicit declaration or catalog entry may gate a
@@ -109,7 +109,7 @@ export interface ProviderContextGateCandidate extends ContextGateCandidate {
  * `["general"]` lean onto `contexts` (plugin-lifecycle), which this resolver
  * honors as declared.
  *
- * #12087 Item 14 preserved: a contextGate adds context requirements; it does
+ * preserved: a contextGate adds context requirements; it does
  * not waive the provider's top-level roleGate unless it declares its own.
  */
 export function resolveProviderContextGate(

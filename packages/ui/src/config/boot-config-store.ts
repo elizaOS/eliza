@@ -11,10 +11,10 @@
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
 import type { ComponentType } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
-import type { BrandingConfig } from "./branding";
+import type { BrandingConfig } from "./branding-base";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

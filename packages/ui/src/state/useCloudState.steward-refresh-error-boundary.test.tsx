@@ -11,7 +11,7 @@
 import { STEWARD_TOKEN_KEY } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setBootConfig } from "../config/boot-config";
+import { setBootConfig } from "../config/boot-config-store";
 import { logger } from "../logger.ts";
 
 const clientCloudMocks = vi.hoisted(() => ({
@@ -38,7 +38,7 @@ vi.mock("../api/client-cloud", () => ({
   resolveDirectCloudAuthApiBase: clientCloudMocks.resolveDirectCloudAuthApiBase,
 }));
 
-vi.mock("../api", () => ({
+vi.mock("../api/client", () => ({
   client: {
     getBaseUrl: () => "",
     getCloudStatus: async () => ({
@@ -49,8 +49,11 @@ vi.mock("../api", () => ({
   },
 }));
 
-vi.mock("../bridge", () => ({
+vi.mock("../bridge/electrobun-rpc", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../bridge/electrobun-rpc")>()),
   invokeDesktopBridgeRequestWithTimeout: vi.fn(),
+}));
+vi.mock("../bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => true,
 }));
 

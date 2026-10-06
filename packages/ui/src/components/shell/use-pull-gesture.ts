@@ -5,18 +5,20 @@
 import * as React from "react";
 import {
   AXIS_COMMIT_SLOP,
-  commitAxis,
   DEFAULT_PULL_DISTANCE,
   DEFAULT_PULL_VELOCITY,
   DEFAULT_SWIPE_DISTANCE,
   DEFAULT_SWIPE_VELOCITY,
   HORIZONTAL_DOMINANCE_RATIO,
-  isRealCaptureLoss,
+  TAP_SLOP,
+} from "../../gestures/constants";
+import { isRealCaptureLoss } from "../../gestures/lost-capture";
+import {
+  commitAxis,
   resolvePull,
   resolveSwipe,
-  TAP_SLOP,
-  useRafCoalescer,
-} from "../../gestures";
+} from "../../gestures/recognizers";
+import { useRafCoalescer } from "../../gestures/useRafCoalescer";
 
 /**
  * Pull/flick + swipe gesture detection for the homescreen shell — a thin adapter
@@ -78,12 +80,6 @@ export interface PullGestureOptions {
   /** Minimum horizontal speed (px/ms) to count as a swipe flick. Default 0.4. */
   velocityThresholdX?: number;
 }
-
-/** Movement (px) under which a release is treated as a tap, not a drag. Exported
- *  so consumers that must classify the browser's compat `click` (synthesized
- *  from the same press) use the SAME tap definition as the gesture engine — see
- *  the HomeScreen notification pull zone. Aliases the shared {@link TAP_SLOP}. */
-export const PULL_GESTURE_TAP_SLOP = TAP_SLOP;
 
 export { resolvePull, resolveSwipe };
 

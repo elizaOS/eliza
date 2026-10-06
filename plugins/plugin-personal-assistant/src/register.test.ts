@@ -4,7 +4,7 @@
  * Proves the renderer registration entry through the REAL renderer-service
  * registry (`@elizaos/ui/platform/renderer-services` is anchored to source in
  * this package's vitest config — no mocked lifecycle) driving the REAL capture
- * controller: importing `register.ts` registers a main-scoped service without
+ * controller: calling `registerApp` registers a main-scoped service without
  * starting any work, a popout/detached host never starts the capture, a main
  * host starts it, and disposing the host stops it (listeners removed, restart
  * possible). Only the HTTP client and native bridges are stubbed.
@@ -60,95 +60,12 @@ const h = vi.hoisted(() => ({
   },
 }));
 
-// The four @elizaos/ui subpath specifiers (/api, /bridge, /browser, /events)
-// alias to one stub file under this package's vitest config, so each mock
-// carries the full export surface the capture module reads — the last mock
-// registered for the shared file wins.
-vi.mock("@elizaos/ui/api", () => ({
-  isApiError: h.isApiError,
-  isAuthenticatedNow: h.isAuthenticatedNow,
-  subscribeAuthStatus: h.subscribeAuthStatus,
-  ElizaClient: h.ElizaClient,
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  client: {
-    getBaseUrl: () => "http://fixture.local",
-    getAuthorityRevision: () => 0,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-}));
-vi.mock("@elizaos/ui/bridge", () => ({
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  client: {
-    getBaseUrl: () => "http://fixture.local",
-    getAuthorityRevision: () => 0,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  isApiError: h.isApiError,
-  isAuthenticatedNow: h.isAuthenticatedNow,
-  subscribeAuthStatus: h.subscribeAuthStatus,
-  ElizaClient: h.ElizaClient,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-}));
-vi.mock("@elizaos/ui/events", () => ({
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  client: {
-    getBaseUrl: () => "http://fixture.local",
-    getAuthorityRevision: () => 0,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  isApiError: h.isApiError,
-  isAuthenticatedNow: h.isAuthenticatedNow,
-  subscribeAuthStatus: h.subscribeAuthStatus,
-  ElizaClient: h.ElizaClient,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-}));
-vi.mock("@elizaos/ui/browser", () => ({
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  isApiError: h.isApiError,
-  isAuthenticatedNow: h.isAuthenticatedNow,
-  subscribeAuthStatus: h.subscribeAuthStatus,
-  ElizaClient: h.ElizaClient,
-  APP_PAUSE_EVENT: "eliza:app-pause",
-  APP_RESUME_EVENT: "eliza:app-resume",
-  client: {
-    getBaseUrl: () => "http://fixture.local",
-    getAuthorityRevision: () => 0,
-    onAuthorityChange: (listener: () => void) => {
-      h.authoritySubscribers.add(listener);
-      return () => h.authoritySubscribers.delete(listener);
-    },
-    getStatus: h.getStatus,
-    captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
-  },
-}));
+// Keep the real service registry while controlling transport and auth state.
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
 
-vi.mock("@elizaos/ui/auth-status", () => ({
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
-  ElizaClient: h.ElizaClient,
   client: {
     getBaseUrl: () => "http://fixture.local",
     getAuthorityRevision: () => 0,
@@ -159,12 +76,13 @@ vi.mock("@elizaos/ui/auth-status", () => ({
     getStatus: h.getStatus,
     captureLifeOpsActivitySignal: h.captureLifeOpsActivitySignal,
   },
+  isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
   isAuthenticatedNow: h.isAuthenticatedNow,
   getAuthStatusSnapshot: h.getAuthStatusSnapshot,
-  isElectrobunRuntime: h.isElectrobunRuntime,
-  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
   subscribeAuthStatus: h.subscribeAuthStatus,
+  ElizaClient: h.ElizaClient,
+  loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -203,13 +121,15 @@ import {
   registerRendererService,
   settleRendererServices,
   startRendererServiceHost,
-} from "@elizaos/ui/platform/renderer-services";
+} from "../../../packages/ui/src/platform/renderer-services";
 import {
   isLifeOpsActivitySignalCaptureActive,
   startLifeOpsActivitySignalCapture,
 } from "./lifeops/activity-signals-capture.js";
-// Side-effect import under test: registers the renderer service definition.
-import "./register.js";
+// Register the renderer service definition.
+import { registerApp } from "./register.js";
+
+registerApp();
 
 const spiedStartCapture = vi.mocked(startLifeOpsActivitySignalCapture);
 
@@ -271,7 +191,7 @@ describe("personal-assistant renderer registration entry", () => {
     expect(isLifeOpsActivitySignalCaptureActive()).toBe(false);
   });
 
-  it("registers the main-scoped service at import time without starting capture", () => {
+  it("registers the main-scoped service without starting capture", () => {
     const state = serviceState();
     expect(state).toBeDefined();
     expect(state?.shells).toEqual(["main"]);

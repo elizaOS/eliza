@@ -18,7 +18,15 @@
     "README.md",
     "app-delegation.md",
     "app-inference.md",
-    "app-notifications.md"
+    "app-notifications.md",
+    "native-host/cloud-services.mjs",
+    "native-host/document-runtime.mjs",
+    "native-host/document-image-describer.mjs",
+    "native-host/managed-google-read-port.mjs",
+    "native-host/errors.mjs",
+    "native-host/subscription-review.mjs",
+    "native-host/plan-change.mjs",
+    "native-host/timed-speech.mjs"
   ],
   "sideEffects": false,
   "scripts": {
@@ -32,7 +40,9 @@
     "lint:check": "bunx @biomejs/biome check .",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test:native-host": "node --test native-host/*.test.mjs",
+    "test": "bun ../scripts/sdk/run-unit-tests.ts"
   },
   "exports": {
     ".": {
@@ -84,11 +94,13 @@
       "default": "./dist/account-billing-snapshot.js"
     },
     "./cloud-setup-session": {
+      "eliza-source": "./src/cloud-setup-session/index.ts",
       "types": "./dist/cloud-setup-session/index.d.ts",
       "import": "./dist/cloud-setup-session/index.js",
       "default": "./dist/cloud-setup-session/index.js"
     },
     "./cloud-setup-session/*": {
+      "eliza-source": "./src/cloud-setup-session/*.ts",
       "types": "./dist/cloud-setup-session/*.d.ts",
       "import": "./dist/cloud-setup-session/*.js",
       "default": "./dist/cloud-setup-session/*.js"
@@ -129,6 +141,31 @@
       "types": "./dist/app-auth.d.ts",
       "import": "./dist/app-auth.js",
       "default": "./dist/app-auth.js"
+    },
+    "./native-host": "./native-host/cloud-services.mjs",
+    "./contracts": {
+      "eliza-source": "./src/contracts.ts",
+      "types": "./dist/contracts.d.ts",
+      "import": "./dist/contracts.js",
+      "default": "./dist/contracts.js"
+    },
+    "./testing": {
+      "eliza-source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
+    },
+    "./cloud-setup-session/mock-service": {
+      "eliza-source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
+    },
+    "./native-speech-stream": {
+      "eliza-source": "./src/native-speech-stream.ts",
+      "types": "./dist/native-speech-stream.d.ts",
+      "import": "./dist/native-speech-stream.js",
+      "default": "./dist/native-speech-stream.js"
     }
   },
   "elizaos": {

@@ -69,6 +69,7 @@ repositories {
 
 dependencies {
     implementation "androidx.browser:browser:1.8.0"
+    implementation "androidx.window:window:1.4.0"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation project(':capacitor-android')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"

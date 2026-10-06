@@ -32,6 +32,12 @@ import {
 } from "./generic-billing-provider-types";
 
 import { settlementDigest } from "./settlement-digest";
+import {
+  invoiceLineSchema,
+  invoiceSchema,
+  projectInvoiceLine,
+  projectSubscriptionUpdateInvoice,
+} from "./stripe-invoice-observation";
 
 export type * from "./generic-billing-provider-types";
 export { GENERIC_BILLING_STRIPE_API_VERSION } from "./generic-billing-provider-types";
@@ -125,43 +131,6 @@ const paymentMethodCheckoutSchema = z.object({
   expires_at: seconds,
   setup_intent: expandableId.nullable(),
 });
-const invoiceLineSchema = z.object({
-  id,
-  type: z.enum(["subscription", "invoiceitem"]),
-  subscription: expandableId.nullable().optional(),
-  subscription_item: expandableId.nullable().optional(),
-  price: z.object({ id }).nullable(),
-  quantity: z.number().int().nonnegative().safe().nullable(),
-  amount: money,
-  discount_amounts: z.array(z.object({ amount: money.nonnegative() })),
-  tax_amounts: z.array(z.object({ amount: money })),
-  period: z.object({ start: seconds, end: seconds }),
-  proration: z.boolean(),
-});
-const invoiceSchema = z.object({
-  hosted_invoice_url: z.string().url().nullable(),
-  id,
-  object: z.literal("invoice"),
-  livemode: z.boolean(),
-  customer: expandableId,
-  subscription: expandableId,
-  charge: expandableId.nullable(),
-  payment_intent: expandableId.nullable(),
-  status: z.enum(["draft", "open", "paid", "uncollectible", "void"]).nullable(),
-  paid: z.boolean(),
-  paid_out_of_band: z.boolean(),
-  amount_paid: money.nonnegative(),
-  amount_due: money.nonnegative(),
-  billing_reason: z.string(),
-  subtotal: money,
-  subtotal_excluding_tax: money.nullable(),
-  total: money,
-  tax: money.nullable(),
-  total_discount_amounts: z.array(z.object({ amount: money.nonnegative() })),
-  currency: z.string(),
-  period_start: seconds,
-  period_end: seconds,
-});
 const planSchema = z.object({
   planRevisionId: id,
   priceId: z.string().startsWith("price_"),
@@ -219,25 +188,6 @@ function reviewDigest(preview: BillingProviderUpdatePreview): string {
     nextInvoice: stableInvoice(preview.nextInvoice),
     recurringInvoice: stableInvoice(preview.recurringInvoice),
   });
-}
-
-function projectInvoiceLine(
-  line: z.infer<typeof invoiceLineSchema>,
-): BillingProviderInvoice["lines"][number] {
-  return {
-    lineId: line.id,
-    lineType: line.type,
-    subscriptionId: line.subscription ?? null,
-    subscriptionItemId: line.subscription_item ?? null,
-    priceId: line.price?.id ?? null,
-    discountAmountsCents: line.discount_amounts.map((entry) => entry.amount),
-    taxAmountsCents: line.tax_amounts.map((entry) => entry.amount),
-    quantity: line.quantity,
-    amountCents: line.amount,
-    periodStart: line.period.start,
-    periodEnd: line.period.end,
-    proration: line.proration,
-  };
 }
 
 function validateTrialClaim(claim: BillingProviderTrialClaim): void {
@@ -720,56 +670,14 @@ export function createGenericBillingProvider(
         },
         options(),
       );
-      const value = parse(
-        invoiceSchema.extend({
-          automatic_tax: z.object({ enabled: z.boolean(), status: z.string().nullable() }),
-          lines: z.object({ has_more: z.boolean(), data: z.array(invoiceLineSchema) }),
-        }),
+      return projectSubscriptionUpdateInvoice({
         raw,
-      );
-      requireValue(
-        value.livemode === merchant.livemode &&
-          value.customer === input.customerId &&
-          value.subscription === input.subscriptionId &&
-          value.currency === input.targetPlan.currency,
-        "PREVIEW_SCOPE",
-        "Invoice preview differs from the stored customer, subscription or merchant",
-      );
-      requireValue(
-        !value.lines.has_more,
-        "PREVIEW_INCOMPLETE",
-        "Provider preview contains additional lines; a complete review is required before confirmation",
-      );
-      requireValue(
-        !value.automatic_tax.enabled || value.automatic_tax.status === "complete",
-        "PREVIEW_TAX",
-        "Invoice tax calculation is incomplete; update billing address and review again",
-      );
-      requireValue(
-        value.lines.data.every(
-          (line) => !line.subscription || line.subscription === input.subscriptionId,
-        ),
-        "INVOICE_LINE_SCOPE",
-        "Preview includes a line from another subscription",
-      );
-      return {
-        currency: value.currency,
-        amountDueCents: value.amount_due,
-        subtotalCents: value.subtotal,
-        totalCents: value.total,
-        taxCents: value.tax,
-        discountCents: parse(
-          money.nonnegative(),
-          value.total_discount_amounts.reduce((sum, entry) => sum + entry.amount, 0),
-        ),
-        prorationCents: parse(
-          money,
-          value.lines.data
-            .filter((line) => line.proration && line.period.start === input.prorationDate)
-            .reduce((sum, line) => sum + line.amount, 0),
-        ),
-        lines: value.lines.data.map(projectInvoiceLine),
-      };
+        livemode: merchant.livemode,
+        customerId: input.customerId,
+        subscriptionId: input.subscriptionId,
+        currency: input.targetPlan.currency,
+        prorationDate: input.prorationDate,
+      });
     };
     const nextInvoice = await invoicePreview(false);
     const recurringInvoice = trial ? null : await invoicePreview(true);

@@ -953,7 +953,6 @@ function parseView(object, context, owner, builtin) {
       ? (literalStringArray(surface.object, "capabilities", surface.context) ??
         [])
       : [],
-    developerOnly: literalBoolean(object, "developerOnly", context) ?? false,
     visibleInManager:
       literalBoolean(object, "visibleInManager", context) ?? false,
     builtin,

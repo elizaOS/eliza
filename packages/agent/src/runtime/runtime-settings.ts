@@ -7,17 +7,16 @@
 import {
   isDirectAccountProvider,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
-} from "@elizaos/auth/auth/types";
+} from "@elizaos/auth/auth";
+import type { ServiceRouteConfig } from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type ElizaConfig,
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
-  type IAgentRuntime,
   resolveServiceRoutingInConfig,
-  type ServiceRouteConfig,
-} from "@elizaos/core";
-
+} from "@elizaos/host/protocol";
 import { isProcessOnlyEnvKey } from "../config/blocked-env-keys.ts";
-import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,
   isDevCloudInternalEnvKey,

@@ -16,23 +16,13 @@ const state = vi.hoisted(() => ({
   setCalls: [] as Array<Record<string, unknown>>,
 }));
 
-vi.mock("@elizaos/ui/config", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   getBootConfig: () => state.config,
   setBootConfig: (next: Record<string, unknown>) => {
     state.config = next as typeof state.config;
     state.setCalls.push(next);
   },
-}));
-
-vi.mock("./ios-runtime", () => ({
-  resolveIosRuntimeConfig: (
-    env: Record<string, string | boolean | undefined>,
-  ) => ({
-    cloudApiBase:
-      typeof env.VITE_ELIZA_CLOUD_BASE === "string"
-        ? env.VITE_ELIZA_CLOUD_BASE.replace(/\/+$/, "")
-        : "https://eliza.app",
-  }),
 }));
 
 import { seedPublicWebBootConfig } from "./public-web-boot-config.js";

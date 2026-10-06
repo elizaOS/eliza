@@ -785,18 +785,24 @@ describe("Shared Eliza runtime in Workerd", () => {
     });
 
     buildDirectory = await mkdtemp(join(tmpdir(), "shared-eliza-workerd-"));
-    const coreDirectory = fileURLToPath(
-      new URL("../../../core/", import.meta.url),
-    );
+    const repository = fileURLToPath(new URL("../../../../", import.meta.url));
+    // Use the canonical dependency build so a valid core artifact is reused.
     const coreBuild = Bun.spawn({
-      cmd: [process.execPath, "build.ts"],
-      cwd: coreDirectory,
+      cmd: [
+        process.execPath,
+        "packages/scripts/run-turbo.ts",
+        "run",
+        "build",
+        "--filter=@elizaos/core",
+      ],
+      cwd: repository,
       stderr: "pipe",
       stdout: "pipe",
     });
     const [coreBuildExitCode, coreBuildStderr] = await Promise.all([
       coreBuild.exited,
       new Response(coreBuild.stderr).text(),
+      new Response(coreBuild.stdout).text(),
     ]);
     if (coreBuildExitCode !== 0) {
       throw new Error(`Failed to build @elizaos/core:\n${coreBuildStderr}`);

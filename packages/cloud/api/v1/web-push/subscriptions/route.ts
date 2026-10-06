@@ -10,14 +10,14 @@
  * scoped to the authenticated user so no one can remove another user's device.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { webPushSubscriptionsRepository } from "@elizaos/cloud-shared/db/repositories/web-push-subscriptions";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { isValidPushEndpoint } from "@elizaos/cloud-shared/lib/web-push";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { webPushSubscriptionsRepository } from "@/db/repositories/web-push-subscriptions";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { logger } from "@/lib/utils/logger";
-import { isValidPushEndpoint } from "@/lib/web-push";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 // Web Push endpoints must be HTTPS URLs to a PUBLIC push service. The sender
 // later POSTs to whatever is persisted, so validating here (SSRF guard) keeps a

@@ -1,13 +1,16 @@
 import { afterEach, expect, it, vi } from "vitest";
 
 const setApiBase = vi.hoisted(() => vi.fn());
-vi.mock("@elizaos/core/utils/eliza-globals", () => ({
+vi.mock("@elizaos/host/protocol", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/host/protocol")>()),
   setElizaApiBase: setApiBase,
 }));
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => false },
 }));
-vi.mock("@elizaos/ui/bridge", () => ({ isElectrobunRuntime: () => false }));
+vi.mock("@elizaos/ui", () => ({
+  isElectrobunRuntime: () => false,
+}));
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();

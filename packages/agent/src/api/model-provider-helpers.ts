@@ -6,16 +6,45 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { ElizaError, logger } from "@elizaos/core";
 import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  ElizaError,
   isMobilePlatform,
-  logger,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { resolveModelsCacheDir } from "../config/paths.ts";
 export const DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS = 10000;
+
+export class ModelCatalogFetchError extends ElizaError {
+  override readonly name = "ModelCatalogFetchError";
+  readonly providerId: string;
+  readonly upstreamStatus?: number;
+
+  constructor(
+    providerId: string,
+    options: { cause?: unknown; upstreamStatus?: number } = {},
+  ) {
+    const statusDetail =
+      options.upstreamStatus === undefined
+        ? ""
+        : ` (upstream returned ${options.upstreamStatus})`;
+    super(`Failed to fetch models from ${providerId}${statusDetail}`, {
+      code: "MODEL_CATALOG_FETCH_FAILED",
+      cause: options.cause,
+      context: {
+        providerId,
+        ...(options.upstreamStatus === undefined
+          ? {}
+          : { upstreamStatus: options.upstreamStatus }),
+      },
+      severity: "ephemeral",
+    });
+    this.providerId = providerId;
+    this.upstreamStatus = options.upstreamStatus;
+  }
+}
+
 type ModelOption = {
   id: string;
   name: string;
@@ -349,27 +378,65 @@ export async function fetchModelsREST(
       headers,
       signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) return [];
-    const data = (await res.json()) as {
-      data?: Array<{
-        id: string;
-        name?: string;
-        type?: string;
-      }>;
-    };
-    return (data.data ?? [])
-      .map((m) => ({
-        id: m.id,
-        name: m.name ?? m.id,
-        category: m.type ? restTypeToCategory(m.type) : classifyModel(m.id),
-      }))
+    if (!res.ok) {
+      throw new ModelCatalogFetchError(providerId, {
+        upstreamStatus: res.status,
+      });
+    }
+    const data: unknown = await res.json();
+    if (
+      !data ||
+      typeof data !== "object" ||
+      !("data" in data) ||
+      !Array.isArray(data.data)
+    ) {
+      throw new ModelCatalogFetchError(providerId);
+    }
+    return data.data
+      .map((model: unknown) => {
+        if (
+          !model ||
+          typeof model !== "object" ||
+          !("id" in model) ||
+          typeof model.id !== "string" ||
+          !model.id.trim() ||
+          ("name" in model &&
+            model.name != null &&
+            typeof model.name !== "string") ||
+          ("type" in model &&
+            model.type != null &&
+            typeof model.type !== "string")
+        ) {
+          throw new ModelCatalogFetchError(providerId);
+        }
+        return {
+          id: model.id,
+          name:
+            "name" in model && typeof model.name === "string"
+              ? model.name
+              : model.id,
+          category:
+            "type" in model && typeof model.type === "string" && model.type
+              ? restTypeToCategory(model.type)
+              : classifyModel(model.id),
+        };
+      })
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
-    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
+    const failure =
+      e instanceof ModelCatalogFetchError
+        ? e
+        : new ModelCatalogFetchError(providerId, { cause: e });
     logger.warn(
-      `[model-catalog] Failed to fetch models for ${providerId}: ${e instanceof Error ? e.message : e}`,
+      {
+        src: "model-catalog",
+        providerId,
+        upstreamStatus: failure.upstreamStatus,
+        error: e instanceof Error ? e.message : String(e),
+      },
+      "Model catalog fetch failed",
     );
-    return [];
+    throw failure;
   }
 }
 export function restTypeToCategory(type: string): ModelCategory {
@@ -722,6 +789,9 @@ export async function getOrFetchProvider(
     }
   }
   let baseUrl = cfg.baseUrl;
+  if (providerId === "openai") {
+    baseUrl = process.env.OPENAI_BASE_URL?.trim() || undefined;
+  }
   if (providerId === "nearai") {
     baseUrl =
       process.env.NEARAI_BASE_URL?.trim() || "https://cloud-api.near.ai/v1";
@@ -754,9 +824,14 @@ export async function getOrFetchAllProviders(
   const fetches: Array<Promise<void>> = [];
   for (const providerId of Object.keys(PROVIDER_ENV_KEYS)) {
     fetches.push(
-      getOrFetchProvider(providerId, force).then((models) => {
-        if (models.length > 0) result[providerId] = models;
-      }),
+      getOrFetchProvider(providerId, force)
+        .then((models) => {
+          if (models.length > 0) result[providerId] = models;
+        })
+        .catch(() => {
+          // error-policy:J4 all-provider discovery is best-effort. Individual
+          // provider refreshes retain the typed failure for the HTTP boundary.
+        }),
     );
   }
   await Promise.all(fetches);

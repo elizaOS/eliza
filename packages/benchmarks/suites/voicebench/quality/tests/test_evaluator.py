@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from elizaos_voicebench.evaluator import (
     extract_letter,
     score_ifeval,
@@ -20,7 +22,9 @@ class TestJudge:
     ) -> tuple[float, str]:
         del prompt
         return (
-            1.0 if candidate.strip().casefold() == reference.strip().casefold() else 0.0,
+            1.0
+            if candidate.strip().casefold() == reference.strip().casefold()
+            else 0.0,
             "test judge exact-match",
         )
 
@@ -121,3 +125,22 @@ def test_score_sample_dispatches_by_mode() -> None:
     # Stub judge does exact case-insensitive match on the candidate.
     assert asyncio.run(run_one(s, "Paris is the capital of France.")) == 1.0
     assert asyncio.run(run_one(s, "Berlin")) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Answer: C", "C"),
+        ("Because the answer is D", "D"),
+        ("Cannot determine", None),
+        ("a cat would fit", None),
+        ("A cat would fit", None),
+        ("Because the premise is underspecified", None),
+        ("A or B", None),
+        ("Answer: A. Answer: C", None),
+        ("A) A cat", "A"),
+        ("(B)", "B"),
+    ],
+)
+def test_mcq_answer_grammar(text: str, expected: str | None) -> None:
+    assert extract_letter(text) == expected

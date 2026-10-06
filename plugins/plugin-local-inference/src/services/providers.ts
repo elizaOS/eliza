@@ -17,11 +17,12 @@
  */
 import fs from "node:fs/promises";
 import type {
+	LinkedAccountProviderId,
 	ProviderEnableState,
 	ProviderId,
 	ProviderMeta,
 	ProviderStatus,
-} from "@elizaos/core/contracts/local-inference-providers";
+} from "@elizaos/contracts";
 import { deviceBridge } from "./device-bridge";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";
@@ -385,29 +386,9 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
 	GROK_PROVIDER,
 	MISTRAL_PROVIDER,
 ];
-interface LinkedAccountLike {
-	enabled?: boolean;
-	health?: string;
-}
-type OptionalAccountPoolModule = {
-	getDefaultAccountPool?: () => {
-		list?: (providerId: string) => LinkedAccountLike[];
-	};
-};
-async function listLinkedAccounts(
-	providerId: string,
-): Promise<LinkedAccountLike[]> {
-	try {
-		const dynamicImport = new Function("id", "return import(id)") as (
-			id: string,
-		) => Promise<OptionalAccountPoolModule>;
-		const appCoreAccountPoolSpecifier = "@elizaos/app/account-pool";
-		const mod = await dynamicImport(appCoreAccountPoolSpecifier);
-		const pool = mod.getDefaultAccountPool?.();
-		return pool?.list?.(providerId) ?? [];
-	} catch {
-		return [];
-	}
+async function listLinkedAccounts(providerId: LinkedAccountProviderId) {
+	const { getDefaultAccountPool } = await import("@elizaos/auth/accounts");
+	return getDefaultAccountPool().list(providerId);
 }
 async function apiKeyOrLinkedAccountState(
 	providerId: "deepseek-api" | "zai-api" | "moonshot-api",

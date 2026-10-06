@@ -1,13 +1,8 @@
-/**
- * Types for the widget registry: slots, plugin widget declarations, and the
- * WidgetProps the host passes to each widget component.
- */
-
 import type { PluginWidgetDeclaration as CorePluginWidgetDeclaration } from "@elizaos/core";
-import type { UiSpec } from "@elizaos/core/config/ui-spec";
-import type { ComponentType } from "react";
+import type { UiSpec } from "@elizaos/host/protocol";
 import type { PluginInfo } from "../api/client-types-config";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
+
 /** Named injection points where plugin widgets can render. */
 export const WIDGET_SLOTS = [
   "chat-sidebar",
@@ -65,15 +60,5 @@ export interface WidgetProps {
    */
   spanClassName?: string;
 }
-/**
- * Client-side registration mapping a widget declaration to a React component.
- * Bundled plugins register these statically; third-party plugins rely on uiSpec.
- */
-export interface WidgetRegistration {
-  /** Must match `PluginWidgetDeclaration.id`. */
-  declarationId: string;
-  /** Must match `PluginWidgetDeclaration.pluginId`. */
-  pluginId: string;
-  /** The React component to render. */
-  Component: ComponentType<WidgetProps>;
-}
+
+export const WIDGET_UI_ACTION_EVENT = "eliza:widget-ui-action" as const;

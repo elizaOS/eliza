@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.quantization.gguf_k_quant import smoke_load_gguf
+from eliza_training.quantization.gguf_k_quant import smoke_load_gguf
 
 
 def executable(path: Path, body: str) -> Path:
@@ -76,7 +76,7 @@ def test_failed_artifact_replacement_cannot_retain_a_passed_sidecar(tmp_path, fa
     import hashlib
     import json
     import subprocess
-    from scripts.quantization.gguf_k_quant import QuantProfile, run_quant_profile, write_sidecar
+    from eliza_training.quantization.gguf_k_quant import QuantProfile, run_quant_profile, write_sidecar
 
     converter = tmp_path / "convert.py"
     converter.write_text("import sys\nfrom pathlib import Path\nPath(sys.argv[sys.argv.index('--outfile')+1]).write_bytes(b'f16')\n")

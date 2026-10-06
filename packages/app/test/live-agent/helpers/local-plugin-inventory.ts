@@ -1,8 +1,8 @@
-/** Defines app local plugin inventory ts behavior for dashboard host and runtime integration. */
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { extractPlugin, type PluginModuleShape } from "@elizaos/agent";
+import { loadRegistry } from "@elizaos/core";
 
 type PluginCategory =
   | "ai-provider"
@@ -18,10 +18,6 @@ type PluginManifestEntry = {
   name: string;
   npmName: string;
   category: PluginCategory;
-};
-
-type PluginManifest = {
-  plugins: PluginManifestEntry[];
 };
 
 type PackageJson = {
@@ -49,42 +45,32 @@ export type LocalWorkspacePlugin = {
   requiredEnvKeys: string[];
 };
 
-function findWorkspaceRoot(startDir: string): string {
-  let current = path.resolve(startDir);
-  while (true) {
-    if (fs.existsSync(path.join(current, "plugins.json"))) {
-      return current;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return path.resolve(startDir, "..", "..", "..", "..", "..");
-    }
-    current = parent;
-  }
-}
-
-const REPO_ROOT = findWorkspaceRoot(import.meta.dirname);
-const PLUGIN_MANIFEST_PATH = path.join(REPO_ROOT, "plugins.json");
-
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../../../..");
 let cachedPluginsPromise: Promise<LocalWorkspacePlugin[]> | null = null;
 
-function readPluginManifest(): PluginManifest {
-  if (!fs.existsSync(PLUGIN_MANIFEST_PATH)) {
-    return { plugins: [] };
-  }
-  return JSON.parse(
-    fs.readFileSync(PLUGIN_MANIFEST_PATH, "utf8"),
-  ) as PluginManifest;
+function readCatalogPlugins(): PluginManifestEntry[] {
+  return loadRegistry()
+    .all.filter((entry) => entry.kind !== "app")
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      npmName: entry.npmName ?? "",
+      dirName: entry.npmName?.replace(/^@elizaos\//, "") ?? "",
+      category:
+        entry.kind === "connector"
+          ? entry.subtype === "streaming"
+            ? "streaming"
+            : "connector"
+          : entry.subtype === "ai-provider" || entry.subtype === "database"
+            ? entry.subtype
+            : "feature",
+    }));
 }
 
 function findPackageRoot(dirName: string): string | null {
   const candidates = [
-    path.join(REPO_ROOT, "plugins", dirName, "typescript"),
     path.join(REPO_ROOT, "plugins", dirName),
     path.join(REPO_ROOT, "packages", dirName),
-    path.join(REPO_ROOT, "eliza", "plugins", dirName, "typescript"),
-    path.join(REPO_ROOT, "eliza", "plugins", dirName),
-    path.join(REPO_ROOT, "eliza", "packages", dirName),
   ];
 
   for (const candidate of candidates) {
@@ -123,40 +109,12 @@ function collectPackageMetadata(packageRoot: string): {
   supportedOs: string[];
   requiredEnvKeys: string[];
 } {
-  const packageJsonCandidates = [
-    path.join(packageRoot, "package.json"),
-    path.join(packageRoot, "..", "package.json"),
-  ];
-  const supportedOs = new Set<string>();
-  const requiredEnvKeys = new Set<string>();
-
-  for (const packageJsonPath of packageJsonCandidates) {
-    const pkg = readPackageJson(packageJsonPath);
-    if (!pkg) {
-      continue;
-    }
-
-    if (Array.isArray(pkg.os)) {
-      for (const target of pkg.os) {
-        if (typeof target === "string" && target.length > 0) {
-          supportedOs.add(target);
-        }
-      }
-    }
-
-    const params = pkg.agentConfig?.pluginParameters;
-    if (params && typeof params === "object") {
-      for (const [key, param] of Object.entries(params)) {
-        if (param?.required === true) {
-          requiredEnvKeys.add(key);
-        }
-      }
-    }
-  }
-
+  const pkg = readPackageJson(path.join(packageRoot, "package.json"));
   return {
-    supportedOs: [...supportedOs],
-    requiredEnvKeys: [...requiredEnvKeys],
+    supportedOs: pkg?.os?.filter((target) => target.length > 0) ?? [],
+    requiredEnvKeys: Object.entries(pkg?.agentConfig?.pluginParameters ?? {})
+      .filter(([, parameter]) => parameter.required === true)
+      .map(([key]) => key),
   };
 }
 
@@ -228,28 +186,22 @@ function resolvePackageEntrySync(packageRoot: string): string | null {
   return chooseExistingPath(fallbackCandidates);
 }
 
-function normalizePluginNpmName(name: string): string {
-  return name.endsWith("-root") ? name.slice(0, -5) : name;
-}
-
 function derivePluginId(npmName: string): string | null {
-  const normalized = normalizePluginNpmName(npmName);
-  if (!normalized.startsWith("@elizaos/plugin-")) {
+  if (!npmName.startsWith("@elizaos/plugin-")) {
     return null;
   }
 
-  return normalized.slice("@elizaos/plugin-".length);
+  return npmName.slice("@elizaos/plugin-".length);
 }
 
 export async function listLocalWorkspacePlugins(): Promise<
   LocalWorkspacePlugin[]
 > {
   cachedPluginsPromise ??= Promise.resolve().then(() => {
-    const manifest = readPluginManifest();
     const seen = new Set<string>();
     const localPlugins: LocalWorkspacePlugin[] = [];
 
-    for (const entry of manifest.plugins) {
+    for (const entry of readCatalogPlugins()) {
       if (
         entry.category === "app" ||
         typeof entry.npmName !== "string" ||
@@ -289,64 +241,45 @@ export async function listLocalWorkspacePlugins(): Promise<
       });
     }
 
-    const pluginsDirs = [
-      path.join(REPO_ROOT, "plugins"),
-      path.join(REPO_ROOT, "eliza", "plugins"),
-    ];
-    for (const pluginsDir of pluginsDirs) {
-      if (!fs.existsSync(pluginsDir)) {
+    const pluginsDir = path.join(REPO_ROOT, "plugins");
+    for (const dirName of fs.readdirSync(pluginsDir).sort()) {
+      const rootDir = path.join(pluginsDir, dirName);
+      if (!fs.statSync(rootDir).isDirectory()) {
         continue;
       }
-      for (const dirName of fs.readdirSync(pluginsDir).sort()) {
-        const rootDir = path.join(pluginsDir, dirName);
-        if (!fs.statSync(rootDir).isDirectory()) {
-          continue;
-        }
 
-        const typescriptRoot = path.join(rootDir, "typescript");
-        const typescriptPkg = readPackageJson(
-          path.join(typescriptRoot, "package.json"),
-        );
-        const rootPkg = readPackageJson(path.join(rootDir, "package.json"));
-        const rawName =
-          typeof typescriptPkg?.name === "string"
-            ? typescriptPkg.name
-            : typeof rootPkg?.name === "string"
-              ? rootPkg.name
-              : null;
-        if (!rawName) {
-          continue;
-        }
-
-        const npmName = normalizePluginNpmName(rawName);
-        const id = derivePluginId(npmName);
-        if (!id || seen.has(npmName)) {
-          continue;
-        }
-
-        const packageRoot =
-          typeof typescriptPkg?.name === "string" ? typescriptRoot : rootDir;
-        const entryPath = resolvePackageEntrySync(packageRoot);
-        if (!entryPath) {
-          continue;
-        }
-
-        seen.add(npmName);
-        const metadata = collectPackageMetadata(packageRoot);
-        localPlugins.push({
-          id,
-          dirName,
-          name: id,
-          npmName,
-          category: "feature",
-          packageRoot,
-          packageJsonPath: path.join(packageRoot, "package.json"),
-          entryPath,
-          entryUrl: pathToFileURL(entryPath).href,
-          supportedOs: metadata.supportedOs,
-          requiredEnvKeys: metadata.requiredEnvKeys,
-        });
+      const rootPkg = readPackageJson(path.join(rootDir, "package.json"));
+      if (typeof rootPkg?.name !== "string") {
+        continue;
       }
+
+      const npmName = rootPkg.name;
+      const id = derivePluginId(npmName);
+      if (!id || seen.has(npmName)) {
+        continue;
+      }
+
+      const packageRoot = rootDir;
+      const entryPath = resolvePackageEntrySync(packageRoot);
+      if (!entryPath) {
+        continue;
+      }
+
+      seen.add(npmName);
+      const metadata = collectPackageMetadata(packageRoot);
+      localPlugins.push({
+        id,
+        dirName,
+        name: id,
+        npmName,
+        category: "feature",
+        packageRoot,
+        packageJsonPath: path.join(packageRoot, "package.json"),
+        entryPath,
+        entryUrl: pathToFileURL(entryPath).href,
+        supportedOs: metadata.supportedOs,
+        requiredEnvKeys: metadata.requiredEnvKeys,
+      });
     }
 
     return localPlugins.sort((a, b) => a.id.localeCompare(b.id));

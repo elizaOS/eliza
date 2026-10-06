@@ -15,6 +15,9 @@ defaults:
 permissions:
   contents: read
 
+env:
+  ELIZA_APT_UBUNTU_ONLY: "true"
+
 jobs:
   verify:
     runs-on: ubuntu-24.04
@@ -53,13 +56,18 @@ jobs:
 
       - run: bun install --frozen-lockfile --ignore-scripts
         working-directory: .
+      - name: Build installer workspace dependencies
+        working-directory: .
+        run: node packages/scripts/run-turbo.ts run build --filter=@elizaos/ui
       - name: Install native compilation prerequisites
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends gcc libc6-dev libssl-dev zstd
-      - run: bun run verify
-      - name: Validate Android compatibility wrappers
-        run: android/installer/tests/run-tests.sh
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends gcc g++ libc6-dev libssl-dev default-jdk-headless zstd e2fsprogs binutils python3-cryptography
+      - name: Verify installers and release scripts
+        # OTA publisher tests run once in the dedicated ota-publisher job.
+        run: |
+          bun run verify:installer-native
+          bun run verify:portable
+          bun run test:release
       - name: Validate the checked-in release plan
         run: |
           set -euo pipefail
@@ -87,8 +95,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install desktop metadata validators
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends appstream desktop-file-utils dpkg-dev
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends appstream desktop-file-utils dpkg-dev
       - name: Validate architecture and native-payload contract
         run: bash scripts/linux/verify-debian-packaging.sh
 
@@ -106,8 +113,7 @@ jobs:
 
       - name: Qualify cross-process AF_UNIX credentials and pidfd lifecycle
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends gcc libc6-dev libssl-dev
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends gcc libc6-dev libssl-dev
           linux/installer/native/test-qualify.sh
 
   linux-static-smoke:
@@ -142,8 +148,7 @@ jobs:
       - name: Install Linux verification prerequisites
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends python3-cryptography fdisk e2fsprogs
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends python3-cryptography fdisk e2fsprogs
 
       - run: bun run verify:linux
 
@@ -182,8 +187,7 @@ jobs:
 
       - name: Install unprivileged VM tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils genisoimage fdisk
+          bash ../scripts/github/install-apt-packages.sh --no-install-recommends qemu-system-x86 qemu-utils genisoimage fdisk
 
       - name: Download pinned qualification inputs
         shell: bash
@@ -222,16 +226,6 @@ jobs:
             ${{ env.RESTORE_EVIDENCE }}/gpt-snapshot.bin
           if-no-files-found: warn
 
-  android-powershell-safety:
-    name: Android PowerShell safety refusals
-    runs-on: windows-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: Reject unsafe execution before device access
-        shell: pwsh
-        run: android/installer/tests/wrapper-safety.ps1
-
   usb-browser:
     name: USB installer desktop and mobile browser flows
     runs-on: ubuntu-24.04
@@ -268,3 +262,26 @@ jobs:
           name: os-usb-browser
           path: test-results/os-usb-installer/
           if-no-files-found: warn
+
+  native-ota-trust:
+    name: Native OTA trust compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: packages/os/native/ota-trust/go.mod
+          cache-dependency-path: packages/os/native/ota-trust/go.sum
+      - run: go test -race ./... && go vet ./...
+        working-directory: packages/os/native/ota-trust
+
+  ota-publisher:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.15.0
+      - name: Test durable OTA publication core
+        run: node --test native/ota-publisher/test/*.test.mjs

@@ -4,8 +4,8 @@
  * Apple add-only receipts without fabricating readable events.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { AgentRuntime } from "@elizaos/core";
-import { type LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import {
   APPROVAL_SERVICE,
   ApprovalService,

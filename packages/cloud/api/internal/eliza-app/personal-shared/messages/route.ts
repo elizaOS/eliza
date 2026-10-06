@@ -5,7 +5,58 @@ import {
   ELIZA_FAILURE_NAME_HEADER,
   ELIZA_FAILURE_STAGE_HEADER,
   ELIZA_RETRYABLE_HEADER,
-} from "@elizaos/cloud-services-common/personal-shared-failure";
+} from "@elizaos/cloud-services-common/transport";
+import {
+  type PersonalSharedGroupConsentStatus,
+  personalSharedGroupConsentRepository,
+} from "@elizaos/cloud-shared/db/repositories/personal-shared-group-consent";
+import {
+  type GroupParticipantIdentity,
+  personalSharedGroupParticipantsRepository,
+} from "@elizaos/cloud-shared/db/repositories/personal-shared-group-participants";
+import { personalSharedGroupsRepository } from "@elizaos/cloud-shared/db/repositories/personal-shared-groups";
+import type { AgentSandbox } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
+import {
+  failureResponse,
+  jsonError,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { resolveElizaTraceId } from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import { sha256Hex } from "@elizaos/cloud-shared/lib/oidc/crypto";
+import { findActivePersonalDedicatedTarget } from "@elizaos/cloud-shared/lib/services/agent-tier-upgrade-target";
+import { elizaAppUserService } from "@elizaos/cloud-shared/lib/services/eliza-app";
+import { isAllowedBlooioMediaUrl } from "@elizaos/cloud-shared/lib/services/eliza-app/blooio-media-allowlist";
+import { MAX_INBOUND_MEDIA_IMAGES } from "@elizaos/cloud-shared/lib/services/eliza-app/describe-inbound-media";
+import { enrichInboundImageMedia } from "@elizaos/cloud-shared/lib/services/eliza-app/inbound-media-enrichment";
+import { runOnboardingChat } from "@elizaos/cloud-shared/lib/services/eliza-app/onboarding-chat";
+import { elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { repairPersonalConversation } from "@elizaos/cloud-shared/lib/services/personal-conversation-repair";
+import { preparePersonalDedicatedDelivery } from "@elizaos/cloud-shared/lib/services/personal-dedicated-delivery";
+import {
+  type PersonalDedicatedFallback,
+  type PersonalSharedFallbackDelivery,
+  resolvePersonalDedicatedRoute,
+} from "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback";
+import { reconcilePersonalFallbackIntoDedicated } from "@elizaos/cloud-shared/lib/services/personal-dedicated-fallback-reconcile";
+import { coordinateSharedHistory } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
+import {
+  GROUP_OWNER_FALLBACK_LABEL,
+  groupParticipantLabel,
+  redactGroupParticipantHandles,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/group-participant-labels";
+import { personalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import { prewarmPersonalSharedAgentTurnCaches } from "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent";
+import { resolveSharedRuntimeWorkerRequestContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
+import {
+  sharedRestMessageSend,
+  sharedTurnServerTiming,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-rest-adapter";
+import {
+  PersonalCutoverHoldError,
+  SharedRuntimeCacheWarmingError,
+  SharedRuntimeTurnError,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-errors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { ChannelType } from "@elizaos/core";
 import type { SharedGroupReminderDelivery } from "@elizaos/plugin-scheduling";
 import { Hono } from "hono";
@@ -14,53 +65,6 @@ import {
   PersonalDeliveryAccountResolutionError,
   resolvePersonalDeliveryProjection,
 } from "@/api-app/personal-delivery-projection";
-import {
-  type PersonalSharedGroupConsentStatus,
-  personalSharedGroupConsentRepository,
-} from "@/db/repositories/personal-shared-group-consent";
-import {
-  type GroupParticipantIdentity,
-  personalSharedGroupParticipantsRepository,
-} from "@/db/repositories/personal-shared-group-participants";
-import { personalSharedGroupsRepository } from "@/db/repositories/personal-shared-groups";
-import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
-import { sha256Hex } from "@/lib/oidc/crypto";
-import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
-import { elizaAppUserService } from "@/lib/services/eliza-app";
-import { isAllowedBlooioMediaUrl } from "@/lib/services/eliza-app/blooio-media-allowlist";
-import { MAX_INBOUND_MEDIA_IMAGES } from "@/lib/services/eliza-app/describe-inbound-media";
-import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-enrichment";
-import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
-import {
-  type PersonalDedicatedFallback,
-  type PersonalSharedFallbackDelivery,
-  resolvePersonalDedicatedRoute,
-} from "@/lib/services/personal-dedicated-fallback";
-import { reconcilePersonalFallbackIntoDedicated } from "@/lib/services/personal-dedicated-fallback-reconcile";
-import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
-import {
-  GROUP_OWNER_FALLBACK_LABEL,
-  groupParticipantLabel,
-  redactGroupParticipantHandles,
-} from "@/lib/services/shared-runtime/group-participant-labels";
-import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
-import { prewarmPersonalSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
-import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
-import {
-  sharedRestMessageSend,
-  sharedTurnServerTiming,
-} from "@/lib/services/shared-runtime/shared-rest-adapter";
-import {
-  PersonalCutoverHoldError,
-  SharedRuntimeCacheWarmingError,
-  SharedRuntimeTurnError,
-} from "@/lib/services/shared-runtime/shared-runtime-errors";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
 import { consumePreverifiedPersonalSharedRequest } from "../preverified-auth";
 
@@ -1834,45 +1838,15 @@ app.post("/", async (c) => {
             namespace: worker.namespace,
           },
         );
-        const importableHistory = history.filter(
-          (
-            message,
-          ): message is typeof message & {
-            role: "user" | "assistant";
-          } => message.role === "user" || message.role === "assistant",
-        );
-        const importMessages = importableHistory.flatMap((message) =>
-          message.id
-            ? [
-                {
-                  sourceId: message.id,
-                  role: message.role,
-                  text: message.content,
-                  ...(typeof message.createdAt === "number"
-                    ? { timestamp: message.createdAt }
-                    : {}),
-                },
-              ]
-            : [],
-        );
-        let receipt =
-          importMessages.length === importableHistory.length
-            ? await elizaSandboxService.importCanonicalConversation(
-                dedicated.id,
-                account.organizationId,
-                conversationId,
-                importMessages,
-              )
-            : null;
-        if (!receipt && importMessages.length > 0) {
-          receipt = await elizaSandboxService.importCanonicalConversation(
+        const repaired = await repairPersonalConversation(history, (messages) =>
+          elizaSandboxService.importCanonicalConversation(
             dedicated.id,
             account.organizationId,
             conversationId,
-            [],
-          );
-        }
-        if (receipt) {
+            messages,
+          ),
+        );
+        if (repaired) {
           response = await elizaSandboxService.bridge(
             dedicated.id,
             account.organizationId,

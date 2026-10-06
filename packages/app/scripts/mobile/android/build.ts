@@ -38,7 +38,6 @@ import {
   ensurePlatform,
   mirrorCapacitorWebPayloadIntoAndroidDir,
 } from "../platform-sync.ts";
-import { resolveAndroidBuildTarget } from "../targets/android.ts";
 import { resolveAndroidSdkRoot, resolveJavaHome } from "../toolchain.ts";
 import { buildWeb, ensureRendererDistMatchesLane } from "../web-build.ts";
 import {
@@ -59,6 +58,7 @@ import {
   auditAndroidSystemSource,
 } from "./source-audit.ts";
 import { stripAndroidForCloud, stripAndroidForSmsGateway } from "./strip.ts";
+import { resolveAndroidBuildTarget } from "./targets.ts";
 
 export function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
   // Hard refusal: the default `android` target is sideload-only and will be

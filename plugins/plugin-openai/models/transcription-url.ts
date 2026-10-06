@@ -13,7 +13,7 @@ export function toAudioBlob(bytes: Uint8Array, contentType?: string | null): Blo
   return new Blob([new Uint8Array(bytes)], { type: mimeType });
 }
 
-export async function fetchAudioFromUrl(url: string): Promise<Blob> {
+export async function fetchAudioFromUrl(url: string, signal?: AbortSignal): Promise<Blob> {
   if (!url || url.trim().length === 0) {
     throw new Error("TRANSCRIPTION requires a valid audio URL");
   }
@@ -22,6 +22,7 @@ export async function fetchAudioFromUrl(url: string): Promise<Blob> {
     maxBytes: TRANSCRIPTION_AUDIO_MAX_BYTES,
     timeoutMs: TRANSCRIPTION_AUDIO_FETCH_TIMEOUT_MS,
     maxRedirects: TRANSCRIPTION_AUDIO_MAX_REDIRECTS,
+    signal,
   });
   return toAudioBlob(media.buffer, media.contentType);
 }

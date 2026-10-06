@@ -1,12 +1,12 @@
 /** Exercises real Hono/Fal proxy transport and HTML catalog arithmetic with synthetic caller admission and a closed provider transport. */
 import { afterAll, expect, mock, spyOn, test } from "bun:test";
-import type { FlatBillingCost } from "@/lib/services/ai-billing";
+import type { FlatBillingCost } from "@elizaos/cloud-shared/lib/services/ai-billing";
 
 let admitted: FlatBillingCost | undefined;
 let wire: Record<string, unknown> | undefined;
 let settled: number | undefined;
 const originalKey = process.env.FAL_KEY;
-mock.module("@/db/repositories/ai-pricing", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/ai-pricing", () => ({
   aiPricingRepository: {
     listActiveEntries: async () => [],
     listActiveEntriesForProviderModelPairs: async () => [],
@@ -34,12 +34,15 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   getGenerativeExecutionContext: () => undefined,
 }));
 const { fetchFalCatalogEntries } = await import(
-  "@/lib/services/ai-pricing/providers/fal"
+  "@elizaos/cloud-shared/lib/services/ai-pricing/providers/fal"
 );
-mock.module("@/lib/services/ai-pricing/providers/gateway", () => ({
-  fetchEntriesForSource: async (source: string) =>
-    source === "fal" ? fetchFalCatalogEntries() : [],
-}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/ai-pricing/providers/gateway",
+  () => ({
+    fetchEntriesForSource: async (source: string) =>
+      source === "fal" ? fetchFalCatalogEntries() : [],
+  }),
+);
 process.env.FAL_KEY = "synthetic-closed-transport";
 const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
   Object.assign(

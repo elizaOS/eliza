@@ -4,12 +4,13 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type Memory, promoteSubactionsToActions } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
   pluginAction,
   pluginOperationSchemaOverrides,
 } from "../src/actions/plugin.ts";
+import { runtimeAction } from "../src/actions/runtime.ts";
 import { startApiServer } from "../src/api/server.ts";
 
 let directory: string;
@@ -347,6 +348,36 @@ it("executes narrow promoted plugin schemas through authenticated HTTP without c
     createdAt: Date.now(),
   };
   try {
+    const runtimeControls = promoteSubactionsToActions(runtimeAction);
+    const describe = runtimeControls.find(
+      (action) => action.name === "RUNTIME_DESCRIBE_ACTIONS",
+    );
+    if (!describe) throw new Error("Missing runtime describe action");
+    fixture.runtime.registerAction(runtimeAction);
+    const described = await describe.handler(
+      fixture.runtime,
+      message,
+      undefined,
+      {},
+    );
+    expect(described).toMatchObject({
+      success: true,
+      values: { count: fixture.runtime.actions.length },
+    });
+    expect(described?.text).toContain(runtimeAction.description);
+    const retiredInputs: Record<string, string>[] = [
+      { action: "list_actions" },
+      { action: "restart_agent" },
+      { op: "status" },
+      { subaction: "status" },
+    ];
+    for (const parameters of retiredInputs) {
+      expect(
+        await runtimeAction.handler(fixture.runtime, message, undefined, {
+          parameters,
+        }),
+      ).toMatchObject({ success: false, values: { error: "RUNTIME_INVALID" } });
+    }
     const list = operation("PLUGIN_LIST");
     const listFields = list.parameters?.map((parameter) => parameter.name);
     expect(listFields).toEqual(

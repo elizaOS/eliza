@@ -10,7 +10,6 @@ from unittest.mock import patch
 from hermes_adapter.bfcl import (
     HermesBFCLAgent,
     _extract_calls_from_response,
-    _provider_safe_tools,
 )
 from hermes_adapter.client import HermesClient, MessageResponse
 
@@ -81,8 +80,10 @@ def test_extract_calls_rejects_text_json_fallback() -> None:
     assert calls == []
 
 
-def test_hermes_bfcl_agent_query_threads_tools_and_parses_response(tmp_path: Path) -> None:
-    from benchmarks.bfcl.types import (
+def test_hermes_bfcl_agent_query_threads_tools_and_parses_response(
+    tmp_path: Path,
+) -> None:
+    from benchmarks.suites.bfcl.types import (
         BFCLCategory,
         BFCLTestCase,
         FunctionCall,
@@ -94,7 +95,9 @@ def test_hermes_bfcl_agent_query_threads_tools_and_parses_response(tmp_path: Pat
     agent = HermesBFCLAgent(client=client, model_name="gpt-oss-120b")
     captured: dict[str, Any] = {}
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         captured["text"] = text
         captured["context"] = context
         return MessageResponse(
@@ -130,7 +133,9 @@ def test_hermes_bfcl_agent_query_threads_tools_and_parses_response(tmp_path: Pat
                 required_params=["location"],
             )
         ],
-        expected_calls=[FunctionCall(name="get_weather", arguments={"location": "San Francisco"})],
+        expected_calls=[
+            FunctionCall(name="get_weather", arguments={"location": "San Francisco"})
+        ],
     )
 
     with (
@@ -146,7 +151,9 @@ def test_hermes_bfcl_agent_query_threads_tools_and_parses_response(tmp_path: Pat
     assert "one separate native tool call" in captured["context"]["system_prompt"]
     assert "parameter names" in captured["context"]["system_prompt"]
     assert captured["context"]["tools"][0]["function"]["name"] == "get_weather"
-    assert calls == [FunctionCall(name="get_weather", arguments={"location": "San Francisco"})]
+    assert calls == [
+        FunctionCall(name="get_weather", arguments={"location": "San Francisco"})
+    ]
     assert '"tool_calls"' in raw_response
     assert latency_ms >= 0
 
@@ -154,7 +161,7 @@ def test_hermes_bfcl_agent_query_threads_tools_and_parses_response(tmp_path: Pat
 def test_hermes_bfcl_agent_maps_provider_safe_tool_names_back(
     tmp_path: Path,
 ) -> None:
-    from benchmarks.bfcl.types import (
+    from benchmarks.suites.bfcl.types import (
         BFCLCategory,
         BFCLTestCase,
         FunctionCall,
@@ -166,7 +173,9 @@ def test_hermes_bfcl_agent_maps_provider_safe_tool_names_back(
     agent = HermesBFCLAgent(client=client, model_name="gpt-oss-120b")
     captured: dict[str, Any] = {}
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         captured["context"] = context
         return MessageResponse(
             text="",
@@ -201,7 +210,9 @@ def test_hermes_bfcl_agent_maps_provider_safe_tool_names_back(
                 required_params=["table_name"],
             )
         ],
-        expected_calls=[FunctionCall(name="sql.execute", arguments={"table_name": "Orders"})],
+        expected_calls=[
+            FunctionCall(name="sql.execute", arguments={"table_name": "Orders"})
+        ],
     )
 
     with (
@@ -213,64 +224,16 @@ def test_hermes_bfcl_agent_maps_provider_safe_tool_names_back(
     function = captured["context"]["tools"][0]["function"]
     assert function["name"] == "sql_execute"
     assert "Original BFCL function name: sql.execute." in function["description"]
-    assert calls == [FunctionCall(name="sql.execute", arguments={"table_name": "Orders"})]
+    assert calls == [
+        FunctionCall(name="sql.execute", arguments={"table_name": "Orders"})
+    ]
     assert '"sql_execute": "sql.execute"' in raw_response
-
-
-def test_provider_safe_tools_uniquifies_collisions() -> None:
-    tools = [
-        {"type": "function", "function": {"name": "foo.bar", "description": "", "parameters": {}}},
-        {"type": "function", "function": {"name": "foo_bar", "description": "", "parameters": {}}},
-    ]
-
-    patched, name_map = _provider_safe_tools(tools)
-
-    names = [tool["function"]["name"] for tool in patched]
-    assert names == ["foo_bar", "foo_bar_2"]
-    assert name_map == {"foo_bar": "foo.bar", "foo_bar_2": "foo_bar"}
-
-
-def test_provider_safe_tools_preserves_schema_field_names_and_defaults() -> None:
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "customer.lookup",
-                "description": "Lookup a customer",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "customerId": {
-                            "type": "string",
-                            "description": "Stable customer id",
-                        },
-                        "includeInactive": {
-                            "type": "boolean",
-                            "description": "Include inactive customers",
-                            "default": False,
-                        },
-                    },
-                    "required": ["customerId"],
-                },
-            },
-        }
-    ]
-
-    patched, name_map = _provider_safe_tools(tools)
-
-    function = patched[0]["function"]
-    properties = function["parameters"]["properties"]
-    assert function["name"] == "customer_lookup"
-    assert name_map == {"customer_lookup": "customer.lookup"}
-    assert list(properties) == ["customerId", "includeInactive"]
-    assert properties["includeInactive"]["default"] is False
-    assert tools[0]["function"]["name"] == "customer.lookup"
 
 
 def test_hermes_bfcl_agent_parallel_case_requires_one_native_call_per_operation(
     tmp_path: Path,
 ) -> None:
-    from benchmarks.bfcl.types import (
+    from benchmarks.suites.bfcl.types import (
         BFCLCategory,
         BFCLTestCase,
         FunctionCall,
@@ -282,7 +245,9 @@ def test_hermes_bfcl_agent_parallel_case_requires_one_native_call_per_operation(
     agent = HermesBFCLAgent(client=client, model_name="gpt-oss-120b")
     captured: dict[str, Any] = {}
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         captured["text"] = text
         captured["context"] = context
         return MessageResponse(
@@ -291,9 +256,21 @@ def test_hermes_bfcl_agent_parallel_case_requires_one_native_call_per_operation(
             actions=["get_weather", "get_weather", "search"],
             params={
                 "tool_calls": [
-                    {"id": "tc1", "name": "get_weather", "arguments": {"location": "NYC"}},
-                    {"id": "tc2", "name": "get_weather", "arguments": {"location": "SF"}},
-                    {"id": "tc3", "name": "search", "arguments": {"query": "restaurants"}},
+                    {
+                        "id": "tc1",
+                        "name": "get_weather",
+                        "arguments": {"location": "NYC"},
+                    },
+                    {
+                        "id": "tc2",
+                        "name": "get_weather",
+                        "arguments": {"location": "SF"},
+                    },
+                    {
+                        "id": "tc3",
+                        "name": "search",
+                        "arguments": {"query": "restaurants"},
+                    },
                 ]
             },
         )
@@ -349,15 +326,19 @@ def test_hermes_bfcl_agent_parallel_case_requires_one_native_call_per_operation(
 
 
 def test_hermes_bfcl_agent_irrelevant_case_disables_tool_calls(tmp_path: Path) -> None:
-    from benchmarks.bfcl.types import BFCLCategory, BFCLTestCase
+    from benchmarks.suites.bfcl.types import BFCLCategory, BFCLTestCase
 
     client = _fake_client(tmp_path)
     agent = HermesBFCLAgent(client=client, model_name="gpt-oss-120b")
     captured: dict[str, Any] = {}
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         captured["context"] = context
-        return MessageResponse(text="No relevant function.", thought=None, actions=[], params={})
+        return MessageResponse(
+            text="No relevant function.", thought=None, actions=[], params={}
+        )
 
     test_case = BFCLTestCase(
         id="irrelevant_1",
@@ -382,7 +363,7 @@ def test_hermes_bfcl_agent_irrelevant_case_disables_tool_calls(tmp_path: Path) -
 def test_hermes_bfcl_agent_retries_prompt_only_on_native_tool_schema_error(
     tmp_path: Path,
 ) -> None:
-    from benchmarks.bfcl.types import (
+    from benchmarks.suites.bfcl.types import (
         BFCLCategory,
         BFCLTestCase,
         FunctionCall,
@@ -395,11 +376,15 @@ def test_hermes_bfcl_agent_retries_prompt_only_on_native_tool_schema_error(
     contexts: list[dict[str, Any]] = []
     texts: list[str] = []
 
-    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+    def _fake_send(
+        self: HermesClient, text: str, context: Any = None
+    ) -> MessageResponse:
         texts.append(text)
         contexts.append(context or {})
         if len(contexts) == 1:
-            raise RuntimeError("wrong_api_format: Failed to compile the JSON schema grammar")
+            raise RuntimeError(
+                "wrong_api_format: Failed to compile the JSON schema grammar"
+            )
         return MessageResponse(
             text='[{"name":"run_tool","arguments":{"value":3}}]',
             thought=None,

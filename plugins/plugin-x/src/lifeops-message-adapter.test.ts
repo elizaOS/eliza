@@ -13,6 +13,43 @@ function runtimeWithXService(service: unknown): IAgentRuntime {
 }
 
 describe("XDmAdapter", () => {
+  it("searches beyond the default DM listing window before applying its result limit", async () => {
+    const stored = Array.from(
+      { length: 151 },
+      (_, index) =>
+        ({
+          id: `memory-${index}`,
+          agentId: "agent-1",
+          entityId: "sender-1",
+          roomId: "room-1",
+          createdAt: 1000 - index,
+          content: { text: index >= 149 ? "invoice attached" : "unrelated" },
+          metadata: {
+            x: {
+              dmEventId: `dm-${index}`,
+              senderId: "sender-1",
+              conversationId: "thread-1",
+            },
+          },
+        }) as Memory,
+    );
+    const fetchDirectMessagesForAccount = vi.fn(
+      async (_account: string, options: { limit?: number }) =>
+        options.limit === undefined ? stored : stored.slice(0, options.limit),
+    );
+    const adapter = new XDmAdapter();
+    const runtime = runtimeWithXService({ fetchDirectMessagesForAccount });
+    const hits = await adapter.searchMessages(runtime, {
+      content: "invoice",
+      limit: 1,
+    });
+    expect(hits.map((hit) => hit.id)).toEqual(["twitter:dm-149"]);
+    expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith("default", {
+      participantId: undefined,
+      limit: undefined,
+    });
+  });
+
   it("maps plugin-x direct-message memories into message refs", async () => {
     const memory: Memory = {
       id: "memory-1",
@@ -126,7 +163,7 @@ describe("XDmAdapter", () => {
     );
   });
 
-  it("normalizes malformed memories and hostile list limits without throwing", async () => {
+  it("normalizes malformed memories without imposing a listing limit", async () => {
     const memory = {
       id: "memory-2",
       agentId: "agent-1",
@@ -147,12 +184,12 @@ describe("XDmAdapter", () => {
     const runtime = runtimeWithXService({ fetchDirectMessagesForAccount });
 
     const refs = await adapter.listMessages(runtime, {
-      limit: Number.POSITIVE_INFINITY,
+      limit: undefined,
     });
 
     expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith("default", {
       participantId: undefined,
-      limit: 25,
+      limit: undefined,
     });
     expect(refs).toHaveLength(1);
     expect(refs[0]).toMatchObject({
@@ -166,30 +203,21 @@ describe("XDmAdapter", () => {
     expect(Number.isFinite(refs[0]?.receivedAtMs)).toBe(true);
   });
 
-  it("clamps low and high list limits before calling the X service", async () => {
+  it("preserves explicit limits and rejects invalid limits before fetching", async () => {
     const fetchDirectMessagesForAccount = vi.fn(async () => []);
     const adapter = new XDmAdapter();
     const runtime = runtimeWithXService({ fetchDirectMessagesForAccount });
-
-    await adapter.listMessages(runtime, { limit: -50 });
+    for (const limit of [-50, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(adapter.listMessages(runtime, { limit })).rejects.toThrow(
+        "positive safe integer",
+      );
+    }
+    expect(fetchDirectMessagesForAccount).not.toHaveBeenCalled();
     await adapter.listMessages(runtime, { limit: 10_000 });
-
-    expect(fetchDirectMessagesForAccount).toHaveBeenNthCalledWith(
-      1,
-      "default",
-      {
-        participantId: undefined,
-        limit: 1,
-      },
-    );
-    expect(fetchDirectMessagesForAccount).toHaveBeenNthCalledWith(
-      2,
-      "default",
-      {
-        participantId: undefined,
-        limit: 100,
-      },
-    );
+    expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith("default", {
+      participantId: undefined,
+      limit: 10_000,
+    });
   });
 
   it("rejects malformed draft ids before sending", async () => {

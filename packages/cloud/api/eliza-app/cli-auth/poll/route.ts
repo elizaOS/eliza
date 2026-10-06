@@ -6,12 +6,12 @@
  * immediately invalidates the row to prevent replay.
  */
 
+import { db } from "@elizaos/cloud-shared/db/client";
+import { cliAuthSessions } from "@elizaos/cloud-shared/db/schemas/cli-auth-sessions";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { db } from "@/db/client";
-import { cliAuthSessions } from "@/db/schemas/cli-auth-sessions";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 

@@ -38,37 +38,17 @@ describe("buildReminderBody — laddered rung surfacing", () => {
   it("leads with the rung step rather than the raw task title", () => {
     const body = buildReminderBody({
       title: "Read the book",
-      scheduledFor: "2026-07-04T15:00:00.000Z",
-      dueAt: null,
-      channel: "in_app",
-      lifecycle: "plan",
       derivedTarget: ladderRungTarget,
     });
-    expect(body).toContain("Reminder: Read one page");
+    expect(body).toBe("Read one page");
     expect(body).not.toContain("Read the book");
   });
 
   it("falls back to the raw title when there is no laddered target", () => {
     const body = buildReminderBody({
       title: "Read the book",
-      scheduledFor: "2026-07-04T15:00:00.000Z",
-      dueAt: null,
-      channel: "in_app",
-      lifecycle: "plan",
       derivedTarget: null,
     });
-    expect(body).toContain("Reminder: Read the book");
-  });
-
-  it("uses the escalation prefix with the rung step on follow-ups", () => {
-    const body = buildReminderBody({
-      title: "Read the book",
-      scheduledFor: "2026-07-04T15:00:00.000Z",
-      dueAt: null,
-      channel: "in_app",
-      lifecycle: "escalation",
-      derivedTarget: ladderRungTarget,
-    });
-    expect(body).toContain("Follow-up reminder: Read one page");
+    expect(body).toBe("Read the book");
   });
 });
