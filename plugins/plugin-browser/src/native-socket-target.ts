@@ -9,6 +9,7 @@ import {
   type Socket,
 } from "node:net";
 import { dirname, isAbsolute, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { BrowserTarget } from "./browser-service.js";
 import { BrowserDispatchFailure } from "./dispatch-types.js";
 import {
@@ -141,6 +142,45 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     return !this.stopped && this.socket && !this.socket.destroyed
       ? this.profileId
       : null;
+  }
+
+  /** Wait only for registration; no browser command is queued, retried or sent. */
+  async waitForProfile(
+    expectedProfileId: string,
+    {
+      timeoutMs = 10000,
+      signal,
+    }: { timeoutMs?: number; signal?: AbortSignal } = {},
+  ): Promise<void> {
+    if (
+      typeof expectedProfileId !== "string" ||
+      !expectedProfileId.trim() ||
+      expectedProfileId.length > 256 ||
+      !Number.isInteger(timeoutMs) ||
+      timeoutMs < 1 ||
+      timeoutMs > 30000
+    )
+      throw new TypeError("Invalid native profile registration wait");
+    const deadline = performance.now() + timeoutMs;
+    for (;;) {
+      signal?.throwIfAborted();
+      const profile = this.getProfileId();
+      if (this.stopped || (profile !== null && profile !== expectedProfileId))
+        throw new BrowserDispatchFailure(
+          "UNAVAILABLE",
+          "Expected native profile unavailable.",
+          { targetId: this.id },
+        );
+      if (profile === expectedProfileId) return;
+      const remaining = deadline - performance.now();
+      if (remaining <= 0)
+        throw new BrowserDispatchFailure(
+          "UNAVAILABLE",
+          "Native profile registration timed out.",
+          { targetId: this.id },
+        );
+      await delay(Math.min(50, remaining), undefined, { signal });
+    }
   }
 
   async start(env: NodeJS.ProcessEnv = process.env): Promise<void> {

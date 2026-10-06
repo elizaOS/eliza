@@ -21,6 +21,12 @@ is development evidence, not release provisioning.
 outcome after dispatch; it never retries on another profile. Older peers reject
 cancellable requests before dispatch. Callers still reconcile any uncertain effect.
 
+Trusted hosts can call `NativeSocketBrowserTarget.waitForProfile(profileId, { timeoutMs, signal })`
+before binding a task after restart. It waits at most 10 seconds by default
+(30 seconds maximum), rejects a different registered profile immediately, and
+stops on cancellation or transport shutdown. It sends no commands and never
+retries dispatched work. Hosts must recheck task/account authority after waiting.
+
 `NativeTaskActuator` composes the core task journal with this transport. The host
 supplies task lookup, reviewed page policy, durable binding revisions, protected
 value resolution, outcome verification and redacted evidence storage. It checks

@@ -51,6 +51,7 @@ export async function createConfiguredBillHelper({
   const native = new runtimeModule.NativeSocketBrowserTarget(() =>
     onUnavailable(),
   );
+  const registrationAbort = new AbortController();
   const requireProfile = () => {
     if (native.getProfileId() !== config.profileId)
       throw new Error("Configured browser profile unavailable");
@@ -59,6 +60,18 @@ export async function createConfiguredBillHelper({
     ["bindTask", "guideTask", "execute"].map((method) => [
       method,
       async (...args) => {
+        // Wait only before a new binding, never before replaying an effect or
+        // revocation cleanup. The actuator fences task revisions around binding.
+        if (method === "bindTask" && !args[0]?.revoked) {
+          await native.waitForProfile(config.profileId, {
+            signal: registrationAbort.signal,
+          });
+          if (
+            (await credentialGate()) !== config.actorId ||
+            registrationAbort.signal.aborted
+          )
+            throw new BillHostError("Configured task authorization changed");
+        }
         requireProfile();
         return native[method](...args);
       },
@@ -73,8 +86,9 @@ export async function createConfiguredBillHelper({
   };
   let host;
   let closing;
-  const close = () =>
-    (closing ??= (async () => {
+  const close = () => {
+    registrationAbort.abort();
+    closing ??= (async () => {
       const errors = [];
       try {
         await host?.close();
@@ -88,7 +102,9 @@ export async function createConfiguredBillHelper({
       }
       if (errors.length)
         throw new AggregateError(errors, "Configured helper cleanup failed");
-    })());
+    })();
+    return closing;
+  };
   try {
     host = createBillHelperHost({
       runtimeModule,
