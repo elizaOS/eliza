@@ -613,6 +613,17 @@ export async function getSessionById(
   return null;
 }
 
+function recordedComponentCreatedAt(
+  createdAt: number | undefined,
+  now: number,
+): number {
+  // A component created at epoch is a real timestamp. `createdAt || Date.now()`
+  // replaced it on the next save.
+  if (typeof createdAt === "number" && Number.isFinite(createdAt))
+    return createdAt;
+  return now;
+}
+
 /**
  * Save a form session.
  *
@@ -627,17 +638,6 @@ export async function getSessionById(
  * @param session - Session to save
  * @param refreshUpdatedAt - Refresh the timestamp on the inert staged snapshot
  */
-function recordedComponentCreatedAt(
-  createdAt: number | undefined,
-  now: number,
-): number {
-  // A component created at epoch is a real timestamp. `createdAt || Date.now()`
-  // replaced it on the next save.
-  if (typeof createdAt === "number" && Number.isFinite(createdAt))
-    return createdAt;
-  return now;
-}
-
 export async function saveSession(
   runtime: IAgentRuntime,
   session: FormSession,
