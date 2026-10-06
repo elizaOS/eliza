@@ -87,6 +87,12 @@ it("pages the visible same-named table when another schema has a different prima
     await db.execute(
       sql.raw("INSERT INTO dup (id, kind) VALUES (1, 'a'), (2, 'a')"),
     );
+    // Constraint names can also collide across different tables in one schema.
+    await db.execute(
+      sql.raw(
+        "CREATE TABLE ref_dup (other integer CONSTRAINT dup_pkey REFERENCES dup(id))",
+      ),
+    );
     // Both schemas are on the path. Unqualified FROM "dup" still resolves to
     // public.dup, the first visible relation. The tie-break must not pick up
     // s2.dup's uid column.

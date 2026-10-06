@@ -873,6 +873,7 @@ async function handleGetRows(
      JOIN information_schema.key_column_usage kcu
        ON tc.constraint_name = kcu.constraint_name
       AND tc.table_schema = kcu.table_schema
+      AND tc.table_name = kcu.table_name
      WHERE tc.constraint_type = 'PRIMARY KEY'
        AND tc.table_name = '${safeTableName}'
        AND tc.table_schema = (
@@ -880,7 +881,7 @@ async function handleGetRows(
          FROM pg_catalog.pg_class c
          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
          WHERE c.relname = '${safeTableName}'
-           AND c.relkind = 'r'
+           AND c.relkind IN ('r', 'p')
            AND pg_catalog.pg_table_is_visible(c.oid)
          LIMIT 1
        )
@@ -888,7 +889,7 @@ async function handleGetRows(
   );
   const tieBreak = pkResult.rows.length
     ? pkResult.rows.map((r) => quoteIdent(String(r.column_name)))
-    : ["ctid"];
+    : ["tableoid", "ctid"];
   const orderTerms = [
     ...(validSort ? [quoteIdent(validSort)] : []),
     ...tieBreak.filter((term) => !validSort || term !== quoteIdent(validSort)),
