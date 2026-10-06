@@ -1139,6 +1139,94 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         'DISCOVER_ACTIONS with names=["PROPOSE_DEVICE_ACTION"]',
       );
       expect(nativeGuidance).toContain("if that exact tool is not loaded");
+      expect(nativeGuidance).toContain(
+        'Use operation={"type":"clock_handoff","action":"show"} to open Android Clock alarms without creating or changing alarms.',
+      );
+      expect(nativeGuidance).toContain(
+        "show is not generic open_view or VIEWS_SHOW",
+      );
+      expect(nativeGuidance).toContain(
+        "Supported Clock actions are set, show, dismiss and snooze.",
+      );
+      expect(
+        [
+          ...new Set(
+            clockSchemas.map((branch) => branch.properties?.action.enum?.[0]),
+          ),
+        ].sort(),
+      ).toEqual(["dismiss", "set", "show", "snooze"]);
+      for (const capabilities of [
+        undefined,
+        [],
+        ["unknown.v1"],
+        ["clock.handoff.v2"],
+        ["clock.handoff.v1", "notes.local-record.v1"],
+      ]) {
+        const currentContext = await withDeviceActionTurn(
+          runtimeState.runtime,
+          { ...credentials, capabilities },
+          () =>
+            createV5MessageContextObject({
+              runtime: runtimeState.runtime,
+              message: {
+                id: randomUUID(),
+                roomId: randomUUID(),
+                entityId: ownerA,
+                agentId: runtimeState.runtime.agentId,
+                content: {
+                  text: "Open Android Clock alarms.",
+                  source: "client_chat",
+                },
+              } as Memory,
+              state: { values: {}, data: {}, text: "" },
+              selectedContexts: ["general"],
+              includeTools: true,
+              userRoles: ["OWNER"],
+              preselectedActions: [proposeDeviceAction],
+            }),
+        );
+        const instruction = currentContext.events.find(
+          (event) => event.id === "authenticated-phone-capability",
+        );
+        const guidance =
+          instruction?.type === "instruction" ? instruction.content : "";
+        const tool = currentContext.events.find(
+          (event) =>
+            event.type === "tool" &&
+            event.tool.name === "PROPOSE_DEVICE_ACTION",
+        );
+        const branches =
+          tool?.type === "tool"
+            ? tool.tool.parameters?.properties?.operation.anyOf
+            : [];
+        const clockSupported =
+          capabilities?.some(
+            (value) =>
+              value === "clock.handoff.v1" || value === "clock.handoff.v2",
+          ) === true;
+        expect(
+          guidance.includes(
+            'Use operation={"type":"clock_handoff","action":"show"}',
+          ),
+        ).toBe(clockSupported);
+        if (clockSupported) {
+          expect(
+            branches?.some((branch) =>
+              branch.properties?.type.enum?.includes("clock_handoff"),
+            ),
+          ).toBe(true);
+        } else {
+          // Legacy broad schemas are unchanged; capability admission still rejects Clock.
+          await expect(
+            service.propose(
+              { ...credentials, capabilities },
+              { type: "clock_handoff", action: "show" },
+              `unsupported-clock-show-${String(capabilities)}`,
+              "Unsupported scope fixture",
+            ),
+          ).rejects.toThrow("capability unavailable");
+        }
+      }
       const inferredClock = clockContext.events.find(
         (event: any) =>
           event.type === "tool" && event.tool.name === "PROPOSE_DEVICE_ACTION",
