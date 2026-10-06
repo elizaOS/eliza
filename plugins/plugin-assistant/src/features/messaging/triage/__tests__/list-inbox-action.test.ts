@@ -290,6 +290,29 @@ describe("listInboxAction", () => {
     });
   });
 
+  it("does not sweep again when a cold cache live pull is already all read", async () => {
+    const adapter = new FixedListAdapter([
+      messageRef({
+        id: "live-read",
+        externalId: "live-read-external",
+        isRead: true,
+      }),
+    ]);
+    await registerAdapter(adapter);
+
+    const result = await listInboxAction.handler(
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+    );
+
+    expect(adapter.seenOptions).toHaveLength(1);
+    expect(result).toMatchObject({
+      success: true,
+      text: "No unread messages across connected platforms.",
+      data: { total: 0, returned: 0, messages: [] },
+    });
+  });
+
   it("claims no unread only after a live pull confirms it past an all-read cache", async () => {
     getDefaultMessageRefStore().saveMessages([
       messageRef({
