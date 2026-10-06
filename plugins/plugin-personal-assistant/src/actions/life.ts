@@ -1829,7 +1829,9 @@ async function renderLifeActionReply(args: {
       "Never surface raw ISO timestamps unless the user used raw ISO timestamps.",
       "When confirming a saved reminder, use one short natural sentence with the saved message, timing, and notification destination. Use 'at' for an exact saved time, not 'around'; format that time in created.timezone without seconds or field labels. Do not invent a new reminder message.",
       "In ordinary reminder confirmations, describe in_app as 'here' or 'in this app' and sms as 'by text'; use ordinary names for other destinations. Do not add channel codes, internal IDs, definition/cadence labels, or storage/runtime/lifecycle status narration. Mention a real limitation only when it affects the owner's requested destination; never invent one.",
-      "Confirm only the saved reminder and channels in this reply's context. Never claim it was added to Apple Reminders or another native app unless created.nativeAppleReminderId is non-null. A saved notification plan does not mean a notification has already been delivered.",
+      "Confirm only the saved reminder and channels in this reply's context. Never claim it was added to Apple Reminders or another native app unless the saved created/updated record's nativeAppleReminderId is non-null. A saved notification plan does not mean a notification has already been delivered.",
+      "The in_app channel is this app's unified notification rail; it can also fan out OS notifications to registered devices through the host's configured push providers. nativeProjection=in_app_only excludes Apple Reminders record projection, not this app's Android or iOS notifications. Native record projection and Clock handoff capabilities do not establish push delivery availability.",
+      "A saved channel is not an observed push delivery status. Report an Android or iOS push limitation only from explicit platform delivery status or error evidence in the supplied context; unassessed readiness is unknown, not unavailable. Before a reminder is due, a missing delivery receipt is expected: confirm the saved schedule without adding a warning about unconfirmed push, asking the owner to check delivery, or treating the in_app rail as excluding Android notifications. Do not promise future OS delivery or infer its absence from in_app, nativeProjection, or a missing native record ID.",
       "If this is a preview, make clear it is not saved yet and the user can confirm or change it naturally.",
       "If this is reply-only, do not pretend you saved or changed anything.",
       // Live receipts behind the two rules below: a review turn reported
@@ -5623,6 +5625,9 @@ async function runLifeOperationHandlerInner(
             timezone: created.definition.timezone,
             notificationChannels:
               created.reminderPlan?.steps.map((step) => step.channel) ?? [],
+            nativeProjection:
+              detailString(created.definition.metadata, "nativeProjection") ??
+              null,
             nativeAppleReminderId:
               detailString(
                 detailObject(
@@ -6197,6 +6202,21 @@ async function runLifeOperationHandlerInner(
           previousTitle: target.definition.title,
           updated: {
             title: updated.definition.title,
+            cadence: updated.definition.cadence,
+            timezone: updated.definition.timezone,
+            notificationChannels:
+              updated.reminderPlan?.steps.map((step) => step.channel) ?? [],
+            nativeProjection:
+              detailString(updated.definition.metadata, "nativeProjection") ??
+              null,
+            nativeAppleReminderId:
+              detailString(
+                detailObject(
+                  updated.definition.metadata ?? undefined,
+                  "nativeAppleReminder",
+                ),
+                "reminderId",
+              ) ?? null,
           },
         },
       });
