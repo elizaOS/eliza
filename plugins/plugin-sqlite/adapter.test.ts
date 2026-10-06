@@ -509,6 +509,57 @@ describe("durable SQLite agent adapter", () => {
     ).toEqual([otherEntityId]);
   });
 
+  it("replaces memory and relationship metadata on update, so keys can be removed", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    await adapter.createAgents([{ id: agentId, name: "Metadata agent" }]);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["User"] }]);
+    const reply = {
+      ...memory("recovered reply"),
+      metadata: {
+        type: "custom",
+        source: "client_chat",
+        chatFailureKind: "provider_error",
+      },
+    } as Memory & { id: UUID };
+    await adapter.createMemories([{ memory: reply, tableName: "messages" }]);
+
+    // Reply recovery clears the failure marker and writes the rest back.
+    await adapter.updateMemories([
+      { id: reply.id, metadata: { type: "custom", source: "client_chat" } },
+    ]);
+    await adapter.updateMemories([
+      { id: reply.id, content: { text: "edited" } },
+    ]);
+
+    const [stored] = await adapter.getMemoriesByIds([reply.id]);
+    expect(stored?.metadata).toEqual({ type: "custom", source: "client_chat" });
+    expect(stored?.content.text).toBe("edited");
+
+    const [relationship] = await adapter.createRelationships([
+      {
+        sourceEntityId: agentId,
+        targetEntityId: entityId,
+        tags: ["friend"],
+        metadata: { pinned: true, note: "met at conf" },
+      },
+    ]);
+    await adapter.updateRelationships([
+      {
+        id: relationship as UUID,
+        sourceEntityId: agentId,
+        targetEntityId: entityId,
+        agentId,
+        tags: ["friend"],
+        metadata: { note: "met at conf" },
+      },
+    ]);
+    const [updated] = await adapter.getRelationshipsByIds([
+      relationship as UUID,
+    ]);
+    expect(updated?.metadata).toEqual({ note: "met at conf" });
+  });
+
   it("rolls back domain records and runtime semantic state in one native transaction", async () => {
     const adapter = await open();
     await adapter.ensureEmbeddingDimension(3);

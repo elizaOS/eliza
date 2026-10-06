@@ -35,6 +35,7 @@ export {
 } from "./multi-asset.js";
 export type {
   X402ClientConfig,
+  X402PaymentAttempt,
   X402PaymentPayload,
   X402PaymentRequired,
   X402PaymentRequirements,

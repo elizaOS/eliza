@@ -59,24 +59,78 @@ type SourceTextPath = "memory-content" | "attachments" | "attachment" | "source-
  */
 function rejectUnsupportedJsonText(value: string, context: SanitizeContext): void {
   if (!context.rejectNul) return;
-  if (value.includes(NUL)) {
-    throw new ElizaError(
-      "Memory JSON contains NUL, which PostgreSQL jsonb cannot preserve; remove it explicitly before retrying the unchanged write",
-      { code: "SQL_JSON_UNSUPPORTED_NUL", severity: "fatal" }
-    );
-  }
-  if (!value.isWellFormed()) {
-    throw new ElizaError(
-      "Memory JSON contains a lone UTF-16 surrogate, which PostgreSQL jsonb cannot store; repair the text before retrying the write",
-      { code: "SQL_JSON_UNSUPPORTED_SURROGATE", severity: "fatal" }
-    );
-  }
+  if (value.includes(NUL)) throwUnsupportedJsonNul();
+  if (!value.isWellFormed()) throwUnsupportedJsonSurrogate();
 }
 
 /** Lenient writes drop NUL and replace lone surrogates with U+FFFD. */
 function normalizeUnsupportedJsonText(value: string): string {
   const withoutNul = value.includes(NUL) ? value.replaceAll(NUL, "") : value;
   return withoutNul.isWellFormed() ? withoutNul : withoutNul.toWellFormed();
+}
+
+function throwUnsupportedJsonNul(): never {
+  throw new ElizaError(
+    "JSON contains NUL, which PostgreSQL jsonb cannot preserve; remove it explicitly before retrying the unchanged write",
+    { code: "SQL_JSON_UNSUPPORTED_NUL", severity: "fatal" }
+  );
+}
+
+function throwUnsupportedJsonSurrogate(): never {
+  throw new ElizaError(
+    "JSON contains a lone UTF-16 surrogate, which PostgreSQL jsonb cannot store; repair the text before retrying the write",
+    { code: "SQL_JSON_UNSUPPORTED_SURROGATE", severity: "fatal" }
+  );
+}
+
+const UNSUPPORTED_JSON_TEXT_CODES = new Set([
+  "SQL_JSON_UNSUPPORTED_NUL",
+  "SQL_JSON_UNSUPPORTED_SURROGATE",
+]);
+
+/**
+ * True for the typed jsonb text rejections produced by the strict sanitizer
+ * and {@link assertJsonbStorable}. Storage-fault wrappers (the `DB_*` J2
+ * rethrows) rethrow these unchanged: an inadmissible caller payload is input
+ * validation, not a storage fault, so its actionable code must survive.
+ */
+export function isUnsupportedJsonTextError(error: unknown): boolean {
+  return error instanceof ElizaError && UNSUPPORTED_JSON_TEXT_CODES.has(error.code);
+}
+
+/**
+ * Text-only admissibility check for entity-graph writes that intentionally
+ * keep drizzle's default object serialization (agent settings, entity/room/
+ * world/task/relationship metadata, component data, cache values): it scans
+ * the exact `JSON.stringify` output the bind will carry and rejects NUL and
+ * lone UTF-16 surrogates with the same typed errors as the strict sanitizer —
+ * before the bind, so the failure is typed and the caller's content stays out
+ * of the drizzle "Failed query" diagnostic. No structural byte, node, or
+ * depth budget is applied: those writes have never had one, and silently
+ * adding one would be a capability change, not a repair.
+ */
+export function assertJsonbStorable(value: unknown): void {
+  if (value === undefined || typeof value === "function" || typeof value === "symbol") return;
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) return;
+  // In JSON.stringify output every backslash opens a real escape sequence
+  // (literal backslashes are doubled), so scanning escapes is exact: NUL can
+  // only appear as the `\u0000` escape, and a lone surrogate only as a
+  // `\ud800`–`\udfff` escape; paired surrogates serialize as raw astral text.
+  for (let index = 0; index < serialized.length; index += 1) {
+    if (serialized.charCodeAt(index) !== 0x5c) continue;
+    const marker = serialized.charCodeAt(index + 1);
+    if (marker !== 0x75) {
+      // Two-character escape such as `\"` or `\n`: skip it whole.
+      index += 1;
+      continue;
+    }
+    const hex = serialized.slice(index + 2, index + 6);
+    if (hex === "0000") throwUnsupportedJsonNul();
+    const codeUnit = Number.parseInt(hex, 16);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdfff) throwUnsupportedJsonSurrogate();
+    index += 5;
+  }
 }
 
 function chargeBytes(context: SanitizeContext, bytes: number, reason: string): void {

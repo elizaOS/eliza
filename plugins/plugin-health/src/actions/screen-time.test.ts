@@ -148,7 +148,7 @@ describe("screen-time action runner", () => {
         parameters: { subaction: "today" },
       });
       expect(service.getScreenTimeDaily).toHaveBeenCalledWith(
-        expect.objectContaining({ date: "2026-09-14" }),
+        expect.objectContaining({ date: "2026-09-14", timeZone: "Asia/Tokyo" }),
       );
 
       await runner(runtime, message, undefined, {
@@ -229,6 +229,7 @@ describe("screen-time action runner", () => {
     });
     expect(service.getScreenTimeDaily).toHaveBeenCalledWith({
       date: "2026-05-30",
+      timeZone: "UTC",
       source: undefined,
       identifier: undefined,
     });

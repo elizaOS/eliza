@@ -773,7 +773,11 @@ export async function fetchXDmMessages(
     });
   }
 
-  return { messages: results, status: sourceStatus };
+  return {
+    messages:
+      limit === undefined ? results : results.slice(0, Math.max(0, limit)),
+    status: sourceStatus,
+  };
 }
 
 /** The merged cross-source pull plus per-source health for that pull. */
@@ -873,7 +877,10 @@ export async function fetchAllMessages(
     return bTime - aTime;
   });
   return {
-    messages: opts.limit ? combined.slice(0, opts.limit) : combined,
+    messages:
+      opts.limit === undefined
+        ? combined
+        : combined.slice(0, Math.max(0, opts.limit)),
     sources: results.map((result) => result.status),
   };
 }

@@ -101,7 +101,12 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
           openStreamPopout(getBootConfig().apiBase);
         }
       }
-    } catch {
+    } catch (err: unknown) {
+      // error-policy:J4 — a rejected Go Live/Stop must be visibly distinct,
+      // not silently absorbed as a healthy idle stream. Publish the action
+      // error, then reconcile against authoritative status; the next
+      // successful poll clears it.
+      setStatusError(err instanceof Error ? err.message : String(err));
       try {
         const status = await client.streamStatus();
         setStreamLive(status.running && status.ffmpegAlive);

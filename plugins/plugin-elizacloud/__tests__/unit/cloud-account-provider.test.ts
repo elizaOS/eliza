@@ -9,6 +9,7 @@ import type { Memory, State } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cloudAccountProvider,
+  getCachedAccountSnapshot,
   invalidateCloudAccountCache,
 } from "../../src/cloud-providers/cloud-account";
 import { type CloudServer, makeRuntime, startCloudServer } from "./cloud-account-harness";
@@ -137,4 +138,28 @@ describe("cloudAccountProvider", () => {
     expect(server.state.requests.length).toBeGreaterThan(fetches);
     expect(result.text).toContain("$99.00");
   });
+});
+
+
+it.each(["organization switch", "mutation"])("discards an in-flight snapshot after %s", async (change) => {
+  let organization = "org-before";
+  const runtime = makeRuntime({ baseUrl: server.url, organizationId: () => organization });
+  let release!: () => void;
+  let arrived!: () => void;
+  const waiting = new Promise<void>((resolve) => { arrived = resolve; });
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  server.state.beforeBalanceReply = async () => { arrived(); await hold; };
+  const pending = cloudAccountProvider.get(runtime, MESSAGE, STATE);
+  await waiting;
+  if (change === "organization switch") organization = "org-after";
+  else invalidateCloudAccountCache(runtime);
+  server.state.balance = 99;
+  release();
+  const result = await pending;
+  expect(result.values?.cloudAccountUnavailable).toBe(true);
+  expect(result.text).toBe("");
+  expect(getCachedAccountSnapshot(runtime)).toBeNull();
+  server.state.beforeBalanceReply = undefined;
+  const current = await cloudAccountProvider.get(runtime, MESSAGE, STATE);
+  expect(current.values?.cloudCredits).toBe(99);
 });

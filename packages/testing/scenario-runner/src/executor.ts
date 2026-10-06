@@ -10,6 +10,7 @@
  */
 import * as crypto from "node:crypto";
 import * as http from "node:http";
+import { tryHandleHonoRuntimeRoute } from "@elizaos/agent/api/hono-mount";
 import {
   type Action,
   type ActionResult,
@@ -1223,10 +1224,23 @@ async function augmentRequest(
   request.body = { value: rawBody };
   return request;
 }
-async function startScenarioApiServer(
+export async function startScenarioApiServer(
   runtime: AgentRuntime,
 ): Promise<ScenarioApiServer> {
   const server = http.createServer(async (req, res) => {
+    // Migrated plugins expose routeHandler instead of the legacy handler.
+    // Use the real adapter so body limits, cancellation and response serialization
+    // match the host rather than maintaining a second implementation here.
+    if (
+      await tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime,
+        isAuthorized: () => true,
+        isTrustedLocal: () => true,
+      })
+    )
+      return;
     const method = (req.method ?? "GET").toUpperCase();
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     for (const route of getHttpRuntime(runtime).routes ?? []) {

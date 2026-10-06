@@ -2574,6 +2574,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   getScreenTimeDaily(opts: {
     date: string;
+    timeZone?: string;
     source?: LifeOpsScreenTimeSource;
     identifier?: string;
     limit?: number;
