@@ -32,8 +32,7 @@ import {
   resetCompletedActionNavigationForTests,
 } from "../completed-action-navigation";
 import { CLOUD_HANDOFF_PHASE_EVENT, NAVIGATE_VIEW_EVENT } from "../events";
-import { onViewEvent } from "../views/view-event-bus";
-import { VIEW_EVENTS } from "../views/view-event-types";
+import { onViewEvent, VIEW_EVENTS } from "../events/view-events";
 import { readChatDraft, writeChatDraft } from "./ChatComposerContext.hooks";
 import { listPendingChatTurns } from "./pending-chat-turns";
 import {

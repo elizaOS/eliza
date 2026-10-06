@@ -8,10 +8,10 @@
 
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { emitViewEvent } from "../events/view-events";
 import { UI_LANGUAGES } from "../i18n";
 import { __setAppValueForTests } from "../state/app-store";
 import { ACCENT_PRESETS } from "../state/ui-preferences";
-import { emitViewEvent } from "../views/view-event-bus";
 import {
   APPEARANCE_APPLY_EVENT,
   useAppearanceApplyChannel,

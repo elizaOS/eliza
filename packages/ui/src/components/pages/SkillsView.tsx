@@ -16,8 +16,10 @@ import { useAppSelectorShallow } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import {
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "../composites/sidebar/sidebar-layout";
 import { SkillSidebarItem } from "../composites/skill-sidebar-item";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";

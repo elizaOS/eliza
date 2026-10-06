@@ -3,7 +3,7 @@
  * compose dense dashboard pages.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { PagePanelRoot } from "./page-panel-root";
+import { PagePanelRoot } from "./page-panel-layout";
 
 const meta = {
   title: "Composites/PagePanel/PagePanelRoot",

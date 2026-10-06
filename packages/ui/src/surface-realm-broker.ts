@@ -228,7 +228,7 @@ export function brokerSurfaceNavigate(
   };
 }
 // ── Root/body class + :root CSS-variable vector ──────────────────────────────
-// The shell's own writers (`platform/init.ts`, `themes/apply-theme.ts`,
+// The shell's own writers (`platform/init.ts`, `config/theme.ts`,
 // `state/persistence.ts` accent/theme) are the only sanctioned mutators of
 // root/body classes and `:root` variables. They run from a provider ABOVE
 // `<App/>`, so their tokens land after the shell's per-view scope is created;
