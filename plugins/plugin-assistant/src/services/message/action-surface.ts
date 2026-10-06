@@ -401,17 +401,42 @@ export function retrieveContextualPlannerActions(args: {
         if (!rule.matches(request, direct.message) || !rule.matches(intents[0]))
           continue;
         const owners = new Set(rule.actionNames.map(normalizeActionIdentifier));
+        const hasRequiredTags = (action: Action) =>
+          rule.requiredActionTags.every((tag) =>
+            (action.tags ?? []).some(
+              (actual) =>
+                actual.trim().toLowerCase() === tag.trim().toLowerCase(),
+            ),
+          );
+        // Candidate preparation expands registered umbrella families. Their
+        // admitted children retain the owner's coverage; a name prefix alone
+        // establishes no relationship and cannot bypass admission or tags.
+        const family = args.actions.filter(
+          (action) =>
+            owners.has(normalizeActionIdentifier(action.name)) &&
+            hasRequiredTags(action),
+        );
+        const familyNames = new Set(family.map((action) => action.name));
+        for (const parent of family) {
+          for (const child of parent.subActions ?? []) {
+            const name = typeof child === "string" ? child : child.name;
+            const admitted = actionsByName.get(name);
+            if (
+              admitted &&
+              !familyNames.has(name) &&
+              hasRequiredTags(admitted)
+            ) {
+              family.push(admitted);
+              familyNames.add(name);
+            }
+          }
+        }
         if (
           !args.selectedActions.every(
             (action) =>
               args.actions.includes(action) &&
-              owners.has(normalizeActionIdentifier(action.name)) &&
-              rule.requiredActionTags.every((tag) =>
-                (action.tags ?? []).some(
-                  (actual) =>
-                    actual.trim().toLowerCase() === tag.trim().toLowerCase(),
-                ),
-              ),
+              familyNames.has(action.name) &&
+              hasRequiredTags(action),
           )
         )
           continue;
