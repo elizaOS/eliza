@@ -6,8 +6,6 @@ import { isIP } from "node:net";
 import type { Duplex } from "node:stream";
 import { isAllowedHost, isCredentialedCorsOrigin } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
-import type { CartesiaInkWebSocket } from "@elizaos/host/voice/cartesia-ink";
-import type { CartesiaWebSocketLike } from "@elizaos/host/voice/cartesia-sonic-tts";
 import { createLocalRuntimeConversationFetch } from "@elizaos/host/voice/local-runtime-conversation-fetch";
 import {
   VoiceSession,
@@ -39,6 +37,7 @@ import {
   readCompatJsonBody,
 } from "./compat-route-shared";
 import { sendJson } from "./response";
+import { adaptVoiceWebSocket } from "./voice-websocket-transport";
 
 const BASE = "/api/v1/voice/session";
 const TTL_MS = 120_000;
@@ -372,7 +371,7 @@ export function createSelfHostedVoice(
         );
         helloTimer.unref();
         ws.once("close", () => clearTimeout(helloTimer));
-        attachVoiceWsHandler(ws, {
+        attachVoiceWsHandler(adaptVoiceWebSocket(ws), {
           requestedSessionId: ticket.claims.sessionId,
           verifyToken: async (token, expected) => {
             if (
@@ -439,13 +438,17 @@ export function createSelfHostedVoice(
               cartesiaApiKey: config.apiKey,
               cartesiaVoiceId: config.voiceId,
               cartesiaInkWebSocketFactory: (request) =>
-                new WebSocket(request.url, {
-                  headers: request.headers,
-                }) as unknown as CartesiaInkWebSocket,
+                adaptVoiceWebSocket(
+                  new WebSocket(request.url, {
+                    headers: request.headers,
+                  }),
+                ),
               cartesiaWebSocketFactory: (url, options) =>
-                new WebSocket(url, {
-                  headers: options.headers,
-                }) as unknown as CartesiaWebSocketLike,
+                adaptVoiceWebSocket(
+                  new WebSocket(url, {
+                    headers: options.headers,
+                  }),
+                ),
               elizaEndpoint: ticket.origin,
               elizaAuthorization: "",
               elizaModel: "runtime-selected",
