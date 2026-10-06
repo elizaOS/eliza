@@ -4876,13 +4876,6 @@ async function runLifeOperationHandlerInner(
         params.title && explicitCadenceDetail && detailString(details, "kind"),
       );
       const nativeCreatePlan = parseNativeTaskCreatePlan(params.createPlan);
-      const ownsSingleCreateRequest =
-        ownerSurfaceActionName === "OWNER_REMINDERS" &&
-        nativeCreatePlan?.mode === "create" &&
-        nativeCreatePlan.multiStep === false &&
-        !reuseDeferredDraft &&
-        validateUuid(currentMessageId) !== null &&
-        currentRequestIntents?.length === 1;
       const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
       let title: string | null = editingDeferredDefinitionDraft
         ? (params.title ?? fallbackTitle)
@@ -5652,6 +5645,27 @@ async function runLifeOperationHandlerInner(
       // exactly the state the evaluator must not paraphrase — observed live
       // (#16941): the synthesized reply told the owner "nothing is saved yet"
       // after this branch had already persisted the definition.
+      const ownedCreatePlan =
+        nativeCreatePlan ??
+        (typeof params.createPlan === "object" &&
+        params.createPlan !== null &&
+        !Array.isArray(params.createPlan) &&
+        "nativeProjection" in params.createPlan &&
+        params.createPlan.nativeProjection === null &&
+        llmPlan?.mode === "create" &&
+        llmPlan.multiStep === false
+          ? parseNativeTaskCreatePlan({
+              ...params.createPlan,
+              nativeProjection: llmPlan.nativeProjection,
+            })
+          : null);
+      const ownsSingleCreateRequest =
+        ownerSurfaceActionName === "OWNER_REMINDERS" &&
+        ownedCreatePlan?.mode === "create" &&
+        ownedCreatePlan.multiStep === false &&
+        !reuseDeferredDraft &&
+        validateUuid(currentMessageId) !== null &&
+        currentRequestIntents?.length === 1;
       return {
         success: true as const,
         text: savedText,
