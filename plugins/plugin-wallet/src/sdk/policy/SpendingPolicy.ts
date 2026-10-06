@@ -160,11 +160,17 @@ export class SpendingPolicy {
 
   // ─── Draft queue management ─────────────────────────────────────────────────
 
-  /** Approve a queued draft by its draftId. Returns false if not found. */
+  /** Approve a pending draft and reserve its amount in the rolling window once. */
   approveDraft(draftId: string): boolean {
     const draft = this.drafts.get(draftId);
-    if (!draft) return false;
+    if (!draft || draft.rejected) return false;
+    if (draft.approved) return true;
     draft.approved = true;
+    // Explicit approval must count toward subsequent checks, including when
+    // other approvals have consumed the cap since this draft was queued.
+    if (this.config.rollingCap) {
+      this.spendWindow.push({ amount: draft.payment.amount, ts: Date.now() });
+    }
     return true;
   }
 
