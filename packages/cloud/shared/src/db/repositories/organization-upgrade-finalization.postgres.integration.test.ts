@@ -1,6 +1,7 @@
 /** Real PostgreSQL atomic paid upgrade publication and concurrent allowance use. */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import { upgradePaidObjects } from "./organization-upgrade-paid-test-fixture";
 import {
@@ -139,6 +140,12 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
     await db.query(`CREATE SCHEMA ${schema}`);
     await db.query(`SET search_path TO ${schema},public`);
     await installOrganizationUpgradeTestSchema((q) => db.query(q));
+    const originalMigration = await readFile(
+      new URL("../migrations/0530_subscription_invoice_event_evidence.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of originalMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await db.query(statement);
     const target = new URL(url!);
     target.searchParams.set("options", `-c search_path=${schema},public`);
     process.env.DATABASE_URL = target.toString();
@@ -331,6 +338,14 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
         );
         expect(upgradedOrigin.planKey).toBe("pro_monthly");
         expect(upgradedOrigin.allowanceAmountUsd).toBe("90.000000");
+        const { assertReceiptCommercialSelection } = await import(
+          "./test-support/subscription-commercial-selection"
+        );
+        await assertReceiptCommercialSelection({
+          query: (q, v) => db.query(q, v),
+          original: futureOriginal(true),
+          commandId: applied.command.id,
+        });
         expect(await state(f)).toEqual(beforeOrigin);
         expect(
           (

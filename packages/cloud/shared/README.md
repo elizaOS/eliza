@@ -327,3 +327,9 @@ preserves the signed invoice interval, and never synthesizes a paid source. Miss
 purchase/review authority remains unavailable. These digests record nominal terms only: receipt ownership,
 current collection evidence, policy decisions, fences and atomic financial publication
 remain separate requirements. Reading terms never changes lifecycle or allowance.
+
+Receipt-owned commercial selection now loads its original invoice from storage,
+checks organization/source restrictions, and inspects complete bounded applied
+origin history. Matching origins must agree on nominal terms; all matches are
+retained deterministically. It can join the caller's transaction for publication
+revalidation, but writes no decision or allowance and enables no maintenance lane.
