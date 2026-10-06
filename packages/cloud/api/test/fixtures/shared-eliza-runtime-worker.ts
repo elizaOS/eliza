@@ -16,8 +16,8 @@ import type {
   TodoMutationRecord,
   TodoStore,
 } from "@elizaos/plugin-todos";
-import { InMemoryNetworkStore } from "../../../../../plugins/plugin-network/src/memory-store";
 import { searchKeylessWeb } from "@elizaos/plugin-web-search";
+import { InMemoryNetworkStore } from "../../../../../plugins/plugin-network/src/memory-store";
 import { runWithCloudBindingsAsync } from "../../../shared/src/lib/runtime/cloud-bindings";
 import { chatSseFrame } from "../../../shared/src/lib/services/chat-sse-frames";
 import type { BridgeRequest } from "../../../shared/src/lib/services/eliza-sandbox-bridge";

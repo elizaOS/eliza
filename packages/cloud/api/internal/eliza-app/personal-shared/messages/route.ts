@@ -25,6 +25,11 @@ import {
 import { personalSharedGroupsRepository } from "@/db/repositories/personal-shared-groups";
 import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
+import {
+  evaluateNetworkInboundGate,
+  isNetworkProject,
+} from "@/lib/network/inbound-gate";
+import { networkInviteLookup } from "@/lib/network/invite-lookup";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
@@ -33,11 +38,6 @@ import { isAllowedBlooioMediaUrl } from "@/lib/services/eliza-app/blooio-media-a
 import { MAX_INBOUND_MEDIA_IMAGES } from "@/lib/services/eliza-app/describe-inbound-media";
 import { enrichInboundImageMedia } from "@/lib/services/eliza-app/inbound-media-enrichment";
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
-import {
-  evaluateNetworkInboundGate,
-  isNetworkProject,
-} from "@/lib/network/inbound-gate";
-import { networkInviteLookup } from "@/lib/network/invite-lookup";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";

@@ -18,14 +18,14 @@ import {
 } from "@/lib/mobile-push/types";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
-import type {
-  SharedRuntimeChannel,
-  SharedTurnMessage,
-} from "@/lib/services/shared-runtime/run-shared-agent-turn";
 import {
   personalSharedAgentId,
   personalSharedProjectScope,
 } from "@/lib/services/shared-runtime/personal-shared-identity";
+import type {
+  SharedRuntimeChannel,
+  SharedTurnMessage,
+} from "@/lib/services/shared-runtime/run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import { parseSharedRuntimeChannel } from "@/lib/services/shared-runtime/shared-runtime-channel";
 import type {
