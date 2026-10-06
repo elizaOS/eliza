@@ -1814,81 +1814,95 @@ async function loadInboxMessages(
   roomSourceHint: string | null,
 ): Promise<InboxMessage[]> {
   const roomById = await loadRelevantRooms(runtime, roomId);
-  let memories: Memory[];
-  if (roomId) {
-    memories = await runtime.getMemories({
-      tableName: "messages",
-      roomId,
-      limit: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
-      unique: false,
-    });
-  } else {
-    const roomIds = await collectAgentRoomIds(runtime);
-    if (roomIds.length === 0) return [];
-    memories = await runtime.getMemoriesByRoomIds({
-      tableName: "messages",
-      roomIds,
-      limit: limit * PER_ROOM_OVERFETCH_MULTIPLIER,
-    });
-  }
+  const roomIds = roomId ? null : await collectAgentRoomIds(runtime);
+  if (roomIds?.length === 0) return [];
   const agentId = runtime.agentId;
-  const reactionsByMessageId = buildMessageReactionMap(memories);
-  const roomSourceById = new Map<string, string>();
-  for (const [knownRoomId, room] of roomById) {
-    const roomSource = readRoomSource(room);
-    if (!roomSource || !sourceFilter.has(roomSource.toLowerCase())) continue;
-    roomSourceById.set(knownRoomId, roomSource);
-  }
-  for (const memory of memories) {
-    const source = extractSource(memory);
-    if (!source || !sourceFilter.has(source.toLowerCase())) continue;
-    const memoryRoomId = memory.roomId;
-    if (!memoryRoomId || roomSourceById.has(memoryRoomId)) continue;
-    roomSourceById.set(memoryRoomId, source);
-  }
-  const out: InboxMessageRecord[] = [];
-  for (const memory of memories) {
-    if (extractDiscordReactionEvent(memory)) {
-      continue;
+  const buildRecords = (memories: Memory[]): InboxMessageRecord[] => {
+    const reactionsByMessageId = buildMessageReactionMap(memories);
+    const roomSourceById = new Map<string, string>();
+    for (const [knownRoomId, room] of roomById) {
+      const roomSource = readRoomSource(room);
+      if (!roomSource || !sourceFilter.has(roomSource.toLowerCase())) continue;
+      roomSourceById.set(knownRoomId, roomSource);
     }
-    const room = roomById.get(memory.roomId);
-    const explicitSource = extractSource(memory);
-    const source =
-      explicitSource ??
-      roomSourceById.get(memory.roomId) ??
-      (roomId
-        ? (readRoomSource(room) ?? roomSourceHint ?? undefined)
-        : undefined);
-    if (!source || !sourceFilter.has(source.toLowerCase())) continue;
-    const text = extractText(memory);
-    if (!text) continue;
-    out.push({
-      id: memory.id ?? "",
-      role: memory.entityId === agentId ? "assistant" : "user",
-      text,
-      timestamp: memory.createdAt ?? 0,
-      source,
-      rawDiscordChannelId:
-        extractDiscordChannelId(memory) ?? readRoomChannelId(room),
-      rawDiscordMessageId: extractDiscordMessageId(memory),
-      responseId: extractResponseId(memory),
-      roomId: memory.roomId,
-      hasExternalUrl: extractContentUrl(memory) !== undefined,
-      hasExplicitSource: explicitSource !== null,
-      reactions: memory.id ? reactionsByMessageId.get(memory.id) : undefined,
-      from: extractFrom(memory),
-      fromUserName: extractFromUserName(memory),
-      avatarUrl: extractFromAvatarUrl(memory),
-      replyToMessageId: extractReplyToMessageId(memory),
-      replyToSenderName: extractReplyToSenderName(memory),
-      replyToSenderUserName: extractReplyToSenderUserName(memory),
-      rawReplyToSenderId: extractReplyToSenderId(memory),
-      senderEntityId:
-        typeof memory.entityId === "string" ? memory.entityId : undefined,
-      rawSenderId: extractRawSenderId(memory),
-    });
+    for (const memory of memories) {
+      const source = extractSource(memory);
+      if (!source || !sourceFilter.has(source.toLowerCase())) continue;
+      const memoryRoomId = memory.roomId;
+      if (!memoryRoomId || roomSourceById.has(memoryRoomId)) continue;
+      roomSourceById.set(memoryRoomId, source);
+    }
+    const out: InboxMessageRecord[] = [];
+    for (const memory of memories) {
+      if (extractDiscordReactionEvent(memory)) {
+        continue;
+      }
+      const room = roomById.get(memory.roomId);
+      const explicitSource = extractSource(memory);
+      const source =
+        explicitSource ??
+        roomSourceById.get(memory.roomId) ??
+        (roomId
+          ? (readRoomSource(room) ?? roomSourceHint ?? undefined)
+          : undefined);
+      if (!source || !sourceFilter.has(source.toLowerCase())) continue;
+      const text = extractText(memory);
+      if (!text) continue;
+      out.push({
+        id: memory.id ?? "",
+        role: memory.entityId === agentId ? "assistant" : "user",
+        text,
+        timestamp: memory.createdAt ?? 0,
+        source,
+        rawDiscordChannelId:
+          extractDiscordChannelId(memory) ?? readRoomChannelId(room),
+        rawDiscordMessageId: extractDiscordMessageId(memory),
+        responseId: extractResponseId(memory),
+        roomId: memory.roomId,
+        hasExternalUrl: extractContentUrl(memory) !== undefined,
+        hasExplicitSource: explicitSource !== null,
+        reactions: memory.id ? reactionsByMessageId.get(memory.id) : undefined,
+        from: extractFrom(memory),
+        fromUserName: extractFromUserName(memory),
+        avatarUrl: extractFromAvatarUrl(memory),
+        replyToMessageId: extractReplyToMessageId(memory),
+        replyToSenderName: extractReplyToSenderName(memory),
+        replyToSenderUserName: extractReplyToSenderUserName(memory),
+        rawReplyToSenderId: extractReplyToSenderId(memory),
+        senderEntityId:
+          typeof memory.entityId === "string" ? memory.entityId : undefined,
+        rawSenderId: extractRawSenderId(memory),
+      });
+    }
+    return dedupeInboxMessages(out);
+  };
+  // Source, reaction and empty-text filters drop rows after the read, so one
+  // window of `limit * 3` rows can hold too few survivors (a busy Discord
+  // channel ahead of the requested source). Page older until `limit` records
+  // survive or history ends.
+  const pageSize = limit * PER_ROOM_OVERFETCH_MULTIPLIER;
+  const memories: Memory[] = [];
+  let deduped: InboxMessageRecord[] = [];
+  for (let offset = 0; ; ) {
+    const page = roomId
+      ? await runtime.getMemories({
+          tableName: "messages",
+          roomId,
+          limit: pageSize,
+          offset,
+          unique: false,
+        })
+      : await runtime.getMemoriesByRoomIds({
+          tableName: "messages",
+          roomIds: roomIds ?? [],
+          limit: pageSize,
+          offset,
+        });
+    memories.push(...page);
+    deduped = buildRecords(memories);
+    if (page.length < pageSize || deduped.length >= limit) break;
+    offset += page.length;
   }
-  const deduped = dedupeInboxMessages(out);
   // Newest first. The core API doesn't guarantee order across rooms, so
   // we do the merge sort client-side.
   deduped.sort((a, b) => {
