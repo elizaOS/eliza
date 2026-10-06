@@ -50,6 +50,12 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     await db.query(`CREATE SCHEMA ${schema}`);
     await db.query(`SET search_path TO ${schema},public`);
     await installOrganizationUpgradeTestSchema((q) => db.query(q));
+    const originalMigration = await readFile(
+      new URL("../migrations/0530_subscription_invoice_event_evidence.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of originalMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await db.query(statement);
     const reconciliationMigration = await readFile(
       new URL("../migrations/0385_subscription_reconciliation.sql", import.meta.url),
       "utf8",
@@ -337,6 +343,14 @@ async function claimed(validityMs = 60000, period?: { start: Date; end: Date }) 
     expect(terms.allowanceAmountUsd).toBe("25.000000");
     expect(terms.originKind).toBe("downgrade");
     expect(terms.periodStart).toBe(phase.start_date);
+    const { assertReceiptCommercialSelection } = await import(
+      "./test-support/subscription-commercial-selection"
+    );
+    await assertReceiptCommercialSelection({
+      query: (q, v) => db.query(q, v),
+      original: retained(),
+      commandId: f.identity.commandId,
+    });
     expect(await findOriginalInvoiceCommercialOrigin(retained(), f.identity.commandId)).toEqual(
       terms,
     );
