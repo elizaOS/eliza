@@ -10,6 +10,7 @@
  */
 import * as crypto from "node:crypto";
 import * as http from "node:http";
+import { tryHandleHonoRuntimeRoute } from "@elizaos/agent/api/hono-mount";
 import {
   type Action,
   type ActionResult,
@@ -32,8 +33,6 @@ import {
 } from "@elizaos/core";
 import type {
   RouteBodyValue,
-  RouteHandlerContext,
-  RouteHandlerResult,
   RouteRequest,
   RouteResponse,
 } from "@elizaos/host/protocol";
@@ -1225,100 +1224,27 @@ async function augmentRequest(
   request.body = { value: rawBody };
   return request;
 }
-function scenarioRouteHeaders(
-  headers: http.IncomingHttpHeaders,
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [name, value] of Object.entries(headers)) {
-    if (typeof value === "string") {
-      out[name.toLowerCase()] = value;
-    } else if (Array.isArray(value) && typeof value[0] === "string") {
-      // Repeated headers keep their first instance, matching augmentRequest's
-      // `request.get` helper used by legacy handlers.
-      out[name.toLowerCase()] = value[0];
-    }
-  }
-  return out;
-}
-
-function hasContentTypeHeader(headers: Record<string, string>): boolean {
-  return Object.keys(headers).some(
-    (name) => name.toLowerCase() === "content-type",
-  );
-}
-
-/**
- * Serialize a return-shape {@link RouteHandlerResult} onto the scenario API
- * response with the same defaults the host HTTP surface applies in
- * `packages/agent/src/api/hono-adapter.ts`: explicit result headers win, and
- * the content type defaults from the body kind.
- */
-function writeRouteHandlerResult(
-  res: http.ServerResponse,
-  result: RouteHandlerResult,
-): void {
-  if (res.headersSent) return;
-  if (result.stream) {
-    // No scenario API turn consumes a streamed body; serve an explicit error
-    // instead of a silently empty success response.
-    res.statusCode = 500;
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.end(
-      JSON.stringify({
-        error:
-          "Streaming route results are not supported by the scenario API server",
-      }),
-    );
-    return;
-  }
-  res.statusCode = result.status;
-  const headers = result.headers ?? {};
-  let defaultContentType: string | undefined;
-  if (result.body == null) {
-    defaultContentType = undefined;
-  } else if (typeof result.body === "string") {
-    defaultContentType = "text/plain; charset=utf-8";
-  } else if (result.body instanceof Uint8Array) {
-    defaultContentType = "application/octet-stream";
-  } else {
-    defaultContentType = "application/json; charset=utf-8";
-  }
-  for (const [name, value] of Object.entries(headers)) {
-    res.setHeader(name, value);
-  }
-  if (defaultContentType && !hasContentTypeHeader(headers)) {
-    res.setHeader("Content-Type", defaultContentType);
-  }
-  if (result.body == null || [204, 205, 304].includes(result.status)) {
-    res.end();
-    return;
-  }
-  if (typeof result.body === "string") {
-    res.end(result.body);
-    return;
-  }
-  if (result.body instanceof Uint8Array) {
-    res.end(Buffer.from(result.body));
-    return;
-  }
-  res.end(JSON.stringify(result.body));
-}
-
-async function startScenarioApiServer(
+export async function startScenarioApiServer(
   runtime: AgentRuntime,
 ): Promise<ScenarioApiServer> {
   const server = http.createServer(async (req, res) => {
+    // Migrated plugins expose routeHandler instead of the legacy handler.
+    // Use the real adapter so body limits, cancellation and response serialization
+    // match the host rather than maintaining a second implementation here.
+    if (
+      await tryHandleHonoRuntimeRoute({
+        req,
+        res,
+        runtime,
+        isAuthorized: () => true,
+        isTrustedLocal: () => true,
+      })
+    )
+      return;
     const method = (req.method ?? "GET").toUpperCase();
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     for (const route of getHttpRuntime(runtime).routes ?? []) {
-      if (route.type !== method) {
-        continue;
-      }
-      const legacyHandler =
-        typeof route.handler === "function" ? route.handler : null;
-      const shapeHandler =
-        typeof route.routeHandler === "function" ? route.routeHandler : null;
-      if (!legacyHandler && !shapeHandler) {
+      if (route.type !== method || typeof route.handler !== "function") {
         continue;
       }
       const params =
@@ -1330,56 +1256,19 @@ async function startScenarioApiServer(
       }
       const routeResponse = attachResponseHelpers(res);
       const routeRequest = await augmentRequest(req, url, params);
-      // Plugins migrated to the canonical return-shape `routeHandler` contract
-      // carry no legacy Express `handler`, so the harness must dispatch both
-      // shapes exactly like `packages/agent/src/api/dispatch-route.ts` or
-      // every migrated plugin route 404s inside scenario API turns.
-      if (shapeHandler) {
-        const abort = new AbortController();
-        res.once("close", () => abort.abort());
-        const ctx: RouteHandlerContext = {
-          signal: abort.signal,
-          body: routeRequest.body,
-          rawBody: routeRequest.rawBody,
-          params,
-          query: routeRequest.query ?? {},
-          headers: scenarioRouteHeaders(req.headers),
-          method,
-          path: url.pathname,
-          runtime,
-          inProcess: false,
-          isTrustedLocal: true,
-        };
-        try {
-          writeRouteHandlerResult(res, await shapeHandler(ctx));
-        } catch (error) {
-          if (!res.headersSent) {
-            res.statusCode = 500;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Internal Server Error" }));
-          }
-          logger.error(
-            "[scenario-runner] route handler error",
-            error instanceof Error ? error.message : String(error),
-          );
+      try {
+        await route.handler(routeRequest, routeResponse, runtime);
+      } catch (error) {
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ error: "Internal Server Error" }));
         }
-        return;
-      }
-      if (legacyHandler) {
-        try {
-          await legacyHandler(routeRequest, routeResponse, runtime);
-        } catch (error) {
-          if (!res.headersSent) {
-            res.statusCode = 500;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Internal Server Error" }));
-          }
-          // Log full error server-side for diagnostics; do not expose to client.
-          logger.error(
-            "[scenario-runner] route handler error",
-            error instanceof Error ? error.message : String(error),
-          );
-        }
+        // Log full error server-side for diagnostics; do not expose to client.
+        logger.error(
+          "[scenario-runner] route handler error",
+          error instanceof Error ? error.message : String(error),
+        );
       }
       return;
     }
