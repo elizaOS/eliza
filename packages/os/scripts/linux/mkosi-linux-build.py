@@ -160,7 +160,7 @@ def validate_control_inputs(source_root: Path, build_mode: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--architecture", choices=sorted(ARCHITECTURES), required=True)
-    parser.add_argument("--mkosi-dir", type=Path, default=Path(__file__).resolve().parents[2] / "linux" / "elizaos" / "mkosi")
+    parser.add_argument("--mkosi-dir", type=Path, default=Path(__file__).resolve().parents[2] / "linux" / "mkosi")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--profile", choices=("default", "gui", "secure", "secure-gui"), default="default")
@@ -205,7 +205,7 @@ def main() -> int:
     else:
         document["configurationSha256"] = configuration_digest(args.mkosi_dir)
     try:
-        validate_control_inputs(args.mkosi_dir.resolve().parents[2], args.build_mode)
+        validate_control_inputs(args.mkosi_dir.resolve().parents[1], args.build_mode)
     except (OSError, ValueError, IndexError) as error:
         errors.append(str(error))
     git = shutil.which("git")

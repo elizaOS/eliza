@@ -28,7 +28,7 @@ vi.mock("../../bridge/electrobun-runtime", () => ({
 vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({ appUrl: "https://app.example/" }),
 }));
-vi.mock("../../services/app-updates/update-policy", () => ({
+vi.mock("../../platform/app-update-policy", () => ({
   getApplicationUpdateSnapshot: vi.fn().mockResolvedValue(null),
   mapAgentUpdateStatusToSnapshot: () => null,
 }));

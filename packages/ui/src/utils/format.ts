@@ -142,12 +142,15 @@ export function formatUsd(
  */
 export function formatDateTime(
   value: number | string | Date | null | undefined,
-  options: DateFormatOptions = {},
+  options: DateFormatOptions & { timeZone?: string } = {},
 ): string {
-  const { fallback = "—", locale } = options;
+  const { fallback = "—", locale, timeZone } = options;
   const parsed = parseDisplayDate(value);
   if (!parsed) return fallback;
-  return parsed.toLocaleString(locale);
+  return parsed.toLocaleString(
+    locale,
+    timeZone ? { timeZone, timeZoneName: "short" } : undefined,
+  );
 }
 
 /**

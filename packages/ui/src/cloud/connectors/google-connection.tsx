@@ -1,4 +1,4 @@
-import { GoogleIcon } from "../../login/icons/index";
+import { GoogleIcon } from "../../login/icons";
 
 /**
  * Google Services cloud connector (OAuth-redirect).

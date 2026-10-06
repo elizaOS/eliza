@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { AgentRuntime } from "@elizaos/core";
 import { registerHttpPluginRoutes } from "@elizaos/host/protocol";
 import { afterEach, expect, it } from "vitest";
-import { tryHandleRuntimePluginRoute } from "../../../packages/agent/src/api/runtime-plugin-routes.ts";
+import { tryHandleHonoRuntimeRoute } from "../../../packages/agent/src/api/hono-mount.ts";
 import { createAssistantPlugin } from "./index.ts";
 
 const servers: Server[] = [];
@@ -27,13 +27,9 @@ async function startServer(authorized = true) {
   });
   registerHttpPluginRoutes(runtime, createAssistantPlugin());
   const server = createServer(async (req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    const handled = await tryHandleRuntimePluginRoute({
+    const handled = await tryHandleHonoRuntimeRoute({
       req,
       res,
-      method: req.method ?? "GET",
-      pathname: url.pathname,
-      url,
       runtime,
       isAuthorized: () => authorized,
     });

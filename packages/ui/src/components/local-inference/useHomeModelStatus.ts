@@ -12,16 +12,18 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { client } from "../../api/client";
 import { isDesktopExternalApiBaseUrl } from "../../api/desktop-external-api-base";
-import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
-import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
+import {
+  readPersistedMobileRuntimeMode,
+  subscribeToMobileRuntimeMode,
+} from "../../first-run/mobile-runtime-mode";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
+import { resolveApiUrl } from "../../utils/asset-url.js";
+import { openEventSource } from "../../utils/event-source";
 import {
   deriveHomeModelStatus,
   type HomeModelStatus,
-} from "../../services/local-inference/home-model-status";
-import { resolveApiUrl } from "../../utils/asset-url.js";
-import { openEventSource } from "../../utils/event-source";
+} from "./home-model-status";
 import { observeModelRoute } from "./model-route-recovery";
 
 const NOT_REQUIRED: HomeModelStatus = {
@@ -41,16 +43,6 @@ const ROUTING_STATUS_ERROR: HomeModelStatus = {
   errors: ["Could not verify the active text model provider."],
 };
 const CLOUD_ROUTE_RECHECK_MS = 1000;
-function subscribeToMobileRuntimeMode(onStoreChange: () => void): () => void {
-  if (typeof document === "undefined") return () => {};
-  document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, onStoreChange);
-  return () => {
-    document.removeEventListener(
-      MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-      onStoreChange,
-    );
-  };
-}
 function appendTokenParam(url: string): string {
   const token = getElizaApiToken()?.trim();
   if (!token) return url;

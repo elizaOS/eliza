@@ -7,7 +7,7 @@
 
 import type { ReactElement, ReactNode } from "react";
 import type { SidebarProps } from "../components/composites/sidebar/sidebar-types";
-import { cn } from "../lib/utils";
+import { cn } from "../utils/cn";
 import { WorkspaceLayout } from "./workspace-layout/workspace-layout";
 
 export interface ContentLayoutProps {

@@ -14,7 +14,9 @@ import {
   type UUID,
 } from "@elizaos/core/protocol";
 import { describe, expect, it, vi } from "vitest";
+import { currentTimeProvider } from "../../features/basic-capabilities/providers/currentTime.ts";
 import { HANDLED_STEP_FALLBACK_MESSAGE } from "../../runtime/planner-loop.js";
+import { composeResponseState } from "../../services/message/provider-state.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   messageHandlerFromFieldResult,
@@ -2382,53 +2384,91 @@ describe("Stage 1 action routing", () => {
     });
   });
 
-  it("defers CURRENT_TIME to planning regardless of message phrasing", async () => {
-    // Live incident (tj-a82f2bfeaf021c): a regex gate only re-included
-    // CURRENT_TIME for messages matching a "time question" pattern, so
-    // "whats todays date and time?" (no apostrophe) lost the time block
-    // and the model hallucinated a two-week-old date — while the system
-    // prompt asserts the context ALWAYS carries a CURRENT_TIME signal.
-    // The signal is unconditional now; no prose matching may gate it.
-    const makeTimeState = (): State => ({
-      values: { availableContexts: "simple, general" },
-      data: {
-        providerOrder: ["CURRENT_TIME"],
-        providers: {
-          CURRENT_TIME: {
-            text: "# Current Time\n- Date: 2026-05-30\n- Time: 12:34:56 UTC\n- Day: Saturday",
-            providerName: "CURRENT_TIME",
+  it.each([
+    [ChannelType.DM, "device", "whats todays date and time?"],
+    [ChannelType.VOICE_DM, "device", "Hello Eliza, what day is it today?"],
+    [ChannelType.DM, "owner", "Tell me a short joke."],
+    [ChannelType.VOICE_DM, "owner", "Hello Eliza, what day is it today?"],
+  ])(
+    "grounds %s direct replies in the %s clock: %s",
+    async (channelType, zoneSource, text) => {
+      // The handler can answer without planning. Its clock must therefore be
+      // selected AND rendered, including when UTC and the owner's date differ.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-10-06T01:30:00.000Z"));
+      try {
+        const message = makeMessage({
+          text,
+          channelType,
+          ...(zoneSource === "device"
+            ? { metadata: { uiTimeZone: "America/Los_Angeles" } }
+            : {}),
+        });
+        const runtime = makeRuntime(
+          [
+            stage1Response({
+              contexts: ["simple"],
+              replyText: "It is Monday, October 5, 2026.",
+              extra: { replyEffectStatus: "none" },
+            }),
+          ],
+          {
+            TIMEZONE:
+              zoneSource === "device" ? "Europe/Paris" : "America/Los_Angeles",
+            ELIZA_ADMIN_ENTITY_ID: message.entityId,
           },
-        },
-      },
-      text: "",
-    });
-    const response = () =>
-      stage1Response({
-        contexts: ["simple"],
-        replyText: "It is 2026.",
-        extra: { requiresTool: false },
-      });
-
-    // The incident phrasing (fails any "looks like a time question" regex)
-    // and a message with no time intent at all must both see the block.
-    for (const text of [
-      "whats todays date and time?",
-      "Tell me a short joke.",
-    ]) {
-      const runtime = makeRuntime([response()]);
-      await runStage1({
-        runtime,
-        message: makeMessage({ text }),
-        state: makeTimeState(),
-      });
-      const params = useModelCalls(runtime)[0]?.[1] as {
-        messages?: Array<{ content?: string | null }>;
-      };
-      expect(params.messages?.[1]?.content ?? "").not.toContain(
-        "# Current Time",
-      );
-    }
-  });
+        );
+        runtime.providers = [currentTimeProvider];
+        runtime.composeState = vi.fn(
+          async (
+            currentMessage: Memory,
+            includeList: string[] | null = null,
+          ) => {
+            const state = makeState();
+            state.data.providers = {
+              RECENT_MESSAGES: {
+                text: "user: Preserve this authorized prior message.",
+              },
+            };
+            if (includeList?.includes(currentTimeProvider.name)) {
+              state.data.providers.CURRENT_TIME = await currentTimeProvider.get(
+                runtime,
+                currentMessage,
+                state,
+              );
+            }
+            return state;
+          },
+        );
+        const state = await composeResponseState(runtime, message);
+        const result = await runStage1({ runtime, message, state });
+        const calls = useModelCalls(runtime);
+        expect(result.kind).toBe("direct_reply");
+        expect(calls).toHaveLength(1);
+        expect(calls[0][0]).toBe(ModelType.RESPONSE_HANDLER);
+        const params = calls[0][1] as {
+          messages: Array<{ content: string }>;
+          promptSegments?: Array<{ content: string; stable: boolean }>;
+        };
+        const wire = params.messages.map(({ content }) => content).join("\n");
+        expect(wire).toContain("Monday, October 5, 2026 at 6:30:00 PM PDT");
+        expect(wire).toContain("America/Los_Angeles");
+        expect(wire.match(/2026-10-06T01:30:00\.000Z/g)).toHaveLength(1);
+        expect(wire).not.toContain("user timezone unknown");
+        expect(wire).not.toContain("Europe/Paris");
+        expect(wire).toContain("Preserve this authorized prior message.");
+        expect(wire).toContain(text);
+        expect(
+          params.promptSegments
+            ?.filter((segment) => segment.stable)
+            .map((segment) => segment.content)
+            .join("\n"),
+        ).not.toContain("2026-10-06T01:30:00.000Z");
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("keeps the honest no-search denial when no memory context is registered", async () => {
     // A runtime without a recall surface must not advertise stored-history search.

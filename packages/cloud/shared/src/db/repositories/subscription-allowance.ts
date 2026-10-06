@@ -10,6 +10,14 @@ import {
   bindRenewalInvoiceAuthority,
   type RenewalInvoiceAuthority,
 } from "../../lib/services/renewal-invoice-authority";
+import {
+  bindRenewalInvoiceDetails,
+  type RenewalInvoiceDetails,
+} from "../../lib/services/renewal-invoice-details";
+import {
+  bindRenewalSettlementDetails,
+  type RenewalSettlementDetails,
+} from "../../lib/services/renewal-settlement-details";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
 import { logger } from "../../lib/utils/logger";
 import type { DbTransaction } from "../client";
@@ -223,6 +231,8 @@ export class SubscriptionAllowanceRepository {
       invoiceId: string;
       requestDigest: string;
       invoiceAuthority?: RenewalInvoiceAuthority;
+      invoiceDetails?: RenewalInvoiceDetails;
+      settlementDetails?: RenewalSettlementDetails;
       databaseNow: Date;
     },
   ) {
@@ -237,6 +247,20 @@ export class SubscriptionAllowanceRepository {
           input.requestDigest,
         )
       : undefined;
+    if (input.invoiceDetails && !invoiceAuthority)
+      conflict("Invoice details require original invoice authority", { subscriptionId: source.id });
+    const invoiceDetails =
+      input.invoiceDetails && invoiceAuthority
+        ? bindRenewalInvoiceDetails(input.invoiceDetails, invoiceAuthority)
+        : undefined;
+    if (input.settlementDetails && (!invoiceDetails || !invoiceAuthority))
+      conflict("Settlement details require original invoice details", {
+        subscriptionId: source.id,
+      });
+    const settlementDetails =
+      input.settlementDetails && invoiceDetails && invoiceAuthority
+        ? bindRenewalSettlementDetails(input.settlementDetails, invoiceDetails, invoiceAuthority)
+        : undefined;
     if (!source.current_period_start || !source.current_period_end)
       conflict("Renewal period is missing", { subscriptionId: source.id });
     const amount = resolveSubscriptionPlanDefinition(source.plan_key, source.catalog_version)
@@ -327,6 +351,41 @@ export class SubscriptionAllowanceRepository {
             subscriptionId: source.id,
           });
       }
+      if (grant.metadata.renewalInvoiceDetails !== undefined) {
+        const originalAuthority = bindRenewalInvoiceAuthority(
+          grant.metadata.renewalInvoiceAuthority as RenewalInvoiceAuthority,
+          source,
+          input.invoiceId,
+          input.requestDigest,
+        );
+        const retainedDetails = bindRenewalInvoiceDetails(
+          grant.metadata.renewalInvoiceDetails,
+          originalAuthority,
+        );
+        if (invoiceDetails && retainedDetails.digest !== invoiceDetails.digest)
+          conflict("Renewal invoice details differ from original grant", {
+            subscriptionId: source.id,
+          });
+      }
+      if (grant.metadata.renewalSettlementDetails !== undefined) {
+        const originalAuthority = bindRenewalInvoiceAuthority(
+          grant.metadata.renewalInvoiceAuthority as RenewalInvoiceAuthority,
+          source,
+          input.invoiceId,
+          input.requestDigest,
+        );
+        const originalInvoice = bindRenewalInvoiceDetails(
+          grant.metadata.renewalInvoiceDetails,
+          originalAuthority,
+        );
+        const retained = bindRenewalSettlementDetails(
+          grant.metadata.renewalSettlementDetails,
+          originalInvoice,
+          originalAuthority,
+        );
+        if (settlementDetails && retained.digest !== settlementDetails.digest)
+          conflict("Settlement details differ from original grant", { subscriptionId: source.id });
+      }
       return { period: existing, replayed: true };
     }
     // The funding selector is organization-scoped: another source's future bucket must not overlap either.
@@ -414,7 +473,11 @@ export class SubscriptionAllowanceRepository {
       clawed_back_before: "0.000000",
       clawed_back_after: "0.000000",
       request_digest: input.requestDigest,
-      metadata: invoiceAuthority ? { renewalInvoiceAuthority: invoiceAuthority } : {},
+      metadata: {
+        ...(invoiceAuthority ? { renewalInvoiceAuthority: invoiceAuthority } : {}),
+        ...(invoiceDetails ? { renewalInvoiceDetails: invoiceDetails } : {}),
+        ...(settlementDetails ? { renewalSettlementDetails: settlementDetails } : {}),
+      },
       idempotency_key: `renewal:${source.provider_environment}:${input.invoiceId}`,
       occurred_at: input.databaseNow,
     });

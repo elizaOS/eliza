@@ -1,6 +1,22 @@
 import * as fs from "node:fs";
 import { hostname } from "node:os";
 import * as pathMod from "node:path";
+import adze, {
+	type ConsoleStyle,
+	type Level,
+	type LevelConfiguration,
+	type Method,
+	setup,
+	type UserConfiguration,
+} from "adze";
+import type Log from "adze/dist/log.js";
+import {
+	REDACTION_FAILED_VALUE,
+	redactLogValue,
+	redactSensitiveLogText,
+	redactTrailingArgs,
+} from "./security/log-redaction.js";
+
 /**
  * elizaOS's standard structured logger, built on Adze. Exposes the `Logger`
  * interface and the `createLogger` factory (plus the default `logger` /
@@ -25,21 +41,6 @@ import * as pathMod from "node:path";
 export const __loggerTestHooks = {
 	stripAnsi: (str: string): string => stripAnsi(str),
 };
-
-import adze, {
-	type ConsoleStyle,
-	type LevelConfiguration,
-	type Method,
-	setup,
-	type UserConfiguration,
-} from "adze";
-import type Log from "adze/dist/log.js";
-import {
-	REDACTION_FAILED_VALUE,
-	redactLogValue,
-	redactSensitiveLogText,
-	redactTrailingArgs,
-} from "./security/log-redaction.js";
 
 const getEnvironmentVar = (
 	key: string,
@@ -186,7 +187,40 @@ const LOG_LEVEL_PRIORITY: Record<string, number> = {
 	error: 50,
 	fatal: 60,
 	alert: 60,
+	silent: Number.POSITIVE_INFINITY,
 };
+
+/** Accepted spellings that map onto a canonical level name. */
+const LOG_LEVEL_ALIASES: Record<string, string> = {
+	off: "silent",
+	none: "silent",
+	warning: "warn",
+};
+
+/**
+ * Resolve a configured level name to a canonical entry of
+ * `LOG_LEVEL_PRIORITY`. An unknown name is reported once on stderr and falls
+ * back to `fallback`, so a typo such as `LOG_LEVEL=warnign` never silently
+ * turns into full info output.
+ */
+function resolveConfiguredLogLevel(
+	raw: string | undefined,
+	fallback: string,
+	source: string,
+): string {
+	const trimmed = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+	if (trimmed.length === 0) return fallback;
+	const level = LOG_LEVEL_ALIASES[trimmed] ?? trimmed;
+	if (Object.hasOwn(LOG_LEVEL_PRIORITY, level)) return level;
+	const known = Object.keys(LOG_LEVEL_PRIORITY).join(", ");
+	const message = `[logger] ignoring unknown ${source}=${JSON.stringify(raw)}; expected one of ${known} (aliases: off, none, warning); using "${fallback}"`;
+	if (typeof process !== "undefined" && process.stderr?.write) {
+		process.stderr.write(`${message}\n`);
+	} else {
+		console.warn(message);
+	}
+	return fallback;
+}
 
 /**
  * Reverse mapping from numeric level to preferred level name
@@ -301,7 +335,22 @@ function formatPrettyLog(
 
 // Log level configuration
 const DEFAULT_LOG_LEVEL = "info";
-const effectiveLogLevel = getEnvironmentVar("LOG_LEVEL") || DEFAULT_LOG_LEVEL;
+const effectiveLogLevel = resolveConfiguredLogLevel(
+	getEnvironmentVar("LOG_LEVEL"),
+	DEFAULT_LOG_LEVEL,
+	"LOG_LEVEL",
+);
+/**
+ * True when the configured level is `silent`: no sink receives anything. It
+ * switches off the Adze console, the buffer filter, and the file sinks
+ * (`ensureFileLog` never opens output.log, prompts.log, or chat.log).
+ */
+const effectiveLogSilent = effectiveLogLevel === "silent";
+
+/** Lets hot paths omit debug-only diagnostics under the resolved logger level. */
+export const RUNTIME_DEBUG_LOG_ENABLED = ["trace", "verbose", "debug"].includes(
+	effectiveLogLevel,
+);
 
 // Custom log levels mapping (elizaOS to Adze)
 // These are for our internal shouldLog function, not Adze's levels
@@ -333,7 +382,7 @@ const serverId = getEnvironmentVar("SERVER_ID") || `process-${process.pid}`;
  * File logging - lazy-initialized on first write to avoid module-init timing issues.
  * Enable with LOG_FILE=true/1 (writes output.log, prompts.log, and chat.log in
  * cwd) or LOG_FILE=/path/to/file.log.
- * Disabled by default.
+ * Disabled by default, and always disabled under LOG_LEVEL=silent.
  */
 let _fileLogState: "pending" | "active" | "disabled" = "pending";
 let _fileLogFd: number | null = null;
@@ -382,13 +431,19 @@ function openLogFilePrivate(
 
 /**
  * Lazily open the log files on the first write.
- * Returns true if the files are ready for writing.
+ * Returns true if the files are ready for writing. Every file sink (output,
+ * prompt, and chat) is opened here and nowhere else, so this is the single
+ * gate for LOG_FILE and for the silent level.
  */
 function ensureFileLog(): boolean {
 	if (_fileLogState === "active") return true;
 	if (_fileLogState === "disabled") return false;
 
 	_fileLogState = "disabled";
+	// `silent` disables the file sinks too: logPrompt/logResponse/logChatIn/
+	// logChatOut bypass shouldLog, so gating here is what keeps prompts.log and
+	// chat.log from being created when LOG_FILE is set alongside silent.
+	if (effectiveLogSilent) return false;
 	try {
 		const logFileEnv = process.env.LOG_FILE;
 		if (
@@ -752,17 +807,26 @@ const globalInMemoryDestination = createInMemoryDestination();
 
 // Configure Adze globally
 // Map elizaOS log levels to Adze log levels
-const getAdzeActiveLevel = () => {
-	const level = effectiveLogLevel.toLowerCase();
-	if (level === "trace") return "verbose";
-	if (level === "debug") return "debug";
-	if (level === "log") return "log";
-	if (level === "info") return "info";
-	if (level === "warn") return "warn";
-	if (level === "error") return "error";
-	if (level === "fatal") return "alert";
-	return "info"; // Default to info
+// Every name in LOG_LEVEL_PRIORITY maps onto one of the custom Adze levels
+// below so the console and the in-memory buffer agree on what is emitted;
+// `silent` disables the console through Adze's own `silent` switch.
+const ADZE_ACTIVE_LEVEL_BY_NAME: Record<string, Level> = {
+	trace: "verbose",
+	verbose: "verbose",
+	debug: "debug",
+	success: "success",
+	progress: "log",
+	log: "log",
+	info: "info",
+	warn: "warn",
+	error: "error",
+	fatal: "alert",
+	alert: "alert",
+	silent: "alert",
 };
+
+const getAdzeActiveLevel = (): Level =>
+	ADZE_ACTIVE_LEVEL_BY_NAME[effectiveLogLevel] ?? "info";
 
 const adzeActiveLevel = getAdzeActiveLevel();
 
@@ -844,6 +908,7 @@ const customLevelConfig: Record<string, LevelConfiguration> = {
 
 setup({
 	activeLevel: adzeActiveLevel,
+	silent: effectiveLogSilent,
 	format: raw ? "json" : "pretty",
 	timestampFormatter: showTimestamps ? undefined : () => "",
 	withEmoji: false,
@@ -906,6 +971,7 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
 	// This ensures the sealed logger inherits the correct log level and styling
 	const globalConfig: UserConfiguration = {
 		activeLevel: getAdzeActiveLevel(),
+		silent: effectiveLogSilent,
 		format: raw ? "json" : "pretty",
 		timestampFormatter: showTimestamps ? undefined : () => "",
 		withEmoji: false,
@@ -944,7 +1010,11 @@ function extractBindingsConfig(bindings: LoggerBindings | boolean): {
 
 	if (typeof bindings === "object" && bindings !== null) {
 		if ("level" in bindings) {
-			level = bindings.level as string;
+			level = resolveConfiguredLogLevel(
+				String(bindings.level),
+				effectiveLogLevel,
+				"bindings.level",
+			);
 		}
 		if (
 			"maxMemoryLogs" in bindings &&

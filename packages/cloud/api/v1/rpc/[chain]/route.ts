@@ -9,7 +9,7 @@ import {
   rpcConfigForChain,
   rpcHandlerForChain,
   SUPPORTED_RPC_CHAINS,
-} from "@elizaos/cloud-shared/lib/services/proxy/services/rpc";
+} from "@elizaos/cloud-shared/lib/services/proxy/rpc";
 import type {
   AppContext,
   AppEnv,

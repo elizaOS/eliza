@@ -5,14 +5,14 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/host/protocol";
-import { VOICE_PROVIDERS } from "@elizaos/host/protocol";
-import { Mic } from "lucide-react";
-import { useCallback, useMemo } from "react";
 import {
   FIRST_RUN_PROVIDER_CATALOG,
   getDirectAccountProviderForFirstRunProvider,
   isSubscriptionProviderSelectionId,
-} from "../../providers";
+  VOICE_PROVIDERS,
+} from "@elizaos/host/protocol";
+import { Mic } from "lucide-react";
+import { useCallback, useMemo } from "react";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import {

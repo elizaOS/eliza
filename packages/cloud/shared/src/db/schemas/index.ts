@@ -181,6 +181,8 @@ export * from "./stripe-checkout-orders";
 export * from "./stripe-checkout-orders";
 export * from "./stripe-connect-accounts";
 export * from "./stripe-customer-attempts";
+export * from "./subscription-adjustment-observations";
+export * from "./subscription-adjustment-recovery";
 export * from "./subscription-allowance-periods";
 export * from "./subscription-allowance-transactions";
 export * from "./subscription-billing-operations";

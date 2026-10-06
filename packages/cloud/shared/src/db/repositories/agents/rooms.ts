@@ -29,6 +29,39 @@ export interface RoomMetadata {
 }
 
 /**
+ * Activity time for a room preview. A last message at epoch is a real
+ * timestamp. `getTime() || createdAt` treated it as missing and ranked the
+ * room by when it was created.
+ */
+export function roomPreviewActivityMs(
+  lastMessageTime: Date | null | undefined,
+  createdAt: Date | null | undefined,
+): number | undefined {
+  const lastMessage = lastMessageTime?.getTime();
+  if (typeof lastMessage === "number" && Number.isFinite(lastMessage)) {
+    return lastMessage;
+  }
+  const created = createdAt?.getTime();
+  if (typeof created === "number" && Number.isFinite(created)) return created;
+  return undefined;
+}
+
+/** A recorded message time of epoch stays. Only a missing time becomes "now". */
+export function roomSummaryMessageTime(createdAt: number | null | undefined, now: number): number {
+  if (typeof createdAt === "number" && Number.isFinite(createdAt)) return createdAt;
+  return now;
+}
+
+export function compareRoomsByActivity(
+  a: { lastMessageTime: Date | null; createdAt: Date },
+  b: { lastMessageTime: Date | null; createdAt: Date },
+): number {
+  const timeA = roomPreviewActivityMs(a.lastMessageTime, a.createdAt) ?? Number.NEGATIVE_INFINITY;
+  const timeB = roomPreviewActivityMs(b.lastMessageTime, b.createdAt) ?? Number.NEGATIVE_INFINITY;
+  return timeB - timeA;
+}
+
+/**
  * Room with last message preview for sidebar/list views.
  *
  * All data comes from a single optimized query.
@@ -247,11 +280,7 @@ export class RoomsRepository {
       .where(eq(participantTable.entityId, entityId));
 
     // Sort by last message time, falling back to room creation time
-    results.sort((a, b) => {
-      const timeA = a.lastMessageTime?.getTime() || a.createdAt.getTime();
-      const timeB = b.lastMessageTime?.getTime() || b.createdAt.getTime();
-      return timeB - timeA;
-    });
+    results.sort(compareRoomsByActivity);
 
     return results as RoomWithPreview[];
   }

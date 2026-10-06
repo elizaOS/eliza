@@ -4,7 +4,7 @@
 export {
   MockCloudSetupSessionService,
   type MockCloudSetupSessionServiceOptions,
-} from "../testing/mock-cloud-setup-session.js";
+} from "../testing.js";
 export { DEFAULT_SETUP_POLICY, isActionAllowed } from "./policy.js";
 export type {
   CloudSetupSessionService,

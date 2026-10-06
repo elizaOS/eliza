@@ -29,6 +29,7 @@ import { readAliasedEnv } from "@elizaos/host/protocol";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 /** In-process route dispatcher (from `@elizaos/agent`). */
 export type AndroidDispatchRoute = (args: {
+  signal?: AbortSignal;
   runtime: IAgentRuntime;
   method: string;
   path: string;
@@ -675,7 +676,9 @@ export async function dispatchBufferedRequest(
   dispatchRoute: AndroidDispatchRoute,
   payload: AndroidRequestPayload,
   coreRoutes?: AndroidCoreRouteDeps,
+  signal?: AbortSignal,
 ): Promise<AndroidBufferedResponse> {
+  signal?.throwIfAborted();
   const rawPath = typeof payload.path === "string" ? payload.path.trim() : "";
   if (!rawPath || !isSafeLocalPath(rawPath)) {
     throw new Error(
@@ -704,7 +707,9 @@ export async function dispatchBufferedRequest(
     ? null
     : await directAndroidNotificationRoute(runtime, method, pathname, query);
   if (notif) return notif;
+  signal?.throwIfAborted();
   const result = await dispatchRoute({
+    signal,
     runtime,
     method,
     path: pathname,
@@ -714,6 +719,7 @@ export async function dispatchBufferedRequest(
     inProcess: true,
     isAuthorized: () => true,
   });
+  signal?.throwIfAborted();
   if (!result) return notFound(method, pathname);
   const { bytes, headers: responseHeaders } = resultBodyBytes(result);
   return {
@@ -762,14 +768,37 @@ export async function dispatchStreamingRequest(
     return;
   }
   const { pathname, query } = splitPathAndQuery(rawPath);
+  const emitBuffered = (response: AndroidBufferedResponse): void => {
+    sink.emitResponse({
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+    if (response.bodyBase64) sink.emitChunk(response.bodyBase64);
+  };
+  // Match buffered dispatch, including the wake-specific token guard.
+  const wake = await directAndroidWakeRoute(
+    runtime,
+    method,
+    pathname,
+    headers,
+    payloadBody(payload),
+  );
+  if (wake) {
+    emitBuffered(wake);
+    return;
+  }
   const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
   if (direct) {
-    sink.emitResponse({
-      status: direct.status,
-      statusText: direct.statusText,
-      headers: direct.headers,
-    });
-    if (direct.bodyBase64) sink.emitChunk(direct.bodyBase64);
+    emitBuffered(direct);
+    return;
+  }
+  // Revocable-session authorization remains owned by the full API kernel.
+  const notif = coreRoutes?.fullApiKernel
+    ? null
+    : await directAndroidNotificationRoute(runtime, method, pathname, query);
+  if (notif) {
+    emitBuffered(notif);
     return;
   }
   // A legacy SSE handler flushes body fragments through `res.write(...)` before

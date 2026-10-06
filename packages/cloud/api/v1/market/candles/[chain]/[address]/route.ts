@@ -1,17 +1,17 @@
 /** Proxies validated public candle requests to the paid market-data provider. */
 
 import {
+  isValidAddress,
+  isValidChain,
+} from "@elizaos/cloud-shared/lib/services/proxy/address-validation";
+import {
   applyCorsHeaders,
   handleCorsOptions,
 } from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
-  isValidAddress,
-  isValidChain,
-} from "@elizaos/cloud-shared/lib/services/proxy/services/address-validation";
-import {
   marketDataConfig,
   marketDataHandler,
-} from "@elizaos/cloud-shared/lib/services/proxy/services/market-data";
+} from "@elizaos/cloud-shared/lib/services/proxy/market-data";
 import type {
   AppContext,
   AppEnv,

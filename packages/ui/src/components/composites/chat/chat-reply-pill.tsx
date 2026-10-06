@@ -7,9 +7,8 @@
  * `replyToMessageId` on the next turn (→ REPLY_CONTEXT).
  */
 import { Reply, X } from "lucide-react";
-
-import { cn } from "../../../lib/utils";
 import type { ChatReplyTarget } from "../../../state/ChatComposerContext.hooks";
+import { cn } from "../../../utils/cn";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
 

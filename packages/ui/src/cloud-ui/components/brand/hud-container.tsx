@@ -3,7 +3,7 @@
  */
 import type * as React from "react";
 import { CornerBrackets } from "../../../components/ui/corner-brackets";
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 export interface HUDContainerProps
   extends React.HTMLAttributes<HTMLDivElement> {

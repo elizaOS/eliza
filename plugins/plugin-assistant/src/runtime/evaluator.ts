@@ -1193,11 +1193,6 @@ function renderEvaluatorModelInput(params: {
         redactText: params.redactText,
       },
     );
-  // The planner's append-only history stays byte-stable. Only this stage's
-  // wire copy removes JSON indentation; all result fields and string bytes
-  // survive, including receipts, failures, attachments and pending work.
-  const stepMessages =
-    compactCanonicalToolMessagesForModel(completeStepMessages);
   // Mirrors planner-loop: the evaluator stage instructions are template-derived
   // (`evaluatorTemplate`) and structurally identical across calls. Marking
   // the segment `stable: true` makes them cacheable on Anthropic's wire path.
@@ -1228,13 +1223,15 @@ function renderEvaluatorModelInput(params: {
   // Use proper assistant/tool message pairs so the evaluator sees the same
   // native tool-calling format as the planner. The trajectory JSON is NOT
   // included in dynamicBlocks — it is conveyed through stepMessages.
-  const messages = buildStageChatMessages({
-    contextSegments: renderedContext.promptSegments,
-    stageLabel: "evaluator_stage",
-    instructions,
-    dynamicBlocks: [],
-    stepMessages,
-  });
+  const messages = compactCanonicalToolMessagesForModel(
+    buildStageChatMessages({
+      contextSegments: renderedContext.promptSegments,
+      stageLabel: "evaluator_stage",
+      instructions,
+      dynamicBlocks: [],
+      stepMessages: completeStepMessages,
+    }),
+  );
   messages.push({
     role: "user",
     content: renderEvaluatorDecisionState(params.decisionState),
@@ -1972,7 +1969,11 @@ export function calendarReadCoverage(
         )
       )
         return false;
-      if (data.event === null) return scope.exhaustive === true;
+      // A fresh bounded NEXT lookup can successfully return no event. Its
+      // non-exhaustive window limits what the reply may claim; it does not
+      // turn the requested read into a failed operation. The producer supplies
+      // those bounds to the evaluator alongside its user-facing source facts.
+      if (data.event === null) return typeof scope.exhaustive === "boolean";
       const event = data.event;
       if (!isObjectRecord(event)) return false;
       const start =
@@ -2073,7 +2074,8 @@ function calendarCoverageSourceFacts(
           typeof note.title === "string" &&
           typeof note.body === "string"
         )
-          facts.push(`${note.title}\n${note.body}`);
+          // The stored body is the verbatim remainder, including its separator.
+          facts.push(note.title + note.body);
       }
       continue;
     }

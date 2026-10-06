@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { formatTime } from "../../utils/format.js";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];

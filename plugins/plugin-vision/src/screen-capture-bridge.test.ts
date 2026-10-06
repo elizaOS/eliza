@@ -37,6 +37,7 @@ async function submitFrameRoute(
     runtime: {
       getService: () => bridge,
     } as unknown as IAgentRuntime,
+    signal: new AbortController().signal,
     inProcess: false,
   } satisfies RouteHandlerContext);
 }

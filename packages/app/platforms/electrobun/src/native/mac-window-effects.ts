@@ -4,9 +4,10 @@
  * execute in the signed app process so macOS binds protected resources to the
  * same bundle identity shown to the user.
  */
+
 import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
 import { join } from "node:path";
-import { resolveNativeLibraryCandidate } from "@elizaos/core";
+import { resolveNativeLibraryCandidate } from "@elizaos/host";
 
 /**
  * Typed interface for the symbols loaded from libMacWindowEffects.dylib.

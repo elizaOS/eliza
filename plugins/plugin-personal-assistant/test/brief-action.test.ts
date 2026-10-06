@@ -31,6 +31,7 @@ import {
 } from "@elizaos/plugin-assistant";
 import { CalendarService } from "@elizaos/plugin-calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { evaluatePlannedReplyEgress } from "../../plugin-assistant/src/services/message/egress-policy.ts";
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
@@ -46,6 +47,7 @@ import {
   buildNarrativePrompt,
   setBriefComposers,
 } from "../src/actions/brief.js";
+import { DefinitionsDomain } from "../src/lifeops/domains/definitions-service.js";
 import {
   resolveConfiguredOwnerTimeZone,
   resolveOwnerFactStore,
@@ -54,6 +56,7 @@ import {
   createLifeOpsReminderAttempt,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
+import * as occurrencePerformance from "../src/lifeops/service-helpers-occurrence.js";
 import type { RawSqlQuery } from "../src/lifeops/sql.js";
 import type { LifeOpsBriefing } from "../src/types/briefing.js";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
@@ -585,6 +588,87 @@ describe("BRIEF umbrella action — Daily Operations", () => {
 
     it.each([
       [
+        "2026-10-06T05:00:00.000Z",
+        "America/Los_Angeles",
+        "2026-10-06T01:01:00.000Z",
+        "2026-10-05",
+        "same_local_date",
+      ],
+      [
+        "2026-10-06T07:00:00.000Z",
+        "America/Los_Angeles",
+        "2026-10-06T06:59:00.000Z",
+        "2026-10-06",
+        "earlier_local_date",
+      ],
+      [
+        "2026-10-06T06:59:00.000Z",
+        "America/Los_Angeles",
+        "2026-10-06T18:00:00.000Z",
+        "2026-10-05",
+        "later_local_date",
+      ],
+      [
+        "2026-10-06T05:00:00.000Z",
+        "Asia/Tokyo",
+        "2026-10-06T01:01:00.000Z",
+        "2026-10-06",
+        "same_local_date",
+      ],
+      [
+        "2026-11-01T09:30:00.000Z",
+        "America/Los_Angeles",
+        "2026-11-01T08:30:00.000Z",
+        "2026-11-01",
+        "same_local_date",
+      ],
+    ])(
+      "anchors the requested morning preview to its actual local date: %s / %s",
+      (asOf, timeZone, dueAt, localAsOfDate, dateRelationToAsOf) => {
+        const sections = {
+          calendar: [],
+          life: [
+            {
+              id: "preview-reminder",
+              kind: "reminder" as const,
+              title: "Check delivery",
+              dueAt,
+              state: "visible" as const,
+            },
+          ],
+        };
+        const original = structuredClone(sections);
+        const prompt = buildNarrativePrompt({
+          kind: "morning",
+          period: "today",
+          asOf,
+          timeZone,
+          sections,
+        });
+        const payload = JSON.parse(prompt.split("Data:\n")[1]);
+        expect(payload).toMatchObject({
+          kind: "morning",
+          period: "today",
+          asOf,
+          localAsOfDate,
+          sections: {
+            calendar: [],
+            life: [{ dueAt, timeContext: { dueAt: { dateRelationToAsOf } } }],
+          },
+        });
+        expect(prompt).toContain(
+          "The requested briefing kind does not change the current date, daypart or selected period",
+        );
+        expect(prompt).toContain("identify it as a preview as of localAsOf");
+        expect(prompt).toContain(
+          "An empty today-only calendar does not establish tomorrow's or the next morning's availability",
+        );
+        expect(sections).toEqual(original);
+      },
+    );
+
+    it.each([
+      [
         "2026-10-03T01:00:00.000Z",
         "America/Los_Angeles",
         "2026-10-03T00:23:25.528Z",
@@ -817,7 +901,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
           ).toEqual(["Owner-window event"]);
           expect(briefing.sourceErrors).toBeUndefined();
           if (format === "narrative")
-            expect(prompts[0]).toContain(`"timeZone": "${timeZone}"`);
+            expect(JSON.parse(prompts[0].split("Data:\n")[1]).timeZone).toBe(
+              timeZone,
+            );
           else expect(prompts).toEqual([]);
         } finally {
           triage.mockRestore();
@@ -884,10 +970,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
           );
           if (format === "narrative") {
             expect(prompts).toHaveLength(1);
-            expect(prompts[0]).toContain('"life": "unavailable"');
-            expect(
-              JSON.parse(prompts[0].split("Data:\n")[1]),
-            ).not.toHaveProperty("lifeSummary");
+            const payload = JSON.parse(prompts[0].split("Data:\n")[1]);
+            expect(payload.sourceErrors).toEqual({ life: "unavailable" });
+            expect(payload).not.toHaveProperty("lifeSummary");
             expect(prompts[0]).toContain("are unavailable, not empty");
             expect(briefing.narrative).toBe("Life source unavailable.");
           } else {
@@ -1195,9 +1280,13 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(args.prompt).toContain("Approve the SOW"); // inbox
       expect(args.prompt).toContain("Send NDA"); // life
       expect(args.prompt).toContain("Send the signed contract"); // commitments
-      expect(args.prompt).toContain('"editorial"');
-      expect(args.prompt).toContain('"itemId": "inbox:msg-1"');
-      expect(args.prompt).toContain('"action": "lead"');
+      const payload = JSON.parse(args.prompt.split("Data:\n")[1]);
+      expect(payload.editorial.items).toContainEqual(
+        expect.objectContaining({ itemId: "inbox:msg-1" }),
+      );
+      expect(payload.editorial.decisions).toContainEqual(
+        expect.objectContaining({ action: "lead" }),
+      );
     });
 
     it("honors include flags by suppressing whole sections", async () => {
@@ -1665,7 +1754,60 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             fixture.runtime.agentId,
             before.map((record) => record.definition.id),
           );
-        const batches = vi.spyOn(LifeOpsService.prototype, "listDefinitions");
+        const planReads = vi.spyOn(
+          LifeOpsRepository.prototype,
+          "listReminderPlansForOwners",
+        );
+        const occurrenceReads = vi.spyOn(
+          LifeOpsRepository.prototype,
+          "listOccurrencesForDefinitions",
+        );
+        const performance = vi.spyOn(
+          occurrencePerformance,
+          "computeDefinitionPerformance",
+        );
+        const definitionReads = vi.spyOn(
+          LifeOpsRepository.prototype,
+          "listDefinitions",
+        );
+        const rows = await service.definitions.listDefinitionRows();
+        expect(definitionReads).toHaveBeenCalledTimes(2);
+        expect(definitionReads).toHaveBeenCalledWith(fixture.runtime.agentId, {
+          domain: "agent_ops",
+          subjectType: "agent",
+          subjectId: fixture.runtime.agentId,
+        });
+        expect(definitionReads).toHaveBeenCalledWith(fixture.runtime.agentId, {
+          domain: "user_lifeops",
+          subjectType: "owner",
+          subjectId: service.ownerEntityId(),
+        });
+        definitionReads.mockRestore();
+        expect(rows).toEqual(before.map(({ definition }) => definition));
+        expect(
+          rows.some((definition) => definition.status === "archived"),
+        ).toBe(true);
+        expect(
+          rows.some((definition) => definition.id === sibling.definition.id),
+        ).toBe(false);
+        expect(planReads).not.toHaveBeenCalled();
+        expect(occurrenceReads).not.toHaveBeenCalled();
+        expect(performance).not.toHaveBeenCalled();
+        expect(await service.listDefinitions()).toEqual(before);
+        expect(planReads).toHaveBeenCalledTimes(1);
+        expect(occurrenceReads).toHaveBeenCalledTimes(1);
+        expect(performance).toHaveBeenCalledTimes(rows.length);
+        planReads.mockRestore();
+        occurrenceReads.mockRestore();
+        performance.mockRestore();
+        const batches = vi.spyOn(
+          DefinitionsDomain.prototype,
+          "listDefinitionRows",
+        );
+        const enrichedBatches = vi.spyOn(
+          LifeOpsService.prototype,
+          "listDefinitions",
+        );
         setBriefComposers({
           loadCalendar: async () => [],
           loadInbox: async () => [],
@@ -1678,8 +1820,8 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         const briefing = result.data?.briefing as LifeOpsBriefing;
         expect(result.success).toBe(true);
         expect(briefing.sourceErrors).toBeUndefined();
-        expect(batches).toHaveBeenCalledTimes(2);
-        batches.mockRestore();
+        expect(batches).toHaveBeenCalledTimes(1);
+        expect(enrichedBatches).not.toHaveBeenCalled();
         expect(briefing.lifeSummary).toEqual(overview.summary);
         expect(
           new Map(briefing.sections.life?.map((item) => [item.id, item.kind])),
@@ -1731,8 +1873,96 @@ describe("BRIEF umbrella action — Daily Operations", () => {
             before.map((record) => record.definition.id),
           ),
         ).toEqual(beforeOccurrences);
+        await service.createDefinition({
+          title: "Added after the first brief",
+          kind: "habit",
+          timezone: "Asia/Tokyo",
+          cadence: { kind: "once", dueAt, visibilityLeadMinutes: 0 },
+          metadata: {
+            ownerSurface: "OWNER_TODOS",
+            nativeProjection: "in_app_only",
+          },
+          reminderPlan: null,
+        });
+        batches.mockClear();
+        enrichedBatches.mockClear();
+        const fresh = await callBrief(fixture.runtime, makeMessage(), {
+          action: "DAILY_DIGEST",
+          format: "json",
+        });
+        expect(batches).toHaveBeenCalledTimes(1);
+        expect(enrichedBatches).not.toHaveBeenCalled();
+        expect(
+          (fresh.data?.briefing as LifeOpsBriefing | undefined)?.sections.life,
+        ).toContainEqual(
+          expect.objectContaining({
+            title: "Added after the first brief",
+            kind: "todo",
+          }),
+        );
         expect(native).not.toHaveBeenCalled();
         expect(model).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
+        await fixture.cleanup();
+      }
+    }, 120000);
+
+    it("does not load definitions for empty, excluded, or overridden life collectors", async () => {
+      const fixture = await createLifeOpsTestRuntime();
+      const { LifeOpsService } = await import("../src/lifeops/service.js");
+      const batches = vi.spyOn(
+        DefinitionsDomain.prototype,
+        "listDefinitionRows",
+      );
+      const overview = vi.spyOn(LifeOpsService.prototype, "getOverview");
+      const completed = vi.spyOn(
+        LifeOpsService.prototype,
+        "listOwnerOccurrencesCompletedToday",
+      );
+      setBriefComposers({
+        loadCalendar: async () => [],
+        loadInbox: async () => [],
+        loadCommitments: async () => [],
+      });
+      try {
+        const empty = await callBrief(fixture.runtime, makeMessage(), {
+          action: "compose_evening",
+          format: "json",
+        });
+        expect(
+          (empty.data?.briefing as LifeOpsBriefing | undefined)?.sections,
+        ).toMatchObject({
+          life: [],
+          completedToday: [],
+        });
+        expect(batches).not.toHaveBeenCalled();
+        overview.mockClear();
+        completed.mockClear();
+        await callBrief(fixture.runtime, makeMessage(), {
+          action: "compose_evening",
+          format: "json",
+          include: { life: false },
+        });
+        expect(overview).not.toHaveBeenCalled();
+        expect(completed).not.toHaveBeenCalled();
+        const loadLife = vi.fn(async () => []);
+        const loadCompletedToday = vi.fn(async () => []);
+        setBriefComposers({ loadLife, loadCompletedToday });
+        await callBrief(fixture.runtime, makeMessage(), {
+          action: "compose_evening",
+          format: "json",
+        });
+        expect(loadLife).toHaveBeenCalledWith({
+          runtime: fixture.runtime,
+          period: "today",
+        });
+        expect(loadCompletedToday).toHaveBeenCalledWith({
+          runtime: fixture.runtime,
+        });
+        expect(overview).not.toHaveBeenCalled();
+        expect(completed).not.toHaveBeenCalled();
+        expect(batches).not.toHaveBeenCalled();
       } finally {
         vi.restoreAllMocks();
         await fixture.cleanup();
@@ -1941,6 +2171,78 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("narrative compose pass", () => {
+    it("keeps the captured active-goal zero scoped through composition and final reply validation", async () => {
+      const corrected =
+        "Five reminders are still open: two phone notification checks and three shoulder stretches.";
+      const useModel = vi.fn(
+        async (_modelType: string, _args: { prompt: string }) => corrected,
+      );
+      const captured = [
+        ["Stretch shoulders", "2026-10-05T20:07:49.385Z"],
+        ["Stretch your shoulders", "2026-10-05T20:37:14.218Z"],
+        ["Stretch my shoulders", "2026-10-05T20:49:58.896Z"],
+        ["Check final phone notification", "2026-10-06T01:01:50.991Z"],
+        ["Check screen-off delivery", "2026-10-06T01:11:07.292Z"],
+      ] as const;
+      const items = captured.map(([title, dueAt], index) => ({
+        id: `captured-reminder-${index}`,
+        kind: "reminder" as const,
+        state: "visible" as const,
+        title,
+        dueAt,
+      }));
+      setBriefComposers({
+        loadCalendar: async () => [],
+        loadInbox: async () => undefined,
+        loadLife: async () => ({
+          items,
+          summary: {
+            activeOccurrenceCount: 5,
+            overdueOccurrenceCount: 5,
+            snoozedOccurrenceCount: 0,
+            activeReminderCount: 5,
+            activeGoalCount: 0,
+          },
+        }),
+        loadCompletedToday: async () => [],
+        loadCommitments: async () => [],
+      });
+      const result = await callBrief(makeRuntime({ useModel }), makeMessage(), {
+        action: "compose_evening",
+        period: "today",
+        format: "narrative",
+      });
+      const briefing = result.data?.briefing as LifeOpsBriefing;
+      expect(briefing.sections.life).toEqual(items);
+      expect(briefing.sections.inbox).toBeUndefined();
+      expect(briefing.lifeSummary?.activeGoalCount).toBe(0);
+      const replyContext = result.data?.replyContext as { sourceScope: string };
+      expect(replyContext.sourceScope).toContain("active goals only");
+      expect(replyContext.sourceScope).toContain("requested period");
+      expect(useModel.mock.calls[0]?.[1].prompt).toContain(
+        replyContext.sourceScope,
+      );
+      expect(result.verifiedUserFacing).toBeUndefined();
+      const recordedResult = {
+        ...result,
+        data: { ...result.data, actionName: "BRIEF" },
+      };
+      expect(
+        evaluatePlannedReplyEgress({
+          reply: "No goals or commitments tracked.",
+          actionResults: [recordedResult],
+          actions: [briefAction],
+        }),
+      ).toEqual({ verdict: "reject", kind: "empty_tracked_state" });
+      expect(
+        evaluatePlannedReplyEgress({
+          reply: corrected,
+          actionResults: [recordedResult],
+          actions: [briefAction],
+        }),
+      ).toEqual({ verdict: "allow" });
+    });
+
     it.each(["narrative", "json"] as const)(
       "licenses %s output without changing source facts or reply text",
       async (format) => {

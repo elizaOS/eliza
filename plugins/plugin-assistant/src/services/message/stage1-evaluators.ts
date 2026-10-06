@@ -275,6 +275,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
         ) {
           return matchingRules.some(
             (rule) =>
+              rule.wholeRequest?.matches(text, message) ||
               rule.unavailable !== undefined ||
               routeReplacesStage1Candidate(
                 rule,
@@ -326,6 +327,37 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
           state,
           userRoles,
         });
+        const wholeRequestRules = matchingRules.filter((rule) =>
+          rule.wholeRequest?.matches(text, message),
+        );
+        // Whole-request ownership comes from the original user text, never
+        // the model's invented decomposition. Ambiguity retains the old plan.
+        if (wholeRequestRules.length > 1) return undefined;
+        const wholeOwner = wholeRequestRules[0];
+        if (wholeOwner?.wholeRequest) {
+          const admittedOwners = routes.filter(
+            ({ rule }) => rule === wholeOwner,
+          );
+          if (admittedOwners.length === 0) return unavailablePatch(wholeOwner);
+          return {
+            requiresTool: true,
+            replaceIntentScope: {
+              intents: [text],
+              invalidateFields: wholeOwner.wholeRequest.invalidateFields,
+              owner: wholeOwner,
+            },
+            setContexts: mergeAgentContexts(wholeOwner.contexts),
+            clearCandidateActions: true,
+            addCandidateActions: uniqueActionNames(
+              admittedOwners.map(({ action }) => action.name),
+            ),
+            clearParentActionHints: true,
+            clearReply: true,
+            debug: [
+              `reconciled whole current request through admitted route: ${wholeOwner.id}`,
+            ],
+          };
+        }
         if (routes.length === 0) {
           const unavailableRule =
             [...authoritativeRules].find((rule) => rule.unavailable) ??

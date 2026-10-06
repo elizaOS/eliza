@@ -5,7 +5,7 @@
 // daemon plays during boot (kernel logo -> this splash -> Eliza launcher).
 //
 // Frames land under vendor/eliza/bootanimation/{part0,part1}/ and are packed
-// into bootanimation.zip by build-eliza-bootanimation.ts (`make bootanimation`).
+// into bootanimation.zip by build-bootanimation.ts (`make bootanimation`).
 // The rendered frames + zip are gitignored — this regenerates them from the
 // canonical brand SVG on demand, the same way linux renders
 // its branding.
@@ -179,5 +179,5 @@ console.log(
   `Rendered ${whitelabel ? "white-label" : "elizaOS"} boot splash into ${BOOTANIM_DIR} (${INTRO_FRAMES} intro frames + idle loop)`,
 );
 console.log(
-  `Pack it with: node scripts/android/build-eliza-bootanimation.ts --frames ${BOOTANIM_DIR} --out ${BOOTANIM_DIR}/bootanimation.zip`,
+  `Pack it with: node scripts/android/build-bootanimation.ts --frames ${BOOTANIM_DIR} --out ${BOOTANIM_DIR}/bootanimation.zip`,
 );

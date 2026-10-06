@@ -10,7 +10,7 @@
 import {
   solanaRpcConfig,
   solanaRpcHandler,
-} from "@elizaos/cloud-shared/lib/services/proxy/services/solana-rpc";
+} from "@elizaos/cloud-shared/lib/services/proxy/solana-rpc";
 import type { ProxyRequestBody } from "@elizaos/cloud-shared/lib/services/proxy/types";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";

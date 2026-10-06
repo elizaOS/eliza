@@ -9,7 +9,7 @@ import {
   readBrowserAppPins,
   sha256File,
   stageBrowserApps,
-} from "../distro-android/stage-browser-apps.ts";
+} from "../android/stage-browser-apps.ts";
 
 function fixture(t) {
   const root = testOutputPath("browser-app-staging");

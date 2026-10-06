@@ -6,6 +6,7 @@ import {
   ElizaError,
   getEmbeddingVectorSpace,
   type IAgentRuntime,
+  logger,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -391,6 +392,26 @@ describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
       /response index out of range/
     );
     expect(emitModelUsageEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("embedding rate limit headers", () => {
+  it("warns when the remaining request count is already 0", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    requestRaw.mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [{ index: 0, embedding: vec(0.1) }] }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "x-ratelimit-remaining-requests": "0",
+          "x-ratelimit-limit-requests": "100",
+          "x-ratelimit-remaining-tokens": "0",
+          "retry-after": "0",
+        },
+      })
+    );
+    await handleBatchTextEmbedding(makeRuntime(), ["a"]);
+    expect(warn).toHaveBeenCalledWith("[BatchEmbeddings] Rate limit: 0/100 requests remaining");
   });
 });
 

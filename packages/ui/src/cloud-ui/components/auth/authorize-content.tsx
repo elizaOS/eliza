@@ -29,9 +29,9 @@ import {
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { CornerBrackets } from "../../../components/ui/corner-brackets";
-import { LoginForm } from "../../../login/components/LoginForm";
-import { useAuth } from "../../../login/hooks/useAuth";
-import { DiscordIcon, GoogleIcon } from "../../../login/icons/index";
+import { DiscordIcon, GoogleIcon } from "../../../login/icons";
+import { LoginForm } from "../../../login/LoginForm";
+import { useAuth } from "../../../login/useAuth";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
 import {

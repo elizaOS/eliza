@@ -8,7 +8,7 @@
  */
 import { Check, ChevronDown, RefreshCw, UserRound } from "lucide-react";
 import type { ConnectorAccountRecord } from "../../api/client-agent-connector-accounts";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,

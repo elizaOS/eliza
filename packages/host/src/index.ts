@@ -28,6 +28,18 @@ export {
   validateHostExecutionDirectory,
   validateHostExecutionPath,
 } from "./host-execution-env.js";
+export {
+  _resetBuildVariantForTests,
+  BUILD_VARIANTS,
+  buildStoreVariantBlockedMessage,
+  DEFAULT_BUILD_VARIANT,
+  getBuildVariant,
+  getDirectDownloadUrl,
+  isDirectBuild,
+  isLocalCodeExecutionAllowed,
+  isStoreBuild,
+  resolveNativeLibraryCandidate,
+} from "./native-platform.js";
 export { defaultOwnerEntityId } from "./owner-entity.js";
 export type {
   ProcessCrashGuardOptions,

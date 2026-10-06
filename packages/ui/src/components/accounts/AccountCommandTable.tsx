@@ -32,8 +32,8 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent-accounts";
 import { useModalState } from "../../hooks/useModalState";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import { formatRelativeTimeShort } from "../../utils/format";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";

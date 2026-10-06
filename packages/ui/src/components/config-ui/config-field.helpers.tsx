@@ -25,13 +25,12 @@ import type {
   FieldRenderer,
   FieldRenderProps,
 } from "../../config/config-catalog";
-
+import { useAppSelector } from "../../state/app-store";
+import { isSafeAttachmentUrl } from "../../utils/attachment-url";
 import {
   CONFIG_SELECT_FLOATING_LAYER_NAME,
   CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
-} from "../../lib/floating-layers";
-import { useAppSelector } from "../../state/app-store";
-import { isSafeAttachmentUrl } from "../../utils/attachment-url";
+} from "../../utils/floating-layers";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";

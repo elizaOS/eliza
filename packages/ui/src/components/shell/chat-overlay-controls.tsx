@@ -8,7 +8,7 @@ import {
 } from "motion/react";
 import * as React from "react";
 import { type OrbState, ThinkingOrb } from "thinking-orbs";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Separator } from "../ui/separator";

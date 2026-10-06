@@ -806,11 +806,6 @@ export function makeScreenshotter(
   };
 }
 
-// The WidgetSection testIds each widget renders (read from source). The
-// notification inbox is not a ranked tile: it renders inline on the home column,
-// outside the WidgetHost.
-export const TODOS_TESTID = "chat-widget-todos";
-
 // First-run runtime/provider buttons live in the real chat transcript. The
 // headless conductor seeds the ChoiceWidgets and the chat action channel routes
 // their sentinel values before they hit the server.
@@ -950,20 +945,15 @@ async function expectPostOnboardingChat(
 /** Assert the kept sparse-home widgets render with their seeded data. */
 async function expectPopulatedHome(page: Page): Promise<Locator> {
   const host = page.getByTestId("widget-host-home");
-  await expect(host).toBeVisible({ timeout: 30_000 });
-  await expect(
-    host.getByTestId(TODOS_TESTID),
-    "home Todos widget should render with seeded task data",
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(host.getByTestId(TODOS_TESTID)).toContainText(
-    "Ship the release",
-  );
+  await expect(host).toBeAttached({ timeout: 30_000 });
   for (const testId of [
+    "chat-widget-todos",
     "chat-widget-relationships",
     "chat-widget-inbox-unread",
   ]) {
     await expect(host.getByTestId(testId)).toHaveCount(0);
   }
+  await expect(host.getByText("Ship the release")).toHaveCount(0);
   // The seeded urgent notification renders in the INLINE notification inbox on
   // the home column, not as a ranked WidgetHost tile. Local first-run can land
   // on home before inbox hydrate paints the center (the center returns null
@@ -981,6 +971,8 @@ async function expectPopulatedHome(page: Page): Promise<Locator> {
     ).toContainText("Payment failed");
   }
   const surface = page.getByTestId("home-launcher-surface");
+  await expect(surface).toBeVisible();
+  await expect(page.getByTestId("home-time-widget")).toBeVisible();
   await expect(surface).toHaveAttribute("data-page", "home");
   return surface;
 }

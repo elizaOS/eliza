@@ -7,9 +7,8 @@
  * (skill-sidebar-item, the sidebar root) build on these.
  */
 import * as React from "react";
-import { assignRef } from "../../../lib/refs";
-
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
+import { assignRef } from "../../../utils/refs";
 import { Alert } from "../../ui/alert";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";

@@ -56,7 +56,7 @@ export async function prepareAndroidConsumerInputs({
         "--untracked-files=normal",
         "--",
         "packages/os/browser",
-        "packages/os/scripts/distro-android/prepare-chromium-browser.ts",
+        "packages/os/scripts/android/prepare-chromium-browser.ts",
         "plugins/plugin-browser",
       )
     )

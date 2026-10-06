@@ -10,7 +10,7 @@ import type { PageLayoutManifest } from "@elizaos/core";
 import type React from "react";
 import type { ReactNode } from "react";
 import { PageFrame } from "../../layouts/page-frame";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { ScrollArea } from "../ui/scroll-area";
 import { AppWorkspaceChrome } from "./AppWorkspaceChrome";
 

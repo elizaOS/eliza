@@ -20,8 +20,8 @@
 
 import { X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Z_BUILD_BADGE } from "../../lib/floating-layers";
 import { getStandaloneBottomReclaimState } from "../../platform/standalone-bottom-reclaim";
+import { Z_BUILD_BADGE } from "../../utils/floating-layers";
 import { Button } from "../ui/button";
 
 const BUILD_INFO_URL = "/build-info.json";

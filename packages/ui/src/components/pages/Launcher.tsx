@@ -19,7 +19,7 @@ import { memo, useCallback } from "react";
 import { useClickSuppression } from "../../gestures/useClickSuppression";
 import { usePointerPressAndHold } from "../../gestures/usePointerPressAndHold";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { emitViewInteraction } from "../../view-telemetry";
 import {
   WALLPAPER_FLOAT_SHADOW,

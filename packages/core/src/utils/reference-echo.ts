@@ -9,7 +9,7 @@
  * single-line strings, a rendered prompt never is.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "./well-formed.ts";
+import { toWellFormedUnicode, truncateWellFormed } from "./unicode.ts";
 
 /**
  * Render a reference for user-facing text: quoted only when it is name-shaped

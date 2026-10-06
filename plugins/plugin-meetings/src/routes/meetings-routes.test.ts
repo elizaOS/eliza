@@ -52,6 +52,7 @@ function makeHarness(billingSessions: FakeMeetingBillingSession[] = []) {
     method: "GET",
     path: "/api/meetings",
     runtime: fake.runtime,
+    signal: new AbortController().signal,
     inProcess: false,
     ...over,
   });
@@ -402,6 +403,7 @@ describe("/api/meetings routes", () => {
       method: "POST",
       path: "/api/meetings",
       runtime: fake.runtime,
+      signal: new AbortController().signal,
       inProcess: false,
     };
     expect((await route("POST", "/api/meetings")(ctx)).status).toBe(503);

@@ -14,6 +14,20 @@ mock.module(
   "@elizaos/cloud-shared/lib/services/organization-schedule-maintenance",
   () => ({ recoverOrganizationSchedules: schedules }),
 );
+const originalInvoices = mock(async () => ({
+  status: "ok",
+  attempts: [],
+  deferredByBudget: 0,
+}));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/original-invoice-maintenance",
+  () => ({ recoverOriginalInvoiceObservations: originalInvoices }),
+);
+const adjustments = mock(async () => ({ status: "ok", attempts: [] }));
+mock.module(
+  "@elizaos/cloud-shared/lib/services/renewal-adjustment-maintenance",
+  () => ({ recoverRenewalAdjustmentObservations: adjustments }),
+);
 const cancellations = mock(async () => ({ inspected: 0 }));
 mock.module("@elizaos/cloud-shared/auth", () => ({
   requireCronSecret: (c: Context) => {
@@ -27,7 +41,7 @@ mock.module("@elizaos/cloud-shared/db/repositories/webhook-events", () => ({
 mock.module("@elizaos/cloud-shared/lib/api/cloud-worker-errors", () => ({
   failureResponse: (c: Context) => c.json({ success: false }, 401),
 }));
-mock.module("@elizaos/cloud-shared/lib/queue/redis-queue", () => ({
+mock.module("@elizaos/cloud-shared/lib/redis-queue", () => ({
   queueLength: async () => 0,
   drain: async () => ({ processed: 0 }),
 }));
@@ -57,6 +71,14 @@ mock.module("@/api-queue/stripe-event", () => ({
 }));
 const { default: app } = await import("./route");
 beforeEach(() => {
+  originalInvoices.mockReset();
+  originalInvoices.mockImplementation(async () => ({
+    status: "ok",
+    attempts: [],
+    deferredByBudget: 0,
+  }));
+  adjustments.mockReset();
+  adjustments.mockImplementation(async () => ({ status: "ok", attempts: [] }));
   upgrades.mockReset();
   upgrades.mockImplementation(async () => ({
     inspected: 1,
@@ -74,6 +96,7 @@ test("cron authentication precedes every recovery lane", async () => {
   const response = await app.request("http://localhost/", { method: "POST" });
   expect(response.status).toBe(401);
   expect(upgrades).not.toHaveBeenCalled();
+  expect(originalInvoices).not.toHaveBeenCalled();
   expect(cancellations).not.toHaveBeenCalled();
   expect(schedules).not.toHaveBeenCalled();
 });
@@ -86,6 +109,7 @@ test("authenticated maintenance includes the upgrade recovery result", async () 
   expect(await response.json()).toMatchObject({
     success: true,
     upgrades: { applied: 1 },
+    originalInvoices: { status: "ok", attempts: [], deferredByBudget: 0 },
   });
   expect(upgrades).toHaveBeenCalledWith(5);
   expect(schedules).toHaveBeenCalledWith(5);
@@ -118,4 +142,39 @@ test("schedule infrastructure failure does not stop independent recovery lanes",
   expect(await response.json()).toMatchObject({ failedLanes: ["schedules"] });
   expect(upgrades).toHaveBeenCalledTimes(1);
   expect(cancellations).toHaveBeenCalledTimes(1);
+});
+
+test("adjustment evidence failure is reported without stopping other maintenance", async () => {
+  adjustments.mockImplementation(async () => {
+    throw Error("observation database unavailable");
+  });
+  const response = await app.request("http://localhost/", {
+    method: "POST",
+    headers: { authorization: "Bearer test-cron" },
+  });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ failedLanes: ["adjustments"] });
+  expect(upgrades).toHaveBeenCalledTimes(1);
+  expect(cancellations).toHaveBeenCalledTimes(1);
+});
+test("unauthenticated requests never start adjustment recovery", async () => {
+  const response = await app.request("http://localhost/", { method: "POST" });
+  expect(response.status).toBe(401);
+  expect(adjustments).not.toHaveBeenCalled();
+});
+
+test("original invoice infrastructure failure remains visible while independent lanes execute", async () => {
+  originalInvoices.mockImplementation(async () => {
+    throw Error("invoice journal unavailable");
+  });
+  const response = await app.request("http://localhost/", {
+    method: "POST",
+    headers: { authorization: "Bearer test-cron" },
+  });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    failedLanes: ["originalInvoices"],
+  });
+  expect(adjustments).toHaveBeenCalledTimes(1);
+  expect(upgrades).toHaveBeenCalledTimes(1);
 });

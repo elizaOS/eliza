@@ -39,7 +39,7 @@ import {
 import {
 	deepToWellFormedUnicode,
 	toWellFormedUnicode,
-} from "./utils/well-formed.ts";
+} from "./utils/unicode.ts";
 
 export {
 	type ExtractorPipelineResult,

@@ -28,7 +28,6 @@ import {
 import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import { getShaderPreset } from "../../backgrounds/shader-presets";
-import { cn } from "../../lib/utils";
 import {
   BACKGROUND_CATALOG,
   type BackgroundCatalogEntry,
@@ -42,6 +41,7 @@ import {
   loadUserBackgroundCatalog,
 } from "../../state/user-background-catalog";
 import { resolveWallpaperUrl as resolvePreviewImageUrl } from "../../utils/asset-url.js";
+import { cn } from "../../utils/cn";
 import {
   BackgroundImageError,
   fileToBackgroundDataUrl,

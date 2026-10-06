@@ -1,12 +1,4 @@
 /// <reference types="bun-types" />
-
-/**
- * Native Apple Calendar bridge. Loads the platform native library (via the
- * capacitor-calendar macOS bridge policy) and exposes event read/write against
- * the local Calendar store as `FeatureResult`s, so `CalendarService` can treat
- * Apple as a provider alongside Google. Access is gated by the permissions
- * registry; on a host without the native library the operations fail closed.
- */
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as appleCalendarBridgePolicyImport from "@elizaos/capacitor-calendar/macos-bridge-policy";
@@ -21,16 +13,18 @@ import type {
   LifeOpsCalendarWriteOnlyCreateReceipt,
   LifeOpsConnectorSide,
 } from "@elizaos/contracts";
-import type { IAgentRuntime } from "@elizaos/core";
-import {
-  ElizaError,
-  logger,
-  resolveNativeLibraryCandidate,
-} from "@elizaos/core";
-import type {
-  IPermissionsRegistry,
-  NativeLibraryCandidate,
-} from "@elizaos/core/protocol";
+import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
+import type { IPermissionsRegistry } from "@elizaos/core/protocol";
+import { resolveNativeLibraryCandidate } from "@elizaos/host";
+import type { NativeLibraryCandidate } from "@elizaos/host/protocol";
+
+/**
+ * Native Apple Calendar bridge. Loads the platform native library (via the
+ * capacitor-calendar macOS bridge policy) and exposes event read/write against
+ * the local Calendar store as `FeatureResult`s, so `CalendarService` can treat
+ * Apple as a provider alongside Google. Access is gated by the permissions
+ * registry; on a host without the native library the operations fail closed.
+ */
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 

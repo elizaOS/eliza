@@ -3,7 +3,7 @@
 /**
  * Renders an OpenAPI spec as a browsable, syntax-highlighted view.
  */
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { CodeDisplay } from "../code/code-display";
 
 export interface OpenApiViewerProps {

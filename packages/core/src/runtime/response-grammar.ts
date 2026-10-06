@@ -23,7 +23,7 @@ import type {
 /**
  * A registered Stage-1 field evaluator, narrowed to the bits this module needs
  * (name / priority / schema). The full contract lives in
- * `runtime/response-handler-field-evaluator.ts`; we keep the dependency
+ * `runtime/response-handler-fields.ts`; we keep the dependency
  * structural so this module doesn't drag the registry's transitive imports
  * into the browser bundle.
  */

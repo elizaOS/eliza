@@ -6,7 +6,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
-import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases";
+import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
 
 const packageRoot = fileURLToPath(new URL("./", import.meta.url));
 const monorepoRoot = resolve(packageRoot, "../..");
@@ -77,10 +77,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/ui$/,
         replacement: resolve(uiSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/ui\/(.+)$/,
-        replacement: resolve(uiSrc, "$1"),
       },
       {
         find: /^@elizaos\/cloud-routing$/,

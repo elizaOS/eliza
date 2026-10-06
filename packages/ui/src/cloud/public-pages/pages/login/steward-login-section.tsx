@@ -1,4 +1,4 @@
-import { GoogleIcon } from "../../../../login/icons/index";
+import { GoogleIcon } from "../../../../login/icons";
 /**
  * Steward login section for the app-hosted login page.
  *

@@ -26,9 +26,9 @@ import {
   TabsTrigger,
 } from "../../components/ui/tabs";
 import { useSessionAuth } from "../lib/use-session-auth";
-import { ApprovalsTab } from "./components/approvals-tab";
-import { BallotsTab } from "./components/ballots-tab";
-import { SensitiveTab } from "./components/sensitive-tab";
+import { ApprovalsTab } from "./approvals-tab";
+import { BallotsTab } from "./ballots-tab";
+import { SensitiveTab } from "./sensitive-tab";
 
 /**
  * The Approvals surface. Embeddable: used directly by an owner-facing settings

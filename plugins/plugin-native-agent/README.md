@@ -41,6 +41,11 @@ lifetime. Storage failures return a generic error without credential logging.
 the same contract has a `main` entrypoint for JDK 21 with `org.json` on the classpath.
 Consumers should additionally test their real encrypted-store adapter and restart
 lifecycle. This transport does not authenticate a Cloud account by itself.
+The private `native-host/local-credential-client.mjs` exports primary and pending
+store clients (`createLocalCredentialStore`, `createLocalPendingCredentialStore`)
+using the same bounded, non-redirecting, non-retrying loopback transport. Pending
+operations address only the separate enrollment journal; the host retains token,
+encrypted-store identity and revocation policy.
 
 `LocalRuntimeHttp` supplies bounded JSON HTTP exchange with an absolute socket
 deadline and injected monotonic clock. It only connects to loopback; the host
@@ -58,8 +63,10 @@ test exercises real permissions and fsync, including invalid targets.
 `native-host/android-runtime-inventory.mjs` stages the matching Android bundle
 inventory from an explicit agent asset directory and native library directory.
 Archive blobs preserve gzip bytes through aapt and install beside the immutable
-bundle for PGlite. Hosts supply exact directory exclusions and package the
-returned inventory plus assets. This does not sign or authorize a release.
+bundle for PGlite. Hosts supply exact directory exclusions and an optional
+inventory `format` (default `eliza-runtime-v1`), and package the returned
+`assets/agent-runtime.inventory` plus assets. Hosts using ota-trust declare the same
+format and exclusions in their host policy. This does not sign or authorize a release.
 The native host suite consumes a Node-produced inventory with the actual Java
 extractor and checks restart reuse, archive bytes and tamper rejection.
 

@@ -432,18 +432,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     route: "cloud/apps/:id",
     auth: AUTH,
   },
-  {
-    slug: "cloud-applications-legacy",
-    path: "/cloud/applications",
-    route: "cloud/applications",
-    auth: AUTH,
-  },
-  {
-    slug: "cloud-applications-detail-legacy",
-    path: "/cloud/applications/6f9619ff-8b86-4d01-b42d-00c04fc964ff",
-    route: "cloud/applications/:id",
-    auth: AUTH,
-  },
   // approvals/
   {
     slug: "cloud-approvals",
@@ -741,14 +729,16 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           registeredPaths = await readRegistryPaths();
           // Private domains register in two asynchronous waves. One eager
           // route does not prove that the complete route table is ready.
-          return [...audited].every((route) => registeredPaths.includes(route));
+          return [...audited].filter(
+            (route) => !registeredPaths.includes(route),
+          );
         },
         {
           message: "all audited routes registered by the running shell",
           timeout: 30_000,
         },
       )
-      .toBe(true);
+      .toEqual([]);
     const registered = new Set(registeredPaths);
     const unaudited = [...registered].filter((p) => !audited.has(p));
     expect(

@@ -47,11 +47,13 @@ import {
   getEntityRole,
   getInferenceTimer,
   hasAtLeastRole,
+  type IAgentRuntime,
   InferenceTurnTimer,
   type AgentLogEntry as LogEntry,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
   type Memory,
   mergeEffectReceipts,
   nextInferenceTurnId,
@@ -3417,6 +3419,21 @@ const ownerConversationCreations = new WeakMap<
   Map<string, ConversationMeta>,
   Promise<ConversationMeta>
 >();
+/** Bind prompt creation to the admitted runtime across asynchronous restoration. */
+export async function resolvePromptDeliveryRoom(
+  state: ConversationRouteState & { activeConversationId?: string | null },
+  runtime: IAgentRuntime,
+): Promise<UUID> {
+  if (runtime !== state.runtime) {
+    throw new Error("Runtime changed before prompt automation creation");
+  }
+  const conversation = await ensureOwnerConversation(state, state.runtime);
+  if (runtime !== state.runtime) {
+    throw new Error("Runtime changed during prompt automation creation");
+  }
+  return conversation.roomId;
+}
+
 /**
  * Resolve the owner's canonical app conversation: the active one, else the
  * most recently updated, restoring persisted conversations first. When the
@@ -3561,6 +3578,13 @@ async function listConversationMessages(
     // context and serves the full DTO unchanged.
     const viewerAccessContext = resolveHttpAccessContext(req);
     const messages = memories
+      // Scheduler instructions are model input, not a user-authored chat turn.
+      // Project them out only here; stored history and assistant replies stay intact.
+      .filter(
+        (m) =>
+          m.entityId === agentId ||
+          m.content.source !== MESSAGE_SOURCE_TRIGGER_PROMPT,
+      )
       .map((m) => {
         const contentSource = (m.content as Record<string, unknown>)?.source;
         const content = m.content as Record<string, unknown>;

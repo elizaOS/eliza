@@ -13,6 +13,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 
 export interface CloudServerState {
   balance: number;
+  beforeBalanceReply?: () => Promise<void>;
   agents: Array<{ id: string; agentName: string | null; status: string }>;
   /** When true, GET /credits/balance returns 500. */
   failBalance: boolean;
@@ -46,7 +47,7 @@ export async function startCloudServer(): Promise<CloudServer> {
     lastCreateKeyBody: null,
   };
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     state.requests.push(`${req.method} ${url.pathname}`);
 
@@ -57,7 +58,9 @@ export async function startCloudServer(): Promise<CloudServer> {
 
     if (req.method === "GET" && url.pathname === "/api/v1/credits/balance") {
       if (state.failBalance) return json(500, { success: false, error: "boom" });
-      return json(200, { balance: state.balance });
+      const balance = state.balance;
+      await state.beforeBalanceReply?.();
+      return json(200, { balance });
     }
     if (req.method === "GET" && url.pathname === "/api/v1/eliza/agents") {
       if (state.failAgents) return json(500, { success: false, error: "boom" });
@@ -105,14 +108,19 @@ export async function startCloudServer(): Promise<CloudServer> {
   };
 }
 
-export function makeRuntime(options: { baseUrl: string; authenticated?: boolean }): IAgentRuntime {
+export function makeRuntime(options: {
+  baseUrl: string;
+  authenticated?: boolean;
+  /** Read on every call, so a test can switch the signed-in organization. */
+  organizationId?: () => string;
+}): IAgentRuntime {
   const settings: Record<string, string | undefined> = {
     ELIZAOS_CLOUD_BASE_URL: `${options.baseUrl}/api/v1`,
     ELIZAOS_CLOUD_API_KEY: "eliza_test_key",
   };
   const auth = {
     isAuthenticated: () => options.authenticated !== false,
-    getOrganizationId: () => "org-test",
+    getOrganizationId: () => options.organizationId?.() ?? "org-test",
     getUserId: () => "user-test",
   };
   return {

@@ -6,8 +6,8 @@
  */
 
 import type { ReactNode } from "react";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import { StatusBadge, type StatusVariant } from "../ui/status-badge";
 
 const PILL_TONE_MAP: Record<string, StatusVariant> = {

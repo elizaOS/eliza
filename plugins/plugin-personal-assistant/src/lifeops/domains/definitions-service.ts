@@ -134,11 +134,15 @@ export class DefinitionsDomain {
     private readonly deps: DefinitionsDeps,
   ) {}
 
+  /** Caller-authorized rows, including archived definitions, without derived data.
+   * Cost: one definition query per existing caller scope; no plan/occurrence reads.
+   */
+  listDefinitionRows(): Promise<LifeOpsTaskDefinition[]> {
+    return listCallerDefinitions(this.ctx.repository, this.ctx);
+  }
+
   async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
-    const definitions = await listCallerDefinitions(
-      this.ctx.repository,
-      this.ctx,
-    );
+    const definitions = await this.listDefinitionRows();
     const plans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "definition",
@@ -1094,6 +1098,7 @@ export class DefinitionsDomain {
     occurrenceId: string,
     request: SnoozeLifeOpsOccurrenceRequest,
     now = new Date(),
+    options?: { expectedDefinitionUpdatedAt: string },
   ): Promise<LifeOpsOccurrenceView> {
     if (!Number.isFinite(now.getTime())) {
       fail(400, "snooze time must be a valid date");
@@ -1152,7 +1157,8 @@ export class DefinitionsDomain {
     await this.ctx.repository.updateOccurrence(updatedOccurrence, {
       definitionScope,
       expectedUpdatedAt: occurrence.updatedAt,
-      expectedDefinitionUpdatedAt: definition.updatedAt,
+      expectedDefinitionUpdatedAt:
+        options?.expectedDefinitionUpdatedAt ?? definition.updatedAt,
     });
     await this.ctx.recordAudit(
       "occurrence_snoozed",

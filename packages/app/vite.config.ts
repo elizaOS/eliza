@@ -44,12 +44,12 @@ import {
 } from "./scripts/lib/android-cloud-routing-markers.ts";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/lib/capacitor-plugin-names.ts";
 import { rejectRuntimeInRendererPlugin } from "./scripts/lib/renderer-runtime-boundary.ts";
-import { colorizeDevSettingsStartupBanner } from "./src/dev-settings-banner-style.ts";
-import { prependDevSubsystemFigletHeading } from "./src/dev-settings-figlet-heading.ts";
 import {
+  colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
   formatDevSettingsTable,
-} from "./src/dev-settings-table.ts";
+  prependDevSubsystemFigletHeading,
+} from "./src/dev-tools.ts";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
@@ -2674,6 +2674,13 @@ export const INVALID_TRACER_PROVIDER = {};
       "react-router",
       "react-router/dom",
       "react-router-dom",
+      // Zustand's selector entry (used by React Flow) imports these CJS shims.
+      // Explicit aliases alone do not convert them when discovery is disabled.
+      "use-sync-external-store/shim",
+      "use-sync-external-store/shim/with-selector",
+      "use-sync-external-store/shim/with-selector.js",
+      "use-sync-external-store/with-selector",
+      "use-sync-external-store/with-selector.js",
       // Three.js core + all subpath imports must be pre-bundled together so
       // the optimizer shares a single module identity.
       "three",

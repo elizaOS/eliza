@@ -4,7 +4,7 @@
  * provider keys.
  */
 
-import { isTruthyEnvValue } from "./env-utils.ts";
+import { isTruthyEnvValue } from "./utils/env.ts";
 
 /**
  * Vendor-neutral gateway env var: the OpenAI-compatible base URL that fronts

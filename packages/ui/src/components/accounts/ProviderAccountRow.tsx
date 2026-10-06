@@ -16,6 +16,10 @@ import type {
   LinkedAccountProviderId,
   SubscriptionProviderSelectionId,
 } from "@elizaos/host/protocol";
+import {
+  requiresAdditionalRuntimeProvider,
+  SUBSCRIPTION_PROVIDER_SELECTIONS,
+} from "@elizaos/host/protocol";
 import { ChevronRight } from "lucide-react";
 import { useMemo } from "react";
 import type { ProviderSelectionState } from "../../api/client-accounts";
@@ -25,12 +29,8 @@ import type {
   AccountWithCredentialFlag,
 } from "../../api/client-agent-accounts";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { cn } from "../../lib/utils";
-import {
-  requiresAdditionalRuntimeProvider,
-  SUBSCRIPTION_PROVIDER_SELECTIONS,
-} from "../../providers";
 import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { AccountCard } from "./AccountCard";
 import { AccountCommandTable } from "./AccountCommandTable";

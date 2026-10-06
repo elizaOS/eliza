@@ -28,8 +28,8 @@ import {
   FramedPageNavigation,
 } from "../../layouts/framed-page";
 import { getWindowNavigationPath } from "../../navigation";
-import { CodingAgentTasksPanel } from "../../slots/task-coordinator-slots.js";
 import { useAppSelector } from "../../state/app-store";
+import { CodingAgentTasksPanel } from "../chat/task-coordinator-slots.js";
 import {
   AppsManagementActions,
   AppsManagementSection,

@@ -7,12 +7,12 @@
 
 import type {
   ModelOption,
+  SUBSCRIPTION_PROVIDER_SELECTIONS,
   SubscriptionProviderSelectionId,
 } from "@elizaos/host/protocol";
 import { Cloud, Cpu, KeyRound, LogIn, ShieldCheck } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useState } from "react";
-import type { SUBSCRIPTION_PROVIDER_SELECTIONS } from "../../providers";
 import { useAppSelector } from "../../state/app-store";
 import { openExternalUrl } from "../../utils/openExternalUrl";
 import { AccountList } from "../accounts/AccountList";

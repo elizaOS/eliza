@@ -271,7 +271,7 @@ export const SUBSCRIPTION_FUNDING_DEBIT_BOUNDARIES = [
     expectedSignals: { credit_service_deduct: 1 },
   },
   {
-    relativePath: "shared/src/lib/services/x/index.ts",
+    relativePath: "shared/src/lib/services/x.ts",
     operation: "advertising_or_promotion",
     fundingClass: "cash_only",
     expectedSignals: { credit_service_reserve_and_deduct: 1 },

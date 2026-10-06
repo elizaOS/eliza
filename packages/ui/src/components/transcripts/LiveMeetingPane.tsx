@@ -11,7 +11,7 @@ import type { Transcript, TranscriptSegment } from "@elizaos/core/protocol";
 import * as React from "react";
 import { client } from "../../api/client";
 import { parseMeetingTranscriptEvent } from "../../api/client-meetings";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import {
   applyMeetingTranscriptEvent,
   applyPolledTranscript,

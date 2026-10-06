@@ -3,12 +3,10 @@
  *
  * One source of truth for "the home dashboard, populated with attention-worthy
  * data" - shared between the home-screen e2e fixture and the Storybook story so
- * both render the REAL kept home widgets (calendar / Today-todos, with the
- * at-risk goal folded into the Today card per spec §E item 5) plus
- * notifications/approvals, fed by injected DATA only (no stubbing of WidgetHost
- * or the widget components). The goals payload now feeds the Today card's
- * flagged row rather than a standalone goals resident; the sleep payload is
- * retained for the routed health surface but no longer renders on home.
+ * both render the retained calendar widget and notifications/approvals, fed by
+ * injected DATA only (no stubbing of WidgetHost or widget components). Populated
+ * goal, todo and sleep payloads remain available to prove those routed domains
+ * do not reappear as separate Home residents.
  *
  * NO node imports - this is bundled into a browser IIFE (e2e) and into the
  * Storybook renderer (vite). Times are RELATIVE to `Date.now()` so the calendar
@@ -207,11 +205,7 @@ export function homeWidgetTodosResponse() {
   };
 }
 
-/** The home "Today" card reads `GET /api/lifeops/todos` (today-todos-data.ts,
- *  #14734), NOT the workbench client method — the payload shape is
- *  `{ todos: [{ id, title, status, dueDate }] }` and only OPEN todos due today
- *  or overdue render. `dueDate` is the current instant so the row is always
- *  "due today" regardless of the CI clock. */
+/** Retain populated owner todos for routed views and Home non-projection checks. */
 export function homeWidgetLifeopsTodosResponse() {
   if (homeWidgetMockMode() === "quiet") {
     return { todos: [] };

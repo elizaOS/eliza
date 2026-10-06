@@ -129,6 +129,7 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       method,
       path,
       runtime,
+      signal: new AbortController().signal,
       inProcess: false,
       isTrustedLocal: opts.trusted !== false,
     };

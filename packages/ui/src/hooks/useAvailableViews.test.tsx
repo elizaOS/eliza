@@ -6,10 +6,9 @@
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
+import { emitViewEvent, VIEW_EVENTS } from "../events/view-events";
 import { resetUiRegistryHostForTests } from "../registry-host.js";
 import { seedAppValue } from "../state/app-store";
-import { emitViewEvent } from "../views/view-event-bus";
-import { VIEW_EVENTS } from "../views/view-event-types";
 import { __resetResourceCache } from "./resource-cache";
 import {
   mergeViewRegistryEntries,

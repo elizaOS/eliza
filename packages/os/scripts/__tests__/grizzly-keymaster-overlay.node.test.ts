@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { normalizeAospKeymasterInit } from "../distro-android/prepare-grizzly.ts";
+import { normalizeAospKeymasterInit } from "../android/prepare-grizzly.ts";
 
 test("keymaster diagnostic is reversible and never changes pinned init source", () => {
   const root = mkdtempSync(join(tmpdir(), "keymaster-overlay-"));

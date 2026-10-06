@@ -10,7 +10,9 @@
 import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import type { SubscriptionProviderSelectionId } from "@elizaos/host/protocol";
 import {
+  getFirstRunProviderOption,
   isLocalOnlyInferenceInConfig,
+  isSubscriptionProviderSelectionId,
   normalizeSubscriptionProviderSelectionId,
   resolveServiceRoutingInConfig,
 } from "@elizaos/host/protocol";
@@ -18,10 +20,6 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { useBranding } from "../../config/branding-react.hooks";
 import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
-import {
-  getFirstRunProviderOption,
-  isSubscriptionProviderSelectionId,
-} from "../../providers";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { shellHistory, shellLocalStorage } from "../../surface-realm-channel";
 export type ProviderPanelId = "__cloud__" | "__local__" | string;

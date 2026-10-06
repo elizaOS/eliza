@@ -11,7 +11,7 @@ const VISIBLE_CHAT_RECALL =
   /\b(?:in|from|of)\s+(?:this|our|the)\s+(?:chat|conversation|thread)\b|\b(?:what|which)\s+(?:did|have)\s+i\s+(?:say|said|mention|mentioned|write|wrote|paste|pasted|tell|told)\b|\bwhat\s+i\s+(?:just\s+)?(?:said|wrote|pasted|mentioned)\b|\b(?:messages?|text|content)\s+(?:i\s+)?(?:just\s+)?(?:pasted|above)\b|\brecap\s+(?:our|this|the)\s+(?:chat|conversation|thread)\b/iu;
 
 const EXPLICIT_DAILY_BRIEF_REQUEST =
-  /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+(?:please\s+)?)?(?:give\s+me|show\s+me|prepare|compose|generate|make|read)\s+(?:(?:my|a|the)\s+)?(?:morning|daily)\s+(?:brief(?:ing)?|dossier)\b/iu;
+  /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+(?:please\s+)?)?(?:give\s+me|show\s+me|prepare|compose|compile|generate|make|read)\s+(?:(?:my|a|the)\s+)?(?:morning|evening|daily)\s+(?:brief(?:ing)?|dossier)\b/iu;
 
 const TRACKED_WORK_RECAP_PATTERNS: readonly RegExp[] = [
   /\b(?:recap|summari[sz]e|review|overview|digest|status)\b[\s\S]{0,60}\b(?:my|today|tonight|yesterday|day|week|tasks?|todos?|to[- ]dos?|reminders?|habits?|routines?|goals?|work|progress)\b/iu,
@@ -40,6 +40,24 @@ export function looksLikeTrackedWorkRecapRequest(text: string): boolean {
   );
 }
 
+/** A complete generic briefing request, with no separate operation or named-source requirement. */
+export function isWholeGenericBriefRequest(text: string): boolean {
+  if (/[\r\n]/u.test(text)) return false;
+  const request = text
+    .trim()
+    .replace(/[.!?]+$/u, "")
+    .trim();
+  const prefix = EXPLICIT_DAILY_BRIEF_REQUEST.exec(request);
+  if (!prefix) return false;
+  const remainder = request.slice(prefix[0].length);
+  // Closed suffixes deliberately leave specific sources, extra clauses and
+  // unfamiliar wording on the existing additive route. The original request
+  // remains intact; this only identifies ownership of one composite outcome.
+  return /^(?:\s+(?:for\s+)?today)?(?:\s+using\s+(?:the\s+)?connected\s+sources(?:\s+available)?)?(?:\s+now)?$/iu.test(
+    remainder,
+  );
+}
+
 export function createTrackedWorkRecapDirectRoutingRule(): DirectActionRoutingRule {
   return {
     id: "lifeops.tracked-work-recap",
@@ -49,7 +67,12 @@ export function createTrackedWorkRecapDirectRoutingRule(): DirectActionRoutingRu
       "resource:tracked-work",
       "capability:read",
     ],
-    contexts: ["briefing", "tasks"],
+    contexts: ["productivity", "tasks"],
+    wholeRequest: {
+      matches: isWholeGenericBriefRequest,
+      invalidateFields: ["calendarReadBindings", "visualContinuation"],
+      inputScope: "domain-only",
+    },
     matches: looksLikeTrackedWorkRecapRequest,
   };
 }

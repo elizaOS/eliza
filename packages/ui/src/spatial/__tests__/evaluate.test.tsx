@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { evaluateToSpatialTree, useSpatialState } from "../evaluate";
 import type { SpatialBoxNode } from "../ir.ts";
 import { Button, HStack, List, Stack, Text } from "../primitives";
-import { createSpatialTuiComponent } from "../tui/index.ts";
 
 describe("evaluate — React tree → IR", () => {
   it("evaluates a primitive box with text children", () => {
@@ -90,13 +89,5 @@ describe("evaluate — React tree → IR", () => {
       label: "Save",
       agent: { id: "save" },
     });
-  });
-});
-
-describe("spatial terminal compatibility subpath", () => {
-  it("fails explicitly because no concrete renderer ships", () => {
-    expect(() => createSpatialTuiComponent(() => <Text>unused</Text>)).toThrow(
-      "not shipped",
-    );
   });
 });

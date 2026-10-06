@@ -72,7 +72,6 @@ import {
 } from "../../gestures/momentum";
 import { useRafCoalescer } from "../../gestures/useRafCoalescer";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { cn } from "../../lib/utils";
 import {
   isSafeDeepLink,
   navigateDeepLink,
@@ -84,6 +83,7 @@ import {
   retryNotificationHydration,
   useNotifications,
 } from "../../state/notifications/notification-store";
+import { cn } from "../../utils/cn";
 import { isInteractiveGestureTarget } from "../../utils/interactive-gesture-target";
 import {
   ClearConfirmationContent,

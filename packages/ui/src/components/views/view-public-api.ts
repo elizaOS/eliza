@@ -1,4 +1,6 @@
 /** Explicit view-facing APIs. Host bootstrap and realm ownership are not available to view bundles. */
+
+export { EXTERNAL_URLS } from "@elizaos/host/protocol";
 export { useAgentElement } from "../../agent-surface/useAgentElement.js";
 export { client, ElizaClient } from "../../api/client";
 export {
@@ -8,7 +10,7 @@ export {
   isRateLimitedError,
 } from "../../api/client-types-core";
 export { fetchWithCsrf } from "../../api/csrf-client.js";
-export { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "../../brand/index.js";
+export { BRAND_PATHS, LOGO_FILES } from "../../brand/index.js";
 export {
   mapServerTasksToSessions,
   PULSE_STATUSES,
@@ -26,19 +28,6 @@ export {
   AppWindowRenderer,
   OverlayAppSurface,
 } from "../../components/apps/AppWindowRenderer.js";
-export {
-  formatDetailTimestamp,
-  selectLatestRunForApp,
-  toneForHealthState,
-  toneForStatusText,
-  toneForViewerAttachment,
-} from "../../components/apps/extensions/surface.helpers.js";
-export {
-  SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
-  SurfaceSection,
-} from "../../components/apps/extensions/surface.js";
 export { GameViewOverlay } from "../../components/apps/GameViewOverlay.js";
 export { AgentAuthGateSurface } from "../../components/auth/AgentAuthGateSurface.js";
 export {
@@ -61,13 +50,9 @@ export { registerTaskWidget } from "../../components/chat/widgets/task-widget.js
 export { CockpitTierToggle } from "../../components/cockpit/CockpitTierToggle.js";
 export { CockpitView } from "../../components/cockpit/CockpitView.js";
 export { ELIZA_CLOUD_TIER_MODEL } from "../../components/cockpit/cockpit-modes.js";
-export {
-  PageLoadingState,
-  PagePanel,
-} from "../../components/composites/page-panel/index.js";
+export { PagePanel } from "../../components/composites/page-panel/index.js";
 export { CustomActionEditor } from "../../components/custom-actions/CustomActionEditor.js";
 export { CustomActionsPanel } from "../../components/custom-actions/CustomActionsPanel.js";
-export { TaskChoice } from "../../components/interactive-task/TaskChoice.js";
 export { AppsPageView } from "../../components/pages/AppsPageView.js";
 export { LauncherSurface } from "../../components/pages/LauncherSurface.js";
 export { PluginPageFrame } from "../../components/pages/PluginPageFrame.js";
@@ -429,32 +414,31 @@ export {
   FramedPageBody,
 } from "../../layouts/framed-page.js";
 export { PageFrame } from "../../layouts/page-frame.js";
-export { cn } from "../../lib/utils.js";
-export { LoginAuthGuard } from "../../login/components/LoginAuthGuard.js";
-export { LoginEmailCallback } from "../../login/components/LoginEmailCallback.js";
+export { DiscordIcon, GoogleIcon } from "../../login/icons.js";
+export { LoginAuthGuard } from "../../login/LoginAuthGuard.js";
+export { LoginConnectOrCreateWallet } from "../../login/LoginConnectOrCreateWallet.js";
+export { LoginEmailCallback } from "../../login/LoginEmailCallback.js";
 export {
   LoginForm,
   PASSKEY_ENROLL_PROMPT_KEY,
-} from "../../login/components/LoginForm.js";
-export { LoginLinkedAccounts } from "../../login/components/LoginLinkedAccounts.js";
-export { LoginMfaChallenge } from "../../login/components/LoginMfaChallenge.js";
-export { LoginMfaSettings } from "../../login/components/LoginMfaSettings.js";
-export { LoginOAuthCallback } from "../../login/components/LoginOAuthCallback.js";
-export { LoginTenantPicker } from "../../login/components/LoginTenantPicker.js";
-export { LoginUserButton } from "../../login/components/LoginUserButton.js";
-export { PasskeyEnrollmentPrompt } from "../../login/components/PasskeyEnrollmentPrompt.js";
-export { useAuth } from "../../login/hooks/useAuth.js";
-export { useMfaStepUp } from "../../login/hooks/useMfaStepUp.js";
-export { DiscordIcon, GoogleIcon } from "../../login/icons/index.js";
+} from "../../login/LoginForm.js";
+export { LoginLinkedAccounts } from "../../login/LoginLinkedAccounts.js";
+export { LoginMfaChallenge } from "../../login/LoginMfaChallenge.js";
+export { LoginMfaSettings } from "../../login/LoginMfaSettings.js";
+export { LoginOAuthCallback } from "../../login/LoginOAuthCallback.js";
+export { LoginTenantPicker } from "../../login/LoginTenantPicker.js";
+export { LoginUserButton } from "../../login/LoginUserButton.js";
+export { PasskeyEnrollmentPrompt } from "../../login/PasskeyEnrollmentPrompt.js";
 export { LoginProvider, useLogin } from "../../login/provider.js";
+export { useAuth } from "../../login/useAuth.js";
+export { useMfaStepUp } from "../../login/useMfaStepUp.js";
+export { WalletLogin } from "../../login/WalletLogin.js";
 export {
   createDefaultWagmiConfig,
   EVMWalletProvider,
-  LoginConnectOrCreateWallet,
   LoginFormWithWallets,
   SolanaWalletProvider,
-  WalletLogin,
-} from "../../login/wallet/index.js";
+} from "../../login/wallet.js";
 export { pathForTab } from "../../navigation/index.js";
 export { isElizaOS, isNative } from "../../platform/init.js";
 export {
@@ -484,6 +468,7 @@ export { resolveAppAssetUrl } from "../../utils/asset-url.js";
 export { safeAttachmentUrl } from "../../utils/attachment-url.js";
 export { copyTextToClipboard } from "../../utils/clipboard.js";
 export { isCloudStatusReasonApiKeyOnly } from "../../utils/cloud-status.js";
+export { cn } from "../../utils/cn.js";
 export { confirmDesktopAction } from "../../utils/desktop-dialogs.js";
 export {
   isDocumentImageFile,
@@ -500,5 +485,20 @@ export { formatByteSize } from "../../utils/format.js";
 export { openExternalUrl } from "../../utils/openExternalUrl.js";
 export { registerBuiltinWidgets } from "../../widgets/registry.js";
 export { WidgetHost } from "../../widgets/WidgetHost.js";
+export {
+  formatDetailTimestamp,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+} from "../apps/surface.helpers.js";
+export {
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+} from "../apps/surface.js";
+export { TaskChoice } from "../chat/TaskChoice.js";
 export { DiffReviewPanel } from "../composites/DiffReviewPanel.js";
+export { PageLoadingState } from "../composites/page-panel/content-state.js";
 export { DesktopTabBar } from "../DesktopTabBar.js";

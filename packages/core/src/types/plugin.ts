@@ -4,9 +4,11 @@
  * events, and schema. The top-level unit the agent's plugin loader resolves,
  * validates, and wires into the runtime.
  */
+
 import type { ConnectorSourceDefinition } from "../connectors";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
-import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
+import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-fields";
+import type { ViewKind, ViewModality, ViewType } from "../views/declarations";
 import type { Character } from "./agent";
 import type { ChatPreHandler } from "./chat-pre-handler";
 import type { Action, AgentContext, Provider } from "./components";
@@ -24,7 +26,6 @@ import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
 import type { SurfaceManifest } from "./surface-manifest";
 import type { TestSuite } from "./testing";
-import type { ViewKind } from "./view-kind";
 
 /**
  * Type for a service class constructor.
@@ -426,9 +427,7 @@ export type ViewPlatform =
 	| "quest"
 	| "xreal";
 
-export type { ViewModality, ViewType } from "./view-kind.js";
-
-import type { ViewModality, ViewType } from "./view-kind.js";
+export type { ViewModality, ViewType } from "../views/declarations.js";
 
 /** A logical view: one entry per `id`, with every surface it renders on. */
 export interface CollapsedView extends ViewDeclaration {
@@ -1153,7 +1152,7 @@ export interface Plugin {
 	/**
 	 * Field evaluators that contribute schema fragments and handlers to the
 	 * Stage-1 response handler's single LLM call. See
-	 * `runtime/response-handler-field-evaluator.ts`.
+	 * `runtime/response-handler-fields.ts`.
 	 */
 	responseHandlerFieldEvaluators?: ResponseHandlerFieldEvaluator[];
 

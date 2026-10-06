@@ -7,12 +7,15 @@ export class LocalCredentialBrokerError extends Error {
   }
 }
 
-export function createLocalCredentialStore({
-  port,
-  token,
-  timeoutMs,
-  unavailableMessage = "Local credential storage unavailable",
-}) {
+function createCredentialStore(
+  {
+    port,
+    token,
+    timeoutMs,
+    unavailableMessage = "Local credential storage unavailable",
+  },
+  prefix,
+) {
   if (
     !Number.isInteger(port) ||
     port < 1 ||
@@ -41,7 +44,7 @@ export function createLocalCredentialStore({
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          operation,
+          operation: `${prefix}${operation}`,
           ...(value === undefined ? {} : { value }),
         }),
       });
@@ -75,4 +78,14 @@ export function createLocalCredentialStore({
     write: (value) => request("write", value),
     clear: () => request("clear"),
   };
+}
+
+/** Primary credential slot; storage identity and custody remain native-host owned. */
+export function createLocalCredentialStore(options) {
+  return createCredentialStore(options, "");
+}
+
+/** Separate pending-enrollment journal; never overwrite the active credential slot. */
+export function createLocalPendingCredentialStore(options) {
+  return createCredentialStore(options, "pending-");
 }

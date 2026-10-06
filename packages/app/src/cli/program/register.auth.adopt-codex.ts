@@ -9,8 +9,8 @@
  * would happen and exits non-zero so scripts cannot adopt by accident.
  */
 
-import { type Command } from "commander";
-import { theme } from "../../terminal/theme.js";
+import type { Command } from "commander";
+import { theme } from "../terminal.js";
 export interface AdoptCodexCliParams {
   accountId?: string;
   codexHome?: string;

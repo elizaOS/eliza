@@ -39,7 +39,7 @@ test("AOSP smoke loads configuration code from the selected application checkout
   );
   const result = spawnSync(
     process.execPath,
-    [fileURLToPath(new URL("../aosp/smoke-cuttlefish.ts", import.meta.url))],
+    [fileURLToPath(new URL("../android/smoke-cuttlefish.ts", import.meta.url))],
     {
       env: { ...process.env, ELIZAOS_ELIZA_ROOT: root },
       encoding: "utf8",

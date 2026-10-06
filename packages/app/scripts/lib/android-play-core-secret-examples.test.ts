@@ -2,8 +2,9 @@
  * Core's secret format table ships in the web protocol chunk of the Play
  * cloud build, so its placeholders must pass the packaged text asset audit.
  */
+
 import { describe, expect, it } from "vitest";
-import { SECRET_VALIDATION_PATTERNS } from "../../../core/src/validation/secrets.ts";
+import { SECRET_VALIDATION_PATTERNS } from "../../../core/src/security/secrets.ts";
 import { findAndroidPlayTextAssetFindings } from "../mobile/android/cloud-policy.ts";
 
 const asset = "base/assets/public/assets/protocol.js";

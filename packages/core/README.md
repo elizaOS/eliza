@@ -9,7 +9,8 @@ files directly. Implementation leaves are private; JSON catalog assets retain
 explicit data exports. Hosts compose database adapters, model providers and
 `@elizaos/plugin-assistant` explicitly.
 
-HTTP lifecycle, process guards, restart, application configuration and boot environment resolution live
+HTTP lifecycle, native platform detection and library policy, build variants,
+process guards, restart, application configuration and boot environment resolution live
 in `@elizaos/host`, with browser-safe configuration in `@elizaos/host/protocol`.
 Portable acoustic processing lives in `@elizaos/voice`.
 Cross-domain DTOs and validation live in `@elizaos/contracts`. Core imports none
@@ -49,3 +50,7 @@ Hosts own activity labels, layout, reading position, error copy, and task-contro
 refresh policy. Observer snapshots are detached from the admitted history.
 
 `admitTaskChoiceResponse` in the browser-safe protocol barrel validates optional reply widgets, enforces a host-supplied count limit and binds every widget to the requesting task ID/epoch. It returns detached widget data. Hosts retain count policy, UI and error wording; successful admission grants no execution authority.
+
+Integration checks live in `test/`; unit `.test.ts` files have been removed from
+`src/`. Packed-consumer verification exercises published exports and runtime
+initialization. Live model checks remain opt-in.

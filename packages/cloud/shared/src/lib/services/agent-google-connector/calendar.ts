@@ -3,7 +3,7 @@
  * handlers, including compatible IANA local-time normalization at the service
  * boundary.
  */
-import { applyTimeZone } from "../../utils/google-mcp-shared";
+import { applyTimeZone, getZonedDateParts } from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
 import {
   fail,
@@ -83,34 +83,6 @@ type LocalDateTimeParts = {
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const OFFSET_SAMPLE_HOURS = [-48, -36, -24, -12, 0, 12, 24, 36, 48];
-
-function getZonedDateParts(date: Date, timeZone: string): LocalDateTimeParts {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).formatToParts(date);
-  const read = (type: Intl.DateTimeFormatPartTypes) => {
-    const value = parts.find((part) => part.type === type)?.value;
-    if (!value) {
-      throw new Error(`missing zoned date part: ${type}`);
-    }
-    return Number(value);
-  };
-  return {
-    year: read("year"),
-    month: read("month"),
-    day: read("day"),
-    hour: read("hour"),
-    minute: read("minute"),
-    second: read("second"),
-  };
-}
 
 function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {

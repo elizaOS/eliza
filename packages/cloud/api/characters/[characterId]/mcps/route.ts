@@ -5,7 +5,7 @@ import {
   failureResponse,
   jsonError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 

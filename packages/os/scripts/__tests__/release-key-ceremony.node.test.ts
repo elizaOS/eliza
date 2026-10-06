@@ -6,14 +6,14 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { decrypt } from "../aosp/decrypt-release-keys.ts";
+import { decrypt } from "../android/decrypt-release-keys.ts";
 import {
   defaultKeyManifest,
   encodeAvbPublicKey,
   generate,
   loadKeyManifest,
   parseArgs,
-} from "../aosp/generate-release-keys.ts";
+} from "../android/generate-release-keys.ts";
 import { loadReleaseKeyPolicy } from "../release-key-policy.ts";
 
 const packageRoot = fileURLToPath(new URL("../..", import.meta.url));
