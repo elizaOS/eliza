@@ -538,6 +538,64 @@ describe("aggregate builders", () => {
     expect(inbox.messages).toEqual([]);
     expect(inbox.threadGroups).toEqual([]);
   });
+
+  it("missedOnly spends the limit window only on messages that can qualify", () => {
+    const now = Date.now();
+    // A busy day: 30 recent messages can never qualify as missed, but they
+    // are the newest rows a limit-first trim would keep.
+    const flood = Array.from({ length: 30 }, (_, index) =>
+      inboundChat({
+        id: `missed-flood-${index}`,
+        text: `noise ${index}`,
+        threadId: `missed-flood-thread-${index}`,
+        timestamp: now - index * 60_000,
+      }),
+    );
+    const inbox = buildInbox(
+      [
+        ...flood,
+        inboundChat({
+          id: "missed-invoice",
+          text: "Invoice is due",
+          threadId: "missed-invoice-thread",
+          timestamp: now - 48 * 60 * 60 * 1000,
+        }),
+        inboundChat({
+          id: "missed-replied",
+          text: "already answered",
+          threadId: "missed-replied-thread",
+          timestamp: now - 48 * 60 * 60 * 1000,
+          repliedAt: new Date(now - 47 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+      {
+        limit: 24,
+        allowed: new Set<LifeOpsInboxChannel>(["discord"]),
+        sources: [{ source: "chat", state: "ok", degradations: [] }],
+        groupByThread: true,
+        missedOnly: true,
+        llmScores: new Map([
+          [
+            "discord:missed-invoice",
+            { score: 90, category: "important", flags: [] },
+          ],
+          [
+            "discord:missed-replied",
+            { score: 90, category: "important", flags: [] },
+          ],
+        ]),
+      },
+    );
+
+    // The unreplied 48h-old high-score message survives; the replied one
+    // never qualifies and the recent flood never consumes the window.
+    expect(inbox.messages.map((message) => message.id)).toEqual([
+      "discord:missed-invoice",
+    ]);
+    expect(inbox.threadGroups?.map((group) => group.latestMessage.id)).toEqual([
+      "discord:missed-invoice",
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -616,6 +674,123 @@ describe("InboxDomain on a real runtime", () => {
     expect(inbox.messages.map((message) => message.id)).toEqual([first.id]);
     expect(sources.gmailTriageCalls).toBe(0);
     expect(cache.upsertCalls).toBe(0);
+  });
+
+  it("missedOnly widens the cache read so a recent flood cannot hide missed messages", async () => {
+    const readLimits: Array<number | undefined> = [];
+    class RecordingCache extends MemoryInboxCache {
+      override async listCachedInboxMessages(
+        agentId: string,
+        options?: {
+          channels?: readonly LifeOpsInboxChannel[];
+          maxResults?: number;
+          gmailAccountId?: string;
+        },
+      ): Promise<CachedInboxMessage[]> {
+        readLimits.push(options?.maxResults);
+        return super.listCachedInboxMessages(agentId, options);
+      }
+    }
+    const cache = new RecordingCache();
+    const sources = new FakeConnectorSources([]);
+    const domain = makeDomain({ cache, sources });
+    const now = Date.now();
+    const fresh = new Date(now).toISOString();
+    const recent = toInboxMessages(
+      Array.from({ length: 30 }, (_, index) =>
+        inboundChat({
+          id: `cache-flood-${index}`,
+          text: `noise ${index}`,
+          threadId: `cache-flood-thread-${index}`,
+          timestamp: now - index * 60_000,
+        }),
+      ),
+    );
+    const missed = toInboxMessages([
+      inboundChat({
+        id: "cache-missed-invoice",
+        text: "Invoice is due",
+        threadId: "cache-missed-invoice-thread",
+        timestamp: now - 48 * 60 * 60 * 1000,
+      }),
+    ])[0];
+    if (!missed) throw new Error("unreachable");
+    // Cached rows carry the priority score stored by a previous scored cycle.
+    const scoredMissed: CachedInboxMessage = {
+      ...missed,
+      priorityScore: 90,
+      priorityCategory: "important",
+    };
+    for (const message of recent) cache.seed(message, fresh);
+    cache.seed(scoredMissed, fresh);
+
+    const inbox = await domain.getInbox({
+      channels: ["discord"],
+      cacheMode: "cache-only",
+      limit: 24,
+      missedOnly: true,
+      groupByThread: true,
+      sortByPriority: true,
+    });
+
+    // The read must look past the display limit, and the missed row the
+    // flood would have evicted comes back with its stored score.
+    expect(Math.max(...readLimits.map((limit) => limit ?? 0))).toBe(72);
+    expect(inbox.messages.map((message) => message.id)).toEqual([
+      "discord:cache-missed-invoice",
+    ]);
+    expect(inbox.messages[0]?.priorityScore).toBe(90);
+  });
+
+  it("missedOnly scores missed messages beyond the newest-limit window on refresh", async () => {
+    // A source seam that honors the requested page size, like the real
+    // triage endpoint, so the test proves the refresh read was widened.
+    class HonoringConnectorSources extends FakeConnectorSources {
+      override async getGmailTriage(
+        requestUrl: URL,
+        request?: GetLifeOpsGmailTriageRequest,
+      ): Promise<LifeOpsGmailTriageFeed> {
+        const feed = await super.getGmailTriage(requestUrl, request);
+        return typeof request?.maxResults === "number"
+          ? { ...feed, messages: feed.messages.slice(0, request.maxResults) }
+          : feed;
+      }
+    }
+    const cache = new MemoryInboxCache();
+    const now = Date.now();
+    const sources = new HonoringConnectorSources([
+      ...Array.from({ length: 30 }, (_, index) =>
+        gmailSummary({
+          id: `refresh-flood-${index}`,
+          subject: `Noise ${index}`,
+          snippet: `casual noise ${index}`,
+          threadId: `refresh-flood-thread-${index}`,
+          receivedAt: new Date(now - index * 60_000).toISOString(),
+        }),
+      ),
+      gmailSummary({
+        id: "refresh-missed-invoice",
+        subject: "Invoice due",
+        snippet: "Your invoice is due",
+        threadId: "refresh-missed-invoice-thread",
+        receivedAt: new Date(now - 48 * 60 * 60 * 1000).toISOString(),
+      }),
+    ]);
+    const domain = makeDomain({ cache, sources });
+
+    const inbox = await domain.getInbox({
+      channels: ["gmail"],
+      cacheMode: "refresh",
+      limit: 24,
+      missedOnly: true,
+      groupByThread: true,
+      sortByPriority: true,
+    });
+
+    expect(inbox.messages.map((message) => message.id)).toEqual([
+      "gmail:ext-refresh-missed-invoice",
+    ]);
+    expect(inbox.messages[0]?.priorityScore).toBe(90);
   });
 
   it("read-through returns fresh cache without refetch, then refresh mode forces the source fetch", async () => {

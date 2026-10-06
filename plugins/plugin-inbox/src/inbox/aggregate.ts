@@ -60,6 +60,16 @@ const PHONE_BACKED_INBOX_CHANNELS = new Set<LifeOpsInboxChannel>([
 ]);
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
+/**
+ * Over-fetch factor for missed-only reads. A missed view filters on age,
+ * reply state, and priority score, so a newest-first read capped at the
+ * display limit can fill the whole window with messages that can never
+ * qualify and hide genuinely missed ones. Reads and scoring selection use
+ * `limit * factor` when `missedOnly` is set; the display trim still applies
+ * after the missed filter. Mirrors the `limit * 3` candidate paging in
+ * `message-fetcher.ts`.
+ */
+const MISSED_ONLY_WINDOW_FACTOR = 3;
 
 export type InboxChatType = "dm" | "group" | "channel";
 
@@ -476,13 +486,6 @@ function isMissedMessage(message: LifeOpsInboxMessage, nowMs: number): boolean {
   return nowMs - received >= MISSED_REPLY_GAP_MS;
 }
 
-function isMissedThreadGroup(
-  group: LifeOpsInboxThreadGroup,
-  nowMs: number,
-): boolean {
-  return group.messages.some((message) => isMissedMessage(message, nowMs));
-}
-
 export function buildInbox(
   inbound: InboundMessage[],
   options: InboxBuildOptions,
@@ -553,16 +556,24 @@ export function buildInboxFromMessages(
     return bTime - aTime;
   });
 
-  const trimmed =
-    options.limit !== undefined && collected.length > options.limit
-      ? collected.slice(0, options.limit)
-      : collected;
-
   if (options.llmScores && options.llmScores.size > 0) {
-    applyLlmScores(trimmed, options.llmScores);
+    applyLlmScores(collected, options.llmScores);
   }
 
-  let messages = trimmed;
+  // A missed view filters on age, reply state, and priority score, so the
+  // display limit must apply after that filter: trimming newest-first rows
+  // first would spend the window on messages that can never qualify.
+  const preLimit =
+    options.missedOnly === true
+      ? collected.filter((m) => isMissedMessage(m, Date.now()))
+      : collected;
+
+  const trimmed =
+    options.limit !== undefined && preLimit.length > options.limit
+      ? preLimit.slice(0, options.limit)
+      : preLimit;
+
+  const messages = trimmed;
   let threadGroups: LifeOpsInboxThreadGroup[] | undefined;
 
   if (options.groupByThread) {
@@ -571,14 +582,6 @@ export function buildInboxFromMessages(
       options.llmScores,
       options.sortByPriority === true,
     );
-  }
-
-  if (options.missedOnly === true) {
-    const nowMs = Date.now();
-    messages = messages.filter((m) => isMissedMessage(m, nowMs));
-    if (threadGroups) {
-      threadGroups = threadGroups.filter((g) => isMissedThreadGroup(g, nowMs));
-    }
   }
 
   const inbox: LifeOpsInbox = {
@@ -595,15 +598,29 @@ export function buildInboxFromMessages(
   return inbox;
 }
 
+/**
+ * Newest-first read/scoring window for a request. A missed view filters on
+ * age, reply state, and priority score, so its reads and scoring selection
+ * look past the display limit (`MISSED_ONLY_WINDOW_FACTOR`); the display
+ * trim still applies after the missed filter in `buildInboxFromMessages`.
+ */
+function missedReadWindow(resolved: ResolvedInboxRequest): number | undefined {
+  if (resolved.limit === undefined) return undefined;
+  return resolved.missedOnly === true
+    ? resolved.limit * MISSED_ONLY_WINDOW_FACTOR
+    : resolved.limit;
+}
+
 function cacheReadLimitFor(resolved: ResolvedInboxRequest): number | undefined {
-  if (resolved.limit === undefined) return resolved.cacheLimit;
+  const window = missedReadWindow(resolved);
+  if (window === undefined) return resolved.cacheLimit;
   return resolved.cacheLimit === undefined
-    ? resolved.limit
-    : Math.max(resolved.limit, resolved.cacheLimit);
+    ? window
+    : Math.max(window, resolved.cacheLimit);
 }
 
 function cacheWarmLimitFor(resolved: ResolvedInboxRequest): number | undefined {
-  return resolved.cacheLimit ?? resolved.limit;
+  return resolved.cacheLimit ?? missedReadWindow(resolved);
 }
 
 function isFreshCache(records: readonly CachedInboxMessage[]): boolean {
@@ -777,9 +794,12 @@ async function buildInboxWithLlm(
   const ownerName = resolveOwnerName(runtime);
   // First pass: trim and filter without LLM scoring or grouping. We still
   // honor the chatType / participant / gmail filters here because LLM scoring
-  // should only run on messages the user will actually see.
+  // should only run on messages the user will actually see. A missed view
+  // additionally widens the scoring selection past the display limit so
+  // older missed candidates get scored instead of staying invisible.
+  const scoringLimit = missedReadWindow(resolved);
   const initial = buildInbox(inbound, {
-    ...(resolved.limit === undefined ? {} : { limit: resolved.limit }),
+    ...(scoringLimit === undefined ? {} : { limit: scoringLimit }),
     allowed: resolved.allowed,
     sources,
     chatTypeFilter: resolved.chatTypeFilter,
