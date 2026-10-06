@@ -61,9 +61,7 @@ export const client = {
   getRelationshipsCandidates: async () => [],
   getWalletBalances: async () => walletBalancesResponse(),
   getWalletMarketOverview: async () => walletMarketOverviewResponse(),
-  // Today (todo) home card: attention mode seeds one open todo so the merged
-  // card renders with a todo row alongside its flagged at-risk goal row
-  // (spec §E item 5). Quiet mode returns zero work so the card self-hides.
+  // Retain workbench fixture data; Home no longer projects it as Today cards.
   listWorkbenchTodos: async () => homeWidgetTodosResponse(),
   // Notification store hydrate + live subscription.
   listNotifications: async () => homeWidgetNotificationsResponse(),
