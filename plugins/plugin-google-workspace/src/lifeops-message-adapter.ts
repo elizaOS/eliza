@@ -186,6 +186,7 @@ function searchQuery(filters: SearchMessagesFilters): string {
     tokens.push(`label:${tag}`);
   }
   pushSinceToken(tokens, filters.sinceMs);
+  pushUntilToken(tokens, filters.untilMs);
   return tokens.join(" ");
 }
 
@@ -235,6 +236,14 @@ function pushSinceToken(tokens: string[], sinceMs: number | undefined): void {
     if (afterSeconds >= 0) {
       tokens.push(`after:${afterSeconds}`);
     }
+  }
+}
+
+// Gmail's `before:` is exclusive in epoch seconds, so the second after untilMs
+// keeps every message through the inclusive bound for cacheAndFilter to trim.
+function pushUntilToken(tokens: string[], untilMs: number | undefined): void {
+  if (untilMs !== undefined && Number.isFinite(untilMs)) {
+    tokens.push(`before:${Math.max(0, Math.floor(untilMs / 1000) + 1)}`);
   }
 }
 
@@ -648,7 +657,9 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
           accountId,
           query: searchQuery(filters),
           includeSpamTrash: true,
-          maxResults: filters.limit,
+          // Gmail rounds before: to seconds; apply the exact bound before
+          // consuming the result limit, including within its final second.
+          maxResults: filters.untilMs === undefined ? filters.limit : undefined,
         },
         filters.channelIds
       );
@@ -658,6 +669,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     }
     return this.cacheAndFilter(newestFirst(refs), {
       sinceMs: filters.sinceMs,
+      untilMs: filters.untilMs,
       limit: filters.limit,
       worldIds: filters.worldIds,
       channelIds: filters.channelIds,
@@ -824,12 +836,18 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     return message;
   }
 
-  private cacheAndFilter(messages: MessageRef[], opts: ListOptions): MessageRef[] {
+  private cacheAndFilter(
+    messages: MessageRef[],
+    opts: ListOptions & { untilMs?: number }
+  ): MessageRef[] {
     const worlds = opts.worldIds ? new Set(opts.worldIds) : null;
     const channels = opts.channelIds ? new Set(opts.channelIds) : null;
     const out: MessageRef[] = [];
     for (const message of messages) {
       if (opts.sinceMs !== undefined && message.receivedAtMs < opts.sinceMs) {
+        continue;
+      }
+      if (opts.untilMs !== undefined && message.receivedAtMs > opts.untilMs) {
         continue;
       }
       if (worlds && (!message.worldId || !worlds.has(message.worldId))) {
