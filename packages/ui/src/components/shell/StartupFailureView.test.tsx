@@ -2,7 +2,7 @@
 // @vitest-environment jsdom
 //
 // StartupFailureView recovery affordances per failure reason (e.g. an
-// unreachable saved backend offers a first-run reset). Real component in jsdom;
+// unreachable saved backend retains its connection and offers Retry). Real component in jsdom;
 // branding, bug-report, platform reload, and translation are mocked.
 
 import {
@@ -130,25 +130,32 @@ describe("StartupFailureView", () => {
     expect(mocks.startFreshFirstRunReload).not.toHaveBeenCalled();
   });
 
-  it("offers one first-run reset for unreachable saved backends", () => {
-    render(
-      <StartupFailureView
-        error={{
-          reason: "backend-unreachable",
-          message:
-            "Previously configured backend is unreachable. Check your connection or reset.",
-          phase: "starting-backend",
-        }}
-        onRetry={vi.fn()}
-      />,
-    );
+  it.each(["backend-unreachable", "backend-timeout"] as const)(
+    "keeps %s recovery on Retry without a first-run reset",
+    (reason) => {
+      const retry = vi.fn();
+      render(
+        <StartupFailureView
+          error={{
+            reason,
+            message:
+              "Previously configured backend is unreachable. Check your connection and retry.",
+            phase: "starting-backend",
+          }}
+          onRetry={retry}
+        />,
+      );
 
-    const startOver = screen.getByTestId("startup-start-over");
-    expect(startOver.textContent).toContain("Start over");
-    expect(screen.queryByTestId("startup-use-cloud")).toBeNull();
+      expect(screen.queryByTestId("startup-start-over")).toBeNull();
+      expect(screen.queryByTestId("startup-use-cloud")).toBeNull();
+      expect(
+        screen.getByText(/Your connection settings are kept/),
+      ).toBeTruthy();
 
-    fireEvent.click(startOver);
+      fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
 
-    expect(mocks.startFreshFirstRunReload).toHaveBeenCalledTimes(1);
-  });
+      expect(retry).toHaveBeenCalledTimes(1);
+      expect(mocks.startFreshFirstRunReload).not.toHaveBeenCalled();
+    },
+  );
 });

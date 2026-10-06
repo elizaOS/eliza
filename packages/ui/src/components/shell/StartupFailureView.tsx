@@ -13,7 +13,6 @@ import { waitForCloudAgentRunning } from "../../api/client-cloud";
 import { useBranding } from "../../config/branding-react.hooks";
 import type { BugReportDraft } from "../../hooks/useBugReport.hooks";
 import { useOptionalBugReport } from "../../hooks/useBugReport.hooks";
-import { startFreshFirstRunReload } from "../../platform/first-run-reset";
 import { useAppSelector } from "../../state/app-store";
 import type { StartupErrorState } from "../../state/types";
 import type { useApp } from "../../state/useApp";
@@ -98,6 +97,9 @@ export function StartupFailureView({
   const reasonLabel = startupReasonLabel(t, error.reason);
   const startupDraft = buildStartupBugReportDraft(reasonLabel, error);
   const stopped = error.reason === "agent-stopped";
+  const connectionUnavailable =
+    error.reason === "backend-unreachable" ||
+    error.reason === "backend-timeout";
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const startAttempt = useRef<AbortController | null>(null);
@@ -171,10 +173,15 @@ export function StartupFailureView({
                 ? t("startupfailureview.StoppedDescription", {
                     defaultValue: "Start your Dedicated agent to continue.",
                   })
-                : t("startupfailureview.TryAgainDescription", {
-                    defaultValue:
-                      "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
-                  })}
+                : connectionUnavailable
+                  ? t("startupfailureview.ReconnectDescription", {
+                      defaultValue:
+                        "Your connection settings are kept. Eliza will keep trying to reconnect. You can also retry now.",
+                    })
+                  : t("startupfailureview.TryAgainDescription", {
+                      defaultValue:
+                        "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
+                    })}
             </p>
             {!stopped ? (
               <Card
@@ -256,32 +263,15 @@ export function StartupFailureView({
                   </a>
                 </Button>
               ) : null}
-              {error.reason === "backend-unreachable" ? (
-                <Button
-                  variant="default"
-                  size="lg"
-                  onClick={() => startFreshFirstRunReload()}
-                  className="w-full sm:w-auto sm:min-w-[11rem]"
-                  data-testid="startup-start-over"
-                >
-                  {t("startupfailureview.StartOver", {
-                    defaultValue: "Start over",
-                  })}
-                </Button>
-              ) : null}
               <Button
-                variant={
-                  error.reason === "backend-unreachable" || stopped
-                    ? "outline"
-                    : "default"
-                }
+                variant={stopped ? "outline" : "default"}
                 size="lg"
                 onClick={onRetry}
                 disabled={starting}
                 className="w-full sm:w-auto sm:min-w-[11rem]"
                 data-testid="startup-retry"
               >
-                {stopped
+                {stopped || connectionUnavailable
                   ? t("startupfailureview.RetryConnection", {
                       defaultValue: "Retry connection",
                     })

@@ -131,9 +131,10 @@ export function isTerminalDedicatedCloudAgentErrorState(args: {
   return classifyTerminalDedicatedCloudAgentErrorState(args);
 }
 /**
- * Decide whether a connection-level startup failure against the persisted
- * active server should be abandoned in favour of the local same-origin backend
- * that is actually serving this page.
+ * Classify a connection-level failure against an implicit startup base for
+ * possible local-origin recovery. The poller separately excludes explicit
+ * runtime targets, persisted servers and established sessions before applying
+ * this fallback.
  *
  * This rescues first-run from a stale `elizaos:active-server` pointing at a
  * remote/cloud backend that is now unreachable or CSP-blocked: without it the
@@ -1398,6 +1399,13 @@ export async function runPollingBackend(
       }
       if (
         !fellBackToLocal &&
+        // A temporary outage cannot revoke an explicit URL selection, even
+        // before first-run/pairing finishes. Only implicit bootstrap may fall back.
+        target === "embedded-local" &&
+        !ctx?.persistedActiveServer &&
+        !ctx?.hadPriorFirstRun &&
+        !completionAtPollStart &&
+        !client.hasToken() &&
         policy.allowLocalOriginRecovery !== false &&
         shouldFallBackToLocalOrigin({ error: err, ...recoveryEnv() })
       ) {
