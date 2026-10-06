@@ -11,10 +11,10 @@
  * that audit log rather than replicating it (see `EntityStore.recordInteraction`).
  */
 import crypto from "node:crypto";
-import {
-  type LifeOpsMessageChannel,
-  type LifeOpsRelationship,
-  type LifeOpsRelationshipInteraction,
+import type {
+  LifeOpsMessageChannel,
+  LifeOpsRelationship,
+  LifeOpsRelationshipInteraction,
 } from "@elizaos/core/contracts/personal-assistant";
 import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import type { LifeOpsContext } from "../lifeops-context.js";
@@ -149,7 +149,7 @@ export class RelationshipsDomain {
     const entities = await entityStore.list({
       type: "person",
       tag: LIFEOPS_CONTACT_TAG,
-      ...(opts?.limit ? { limit: opts.limit } : {}),
+      ...(opts?.limit === undefined ? {} : { limit: Math.max(0, opts.limit) }),
     });
     const result: LifeOpsRelationship[] = [];
     for (const entity of entities) {
