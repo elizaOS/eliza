@@ -162,9 +162,12 @@ export class AppEarningsService {
       type?: "inference_markup" | "purchase_share" | "withdrawal" | "adjustment";
     },
   ): Promise<AppEarningsTransaction[]> {
-    // An omitted limit is the default page of 50. An explicit limit, including
-    // 0, is a page — `limit || 50` treated 0 as missing.
-    const limit = options?.limit === undefined ? 50 : Math.max(0, options.limit);
+    // An omitted or non-finite limit is the default page of 50. An explicit
+    // finite limit, including 0, is a page — `limit || 50` treated 0 as missing,
+    // and `Math.max(0, NaN)` is `NaN`.
+    const rawLimit = options?.limit;
+    const limit =
+      typeof rawLimit === "number" && Number.isFinite(rawLimit) ? Math.max(0, rawLimit) : 50;
     if (options?.type) {
       return await appEarningsRepository.listTransactionsByType(appId, options.type, limit);
     }

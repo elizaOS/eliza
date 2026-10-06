@@ -1,20 +1,12 @@
 // Handles v1 cloud API v1 apps id earnings history route traffic with route-local auth expectations.
 import { Hono } from "hono";
-import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appEarningsService } from "@/lib/services/app-earnings";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-const QuerySchema = z.object({
-  limit: z.coerce.number().int().positive().max(100).optional().default(50),
-  offset: z.coerce.number().int().min(0).optional().default(0),
-  type: z
-    .enum(["inference_markup", "purchase_share", "withdrawal", "adjustment"])
-    .optional(),
-});
+import { earningsHistoryQuerySchema as QuerySchema } from "./history-query";
 
 /**
  * GET /api/v1/apps/[id]/earnings/history
@@ -23,7 +15,7 @@ const QuerySchema = z.object({
  * Requires ownership verification.
  *
  * Query Parameters:
- * - `limit`: Maximum number of transactions (default: 50, max: 100).
+ * - `limit`: Maximum number of transactions (default: 50, max: 100, 0 for none).
  * - `offset`: Offset for pagination (default: 0).
  * - `type`: Filter by transaction type - "inference_markup" | "purchase_share" | "withdrawal" | "adjustment".
  *
