@@ -25,6 +25,7 @@ import {
 } from "vitest";
 import { summarizeRuntimeActionResults } from "../../../../../packages/agent/src/api/chat-routes.js";
 import { createLifeOpsTestRuntime } from "../../../test/helpers/runtime.js";
+import * as taskPlans from "../../actions/lib/extract-task-plan.js";
 import { runLifeOperationHandler } from "../../actions/life.js";
 import { createLifeOpsReminderAttempt } from "../repository.js";
 import { LifeOpsService } from "../service.js";
@@ -974,6 +975,7 @@ const nativeCreatePlan = {
   requestKind: "reminder",
   nativeProjection: "in_app_only",
   title: "Stretch shoulders",
+  description: null,
   cadenceKind: "once",
   dueInMinutes: 2,
   dueDate: null,
@@ -1040,6 +1042,10 @@ it.each([
   "no_history",
   "full_history",
   "full_history_compound",
+  "fallback_projection",
+  "fallback_compound",
+  "fallback_missing_body",
+  "fallback_multistep",
 ])(
   "current creation through the raw host summary preserves %s ownership",
   async (kind) => {
@@ -1076,7 +1082,9 @@ it.each([
         ? undefined
         : bindCreateRequest(
             f.message,
-            ["compound", "full_history_compound"].includes(kind)
+            ["compound", "full_history_compound", "fallback_compound"].includes(
+              kind,
+            )
               ? ["Create reminder", "Snooze an older reminder"]
               : ["Create reminder"],
             kind === "no_history"
@@ -1085,6 +1093,22 @@ it.each([
                 ? "full"
                 : "selected",
           );
+    const fallback = kind.startsWith("fallback_");
+    if (fallback) {
+      const extracted = taskPlans.buildTaskCreatePlan(nativeCreatePlan);
+      if (!extracted) throw Error("Invalid extraction fixture");
+      vi.spyOn(taskPlans, "extractTaskCreatePlanWithLlm").mockResolvedValue(
+        extracted,
+      );
+    }
+    const createPlan = {
+      ...nativeCreatePlan,
+      title: `Stretch shoulders ${kind}`,
+      ...(fallback ? { nativeProjection: null } : {}),
+      ...(kind === "fallback_multistep" ? { multiStep: true } : {}),
+    };
+    if (kind === "fallback_missing_body")
+      delete (createPlan as Partial<typeof createPlan>).description;
     const result = await runLifeOperationHandler(
       fixture.runtime,
       f.message,
@@ -1095,10 +1119,7 @@ it.each([
           kind: "habit",
           ownerSurface: "OWNER_REMINDERS",
           intent: f.message.content.text,
-          createPlan: {
-            ...nativeCreatePlan,
-            title: `Stretch shoulders ${kind}`,
-          },
+          createPlan,
         },
       },
     );
@@ -1109,7 +1130,14 @@ it.each([
       [{ ...result, actionName: "OWNER_REMINDERS_CREATE" }],
     );
     expect(actionResults[0].values?.ownerRequestHandling !== undefined).toBe(
-      !["compound", "full_history_compound", "missing_binding"].includes(kind),
+      ![
+        "compound",
+        "full_history_compound",
+        "missing_binding",
+        "fallback_compound",
+        "fallback_missing_body",
+        "fallback_multistep",
+      ].includes(kind),
     );
     if (kind === "foreign")
       marker.scope = `${fixture.runtime.agentId}:${roomId}:foreign`;
@@ -1218,7 +1246,13 @@ it.each([
     }
     expect(review.decision).toBe("unrelated");
     if (
-      ["single", "stale_pending", "no_history", "full_history"].includes(kind)
+      [
+        "single",
+        "stale_pending",
+        "no_history",
+        "full_history",
+        "fallback_projection",
+      ].includes(kind)
     ) {
       expect(review.reason).toBe("foreground_single_create_owned");
       expect(judge).not.toHaveBeenCalled();
