@@ -80,3 +80,9 @@ chooses the file store or native credential broker, prepares desktop task runtim
 and hands resources to the shared gateway lifecycle. It does not read environment
 variables or choose product identities. Native admission validates the private
 inbound token, broker endpoint and gateway port before acquiring helpers.
+
+`@elizaos/host/voice/*` contains the reusable realtime voice transport, Cartesia
+Ink/Sonic adapters, Fish adapter, and canonical conversation SSE bridge. Hosts
+must inject token verification, owner/session authorization, conversation scope,
+revocation and usage storage; importing these modules grants no authority or
+opens provider connections. Cloud retains its JWT and durable Redis policies.

@@ -3193,6 +3193,13 @@ export async function startApiServer(opts?: {
    * intended for protocol extensions such as WebSocket upgrade handlers.
    */
   configureServer?: ApiServerConfigurator;
+  /** Handle a host-owned protocol after mandatory host admission. Return true
+   * only after taking ownership of the socket; the host owns protocol auth. */
+  handleProtocolUpgrade?: (
+    request: http.IncomingMessage,
+    socket: import("node:stream").Duplex,
+    head: Buffer,
+  ) => boolean | Promise<boolean>;
   /**
    * Lets a host recognize credentials it owns before the dashboard WebSocket
    * is admitted. The agent server still owns origin/path checks, pending-socket
@@ -3978,6 +3985,7 @@ export async function startApiServer(opts?: {
         rejectWebSocketUpgrade(socket, hostRejection, "Host admission denied");
         return;
       }
+      if (await opts?.handleProtocolUpgrade?.(request, socket, head)) return;
       const wsUrl = new URL(
         request.url ?? "/",
         `http://${request.headers.host ?? "localhost"}`,
