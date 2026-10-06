@@ -1,14 +1,18 @@
 /** Durable owner-response review consumption against the real repository. */
 import {
+  attestDeliveryAudienceFromCanonicalRoom,
   bindTaskExtractionContext,
   ChannelType,
+  CONTEXT_ROUTING_STATE_KEY,
   type ContextObject,
   completionContextSources,
   conversationClientUserMemoryId,
+  getContextRoutingFromState,
   hardenIncomingUserMessage,
   type Memory,
   normalizeEffectReceipt,
   readTaskExtractionRequestIntents,
+  runWithTrajectoryContext,
   type State,
   selectCompletionContext,
   TaskService,
@@ -24,6 +28,12 @@ import {
   vi,
 } from "vitest";
 import { summarizeRuntimeActionResults } from "../../../../../packages/agent/src/api/chat-routes.js";
+import { mergeAgentContexts } from "../../../../plugin-assistant/src/services/message/action-surface.js";
+import { executeV5PlannedToolCall } from "../../../../plugin-assistant/src/services/message/planned-tool.js";
+import {
+  collectDiscoveryCatalogActions,
+  createPlannerToolDiscoveryAction,
+} from "../../../../plugin-assistant/src/services/message/tool-discovery.js";
 import { createLifeOpsTestRuntime } from "../../../test/helpers/runtime.js";
 import * as taskPlans from "../../actions/lib/extract-task-plan.js";
 import { runLifeOperationHandler } from "../../actions/life.js";
@@ -983,6 +993,119 @@ const nativeCreatePlan = {
   dueWeekday: null,
   multiStep: false,
 };
+it("preserves certified creation after registered discovery in the complete host outcome", async () => {
+  const marker = requestMarker();
+  const f = await reviewFixture("Remind me here to stretch in two minutes.", {
+    channelType: ChannelType.DM,
+    chatIdempotency: marker,
+  });
+  await attestDeliveryAudienceFromCanonicalRoom(fixture.runtime, f.message);
+  const state = bindCreateRequest(f.message, ["Create one reminder"]);
+  const bindings = Reflect.get(
+    globalThis,
+    Symbol.for("eliza.task-extraction-context"),
+  ) as WeakMap<object, { original: ContextObject }>;
+  const original = bindings.get(state.data)?.original;
+  if (!original) throw Error("Missing actual planner binding");
+  const catalog = collectDiscoveryCatalogActions({
+    actions: fixture.runtime.actions,
+    message: f.message,
+    selectedContexts: ["general"],
+    userRoles: ["OWNER"],
+  });
+  const discovery = createPlannerToolDiscoveryAction(catalog, (discovered) => {
+    const routing = getContextRoutingFromState(state);
+    state.values[CONTEXT_ROUTING_STATE_KEY] = {
+      primaryContext: routing.primaryContext ?? "general",
+      secondaryContexts: mergeAgentContexts(
+        routing.secondaryContexts,
+        ...discovered.map((action) => action.contexts),
+      ),
+    };
+  });
+  const actions = [...fixture.runtime.actions, discovery];
+  const executorCtx = {
+    message: f.message,
+    state,
+    userRoles: ["OWNER" as const],
+    activeContexts: ["general" as const],
+    replyOwner: "planner" as const,
+  };
+  const found = await executeV5PlannedToolCall({
+    runtime: fixture.runtime,
+    plannerRuntime: fixture.runtime as never,
+    plannerContext: original,
+    toolCall: {
+      name: "DISCOVER_ACTIONS",
+      params: { query: "create reminder one-time notification" },
+    },
+    executorCtx,
+    executorOptions: { actions },
+  });
+  expect(found.success).toBe(true);
+  expect(found.data?.readOnlyOperation).toBe(true);
+  const created = await runWithTrajectoryContext({ userRole: "OWNER" }, () =>
+    executeV5PlannedToolCall({
+      runtime: fixture.runtime,
+      plannerRuntime: fixture.runtime as never,
+      plannerContext: original,
+      toolCall: {
+        name: "OWNER_REMINDERS_CREATE",
+        params: {
+          createPlan: {
+            ...nativeCreatePlan,
+            title: "Stretch after registered discovery",
+          },
+        },
+      },
+      executorCtx,
+      executorOptions: { actions },
+    }),
+  );
+  expect(created.success).toBe(true);
+  const actionResults = summarizeRuntimeActionResults(
+    fixture.runtime,
+    f.message.id,
+    [found, created],
+  );
+  expect(actionResults.map((result) => result.actionName)).toEqual([
+    "DISCOVER_ACTIONS",
+    "OWNER_REMINDERS_CREATE",
+  ]);
+  expect(actionResults[1].values?.ownerRequestHandling).toMatchObject({
+    kind: "single_create",
+    sourceMessageId: f.message.id,
+  });
+  await fixture.runtime.updateMemory({
+    id: f.message.id as UUID,
+    content: {
+      ...f.message.content,
+      chatIdempotency: {
+        ...marker,
+        outcomeJson: JSON.stringify({
+          userMessageId: f.message.id,
+          actionResults,
+        }),
+      },
+    },
+  });
+  const judge = vi
+    .spyOn(service.remindersDomain, "classifyReminderOwnerResponseSemantically")
+    .mockResolvedValue({
+      decision: "unrelated",
+      resolution: null,
+      snoozeRequest: null,
+      confidence: 1,
+      reason: "New reminder is unrelated",
+    });
+  const review = await service.reviewOwnerResponseAfterReminderAttempt({
+    subjectType: "owner",
+    attempt: f.attempt,
+    now: f.now,
+  });
+  expect(review.reason).toBe("foreground_single_create_owned");
+  expect(judge).not.toHaveBeenCalled();
+});
 it("defers an active valid host request without consuming the old reminder response", async () => {
   const f = await reviewFixture("Remind me here to stretch in two minutes.", {
     channelType: ChannelType.DM,
@@ -1046,6 +1169,13 @@ it.each([
   "fallback_compound",
   "fallback_missing_body",
   "fallback_multistep",
+  "discovery_failed",
+  "discovery_unknown",
+  "discovery_effect",
+  "discovery_update",
+  "discovery_multiple_creates",
+  "discovery_compound",
+  "discovery_missing_binding",
 ])(
   "current creation through the raw host summary preserves %s ownership",
   async (kind) => {
@@ -1077,22 +1207,26 @@ it.each([
         content: f.message.content,
       });
     }
-    const state =
-      kind === "missing_binding"
-        ? undefined
-        : bindCreateRequest(
-            f.message,
-            ["compound", "full_history_compound", "fallback_compound"].includes(
-              kind,
-            )
-              ? ["Create reminder", "Snooze an older reminder"]
-              : ["Create reminder"],
-            kind === "no_history"
-              ? "none"
-              : ["full_history", "full_history_compound"].includes(kind)
-                ? "full"
-                : "selected",
-          );
+    const state = ["missing_binding", "discovery_missing_binding"].includes(
+      kind,
+    )
+      ? undefined
+      : bindCreateRequest(
+          f.message,
+          [
+            "compound",
+            "full_history_compound",
+            "fallback_compound",
+            "discovery_compound",
+          ].includes(kind)
+            ? ["Create reminder", "Snooze an older reminder"]
+            : ["Create reminder"],
+          kind === "no_history"
+            ? "none"
+            : ["full_history", "full_history_compound"].includes(kind)
+              ? "full"
+              : "selected",
+        );
     const fallback = kind.startsWith("fallback_");
     if (fallback) {
       const extracted = taskPlans.buildTaskCreatePlan(nativeCreatePlan);
@@ -1137,6 +1271,8 @@ it.each([
         "fallback_compound",
         "fallback_missing_body",
         "fallback_multistep",
+        "discovery_compound",
+        "discovery_missing_binding",
       ].includes(kind),
     );
     if (kind === "foreign")
@@ -1158,6 +1294,24 @@ it.each([
           },
         }),
       ];
+    if (kind.startsWith("discovery_")) {
+      actionResults.unshift({
+        actionName: "DISCOVER_ACTIONS",
+        success: kind !== "discovery_failed",
+      });
+      if (kind === "discovery_unknown")
+        actionResults[0].actionName = "UNKNOWN_ACTION";
+      if (kind === "discovery_effect")
+        actionResults[0].effectReceipts = actionResults[1].effectReceipts;
+      if (kind === "discovery_update")
+        actionResults.push({
+          actionName: "OWNER_REMINDERS_UPDATE",
+          success: true,
+          effectReceipts: actionResults[1].effectReceipts,
+        });
+      if (kind === "discovery_multiple_creates")
+        actionResults.push({ ...actionResults[1] });
+    }
     await fixture.runtime.updateMemory({
       id: f.message.id as UUID,
       content: {
