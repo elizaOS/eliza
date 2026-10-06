@@ -10,6 +10,8 @@ import { deriveBillDecision } from "../test/fixtures/bill-host/policy.mjs";
 import { buildTaskRuntime } from "../test/fixtures/bill-host/runtime.mjs";
 import { createBillHelperHost } from "./bill-helper-host.mjs";
 import { createBillOutcomeStore } from "./bill-outcome-store.mjs";
+import { createBillSourceStore } from "./bill-source-store.mjs";
+import { createBillTaskRoutes } from "./bill-task-routes.mjs";
 
 const reconcileBillMethod = ({ bill, snapshot, record }) => ({
   status:
@@ -100,6 +102,10 @@ test("controlled bill host resolves only its persisted review through shared rea
   };
   const helper = createBillHelperHost({
     deriveBillDecision,
+    selectionGuidance: {
+      unavailableMessage:
+        "Bring the saved method into view. No method selection was sent.",
+    },
     runtimeModule,
     target,
     credentialGate: async () => "owner",
@@ -139,6 +145,19 @@ test("controlled bill host resolves only its persisted review through shared rea
       ...helper,
       bundlePath: bundle,
       databasePath: dbPath,
+      extensionFactory: (context) =>
+        createBillTaskRoutes({
+          ...context,
+          workflowFactory: helper.workflowFactory,
+          outcomeStore: createBillOutcomeStore(context.db, context.store),
+          sourceStore: createBillSourceStore(context.db, context.store),
+          copy: {
+            existingMethodPrompt: "Use this method?",
+            existingMethodLabel: "Use method",
+            pendingChoiceMessage: "Choice pending",
+            staleChoiceMessage: "Review changed",
+          },
+        }),
       credentialGate: async () => "owner",
     });
     const runtime = await gateway.forCurrentOwner();
@@ -161,19 +180,57 @@ test("controlled bill host resolves only its persisted review through shared rea
       db,
       new runtimeModule.SqliteInteractiveTaskStore(db),
     ).forTask(runtime, task.id);
-    const workflow = helper.workflowFactory({ runtime, task, outcomes });
-    const choice = await workflow.refresh();
-    assert.equal(choice.kind, "choose-existing-method");
+    const request = async (body) => {
+      const response = await gateway.handle(
+        new Request(
+          `http://localhost/tasks/${task.id}/bill`,
+          body ? { method: "POST", body: JSON.stringify(body) } : {},
+        ),
+      );
+      assert.equal(response.status, 200);
+      return (await response.json()).decision;
+    };
+    const select = (choice) =>
+      request({
+        callbackData: choice.callbackData,
+        contextKey: choice.contextKey,
+        value: "existing",
+      });
+    let offer = await request();
+    assert.equal(offer.kind, "choose-existing-method");
+    assert.equal(offer.choice.state, "pending");
+    guidanceAvailable = false;
+    const unavailable = await select(offer.choice);
+    assert.equal(unavailable.kind, "human-review");
+    assert.match(unavailable.message, /No method selection was sent/);
+    assert.equal(effects, 0);
+    assert.equal(runtime.get(task.id).operations.length, 0);
     assert.equal(
-      (
-        await workflow.chooseExistingMethod(choice.reviewKey, {
-          operationId: "method-operation",
-        })
-      ).kind,
-      "unknown-outcome",
+      db
+        .prepare("SELECT COUNT(*) AS count FROM bill_method_selections_v1")
+        .get().count,
+      0,
     );
+    assert.equal(runtime.get(task.id).status, "paused");
+    guidanceAvailable = true;
+    assert.equal((await request()).kind, "paused");
+    const paused = runtime.get(task.id);
+    await runtime.observe(task.id, paused.revision, true);
+    const previousReviewKey = offer.reviewKey;
+    offer = await request();
+    assert.notEqual(offer.reviewKey, previousReviewKey);
+    assert.equal(
+      offer.choice.state,
+      "pending",
+      "Resume must offer a usable new choice, not the consumed one",
+    );
+    assert.equal((await select(offer.choice)).kind, "unknown-outcome");
     assert.equal(effects, 1);
-    assert.ok(outcomes.loadMethodSelection("method-operation"));
+    assert.ok(
+      outcomes.loadMethodSelection(
+        runtime.get(task.id).operations[0].proposal.id,
+      ),
+    );
     const before = runtime.get(task.id);
     const reconciled = await helper.reconcileTask({
       runtime,

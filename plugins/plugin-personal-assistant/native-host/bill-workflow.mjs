@@ -14,12 +14,24 @@ export class BillWorkflow {
     outcomes,
     codeCoordinator,
     controls,
+    selectionGuidance = null,
     stillAuthorized = async () => true,
     signal = new AbortController().signal,
   }) {
     if (typeof deriveBillDecision !== "function")
       throw new BillHostError("Reviewed bill observation policy is required");
+    if (
+      selectionGuidance !== null &&
+      (typeof selectionGuidance !== "object" ||
+        Array.isArray(selectionGuidance) ||
+        Object.keys(selectionGuidance).join(",") !== "unavailableMessage" ||
+        typeof selectionGuidance.unavailableMessage !== "string" ||
+        !selectionGuidance.unavailableMessage.trim() ||
+        selectionGuidance.unavailableMessage.length > 600)
+    )
+      throw new BillHostError("Invalid required selection guidance policy");
     Object.assign(this, {
+      selectionGuidance: structuredClone(selectionGuidance),
       deriveBillDecision,
       runtime,
       actuator,
@@ -60,10 +72,18 @@ export class BillWorkflow {
       decision.message ||
       "Review the existing payment method on the website before choosing it in Eliza.";
     const guidance = { instruction, available: false };
+    const unavailable = () =>
+      this.selectionGuidance && decision.kind === "choose-existing-method"
+        ? {
+            kind: "human-review",
+            message: this.selectionGuidance.unavailableMessage,
+            guidance,
+          }
+        : { ...decision, guidance };
     const target = matchBillControl(snapshot, control);
     if (!target || !this.actuator.showGuidance) {
       await this.clearGuidance();
-      return { ...decision, guidance };
+      return unavailable();
     }
     if (!(await this.stillAuthorized()) || this.signal.aborted) {
       await this.clearGuidance();
@@ -89,7 +109,7 @@ export class BillWorkflow {
       await this.clearGuidance();
       if (!(await this.stillAuthorized()) || this.signal.aborted)
         throw new BillHostError("Task authorization changed");
-      return { ...decision, guidance };
+      return unavailable();
     }
   }
   async refresh(options = {}) {
@@ -323,7 +343,28 @@ export class BillWorkflow {
     { operationId = randomUUID(), isCurrent = () => true } = {},
   ) {
     const decision = await this.refresh();
-    if (decision.kind !== "choose-existing-method") return decision;
+    if (decision.kind !== "choose-existing-method") {
+      if (
+        this.selectionGuidance &&
+        decision.kind === "human-review" &&
+        decision.guidance?.available === false
+      ) {
+        if (
+          !isCurrent() ||
+          !(await this.stillAuthorized()) ||
+          this.signal.aborted
+        )
+          return blocked("Task authorization changed.");
+        const current = this.runtime.get(this.taskId);
+        if (current.status === "active") {
+          // The offered choice is consumed even though no effect was dispatched.
+          // Pause advances its epoch; explicit Resume can offer a fresh choice.
+          this.runtime.control(current.id, current.revision, "pause");
+          await this.runtime.settle(current.id);
+        }
+      }
+      return decision;
+    }
     if (decision.reviewKey !== expectedReviewKey)
       return {
         ...decision,
