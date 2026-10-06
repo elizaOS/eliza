@@ -47,6 +47,7 @@ import {
   getEntityRole,
   getInferenceTimer,
   hasAtLeastRole,
+  type IAgentRuntime,
   InferenceTurnTimer,
   type AgentLogEntry as LogEntry,
   logger,
@@ -3417,6 +3418,21 @@ const ownerConversationCreations = new WeakMap<
   Map<string, ConversationMeta>,
   Promise<ConversationMeta>
 >();
+/** Bind prompt creation to the admitted runtime across asynchronous restoration. */
+export async function resolvePromptDeliveryRoom(
+  state: ConversationRouteState & { activeConversationId?: string | null },
+  runtime: IAgentRuntime,
+): Promise<UUID> {
+  if (runtime !== state.runtime) {
+    throw new Error("Runtime changed before prompt automation creation");
+  }
+  const conversation = await ensureOwnerConversation(state, state.runtime);
+  if (runtime !== state.runtime) {
+    throw new Error("Runtime changed during prompt automation creation");
+  }
+  return conversation.roomId;
+}
+
 /**
  * Resolve the owner's canonical app conversation: the active one, else the
  * most recently updated, restoring persisted conversations first. When the
