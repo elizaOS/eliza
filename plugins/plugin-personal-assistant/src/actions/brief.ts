@@ -918,7 +918,10 @@ export function buildNarrativePrompt(args: {
   };
   const editorial = args.editorial
     ? {
-        ...args.editorial,
+        // Ranking and engagement diagnostics explain how this contract was
+        // chosen; they are not facts to narrate about the owner. Keep them in
+        // the canonical briefing while rendering only the resulting decisions.
+        maxItems: args.editorial.maxItems,
         items: args.editorial.items.map((item) => {
           const localTime =
             item.source === "life"
@@ -928,13 +931,22 @@ export function buildNarrativePrompt(args: {
                 ? calendar?.find((source) => source.id === item.sourceId)
                     ?.timeContext?.startAt
                 : undefined;
-          return localTime
-            ? {
-                ...item,
-                summary: `${item.source === "life" ? "due" : "starts"} ${localTime.localTime} (${localTime.relationToAsOf})`,
-              }
-            : item;
+          return {
+            itemId: item.itemId,
+            source: item.source,
+            kind: item.kind,
+            sourceId: item.sourceId,
+            title: item.title,
+            summary: localTime
+              ? `${item.source === "life" ? "due" : "starts"} ${localTime.localTime} (${localTime.relationToAsOf})`
+              : item.summary,
+          };
         }),
+        decisions: args.editorial.decisions.map(({ itemId, action }) => ({
+          itemId,
+          action,
+        })),
+        pushback: args.editorial.pushback,
       }
     : undefined;
   const payload = JSON.stringify(
