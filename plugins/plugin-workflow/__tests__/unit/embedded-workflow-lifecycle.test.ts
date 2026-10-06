@@ -206,6 +206,50 @@ describe('embedded native workflow lifecycle', () => {
     expect((await service.listWorkflows()).data).toHaveLength(0);
   });
 
+  test('treats an explicit workflow or execution limit of 0 as an empty page', async () => {
+    const { service, client, runtime } = await harness();
+    await service.createWorkflow({ ...definition('First'), id: 'first', schedule: undefined });
+    await service.createWorkflow({ ...definition('Second'), id: 'second', schedule: undefined });
+
+    expect((await service.listWorkflows({ limit: 0 })).data).toEqual([]);
+    expect((await service.listWorkflows({ limit: 1 })).data).toHaveLength(1);
+    expect((await service.listWorkflows()).data).toHaveLength(2);
+
+    for (const id of ['run-a', 'run-b']) {
+      const execution: WorkflowExecution = {
+        id,
+        workflowId: 'first',
+        workflowVersionId: 'version',
+        workflowName: 'First',
+        mode: 'manual',
+        status: 'finished',
+        finished: true,
+        startedAt: '2026-08-13T00:00:00.000Z',
+        input: {},
+        events: [],
+      };
+      await client.query(
+        `INSERT INTO workflow.embedded_executions
+         (agent_id, id, workflow_id, status, mode, finished, started_at, execution)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+        [
+          runtime.agentId,
+          execution.id,
+          execution.workflowId,
+          execution.status,
+          execution.mode,
+          execution.finished,
+          execution.startedAt,
+          JSON.stringify(execution),
+        ]
+      );
+    }
+
+    expect((await service.listExecutions({ limit: 0 })).data).toEqual([]);
+    expect((await service.listExecutions({ limit: 1 })).data).toHaveLength(1);
+    expect((await service.listExecutions()).data).toHaveLength(2);
+  });
+
   test('validates an update before capturing its current revision', async () => {
     const { service, client } = await harness();
     const created = await service.createWorkflow({ ...definition('Original'), id: 'ordered' });

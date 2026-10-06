@@ -104,6 +104,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
         }
       }
     } catch (err: unknown) {
+      // Keep the action failure visible until retry; status polls are independent.
       setActionError(err instanceof Error ? err.message : String(err));
       try {
         const status = await client.streamStatus();
