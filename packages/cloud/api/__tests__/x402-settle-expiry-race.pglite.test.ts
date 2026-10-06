@@ -32,6 +32,21 @@ const { users } = await import("@elizaos/cloud-shared/db/schemas/users");
 const { cryptoPayments } = await import(
   "@elizaos/cloud-shared/db/schemas/crypto-payments"
 );
+const {
+  apps,
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  userDatabaseStatusEnum,
+  appEarnings,
+  appEarningsTransactions,
+  earningsSourceEnum,
+  ledgerEntryTypeEnum,
+  redeemableEarnings,
+  redeemableEarningsLedger,
+} = await import("@elizaos/cloud-shared/db/schemas");
+const safeFetchModule = await import(
+  "@elizaos/cloud-shared/lib/security/safe-fetch"
+);
 const { cryptoPaymentsRepository } = await import(
   "@elizaos/cloud-shared/db/repositories/crypto-payments"
 );
@@ -54,7 +69,24 @@ beforeAll(async () => {
   const empty = generateDrizzleJson({});
   for (const statement of await generateMigration(
     empty,
-    generateDrizzleJson({ organizations, users, cryptoPayments }, empty.id),
+    generateDrizzleJson(
+      {
+        organizations,
+        users,
+        cryptoPayments,
+        apps,
+        appDeploymentStatusEnum,
+        appReviewStatusEnum,
+        userDatabaseStatusEnum,
+        appEarnings,
+        appEarningsTransactions,
+        earningsSourceEnum,
+        ledgerEntryTypeEnum,
+        redeemableEarnings,
+        redeemableEarningsLedger,
+      },
+      empty.id,
+    ),
   ))
     await pg().exec(statement.replaceAll('"public".', ""));
 });
@@ -306,4 +338,171 @@ test("a facilitator error with an unknown outcome keeps the claim so a retry can
 
   expect(facilitator).toHaveBeenCalledTimes(1);
   expect(await settleClaim(payment)).not.toBeNull();
+});
+
+async function seedAppRequest() {
+  const { payment, txHash } = await openRequest();
+  const owner = await pg().query<{ organization_id: string; user_id: string }>(
+    "SELECT organization_id, user_id FROM crypto_payments WHERE id=$1",
+    [payment],
+  );
+  const { organization_id: org, user_id: creator } = owner.rows[0] ?? {};
+  const app = randomUUID();
+  await pg().query(
+    `INSERT INTO apps(id,name,slug,organization_id,created_by_user_id,app_url)
+     VALUES ($1,'Seller app',$2,$3,$4,'https://seller.example')`,
+    [app, `app-${app}`, org, creator],
+  );
+  await pg().query(
+    `UPDATE crypto_payments
+     SET metadata = metadata || jsonb_build_object('appId', $2::text, 'callbackUrl', 'https://seller.example/paid')
+     WHERE id=$1`,
+    [payment, app],
+  );
+  return { payment, txHash, app, creator: creator as string };
+}
+
+async function creatorBooks(app: string, creator: string) {
+  const row = await pg().query<{
+    redeemable: string | null;
+    ledger: string;
+    withdrawable: string | null;
+    shadow: string;
+    app_total: string | null;
+  }>(
+    `SELECT
+       (SELECT total_earned FROM redeemable_earnings WHERE user_id=$2) AS redeemable,
+       (SELECT count(*)::text FROM redeemable_earnings_ledger WHERE user_id=$2) AS ledger,
+       (SELECT withdrawable_balance FROM app_earnings WHERE app_id=$1) AS withdrawable,
+       (SELECT count(*)::text FROM app_earnings_transactions WHERE app_id=$1) AS shadow,
+       (SELECT total_creator_earnings FROM apps WHERE id=$1) AS app_total`,
+    [app, creator],
+  );
+  const books = row.rows[0];
+  return {
+    redeemable: Number(books?.redeemable ?? 0),
+    ledger: Number(books?.ledger),
+    withdrawable: Number(books?.withdrawable ?? 0),
+    shadow: Number(books?.shadow),
+    appTotal: Number(books?.app_total ?? 0),
+  };
+}
+
+async function settlementPending(payment: string) {
+  const row = await pg().query<{ pending: string | null }>(
+    "SELECT metadata->>'settlementPending' AS pending FROM crypto_payments WHERE id=$1",
+    [payment],
+  );
+  return row.rows[0]?.pending ?? null;
+}
+
+function paidCallbacks(spy: { mock: { calls: unknown[][] } }) {
+  return spy.mock.calls.filter((call) => {
+    const init = call[1] as RequestInit | undefined;
+    return String(init?.body ?? "").includes("x402.payment_request.paid");
+  }).length;
+}
+
+test("an app payment books creator earnings atomically and sends one paid callback", async () => {
+  const { payment, txHash, app, creator } = await seedAppRequest();
+  spyOn(x402FacilitatorService, "settle").mockResolvedValue(
+    settledWith(txHash),
+  );
+  const fetches = spyOn(safeFetchModule, "safeFetch").mockResolvedValue(
+    new Response("ok"),
+  );
+
+  await x402PaymentRequestsService.settle(payment, paymentPayload("0x01"));
+
+  expect(await statusOf(payment)).toBe("confirmed");
+  expect(await settlementPending(payment)).toBeNull();
+  expect(await creatorBooks(app, creator)).toEqual({
+    redeemable: 5,
+    ledger: 1,
+    withdrawable: 5,
+    shadow: 1,
+    appTotal: 5,
+  });
+  expect(paidCallbacks(fetches)).toBe(1);
+});
+
+test("earnings that fail after the on-chain transfer are completed once by the next settle", async () => {
+  const { payment, txHash, app, creator } = await seedAppRequest();
+  const facilitator = spyOn(x402FacilitatorService, "settle").mockResolvedValue(
+    settledWith(txHash),
+  );
+  const fetches = spyOn(safeFetchModule, "safeFetch").mockResolvedValue(
+    new Response("ok"),
+  );
+  await pg().query(
+    "UPDATE apps SET total_platform_revenue = NULL WHERE id=$1",
+    [app],
+  );
+
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x01")),
+  ).rejects.toThrow("Insufficient app aggregate balance");
+  expect(await statusOf(payment)).toBe("confirmed");
+  expect(await settlementPending(payment)).toBe("true");
+  expect(paidCallbacks(fetches)).toBe(0);
+  await pg().query("UPDATE apps SET total_platform_revenue = 0 WHERE id=$1", [
+    app,
+  ]);
+
+  const retry = await x402PaymentRequestsService.settle(
+    payment,
+    paymentPayload("0x01"),
+  );
+  await x402PaymentRequestsService.settle(payment, paymentPayload("0x01"));
+
+  expect(retry.paymentRequest.paid).toBe(true);
+  expect(facilitator).toHaveBeenCalledTimes(1);
+  expect(await settlementPending(payment)).toBeNull();
+  expect(await creatorBooks(app, creator)).toEqual({
+    redeemable: 5,
+    ledger: 1,
+    withdrawable: 5,
+    shadow: 1,
+    appTotal: 5,
+  });
+  expect(paidCallbacks(fetches)).toBe(1);
+});
+
+test("a request confirmed before settlement tracking is not re-credited on replay", async () => {
+  const { payment } = await lapsedRequest("confirmed");
+  const earnings = spyOn(redeemableEarningsService, "addEarnings");
+
+  const result = await x402PaymentRequestsService.settle(payment, {});
+
+  expect(result.paymentRequest.paid).toBe(true);
+  expect(earnings).not.toHaveBeenCalled();
+});
+
+test("a redeemable write that fails after the on-chain transfer is credited by the next settle", async () => {
+  const { payment, txHash, app, creator } = await seedAppRequest();
+  spyOn(x402FacilitatorService, "settle").mockResolvedValue(
+    settledWith(txHash),
+  );
+  const fetches = spyOn(safeFetchModule, "safeFetch").mockResolvedValue(
+    new Response("ok"),
+  );
+  spyOn(redeemableEarningsService, "addEarnings").mockRejectedValueOnce(
+    new Error("connection reset"),
+  );
+
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x01")),
+  ).rejects.toThrow("connection reset");
+  expect(await statusOf(payment)).toBe("confirmed");
+
+  await x402PaymentRequestsService.settle(payment, paymentPayload("0x01"));
+
+  expect(await creatorBooks(app, creator)).toEqual({
+    redeemable: 5,
+    ledger: 1,
+    withdrawable: 5,
+    shadow: 1,
+    appTotal: 5,
+  });
+  expect(paidCallbacks(fetches)).toBe(1);
 });

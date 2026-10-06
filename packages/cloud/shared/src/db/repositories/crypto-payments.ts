@@ -14,6 +14,7 @@ import {
 export type { CryptoPayment, NewCryptoPayment };
 
 const SETTLE_CLAIM_KEY = "settleClaimedUntil";
+export const SETTLEMENT_PENDING_KEY = "settlementPending";
 
 function settleClaimInactive(now: Date) {
   return sql`(${cryptoPayments.metadata}->>${SETTLE_CLAIM_KEY}::text IS NULL OR (${cryptoPayments.metadata}->>${SETTLE_CLAIM_KEY}::text)::timestamptz <= ${now.toISOString()}::timestamptz)`;
@@ -189,6 +190,55 @@ export class CryptoPaymentsRepository {
           eq(cryptoPayments.id, id),
           eq(cryptoPayments.status, "pending"),
           settleClaimInactive(new Date()),
+        ),
+      )
+      .returning();
+    return payment;
+  }
+
+  /**
+   * Records a facilitator settlement in one statement: confirms the row,
+   * releases the settle claim, merges `metadataPatch`, and flags the
+   * post-settlement work as pending until `clearSettlementPending` runs.
+   */
+  async confirmSettlement(
+    id: string,
+    params: { txHash: string; receivedAmount: string; metadataPatch: Record<string, unknown> },
+  ): Promise<CryptoPayment | undefined> {
+    const now = new Date();
+    const patch = { ...params.metadataPatch, [SETTLEMENT_PENDING_KEY]: true };
+    const [payment] = await dbWrite
+      .update(cryptoPayments)
+      .set({
+        status: "confirmed",
+        transaction_hash: canonicalizeCryptoTransactionHash(params.txHash),
+        block_number: "",
+        received_amount: params.receivedAmount,
+        confirmed_at: now,
+        updated_at: now,
+        metadata: sql`(coalesce(${cryptoPayments.metadata}, '{}'::jsonb) - ${SETTLE_CLAIM_KEY}::text) || ${JSON.stringify(patch)}::jsonb`,
+      })
+      .where(eq(cryptoPayments.id, id))
+      .returning();
+    return payment;
+  }
+
+  /**
+   * Clears the post-settlement flag set by `confirmSettlement`; returns
+   * undefined when another caller already cleared it.
+   */
+  async clearSettlementPending(id: string): Promise<CryptoPayment | undefined> {
+    const [payment] = await dbWrite
+      .update(cryptoPayments)
+      .set({
+        metadata: sql`${cryptoPayments.metadata} - ${SETTLEMENT_PENDING_KEY}::text`,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(cryptoPayments.id, id),
+          eq(cryptoPayments.status, "confirmed"),
+          sql`${cryptoPayments.metadata}->>${SETTLEMENT_PENDING_KEY}::text = 'true'`,
         ),
       )
       .returning();
