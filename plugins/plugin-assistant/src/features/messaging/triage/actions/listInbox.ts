@@ -5,7 +5,10 @@
  * shared `MESSAGE` action name; serves cached refs from the TriageService
  * store when present (re-ranked via `rankScored`) and otherwise triggers a
  * live `triage()` pull, then filters to unread and trims to the requested
- * limit. ADMIN-gated and side-effect free — it never drafts or mutates.
+ * limit. A warm cache that yields zero unread falls through to the same
+ * live pull, so the empty answer reflects the connectors rather than a
+ * stale all-read store. ADMIN-gated and side-effect free — it never drafts
+ * or mutates.
  */
 
 import type {
@@ -106,7 +109,24 @@ export const listInboxAction: Action = {
         messages = rankScored(messages);
       }
 
-      const unread = messages.filter((m) => !m.isRead);
+      let unread = messages.filter((m) => !m.isRead);
+
+      // The store keeps every ref a sweep ever handed it and never prunes
+      // read rows, so a warm cache can stay all-read for the rest of the
+      // process while the connectors hold new mail. A cached view with zero
+      // unread falls through to the same live pull an empty cache gets; the
+      // action claims "no unread" only after the authoritative sources
+      // agree. A cache-empty start already pulled above, so the guard skips
+      // a duplicate sweep for that path.
+      if (unread.length === 0 && messages.length > 0) {
+        messages = await service.triage(runtime, {
+          sources: params.sources,
+          sinceMs: params.sinceMs,
+          limit: params.limit,
+        });
+        unread = messages.filter((m) => !m.isRead);
+      }
+
       const limit = params.limit ?? unread.length;
       const trimmed = unread.slice(0, limit);
 
