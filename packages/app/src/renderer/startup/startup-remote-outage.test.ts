@@ -181,3 +181,83 @@ it.each([
     ).toEqual(snapshot);
   },
 );
+
+it.each([true, false])(
+  "retains an explicit remote with pairing disabled and no bearer (prior setup: %s)",
+  async (hadPriorFirstRun) => {
+    localStorage.clear();
+    const { accessToken: _token, ...selected } = server;
+    upsertAndActivateAgentProfile({
+      kind: "remote",
+      label: selected.label,
+      apiBase: selected.apiBase,
+    });
+    savePersistedActiveServer(selected);
+    savePersistedFirstRunComplete(hadPriorFirstRun);
+    localStorage.setItem("eliza:mobile-runtime-mode", "remote-mac");
+    localStorage.setItem(
+      "eliza:chat:activeConversationId",
+      "original-conversation",
+    );
+    localStorage.setItem(
+      "eliza:chat:draft:original-conversation",
+      "Owner draft",
+    );
+    api.hasToken.mockReturnValue(false);
+    api.getAuthStatus.mockResolvedValue({
+      required: true,
+      authenticated: false,
+      pairingEnabled: false,
+      passwordConfigured: false,
+      expiresAt: null,
+    });
+    const snapshot = Object.fromEntries(
+      Object.keys(localStorage).map((key) => [key, localStorage.getItem(key)]),
+    );
+    let state: StartupState = {
+      phase: "polling-backend",
+      target: "remote-backend",
+      attempts: 0,
+    };
+    await runPollingBackend(
+      deps,
+      (event) => {
+        state = startupReducer(state, event);
+      },
+      {
+        supportsLocalRuntime: false,
+        backendTimeoutMs: 100,
+        agentReadyTimeoutMs: 100,
+        probeForExistingInstall: false,
+        defaultTarget: null,
+      },
+      {
+        persistedActiveServer: selected,
+        restoredActiveServer: selected,
+        shouldPreserveCompletedFirstRun: hadPriorFirstRun,
+        hadPriorFirstRun,
+      },
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "remote-backend",
+    );
+    expect(state.phase).toBe("pairing-required");
+    expect(deps.setAuthRequired).toHaveBeenCalledWith(true);
+    expect(deps.setPairingEnabled).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunComplete).not.toHaveBeenCalled();
+    expect(api.setBaseUrl).not.toHaveBeenCalled();
+    expect(api.setToken).not.toHaveBeenCalled();
+    expect(loadPersistedActiveServer()).toEqual(selected);
+    expect(getActiveProfile()?.accessToken).toBeUndefined();
+    expect(
+      Object.fromEntries(
+        Object.keys(localStorage).map((key) => [
+          key,
+          localStorage.getItem(key),
+        ]),
+      ),
+    ).toEqual(snapshot);
+  },
+);
