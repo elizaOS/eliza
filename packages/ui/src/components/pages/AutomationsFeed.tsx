@@ -53,6 +53,7 @@ import {
   passesFilter,
 } from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
+import { formatDateTime } from "../../utils/format";
 import { mergeUnifiedTasks } from "../../utils/merge-unified-tasks";
 import { openExternalUrl } from "../../utils/openExternalUrl";
 import { PagePanel } from "../composites/page-panel";
@@ -192,7 +193,7 @@ function formatInterval(intervalMs: number): string {
  * Derive a schedule label from an automation item's `schedules`
  * (`TriggerSummary[]` populated by the `/api/automations` builder from
  * `metadata.trigger`). Cron shows the humanized cadence; an on-event trigger
- * shows "On <event>"; otherwise the trigger's display name.
+ * shows "On <event>"; Once shows its scheduled time in the stored timezone.
  */
 function schedulesLabel(
   item: AutomationItem,
@@ -201,6 +202,16 @@ function schedulesLabel(
   return (
     item.schedules
       .map((trigger) => {
+        if (trigger.triggerType === "once") {
+          return trigger.scheduledAtIso
+            ? t("triggersview.onceAt", {
+                time: formatDateTime(trigger.scheduledAtIso, {
+                  timeZone: trigger.timezone,
+                }),
+                defaultValue: "Once at {{time}}",
+              })
+            : t("triggersview.once", { defaultValue: "Once" });
+        }
         if (trigger.cronExpression)
           return formatSchedule(trigger.cronExpression);
         if (trigger.triggerType === "event" && trigger.eventKind) {
@@ -707,9 +718,14 @@ export function AutomationsFeed({
             triggerId: trigger.id,
             name: trigger.displayName,
             prompt: trigger.instructions,
-            scheduleKind: (trigger.triggerType === "event"
-              ? "event"
-              : "recurring") as "event" | "recurring",
+            scheduleKind: (trigger.triggerType === "once"
+              ? "once"
+              : trigger.triggerType === "event"
+                ? "event"
+                : "recurring") as "once" | "event" | "recurring",
+            scheduledAtIso: trigger.scheduledAtIso ?? "",
+            timezone: trigger.timezone,
+            enabled: trigger.enabled,
             cronExpression: trigger.cronExpression ?? "",
             eventName: trigger.eventKind ?? "",
           }
