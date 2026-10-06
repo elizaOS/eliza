@@ -85,7 +85,10 @@ Browser speech lifecycle APIs are available from the package root.
 `DeviceSpeechController` owns device
 utterance cancellation, stale callbacks and page visibility cleanup; dispose it on
 unmount. `SegmentedSpeechPlayback` owns sequential synthesized clips, playback
-state/captions, live rate changes and object URL/player cleanup. Inject synthesis
+state/captions, live rate changes and object URL/player cleanup. Its optional
+`attach` mode composes progressive streams with acknowledged rendering speed,
+exact word timing, cancellation and explicit EOF completion; hosts own cache,
+volume and sentence policy through `segments`. Inject synthesis
 and state observers, call `stop()` on cancellation/teardown, and supply product
 copy and consent gestures in the host. These encoded-audio and device-speech paths
 do not replace the realtime PCM voice-session player or acquire a microphone.
