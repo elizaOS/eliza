@@ -495,6 +495,30 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(data.degraded).toHaveLength(1);
     });
 
+    it("a platform with no registered inbox source degrades instead of reading as a clean empty feed", async () => {
+      // The default whatsapp fetcher drives the real TriageService. No
+      // adapter registers a "whatsapp" inbox source in this deployment, so
+      // the read must surface that coverage gap through `degraded` rather
+      // than masquerade as a checked-and-empty channel.
+      const runtime = {
+        ...makeRuntime(),
+        getService: () => null,
+      } as unknown as IAgentRuntime;
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "list",
+        platforms: ["whatsapp"],
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        items: unknown[];
+        degraded: Array<{ platform: string; error: string }>;
+      };
+      expect(data.items).toEqual([]);
+      expect(data.degraded).toHaveLength(1);
+      expect(data.degraded[0]?.platform).toBe("whatsapp");
+      expect(result.text).toContain("could not check whatsapp");
+    });
+
     it("a healthy fan-out reports an empty degraded list", async () => {
       setInboxFetchers({
         gmail: async () => [makeItem({ platform: "gmail", id: "g-1" })],

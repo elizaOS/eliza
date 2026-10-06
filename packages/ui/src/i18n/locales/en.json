@@ -4995,6 +4995,7 @@
   "statusbar.StopStream": "Stop Stream",
   "streamsettings.Use": "Use",
   "streamview.{{appName}}CouldNotRea": "Could not reach the",
+  "streamview.ActionError": "Stream action failed",
   "streamview.CouldNotRea": "Could Not Rea",
   "streamview.EnableTheStreaming": "Enable the streaming plugin to go live",
   "streamview.GoLiveHint": "Press Go Live to start streaming.",

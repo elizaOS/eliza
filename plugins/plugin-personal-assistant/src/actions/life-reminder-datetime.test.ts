@@ -68,6 +68,7 @@ const serviceState = vi.hoisted(() => ({
   deleteDefinitionCalls: [] as string[],
   deleteGoalCalls: [] as string[],
   ownerEntityIds: [] as Array<string | undefined>,
+  overviewOccurrences: null as Array<Record<string, unknown>> | null,
 }));
 
 vi.mock("../lifeops/service.js", () => {
@@ -127,7 +128,7 @@ vi.mock("../lifeops/service.js", () => {
       return {
         owner: {
           summary: "1 item",
-          occurrences: [
+          occurrences: serviceState.overviewOccurrences ?? [
             {
               id: "occ-1",
               title: "workout",
@@ -776,6 +777,7 @@ describe("runLifeOperationHandler definition update targeting", () => {
   beforeEach(() => {
     serviceState.extraDefinitions.length = 0;
     serviceState.updateCalls.length = 0;
+    serviceState.overviewOccurrences = null;
   });
 
   afterEach(() => {
@@ -925,6 +927,36 @@ describe("runLifeOperationHandler definition update targeting", () => {
         }),
       },
     ]);
+  });
+
+  it("labels ambiguous occurrences with their due time in the item's zone", async () => {
+    serviceState.overviewOccurrences = [
+      ["occ-morning", "2026-10-06T14:00:00.000Z"],
+      ["occ-evening", "2026-10-07T04:30:00.000Z"],
+    ].map(([id, dueAt]) => ({
+      id,
+      title: "Take meds",
+      state: "visible",
+      domain: "user_lifeops",
+      dueAt,
+      windowName: null,
+      timezone: "America/Los_Angeles",
+    }));
+
+    const result = await runLifeOperationHandler(
+      makeRuntime(() => ""),
+      makeMessage("snooze my meds"),
+      undefined,
+      {
+        parameters: { subaction: "snooze", target: "Take meds", minutes: 30 },
+      } as HandlerOptions,
+    );
+
+    expect(result.text).toContain("Multiple items match");
+    // 07:00 and 21:30 Los Angeles time, not the host zone's clock.
+    expect(result.text).toMatch(/Oct 6, 7:00\s?AM/);
+    expect(result.text).toMatch(/Oct 6, 9:30\s?PM/);
+    expect(serviceState.snoozeCalls).toHaveLength(0);
   });
 
   it("asks which definition instead of mutating the first partial-title match", async () => {
@@ -1921,6 +1953,7 @@ describe("runLifeOperationHandler snooze durations", () => {
     serviceState.createCalls.length = 0;
     serviceState.goalCreateCalls.length = 0;
     serviceState.ownerEntityIds.length = 0;
+    serviceState.overviewOccurrences = null;
     serviceState.deleteDefinitionCalls.length = 0;
     serviceState.deleteGoalCalls.length = 0;
   });

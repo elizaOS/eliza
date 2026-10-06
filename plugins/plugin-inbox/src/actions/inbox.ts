@@ -240,6 +240,14 @@ function createDefaultPlatformFetcher(platform: InboxPlatform): InboxFetcher {
     if (typeof runtime.getService !== "function") return [];
     try {
       const service = getDefaultTriageService();
+      // A source no adapter registers (e.g. whatsapp with no whatsapp
+      // connector deployed) can never produce rows; failing here routes the
+      // platform into `degraded` instead of a checked-and-empty feed.
+      if (!service.listRegisteredSources().includes(source)) {
+        throw new Error(
+          `no inbox source registered for ${platform} in this deployment`,
+        );
+      }
       const refs = query
         ? await service.search(runtime, {
             sources: [source],

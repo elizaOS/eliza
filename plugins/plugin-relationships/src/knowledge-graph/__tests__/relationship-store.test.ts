@@ -557,7 +557,7 @@ describe("RelationshipStore", () => {
       3,
     );
   });
-  it("matches metadata in memory after the SQL limit, including omitted empty metadata", async () => {
+  it("matches metadata in memory before applying the limit, including omitted empty metadata", async () => {
     const store = new RelationshipStore(
       createRuntime("agent-1", createTables()),
       "agent-1",
@@ -591,9 +591,13 @@ describe("RelationshipStore", () => {
     expect(
       await store.list({ metadataMatch: { role: "keep", city: "ny" } }),
     ).toEqual([]);
+    // The limit counts matches: the newest edge (rel_empty) does not match,
+    // but the matching older edge is still returned.
     expect(
-      await store.list({ metadataMatch: { role: "keep" }, limit: 1 }),
-    ).toEqual([]);
+      (await store.list({ metadataMatch: { role: "keep" }, limit: 1 })).map(
+        (rel) => rel.relationshipId,
+      ),
+    ).toEqual(["rel_keep"]);
     expect(
       (await store.list({ metadataMatch: { missing: null } })).map(
         (rel) => rel.relationshipId,
@@ -650,6 +654,40 @@ describe("RelationshipStore", () => {
         .sort(),
     ).toEqual(["rel_never", "rel_overdue"]);
     expect(await store.list({ cadenceOverdueAsOf: "not-a-date" })).toEqual([]);
+  });
+  it("limits cadence-overdue results after filtering, not before", async () => {
+    const store = new RelationshipStore(
+      createRuntime("agent-1", createTables()),
+      "agent-1",
+    );
+    // The overdue edge is the least recently updated, as overdue edges are.
+    await store.upsert(
+      edgeInput({
+        relationshipId: "rel_overdue",
+        metadata: { cadenceDays: 7 },
+        state: { lastInteractionAt: "2026-05-01T12:00:00.000Z" },
+      }),
+    );
+    for (const [index, toEntityId] of ["to-c", "to-d", "to-e"].entries()) {
+      vi.setSystemTime(new Date(`2026-06-01T12:00:0${index + 1}.000Z`));
+      await store.upsert(
+        edgeInput({
+          relationshipId: `rel_fresh_${index}`,
+          toEntityId,
+          metadata: { cadenceDays: 7 },
+          state: { lastInteractionAt: "2026-05-31T12:00:00.000Z" },
+        }),
+      );
+    }
+
+    expect(
+      (
+        await store.list({
+          cadenceOverdueAsOf: "2026-06-01T12:00:00.000Z",
+          limit: 2,
+        })
+      ).map((rel) => rel.relationshipId),
+    ).toEqual(["rel_overdue"]);
   });
   it("creates a new edge on observe with extraction source and copied evidence", async () => {
     const store = new RelationshipStore(
