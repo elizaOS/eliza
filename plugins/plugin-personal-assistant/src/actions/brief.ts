@@ -1337,7 +1337,7 @@ export const briefAction: Action & {
     "BRIEF compose_morning|compose_evening|compose_weekly|recalibrate|reset_recalibration; LifeOpsBriefing",
   routingHint:
     'briefing/digest ("morning brief", "evening summary", "this week", "daily digest") -> BRIEF; one-domain read -> CALENDAR.feed, MESSAGE.triage, etc.',
-  contexts: ["briefing", "calendar", "inbox", "tasks", "finance"],
+  contexts: ["productivity", "calendar", "inbox", "tasks", "finance"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
