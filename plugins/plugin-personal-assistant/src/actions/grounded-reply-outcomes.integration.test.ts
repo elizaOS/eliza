@@ -4,7 +4,14 @@
  * generation is a deterministic collaborator, so this is not live-model proof.
  */
 
-import type { ActionResult, AgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  type ActionResult,
+  type AgentRuntime,
+  type Memory,
+  ModelType,
+  runWithActionRoutingContext,
+  type UUID,
+} from "@elizaos/core";
 import * as assistant from "@elizaos/plugin-assistant";
 import {
   afterAll,
@@ -15,6 +22,9 @@ import {
   it,
   vi,
 } from "vitest";
+import { renderGroundedActionReply } from "../../../plugin-assistant/src/actions/grounded-action-reply.ts";
+import { runEvaluator } from "../../../plugin-assistant/src/runtime/evaluator.ts";
+import { actionResultToPlannerToolResult } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -192,6 +202,149 @@ describe("grounded reply outcomes — real PGlite", () => {
     });
     expect(callback).not.toHaveBeenCalled();
     expect(result.userFacingText).toBeUndefined();
+  });
+
+  it("carries app notification semantics into actual create and update completion inputs without claiming push readiness", async () => {
+    // The package setup stubs rendering; this case exercises its real deferred path.
+    vi.spyOn(assistant, "renderGroundedActionReply").mockImplementation(
+      renderGroundedActionReply,
+    );
+    const useModel = vi.spyOn(runtime, "useModel");
+    const createMessage = message(
+      "Remind me once in two minutes in Eliza, using my in-app and Android notifications.",
+    );
+    const created = await runWithActionRoutingContext(
+      {
+        actionName: "OWNER_REMINDERS_CREATE",
+        modelClass: undefined,
+        messageId: createMessage.id,
+        replyOwner: "planner",
+      },
+      () =>
+        runLifeOperationHandler(runtime, createMessage, undefined, {
+          parameters: {
+            action: "create",
+            ownerSurface: "OWNER_REMINDERS",
+            createPlan: {
+              mode: "create",
+              requestKind: "reminder",
+              nativeProjection: "in_app_only",
+              title: "Notification grounding fixture",
+              cadenceKind: "once",
+              dueInMinutes: 2,
+              timeZone: "UTC",
+              multiStep: false,
+            },
+          },
+        }),
+    );
+    expect(created.success).toBe(true);
+    expect(useModel).not.toHaveBeenCalled();
+    const definitionId = created.effectReceipts?.[0]?.resource.id;
+    if (!definitionId) throw new Error("Missing real create receipt");
+    const saved = await service.getDefinition(definitionId);
+    const updateMessage = message(
+      "Update this reminder's note and retain its notification schedule.",
+    );
+    const updated = await runWithActionRoutingContext(
+      {
+        actionName: "OWNER_REMINDERS_UPDATE",
+        modelClass: undefined,
+        messageId: updateMessage.id,
+        replyOwner: "planner",
+      },
+      () =>
+        runLifeOperationHandler(runtime, updateMessage, undefined, {
+          parameters: {
+            action: "update",
+            target: definitionId,
+            details: {
+              description: "Updated fixture note",
+              cadence: saved.definition.cadence,
+            },
+          },
+        }),
+    );
+    expect(updated.success).toBe(true);
+    expect(useModel).not.toHaveBeenCalled();
+    for (const [result, recordKey] of [
+      [created, "created"],
+      [updated, "updated"],
+    ] as const) {
+      expect(result.transcriptVisibility).toBe("internal");
+      expect(result.userFacingText).toBeUndefined();
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "applied",
+        commit: { kind: "durable" },
+      });
+      const receipt = result.effectReceipts?.[0];
+      if (!receipt) throw new Error("Missing committed action receipt");
+      useModel.mockResolvedValueOnce(
+        JSON.stringify({
+          thought:
+            "The record is saved; no OS delivery result has been observed.",
+          decision: "FINISH",
+          success: true,
+          messageToUser: "The reminder schedule is saved.",
+          replyEffectStatus: "applied",
+          effectReceiptIds: [receipt.receiptId],
+        }),
+      );
+      const context = { id: `notification-grounding-${recordKey}`, events: [] };
+      await runEvaluator({
+        runtime,
+        context,
+        trajectory: {
+          context,
+          steps: [
+            {
+              iteration: 1,
+              toolCall: {
+                id: `reminder-${recordKey}`,
+                name: "OWNER_REMINDERS",
+              },
+              result: actionResultToPlannerToolResult(result),
+            },
+          ],
+          archivedSteps: [],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+        },
+      });
+      const call = useModel.mock.calls.at(-1);
+      if (!call) throw new Error("Missing completion input");
+      const [type, parameters] = call;
+      expect(type).toBe(ModelType.RESPONSE_HANDLER);
+      const tool = parameters.messages?.find((entry) => entry.role === "tool");
+      expect(tool, JSON.stringify(parameters.messages)).toBeDefined();
+      const content = tool?.content;
+      const encoded =
+        typeof content === "string"
+          ? content
+          : content?.find((part) => part.type === "tool-result")?.output;
+      const wireResult = JSON.parse(
+        typeof encoded === "string" ? encoded : (encoded?.value ?? "{}"),
+      );
+      const grounding = JSON.parse(wireResult.data.replyGrounding);
+      expect(grounding.context[recordKey]).toMatchObject({
+        notificationChannels: ["in_app"],
+        nativeProjection: "in_app_only",
+        nativeAppleReminderId: null,
+      });
+      expect(grounding.context[recordKey]).not.toHaveProperty(
+        "deliveryEnabled",
+      );
+      expect(grounding.instructions.join("\n")).toContain(
+        "excludes Apple Reminders record projection, not this app's Android or iOS notifications",
+      );
+      expect(grounding.instructions.join("\n")).toContain(
+        "only from explicit platform delivery status or error evidence",
+      );
+      expect(grounding.instructions.join("\n")).toContain(
+        "unassessed readiness is unknown, not unavailable",
+      );
+    }
+    expect(useModel).toHaveBeenCalledTimes(2);
   });
 
   it("keeps one persisted entity contact and its applied receipt after reply failure", async () => {
