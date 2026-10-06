@@ -2123,6 +2123,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return { status: "created", parent: params.parent, removedSegmentIds: [] };
       }
 
+      // The parent gets the strict serializer the create path applies through
+      // insertMemoryInTransaction, before any segment row changes.
+      const replacementContent = serializeJsonb(params.replacementContent, { memoryContent: true });
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2220,7 +2223,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
       const updated = await tx
         .update(memoryTable)
-        .set({ content: params.replacementContent })
+        .set({ content: sql`${replacementContent}::jsonb` })
         .where(eq(memoryTable.id, params.messageId))
         .returning();
       if (updated.length !== 1) {
@@ -7887,7 +7890,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       for (const { id, updates } of logs) {
         const setValues: Record<string, unknown> = {};
-        if (updates.body !== undefined) setValues.body = updates.body;
+        if (updates.body !== undefined) {
+          // Bound as log() binds a new body: NUL stripped, lone surrogates as U+FFFD.
+          setValues.body = sql`${JSON.stringify(sanitizeJsonObject(updates.body))}::jsonb`;
+        }
         if (updates.type !== undefined) setValues.type = updates.type;
         if (Object.keys(setValues).length > 0) {
           await this.db
@@ -7926,6 +7932,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<AtomicMemoryPublicationResult> {
     const headId = params.head.memory.id;
     if (!headId) throw new TypeError("atomic memory publication head requires an id");
+    // The head gets the strict serializers insertMemoryInTransaction applies to
+    // its dependencies, so an invalid head is refused before any row is written.
+    const contentText =
+      params.head.tableName === "document_fragments"
+        ? serializeDocumentJsonb(params.head.memory.content)
+        : serializeJsonb(params.head.memory.content, {
+            documentText: params.head.tableName === "documents",
+            memoryContent: true,
+          });
+    const metadataText = serializeJsonb(params.head.memory.metadata ?? {});
     try {
       return await this.withDatabase(async () =>
         this.db.transaction(async (tx) => {
@@ -7975,8 +7991,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             }
           }
 
-          const contentText = JSON.stringify(params.head.memory.content);
-          const metadataText = JSON.stringify(params.head.memory.metadata ?? {});
           let published: MemoryRow[];
           if (params.expectedRevision === null) {
             published = await tx
