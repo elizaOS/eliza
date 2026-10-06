@@ -47,7 +47,7 @@ import {
 import {
   BACKOFF_MULTIPLIER,
   type ConnectionState,
-  DEFAULT_MCP_TIMEOUT_SECONDS,
+  DEFAULT_MCP_TIMEOUT_MS,
   DEFAULT_PING_CONFIG,
   type HttpMcpServerConfig,
   INITIAL_RETRY_DELAY,
@@ -568,11 +568,11 @@ export class McpService extends Service {
     if (connection.server.disabled) {
       throw new Error(`Server "${serverName}" is disabled`);
     }
-    let timeout = DEFAULT_MCP_TIMEOUT_SECONDS;
     const config = JSON.parse(connection.server.config) as McpServerConfig;
-    if (config.type === "stdio" && config.timeoutInMillis) {
-      timeout = config.timeoutInMillis;
-    }
+    const timeout =
+      config.type === "stdio"
+        ? (config.timeoutInMillis ?? DEFAULT_MCP_TIMEOUT_MS)
+        : (config.timeout ?? DEFAULT_MCP_TIMEOUT_MS);
     const result = await connection.client.callTool(
       {
         name: toolName,
