@@ -45,6 +45,7 @@ import {
 } from "@elizaos/plugin-health";
 import { getActivityReportBetween } from "../../activity-profile/activity-tracker-reporting.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import { fail } from "../service-normalize.js";
 import { addDaysToLocalDate, buildUtcDateFromLocalParts } from "../time.js";
 
@@ -625,7 +626,11 @@ export class ScreenTimeDomain {
     topN?: number;
     socialTopN?: number;
   }): Promise<LifeOpsScreenTimeHistoryResponse> {
-    const window = computeScreenTimeRange(opts.range);
+    // Day buckets are the owner's days; the host clock (UTC on a cloud host)
+    // would shift "today", the week start and every daily bucket.
+    const now = new Date();
+    const timeZone = await resolveOwnerTimeZone(this.ctx.runtime, now);
+    const window = computeScreenTimeRange(opts.range, now, timeZone);
     const priorWindow = computePriorScreenTimeRange(opts.range, window);
     const [breakdown, social, priorBreakdown, priorSocial] = await Promise.all([
       this.getScreenTimeBreakdown({
@@ -657,16 +662,18 @@ export class ScreenTimeDomain {
       opts.range === "today"
         ? []
         : await Promise.all(
-            enumerateScreenTimeHistoryDays(window).map(async (day) => {
-              const summary = await this.getScreenTimeSummary({
-                since: day.since,
-                until: day.until,
-              });
-              return {
-                ...day,
-                totalSeconds: summary.totalSeconds,
-              };
-            }),
+            enumerateScreenTimeHistoryDays(window, timeZone).map(
+              async (day) => {
+                const summary = await this.getScreenTimeSummary({
+                  since: day.since,
+                  until: day.until,
+                });
+                return {
+                  ...day,
+                  totalSeconds: summary.totalSeconds,
+                };
+              },
+            ),
           );
 
     return {
