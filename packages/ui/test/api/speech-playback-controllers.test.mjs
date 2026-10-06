@@ -336,6 +336,10 @@ test("progressive playback starts before EOF, compensates only acknowledged spee
     start: 0,
     end: 0.6,
   });
+  p.onpause();
+  assert.equal(f.states.at(-1).word, null);
+  p.onplaying();
+  assert.equal(f.states.at(-1).word.from, 0);
   f.controller.setRate(1.2);
   assert.equal(p.playbackRate, 1.2 / 0.8);
   p.onwaiting();

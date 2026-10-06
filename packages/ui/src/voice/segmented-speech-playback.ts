@@ -139,6 +139,7 @@ export class SegmentedSpeechPlayback {
         player.onerror = null;
         player.onplaying = null;
         player.onwaiting = null;
+        player.onpause = null;
         player.ontimeupdate = null;
         player.onseeking = null;
         player.onseeked = null;
@@ -187,6 +188,7 @@ export class SegmentedSpeechPlayback {
       };
       player.onplaying = resume;
       player.onwaiting = wait;
+      player.onpause = wait;
       player.ontimeupdate = publish;
       player.onseeking = wait;
       player.onseeked = () => {
