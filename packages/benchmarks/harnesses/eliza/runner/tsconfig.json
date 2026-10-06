@@ -9,7 +9,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
-    "types": ["node"],
+    "types": ["node", "vite/client"],
     "customConditions": ["eliza-source", "development"],
     "jsx": "react-jsx",
     "paths": {

@@ -79,24 +79,24 @@ export {
 export * from "./database/document-source-segments";
 export * from "./entities";
 export {
-	getValidationKeywordLocaleTerms,
-	getValidationKeywordTerms,
-} from "./i18n/keyword-matching.js";
-export {
 	collectKeywordTermMatches,
 	collectPreparedKeywordTermMatches,
 	findKeywordTermMatch,
-	getValidationKeywordLocaleTerms as getCatalogValidationKeywordLocaleTerms,
-	getValidationKeywordTerms as getCatalogValidationKeywordTerms,
+	getCatalogValidationKeywordLocaleTerms,
+	getCatalogValidationKeywordTerms,
+	getValidationKeywordLocaleTerms,
+	getValidationKeywordTerms,
 	hasPreparedKeywordTermMatch,
 	normalizeKeywordMatchText,
 	type PreparedKeywordTerm,
 	prepareKeywordTerms,
 	splitKeywordDoc,
 	textIncludesKeywordTerm,
+} from "./i18n/keyword-matching.js";
+export {
+	VALIDATION_KEYWORD_DOCS,
 	VALIDATION_KEYWORD_LOCALES,
-} from "./i18n/keyword-matching-core.js";
-export { VALIDATION_KEYWORD_DOCS } from "./i18n/keywords.js";
+} from "./i18n/keywords.js";
 export * from "./identity-clusters";
 export * from "./inference-timing";
 export {
@@ -367,7 +367,6 @@ export {
 	type ProcessingScope,
 } from "./security/processing-policy.js";
 export * from "./security/secret-swap";
-
 export {
 	attestAuthenticatedApiDeliveryAudience,
 	attestDeliveryAudienceFromCanonicalRoom,
@@ -458,7 +457,6 @@ export * from "./types/action-reply.js";
 export * from "./types/provider-integrations.js";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
-
 export {
 	readJsonFile,
 	writeJsonAtomic,
@@ -537,7 +535,6 @@ export {
 	normalizeUserMessageText,
 	stripAugmentationForPersistence,
 } from "./utils/message-text";
-export { getLocalServerUrl } from "./utils/node";
 export {
 	getMacPermissionDeepLink,
 	openPermissionSettings,
