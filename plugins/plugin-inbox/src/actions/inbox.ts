@@ -622,6 +622,12 @@ function ensureSourceMessageId(entry: TriageEntry): string {
   );
 }
 
+function inboxReceivedAtMs(createdAt: string, now = Date.now()): number {
+  const parsed = Date.parse(createdAt);
+  // Date.parse of the Unix epoch is 0. `|| Date.now()` stored that message as received now.
+  return Number.isFinite(parsed) ? parsed : now;
+}
+
 function seedMessageRefForEntry(
   runtime: IAgentRuntime,
   entry: TriageEntry,
@@ -642,7 +648,7 @@ function seedMessageRefForEntry(
     to: [{ identifier: runtime.agentId }],
     snippet: entry.snippet,
     body: entry.threadContext?.join("\n") ?? entry.snippet,
-    receivedAtMs: Date.parse(entry.createdAt) || Date.now(),
+    receivedAtMs: inboxReceivedAtMs(entry.createdAt),
     hasAttachments: false,
     isRead: false,
     metadata: {
