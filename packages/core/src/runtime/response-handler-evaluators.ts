@@ -26,6 +26,11 @@ export interface ResponseHandlerPatch {
 	/** Mark a terminal refusal without granting a completed-effect claim. */
 	replyEffectStatus?: "non_applied";
 	setContexts?: readonly AgentContext[];
+	/** Atomically replace derived intents and invalidate their declared bindings. */
+	replaceIntentScope?: {
+		intents: readonly string[];
+		invalidateBindings: readonly `${string}Bindings`[];
+	};
 	addContexts?: readonly AgentContext[];
 	addCandidateActions?: readonly string[];
 	addParentActionHints?: readonly string[];
@@ -180,10 +185,53 @@ function applyResponseHandlerPatch(
 	patch: ResponseHandlerPatch,
 	availableContexts: readonly ContextDefinition[],
 ): AppliedResponseHandlerPatch | null {
+	const scope = patch.replaceIntentScope;
+	// Validate the whole replacement before applying any other patch field.
+	// Extension bindings cannot name core routing, context or source fields.
+	if (
+		scope &&
+		(!Array.isArray(scope.intents) ||
+			scope.intents.length === 0 ||
+			scope.intents.some(
+				(intent) => typeof intent !== "string" || !intent.trim(),
+			) ||
+			!Array.isArray(scope.invalidateBindings) ||
+			scope.invalidateBindings.some(
+				(field) =>
+					typeof field !== "string" ||
+					!/^[A-Za-z][A-Za-z0-9_]*Bindings$/u.test(field),
+			))
+	) {
+		throw new ElizaError("Invalid response-handler intent scope replacement", {
+			code: "RESPONSE_HANDLER_INTENT_SCOPE_INVALID",
+		});
+	}
 	const changed: string[] = [];
 	const debug = uniqueStrings(patch.debug);
 	const available = availableContextSet(availableContexts);
 	let candidateActionsAdded: string[] | undefined;
+	if (scope) {
+		messageHandler.plan.intents = [...scope.intents];
+		changed.push("intents:replace");
+		for (const field of new Set(scope.invalidateBindings)) {
+			if (Object.hasOwn(messageHandler.plan, field)) {
+				delete messageHandler.plan[field];
+				changed.push(`intentBinding:clear:${field}`);
+			}
+		}
+		// Execution choices and relaxation budgets derived from the old intent
+		// cannot survive replacement. Source context and prior receipts do.
+		for (const field of [
+			"deterministicToolCall",
+			"requiredToolEvidence",
+			"requiredToolMissBudget",
+		] as const) {
+			if (Object.hasOwn(messageHandler.plan, field)) {
+				delete messageHandler.plan[field];
+				changed.push(`${field}:clear`);
+			}
+		}
+	}
 
 	if (patch.processMessage) {
 		messageHandler.processMessage = patch.processMessage;
@@ -317,15 +365,15 @@ export async function runResponseHandlerEvaluators(args: {
 				continue;
 			}
 			assertDeterministicToolCallAllowed(evaluator, patch);
-			if (patch.clearCandidateActions === true) {
-				result.candidateActionsClearedByEvaluators = true;
-			}
 			const applied = applyResponseHandlerPatch(
 				args.messageHandler,
 				patch,
 				args.availableContexts,
 			);
 			if (applied) {
+				if (patch.clearCandidateActions === true) {
+					result.candidateActionsClearedByEvaluators = true;
+				}
 				const { trace } = applied;
 				trace.evaluatorName = evaluator.name;
 				result.appliedPatches.push(trace);
