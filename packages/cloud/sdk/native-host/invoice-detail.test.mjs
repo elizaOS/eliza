@@ -141,6 +141,8 @@ test("invoice identity, currency, money precision and dates fail closed", async 
     { amountDue: "01.00" },
     { amountDue: "12.501" },
     { amountDue: "900719925474099.99" },
+    { amountDue: Number("90071992547409.91") },
+    { currency: "kwd", amountDue: Number("9007199254740.991") },
     { createdAt: "2026-02-30T12:00:00Z" },
     { createdAt: null },
     { paidAt: "2026-10-01" },
@@ -160,6 +162,10 @@ test("invoice identity, currency, money precision and dates fail closed", async 
     assert.equal(r.status, 200);
     assert.equal((await r.json()).invoice.amountPaid, expected);
   }
+  change = { amountDue: "90071992547409.91", amountPaid: "90071992547409.91" };
+  const exact = await f.get();
+  assert.equal(exact.status, 200);
+  assert.equal((await exact.json()).invoice.amountDue, "90071992547409.91");
   change = { currency: "jpy", amountDue: "12.01" };
   assert.equal((await f.get()).status, 502);
 });
