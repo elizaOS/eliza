@@ -2,6 +2,7 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -11,6 +12,7 @@ import { captureHostExecutionBaseline } from "@elizaos/host";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   AppleContainerEngine,
+  type ContainerRunOptions,
   DockerEngine,
 } from "../src/services/sandbox-engine.ts";
 
@@ -33,7 +35,9 @@ beforeAll(() => {
   writeFileSync(
     path.join(directory, "exec"),
     `
-if (process.argv.includes("unicode")) {
+if (process.argv.includes("close-input")) {
+  process.exit(0);
+} else if (process.argv.includes("unicode")) {
   process.stdout.write(Buffer.from([0xc3]));
   process.stderr.write(Buffer.from([0xe4]));
   setTimeout(() => {
@@ -51,6 +55,23 @@ if (process.argv.includes("unicode")) {
 }
 `,
   );
+  writeFileSync(
+    path.join(directory, "system"),
+    `
+const fs = require("node:fs");
+if (process.argv[2] !== "status") process.exit(2);
+process.exit(Number(fs.readFileSync("service-status", "utf8")));
+`,
+  );
+  writeFileSync(
+    path.join(directory, "run"),
+    `
+const fs = require("node:fs");
+fs.writeFileSync("run-args", JSON.stringify(process.argv.slice(2)));
+const { delay, code } = JSON.parse(fs.readFileSync("run-result", "utf8"));
+setTimeout(() => { process.exitCode = code; }, delay);
+`,
+  );
   process.chdir(directory);
   process.env.PATH = `${bin}${path.delimiter}${originalPath ?? ""}`;
   captureHostExecutionBaseline();
@@ -65,6 +86,16 @@ afterAll(() => {
 });
 
 for (const Engine of [DockerEngine, AppleContainerEngine]) {
+  it(`${Engine.name} reports a child closing stdin before consuming the input`, async () => {
+    const result = await new Engine().execInContainer({
+      containerId: "fixture",
+      command: "close-input",
+      stdin: "x".repeat(2 * 1024 * 1024),
+      timeoutMs: 5000,
+    });
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("stdin");
+  });
   it(`${Engine.name} preserves split UTF-8 and the actual child exit code`, async () => {
     expect(
       await new Engine().execInContainer({
@@ -108,3 +139,60 @@ for (const Engine of [DockerEngine, AppleContainerEngine]) {
     expect(result.durationMs).toBeGreaterThanOrEqual(450);
   });
 }
+
+it("Apple Container availability requires a responsive service", () => {
+  const engine = new AppleContainerEngine();
+  writeFileSync(path.join(directory, "service-status"), "1");
+  expect(engine.isAvailable()).toBe(false);
+  writeFileSync(path.join(directory, "service-status"), "0");
+  expect(engine.isAvailable()).toBe(true);
+});
+
+const runOptions: ContainerRunOptions = {
+  image: "fixture:image",
+  name: "fixture",
+  detach: true,
+  mounts: [{ host: "/host path", container: "/workspace", readonly: true }],
+  env: { FIXTURE: "one argument" },
+  network: "",
+  user: "",
+  capDrop: [],
+};
+
+it.each([true, false])(
+  "Apple Container waits for CLI completion with detach=%s",
+  async (detach) => {
+    writeFileSync(
+      path.join(directory, "run-result"),
+      JSON.stringify({ delay: 0, code: 0 }),
+    );
+    await expect(
+      new AppleContainerEngine().runContainer({ ...runOptions, detach }),
+    ).resolves.toBe("fixture");
+    expect(
+      JSON.parse(readFileSync(path.join(directory, "run-args"), "utf8")),
+    ).toEqual([
+      ...(detach ? ["--detach"] : []),
+      "--name",
+      "fixture",
+      "--mount",
+      "type=bind,source=/host path,target=/workspace,readonly",
+      "-e",
+      "FIXTURE=one argument",
+      "fixture:image",
+    ]);
+  },
+);
+
+it("Apple Container reports startup failure even after the former two-second readiness window", async () => {
+  writeFileSync(
+    path.join(directory, "run-result"),
+    JSON.stringify({ delay: 2200, code: 17 }),
+  );
+  await expect(
+    new AppleContainerEngine().runContainer(runOptions),
+  ).rejects.toMatchObject({
+    code: "SANDBOX_APPLE_CONTAINER_START_FAILED",
+    cause: { message: "Container process exited with 17" },
+  });
+});

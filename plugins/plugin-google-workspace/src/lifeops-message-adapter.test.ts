@@ -341,6 +341,47 @@ describe("GoogleGmailAdapter", () => {
     expect((await adapter.getMessage(second, "gmail:msg_1"))?.id).toBe(peer.id);
   });
 
+  it("lists and searches every requested Gmail account, newest first", async () => {
+    const byAccount: Record<string, ReturnType<typeof gmailMessage>[]> = {
+      work: [
+        gmailMessage({ externalId: "work_new", receivedAt: "2026-06-01T12:00:00.000Z" }),
+        gmailMessage({ externalId: "work_old", receivedAt: "2026-06-01T08:00:00.000Z" }),
+      ],
+      personal: [
+        gmailMessage({ externalId: "personal_mid", receivedAt: "2026-06-01T10:00:00.000Z" }),
+      ],
+    };
+    const fromAccount = vi.fn(
+      async ({ accountId }: { accountId: string }) => byAccount[accountId] ?? []
+    );
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: fromAccount,
+      searchGmailMessages: fromAccount,
+    });
+    const adapter = new GoogleGmailAdapter();
+
+    const listed = await adapter.listMessages(runtime, {
+      worldIds: ["work", "personal"],
+      limit: 2,
+    });
+    expect(listed.map((ref) => [ref.worldId, ref.externalId])).toEqual([
+      ["work", "work_new"],
+      ["personal", "personal_mid"],
+    ]);
+
+    const found = await adapter.searchMessages(runtime, {
+      content: "meet",
+      worldIds: ["work", "personal"],
+    });
+    expect(found.map((ref) => ref.externalId)).toEqual(["work_new", "personal_mid", "work_old"]);
+    expect(fromAccount.mock.calls.map(([params]) => params.accountId)).toEqual([
+      "work",
+      "personal",
+      "work",
+      "personal",
+    ]);
+  });
+
   it("maps triage messages from the Google service into message refs", async () => {
     const listGmailTriageMessages = vi.fn(async () => [gmailMessage()]);
     const runtime = runtimeWithGoogleService({ listGmailTriageMessages });
