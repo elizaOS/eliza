@@ -572,3 +572,62 @@ it("binds Android sockets to validated host application identity", async () => {
     await target.stop();
   }
 });
+
+it("waits for only the expected registration without sending commands and rejects unavailable waits", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-profile-wait-"));
+  const target = new NativeSocketBrowserTarget(() => {});
+  let socket: Socket | undefined;
+  try {
+    await target.start({
+      ELIZA_BROWSER_NATIVE_SOCKET: join(directory, "browser.sock"),
+    });
+    await expect(
+      target.waitForProfile("wanted", { timeoutMs: 20 }),
+    ).rejects.toMatchObject({ kind: "UNAVAILABLE" });
+    const controller = new AbortController();
+    const aborted = expect(
+      target.waitForProfile("wanted", { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    controller.abort();
+    await aborted;
+    const registered = target.waitForProfile("wanted");
+    socket = createConnection(join(directory, "browser.sock"));
+    const frames = socketFrames(socket);
+    frames.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "wanted",
+      capabilities: ["list"],
+      nonce: "wait-nonce",
+    });
+    await registered;
+    await vi.waitFor(() => expect(frames.messages).toHaveLength(1));
+    expect(frames.messages[0]?.type).toBe("hello-ack");
+    await expect(target.waitForProfile("different")).rejects.toMatchObject({
+      kind: "UNAVAILABLE",
+    });
+    await expect(
+      target.waitForProfile("wanted", { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    for (const timeoutMs of [0, -1, 1.5, 30001, Number.NaN])
+      await expect(
+        target.waitForProfile("wanted", { timeoutMs }),
+      ).rejects.toThrow("Invalid native profile");
+    await expect(target.waitForProfile("")).rejects.toThrow(
+      "Invalid native profile",
+    );
+    socket.destroy();
+    await vi.waitFor(() => expect(target.getProfileId()).toBeNull());
+    const stopped = expect(
+      target.waitForProfile("wanted"),
+    ).rejects.toMatchObject({ kind: "UNAVAILABLE" });
+    await target.stop();
+    await stopped;
+    expect(frames.messages).toHaveLength(1);
+  } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

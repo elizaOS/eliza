@@ -108,3 +108,11 @@ human review and no selection record/click. If guidance disappears after a choic
 was offered, the explicit failed attempt pauses the task and settles cleanup;
 explicit Resume obtains a fresh epoch/choice instead of reusing a consumed choice.
 Omitting this policy preserves headless hosts' existing behavior.
+
+Configured native bill hosts wait for the exact expected browser profile before
+a new task binding after service restart. The browser transport owns the bounded
+registration wait; the configured host rechecks account authority and profile
+after it. Closing the host cancels pending waits. Revocation cleanup, guidance
+and browser commands never enter this wait or replay a request. Product page
+policy must allow binding to reach this gate rather than rejecting a temporarily
+unregistered profile during pure policy construction.
