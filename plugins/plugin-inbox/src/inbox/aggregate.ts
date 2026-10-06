@@ -486,6 +486,13 @@ function isMissedMessage(message: LifeOpsInboxMessage, nowMs: number): boolean {
   return nowMs - received >= MISSED_REPLY_GAP_MS;
 }
 
+function isMissedThreadGroup(
+  group: LifeOpsInboxThreadGroup,
+  nowMs: number,
+): boolean {
+  return group.messages.some((message) => isMissedMessage(message, nowMs));
+}
+
 export function buildInbox(
   inbound: InboundMessage[],
   options: InboxBuildOptions,
@@ -577,11 +584,29 @@ export function buildInboxFromMessages(
   let threadGroups: LifeOpsInboxThreadGroup[] | undefined;
 
   if (options.groupByThread) {
-    threadGroups = buildThreadGroups(
-      trimmed,
-      options.llmScores,
-      options.sortByPriority === true,
-    );
+    if (options.missedOnly === true) {
+      // Group from the full newest-first read window before the missed
+      // filter: grouping missed rows only would make every group describe
+      // just its missed subset (`latestMessage`, counts, participants, and
+      // non-missed members would vanish from the thread). Keep groups with
+      // any missed member, then trim the group list to the display limit.
+      const nowMs = Date.now();
+      const missedGroups = buildThreadGroups(
+        collected,
+        options.llmScores,
+        options.sortByPriority === true,
+      ).filter((group) => isMissedThreadGroup(group, nowMs));
+      threadGroups =
+        options.limit !== undefined && missedGroups.length > options.limit
+          ? missedGroups.slice(0, options.limit)
+          : missedGroups;
+    } else {
+      threadGroups = buildThreadGroups(
+        trimmed,
+        options.llmScores,
+        options.sortByPriority === true,
+      );
+    }
   }
 
   const inbox: LifeOpsInbox = {

@@ -596,6 +596,74 @@ describe("aggregate builders", () => {
       "discord:missed-invoice",
     ]);
   });
+
+  it("missedOnly grouped view keeps whole threads, not just the missed subset", () => {
+    const now = Date.now();
+    // Thread AB holds a missed ask (30h old, unreplied, scored) and a newer
+    // follow-up (2h old, scored, not yet missed). A replied-only thread
+    // never qualifies.
+    const inbox = buildInbox(
+      [
+        inboundChat({
+          id: "missed-thread-old",
+          text: "older ask that was never answered",
+          threadId: "missed-thread-ab",
+          timestamp: now - 30 * 60 * 60 * 1000,
+        }),
+        inboundChat({
+          id: "missed-thread-new",
+          text: "newest follow-up in the same thread",
+          threadId: "missed-thread-ab",
+          timestamp: now - 2 * 60 * 60 * 1000,
+        }),
+        inboundChat({
+          id: "missed-replied",
+          text: "already answered",
+          threadId: "missed-replied-thread",
+          timestamp: now - 30 * 60 * 60 * 1000,
+          repliedAt: new Date(now - 29 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+      {
+        limit: 10,
+        allowed: new Set<LifeOpsInboxChannel>(["discord"]),
+        sources: [{ source: "chat", state: "ok", degradations: [] }],
+        groupByThread: true,
+        missedOnly: true,
+        llmScores: new Map([
+          [
+            "discord:missed-thread-old",
+            { score: 70, category: "important", flags: [] },
+          ],
+          [
+            "discord:missed-thread-new",
+            { score: 90, category: "important", flags: [] },
+          ],
+          [
+            "discord:missed-replied",
+            { score: 90, category: "important", flags: [] },
+          ],
+        ]),
+      },
+    );
+
+    // The flat view stays missed-only, but the group keeps both thread
+    // members: the newest message is the preview and the counts describe
+    // the whole thread. The replied-only thread is dropped entirely.
+    expect(inbox.messages.map((message) => message.id)).toEqual([
+      "discord:missed-thread-old",
+    ]);
+    expect(inbox.threadGroups).toHaveLength(1);
+    const group = inbox.threadGroups?.[0];
+    if (!group) throw new Error("unreachable");
+    expect(group.latestMessage.id).toBe("discord:missed-thread-new");
+    expect(group.totalCount).toBe(2);
+    expect(group.unreadCount).toBe(2);
+    expect(group.messages.map((message) => message.id)).toEqual([
+      "discord:missed-thread-new",
+      "discord:missed-thread-old",
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------
