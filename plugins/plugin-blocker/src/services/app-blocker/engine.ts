@@ -32,6 +32,7 @@ export function registerNativeAppBlockerBackend(
   backend: NativeAppBlockerBackend,
 ): void {
   nativeBackend = backend;
+  statusCache = null;
 }
 
 export function getNativeAppBlockerBackend(): NativeAppBlockerBackend | null {
@@ -105,10 +106,18 @@ export async function startAppBlock(
   options: BlockAppsOptions,
 ): Promise<BlockAppsResult> {
   statusCache = null;
-  return getPlugin().blockApps(options);
+  try {
+    return await getPlugin().blockApps(options);
+  } finally {
+    statusCache = null;
+  }
 }
 
 export async function stopAppBlock(): Promise<UnblockAppsResult> {
   statusCache = null;
-  return getPlugin().unblockApps();
+  try {
+    return await getPlugin().unblockApps();
+  } finally {
+    statusCache = null;
+  }
 }
