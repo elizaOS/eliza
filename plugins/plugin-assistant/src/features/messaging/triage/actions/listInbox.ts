@@ -98,8 +98,12 @@ export const listInboxAction: Action = {
       let messages = requestedSources
         ? cached.filter((m) => requestedSources.includes(m.source))
         : cached;
+      // The empty-cache branch below is already a live pull. Record that
+      // before `messages` is replaced, or a live all-read result looks like
+      // a warm cache and the guard sweeps the connector again.
+      const pulledLive = messages.length === 0;
 
-      if (messages.length === 0) {
+      if (pulledLive) {
         messages = await service.triage(runtime, {
           sources: params.sources,
           sinceMs: params.sinceMs,
@@ -116,9 +120,8 @@ export const listInboxAction: Action = {
       // process while the connectors hold new mail. A cached view with zero
       // unread falls through to the same live pull an empty cache gets; the
       // action claims "no unread" only after the authoritative sources
-      // agree. A cache-empty start already pulled above, so the guard skips
-      // a duplicate sweep for that path.
-      if (unread.length === 0 && messages.length > 0) {
+      // agree.
+      if (!pulledLive && unread.length === 0 && messages.length > 0) {
         messages = await service.triage(runtime, {
           sources: params.sources,
           sinceMs: params.sinceMs,
