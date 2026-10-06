@@ -152,8 +152,10 @@ async function fetchGeneratedRegistry(
     }
     return null;
   } catch (err) {
+    // error-policy:J4 an unreachable or malformed generated registry is an
+    // expected degrade: the failure is recorded on `generatedSpan` and null
+    // sends the caller to the index registry, which logs fallback warnings.
     generatedSpan.failure({ error: err });
-    // caller logs fallback warnings
     return null;
   }
 }
@@ -243,9 +245,9 @@ export async function fetchFromNetwork(
 
   const generatedResult = fetchGeneratedRegistry(params);
   const indexResult = fetchIndexRegistry(params);
-  // Prevent an unhandled rejection if the generated registry wins the race and
-  // we never await the index attempt; its failure is only relevant as a
-  // fallback when the generated registry is absent.
+  // error-policy:J5 the fallback `return indexResult` below hands this same
+  // rejection to the caller; this observer only prevents it going unhandled when
+  // the generated registry wins the race and the index attempt is never awaited.
   indexResult.catch(() => {});
 
   const generated = await generatedResult;
