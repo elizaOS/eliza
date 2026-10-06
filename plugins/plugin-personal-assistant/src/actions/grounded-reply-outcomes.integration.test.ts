@@ -26,6 +26,11 @@ import { renderGroundedActionReply } from "../../../plugin-assistant/src/actions
 import { runEvaluator } from "../../../plugin-assistant/src/runtime/evaluator.ts";
 import { actionResultToPlannerToolResult } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import {
+  DeviceActionService,
+  withDeviceActionTurn,
+} from "../../../plugin-assistant/src/services/device-actions/service.ts";
+import { createV5MessageContextObject } from "../../../plugin-assistant/src/services/message/context-assembly.ts";
+import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../test/helpers/runtime.js";
@@ -345,6 +350,53 @@ describe("grounded reply outcomes — real PGlite", () => {
       );
     }
     expect(useModel).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the same native capability scope distinct from app records, push and recall in response and planning contexts", async () => {
+    const credential = {
+      subjectUserId: runtime.agentId,
+      installationId: crypto.randomUUID(),
+      deviceKey: "c".repeat(64),
+      capabilities: ["clock.handoff.v1", "clock.handoff.v2"],
+    };
+    await new DeviceActionService(runtime).register(
+      credential,
+      "Scope fixture",
+    );
+    const instructions: string[] = [];
+    for (const phase of ["response", "planning"] as const) {
+      const context = await withDeviceActionTurn(runtime, credential, () =>
+        createV5MessageContextObject({
+          runtime,
+          message: message(
+            "Read current app records and recall the requested past note.",
+          ),
+          state: { values: {}, data: {}, text: "" },
+          providerPhase: phase,
+          includeTools: phase === "planning",
+          selectedContexts: ["general"],
+          preselectedActions: [],
+          userRoles: ["OWNER"],
+        }),
+      );
+      const event = context.events.find(
+        (entry) => entry.id === "authenticated-phone-capability",
+      );
+      if (event?.type !== "instruction")
+        throw new Error("Missing native capability instruction");
+      instructions.push(event.content);
+      const serialized = JSON.stringify(context);
+      expect(serialized).toContain(
+        "Separately registered app-domain tools and this app's OS notification delivery retain their own availability and authorization gates",
+      );
+      expect(serialized).toContain(
+        "use authorized current app record sources rather than historical dialogue as a proxy",
+      );
+      expect(serialized).toContain(
+        "Use authorized targeted or full historical recall when requested or needed to resolve references and constraints",
+      );
+    }
+    expect(instructions[0]).toBe(instructions[1]);
   });
 
   it("keeps one persisted entity contact and its applied receipt after reply failure", async () => {
