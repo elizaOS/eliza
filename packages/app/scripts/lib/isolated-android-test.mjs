@@ -704,8 +704,8 @@ export async function runIsolatedAndroidTest({
           AbortSignal.timeout(timeoutMs),
           ...(signal ? [signal] : []),
         ]);
-        let instrumentation,
-          supervision,
+        let instrumentation = null,
+          supervision = null,
           settled = false,
           effectIssued = false;
         const execute = async (...args) => {

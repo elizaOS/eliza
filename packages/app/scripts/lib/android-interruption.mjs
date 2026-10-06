@@ -57,7 +57,7 @@ export async function waitAndInterruptAndroidPackage({
     return JSON.parse(text);
   };
   await assertCustody();
-  let marker;
+  let marker = null;
   for (;;) {
     check();
     try {
@@ -84,6 +84,28 @@ export async function waitAndInterruptAndroidPackage({
     pid: marker?.pid,
   });
   requireAndroidInterruptionMarker(marker, runId, identity);
+  const exclusiveUid = async () => {
+    const packages = (
+      await command(
+        "shell",
+        "pm",
+        "list",
+        "packages",
+        "--uid",
+        String(identity.uid),
+        "--user",
+        String(androidUser),
+      )
+    )
+      .trim()
+      .split(/\r?\n/);
+    assert.deepEqual(
+      packages,
+      [`package:${packageName}`],
+      "App UID is shared with an unowned package",
+    );
+  };
+  await exclusiveUid();
   const uidNames = new Set([
     String(identity.uid),
     `u${androidUser}_a${(identity.uid % 100000) - 10000}`,
@@ -125,6 +147,7 @@ export async function waitAndInterruptAndroidPackage({
       pid: identity.pid,
     }),
   );
+  await exclusiveUid();
   await command(
     "shell",
     "am",

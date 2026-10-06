@@ -18,6 +18,8 @@ function fixture(options = {}) {
     },
     run: async (...args) => {
       calls.push(args);
+      if (args.includes("--uid"))
+        return `package:ai.example.helper${options.sharedUid ? "\npackage:ai.other.app" : ""}`;
       if (args.includes("force-stop")) {
         stopped = true;
         return "";
@@ -72,6 +74,7 @@ test("stale markers, replacement, permissions and lost custody refuse before for
     { marker: { startTimeTicks: "45679" } },
     { replaced: true },
     { permission: true },
+    { sharedUid: true },
     { malformed: true },
     { lostCustodyAt: 1 },
     { lostCustodyAt: 2 },

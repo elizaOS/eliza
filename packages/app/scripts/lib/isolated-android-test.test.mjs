@@ -52,7 +52,7 @@ if(args.includes('ro.kernel.qemu'))console.log('1');
 if(args.includes('ro.product.cpu.abi'))console.log('x86_64');
 if(args.includes('getenforce'))console.log(mode==='permissive'?'Permissive':'Enforcing');
 if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;if(state.reads===2)state.packages.push('org.example.consumer');fs.writeFileSync(file,JSON.stringify(state));}
-if(args.includes('packages'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
+if(args.includes('packages')&&!args.includes('--uid'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
 if(args.includes('resolve-activity'))console.log(args.includes('-p')?'org.stock.home/.Home':state.home);
 if(args[0]==='install'){const id=args.at(-1).includes('companion.apk')?'org.example.companion':args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages=[...new Set([...state.packages,id])];(state.files??={})[id]=file+'.'+id+'.apk';fs.copyFileSync(args.at(-1),state.files[id]);fs.writeFileSync(file,JSON.stringify(state));if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);console.log('Success');}
 if(args.slice(0,3).join(' ')==='shell pm path')console.log('package:/data/'+args.at(-1)+'.apk');
@@ -61,6 +61,7 @@ if(args[0]==='pull'){const id=args[1].slice('/data/'.length,-4);fs.copyFileSync(
 if(args.includes('force-stop')&&((mode==='companion-stop-failure'&&args.at(-1)==='org.example.companion')||(mode.endsWith('stop-failure-test')&&args.at(-1).endsWith('.test'))||(mode.endsWith('stop-failure-app')&&!args.at(-1).endsWith('.test'))))process.exit(1);
 if(args[0]==='uninstall'){if(mode==='cleanup-failure')process.exit(1);state.packages=state.packages.filter(p=>p!==args[1]);fs.writeFileSync(file,JSON.stringify(state));}
 if(mode.startsWith('interruption')) {
+ if(args.includes('--uid'))console.log('package:org.example.consumer');
  if(args.includes('force-stop')){state.stopped=true;fs.writeFileSync(file,JSON.stringify(state));}
  if(args.includes('ps'))console.log('UID PID NAME'+String.fromCharCode(10)+(state.armed&&!state.stopped?'u0_a123 312 org.example.consumer'+String.fromCharCode(10)+'u0_a123 313 bun':''));
  if(args.includes('run-as')){
