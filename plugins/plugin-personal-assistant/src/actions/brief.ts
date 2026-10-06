@@ -1443,6 +1443,7 @@ export const briefAction: Action & {
   parameters: [
     {
       name: "action",
+      required: true,
       description:
         "Brief op: compose_morning | compose_evening | compose_weekly | recalibrate | reset_recalibration. Unnamed daily dossiers use morning before the owner-local evening-window start, then evening; explicitly named kinds are retained.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
