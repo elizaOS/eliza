@@ -29,6 +29,8 @@ export interface GatewayRedis {
   set(key: string, value: string, options?: SetOptions): Promise<unknown>;
   del(key: string): Promise<unknown>;
   lpush(key: string, value: string): Promise<unknown>;
+  /** Removes and returns the oldest list element (null when empty). */
+  rpop(key: string): Promise<unknown>;
   ltrim(key: string, start: number, stop: number): Promise<unknown>;
   expire(key: string, seconds: number): Promise<unknown>;
   quit?(): Promise<unknown>;
@@ -75,6 +77,10 @@ class NativeRedisAdapter implements GatewayRedis {
 
   async ltrim(key: string, start: number, stop: number): Promise<unknown> {
     return this.client.ltrim(key, start, stop);
+  }
+
+  async rpop(key: string): Promise<unknown> {
+    return this.client.rpop(key);
   }
 
   async expire(key: string, seconds: number): Promise<unknown> {
@@ -134,6 +140,10 @@ class MemoryRedisAdapter implements GatewayRedis {
 
   async ltrim(key: string, start: number, stop: number): Promise<unknown> {
     return this.client.ltrim(key, start, stop);
+  }
+
+  async rpop(key: string): Promise<unknown> {
+    return this.client.rpop(key);
   }
 
   async expire(key: string, seconds: number): Promise<unknown> {

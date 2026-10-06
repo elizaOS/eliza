@@ -17,7 +17,10 @@ import type { ChatEvent, PlatformAdapter } from "../src/adapters/types";
 import { PlatformDeliveryError } from "../src/adapters/types";
 import { deliverInternalMessage } from "../src/internal-delivery";
 import {
+  cloudNetworkConsentSink,
   detectNetworkKeyword,
+  drainNetworkConsentOutbox,
+  NETWORK_CONSENT_OUTBOX_KEY,
   NETWORK_KEYWORD_COPY,
   redisNetworkConsentLedger,
   sendWithTwilioReplyFence,
@@ -45,6 +48,9 @@ let redis: GatewayRedis;
 let cloud: ReturnType<typeof Bun.serve>;
 const cloudCalls: CloudCall[] = [];
 let duringCloudTurn: (() => Promise<void>) | undefined;
+/** Durable consent entries the fake Cloud internal route accepted. */
+const consentWrites: Array<Record<string, unknown>> = [];
+let consentStatus = 200;
 const sent: Array<{ to: string; text: string }> = [];
 const realFetch = globalThis.fetch;
 const twilioRequests: URLSearchParams[] = [];
@@ -121,6 +127,14 @@ beforeAll(() => {
     hostname: "127.0.0.1",
     port: 0,
     fetch: async (request) => {
+      if (new URL(request.url).pathname === "/api/internal/network/consent") {
+        const entry = (await request.json()) as Record<string, unknown>;
+        if (consentStatus !== 200) {
+          return Response.json({ success: false }, { status: consentStatus });
+        }
+        consentWrites.push(entry);
+        return Response.json({ success: true, data: { recorded: true } });
+      }
       const body = (await request.json()) as CloudCall;
       cloudCalls.push(body);
       await duringCloudTurn?.();
@@ -151,6 +165,8 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  consentWrites.length = 0;
+  consentStatus = 200;
   cloudCalls.length = 0;
   sent.length = 0;
   twilioRequests.length = 0;
@@ -455,5 +471,49 @@ describe("Twilio reply idempotency fence", () => {
     }
     expect(cloudCalls).toHaveLength(2);
     expect(sent).toEqual([{ to: phone, text: "agent reply to: hi there" }]);
+  });
+});
+
+describe("Durable Network consent", () => {
+  test("STOP and START are written to the Postgres ledger route after the Redis fast path", async () => {
+    const phone = "+14155550501";
+    await inbound("network", "STOP", phone);
+    await inbound("network", "start", phone);
+    expect(consentWrites).toEqual([
+      expect.objectContaining({
+        project: "network",
+        channel: "twilio",
+        address: phone,
+        state: "opted_out",
+        source: "keyword:STOP",
+        providerMessageId: expect.stringMatching(/^SMin/),
+      }),
+      expect.objectContaining({ state: "opted_in", source: "keyword:START" }),
+    ]);
+    // HELP and ordinary text are not consent changes.
+    await inbound("network", "help", phone);
+    expect(consentWrites).toHaveLength(2);
+  });
+
+  test("a failed durable write is queued, the opt-out still applies, and the outbox drains later", async () => {
+    const phone = "+14155550502";
+    consentStatus = 503;
+    await inbound("network", "STOP", phone);
+    expect(sent.at(-1)).toEqual({
+      to: phone,
+      text: NETWORK_KEYWORD_COPY.optOut,
+    });
+    expect(
+      (await redisNetworkConsentLedger(redis).current("network", phone))?.state,
+    ).toBe("opted_out");
+    expect(consentWrites).toEqual([]);
+
+    consentStatus = 200;
+    const sink = cloudNetworkConsentSink(deps());
+    expect(await drainNetworkConsentOutbox(redis, sink)).toBe(1);
+    expect(consentWrites).toEqual([
+      expect.objectContaining({ address: phone, state: "opted_out" }),
+    ]);
+    expect(await redis.rpop(NETWORK_CONSENT_OUTBOX_KEY)).toBeNull();
   });
 });

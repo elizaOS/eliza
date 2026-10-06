@@ -33,6 +33,7 @@ import { resolveConnectorAccountId } from "./connector-account";
 import { tryConfirmIdentityLink } from "./identity-link";
 import { logger } from "./logger";
 import {
+  cloudNetworkConsentSink,
   handleNetworkInboundCompliance,
   isNetworkAddressOptedOut,
   isNetworkProject,
@@ -136,7 +137,10 @@ interface HandlerDeps {
 }
 
 function networkConsentLedger(deps: HandlerDeps): NetworkConsentLedger {
-  return deps.networkConsentLedger ?? redisNetworkConsentLedger(deps.redis);
+  return (
+    deps.networkConsentLedger ??
+    redisNetworkConsentLedger(deps.redis, cloudNetworkConsentSink(deps))
+  );
 }
 
 interface PersonalSharedDeliveryTiming {

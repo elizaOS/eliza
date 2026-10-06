@@ -5,7 +5,12 @@ import { telegramAdapter } from "./adapters/telegram";
 import { twilioAdapter } from "./adapters/twilio";
 import type { Platform, PlatformAdapter } from "./adapters/types";
 import { whatsappAdapter } from "./adapters/whatsapp";
-import { getAuthHeader, initAuth, shutdownAuth } from "./auth";
+import {
+  getAuthHeader,
+  initAuth,
+  reacquireAuthHeader,
+  shutdownAuth,
+} from "./auth";
 import { registerForwarderAuthReadinessRoute } from "./forwarder-auth-readiness";
 import {
   enforceForwarderSecret,
@@ -14,6 +19,10 @@ import {
 import { deliverInternalMessage } from "./internal-delivery";
 import { handleInternalEvent } from "./internal-event-handler";
 import { logger } from "./logger";
+import {
+  cloudNetworkConsentSink,
+  drainNetworkConsentOutbox,
+} from "./network-compliance";
 import { initProjectConfig, shutdownProjectConfig } from "./project-config";
 import { createRedis } from "./redis";
 import { requireCanonicalAgentRoutingConfiguration } from "./server-router";
@@ -233,13 +242,32 @@ async function start() {
   }
 
   logger.info("Webhook gateway listening", { port: PORT });
+
+  // The Network: retry durable consent-ledger writes that failed earlier.
+  // Redis already enforces the consent state; this only catches up Postgres.
+  const consentSink = cloudNetworkConsentSink({
+    cloudBaseUrl: ELIZA_CLOUD_URL,
+    getAuthHeader,
+    reacquireAuthHeader,
+  });
+  consentOutboxTimer = setInterval(() => {
+    drainNetworkConsentOutbox(redis, consentSink).catch((err) => {
+      logger.warn("Network consent outbox drain failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }, 60_000);
+  consentOutboxTimer.unref?.();
 }
+
+let consentOutboxTimer: ReturnType<typeof setInterval> | undefined;
 
 function shutdown(signal: string) {
   logger.info("Shutdown signal received", { signal });
   draining = true;
   shutdownProjectConfig();
   shutdownAuth();
+  if (consentOutboxTimer) clearInterval(consentOutboxTimer);
   const quitPromise = redis.quit?.();
   quitPromise?.catch((err) => {
     logger.warn("Failed to close Redis connection", {

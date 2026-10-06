@@ -83,6 +83,78 @@ export interface NetworkConsentEntry {
   at: string;
 }
 
+/**
+ * Durable sink for consent changes (Postgres `network.consent_ledger` through
+ * Cloud's internal API). Writes must be idempotent per provider message id.
+ */
+export interface NetworkConsentSink {
+  write(entry: NetworkConsentEntry): Promise<void>;
+}
+
+export const NETWORK_CONSENT_OUTBOX_KEY = "network-consent-outbox";
+
+/** POSTs consent entries to Cloud's `/api/internal/network/consent`. */
+export function cloudNetworkConsentSink(deps: {
+  cloudBaseUrl: string;
+  getAuthHeader: () => Record<string, string>;
+  reacquireAuthHeader?: () => Promise<Record<string, string>>;
+  fetchImpl?: typeof fetch;
+}): NetworkConsentSink {
+  return {
+    async write(entry) {
+      const doFetch = deps.fetchImpl ?? fetch;
+      const post = (headers: Record<string, string>) =>
+        doFetch(`${deps.cloudBaseUrl}/api/internal/network/consent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify(entry),
+          signal: AbortSignal.timeout(10_000),
+        });
+      let response = await post(deps.getAuthHeader());
+      if (
+        (response.status === 401 || response.status === 403) &&
+        deps.reacquireAuthHeader
+      ) {
+        await response.body?.cancel();
+        response = await post(await deps.reacquireAuthHeader());
+      }
+      await response.body?.cancel();
+      if (!response.ok) {
+        throw new Error(`consent ledger write failed (${response.status})`);
+      }
+    },
+  };
+}
+
+/**
+ * Retry durable writes that failed earlier. Entries are idempotent at the
+ * sink, so at-least-once replay is safe. Stops at the first failure and puts
+ * that entry back. Returns how many entries were written.
+ */
+export async function drainNetworkConsentOutbox(
+  redis: GatewayRedis,
+  sink: NetworkConsentSink,
+  max = 50,
+): Promise<number> {
+  let written = 0;
+  for (let index = 0; index < max; index++) {
+    const value = await redis.rpop(NETWORK_CONSENT_OUTBOX_KEY);
+    if (value === null || value === undefined) break;
+    const entry = parseConsentEntry(value);
+    if (!entry) continue;
+    try {
+      await sink.write(entry);
+      written += 1;
+    } catch {
+      // error-policy:J6 keep the entry for the next drain; Redis still
+      // enforces the consent state meanwhile.
+      await redis.lpush(NETWORK_CONSENT_OUTBOX_KEY, JSON.stringify(entry));
+      break;
+    }
+  }
+  return written;
+}
+
 /** Current consent state per (project, address), plus an append-only history. */
 export interface NetworkConsentLedger {
   current(
@@ -130,6 +202,7 @@ function parseConsentEntry(value: unknown): NetworkConsentEntry | null {
  */
 export function redisNetworkConsentLedger(
   redis: GatewayRedis,
+  durable?: NetworkConsentSink,
 ): NetworkConsentLedger {
   const currentKey = (project: string, address: string) =>
     `network-consent:${project}:${consentAddress(address)}`;
@@ -153,6 +226,16 @@ export function redisNetworkConsentLedger(
         0,
         CONSENT_HISTORY_LIMIT - 1,
       );
+      if (!durable) return;
+      // Durable copy after the fast path. A failure is queued, never thrown:
+      // the opt-out is already enforced, and the confirmation must still go out.
+      try {
+        await durable.write(normalized);
+        await drainNetworkConsentOutbox(redis, durable, 10);
+      } catch {
+        // error-policy:J6 queued for drainNetworkConsentOutbox (interval + next write).
+        await redis.lpush(NETWORK_CONSENT_OUTBOX_KEY, serialized);
+      }
     },
   };
 }
