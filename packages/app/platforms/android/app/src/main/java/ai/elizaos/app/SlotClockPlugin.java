@@ -14,7 +14,6 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -317,9 +316,8 @@ public final class SlotClockPlugin extends Plugin {
             if (supplied != null) {
                 java.util.Iterator<String> keys = supplied.keys();
                 while (keys.hasNext()) {
-                    String key = keys.next(); String lower = key.toLowerCase(Locale.ROOT);
-                    if (lower.equals("authorization") || lower.equals("cookie") || lower.equals("x-eliza-csrf") || lower.startsWith("x-eliza-device-")) continue;
-                    String value = ClockHostClient.text(supplied, key); ClockHostPolicy.header(key, value); headers.put(key, value);
+                    String key = keys.next();
+                    headers.put(key, ClockHostClient.text(supplied, key));
                 }
             }
             String body = input.has("body") && !input.isNull("body") ? ClockHostClient.text(input, "body") : null;

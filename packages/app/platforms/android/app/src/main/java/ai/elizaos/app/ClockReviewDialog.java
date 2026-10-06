@@ -264,9 +264,9 @@ final class ClockReviewDialog implements AutoCloseable, Application.ActivityLife
                 return String.format(Locale.ROOT, "Set alarm for %02d:%02d\nRepeat: %s\nLabel: %s\nPhone timezone: %s\n\nOpening Clock may set or update the alarm immediately. Clock owns this alarm and its repeat schedule. No second confirmation is guaranteed.",
                         request.hour, request.minute, repeat, request.label, request.timeZone);
             case SHOW: return "Open the external Clock alarm list. This app cannot confirm alarm state.";
-            case DISMISS: return "Ask the external Clock app to dismiss an alarm. No specific alarm is selected; Clock determines the affected alarm. It may act immediately.";
-            case SNOOZE: return "Ask the external Clock app to snooze an alarm for " + request.snoozeMinutes
-                    + " minutes. No specific alarm is selected; Clock determines the affected alarm. It may act immediately.";
+            case DISMISS: return "Ask the external Clock app to dismiss alarms. No specific alarm is selected; Clock determines the affected alarms, which may include all ringing alarms. It may act immediately. No second confirmation is guaranteed.";
+            case SNOOZE: return "Ask the external Clock app to snooze ringing alarms for " + request.snoozeMinutes
+                    + " minutes. No specific alarm is selected; this may affect all ringing alarms. Clock may use its default duration or show a chooser, and may act immediately. No second confirmation is guaranteed.";
             default: throw new IllegalArgumentException("Unsupported Clock request");
         }
     }

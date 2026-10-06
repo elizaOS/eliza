@@ -31,6 +31,15 @@ cannot mint approvals. Do not advertise `clock.handoff.v1` until that wiring is
 qualified. Await native retirement before replacing the owner. An `opened` receipt
 proves activity dispatch only; unknown dispatch is never automatically replayed.
 
+Direct Android chat uses Clock's private enrollment only when the request has no
+existing device-binding headers or `metadata.clientDevice`. Bound requests retain
+their established transport, capabilities and selected context, including revoked
+bindings; Clock cannot replace them with a new enrollment. Such clients need Clock
+support in their own authoritative executor before their chat can propose Clock
+actions. Native Clock listing/review remains independently available. Optional
+caller Authorization, Cookie and CSRF headers must match the native stored session;
+native credentials are always the authority and never replaced by caller values.
+
 Android requires `com.android.alarm.permission.SET_ALARM` for mutating Clock
 intents, plus a compatible external handler. The app excludes its own launcher
 from resolution and does not receive alarm/timer intents. No app-owned alarm

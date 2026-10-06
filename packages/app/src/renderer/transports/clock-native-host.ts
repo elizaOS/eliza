@@ -16,6 +16,7 @@ import {
 } from "@elizaos/plugin-assistant/device-clock-review";
 import {
   type AgentRequestTransport,
+  bodyToString,
   type ClockProposal,
   type ClockStatus,
   configureClockHost,
@@ -341,6 +342,8 @@ if (bridge) {
 
 const transport: AgentRequestTransport = {
   async request(url, init) {
+    if (!clockRequestUnbound(init))
+      throw new Error("Native Clock cannot replace an existing device binding");
     if (!bridge) throw new Error("Native Clock transport unavailable");
     const status = nativeStatus(await bridge.getStatus());
     if (!status.supported || !status.agentBase)
@@ -492,12 +495,35 @@ export function clockAgentRelativePath(
 }
 export async function nativeClockTransportForUrl(
   url: string,
+  init?: RequestInit,
 ): Promise<AgentRequestTransport | null> {
-  if (!bridge) return null;
+  if (!bridge || !clockRequestUnbound(init)) return null;
   const status = nativeStatus(await bridge.getStatus());
   return status.supported &&
     status.agentBase &&
     clockAgentRelativePath(url, status.agentBase) !== null
     ? transport
     : null;
+}
+
+/** Prior device authority belongs to its existing transport, even when revoked
+ * or malformed. Clock never interprets it, retries it, or substitutes enrollment. */
+function clockRequestUnbound(init: RequestInit = {}): boolean {
+  const headers = new Headers(init.headers);
+  if ([...headers.keys()].some((key) => key.startsWith("x-eliza-device-")))
+    return false;
+  if (init.body == null) return true;
+  const text = bodyToString(init.body);
+  if (typeof text !== "string") return false;
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return false;
+  }
+  if (!isObject(body)) return false;
+  if (!Object.hasOwn(body, "metadata")) return true;
+  return (
+    isObject(body.metadata) && !Object.hasOwn(body.metadata, "clientDevice")
+  );
 }

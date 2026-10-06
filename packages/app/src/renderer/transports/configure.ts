@@ -22,7 +22,7 @@ import { sshRuntimeTransportForUrl } from "./ssh-runtime-transport";
 // Keep local, selected remote runtime, desktop Cloud, and native Cloud precedence.
 // CSRF requests deliberately do not use relay/SSH selection; Cloud requests use
 // only the desktop bridge before their own Capacitor/browser fallback.
-configureHostTransport(async (url, purpose) => {
+configureHostTransport(async (url, purpose, init) => {
   if (purpose === "cloud") return desktopHttpTransportForUrl(url);
   const native =
     (await androidNativeAgentTransportForUrl(url)) ??
@@ -37,7 +37,7 @@ configureHostTransport(async (url, purpose) => {
   }
   return (
     desktopHttpTransportForUrl(url) ??
-    (await nativeClockTransportForUrl(url)) ??
+    (await nativeClockTransportForUrl(url, init)) ??
     nativeCloudHttpTransportForUrl(url)
   );
 });

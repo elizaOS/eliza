@@ -1,9 +1,12 @@
 package ai.elizaos.app;
 
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /** Closed native origin/path policy; no renderer URL, DNS lookup or credential fallback. */
 final class ClockHostPolicy {
@@ -60,9 +63,43 @@ final class ClockHostPolicy {
         if (!allowed) throw new SecurityException("Unsupported native chat path");
     }
     static void header(String name, String value) {
-        if (!(name.equalsIgnoreCase("accept") || name.equalsIgnoreCase("content-type"))
+        String key = name.toLowerCase(Locale.ROOT);
+        boolean allowed = key.equals("accept") || key.equals("content-type")
+                || key.equals("x-elizaos-client-id") || key.equals("x-elizaos-ui-language")
+                || key.equals("x-eliza-last-activity") || key.equals("x-elizaos-turn-correlation")
+                || key.equals("x-elizaos-turn-attempt");
+        if (!allowed
                 || value == null || value.length() > 256 || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0)
             throw new SecurityException("Renderer headers cannot authorize native requests");
+    }
+    /** Caller credentials may only corroborate the current native owner. Never
+     * forward them; the client injects its own snapshotted credentials. */
+    static Map<String, String> headers(Map<String, String> supplied, String bearer, String cookie) throws java.io.UnsupportedEncodingException {
+        Map<String, String> publicHeaders = new LinkedHashMap<>();
+        if (supplied == null) return publicHeaders;
+        for (Map.Entry<String, String> entry : supplied.entrySet()) {
+            String name = entry.getKey(), value = entry.getValue(), expected = null;
+            String key = name.toLowerCase(Locale.ROOT);
+            if (key.equals("authorization")) expected = bearer == null ? null : "Bearer " + bearer;
+            else if (key.equals("cookie")) expected = cookie == null || cookie.isEmpty() ? null : cookie;
+            else if (key.equals("x-eliza-csrf")) expected = csrf(cookie);
+            else {
+                header(name, value); publicHeaders.put(name, value); continue;
+            }
+            if (expected == null || value == null || value.length() > 16384
+                    || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0 || value.indexOf('\0') >= 0
+                    || !MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), value.getBytes(StandardCharsets.UTF_8)))
+                throw new SecurityException("Caller does not match the current native authentication");
+        }
+        return publicHeaders;
+    }
+    static String csrf(String cookie) throws java.io.UnsupportedEncodingException {
+        String result = null;
+        if (cookie != null) for (String part : cookie.split(";")) {
+            String item = part.trim();
+            if (item.startsWith("eliza_csrf=")) result = URLDecoder.decode(item.substring(11), "UTF-8");
+        }
+        return result == null || result.isEmpty() ? null : result;
     }
     static String hash(String value) {
         try {

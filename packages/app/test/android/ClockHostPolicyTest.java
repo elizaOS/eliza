@@ -3,8 +3,11 @@ package ai.elizaos.app;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -19,6 +22,21 @@ public final class ClockHostPolicyTest {
         throw new AssertionError("Untrusted native host transition admitted");
     }
     public static void main(String[] args) throws Exception {
+        if (args.length == 1 && args[0].equals("headers")) {
+            // The renderer integration fixture feeds actual canonical client headers
+            // into this production admission path. Only public headers leave it.
+            DataInputStream input = new DataInputStream(System.in);
+            String bearer = input.readUTF(), cookie = input.readUTF();
+            int count = input.readInt();
+            if (count < 0 || count > 32) throw new IllegalArgumentException("Invalid fixture header count");
+            Map<String, String> headers = new LinkedHashMap<>();
+            for (int i = 0; i < count; i++) headers.put(input.readUTF(), input.readUTF());
+            Map<String, String> admitted = ClockHostPolicy.headers(headers, bearer.isEmpty() ? null : bearer, cookie);
+            DataOutputStream output = new DataOutputStream(System.out);
+            output.writeInt(admitted.size());
+            for (Map.Entry<String, String> entry : admitted.entrySet()) { output.writeUTF(entry.getKey()); output.writeUTF(entry.getValue()); }
+            output.flush(); return;
+        }
         for (String origin : new String[]{"https://agent.example", "https://agent.example/prefix", "http://127.0.0.1:3333", "http://localhost:3333",
                 "http://10.0.0.241:31725", "http://192.168.0.2:3333", "http://172.16.2.3:80", "http://[::1]:3333", "http://[fd00::1]:3333"})
             check(ClockHostPolicy.base(origin).toString().equals(origin), "Selected private/HTTPS origin must survive exactly");
@@ -42,6 +60,25 @@ public final class ClockHostPolicyTest {
         rejects(() -> ClockHostPolicy.header("x-eliza-device-key", "renderer"));
         rejects(() -> ClockHostPolicy.header("accept", "application/json\r\nx:1"));
         ClockHostPolicy.header("accept", "text/event-stream"); checks++;
+        for (String name : new String[]{"X-ElizaOS-Client-Id", "X-ElizaOS-UI-Language", "x-eliza-last-activity",
+                "X-ElizaOS-Turn-Correlation", "X-ElizaOS-Turn-Attempt"}) {
+            ClockHostPolicy.header(name, "fixture-public-context"); checks++;
+            rejects(() -> ClockHostPolicy.header(name, "context\r\nAuthorization: forged"));
+        }
+        rejects(() -> ClockHostPolicy.header("x-eliza-csrf", "renderer"));
+        rejects(() -> ClockHostPolicy.header("x-eliza-device-capabilities", "notes.local-record.v1"));
+        String bearer = "current-native-token", cookie = "eliza_session=current; eliza_csrf=current%2Bcsrf";
+        Map<String, String> paired = new LinkedHashMap<>();
+        paired.put("Authorization", "Bearer " + bearer); paired.put("Cookie", cookie); paired.put("x-eliza-csrf", "current+csrf");
+        paired.put("X-ElizaOS-Client-Id", "owned-client"); paired.put("Content-Type", "application/json");
+        check(ClockHostPolicy.headers(paired, bearer, cookie).equals(Map.of("X-ElizaOS-Client-Id", "owned-client", "Content-Type", "application/json")), "Matched caller credentials must not be forwarded");
+        for (String name : new String[]{"Authorization", "Cookie", "x-eliza-csrf"}) {
+            Map<String, String> foreign = new LinkedHashMap<>(paired); foreign.put(name, "foreign-credential");
+            rejects(() -> ClockHostPolicy.headers(foreign, bearer, cookie));
+        }
+        rejects(() -> ClockHostPolicy.headers(paired, null, cookie));
+        rejects(() -> ClockHostPolicy.headers(paired, bearer, ""));
+        rejects(() -> ClockHostPolicy.headers(Map.of("x-eliza-device-key", "renderer"), bearer, cookie));
 
         AtomicInteger hits = new AtomicInteger(), redirected = new AtomicInteger();
         CountDownLatch firstChunk = new CountDownLatch(1);

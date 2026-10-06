@@ -207,17 +207,13 @@ final class ClockHostClient {
     private Map<String, String> headers(Map<String, String> callerHeaders) throws Exception {
         Map<String, String> headers = new java.util.LinkedHashMap<>();
         headers.put("Accept", "application/json"); headers.put("Content-Type", "application/json");
-        if (callerHeaders != null) for (Map.Entry<String, String> header : callerHeaders.entrySet()) {
-            ClockHostPolicy.header(header.getKey(), header.getValue()); headers.put(header.getKey(), header.getValue());
-        }
+        headers.putAll(ClockHostPolicy.headers(callerHeaders, bearer, cookie));
         headers.put("x-eliza-device-id", device.getInstallationId()); headers.put("x-eliza-device-key", device.getDeviceKey());
         headers.put("x-eliza-device-capabilities", CAPABILITIES);
         if (bearer != null) headers.put("Authorization", "Bearer " + bearer);
         if (!cookie.isEmpty()) headers.put("Cookie", cookie);
-        for (String part : cookie.split(";")) {
-            String item = part.trim();
-            if (item.startsWith("eliza_csrf=")) headers.put("x-eliza-csrf", URLDecoder.decode(item.substring(11), "UTF-8"));
-        }
+        String csrf = ClockHostPolicy.csrf(cookie);
+        if (csrf != null) headers.put("x-eliza-csrf", csrf);
         return headers;
     }
     private List<String> secrets() throws Exception {

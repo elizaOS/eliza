@@ -52,6 +52,16 @@ public final class ClockHandoffRequestTest {
         review = ClockReviewDialog.description(ClockHandoff.Request.set(9, 0, "Daily", "UTC", daily));
         if (!review.contains("Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday")) throw new AssertionError(); checks++;
         if (!ClockReviewDialog.description(once).contains("Once (no repeat days)")) throw new AssertionError(); checks++;
+        for (ClockHandoff.Request broad : List.of(ClockHandoff.Request.dismiss(), ClockHandoff.Request.snooze(10))) {
+            String description = ClockReviewDialog.description(broad);
+            if (!description.contains("all ringing alarms") || !description.contains("No specific alarm is selected")
+                    || !description.contains("may act immediately") || !description.contains("No second confirmation is guaranteed"))
+                throw new AssertionError("Targetless native consent must disclose its full scope");
+            checks++;
+        }
+        if (!ClockReviewDialog.description(ClockHandoff.Request.snooze(10)).contains("default duration or show a chooser"))
+            throw new AssertionError("Snooze consent must not promise exact handler behavior");
+        checks++;
         System.out.println("Native request checks passed: " + checks + "; no Android dispatch performed");
     }
 }
