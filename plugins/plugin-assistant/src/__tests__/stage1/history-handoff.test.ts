@@ -31,6 +31,12 @@ it.each([ChannelType.DM, ChannelType.VOICE_DM])(
     expect(wire).toContain("Never change my records");
     expect(wire).not.toContain("blueberry");
     expect(wire).toContain("history:all");
+    expect(wire).toContain("For a specific saved-fact lookup, first");
+    expect(wire).toContain("inspect matched originals and their corrections");
+    expect(wire).toContain("before claiming something was never discussed");
+    expect(JSON.stringify(params.tools)).toContain(
+      "advertised stored-memory reference",
+    );
     expect(JSON.stringify(params.tools)).not.toContain('"completionContext"');
     expect(rows).toEqual(before);
   },
