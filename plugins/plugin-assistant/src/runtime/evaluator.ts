@@ -1193,11 +1193,6 @@ function renderEvaluatorModelInput(params: {
         redactText: params.redactText,
       },
     );
-  // The planner's append-only history stays byte-stable. Only this stage's
-  // wire copy removes JSON indentation; all result fields and string bytes
-  // survive, including receipts, failures, attachments and pending work.
-  const stepMessages =
-    compactCanonicalToolMessagesForModel(completeStepMessages);
   // Mirrors planner-loop: the evaluator stage instructions are template-derived
   // (`evaluatorTemplate`) and structurally identical across calls. Marking
   // the segment `stable: true` makes them cacheable on Anthropic's wire path.
@@ -1228,13 +1223,15 @@ function renderEvaluatorModelInput(params: {
   // Use proper assistant/tool message pairs so the evaluator sees the same
   // native tool-calling format as the planner. The trajectory JSON is NOT
   // included in dynamicBlocks — it is conveyed through stepMessages.
-  const messages = buildStageChatMessages({
-    contextSegments: renderedContext.promptSegments,
-    stageLabel: "evaluator_stage",
-    instructions,
-    dynamicBlocks: [],
-    stepMessages,
-  });
+  const messages = compactCanonicalToolMessagesForModel(
+    buildStageChatMessages({
+      contextSegments: renderedContext.promptSegments,
+      stageLabel: "evaluator_stage",
+      instructions,
+      dynamicBlocks: [],
+      stepMessages: completeStepMessages,
+    }),
+  );
   messages.push({
     role: "user",
     content: renderEvaluatorDecisionState(params.decisionState),
