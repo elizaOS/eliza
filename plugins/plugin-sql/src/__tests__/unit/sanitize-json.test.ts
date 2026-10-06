@@ -591,8 +591,7 @@ describe("assertJsonbStorable", () => {
   it("terminates on cycles", () => {
     const cyclic: Record<string, unknown> = { text: "ok" };
     cyclic.self = cyclic;
-    expect(codeOf(cyclic)).toBe("ok");
-    cyclic.bad = `a${nul}`;
-    expect(codeOf(cyclic)).toBe("SQL_JSON_UNSUPPORTED_NUL");
+    // Cycles are not JSON values: preserve JSON.stringify's explicit rejection.
+    expect(() => assertJsonbStorable(cyclic)).toThrow(TypeError);
   });
 });
