@@ -11,12 +11,6 @@
  * script will produce.
  */
 
-/**
- * Canonical external URLs for every Eliza surface. Import from here instead
- * of hardcoding strings so a domain change is a one-line edit.
- */
-export { EXTERNAL_URLS, type ExternalUrlKey } from "@elizaos/host/protocol";
-
 export const BRAND_COLORS = {
   blue: "#0B35F1",
   orange: "#FF5800",
@@ -61,9 +55,6 @@ export const BRAND_PATHS = {
   background: "/brand/background",
   favicons: "/brand/favicons",
 } as const;
-
-// Only the poster frame is source-owned (assets/background/); the loop videos
-// shipped exclusively in the retired eliza-archive overlay (#16290), so their
 
 /**
  * The canonical logo variants. File names match `assets/logos/`. Pick the

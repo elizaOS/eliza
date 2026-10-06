@@ -24,9 +24,9 @@ import {
   getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
+  isLocalOnlyInferenceInConfig,
   isMobilePlatform,
   lifeOpsPassiveConnectorsSetting,
-  migrateLegacyRuntimeConfig,
   normalizeFirstRunProviderId,
   type ResolvedElizaCloudTopology,
   readAliasedEnv,
@@ -373,10 +373,6 @@ export function collectPluginNames(
   forceIncludePluginNames: readonly string[] = [],
 ): Set<string> {
   config = createDevCloudConfigAuthorityView(config);
-  const legacyLocalOnlyInference =
-    config.cloud?.inferenceMode === "local" ||
-    config.cloud?.services?.inference === false;
-  migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   const devCloudSnapshot = applyDevCloudConfigAuthority(
     config as Record<string, unknown>,
   );
@@ -410,11 +406,7 @@ export function collectPluginNames(
   // The local handler registers in the same priority band as direct providers;
   // the top-priority router's default prefer-local policy decides the winner
   // when the user has multiple configured candidates.
-  const localOnlyInference =
-    legacyLocalOnlyInference ||
-    (cloudExplicitlyDisabled &&
-      deploymentTarget.runtime === "local" &&
-      !serviceRouting?.llmText);
+  const localOnlyInference = isLocalOnlyInferenceInConfig(config);
   const cloudPluginRequestedByEnv =
     !hasCanonicalRuntimeConfig &&
     !cloudExplicitlyDisabled &&

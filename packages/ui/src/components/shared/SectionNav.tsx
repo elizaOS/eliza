@@ -26,8 +26,8 @@ import {
   listAppShellPages,
   subscribeAppShellPages,
 } from "../../app-shell-registry";
-import { cn } from "../../lib/utils";
 import { shellHistory } from "../../surface-realm-channel";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 
 /** A single tab within a section strip. */

@@ -10,6 +10,7 @@ import {
 	recordInferenceSpan,
 	setInferenceModelProvider,
 } from "../inference-timing";
+import { RUNTIME_DEBUG_LOG_ENABLED } from "../logger.js";
 import {
 	type ConfidentialInferenceAuthority,
 	ConfidentialInferenceOperation,
@@ -42,12 +43,12 @@ import {
 } from "../trajectory-utils";
 import type { StreamChunkCallback } from "../types/components.js";
 import { EventType } from "../types/events.js";
-import type { ModelHandler } from "../types/model.js";
 import {
 	type GenerateTextParams,
 	getModelFallbackChain,
 	MODEL_PROVIDER_ATTEMPTS,
 	type ModelAttemptContext,
+	type ModelHandler,
 	type ModelParamsMap,
 	type ModelProviderAttempt,
 	type ModelRegistrationInfo,
@@ -68,12 +69,12 @@ import type { JsonValue, UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { Service, ServiceTypeName } from "../types/service.js";
 import { BufferUtils } from "../utils/buffer";
+import { resolveSetting } from "../utils/environment";
 import {
 	assertModelOutputComplete,
 	modelProviderErrorDetail,
 } from "../utils/model-errors";
 import { captureModelLookupCaller } from "../utils/model-lookup-caller";
-import { resolveSetting } from "../utils/resolve-setting";
 import { ResponseSkeletonStreamExtractor } from "../utils/streaming";
 import { isPlainObject } from "../utils/type-guards";
 import {
@@ -87,7 +88,6 @@ import {
 	runWithoutActionRoutingContext,
 } from "./action-routing-context";
 import { stringifyForModel } from "./json-output";
-import { RUNTIME_DEBUG_LOG_ENABLED } from "./model-diagnostics.js";
 import {
 	buildModelInputBudget,
 	DEFAULT_INPUT_RESERVE_TOKENS,
@@ -102,6 +102,7 @@ import {
 import {
 	assertModelResultPresent,
 	assertRuntimeModelOutputComplete,
+	isCanonicalModelCapabilityDisabled,
 	isTextStreamResult,
 	isUnavailableLocalModel,
 	NoModelProviderConfiguredError,
@@ -110,7 +111,6 @@ import {
 	resolveResponseSkeletonStreamFields,
 	TEXT_GENERATION_MODEL_KEYS,
 } from "./model-policy.js";
-import { isCanonicalModelCapabilityDisabled } from "./model-policy.ts";
 import type { RuntimePipelineHooks } from "./pipeline-hooks.js";
 import {
 	dropDuplicateLeadingSystemMessage,

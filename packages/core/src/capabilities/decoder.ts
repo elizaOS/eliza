@@ -1045,7 +1045,7 @@ function validateRemotePluginModuleId(
 function optionalViewKind(
 	object: Record<string, JsonValue>,
 	method: string,
-): import("../types/view-kind.js").ViewKind | undefined {
+): import("../views/declarations.js").ViewKind | undefined {
 	const value = optionalString(object, "viewKind", method);
 	if (
 		value === undefined ||

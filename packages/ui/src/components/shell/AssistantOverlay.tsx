@@ -6,10 +6,10 @@ import { X } from "lucide-react";
 import * as React from "react";
 
 import { useBranding } from "../../config/branding-react.hooks";
+import { NATIVE_GLASS_DARK_TINT } from "../../config/theme.js";
 import { useNativeGlassAnchor } from "../../glass/GlassSurface";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
-import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
-import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
+import { Z_SHELL_OVERLAY } from "../../utils/floating-layers";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import type { ShellPhase } from "./shell-state";
@@ -65,7 +65,7 @@ export function AssistantOverlay({
       // Sits one tick above the pill in stacking order. The desktop overlay
       // shell also offsets the panel so the two surfaces never overlap.
       // Inline style because Tailwind's JIT can't track template-interpolated
-      // arbitrary z-index values. See packages/ui/src/lib/floating-layers.ts.
+      // arbitrary z-index values. See packages/ui/src/utils/floating-layers.ts.
       // GlassSurface's shared recipe establishes `position: relative` for rim
       // pseudo-elements. This overlay is itself the anchored surface, so keep
       // the fixed-position contract explicit at higher precedence.

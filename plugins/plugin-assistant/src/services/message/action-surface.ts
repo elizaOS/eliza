@@ -125,6 +125,7 @@ const GENERIC_OPERATION_WORDS = new Set([
   "find",
   "lookup",
   "create",
+  "schedule",
   "add",
   "write",
   "save",

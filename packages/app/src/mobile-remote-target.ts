@@ -92,6 +92,7 @@ export async function createAndroidAgentFetch(
         saveElizaConfig: kernel.saveElizaConfig,
         hasPersistedFirstRunState: kernel.hasPersistedFirstRunState,
       },
+      init?.signal ?? undefined,
     );
     const response = await new Promise<Awaited<typeof dispatched>>(
       (resolve, reject) => {

@@ -468,11 +468,10 @@ describe("TrajectoryDetailView recorded usage", () => {
 
   it("preserves complete model text and selected calls while a live run refreshes, and cancels closed reads", async () => {
     const original = detail();
-    const input =
-      Array.from(
-        { length: 32 },
-        (_, index) => `${index}: ${"context ".repeat(500)}`,
-      ).join("\n") + "\nFINAL_INPUT_SENTINEL";
+    const input = `${Array.from(
+      { length: 32 },
+      (_, index) => `${index}: ${"context ".repeat(500)}`,
+    ).join("\n")}\nFINAL_INPUT_SENTINEL`;
     original.llmCalls[0].userPrompt = input;
     api.getTrajectoryDetail.mockResolvedValue(original);
     const view = render(

@@ -8,7 +8,7 @@ import {
 } from "@elizaos/core";
 import { createDocumentsPlugin } from "@elizaos/plugin-assistant";
 import { memoriesRepository } from "../../db/repositories/agents/memories";
-import { charactersService } from "../services/characters/characters";
+import { charactersService } from "../services/characters";
 import type { ElizaCharacter } from "../types/eliza-character";
 import { logger } from "../utils/logger";
 import defaultAgent from "./agent";
@@ -35,7 +35,7 @@ async function preloadPlugins(): Promise<void> {
   try {
     // Only preload web-search plugin (local version)
     // Documents plugin is loaded on-demand when documents exist
-    const webSearchModule = await import("./plugin-web-search/src").catch((e) => {
+    const webSearchModule = await import("./plugin-web-search/index").catch((e) => {
       logger.warn("[AgentLoader] Failed to preload local web-search plugin:", e);
       return null;
     });
@@ -85,7 +85,7 @@ async function getWebSearchPlugin(): Promise<Plugin> {
 
   // Fallback to dynamic import if preload hasn't completed
   // Use local web-search plugin
-  const { webSearchPlugin } = await import("./plugin-web-search/src");
+  const { webSearchPlugin } = await import("./plugin-web-search/index");
   _webSearchPlugin = asPlugin(webSearchPlugin);
   return _webSearchPlugin;
 }

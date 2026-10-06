@@ -95,6 +95,8 @@ const DEPLOYED_RENDERER_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
 const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v3";
 const REQUIRE_NAMED_WARMING =
   process.env.ELIZA_UI_SMOKE_REQUIRE_NAMED_WARMING === "1";
+const REQUIRE_SHARED_FIRST_ATTEMPT =
+  process.env.ELIZA_UI_SMOKE_REQUIRE_SHARED_FIRST_ATTEMPT === "1";
 
 // This lane deliberately places a real Cloud bearer in browser storage.
 // Playwright traces record init-script arguments and request headers, while
@@ -692,6 +694,13 @@ async function resolvePersonalIdentity(
           await confirmation.click({ timeout: 15_000 });
           return "activation";
         },
+        performCancellation: async (cancellation) => {
+          // The default live lane proves Shared chat. Explicit billable
+          // approval still takes the confirmation branch above; otherwise use
+          // the product's existing non-mutating "Not now" path so an optional
+          // Dedicated quote cannot prevent the first Shared turn from running.
+          await cancellation.click({ timeout: 15_000 });
+        },
       },
       timeoutMs: identityTimeoutMs,
       runtimeCloudGraceMs: 15_000,
@@ -781,9 +790,27 @@ test.describe("real cloud login + personal identity + chat", () => {
       deployedRenderer: DEPLOYED_RENDERER_ENABLED,
       cloudEnvironment: originContract.environment,
     });
+    if (REQUIRE_SHARED_FIRST_ATTEMPT) {
+      expect(
+        DEPLOYED_RENDERER_ENABLED,
+        "Shared first-attempt proof requires a deployed renderer",
+      ).toBe(true);
+      expect(
+        originContract.environment,
+        "Shared first-attempt proof requires staging",
+      ).toBe("staging");
+      expect(
+        REQUIRE_NAMED_WARMING,
+        "first-attempt success and named-warming retry proof are mutually exclusive",
+      ).toBe(false);
+    }
     test.info().annotations.push({
       type: "named-warming-proof-required",
       description: String(REQUIRE_NAMED_WARMING),
+    });
+    test.info().annotations.push({
+      type: "shared-first-attempt-proof-required",
+      description: String(REQUIRE_SHARED_FIRST_ATTEMPT),
     });
     const dedicatedConsentGate = createCloudLiveDedicatedConsentGate(
       process.env,
@@ -1067,6 +1094,12 @@ test.describe("real cloud login + personal identity + chat", () => {
       identityAudit.successfulPersonalIdentityGetCount,
       "Personal Eliza resolution must include a successful canonical identity GET",
     ).toBeGreaterThan(0);
+    if (REQUIRE_SHARED_FIRST_ATTEMPT) {
+      expect(
+        referenceBinding.runtime,
+        "the first-attempt lane must exercise Personal Shared, not Dedicated",
+      ).toBe("shared");
+    }
 
     // Real chat turn against the resolved Personal Eliza agent — the liveness
     // contract (#14359) proves a real model answered (non-empty, no stub marker).
@@ -1308,9 +1341,12 @@ test.describe("real cloud login + personal identity + chat", () => {
         `Cloud live liveness failed; privacy-safe diagnostic: ${diagnostic}`,
       );
     }
-    if (!retryObservation.ok && REQUIRE_NAMED_WARMING) {
+    if (
+      !retryObservation.ok &&
+      (REQUIRE_NAMED_WARMING || REQUIRE_SHARED_FIRST_ATTEMPT)
+    ) {
       throw new Error(
-        "Cloud live Retry-chip observer failed; named warming proof is unavailable",
+        "Cloud live Retry-chip observer failed; first-turn proof is unavailable",
       );
     }
     const { liveness } = livenessAttempt;
@@ -1322,25 +1358,44 @@ test.describe("real cloud login + personal identity + chat", () => {
       description: String(liveness.firstTurnLatencyMs),
     });
     const challengeAudit = await primaryAudit.snapshot();
+    const challengeChatSendAttemptCount =
+      challengeAudit.chatSendAttemptCount -
+      auditBeforeLiveness.chatSendAttemptCount;
+    const challengeLogicalChatSendCount =
+      challengeAudit.logicalChatSendCount -
+      auditBeforeLiveness.logicalChatSendCount;
+    const challengeUnidentifiedChatSendAttemptCount =
+      challengeAudit.unidentifiedChatSendAttemptCount -
+      auditBeforeLiveness.unidentifiedChatSendAttemptCount;
+    const challengeNamedWarmingResponseCount =
+      challengeAudit.namedWarmingResponseCount -
+      auditBeforeLiveness.namedWarmingResponseCount;
+    const challengeSuccessfulChatSendResponseCount =
+      challengeAudit.successfulChatSendResponseCount -
+      auditBeforeLiveness.successfulChatSendResponseCount;
     assertCloudLiveNamedWarmingProof({
       required: REQUIRE_NAMED_WARMING,
       terminalLivenessPassed: isLiveReply(liveness.reply),
-      chatSendAttemptCount:
-        challengeAudit.chatSendAttemptCount -
-        auditBeforeLiveness.chatSendAttemptCount,
-      logicalChatSendCount:
-        challengeAudit.logicalChatSendCount -
-        auditBeforeLiveness.logicalChatSendCount,
+      chatSendAttemptCount: challengeChatSendAttemptCount,
+      logicalChatSendCount: challengeLogicalChatSendCount,
       unidentifiedChatSendAttemptCount:
-        challengeAudit.unidentifiedChatSendAttemptCount -
-        auditBeforeLiveness.unidentifiedChatSendAttemptCount,
-      namedWarmingResponseCount:
-        challengeAudit.namedWarmingResponseCount -
-        auditBeforeLiveness.namedWarmingResponseCount,
+        challengeUnidentifiedChatSendAttemptCount,
+      namedWarmingResponseCount: challengeNamedWarmingResponseCount,
       retryChipEverObserved,
     });
-    const challengeLogicalChatSendCount = challengeAudit.logicalChatSendCount;
-    expect(challengeLogicalChatSendCount).toBe(1);
+    if (REQUIRE_SHARED_FIRST_ATTEMPT) {
+      expect(
+        challengeChatSendAttemptCount,
+        "the Shared turn must complete on its first HTTP attempt",
+      ).toBe(1);
+      expect(challengeLogicalChatSendCount).toBe(1);
+      expect(challengeUnidentifiedChatSendAttemptCount).toBe(0);
+      expect(challengeNamedWarmingResponseCount).toBe(0);
+      expect(challengeSuccessfulChatSendResponseCount).toBe(1);
+      expect(retryChipEverObserved).toBe(false);
+    }
+    const primaryLogicalChatSendCount = challengeAudit.logicalChatSendCount;
+    expect(primaryLogicalChatSendCount).toBe(1);
     expect(challengeAudit.unidentifiedChatSendAttemptCount).toBe(0);
     const chatCorrelation = primaryAudit.requireSuccessfulChatCorrelation();
     test.info().annotations.push({
@@ -1452,7 +1507,7 @@ test.describe("real cloud login + personal identity + chat", () => {
       freshResult.audit.successfulPersonalIdentityGetCount > 0;
     expect(personalIdentityEndpointPassed).toBe(true);
     const noAdditionalChatSendAfterChallenge =
-      primarySnapshot.logicalChatSendCount === challengeLogicalChatSendCount &&
+      primarySnapshot.logicalChatSendCount === primaryLogicalChatSendCount &&
       primarySnapshot.unidentifiedChatSendAttemptCount === 0 &&
       freshResult.audit.logicalChatSendCount === 0 &&
       freshResult.audit.unidentifiedChatSendAttemptCount === 0;

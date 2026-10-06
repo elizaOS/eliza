@@ -114,6 +114,12 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
   personalRequests: string[];
 }> {
   await installDefaultAppRoutes(page);
+  await page.route("**/api/interactions/composer", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const { activity } = route.request().postDataJSON();
+    expect(typeof activity).toBe("string");
+    await fulfillJson(route, { ok: true, activity });
+  });
   let conversationCreated = false;
   let messageSequence = 0;
   const streamRequests: string[] = [];
@@ -759,6 +765,16 @@ test.describe("assistant home app flow", () => {
     // visibly committed, preserving the exact fresh-first-run transition.
     const releasePersonalIdentity =
       await installAssistantPersonalElizaRoute(page);
+    await page.route("**/api/v1/user", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      expect(route.request().headers().authorization).toBe(
+        "Bearer assistant-flow-cloud-token",
+      );
+      await fulfillJson(route, {
+        id: "11111111-1111-5111-8111-111111111111",
+        organization_id: "assistant-flow-org",
+      });
+    });
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     const firstRunOverlay = page.getByTestId("chat-overlay");

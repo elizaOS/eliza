@@ -3,8 +3,9 @@
 Shared host configuration, boot aliases and HTTP plugin lifecycle. Hosts install
 route lifecycle explicitly and own authentication, storage and model composition.
 
-Use `@elizaos/host` for Node HTTP helpers and `@elizaos/host/protocol` for
-browser-safe contracts and configuration. `@elizaos/host/native-host` exposes
+Use `@elizaos/host` for Node HTTP helpers, build variants and native library
+policy; use `@elizaos/host/protocol` for browser-safe contracts, platform detection
+and configuration. `@elizaos/host/native-host` exposes
 Node-only SQLite task gateways, research collection and trace transport, database
 leases, and verified document-runtime packaging. Consumers supply authentication,
 consent, measurement policy and lifecycle ownership. Internal code imports defining files.
@@ -57,6 +58,11 @@ The helper never enrolls participants or returns plaintext operator credentials.
 After validating the new key against retained data and backups, the operator
 must retire the private recovery files explicitly. Until then they retain old
 key material and block another rotation; rotation alone does not remove it.
+
+`@elizaos/host/native-host` supplies Wilson 95% binomial intervals and
+deterministic nearest-rank percentile bootstrap intervals for a mean. Hosts own
+sampling units, cohorts, confidence labels, resample/seed/work budgets and
+interpretation; these calculations do not certify independence or causal effects.
 
 `native-host/gateway-lifecycle.mjs` acquires configured helper, task gateway,
 optional capture, reputation and HTTP server resources through explicit host

@@ -10,7 +10,7 @@
  */
 import type * as React from "react";
 
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { WALLPAPER_FLOAT_SHADOW } from "../../shell/wallpaper-idiom";
 import { Card } from "../../ui/card";
 import { normalizeChatSourceKey } from "./chat-source.helpers";

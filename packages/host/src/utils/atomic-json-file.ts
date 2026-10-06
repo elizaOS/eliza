@@ -1,6 +1,7 @@
 /** Same-directory replacement for small host registries; callers retain schema and concurrency policy. */
 import {
   chmodSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -10,7 +11,11 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-export function writeJsonFileAtomic(filePath: string, value: unknown): void {
+export function writeJsonFileAtomic(
+  filePath: string,
+  value: unknown,
+  options: { createOnly?: boolean } = {},
+): void {
   const serialized = JSON.stringify(value, null, 2);
   if (serialized === undefined)
     throw new TypeError("JSON root must be serializable");
@@ -30,7 +35,8 @@ export function writeJsonFileAtomic(filePath: string, value: unknown): void {
     // The creation mode is filtered by the process umask; restore the replaced
     // file's exact mode so a shared (for example 0664) registry stays shared.
     if (mode !== undefined) chmodSync(temporary, mode);
-    renameSync(temporary, filePath);
+    if (options.createOnly) linkSync(temporary, filePath);
+    else renameSync(temporary, filePath);
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }

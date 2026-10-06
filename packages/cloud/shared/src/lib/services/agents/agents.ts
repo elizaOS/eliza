@@ -31,7 +31,7 @@ import { createMessageHandler } from "../../eliza/message-handler";
 import { runtimeFactory } from "../../eliza/runtime-factory";
 import { userContextService } from "../../eliza/user-context";
 import { logger } from "../../utils/logger";
-import { charactersService } from "../characters/characters";
+import { charactersService } from "../characters";
 import { roomsService } from "./rooms";
 
 // Cache key helper for agent info

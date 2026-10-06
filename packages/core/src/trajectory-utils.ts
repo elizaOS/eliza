@@ -20,10 +20,11 @@
  * `ELIZA_TRAJECTORY_STRICT`; embeddings, tokenizers, and speech/media models are
  * exempt from the generative-call guards.
  */
+
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getAmbientSingleton } from "./ambient-context.js";
-import { isTruthyEnvValue } from "./env-utils.js";
 import { ElizaError } from "./errors";
+import type { ContextEvent, ContextObject } from "./runtime/context-object";
 import { stringifyForDiagnostics } from "./runtime/json-output";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import {
@@ -38,7 +39,6 @@ import {
 	runWithTrajectoryContext,
 } from "./trajectory-context";
 import type { ActionResult } from "./types/components";
-import type { ContextEvent, ContextObject } from "./types/context-object";
 import { isTextGenerationModelType } from "./types/model";
 import type { IAgentRuntime } from "./types/runtime";
 import {
@@ -48,6 +48,7 @@ import {
 	type Trajectory,
 } from "./types/trajectory-export.ts";
 import { createHash } from "./utils/crypto-compat";
+import { isTruthyEnvValue } from "./utils/env.js";
 
 export type TrajectoryFinalStatus =
 	| "completed"

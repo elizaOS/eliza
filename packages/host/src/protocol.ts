@@ -221,6 +221,7 @@ export {
   isCloudInferenceSelectedInConfig,
   isCloudManagedConnection,
   isFirstRunConnectionComplete,
+  isLocalOnlyInferenceInConfig,
   isLocalProviderConnection,
   isRemoteProviderConnection,
   isSubscriptionProviderSelectionId,
@@ -244,6 +245,11 @@ export {
 export * from "./contracts/first-run-routes.js";
 export * from "./contracts/service-routing.js";
 export * from "./media-provider.js";
+export type {
+  BuildVariant,
+  NativeLibraryCandidate,
+  NativeLibraryPolicyOptions,
+} from "./native-platform.js";
 export * from "./os-intent/dedupe.js";
 export {
   type AuthState as OsIntentAuthState,
@@ -252,6 +258,12 @@ export {
   routeIntent,
 } from "./os-intent/router.js";
 export * from "./passive-connectors.js";
+export {
+  isAospElizaUserAgent,
+  isElizaOS,
+  isNativeServerPlatform,
+  userAgentHasElizaOSMarker,
+} from "./platform.js";
 export * from "./restart.js";
 export {
   API_EXPOSE_PORT_KEYS,
@@ -301,3 +313,4 @@ export * from "./settings-debug.js";
 export * from "./utils/eliza-globals.js";
 export * from "./utils/env.js";
 export * from "./voice.js";
+export * from "./workbench.js";

@@ -237,32 +237,17 @@ export const handleMiscRoutes = lazyRoute(
       ctx.pathname.startsWith("/api/custom-actions")),
   async () => (await import("./misc-routes.ts")).handleMiscRoutes,
 );
-type MobileOptionalRoutesModule = typeof import("./mobile-optional-routes.ts");
-export async function handleMobileOptionalRoutes(
-  ...args: Parameters<MobileOptionalRoutesModule["handleMobileOptionalRoutes"]>
-): ReturnType<MobileOptionalRoutesModule["handleMobileOptionalRoutes"]> {
+type HostSettingsRoutesModule = typeof import("./host-settings-routes.ts");
+export async function handleHostSettingsRoutes(
+  ...args: Parameters<HostSettingsRoutesModule["handleHostSettingsRoutes"]>
+): ReturnType<HostSettingsRoutesModule["handleHostSettingsRoutes"]> {
   const pathname = args[2];
-  if (
-    typeof pathname !== "string" ||
-    !(
-      pathname.startsWith("/api/local-inference") ||
-      pathname.startsWith("/api/tts/local-inference") ||
-      pathname.startsWith("/api/asr/local-inference") ||
-      pathname.startsWith("/api/mobile") ||
-      pathname === "/api/runtime/mode" ||
-      pathname.startsWith("/api/computer-use/") ||
-      pathname.startsWith("/api/stream/") ||
-      pathname === "/api/catalog/apps" ||
-      pathname === "/api/drop/status" ||
-      pathname.startsWith("/api/coding-agents") ||
-      pathname === "/api/lifeops/activity-signals"
-    )
-  ) {
+  if (pathname !== "/api/runtime/mode" && pathname !== "/api/stream/settings") {
     return false;
   }
-  return (
-    await import("./mobile-optional-routes.ts")
-  ).handleMobileOptionalRoutes(...args);
+  return (await import("./host-settings-routes.ts")).handleHostSettingsRoutes(
+    ...args,
+  );
 }
 
 export const handleModelsRoutes = lazyRoute(

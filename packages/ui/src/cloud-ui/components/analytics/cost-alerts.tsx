@@ -5,7 +5,7 @@
 import type { AnalyticsCostTrendingDto } from "@elizaos/cloud-sdk";
 import { AlertTriangle, Info, TrendingDown } from "lucide-react";
 import type { ReactNode } from "react";
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 type CostAlertsTrending = AnalyticsCostTrendingDto;
 

@@ -74,7 +74,10 @@ const checks = [
     key: "homepage-bundle",
     label:
       "published homepage bundle points users at the shared gateway number",
-    command: ["node", ["../cloud/scripts/check-homepage-public-readiness.ts"]],
+    command: [
+      "node",
+      ["../cloud/scripts/gateway/check-homepage-public-readiness.ts"],
+    ],
     pass: (result) =>
       /PASS homepage-bundle: .*gateway=yes personal-number=no/.test(
         result.output,
@@ -83,7 +86,10 @@ const checks = [
   {
     key: "homepage-public-dns",
     label: "public eliza.app domain resolves to the published homepage",
-    command: ["node", ["../cloud/scripts/check-homepage-public-readiness.ts"]],
+    command: [
+      "node",
+      ["../cloud/scripts/gateway/check-homepage-public-readiness.ts"],
+    ],
     pass: (result) =>
       result.status === 0 &&
       /PASS pages-source:/.test(result.output) &&
@@ -112,7 +118,7 @@ const checks = [
       "production Cloud API routes unknown sender to onboarding through +14159611510/bluebubbles/blooio, gets product/pricing/$5 credit and login link",
     command: [
       "node",
-      ["../cloud/scripts/verify-cloud-api-production-deploy.ts"],
+      ["../cloud/scripts/gateway/verify-cloud-api-production-deploy.ts"],
     ],
     pass: (result) =>
       result.status === 0 &&

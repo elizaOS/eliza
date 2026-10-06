@@ -7,6 +7,7 @@
  * Accepts `{ setActionNotice }` for cross-domain notifications.
  */
 
+import { normalizeFirstRunProviderId } from "@elizaos/host/protocol";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../api/client";
 import type {
@@ -16,7 +17,6 @@ import type {
   SkillScanReportSummary,
 } from "../api/client-types-config";
 import { logger } from "../logger.ts";
-import { normalizeFirstRunProviderId } from "../providers";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import { isTransientOptionalFetchFailure } from "../utils/transient-fetch";
 

@@ -205,6 +205,7 @@ it("renders persisted owner work and admitted automations without promoting main
       metadata: { isCompleted: true },
     },
     { name: `${prefix}-custom`, tags: ["workbench-task", "custom-worker"] },
+    { name: `${prefix}-spaced-tag`, tags: [" workbench-task "] },
     { name: `${prefix}-untagged-custom`, tags: ["queue", "repeat"] },
     { name: `${prefix}-todo`, tags: ["workbench-todo", "todo"] },
     ...["POST_TURN_MEMORY", "EMBEDDING_DRAIN", "PII_SCRUB_DRAIN"].map(
@@ -260,6 +261,10 @@ it("renders persisted owner work and admitted automations without promoting main
   expect(result.text).toContain(`${prefix}-active`);
   expect(result.text).toContain(`[completed] ${prefix}-completed`);
   expect(result.text).toContain(`${prefix}-custom`);
+  expect(result.text).toContain(`${prefix}-spaced-tag`);
+  const feed = await request("canonical", "/api/automations");
+  expect(feed.status).toBe(200);
+  expect(JSON.stringify(await feed.json())).toContain(`${prefix}-spaced-tag`);
   expect(result.text).toContain(`${prefix}-enabled`);
   for (const excluded of [
     "POST_TURN_MEMORY",
@@ -284,4 +289,48 @@ it("renders persisted owner work and admitted automations without promoting main
   expect(
     await Promise.all(allIds.map((id) => fixture.runtime.getTask(id as never))),
   ).toEqual(before);
+});
+
+it("keeps workflow todo responses and host overview projections identical", async () => {
+  const description = "Complete checklist context 🙂\n".repeat(100);
+  const created = await request("canonical", "/api/workbench/todos", "POST", {
+    name: `checklist-${randomUUID()}`,
+    description,
+    priority: "3",
+    isUrgent: true,
+    tags: [" detail "],
+  });
+  expect(created.status).toBe(201);
+  const { todo } = await created.json();
+  expect(todo).toMatchObject({
+    description,
+    priority: 3,
+    isUrgent: true,
+    isCompleted: false,
+  });
+  expect(todo.tags).toContain("detail");
+  const overview = await request("canonical", "/api/workbench/overview");
+  expect(overview.status).toBe(200);
+  const { todos } = await overview.json();
+  expect(todos.find((entry: { id: string }) => entry.id === todo.id)).toEqual(
+    todo,
+  );
+  const completed = await request(
+    "canonical",
+    `/api/workbench/todos/${todo.id}/complete`,
+    "POST",
+    { isCompleted: true },
+  );
+  expect(completed.status).toBe(200);
+  expect(await completed.json()).toEqual({ ok: true });
+  const detail = await request("canonical", `/api/workbench/todos/${todo.id}`);
+  expect(detail.status).toBe(200);
+  const updated = (await detail.json()).todo;
+  expect(updated).toMatchObject({ description, isCompleted: true });
+  const after = await request("canonical", "/api/workbench/overview");
+  expect(
+    (await after.json()).todos.find(
+      (entry: { id: string }) => entry.id === todo.id,
+    ),
+  ).toEqual(updated);
 });

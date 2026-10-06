@@ -19,8 +19,8 @@
 import * as React from "react";
 import { client } from "../api/client";
 import type { ConversationMessage } from "../api/client-types-chat";
+import type { HomeModelStatus } from "../components/local-inference/home-model-status";
 import { useShellControllerContext } from "../components/shell/ShellControllerContext.hooks";
-import type { HomeModelStatus } from "../services/local-inference/home-model-status";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import {
   MODEL_ACTION_PREFIX,

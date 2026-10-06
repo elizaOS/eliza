@@ -79,7 +79,7 @@ head_sampling_rate = 0.05
 # -----------------------------------------------------------------------------
 # Cron triggers — Cloudflare requires unique schedule strings. Multiple
 # handlers per schedule are fanned out by CRON_FANOUT in
-# `../shared/src/lib/cron/cloudflare-cron.ts`, which is the authoritative map.
+# `src/cron.ts`, which is the authoritative map.
 # `cron-fanout-wrangler-parity.test.ts` keeps this unique trigger set aligned.
 # -----------------------------------------------------------------------------
 [triggers]
@@ -219,7 +219,7 @@ storage = "sqlite"
 # Queues. The webhook route LPUSHes a JSON
 # envelope; the `* * * * *` cron fires `/api/cron/process-stripe-queue`
 # which drains a bounded batch via the queue helper in
-# `packages/lib/queue/redis-queue.ts`. Failed messages are retried with
+# `packages/cloud/shared/src/lib/redis-queue.ts`. Failed messages are retried with
 # attempts++ and demoted to a `:dlq` list after `maxAttempts`.
 # -----------------------------------------------------------------------------
 

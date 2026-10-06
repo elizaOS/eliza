@@ -31,7 +31,7 @@ function app(root) {
 
 test("AOSP smoke loads configuration code from the selected application checkout", (t) => {
   const root = app(fixture(t));
-  const library = path.join(root, "packages/app/scripts/aosp/lib");
+  const library = path.join(root, "packages/app/scripts/aosp");
   mkdirSync(library, { recursive: true });
   writeFileSync(
     path.join(library, "load-variant-config.ts"),
@@ -39,7 +39,7 @@ test("AOSP smoke loads configuration code from the selected application checkout
   );
   const result = spawnSync(
     process.execPath,
-    [fileURLToPath(new URL("../aosp/smoke-cuttlefish.ts", import.meta.url))],
+    [fileURLToPath(new URL("../android/smoke-cuttlefish.ts", import.meta.url))],
     {
       env: { ...process.env, ELIZAOS_ELIZA_ROOT: root },
       encoding: "utf8",

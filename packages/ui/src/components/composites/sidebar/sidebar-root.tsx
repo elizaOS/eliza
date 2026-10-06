@@ -11,8 +11,8 @@ import { cva } from "class-variance-authority";
 import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import * as React from "react";
 import { useMediaQuery } from "../../../hooks/useMediaQuery";
-import { cn } from "../../../lib/utils";
 import { shellLocalStorage } from "../../../surface-realm-channel";
+import { cn } from "../../../utils/cn";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
 import { Separator } from "../../ui/separator";
@@ -21,7 +21,7 @@ import {
   buildSidebarAutoRailItemsFromDom,
   type SidebarAutoRailItem,
 } from "./sidebar-auto-rail";
-import { SidebarBody } from "./sidebar-body";
+import { SidebarBody } from "./sidebar-layout";
 import type { SidebarProps, SidebarVariant } from "./sidebar-types";
 
 const sidebarRootVariants = cva(

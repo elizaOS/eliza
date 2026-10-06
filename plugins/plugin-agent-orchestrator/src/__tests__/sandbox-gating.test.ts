@@ -10,7 +10,7 @@ import {
   _resetBuildVariantForTests,
   getBuildVariant,
   isLocalCodeExecutionAllowed,
-} from "@elizaos/core";
+} from "@elizaos/host";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createTerminalUnsupportedTasksAction,

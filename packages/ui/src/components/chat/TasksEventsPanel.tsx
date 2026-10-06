@@ -45,7 +45,7 @@ import {
   type WidgetVisibilityCandidate,
   WidgetVisibilityEditor,
 } from "./WidgetVisibilityPanel";
-import { buildAppsSectionVisibilityCandidate } from "./WidgetVisibilityPanel.helpers";
+import { buildAppsSectionVisibilityCandidate } from "./WidgetVisibilityPanel.tsx";
 
 interface TasksEventsPanelProps {
   open: boolean;

@@ -19,7 +19,7 @@ import {
 import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
 import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
-import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { organizationsService } from "@elizaos/cloud-shared/lib/services/organizations";
 import { usersService } from "@elizaos/cloud-shared/lib/services/users";
 import type { ElizaCharacter } from "@elizaos/cloud-shared/lib/types";

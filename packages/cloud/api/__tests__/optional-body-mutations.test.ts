@@ -62,7 +62,7 @@ mock.module("@elizaos/cloud-shared/lib/services/anonymous-sessions", () => ({
     markConverted: async () => {},
   },
 }));
-mock.module("@elizaos/cloud-shared/lib/services/characters/characters", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/characters", () => ({
   charactersService: {
     claimAffiliateCharacter: async (...input: unknown[]) => {
       calls.claimAffiliate.push(input);

@@ -21,6 +21,7 @@ import {
   type Mock,
   vi,
 } from "vitest";
+import { emitViewEvent } from "../../../events/view-events";
 import type { RealtimeVoiceStartOutcome } from "../../../hooks/useRealtimeVoiceSession";
 import { RESYNC_EVENT } from "../../../state/AppContext.hooks";
 import {
@@ -28,7 +29,6 @@ import {
   goLauncher,
   resetShellSurfaceForTests,
 } from "../../../state/shell-surface-store";
-import { emitViewEvent } from "../../../views/view-event-bus";
 import {
   createVoiceCapture,
   type VoiceCaptureFactoryOptions,

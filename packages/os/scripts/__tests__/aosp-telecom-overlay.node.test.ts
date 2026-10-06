@@ -11,14 +11,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { loadBrandConfig } from "../distro-android/brand-config.ts";
-import { validateProductLayer } from "../distro-android/validate.ts";
+import { loadBrandConfig } from "../android/brand-config.ts";
+import { validateProductLayer } from "../android/validate.ts";
 
 const vendor = fileURLToPath(
   new URL("../../android/vendor/eliza", import.meta.url),
 );
 const brand = loadBrandConfig(
-  fileURLToPath(new URL("../distro-android/brand.eliza.json", import.meta.url)),
+  fileURLToPath(new URL("../android/brand.eliza.json", import.meta.url)),
 );
 
 test("product validation rejects Telecom classes from a different dialer", (t) => {

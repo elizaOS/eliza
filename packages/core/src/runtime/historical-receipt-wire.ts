@@ -1,7 +1,8 @@
 /** Wire-only tables of complete historical receipts. Original context events
  * remain authoritative for source selection, authorization and restoration. */
-import type { ContextObjectPromptSegment } from "../types/context-object";
+
 import { isObjectRecord } from "../utils/type-guards";
+import type { ContextObjectPromptSegment } from "./context-object";
 import { segmentBlock } from "./context-renderer";
 
 function receiptTableEntry(segment: ContextObjectPromptSegment) {

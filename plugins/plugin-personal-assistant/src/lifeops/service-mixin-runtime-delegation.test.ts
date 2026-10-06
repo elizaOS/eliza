@@ -322,11 +322,16 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       unreadCount: 0,
       recent: [],
     });
+    // The digest syncs the complete available history — the connector slices
+    // to a limit before returning, so forwarding the preview limit here would
+    // leave older DMs out of the cache. The limit reaches only the digest's
+    // recent preview, asserted against the real repository in
+    // test/x-dm-digest-counts.pglite.test.ts.
     expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith(
       "acct-x-secondary",
       {
         participantId: undefined,
-        limit: 5,
+        limit: undefined,
       },
     );
 
@@ -509,8 +514,13 @@ describe("LifeOps messaging mixin runtime delegation", () => {
         stored.push(dm);
       }
     });
+    // Mirrors the repository: direction filters before the limit.
     service.repository.listXDms = vi.fn(async (_agentId, opts = {}) =>
-      stored.slice(0, opts.limit ?? stored.length),
+      stored
+        .filter(
+          (dm) => opts.inbound === undefined || dm.isInbound === opts.inbound,
+        )
+        .slice(0, opts.limit ?? stored.length),
     );
 
     await expect(service.syncXDms({ limit: 10 })).resolves.toEqual({
@@ -551,6 +561,148 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       readAt: expect.any(String),
       repliedAt: expect.any(String),
     });
+  });
+
+  it("widens the inbound DM sync window past the owner's own replies", async () => {
+    // Mirrors the plugin-x contract: newest-first mixed-direction rows, sliced
+    // to the raw sync limit. The owner's three replies are newer than every
+    // inbound DM, so a limit-sized sync caches zero inbound rows.
+    const allDmMemories = [
+      {
+        id: "memory-x-dm-reply-3",
+        roomId: "conversation-1",
+        entityId: "owner",
+        content: { text: "owner reply 3" },
+        metadata: {
+          x: {
+            dmEventId: "reply-3",
+            conversationId: "conversation-1",
+            senderId: "owner",
+            senderUsername: "owner",
+            isInbound: false,
+          },
+        },
+        createdAt: Date.now() - 3_000,
+      },
+      {
+        id: "memory-x-dm-reply-2",
+        roomId: "conversation-1",
+        entityId: "owner",
+        content: { text: "owner reply 2" },
+        metadata: {
+          x: {
+            dmEventId: "reply-2",
+            conversationId: "conversation-1",
+            senderId: "owner",
+            senderUsername: "owner",
+            isInbound: false,
+          },
+        },
+        createdAt: Date.now() - 4_000,
+      },
+      {
+        id: "memory-x-dm-reply-1",
+        roomId: "conversation-1",
+        entityId: "owner",
+        content: { text: "owner reply 1" },
+        metadata: {
+          x: {
+            dmEventId: "reply-1",
+            conversationId: "conversation-1",
+            senderId: "owner",
+            senderUsername: "owner",
+            isInbound: false,
+          },
+        },
+        createdAt: Date.now() - 5_000,
+      },
+      {
+        id: "memory-x-dm-question-2",
+        roomId: "conversation-1",
+        entityId: "x-user-1",
+        content: { text: "when can we ship?" },
+        metadata: {
+          x: {
+            dmEventId: "question-2",
+            conversationId: "conversation-1",
+            senderId: "x-user-1",
+            senderUsername: "alice",
+            isInbound: true,
+          },
+        },
+        createdAt: Date.now() - 8_000,
+      },
+      {
+        id: "memory-x-dm-question-1",
+        roomId: "conversation-1",
+        entityId: "x-user-1",
+        content: { text: "hello there" },
+        metadata: {
+          x: {
+            dmEventId: "question-1",
+            conversationId: "conversation-1",
+            senderId: "x-user-1",
+            senderUsername: "alice",
+            isInbound: true,
+          },
+        },
+        createdAt: Date.now() - 9_000,
+      },
+      {
+        id: "memory-x-dm-question-3",
+        roomId: "conversation-1",
+        entityId: "x-user-1",
+        content: { text: "older question" },
+        metadata: {
+          x: {
+            dmEventId: "question-3",
+            conversationId: "conversation-1",
+            senderId: "x-user-1",
+            senderUsername: "alice",
+            isInbound: true,
+          },
+        },
+        createdAt: Date.now() - 20_000,
+      },
+    ];
+    const fetchDirectMessagesForAccount = vi.fn(
+      async (_accountId: string, params?: { limit?: number }) =>
+        params?.limit === undefined
+          ? allDmMemories
+          : allDmMemories.slice(0, params.limit),
+    );
+    const service = serviceWithConnectorGrants({
+      services: { x: { fetchDirectMessagesForAccount } },
+      grants: { x: connectorGrant("x") },
+    });
+    const stored: Array<{ externalDmId: string; isInbound: boolean }> = [];
+    service.repository.upsertXDm = vi.fn(async (dm) => {
+      const index = stored.findIndex(
+        (existing) => existing.externalDmId === dm.externalDmId,
+      );
+      if (index >= 0) stored[index] = dm;
+      else stored.push(dm);
+    });
+    // Mirrors the repository: direction filters before the limit.
+    service.repository.listXDms = vi.fn(async (_agentId, opts = {}) =>
+      stored
+        .filter(
+          (dm) => opts.inbound === undefined || dm.isInbound === opts.inbound,
+        )
+        .slice(0, opts.limit ?? stored.length),
+    );
+
+    const inbound = await service.readXInboundDms({ limit: 3 });
+
+    expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith("acct-x-owner", {
+      participantId: undefined,
+      limit: undefined,
+    });
+    expect(inbound.map((dm) => dm.text)).toEqual([
+      "when can we ship?",
+      "hello there",
+      "older question",
+    ]);
   });
 
   it("does not send WhatsApp through env credentials", async () => {

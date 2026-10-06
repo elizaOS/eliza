@@ -1,6 +1,12 @@
 /** Configuration, plugin, connector, and character client DTOs. */
 
-import type { ConfigUiHint, ReleaseChannel } from "@elizaos/contracts";
+import type {
+  ConfigUiHint,
+  ReleaseChannel,
+  WorkbenchTask,
+  WorkbenchTodo,
+} from "@elizaos/contracts";
+
 import type {
   SurfaceManifest,
   TriggerRunRecord,
@@ -434,23 +440,6 @@ export interface RegistryPluginItem {
   thirdParty?: boolean;
 }
 // Workbench
-export interface WorkbenchTask {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  isCompleted: boolean;
-  updatedAt?: number;
-}
-export interface WorkbenchTodo {
-  id: string;
-  name: string;
-  description: string;
-  priority: number | null;
-  isUrgent: boolean;
-  isCompleted: boolean;
-  type: string;
-}
 export interface WorkbenchOverview {
   triggers: TriggerSummary[];
   todos: WorkbenchTodo[];

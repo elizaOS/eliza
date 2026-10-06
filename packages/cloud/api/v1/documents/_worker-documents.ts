@@ -6,7 +6,7 @@ import {
   DOCUMENT_CONSTANTS,
   isValidFilename,
 } from "@elizaos/cloud-shared/lib/constants/documents";
-import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import type {
   AppEnv,
   AuthedUser,

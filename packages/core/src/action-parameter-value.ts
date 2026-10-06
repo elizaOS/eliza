@@ -10,7 +10,7 @@
 
 import { ElizaError } from "./errors";
 import type { ActionParameters } from "./types/components.js";
-import { toWellFormedUnicode } from "./utils/well-formed";
+import { toWellFormedUnicode } from "./utils/unicode";
 
 export const MAX_ACTION_PARAMETER_DEPTH = 32;
 export const MAX_ACTION_PARAMETER_NODES = 2_048;

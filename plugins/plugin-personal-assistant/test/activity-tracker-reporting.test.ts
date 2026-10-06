@@ -162,6 +162,45 @@ describe("getActivityReportBetween", () => {
       Array.from({ length: 7 }, (_, index) => `Document ${index}`),
     );
   });
+
+  it("treats an explicit app limit of 0 as an empty page", async () => {
+    mocks.listActivityEvents.mockResolvedValue([
+      event({
+        observedAt: new Date(SINCE_MS).toISOString(),
+        eventKind: "activate",
+        bundleId: "com.tinyspeck.slackmacgap",
+        appName: "Slack",
+      }),
+      event({
+        observedAt: new Date(SINCE_MS + 10_000).toISOString(),
+        eventKind: "activate",
+        bundleId: "com.microsoft.VSCode",
+        appName: "VS Code",
+      }),
+    ]);
+
+    const window = { sinceMs: SINCE_MS, untilMs: SINCE_MS + 60_000 };
+    const empty = await getActivityReportBetween(
+      RUNTIME as never,
+      "agent-activity",
+      { ...window, limit: 0 },
+    );
+    const top = await getActivityReportBetween(
+      RUNTIME as never,
+      "agent-activity",
+      { ...window, limit: 1 },
+    );
+    const all = await getActivityReportBetween(
+      RUNTIME as never,
+      "agent-activity",
+      window,
+    );
+
+    expect(empty.apps).toEqual([]);
+    expect(empty.totalMs).toBe(60_000);
+    expect(top.apps.map((app) => app.appName)).toEqual(["VS Code"]);
+    expect(all.apps.map((app) => app.appName)).toEqual(["VS Code", "Slack"]);
+  });
 });
 
 it("redacts complete sensitive titles at the activity report boundary", async () => {

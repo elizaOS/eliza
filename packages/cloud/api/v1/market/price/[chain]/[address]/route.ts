@@ -27,17 +27,17 @@ import { Hono } from "hono";
  */
 
 import {
+  isValidAddress,
+  isValidChain,
+} from "@elizaos/cloud-shared/lib/services/proxy/address-validation";
+import {
   applyCorsHeaders,
   handleCorsOptions,
 } from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
-  isValidAddress,
-  isValidChain,
-} from "@elizaos/cloud-shared/lib/services/proxy/services/address-validation";
-import {
   marketDataConfig,
   marketDataHandler,
-} from "@elizaos/cloud-shared/lib/services/proxy/services/market-data";
+} from "@elizaos/cloud-shared/lib/services/proxy/market-data";
 import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 
 // WHY 30s maxDuration:

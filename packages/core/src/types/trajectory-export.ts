@@ -3,9 +3,9 @@
  * remains distinguishable from measured zero.
  */
 
+import type { ContextEvent } from "../runtime/context-object.ts";
 import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provider-attribution.ts";
 import type { TrajectorySemanticStageRecord } from "../services/trajectory-semantic-stage.ts";
-import type { ContextEvent } from "./context-object.ts";
 import type {
 	JsonObject,
 	JsonPrimitive,

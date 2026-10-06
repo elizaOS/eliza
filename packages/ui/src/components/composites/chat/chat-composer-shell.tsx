@@ -6,9 +6,8 @@
  * switch on the input itself.
  */
 import type * as React from "react";
-import { assignRef } from "../../../lib/refs";
-
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
+import { assignRef } from "../../../utils/refs";
 import type { ChatVariant } from "./chat-types";
 
 type RefLike<T> = ((instance: T | null) => void) | { current: T | null } | null;

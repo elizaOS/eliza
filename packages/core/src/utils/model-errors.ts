@@ -10,6 +10,7 @@
  * instead of dead turns.
  */
 import { ElizaError } from "../errors";
+import { formatError } from "./errors.js";
 
 const TRANSIENT_MODEL_ERROR_PATTERNS = [
 	"service temporarily unavailable",
@@ -29,13 +30,9 @@ const TRANSIENT_MODEL_ERROR_PATTERNS = [
 	"504",
 ];
 
-export function getErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 export function isTransientModelError(error: unknown): boolean {
 	if (isModelFundingAuthorityError(error)) return false;
-	const message = getErrorMessage(error).toLowerCase();
+	const message = formatError(error).toLowerCase();
 	return TRANSIENT_MODEL_ERROR_PATTERNS.some((pattern) =>
 		message.includes(pattern),
 	);

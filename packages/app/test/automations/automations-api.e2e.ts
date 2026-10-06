@@ -1,3 +1,4 @@
+import type { WorkbenchTask } from "@elizaos/contracts";
 /**
  * Automations tab — API E2E coverage.
  *
@@ -14,7 +15,6 @@ import type {
   AutomationItem,
   AutomationListResponse,
   TriggerSummary,
-  WorkbenchTaskView as WorkbenchTask,
 } from "@elizaos/plugin-workflow/lib/automations-types";
 import type { WorkflowStatusResponse } from "@elizaos/plugin-workflow/routes/workflow-routes";
 import type { WorkflowDefinition } from "@elizaos/plugin-workflow/types";

@@ -53,10 +53,16 @@ function makeGrant(
   };
 }
 
-function makeDomain(repository: Record<string, unknown>): HealthDomain {
+function makeDomain(
+  repository: Record<string, unknown>,
+  timeZone = "UTC",
+): HealthDomain {
   return new HealthDomain({
     repository,
     agentId: () => AGENT_ID,
+    runtime: {
+      getSetting: (key: string) => (key === "TIMEZONE" ? timeZone : undefined),
+    },
   } as unknown as LifeOpsContext);
 }
 
@@ -501,6 +507,35 @@ describe("HealthDomain connector lifecycle and summaries", () => {
         limit: 2_000,
       }),
     );
+  });
+
+  it("ends the default summary window on the owner's local date", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // 08:00 on Oct 6 in Tokyo is still Oct 5 in UTC.
+    vi.setSystemTime(new Date("2026-10-05T23:00:00.000Z"));
+    try {
+      const repository = {
+        listConnectorGrants: vi.fn(async () => []),
+        getConnectorGrant: vi.fn(async () => null),
+        getHealthSyncState: vi.fn(),
+        listHealthMetricSamples: vi.fn(async () => []),
+        listHealthWorkouts: vi.fn(async () => []),
+        listHealthSleepEpisodes: vi.fn(async () => []),
+      };
+      const domain = makeDomain(repository, "Asia/Tokyo");
+
+      await domain.getHealthSummary({ provider: "strava", days: 2 });
+
+      expect(repository.listHealthMetricSamples).toHaveBeenCalledWith(
+        AGENT_ID,
+        expect.objectContaining({
+          startDate: "2026-10-05",
+          endDate: "2026-10-06",
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects malformed summary windows", async () => {

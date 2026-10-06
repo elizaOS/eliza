@@ -2,7 +2,7 @@
 // Side-effecting domain modules: importing them runs their top-level
 // `registerCloudRoute(...)` calls.
 import "../instances";
-import "../analytics";
+import "../analytics/routes";
 import "../home/routes";
 import "../billing/routes";
 import "../api-keys/routes";
@@ -15,7 +15,7 @@ import "../applications";
 import { registerAdminCloudRoutes } from "../admin";
 import { registerApiExplorerCloudRoute } from "../api-explorer";
 import { registerMovedApplicationsCloudRoutes } from "../applications/register-moved-routes";
-import { registerApprovalsCloudRoute } from "../approvals";
+import { registerApprovalsCloudRoute } from "../approvals/routes";
 import { registerJoinFlow } from "../join/register";
 import { registerMcpsCloudRoute } from "../mcps";
 import { registerPublicPages } from "../public-pages/register";

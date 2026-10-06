@@ -14,7 +14,7 @@ import {
   type World,
 } from "@elizaos/core";
 import { edgeRuntimeCache, getStaticEmbeddingDimension } from "../../cache/edge-runtime-cache";
-import "../../polyfills/dom-polyfills";
+import "./dom-polyfills";
 import { agentLoader } from "../agent-loader";
 import { CloudBootstrapMessageService } from "../plugin-cloud-bootstrap/services/cloud-bootstrap-message-service";
 import mcpPlugin from "../plugin-mcp";

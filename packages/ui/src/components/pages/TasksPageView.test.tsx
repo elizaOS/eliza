@@ -25,7 +25,7 @@ vi.mock("../views/ShellViewAgentSurface", () => ({
 }));
 // The slot indirection resolves to the real coding-agent panel at runtime; here
 // we stub it so the test asserts what props the host passes, not panel internals.
-vi.mock("../../slots/task-coordinator-slots.js", () => ({
+vi.mock("../chat/task-coordinator-slots.js", () => ({
   CodingAgentTasksPanel: (props: Record<string, unknown>) => {
     panelProps.value = props;
     return <div data-testid="coding-agent-tasks-panel-stub" />;
@@ -175,8 +175,8 @@ describe("TasksPageView", () => {
 });
 
 const slots = await vi.importActual<
-  typeof import("../../slots/task-coordinator-slots.js")
->("../../slots/task-coordinator-slots.js");
+  typeof import("../chat/task-coordinator-slots.js")
+>("../chat/task-coordinator-slots.js");
 
 it("mounts the task panel when its plugin registers after the page", () => {
   render(<slots.CodingAgentTasksPanel fullPage />);

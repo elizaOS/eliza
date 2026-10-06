@@ -12,7 +12,7 @@ import {
 } from "react";
 
 import { ViewHeader } from "../components/shared/ViewHeader";
-import { cn } from "../lib/utils";
+import { cn } from "../utils/cn";
 
 export interface FramedPageProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;

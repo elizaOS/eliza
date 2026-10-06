@@ -105,7 +105,7 @@ mock.module("@elizaos/cloud-shared/lib/services/anonymous-sessions", () => ({
   },
 }));
 
-mock.module("@elizaos/cloud-shared/lib/services/characters/characters", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/characters", () => ({
   charactersService: {
     claimAffiliateCharacter: async (
       characterId: string,

@@ -131,7 +131,7 @@ const EXCLUDED_SURFACES = [
     reason: "Android embedded Bun staging; channel-driven, device-proven",
   },
   {
-    prefix: "packages/app/src/cli/doctor/checks.ts",
+    prefix: "packages/app/src/cli/doctor.ts",
     classification: "advisory-excluded",
     reason: "doctor fix hint for the developer's machine, not a repo runtime",
   },

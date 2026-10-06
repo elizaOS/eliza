@@ -12,6 +12,26 @@
 import z from "zod";
 import { CloudCodingAgentSchema } from "./cloud-coding-containers.js";
 
+export interface WorkbenchTask {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  isCompleted: boolean;
+  updatedAt?: number;
+}
+export interface WorkbenchTodo {
+  id: string;
+  name: string;
+  description: string;
+  priority: number | null;
+  isUrgent: boolean;
+  isCompleted: boolean;
+  type: string;
+  tags?: string[];
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
 const WorkbenchTodoPrioritySchema = z.union([z.number(), z.string(), z.null()]);
 
 const WorkbenchTodoBaseShape = {

@@ -710,18 +710,14 @@ export function allocatePort(min: number, max: number, excluded: Set<number>): n
       `[docker-sandbox] No available ports in range [${min}, ${max}). All ${range} ports are allocated.`,
     );
   }
-  let port: number;
-  let attempts = 0;
-  do {
-    port = min + Math.floor(Math.random() * range);
-    attempts++;
-    if (attempts > range * 2) {
-      throw new Error(
-        `[docker-sandbox] Failed to find an available port in range [${min}, ${max}) after ${attempts} attempts.`,
-      );
-    }
-  } while (excluded.has(port));
-  return port;
+  // Start randomly, then visit each candidate once. Repeated random draws can
+  // miss the only free port and incorrectly report exhaustion.
+  const start = Math.floor(Math.random() * range);
+  for (let offset = 0; offset < range; offset++) {
+    const port = min + ((start + offset) % range);
+    if (!excluded.has(port)) return port;
+  }
+  throw new Error(`[docker-sandbox] No available ports in range [${min}, ${max}).`);
 }
 
 export function readDockerHostPortFromMetadata(metadata: unknown): number | null {

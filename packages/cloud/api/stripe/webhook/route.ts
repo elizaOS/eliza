@@ -6,7 +6,7 @@ import {
   moneyRateLimit,
   RateLimitPresets,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
-import { enqueue } from "@elizaos/cloud-shared/lib/queue/redis-queue";
+import { enqueue } from "@elizaos/cloud-shared/lib/redis-queue";
 import { appBillingTriggerFromVerifiedEvent } from "@elizaos/cloud-shared/lib/services/app-billing-webhook-intake";
 import {
   isStripeConfigured,
@@ -17,10 +17,10 @@ import type {
   AppContext,
   AppEnv,
 } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
-import type { StripeEventMessage } from "@/api-queue/types";
 
 const STRIPE_QUEUE_KEY = "stripe-events";
 

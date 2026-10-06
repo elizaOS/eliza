@@ -25,6 +25,7 @@ function call(body: unknown) {
   const handler = dstackOperatorAttestationRoute.routeHandler;
   if (!handler) throw new Error("route has no handler");
   const ctx: RouteHandlerContext = {
+    signal: new AbortController().signal,
     body,
     params: {},
     query: {},

@@ -16,11 +16,8 @@ import {
 } from "@elizaos/plugin-wallet/lib/market-overview";
 import { getCookieValueFromRequest } from "../http/cookie-header";
 import { logger } from "../utils/logger";
-import { isValidAddress, isValidChain } from "./proxy/services/address-validation";
-import {
-  executeMarketDataProviderRequest,
-  type MarketDataMethod,
-} from "./proxy/services/market-data";
+import { isValidAddress, isValidChain } from "./proxy/address-validation";
+import { executeMarketDataProviderRequest, type MarketDataMethod } from "./proxy/market-data";
 
 const PREVIEW_FETCH_TIMEOUT_MS = 8_000;
 const WALLET_OVERVIEW_CACHE_TTL_MS = 120_000;

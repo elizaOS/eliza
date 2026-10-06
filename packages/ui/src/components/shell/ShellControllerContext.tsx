@@ -21,7 +21,7 @@ import {
   dispatchOsIntentComposerPrefill,
   loadOsIntentDedupeSnapshot,
   saveOsIntentDedupeSnapshot,
-} from "../../os-intent/host";
+} from "../../platform/os-intent";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { loadOsIntentAutoStartConsent } from "../../state/persistence";
 import { ShellControllerContext } from "./ShellControllerContext.hooks";

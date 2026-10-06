@@ -41,7 +41,6 @@ import {
   useRealtimeVoiceSession,
 } from "../../hooks/useRealtimeVoiceSession";
 import { useViewEvent } from "../../hooks/useViewEvent";
-import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { dispatchConversationResync } from "../../state/AppContext.hooks";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
@@ -56,7 +55,6 @@ import {
 } from "../../state/persistence";
 import { goHome } from "../../state/shell-surface-store";
 import { type AppContextValue, deriveAgentReady } from "../../state/types";
-
 import { openDesktopSettingsWindow } from "../../utils/desktop-workspace";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { TurnAggregator } from "../../voice/end-of-turn";
@@ -87,6 +85,7 @@ import {
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { ServerControlFrame } from "../../voice/voice-session-protocol";
 import { matchWakeName } from "../../voice/wake-name-match";
+import type { HomeModelStatus } from "../local-inference/home-model-status";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import {
   buildConversationNav,

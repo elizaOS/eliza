@@ -23,7 +23,6 @@
       "@elizaos/agent/*": ["./packages/agent/src/*"],
       "@elizaos/app": ["./packages/app/src/index.ts"],
       "@elizaos/app/*": ["./packages/app/src/*"],
-      "@elizaos/cloud-sdk/*": ["./packages/cloud/sdk/src/*"],
       "@elizaos/plugin-computeruse/mobile/*": [
         "./plugins/plugin-computeruse/src/mobile/*"
       ],

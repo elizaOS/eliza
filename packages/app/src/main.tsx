@@ -254,7 +254,6 @@ declare const __ELIZA_CHAT_UI_HARNESS__: boolean | undefined;
 declare global {
   interface Window {
     __ELIZA_APP_SHARE_QUEUE__?: ShareTargetPayload[];
-    __ELIZA_APP_API_BASE__?: string;
     __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
 }
@@ -665,13 +664,6 @@ const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
 let appModulesInitialized: Promise<void> | null = null;
 const SIDE_EFFECT_APP_MODULE_LOAD_CONCURRENCY = 2;
 
-function importSideEffectAppModule(
-  key: string,
-  loader: () => Promise<unknown>,
-) {
-  return cachedDynamicImport(key, loader);
-}
-
 function scheduleAppModuleIdleWork(work: () => void): void {
   if (typeof window === "undefined") {
     work();
@@ -723,7 +715,7 @@ function scheduleAppModuleIdleLoads(
       const { key, load } = registration;
       nextIndex += 1;
       activeCount += 1;
-      void importSideEffectAppModule(key, load)
+      void cachedDynamicImport(key, load)
         // error-policy:J4 deferred enhancement modules — a load failure is
         // logged and the app stays usable without that module
         .catch((error) => {

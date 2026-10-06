@@ -50,7 +50,7 @@ const searchParamsRef = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("../../../login/icons/index", () => ({
+vi.mock("../../../login/icons", () => ({
   DiscordIcon: ({ size }: { size?: number }) => (
     <svg aria-hidden="true" data-size={size} data-testid="discord-icon" />
   ),
@@ -58,7 +58,7 @@ vi.mock("../../../login/icons/index", () => ({
     <svg aria-hidden="true" data-size={size} data-testid="google-icon" />
   ),
 }));
-vi.mock("../../../login/components/LoginForm", () => ({
+vi.mock("../../../login/LoginForm", () => ({
   LoginForm: ({
     showDiscord,
     showGoogle,
@@ -77,7 +77,7 @@ vi.mock("../../../login/components/LoginForm", () => ({
     </div>
   ),
 }));
-vi.mock("../../../login/hooks/useAuth", () => ({
+vi.mock("../../../login/useAuth", () => ({
   useAuth: () => useAuthMock(),
 }));
 

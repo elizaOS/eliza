@@ -57,6 +57,11 @@ import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
+import { logger } from "../logger.ts";
+import {
+  isAndroidCloudBuild,
+  isAndroidLauncherBuild,
+} from "../platform/android-runtime";
 import {
   hasIosNativeCloudCredential,
   IosCloudAuthError,
@@ -65,12 +70,7 @@ import {
   revokeIosCloudStagedCredential,
   signInWithIosCloud,
   signOutIosCloud,
-} from "../ios-cloud/ios-cloud-auth";
-import { logger } from "../logger.ts";
-import {
-  isAndroidCloudBuild,
-  isAndroidLauncherBuild,
-} from "../platform/android-runtime";
+} from "../platform/ios-cloud-auth";
 import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import { isCloudStatusAuthenticated } from "../utils/cloud-status";
 import {

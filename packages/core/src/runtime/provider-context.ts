@@ -1,12 +1,10 @@
 /** Keep authorized provider references deferred across planning and completion.
  * The original events remain intact for the existing tool-free restoration
  * protocol. Only providers that explicitly publish an index participate. */
-import type {
-	ContextObject,
-	ContextProviderEvent,
-} from "../types/context-object";
+
 import type { JSONSchema } from "../types/model";
 import { hashStableJson } from "./context-hash";
+import type { ContextObject, ContextProviderEvent } from "./context-object";
 
 /** Bind source selection to exact authorized bodies, authors, rooms and turn.
  * Discovery-only bodies have not been reviewed and cannot participate. */

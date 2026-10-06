@@ -126,7 +126,7 @@ export async function prewarmSharedAgentTurnCaches(
   //    `character:data:<id>` entry the cache-only turn reads.
   const pricingAndCharacter = (async () => {
     const linked = agent.character_id
-      ? await import("../characters/characters").then(({ charactersService }) =>
+      ? await import("../characters").then(({ charactersService }) =>
           charactersService.getById(agent.character_id!),
         )
       : undefined;

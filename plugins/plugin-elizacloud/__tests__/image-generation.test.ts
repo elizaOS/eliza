@@ -91,4 +91,17 @@ describe("handleImageGeneration fail-closed contract (#21985)", () => {
       /returned no image URL/i
     );
   });
+
+  it("does not generate an image when the requested count is 0", async () => {
+    await expect(handleImageGeneration(runtime(), { prompt: "a cat", count: 0 })).resolves.toEqual(
+      []
+    );
+    expect(generateImage).not.toHaveBeenCalled();
+
+    generateImage.mockResolvedValue({ images: [{ url: "https://cdn/one.png" }] });
+    await handleImageGeneration(runtime(), { prompt: "a cat" });
+    expect(generateImage).toHaveBeenCalledWith(
+      expect.objectContaining({ numImages: 1, prompt: "a cat" })
+    );
+  });
 });

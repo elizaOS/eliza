@@ -8,10 +8,17 @@ No method signs releases or independently authorizes PackageInstaller commits.
 The reviewed signed host build must set the unexported
 `github.com/elizaOS/eliza/packages/os/native/ota-trust.compiledHostPolicyBase64`
 linker variable using `-ldflags=-X=...=VALUE`. VALUE is base64url without padding
-of a strict JSON object containing schema (1), product, package, cohortDomain and
-runtimeInventoryHeader. Empty or invalid policy rejects product admission and
-runtime-artifact verification. There is no runtime setter. Keep the product's
-existing salt and inventory header when migrating deployed installations.
+of a strict JSON object containing schema (2), product, package, cohortDomain,
+runtimeInventoryHeader and runtimeExcludedAgentDirectories. Empty or invalid policy
+rejects product admission and runtime-artifact verification. There is no runtime
+setter. Keep the product's existing salt when migrating deployed installations.
+
+`VerifyRuntimeArtifact` reads `assets/agent-runtime.inventory`, the asset written by
+plugin-native-agent's `stageAndroidRuntimeInventory`. Hosts pass the same
+runtimeInventoryHeader (default `eliza-runtime-v1`) and excluded agent directories
+to that packager, the policy and `RuntimeBundleStore`. Excluded directories and
+archives re-addressed as listed blobs are covered only by the whole-APK digest.
+`testdata/runtime-apk` is packager output; the plugin's native-host suite rejects drift.
 
 Use Go 1.27.1. Run `go test -race ./...` and `go vet ./...` here. Tests include
 historical downstream compatibility vectors; their product policy exists only

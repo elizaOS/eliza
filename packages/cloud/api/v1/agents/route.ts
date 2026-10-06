@@ -22,7 +22,7 @@ import { toCompatStatus } from "@elizaos/cloud-shared/lib/api/compat-envelope";
 import { requireServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key-hono-worker";
 import { checkAgentCreditGate } from "@elizaos/cloud-shared/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@elizaos/cloud-shared/lib/services/agent-billing-gate-402";
-import { charactersService } from "@elizaos/cloud-shared/lib/services/characters/characters";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import {
   AgentImageNotAllowedError,
   elizaSandboxService,

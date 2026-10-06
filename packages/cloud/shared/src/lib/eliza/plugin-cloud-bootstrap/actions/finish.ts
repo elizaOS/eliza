@@ -76,7 +76,7 @@ function hasFinishSignal(message: Memory, state?: State): boolean {
  * directly. The handler exists for registry completeness and non-native-planner
  * contexts.
  *
- * @see cloud-bootstrap-message-service.ts runNativePlannerCore() FINISH intercept
+ * @see ../services/cloud-bootstrap-message-service/index.ts runNativePlannerCore() FINISH intercept
  */
 export const finishAction: ActionWithParams = {
   name: "FINISH",

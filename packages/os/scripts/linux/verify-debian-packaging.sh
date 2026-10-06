@@ -8,7 +8,7 @@ grep -qx 'Architecture: any' "$packaging/control"
 grep -Fq '${shlibs:Depends}' "$packaging/control"
 grep -Fq 'payload/bin/eliza-desktop' "$packaging/rules"
 grep -Fq 'readelf -h' "$packaging/rules"
-test -s linux/elizaos/assets/logo_blue_nobg.svg
+test -s linux/assets/logo_blue_nobg.svg
 desktop-file-validate "$packaging/ai.elizaos.app.desktop"
 appstreamcli validate --no-net "$packaging/ai.elizaos.app.metainfo.xml"
 for executable in eliza-agent eliza-desktop eliza-doctor eliza-autostart; do

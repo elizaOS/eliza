@@ -15,8 +15,8 @@ import type {
   AccountWithCredentialFlag,
 } from "../../api/client-agent-accounts";
 import { useAccounts } from "../../hooks/useAccounts";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { AddAccountDialog } from "./AddAccountDialog";

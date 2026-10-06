@@ -17,7 +17,7 @@ import { openPermissionSettings } from "@elizaos/core/protocol";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useBranding } from "../../../config/branding-react.hooks";
-import { cn } from "../../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";

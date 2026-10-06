@@ -23,15 +23,15 @@ import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../../events";
 import { readPersistedMobileRuntimeMode } from "../../../first-run/mobile-runtime-mode";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useRuntimeMode } from "../../../hooks/useRuntimeMode";
-import { cn } from "../../../lib/utils";
-import {
-  deriveHomeModelStatus,
-  type HomeModelStatus,
-} from "../../../services/local-inference/home-model-status";
 import { resolveApiUrl } from "../../../utils/asset-url.js";
+import { cn } from "../../../utils/cn";
 import { openEventSource } from "../../../utils/event-source";
 import { withTimeout } from "../../../utils/with-timeout";
 import type { WidgetProps } from "../../../widgets/types";
+import {
+  deriveHomeModelStatus,
+  type HomeModelStatus,
+} from "../../local-inference/home-model-status";
 import { observeModelRoute } from "../../local-inference/model-route-recovery";
 import { Button } from "../../ui/button";
 import { useWidgetNavigation } from "./home-widget-card";

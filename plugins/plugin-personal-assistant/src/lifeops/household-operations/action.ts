@@ -180,7 +180,6 @@ export function createHouseholdOperationsAction(
     ],
     tags: [
       "domain:household",
-      "domain:tasks",
       "capability:read",
       "capability:write",
       "effect:receipt-required",

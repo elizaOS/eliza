@@ -521,6 +521,44 @@ describe("scheduled-task dispatch path fuzz", () => {
     );
   });
 
+  it("stores a typed retryable dispatch result when owner-target resolution fails on storage", async () => {
+    // Recorded counterexample from the garbage-target property above (CI seed
+    // -2125920663, path "5"): target "x" is a registered channel whose
+    // owner/contact resolution reaches storage. The dispatcher must store a
+    // typed retryable DispatchResult for the fire — never throw past the
+    // runner boundary, which would leave metadata.lastDispatchResult unset.
+    const h = createLifeOpsScheduledTaskSimulationHarness({
+      useProductionConnectorDispatcher: true,
+    });
+    const task = await h.schedulePrimitive("reminder", {
+      promptInstructions: "garbage-target probe",
+      output: {
+        destination: "channel",
+        target: "x",
+        persistAs: "task_metadata",
+      },
+    });
+
+    const scheduledAtMs = Date.parse(h.nowIso());
+    const fired = await h.firePrimitive(task);
+
+    expect(fired.state.status).toBe("scheduled");
+    const lastDispatchResult = fired.metadata?.lastDispatchResult;
+    expectTypedDispatchResult(lastDispatchResult);
+    expect(lastDispatchResult.ok).toBe(false);
+    expect(lastDispatchResult.reason).toBe("transport_error");
+    expect(lastDispatchResult.retryAfterMinutes).toBeGreaterThan(0);
+    const log = await h.logStore.list({
+      agentId: "pa-simulation-agent",
+      taskId: task.taskId,
+    });
+    expect(["dispatch_retried", "escalated"]).toContain(log.at(-1)?.transition);
+    expect(typeof fired.state.firedAt).toBe("string");
+    const nextAttemptMs = Date.parse(String(fired.state.firedAt));
+    expect(Number.isFinite(nextAttemptMs)).toBe(true);
+    expect(nextAttemptMs).toBeGreaterThanOrEqual(scheduledAtMs);
+  });
+
   it("contains a throwing transport as a typed failed state with a structured error artifact", async () => {
     await fc.assert(
       fc.asyncProperty(hostileText, async (errText) => {

@@ -1,61 +1,13 @@
-/**
- * Shared `vi.mock("@elizaos/core")` factory for the plugin's unit tests: stubs
- * the enums, logger, `Service` base, and id helpers the connector touches while
- * delegating to the real interaction protocol so callback encoding/layout is
- * exercised for real rather than re-stubbed.
- */
+/** Partial core mock retaining real public behavior with connector runtime fixtures. */
 import { vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => {
   const { createHash } = await import("node:crypto");
 
-  // Load the real interaction implementations from their defining modules.
-  const interactions = Object.assign(
-    {},
-    ...(await Promise.all([
-      import(
-        "../../../packages/core/src/messaging/interaction-dashboard-markers"
-      ),
-      import("../../../packages/core/src/messaging/interaction-host"),
-      import("../../../packages/core/src/messaging/interaction-layout"),
-      import("../../../packages/core/src/messaging/interaction-parse"),
-      import(
-        "../../../packages/core/src/messaging/interaction-profile-catalog"
-      ),
-      import("../../../packages/core/src/messaging/interaction-profiles"),
-      import("../../../packages/core/src/messaging/interaction-serialize"),
-      import("../../../packages/core/src/messaging/interaction-sessions"),
-    ])),
-  );
-
-  // The LifeOps passive-connectors gate is pure env/settings inspection; the
-  // standalone-mode tests exercise its real truth table, so delegate.
+  const actualCore =
+    await vi.importActual<typeof import("@elizaos/core")>("@elizaos/core");
   const { lifeOpsPassiveConnectorsEnabled } = await import(
     "../../../packages/host/src/passive-connectors"
-  );
-  const { ElizaError } = await import("../../../packages/core/src/errors");
-
-  // The pairing integration is a pure service lookup plus reply formatting
-  // over a duck-typed PairingService; the DM-policy suites exercise its real
-  // fail-closed behavior (missing service, queue cap, reply claims), so it is
-  // delegated rather than re-stubbed.
-  const { checkPairingAllowed } = await import(
-    "../../../packages/core/src/services/pairing-integration"
-  );
-  const { toWellFormedUnicode, truncateWellFormed } = await import(
-    "../../../packages/core/src/utils/well-formed"
-  );
-  const { fetchWithSsrfGuard } = await import(
-    "../../../packages/core/src/network/fetch-guard"
-  );
-  const { resolveOutboundAttachmentBytes, summarizeOutboundAttachmentUrl } =
-    await import("../../../packages/core/src/media/outbound");
-  const { getLocalServerUrl } = await import(
-    "../../../packages/core/src/utils/node"
-  );
-
-  const { createSensitiveRequestDispatchRegistry } = await import(
-    "../../../packages/core/src/sensitive-request-dispatch.ts"
   );
 
   const logger = {
@@ -147,16 +99,11 @@ vi.mock("@elizaos/core", async () => {
   }
 
   return {
-    ...interactions,
-    createSensitiveRequestDispatchRegistry,
+    ...actualCore,
     ChannelType,
     CommandRegistryService,
     DEFAULT_CONNECTOR_ACCOUNT_ID: "default",
-    ElizaError,
     EventType,
-    checkPairingAllowed,
-    fetchWithSsrfGuard,
-    getLocalServerUrl,
     getConfiguredOwnerEntityIds: () => [],
     ModelType,
     Role,
@@ -168,12 +115,8 @@ vi.mock("@elizaos/core", async () => {
         : stringToUuid(`${baseUserId}:${runtime.agentId}`),
     lifeOpsPassiveConnectorsEnabled,
     logger,
-    resolveOutboundAttachmentBytes,
     selectDefaultConnectorAccountId: (accountIds: readonly string[]) =>
       accountIds.includes("default") ? "default" : (accountIds[0] ?? "default"),
     stringToUuid,
-    summarizeOutboundAttachmentUrl,
-    toWellFormedUnicode,
-    truncateWellFormed,
   };
 });

@@ -5,10 +5,10 @@
 import * as React from "react";
 import type { SidebarProps } from "../../components/composites/sidebar/sidebar-types";
 import { Card } from "../../components/ui/card";
-import { assignRef } from "../../lib/refs";
-import { cn } from "../../lib/utils";
-import { PageLayoutHeader } from "../page-layout/page-layout-header";
-import { PageLayoutMobileDrawer } from "../page-layout/page-layout-mobile-drawer";
+import { cn } from "../../utils/cn";
+import { assignRef } from "../../utils/refs";
+import { PageLayoutHeader } from "../page-layout";
+import { PageLayoutMobileDrawer } from "./workspace-mobile-drawer";
 
 export type WorkspaceLayoutHeaderPlacement = "inside" | "outside";
 

@@ -4,18 +4,19 @@
  * instructions, runtime feedback and tool evidence are never selectable away.
  * Absent, malformed or stale selections preserve the complete original context.
  */
+
 import type {
 	ActionParameterSchema,
 	CompletionContextSelection,
 } from "../types/components";
+import { normalizeEffectReceipt } from "../types/effects";
+import type { JSONSchema } from "../types/model";
+import { hashStableJson } from "./context-hash";
 import type {
 	ContextEvent,
 	ContextObject,
 	ContextSegmentEvent,
-} from "../types/context-object";
-import { normalizeEffectReceipt } from "../types/effects";
-import type { JSONSchema } from "../types/model";
-import { hashStableJson } from "./context-hash";
+} from "./context-object";
 
 const SOURCE_ID_PATTERN = /^h[1-9]\d*$/;
 

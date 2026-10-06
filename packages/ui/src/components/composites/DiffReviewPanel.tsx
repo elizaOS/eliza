@@ -11,7 +11,7 @@
 
 import { useMemo, useState } from "react";
 import type { ChangeSetData } from "../../api/client-types-cloud";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";

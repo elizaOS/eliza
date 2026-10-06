@@ -29,8 +29,8 @@ import {
   type FocusConnectorEventDetail,
   readPendingFocusConnector,
 } from "../../events";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
+import { cn } from "../../utils/cn";
 import {
   ConnectorChannelModeSwitch,
   connectorChannelModeCopy,
