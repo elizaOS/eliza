@@ -304,6 +304,21 @@ describe("VideoService deterministic behavior", () => {
     expect(service.parseSRT(bareCr)).toBe("Hello world! This is a test.");
   });
 
+  it("ignores WebVTT metadata even when it contains cue-like timestamps", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const metadata = [
+      "NOTE",
+      "NOTE editor comment",
+      "NOTE\teditor comment",
+      "STYLE",
+      "REGION",
+    ]
+      .map((header) => `${header}\n00:00:01.000 --> 00:00:04.000\nnot spoken`)
+      .join("\n\n");
+    const content = `WEBVTT\n\n${metadata}\n\nNOTES\n00:00:04.000 --> 00:00:06.000\nActual speech`;
+    expect(service.parseSRT(content)).toBe("Actual speech");
+  });
+
   it("handles empty or non-string SRT input", () => {
     const { service } = createServiceWithYtDlp([]);
     expect(service.parseSRT("")).toBe("");

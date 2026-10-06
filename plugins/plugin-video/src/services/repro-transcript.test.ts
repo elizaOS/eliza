@@ -279,6 +279,115 @@ describe("VideoService.getTranscript manual subtitle format selection", () => {
     return { service, downloadSRT };
   }
 
+  it.each(["json3", "srv1", "ttml"])(
+    "skips unsupported manual %s subtitles and uses available automatic captions",
+    async (ext) => {
+      const { service } = createServiceWithYtDlp({
+        title: "Unsupported manual format",
+        subtitles: { en: youtubeVariants([ext]) },
+        automatic_captions: {
+          en: [{ url: "https://caption.example/auto.json" }],
+        },
+      });
+      const downloadSRT = vi.spyOn(
+        service as unknown as { downloadSRT: (url: string) => Promise<string> },
+        "downloadSRT",
+      );
+      const downloadCaption = vi
+        .spyOn(
+          service as unknown as {
+            downloadCaption: (url: string) => Promise<string>;
+          },
+          "downloadCaption",
+        )
+        .mockResolvedValue(json3);
+      const result = await service.processVideo(
+        "https://youtu.be/unsupported-manual",
+        createRuntime(),
+      );
+      expect(result.text).toBe("hello there");
+      expect(downloadSRT).not.toHaveBeenCalled();
+      expect(downloadCaption).toHaveBeenCalledWith(
+        "https://caption.example/auto.json",
+      );
+    },
+  );
+
+  it("finds extensionless SRT after a known unsupported manual variant", async () => {
+    const { service } = createServiceWithYtDlp({
+      title: "Extensionless manual format",
+      subtitles: {
+        en: [
+          ...youtubeVariants(["json3"]),
+          { url: "https://caption.example/manual" },
+        ],
+      },
+    });
+    const downloadSRT = vi
+      .spyOn(
+        service as unknown as { downloadSRT: (url: string) => Promise<string> },
+        "downloadSRT",
+      )
+      .mockResolvedValue(bodies.srt);
+    const result = await service.processVideo(
+      "https://youtu.be/extensionless-manual",
+      createRuntime(),
+    );
+    expect(result.text).toBe("hello there");
+    expect(downloadSRT).toHaveBeenCalledExactlyOnceWith(
+      "https://caption.example/manual",
+    );
+  });
+
+  it.each(["", "WEBVTT\n\nNOTE captions unavailable"])(
+    "continues to automatic captions when manual cues are empty (%s)",
+    async (body) => {
+      const { service } = createServiceWithYtDlp({
+        title: "Empty manual cues",
+        subtitles: { en: youtubeVariants(["srt"]) },
+        automatic_captions: {
+          en: [{ url: "https://caption.example/auto.json" }],
+        },
+      });
+      vi.spyOn(
+        service as unknown as { downloadSRT: (url: string) => Promise<string> },
+        "downloadSRT",
+      ).mockResolvedValue(body);
+      const downloadCaption = vi
+        .spyOn(
+          service as unknown as {
+            downloadCaption: (url: string) => Promise<string>;
+          },
+          "downloadCaption",
+        )
+        .mockResolvedValue(json3);
+      const result = await service.processVideo(
+        "https://youtu.be/empty-manual",
+        createRuntime(),
+      );
+      expect(result.text).toBe("hello there");
+      expect(downloadCaption).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("falls back to audio when manual cues are empty and no automatic captions exist", async () => {
+    const { service, downloadSRT } = serviceWithManualSubtitles(["srt"]);
+    downloadSRT.mockResolvedValue("");
+    const transcribeAudio = vi
+      .spyOn(service, "transcribeAudio")
+      .mockResolvedValue("audio evidence");
+    const runtime = createRuntime();
+    const result = await service.processVideo(
+      "https://youtu.be/empty-manual-audio",
+      runtime,
+    );
+    expect(result.text).toBe("audio evidence");
+    expect(transcribeAudio).toHaveBeenCalledExactlyOnceWith(
+      "https://youtu.be/empty-manual-audio",
+      runtime,
+    );
+  });
+
   it("uses the SRT variant instead of yt-dlp's leading json3 variant", async () => {
     const { service, downloadSRT } = serviceWithManualSubtitles([
       "json3",
