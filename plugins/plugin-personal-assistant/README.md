@@ -100,3 +100,11 @@ existing read-only runtime/actuator reconciliation path, without replaying it.
 Hosts supply `reconcileMethod` policy. Configured hosts may additionally supply
 `reconciliationEvidenceRecord`; conclusive readback is published only after its
 projected evidence is privately persisted. Unknown observations remain unknown.
+
+Hosts may require current on-screen guidance before offering/selecting a saved
+method by supplying `selectionGuidance: { unavailableMessage }` to the bill helper
+or workflow. Copy stays host-owned. Missing, ambiguous or rejected guidance yields
+human review and no selection record/click. If guidance disappears after a choice
+was offered, the explicit failed attempt pauses the task and settles cleanup;
+explicit Resume obtains a fresh epoch/choice instead of reusing a consumed choice.
+Omitting this policy preserves headless hosts' existing behavior.

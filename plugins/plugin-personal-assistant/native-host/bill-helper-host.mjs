@@ -29,6 +29,7 @@ export function createBillHelperHost({
   google,
   billDiscovery,
   controls,
+  selectionGuidance,
 }) {
   for (const value of [
     runtimeModule?.NativeTaskActuator,
@@ -343,6 +344,7 @@ export function createBillHelperHost({
         signal,
         stillAuthorized,
         controls,
+        selectionGuidance,
         codeCoordinator: entry.coordinator,
       });
     },
