@@ -16,8 +16,10 @@ export type { CryptoPayment, NewCryptoPayment };
 const SETTLE_CLAIM_KEY = "settleClaimedUntil";
 export const SETTLEMENT_PENDING_KEY = "settlementPending";
 
-function settleClaimInactive(now: Date) {
-  return sql`(${cryptoPayments.metadata}->>${SETTLE_CLAIM_KEY}::text IS NULL OR (${cryptoPayments.metadata}->>${SETTLE_CLAIM_KEY}::text)::timestamptz <= ${now.toISOString()}::timestamptz)`;
+function settleClaimInactive() {
+  // A deadline is not proof that a broadcast transfer failed. Retain the
+  // claim until a definitive rejection releases it or settlement confirms it.
+  return sql`${cryptoPayments.metadata}->>${SETTLE_CLAIM_KEY}::text IS NULL`;
 }
 
 /**
@@ -167,7 +169,7 @@ export class CryptoPaymentsRepository {
         and(
           eq(cryptoPayments.id, id),
           eq(cryptoPayments.status, "pending"),
-          settleClaimInactive(new Date()),
+          settleClaimInactive(),
         ),
       )
       .returning();
@@ -175,8 +177,8 @@ export class CryptoPaymentsRepository {
   }
 
   /**
-   * Atomically claims a pending payment for one settlement attempt until
-   * `claimedUntil`; returns undefined when it is not pending or already claimed.
+   * Atomically claims a pending payment for one settlement attempt. The recorded
+   * deadline is diagnostic, never permission to replay an uncertain transfer.
    */
   async claimSettlement(id: string, claimedUntil: Date): Promise<CryptoPayment | undefined> {
     const [payment] = await dbWrite
@@ -189,7 +191,7 @@ export class CryptoPaymentsRepository {
         and(
           eq(cryptoPayments.id, id),
           eq(cryptoPayments.status, "pending"),
-          settleClaimInactive(new Date()),
+          settleClaimInactive(),
         ),
       )
       .returning();

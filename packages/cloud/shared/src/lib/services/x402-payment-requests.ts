@@ -531,7 +531,9 @@ async function recordAppScopedPaymentEarnings(
       amountUsd,
       error: result.error,
     });
-    return;
+    throw new X402PaymentRequestError(
+      "Creator earnings remain pending", 503, "earnings_pending",
+    );
   }
 
   // Projects the redeemable entry into app_earnings, its transaction row and
@@ -788,7 +790,7 @@ class X402PaymentRequestsService {
     try {
       settlement = await x402FacilitatorService.settle(paymentPayload, requirements);
     } catch (error) {
-      // The transfer may have been broadcast, so the claim stays until it lapses.
+      // The transfer may have been broadcast; keep its claim until reconciled.
       await this.triggerFailureCallback(payment, "settlement_error", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -811,7 +813,12 @@ class X402PaymentRequestsService {
         txHash: settlement.transaction,
         receivedAmount: payment.expected_amount,
         metadataPatch: { payer: settlement.payer, settlement },
-      })) ?? payment;
+      }));
+    if (!settledPayment) {
+      throw new X402PaymentRequestError(
+        "Payment confirmation was not persisted", 503, "confirmation_pending",
+      );
+    }
     await this.completeSettlement(settledPayment, amountUsd, settlement);
 
     return {
@@ -861,6 +868,9 @@ class X402PaymentRequestsService {
           amountUsd,
           error: result.error,
         });
+        throw new X402PaymentRequestError(
+          "Creator earnings remain pending", 503, "earnings_pending",
+        );
       }
     }
 

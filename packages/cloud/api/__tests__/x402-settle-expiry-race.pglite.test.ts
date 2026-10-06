@@ -336,6 +336,15 @@ test("a facilitator error with an unknown outcome keeps the claim so a retry can
     x402PaymentRequestsService.settle(payment, paymentPayload("0x02")),
   ).rejects.toMatchObject({ status: 409, code: "settlement_in_progress" });
 
+  // A wall-clock deadline passing cannot authorize a second transfer.
+  await pg().query(
+    "UPDATE crypto_payments SET metadata = metadata || jsonb_build_object('settleClaimedUntil', '2000-01-01T00:00:00Z') WHERE id=$1",
+    [payment],
+  );
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x03")),
+  ).rejects.toMatchObject({ status: 409, code: "settlement_in_progress" });
+  expect(await cryptoPaymentsRepository.markAsExpired(payment)).toBeUndefined();
   expect(facilitator).toHaveBeenCalledTimes(1);
   expect(await settleClaim(payment)).not.toBeNull();
 });
@@ -504,5 +513,26 @@ test("a redeemable write that fails after the on-chain transfer is credited by t
     shadow: 1,
     appTotal: 5,
   });
+  expect(paidCallbacks(fetches)).toBe(1);
+});
+
+
+test("a rejected earnings result retains pending settlement for repair", async () => {
+  const { payment, txHash, app, creator } = await seedAppRequest();
+  const facilitator = spyOn(x402FacilitatorService, "settle").mockResolvedValue(settledWith(txHash));
+  const fetches = spyOn(safeFetchModule, "safeFetch").mockResolvedValue(new Response("ok"));
+  spyOn(redeemableEarningsService, "addEarnings").mockResolvedValueOnce({
+    success: false, newBalance: 0, ledgerEntryId: "", error: "ledger unavailable",
+  });
+  await expect(x402PaymentRequestsService.settle(payment, paymentPayload("0x01")))
+    .rejects.toMatchObject({ code: "earnings_pending" });
+  expect(await statusOf(payment)).toBe("confirmed");
+  expect(await settlementPending(payment)).toBe("true");
+  expect(paidCallbacks(fetches)).toBe(0);
+  await x402PaymentRequestsService.settle(payment, {});
+  expect(await creatorBooks(app, creator)).toEqual({
+    redeemable: 5, ledger: 1, withdrawable: 5, shadow: 1, appTotal: 5,
+  });
+  expect(facilitator).toHaveBeenCalledTimes(1);
   expect(paidCallbacks(fetches)).toBe(1);
 });
