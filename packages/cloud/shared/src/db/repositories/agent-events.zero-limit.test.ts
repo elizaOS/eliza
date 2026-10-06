@@ -5,7 +5,7 @@
 
 import { beforeEach, expect, mock, test } from "bun:test";
 
-const findMany = mock(async () => []);
+const findMany = mock(async (_options: { limit?: number }) => []);
 
 mock.module("../helpers", () => ({
   dbRead: {
