@@ -22,6 +22,10 @@ import type {
   SharedRuntimeChannel,
   SharedTurnMessage,
 } from "@/lib/services/shared-runtime/run-shared-agent-turn";
+import {
+  personalSharedAgentId,
+  personalSharedProjectScope,
+} from "@/lib/services/shared-runtime/personal-shared-identity";
 import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import { parseSharedRuntimeChannel } from "@/lib/services/shared-runtime/shared-runtime-channel";
 import type {
@@ -94,6 +98,20 @@ type ConversationRequest =
       operation: "lifecycle";
       agentId: string;
       roomId: string;
+      event: { id: string; content: string; createdAt: number };
+    }
+  | {
+      /**
+       * Appends an already-delivered proactive send (e.g. a Network intro) to
+       * a project-scoped personal DM history as an assistant turn, so the
+       * agent knows what it sent when the member replies.
+       */
+      operation: "project-proactive-turn";
+      agentId: string;
+      roomId: string;
+      project: string;
+      userId: string;
+      organizationId: string;
       event: { id: string; content: string; createdAt: number };
     }
   | { operation: "push-list"; agentId: string }
@@ -1716,6 +1734,50 @@ export class SharedRuntimeConversation {
           {
             id: payload.event.id,
             role: "system",
+            content: payload.event.content,
+            createdAt: payload.event.createdAt,
+          },
+          historyStore,
+        );
+      });
+      return Response.json({ success: true });
+    }
+    if (payload.operation === "project-proactive-turn") {
+      // Only a project-scoped personal identity (The Network) accepts
+      // proactive assistant turns, and only for its own canonical DM room:
+      // the id must re-derive from (project, org, user). An Eliza `personal:`
+      // DO can never be written this way.
+      const project = personalSharedProjectScope(payload.project);
+      if (
+        !project ||
+        typeof payload.userId !== "string" ||
+        typeof payload.organizationId !== "string" ||
+        payload.agentId !==
+          personalSharedAgentId({
+            userId: payload.userId,
+            organizationId: payload.organizationId,
+            project,
+          }) ||
+        payload.roomId !== payload.agentId ||
+        !payload.event?.id?.trim() ||
+        !payload.event.content?.trim() ||
+        !Number.isFinite(payload.event.createdAt)
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_project_proactive_turn" },
+          { status: 400 },
+        );
+      }
+      await this.runWithBindings(async () => {
+        const { sharedRuntimeChatService } = await import(
+          "@/lib/services/shared-runtime/shared-runtime-chat"
+        );
+        await sharedRuntimeChatService.recordLifecycleEvent(
+          payload.agentId,
+          payload.roomId,
+          {
+            id: payload.event.id,
+            role: "assistant",
             content: payload.event.content,
             createdAt: payload.event.createdAt,
           },
