@@ -53,3 +53,36 @@ for (const table of [
     expect(classifyAccountDeletionForeignKey(references[0]!)).toBe("anonymize_retained_record");
   });
 }
+
+test("current billing foreign keys retain their resource, grant and financial policies", () => {
+  const policies = {
+    app_billing_application_slots: "reconcile_external_resource",
+    app_billing_notification_endpoints: "reconcile_external_resource",
+    app_billing_scopes: "reconcile_external_resource",
+    billing_merchants: "reconcile_external_resource",
+    app_billing_members: "delete_private_data",
+    subscription_adjustment_attempts: "anonymize_retained_record",
+    subscription_adjustment_observations: "anonymize_retained_record",
+    subscription_adjustment_scans: "anonymize_retained_record",
+  } as const;
+  const inventory = listAccountDeletionForeignKeys();
+  for (const [table, policy] of Object.entries(policies)) {
+    const references = inventory.filter((entry) => entry.sourceTable === table);
+    expect(references.length).toBeGreaterThan(0);
+    for (const reference of references) {
+      expect(classifyAccountDeletionForeignKey(reference)).toBe(policy);
+    }
+  }
+  for (const reference of inventory) {
+    expect(() => classifyAccountDeletionForeignKey(reference)).not.toThrow();
+  }
+  expect(() =>
+    classifyAccountDeletionForeignKey({
+      sourceTable: "unreviewed_billing_resource",
+      sourceColumns: "organization_id",
+      targetTable: "organizations",
+      targetColumns: "id",
+      onDelete: "restrict",
+    }),
+  ).toThrow("Unclassified account-deletion foreign key");
+});

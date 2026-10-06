@@ -245,7 +245,7 @@ mock.module("@elizaos/cloud-shared/lib/cache/client", () => ({
   },
 }));
 const { enqueue, drain } = await import(
-  "@elizaos/cloud-shared/lib/queue/redis-queue"
+  "@elizaos/cloud-shared/lib/redis-queue"
 );
 
 const {

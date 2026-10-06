@@ -16,9 +16,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { oauthService } from "../../../services/oauth";
-import { type OAuthConnectionRole } from "../../../services/oauth/types";
-import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";
+import { oauthService } from "../../services/oauth/index";
+import { type OAuthConnectionRole } from "../../services/oauth/types";
+import { type ActionWithParams, defineActionParameters } from "../plugin-cloud-bootstrap/types";
 import {
   capitalize,
   extractParams,
@@ -28,7 +28,7 @@ import {
   isSupportedPlatform,
   isUserLookupError,
   lookupUser,
-} from "../utils";
+} from "./utils";
 
 const OAUTH_OPS = ["connect", "get", "list", "revoke"] as const;
 type OAuthOp = (typeof OAUTH_OPS)[number];

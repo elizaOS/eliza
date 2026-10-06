@@ -220,7 +220,7 @@
     "./lib/providers/language-model": "./src/lib/providers/language-model.ts",
     "./lib/providers/video/registry": "./src/lib/providers/video/registry.ts",
     "./lib/providers/video/types": "./src/lib/providers/video/types.ts",
-    "./lib/queue/redis-queue": "./src/lib/queue/redis-queue.ts",
+    "./lib/redis-queue": "./src/lib/redis-queue.ts",
     "./lib/runtime/cloud-bindings": "./src/lib/runtime/cloud-bindings.ts",
     "./lib/runtime/request-context": "./src/lib/runtime/request-context.ts",
     "./lib/security/origin-validation": "./src/lib/security/origin-validation.ts",
