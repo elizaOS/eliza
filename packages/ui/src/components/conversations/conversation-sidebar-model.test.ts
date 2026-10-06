@@ -50,3 +50,32 @@ it("labels an undated inbox chat as undated and sorts it after dated chats", () 
   expect(undated?.updatedAtLabel).not.toContain("1970");
   expect(model.sections.at(-1)?.label).toBe("No date");
 });
+
+it("keeps undated inbox rows behind dated rows without inventing a 1970 label", () => {
+  const model = buildConversationsSidebarModel({
+    conversations: [],
+    searchQuery: "",
+    sourceScope: ALL_CONNECTORS_SOURCE_SCOPE,
+    worldScope: ALL_WORLDS_SCOPE,
+    t: (key, options) => String(options?.defaultValue ?? key),
+    inboxChats: [
+      {
+        id: "unknown",
+        title: "Unknown",
+        source: "discord",
+        worldLabel: "Direct messages",
+        lastMessageAt: Number.NaN,
+      },
+      {
+        id: "dated",
+        title: "Dated",
+        source: "discord",
+        worldLabel: "Direct messages",
+        lastMessageAt: Date.now() - 60000,
+      },
+    ],
+  });
+  expect(model.rows.map((row) => row.id)).toEqual(["dated", "unknown"]);
+  expect(model.rows[1].updatedAtLabel).toBe("No date");
+  expect(model.rows[1].sortKey).toBe(0);
+});

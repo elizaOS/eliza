@@ -120,7 +120,14 @@ async function waitForProofMatch(
   const interval = options.pollIntervalMs ?? 500;
   const start = Date.now();
   while (Date.now() - start < options.timeoutMs) {
-    const seen = await options.reader();
+    let seen: string | null;
+    try {
+      seen = await options.reader();
+    } catch {
+      // The proof file may be unreadable until the operator fixes its
+      // permissions; keep polling until the documented timeout.
+      seen = null;
+    }
     if (seen !== null && seen.trim() === options.challenge) return true;
     await new Promise((resolve) => setTimeout(resolve, interval));
   }

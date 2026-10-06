@@ -1,5 +1,5 @@
 /**
- * Integration tests for log create/get/delete against a real isolated
+ * Integration tests for log create/get/update/delete against a real isolated
  * PGlite/Postgres adapter, covering the `limit`/legacy-`count` param
  * contract, JSON-body escaping and output bounds, and filtering by type and
  * entity.
@@ -362,5 +362,47 @@ describe("Log Integration Tests", () => {
 
     const [log] = await adapter.getLogs({ roomId: testRoomId, type: "lone-surrogate" });
     expect(log.body).toEqual({ reply: "done \ufffd" });
+  });
+
+  it("updates a log body with the same NUL and lone-surrogate handling as log()", async () => {
+    await (adapter.getDatabase() as DrizzleDatabase).delete(logTable);
+    await adapter.log({
+      body: { status: "first" },
+      entityId: testEntityId,
+      roomId: testRoomId,
+      type: "lenient-update",
+    });
+    const [log] = await adapter.getLogs({ roomId: testRoomId, type: "lenient-update" });
+    const nul = String.fromCharCode(0);
+
+    await adapter.updateLogs([
+      {
+        id: log.id as UUID,
+        updates: {
+          body: {
+            status: `done${nul} \ud83d`,
+            source: "kept \ud83d\ude42",
+            metadata: { text: `a${nul}b`, reply: "cut \udc00" },
+          },
+        },
+      },
+    ]);
+    const expected = {
+      status: "done \ufffd",
+      source: "kept \ud83d\ude42",
+      metadata: { text: "ab", reply: "cut \ufffd" },
+    };
+    const [updated] = await adapter.getLogs({ roomId: testRoomId, type: "lenient-update" });
+    expect(updated.body).toEqual(expected);
+
+    let deep: Record<string, unknown> = { leaf: true };
+    for (let depth = 0; depth <= MAX_SQL_JSON_SANITIZE_DEPTH; depth += 1) {
+      deep = { child: deep };
+    }
+    await expect(
+      adapter.updateLogs([{ id: log.id as UUID, updates: { body: deep } }])
+    ).rejects.toMatchObject({ code: SQL_JSON_SANITIZE_UNBOUNDED });
+    const [unchanged] = await adapter.getLogs({ roomId: testRoomId, type: "lenient-update" });
+    expect(unchanged.body).toEqual(expected);
   });
 });
