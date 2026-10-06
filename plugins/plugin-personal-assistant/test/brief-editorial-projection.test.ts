@@ -18,6 +18,57 @@ const engagementSummaries = [
 ];
 
 describe("brief editorial rendering projection", () => {
+  it.each([undefined, { inbox: "not_connected" as const }])(
+    "applies ordinary status and exact local-time presentation with source errors %j",
+    (sourceErrors) => {
+      const sections: LifeOpsBriefingSections = {
+        life: [
+          {
+            id: "open",
+            kind: "reminder",
+            title: "Open reminder",
+            state: "visible",
+            dueAt: "2026-10-06T01:01:00.000Z",
+          },
+          {
+            id: "later",
+            kind: "reminder",
+            title: "Postponed reminder",
+            state: "snoozed",
+            dueAt: "2026-10-06T01:11:00.000Z",
+          },
+        ],
+      };
+      const before = structuredClone(sections);
+      const prompt = buildNarrativePrompt({
+        kind: "evening",
+        period: "today",
+        sections,
+        sourceErrors,
+        asOf,
+        timeZone: "America/Los_Angeles",
+      });
+      const [instructions, json] = prompt.split("\nData:\n");
+      expect(
+        instructions.match(/do not use source\/status labels/g),
+      ).toHaveLength(1);
+      expect(instructions).toContain("visible means still open");
+      expect(instructions).toContain("rather than guessing dayparts");
+      const payload = JSON.parse(json);
+      expect(
+        payload.sections.life.map((item: { state: string }) => item.state),
+      ).toEqual(["visible", "snoozed"]);
+      expect(
+        payload.sections.life.map(
+          (item: { timeContext: { dueAt: { localTime: string } } }) =>
+            item.timeContext.dueAt.localTime,
+        ),
+      ).toEqual(["Oct 5, 2026, 6:01 PM PDT", "Oct 5, 2026, 6:11 PM PDT"]);
+      expect(payload.sourceErrors).toEqual(sourceErrors);
+      expect(sections).toEqual(before);
+    },
+  );
+
   it("removes the exact captured demotion rationale while preserving all five source items and time facts", () => {
     // Capture 468 exposed this same five-reminder diagnostic shape. Titles and
     // identifiers here are synthetic; the internal reason is the exact value.
