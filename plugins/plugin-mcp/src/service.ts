@@ -64,6 +64,8 @@ import {
   type StdioMcpServerConfig,
 } from "./types";
 import { buildMcpProviderData } from "./utils/mcp";
+
+const MAX_DISCOVERY_PAGES = 1000;
 /** Route every MCP HTTP request through core's DNS-pinned SSRF transport. */
 export async function guardedMcpFetch(input: string | URL, init?: RequestInit): Promise<Response> {
   const guarded = await fetchWithSsrfGuard({
@@ -498,7 +500,15 @@ export class McpService extends Service {
     const items: T[] = [];
     const seenCursors = new Set<string>();
     let cursor: string | undefined;
+    let pageCount = 0;
     do {
+      if (pageCount++ === MAX_DISCOVERY_PAGES) {
+        throw new ElizaError("MCP discovery exceeded its pagination limit", {
+          code: "MCP_PAGINATION_LIMIT_EXCEEDED",
+          context: { serverName, list, maxPages: MAX_DISCOVERY_PAGES },
+          severity: "ephemeral",
+        });
+      }
       const page = await fetchPage(cursor);
       for (const item of page.items) items.push(item);
       cursor = page.nextCursor;

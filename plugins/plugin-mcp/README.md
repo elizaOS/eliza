@@ -9,6 +9,9 @@ Discovery follows every tool, resource, and resource-template page before exposi
 the connected server's capabilities. Empty intermediate pages are allowed;
 repeated cursors or later-page failures surface as connection errors rather than
 silently publishing a partial catalog.
+Each list rejects more than 1,000 pages with `MCP_PAGINATION_LIMIT_EXCEEDED`;
+this bounds endless discovery without publishing a truncated catalog. An empty
+string cursor is opaque, so repeatedly returning it is a connection error.
 
 ## Development
 

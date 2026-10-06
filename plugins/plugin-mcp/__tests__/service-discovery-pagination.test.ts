@@ -22,6 +22,9 @@ async function start(mode: string, failingList = "") {
         mcp: {
           servers: {
             pages: { type: "stdio", command: "node", args: [fixture, mode, failingList] },
+            ...(mode === "endless"
+              ? { healthy: { type: "stdio", command: "node", args: [fixture, "single"] } }
+              : {}),
           },
         },
       },
@@ -92,7 +95,7 @@ describe("McpService paginated discovery", () => {
   );
 
   describe.each(lists)("%s failures", (list) => {
-    it.each(["repeat", "cycle"])(
+    it.each(["repeat", "cycle", "sticky-empty"])(
       "rejects a %s cursor before publishing a partial catalog",
       async (mode) => {
         const { runtime, service } = await start(mode, list);
@@ -106,6 +109,20 @@ describe("McpService paginated discovery", () => {
         ]);
       }
     );
+
+    it("rejects an endless cursor stream without blocking service initialization", async () => {
+      const { runtime, service } = await start("endless", list);
+      const [server] = service.getServers();
+      expect(server.status).toBe("disconnected");
+      expect(server.tools).toBeUndefined();
+      expect(service.getServers().find((entry) => entry.name === "healthy")).toMatchObject({
+        status: "connected",
+        tools: [expect.objectContaining({ name: "tool-0" })],
+      });
+      expect(runtime.getRecentReportedErrors()).toEqual([
+        expect.objectContaining({ scope: "mcp.connect", code: "MCP_PAGINATION_LIMIT_EXCEEDED" }),
+      ]);
+    });
 
     it("surfaces a later-page RPC failure instead of admitting the first page", async () => {
       const { runtime, service } = await start("error", list);

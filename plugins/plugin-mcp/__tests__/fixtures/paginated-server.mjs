@@ -41,6 +41,9 @@ for (const [schema, key, item] of [
   server.setRequestHandler(schema, async (request) => {
     const cursor = request.params?.cursor;
     requests.push({ list: key, cursor: cursor ?? null });
+    if (key === failingList && mode === "sticky-empty") return { [key]: [item(0)], nextCursor: "" };
+    if (key === failingList && mode === "endless")
+      return { [key]: [], nextCursor: `page-${requests.length}` };
     if (key === failingList && cursor !== undefined) {
       if (mode === "error") throw new McpError(ErrorCode.InternalError, "later page unavailable");
       if (mode === "repeat") return { [key]: [], nextCursor: cursor };
