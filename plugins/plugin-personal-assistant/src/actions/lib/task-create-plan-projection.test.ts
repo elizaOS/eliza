@@ -430,13 +430,15 @@ it("keeps null unknown rather than a destination guess and retains timed extract
   const unknown = { ...plan, nativeProjection: null };
   expect(buildTaskCreatePlan(unknown)?.nativeProjection).toBeNull();
   expect(parseNativeTaskCreatePlan(unknown)).toBeNull();
-  expect(taskCreatePlanGuidance(true)).toContain("use null for mode=create");
-  expect(taskCreatePlanGuidance(false)).toContain("Otherwise omit it.");
+  expect(taskCreatePlanGuidance(true)).toContain(
+    "use null for an unknown destination",
+  );
+  expect(taskCreatePlanGuidance(false)).toContain("do not omit the decision");
 });
 
 it("guides current app/conversation delivery without changing unknown or permission authority", () => {
   const guidance = taskCreatePlanGuidance(true);
-  expect(guidance).toContain("delivery in the current app or conversation");
+  expect(guidance).toContain("selects Eliza, the current app or conversation");
   expect(guidance).toContain(
     "explicitly requests Apple Reminders, including alongside app delivery",
   );

@@ -36,6 +36,7 @@ const BASE_PLAN_JSON = {
   mode: "create",
   response: null,
   requestKind: null,
+  nativeProjection: null,
   title: "Call mom",
   description: null,
   cadenceKind: "once",
@@ -102,6 +103,56 @@ describe("textStatesExplicitSchedule", () => {
 });
 
 describe("extractTaskCreatePlanWithLlm datetime fields", () => {
+  it.each(["in_app_only", "apple_reminders", null])(
+    "keeps an explicit destination decision %s without a repair call",
+    async (nativeProjection) => {
+      const runtime = makeRuntime(() =>
+        JSON.stringify({
+          ...BASE_PLAN_JSON,
+          requestKind: "reminder",
+          dueInMinutes: 20,
+          nativeProjection,
+        }),
+      );
+      const plan = await extractTaskCreatePlanWithLlm({
+        runtime,
+        intent: "Remind me in twenty minutes",
+        state: undefined,
+      });
+      expect(plan.nativeProjection).toBe(nativeProjection);
+      expect(runtime.useModel).toHaveBeenCalledTimes(1);
+    },
+  );
+  it.each([true, false])(
+    "does not silently accept an omitted destination (repair succeeds=%s)",
+    async (repairSucceeds) => {
+      const { nativeProjection: _projection, ...withoutProjection } =
+        BASE_PLAN_JSON;
+      let calls = 0;
+      const runtime = makeRuntime(() => {
+        calls++;
+        return JSON.stringify({
+          ...withoutProjection,
+          requestKind: "reminder",
+          dueInMinutes: 20,
+          ...(calls === 2 && repairSucceeds
+            ? { nativeProjection: "in_app_only" }
+            : {}),
+        });
+      });
+      const plan = await extractTaskCreatePlanWithLlm({
+        runtime,
+        intent: "Remind me here in twenty minutes",
+        state: undefined,
+      });
+      expect(runtime.useModel).toHaveBeenCalledTimes(2);
+      expect(plan).toMatchObject(
+        repairSucceeds
+          ? { mode: "create", nativeProjection: "in_app_only" }
+          : { mode: "respond", title: null },
+      );
+    },
+  );
   it.each([false, true])(
     "requests JSON-only task plans for legacy history (repair=%s)",
     async (repair) => {
