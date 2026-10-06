@@ -165,6 +165,14 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+function headerCount(value: string | null): number | undefined {
+  if (value == null || value.trim() === "") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  // A recorded 0 is a real count. `parseInt(...) || undefined` dropped it,
+  // so an exhausted request bucket never reached the low-remaining warning.
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function extractRateLimitInfo(response: Response): {
   remainingRequests?: number;
   remainingTokens?: number;
@@ -175,16 +183,13 @@ function extractRateLimitInfo(response: Response): {
   retryAfter?: number;
 } {
   return {
-    remainingRequests:
-      parseInt(response.headers.get("x-ratelimit-remaining-requests") || "", 10) || undefined,
-    remainingTokens:
-      parseInt(response.headers.get("x-ratelimit-remaining-tokens") || "", 10) || undefined,
-    limitRequests:
-      parseInt(response.headers.get("x-ratelimit-limit-requests") || "", 10) || undefined,
-    limitTokens: parseInt(response.headers.get("x-ratelimit-limit-tokens") || "", 10) || undefined,
+    remainingRequests: headerCount(response.headers.get("x-ratelimit-remaining-requests")),
+    remainingTokens: headerCount(response.headers.get("x-ratelimit-remaining-tokens")),
+    limitRequests: headerCount(response.headers.get("x-ratelimit-limit-requests")),
+    limitTokens: headerCount(response.headers.get("x-ratelimit-limit-tokens")),
     resetRequests: response.headers.get("x-ratelimit-reset-requests") || undefined,
     resetTokens: response.headers.get("x-ratelimit-reset-tokens") || undefined,
-    retryAfter: parseInt(response.headers.get("retry-after") || "", 10) || undefined,
+    retryAfter: headerCount(response.headers.get("retry-after")),
   };
 }
 
