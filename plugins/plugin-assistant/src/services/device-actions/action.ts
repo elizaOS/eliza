@@ -5,10 +5,16 @@ import {
 } from "./calendar-contract.ts";
 import {
   CLOCK_DAYS,
+  CLOCK_REPEAT_CAPABILITY,
   isClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
-import { DEVICE_VIEWS, object, validateDevicePayload } from "./contract.ts";
+import {
+  DEVICE_VIEWS,
+  deviceOperationSupportedByCapabilities,
+  object,
+  validateDevicePayload,
+} from "./contract.ts";
 import {
   deviceActionEffectReceipts,
   deviceApprovalPersistenceReceipt,
@@ -325,10 +331,15 @@ const reminderCreateSchema: ActionParameterSchema = {
     fields: creationFields,
   },
 };
+const CLOCK_PROPOSAL_GUIDANCE =
+  "Clock handoff requires clock.handoff.v1 or clock.handoff.v2. Set requires the current phone clientDevice.context.timeZone, integer hour/minute, and label. Explicit days requires clock.handoff.v2: [] is one-off, [1,2,3,4,5,6,7] daily, [2,3,4,5,6] weekdays; other weekly patterns use exact unique integers Sunday=1 through Saturday=7. Preserve requested repeat days exactly. A v1 phone supports only a one-off set without days; never silently drop recurrence or replace an unsupported alarm pattern with a reminder. Never invent the phone timezone or substitute an approximate reminder for an alarm. Only show is navigation-only. After explicit owner approval, set/dismiss/snooze may change alarms immediately: dismiss can disable the active one-shot alarm or suppress a repeating occurrence, and targetless snooze can affect all ringing alarms. Clock may use its default snooze duration or show a chooser. Never promise a second confirmation in Clock, target one selected alarm using this targetless contract, or claim an opened receipt proves creation, dismissal, snoozing or ringing. The owner must see and approve the actual scope before any native request. This tool does not perform the operation. Do not report the proposal as completed.";
+
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
   description:
-    "Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve. Clock handoff requires clock.handoff.v1 or clock.handoff.v2. Set requires the current phone clientDevice.context.timeZone, integer hour/minute, and label. Explicit days requires clock.handoff.v2: [] is one-off, [1,2,3,4,5,6,7] daily, [2,3,4,5,6] weekdays; other weekly patterns use exact unique integers Sunday=1 through Saturday=7. Preserve requested repeat days exactly. A v1 phone supports only a one-off set without days; never silently drop recurrence or replace an unsupported alarm pattern with a reminder. Never invent the phone timezone or substitute an approximate reminder for an alarm. Only show is navigation-only. After explicit owner approval, set/dismiss/snooze may change alarms immediately: dismiss can disable the active one-shot alarm or suppress a repeating occurrence, and targetless snooze can affect all ringing alarms. Clock may use its default snooze duration or show a chooser. Never promise a second confirmation in Clock, target one selected alarm using this targetless contract, or claim an opened receipt proves creation, dismissal, snoozing or ringing. The owner must see and approve the actual scope before any native request. This tool does not perform the operation. Do not report the proposal as completed.",
+    "Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve." +
+    " " +
+    CLOCK_PROPOSAL_GUIDANCE,
   contexts: ["general"],
   parameters: [
     {
@@ -548,3 +559,39 @@ export const proposeDeviceAction: Action = {
   },
   examples: [],
 };
+
+/** Scope the inference schema to this executor without changing the registered catalog. */
+export function deviceActionForCapabilities(
+  action: Action,
+  capabilities?: readonly string[],
+): Action {
+  if (action.name !== "PROPOSE_DEVICE_ACTION" || capabilities === undefined)
+    return action;
+  return {
+    ...action,
+    description: deviceOperationSupportedByCapabilities(
+      "open_view",
+      capabilities,
+    )
+      ? action.description
+      : `This connection supports only the Clock handoff operations in this schema. Current app navigation uses its registered view tools, not a native phone proposal. ${CLOCK_PROPOSAL_GUIDANCE}`,
+    parameters: action.parameters?.map((parameter) => {
+      if (parameter.name !== "operation") return parameter;
+      const schema = structuredClone(parameter.schema);
+      schema.anyOf = schema.anyOf?.filter((branch) => {
+        if (
+          branch.properties?.days &&
+          !capabilities?.includes(CLOCK_REPEAT_CAPABILITY)
+        )
+          return false;
+        const types = branch.properties?.type?.enum;
+        return types?.every(
+          (type) =>
+            typeof type === "string" &&
+            deviceOperationSupportedByCapabilities(type, capabilities),
+        );
+      });
+      return { ...parameter, schema };
+    }),
+  };
+}

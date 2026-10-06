@@ -8869,7 +8869,8 @@ function deterministicRequiresConfirmationRelay(
     if (previewWasCommitted(step, index, steps)) continue;
 
     const candidate = sanitizePlannerMessage(
-      result.userFacingText ?? result.text,
+      result.userFacingText ??
+        (result.transcriptVisibility === "internal" ? undefined : result.text),
     );
     if (candidate && !isUnsafeUserVisibleText(candidate)) return candidate;
   }
