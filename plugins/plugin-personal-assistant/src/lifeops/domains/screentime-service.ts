@@ -122,7 +122,8 @@ function resolveDateWindow(
   date: string,
   timeZone: string | undefined,
 ): { startIso: string; endIso: string } {
-  if (!timeZone) return resolveUtcDateWindow(date);
+  const utcWindow = resolveUtcDateWindow(date);
+  if (!timeZone) return utcWindow;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   if (!match) fail(400, "date must be a valid YYYY-MM-DD string");
   const day = {

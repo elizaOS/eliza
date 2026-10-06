@@ -19,6 +19,18 @@ function domain() {
 }
 
 describe("getScreenTimeDaily window", () => {
+  it("rejects malformed civil dates before collecting rows in any zone", async () => {
+    const { screenTime, collect } = domain();
+    for (const date of ["2026-13-01", "2026-00-01", "2026-10-00"]) {
+      await expect(
+        screenTime.getScreenTimeDaily({
+          date,
+          timeZone: "America/Los_Angeles",
+        }),
+      ).rejects.toThrow("date must be a valid");
+    }
+    expect(collect).not.toHaveBeenCalled();
+  });
   it("reads the owner's local day when given a time zone", async () => {
     const { screenTime, collect } = domain();
 
