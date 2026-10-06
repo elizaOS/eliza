@@ -181,6 +181,36 @@ export class GoalsRepository {
     );
   }
 
+  /**
+   * Record a computed review without rewriting the rest of the goal: only
+   * `review_state`, `updated_at` and the given top-level metadata keys change,
+   * merged into the stored metadata in SQL. A review computed from an earlier
+   * read (it can span an LLM call) must not revert a concurrent edit, status
+   * change or check-in written meanwhile.
+   */
+  async updateGoalReview(
+    agentId: string,
+    goalId: string,
+    review: {
+      reviewState: LifeOpsGoalDefinition["reviewState"];
+      metadataPatch: Record<string, unknown>;
+      updatedAt: string;
+    },
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_goals.life_goal_definitions
+          SET review_state = ${sqlQuote(review.reviewState)},
+              metadata_json = (
+                COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb
+                  || ${sqlJson(review.metadataPatch)}::jsonb
+              )::text,
+              updated_at = ${sqlQuote(review.updatedAt)}
+        WHERE id = ${sqlQuote(goalId)}
+          AND agent_id = ${sqlQuote(agentId)}`,
+    );
+  }
+
   async getGoal(
     agentId: string,
     goalId: string,
