@@ -76,10 +76,13 @@ export function parseFrontmatterDocument(
 	options: ParseFrontmatterDocumentOptions = {},
 ): FrontmatterDocumentResult {
 	const normalized = normalizeNewlines(content);
-	if (!/^---[ \t]*(?:\n|$)/.test(normalized)) {
-		return { kind: "none", body: normalized };
+	const document = normalized.startsWith("\uFEFF")
+		? normalized.slice(1)
+		: normalized;
+	if (!/^---[ \t]*(?:\n|$)/.test(document)) {
+		return { kind: "none", body: document };
 	}
-	const lines = normalized.split("\n");
+	const lines = document.split("\n");
 	let closingLine = -1;
 	for (let index = 1; index < lines.length; index += 1) {
 		if (/^---[ \t]*$/.test(lines[index])) {
@@ -88,7 +91,7 @@ export function parseFrontmatterDocument(
 		}
 	}
 	if (closingLine === -1) {
-		return { kind: "invalid", code: "invalid-delimiter", body: normalized };
+		return { kind: "invalid", code: "invalid-delimiter", body: document };
 	}
 	const raw = lines.slice(1, closingLine).join("\n");
 	const body = lines.slice(closingLine + 1).join("\n");

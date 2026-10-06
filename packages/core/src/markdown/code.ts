@@ -42,7 +42,9 @@ export function parseFenceSpans(buffer: string): FenceSpan[] {
 	while (offset <= buffer.length) {
 		const nextNewline = buffer.indexOf("\n", offset);
 		const lineEnd = nextNewline === -1 ? buffer.length : nextNewline;
-		const line = buffer.slice(offset, lineEnd);
+		const rawLine = buffer.slice(offset, lineEnd);
+		// Treat the carriage return in CRLF input as a line ending, not fence info.
+		const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
 
 		const match = line.match(/^( {0,3})(`{3,}|~{3,})(.*)$/);
 		if (match) {
@@ -300,14 +302,7 @@ export function unwrapWholeCodeFence(
 ): string | null {
 	let fenceLength = 0;
 	while (value[fenceLength] === "`") fenceLength += 1;
-	// The closer is the same run at the end of the value. Slicing a fixed width
-	// without that check turns a reply that only starts with a fence into
-	// truncated JSON.
-	if (
-		fenceLength < 3 ||
-		value.length < fenceLength * 2 ||
-		value.slice(value.length - fenceLength) !== "`".repeat(fenceLength)
-	) {
+	if (fenceLength < 3 || value.length < fenceLength * 2) {
 		return null;
 	}
 	const lowerValue = value.toLowerCase();
@@ -334,7 +329,9 @@ export function unwrapWholeCodeFence(
 	}
 	while (cursor < value.length - fenceLength && /\s/u.test(value[cursor]))
 		cursor += 1;
-	let end = value.length - fenceLength;
+	let end = value.length;
+	while (end > cursor && value[end - 1] === "`") end -= 1;
+	if (value.length - end < fenceLength) return null;
 	while (end > cursor && /\s/u.test(value[end - 1])) end -= 1;
 	return value.slice(cursor, end);
 }
