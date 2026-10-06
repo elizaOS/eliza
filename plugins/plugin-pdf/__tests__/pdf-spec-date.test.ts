@@ -88,3 +88,21 @@ describe("parsePdfSpecDate rejects impossible calendar dates", () => {
     );
   });
 });
+
+
+describe("parsePdfSpecDate local timezone transitions", () => {
+  it("preserves local spring-forward normalization without accepting impossible dates", () => {
+    vi.stubEnv("TZ", "America/New_York");
+    try {
+      expect(parsePdfSpecDate("D:20240310023000")?.toISOString()).toBe(
+        "2024-03-10T07:30:00.000Z",
+      );
+      expect(parsePdfSpecDate("D:20240230023000")).toBeUndefined();
+      expect(parsePdfSpecDate("D:20240310023000Z")?.toISOString()).toBe(
+        "2024-03-10T02:30:00.000Z",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

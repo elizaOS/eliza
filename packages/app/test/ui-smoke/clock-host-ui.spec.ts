@@ -2,7 +2,13 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  test as base,
+  expect,
+  type Locator,
+  type Page,
+} from "@playwright/test";
+import { createServer } from "vite";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import type {
   ClockHost,
@@ -19,6 +25,32 @@ const repoRoot = path.resolve(
   "../../../..",
 );
 const bridgeUrl = `/@fs${path.join(repoRoot, "packages/ui/src/bridge/clock-host.ts")}`;
+// This controlled-host contract imports the production bridge source. Serve the
+// whole renderer from the same Vite graph so that import and ClockView share
+// one registry; a dist server cannot serve /@fs or share its bundled singleton.
+const test = base.extend<object, { clockRendererUrl: string }>({
+  clockRendererUrl: [
+    async ({ browserName: _browserName }, use) => {
+      const server = await createServer({
+        root: path.join(repoRoot, "packages/app"),
+        configFile: path.join(repoRoot, "packages/app/vite.config.ts"),
+        server: { host: "127.0.0.1", port: 0, strictPort: false, open: false },
+      });
+      try {
+        await server.listen();
+        const url = server.resolvedUrls?.local[0];
+        if (!url) throw new Error("Clock renderer fixture did not bind a URL");
+        await use(url);
+      } finally {
+        await server.close();
+      }
+    },
+    { scope: "worker" },
+  ],
+  baseURL: async ({ clockRendererUrl }, use) => {
+    await use(clockRendererUrl);
+  },
+});
 type Scenario =
   | "owned"
   | "receipt"
