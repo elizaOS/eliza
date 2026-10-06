@@ -156,6 +156,21 @@ const GENERIC_OPERATION_WORDS = new Set([
   "run",
 ]);
 
+function hasDomainOperation(
+  actions: readonly Action[],
+  intent: string,
+  domain: string,
+): boolean {
+  const operations = actions
+    .filter((action) =>
+      actionDiscoveryContexts(action).some(
+        (candidate) => normalizeContextId(candidate) === domain,
+      ),
+    )
+    .map((action) => action.name);
+  return preferredOperationNames(intent, operations).size > 0;
+}
+
 function pendingActionContexts(
   actions: readonly Action[],
   intents: readonly string[] | undefined,
@@ -208,15 +223,7 @@ function pendingActionContexts(
         domains.add(domain);
         continue;
       }
-      const operations = actions
-        .filter((action) =>
-          actionDiscoveryContexts(action).some(
-            (candidate) => normalizeContextId(candidate) === domain,
-          ),
-        )
-        .map((action) => action.name);
-      if (preferredOperationNames(intent, operations).size > 0)
-        domains.add(domain);
+      if (hasDomainOperation(actions, intent, domain)) domains.add(domain);
     }
   }
   return [...domains];
@@ -378,7 +385,7 @@ export function retrieveContextualPlannerActions(args: {
   };
   if (args.selectedActions) {
     // Matching both the current request and its sole intent may narrow initial
-    // preload in the route's declared contexts; this is not completion evidence.
+    // preload for that owner; this is not completion evidence.
     // Multiple clauses or extra candidates retain the existing bootstrap, and
     // all unselected operations remain available through ordinary discovery.
     const direct = args.directRouting;
@@ -442,10 +449,16 @@ export function retrieveContextualPlannerActions(args: {
           continue;
         const covered = new Set(rule.contexts.map(normalizeContextId));
         for (const domain of domains) {
+          // The registered owner can claim this single intent even when its
+          // action name differs from the user's wording. Apply the same
+          // operation check used for lexical claims above; payload nouns alone
+          // do not add another domain. Explicit contexts remain authoritative.
           if (
             [domain, ...(args.contextAliases?.(domain) ?? [])].some((context) =>
               covered.has(normalizeContextId(context)),
-            )
+            ) ||
+            (!declaredDomains.has(domain) &&
+              !hasDomainOperation(args.actions, intents[0], domain))
           )
             domains.delete(domain);
         }
