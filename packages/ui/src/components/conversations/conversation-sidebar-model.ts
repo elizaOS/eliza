@@ -175,16 +175,14 @@ function buildInboxRows(
 ): ConversationsSidebarRow[] {
   return inboxChats
     .map((chat) => {
-      const sortKey =
+      const hasTimestamp =
         typeof chat.lastMessageAt === "number" &&
-        Number.isFinite(chat.lastMessageAt)
-          ? chat.lastMessageAt
-          : 0;
-      const isoDate =
-        typeof chat.lastMessageAt === "number" &&
-        Number.isFinite(chat.lastMessageAt)
-          ? new Date(sortKey).toISOString()
-          : null;
+        Number.isFinite(chat.lastMessageAt) &&
+        chat.lastMessageAt > 0;
+      const sortKey = hasTimestamp ? chat.lastMessageAt : 0;
+      const isoDate = hasTimestamp
+        ? new Date(chat.lastMessageAt).toISOString()
+        : null;
       const normalizedSource = normalizeConnectorSource(chat.source);
       const normalizedWorldLabel = normalizeWorldLabel(chat, t);
       return {
@@ -199,7 +197,9 @@ function buildInboxRows(
         muted: chat.muted === true,
         mutedScope: chat.mutedScope,
         title: chat.title,
-        updatedAtLabel: isoDate ? formatRelativeTime(isoDate, t) : "",
+        updatedAtLabel: isoDate
+          ? formatRelativeTime(isoDate, t)
+          : t("conversations.bucketUndated", { defaultValue: "No date" }),
         ...(chat.worldId ? { worldId: chat.worldId } : {}),
         worldKey: worldKey(chat, normalizedSource),
         worldLabel: normalizedWorldLabel,
@@ -359,6 +359,15 @@ interface TimeBucket {
 }
 
 function timeBucket(sortKey: number, now: Date, t: TranslateFn): TimeBucket {
+  // Missing inbox timestamps are stored as 0 so they sort last. That sentinel
+  // is not a real message time, so it must not land in the 1970 year bucket.
+  if (!(sortKey > 0)) {
+    return {
+      key: "t:undated",
+      label: t("conversations.bucketUndated", { defaultValue: "No date" }),
+      rank: 0,
+    };
+  }
   const nowDay = startOfLocalDay(now);
   const rowDay = startOfLocalDay(new Date(sortKey));
   const dayDelta = Math.max(0, Math.round((nowDay - rowDay) / MS_PER_DAY));
