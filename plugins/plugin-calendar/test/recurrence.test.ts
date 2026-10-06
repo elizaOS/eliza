@@ -381,6 +381,38 @@ describe("describeRecurrence", () => {
     );
   });
 
+  it("labels a date-time UNTIL on the event's local calendar date", () => {
+    // Google's documented split example for a 10am America/Los_Angeles series:
+    // UNTIL=20110617T065959Z is 23:59:59 PDT on June 16, so the series ends
+    // June 16 local. "Ends Jan 30" in New York is stored as 04:59:59Z Jan 31.
+    expect([
+      describeRecurrence(
+        ["RRULE:FREQ=WEEKLY;UNTIL=20110617T065959Z"],
+        "America/Los_Angeles",
+      ),
+      describeRecurrence(
+        ["RRULE:FREQ=WEEKLY;UNTIL=20260131T045959Z;BYDAY=MO,WE"],
+        NY,
+      ),
+      describeRecurrence(
+        ["RRULE:FREQ=DAILY;UNTIL=20261231T150000Z"],
+        "Asia/Tokyo",
+      ),
+    ]).toEqual([
+      "weekly until Jun 16, 2011",
+      "weekly on Monday and Wednesday until Jan 30, 2026",
+      "daily until Jan 1, 2027",
+    ]);
+  });
+
+  it("keeps a date-only UNTIL on its stated calendar date in any zone", () => {
+    for (const timeZone of [undefined, "UTC", NY, "Asia/Tokyo"]) {
+      expect(
+        describeRecurrence(["RRULE:FREQ=WEEKLY;UNTIL=20260901"], timeZone),
+      ).toBe("weekly until Sep 1, 2026");
+    }
+  });
+
   it("returns null for empty input and skips EXDATE-only sets", () => {
     expect(describeRecurrence(null)).toBeNull();
     expect(describeRecurrence([])).toBeNull();
