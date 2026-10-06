@@ -35,10 +35,21 @@ describe("readLadderRungTitle", () => {
 });
 
 describe("buildReminderBody — laddered rung surfacing", () => {
+  it("keeps explicit alert body and legacy title-only fallback", () => {
+    expect(
+      buildReminderBody({
+        title: "Title",
+        body: "Body, verification cdfaacf9",
+      }),
+    ).toBe("Body, verification cdfaacf9");
+    expect(buildReminderBody({ title: "Title", body: " " })).toBe("Title");
+    expect(buildReminderBody({ title: "Title" })).toBe("Title");
+  });
   it("leads with the rung step rather than the raw task title", () => {
     const body = buildReminderBody({
       title: "Read the book",
       derivedTarget: ladderRungTarget,
+      body: "Original alert body",
     });
     expect(body).toBe("Read one page");
     expect(body).not.toContain("Read the book");

@@ -4,6 +4,7 @@ import {
   createReminderPresentation,
   ensureAgentVoice,
   ModelType,
+  NOTIFICATION_STREAM,
   NotificationService,
 } from "@elizaos/core";
 import { expect, it } from "vitest";
@@ -57,6 +58,9 @@ it("delivers saved facts through chat voice boundary and notification store with
   } as unknown as ServerState;
   const pending: Promise<void>[] = [];
   let canonicalChat: string | undefined;
+  const requestedBody =
+    "Clock scope reminder QA, verification cdfaacf9.\nRésumé — café ☕; exact punctuation!";
+  const nativeEvents: Record<string, unknown>[] = [];
   try {
     await LifeOpsRepository.bootstrapSchema(runtime);
     const repository = new LifeOpsRepository(runtime);
@@ -64,6 +68,7 @@ it("delivers saved facts through chat voice boundary and notification store with
     const events = runtime.getService<AgentEventService>("agent_event");
     if (!events) throw new Error("Missing agent event service");
     events.subscribe((event) => {
+      if (event.stream === NOTIFICATION_STREAM) nativeEvents.push(event.data);
       if (event.stream === "assistant") {
         canonicalChat =
           typeof event.data.text === "string" ? event.data.text : undefined;
@@ -131,6 +136,7 @@ it("delivers saved facts through chat voice boundary and notification store with
       timezone: "America/Los_Angeles",
       definition: {
         kind: "habit",
+        description: requestedBody,
         metadata: { ownerSurface: "OWNER_REMINDERS" },
         cadence: { kind: "once", dueAt: due },
       },
@@ -144,7 +150,14 @@ it("delivers saved facts through chat voice boundary and notification store with
     expect(notices).toHaveLength(1);
     const body = notices[0]?.body;
     if (typeof body !== "string") throw new Error("Missing notification body");
-    expect(body).toBe('Check "Monday"  exactly');
+    expect(body).toBe(requestedBody);
+    const nativeBodyEvents = nativeEvents.filter(
+      (data) =>
+        data.type === "notification" &&
+        (data.notification as { body?: string } | undefined)?.body ===
+          requestedBody,
+    );
+    expect(nativeBodyEvents).toHaveLength(1);
     const messages = await runtime.getMemories({
       roomId: conv.roomId,
       tableName: "messages",
@@ -247,10 +260,14 @@ it("delivers saved facts through chat voice boundary and notification store with
         kind: "habit",
         metadata: { ownerSurface: "OWNER_REMINDERS" },
         cadence: { kind: "daily", windows: ["morning"] },
+        description: "Internal scheduling context for a habit",
       },
     });
     await Promise.all(pending);
     expect(modelCalls).toBeGreaterThan(0);
+    expect(notifications.list().at(-1)?.body).not.toContain(
+      "Internal scheduling context",
+    );
     modelCalls = 0;
 
     const previousConversations = new Map(state.conversations);

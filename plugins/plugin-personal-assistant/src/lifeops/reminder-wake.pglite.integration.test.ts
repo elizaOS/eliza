@@ -1,6 +1,13 @@
 /** Same durable scheduler row and real reminder processing, driven by a virtual
  * core clock. Notification sink records deliveries; no network/model inference. */
-import { TaskService } from "@elizaos/core";
+import {
+  attestDeliveryAudienceFromCanonicalRoom,
+  ChannelType,
+  executePlannedToolCall,
+  type Memory,
+  TaskService,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
@@ -328,6 +335,148 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
     expect(model).not.toHaveBeenCalled();
   } finally {
     model.mockRestore();
+    await f.cleanup();
+  }
+}, 120000);
+
+it("native owner creation and a current body edit deliver exact UTF text once through in-app and notification events", async () => {
+  const f = await createLifeOpsTestRuntime();
+  const runtime = f.runtime;
+  const service = new LifeOpsService(runtime);
+  const title = "Clock scope reminder QA";
+  const originalBody =
+    "Clock scope reminder QA, verification cdfaacf9.\nRésumé — café ☕; keep punctuation!";
+  const currentBody =
+    "Edited verification cdfaacf9.\nRésumé — café ☕; exact current body!";
+  const owner = service.ownerEntityId() as UUID;
+  if (!(await runtime.getEntityById(owner)))
+    await runtime.createEntity({
+      id: owner,
+      agentId: runtime.agentId,
+      names: ["Body fixture owner"],
+      metadata: {},
+    });
+  const worldId = crypto.randomUUID() as UUID;
+  await runtime.ensureWorldExists({
+    id: worldId,
+    agentId: runtime.agentId,
+    name: "Body fixture world",
+    metadata: { ownership: { ownerId: owner }, roles: { [owner]: "OWNER" } },
+  });
+  const roomId = await runtime.createRoom({
+    id: crypto.randomUUID() as UUID,
+    worldId,
+    source: "client_chat",
+    type: ChannelType.DM,
+    name: "Body fixture owner DM",
+  });
+  await runtime.createRoomParticipants([owner, runtime.agentId], roomId);
+  const message: Memory = {
+    id: crypto.randomUUID() as UUID,
+    agentId: runtime.agentId,
+    entityId: owner,
+    roomId,
+    content: {
+      source: "client_chat",
+      channelType: ChannelType.DM,
+      text: `In two minutes, remind me once in Eliza. Title: ${title}. Body: ${originalBody} Use my usual in-app and Android notifications.`,
+    },
+  };
+  try {
+    await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+    const created = await executePlannedToolCall(
+      runtime,
+      {
+        message,
+        userRoles: ["OWNER"],
+        activeContexts: ["general", "tasks"],
+        replyOwner: "planner",
+      },
+      {
+        name: "OWNER_REMINDERS_CREATE",
+        params: {
+          intent: message.content.text,
+          createPlan: {
+            mode: "create",
+            multiStep: false,
+            requestKind: "reminder",
+            nativeProjection: "in_app_only",
+            title,
+            description: originalBody,
+            cadenceKind: "once",
+            dueDate: null,
+            dueInDays: null,
+            dueWeekday: null,
+            dueInMinutes: 2,
+          },
+        },
+      },
+    );
+    expect(created.success, JSON.stringify(created)).toBe(true);
+    const id = created.effectReceipts?.find(
+      (receipt) => receipt.operation === "lifeops.definition.create",
+    )?.resource.id;
+    if (!id) throw Error("Missing durable create receipt");
+    const saved = await service.getDefinitionRecord(id);
+    expect(saved.definition.description).toBe(originalBody);
+    expect(saved.definition.metadata.ownerSurface).toBe("OWNER_REMINDERS");
+    if (saved.definition.cadence.kind !== "once")
+      throw Error("Expected once cadence");
+    const due = saved.definition.cadence.dueAt;
+    // The existing owner editor persists description; dispatch must use the
+    // current record rather than a stale create-time body copied to metadata.
+    const edited = await service.updateDefinition(id, {
+      description: currentBody,
+    });
+    expect(edited.definition.description).toBe(currentBody);
+    expect(edited.definition.cadence).toEqual(saved.definition.cadence);
+    const emit = vi.spyOn(service, "emitAssistantEvent");
+    const model = vi
+      .spyOn(runtime, "useModel")
+      .mockRejectedValue(Error("No inference during exact reminder dispatch"));
+    vi.setSystemTime(new Date(due));
+    await service.processReminders({ now: due, scope: "definitions" });
+    const occurrences = await service.repository.listOccurrencesForDefinition(
+      runtime.agentId,
+      id,
+    );
+    const occurrence = occurrences[0];
+    if (!occurrence) throw Error("Missing materialized occurrence");
+    const events = emit.mock.calls.filter(
+      ([, source, data]) =>
+        source === "reminder" && data?.ownerId === occurrence.id,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0][0]).toBe(currentBody);
+    expect(events[0][2]?.reminderPresentation).toMatchObject({
+      kind: "saved-one-shot-reminder",
+      body: currentBody,
+      chatText: currentBody,
+    });
+    const notifications = getRecordedTestNotifications(runtime).filter(
+      (notification) => notification.data?.ownerId === occurrence.id,
+    );
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].body).toBe(currentBody);
+    await service.processReminders({
+      now: new Date(Date.parse(due) + 1000).toISOString(),
+      scope: "definitions",
+    });
+    expect(
+      emit.mock.calls.filter(
+        ([, source, data]) =>
+          source === "reminder" && data?.ownerId === occurrence.id,
+      ),
+    ).toHaveLength(1);
+    expect(
+      getRecordedTestNotifications(runtime).filter(
+        (notification) => notification.data?.ownerId === occurrence.id,
+      ),
+    ).toHaveLength(1);
+    expect(model).not.toHaveBeenCalled();
+    emit.mockRestore();
+    model.mockRestore();
+  } finally {
     await f.cleanup();
   }
 }, 120000);

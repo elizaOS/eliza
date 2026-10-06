@@ -806,11 +806,14 @@ export function readLadderRungTitle(
 
 export function buildReminderBody(args: {
   title: string;
+  body?: string | null;
   derivedTarget?: Record<string, unknown> | null;
 }): string {
   // Timing and delivery identity remain on the saved occurrence and receipts.
   // The alert itself is the owner's message, including the current ladder rung.
-  return readLadderRungTitle(args.derivedTarget) ?? args.title;
+  return (
+    readLadderRungTitle(args.derivedTarget) ?? (args.body?.trim() || args.title)
+  );
 }
 
 // Stretch cadence + walk-out / weekend / late-evening rules live as
@@ -4211,7 +4214,7 @@ export class RemindersDomain {
     timezone: string;
     definition:
       | (Pick<LifeOpsTaskDefinition, "kind" | "metadata"> &
-          Partial<Pick<LifeOpsTaskDefinition, "cadence">>)
+          Partial<Pick<LifeOpsTaskDefinition, "cadence" | "description">>)
       | null;
     reviewAttempt?: LifeOpsReminderAttempt | null;
   }): Promise<LifeOpsReminderAttempt | null> {
@@ -4814,7 +4817,7 @@ export class RemindersDomain {
     timezone: string;
     definition:
       | (Pick<LifeOpsTaskDefinition, "kind" | "metadata"> &
-          Partial<Pick<LifeOpsTaskDefinition, "cadence">>)
+          Partial<Pick<LifeOpsTaskDefinition, "cadence" | "description">>)
       | null;
     derivedTarget?: Record<string, unknown> | null;
     bodyOverride?: string;
@@ -4915,6 +4918,7 @@ export class RemindersDomain {
       reminderBody = exactReminder
         ? buildReminderBody({
             title: args.title,
+            body: args.definition?.description,
             derivedTarget: args.derivedTarget,
           })
         : (args.bodyOverride ??
