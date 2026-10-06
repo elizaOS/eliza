@@ -8,6 +8,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PGlite } from "@electric-sql/pglite";
 import { Miniflare } from "miniflare";
 import { z } from "zod";
 import { createPrivateWorkerdFailureCapture } from "../test/workerd-failure-capture";
@@ -28,6 +29,10 @@ describe("Shared Eliza runtime in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
   let modelServer: ReturnType<typeof Bun.serve>;
+  // The Network's Postgres member store runs against a real PGlite here; the
+  // Worker reaches it through drizzle pg-proxy over this endpoint.
+  let networkDb: PGlite;
+  let networkDbServer: ReturnType<typeof Bun.serve>;
   const modelRequests: Array<Record<string, unknown>> = [];
   const outboundRequests: string[] = [];
   let searchPlannerRequests = 0;
@@ -46,6 +51,47 @@ describe("Shared Eliza runtime in Workerd", () => {
   const liveModelId = process.env.SHARED_ELIZA_LIVE_MODEL_ID;
 
   beforeAll(async () => {
+    networkDb = new PGlite();
+    await networkDb.exec(
+      await readFile(
+        new URL(
+          "../../shared/src/db/migrations/0474_network_core.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    await networkDb.exec(`
+      INSERT INTO "network"."members"
+        ("phone_e164", "cloud_user_id", "organization_id", "first_name", "city", "facets")
+      VALUES ('+14155550123', '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+              '6f9619ff-8b86-4011-b42d-00c04fc964ff', 'Ada', 'San Francisco',
+              ARRAY['climbs at Mission Cliffs']);
+    `);
+    networkDbServer = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        const { query, params, method } = (await request.json()) as {
+          query: string;
+          params: unknown[];
+          method: string;
+        };
+        try {
+          const result = await networkDb.query(query, params, {
+            ...(method === "all" ? { rowMode: "array" as const } : {}),
+          });
+          return new Response(
+            JSON.stringify({ rows: result.rows }, (_key, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+            { headers: { "Content-Type": "application/json" } },
+          );
+        } catch (error) {
+          return new Response(String(error), { status: 500 });
+        }
+      },
+    });
     modelServer = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -993,6 +1039,7 @@ describe("Shared Eliza runtime in Workerd", () => {
         NODE_ENV: "production",
         OPENROUTER_API_KEY: "workerd-shared-runtime-key",
         OPENROUTER_BASE_URL: `http://127.0.0.1:${modelServer.port}/v1`,
+        NETWORK_DB_PROXY_URL: `http://127.0.0.1:${networkDbServer.port}/query`,
       },
       modules: [
         {
@@ -1007,6 +1054,8 @@ describe("Shared Eliza runtime in Workerd", () => {
   afterAll(async () => {
     await miniflare?.dispose();
     modelServer?.stop(true);
+    networkDbServer?.stop(true);
+    await networkDb?.close();
     if (buildDirectory) await rm(buildDirectory, { recursive: true });
   });
 
@@ -1098,6 +1147,57 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(payload.events).toHaveLength(1);
     expect(payload.result.degraded).toBe(false);
     expect(payload.result.reply).toContain("paused until Oct 20");
+  }, 120_000);
+
+  test("production execution.network wiring runs SET_STATE against the Postgres member store", async () => {
+    networkPlannerRequests = 0;
+    networkRequestBodies.length = 0;
+    const response = await miniflare.dispatchFetch(
+      "https://runtime.test/network-pg-turn",
+    );
+    const body = await response.text();
+    expect(response.status, body).toBe(200);
+    const payload = JSON.parse(body) as {
+      result: { reply: string; degraded: boolean };
+      networkExecution: boolean;
+      wallMs: number;
+    };
+    expect(payload.networkExecution).toBe(true);
+    expect(payload.result.degraded).toBe(false);
+    expect(payload.result.reply).toContain("paused until Oct 20");
+    // MEMBER_CONTEXT came from Postgres ...
+    expect(
+      networkRequestBodies.some((b) => b.includes("Name: Ada (San Francisco)")),
+    ).toBe(true);
+    // ... and SET_STATE committed there, once, with its signals.
+    const member = await networkDb.query<{ state: string; paused_until: Date }>(
+      `SELECT state, paused_until FROM network.members`,
+    );
+    expect(member.rows[0]?.state).toBe("paused");
+    expect(member.rows[0]?.paused_until.toISOString()).toBe(
+      "2026-10-20T00:00:00.000Z",
+    );
+    const events = await networkDb.query(
+      `SELECT type FROM network.member_events`,
+    );
+    expect(events.rows).toEqual([{ type: "member.state_changed" }]);
+    const signals = await networkDb.query<{ kind: string }>(
+      `SELECT kind FROM network.member_signals ORDER BY kind`,
+    );
+    expect(signals.rows.map((row) => row.kind)).toContain("travel");
+    console.info(
+      `NETWORK_PG_WORKERD_TURN ${JSON.stringify({ wallMs: payload.wallMs, modelCalls: networkPlannerRequests })}`,
+    );
+
+    // An Eliza identity for the same account never gets the member store.
+    const eliza = await miniflare.dispatchFetch(
+      "https://runtime.test/network-pg-turn?project=eliza-app",
+    );
+    const elizaBody = await eliza.text();
+    expect(eliza.status, elizaBody).toBe(200);
+    expect(
+      (JSON.parse(elizaBody) as { networkExecution: boolean }).networkExecution,
+    ).toBe(false);
   }, 120_000);
 
   test("Network relay phrasing reaches the model without a capability wall; Eliza keeps the wall", async () => {

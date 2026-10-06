@@ -25,6 +25,7 @@ import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
+import { sharedNetworkExecution } from "../../network/member-store";
 import { getProviderFromModel } from "../../pricing";
 import {
   collectVideoProviderApiKeys,
@@ -592,6 +593,11 @@ function sharedElizaRuntimeExecution(
   };
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
   const media = personalShared ? personalSharedMediaPort(agent, roomId, turnKey) : undefined;
+  const network = sharedNetworkExecution(
+    agent,
+    personalShared,
+    runtimeChannel.type !== ChannelType.DM || roomId.startsWith("group:"),
+  );
   return {
     agentKey: agent.id,
     roomKey: roomId,
@@ -622,6 +628,9 @@ function sharedElizaRuntimeExecution(
       : {}),
     ...(mobilePushDispatch ? { mobilePush: { dispatch: mobilePushDispatch } } : {}),
     ...(media ? { media } : {}),
+    // The Network: only a canonical project-scoped personal identity gets the
+    // member store, built per turn like the todo store above.
+    ...(network ? { network } : {}),
   };
 }
 

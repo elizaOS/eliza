@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS "network"."members" (
   "first_name" text,
   "city" text,
   "state" text DEFAULT 'open' NOT NULL,
-  "state_until" timestamp with time zone,
+  "paused_until" timestamp with time zone,
+  -- Shareable profile facets only; private facets never live in this column.
+  "facets" text[] DEFAULT '{}'::text[] NOT NULL,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "network_members_phone_e164_check"
@@ -33,9 +35,43 @@ CREATE UNIQUE INDEX IF NOT EXISTS "network_members_cloud_user_id_unique"
   ON "network"."members" ("cloud_user_id")
   WHERE "cloud_user_id" IS NOT NULL;
 
+-- Idempotent member state changes (SET_STATE). The bigserial id is the
+-- effect receipt's commit id; the idempotency key makes replays a no-op.
+CREATE TABLE IF NOT EXISTS "network"."member_events" (
+  "id" bigserial PRIMARY KEY NOT NULL,
+  "member_id" uuid NOT NULL
+    REFERENCES "network"."members" ("id") ON DELETE CASCADE,
+  "idempotency_key" text NOT NULL,
+  "type" text NOT NULL,
+  "payload" jsonb NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "network_member_events_idempotency_key_unique"
+  ON "network"."member_events" ("idempotency_key");
+CREATE INDEX IF NOT EXISTS "network_member_events_member_created_idx"
+  ON "network"."member_events" ("member_id", "created_at" DESC);
+
+-- Post-turn signals detected in a member's own messages (NETWORK_SIGNALS).
+CREATE TABLE IF NOT EXISTS "network"."member_signals" (
+  "id" bigserial PRIMARY KEY NOT NULL,
+  "member_id" uuid NOT NULL
+    REFERENCES "network"."members" ("id") ON DELETE CASCADE,
+  "message_id" text NOT NULL,
+  "kind" text NOT NULL,
+  "evidence" text NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT "network_member_signals_kind_check"
+    CHECK ("kind" IN ('opt_out', 'travel', 'safety_concern'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "network_member_signals_message_kind_unique"
+  ON "network"."member_signals" ("member_id", "message_id", "kind");
+
 -- Invites are addressed to a phone number. Only the token hash is stored. The
--- inbound gate admits a phone only when one of its invites is `accepted` (or a
--- non-removed member already owns the number).
+-- inbound gate admits a phone with a live (pending, unexpired) or accepted
+-- invite, or a non-removed member; the first admitted message accepts the
+-- invite and links the member to its Cloud account.
 CREATE TABLE IF NOT EXISTS "network"."invites" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "phone_e164" text NOT NULL,

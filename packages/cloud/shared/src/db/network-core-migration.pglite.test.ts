@@ -50,6 +50,8 @@ describe("0474 Network core schema", () => {
     expect(tables.rows).toEqual([
       { table_schema: "network", table_name: "consent_ledger" },
       { table_schema: "network", table_name: "invites" },
+      { table_schema: "network", table_name: "member_events" },
+      { table_schema: "network", table_name: "member_signals" },
       { table_schema: "network", table_name: "members" },
     ]);
 

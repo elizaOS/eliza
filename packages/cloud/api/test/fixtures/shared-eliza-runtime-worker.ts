@@ -17,12 +17,20 @@ import type {
   TodoStore,
 } from "@elizaos/plugin-todos";
 import { searchKeylessWeb } from "@elizaos/plugin-web-search";
+import { drizzle as drizzlePgProxy } from "drizzle-orm/pg-proxy";
 import { InMemoryNetworkStore } from "../../../../../plugins/plugin-network/src/memory-store";
+import {
+  createPostgresNetworkStore,
+  sharedNetworkExecution,
+} from "../../../shared/src/lib/network/member-store";
 import { runWithCloudBindingsAsync } from "../../../shared/src/lib/runtime/cloud-bindings";
 import { chatSseFrame } from "../../../shared/src/lib/services/chat-sse-frames";
 import type { BridgeRequest } from "../../../shared/src/lib/services/eliza-sandbox-bridge";
 import { handleCanonicalScopedAgentStream } from "../../../shared/src/lib/services/shared-runtime/canonical-scoped-stream";
-import { isCanonicalPersonalSharedAgent } from "../../../shared/src/lib/services/shared-runtime/personal-shared-identity";
+import {
+  isCanonicalPersonalSharedAgent,
+  personalSharedAgentId,
+} from "../../../shared/src/lib/services/shared-runtime/personal-shared-identity";
 import { runSharedAgentTurn } from "../../../shared/src/lib/services/shared-runtime/run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "../../../shared/src/lib/services/shared-runtime/shared-runtime-agent";
 import type { RuntimeDurableObjectNamespace } from "../../../shared/src/types/cloud-worker-env";
@@ -36,6 +44,8 @@ type Env = {
   NODE_ENV: string;
   OPENROUTER_API_KEY: string;
   OPENROUTER_BASE_URL: string;
+  /** Test-process SQL endpoint backed by PGlite with migration 0474 applied. */
+  NETWORK_DB_PROXY_URL?: string;
 };
 
 const forgedRouteAgent = {
@@ -456,6 +466,67 @@ const worker = {
           member: await store.getMemberContext("mem_ada"),
           events: store.events,
           signals: store.signals,
+        });
+      }
+      if (url.pathname === "/network-pg-turn") {
+        // Production wiring end to end: the same execution.network builder
+        // shared-runtime-chat uses, over the Postgres NetworkStore, whose SQL
+        // reaches a real PGlite in the test process through drizzle pg-proxy.
+        const proxyUrl = env.NETWORK_DB_PROXY_URL;
+        if (!proxyUrl) return new Response("missing db proxy", { status: 500 });
+        const db = drizzlePgProxy(async (query, params, method) => {
+          const response = await fetch(proxyUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query, params, method }),
+          });
+          if (!response.ok) throw new Error(await response.text());
+          return (await response.json()) as { rows: unknown[] };
+        });
+        const project = url.searchParams.get("project") ?? "network";
+        const userId = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+        const organizationId = "6f9619ff-8b86-4011-b42d-00c04fc964ff";
+        const agent = {
+          id: personalSharedAgentId({ userId, organizationId, project }),
+          organization_id: organizationId,
+          user_id: userId,
+          character_id: null,
+          agent_name: "The Network",
+          agent_config: null,
+          execution_tier: "shared",
+          ...(project === "network" ? { project } : {}),
+        } satisfies SharedRuntimeAgent;
+        const network = sharedNetworkExecution(
+          agent,
+          isCanonicalPersonalSharedAgent(agent),
+          false,
+          () => createPostgresNetworkStore(db),
+        );
+        const started = Date.now();
+        const result = await runSharedAgentTurn({
+          character: {
+            name: "The Network",
+            system: "You are The Network, a warm, brief connector.",
+            model: "local/shared-runtime-probe",
+          },
+          history: [],
+          message:
+            "swamped at work and I will be in Austin next week, pause my network intros until oct 20",
+          messageIds: {
+            user: "70000000-0000-5000-8000-0000000000a3",
+            assistant: "70000000-0000-5000-8000-0000000000a4",
+          },
+          execution: {
+            channel: { type: ChannelType.DM, source: "twilio" },
+            agentKey: agent.id,
+            roomKey: agent.id,
+            ...(network ? { network } : {}),
+          },
+        });
+        return Response.json({
+          result,
+          wallMs: Date.now() - started,
+          networkExecution: Boolean(network),
         });
       }
       if (url.pathname === "/network-relay-turn") {

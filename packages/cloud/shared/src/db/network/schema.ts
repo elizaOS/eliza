@@ -6,7 +6,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { pgSchema, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigserial, jsonb, pgSchema, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const networkSchema = pgSchema("network");
 
@@ -18,7 +18,8 @@ export const networkMembers = networkSchema.table("members", {
   firstName: text("first_name"),
   city: text("city"),
   state: text("state").default("open").notNull(),
-  stateUntil: timestamp("state_until", { withTimezone: true }),
+  pausedUntil: timestamp("paused_until", { withTimezone: true }),
+  facets: text("facets").array().default(sql`'{}'::text[]`).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
 });
@@ -44,4 +45,22 @@ export const networkConsentLedger = networkSchema.table("consent_ledger", {
   providerMessageId: text("provider_message_id"),
   wording: text("wording"),
   recordedAt: timestamp("recorded_at", { withTimezone: true }).default(sql`now()`).notNull(),
+});
+
+export const networkMemberEvents = networkSchema.table("member_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  memberId: uuid("member_id").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  type: text("type").notNull(),
+  payload: jsonb("payload").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+});
+
+export const networkMemberSignals = networkSchema.table("member_signals", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  memberId: uuid("member_id").notNull(),
+  messageId: text("message_id").notNull(),
+  kind: text("kind").notNull(),
+  evidence: text("evidence").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
 });
