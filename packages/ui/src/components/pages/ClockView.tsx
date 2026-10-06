@@ -18,6 +18,13 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
+const CLOCK_TIME_FOCUS_CSS = `
+#clock-alarm-time::selection {
+  background-color: var(--accent-action);
+  color: var(--brand-black);
+}
+`;
+
 function ClockControls() {
   const now = useSharedNow();
   const [time, setTime] = useState("");
@@ -69,6 +76,7 @@ function ClockControls() {
       data-testid="clock-layout"
       data-chat-clearance-aware="true"
     >
+      <style>{CLOCK_TIME_FOCUS_CSS}</style>
       <FramedPageHeader
         actions={
           <Button
@@ -131,7 +139,10 @@ function ClockControls() {
               </label>
               <Input
                 id="clock-alarm-time"
-                type="time"
+                type="text"
+                placeholder="HH:MM"
+                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                aria-describedby="clock-alarm-time-hint"
                 required
                 value={time}
                 ref={timeElement.ref}
@@ -141,8 +152,12 @@ function ClockControls() {
                   setDrafted(false);
                 }}
               />
-              <p className="text-sm text-muted-foreground">
-                Uses the phone’s current timezone after it is checked.
+              <p
+                id="clock-alarm-time-hint"
+                className="text-sm text-muted-foreground"
+              >
+                24-hour time (HH:MM). Uses the phone’s current timezone after it
+                is checked.
               </p>
             </div>
             <div className="space-y-2">

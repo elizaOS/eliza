@@ -99,6 +99,7 @@ for (const viewport of [
       await page.getByLabel("Alarm time", { exact: true }).fill("");
       await expect(prepare).toBeDisabled();
       await expect(page.getByRole("status")).toHaveCount(0);
+      await captureRenderedState(page, viewport.name, "invalid");
       await page
         .getByRole("button", { name: "Manage reminders", exact: true })
         .click();
