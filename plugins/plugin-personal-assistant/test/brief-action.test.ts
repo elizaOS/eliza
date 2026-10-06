@@ -31,6 +31,7 @@ import {
 } from "@elizaos/plugin-assistant";
 import { CalendarService } from "@elizaos/plugin-calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { evaluatePlannedReplyEgress } from "../../plugin-assistant/src/services/message/egress-policy.ts";
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
@@ -1941,6 +1942,78 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("narrative compose pass", () => {
+    it("keeps the captured active-goal zero scoped through composition and final reply validation", async () => {
+      const corrected =
+        "Five reminders are still open: two phone notification checks and three shoulder stretches.";
+      const useModel = vi.fn(
+        async (_modelType: string, _args: { prompt: string }) => corrected,
+      );
+      const captured = [
+        ["Stretch shoulders", "2026-10-05T20:07:49.385Z"],
+        ["Stretch your shoulders", "2026-10-05T20:37:14.218Z"],
+        ["Stretch my shoulders", "2026-10-05T20:49:58.896Z"],
+        ["Check final phone notification", "2026-10-06T01:01:50.991Z"],
+        ["Check screen-off delivery", "2026-10-06T01:11:07.292Z"],
+      ] as const;
+      const items = captured.map(([title, dueAt], index) => ({
+        id: `captured-reminder-${index}`,
+        kind: "reminder" as const,
+        state: "visible" as const,
+        title,
+        dueAt,
+      }));
+      setBriefComposers({
+        loadCalendar: async () => [],
+        loadInbox: async () => undefined,
+        loadLife: async () => ({
+          items,
+          summary: {
+            activeOccurrenceCount: 5,
+            overdueOccurrenceCount: 5,
+            snoozedOccurrenceCount: 0,
+            activeReminderCount: 5,
+            activeGoalCount: 0,
+          },
+        }),
+        loadCompletedToday: async () => [],
+        loadCommitments: async () => [],
+      });
+      const result = await callBrief(makeRuntime({ useModel }), makeMessage(), {
+        action: "compose_evening",
+        period: "today",
+        format: "narrative",
+      });
+      const briefing = result.data?.briefing as LifeOpsBriefing;
+      expect(briefing.sections.life).toEqual(items);
+      expect(briefing.sections.inbox).toBeUndefined();
+      expect(briefing.lifeSummary?.activeGoalCount).toBe(0);
+      const replyContext = result.data?.replyContext as { sourceScope: string };
+      expect(replyContext.sourceScope).toContain("active goals only");
+      expect(replyContext.sourceScope).toContain("requested period");
+      expect(useModel.mock.calls[0]?.[1].prompt).toContain(
+        replyContext.sourceScope,
+      );
+      expect(result.verifiedUserFacing).toBeUndefined();
+      const recordedResult = {
+        ...result,
+        data: { ...result.data, actionName: "BRIEF" },
+      };
+      expect(
+        evaluatePlannedReplyEgress({
+          reply: "No goals or commitments tracked.",
+          actionResults: [recordedResult],
+          actions: [briefAction],
+        }),
+      ).toEqual({ verdict: "reject", kind: "empty_tracked_state" });
+      expect(
+        evaluatePlannedReplyEgress({
+          reply: corrected,
+          actionResults: [recordedResult],
+          actions: [briefAction],
+        }),
+      ).toEqual({ verdict: "allow" });
+    });
+
     it.each(["narrative", "json"] as const)(
       "licenses %s output without changing source facts or reply text",
       async (format) => {
