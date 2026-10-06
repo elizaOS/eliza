@@ -136,6 +136,22 @@ it("retains explicit household discovery and task-context admission", () => {
   }
 });
 
+it("loads only creation for the captured duration-qualified setup intent", () => {
+  const result = retrieveContextualPlannerActions({
+    actions: [
+      ...actions,
+      ...promoteSubactionsToActions(scheduledTaskAction),
+      createHouseholdOperationsAction({ authorize: async () => true }),
+    ],
+    query: "Remind me here to stretch my shoulders in two minutes.",
+    intents: ["Set a two-minute reminder here to stretch my shoulders"],
+    contexts: ["general", "tasks", "productivity"],
+  });
+  expect(result.actions.map((action) => action.name)).toEqual([
+    "OWNER_REMINDERS_CREATE",
+  ]);
+});
+
 it("loads reminder creation for the captured one-shot set intent", () => {
   const result = retrieveContextualPlannerActions({
     actions: [...actions, ...promoteSubactionsToActions(scheduledTaskAction)],
@@ -158,6 +174,11 @@ it.each([
   ["explain how to schedule a reminder", []],
   ["set a reminder for noon", ["OWNER_REMINDERS_CREATE"]],
   ["set a one-shot reminder for noon", ["OWNER_REMINDERS_CREATE"]],
+  ["set a two-minute reminder here to stretch", ["OWNER_REMINDERS_CREATE"]],
+  ["set a 15 minute reminder here", ["OWNER_REMINDERS_CREATE"]],
+  ["set a 2-hour alarm for noon", ["OWNER_REMINDERS_CREATE"]],
+  ["set the existing two-minute reminder for noon", []],
+  ["set a two-minute reminder's message to hello", []],
   ["set the reminder message to hello", []],
   ["set a reminder's message to hello", []],
   ["set a reminder message to hello", []],

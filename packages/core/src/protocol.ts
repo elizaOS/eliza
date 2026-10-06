@@ -154,6 +154,7 @@ export {
 	type ContextObjectTool,
 	type ContextProviderEvent,
 	createContextObject,
+	OWNED_CONTEXT_SOURCE_SCOPE,
 } from "./runtime/context-object.js";
 export * from "./runtime/context-registry";
 export {
