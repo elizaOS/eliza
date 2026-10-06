@@ -175,7 +175,7 @@ function hasExplicitDateTimeOffset(dateTime: string): boolean {
   return /(?:[zZ]|[+-]\d{2}:\d{2})$/.test(dateTime);
 }
 
-function getZonedDateParts(
+export function getZonedDateParts(
   date: Date,
   timeZone: string,
 ): {
