@@ -162,19 +162,14 @@ export class AppEarningsService {
       type?: "inference_markup" | "purchase_share" | "withdrawal" | "adjustment";
     },
   ): Promise<AppEarningsTransaction[]> {
+    // An omitted limit is the default page of 50. An explicit limit, including
+    // 0, is a page — `limit || 50` treated 0 as missing.
+    const limit = options?.limit === undefined ? 50 : Math.max(0, options.limit);
     if (options?.type) {
-      return await appEarningsRepository.listTransactionsByType(
-        appId,
-        options.type,
-        options?.limit || 50,
-      );
+      return await appEarningsRepository.listTransactionsByType(appId, options.type, limit);
     }
 
-    return await appEarningsRepository.listTransactions(
-      appId,
-      options?.limit || 50,
-      options?.offset || 0,
-    );
+    return await appEarningsRepository.listTransactions(appId, limit, options?.offset || 0);
   }
 
   async updatePayoutThreshold(appId: string, threshold: number): Promise<void> {
