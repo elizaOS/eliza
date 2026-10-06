@@ -541,9 +541,9 @@ describe("aggregate builders", () => {
 
   it("missedOnly spends the limit window only on messages that can qualify", () => {
     const now = Date.now();
-    // A busy day: 30 recent messages can never qualify as missed, but they
+    // A busy day: 100 recent messages can never qualify as missed, but they
     // are the newest rows a limit-first trim would keep.
-    const flood = Array.from({ length: 30 }, (_, index) =>
+    const flood = Array.from({ length: 100 }, (_, index) =>
       inboundChat({
         id: `missed-flood-${index}`,
         text: `noise ${index}`,
@@ -765,7 +765,7 @@ describe("InboxDomain on a real runtime", () => {
     const now = Date.now();
     const fresh = new Date(now).toISOString();
     const recent = toInboxMessages(
-      Array.from({ length: 30 }, (_, index) =>
+      Array.from({ length: 100 }, (_, index) =>
         inboundChat({
           id: `cache-flood-${index}`,
           text: `noise ${index}`,
@@ -803,7 +803,7 @@ describe("InboxDomain on a real runtime", () => {
 
     // The read must look past the display limit, and the missed row the
     // flood would have evicted comes back with its stored score.
-    expect(Math.max(...readLimits.map((limit) => limit ?? 0))).toBe(72);
+    expect(readLimits).toEqual([undefined]);
     expect(inbox.messages.map((message) => message.id)).toEqual([
       "discord:cache-missed-invoice",
     ]);
@@ -827,7 +827,7 @@ describe("InboxDomain on a real runtime", () => {
     const cache = new MemoryInboxCache();
     const now = Date.now();
     const sources = new HonoringConnectorSources([
-      ...Array.from({ length: 30 }, (_, index) =>
+      ...Array.from({ length: 100 }, (_, index) =>
         gmailSummary({
           id: `refresh-flood-${index}`,
           subject: `Noise ${index}`,

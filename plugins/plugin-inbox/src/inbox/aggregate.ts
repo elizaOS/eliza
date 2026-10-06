@@ -60,16 +60,6 @@ const PHONE_BACKED_INBOX_CHANNELS = new Set<LifeOpsInboxChannel>([
 ]);
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
-/**
- * Over-fetch factor for missed-only reads. A missed view filters on age,
- * reply state, and priority score, so a newest-first read capped at the
- * display limit can fill the whole window with messages that can never
- * qualify and hide genuinely missed ones. Reads and scoring selection use
- * `limit * factor` when `missedOnly` is set; the display trim still applies
- * after the missed filter. Mirrors the `limit * 3` candidate paging in
- * `message-fetcher.ts`.
- */
-const MISSED_ONLY_WINDOW_FACTOR = 3;
 
 export type InboxChatType = "dm" | "group" | "channel";
 
@@ -623,17 +613,9 @@ export function buildInboxFromMessages(
   return inbox;
 }
 
-/**
- * Newest-first read/scoring window for a request. A missed view filters on
- * age, reply state, and priority score, so its reads and scoring selection
- * look past the display limit (`MISSED_ONLY_WINDOW_FACTOR`); the display
- * trim still applies after the missed filter in `buildInboxFromMessages`.
- */
+/** A display limit cannot cap candidates before missed-message eligibility. */
 function missedReadWindow(resolved: ResolvedInboxRequest): number | undefined {
-  if (resolved.limit === undefined) return undefined;
-  return resolved.missedOnly === true
-    ? resolved.limit * MISSED_ONLY_WINDOW_FACTOR
-    : resolved.limit;
+  return resolved.missedOnly ? undefined : resolved.limit;
 }
 
 function cacheReadLimitFor(resolved: ResolvedInboxRequest): number | undefined {
@@ -876,9 +858,9 @@ export async function fetchInbox(
       ? resolved.cacheLimit === undefined
         ? {}
         : { limit: resolved.cacheLimit }
-      : resolved.limit === undefined
+      : missedReadWindow(resolved) === undefined
         ? {}
-        : { limit: resolved.limit }),
+        : { limit: missedReadWindow(resolved) }),
     includeGmail: resolved.allowed.has("gmail"),
     gmailSource,
     xDmSource,
