@@ -139,6 +139,7 @@ import type {
   ApprovalRequestState,
   ApprovalResolution,
 } from "../src/lifeops/approval-queue.types.js";
+import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { attachSchedulingApprovalCorrelation } from "../src/lifeops/scheduling-approval.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
@@ -574,6 +575,9 @@ describe("executeApprovedRequest", () => {
         ...makeRuntime(),
         adapter: { db: {} },
         reportError: vi.fn(),
+        // No owner fact is stored. Pin TIMEZONE so the deadline does not
+        // follow the host zone after resolveOwnerTimeZone.
+        getSetting: (key: string) => (key === "TIMEZONE" ? "UTC" : undefined),
       } as unknown as IAgentRuntime;
       const request = approvedRequest({
         action: "send_email",
@@ -646,13 +650,31 @@ describe("executeApprovedRequest", () => {
   );
 
   it("resolves a sent-mail commitment deadline on the owner's civil day", async () => {
+    const cache = new Map<string, unknown>();
     const runtime = {
       ...makeRuntime(),
       adapter: { db: {} },
       reportError: vi.fn(),
+      // Different from the owner fact, so a mutant that ignores the fact and
+      // reads only TIMEZONE cannot satisfy the Los Angeles assertion.
       getSetting: (key: string) =>
-        key === "TIMEZONE" ? "America/Los_Angeles" : undefined,
+        key === "TIMEZONE" ? "Europe/London" : undefined,
+      async getCache<T>(key: string): Promise<T | null> {
+        const value = cache.get(key);
+        return value === undefined ? null : (value as T);
+      },
+      async setCache<T>(key: string, value: T): Promise<boolean> {
+        cache.set(key, value);
+        return true;
+      },
+      async deleteCache(key: string): Promise<boolean> {
+        return cache.delete(key);
+      },
     } as unknown as IAgentRuntime;
+    await resolveOwnerFactStore(runtime).update(
+      { timezone: "America/Los_Angeles" },
+      { source: "profile_save", recordedAt: "2026-07-01T00:00:00.000Z" },
+    );
     const request = approvedRequest({
       action: "send_email",
       payload: {
