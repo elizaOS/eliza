@@ -362,6 +362,31 @@ describe("chunkSlackText", () => {
     expect(chunks).toEqual([`\`\`\`\n${"a".repeat(20)}\n\n\n\`\`\``, "Outro."]);
   });
 
+  it.each([
+    [
+      "spaces after the opener",
+      `\`\`\`${" ".repeat(30)}\ncode line here\n\`\`\``,
+    ],
+    ["blank lines after the opener", `\`\`\`\n${"\n".repeat(21)}abc\n\`\`\``],
+    [
+      "a whitespace-only block",
+      `Intro.\n\`\`\`\n${" \n".repeat(20)}\`\`\`\nOutro.`,
+    ],
+  ])("does not send a whitespace-only code block for %s", (_label, text) => {
+    for (let limit = 12; limit <= 40; limit++) {
+      const chunks = chunkSlackText(text, limit);
+      const where = JSON.stringify({ limit, chunks });
+      for (const chunk of chunks) {
+        expect(chunk, where).not.toMatch(/^```[^\n]*\n?\s*```$/);
+        expect(emptyCodeBlocks(chunk), where).toBe(0);
+        expect(chunk.length, where).toBeLessThanOrEqual(limit);
+      }
+      expect(withoutFencesOrWhitespace(chunks.join("")), where).toBe(
+        withoutFencesOrWhitespace(text),
+      );
+    }
+  });
+
   it("never splits a ``` marker across chunks", () => {
     const text = `${"w".repeat(4)}\n\`\`\`\nab\n\`\`\`\nOutro text here.`;
     for (let limit = 10; limit <= 40; limit++) {

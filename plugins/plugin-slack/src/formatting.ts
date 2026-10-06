@@ -476,27 +476,33 @@ export function chunkSlackText(
     inCodeBlock = codeBlockCount % 2 !== 0;
 
     // A block whose opener is followed only by whitespace in this chunk would
-    // be sent as an empty code block; start it in the next chunk instead.
+    // be sent as an empty code block. Start it in the next chunk instead, or,
+    // when the chunk itself starts at the opener, skip that whitespace.
+    let emitChunk = true;
     if (inCodeBlock) {
       const opener = chunk.lastIndexOf("```");
-      if (opener > 0 && chunk.slice(opener + 3).trim() === "") {
-        if (chunk.slice(0, opener).trim() === "") {
+      if (chunk.slice(opener + 3).trim() === "") {
+        if (opener === 0) {
+          emitChunk = consumedLength <= REOPEN_FENCE.length;
+        } else if (chunk.slice(0, opener).trim() === "") {
           remaining = remaining.slice(opener);
           reopenedFence = false;
           continue;
+        } else {
+          chunk = chunk.slice(0, opener);
+          consumedLength = opener;
+          inCodeBlock = false;
         }
-        chunk = chunk.slice(0, opener);
-        consumedLength = opener;
-        inCodeBlock = false;
       }
     }
 
-    // If we're breaking inside a code block, close it
-    if (inCodeBlock) {
-      chunk += "\n```";
+    if (emitChunk) {
+      // If we're breaking inside a code block, close it
+      if (inCodeBlock) {
+        chunk += "\n```";
+      }
+      chunks.push(chunk);
     }
-
-    chunks.push(chunk);
 
     remaining = remaining.slice(consumedLength);
 
