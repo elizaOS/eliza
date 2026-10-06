@@ -25,11 +25,9 @@ describe("McpService tool-call timeout", () => {
 
     await service.callTool("example", "lookup");
 
-    expect(callTool).toHaveBeenCalledWith(
-      { name: "lookup", arguments: undefined },
-      undefined,
-      { timeout: 2500 },
-    );
+    expect(callTool).toHaveBeenCalledWith({ name: "lookup", arguments: undefined }, undefined, {
+      timeout: 2500,
+    });
   });
 
   it("keeps the configured timeout for stdio servers", async () => {
@@ -41,10 +39,8 @@ describe("McpService tool-call timeout", () => {
 
     await service.callTool("example", "lookup");
 
-    expect(callTool).toHaveBeenCalledWith(
-      { name: "lookup", arguments: undefined },
-      undefined,
-      { timeout: 3500 },
-    );
+    expect(callTool).toHaveBeenCalledWith({ name: "lookup", arguments: undefined }, undefined, {
+      timeout: 3500,
+    });
   });
 });
