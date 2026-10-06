@@ -901,7 +901,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
           ).toEqual(["Owner-window event"]);
           expect(briefing.sourceErrors).toBeUndefined();
           if (format === "narrative")
-            expect(prompts[0]).toContain(`"timeZone": "${timeZone}"`);
+            expect(JSON.parse(prompts[0].split("Data:\n")[1]).timeZone).toBe(
+              timeZone,
+            );
           else expect(prompts).toEqual([]);
         } finally {
           triage.mockRestore();
@@ -968,10 +970,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
           );
           if (format === "narrative") {
             expect(prompts).toHaveLength(1);
-            expect(prompts[0]).toContain('"life": "unavailable"');
-            expect(
-              JSON.parse(prompts[0].split("Data:\n")[1]),
-            ).not.toHaveProperty("lifeSummary");
+            const payload = JSON.parse(prompts[0].split("Data:\n")[1]);
+            expect(payload.sourceErrors).toEqual({ life: "unavailable" });
+            expect(payload).not.toHaveProperty("lifeSummary");
             expect(prompts[0]).toContain("are unavailable, not empty");
             expect(briefing.narrative).toBe("Life source unavailable.");
           } else {
@@ -1279,9 +1280,13 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(args.prompt).toContain("Approve the SOW"); // inbox
       expect(args.prompt).toContain("Send NDA"); // life
       expect(args.prompt).toContain("Send the signed contract"); // commitments
-      expect(args.prompt).toContain('"editorial"');
-      expect(args.prompt).toContain('"itemId": "inbox:msg-1"');
-      expect(args.prompt).toContain('"action": "lead"');
+      const payload = JSON.parse(args.prompt.split("Data:\n")[1]);
+      expect(payload.editorial.items).toContainEqual(
+        expect.objectContaining({ itemId: "inbox:msg-1" }),
+      );
+      expect(payload.editorial.decisions).toContainEqual(
+        expect.objectContaining({ action: "lead" }),
+      );
     });
 
     it("honors include flags by suppressing whole sections", async () => {

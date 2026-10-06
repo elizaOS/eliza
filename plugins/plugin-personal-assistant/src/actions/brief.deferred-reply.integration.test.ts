@@ -34,7 +34,11 @@ import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
 } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
-import { projectToolResultForModel } from "../../../plugin-assistant/src/runtime/planner-rendering.ts";
+import {
+  compactCanonicalToolMessagesForModel,
+  projectToolResultForModel,
+  trajectoryStepsToMessages,
+} from "../../../plugin-assistant/src/runtime/planner-rendering.ts";
 import {
   collectPlannerTools,
   collectPreviousActionResults,
@@ -628,7 +632,27 @@ describe("planner-owned BRIEF", () => {
     expect(prompt).toContain(
       "Completion and delivery cannot be inferred from a timestamp",
     );
-    const payload = JSON.parse(prompt.split("\nData:\n")[1]);
+    const encoded = prompt.split("\nData:\n")[1];
+    const payload = JSON.parse(encoded);
+    expect(encoded).toBe(JSON.stringify(payload));
+    const native = compactCanonicalToolMessagesForModel(
+      trajectoryStepsToMessages([
+        {
+          iteration: 1,
+          toolCall: { id: "brief-complete-data", name: "BRIEF" },
+          result: actionResultToPlannerToolResult(result),
+        },
+      ]),
+    );
+    const tool = native.find((message) => message.role === "tool");
+    if (!tool || !Array.isArray(tool.content))
+      throw new Error("Missing native result");
+    const part = tool.content.find((part) => part.type === "tool-result");
+    if (part?.type !== "tool-result" || part.output.type !== "text")
+      throw new Error("Missing native text result");
+    expect(JSON.parse(part.output.value).data.replyGrounding).toBe(
+      projected.data?.replyGrounding,
+    );
     expect(payload).toMatchObject({
       asOf: "2026-10-06T01:30:00.000Z",
       timeZone: "America/Los_Angeles",
