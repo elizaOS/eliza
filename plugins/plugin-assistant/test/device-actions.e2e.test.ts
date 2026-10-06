@@ -1124,6 +1124,21 @@ test("device approval REST lifecycle survives restart and never duplicates claim
             preselectedActions: [proposeDeviceAction],
           }),
       );
+      const capabilityInstruction = clockContext.events.find(
+        (event) => event.id === "authenticated-phone-capability",
+      );
+      const nativeGuidance =
+        capabilityInstruction?.type === "instruction"
+          ? capabilityInstruction.content
+          : undefined;
+      expect(nativeGuidance).not.toContain("candidateActionNames");
+      expect(nativeGuidance).toContain(
+        "select general planning and pending effect status",
+      );
+      expect(nativeGuidance).toContain(
+        'DISCOVER_ACTIONS with names=["PROPOSE_DEVICE_ACTION"]',
+      );
+      expect(nativeGuidance).toContain("if that exact tool is not loaded");
       const inferredClock = clockContext.events.find(
         (event: any) =>
           event.type === "tool" && event.tool.name === "PROPOSE_DEVICE_ACTION",
