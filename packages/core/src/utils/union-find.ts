@@ -39,7 +39,7 @@ export class UnionFind<T> {
 	 *
 	 * Deliberately iterative. `union()` carries no union-by-rank/size
 	 * heuristic, so a component whose edges arrive in a chain order
-	 * (`union(b, a)`, `union(c, b)`, ...) re-roots one level at a time and
+	 * (`union(b, a)`, `union(c, b)`,...) re-roots one level at a time and
 	 * leaves a parent chain as deep as the component is large — that is
 	 * exactly the shape `RelationshipsService.buildIdentityUnionFind`'s
 	 * frontier walk produces for a path of confirmed identity links. A

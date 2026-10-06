@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 /**
  * Real-filesystem coverage for the Notes backend. Tests restart the
  * durable store, exercise concurrent serialized writes, drive every domain
@@ -20,7 +20,7 @@ import type {
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
-} from "@elizaos/core/api/http-plugin";
+} from "@elizaos/host/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   interact,
@@ -194,6 +194,7 @@ async function invokeRoute(
     method: routeValue.type,
     path: routeValue.path,
     runtime,
+    signal: new AbortController().signal,
     inProcess: false,
     isTrustedLocal: true,
   } satisfies RouteHandlerContext;

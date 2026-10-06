@@ -7,13 +7,13 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import * as React from "react";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 // Overlay/content z-index must be a literal arbitrary class (`z-[160]` /
 // `z-[170]`) so Tailwind v4's source scanner emits it — Tailwind cannot resolve
 // classes built from runtime template-literal values, and a non-emitted class
 // drops `position: fixed`/stacking so page chrome shows through the modal. Keep
-// in sync with packages/ui/src/lib/floating-layers.ts
+// in sync with packages/ui/src/utils/floating-layers.ts
 // (Z_DIALOG_OVERLAY = 160, Z_DIALOG = 170).
 
 const Dialog = DialogPrimitive.Root;

@@ -7,7 +7,7 @@
  * prefix (`APP_ENV_PREFIX`).
  */
 
-import { buildBrandEnvAliases } from "@elizaos/core/config/brand-env-aliases";
+import { buildBrandEnvAliases } from "@elizaos/host/protocol";
 import { APP_CONFIG } from "./app-config";
 import { normalizeEnvPrefix } from "./env-prefix.js";
 

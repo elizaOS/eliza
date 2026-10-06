@@ -4,6 +4,7 @@
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
+
 import type {
 	ActionFailureKind,
 	ActionFailureProvenance,
@@ -15,7 +16,6 @@ import type {
 	EvaluationResult,
 	ReplyEffectStatus,
 } from "../types/components";
-import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
 import type {
 	ChatMessage,
@@ -28,10 +28,11 @@ import type {
 	ToolDefinition,
 } from "../types/model";
 import type { State } from "../types/state";
+import type { ContextObject } from "./context-object";
 import type { ChainingLoopConfig } from "./limits";
 import type { TrajectoryRecorder } from "./trajectory-recorder";
 
-export type { ContextObject } from "../types/context-object";
+export type { ContextObject } from "./context-object";
 
 export interface PlannerToolCall {
 	id?: string;
@@ -277,11 +278,7 @@ export interface PlannerToolResult {
 	modelReplyRequired?: boolean;
 	/** Vetted action-owned fallback for a failed required model synthesis. */
 	modelReplyFallback?: string;
-	/**
-	 * Explicit chain-control override. `false` unconditionally aborts the
-	 * remaining planner queue, including for legacy failure and fire-and-forget
-	 * results. It is distinct from the conservative `turnComplete` fast path.
-	 */
+	/** An explicit false aborts the remaining planner queue, including failed and fire-and-forget results. This differs from the conservative turnComplete fast path. */
 	continueChain?: boolean;
 }
 
@@ -465,7 +462,7 @@ export interface PlannerLoopParams {
 	 * marker and keep the full corrective budget. Inferred evidence is weaker —
 	 * when the planner re-commits to the
 	 * IDENTICAL terminal answer on consecutive misses, the loop accepts it
-	 * (mirroring the widget-identity early-finish, #15230) instead of
+	 * instead of
 	 * burning the full miss budget on the heuristic's guess. Omitted (the
 	 * model named the tool itself) keeps the full corrective budget.
 	 */

@@ -4,9 +4,9 @@
  */
 
 import { useMemo } from "react";
-import { useWhatsAppPairing } from "../../hooks";
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "../../hooks/useConnectorAccounts";
-import { useAppSelector } from "../../state";
+import { useWhatsAppPairing } from "../../hooks/useWhatsAppPairing";
+import { useAppSelector } from "../../state/app-store";
 import { StatusPulseDot } from "../ui/status-badge";
 import { ConnectorQrPairingOverlay } from "./ConnectorQrPairingOverlay";
 

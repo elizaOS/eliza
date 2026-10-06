@@ -9,7 +9,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { ChannelType, type UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
+import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DocumentService } from "./service.ts";
 import type { AddDocumentOptions } from "./types.ts";

@@ -9,7 +9,7 @@ import type {
   PermissionId,
   PermissionState,
   PermissionStatus,
-} from "@elizaos/core/contracts/permissions";
+} from "@elizaos/core/protocol";
 import {
   type AppBlockerPermissionResult,
   type AppBlockerPluginLike,

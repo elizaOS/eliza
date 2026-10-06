@@ -3,7 +3,7 @@
  * seam for tests and stories.
  */
 
-import type { PermissionId } from "@elizaos/core/contracts/permissions";
+import type { PermissionId } from "@elizaos/core/protocol";
 import {
   AudioLines,
   Bell,
@@ -14,7 +14,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import * as React from "react";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
+import { appNameInterpolationVars } from "../../config/branding-base";
+import { useBranding } from "../../config/branding-react.hooks";
 import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";

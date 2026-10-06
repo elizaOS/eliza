@@ -1,6 +1,5 @@
-// Configures the USB installer build, server, and tests.
 import { randomUUID } from "node:crypto";
-import { createPlatformBackend } from "./src/backend/index";
+import { createPlatformBackend } from "./src/backend/platform-backend";
 import type {
   InstallerStepId,
   UsbInstallerBackend,
@@ -8,6 +7,10 @@ import type {
   WritePlan,
   WriteRequest,
 } from "./src/backend/types";
+import {
+  parseWriteRequest,
+  WriteRequestValidationError,
+} from "./src/backend/write-plan";
 import { assertWritePlanAllowed } from "./src/backend/write-safety";
 
 const PORT = Number(process.env.ELIZAOS_USB_INSTALLER_PORT ?? 3742);
@@ -173,6 +176,9 @@ export function createUsbInstallerHandler(
   }
 
   async function createStoredPlan(request: WriteRequest): Promise<WritePlan> {
+    deleteExpiredPlans();
+    if (!request.dryRun && plans.size >= 8)
+      throw new Error("Too many pending write plans.");
     if (!request.dryRun) {
       assertRawWriteGate();
     }
@@ -185,6 +191,8 @@ export function createUsbInstallerHandler(
     assertWritePlanAllowed(plan, {
       canonicalRawZstdSupported: backend.canonicalRawZstdSupported === true,
     });
+    deleteExpiredPlans();
+    if (plans.size >= 8) throw new Error("Too many pending write plans.");
     const planId = randomUUID();
     plans.set(planId, {
       plan,
@@ -256,7 +264,11 @@ export function createUsbInstallerHandler(
       }
 
       if (url.pathname === "/plan" && req.method === "POST") {
-        const request = (await req.json()) as WriteRequest;
+        const request = parseWriteRequest(
+          await req.json().catch(() => {
+            throw new WriteRequestValidationError("Invalid request JSON.");
+          }),
+        );
         const plan = await createStoredPlan(request);
         return jsonResponse(req, plan);
       }
@@ -419,7 +431,11 @@ export function createUsbInstallerHandler(
         headers: corsHeaders(req),
       });
     } catch (err) {
-      return errorResponse(req, err);
+      return errorResponse(
+        req,
+        err,
+        err instanceof WriteRequestValidationError ? 400 : 500,
+      );
     }
   };
 }

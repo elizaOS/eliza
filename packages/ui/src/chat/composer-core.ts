@@ -14,13 +14,14 @@
  * the behavior drifted — the IME guard shipped only on the overlay, so a CJK
  * candidate commit sent the message on the other two surfaces.
  */
-
-import type {
-  ClipboardEvent as ReactClipboardEvent,
-  KeyboardEvent as ReactKeyboardEvent,
+import {
+  type ClipboardEvent as ReactClipboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useRef,
 } from "react";
-import { useCallback, useRef } from "react";
-import type { ImageAttachment } from "../api";
+
+import type { ImageAttachment } from "../api/client-types-chat";
 import { classifyComposerPaste } from "../utils/image-attachment";
 
 /**

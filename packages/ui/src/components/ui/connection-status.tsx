@@ -6,7 +6,7 @@
  * (see the note in src/index.ts).
  */
 import * as React from "react";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 
 export type ConnectionState = "connected" | "disconnected" | "error";
 

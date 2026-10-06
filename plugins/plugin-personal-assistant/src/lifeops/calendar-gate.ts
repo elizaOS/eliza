@@ -9,14 +9,14 @@
  * rows exactly as before the extraction.
  */
 
+import type {
+  LifeOpsAuditEvent,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsGoogleConnectorStatus,
+  LifeOpsReminderPlan,
+} from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type LifeOpsAuditEvent,
-  type LifeOpsConnectorMode,
-  type LifeOpsConnectorSide,
-  type LifeOpsGoogleConnectorStatus,
-  type LifeOpsReminderPlan,
-} from "@elizaos/core/contracts/personal-assistant";
 import {
   type CalendarHostGate,
   CalendarService,

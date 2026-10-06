@@ -1,13 +1,19 @@
 /** Verifies useCachedResource through the package's configured test harness. */
 // @vitest-environment jsdom
 
-import { renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { __resetResourceCache } from "./resource-cache";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, test, vi } from "vitest";
+import {
+  __resetResourceCache,
+  setCached,
+  startPolling,
+} from "./resource-cache";
 import { useCachedResource } from "./useCachedResource";
 
 afterEach(() => {
+  cleanup();
   __resetResourceCache();
+  vi.useRealTimers();
 });
 
 describe("useCachedResource", () => {
@@ -161,4 +167,110 @@ describe("useCachedResource", () => {
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+});
+
+test("disabled resource does not expose cached data (documented contract)", () => {
+  setCached("review-disabled", { value: 42 });
+  const fetcher = vi.fn();
+  const { result } = renderHook(() =>
+    useCachedResource("review-disabled", fetcher, { enabled: false }),
+  );
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(result.current.status).toBe("loading");
+});
+test("polling deduplicates a still-pending request (documented contract)", async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn(() => new Promise(() => {}));
+  const stop = startPolling("review-poll", fetcher, 100);
+  await vi.advanceTimersByTimeAsync(300);
+  stop();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+test("a failure for a previous key cannot replace the current key loading state", async () => {
+  let failA!: (e: Error) => void;
+  const a = new Promise<never>((_, reject) => {
+    failA = reject;
+  });
+  const b = new Promise<never>(() => {});
+  const { result, rerender } = renderHook(
+    ({ key }) => useCachedResource(key, () => (key === "review-a" ? a : b)),
+    { initialProps: { key: "review-a" } },
+  );
+  rerender({ key: "review-b" });
+  await act(async () => {
+    failA(new Error("A failed"));
+    await Promise.resolve();
+  });
+  expect(result.current.status).toBe("loading");
+  expect(result.current.isValidating).toBe(true);
+});
+
+test("background poll errors are observable without losing cached data and clear on recovery", async () => {
+  vi.useFakeTimers();
+  setCached("poll-error", "cached");
+  const failure = new Error("offline");
+  const fetcher = vi
+    .fn<() => Promise<string>>()
+    .mockRejectedValueOnce(failure)
+    .mockResolvedValue("cached");
+  const { result } = renderHook(() => useCachedResource("poll-error", fetcher));
+  const stop = startPolling("poll-error", fetcher, 100);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(100);
+  });
+  expect(result.current).toMatchObject({
+    status: "success",
+    data: "cached",
+    revalidationError: failure,
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(100);
+  });
+  expect(result.current).toMatchObject({
+    status: "success",
+    data: "cached",
+    revalidationError: null,
+  });
+  stop();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("disabled transitions hide the cache and disable explicit refetch and mutation", async () => {
+  setCached("disabled-transition", "original");
+  const fetcher = vi.fn(async () => "fetched");
+  const { result, rerender } = renderHook(
+    ({ enabled }) =>
+      useCachedResource("disabled-transition", fetcher, { enabled }),
+    { initialProps: { enabled: true } },
+  );
+  expect(result.current).toMatchObject({ status: "success", data: "original" });
+  rerender({ enabled: false });
+  await act(async () => {
+    await result.current.refetch();
+    result.current.mutate("changed");
+  });
+  expect(result.current).toMatchObject({
+    status: "loading",
+    isValidating: false,
+    revalidationError: null,
+  });
+  rerender({ enabled: true });
+  expect(result.current).toMatchObject({ status: "success", data: "original" });
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+test("a synchronous fetcher failure follows the same error path as a rejected promise", async () => {
+  const failure = new Error("synchronous fetch failure");
+  const { result } = renderHook(() =>
+    useCachedResource("sync-failure", () => {
+      throw failure;
+    }),
+  );
+  await waitFor(() =>
+    expect(result.current).toMatchObject({
+      status: "error",
+      error: failure,
+      isValidating: false,
+    }),
+  );
 });

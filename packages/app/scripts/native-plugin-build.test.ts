@@ -1,4 +1,4 @@
-/** Exercises both native build entrypoints against real temporary packages and build subprocesses. */
+/** Exercises the native build entrypoint against real temporary packages and build subprocesses. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -20,7 +20,6 @@ test("shared builder preserves freshness, forced development builds, and depende
   try {
     for (const file of [
       "build-native-plugins.ts",
-      "plugin-build.ts",
       "lib/capacitor-plugin-names.ts",
     ]) {
       const target = path.join(appScripts, file);
@@ -176,26 +175,26 @@ test("shared builder preserves freshness, forced development builds, and depende
     success(run("build-native-plugins.ts"));
     assert.ok(fs.existsSync(path.join(plugin, "dist/index.js")));
     assert.deepEqual(history(), ["core", "plugin"]);
-    success(run("plugin-build.ts"));
+    success(run("build-native-plugins.ts"));
     assert.deepEqual(history(), ["core", "plugin"]);
     success(
-      run("plugin-build.ts", {
+      run("build-native-plugins.ts", {
         ELIZA_DEV_SOURCE: "1",
         ELIZA_FORCE_PLUGIN_BUILD: "1",
       }),
     );
     assert.deepEqual(history(), ["core", "plugin", "plugin"]);
-    success(run("plugin-build.ts", { ELIZA_FORCE_PLUGIN_BUILD: "1" }));
+    success(run("build-native-plugins.ts", { ELIZA_FORCE_PLUGIN_BUILD: "1" }));
     assert.deepEqual(history(), ["core", "plugin", "plugin", "core", "plugin"]);
     const pluginManifestPath = path.join(plugin, "package.json");
     const manifest = JSON.parse(fs.readFileSync(pluginManifestPath, "utf8"));
-    manifest.eliza = {
+    manifest.elizaos = {
       platforms: [process.platform === "win32" ? "linux" : "win32"],
     };
     fs.writeFileSync(pluginManifestPath, JSON.stringify(manifest));
-    success(run("plugin-build.ts"));
+    success(run("build-native-plugins.ts"));
     assert.deepEqual(history(), ["core", "plugin", "plugin", "core", "plugin"]);
-    delete manifest.eliza;
+    delete manifest.elizaos;
     fs.writeFileSync(pluginManifestPath, JSON.stringify(manifest));
     // Dependency contents must invalidate consumers even with older mtimes.
     const coreSource = path.join(core, "src/index.ts");
@@ -213,7 +212,7 @@ test("shared builder preserves freshness, forced development builds, and depende
     ];
     assert.deepEqual(history(), refreshed);
     fs.writeFileSync(path.join(core, "build.ts"), "process.exit(7);\n");
-    const failure = run("plugin-build.ts");
+    const failure = run("build-native-plugins.ts");
     assert.notEqual(failure.status, 0);
     assert.deepEqual(history(), refreshed);
   } finally {

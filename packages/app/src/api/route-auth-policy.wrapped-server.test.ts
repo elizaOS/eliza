@@ -57,6 +57,11 @@ describe("per-agent compat pass-through auth", { concurrent: false }, () => {
     server = await startApiServer({
       port: 0,
       skipDeferredStartupWork: true,
+      composeStatus: (payload) => ({
+        ...payload,
+        hostMarker: "composed",
+        pendingRestartReasons: ["host-setting"],
+      }),
     });
     baseUrl = `http://127.0.0.1:${server.port}`;
   });
@@ -89,6 +94,11 @@ describe("per-agent compat pass-through auth", { concurrent: false }, () => {
       headers: { authorization: `Bearer ${OWNER_TOKEN}` },
     });
     expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      hostMarker: "composed",
+      pendingRestart: true,
+      pendingRestartReasons: ["host-setting"],
+    });
   });
 
   it("does not make a known bootstrap credential depend on auth-store startup", async () => {

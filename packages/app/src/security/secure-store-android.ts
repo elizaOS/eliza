@@ -7,7 +7,7 @@ import type {
   SecureStoreGetResult,
   SecureStoreSecretKind,
   SecureStoreSetResult,
-} from "./platform-secure-store";
+} from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 
 const MAX_FRAME = 4 * 1024 * 1024;
 type Reply =
@@ -16,7 +16,8 @@ type Reply =
   | SecureStoreDeleteResult;
 
 export function createAndroidPlatformSecureStore(
-  socketPath = "\0ai.elizaos.app.secure-store",
+  // Embedding Android hosts supply the abstract socket name without its NUL prefix.
+  socketPath = `\0${process.env.ELIZA_ANDROID_SECURE_STORE_SOCKET || "ai.elizaos.app.secure-store"}`,
   timeoutMs = 15_000,
 ): PlatformSecureStore {
   async function request(

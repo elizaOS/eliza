@@ -15,7 +15,7 @@ import {
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   type LifeOpsActivitySignalSource,
   type LifeOpsActivitySignalSourceName,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/contracts";
 import type { LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
 
 export type {
@@ -3725,16 +3725,14 @@ export interface SendLifeOpsIMessageRequest {
 // cross-package contract surface but resolve to the single canonical
 // definitions — no parallel shape is maintained here.
 export type {
-  Entity as LifeOpsEntity,
-  EntityAttribute as LifeOpsEntityAttribute,
-  EntityIdentity as LifeOpsEntityIdentity,
-  EntityIdentityAddedVia as LifeOpsEntityIdentityAddedVia,
-  EntityState as LifeOpsEntityState,
-  EntityVisibility as LifeOpsEntityVisibility,
-} from "@elizaos/core/knowledge-graph/entity-types";
-export type {
-  Relationship as LifeOpsGraphRelationship,
-  RelationshipSource as LifeOpsGraphRelationshipSource,
-  RelationshipState as LifeOpsGraphRelationshipState,
-  RelationshipStatus as LifeOpsGraphRelationshipStatus,
-} from "@elizaos/core/knowledge-graph/relationship-types";
+  KnowledgeGraphEntity as LifeOpsEntity,
+  KnowledgeGraphRelationship as LifeOpsGraphRelationship,
+  LifeOpsEntityAttribute,
+  LifeOpsEntityIdentity,
+  LifeOpsEntityIdentityAddedVia,
+  LifeOpsEntityState,
+  LifeOpsEntityVisibility,
+  LifeOpsGraphRelationshipSource,
+  LifeOpsGraphRelationshipState,
+  LifeOpsGraphRelationshipStatus,
+} from "@elizaos/contracts";

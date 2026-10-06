@@ -12,7 +12,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { syncToAosp } from "../distro-android/sync-to-aosp.ts";
+import { syncToAosp } from "../android/sync-to-aosp.ts";
 
 function fixture(t) {
   const root = mkdtempSync(path.join(os.tmpdir(), "aosp-vendor-sync-"));

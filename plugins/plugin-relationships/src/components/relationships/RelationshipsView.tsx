@@ -1,30 +1,16 @@
-/**
- * RelationshipsView — the GUI data wrapper for the entity / relationship
- * knowledge-graph viewer.
- *
- * It owns the live graph data (the fetcher seam over the two read-only endpoints
- * the personal-assistant routes serve, the quiet background poll, and the
- * wire->display join) and renders the one presentational
- * {@link RelationshipsSpatialView} inside a {@link SpatialSurface}. The browser
- * DOM surface ships today, while the retained modality contract stays available
- * for future adapters.
- *
- * Data source (the runtime owns the EntityStore / RelationshipStore persistence;
- * this plugin only reads):
- *   GET {base}/api/lifeops/entities       -> { entities: EntityWire[] }
- *   GET {base}/api/lifeops/relationships   -> { relationships: RelationshipWire[] }
- *
- * The graph is read-only: the only owner actions are `add` (route an add-a-person
- * request through the assistant chat — no fabricated people), `retry` (reload
- * after an error), and `open:<id>` (focus an entity from chat). This plugin MUST
- * NOT import from @elizaos/plugin-personal-assistant; the wire DTOs below are
- * declared locally to match the JSON shape PA emits.
- */
+/** Relationships view: fetches scoped records and opens assistant requests in chat. */
 
-import { client } from "@elizaos/ui/api";
+import { client, dispatchChatPrefill } from "@elizaos/ui";
 
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import { ENTITY_KIND_FILTERS, ENTITY_KIND_LABELS } from "../../types.ts";
 import {
   EMPTY_RELATIONSHIPS,
@@ -250,24 +236,15 @@ type LoadState =
   | { kind: "ready"; nodes: EntityNode[] };
 
 function requestAddPerson(): void {
-  // The add-a-person affordance routes through the assistant chat. `client` does
-  // not type `sendChatMessage`, so read it through a narrow optional-method view
-  // and call it only when present — no fabricated people, best-effort dispatch.
-  const chatClient = client as {
-    sendChatMessage?: (text: string) => void;
-  };
-  chatClient.sendChatMessage?.(
-    "Add someone to my relationships graph — tell me who you'd like to remember.",
-  );
+  dispatchChatPrefill({
+    text: "Add someone to my relationships graph — tell me who you'd like to remember.",
+  });
 }
 
 function requestOpenEntity(entityId: string): void {
-  const chatClient = client as {
-    sendChatMessage?: (text: string) => void;
-  };
-  chatClient.sendChatMessage?.(
-    `Tell me about ${entityId} in my relationships graph.`,
-  );
+  dispatchChatPrefill({
+    text: `Tell me about ${entityId} in my relationships graph.`,
+  });
 }
 
 export function RelationshipsView(

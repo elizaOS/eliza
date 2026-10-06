@@ -586,11 +586,23 @@ async function opCreate(
     !readString(params.scheduledAtIso) &&
     !readString(params.cronExpression)
   ) {
-    return failed(
-      "create",
-      "Provide an explicit schedule before creating a trigger.",
-      "MISSING_SCHEDULE",
-    );
+    return {
+      ...failed(
+        "create",
+        "Provide an explicit schedule before creating a trigger.",
+        "MISSING_SCHEDULE",
+        { acceptance: "rejected", executionStatus: "not_started" },
+      ),
+      // No write has started: corrected schedule parameters can safely retry.
+      // Keep this validation rejection in the trace without giving it authority
+      // over a later committed creation with those corrected parameters.
+      failureProvenance: {
+        kind: "handler_error",
+        boundary: "handler",
+        code: "MISSING_SCHEDULE",
+        retryable: true,
+      },
+    };
   }
 
   const cronExpression = readString(params.cronExpression);
@@ -776,17 +788,7 @@ async function opCreate(
     );
   }
 
-  // Two duplicate tiers with different evidentiary strength. A dedupeKey
-  // match hashes the FULL request (type, instructions, schedule, workflow),
-  // so it proves the desired state is already true and may mint a replayed
-  // receipt. The legacy fallback matches instructions+type only — it ignores
-  // the schedule, so a stored 8am reminder "matches" a new 9am request; that
-  // is a hint, never proof, and must not become a verified "you're covered".
-  // The createdBy equality is load-bearing even though the key already hashes
-  // the creator: dedupeHash is a 32-bit djb2, so a collision across users is
-  // possible — and a cross-recipient false match here silently swallows a
-  // distinct recipient's delivery. The structural guard makes that class of
-  // suppression impossible regardless of hash width.
+  // Match the complete request and creator before replaying a committed receipt.
   const exactDuplicate = existingTasks.find((t) => {
     const cfg = readTriggerConfig(t);
     return Boolean(
@@ -812,28 +814,6 @@ async function opCreate(
       { duplicateTaskId: exactDuplicate.id, dedupeKey },
     );
   }
-  const legacyDuplicate = existingTasks.find((t) => {
-    const cfg = readTriggerConfig(t);
-    if (!cfg?.enabled || cfg.dedupeKey) return false;
-    // Same recipient only: another user's identical wording is a different
-    // delivery, not a near-duplicate — steering them to "delete it first"
-    // would suppress their own reminder in favor of someone else's.
-    if (cfg.createdBy !== creatorId) return false;
-    return (
-      cfg.instructions.trim().toLowerCase() === instructions.toLowerCase() &&
-      cfg.triggerType === triggerType
-    );
-  });
-  if (legacyDuplicate?.id) {
-    // Un-receipted: the fuzzy match cannot prove the schedule matches, so
-    // this reports the near-duplicate without claiming verified success.
-    return ok(
-      "create",
-      `A similar ${triggerType} trigger already exists ("${readTriggerConfig(legacyDuplicate)?.instructions ?? "unknown"}"). Confirm whether that covers this, or delete it first to create the new one.`,
-      { duplicateTaskId: legacyDuplicate.id, legacyFuzzyMatch: true },
-    );
-  }
-
   // A trigger with a workflowId dispatches that workflow; without one it is a
   // "prompt automation" (a reminder) that injects `instructions` as an agent
   // turn when it fires. Both are first-class TriggerConfig kinds — a reminder
@@ -973,8 +953,15 @@ async function opUpdate(
     next.intervalMs = normalizedIntervalMs;
   }
   if (scheduledAtIso !== undefined && next.triggerType === "once") {
-    if (parseScheduledAtIso(scheduledAtIso) === null) {
-      return failed("update", "Invalid scheduledAtIso.", "INVALID_SCHEDULE");
+    const atMs = parseScheduledAtIso(scheduledAtIso);
+    // Same rule as create: a past once-time becomes updateInterval 0, and the
+    // scheduler then treats the repeat task as invalid and never fires it.
+    if (atMs === null || atMs <= Date.now()) {
+      return failed(
+        "update",
+        "Once trigger requires a valid future scheduledAtIso.",
+        "INVALID_SCHEDULE",
+      );
     }
     dedupeIdentityChanged =
       dedupeIdentityChanged || scheduledAtIso !== trigger.scheduledAtIso;
@@ -1165,6 +1152,20 @@ async function opToggle(
     params.enabled === undefined ? !trigger.enabled : readBool(params.enabled);
   const next: TriggerConfig = { ...trigger, enabled };
   const nowMs = Date.now();
+  if (enabled && next.triggerType === "once") {
+    const atMs = next.scheduledAtIso
+      ? parseScheduledAtIso(next.scheduledAtIso)
+      : null;
+    // Resuming after the fire time used to persist updateInterval 0 and
+    // report success. The scheduler skips that repeat task forever.
+    if (atMs === null || atMs <= nowMs) {
+      return failed(
+        "toggle",
+        "Once trigger requires a valid future scheduledAtIso.",
+        "INVALID_SCHEDULE",
+      );
+    }
+  }
   // A disabled trigger has no next fire by definition — `resolveTriggerTiming`
   // returns null for `enabled === false`, so recomputing timing for the
   // about-to-be-paused config ALWAYS failed and pausing was structurally

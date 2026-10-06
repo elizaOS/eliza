@@ -13,7 +13,7 @@ import {
   type Transcript,
   transcriptCapturePrivacyState,
   transcriptPreview,
-} from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeFakeRuntime, segment } from "../test-support.js";
 import {

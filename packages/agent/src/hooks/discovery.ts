@@ -29,41 +29,9 @@ const HANDLER_NAMES = [
   "index",
 ];
 
-function decodeLegacyHookFrontmatter(
-  raw: string,
-): ParsedHookFrontmatter | null {
-  const result: ParsedHookFrontmatter = { name: "", description: "" };
-  for (const line of raw.split("\n")) {
-    const match = line.match(/^(\w+):\s*(.+)/);
-    if (!match) continue;
-    const [, key, rawValue] = match;
-    const value = rawValue.replace(/^["']|["']$/g, "").trim();
-    if (key === "name") result.name = value;
-    else if (key === "description") result.description = value;
-    else if (key === "homepage") result.homepage = value;
-    else if (key === "metadata") {
-      const metadataText = raw.slice(raw.indexOf(line) + line.indexOf(":") + 1);
-      const json = metadataText.match(/\{[\s\S]*\}/)?.[0];
-      if (json) {
-        try {
-          result.metadata = JSON.parse(
-            json,
-          ) as ParsedHookFrontmatter["metadata"];
-        } catch {
-          // error-policy:J3 legacy malformed metadata stays explicitly absent.
-        }
-      }
-    }
-  }
-  return result.name ? result : null;
-}
-
 function parseFrontmatter(content: string): ParsedHookFrontmatter | null {
   const parsed = parseFrontmatterDocument(content);
-  if (parsed.kind === "invalid") {
-    return parsed.raw ? decodeLegacyHookFrontmatter(parsed.raw) : null;
-  }
-  if (parsed.kind === "none") return null;
+  if (parsed.kind !== "parsed") return null;
   const { name, description, homepage, metadata } = parsed.frontmatter;
   if (typeof name !== "string" || !name.trim()) return null;
   if (typeof description !== "string") return null;

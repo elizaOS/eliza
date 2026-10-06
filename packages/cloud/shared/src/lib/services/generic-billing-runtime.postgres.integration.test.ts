@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { installBillingCommandEvidenceTestColumns } from "../../testing";
 import type { AccountDeletionProviderContext } from "./account-deletion-saga";
 import type { BuyerBillingIdentity, GenericBillingRuntime } from "./generic-billing-runtime";
 import { createRuntimeStripeFixture } from "./generic-billing-runtime.stripe-fixture";
@@ -129,6 +130,8 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
       "0428_billing_identity_anchors",
       "0429_billing_identity_backfill",
       "0430_billing_identity_references",
+      "0511_organization_plan_change_quotes",
+      "0512_organization_upgrade_dispatch",
       "0431_app_billing_deletion_dispositions",
       "0432_app_billing_deletion_disposition_guards",
       "0433_app_billing_customer_closures",
@@ -179,6 +182,7 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
       for (const statement of migration.split("--> statement-breakpoint"))
         if (statement.trim()) await db.query(statement.replaceAll('"public".', ""));
     }
+    await installBillingCommandEvidenceTestColumns((statement) => db.query(statement));
     // The focused fixture omits unrelated storage/sandbox tables from 0380.
     await db.query(
       "ALTER TABLE organization_subscription_authorities ADD COLUMN policy_generation bigint NOT NULL DEFAULT 0 CHECK (policy_generation >= 0)",

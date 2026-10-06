@@ -1,3 +1,9 @@
+import {
+  getFrontendPlatform,
+  loadNativeAppsStudio,
+  loadWebAppsStudio,
+  registerAppShellPage,
+} from "@elizaos/ui";
 /**
  * In-process app-shell registration for the Eliza Cloud **Applications**
  * dashboard across web and native runtimes.
@@ -19,8 +25,6 @@
  * is reached from the Projects view's Apps-segment Eliza Cloud row and deep links
  * (`eliza://apps/deploy` → `/cloud-apps`).
  */
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { getFrontendPlatform } from "@elizaos/ui/platform";
 
 /** Choose the provider/router wrapper owned by the current host platform. */
 export function cloudAppsStudioKind(platform: string): "web" | "native" {
@@ -30,8 +34,8 @@ export function cloudAppsStudioKind(platform: string): "web" | "native" {
 const studioKind = cloudAppsStudioKind(getFrontendPlatform());
 const loadCloudAppsStudio =
   studioKind === "web"
-    ? () => import("@elizaos/ui/cloud/applications/WebAppsStudio")
-    : () => import("@elizaos/ui/cloud/applications/NativeAppsStudio");
+    ? () => loadWebAppsStudio()
+    : () => loadNativeAppsStudio();
 
 registerAppShellPage({
   id: "cloud-apps",

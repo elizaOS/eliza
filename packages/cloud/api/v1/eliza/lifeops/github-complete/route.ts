@@ -10,12 +10,12 @@
  * org-scoped lookups when the user later acts on the connection.
  */
 
-import { Hono } from "hono";
 import {
   createLifeOpsGithubReturnResponse,
   normalizePostMessageTargetOrigin,
-} from "@/lib/services/agent-github-return";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/agent-github-return";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
 
@@ -52,9 +52,7 @@ async function __hono_GET(
     return Response.json({ error: "Invalid target" }, { status: 400 });
   }
   const target = rawTarget === "agent" && agentId ? "agent" : "owner";
-  const dashboardUrl = `${baseUrl}/cloud/settings?tab=${
-    target === "agent" ? "agents" : "connections"
-  }`;
+  const dashboardUrl = `${baseUrl}/cloud/${target === "agent" ? "agents" : "connectors"}`;
 
   if (githubError) {
     if (postMessage || returnUrl) {

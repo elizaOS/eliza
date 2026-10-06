@@ -14,7 +14,6 @@ const catalogRouteGroups = [
       { label: "Camera", path: "/camera", icon: "camera" },
       { label: "Browser", path: "/browser", icon: "compass" },
       { label: "Live stream", path: "/stream", icon: "pulse" },
-      { label: "Pendant transcript", path: "/pendant/transcript", icon: "mic" },
       { label: "Views", path: "/views", icon: "grid" },
       { label: "Apps", path: "/apps", icon: "apps" },
       { label: "Background", path: "/background", icon: "image" },

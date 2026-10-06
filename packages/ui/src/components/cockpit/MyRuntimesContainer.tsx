@@ -9,9 +9,9 @@ import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import {
   addAgentProfile,
   loadAgentProfileRegistry,
-  switchRuntimeNonDestructive,
-} from "../../state";
+} from "../../state/agent-profiles";
 import { isTrustedRestoreApiBaseUrl } from "../../state/runtime-url-trust";
+import { switchRuntimeNonDestructive } from "../../state/switch-runtime";
 import { SettingsStack } from "../settings/settings-layout";
 import { MyRuntimesSection } from "./MyRuntimesSection";
 

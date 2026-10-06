@@ -13,8 +13,8 @@ import {
 
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
-import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../perf/layout-stability";
+import { useAppSelector } from "../../state/app-store";
 import {
   acknowledgeNotificationCenterOpenRequest,
   peekNotificationCenterOpenRequest,
@@ -22,7 +22,7 @@ import {
 } from "../../state/notifications/notification-center-open-request";
 import { useNotifications } from "../../state/notifications/notification-store";
 import { useShellSurface } from "../../state/shell-surface-store";
-import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
+import { cn } from "../../utils/cn";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";

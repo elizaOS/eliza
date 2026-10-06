@@ -134,9 +134,9 @@ export function createTaskGuidance(api, authorize) {
               expiresAt,
               action: command.subaction,
               text: {
-                click: "Eliza will select this control.",
-                fill: "Eliza will enter the approved information here.",
-                scroll: "Eliza will scroll this area.",
+                click: "I will select this control.",
+                fill: "I will enter the approved information here.",
+                scroll: "I will scroll this area.",
               }[command.subaction],
             },
           ]);

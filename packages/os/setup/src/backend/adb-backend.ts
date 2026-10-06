@@ -16,7 +16,7 @@ import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import hardwareInventory from "../../../android/hardware-targets.json";
 import { syncDirectoryTree } from "../../../scripts/android/install-lock.ts";
-import { findHostTool } from "../dependencies/host-tools";
+import { findHostTool } from "./host-tools";
 import { executeSignedInstall, SignedInstallError } from "./signed-install";
 import {
   describeSignedRelease,
@@ -25,7 +25,6 @@ import {
   signedReleaseFiles,
 } from "./signed-release";
 import type {
-  AndroidReleaseManifest,
   AospBuild,
   AospFlasherBackend,
   ConnectedDevice,
@@ -108,16 +107,6 @@ const HARDWARE_TARGETS = parseHardwareTargets(hardwareInventory);
 const HARDWARE_TARGETS_BY_ID = new Map(
   HARDWARE_TARGETS.map((target) => [target.targetId, target]),
 );
-const REQUIRED_VALIDATION_TOKENS = [
-  "pm path",
-  "cmd role holders",
-  "foreground",
-  "service",
-  "/api/health",
-  "logcat",
-  "selinux",
-] as const;
-
 function eligibleTargetForCodename(
   codename: string,
 ): HardwareTarget | undefined {
@@ -167,155 +156,6 @@ function assertSupportedStop(request: FlashRequest): void {
   }
 }
 
-export function validateDiscoveredManifest(
-  value: unknown,
-): AndroidReleaseManifest {
-  if (!isRecord(value)) throw new Error("Android manifest must be an object.");
-  if (value.schemaVersion !== 1) {
-    throw new Error("Android manifest schemaVersion must be 1.");
-  }
-  if (
-    typeof value.releaseId !== "string" ||
-    !/^[A-Za-z0-9._-]+$/.test(value.releaseId)
-  ) {
-    throw new Error("Android manifest releaseId is invalid.");
-  }
-  if (
-    typeof value.generatedAt !== "string" ||
-    Number.isNaN(Date.parse(value.generatedAt))
-  ) {
-    throw new Error("Android manifest generatedAt is invalid.");
-  }
-  if (
-    typeof value.buildFingerprint !== "string" ||
-    value.buildFingerprint.length === 0
-  ) {
-    throw new Error("Android manifest buildFingerprint is invalid.");
-  }
-  if (
-    !Array.isArray(value.supportedDevices) ||
-    !value.supportedDevices.length
-  ) {
-    throw new Error("Android manifest has no supported devices.");
-  }
-  for (const device of value.supportedDevices) {
-    if (
-      !isRecord(device) ||
-      typeof device.targetId !== "string" ||
-      !/^[A-Za-z0-9._-]+$/.test(device.targetId) ||
-      typeof device.codename !== "string" ||
-      !/^[A-Za-z0-9._-]+$/.test(device.codename) ||
-      !["lab-validated", "candidate", "manual", "blocked"].includes(
-        String(device.tier),
-      ) ||
-      !Array.isArray(device.slots) ||
-      !device.slots.length ||
-      device.slots.some((slot) => !["a", "b", "none"].includes(String(slot))) ||
-      typeof device.dynamicPartitions !== "boolean" ||
-      typeof device.rollbackSupported !== "boolean"
-    ) {
-      throw new Error("Android manifest contains an invalid supported device.");
-    }
-    const inventoryTarget = HARDWARE_TARGETS_BY_ID.get(device.targetId);
-    if (!inventoryTarget?.codenames.includes(device.codename)) {
-      throw new Error(
-        "Android manifest device does not match the repository hardware inventory.",
-      );
-    }
-    if (device.tier === "lab-validated" && !inventoryTarget.installerEligible) {
-      throw new Error(
-        "Android manifest cannot promote an installer-ineligible hardware target.",
-      );
-    }
-    if (
-      inventoryTarget.expectedFingerprintPrefix &&
-      !value.buildFingerprint.startsWith(
-        inventoryTarget.expectedFingerprintPrefix,
-      )
-    ) {
-      throw new Error(
-        "Android manifest fingerprint does not match the repository hardware inventory.",
-      );
-    }
-  }
-  if (!Array.isArray(value.artifacts) || !value.artifacts.length) {
-    throw new Error("Android manifest has no artifacts.");
-  }
-  const filenames = new Set<string>();
-  const partitions = new Set<string>();
-  for (const artifact of value.artifacts) {
-    if (!isRecord(artifact)) {
-      throw new Error("Android manifest contains an invalid artifact.");
-    }
-    const partition = artifact.partition;
-    const filename = artifact.filename;
-    if (
-      typeof partition !== "string" ||
-      !/^[A-Za-z0-9._-]+$/.test(partition) ||
-      typeof filename !== "string" ||
-      filename !== `${partition}.img` ||
-      !/^[A-Za-z0-9._-]+\.img$/.test(filename) ||
-      typeof artifact.sha256 !== "string" ||
-      !/^[a-f0-9]{64}$/.test(artifact.sha256) ||
-      artifact.sha256 === "0".repeat(64) ||
-      !Number.isSafeInteger(artifact.sizeBytes) ||
-      Number(artifact.sizeBytes) <= 1 ||
-      typeof artifact.required !== "boolean" ||
-      !["bootloader", "fastbootd"].includes(String(artifact.fastbootMode)) ||
-      filenames.has(filename) ||
-      partitions.has(partition)
-    ) {
-      throw new Error(
-        "Android manifest contains an invalid artifact contract.",
-      );
-    }
-    filenames.add(filename);
-    partitions.add(partition);
-  }
-  if (!isRecord(value.validation) || !isRecord(value.rollback)) {
-    throw new Error(
-      "Android manifest validation or rollback contract is missing.",
-    );
-  }
-  const validation = value.validation;
-  const rollback = value.rollback;
-  for (const device of value.supportedDevices) {
-    if (!isRecord(device)) continue;
-    const inventoryTarget = HARDWARE_TARGETS_BY_ID.get(String(device.targetId));
-    if (
-      inventoryTarget?.expectedFingerprintPrefix &&
-      validation.expectedFingerprintPrefix !==
-        inventoryTarget.expectedFingerprintPrefix
-    ) {
-      throw new Error(
-        "Android manifest fingerprint does not match the repository hardware inventory.",
-      );
-    }
-  }
-  const validationTokens = Array.isArray(validation.requiredValidationTokens)
-    ? validation.requiredValidationTokens
-    : null;
-  if (
-    !Number.isSafeInteger(validation.bootTimeoutSeconds) ||
-    Number(validation.bootTimeoutSeconds) < 30 ||
-    !isRecord(validation.properties) ||
-    validationTokens === null ||
-    new Set(validationTokens).size !== validationTokens.length ||
-    !REQUIRED_VALIDATION_TOKENS.every((token) =>
-      validationTokens.includes(token),
-    ) ||
-    typeof rollback.previousReleaseId !== "string" ||
-    rollback.previousReleaseId.length === 0 ||
-    typeof rollback.notes !== "string" ||
-    rollback.notes.length === 0
-  ) {
-    throw new Error(
-      "Android manifest runtime validation or rollback evidence is incomplete.",
-    );
-  }
-  return value as unknown as AndroidReleaseManifest;
-}
-
 // ---------------------------------------------------------------------------
 // Subprocess helper
 // ---------------------------------------------------------------------------
@@ -324,6 +164,10 @@ interface RunResult {
   stdout: string;
   stderr: string;
   status: number;
+}
+
+export class HostCommandError extends Error {
+  override readonly name = "HostCommandError";
 }
 
 function run(
@@ -337,6 +181,11 @@ function run(
     timeout: timeoutMs,
     env,
   });
+  if (result.error)
+    throw new HostCommandError(
+      `Unable to run ${cmd}: ${result.error.message}`,
+      { cause: result.error },
+    );
   return {
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
@@ -673,7 +522,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
 
   async listBuilds(): Promise<AospBuild[]> {
     const response = await fetch(
-      "https://api.github.com/repos/elizaOS/os/releases",
+      "https://api.github.com/repos/elizaOS/eliza/releases",
       {
         headers: {
           Accept: "application/vnd.github+json",
@@ -769,7 +618,6 @@ export class AdbFlasherBackend implements AospFlasherBackend {
           manifestUrl: asset.browser_download_url,
           sizeBytes: totalSize,
           signedManifest,
-          signedFiles,
           artifactUrls,
         });
       }
@@ -865,8 +713,8 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         label: "Install and verify signed release",
         status: "pending",
         detail: request.wipeData
-          ? `install-elizaos-android.sh --device ${serial} --execute --confirm-flash --wipe-data`
-          : `install-elizaos-android.sh --device ${serial} --execute --confirm-flash`,
+          ? `node scripts/android/install-release.ts --device ${serial} --execute --confirm-flash --wipe-data`
+          : `node scripts/android/install-release.ts --device ${serial} --execute --confirm-flash`,
       },
       {
         id: "reboot-android",
@@ -916,9 +764,13 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     let artifactDir = plan.artifactDir;
     let artifactPaths: Record<string, string> = plan.artifactPaths ?? {};
     let manifestPath = build.manifestPath;
-    let manifest = build.manifest;
-    let signedFiles = build.signedFiles;
-    let subjectSha256: string | undefined;
+    if (!build.signedManifest)
+      throw new SignedInstallError(
+        "Build is missing its signed release manifest.",
+      );
+    const description = await describeSignedRelease(build.signedManifest);
+    const signedFiles = signedReleaseFiles(description);
+    const subjectSha256 = description.subjectSha256;
     if (!artifactDir) {
       const dest = await artifactDirFor(build.id);
 
@@ -928,20 +780,13 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         `Downloading manifest from ${build.manifestUrl}`,
       );
 
-      if ((!manifest && !build.signedManifest) || !build.artifactUrls) {
+      if (!build.artifactUrls) {
         throw new Error(
           "Build is missing its validated release manifest or GitHub asset map.",
         );
       }
 
-      if (build.signedManifest) {
-        const description = await describeSignedRelease(build.signedManifest);
-        signedFiles = signedReleaseFiles(description);
-        subjectSha256 = description.subjectSha256;
-      }
-      const artifacts = signedFiles ?? manifest?.artifacts;
-      if (!artifacts)
-        throw new Error("Android release file inventory is unavailable.");
+      const artifacts = signedFiles;
       try {
         artifactPaths = await downloadAndVerifyArtifacts(
           { artifacts },
@@ -966,14 +811,10 @@ export class AdbFlasherBackend implements AospFlasherBackend {
 
       artifactDir = dest;
       manifestPath = join(dest, "android-release-manifest.json");
-      await writeFile(
-        manifestPath,
-        build.signedManifest ?? `${JSON.stringify(manifest, null, 2)}\n`,
-        {
-          encoding: "utf8",
-          mode: 0o600,
-        },
-      );
+      await writeFile(manifestPath, build.signedManifest, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
       plan.artifactPaths = artifactPaths;
       onProgress(
         "download-artifacts",
@@ -987,15 +828,10 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         );
       }
       const bytes = await readFile(manifestPath, "utf8");
-      if (build.signedManifest) {
-        if (bytes !== build.signedManifest)
-          throw new Error("Signed manifest changed since plan review.");
-        const description = await describeSignedRelease(bytes);
-        signedFiles = signedReleaseFiles(description);
-        subjectSha256 = description.subjectSha256;
-      } else {
-        manifest = validateDiscoveredManifest(JSON.parse(bytes));
-      }
+      if (bytes !== build.signedManifest)
+        throw new SignedInstallError(
+          "Signed manifest changed since plan review.",
+        );
       onProgress(
         "download-artifacts",
         "complete",
@@ -1011,11 +847,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     }
 
     onProgress("verify-artifacts", "running", "Checking artifact files...");
-    const requiredImages = signedFiles
-      ? signedFiles.map((file) => file.filename)
-      : (manifest?.artifacts ?? [])
-          .filter((artifact) => artifact.required)
-          .map((artifact) => artifact.filename);
+    const requiredImages = signedFiles.map((file) => file.filename);
     if (requiredImages.length === 0) {
       throw new Error("Android release manifest has no required artifacts.");
     }
@@ -1035,8 +867,6 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       throw new Error(`Missing artifact files: ${missing.join(", ")}`);
     }
     const installer = signedInstallerPath();
-    // Call the signed executor directly: the wrapper also accepts unsigned
-    // legacy planning, which must never authorize a reboot or unlock.
     const authorization = run(
       "node",
       [

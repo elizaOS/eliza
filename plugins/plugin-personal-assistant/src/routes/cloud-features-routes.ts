@@ -10,16 +10,16 @@
  * the caller is not signed in.
  */
 import type http from "node:http";
-import { type CloudProxyConfigLike } from "@elizaos/agent";
 import {
   type AgentRuntime,
   type IAgentRuntime,
   logger,
   type Service,
 } from "@elizaos/core";
-import { sendJson, sendJsonError } from "@elizaos/core/api/http-helpers";
+import { sendJson, sendJsonError } from "@elizaos/host";
 import {
   type CloudAuthApiKeyService,
+  type CloudProxyConfigLike,
   normalizeCloudApiKey,
   normalizeCloudSiteUrl,
   resolveCloudApiKeyWithRuntimeOverride,

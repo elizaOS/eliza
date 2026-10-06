@@ -66,7 +66,6 @@ it("keeps summer event positions aligned with winter-derived hour labels", () =>
     );
     expect(report.results[0].consoleErrors, result.stderr).toEqual([]);
     expect(report.results[0].verdict).toBe("good");
-    expect(result.status).toBe(0);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

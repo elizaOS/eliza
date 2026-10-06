@@ -1,16 +1,4 @@
-/**
- * Shared connector attachment helpers — the canonical, connector-agnostic way to
- * (a) classify a platform attachment's MIME type into the coarse `ContentType`,
- * (b) build a normalized `Media` from a connector's raw attachment shape, and
- * (c) fetch attachment bytes safely (SSRF-guarded + size-capped).
- *
- * Every connector (Discord, Telegram, Slack, …) previously reimplemented these,
- * often inconsistently (some set no `contentType`, some fetched with a raw,
- * unguarded `fetch`). Connectors should import these instead. `contentTypeForMime`
- * returns the literal `ContentType` string values (not the enum object) so it has
- * no runtime dependency on the `ContentType` const and is safe to import from any
- * package/runtime.
- */
+/** Classifies connector attachments, normalizes Media records, and fetches bytes through SSRF and size guards. */
 
 import type { ContentType, Media } from "../types/primitives.js";
 import { fetchRemoteMedia } from "./fetch.js";

@@ -23,7 +23,7 @@ test("staged ELF checks reject inspection failures and malformed load alignment"
   );
   mkdirSync(dirname(readelf), { recursive: true });
   const module = new URL(
-    "../distro-android/verify-grizzly-artifacts.ts",
+    "../android/verify-grizzly-artifacts.ts",
     import.meta.url,
   ).href;
   const run = () =>

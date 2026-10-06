@@ -33,6 +33,10 @@ export {
 } from "./repositories/schedule-projection-records.js";
 
 import crypto from "node:crypto";
+import type {
+  LifeOpsGoalDefinition,
+  LifeOpsGoalLink,
+} from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { GoalsRepository } from "@elizaos/plugin-goals/db/goals-repository";
 import {
@@ -40,10 +44,6 @@ import {
   type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/plugin-relationships";
-import type {
-  LifeOpsGoalDefinition,
-  LifeOpsGoalLink,
-} from "../contracts/index.js";
 
 export {
   createLifeOpsHealthMetricSample,
@@ -421,6 +421,14 @@ export class LifeOpsRepository {
 
   async updateGoal(goal: LifeOpsGoalDefinition): Promise<void> {
     return this.goalsRepo.updateGoal(goal);
+  }
+
+  async updateGoalReview(
+    agentId: string,
+    goalId: string,
+    review: Parameters<GoalsRepository["updateGoalReview"]>[2],
+  ): Promise<void> {
+    return this.goalsRepo.updateGoalReview(agentId, goalId, review);
   }
 
   async getGoal(

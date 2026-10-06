@@ -8,7 +8,7 @@
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { __setAuthStatusForTests } from "../../../hooks/useAuthStatus";
 import {

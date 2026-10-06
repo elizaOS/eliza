@@ -25,9 +25,17 @@ import {
   PRIVACY_DENIED_TEXT,
   type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ServerState } from "../../../../packages/agent/src/api/server-types.ts";
+import { registerClientChatSendHandler } from "../../../../packages/agent/src/services/client-chat-sender.ts";
+import { executeTriggerTask } from "../../../../packages/agent/src/triggers/runtime.ts";
+import {
+  buildTriggerConfig,
+  buildTriggerMetadata,
+  normalizeTriggerDraft,
+} from "../../../../packages/agent/src/triggers/scheduling.ts";
 import { createAssistantPlugin } from "../index.ts";
 import {
   DefaultMessageService,
@@ -250,6 +258,108 @@ async function createHarness(opts: HarnessOptions = {}) {
 }
 
 describe("simple-path deliver-then-persist ordering", () => {
+  it.each([false, true])(
+    "trigger callback preserves one canonical reply and reports persist failure (%s)",
+    async (failReplyPersist) => {
+      const h = await createHarness({
+        holdReplyPersist: !failReplyPersist,
+        failReplyPersist,
+      });
+      h.runtime.messageService = h.service;
+      const canonicalWrites: Memory[] = [];
+      const publish = h.runtime.createMessageMemory.bind(h.runtime);
+      h.runtime.createMessageMemory = async (memory, unique) => {
+        if (
+          memory.entityId === h.runtime.agentId &&
+          memory.content.text === h.replyText
+        )
+          canonicalWrites.push(structuredClone(memory));
+        return publish(memory, unique);
+      };
+      const room = await h.runtime.getRoom(h.roomId);
+      if (!room) throw new Error("Missing harness room");
+      await h.runtime.updateRoom({ ...room, source: "client_chat" });
+      const broadcastWs = vi.fn(() => h.releaseReplyPersist());
+      const state = {
+        conversations: new Map([
+          [
+            "origin",
+            { id: "origin", roomId: h.roomId, updatedAt: "2026-01-01" },
+          ],
+        ]),
+        activeConversationId: null,
+        broadcastWs,
+      } as unknown as ServerState;
+      registerClientChatSendHandler(h.runtime, state);
+      const sent = vi.fn();
+      h.runtime.registerEvent(EventType.MESSAGE_SENT, sent);
+      const send = vi.spyOn(h.runtime, "sendMessageToTarget");
+      const normalized = normalizeTriggerDraft({
+        input: {
+          kind: "prompt",
+          triggerType: "once",
+          scheduledAtIso: new Date(Date.now() + 60_000).toISOString(),
+        },
+        fallback: {
+          displayName: "Delivery identity",
+          instructions: "Give the short reply",
+          triggerType: "once",
+          wakeMode: "inject_now",
+          enabled: true,
+          createdBy: "test",
+        },
+      });
+      if (!normalized.draft) throw new Error(normalized.error);
+      const trigger = buildTriggerConfig({
+        draft: normalized.draft,
+        triggerId: asUUID(v4()),
+      });
+      const metadata = buildTriggerMetadata({ trigger, nowMs: Date.now() });
+      if (!metadata) throw new Error("Missing trigger metadata");
+      const taskId = await h.runtime.createTask({
+        name: "identity-trigger",
+        agentId: h.runtime.agentId,
+        roomId: h.roomId,
+        tags: ["trigger"],
+        metadata,
+      });
+      const task = await h.runtime.getTask(taskId);
+      if (!task) throw new Error("Missing trigger task");
+      const outcome = await executeTriggerTask(h.runtime, task, {
+        source: "manual",
+        force: true,
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      const [target, content] = send.mock.calls[0];
+      const replies = await h.storedReplies();
+      expect(replies).toHaveLength(failReplyPersist ? 0 : 1);
+      expect(target.responseMemoryId).toBe(content.responseId);
+      expect(content.simple).toBe(true);
+      expect(broadcastWs).toHaveBeenCalledTimes(1);
+      expect(broadcastWs.mock.calls[0]?.[0].message.id).toBe(
+        content.responseId,
+      );
+      if (failReplyPersist) {
+        expect(outcome.status).toBe("error");
+        expect(outcome.error).toContain("injected reply-persist failure");
+        expect(replies).toHaveLength(0);
+        expect(sent).not.toHaveBeenCalled();
+      } else {
+        expect(outcome.status).toBe("success");
+        expect(replies).toHaveLength(1);
+        expect(replies[0].id).toBe(content.responseId);
+        expect(canonicalWrites).toHaveLength(1);
+        expect(replies[0].content).toEqual(canonicalWrites[0].content);
+        expect(replies[0].createdAt).toBe(canonicalWrites[0].createdAt);
+        expect(replies[0].metadata ?? {}).toEqual(
+          canonicalWrites[0].metadata ?? {},
+        );
+        expect(h.order.filter((x) => x === "persist:reply")).toHaveLength(1);
+        expect(sent).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
+
   it.each([
     ["1", "analysis"],
     ["0", "analysis"],

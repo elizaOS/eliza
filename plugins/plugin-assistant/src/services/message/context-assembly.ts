@@ -107,17 +107,23 @@ export async function createV5MessageContextObject(args: {
   // Enrollment is authenticated by the host, never inferred from user metadata.
   // Interpret against this turn's actual capability even if older dialogue
   // reported a deployment without phone tools. No device effect is authorized.
-  if (getDeviceActionTurn()?.runtime === args.runtime) {
+  const authenticatedDeviceTurn = getDeviceActionTurn();
+  if (authenticatedDeviceTurn?.runtime === args.runtime) {
     events.push({
       id: "authenticated-phone-capability",
       type: "instruction",
       source: "message-service",
       stable: false,
       content:
-        (getDeviceActionTurn()?.credential.capabilities?.includes(
-          "reminders.local-record.v1",
+        (authenticatedDeviceTurn.viewProfile
+          ? `The authenticated installation enabled-view profile allows open_view only for ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. Do not offer or propose another view. This subset is not approval to execute. `
+          : "") +
+        (getDeviceActionTurn()?.credential.capabilities?.some(
+          (capability) =>
+            capability === "reminders.local-record.v1" ||
+            capability === "reminders.local-record.v2",
         )
-          ? "Selected reminder read/update/complete/snooze/cancel is available with reminders.local-record.v1. Use exact sourceId/sourceRevision/reminderId/occurrenceId/revision from this turn. Reading private content requires approval. Cancel stops future repeats; Snooze means ten minutes. Never invent identifiers or report a proposal as complete. "
+          ? "Selected reminder read/update/complete/snooze/cancel is available with the negotiated reminders.local-record.v1 or v2 capability. Targets containing timingVersion:2 and schedules containing both dueAt and alertMinutes require v2. Preserve the exact timingVersion marker from the phone. alertMinutes:null saves a task without notifications; do not snooze it or silently enable an alert. Use exact sourceId/sourceRevision/reminderId/occurrenceId/revision from this turn. Reading private content requires approval. Cancel stops future repeats; Snooze means ten minutes. Never invent identifiers or report a proposal as complete. "
           : "") +
         (getDeviceActionTurn()?.credential.capabilities?.includes(
           "notes.local-record.v1",
@@ -352,7 +358,41 @@ export async function createV5MessageContextObject(args: {
         )
       : actions;
     for (const action of displayActions) {
-      const tool = actionToTool(action);
+      // Clone only this turn's action schema. Never mutate the registered action
+      // or its cached catalog: concurrent installations may enable different views.
+      const profile =
+        getDeviceActionTurn()?.runtime === args.runtime
+          ? getDeviceActionTurn()?.viewProfile
+          : null;
+      const scopedAction =
+        profile && action.name === "PROPOSE_DEVICE_ACTION"
+          ? {
+              ...action,
+              parameters: action.parameters?.map((parameter) => {
+                if (parameter.name !== "operation") return parameter;
+                const schema = structuredClone(parameter.schema);
+                schema.anyOf = schema.anyOf?.flatMap((branch) => {
+                  if (branch.properties?.type?.enum?.[0] !== "open_view")
+                    return [branch];
+                  if (!profile.views.length) return [];
+                  return [
+                    {
+                      ...branch,
+                      properties: {
+                        ...branch.properties,
+                        view: {
+                          ...branch.properties.view,
+                          enum: [...profile.views],
+                        },
+                      },
+                    },
+                  ];
+                });
+                return { ...parameter, schema };
+              }),
+            }
+          : action;
+      const tool = actionToTool(scopedAction);
       events.push({
         id: `tool:${tool.function.name}`,
         type: "tool",
@@ -400,6 +440,7 @@ export async function createV5MessageContextObject(args: {
     metadata: {
       roomId: args.message.roomId,
       messageId: args.message.id,
+      actorId: args.message.entityId,
       selectedContexts: [...(args.selectedContexts ?? [])],
       ...(args.actionSurface
         ? { actionSurface: args.actionSurface.summary as JsonValue }

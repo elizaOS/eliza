@@ -9,6 +9,12 @@
  * and `ui` (client wiring against the agent API).
  */
 
+export type {
+  ProviderEnableState,
+  ProviderId,
+  ProviderMeta,
+  ProviderStatus,
+} from "@elizaos/contracts";
 export {
   type ActiveModelState,
   AGENT_MODEL_SLOTS,
@@ -41,13 +47,7 @@ export {
   TEXT_GENERATION_SLOTS,
   type TextGenerationSlot,
   type TokenizerFamily,
-} from "@elizaos/core/contracts/local-inference";
-export type {
-  ProviderEnableState,
-  ProviderId,
-  ProviderMeta,
-  ProviderStatus,
-} from "@elizaos/core/contracts/local-inference-providers";
+} from "@elizaos/contracts";
 export { BGE_EMBEDDING_MODEL } from "./bge-embedding-model.js";
 export {
   buildHuggingFaceResolveUrl,

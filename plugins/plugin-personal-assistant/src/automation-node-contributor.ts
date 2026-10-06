@@ -4,21 +4,21 @@
  * as automation nodes the owner can wire into workflows in the automation UI.
  */
 
+import type {
+  AutomationNodeDescriptor,
+  LifeOpsDiscordConnectorStatus,
+  LifeOpsGoogleConnectorStatus,
+  LifeOpsTelegramConnectorStatus,
+} from "@elizaos/contracts";
 import { logger } from "@elizaos/core";
+import type {
+  IPermissionsRegistry,
+  PermissionState,
+} from "@elizaos/core/protocol";
 import {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,
-} from "@elizaos/core/automation-node-contributors";
-import { type AutomationNodeDescriptor } from "@elizaos/core/contracts/automation-nodes";
-import {
-  type IPermissionsRegistry,
-  type PermissionState,
-} from "@elizaos/core/contracts/permissions";
-import {
-  type LifeOpsDiscordConnectorStatus,
-  type LifeOpsGoogleConnectorStatus,
-  type LifeOpsTelegramConnectorStatus,
-} from "@elizaos/core/contracts/personal-assistant";
+} from "@elizaos/host/protocol";
 import { LifeOpsService } from "./lifeops/service";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";

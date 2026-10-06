@@ -4,7 +4,7 @@
  * loaded model filename. Renders nothing until a bridge status arrives.
  */
 
-import type { DeviceBridgeStatus } from "../../api/client-local-inference";
+import type { DeviceBridgeStatus } from "@elizaos/contracts";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 
@@ -18,16 +18,19 @@ export function DeviceBridgeStatusBar({
 
   if (!status) return null;
 
+  const primary = status.devices.find(
+    (device) => device.deviceId === status.primaryDeviceId,
+  );
   const dotClass = status.connected
     ? "bg-status-success"
     : status.pendingRequests > 0
       ? "bg-warning"
       : "bg-muted/40";
   const label = status.connected
-    ? status.capabilities
+    ? primary?.capabilities
       ? t("devicebridge.onlineWithDevice", {
-          platform: status.capabilities.platform,
-          deviceModel: status.capabilities.deviceModel,
+          platform: primary?.capabilities.platform,
+          deviceModel: primary?.capabilities.deviceModel,
           defaultValue: "Paired device online · {{platform}} · {{deviceModel}}",
         })
       : t("devicebridge.online", { defaultValue: "Paired device online" })
@@ -49,9 +52,9 @@ export function DeviceBridgeStatusBar({
         aria-hidden
       />
       <span className="flex-1 truncate">{label}</span>
-      {status.loadedPath && (
+      {primary?.loadedPath && (
         <span className="max-w-[40%] truncate text-muted">
-          {status.loadedPath.split(/[/\\]/).pop()}
+          {primary?.loadedPath.split(/[/\\]/).pop()}
         </span>
       )}
     </div>

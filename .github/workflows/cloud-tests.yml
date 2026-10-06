@@ -29,6 +29,34 @@ permissions:
   contents: read
 
 jobs:
+  polyglot-services:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: packages/cloud/services/tunnel-proxy/go.mod
+          cache-dependency-path: packages/cloud/services/tunnel-proxy/go.sum
+      - name: Tunnel routing and tenant isolation
+        working-directory: packages/cloud/services/tunnel-proxy
+        run: go test -race ./...
+      - name: Python and shell syntax
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import ast
+          import pathlib
+          import subprocess
+          files = subprocess.check_output(["git", "ls-files", "packages/cloud"], text=True).splitlines()
+          for name in files:
+              path = pathlib.Path(name)
+              if path.suffix == ".py":
+                  ast.parse(path.read_text(), filename=name)
+              elif path.suffix == ".sh":
+                  subprocess.run(["bash", "-n", name], check=True)
+          PYTHON
+
   lint-and-types:
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25

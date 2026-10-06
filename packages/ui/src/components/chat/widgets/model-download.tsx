@@ -6,8 +6,8 @@
  * shows no floating pill) and self-hides when no local slot needs a download.
  */
 
-import type { LocalInferenceSlotReadiness } from "@elizaos/core/contracts/local-inference";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import type { LocalInferenceSlotReadiness } from "@elizaos/contracts";
+import { getElizaApiToken } from "@elizaos/host/protocol";
 import { Download, Loader2, TriangleAlert } from "lucide-react";
 import {
   useCallback,
@@ -16,22 +16,22 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { client } from "../../../api/client";
 import { isDesktopExternalApiBaseUrl } from "../../../api/desktop-external-api-base";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../../events";
 import { readPersistedMobileRuntimeMode } from "../../../first-run/mobile-runtime-mode";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useRuntimeMode } from "../../../hooks/useRuntimeMode";
-import { cn } from "../../../lib/utils";
-import {
-  deriveHomeModelStatus,
-  type HomeModelStatus,
-} from "../../../services/local-inference/home-model-status";
 import { resolveApiUrl } from "../../../utils/asset-url.js";
+import { cn } from "../../../utils/cn";
 import { openEventSource } from "../../../utils/event-source";
 import { withTimeout } from "../../../utils/with-timeout";
 import type { WidgetProps } from "../../../widgets/types";
+import {
+  deriveHomeModelStatus,
+  type HomeModelStatus,
+} from "../../local-inference/home-model-status";
 import { observeModelRoute } from "../../local-inference/model-route-recovery";
 import { Button } from "../../ui/button";
 import { useWidgetNavigation } from "./home-widget-card";
@@ -169,7 +169,6 @@ export function useLocalModelDownloads(): LocalModelDownloads {
       runtimeMode.isCloudMode ||
       runtimeMode.isRemoteMode ||
       mobileRuntimeMode === "remote-mac" ||
-      mobileRuntimeMode === "tunnel-to-mobile" ||
       !supportsLocalInferenceStatus()
     ) {
       setState(SETTLED_NOT_REQUIRED);

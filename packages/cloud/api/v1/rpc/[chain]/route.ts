@@ -1,17 +1,24 @@
 // Handles v1 cloud API v1 rpc chain route traffic with route-local auth expectations.
-import { Hono } from "hono";
+
 import {
-  executeGuardedPaidProxyRequest,
-  withGuardedPaidProxyAdmission,
-} from "@/api-app/lib/guarded-paid-proxy";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   isValidRpcChain,
   rpcConfigForChain,
   rpcHandlerForChain,
   SUPPORTED_RPC_CHAINS,
-} from "@/lib/services/proxy/services/rpc";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/proxy/rpc";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import {
+  executeGuardedPaidProxyRequest,
+  withGuardedPaidProxyAdmission,
+} from "@/api-app/lib/guarded-paid-proxy";
 
 const CORS_METHODS = "POST, OPTIONS";
 

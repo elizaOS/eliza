@@ -8,7 +8,7 @@
 import { CheckCircle2, Target } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Progress } from "../../../components/ui/progress";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 interface MilestoneProgressProps {
   current: number;

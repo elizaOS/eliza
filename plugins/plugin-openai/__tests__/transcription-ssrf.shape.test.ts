@@ -172,4 +172,35 @@ describe("OpenAI transcription audio URL happy path (mocked remote media)", () =
       })
     );
   });
+
+  it("cancels the guarded audio download before the provider request starts", async () => {
+    const caller = new AbortController();
+    mocks.fetchRemoteMedia.mockImplementation(
+      ({ signal }: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          if (!signal) {
+            reject(new Error("audio download did not receive the caller signal"));
+            return;
+          }
+          const rejectWithReason = () => reject(signal.reason);
+          if (signal.aborted) {
+            rejectWithReason();
+            return;
+          }
+          signal.addEventListener("abort", rejectWithReason, { once: true });
+        })
+    );
+
+    const pending = handleTranscription(createRuntime(), {
+      audioUrl: "https://cdn.example.com/slow.webm",
+      signal: caller.signal,
+    });
+    caller.abort(new DOMException("Cancelled", "AbortError"));
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(mocks.fetchRemoteMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: caller.signal })
+    );
+    expect(mocks.recordLlmCall).not.toHaveBeenCalled();
+  });
 });

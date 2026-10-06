@@ -11,15 +11,15 @@
  * (app depends only on its own slot registry) while still letting
  * task-coordinator depend on app for hooks, types, and the client.
  */
+import {
+  registerTaskCoordinatorSlots,
+  registerTaskWidget,
+  type TaskCoordinatorCodingAgentControlChipProps,
+  type TaskCoordinatorCodingAgentSettingsSectionProps,
+  type TaskCoordinatorCodingAgentTasksPanelProps,
+  type TaskCoordinatorPtyConsoleBaseProps,
+} from "@elizaos/ui";
 
-import { registerTaskWidget } from "@elizaos/ui/components/chat/widgets/task-widget";
-import type {
-  TaskCoordinatorCodingAgentControlChipProps,
-  TaskCoordinatorCodingAgentSettingsSectionProps,
-  TaskCoordinatorCodingAgentTasksPanelProps,
-  TaskCoordinatorPtyConsoleBaseProps,
-} from "@elizaos/ui/slots/task-coordinator-slots";
-import { registerTaskCoordinatorSlots } from "@elizaos/ui/slots/task-coordinator-slots.helpers";
 import {
   type ComponentType,
   createElement,

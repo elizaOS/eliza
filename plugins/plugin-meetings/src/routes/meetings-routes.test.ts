@@ -4,8 +4,8 @@
  * scripted adapter, no browser.
  */
 
-import { type AccessContext, type UUID } from "@elizaos/core";
-import { type RouteHandlerContext } from "@elizaos/core/api/http-plugin";
+import type { AccessContext, UUID } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { describe, expect, it } from "vitest";
 import { ZoomCloudImportError } from "../platforms/zoom/cloud-import.js";
 import { MeetingService } from "../service.js";
@@ -52,6 +52,7 @@ function makeHarness(billingSessions: FakeMeetingBillingSession[] = []) {
     method: "GET",
     path: "/api/meetings",
     runtime: fake.runtime,
+    signal: new AbortController().signal,
     inProcess: false,
     ...over,
   });
@@ -402,6 +403,7 @@ describe("/api/meetings routes", () => {
       method: "POST",
       path: "/api/meetings",
       runtime: fake.runtime,
+      signal: new AbortController().signal,
       inProcess: false,
     };
     expect((await route("POST", "/api/meetings")(ctx)).status).toBe(503);

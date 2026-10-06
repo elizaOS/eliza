@@ -10,15 +10,15 @@
  *   - Billing is per-chatter, not the character owner.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { cache } from "@elizaos/cloud-shared/lib/cache/client";
+import { CacheKeys } from "@elizaos/cloud-shared/lib/cache/keys";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { cache } from "@/lib/cache/client";
-import { CacheKeys } from "@/lib/cache/keys";
-import { charactersService } from "@/lib/services/characters/characters";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ShareSchema = z.object({ isPublic: z.boolean() });
 

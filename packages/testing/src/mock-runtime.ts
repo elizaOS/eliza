@@ -36,7 +36,7 @@ export function createMockRuntime(
 ): IAgentRuntime {
   const base: Partial<IAgentRuntime> = {
     agentId: MOCK_AGENT_ID,
-    character: MOCK_CHARACTER,
+    character: structuredClone(MOCK_CHARACTER),
     providers: [],
     actions: [],
     evaluators: [],

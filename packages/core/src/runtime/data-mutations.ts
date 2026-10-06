@@ -78,8 +78,7 @@ export class RuntimeDataMutations {
 
 	// Single-item entity wrapper
 	async updateEntity(entity: Entity): Promise<void> {
-		await this.runtime.adapter.updateEntities([entity]);
-		this.host.invalidateTurnEntityDetails();
+		await this.updateEntities([entity]);
 	}
 
 	// Batch component methods

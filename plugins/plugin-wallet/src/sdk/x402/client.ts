@@ -90,28 +90,38 @@ export class X402Client {
       return response; // No compatible payment option
     }
 
-    // Check budget
+    // Check the budget and hold the amount until the payment is recorded or
+    // abandoned, so concurrent payments can't all pass the same check
     const amount = BigInt(selected.amount);
     const service = new URL(urlStr).hostname;
-    const budgetCheck = this.budget.checkBudget(service, amount);
-    if (!budgetCheck.allowed) {
-      throw new X402BudgetExceededError(
-        budgetCheck.reason ?? "Budget check failed",
-        urlStr,
-        selected,
-      );
+    const reservation = this.budget.reserve(service, amount);
+    if (!reservation.allowed) {
+      throw new X402BudgetExceededError(reservation.reason, urlStr, selected);
     }
+    const { reservationId } = reservation;
 
-    // Callback check
-    if (this.config.onBeforePayment) {
-      const proceed = await this.config.onBeforePayment(selected, urlStr);
-      if (!proceed) {
-        return response;
+    let paymentResult: { txHash: Hash; token: Address };
+    let transferAttempted = false;
+    try {
+      // Callback check
+      if (this.config.onBeforePayment) {
+        const proceed = await this.config.onBeforePayment(selected, urlStr);
+        if (!proceed) {
+          this.budget.releaseReservation(reservationId);
+          return response;
+        }
       }
-    }
 
-    // Execute payment
-    const paymentResult = await this.executePayment(selected);
+      // Execute payment
+      paymentResult = await this.executePayment(selected, () => {
+        transferAttempted = true;
+      });
+    } catch (error) {
+      // A transport/receipt error cannot prove that a submitted transfer failed.
+      // Retain the hold after either the fee or principal transfer was attempted.
+      if (!transferAttempted) this.budget.releaseReservation(reservationId);
+      throw error;
+    }
     const resolvedToken = paymentResult.token;
 
     // Build payment payload
@@ -138,7 +148,7 @@ export class X402Client {
       scheme: selected.scheme,
       success: true,
     };
-    this.budget.recordPayment(log);
+    this.budget.recordPayment(log, reservationId);
     this.config.onPaymentComplete?.(log);
 
     // Retry request with payment proof
@@ -247,6 +257,7 @@ export class X402Client {
    */
   private async executePayment(
     req: X402PaymentRequirements,
+    markTransferAttempted: () => void,
   ): Promise<{ txHash: Hash; token: Address }> {
     // Resolve the actual contract address for the requested asset
     const resolvedAddress = resolveAssetAddress(req.asset, req.network);
@@ -280,6 +291,7 @@ export class X402Client {
     const FEE_COLLECTOR: Address = "0xff86829393C6C26A4EC122bE0Cc3E466Ef876AdD";
     const feeAmount = (amount * X402_PROTOCOL_FEE_BPS) / 10000n;
 
+    markTransferAttempted();
     if (feeAmount > 0n) {
       await agentTransferToken(this.wallet, {
         token: resolvedAddress,

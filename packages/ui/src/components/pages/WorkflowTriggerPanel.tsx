@@ -1,4 +1,6 @@
 /** Presents native elizaOS workflow triggers as a compact visual start surface. */
+
+import type { TriggerType } from "@elizaos/core";
 import {
   CalendarClock,
   Clock3,
@@ -9,12 +11,11 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type { WorkflowDefinition } from "../../api/client-types-chat";
 import type {
   CreateTriggerRequest,
   TriggerSummary,
-  TriggerType,
 } from "../../api/client-types-core";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";

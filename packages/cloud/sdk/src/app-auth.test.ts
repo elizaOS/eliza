@@ -1,6 +1,6 @@
 /** Unit tests for `buildAppAuthorizeUrl` — asserts the canonical app-authorize URL shape and query params. Pure, no network. */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { APP_AUTHORIZE_PATH, buildAppAuthorizeUrl } from "./app-auth.js";
 
 describe("buildAppAuthorizeUrl", () => {

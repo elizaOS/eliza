@@ -1,8 +1,8 @@
 /** Storybook stories for LanguageDropdown across languages and the native/titlebar/companion variants (decorator holds local language state). */
 
+import type { UiLanguage } from "@elizaos/core/protocol";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
-import type { UiLanguage } from "../../i18n/messages";
 import { LanguageDropdown } from "./LanguageDropdown";
 
 const meta = {

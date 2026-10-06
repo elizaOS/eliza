@@ -24,20 +24,25 @@ import os
 import time
 from typing import Optional
 
-from suites.bfcl.agent import BFCLAgent, MockBFCLAgent
-from suites.bfcl.dataset import BFCLDataset, expand_test_cases
-from suites.bfcl.evaluators import ASTEvaluator, ExecutionEvaluator, RelevanceEvaluator
-from suites.bfcl.executable_runtime import (
+from benchmarks.suites.bfcl.agent import BFCLAgent, MockBFCLAgent
+from benchmarks.suites.bfcl.dataset import BFCLDataset, expand_test_cases
+from benchmarks.suites.bfcl.evaluators import (
+    ASTEvaluator,
+    ExecutionEvaluator,
+    RelevanceEvaluator,
+)
+from benchmarks.suites.bfcl.executable_runtime import (
     MEMORY_PREREQ_CONVERSATION_PATH,
     RuntimeNetworkRequired,
     decode_python_calls,
 )
-from suites.bfcl.metrics import MetricsCalculator
-from suites.bfcl.reporting import BFCLReporter
-from suites.bfcl.types import (
+from benchmarks.suites.bfcl.metrics import MetricsCalculator
+from benchmarks.suites.bfcl.reporting import BFCLReporter
+from benchmarks.suites.bfcl.types import (
     BFCLBenchmarkResults,
     BFCLCategory,
     BFCLConfig,
+    BFCLMetrics,
     BFCLResult,
     BFCLTestCase,
     MEMORY_CATEGORIES,
@@ -81,10 +86,14 @@ class BFCLRunner:
         self.reporter = BFCLReporter(config)
 
         harness = (
-            os.environ.get("BENCHMARK_HARNESS")
-            or os.environ.get("BENCHMARK_AGENT")
-            or ""
-        ).strip().lower()
+            (
+                os.environ.get("BENCHMARK_HARNESS")
+                or os.environ.get("BENCHMARK_AGENT")
+                or ""
+            )
+            .strip()
+            .lower()
+        )
         if harness and harness not in {"eliza", "hermes", "openclaw"}:
             raise ValueError(f"Unsupported benchmark harness: {harness!r}")
         effective_provider = (
@@ -115,7 +124,9 @@ class BFCLRunner:
             import sys
             from pathlib import Path
 
-            adapter_path = Path(__file__).resolve().parents[2] / "harnesses" / "openclaw"
+            adapter_path = (
+                Path(__file__).resolve().parents[2] / "harnesses" / "openclaw"
+            )
             if adapter_path.exists() and str(adapter_path) not in sys.path:
                 sys.path.insert(0, str(adapter_path))
             from openclaw_adapter.bfcl import OpenClawBFCLAgent
@@ -131,6 +142,7 @@ class BFCLRunner:
                 sys.path.insert(0, str(adapter_path))
             from eliza_adapter.bfcl import ElizaBFCLAgent
             from eliza_adapter.client import ElizaClient
+
             self.agent = ElizaBFCLAgent(
                 client=ElizaClient(),
                 model_name=model or "eliza-ts-bridge",
@@ -222,21 +234,33 @@ class BFCLRunner:
         """Clean up resources and export trajectories."""
         self._export_compact_trajectories()
 
-        if hasattr(self.agent, "export_trajectories") and hasattr(self.agent, "get_trajectories"):
+        if hasattr(self.agent, "export_trajectories") and hasattr(
+            self.agent, "get_trajectories"
+        ):
             trajectories = self.agent.get_trajectories()
-            logger.debug(f"Trajectories available for export: {len(trajectories) if trajectories else 0}")
+            logger.debug(
+                f"Trajectories available for export: {len(trajectories) if trajectories else 0}"
+            )
             if trajectories:
                 output_dir = self.config.output_dir or "benchmark_results/bfcl"
                 os.makedirs(output_dir, exist_ok=True)
 
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
-                model_suffix = (self._model_name or "unknown").replace("/", "_").replace(".", "-")
+                model_suffix = (
+                    (self._model_name or "unknown").replace("/", "_").replace(".", "-")
+                )
                 traj_dir = os.path.join(output_dir, "trajectories")
                 os.makedirs(traj_dir, exist_ok=True)
 
-                art_path = os.path.join(traj_dir, f"bfcl_art_{model_suffix}_{timestamp}.jsonl")
-                grpo_path = os.path.join(traj_dir, f"bfcl_grpo_{model_suffix}_{timestamp}.json")
-                jsonl_path = os.path.join(traj_dir, f"bfcl_raw_{model_suffix}_{timestamp}.jsonl")
+                art_path = os.path.join(
+                    traj_dir, f"bfcl_art_{model_suffix}_{timestamp}.jsonl"
+                )
+                grpo_path = os.path.join(
+                    traj_dir, f"bfcl_grpo_{model_suffix}_{timestamp}.json"
+                )
+                jsonl_path = os.path.join(
+                    traj_dir, f"bfcl_raw_{model_suffix}_{timestamp}.jsonl"
+                )
 
                 exported_any = False
                 try:
@@ -247,7 +271,9 @@ class BFCLRunner:
                 except Exception:
                     pass
                 try:
-                    export_path = self.agent.export_trajectories(grpo_path, format="grpo")
+                    export_path = self.agent.export_trajectories(
+                        grpo_path, format="grpo"
+                    )
                     if export_path:
                         exported_any = True
                         logger.info(f"Exported BFCL GRPO trajectories to {export_path}")
@@ -255,9 +281,13 @@ class BFCLRunner:
                     pass
 
                 if not exported_any:
-                    export_path = self.agent.export_trajectories(jsonl_path, format="jsonl")
+                    export_path = self.agent.export_trajectories(
+                        jsonl_path, format="jsonl"
+                    )
                     if export_path:
-                        logger.info(f"Exported {len(trajectories)} raw trajectories to {export_path}")
+                        logger.info(
+                            f"Exported {len(trajectories)} raw trajectories to {export_path}"
+                        )
                     else:
                         logger.warning("Trajectory export returned None")
             else:
@@ -277,10 +307,14 @@ class BFCLRunner:
         os.makedirs(traj_dir, exist_ok=True)
 
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        model_suffix = (self._model_name or self._model or "unknown").replace(
-            "/",
-            "_",
-        ).replace(".", "-")
+        model_suffix = (
+            (self._model_name or self._model or "unknown")
+            .replace(
+                "/",
+                "_",
+            )
+            .replace(".", "-")
+        )
         path = os.path.join(
             traj_dir,
             f"bfcl_compact_{self._provider or 'python'}_{model_suffix}_{timestamp}.jsonl",
@@ -336,6 +370,7 @@ class BFCLRunner:
         result: BFCLResult,
     ) -> None:
         """Store a compact, harness-neutral BFCL trajectory fixture."""
+
         def _call(call: object) -> dict[str, object]:
             return {
                 "name": getattr(call, "name", ""),
@@ -540,7 +575,7 @@ class BFCLRunner:
 
         # Drive the agent turn-by-turn. We synthesize a single-turn-shaped
         # BFCLTestCase per turn so the existing agent.query interface works.
-        from suites.bfcl.types import BFCLTestCase as _TC
+        from benchmarks.suites.bfcl.types import BFCLTestCase as _TC
 
         long_context = test_case.category == BFCLCategory.MULTI_TURN_LONG_CONTEXT
 
@@ -616,7 +651,9 @@ class BFCLRunner:
                 exec_success=False,
                 relevance_correct=False,
                 latency_ms=total_latency_ms,
-                raw_response="\n---\n".join(raw_responses) if self.config.save_raw_responses else None,
+                raw_response="\n---\n".join(raw_responses)
+                if self.config.save_raw_responses
+                else None,
                 details={"exec_error": str(e)},
                 error=str(e),
                 status=TestStatus.ERROR,
@@ -637,7 +674,9 @@ class BFCLRunner:
             exec_success=exec_success,
             relevance_correct=True,
             latency_ms=total_latency_ms,
-            raw_response="\n---\n".join(raw_responses) if self.config.save_raw_responses else None,
+            raw_response="\n---\n".join(raw_responses)
+            if self.config.save_raw_responses
+            else None,
             details=details,  # type: ignore[arg-type]
             status=TestStatus.PASSED if exec_success else TestStatus.FAILED,
         )
@@ -659,7 +698,7 @@ class BFCLRunner:
             ``possible_answers`` extracted from the test case metadata or
             ground truth.
         """
-        from suites.bfcl.executable_runtime import extract_memory_backend_type
+        from benchmarks.suites.bfcl.executable_runtime import extract_memory_backend_type
 
         cat_name = test_case.category.value
         try:
@@ -739,9 +778,7 @@ class BFCLRunner:
             status=TestStatus.PASSED if passed else TestStatus.FAILED,
         )
 
-    def _extract_memory_possible_answers(
-        self, test_case: BFCLTestCase
-    ) -> list[str]:
+    def _extract_memory_possible_answers(self, test_case: BFCLTestCase) -> list[str]:
         """Pull possible answers out of the dataset's ground-truth payload.
 
         Upstream memory ground truth is a flat list of acceptable
@@ -868,7 +905,9 @@ class BFCLRunner:
 
         recommendations: list[str] = []
         if metrics.ast_accuracy < 0.7:
-            recommendations.append("Focus on improving function name and argument matching")
+            recommendations.append(
+                "Focus on improving function name and argument matching"
+            )
         if metrics.exec_accuracy < 0.7:
             recommendations.append("Improve argument type handling and validation")
         if metrics.relevance_accuracy < 0.8:

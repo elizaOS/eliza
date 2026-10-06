@@ -7,6 +7,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import {
   type ActionResult,
   type AgentRuntime,
@@ -14,7 +15,6 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -25,13 +25,13 @@ import { personalAssistantPlugin } from "../../plugin.js";
 import { createApprovalQueue } from "../approval-queue.js";
 import { createFoodDomainAction, FOOD_DOMAIN_ACTION } from "./action.js";
 import { FOOD_DOMAIN_SERVICE, getFoodDomainService } from "./service.js";
-import {
-  type FoodOwnerView,
-  type FoodPreference,
-  type FoodShoppingHandoff,
-  type HardFoodConstraint,
-  type MealPlanEvaluation,
-  type PublishedMealPlan,
+import type {
+  FoodOwnerView,
+  FoodPreference,
+  FoodShoppingHandoff,
+  HardFoodConstraint,
+  MealPlanEvaluation,
+  PublishedMealPlan,
 } from "./types.js";
 
 describe("HOUSEHOLD_FOOD action — real PGlite production wiring", () => {

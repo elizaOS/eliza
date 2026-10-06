@@ -21,7 +21,7 @@
  */
 
 import * as React from "react";
-import type { ConversationMessage } from "../api";
+import type { ConversationMessage } from "../api/client-types-chat";
 import { openCloudBillingConsole } from "../cloud/billing-console";
 import { useShellControllerContext } from "../components/shell/ShellControllerContext.hooks";
 import {
@@ -30,7 +30,7 @@ import {
   dispatchCloudHandoffRetry,
 } from "../events";
 import { useCloudHandoffPhase } from "../hooks/useCloudHandoffPhase";
-import { useAppSelectorShallow } from "../state";
+import { useAppSelectorShallow } from "../state/app-store";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import {

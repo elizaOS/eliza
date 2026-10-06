@@ -1,23 +1,15 @@
 /** Verifies CloudPairRelay through the package's configured test harness. */
 // @vitest-environment jsdom
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  clearElizaApiToken,
-  getElizaApiToken,
-} from "@elizaos/core/utils/eliza-globals";
+import { clearElizaApiToken, getElizaApiToken } from "@elizaos/host/protocol";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_BOOT_CONFIG,
   getBootConfig,
   setBootConfig,
-} from "../../../config/boot-config";
+} from "../../../config/boot-config-store";
 import {
-  CLOUD_PAIR_LOCAL_STORAGE_KEY,
-  CLOUD_PAIR_SESSION_STORAGE_KEY,
   CloudHostedAgentAuthNotice,
   CloudPairExchangeError,
   CloudPairRelay,
@@ -205,13 +197,6 @@ describe("CloudPairRelay", () => {
     expect(
       window.localStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
     ).toBe("agent-key");
-    // The legacy global key is migrated away once the scoped write lands.
-    expect(window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY)).toBe(
-      null,
-    );
-    expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
-      null,
-    );
     expect(
       (globalThis as Record<string, unknown>).__ELIZA_APP_BOOT_CONFIG__,
     ).toEqual(expect.objectContaining({ apiToken: "agent-key" }));
@@ -221,9 +206,7 @@ describe("CloudPairRelay", () => {
       /owner agent id/,
     );
   });
-  it("keeps a legacy global token when BOTH scoped writes fail", () => {
-    window.localStorage.setItem(CLOUD_PAIR_LOCAL_STORAGE_KEY, "legacy-key");
-    window.sessionStorage.setItem(CLOUD_PAIR_SESSION_STORAGE_KEY, "legacy-key");
+  it("reports persistence failure when both storage writes fail", () => {
     // jsdom's Storage getters hand back a fresh proxy per access, so spying on
     // `setItem` never intercepts the write. Replace the getters with failing
     // storages for the duration of the call instead.
@@ -247,8 +230,6 @@ describe("CloudPairRelay", () => {
       get: failingStorage,
     });
     try {
-      // Neither storage channel accepted the write, so persistence fails
-      // loudly (pre-existing contract) and the legacy key is never touched.
       expect(() => persistCloudPairApiToken("agent-key", "agent-123")).toThrow(
         /could not be stored/,
       );
@@ -262,10 +243,6 @@ describe("CloudPairRelay", () => {
         get: () => realSession,
       });
     }
-    // Legacy key survives because no scoped write landed.
-    expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
-      "legacy-key",
-    );
   });
   it("persists the authoritative response owner on a non-dedicated origin", async () => {
     const onPaired = vi.fn();
@@ -317,13 +294,6 @@ describe("CloudPairRelay", () => {
     expect(window.sessionStorage.getItem(scoped)).toBe("agent-key");
     expect(
       window.localStorage.getItem(cloudPairTokenKeyForAgent(OTHER_AGENT_ID)),
-    ).toBeNull();
-    // Legacy global key is superseded and removed once the scoped write lands.
-    expect(
-      window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY),
-    ).toBeNull();
-    expect(
-      window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY),
     ).toBeNull();
   });
   it("shows a clean Cloud-pair error instead of the local password form", async () => {
@@ -380,35 +350,5 @@ describe("CloudPairRelay", () => {
     expect(resolveCloudHostedAgentUrl({ hostname: "cloud.eliza.app" })).toBe(
       "https://cloud.eliza.app/join",
     );
-  });
-});
-describe("CloudPairRelay short-viewport scroll", () => {
-  // The pairing + hosted-agent notice screens are full-viewport centered cards.
-  // On short screens (Light Phone III, 1080×1240) a flex `justify-center`
-  // pins the card's center above scrollTop 0, so the error copy + "Back to
-  // Eliza Cloud" fell below an unreachable fold. The wrapper must be
-  // `overflow-y-auto` with the card `my-auto` (centers when it fits, scrolls
-  // from the top when it overflows) — jsdom can't measure layout, so scan the
-  // source, matching login-page.safe-area.test.tsx.
-  const SRC = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "..", "CloudPairRelay.tsx"),
-    "utf8",
-  );
-  it("makes both pair screens scroll instead of clipping when taller than the viewport", () => {
-    const scrollers = SRC.match(/min-h-\[100dvh\][^"]*overflow-y-auto/g) ?? [];
-    expect(
-      scrollers.length,
-      "both the pairing relay and the hosted-agent notice must be overflow-y-auto",
-    ).toBe(2);
-  });
-  it("centers the card with my-auto, not a top-clipping justify-center", () => {
-    expect(
-      /\bmy-auto\b[^"]*\bmax-w-\[2/.test(SRC),
-      "the card must center via my-auto so its top stays reachable while scrolling",
-    ).toBe(true);
-    expect(
-      /min-h-\[100dvh\][^"]*items-center justify-center/.test(SRC),
-      "the wrapper must not use the top-clipping items-center justify-center centering",
-    ).toBe(false);
   });
 });

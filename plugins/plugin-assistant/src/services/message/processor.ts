@@ -52,7 +52,7 @@ import {
   withEvaluatorStep,
 } from "@elizaos/core";
 import { v4 } from "uuid";
-import { decideReplyGate } from "../../features/advanced-capabilities/personality";
+import { decideReplyGate } from "../../features/advanced-capabilities/personality/reply-gate.ts";
 import { getPersonalityStore } from "../../features/advanced-capabilities/personality/services/personality-store.ts";
 import {
   aliasRecallQuery,

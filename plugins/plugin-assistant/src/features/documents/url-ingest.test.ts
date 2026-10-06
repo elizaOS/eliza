@@ -4,7 +4,7 @@
 
 import type { Character, UUID } from "@elizaos/core";
 import { AgentRuntime } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DocumentService } from "./service.js";
 import {

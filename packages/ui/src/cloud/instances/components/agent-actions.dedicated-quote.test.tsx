@@ -30,8 +30,8 @@ vi.mock("../../lib/api-client", () => ({
 
 vi.mock("sonner", () => ({ toast }));
 
-vi.mock("../lib/i18n", () => ({
-  useT: () => (_key: string, options?: Record<string, unknown>) => {
+vi.mock("../../shell/CloudI18nProvider", () => ({
+  useCloudT: () => (_key: string, options?: Record<string, unknown>) => {
     let text = String(options?.defaultValue ?? _key);
     for (const [name, value] of Object.entries(options ?? {})) {
       text = text.replaceAll(`{{${name}}}`, String(value));
@@ -64,10 +64,7 @@ vi.mock("../../../utils/cloud-agent-base", () => ({
   directCloudSharedAgentIdFromBase,
 }));
 
-vi.mock("../../../api", () => ({
-  client,
-  ElizaClient: class {},
-}));
+vi.mock("../../../api/client", () => ({ client, ElizaClient: class {} }));
 
 const PERSONAL_ID = "personal:00000000-0000-5000-8000-000000000001";
 const QUOTE = {

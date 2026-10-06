@@ -4,14 +4,14 @@
  * this module owns transcript-only presentation policy.
  */
 
-import { stripUnclaimedInteractionMarkup } from "@elizaos/core/messaging/interactions/parse";
-import type { ChatTurnStatus } from "../../api/client-types-chat";
+import type { ChatTurnStatus } from "@elizaos/contracts";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core/protocol";
 import {
   FIRST_RUN_GREETING,
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "../../first-run/first-run-greeting";
-import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { cn } from "../../utils/cn";
 import { CapabilityHandoffBlock } from "../chat/CapabilityHandoffBlock";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
@@ -85,7 +85,11 @@ function OverlayAssistantTurnBody({
         </div>
       ) : (
         <div className="col-start-1 row-start-1 min-h-[1.4375rem] min-w-0">
-          <InlineWidgetText content={message.text} />
+          <InlineWidgetText
+            content={message.text}
+            messageId={message.id}
+            producerScope={message.source}
+          />
           {attachmentsNode}
           {message.secretRequest ? (
             <div className="pointer-events-auto">

@@ -2,10 +2,10 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { access } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { WorkflowApiError, type WorkflowExecution } from '../types/index';
-import { resolveSmithersBunExecutable, resolveSmithersWorkflowDir } from './smithers-runtime';
+import { resolveSmithersWorkflowDir } from './smithers-runtime';
+import { workflowProcessCommand } from './workflow-process-host';
 export interface ApprovalReceipt {
   runId: string;
   workflowId: string;
@@ -23,7 +23,10 @@ export interface ApprovalReceipt {
   decidedAt?: string;
   decidedBy?: string;
 }
-const script = `import {Effect} from 'effect';import {openSmithersStore} from 'smthrs/openSmithersStore';
+const script = `import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';
+const smithersRequire=createRequire(import.meta.resolve('smthrs'));
+const {Effect}=await import(pathToFileURL(smithersRequire.resolve('effect')).href);
+import {openSmithersStore} from 'smthrs/openSmithersStore';
 const input=JSON.parse(await Bun.stdin.text());const store=await openSmithersStore({mode:'read',backend:'sqlite',dbPath:input.dbPath});
 try{const pending=await Effect.runPromise(store.adapter.listPendingApprovals(input.runId));const decided=await Effect.runPromise(store.adapter.listAllDecidedApprovals(input.runId));process.stdout.write(JSON.stringify([...pending,...decided]));}finally{await store.cleanup();}`;
 function bounded(value: unknown, max: number): string {
@@ -48,9 +51,11 @@ export async function readApprovalReceipts(
     throw new WorkflowApiError('Approval store unavailable', 503);
   }
   const raw = await new Promise<string>((resolve, reject) => {
-    const child = spawn(resolveSmithersBunExecutable(), ['--eval', script], {
-      cwd: join(dirname(fileURLToPath(import.meta.url)), '../..'),
+    const command = workflowProcessCommand('runtime', script);
+    const child = spawn(command.executable, command.args, {
+      cwd: command.cwd,
       env: {
+        ...command.env,
         PATH: process.env.PATH,
         HOME: process.env.HOME,
         TMPDIR: process.env.TMPDIR,

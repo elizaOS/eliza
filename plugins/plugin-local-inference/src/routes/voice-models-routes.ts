@@ -47,7 +47,7 @@ import fsp from "node:fs/promises";
 import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { sendJson, sendJsonError } from "@elizaos/core/api/http-helpers";
+import { sendJson, sendJsonError } from "@elizaos/host";
 import type { NetworkPolicyPreferences } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
 import {
 	VOICE_MODEL_VERSIONS,

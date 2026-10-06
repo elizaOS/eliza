@@ -57,13 +57,6 @@ export function listExtraSettingsGroups(): ExtraSettingsGroupDef[] {
   return [...getStore().groups.values()].sort((a, b) => a.order - b.order);
 }
 
-/** Look up a single registered extra group by id. */
-export function getExtraSettingsGroup(
-  id: string,
-): ExtraSettingsGroupDef | undefined {
-  return getStore().groups.get(id);
-}
-
 /** The Cloud group id used by every cloud settings section in this directory. */
 export const CLOUD_SETTINGS_GROUP_ID = "cloud";
 

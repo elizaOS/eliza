@@ -4,10 +4,11 @@
  * Balance data from Alchemy/Ankr (EVM), NodeReal/QuickNode (BSC RPC),
  * and Helius (Solana) REST APIs.
  *
- * DEX price oracle logic lives in ./wallet-dex-prices.ts.
+ * DEX price oracle logic lives in @elizaos/plugin-wallet/read.
  * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
  */
 import fs from "node:fs";
+import { rpcJsonRequest } from "@elizaos/plugin-wallet/read";
 import {
   decodeSolanaBase58,
   decodeSolanaPrivateKey,
@@ -26,20 +27,18 @@ export {
   syncSolanaPublicKeyEnv,
 } from "./wallet-keygen.ts";
 
-import {
-  type KeyValidationResult,
-  logger,
-  type SolanaTokenBalance,
-  toWellFormedUnicode,
-  truncateWellFormed,
-  type WalletAddresses,
-  type WalletChain,
-  type WalletImportResult,
-} from "@elizaos/core";
+import type {
+  KeyValidationResult,
+  SolanaTokenBalance,
+  WalletAddresses,
+  WalletChain,
+  WalletImportResult,
+} from "@elizaos/contracts";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { computeValueUsd } from "@elizaos/plugin-wallet/read";
 import { resolveStewardCredentialsPath } from "../config/paths.ts";
-import { computeValueUsd } from "./wallet-dex-prices.ts";
 
 type StewardAgentPayload = {
   walletAddress?: string;
@@ -80,7 +79,7 @@ export type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 
 // ── Re-exports from extracted modules ─────────────────────────────────
 
@@ -95,7 +94,7 @@ export {
   fetchDexPrices,
   fetchDexScreenerPrices,
   WRAPPED_NATIVE,
-} from "./wallet-dex-prices.ts";
+} from "@elizaos/plugin-wallet/read";
 
 export {
   type AnkrTokenAsset,
@@ -1025,15 +1024,6 @@ function buildSolanaTokenBalance(
   };
 }
 
-function rpcJsonRequest(body: string): RequestInit {
-  return {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    body,
-  };
-}
-
 function describeRpcEndpoint(url: string): string {
   try {
     return new URL(url).host;
@@ -1183,6 +1173,7 @@ export async function fetchSolanaNativeBalanceViaRpc(
         await fetch(
           rpcUrl,
           rpcJsonRequest(
+            FETCH_TIMEOUT_MS,
             JSON.stringify({
               jsonrpc: "2.0",
               id: 1,
@@ -1199,6 +1190,7 @@ export async function fetchSolanaNativeBalanceViaRpc(
         await fetch(
           rpcUrl,
           rpcJsonRequest(
+            FETCH_TIMEOUT_MS,
             JSON.stringify({
               jsonrpc: "2.0",
               id: 2,

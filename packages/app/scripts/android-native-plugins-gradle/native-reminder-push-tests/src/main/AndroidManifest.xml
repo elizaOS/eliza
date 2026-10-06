@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver android:name="ai.elizaos.app.ReminderNotificationDismissReceiver" android:exported="false" />
+    </application>
+</manifest>

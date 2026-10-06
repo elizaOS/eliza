@@ -21,12 +21,10 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "training"))
 
-from lib.generation_integrity import require_complete_generation
+from eliza_training.lib.generation_integrity import require_complete_generation
 
-from deterministic_eval import (
+from eliza_training.rl.deterministic_eval import (
     ACTION_REASON_ASSISTANT_PREFIX,
     ACTION_REASON_PROMPTS,
     ACTION_REASON_SYSTEM_PROMPT,
@@ -468,7 +466,7 @@ def start_server(
 ) -> subprocess.Popen[str]:
     from transformers import AutoConfig, AutoTokenizer
 
-    from lib.generation_integrity import model_context_tokens
+    from eliza_training.lib.generation_integrity import model_context_tokens
 
     config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)

@@ -4,22 +4,24 @@
  * model placement are separate: a local agent may still send text to Cerebras.
  */
 
-import { normalizeServiceRoutingConfig } from "@elizaos/core/contracts/service-routing";
-import { getElizaApiToken } from "@elizaos/core/utils/eliza-globals";
+import {
+  getElizaApiToken,
+  normalizeServiceRoutingConfig,
+} from "@elizaos/host/protocol";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
+import { client } from "../../api/client";
 import { isDesktopExternalApiBaseUrl } from "../../api/desktop-external-api-base";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
+import { resolveApiUrl } from "../../utils/asset-url.js";
+import { openEventSource } from "../../utils/event-source";
 import {
   deriveHomeModelStatus,
   type HomeModelStatus,
-} from "../../services/local-inference/home-model-status";
-import { resolveApiUrl } from "../../utils/asset-url.js";
-import { openEventSource } from "../../utils/event-source";
+} from "./home-model-status";
 import { observeModelRoute } from "./model-route-recovery";
 
 const NOT_REQUIRED: HomeModelStatus = {
@@ -86,7 +88,6 @@ export function useHomeModelStatus(): HomeModelStatus {
       runtimeMode.isCloudMode ||
       runtimeMode.isRemoteMode ||
       mobileRuntimeMode === "remote-mac" ||
-      mobileRuntimeMode === "tunnel-to-mobile" ||
       !supportsLocalInferenceStatus()
     ) {
       setStatus(NOT_REQUIRED);

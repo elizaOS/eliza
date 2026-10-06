@@ -1,7 +1,7 @@
 import "@elizaos/ui/styles";
-import { AgentSurfaceProvider } from "@elizaos/ui/agent-surface";
-import { ApiError } from "@elizaos/ui/api/client-types-core";
+import { AgentSurfaceProvider } from "@elizaos/ui";
 import { createRoot } from "react-dom/client";
+import { ApiError } from "../../../../../packages/ui/src/api/client-types-core";
 import type { NotesSnapshot, StickyNote } from "../../types.js";
 import { NotesSurface } from "../NotesSurface.js";
 import "./fixture.css";
@@ -104,10 +104,6 @@ if (!root) throw new Error("Notes fixture root is missing.");
 
 createRoot(root).render(
   <AgentSurfaceProvider viewId="notes-fixture">
-    <NotesSurface
-      {...stateProps()}
-      refresh={async () => undefined}
-      standalone
-    />
+    <NotesSurface {...stateProps()} refresh={async () => undefined} />
   </AgentSurfaceProvider>,
 );

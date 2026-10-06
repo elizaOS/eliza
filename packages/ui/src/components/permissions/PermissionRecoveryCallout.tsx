@@ -7,12 +7,12 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import type { PermissionId } from "@elizaos/core/contracts/permissions";
-import { openPermissionSettings } from "@elizaos/core/utils/permission-deep-links";
+import type { PermissionId } from "@elizaos/core/protocol";
+import { openPermissionSettings } from "@elizaos/core/protocol";
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { cn } from "../../lib/utils";
 import { openMobilePermissionSettings } from "../../platform/mobile-permissions-client";
+import { cn } from "../../utils/cn";
 import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 export interface PermissionRecoveryCalloutProps {

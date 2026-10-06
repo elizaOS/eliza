@@ -13,15 +13,16 @@ import { createWalletClient } from "viem";
 import { http } from "viem";
 import { logger } from "@elizaos/core";
 import { publicActions } from "viem";
+import { browserSignTokenMatches } from "../../browser-sign-token";
 import { resolveWalletBackend } from "../../../wallet/select-backend";
 import { type Address } from "viem";
 import { type Chain } from "viem";
 import { type Hex } from "viem";
 import { type IAgentRuntime } from "@elizaos/core";
-import { type LegacyRouteHandler } from "@elizaos/core/api/http-plugin";
-import { type Route } from "@elizaos/core/api/http-plugin";
-import { type RouteRequest } from "@elizaos/core/api/http-plugin";
-import { type RouteResponse } from "@elizaos/core/api/http-plugin";
+import { type LegacyRouteHandler } from "@elizaos/host/protocol";
+import { type Route } from "@elizaos/host/protocol";
+import { type RouteRequest } from "@elizaos/host/protocol";
+import { type RouteResponse } from "@elizaos/host/protocol";
 import { type TypedDataDefinition } from "viem";
 import * as viemChains from "viem/chains";
 class EvmSignInputError extends Error {
@@ -88,7 +89,8 @@ function authorize(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
         res.status(503).json({ error: "WALLET_BROWSER_SIGN_TOKEN not configured" });
         return false;
     }
-    if (readBearer(req) !== expected) {
+    const got = readBearer(req);
+    if (!got || !browserSignTokenMatches(expected, got)) {
         res.status(401).json({ error: "invalid sign token" });
         return false;
     }

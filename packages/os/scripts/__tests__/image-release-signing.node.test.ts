@@ -33,8 +33,8 @@ async function fixture() {
   await mkdir(root, { recursive: true });
   for (const architecture of architectures) {
     const base = path.join(root, `elizaos-1.2.3-beta.4-${architecture}.raw`);
-    await writeFile(base, `expanded-${architecture}-bytes\n`);
-    await writeFile(`${base}.zst`, `zstd-${architecture}\n`);
+    await writeFile(base, `expanded-${architecture}-bytes\n`, { mode: 0o600 });
+    await writeFile(`${base}.zst`, `zstd-${architecture}\n`, { mode: 0o600 });
   }
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   const publicKeyDer = publicKey.export({ format: "der", type: "spki" });

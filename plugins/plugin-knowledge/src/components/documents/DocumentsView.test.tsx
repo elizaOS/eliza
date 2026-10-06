@@ -24,15 +24,14 @@ import {
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// DocumentsView only touches the narrow `@elizaos/ui/api` client surface:
-// `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
-// `client.sendChatMessage()` (open-document affordance). The spatial primitives
-// come from the separate `@elizaos/ui/spatial` subpath, which is not mocked.
-const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
-vi.mock("@elizaos/ui/api", () => ({
+const { dispatchChatPrefill } = vi.hoisted(() => ({
+  dispatchChatPrefill: vi.fn(),
+}));
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  dispatchChatPrefill,
   client: {
     getBaseUrl: () => "http://test.local",
-    sendChatMessage,
   },
 }));
 
@@ -112,7 +111,7 @@ function agent(agentId: string): HTMLElement {
 
 afterEach(() => {
   cleanup();
-  sendChatMessage.mockClear();
+  dispatchChatPrefill.mockClear();
 });
 
 describe("DocumentsView — states", () => {
@@ -255,6 +254,6 @@ describe("DocumentsView — open affordance", () => {
     render(React.createElement(DocumentsView, { fetchers: makeFetchers() }));
     await screen.findByText("Quarterly Plan.md");
     fireEvent.click(agent("open:doc-1"));
-    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+    expect(dispatchChatPrefill).toHaveBeenCalledTimes(1);
   });
 });

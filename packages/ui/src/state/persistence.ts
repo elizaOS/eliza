@@ -4,19 +4,16 @@
  * read/write layer the state modules go through.
  */
 
-import { asRecord } from "@elizaos/core/type-guards";
+import type { UiLanguage } from "@elizaos/core/protocol";
+import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import { fetchWithCsrf } from "../api/csrf-client";
-import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
+import { isTerminalHostAgentBootError } from "../api/host-transport";
 import { getShaderPreset } from "../backgrounds/shader-presets";
 import { normalizeUniforms } from "../backgrounds/shader-schema";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { removeStorageValue, setStorageValue } from "../bridge/storage-bridge";
 import { getBootConfig } from "../config/boot-config-store";
-import {
-  DEFAULT_UI_LANGUAGE,
-  normalizeLanguage,
-  type UiLanguage,
-} from "../i18n";
+import { DEFAULT_UI_LANGUAGE, normalizeLanguage } from "../i18n";
 import { detectClientLanguage } from "../i18n/region";
 import { logger } from "../logger.ts";
 import type { Tab } from "../navigation";
@@ -40,14 +37,8 @@ import {
   DEFAULT_BACKGROUND_CONFIG,
   normalizeAccentId,
   type UiShellMode,
-  type UiTheme,
-  type UiThemeMode,
 } from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
-
-// Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
-// sites keep working; the single source is the pure reducer module.
-export { MAX_BACKGROUND_HISTORY } from "./background-history";
 
 /* ── Shared localStorage helper ──────────────────────────────────────── */
 function tryLocalStorage<T>(fn: () => T, fallback: T): T {
@@ -64,38 +55,6 @@ function describePersistenceError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/* ── Theme persistence ────────────────────────────────────────────────── */
-export type { UiTheme, UiThemeMode } from "./ui-preferences";
-
-const UI_THEME_STORAGE_KEY = "eliza:ui-theme";
-const LEGACY_UI_THEME_STORAGE_KEY = "elizaos:ui-theme";
-const UI_THEME_MODE_STORAGE_KEY = "eliza:ui-theme-mode";
-const APP_UI_THEME: UiTheme = "dark";
-const APP_UI_THEME_MODE: UiThemeMode = APP_UI_THEME;
-function normalizeUiThemeMode(_value: unknown): UiThemeMode {
-  return APP_UI_THEME_MODE;
-}
-
-export { normalizeUiThemeMode };
-/**
- * The app shell has one curated dark appearance. Keep this compatibility
- * function for consumers of the preference API, but never inherit OS chrome.
- */
-export function getSystemTheme(): UiTheme {
-  return APP_UI_THEME;
-}
-/**
- * Resolve any legacy theme mode to the app's single supported appearance.
- */
-export function resolveUiTheme(_mode: UiThemeMode): UiTheme {
-  return APP_UI_THEME;
-}
-/**
- * Return the supported theme mode regardless of any legacy persisted value.
- */
-export function loadUiThemeMode(): UiThemeMode {
-  return APP_UI_THEME_MODE;
-}
 /* ── Home time/date widget visibility (#10706) ───────────────────────── */
 const HOME_TIME_WIDGET_HIDDEN_STORAGE_KEY = "eliza:home-time-widget-hidden";
 /** Load whether the home time/date tile is hidden. Defaults to shown (false). */
@@ -113,22 +72,8 @@ export function saveHomeTimeWidgetHidden(hidden: boolean): void {
     );
   }, undefined);
 }
-export function saveUiThemeMode(mode: UiThemeMode): void {
-  tryLocalStorage(() => {
-    shellLocalStorage.setItem(
-      UI_THEME_MODE_STORAGE_KEY,
-      normalizeUiThemeMode(mode),
-    );
-  }, undefined);
-}
 const THEME_SWITCHING_ATTRIBUTE = "data-theme-switching";
 let themeSwitchResetFrameId: number | null = null;
-function normalizeUiTheme(_value: unknown): UiTheme {
-  return APP_UI_THEME;
-}
-
-export { normalizeUiTheme };
-
 function suppressThemeTransitions(root: HTMLElement): void {
   if (typeof window === "undefined") return;
   root.setAttribute(THEME_SWITCHING_ATTRIBUTE, "");
@@ -142,20 +87,6 @@ function suppressThemeTransitions(root: HTMLElement): void {
     });
   });
 }
-export function loadUiTheme(): UiTheme {
-  return tryLocalStorage(() => {
-    const current = localStorage.getItem(UI_THEME_STORAGE_KEY);
-    if (current != null) return normalizeUiTheme(current);
-    return normalizeUiTheme(localStorage.getItem(LEGACY_UI_THEME_STORAGE_KEY));
-  }, "dark");
-}
-export function saveUiTheme(theme: UiTheme): void {
-  tryLocalStorage(() => {
-    const normalized = normalizeUiTheme(theme);
-    shellLocalStorage.setItem(UI_THEME_STORAGE_KEY, normalized);
-    shellLocalStorage.setItem(LEGACY_UI_THEME_STORAGE_KEY, normalized);
-  }, undefined);
-}
 /* ── Background persistence ───────────────────────────────────────────── */
 const UI_BACKGROUND_STORAGE_KEY = "eliza:ui-background";
 /** Accept a 6-digit hex color; anything else falls back to the default. */
@@ -164,25 +95,17 @@ function normalizeHexColor(value: unknown): string {
     ? value.toLowerCase()
     : DEFAULT_BACKGROUND_COLOR;
 }
-// Renamed/recompressed curated wallpapers whose OLD URL may still sit in a
-// user's persisted background config. The asset is gone from /public, so
-// without this read-time alias every install that saved the old default 404s
-// its wallpaper after the deploy (#15184 removed bg-sunset.jpg). Normalization
-// runs on both load and save, so persisted configs self-heal on first touch.
-const LEGACY_WALLPAPER_ALIASES: Record<string, string> = {
-  "/bg-sunset.jpg": "/bg-sunset.webp",
-};
 export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   const record = asRecord(value);
   if (!record) return { ...DEFAULT_BACKGROUND_CONFIG };
   const color = normalizeHexColor(record.color);
-  const rawImageUrl =
+  const storedImageUrl =
     typeof record.imageUrl === "string" && record.imageUrl.length > 0
       ? record.imageUrl
       : undefined;
-  const imageUrl = rawImageUrl
-    ? (LEGACY_WALLPAPER_ALIASES[rawImageUrl] ?? rawImageUrl)
-    : undefined;
+  // Preserve saved selections after the bundled wallpaper was recompressed.
+  const imageUrl =
+    storedImageUrl === "/bg-sunset.jpg" ? "/bg-sunset.webp" : storedImageUrl;
   // Image mode without a usable source is meaningless — fall back to the shader.
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };
@@ -322,47 +245,19 @@ export function saveBackgroundRedo(redo: BackgroundConfig[]): void {
  * Sets both `data-theme` attribute and `.dark` class so both CSS selectors
  * in base.css (`[data-theme="dark"]` and `.dark`) are satisfied.
  */
-export function applyUiTheme(theme: UiTheme): void {
+export function applyAppTheme(): void {
   if (typeof document === "undefined") return;
-  const normalizedTheme = normalizeUiTheme(theme);
   const root = document.documentElement;
-  if (!root) return;
-  const currentTheme =
-    typeof root.getAttribute === "function"
-      ? root.getAttribute("data-theme")
-      : (root.dataset?.theme ?? null);
-  const shouldBeDark = normalizedTheme === "dark";
-  const classMatchesTheme = root.classList
-    ? root.classList.contains("dark") === shouldBeDark
-    : true;
-  const colorSchemeMatches = root.style.colorScheme === normalizedTheme;
-  const uiThemeChanged = !(
-    currentTheme === normalizedTheme &&
-    classMatchesTheme &&
-    colorSchemeMatches
-  );
-  if (uiThemeChanged) {
-    suppressThemeTransitions(root);
-    if (currentTheme !== normalizedTheme) {
-      if (typeof root.setAttribute === "function") {
-        root.setAttribute("data-theme", normalizedTheme);
-      } else if ("dataset" in root && root.dataset) {
-        root.dataset.theme = normalizedTheme;
-      } else {
-        return;
-      }
-    }
-    if (root.style && root.style.colorScheme !== normalizedTheme) {
-      root.style.colorScheme = normalizedTheme;
-    }
-    if (root.classList && !classMatchesTheme) {
-      if (shouldBeDark) {
-        root.classList.add("dark");
-      } else {
-        root.classList.remove("dark");
-      }
-    }
-  }
+  if (
+    root.dataset.theme === "dark" &&
+    root.classList.contains("dark") &&
+    root.style.colorScheme === "dark"
+  )
+    return;
+  suppressThemeTransitions(root);
+  root.dataset.theme = "dark";
+  root.classList.add("dark");
+  root.style.colorScheme = "dark";
 }
 /* ── Accent color persistence ─────────────────────────────────────────── */
 const UI_ACCENT_STORAGE_KEY = "eliza:ui-accent";
@@ -625,12 +520,7 @@ function normalizeUiShellMode(_mode: unknown): UiShellMode {
 }
 
 export { normalizeUiShellMode };
-export function loadUiShellMode(): UiShellMode {
-  return tryLocalStorage(
-    () => normalizeUiShellMode(localStorage.getItem(UI_SHELL_MODE_STORAGE_KEY)),
-    "native",
-  );
-}
+
 export function saveUiShellMode(mode: UiShellMode): void {
   tryLocalStorage(() => {
     shellLocalStorage.setItem(
@@ -647,7 +537,7 @@ function normalizeLastNativeTab(tab: unknown): Tab {
     case "browser":
     case "inventory":
     case "documents":
-    case "triggers":
+    case "automations":
     case "plugins":
     case "skills":
     case "trajectories":
@@ -775,7 +665,7 @@ export async function fetchServerFavoriteApps(): Promise<string[] | null> {
     const message = describePersistenceError(err);
     // error-policy:J4 `null` is the documented failure signal (caller keeps
     // the local cache); iOS mode-gated boot logs debug, real failures warn.
-    if (isTerminalIosNativeAgentBootErrorMessage(message)) {
+    if (isTerminalHostAgentBootError(message)) {
       logger.debug(
         `[persistence] server favorite apps unavailable while the native transport is mode-gated (will retry after agent-ready): ${message}`,
       );
@@ -816,37 +706,7 @@ export async function replaceServerFavoriteApps(
     return null;
   }
 }
-/**
- * Toggle a single app's favorite state on the server. Returns the updated
- * list, or `null` if the request failed (caller should keep optimistic UI
- * state). Local cache is updated on success.
- */
-export async function toggleServerFavoriteApp(
-  appName: string,
-  isFavorite: boolean,
-): Promise<string[] | null> {
-  try {
-    const resp = await fetchWithCsrf("/api/apps/favorites", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ appName, isFavorite }),
-    });
-    if (!resp.ok) return null;
-    const data = (await resp.json()) as {
-      favoriteApps?: unknown;
-    };
-    const sanitized = sanitizeFavoriteApps(data.favoriteApps);
-    saveFavoriteApps(sanitized);
-    return sanitized;
-  } catch (err) {
-    // error-policy:J4 `null` is the documented failure signal — the caller
-    // keeps its optimistic UI state; the warn keeps a broken route observable.
-    logger.warn(
-      `[persistence] failed to toggle server favorite app: ${describePersistenceError(err)}`,
-    );
-    return null;
-  }
-}
+
 /* ── Recent apps persistence ──────────────────────────────────────────── */
 const RECENT_APPS_KEY = "eliza:recent-apps";
 /** Cap on persisted recency list. Older entries are evicted. */

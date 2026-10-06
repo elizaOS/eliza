@@ -1,8 +1,9 @@
 /**
  * Real-browser screenshot + assertion harness for the WALLET home widget
  * (#14344) — no app server. Bundles wallet-widget-fixture.tsx (the REAL
- * `WalletBalanceWidget`) with esbuild, stubs only the `../../../api` client,
- * auth, and nav modules, loads it in headless chromium, and proves three states:
+ * `WalletBalanceWidget`) with esbuild, stubs only the `../../../api/client`
+ * module (plus the legacy `../../../api` barrel and the auth/nav chrome),
+ * loads it in headless chromium, and proves three states:
  *
  *   - DEFAULT (no holdings): the tracked BTC/SOL/ETH price rows are shown
  *     (previously the widget rendered nothing here — the bug this fixes).
@@ -45,8 +46,12 @@ const TOKEN_SHIM = `
 .text-success{color:#bbf7d0}
 .text-danger{color:#fecaca}
 `;
-// Client + hook stubs: the widget fetches balances/overview from the api module
-// singleton, so we replace it with a state-driven stub (chosen by ?state=held).
+// Client + hook stubs: the widget fetches balances/overview from the api
+// client module (`../../../api/client`; older revisions imported the
+// `../../../api` barrel), so we replace it with a state-driven stub (chosen by
+// ?state=held). Match both specifiers so the seam survives import-path
+// refactors; the real client must never reach the bundle or its file://
+// fetches would flip every state to "unavailable".
 const apiStub = join(outDir, "api-stub.ts");
 await writeFile(apiStub, `const state = new URLSearchParams(location.search).get("state");
 const held = state === "held";
@@ -97,10 +102,13 @@ await writeFile(navigationStub, `export function shouldUseHashNavigation() { ret
 // resolve it straight to the self-contained shared source module instead.
 const registryHostSource = join(here, "../../../../registry-host.ts");
 const sharedOverlayRegistrySource = join(here, "../../../../apps/overlay-app-registry.ts");
-const sharedAppsContractSource = join(here, "../../../../../../core/src/contracts/apps.ts");
+const sharedAppsContractSource = join(here, "../../../../../../core/src/catalog/apps.ts");
 const stubModules = {
     name: "stub-wallet-deps",
     setup(b) {
+        b.onResolve({ filter: /\/api\/client$/ }, () => ({
+            path: apiStub,
+        }));
         b.onResolve({ filter: /\/api$/ }, () => ({ path: apiStub }));
         b.onResolve({ filter: /useAuthStatus$/ }, () => ({ path: authStub }));
         b.onResolve({ filter: /home-widget-card$/ }, () => ({ path: navStub }));

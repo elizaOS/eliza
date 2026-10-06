@@ -18,7 +18,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
-import { isDiscordDmSenderAllowed as isDmSenderAllowed } from "@elizaos/core/discord-dm-policy";
+import { isDiscordDmSenderAllowed as isDmSenderAllowed } from "@elizaos/core/protocol";
 import { createHash } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { discordConnectionsRepository, userCharactersRepository } from "../../../db/repositories";

@@ -11,15 +11,15 @@
  */
 import type http from "node:http";
 import {
-  type AgentRuntime,
+  AGENT_TRANSFER_MAX_PASSWORD_BYTES,
+  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
   PostAgentExportRequestSchema,
-  type RouteRequestContext,
-  readRequestBodyBuffer,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
+import type { AgentRuntime } from "@elizaos/core";
+import { readRequestBodyBuffer } from "@elizaos/host";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 const MAX_IMPORT_BYTES = 512 * 1_048_576;
-const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 12;
-const AGENT_TRANSFER_MAX_PASSWORD_LENGTH = 1024;
 
 function readRawBody(
   req: http.IncomingMessage,
@@ -178,10 +178,10 @@ export async function handleAgentTransferRoutes(
       );
       return true;
     }
-    if (passwordLength > AGENT_TRANSFER_MAX_PASSWORD_LENGTH) {
+    if (passwordLength > AGENT_TRANSFER_MAX_PASSWORD_BYTES) {
       error(
         res,
-        `Password is too long (max ${AGENT_TRANSFER_MAX_PASSWORD_LENGTH} bytes).`,
+        `Password is too long (max ${AGENT_TRANSFER_MAX_PASSWORD_BYTES} bytes).`,
         400,
       );
       return true;

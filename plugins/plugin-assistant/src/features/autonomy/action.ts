@@ -268,14 +268,6 @@ export const escalateAction: Action = {
   },
 };
 
-function getAutonomyService(runtime: IAgentRuntime): AutonomyService | null {
-  return (
-    runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE) ??
-    runtime.getService<AutonomyService>("autonomy") ??
-    null
-  );
-}
-
 function autonomyServiceUnavailable(actionName: string): ActionResult {
   return {
     success: false,
@@ -327,7 +319,7 @@ export const enableAutonomousModeAction: Action = {
     ],
   ],
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    return getAutonomyService(runtime) !== null;
+    return runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE) !== null;
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -336,7 +328,7 @@ export const enableAutonomousModeAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = getAutonomyService(runtime);
+    const service = runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE);
     if (!service) {
       return autonomyServiceUnavailable("ENABLE_AUTONOMOUS_MODE");
     }
@@ -390,7 +382,7 @@ export const disableAutonomousModeAction: Action = {
     ],
   ],
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    return getAutonomyService(runtime) !== null;
+    return runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE) !== null;
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -399,7 +391,7 @@ export const disableAutonomousModeAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = getAutonomyService(runtime);
+    const service = runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE);
     if (!service) {
       return autonomyServiceUnavailable("DISABLE_AUTONOMOUS_MODE");
     }

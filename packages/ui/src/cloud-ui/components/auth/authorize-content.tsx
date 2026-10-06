@@ -28,15 +28,12 @@ import {
 } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
-import {
-  DiscordIcon,
-  GoogleIcon,
-  LoginForm,
-  useAuth,
-} from "../../../login/index";
+import { CornerBrackets } from "../../../components/ui/corner-brackets";
+import { DiscordIcon, GoogleIcon } from "../../../login/icons";
+import { LoginForm } from "../../../login/LoginForm";
+import { useAuth } from "../../../login/useAuth";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
-import { CornerBrackets } from "../primitives";
 import {
   buildAppAuthorizeCancelRedirect,
   buildAppAuthorizeCompletionRedirect,
@@ -792,7 +789,6 @@ function AppHeader({ appInfo }: { appInfo: AppInfo }) {
               width={64}
               height={64}
               className="object-cover"
-              unoptimized
             />
           </AvatarImage>
         </Avatar>

@@ -1,7 +1,7 @@
 /** Translates authenticated HTTP requests into calls on the owning synthetic-state authority. */
 
 import { createHash, timingSafeEqual } from "node:crypto";
-import { isSyntheticEnvironmentNamespace } from "@elizaos/core/contracts/synthetic-environment-lease";
+import { isSyntheticEnvironmentNamespace } from "@elizaos/contracts";
 import { parseSyntheticControlRequest, readBoundedJson } from "./codec.js";
 import {
   SYNTHETIC_CONTROL_MAX_REQUEST_BYTES,

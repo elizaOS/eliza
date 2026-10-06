@@ -4,10 +4,11 @@
  * occurrences, normalizes to its bare shape, and round-trips from the
  * extractor's `cadenceKind`. No runtime graph; deterministic.
  */
+
+import type { LifeOpsTaskDefinition } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import type { ExtractedTaskParams } from "../actions/lib/extract-task-plan.ts";
 import { buildCadenceFromLlmParams } from "../actions/life.ts";
-import type { LifeOpsTaskDefinition } from "../contracts/index.js";
 import { DefinitionsDomain } from "./domains/definitions-service.ts";
 import { materializeDefinitionOccurrences } from "./engine.ts";
 import { normalizeCadence } from "./service-normalize-task.ts";

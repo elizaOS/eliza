@@ -3361,6 +3361,181 @@
       "when": 1796083200127,
       "tag": "0509_managed_gmail_operation_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 480,
+      "version": "7",
+      "when": 1796083200128,
+      "tag": "0510_subscription_renewal_review_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 481,
+      "version": "7",
+      "when": 1796083200129,
+      "tag": "0511_organization_plan_change_quotes",
+      "breakpoints": true
+    },
+    {
+      "idx": 482,
+      "version": "7",
+      "when": 1796083200130,
+      "tag": "0512_organization_upgrade_dispatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 483,
+      "version": "7",
+      "when": 1796083200131,
+      "tag": "0513_organization_upgrade_live_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 484,
+      "version": "7",
+      "when": 1796083200132,
+      "tag": "0514_organization_upgrade_quote_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 485,
+      "version": "7",
+      "when": 1796083200133,
+      "tag": "0515_organization_upgrade_invoice_origins",
+      "breakpoints": true
+    },
+    {
+      "idx": 486,
+      "version": "7",
+      "when": 1796083200134,
+      "tag": "0516_organization_upgrade_paid_finalization",
+      "breakpoints": true
+    },
+    {
+      "idx": 487,
+      "version": "7",
+      "when": 1796083200135,
+      "tag": "0517_organization_upgrade_historical_targets",
+      "breakpoints": true
+    },
+    {
+      "idx": 488,
+      "version": "7",
+      "when": 1796083200136,
+      "tag": "0518_organization_upgrade_historical_settlement",
+      "breakpoints": true
+    },
+    {
+      "idx": 489,
+      "version": "7",
+      "when": 1796083200137,
+      "tag": "0519_organization_upgrade_void_result",
+      "breakpoints": true
+    },
+    {
+      "idx": 490,
+      "version": "7",
+      "when": 1796083200138,
+      "tag": "0520_organization_downgrade_quotes",
+      "breakpoints": true
+    },
+    {
+      "idx": 491,
+      "version": "7",
+      "when": 1796083200139,
+      "tag": "0521_organization_schedule_effects",
+      "breakpoints": true
+    },
+    {
+      "idx": 492,
+      "version": "7",
+      "when": 1796083200140,
+      "tag": "0522_organization_schedule_quote_terms",
+      "breakpoints": true
+    },
+    {
+      "idx": 493,
+      "version": "7",
+      "when": 1796083200141,
+      "tag": "0523_organization_schedule_compensation",
+      "breakpoints": true
+    },
+    {
+      "idx": 494,
+      "version": "7",
+      "when": 1796083200142,
+      "tag": "0524_organization_schedule_compensation_result",
+      "breakpoints": true
+    },
+    {
+      "idx": 495,
+      "version": "7",
+      "when": 1796083200143,
+      "tag": "0525_organization_schedule_configured_result",
+      "breakpoints": true
+    },
+    {
+      "idx": 496,
+      "version": "7",
+      "when": 1796083200144,
+      "tag": "0526_organization_schedule_configured_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 497,
+      "version": "7",
+      "when": 1796083200145,
+      "tag": "0527_organization_schedule_late_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 498,
+      "version": "7",
+      "when": 1796083200146,
+      "tag": "0528_subscription_adjustment_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 499,
+      "version": "7",
+      "when": 1796083200147,
+      "tag": "0529_subscription_adjustment_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 500,
+      "version": "7",
+      "when": 1796083200148,
+      "tag": "0530_subscription_invoice_event_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 501,
+      "version": "7",
+      "when": 1796083200149,
+      "tag": "0531_subscription_invoice_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 502,
+      "version": "7",
+      "when": 1796083200150,
+      "tag": "0532_subscription_invoice_capture_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 503,
+      "version": "7",
+      "when": 1796083200151,
+      "tag": "0533_subscription_invoice_debt_observations",
+      "breakpoints": true
+    },
+    {
+      "idx": 504,
+      "version": "7",
+      "when": 1796083200152,
+      "tag": "0534_subscription_allowance_invoice_authority",
+      "breakpoints": true
     }
   ]
 }

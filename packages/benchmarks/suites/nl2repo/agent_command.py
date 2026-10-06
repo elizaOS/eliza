@@ -4,31 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
-
-
-def _repo_root() -> Path:
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "harnesses" / "eliza").exists():
-            return parent
-    raise FileNotFoundError("Could not locate repository root from NL2Repo agent command")
-
-
-def _add_adapter_paths() -> Path:
-    root = _repo_root()
-    for relative in (
-        "harnesses/eliza",
-        "harnesses/hermes",
-        "harnesses/openclaw",
-    ):
-        path = str(root / relative)
-        if path not in sys.path:
-            sys.path.insert(0, path)
-    return root
 
 
 def _read_text(path: str) -> str:
@@ -93,25 +71,13 @@ def main(argv: list[str] | None = None) -> int:
         _write_json(result_json, {**metadata, "status": "dry_run"})
         return 0
 
-    root = _add_adapter_paths()
-    os.environ["BENCHMARK_TASK_AGENT"] = args.adapter
-    os.environ["BENCHMARK_MODEL_PROVIDER"] = args.provider
-    os.environ["BENCHMARK_MODEL_NAME"] = args.model
-    os.environ.setdefault("ELIZA_AGENT_ORCHESTRATOR", "1")
-    os.environ.setdefault("ELIZA_AGENT_SELECTION_STRATEGY", "fixed")
-    os.environ.setdefault("ELIZA_ACP_DEFAULT_AGENT", args.adapter)
-    os.environ.setdefault("ELIZA_DEFAULT_AGENT_TYPE", args.adapter)
-    os.environ.setdefault("ELIZA_BENCH_HTTP_TIMEOUT", str(args.timeout_seconds))
-    os.environ.setdefault("ELIZA_BENCH_START_TIMEOUT", "300")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "harnesses" / "eliza"))
+    from eliza_adapter import run_code_agent_task
 
-    from eliza_adapter import ElizaServerManager  # type: ignore
-
-    manager = ElizaServerManager(timeout=300.0, repo_root=root)
     try:
-        manager.start()
-        manager.client.reset(task_id=args.task, benchmark="nl2repo")
-        response = manager.client.send_message(
-            prompt,
+        response = run_code_agent_task(
+            adapter=args.adapter, provider=args.provider, model=args.model,
+            timeout_seconds=args.timeout_seconds, prompt=prompt,
             context={
                 "benchmark": "nl2repo",
                 "task_id": args.task,
@@ -146,8 +112,6 @@ def main(argv: list[str] | None = None) -> int:
             },
         )
         return 1
-    finally:
-        manager.stop()
 
 
 if __name__ == "__main__":

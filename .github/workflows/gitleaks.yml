@@ -1,0 +1,61 @@
+name: Secret scan
+
+on:
+  workflow_call:
+    inputs:
+      base_sha:
+        type: string
+        required: false
+        default: ''
+      head_sha:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Commit-range secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.head_sha }}
+          fetch-depth: 0
+          submodules: false
+          persist-credentials: false
+      - name: Install checksum-pinned scanner
+        run: packages/scripts/github/install-gitleaks.sh "$RUNNER_TEMP/gitleaks-bin"
+      - name: Scan the complete candidate range
+        env:
+          BASE_SHA: ${{ inputs.base_sha }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [ "$(git rev-parse HEAD)" = "$HEAD_SHA" ]
+          range="$HEAD_SHA"
+          if [[ -n "$BASE_SHA" && "$BASE_SHA" != 0000000000000000000000000000000000000000 ]]; then
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            git cat-file -e "${BASE_SHA}^{commit}"
+            # A diverged PR must include every commit since its merge base.
+            # Unrelated histories have no baseline and are scanned in full.
+            if merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"; then
+              range="${merge_base}..${HEAD_SHA}"
+            fi
+          fi
+          mkdir -p test-results/security
+          "$RUNNER_TEMP/gitleaks-bin/gitleaks" detect \
+            --config .gitleaks.toml --source . --redact --no-banner \
+            --log-opts "$range" --report-format sarif \
+            --report-path test-results/security/gitleaks.sarif
+      - name: Retain redacted scan results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: gitleaks-${{ inputs.head_sha }}
+          path: test-results/security/gitleaks.sarif
+          if-no-files-found: warn
+          retention-days: 7

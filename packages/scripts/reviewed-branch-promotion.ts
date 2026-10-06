@@ -6,6 +6,28 @@
 
 const SHA = /^[0-9a-f]{40}$/;
 
+// REST 2026-03-10 omits merge_commit_sha. Resolve the immutable PR node,
+// retaining the same exact-commit check used with older REST responses.
+async function mergedPullRequestCommit(api, pr) {
+  if (SHA.test(pr.merge_commit_sha ?? "")) return pr.merge_commit_sha;
+  if (!pr.merged_at || typeof pr.node_id !== "string" || !pr.node_id)
+    throw new Error("promotion merge commit identity unavailable");
+  const result = await api.graphql(
+    `query PromotionMergeCommit($id: ID!) {
+      node(id: $id) { id ... on PullRequest { merged mergeCommit { oid } } }
+    }`,
+    { id: pr.node_id },
+  );
+  const node = result?.node;
+  if (
+    node?.id !== pr.node_id ||
+    node.merged !== true ||
+    !SHA.test(node.mergeCommit?.oid ?? "")
+  )
+    throw new Error("promotion merge commit identity unavailable");
+  return node.mergeCommit.oid;
+}
+
 export async function verifyMergedPromotion(api, targetBranch, targetSha) {
   const sourceBranch = { staging: "develop", main: "staging" }[targetBranch];
   if (!sourceBranch || !SHA.test(targetSha))
@@ -16,15 +38,19 @@ export async function verifyMergedPromotion(api, targetBranch, targetSha) {
   );
   if (!Array.isArray(pulls) || pulls.length === 100)
     throw new Error("ambiguous promotion history");
-  const matches = pulls.filter(
+  const candidates = pulls.filter(
     (pr) =>
       pr.merged_at &&
-      pr.merge_commit_sha === targetSha &&
       pr.base?.ref === targetBranch &&
       pr.head?.ref === sourceBranch &&
       Number.isSafeInteger(pr.head?.repo?.id) &&
       pr.head.repo.id === pr.base?.repo?.id,
   );
+  const matches = [];
+  for (const pr of candidates) {
+    if ((await mergedPullRequestCommit(api, pr)) === targetSha)
+      matches.push(pr);
+  }
   if (matches.length !== 1 || !SHA.test(matches[0].head.sha)) {
     throw new Error(
       `destination must be a merged ${sourceBranch} -> ${targetBranch} PR`,
@@ -74,22 +100,19 @@ export async function requestReviewedPromotion(api, promotion) {
       prior.head.ref !== sourceBranch ||
       prior.base?.ref !== targetBranch ||
       !Number.isSafeInteger(prior.head?.repo?.id) ||
-      prior.head.repo.id !== prior.base?.repo?.id ||
-      !SHA.test(prior.merge_commit_sha)
+      prior.head.repo.id !== prior.base?.repo?.id
     )
       continue;
+    const mergeSha = await mergedPullRequestCommit(api, prior);
     const target = await api.request("GET", `/git/ref/heads/${targetBranch}`);
     if (!SHA.test(target.object?.sha))
       throw new Error("promotion destination ref unavailable");
     const comparison = await api.request(
       "GET",
-      `/compare/${prior.merge_commit_sha}...${target.object.sha}`,
+      `/compare/${mergeSha}...${target.object.sha}`,
     );
     if (["ahead", "identical"].includes(comparison.status)) {
-      const merged = await api.request(
-        "GET",
-        `/git/commits/${prior.merge_commit_sha}`,
-      );
+      const merged = await api.request("GET", `/git/commits/${mergeSha}`);
       if (merged.tree?.sha !== commit.tree.sha)
         throw new Error("completed promotion changed the reviewed source tree");
       return {

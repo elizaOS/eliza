@@ -161,6 +161,7 @@
   "appsview.Stopped": "Naka-stop",
   "appsview.URL": "URL",
   "appsview.Viewer": "Viewer",
+  "appwindow.ExternalOpenFailed": "Hindi mabuksan ang app na ito sa iyong browser: {{url}}",
   "appwindow.LaunchedNoViewer": "Nag-launch ang app na ito nang walang viewer URL. Buksan ito mula sa apps catalog.",
   "appwindow.RetryingLaunch": "Sinusubukan ulit i-launch...",
   "aria.advancedNavigation": "Advanced na navigation",

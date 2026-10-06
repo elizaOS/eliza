@@ -7,7 +7,7 @@
  * Purely presentational: grouping, visibility, and hash routing stay in
  * SettingsView / settings-sections.
  */
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { SettingsGroup, SettingsRow } from "./settings-layout";
 import {
   type GroupedSettingsSections,

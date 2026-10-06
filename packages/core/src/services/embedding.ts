@@ -22,10 +22,7 @@ import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
-import {
-	type BatchItemOutcome,
-	BatchQueue,
-} from "../utils/batch-queue/index.js";
+import { type BatchItemOutcome, BatchQueue } from "../utils/batch-queue.js";
 import { isExpectedLocalEmbeddingUnavailability } from "../utils/expected-local-embedding-unavailability";
 import { isModelFundingAuthorityError } from "../utils/model-errors";
 

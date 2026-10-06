@@ -10,7 +10,7 @@
  * to the declarative UiRenderer for uiSpec widgets.
  */
 
-import { isViewVisible } from "@elizaos/core/views/view-kind";
+import { isViewVisible } from "@elizaos/core/protocol";
 import type * as React from "react";
 import {
   Component,
@@ -22,12 +22,12 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { client } from "../api/client";
 import { UiRenderer } from "../components/config-ui/ui-renderer";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useNow } from "../hooks/useNow";
-import { useAppSelectorShallow } from "../state";
+import { useAppSelectorShallow } from "../state/app-store";
 import { useNotifications } from "../state/notifications/notification-store";
 import { useEnabledViewKinds } from "../state/useViewKinds";
 import { useHomeAttentionSignals } from "./home-attention-store";
@@ -45,7 +45,7 @@ import {
   subscribeWidgetRegistry,
 } from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
-import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
+import { WIDGET_UI_ACTION_EVENT } from "./types";
 
 export interface WidgetUiActionEventDetail {
   pluginId: string;

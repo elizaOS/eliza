@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../apps/catalog-loader", () => ({
   loadMergedCatalogApps: mocks.loadMergedCatalogApps,
 }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (sel: (s: unknown) => unknown) => sel(mocks.store),
 }));
 

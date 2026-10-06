@@ -2,34 +2,18 @@
  * POST /api/v1/advertising/audience-segments/[id]/apply — apply a segment to a campaign.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  advertisingService,
+  serializeCampaignTargeting,
+} from "@elizaos/cloud-shared/lib/services/advertising";
+import { ApplyAudienceSegmentSchema } from "@elizaos/cloud-shared/lib/services/advertising/schemas";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { advertisingService } from "@/lib/services/advertising";
-import { ApplyAudienceSegmentSchema } from "@/lib/services/advertising/schemas";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
-
-type CampaignRecord = NonNullable<
-  Awaited<ReturnType<typeof advertisingService.getCampaign>>
->;
-
-function serializeTargeting(targeting: CampaignRecord["targeting"]) {
-  return {
-    locations: targeting.locations,
-    ageMin: targeting.age_min,
-    ageMax: targeting.age_max,
-    genders: targeting.genders,
-    interests: targeting.interests,
-    behaviors: targeting.behaviors,
-    customAudiences: targeting.custom_audiences,
-    excludedAudiences: targeting.excluded_audiences,
-    placements: targeting.placements,
-    languages: targeting.languages,
-  };
-}
 
 app.post("/", async (c) => {
   try {
@@ -59,7 +43,7 @@ app.post("/", async (c) => {
       id: campaign.id,
       name: campaign.name,
       status: campaign.status,
-      targeting: serializeTargeting(campaign.targeting),
+      targeting: serializeCampaignTargeting(campaign.targeting),
       updatedAt: campaign.updated_at.toISOString(),
     });
   } catch (error) {

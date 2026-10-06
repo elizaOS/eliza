@@ -1,5 +1,5 @@
 /**
- * Mounts POST `/api/credential-tunnel` (and the legacy `/submit` alias): the
+ * Mounts POST `/api/credential-tunnel`: the
  * owner-only endpoint that tunnels a single secret to a sub-agent session.
  * Requires the OWNER role, validates the child-session/scope identifiers and
  * key against strict allow-lists, then delegates to the runtime's
@@ -12,16 +12,12 @@ import {
   CredentialScopeError,
   SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
   type SubAgentCredentialBridge,
-} from "../services/credential-tunnel-service";
+} from "@elizaos/plugin-assistant";
 import { ensureRouteMinRole } from "./auth";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { readCompatJsonBody } from "./compat-route-shared";
 import { sendJson, sendJsonError } from "./response";
 
-const ROUTES = new Set([
-  "/api/credential-tunnel",
-  "/api/credential-tunnel/submit",
-]);
 const SAFE_ID_RE = /^[A-Za-z0-9._:-]{1,256}$/;
 const SAFE_KEY_RE = /^[A-Za-z0-9_.-]{1,256}$/;
 
@@ -61,7 +57,7 @@ export async function handleCredentialTunnelRoute(
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-  if (!ROUTES.has(pathname)) return false;
+  if (pathname !== "/api/credential-tunnel") return false;
 
   if (method !== "POST") {
     sendJsonError(res, 405, "method not allowed");

@@ -16,13 +16,13 @@
  * shape is the same `@elizaos/core` contract the renderer consumes, so the
  * two halves can never drift.
  */
-import type { FusedWakeEventDetail } from "@elizaos/core/events";
+import type { FusedWakeEventDetail } from "@elizaos/core/protocol";
 import type { WakeFireInfo } from "./wake-word";
 
 export type {
 	FusedWakeEventDetail,
 	FusedWakeStage,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 /**
  * Sink the host wires to forward a fused-wake stage to the renderer. The
  * transport is the host's concern; this seam is transport-agnostic, which is

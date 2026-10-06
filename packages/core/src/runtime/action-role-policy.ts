@@ -16,7 +16,7 @@ import {
 /**
  * Operator-supplied override map from the `ACTION_ROLE_POLICY` env var.
  *
- * Shape: `{"<ACTION_NAME>": "<RoleGateRole>", ...}` — e.g.
+ * Shape: `{"<ACTION_NAME>": "<RoleGateRole>",...}` — e.g.
  * `{"SHELL":"GUEST","BROWSER":"MEMBER"}`.
  *
  * When an exact action name appears in this policy, its declared `contextGate`
@@ -25,11 +25,11 @@ import {
  * is narrower than a particular deployment needs.
  *
  * The policy is evaluated in exactly one place — the shared `actionGateFailure`
- * / `canActionRun` gate in `runtime/action-gate.ts` (#12087 Item 9) — which every
+ * / `canActionRun` gate in `runtime/action-gate.ts` — which every
  * exposure/execution path (planner, sub-planner, tool-call executor, shortcut
  * gate) routes through. A policy key that matches no registered action name or
  * simile is silently inert; `warnOnUnmatchedActionRolePolicyKeys` surfaces that at
- * startup (#12087 Item 19).
+ * startup.
  */
 
 let cachedActionRolePolicy: Record<string, RoleGateRole> | undefined;

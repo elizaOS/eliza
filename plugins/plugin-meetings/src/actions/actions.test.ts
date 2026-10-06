@@ -12,7 +12,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { type MeetingSession } from "@elizaos/core/meetings";
+import type { MeetingSession } from "@elizaos/core/protocol";
 import { describe, expect, it } from "vitest";
 import { MeetingJoinError, type MeetingService } from "../service.js";
 import { getMeetingTranscriptAction } from "./get-meeting-transcript.js";

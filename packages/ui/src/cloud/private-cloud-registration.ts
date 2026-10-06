@@ -69,7 +69,7 @@ async function loadPrivateCloudDomains(): Promise<void> {
   // `registerCloudRoute(...)` calls.
   await Promise.all([
     import("./instances"),
-    import("./analytics"),
+    import("./analytics/routes"),
     import("./home/routes"),
     import("./billing/routes"),
     import("./api-keys/routes"),
@@ -88,9 +88,9 @@ async function loadPrivateCloudDomains(): Promise<void> {
   ] = await Promise.all([
     import("./admin"),
     import("./api-explorer"),
-    import("./approvals"),
+    import("./approvals/routes"),
     import("./mcps"),
-    import("./settings"),
+    import("./settings/register-cloud-settings"),
   ]);
 
   registerApiExplorerCloudRoute();

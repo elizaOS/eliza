@@ -1,4 +1,3 @@
-/** Exercises Android instrumentation completion and native module wiring without replacing device behavior. */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -125,4 +124,23 @@ test("ignores leftover non-package directories but rejects corrupt manifests", (
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("host-configured libraries count real native tests without inventing a default bridge", () => {
+  const plugins = inventory();
+  for (const name of ["plugin-native-calendar", "plugin-native-reminders"]) {
+    const plugin = plugins.find((item) => item.directory === name);
+    assert.ok(plugin.tests.length > 0);
+    assert.equal(
+      plugin.expectedTests,
+      plugin.tests.reduce((sum, item) => sum + item.count, 0),
+    );
+  }
+  const camera = plugins.find(
+    (item) => item.directory === "plugin-native-camera",
+  );
+  assert.equal(
+    camera.expectedTests,
+    camera.tests.reduce((sum, item) => sum + item.count, 0) + 1,
+  );
 });

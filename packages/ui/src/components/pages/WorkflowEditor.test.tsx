@@ -18,7 +18,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import type {
   WorkflowDefinition,
   WorkflowExecution,
@@ -26,7 +26,7 @@ import type {
 import { CHAT_PREFILL_EVENT, type ChatPrefillEventDetail } from "../../events";
 import { WorkflowEditor } from "./WorkflowEditor";
 
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     activateWorkflowDefinition: vi.fn(),
     cancelWorkflowExecution: vi.fn(),

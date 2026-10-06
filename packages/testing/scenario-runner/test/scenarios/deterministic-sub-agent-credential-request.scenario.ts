@@ -16,7 +16,11 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import { getHttpRuntime } from "@elizaos/core/api/http-plugin-runtime";
+import { getHttpRuntime } from "@elizaos/host/protocol";
+import {
+  createCredentialTunnelService,
+  registerSubAgentCredentialBridgeAdapter,
+} from "@elizaos/plugin-assistant";
 import {
   type ScenarioContext,
   type ScenarioTurnExecution,
@@ -30,10 +34,6 @@ import {
 import type { SessionInfo } from "../../../../../plugins/plugin-agent-orchestrator/src/services/types";
 import { codingAgentRoutePlugin } from "../../../../../plugins/plugin-agent-orchestrator/src/setup-routes";
 import { handleCredentialTunnelRoute } from "../../../../app/src/api/credential-tunnel-routes";
-import {
-  createCredentialTunnelService,
-  registerSubAgentCredentialBridgeAdapter,
-} from "../../../../app/src/services/credential-tunnel-service";
 import { ownerAppInlineSensitiveRequestAdapter } from "../../../../app/src/services/sensitive-requests/owner-app-inline-adapter";
 
 const SCENARIO_ID = "deterministic-sub-agent-credential-request";

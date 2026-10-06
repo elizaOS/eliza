@@ -3,7 +3,7 @@
  *
  * Calls `LocalInferenceEngine.generate` with a `responseSkeleton` (or an
  * explicit `grammar`) derived from the task's `SkeletonHint`. The skeleton is
- * compiled to a lazy GBNF by `compileSkeletonToGbnf` inside app-core — the bench
+ * compiled to a lazy GBNF by `compileSkeletonToGbnf` inside the inference engine — the bench
  * just hands the engine the literal/free spans.
  *
  * When the engine isn't available the mode reports a skip reason; the runner
@@ -14,30 +14,8 @@ import {
   type EngineLike,
   resolveElizaEngine,
 } from "../engine-resolver.ts";
-import type {
-  ModeAdapter,
-  ModeRequest,
-  ModeResult,
-  SkeletonFreeField,
-  SkeletonHint,
-} from "../types.ts";
-
-/**
- * A single skeleton-span entry — mirror of `ResponseSkeletonSpan` in
- * @elizaos/core. We re-declare it locally to keep this module type-free at the
- * core-package boundary.
- */
-interface BenchSkeletonSpan {
-  kind: "literal" | "enum" | "free-string" | "free-json";
-  key?: string;
-  value?: string;
-  enumValues?: string[];
-}
-
-interface BenchSkeleton {
-  id?: string;
-  spans: BenchSkeletonSpan[];
-}
+import type { ModeAdapter, ModeRequest, ModeResult } from "../types.ts";
+import { emptyResult, renderPrompt, skeletonFromHint } from "./guided.ts";
 
 export interface ElizaGuidedModeOptions {
   tier?: Eliza1TierId;
@@ -137,73 +115,4 @@ export class ElizaGuidedMode implements ModeAdapter {
     this.skipReason = null;
     if (engine) await engine.unload();
   }
-}
-
-/**
- * Build a skeleton from the compact `SkeletonHint`. The shape is always a JSON
- * object — we emit a leading `{` literal, alternating `"key":` literals with
- * free spans, and a trailing `}`. Single-value enums collapse to literals
- * automatically inside app-core (`collapseSkeleton`).
- */
-function skeletonFromHint(hint: SkeletonHint): BenchSkeleton {
-  const spans: BenchSkeletonSpan[] = [];
-  const fields = hint.freeFields;
-  if (fields.length === 0 && hint.enumKey && hint.enumValues) {
-    spans.push({ kind: "literal", value: `{"${hint.enumKey}":` });
-    spans.push({
-      kind: "enum",
-      key: hint.enumKey,
-      enumValues: hint.enumValues,
-    });
-    spans.push({ kind: "literal", value: "}" });
-    return { spans };
-  }
-  for (let i = 0; i < fields.length; i += 1) {
-    const field = fields[i];
-    const prefix = i === 0 ? `{"${field.key}":` : `,"${field.key}":`;
-    spans.push({ kind: "literal", value: prefix });
-    spans.push(spanForField(field));
-  }
-  spans.push({ kind: "literal", value: "}" });
-  return { spans };
-}
-
-function spanForField(field: SkeletonFreeField): BenchSkeletonSpan {
-  switch (field.kind) {
-    case "enum":
-      return {
-        kind: "enum",
-        key: field.key,
-        enumValues: field.enumValues ?? [],
-      };
-    case "string":
-      return { kind: "free-string", key: field.key };
-    case "boolean":
-    case "number":
-    case "object":
-      return { kind: "free-json", key: field.key };
-  }
-}
-
-function renderPrompt(req: ModeRequest): string {
-  return [
-    req.systemPrompt,
-    "",
-    "Respond with a single JSON object only.",
-    "",
-    "USER MESSAGE:",
-    req.userPrompt,
-    "",
-    "JSON:",
-  ].join("\n");
-}
-
-function emptyResult(message: string): ModeResult {
-  return {
-    rawOutput: "",
-    firstTokenLatencyMs: null,
-    totalLatencyMs: 0,
-    tokensGenerated: null,
-    error: message,
-  };
 }

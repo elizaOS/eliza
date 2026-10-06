@@ -1,17 +1,27 @@
 /** Proxies validated token-trade history requests to the market-data provider. */
-import { Hono } from "hono";
-import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
-import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+
 import {
   isValidAddress,
   isValidChain,
-} from "@/lib/services/proxy/services/address-validation";
+} from "@elizaos/cloud-shared/lib/services/proxy/address-validation";
+import {
+  applyCorsHeaders,
+  handleCorsOptions,
+} from "@elizaos/cloud-shared/lib/services/proxy/cors";
 import {
   marketDataConfig,
   marketDataHandler,
-} from "@/lib/services/proxy/services/market-data";
-import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/proxy/market-data";
+import {
+  parseClampedLimit,
+  parseClampedOffset,
+} from "@elizaos/cloud-shared/lib/utils/clamp-limit";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 
 const CORS_METHODS = "GET, OPTIONS";
 export const TOKEN_TRADE_TYPES = Object.freeze([

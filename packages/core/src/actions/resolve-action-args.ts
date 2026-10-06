@@ -1,17 +1,4 @@
-/**
- * Standardized argument-extraction substrate for umbrella actions.
- *
- * Replaces the per-action hand-rolled `resolveSubactionPlan`-style helpers
- * (one per umbrella action) with a single shared resolver that:
- *   1. Trusts planner-supplied parameters when they are complete.
- *   2. Falls through to a single LLM extraction pass (with one repair shot)
- *      that picks the right subaction and pulls its required params from
- *      free-form intent + recent conversation.
- *
- * Intentionally narrow: this resolver knows about subactions and required
- * params, nothing else. Domain-specific param normalization, post-extraction
- * confirmation flows, and side-effect dispatch stay in the umbrella action.
- */
+/** Resolves umbrella-action arguments from complete planner parameters or one validated model extraction with one repair attempt. */
 
 import type { HandlerOptions } from "../types/components.js";
 import type { Memory } from "../types/memory.js";
@@ -26,7 +13,7 @@ import { recentConversationTextsFromState } from "./recent-context";
 export interface SubactionSpec<TParams = Record<string, unknown>> {
 	/** Full description (per-subaction; surfaced into LLM prompt). */
 	description: string;
-	/** @deprecated Compatibility metadata; model prompts use `description`. */
+	/** Short description metadata; model prompts use `description`. */
 	descriptionCompressed: string;
 	/** Required parameter keys; missing any -> triggers extraction. */
 	required: ReadonlyArray<keyof TParams & string>;

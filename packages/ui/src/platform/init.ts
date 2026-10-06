@@ -1,15 +1,16 @@
 /** Platform detection and initialization utilities. */
+
 import { Capacitor } from "@capacitor/core";
-import { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agent";
+import { userAgentHasElizaOSMarker } from "@elizaos/host/protocol";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import {
   clearStandaloneBottomReclaim,
   installStandaloneBottomReclaim,
   shouldInstallStandaloneBottomReclaim,
 } from "./standalone-bottom-reclaim";
 
-export { userAgentHasElizaOSMarker } from "@elizaos/core/platform/aosp-user-agent";
+export { userAgentHasElizaOSMarker } from "@elizaos/host/protocol";
 
 // ── Platform detection ──────────────────────────────────────────────
 function detectPlatform(): {
@@ -115,17 +116,7 @@ export function canRunLocal(): boolean {
 export function canSelectLocalRuntime(): boolean {
   return canRunLocal() || isElizaOS();
 }
-/**
- * True when the platform might host a local agent that the UI can reach over
- * the app. Used to decide whether the local first-run option should run a
- * liveness probe before being shown. Desktop and dev mode
- * always qualify; Android qualifies because `ElizaAgentService` starts the
- * bundled loopback agent; iOS qualifies because the same route shape is
- * carried over in-process ITTP/Capacitor IPC, not a TCP listener.
- */
-export function canHostLocalAgent(): boolean {
-  return canRunLocal() || isAndroid || isIOS;
-}
+
 export function isWebPlatform(): boolean {
   return detected.platform === "web" && !isElectrobunRuntime();
 }

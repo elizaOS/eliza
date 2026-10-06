@@ -4,8 +4,8 @@
  * still registering from a route that genuinely does not exist.
  */
 import { matchPluginRoutePath } from "@elizaos/agent/api/runtime-plugin-routes";
-import { type DeferredBootPhaseStatus } from "@elizaos/agent/runtime/deferred-boot-status";
-import { type Route } from "@elizaos/core/api/http-plugin";
+import type { DeferredBootPhaseStatus } from "@elizaos/agent/runtime/deferred-boot-status";
+import type { Route } from "@elizaos/host/protocol";
 export const DEFERRED_FEATURE_ROUTE_PREFIXES = [
   "/api/asr/cloud",
   "/api/browser-workspace",

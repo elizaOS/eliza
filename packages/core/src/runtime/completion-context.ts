@@ -4,18 +4,19 @@
  * instructions, runtime feedback and tool evidence are never selectable away.
  * Absent, malformed or stale selections preserve the complete original context.
  */
+
 import type {
 	ActionParameterSchema,
 	CompletionContextSelection,
 } from "../types/components";
+import { normalizeEffectReceipt } from "../types/effects";
+import type { JSONSchema } from "../types/model";
+import { hashStableJson } from "./context-hash";
 import type {
 	ContextEvent,
 	ContextObject,
 	ContextSegmentEvent,
-} from "../types/context-object";
-import { normalizeEffectReceipt } from "../types/effects";
-import type { JSONSchema } from "../types/model";
-import { hashStableJson } from "./context-hash";
+} from "./context-object";
 
 const SOURCE_ID_PATTERN = /^h[1-9]\d*$/;
 
@@ -138,7 +139,7 @@ export function parseCompletionContextSelection(
 	if (!value || typeof value !== "object" || Array.isArray(value))
 		return undefined;
 	const record = value as Record<string, unknown>;
-	// Keep the stored/runtime contract and legacy model responses unchanged.
+
 	const mode =
 		record.mode === "relevant_prior_dialogue"
 			? "selected"

@@ -2,13 +2,14 @@
  * POST /api/v1/advertising/campaigns/[id]/duplicate — copy campaign config.
  */
 
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { advertisingService } from "@elizaos/cloud-shared/lib/services/advertising";
+import { DuplicateCampaignSchema } from "@elizaos/cloud-shared/lib/services/advertising/schemas";
+import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { advertisingService } from "@/lib/services/advertising";
-import { DuplicateCampaignSchema } from "@/lib/services/advertising/schemas";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -19,8 +20,11 @@ app.post("/", async (c) => {
     if (!id) {
       return c.json({ error: "Campaign id is required" }, 400);
     }
-    const body = await c.req.json().catch(() => ({}));
-    const parsed = DuplicateCampaignSchema.safeParse(body);
+    const decodedBody = await decodeOptionalRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = DuplicateCampaignSchema.safeParse(decodedBody.value);
 
     if (!parsed.success) {
       return c.json(

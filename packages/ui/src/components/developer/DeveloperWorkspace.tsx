@@ -1,3 +1,4 @@
+/// <reference path="../../css-modules.d.ts" preserve="true" />
 /** A local developer shell around the existing App, under its one AppProvider. */
 import {
   type FormEvent,

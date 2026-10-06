@@ -2,16 +2,19 @@
 import { afterAll, beforeAll, beforeEach, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
+import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
+import { userIdentities } from "@elizaos/cloud-shared/db/schemas/user-identities";
+import { users } from "@elizaos/cloud-shared/db/schemas/users";
+import { createPlaywrightTestSessionToken } from "@elizaos/cloud-shared/lib/auth/playwright-test-session";
+import type {
+  AppEnv,
+  AuthedUser,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { relations } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { Hono } from "hono";
 import type Stripe from "stripe";
-import { organizations } from "@/db/schemas/organizations";
-import { userIdentities } from "@/db/schemas/user-identities";
-import { users } from "@/db/schemas/users";
-import { createPlaywrightTestSessionToken } from "@/lib/auth/playwright-test-session";
-import type { AppEnv, AuthedUser } from "@/types/cloud-worker-env";
 
 const pg = new PGlite();
 const usersRelations = relations(users, ({ one }) => ({
@@ -23,7 +26,7 @@ const usersRelations = relations(users, ({ one }) => ({
 const database = drizzle(pg, {
   schema: { organizations, users, userIdentities, usersRelations },
 });
-mock.module("@/db/helpers", () => ({
+mock.module("@elizaos/cloud-shared/db/helpers", () => ({
   db: database,
   dbRead: database,
   dbWrite: database,
@@ -46,12 +49,16 @@ const env = {
   NEXT_PUBLIC_APP_URL: "https://cloud.eliza.app",
   STRIPE_CURRENCY: "usd",
 };
-mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
-    next(),
-  RateLimitPresets: { STRICT: {} },
-}));
-mock.module("@/lib/services/auto-top-up", () => ({
+mock.module(
+  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
+  () => ({
+    rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+    moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+      next(),
+    RateLimitPresets: { STRICT: {}, STANDARD: {} },
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/services/auto-top-up", () => ({
   autoTopUpService: {
     executeAutoTopUpForOrganization: async () => {
       effects.push("topup");
@@ -59,44 +66,80 @@ mock.module("@/lib/services/auto-top-up", () => ({
     },
   },
 }));
-mock.module("@/lib/services/stripe-customer-authority", () => ({
-  stripeCustomerAuthorityService: {
-    ensure: async () => {
-      effects.push("customer");
-      return "cus_test";
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-customer-authority",
+  () => ({
+    stripeCustomerAuthorityService: {
+      ensure: async () => {
+        effects.push("customer");
+        return "cus_test";
+      },
     },
-  },
-}));
-mock.module("@/lib/services/stripe-checkout-orders", () => ({
-  stripeCheckoutOrdersService: {
-    create: async () => {
-      effects.push("order");
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/stripe-checkout-orders",
+  () => ({
+    stripeCheckoutOrdersService: {
+      create: async () => {
+        effects.push("order");
+        return {
+          id: "order_test",
+          status: "created",
+          stripe_customer_id: "cus_test",
+        };
+      },
+      markProviderStarted: async () => {
+        effects.push("provider-started");
+      },
+      bindSession: async () => {
+        effects.push("bind-session");
+      },
+    },
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/subscription-customer-portal",
+  () => ({
+    // The portal adapter re-runs the route's billing-manager revalidation before its provider effect.
+    createSubscriptionPortalSession: async (
+      input: { organizationId: string },
+      reauthorize: () => Promise<void>,
+    ) => {
+      await reauthorize();
+      effects.push(`portal:${input.organizationId}`);
+      return { url: "https://billing.stripe.com/p/session/test" };
+    },
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/subscription-command-status",
+  () => ({
+    listPendingOrganizationPlanChangeCommands: async () => {
+      await afterPriceRead?.();
       return {
-        id: "order_test",
-        status: "created",
-        stripe_customer_id: "cus_test",
+        observedAt: new Date().toISOString(),
+        items: [],
+        nextCursor: null,
       };
     },
-    markProviderStarted: async () => {
-      effects.push("provider-started");
+  }),
+);
+mock.module(
+  "@elizaos/cloud-shared/lib/services/organization-downgrade-command",
+  () => ({
+    confirmOrganizationSubscriptionDowngrade: async (
+      input: { organizationId: string; actorId: string },
+      reauthorize: () => Promise<void>,
+    ) => {
+      await afterPriceRead?.();
+      await reauthorize();
+      effects.push(`downgrade:${input.organizationId}:${input.actorId}`);
+      return { commandId: "original", status: "OUTCOME_UNKNOWN" };
     },
-    bindSession: async () => {
-      effects.push("bind-session");
-    },
-  },
-}));
-mock.module("@/lib/services/subscription-customer-portal", () => ({
-  // The portal adapter re-runs the route's billing-manager revalidation before its provider effect.
-  createSubscriptionPortalSession: async (
-    input: { organizationId: string },
-    reauthorize: () => Promise<void>,
-  ) => {
-    await reauthorize();
-    effects.push(`portal:${input.organizationId}`);
-    return { url: "https://billing.stripe.com/p/session/test" };
-  },
-}));
-mock.module("@/lib/stripe", () => ({
+  }),
+);
+mock.module("@elizaos/cloud-shared/lib/stripe", () => ({
   isStripeConfigured: () => true,
   requireStripe: () => ({
     prices: {
@@ -150,6 +193,14 @@ beforeAll(async () => {
   );
   route.route("/topup", (await import("../auto-top-up/trigger/route")).default);
   route.route(
+    "/plan-commands",
+    (await import("../v1/subscriptions/plan-change/commands/route")).default,
+  );
+  route.route(
+    "/downgrade",
+    (await import("../v1/subscriptions/downgrade/confirm/route")).default,
+  );
+  route.route(
     "/portal",
     (await import("../v1/subscriptions/portal/route")).default,
   );
@@ -183,7 +234,7 @@ function request(
   path: string,
   headers: Record<string, string> = {},
   tokenOrg = org,
-  body: Record<string, unknown> = { amount: 5 },
+  body?: Record<string, unknown>,
 ) {
   const token = createPlaywrightTestSessionToken(userId, tokenOrg, env);
   return route.request(
@@ -196,12 +247,17 @@ function request(
         "idempotency-key": randomUUID(),
         ...headers,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(
+        body ??
+          (path === "downgrade"
+            ? { quoteId: randomUUID(), idempotencyKey: randomUUID() }
+            : { amount: 5 }),
+      ),
     },
     env,
   );
 }
-for (const path of ["checkout", "topup", "portal"]) {
+for (const path of ["checkout", "topup", "portal", "downgrade"]) {
   for (const role of ["owner", "admin"])
     test(`${path}: current ${role} reaches its payment adapter`, async () => {
       cached.role = role;
@@ -212,7 +268,9 @@ for (const path of ["checkout", "topup", "portal"]) {
           ? "stripe"
           : path === "portal"
             ? `portal:${org}`
-            : "topup",
+            : path === "downgrade"
+              ? `downgrade:${org}:${userId}`
+              : "topup",
       );
     });
   for (const role of ["member", "guest"])
@@ -289,3 +347,58 @@ for (const amount of [1, 4.99, 1000.01, 5.001, 5.150000000000001]) {
     expect(effects).toEqual([]);
   });
 }
+
+test("downgrade: manager loss during confirmation is re-read from primary before an effect", async () => {
+  afterPriceRead = async () => {
+    await pg.query("UPDATE users SET role='member' WHERE id=$1", [userId]);
+  };
+  const response = await request("downgrade");
+  expect(response.status).toBe(403);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(effects).toEqual([]);
+});
+
+function planRequest(headers: Record<string, string> = {}, tokenOrg = org) {
+  const token = createPlaywrightTestSessionToken(userId, tokenOrg, env);
+  return route.request(
+    "https://cloud.eliza.app/plan-commands?limit=5",
+    { headers: { cookie: `eliza-test-session=${token}`, ...headers } },
+    env,
+  );
+}
+for (const role of ["owner", "admin", "member", "guest"])
+  test(`plan discovery: primary ${role} authorization`, async () => {
+    cached.role = role;
+    await pg.query("UPDATE users SET role=$1 WHERE id=$2", [role, userId]);
+    const response = await planRequest();
+    expect(response.status).toBe(
+      role === "owner" || role === "admin" ? 200 : 403,
+    );
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(effects).toEqual([]);
+  });
+test("plan discovery: primary role loss after reading discards the result", async () => {
+  afterPriceRead = async () => {
+    await pg.query("UPDATE users SET role='member' WHERE id=$1", [userId]);
+  };
+  expect((await planRequest()).status).toBe(403);
+  expect(effects).toEqual([]);
+});
+test("plan discovery: stale owner and tenant transfer cannot borrow the cached identity", async () => {
+  await pg.query("UPDATE users SET role='member' WHERE id=$1", [userId]);
+  expect((await planRequest()).status).toBe(403);
+  await pg.query(
+    "UPDATE users SET role='owner',organization_id=$1 WHERE id=$2",
+    [otherOrg, userId],
+  );
+  expect((await planRequest()).status).toBe(403);
+});
+test("plan discovery: wrong-tenant cookie and explicit API keys cannot borrow a session", async () => {
+  expect((await planRequest({}, otherOrg)).status).toBe(401);
+  for (const header of [
+    { authorization: "Bearer eliza_general_key" },
+    { "x-api-key": "eliza_general_key" },
+  ] as Record<string, string>[])
+    expect((await planRequest(header)).status).toBe(401);
+  expect(effects).toEqual([]);
+});

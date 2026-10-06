@@ -13,6 +13,7 @@ import type { User } from "../../db/schemas/users";
 import type { AppEnv, RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { findActivePersonalDedicatedTarget } from "./agent-tier-upgrade-target";
 import { elizaSandboxService } from "./eliza-sandbox";
+import { repairPersonalConversation } from "./personal-conversation-repair";
 import { preparePersonalDedicatedDelivery } from "./personal-dedicated-delivery";
 import {
   type PersonalSharedFallbackAccountState,
@@ -148,40 +149,15 @@ export async function deliverPersonalTextMessage(params: {
       const history = await coordinateSharedHistory(agent.id, agent.id, {
         namespace: params.namespace,
       });
-      const importableHistory = history.filter(
-        (message): message is typeof message & { role: "user" | "assistant" } =>
-          message.role === "user" || message.role === "assistant",
-      );
-      const importMessages = importableHistory.flatMap((message) =>
-        message.id
-          ? [
-              {
-                sourceId: message.id,
-                role: message.role,
-                text: message.content,
-                ...(typeof message.createdAt === "number" ? { timestamp: message.createdAt } : {}),
-              },
-            ]
-          : [],
-      );
-      let receipt =
-        importMessages.length === importableHistory.length
-          ? await elizaSandboxService.importCanonicalConversation(
-              dedicated.id,
-              account.organization.id,
-              agent.id,
-              importMessages,
-            )
-          : null;
-      if (!receipt && importMessages.length > 0) {
-        receipt = await elizaSandboxService.importCanonicalConversation(
+      const repaired = await repairPersonalConversation(history, (messages) =>
+        elizaSandboxService.importCanonicalConversation(
           dedicated.id,
           account.organization.id,
           agent.id,
-          [],
-        );
-      }
-      if (receipt) {
+          messages,
+        ),
+      );
+      if (repaired) {
         response = await elizaSandboxService.bridge(
           dedicated.id,
           account.organization.id,

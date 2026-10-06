@@ -1,4 +1,5 @@
 // Safe, streaming raw.zst preparation/write/readback foundation.
+
 import { createHash, type KeyObject } from "node:crypto";
 import { createReadStream, createWriteStream, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,11 +13,12 @@ import {
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { createZstdDecompress } from "node:zlib";
+import { artifactSignaturePayload } from "@elizaos/os/contracts";
 import {
   assertEd25519Signature,
   loadPinnedEd25519PublicKey,
   publicKeyFingerprint,
-} from "./ed25519-trust";
+} from "@elizaos/os/trust";
 import type { ReleaseFetcher } from "./release-manifest";
 import type { ElizaOsImage } from "./types";
 import { hasTrustedChecksum } from "./write-safety";
@@ -25,21 +27,6 @@ const DEFAULT_MAX_COMPRESSED_BYTES = 32 * 1024 ** 3;
 const DEFAULT_MAX_EXPANDED_BYTES = 128 * 1024 ** 3;
 const MAX_ARTIFACT_SIGNATURE_BYTES = 1024;
 const TEMP_PREFIX = "elizaos-raw-";
-
-type CanonicalRawImage = ElizaOsImage &
-  Required<
-    Pick<
-      ElizaOsImage,
-      | "sequence"
-      | "compressedSize"
-      | "expandedSize"
-      | "sha256Compressed"
-      | "sha256Expanded"
-      | "signatureUrl"
-      | "minDeviceBytes"
-      | "format"
-    >
-  >;
 
 export interface RawImageTarget {
   stableId: string;
@@ -117,7 +104,7 @@ class HashExactTransform extends Transform {
   }
 }
 
-function canonicalRawImage(image: ElizaOsImage): CanonicalRawImage {
+function canonicalRawImage(image: ElizaOsImage): ElizaOsImage {
   const httpsSuffix = (value: string | undefined, suffix: string): boolean => {
     if (!value) return false;
     try {
@@ -150,11 +137,11 @@ function canonicalRawImage(image: ElizaOsImage): CanonicalRawImage {
       "Image is not a complete canonical raw.zst release artifact.",
     );
   }
-  return image as CanonicalRawImage;
+  return image;
 }
 
 function assertPipelineBounds(
-  image: CanonicalRawImage,
+  image: ElizaOsImage,
   target: RawImageTarget,
   options: RawImagePipelineOptions,
 ): void {
@@ -225,28 +212,6 @@ async function boundedResponseBytes(
     offset += chunk.byteLength;
   }
   return bytes;
-}
-
-function artifactSignaturePayload(image: CanonicalRawImage): Uint8Array {
-  return new TextEncoder().encode(
-    [
-      "elizaOS-artifact-v1",
-      image.url,
-      image.architecture,
-      String(image.sequence),
-      String(image.compressedSize),
-      String(image.expandedSize),
-      image.sha256Compressed,
-      image.sha256Expanded,
-      "",
-    ].join("\n"),
-  );
-}
-
-export function createArtifactSignaturePayload(
-  image: ElizaOsImage,
-): Uint8Array {
-  return artifactSignaturePayload(canonicalRawImage(image));
 }
 
 async function safeCleanup(

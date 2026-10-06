@@ -9,6 +9,8 @@
  * renders in Storybook / the screenshot harness across every state. The
  * fetching container lives in `agent-orchestrator.tsx`.
  */
+
+import type { TranslateFn } from "@elizaos/contracts";
 import { Bot, CircleUser, Users, Workflow, Wrench } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { useAgentElement } from "../../../agent-surface/useAgentElement";
@@ -17,7 +19,6 @@ import type {
   OrchestratorRoomRoster,
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
-import type { TranslateFn } from "../../../types";
 import { Button } from "../../ui/button";
 import { fallbackTranslate } from "./agent-orchestrator-accounts-view";
 import { EmptyWidgetState, WidgetSection } from "./shared";

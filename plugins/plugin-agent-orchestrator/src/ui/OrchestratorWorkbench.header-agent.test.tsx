@@ -5,11 +5,7 @@
  * The real agent registry drives the accounts toggle rendered by the header.
  */
 
-import {
-  AgentSurfaceProvider,
-  getViewRegistry,
-  handleAgentSurfaceCapability,
-} from "@elizaos/ui/agent-surface";
+import { AgentSurfaceProvider, getViewRegistry } from "@elizaos/ui";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkbenchHeader } from "./OrchestratorWorkbench";
@@ -36,11 +32,7 @@ describe("WorkbenchHeader agent surface", () => {
 
     const registry = getViewRegistry("orchestrator", "gui");
     if (!registry) throw new Error("orchestrator registry missing");
-    const elements = handleAgentSurfaceCapability(
-      registry,
-      "list-elements",
-      undefined,
-    ) as Array<{ id: string; role: string; status?: string }>;
+    const elements = registry.snapshot().elements;
     expect(elements).toContainEqual(
       expect.objectContaining({
         id: "header-accounts-toggle",
@@ -49,9 +41,7 @@ describe("WorkbenchHeader agent surface", () => {
       }),
     );
 
-    handleAgentSurfaceCapability(registry, "agent-click", {
-      id: "header-accounts-toggle",
-    });
+    expect(registry.click("header-accounts-toggle").ok).toBe(true);
     expect(onToggleAccounts).toHaveBeenCalledOnce();
   });
 });

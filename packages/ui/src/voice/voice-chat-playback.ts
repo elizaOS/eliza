@@ -15,17 +15,13 @@ export {
  * Playback / TTS logic for voice chat — text processing, sentence splitting,
  * speech text extraction, and mouth animation helpers.
  */
-import { ElizaError } from "@elizaos/core/errors";
-import { sanitizeSpeechText } from "@elizaos/core/spoken-text";
+import { ElizaError, sanitizeSpeechText } from "@elizaos/core/protocol";
 import { MOUTH_OPEN_STEP, type SpeechSegmentKind } from "./voice-chat-types";
 // ── Text processing helpers ───────────────────────────────────────────
 export function normalizeCacheText(input: string): string {
   return collapseWhitespace(input.normalize("NFKC")).toLowerCase();
 }
-export function countSpeechTokens(input: string): number {
-  const normalized = collapseWhitespace(input);
-  return normalized ? normalized.split(/\s+/).length : 0;
-}
+
 export function shouldCacheGeneratedSpeech(
   _input: string,
   segment: SpeechSegmentKind,

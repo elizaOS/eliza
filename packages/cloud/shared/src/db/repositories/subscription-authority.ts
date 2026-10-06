@@ -5,6 +5,7 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { settlementDigest as settlementScheduleProofDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -18,6 +19,15 @@ import {
 } from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
 import { billingSubscriptionCommands } from "../schemas/subscription-billing-operations";
+import {
+  lockOrganizationScheduleConfiguredAuthority,
+  type OrganizationScheduleConfiguredIdentity,
+  type OrganizationScheduleConfiguredObservation,
+} from "./organization-schedule-effects";
+import {
+  lockOrganizationUpgradeSettlement,
+  type OrganizationUpgradeSettlementIdentity,
+} from "./organization-upgrade-paid-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 import {
   type ReconciliationIdentity,
@@ -555,6 +565,94 @@ export class SubscriptionAuthorityRepository {
     );
   }
 
+  /** Only original attributed configuration can publish a pending lower plan; paid fields are retained. */
+  async advanceConfiguredOrganizationScheduleInTransaction(
+    tx: DbTransaction,
+    input: OrganizationScheduleConfiguredIdentity & OrganizationScheduleConfiguredObservation,
+  ) {
+    const verified = await lockOrganizationScheduleConfiguredAuthority(tx, input);
+    const { source, proof } = verified;
+    const mutation = await this.advanceWithProvenance(
+      tx,
+      {
+        organizationId: input.organizationId,
+        subscriptionId: source.id,
+        expectedRevision: source.lifecycle_revision,
+        source: "reconciliation",
+        observation: "authoritative_provider_retrieval",
+        values: {
+          provider: source.provider,
+          provider_environment: source.provider_environment,
+          stripe_customer_id: source.stripe_customer_id,
+          stripe_subscription_id: source.stripe_subscription_id,
+          stripe_subscription_item_id: source.stripe_subscription_item_id,
+          catalog_version: source.catalog_version,
+          plan_key: source.plan_key,
+          status: source.status,
+          current_period_start: source.current_period_start,
+          current_period_end: source.current_period_end,
+          cancel_at_period_end: source.cancel_at_period_end,
+          canceled_at: source.canceled_at,
+          ended_at: source.ended_at,
+          dunning_started_at: source.dunning_started_at,
+          grace_expires_at: source.grace_expires_at,
+          billing_scope_id: source.billing_scope_id,
+          merchant_key: source.merchant_key,
+          plan_revision_id: source.plan_revision_id,
+          trial_start: source.trial_start,
+          trial_end: source.trial_end,
+          quantity: source.quantity,
+          pending_plan_key: proof.targetPlanKey,
+          provider_object_digest: settlementScheduleProofDigest(proof),
+          last_provider_event_id: null,
+          last_provider_event_created_at: null,
+        },
+      },
+      {
+        kind: "configured_schedule",
+        commandId: input.commandId,
+        leaseToken: input.leaseToken,
+        executionGeneration: input.executionGeneration,
+      },
+    );
+    return { ...verified, ...mutation };
+  }
+
+  /** Only a verified paid original invoice and applied provider target can publish an organization upgrade. */
+  async advancePaidOrganizationUpgradeInTransaction(
+    tx: DbTransaction,
+    input: OrganizationUpgradeSettlementIdentity & {
+      rawInvoice: unknown;
+      rawSubscription: unknown;
+    },
+  ) {
+    const verified = await lockOrganizationUpgradeSettlement(tx, input);
+    const mutation = await this.advanceWithProvenance(
+      tx,
+      {
+        organizationId: input.organizationId,
+        subscriptionId: verified.source.id,
+        expectedRevision: verified.source.lifecycle_revision,
+        source: "reconciliation",
+        observation: verified.historicalEvidence
+          ? "authenticated_historical_target_with_live_compatibility"
+          : "authoritative_provider_retrieval",
+        values: {
+          ...verified.target.values,
+          last_provider_event_id: null,
+          last_provider_event_created_at: null,
+        },
+      },
+      {
+        kind: "paid_upgrade",
+        commandId: verified.command.id,
+        leaseToken: input.leaseToken,
+        executionGeneration: input.executionGeneration,
+      },
+    );
+    return { ...verified, ...mutation };
+  }
+
   /** Publishes one lease-owned reconciliation revision with no fabricated webhook provenance. */
   async advanceReconciliationInTransaction(
     tx: DbTransaction,
@@ -578,12 +676,28 @@ export class SubscriptionAuthorityRepository {
 
   private async advanceWithProvenance(
     tx: DbTransaction,
-    input: AdvanceSubscriptionInput,
+    input:
+      | AdvanceSubscriptionInput
+      | (Omit<AdvanceSubscriptionInput, "observation"> & {
+          observation: "authenticated_historical_target_with_live_compatibility";
+        }),
     provenance:
       | { kind: "provider_event" }
-      | { kind: "command"; commandId: string; leaseToken: string; executionGeneration: number }
+      | {
+          kind: "command" | "paid_upgrade" | "configured_schedule";
+          commandId: string;
+          leaseToken: string;
+          executionGeneration: number;
+        }
       | { kind: "reconciliation"; identity: ReconciliationIdentity },
   ): Promise<SubscriptionMutationResult> {
+    if (
+      input.observation === "authenticated_historical_target_with_live_compatibility" &&
+      provenance.kind !== "paid_upgrade"
+    )
+      conflict("Historical target evidence is restricted to original paid upgrade settlement", {
+        subscriptionId: input.subscriptionId,
+      });
     const [organization] = await tx
       .select({
         id: organizations.id,
@@ -608,7 +722,11 @@ export class SubscriptionAuthorityRepository {
     requireActivationAllowed(organization, input.values);
     if (provenance.kind === "reconciliation")
       await requireLiveReconciliationLease(tx, provenance.identity);
-    if (provenance.kind === "command") {
+    if (
+      provenance.kind === "command" ||
+      provenance.kind === "paid_upgrade" ||
+      provenance.kind === "configured_schedule"
+    ) {
       const [command] = await tx
         .select()
         .from(billingSubscriptionCommands)
@@ -622,7 +740,11 @@ export class SubscriptionAuthorityRepository {
       const commandNow = await readPostLockDatabaseNow(tx);
       if (
         !command ||
-        (command.kind !== "cancel" && command.kind !== "resume") ||
+        (provenance.kind === "paid_upgrade"
+          ? command.kind !== "upgrade" || command.organization_upgrade_dispatch_state !== "started"
+          : provenance.kind === "configured_schedule"
+            ? command.kind !== "downgrade"
+            : command.kind !== "cancel" && command.kind !== "resume") ||
         command.status !== "OUTCOME_UNKNOWN" ||
         command.subscription_id !== input.subscriptionId ||
         command.expected_subscription_revision !== input.expectedRevision ||

@@ -14,9 +14,9 @@ import type { IAgentRuntime } from "./runtime";
  * @example
  * ```typescript
  * declare module '@elizaos/core' {
- *   interface ServiceTypeRegistry {
- *     MY_CUSTOM_SERVICE: 'my_custom_service';
- *   }
+ * interface ServiceTypeRegistry {
+ * MY_CUSTOM_SERVICE: 'my_custom_service';
+ * }
  * }
  * ```
  */
@@ -93,9 +93,9 @@ export type TypedServiceClass<T extends ServiceTypeName> = {
  * @example
  * ```typescript
  * declare module '@elizaos/core' {
- *   interface ServiceClassMap {
- *     MY_SERVICE: typeof MyService;
- *   }
+ * interface ServiceClassMap {
+ * MY_SERVICE: typeof MyService;
+ * }
  * }
  * ```
  */

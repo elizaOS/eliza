@@ -1,3 +1,4 @@
+import { startTriggerEventBridge } from "@elizaos/agent";
 import {
   type AgentRuntime,
   type EventPayload,
@@ -5,7 +6,6 @@ import {
   type Task,
 } from "@elizaos/core";
 import { expect, it, vi } from "vitest";
-import { startTriggerEventBridge } from "./trigger-event-bridge";
 
 it("unregisters duplicate event inputs and stops dispatch after an in-flight lookup", async () => {
   let resolveTasks!: (tasks: Task[]) => void;

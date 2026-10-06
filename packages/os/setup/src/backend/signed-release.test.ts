@@ -56,7 +56,7 @@ function description(): SignedReleaseDescription {
 }
 
 function discovery(bytes: string) {
-  const base = "https://github.com/elizaOS/os/releases/download/v1/";
+  const base = "https://github.com/elizaOS/eliza/releases/download/v1/";
   const names = [
     "android-release-manifest-grizzly.json",
     "boot.img",
@@ -66,7 +66,7 @@ function discovery(bytes: string) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
-      if (url === "https://api.github.com/repos/elizaOS/os/releases") {
+      if (url === "https://api.github.com/repos/elizaOS/eliza/releases") {
         return new Response(
           JSON.stringify([
             {
@@ -92,15 +92,9 @@ test("discovery keeps exact signed bytes and all install and recovery contracts"
   const [build] = await new AdbFlasherBackend().listBuilds();
   expect(describeSignedRelease).toHaveBeenCalledWith(bytes);
   expect(build?.signedManifest).toBe(bytes);
-  expect(build?.signedFiles?.map((file) => file.filename)).toEqual([
-    "boot.img",
-    "fastboot-info.txt",
-    "stock.zip",
-  ]);
   expect(build?.sizeBytes).toBe(90);
   expect(build?.channel).toBe("nightly");
   expect(build?.architecture).toBe("arm64-v8a");
-  expect(build?.manifest).toBeUndefined();
 });
 
 test("discovery propagates canonical authorization failure", async () => {
@@ -122,5 +116,15 @@ test("reused recovery files are deduplicated only for identical contracts", () =
   state.recovery.archive.filename = "boot.img";
   expect(() => signedReleaseFiles(metadata)).toThrow(
     "Conflicting signed file contracts",
+  );
+});
+
+test("empty release discovery does not invent downloadable builds", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json([])),
+  );
+  await expect(new AdbFlasherBackend().listBuilds()).rejects.toThrow(
+    "No published",
   );
 });

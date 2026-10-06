@@ -11,12 +11,12 @@
  * order.
  */
 
-import { useState } from "react";
-import { client } from "../../api";
+import { useEffect, useState } from "react";
 import {
   isLimitedCloudAgentApiResourceUrl,
   supportsFullAppShellRoutes,
 } from "../../api/app-shell-capabilities";
+import { client } from "../../api/client";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { resolveApiUrl } from "../../utils/asset-url.js";
 import { emitViewInteraction } from "../../view-telemetry";
@@ -75,6 +75,9 @@ export function ViewTileImage({
   imageTestId?: string;
 }) {
   const [failure, setFailure] = useState<"none" | "primary" | "all">("none");
+  useEffect(() => {
+    setFailure("none");
+  }, [entry.imageUrl, entry.fallbackImageUrl]);
   // Launcher tiles never composite a hero image, they read the glyph directly,
   // so the image-URL resolution below is scoped to the catalog card surface.
   if (source === "launcher") {

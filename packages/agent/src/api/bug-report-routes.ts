@@ -8,14 +8,14 @@
  * opens itself.
  */
 import os from "node:os";
+import { PostBugReportRequestSchema } from "@elizaos/contracts";
 import {
   logger,
-  PostBugReportRequestSchema,
-  type RouteRequestContext,
   redactSensitiveText,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/host/protocol";
 import { sweepExpiredEntries } from "./memory-bounds.ts";
 
 export const DEFAULT_BUG_REPORT_REPO = "elizaOS/eliza";

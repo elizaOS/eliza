@@ -5,7 +5,7 @@
  * clicks one.
  *
  * The block vocabulary, parsing, neutral layout, and the callback codec all live
- * in `@elizaos/core` (`messaging/interactions`) so the dashboard, Telegram, and
+ * in `@elizaos/core` so the dashboard, Telegram, and
  * Discord render the same agent output identically. This module is the thin
  * Discord-specific projection: neutral buttons → `DiscordActionRow` specs that
  * `buildComponents` (utils.ts) turns into discord.js builders.

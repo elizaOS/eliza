@@ -18,23 +18,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SelfControlStatus } from "../../services/website-blocker/index.js";
 
-const sendChatRest = vi.hoisted(() => vi.fn());
+const sendConversationMessage = vi.hoisted(() => vi.fn());
+const getAuthorityRevision = vi.hoisted(() => vi.fn(() => 0));
 
-// `@elizaos/ui` is the giant renderer barrel; the wrapper only touches
-// `client.getBaseUrl()` / `client.stopWebsiteBlock()` on its default fetcher
-// seam, which every test overrides via the injection props.
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+
   client: {
     getBaseUrl: () => "http://test.local",
-    sendChatRest,
-    stopWebsiteBlock: vi.fn(async () => ({ success: true, removed: true })),
-  },
-}));
-
-vi.mock("@elizaos/ui/api", () => ({
-  client: {
-    getBaseUrl: () => "http://test.local",
-    sendChatRest,
+    getAuthorityRevision,
+    createConversation: vi.fn(async () => ({
+      conversation: { id: "focus-conversation" },
+    })),
+    sendConversationMessage,
     stopWebsiteBlock: vi.fn(async () => ({ success: true, removed: true })),
   },
 }));
@@ -148,7 +144,7 @@ describe("FocusView — phases", () => {
 
 describe("FocusView — actions", () => {
   it("shows the assistant reply without claiming a block started", async () => {
-    sendChatRest.mockResolvedValueOnce({
+    sendConversationMessage.mockResolvedValueOnce({
       text: "Which websites should I block?",
       agentName: "Eliza",
     });
@@ -158,12 +154,27 @@ describe("FocusView — actions", () => {
     fireEvent.click(agent("start"));
 
     await screen.findByText("Which websites should I block?");
+    expect(sendConversationMessage).toHaveBeenCalledWith(
+      "focus-conversation",
+      "Start a focus session for me.",
+    );
     expect(screen.getByText("No focus session active")).toBeTruthy();
+  });
+
+  it("does not send to another agent when authority changes during conversation creation", async () => {
+    getAuthorityRevision.mockReturnValueOnce(0).mockReturnValueOnce(1);
+    render(<FocusView fetchStatus={async () => EMPTY_STATUS} />);
+    await screen.findByText("No focus session active");
+    fireEvent.click(agent("start"));
+    await screen.findByText(
+      "The active agent changed. Request a focus session again.",
+    );
+    expect(sendConversationMessage).not.toHaveBeenCalled();
   });
 
   it("prevents duplicate focus requests while the assistant is responding", async () => {
     let finish!: (response: { text: string; agentName: string }) => void;
-    sendChatRest.mockImplementationOnce(
+    sendConversationMessage.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           finish = resolve;
@@ -175,7 +186,9 @@ describe("FocusView — actions", () => {
     const pending = screen.getByRole("button", { name: "Asking Eliza…" });
     expect((pending as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(pending);
-    expect(sendChatRest).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(sendConversationMessage).toHaveBeenCalledTimes(1),
+    );
     await act(async () =>
       finish({ text: "Which websites should I block?", agentName: "Eliza" }),
     );
@@ -184,12 +197,14 @@ describe("FocusView — actions", () => {
   });
 
   it("shows a failed assistant request and permits retry", async () => {
-    sendChatRest.mockRejectedValueOnce(new Error("Agent is unavailable"));
+    sendConversationMessage.mockRejectedValueOnce(
+      new Error("Agent is unavailable"),
+    );
     render(<FocusView fetchStatus={async () => EMPTY_STATUS} />);
     await screen.findByText("No focus session active");
     fireEvent.click(agent("start"));
     await screen.findByText("Agent is unavailable");
-    sendChatRest.mockResolvedValueOnce({
+    sendConversationMessage.mockResolvedValueOnce({
       text: "Which websites should I block?",
       agentName: "Eliza",
     });

@@ -8,8 +8,8 @@ import {
   type RecordedStage,
   type RunEvaluatorParams,
 } from "@elizaos/core";
+import { DEFAULT_CONTEXT_WINDOW_TOKENS } from "@elizaos/core/protocol";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { DEFAULT_CONTEXT_WINDOW_TOKENS } from "../../../../../packages/core/src/runtime/model-input-budget.ts";
 import { runEvaluator } from "../evaluator";
 
 beforeEach(() => vi.stubEnv("ELIZA_EVALUATOR_MODEL", undefined));

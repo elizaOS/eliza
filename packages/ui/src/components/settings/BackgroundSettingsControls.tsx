@@ -25,10 +25,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import { client } from "../../api";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import { client } from "../../api/client";
 import { getShaderPreset } from "../../backgrounds/shader-presets";
-import { cn } from "../../lib/utils";
 import {
   BACKGROUND_CATALOG,
   type BackgroundCatalogEntry,
@@ -41,7 +40,8 @@ import {
   addUserBackgroundEntry,
   loadUserBackgroundCatalog,
 } from "../../state/user-background-catalog";
-import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url.js";
+import { resolveWallpaperUrl as resolvePreviewImageUrl } from "../../utils/asset-url.js";
+import { cn } from "../../utils/cn";
 import {
   BackgroundImageError,
   fileToBackgroundDataUrl,
@@ -51,20 +51,6 @@ import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Separator } from "../ui/separator";
 
-function resolvePreviewImageUrl(url: string): string {
-  if (
-    url.startsWith("data:") ||
-    url.startsWith("blob:") ||
-    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
-    url.startsWith("//")
-  ) {
-    return url;
-  }
-  if (url.startsWith("/api/") || url.startsWith("api/")) {
-    return resolveApiUrl(url);
-  }
-  return resolveAppAssetUrl(url);
-}
 /** A live thumbnail for one catalog entry. Image entries paint the real source. */
 function catalogPreviewStyle(entry: BackgroundCatalogEntry) {
   if (entry.kind === "image") {

@@ -3,7 +3,7 @@
  * persisted shown-state for the onboarding soft-ask flow.
  */
 
-import type { PermissionId } from "@elizaos/core/contracts/permissions";
+import type { PermissionId } from "@elizaos/core/protocol";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 import { shellLocalStorage } from "../../surface-realm-channel";
@@ -158,13 +158,5 @@ export function markPermissionsPrimed(): void {
   } catch {
     // Storage unavailable — the modal will show again next launch, which is a
     // benign degradation, not a failure worth surfacing.
-  }
-}
-/** Clear the flag so the priming modal can be re-triggered (Settings entry). */
-export function resetPermissionPriming(): void {
-  try {
-    shellLocalStorage.removeItem(PERMISSION_PRIMING_STORAGE_KEY);
-  } catch {
-    // Same benign degradation as markPermissionsPrimed.
   }
 }

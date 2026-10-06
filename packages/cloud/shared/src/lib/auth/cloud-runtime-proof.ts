@@ -5,7 +5,7 @@ import {
   cloudRuntimeDigest,
   cloudRuntimeMethod,
   cloudRuntimeTarget,
-} from "@elizaos/core/contracts/cloud-runtime-request";
+} from "@elizaos/contracts";
 import { resolveOidcConfig } from "../oidc/config";
 import { mintOidcAccessToken } from "../oidc/tokens";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";

@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { Command } from "commander";
 import { afterEach, expect, it, vi } from "vitest";
-import { runAllChecks } from "../doctor/checks";
+import { runAllChecks } from "../doctor";
 import { registerDoctorCommand } from "./register.doctor";
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
-vi.mock("../doctor/checks", () => ({ runAllChecks: vi.fn() }));
+vi.mock("../doctor", () => ({ runAllChecks: vi.fn() }));
 
 afterEach(() => {
   vi.restoreAllMocks();

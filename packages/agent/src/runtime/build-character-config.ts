@@ -11,15 +11,16 @@
 import {
   type Character,
   type CharacterInput,
-  getDefaultStylePreset,
   mergeCharacterDefaults,
   normalizeCharacterLanguage,
+} from "@elizaos/core";
+import {
+  type ElizaConfig,
+  getDefaultStylePreset,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/core";
-
-import type { ElizaConfig } from "../config/config.ts";
+} from "@elizaos/host/protocol";
 import { assertNoRetiredCharacterToolRestrictions } from "../config/retired-tool-policy.ts";
 import {
   applyAdvancedCapabilitySettings,

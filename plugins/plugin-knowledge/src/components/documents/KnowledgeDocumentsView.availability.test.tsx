@@ -5,8 +5,6 @@
  */
 // @vitest-environment jsdom
 
-import { __resetResourceCache, getCached } from "@elizaos/ui";
-import { ApiError } from "@elizaos/ui/api/client-types-core";
 import {
   act,
   cleanup,
@@ -16,6 +14,12 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../../../../packages/ui/src/api/client-types-core";
+import {
+  __resetResourceCache,
+  getCached,
+} from "../../../../../packages/ui/src/hooks/resource-cache";
+import { ChatComposerCtx } from "../../../../../packages/ui/src/state/ChatComposerContext.hooks";
 
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const platformMock = vi.hoisted(() => ({ isNative: false }));
@@ -26,22 +30,25 @@ const clientMock = vi.hoisted(() => ({
   listDocuments: vi.fn(),
 }));
 
-vi.mock("@elizaos/ui/state", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   useAppSelector: (selector: (value: Record<string, unknown>) => unknown) =>
     selector(appMock.value),
   useTranslation: () => ({ t: appMock.value.t }),
   useRegisterViewChatBinding: () => {},
-}));
-vi.mock("@elizaos/ui/api/client", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/ui/api/client")>()),
-  client: clientMock,
-}));
-vi.mock("@elizaos/ui/platform", () => ({
   get isNative() {
     return platformMock.isNative;
   },
 }));
-vi.mock("@elizaos/ui/hooks/useActiveAgentAuthority", () => ({
+vi.mock(
+  "../../../../../packages/ui/src/api/client",
+  async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@elizaos/ui")>()),
+    client: clientMock,
+  }),
+);
+
+vi.mock("../../../../../packages/ui/src/hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityMock.value,
 }));
 vi.mock("./documents-detail", () => ({
@@ -125,15 +132,25 @@ describe("KnowledgeDocumentsView availability", () => {
     clientMock.getDocumentFacetCounts.mockResolvedValue({
       counts: { all: 0, doc: 0, image: 0, audio: 0, video: 0, transcript: 0 },
     });
-    appMock.value.chatSending = false;
-    const view = render(
-      <KnowledgeDocumentsView fileInputId="knowledge-upload" />,
+    const renderComposer = (chatSending: boolean) => (
+      <ChatComposerCtx.Provider
+        value={{
+          chatInput: "",
+          chatSending,
+          chatPendingImages: [],
+          chatReplyTarget: null,
+          setChatInput: vi.fn(),
+          setChatPendingImages: vi.fn(),
+          setChatReplyTarget: vi.fn(),
+        }}
+      >
+        <KnowledgeDocumentsView fileInputId="knowledge-upload" />
+      </ChatComposerCtx.Provider>
     );
+    const view = render(renderComposer(false));
     await screen.findByText("No knowledge yet");
-    appMock.value.chatSending = true;
-    view.rerender(<KnowledgeDocumentsView fileInputId="knowledge-upload" />);
-    appMock.value.chatSending = false;
-    view.rerender(<KnowledgeDocumentsView fileInputId="knowledge-upload" />);
+    view.rerender(renderComposer(true));
+    view.rerender(renderComposer(false));
     expect(await screen.findByText("Overlay checklist.txt")).toBeTruthy();
   });
 

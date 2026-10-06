@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts.manifest import eliza1_manifest as manifest_mod
-from scripts.manifest.eliza1_manifest import (
+from eliza_training.manifest import eliza1_manifest as manifest_mod
+from eliza_training.manifest.eliza1_manifest import (
     ELIZA_1_MTP_TIERS,
     ELIZA_1_MANIFEST_SCHEMA_VERSION,
     ELIZA_1_TIERS,
@@ -30,7 +30,7 @@ from scripts.manifest.eliza1_manifest import (
     validate_manifest,
     write_manifest,
 )
-from scripts.quantization._kernel_manifest import kernel_manifest_fragment
+from eliza_training.quantization._kernel_manifest import kernel_manifest_fragment
 
 SHA = "0" * 64
 

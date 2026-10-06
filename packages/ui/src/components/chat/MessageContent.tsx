@@ -14,9 +14,9 @@
  * exports here drive their own mutations through the typed `ElizaClient`.
  */
 
-import type { UiSpec } from "@elizaos/core/config/ui-spec";
-import { isRetryableChatFailureKind } from "@elizaos/core/contracts/chat";
-import { stripUnclaimedInteractionMarkup } from "@elizaos/core/messaging/interactions/parse";
+import { isRetryableChatFailureKind } from "@elizaos/contracts";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core/protocol";
+import type { UiSpec } from "@elizaos/host/protocol";
 import { Check, ShieldCheck } from "lucide-react";
 import {
   type FormEvent,
@@ -34,15 +34,15 @@ import type { PluginInfo } from "../../api/client-types-config";
 import { dispatchConnectRequest } from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { cn } from "../../lib/utils";
-import { isDesktopPlatform, isNative } from "../../platform";
+import { isDesktopPlatform, isNative } from "../../platform/init";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { canNavigateSameTabForBlockedPopup } from "../../state/cloud-login-launch";
+import { cn } from "../../utils/cn";
 import {
   createClientPermissionsRegistry,
   type PermissionCardPayload,
@@ -1356,6 +1356,8 @@ export function MessageContent({
   const inlineWidgetCtx = useInlineWidgetContext(
     sendActionMessage,
     setChatInput,
+    message.id,
+    message.role === "assistant" ? message.source : undefined,
   );
   const handleOpenSettings = useCallback(() => {
     setTab?.("settings");

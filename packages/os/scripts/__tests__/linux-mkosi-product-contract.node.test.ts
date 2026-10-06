@@ -24,13 +24,13 @@ test("local mkosi front door builds a pinned multiarch tool container", async ()
     persistenceQualify,
     snapshot,
   ] = await Promise.all([
-    read("linux/elizaos/Makefile"),
-    read("linux/elizaos/Dockerfile"),
+    read("linux/Makefile"),
+    read("linux/Dockerfile"),
     read("scripts/linux/ensure-foreign-binfmt.sh"),
-    read("linux/elizaos/mkosi/mkosi.finalize.chroot"),
+    read("linux/mkosi/mkosi.finalize.chroot"),
     read("scripts/linux/mkosi-qemu-qualify.py"),
     read("scripts/linux/mkosi-persistence-qualify.py"),
-    read("linux/elizaos/debian-snapshot.lock.json").then(JSON.parse),
+    read("linux/debian-snapshot.lock.json").then(JSON.parse),
   ]);
 
   assert.match(dockerfile, /^FROM \$\{DEBIAN_BASE_IMAGE\}$/m);
@@ -70,15 +70,15 @@ test("local mkosi front door builds a pinned multiarch tool container", async ()
 test("development images may omit the future control broker but releases fail closed", async () => {
   const [postinstall, initialSetupProfile, brandingDefaults, iconTheme] =
     await Promise.all([
-      read("linux/elizaos/mkosi/mkosi.postinst.chroot"),
+      read("linux/mkosi/mkosi.postinst.chroot"),
       read(
-        "linux/elizaos/mkosi/mkosi.extra/usr/share/dconf/profile/gnome-initial-setup",
+        "linux/mkosi/mkosi.extra/usr/share/dconf/profile/gnome-initial-setup",
       ),
       read(
-        "linux/elizaos/mkosi/mkosi.extra/usr/share/glib-2.0/schemas/90_elizaos-branding.gschema.override",
+        "linux/mkosi/mkosi.extra/usr/share/glib-2.0/schemas/90_elizaos-branding.gschema.override",
       ),
       read(
-        "linux/elizaos/mkosi/mkosi.extra/usr/share/icons/elizaOS/index.theme",
+        "linux/mkosi/mkosi.extra/usr/share/icons/elizaOS/index.theme",
       ),
     ]);
 

@@ -18,7 +18,17 @@
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./address-input": {
+      "eliza-source": "./src/address-input.ts",
+      "types": "./dist/esm/address-input.d.ts",
+      "import": "./dist/esm/address-input.js"
+    },
+    "./submitted-navigation": {
+      "eliza-source": "./src/submitted-navigation.ts",
+      "types": "./dist/esm/submitted-navigation.d.ts",
+      "import": "./dist/esm/submitted-navigation.js"
+    }
   },
   "unpkg": "dist/plugin.js",
   "files": [
@@ -80,7 +90,7 @@
     ],
     "runtime": "both",
     "platformDetails": {
-      "browser": "Not supported — a web host has no native child web surface; every method rejects as unavailable.",
+      "browser": "Not supported \u2014 a web host has no native child web surface; every method rejects as unavailable.",
       "node": "Not supported on the desktop shell (desktop uses the Electrobun WebContentsView path); every method rejects as unavailable.",
       "ios": true,
       "android": true

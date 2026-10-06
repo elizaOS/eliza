@@ -1,4 +1,4 @@
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 /**
  * Boots the canonical device bridge through a real AgentRuntime and HTTP/WebSocket
  * transport, proving attach-gated handlers and server-owned teardown.

@@ -1,13 +1,4 @@
-/**
- * Converts an Action's `parameters` contract (the `ActionParameter[]` /
- * `ActionParameterSchema` shape) into JSON Schema. Emits a local `JsonSchema`
- * type for tool-calling and normalizes it to the core `JSONSchema` from
- * `types/model.ts` that the runtime's grammar / structured-output plumbing
- * (GBNF, planner grammar) speaks. Tolerates legacy parameter shapes (`enum` /
- * `enumValues` / `options`, `required` as a boolean or a name list,
- * `defaultValue`). Consumed by `to-tool.ts` (planner / tool definitions) and
- * `validate-tool-args.ts`.
- */
+/** Converts action parameters into tool JSON Schema. Accepts declared enum, enumValues, options, required, and defaultValue representations. */
 import { ElizaError } from "../errors";
 import type {
 	Action,
@@ -376,9 +367,8 @@ export function actionToJsonSchema(action: Action): ActionParametersJsonSchema {
 	});
 }
 
-// ---------------------------------------------------------------------------
 // Normalization to the core `JSONSchema` shape
-// ---------------------------------------------------------------------------
+
 //
 // `actionToJsonSchema` emits the LOCAL `JsonSchema` type (defined above). The
 // runtime's grammar / structured-output plumbing speaks the core `JSONSchema`

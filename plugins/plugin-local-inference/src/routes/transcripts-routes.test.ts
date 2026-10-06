@@ -8,9 +8,9 @@ import {
 	ServiceType,
 	type UUID,
 } from "@elizaos/core";
-import type { RouteHandlerContext } from "@elizaos/core/api/http-plugin";
-import { buildMeetingArtifactFixtures } from "@elizaos/core/meeting-artifacts";
-import type { TranscriptSegment } from "@elizaos/core/transcripts";
+import type { TranscriptSegment } from "@elizaos/core/protocol";
+import type { RouteHandlerContext } from "@elizaos/host/protocol";
+import { buildMeetingArtifactFixtures } from "@elizaos/testing/fixtures";
 import { describe, expect, it } from "vitest";
 import {
 	buildTranscriptFromRequest,
@@ -86,6 +86,7 @@ function ctx(over: Partial<RouteHandlerContext>): RouteHandlerContext {
 		headers: {},
 		method: "GET",
 		path: "/api/transcripts",
+		signal: new AbortController().signal,
 		inProcess: true,
 		...over,
 	} as RouteHandlerContext;

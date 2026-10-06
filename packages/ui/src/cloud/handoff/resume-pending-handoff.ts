@@ -2,7 +2,7 @@
  * Resumes a pending cloud handoff after a reload/redirect by rehydrating the
  * cloud auth token and shared-agent base.
  */
-import { client } from "../../api";
+import { client } from "../../api/client";
 import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
@@ -32,13 +32,6 @@ let resumeAttemptedThisSession = false;
  * leaking them.
  */
 const deadTargetRetryListeners = new Set<AbortController>();
-
-/** Test-only: allow a fresh resume attempt in the next call. */
-export function __resetResumeForTests(): void {
-  resumeAttemptedThisSession = false;
-  for (const ac of deadTargetRetryListeners) ac.abort();
-  deadTargetRetryListeners.clear();
-}
 
 /**
  * Verify the pending handoff's dedicated TARGET still exists before resuming.

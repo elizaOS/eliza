@@ -15,13 +15,13 @@ const appMock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: typeof appMock.value) => unknown) =>
     selector(appMock.value),
 }));
 
-vi.mock("../../api", async () => {
-  const actual = (await vi.importActual("../../api")) as Record<
+vi.mock("../../api/client", async () => {
+  const actual = (await vi.importActual("../../api/client")) as Record<
     string,
     unknown
   >;
@@ -34,7 +34,7 @@ vi.mock("../../api", async () => {
   };
 });
 
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
 
 describe("IMessageStatusPanel", () => {

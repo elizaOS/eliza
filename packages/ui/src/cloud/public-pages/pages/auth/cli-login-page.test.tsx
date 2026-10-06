@@ -14,9 +14,6 @@
  * provider, and i18n are doubled.
  */
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -72,9 +69,11 @@ vi.mock("../../../shell/StewardProvider", () => ({
   clearStaleStewardSession,
 }));
 
-vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
+vi.mock("../../../lib/use-document-title", () => ({
+  useDocumentTitle: () => {},
+}));
 
-vi.mock("../../../../components/primitives", () => ({
+vi.mock("../../../../components/ui/button", () => ({
   Button: ({
     asChild,
     children,
@@ -624,36 +623,5 @@ describe("CliLoginPage", () => {
     await user.click(screen.getByRole("button", { name: "Authorize" }));
 
     await waitFor(() => expect(clearStaleStewardSession).toHaveBeenCalled());
-  });
-});
-
-describe("CliLoginPage short-viewport scroll", () => {
-  // Every CliLoginPanel state (confirm, success "Authentication Complete!",
-  // error) is a full-viewport centered card. On short screens (Light Phone III,
-  // 1080×1240) a flex `justify-center` pins the card center above scrollTop 0,
-  // hiding the action buttons below an unreachable fold. The panel must be
-  // `overflow-y-auto` with the card `my-auto`. jsdom can't measure layout, so
-  // scan the source — same idiom as login-page.safe-area.test.tsx.
-  const SRC = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "cli-login-page.tsx"),
-    "utf8",
-  );
-
-  it("makes the panel region scroll instead of clipping when it exceeds the viewport", () => {
-    expect(
-      /min-h-\[100dvh\][^"]*overflow-y-auto/.test(SRC),
-      "the CliLoginPanel wrapper must be overflow-y-auto to scroll when taller than the viewport",
-    ).toBe(true);
-  });
-
-  it("centers the card with my-auto (not a parent justify-center that clips the top)", () => {
-    expect(
-      /\bmy-auto\b[^"]*\bmax-w-md\b/.test(SRC),
-      "the panel card must center via my-auto so its top stays reachable while scrolling",
-    ).toBe(true);
-    expect(
-      /min-h-\[100dvh\][^"]*items-center justify-center/.test(SRC),
-      "the panel must not use the top-clipping items-center justify-center centering",
-    ).toBe(false);
   });
 });

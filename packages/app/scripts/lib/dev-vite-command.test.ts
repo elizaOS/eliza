@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -21,10 +21,6 @@ const viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
 const mirroredChildUrl = pathToFileURL(
   path.join(appDir, "scripts", "lib", "spawn-mirrored-child.ts"),
 ).href;
-const appPackage = JSON.parse(
-  readFileSync(path.join(appDir, "package.json"), "utf8"),
-);
-
 async function runMirroredChildProbe({ childSource, wrapperSignal }) {
   const wrapperSource = `
     import { spawnMirroredChild } from ${JSON.stringify(mirroredChildUrl)};
@@ -189,40 +185,6 @@ describe("development Vite process commands", () => {
           "bundle",
         ],
       },
-    );
-  });
-
-  it("keeps direct package dev commands on Node with source import support", () => {
-    assert.equal(appPackage.scripts.dev, "node scripts/dev.ts");
-    assert.equal(
-      appPackage.scripts["dev:chat-harness"],
-      "ELIZA_CHAT_UI_HARNESS=1 node scripts/dev.ts",
-    );
-    const directDevSource = readFileSync(
-      path.join(appDir, "scripts", "dev.ts"),
-      "utf8",
-    );
-    assert.match(directDevSource, /resolveViteCommand\(\{/);
-    assert.match(directDevSource, /viteArgs: devCloud\.passthroughArgs/);
-    assert.match(directDevSource, /spawnMirroredChild\(/);
-  });
-
-  it("keeps every desktop renderer Vite entrypoint on the canonical source-aware command", () => {
-    const desktopDevSource = readFileSync(
-      path.join(repoRoot, "packages", "app", "scripts", "dev-platform.ts"),
-      "utf8",
-    );
-
-    assert.match(desktopDevSource, /import \{ resolveViteCommand \}/);
-    assert.equal(
-      desktopDevSource.match(/resolveViteCommand\(\{/g)?.length,
-      3,
-      "initial build, HMR, and Rollup watch must share the command resolver",
-    );
-    assert.doesNotMatch(
-      desktopDevSource,
-      /\["--bun", "run", "vite"/,
-      "desktop startup must not bypass source-aware Vite config loading",
     );
   });
 

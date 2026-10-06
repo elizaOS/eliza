@@ -14,6 +14,13 @@
  */
 
 import { createHash } from "node:crypto";
+import type {
+  LifeOpsCalendarProvider,
+  LifeOpsCalendarSourceAdministrationSnapshot,
+  LifeOpsCalendarSourceKey,
+  LifeOpsIcsCalendarSyncResponse,
+  LifeOpsLinkedCalendarControlMutationResult,
+} from "@elizaos/contracts";
 import {
   type Action,
   type ActionResult,
@@ -27,13 +34,6 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import {
-  type LifeOpsCalendarProvider,
-  type LifeOpsCalendarSourceAdministrationSnapshot,
-  type LifeOpsCalendarSourceKey,
-  type LifeOpsIcsCalendarSyncResponse,
-  type LifeOpsLinkedCalendarControlMutationResult,
-} from "@elizaos/core/contracts/calendar";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   googleAccountIdFromGrantId,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,7 +44,17 @@ def expect_int(value: JSONValue, *, ctx: str) -> int:
 def expect_float(value: JSONValue, *, ctx: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{ctx}: expected number, got {type(value).__name__}")
-    return float(value)
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{ctx}: expected finite number")
+    return number
+
+
+def expect_count(value: JSONValue, *, ctx: str) -> int:
+    number = expect_float(value, ctx=ctx)
+    if number < 0 or not number.is_integer():
+        raise ValueError(f"{ctx}: expected non-negative integer count")
+    return int(number)
 
 
 def expect_bool(value: JSONValue, *, ctx: str) -> bool:
@@ -69,7 +80,9 @@ def find_latest_file(root: Path, *, glob_pattern: str) -> Path:
         reverse=True,
     )
     if not matches:
-        raise FileNotFoundError(f"No files matched {glob_pattern!r} under {str(root)!r}")
+        raise FileNotFoundError(
+            f"No files matched {glob_pattern!r} under {str(root)!r}"
+        )
     return matches[0]
 
 
@@ -94,6 +107,11 @@ class ScoreExtraction:
     higher_is_better: bool
     metrics: dict[str, JSONValue]
 
+    def __post_init__(self) -> None:
+        score = expect_float(self.score, ctx="primary score")
+        if self.unit == "ratio" and not 0 <= score <= 1:
+            raise ValueError("Primary ratio score must be between zero and one")
+
 
 CommandBuilder = Callable[
     [Path, ModelSpec, Mapping[str, JSONValue]],
@@ -113,6 +131,7 @@ class BenchmarkDefinition:
     build_command: CommandBuilder
     locate_result: ResultLocator
     extract_score: ScoreExtractor
+    directory: str = ""
 
 
 BenchmarkStatus = Literal["pass", "fail", "skip"]

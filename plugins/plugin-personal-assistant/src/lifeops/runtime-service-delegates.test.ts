@@ -1,9 +1,9 @@
 /** Verifies the connector runtime-service delegates (X) forward calls and apply egress filtering. Deterministic vitest with stubbed runtime services. */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import type { IAgentRuntime, SendHandlerOutcome } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { LifeOpsConnectorGrant } from "../contracts/index.js";
 import {
   createConnectorAccountPrivacyPolicy,
   createLifeOpsEgressContext,

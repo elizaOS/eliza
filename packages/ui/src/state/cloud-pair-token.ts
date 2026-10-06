@@ -9,15 +9,12 @@
  */
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
+  CLOUD_PAIR_SCOPED_STORAGE_PREFIX,
   cloudPairTokenKeyForAgent,
-} from "@elizaos/core/contracts/cloud-pair";
-import {
-  CLOUD_PAIR_LOCAL_STORAGE_KEY,
-  CLOUD_PAIR_SESSION_STORAGE_KEY,
-} from "../components/auth/CloudPairRelay";
+} from "@elizaos/contracts";
 import { shellLocalStorage } from "../surface-realm-channel";
+import type { AgentProfile } from "./agent-profile-types";
 import {
-  type AgentProfile,
   loadAgentProfileRegistry,
   saveAgentProfileRegistry,
 } from "./agent-profiles";
@@ -94,7 +91,6 @@ function clearLocalOwnerHintForAgent(agentId: string): void {
   }
 }
 /** Prefix for all per-agent cloud-pair token keys */
-const CLOUD_PAIR_SCOPED_PREFIX = "eliza:cloud-pair:api-token:";
 /**
  * Remove all scoped cloud-pair token keys from localStorage.
  * Used when an explicit disconnect happens but we can't resolve a specific agentId.
@@ -107,7 +103,7 @@ function clearAllScopedCloudPairKeys(): void {
   try {
     for (let i = 0; i < window.localStorage.length; i++) {
       const key = window.localStorage.key(i);
-      if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) scoped.push(key);
+      if (key?.startsWith(CLOUD_PAIR_SCOPED_STORAGE_PREFIX)) scoped.push(key);
     }
   } catch (storageError) {
     // error-policy:J6 hardened settings can block storage enumeration; a store
@@ -120,8 +116,6 @@ function clearAllScopedCloudPairKeys(): void {
     scoped = [];
   }
   for (const k of scoped) removePairKeyFromBothStorages(k);
-  // Legacy single-key format
-  removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_STORAGE_KEY);
 }
 /**
  * Remove all scoped cloud-pair token keys from sessionStorage.
@@ -132,7 +126,8 @@ function clearAllScopedCloudPairKeysSession(): void {
   try {
     for (let i = 0; i < window.sessionStorage.length; i++) {
       const key = window.sessionStorage.key(i);
-      if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) keysToRemove.push(key);
+      if (key?.startsWith(CLOUD_PAIR_SCOPED_STORAGE_PREFIX))
+        keysToRemove.push(key);
     }
   } catch (storageError) {
     // error-policy:J6 hardened settings can block storage enumeration; warn so
@@ -150,9 +145,6 @@ function clearAllScopedCloudPairKeysSession(): void {
       window.sessionStorage.removeItem(key);
     }, key);
   }
-  tryRemoveFromStorage(() => {
-    window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
-  }, CLOUD_PAIR_SESSION_STORAGE_KEY);
 }
 /**
  * Remove the durable pair token from BOTH storages the write channel targets.
@@ -162,11 +154,8 @@ function clearAllScopedCloudPairKeysSession(): void {
  * the write channel, which uses raw window storage; there is no
  * shellSessionStorage wrapper).
  *
- * With an `agentId`, ONLY that agent's per-agent key is removed. The legacy
- * global key is deliberately left alone: on a pre-migration install it holds
- * a credential whose owner is unknown, so deleting agent A must not destroy
- * what may be agent B's only bearer. Without an `agentId` (global disconnect /
- * sign-out intent), every scoped key AND the legacy key are purged.
+ * With an `agentId`, remove only that agent’s key. An explicit global
+ * disconnect removes all scoped credentials, legacy credentials, and owner hints.
  */
 export function clearCloudPairApiToken(agentId?: string): void {
   const scopedKey = agentId?.trim()
@@ -177,7 +166,8 @@ export function clearCloudPairApiToken(agentId?: string): void {
     clearLocalOwnerHintForAgent(agentId?.trim() ?? "");
   } else {
     // No agentId resolved — explicit disconnect with global intent.
-    // Clear ALL scoped keys + legacy key from both storages.
+    // Clear all scoped keys from both storages.
+    removePairKeyFromBothStorages("eliza:cloud-pair:api-token");
     clearAllScopedCloudPairKeys();
     clearAllScopedCloudPairKeysSession();
     removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
@@ -203,7 +193,7 @@ function profileMatchesDedicatedAgent(
  * Scoped on every axis:
  * - The durable pair key is per-agent (#17579), so `agentId`'s scoped key is
  *   ALWAYS cleared — it provably belongs to the target. Other agents' scoped
- *   keys and the legacy global key (unknown owner) survive.
+ *   keys survive.
  * - The persisted active-server token is scrubbed ONLY when the active server
  *   resolves to `agentId`; a different agent's still-valid bearer survives.
  * - Agent-profile tokens are scrubbed ONLY for profiles that belong to

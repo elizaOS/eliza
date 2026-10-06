@@ -869,6 +869,7 @@ export interface IGoogleGmailService extends Service {
       selfEmail?: string | null;
       maxResults?: number;
       includeSpamTrash?: boolean;
+      labelIds?: string[];
     }
   ): Promise<GoogleGmailMessageSummary[]>;
   searchGmailMessagesPage(
@@ -911,6 +912,7 @@ export interface IGoogleGmailService extends Service {
       cc?: string[];
       subject: string;
       bodyText: string;
+      threadId: string;
       inReplyTo?: string | null;
       references?: string | null;
     }

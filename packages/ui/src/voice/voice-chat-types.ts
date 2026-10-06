@@ -2,8 +2,8 @@
  * Types, constants, and config interfaces for the voice chat system.
  */
 
-import type { VoiceConfig, VoiceMode } from "../api/client";
-import { resolveApiUrl } from "../utils";
+import type { VoiceConfig, VoiceMode } from "../api/client-types-config";
+import { resolveApiUrl } from "../utils/asset-url";
 import { ttsDebug } from "../utils/tts-debug";
 import type { Emotion } from "./emotion";
 import type { VoicePlaybackObserver } from "./voice-playback-evidence";
@@ -37,14 +37,6 @@ export interface SpeechRecognitionResultList {
 }
 
 export type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
-
-export type WindowWithSpeechRecognition = Omit<
-  Window,
-  "SpeechRecognition" | "webkitSpeechRecognition"
-> & {
-  SpeechRecognition?: SpeechRecognitionCtor;
-  webkitSpeechRecognition?: SpeechRecognitionCtor;
-};
 
 function isSpeechRecognitionCtor(
   value: unknown,

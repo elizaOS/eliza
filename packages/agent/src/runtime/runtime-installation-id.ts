@@ -15,7 +15,8 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { readAliasedEnv, type UUID } from "@elizaos/core";
+import type { UUID } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 
 const INSTALLATION_ID_FILENAME = "runtime-installation-id";
 const UUID_PATTERN =

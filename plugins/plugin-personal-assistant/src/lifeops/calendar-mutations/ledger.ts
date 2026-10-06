@@ -4,12 +4,12 @@
  * evidence without introducing another scheduler or retry loop.
  */
 import { createHash, randomUUID } from "node:crypto";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarEventAttendee,
+  LifeOpsCalendarProvider,
+} from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime, stableStringify } from "@elizaos/core";
-import {
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarEventAttendee,
-  type LifeOpsCalendarProvider,
-} from "@elizaos/core/contracts/calendar";
 import type { ApprovalRequest } from "../approval-queue.types.js";
 import {
   executeRawSql,

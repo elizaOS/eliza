@@ -16,7 +16,6 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	isInAllowlist,
-	lifeOpsPassiveConnectorsEnabled,
 	type Media,
 	type Memory,
 	MemoryType,
@@ -31,6 +30,7 @@ import {
 	truncateWellFormed,
 	type UUID,
 } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 import {
 	type FetchedDocumentUrl as FetchedKnowledgeUrl,
 	fetchDocumentFromUrl,

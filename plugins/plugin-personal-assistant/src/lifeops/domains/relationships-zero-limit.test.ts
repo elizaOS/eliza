@@ -3,7 +3,7 @@
  * omitted the limit and the entity store returned every contact.
  */
 
-import type { Entity } from "@elizaos/core/knowledge-graph/entity-types";
+import type { Entity } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { RelationshipsDomain } from "./relationships-service.js";

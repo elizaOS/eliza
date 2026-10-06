@@ -24,9 +24,11 @@ const mocks = vi.hoisted(() => ({
   isAndroidCloudBuild: vi.fn(() => false),
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/agent-profiles", () => ({
   loadAgentProfileRegistry: mocks.loadAgentProfileRegistry,
   addAgentProfile: mocks.addAgentProfile,
+}));
+vi.mock("../../state/switch-runtime", () => ({
   switchRuntimeNonDestructive: mocks.switchRuntimeNonDestructive,
 }));
 vi.mock("../../state/runtime-url-trust", () => ({

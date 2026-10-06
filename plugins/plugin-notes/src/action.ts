@@ -12,6 +12,8 @@
  * in chat and a note written in the app are one record in one store. It adds
  * no storage, no second source of truth, and no new persistence path.
  */
+
+import { isValidTimeZone } from "@elizaos/contracts";
 import {
   type Action,
   type ActionResult,
@@ -20,7 +22,6 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   isObjectRecord,
-  isValidTimeZone,
   type Memory,
   normalizeEffectReceipt,
   type State,

@@ -9,7 +9,7 @@
 import {
 	formatDiagnosticError,
 	readDiagnosticProperty,
-} from "./utils/safe-diagnostic-error.js";
+} from "./utils/errors.js";
 
 export function formatUncaughtError(error: unknown): string {
 	return formatDiagnosticError(error);

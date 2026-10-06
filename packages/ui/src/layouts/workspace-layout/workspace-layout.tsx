@@ -3,20 +3,30 @@
  * outside header placement and a mobile drawer.
  */
 import * as React from "react";
+import type { SidebarProps } from "../../components/composites/sidebar/sidebar-types";
 import { Card } from "../../components/ui/card";
-import { cn } from "../../lib/utils";
-import { PageLayoutHeader } from "../page-layout/page-layout-header";
-import { PageLayoutMobileDrawer } from "../page-layout/page-layout-mobile-drawer";
-import type { WorkspaceLayoutProps } from "./workspace-layout-types";
+import { cn } from "../../utils/cn";
+import { assignRef } from "../../utils/refs";
+import { PageLayoutHeader } from "../page-layout";
+import { PageLayoutMobileDrawer } from "./workspace-mobile-drawer";
 
-function assignRef<T>(ref: React.Ref<T> | undefined, value: T | null): void {
-  if (typeof ref === "function") {
-    ref(value);
-    return;
-  }
-  if (ref) {
-    ref.current = value;
-  }
+export type WorkspaceLayoutHeaderPlacement = "inside" | "outside";
+
+export interface WorkspaceLayoutProps
+  extends React.HTMLAttributes<HTMLDivElement> {
+  sidebar?: React.ReactElement<SidebarProps> | null;
+  contentHeader?: React.ReactNode;
+  contentHeaderClassName?: string;
+  contentClassName?: string;
+  contentInnerClassName?: string;
+  contentRef?: React.Ref<HTMLElement>;
+  sidebarCollapsible?: boolean;
+  mobileSidebarLabel?: React.ReactNode;
+  mobileSidebarTriggerClassName?: string;
+  contentPadding?: boolean;
+  headerPlacement?: WorkspaceLayoutHeaderPlacement;
+  footer?: React.ReactNode;
+  footerClassName?: string;
 }
 
 function useWorkspaceLayoutDesktopMode() {

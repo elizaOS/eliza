@@ -13,7 +13,7 @@
  * MessageContent.config.test.tsx.
  */
 
-import type { PluginParamDef } from "@elizaos/core/api/agent-api-types";
+import type { PluginParamDef } from "@elizaos/core/protocol";
 import {
   cleanup,
   fireEvent,

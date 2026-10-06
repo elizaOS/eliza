@@ -1,15 +1,16 @@
 // Handles scheduled cloud API cron PII scrub job drain traffic with cron auth expectations.
-import type { Context } from "hono";
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
+
+import { requireCronSecret } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   createPiiScrubItemExecutor,
   resolveCloudPiiScrubEscalationHandler,
-} from "@/lib/services/pii-scrub-executor";
-import { processPendingPiiScrubJobs } from "@/lib/services/pii-scrub-jobs";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/pii-scrub-executor";
+import { processPendingPiiScrubJobs } from "@elizaos/cloud-shared/lib/services/pii-scrub-jobs";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { Context } from "hono";
+import { Hono } from "hono";
 
 /**
  * Drains pending `pii_scrub` jobs (#14808 CLOUD lane): claims batches with
