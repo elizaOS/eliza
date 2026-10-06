@@ -1,0 +1,455 @@
+/** Real executor, post-delivery lifecycle and PGlite ledger; no live models. */
+import { registerCalendarTimeZoneResolver } from "@elizaos/contracts";
+import {
+  ActionMode,
+  type ActionResult,
+  attestDeliveryAudienceFromCanonicalRoom,
+  ChannelType,
+  executePlannedToolCall,
+  type Memory,
+  ModelType,
+  RunTerminalOwner,
+  type State,
+  TaskService,
+  type UUID,
+  withRoomDeliverySettlement,
+} from "@elizaos/core";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import {
+  actionResultToPlannerToolResult,
+  runPlannerLoop,
+} from "../../../plugin-assistant/src/runtime/planner-loop.ts";
+import { projectToolResultForModel } from "../../../plugin-assistant/src/runtime/planner-rendering.ts";
+import { collectPreviousActionResults } from "../../../plugin-assistant/src/services/message/planned-tool.ts";
+import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.ts";
+import { LifeOpsRepository } from "../lifeops/repository.ts";
+import { LifeOpsService } from "../lifeops/service.ts";
+import { executeRawSql } from "../lifeops/sql.ts";
+import {
+  __resetBriefComposersForTests,
+  briefAction,
+  briefDeliveredImpressionsAction,
+  setBriefComposers,
+} from "./brief.ts";
+
+let fixture: Awaited<ReturnType<typeof createLifeOpsTestRuntime>>;
+let repository: LifeOpsRepository;
+let roomId: UUID;
+let ownerId: UUID;
+const finalText =
+  "Sort receipts is marked done. Board prep is at 7 pm; your inbox is not connected.";
+const params = {
+  action: "compose_evening",
+  include: { calendar: true, inbox: true, life: true, commitments: false },
+};
+
+beforeAll(async () => {
+  vi.stubEnv("ELIZA_DISABLE_LIFEOPS_SCHEDULER", "1");
+  fixture = await createLifeOpsTestRuntime({ withLLM: false });
+  await TaskService.stop(fixture.runtime);
+  const service = new LifeOpsService(fixture.runtime);
+  ownerId = service.ownerEntityId() as UUID;
+  repository = new LifeOpsRepository(fixture.runtime);
+  await LifeOpsRepository.bootstrapSchema(fixture.runtime);
+  if (!(await fixture.runtime.getEntityById(ownerId))) {
+    await fixture.runtime.createEntity({
+      id: ownerId,
+      agentId: fixture.runtime.agentId,
+      names: ["Brief owner"],
+      metadata: {},
+    });
+  }
+  const worldId = crypto.randomUUID() as UUID;
+  await fixture.runtime.ensureWorldExists({
+    id: worldId,
+    agentId: fixture.runtime.agentId,
+    name: "Brief owner world",
+    metadata: { ownership: { ownerId }, roles: { [ownerId]: "OWNER" } },
+  });
+  roomId = await fixture.runtime.createRoom({
+    id: crypto.randomUUID() as UUID,
+    worldId,
+    source: "client_chat",
+    type: ChannelType.DM,
+    name: "Brief owner DM",
+  });
+  await fixture.runtime.createRoomParticipants(
+    [ownerId, fixture.runtime.agentId],
+    roomId,
+  );
+}, 120_000);
+
+beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-06T01:30:00.000Z"));
+  __resetBriefComposersForTests();
+  registerCalendarTimeZoneResolver(
+    fixture.runtime,
+    async () => "America/Los_Angeles",
+  );
+  setBriefComposers({
+    loadCalendar: async () => [
+      {
+        id: "meeting-exact-id",
+        title: "Board prep",
+        startAt: "2026-10-06T02:00:00.000Z",
+        endAt: "2026-10-06T03:00:00.000Z",
+      },
+    ],
+    loadInbox: async () => ({ items: [], coverage: "not_connected" }),
+    loadLife: async () => [],
+    loadCompletedToday: async () => [
+      {
+        id: "completed-exact-id",
+        title: "Sort receipts",
+        kind: "todo",
+        dueAt: "2026-10-05T22:00:00.000Z",
+        completedAt: "2026-10-06T00:00:00.000Z",
+        state: "completed",
+      },
+    ],
+    loadCommitments: async () => [],
+    loadEngagementSummaries: async () => [],
+  });
+  vi.spyOn(fixture.runtime, "useModel").mockRejectedValue(
+    new Error("No inner model call allowed"),
+  );
+  await executeRawSql(
+    fixture.runtime,
+    "DELETE FROM app_lifeops.life_brief_item_engagements",
+  );
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+  __resetBriefComposersForTests();
+});
+afterAll(async () => {
+  await fixture?.cleanup();
+  vi.unstubAllEnvs();
+});
+
+async function invoke(
+  replyOwner: "planner" | "action" = "planner",
+  format?: "json",
+) {
+  const message: Memory = {
+    id: crypto.randomUUID() as UUID,
+    agentId: fixture.runtime.agentId,
+    entityId: ownerId,
+    roomId,
+    content: {
+      text: "Give me my daily dossier using the connected sources available now.",
+      source: "client_chat",
+      channelType: ChannelType.DM,
+    },
+  };
+  await attestDeliveryAudienceFromCanonicalRoom(fixture.runtime, message);
+  const callback = vi.fn(async () => []);
+  const result = await executePlannedToolCall(
+    fixture.runtime,
+    {
+      message,
+      replyOwner: replyOwner === "planner" ? "planner" : undefined,
+      userRoles: ["OWNER"],
+      activeContexts: ["productivity"],
+      callback,
+    },
+    { name: "BRIEF", params: { ...params, ...(format ? { format } : {}) } },
+  );
+  return { message, callback, result };
+}
+
+async function deliver(
+  message: Memory,
+  result: ActionResult,
+  failure?: Error,
+  responseText = finalText,
+) {
+  const runtime = fixture.runtime;
+  const response: Memory = {
+    id: crypto.randomUUID() as UUID,
+    entityId: runtime.agentId,
+    agentId: runtime.agentId,
+    roomId,
+    content: { text: responseText, actions: ["REPLY"], simple: true },
+  };
+  // Use the same conversion as finalPlannerState, which intentionally omits
+  // some planner-only flags while retaining canonical action data.
+  const actionResults = collectPreviousActionResults(
+    {
+      archivedSteps: [],
+      steps: [
+        {
+          toolCall: { name: "BRIEF" },
+          result: actionResultToPlannerToolResult(result),
+        },
+      ],
+      context: { events: [] },
+    } as never,
+    [briefAction],
+  );
+  const state: State = { values: {}, data: { actionResults }, text: "" };
+  const queue = runtime.roomHandlerQueue;
+  await queue.withLease(roomId, async (lease) => {
+    await withRoomDeliverySettlement(runtime, roomId, lease, async () => {
+      const owner = new RunTerminalOwner(
+        runtime,
+        crypto.randomUUID() as UUID,
+        message,
+        Date.now(),
+        lease,
+      );
+      owner.trackAfterDelivery("post_turn", async () => {
+        await runtime.runActionsByMode(
+          ActionMode.ALWAYS_AFTER,
+          message,
+          state,
+          { didRespond: true, responses: [response] },
+        );
+      });
+      owner.request({ status: "completed", effects: [] });
+      await Promise.resolve();
+      expect(
+        await repository.listBriefItemEngagements(runtime.agentId),
+      ).toHaveLength(0);
+      if (failure) throw failure;
+    });
+  });
+}
+
+describe("planner-owned BRIEF", () => {
+  it("defers complete local-time grounding once and leaves standalone JSON semantics intact", async () => {
+    const { result, callback } = await invoke();
+    expect(result).toMatchObject({
+      success: true,
+      transcriptVisibility: "internal",
+      modelReplyRequired: true,
+      turnComplete: false,
+      promptDataMode: "replace-data",
+    });
+    expect(callback).not.toHaveBeenCalled();
+    expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+    expect(result.text).toBeUndefined();
+    expect(result.userFacingText).toBeUndefined();
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.data?.briefing).toMatchObject({
+      sections: { completedToday: [{ title: "Sort receipts" }] },
+      sourceErrors: { inbox: "not_connected" },
+    });
+    const projected = projectToolResultForModel(
+      actionResultToPlannerToolResult(result),
+    );
+    expect(projected.data).not.toHaveProperty("briefing");
+    expect(projected).not.toHaveProperty("promptData");
+    const prompt = JSON.parse(String(projected.data?.replyGrounding))
+      .prompt as string;
+    expect(prompt.match(/You are composing the owner's/g)).toHaveLength(1);
+    expect(prompt).toContain("Obey the editorial block");
+    expect(prompt).toContain(
+      "not_connected means no readable inbox connection",
+    );
+    expect(prompt).toContain(
+      "Completion and delivery cannot be inferred from a timestamp",
+    );
+    const payload = JSON.parse(prompt.split("\nData:\n")[1]);
+    expect(payload).toMatchObject({
+      asOf: "2026-10-06T01:30:00.000Z",
+      timeZone: "America/Los_Angeles",
+      sourceErrors: { inbox: "not_connected" },
+    });
+    expect(payload.sections.calendar[0]).toMatchObject({
+      id: "meeting-exact-id",
+      startAt: "2026-10-06T02:00:00.000Z",
+      timeContext: {
+        startAt: { localDate: "2026-10-05", relationToAsOf: "after_as_of" },
+      },
+    });
+    expect(
+      payload.sections.completedToday[0].timeContext.completedAt.localDate,
+    ).toBe("2026-10-05");
+    expect(JSON.stringify(projected).match(/Data:/g)).toHaveLength(1);
+    const json = await invoke("planner", "json");
+    expect(json.result).toMatchObject({
+      verifiedUserFacing: true,
+      turnComplete: true,
+    });
+    expect(json.result.modelReplyRequired).toBeUndefined();
+    expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("requires final evaluation to compose the reply without a second planner or inner narrative call", async () => {
+    const { result } = await invoke();
+    const plan = vi.fn(async () => ({
+      text: "",
+      toolCalls: [
+        {
+          id: "brief",
+          name: "BRIEF",
+          arguments: { eliza_turn_scope: "final" },
+        },
+      ],
+    }));
+    const evaluate = vi.fn(async () => ({
+      success: true,
+      decision: "FINISH" as const,
+      messageToUser: finalText,
+    }));
+    const outcome = await runPlannerLoop({
+      context: { id: "brief-test", events: [] },
+      tools: [{ name: "BRIEF" }],
+      runtime: { useModel: plan },
+      executeToolCall: async () => actionResultToPlannerToolResult(result),
+      deferInternalReplyRecoveryToCaller: true,
+      evaluate,
+    });
+    expect(plan).toHaveBeenCalledTimes(1);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    expect(outcome.finalMessage).toBe(finalText);
+    expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    new Error("delivery rejected"),
+    new DOMException("cancelled", "AbortError"),
+  ])(
+    "does not record impressions on failed or cancelled delivery: %s",
+    async (failure) => {
+      const { message, result } = await invoke();
+      await expect(deliver(message, result, failure)).rejects.toThrow(
+        failure.message,
+      );
+      expect(
+        await repository.listBriefItemEngagements(fixture.runtime.agentId),
+      ).toHaveLength(0);
+      expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it("records actual delivered titles only after settlement and idempotently on replay", async () => {
+    const { message, result } = await invoke();
+    expect(
+      fixture.runtime.actions.find(
+        (a) => a.name === briefDeliveredImpressionsAction.name,
+      )?.mode,
+    ).toBe(ActionMode.ALWAYS_AFTER);
+    await deliver(message, result);
+    const rows = await repository.listBriefItemEngagements(
+      fixture.runtime.agentId,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      eventType: "rendered",
+      sourceId: "meeting-exact-id",
+      briefingId: result.data?.briefingId,
+    });
+    const state: State = {
+      values: {},
+      data: { actionResults: [result] },
+      text: "",
+    };
+    await fixture.runtime.runActionsByMode(
+      ActionMode.ALWAYS_AFTER,
+      message,
+      state,
+      {
+        responses: [
+          {
+            id: crypto.randomUUID() as UUID,
+            entityId: fixture.runtime.agentId,
+            roomId,
+            content: { text: finalText, simple: true },
+          } as Memory,
+        ],
+      },
+    );
+    expect(
+      await repository.listBriefItemEngagements(fixture.runtime.agentId),
+    ).toEqual(rows);
+    expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it.each(["early-only", "internal", "synthetic", "different-room"])(
+    "does not count an unqualified final delivery: %s",
+    async (kind) => {
+      const { message, result } = await invoke();
+      const early = {
+        id: crypto.randomUUID() as UUID,
+        entityId: fixture.runtime.agentId,
+        roomId,
+        content: { text: finalText, actions: ["REPLY"] },
+      } as Memory;
+      const final = {
+        ...early,
+        content: {
+          ...early.content,
+          simple: true,
+          ...(kind === "internal"
+            ? { transcriptVisibility: "internal" as const }
+            : {}),
+          ...(kind === "synthetic" ? { elizaSyntheticFailure: true } : {}),
+        },
+        ...(kind === "different-room"
+          ? { roomId: crypto.randomUUID() as UUID }
+          : {}),
+      };
+      await fixture.runtime.runActionsByMode(
+        ActionMode.ALWAYS_AFTER,
+        message,
+        { values: {}, data: { actionResults: [result] }, text: "" },
+        { responses: kind === "early-only" ? [early] : [early, final] },
+      );
+      expect(
+        await repository.listBriefItemEngagements(fixture.runtime.agentId),
+      ).toHaveLength(0);
+    },
+  );
+
+  it("keeps standalone narrative composition and callback delivery", async () => {
+    vi.mocked(fixture.runtime.useModel).mockResolvedValue(finalText as never);
+    const { result, callback } = await invoke("action");
+    expect(fixture.runtime.useModel).toHaveBeenCalledTimes(1);
+    expect(fixture.runtime.useModel).toHaveBeenCalledWith(
+      ModelType.TEXT_LARGE,
+      expect.objectContaining({
+        prompt: expect.stringContaining(
+          "You are composing the owner's evening briefing",
+        ),
+      }),
+    );
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      success: true,
+      text: finalText,
+      userFacingText: finalText,
+      turnComplete: true,
+    });
+    expect(result.modelReplyRequired).toBeUndefined();
+  });
+
+  it("preserves collected facts when local-time grounding fails", async () => {
+    registerCalendarTimeZoneResolver(fixture.runtime, async () => {
+      throw new Error("owner timezone unavailable");
+    });
+    const { result, callback } = await invoke();
+    expect(result).toMatchObject({
+      success: true,
+      turnComplete: false,
+      replyFailure: { code: "BRIEF_REPLY_GROUNDING_FAILED" },
+      data: {
+        briefing: { sections: { calendar: [{ id: "meeting-exact-id" }] } },
+      },
+    });
+    expect(callback).not.toHaveBeenCalled();
+    expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+  });
+});

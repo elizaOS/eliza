@@ -812,7 +812,7 @@ export async function collectV5PlannerCandidateActions(args: {
   // Exposure gates below are synchronous and reject expired audience
   // evidence; an active long turn renews it from current authority first.
   await renewExpiredTrustedDeliveryAudience(args.runtime, args.message);
-  // The candidate surface starts from every runtime action and applies only the
+  // The candidate surface starts from every planner action and applies only the
   // same execution gates the planner executor will enforce — it deliberately does
   // NOT pre-filter by `action.contexts` against the messageHandler-picked
   // `selectedContexts`. Context pre-filtering excludes owner actions, CALENDAR,
@@ -821,7 +821,10 @@ export async function collectV5PlannerCandidateActions(args: {
   // keeps role-policy overrides working for deployments that intentionally expose
   // an action outside its declared context, while avoiding dead tools the planner
   // could select but execution would immediately reject.
-  const allRuntimeActions = args.runtime.actions;
+  // Lifecycle hooks keep their automatic execution owner.
+  const allRuntimeActions = args.runtime.actions.filter(
+    (action) => (action.mode ?? "PLANNER") === "PLANNER",
+  );
   const declaredAdmissionDomains = new Set(
     (args.selectedContexts ?? []).map(normalizeContextId),
   );
@@ -851,7 +854,7 @@ export async function collectV5PlannerCandidateActions(args: {
         }).actions.map((action) => action.name)
       : [],
   );
-  const actionLookup = buildRuntimeActionLookup(args.runtime);
+  const actionLookup = buildRuntimeActionLookup({ actions: allRuntimeActions });
   const actionsByName = new Map(
     allRuntimeActions.map((action) => [action.name, action]),
   );
@@ -920,7 +923,11 @@ export async function collectV5PlannerCandidateActions(args: {
     explicitCandidateName?: string,
   ): Promise<boolean> => {
     const normalizedName = normalizeActionIdentifier(action.name);
-    if (!normalizedName || seen.has(normalizedName)) {
+    if (
+      !normalizedName ||
+      seen.has(normalizedName) ||
+      (action.mode ?? "PLANNER") !== "PLANNER"
+    ) {
       return false;
     }
     // One gate for exposure and execution (#12087 Item 9): private-action gate
