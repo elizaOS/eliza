@@ -179,8 +179,12 @@ function buildInboxRows(
         typeof chat.lastMessageAt === "number" &&
         Number.isFinite(chat.lastMessageAt)
           ? chat.lastMessageAt
-          : Date.now();
-      const isoDate = new Date(sortKey).toISOString();
+          : 0;
+      const isoDate =
+        typeof chat.lastMessageAt === "number" &&
+        Number.isFinite(chat.lastMessageAt)
+          ? new Date(sortKey).toISOString()
+          : null;
       const normalizedSource = normalizeConnectorSource(chat.source);
       const normalizedWorldLabel = normalizeWorldLabel(chat, t);
       return {
@@ -195,7 +199,7 @@ function buildInboxRows(
         muted: chat.muted === true,
         mutedScope: chat.mutedScope,
         title: chat.title,
-        updatedAtLabel: formatRelativeTime(isoDate, t),
+        updatedAtLabel: isoDate ? formatRelativeTime(isoDate, t) : "",
         ...(chat.worldId ? { worldId: chat.worldId } : {}),
         worldKey: worldKey(chat, normalizedSource),
         worldLabel: normalizedWorldLabel,

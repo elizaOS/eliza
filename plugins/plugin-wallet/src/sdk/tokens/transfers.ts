@@ -189,12 +189,12 @@ export async function getTokenBalance(
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "symbol",
-    }) as Promise<string>,
+    }).catch(() => "UNKNOWN") as Promise<string>,
     ctx.publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "name",
-    }) as Promise<string>,
+    }).catch(() => "Unknown token") as Promise<string>,
   ]);
 
   const humanBalance = toHuman(rawBalance, decimals);
