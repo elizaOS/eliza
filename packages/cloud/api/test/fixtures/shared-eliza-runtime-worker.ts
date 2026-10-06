@@ -437,7 +437,8 @@ const worker = {
             model: "local/shared-runtime-probe",
           },
           history: [],
-          message: "swamped at work and I will be in Austin next week, pause my network intros until oct 20",
+          message:
+            "swamped at work and I will be in Austin next week, pause my network intros until oct 20",
           messageIds: {
             user: "70000000-0000-5000-8000-000000000093",
             assistant: "70000000-0000-5000-8000-000000000094",
@@ -456,6 +457,46 @@ const worker = {
           events: store.events,
           signals: store.signals,
         });
+      }
+      if (url.pathname === "/network-relay-turn") {
+        // The same RELAY_MESSAGE phrasing with and without a server-resolved
+        // Network execution; the test inspects what reached the model.
+        const withNetwork = url.searchParams.get("network") === "1";
+        const store = new InMemoryNetworkStore([
+          {
+            memberId: "mem_ada",
+            firstName: "Ada",
+            city: "San Francisco",
+            state: "open",
+            stateUntil: null,
+            facets: [],
+            activeItems: [],
+          },
+        ]);
+        const result = await runSharedAgentTurn({
+          character: {
+            name: withNetwork ? "The Network" : "Eliza",
+            system: "You are a warm, brief assistant.",
+            model: "local/shared-runtime-probe",
+          },
+          history: [],
+          message: "text Sam I'm in",
+          messageIds: {
+            user: withNetwork
+              ? "70000000-0000-5000-8000-000000000096"
+              : "70000000-0000-5000-8000-000000000098",
+            assistant: withNetwork
+              ? "70000000-0000-5000-8000-000000000097"
+              : "70000000-0000-5000-8000-000000000099",
+          },
+          execution: {
+            channel: { type: ChannelType.DM, source: "twilio" },
+            agentKey: "personal:70000000-0000-5000-8000-000000000095",
+            roomKey: "personal:70000000-0000-5000-8000-000000000095",
+            ...(withNetwork ? { network: { memberId: "mem_ada", store } } : {}),
+          },
+        });
+        return Response.json({ result });
       }
       if (url.pathname === "/todo-turn") {
         const storedTodos: Todo[] = [];

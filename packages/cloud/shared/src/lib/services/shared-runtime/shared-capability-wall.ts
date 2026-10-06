@@ -31,6 +31,31 @@ export interface SharedCapabilityWall {
   constraint: string;
 }
 
+/**
+ * Server-attested capabilities that let a matched intent through the wall.
+ * `relay`, `scheduling` and `concierge` are set only for The Network's
+ * project-scoped turns, whose plugin owns member-to-member relay, scheduling
+ * and concierge search. Eliza turns never set them, so for Eliza those intents
+ * still resolve to `blocked-primary` exactly as before.
+ */
+export interface SharedCapabilityWallFlags {
+  reminders?: boolean;
+  todos?: boolean;
+  /** Network RELAY_MESSAGE: "text Sam I'm in" is relayed to another member. */
+  relay?: boolean;
+  /** Network SCHEDULE: "reschedule our coffee" between members. */
+  scheduling?: boolean;
+  /** Network CONCIERGE_SEARCH: "book a table for us" is a concierge request. */
+  concierge?: boolean;
+}
+
+/** The wall flags a Network turn carries (see `execution.network`). */
+export const NETWORK_CAPABILITY_WALL_FLAGS = {
+  relay: true,
+  scheduling: true,
+  concierge: true,
+} as const satisfies SharedCapabilityWallFlags;
+
 export type SharedCapabilityResolution =
   | { kind: "blocked-primary"; blocked: SharedCapabilityWall }
   | {
@@ -151,7 +176,7 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
 
 export function resolveSharedCapabilityWall(
   message: string | undefined,
-  capabilities: { reminders?: boolean; todos?: boolean } = {},
+  capabilities: SharedCapabilityWallFlags = {},
 ): SharedCapabilityWall | null {
   const resolution = resolveSharedCapabilityIntent(message, capabilities);
   if (!resolution) return null;
@@ -167,13 +192,13 @@ type CapabilityMatch = {
   end: number;
 };
 
-function isEnabled(
-  match: CapabilityMatch,
-  capabilities: { reminders?: boolean; todos?: boolean },
-): boolean {
+function isEnabled(match: CapabilityMatch, capabilities: SharedCapabilityWallFlags): boolean {
   return (
     (match.rule.capability === "reminders" && capabilities.reminders === true) ||
-    (match.rule.capability === "todos" && capabilities.todos === true)
+    (match.rule.capability === "todos" && capabilities.todos === true) ||
+    (match.rule.capability === "communications" && capabilities.relay === true) ||
+    (match.rule.capability === "calendar" && capabilities.scheduling === true) ||
+    (match.rule.capability === "bookings" && capabilities.concierge === true)
   );
 }
 
@@ -222,7 +247,7 @@ function beginsSeparateClause(text: string, primary: CapabilityMatch, candidate:
 /** Resolve enabled primary intents without hiding unsupported later clauses. */
 export function resolveSharedCapabilityIntent(
   message: string | undefined,
-  capabilities: { reminders?: boolean; todos?: boolean } = {},
+  capabilities: SharedCapabilityWallFlags = {},
 ): SharedCapabilityResolution | null {
   const text = (message ?? "").trim();
   if (!text || hasTrailingSharedActionCancellation(text)) return null;

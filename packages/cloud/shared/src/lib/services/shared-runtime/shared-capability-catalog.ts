@@ -18,7 +18,55 @@ export interface SharedCapabilityFlags {
   todos: boolean;
   media: boolean;
   transport?: AgentCapabilityTransport;
+  /**
+   * The Network's member capabilities. Present only on Network turns; when set,
+   * the matching personal-workspace entries are described as available
+   * Network actions instead of "needs workspace".
+   */
+  network?: { relay: boolean; scheduling: boolean; concierge: boolean };
 }
+
+/** Network replacements for workspace-only entries, keyed by catalog id. */
+const NETWORK_CAPABILITIES: Partial<
+  Record<
+    AgentCapabilityId,
+    { flag: "relay" | "scheduling" | "concierge"; definition: CapabilityDefinition }
+  >
+> = {
+  communications: {
+    flag: "relay",
+    definition: {
+      id: "communications",
+      label: "Relay a message to another Network member",
+      examples: ["Text Sam I'm in", "Tell Grace I'm running late"],
+      consequence: "consequential",
+      requiresConfirmation: true,
+      nextAction: "none",
+    },
+  },
+  calendar: {
+    flag: "scheduling",
+    definition: {
+      id: "calendar",
+      label: "Schedule time with another Network member",
+      examples: ["Reschedule our coffee", "Find a time with Ada next week"],
+      consequence: "consequential",
+      requiresConfirmation: true,
+      nextAction: "none",
+    },
+  },
+  bookings: {
+    flag: "concierge",
+    definition: {
+      id: "bookings",
+      label: "Network concierge search",
+      examples: ["Book a table for us", "Find a climbing gym near Ada"],
+      consequence: "consequential",
+      requiresConfirmation: true,
+      nextAction: "none",
+    },
+  },
+};
 
 /** Map only trusted server-owned channel sources into catalog transports. */
 export function sharedCapabilityTransportForSource(
@@ -269,7 +317,17 @@ export function buildSharedCapabilityCatalog(flags: SharedCapabilityFlags): Agen
       flags.media,
     ],
   ];
-  const personal = PERSONAL_CAPABILITIES.map<AgentCapabilityDescriptor>((definition) => ({
+  const network = flags.network;
+  const networkAvailable = PERSONAL_CAPABILITIES.flatMap((definition) => {
+    const replacement = NETWORK_CAPABILITIES[definition.id];
+    return replacement && network?.[replacement.flag] === true
+      ? [availableCapability(replacement.definition, transport)]
+      : [];
+  });
+  const networkIds = new Set(networkAvailable.map((capability) => capability.id));
+  const personal = PERSONAL_CAPABILITIES.filter(
+    (definition) => !networkIds.has(definition.id),
+  ).map<AgentCapabilityDescriptor>((definition) => ({
     ...definition,
     availability: "needs_workspace",
     currentTier: "shared",
@@ -301,6 +359,7 @@ export function buildSharedCapabilityCatalog(flags: SharedCapabilityFlags): Agen
       ...optional.map(([definition, available]) =>
         optionalSharedCapability(definition, available, transport),
       ),
+      ...networkAvailable,
       ...personal,
     ],
   };

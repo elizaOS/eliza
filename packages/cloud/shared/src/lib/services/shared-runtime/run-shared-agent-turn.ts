@@ -54,9 +54,11 @@ import {
 } from "./shared-capability-catalog";
 import {
   hasTrailingSharedActionCancellation,
+  NETWORK_CAPABILITY_WALL_FLAGS,
   resolveSharedCapabilityIntent,
   type SharedCapabilityResolution,
   type SharedCapabilityWall,
+  type SharedCapabilityWallFlags,
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
 import {
@@ -1055,7 +1057,7 @@ function isContextualReminderFollowup(input: RunSharedAgentTurnInput): boolean {
 
 function capabilityResolution(
   input: RunSharedAgentTurnInput,
-  capabilities: { reminders: boolean; todos: boolean },
+  capabilities: SharedCapabilityWallFlags,
   explicit: SharedCapabilityResolution | null,
 ): SharedCapabilityResolution | null {
   if (!isContextualReminderFollowup(input)) return explicit;
@@ -1112,7 +1114,10 @@ export async function runSharedAgentTurn(
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
   const todosEnabled = actionsEnabled && Boolean(input.execution?.todos);
+  // Only a server-resolved Network turn opens relay/scheduling/concierge.
+  const networkEnabled = actionsEnabled && Boolean(input.execution?.network);
   const capabilities = {
+    ...(networkEnabled ? NETWORK_CAPABILITY_WALL_FLAGS : {}),
     reminders: remindersEnabled,
     todos: todosEnabled,
   };
@@ -1228,6 +1233,7 @@ export async function runSharedAgentTurn(
               webSearch: Boolean(realtimeRequirement),
               reminders: remindersEnabled,
               todos: todosEnabled,
+              ...(networkEnabled ? { network: NETWORK_CAPABILITY_WALL_FLAGS } : {}),
               media:
                 actionsEnabled &&
                 execution.authenticatedPersonalSharedUser === true &&
@@ -1360,7 +1366,10 @@ export async function runSharedAgentTurnStream(
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
   const todosEnabled = actionsEnabled && Boolean(input.execution?.todos);
+  // Only a server-resolved Network turn opens relay/scheduling/concierge.
+  const networkEnabled = actionsEnabled && Boolean(input.execution?.network);
   const capabilities = {
+    ...(networkEnabled ? NETWORK_CAPABILITY_WALL_FLAGS : {}),
     reminders: remindersEnabled,
     todos: todosEnabled,
   };
@@ -1469,6 +1478,7 @@ export async function runSharedAgentTurnStream(
             webSearch: false,
             reminders: remindersEnabled,
             todos: todosEnabled,
+            ...(networkEnabled ? { network: NETWORK_CAPABILITY_WALL_FLAGS } : {}),
             media:
               actionsEnabled &&
               execution.authenticatedPersonalSharedUser === true &&

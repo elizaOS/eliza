@@ -34,6 +34,7 @@ describe("Shared Eliza runtime in Workerd", () => {
   let todoPlannerRequests = 0;
   let networkPlannerRequests = 0;
   const networkRequestBodies: string[] = [];
+  const relayRequestBodies: string[] = [];
   let reminderPlannerRequests = 0;
   let authenticatedImagePlannerRequests = 0;
   let untrustedImagePlannerRequests = 0;
@@ -53,17 +54,35 @@ describe("Shared Eliza runtime in Workerd", () => {
         modelRequests.push(body);
         // SPIKE (The Network): deterministic SET_STATE turn.
         const networkSerialized = JSON.stringify(body);
+        // Capture every model request for the RELAY_MESSAGE phrasing; the
+        // default simple reply below answers it.
+        if (networkSerialized.includes("text Sam I'm in")) {
+          relayRequestBodies.push(networkSerialized);
+        }
         if (networkSerialized.includes("pause my network intros")) {
           networkPlannerRequests += 1;
           networkRequestBodies.push(networkSerialized);
-          const completion = (message: Record<string, unknown>, finish: string) =>
+          const completion = (
+            message: Record<string, unknown>,
+            finish: string,
+          ) =>
             Response.json({
               id: `chatcmpl-network-${networkPlannerRequests}`,
               object: "chat.completion",
               created: 0,
               model: "shared-runtime-probe",
-              choices: [{ index: 0, message: { role: "assistant", ...message }, finish_reason: finish }],
-              usage: { prompt_tokens: 40, completion_tokens: 10, total_tokens: 50 },
+              choices: [
+                {
+                  index: 0,
+                  message: { role: "assistant", ...message },
+                  finish_reason: finish,
+                },
+              ],
+              usage: {
+                prompt_tokens: 40,
+                completion_tokens: 10,
+                total_tokens: 50,
+              },
             });
           const toolCall = (name: string, args: Record<string, unknown>) =>
             completion(
@@ -85,7 +104,8 @@ describe("Shared Eliza runtime in Workerd", () => {
                 content: JSON.stringify({
                   grounded: true,
                   completedChangeClaim: true,
-                  reason: "The network.set_state receipt is applied in this turn.",
+                  reason:
+                    "The network.set_state receipt is applied in this turn.",
                 }),
               },
               "stop",
@@ -107,7 +127,9 @@ describe("Shared Eliza runtime in Workerd", () => {
             });
           }
           const receiptIds = [
-            ...new Set(networkSerialized.match(/network:state:evt-[0-9]+/g) ?? []),
+            ...new Set(
+              networkSerialized.match(/network:state:evt-[0-9]+/g) ?? [],
+            ),
           ];
           if (receiptIds.length === 0) {
             return toolCall("SET_STATE", {
@@ -116,7 +138,8 @@ describe("Shared Eliza runtime in Workerd", () => {
               note: "swamped at work",
             });
           }
-          const reply = "Done, intros are paused until Oct 20. Good luck with the crunch.";
+          const reply =
+            "Done, intros are paused until Oct 20. Good luck with the crunch.";
           return completion(
             {
               content: JSON.stringify(
@@ -1032,7 +1055,9 @@ describe("Shared Eliza runtime in Workerd", () => {
 
   test("SPIKE: runs the Network plugin SET_STATE action through the shared runtime inside Workerd", async () => {
     const t0 = performance.now();
-    const response = await miniflare.dispatchFetch("https://runtime.test/network-turn");
+    const response = await miniflare.dispatchFetch(
+      "https://runtime.test/network-turn",
+    );
     const roundTripMs = performance.now() - t0;
     const body = await response.text();
     expect(response.status, body).toBe(200);
@@ -1073,6 +1098,65 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(payload.events).toHaveLength(1);
     expect(payload.result.degraded).toBe(false);
     expect(payload.result.reply).toContain("paused until Oct 20");
+  }, 120_000);
+
+  test("Network relay phrasing reaches the model without a capability wall; Eliza keeps the wall", async () => {
+    const turn = async (network: "0" | "1") => {
+      relayRequestBodies.length = 0;
+      const response = await miniflare.dispatchFetch(
+        `https://runtime.test/network-relay-turn?network=${network}`,
+      );
+      const body = await response.text();
+      expect(response.status, body).toBe(200);
+      return {
+        result: (
+          JSON.parse(body) as {
+            result: {
+              capabilityWall?: { capability: string };
+              degraded: boolean;
+            };
+          }
+        ).result,
+        requests: [...relayRequestBodies],
+      };
+    };
+
+    const network = await turn("1");
+    expect(network.result.degraded).toBe(false);
+    expect(network.result.capabilityWall).toBeUndefined();
+    expect(network.requests.length).toBeGreaterThan(0);
+    // The user's relay request itself reaches the model ...
+    expect(
+      network.requests.some((body) => body.includes("text Sam I'm in")),
+    ).toBe(true);
+    // ... with Network relay described as available, and no "did not happen" wall.
+    expect(
+      network.requests.some((body) =>
+        body.includes(
+          "Relay a message to another Network member (communications); availability: available",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      network.requests.some((body) =>
+        body.includes("Unavailable actions detected in this turn"),
+      ),
+    ).toBe(false);
+
+    const eliza = await turn("0");
+    expect(eliza.result.capabilityWall?.capability).toBe("communications");
+    expect(
+      eliza.requests.some((body) =>
+        body.includes(
+          "Unavailable actions detected in this turn:\\n- Calls and messages",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      eliza.requests.some((body) =>
+        body.includes("Relay a message to another Network member"),
+      ),
+    ).toBe(false);
   }, 120_000);
 
   test("runs the genuine TODO action and returns its applied mutation inside Workerd", async () => {
@@ -1458,14 +1542,18 @@ describe("Shared Eliza runtime in Workerd", () => {
         const response = await miniflare.dispatchFetch(
           `https://runtime.test/hello-bench?network=${flag}&i=${i}`,
         );
-        const body = (await response.json()) as { reply: string; initMs: number | null };
+        const body = (await response.json()) as {
+          reply: string;
+          initMs: number | null;
+        };
         samples[flag].push(performance.now() - t0);
         inits[flag].push(body.initMs);
         expect(response.status).toBe(200);
         expect(body.reply).toBe("hello through the production Workerd adapter");
       }
     }
-    const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+    const med = (xs: number[]) =>
+      [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
     console.info(
       `NETWORK_WORKERD_BENCH ${JSON.stringify({
         n: 12,
