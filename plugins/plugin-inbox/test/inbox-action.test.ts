@@ -1020,6 +1020,41 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(block.options.map((o) => o.label)).toEqual(["Send", "Discard"]);
     });
 
+    it("keeps a triage entry created at epoch as received at epoch", async () => {
+      registerFakeGmailAdapter();
+      const { runtime: dbRuntime } = makeDbRuntime((sql) =>
+        sql.includes("WHERE id =")
+          ? [
+              makeTriageRow({
+                id: "entry-epoch",
+                source_message_id: "gmail-epoch",
+                created_at: "1970-01-01T00:00:00.000Z",
+              }),
+            ]
+          : [],
+      );
+      const { runtime, turn } = withOwnerConsent(dbRuntime);
+      const result = await inboxAction.handler(
+        runtime,
+        turn("reply to alice that friday works"),
+        undefined,
+        {
+          parameters: {
+            subaction: "reply",
+            entryId: "entry-epoch",
+            body: "Yes, Friday works.",
+          },
+        } as unknown as HandlerOptions,
+        async () => [],
+      );
+
+      expect(result.success).toBe(true);
+      expect(
+        getDefaultTriageService().getStore().getMessage("gmail-epoch")
+          ?.receivedAtMs,
+      ).toBe(0);
+    });
+
     /**
      * Owner-turn harness for the send-consent gate: a distinct owner entity
      * (configured canonical owner), monotonically timestamped turns in one

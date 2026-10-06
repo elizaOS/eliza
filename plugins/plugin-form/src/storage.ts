@@ -613,6 +613,17 @@ export async function getSessionById(
   return null;
 }
 
+function recordedComponentCreatedAt(
+  createdAt: number | undefined,
+  now: number,
+): number {
+  // A component created at epoch is a real timestamp. `createdAt || Date.now()`
+  // replaced it on the next save.
+  if (typeof createdAt === "number" && Number.isFinite(createdAt))
+    return createdAt;
+  return now;
+}
+
 /**
  * Save a form session.
  *
@@ -665,7 +676,7 @@ export async function saveSession(
     worldId: resolvedWorldId,
     sourceEntityId: runtime.agentId,
     type: componentType,
-    createdAt: existing?.createdAt || Date.now(),
+    createdAt: recordedComponentCreatedAt(existing?.createdAt, Date.now()),
     // Store session as component data
     // Drizzle inspects column values before encoding JSON; retain safe nested
     // data while publishing an ordinary top-level record.
@@ -907,7 +918,7 @@ export async function saveAutofillData(
     worldId: resolvedWorldId,
     sourceEntityId: runtime.agentId,
     type: componentType,
-    createdAt: existing?.createdAt || Date.now(),
+    createdAt: recordedComponentCreatedAt(existing?.createdAt, Date.now()),
     // Drizzle inspects column values before encoding JSON; retain safe nested
     // data while publishing an ordinary top-level record.
     data: { ...componentData },
