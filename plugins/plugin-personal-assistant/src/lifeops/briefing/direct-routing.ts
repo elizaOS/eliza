@@ -11,7 +11,7 @@ const VISIBLE_CHAT_RECALL =
   /\b(?:in|from|of)\s+(?:this|our|the)\s+(?:chat|conversation|thread)\b|\b(?:what|which)\s+(?:did|have)\s+i\s+(?:say|said|mention|mentioned|write|wrote|paste|pasted|tell|told)\b|\bwhat\s+i\s+(?:just\s+)?(?:said|wrote|pasted|mentioned)\b|\b(?:messages?|text|content)\s+(?:i\s+)?(?:just\s+)?(?:pasted|above)\b|\brecap\s+(?:our|this|the)\s+(?:chat|conversation|thread)\b/iu;
 
 const EXPLICIT_DAILY_BRIEF_REQUEST =
-  /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+(?:please\s+)?)?(?:give\s+me|show\s+me|prepare|compose|generate|make|read)\s+(?:(?:my|a|the)\s+)?(?:morning|daily)\s+(?:brief(?:ing)?|dossier)\b/iu;
+  /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+(?:please\s+)?)?(?:give\s+me|show\s+me|prepare|compose|compile|generate|make|read)\s+(?:(?:my|a|the)\s+)?(?:morning|daily)\s+(?:brief(?:ing)?|dossier)\b/iu;
 
 const TRACKED_WORK_RECAP_PATTERNS: readonly RegExp[] = [
   /\b(?:recap|summari[sz]e|review|overview|digest|status)\b[\s\S]{0,60}\b(?:my|today|tonight|yesterday|day|week|tasks?|todos?|to[- ]dos?|reminders?|habits?|routines?|goals?|work|progress)\b/iu,
