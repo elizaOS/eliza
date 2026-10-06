@@ -327,7 +327,9 @@ export function unwrapWholeCodeFence(
 	}
 	while (cursor < value.length - fenceLength && /\s/u.test(value[cursor]))
 		cursor += 1;
-	let end = value.length - fenceLength;
+	let end = value.length;
+	while (end > cursor && value[end - 1] === "`") end -= 1;
+	if (value.length - end < fenceLength) return null;
 	while (end > cursor && /\s/u.test(value[end - 1])) end -= 1;
 	return value.slice(cursor, end);
 }
