@@ -30,6 +30,7 @@ import {
   markPendingChatTurnRestored,
   PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS,
   PENDING_CHAT_TURN_SETTLED_EVENT,
+  releasePendingChatTurnDraft,
 } from "./pending-chat-turns";
 
 /**
@@ -143,6 +144,10 @@ export function writeChatDraft(
   if (!conversationId) return;
   if (typeof window === "undefined") return;
   const key = chatDraftStorageKey(conversationId);
+  for (const receipt of listPendingChatTurns(conversationId)) {
+    if (receipt.restoredToDraft && receipt.text !== draft)
+      releasePendingChatTurnDraft(conversationId, receipt.clientMessageId);
+  }
   try {
     if (draft.length > 0) {
       shellLocalStorage.setItem(key, draft);
@@ -210,21 +215,34 @@ export function useChatComposerDraftPersistence({
   const lastRestoredRef = useRef<string | null>(null);
   const chatInputRef = useRef(chatInput);
   chatInputRef.current = chatInput;
+  const draftOwnerRef = useRef<{
+    conversationId: string;
+    clientMessageId: string;
+    text: string;
+  } | null>(null);
+  const previousInputRef = useRef({
+    conversationId: activeConversationId,
+    text: chatInput,
+  });
 
   useEffect(() => {
     if (!activeConversationId) return;
     const onSettled = (event: Event) => {
       const detail = (event as CustomEvent).detail as
-        | { conversationId?: string; text?: string }
+        | { conversationId?: string; clientMessageId?: string; text?: string }
         | undefined;
       if (
         detail?.conversationId !== activeConversationId ||
+        draftOwnerRef.current?.conversationId !== activeConversationId ||
+        draftOwnerRef.current.clientMessageId !== detail.clientMessageId ||
         typeof detail.text !== "string" ||
+        draftOwnerRef.current.text !== detail.text ||
         chatInputRef.current !== detail.text ||
         readChatDraft(activeConversationId) !== detail.text
       ) {
         return;
       }
+      draftOwnerRef.current = null;
       clearChatDraft(activeConversationId);
       setChatInput("");
     };
@@ -236,12 +254,38 @@ export function useChatComposerDraftPersistence({
   // Restore on mount / conversation change.
   useEffect(() => {
     lastRestoredRef.current = activeConversationId;
+    draftOwnerRef.current = null;
     if (!activeConversationId) return;
     const saved = readChatDraft(activeConversationId);
     if (saved !== null) {
+      const owners = listPendingChatTurns(activeConversationId).filter(
+        (receipt) => receipt.restoredToDraft === true && receipt.text === saved,
+      );
+      if (owners.length === 1) draftOwnerRef.current = owners[0];
       setChatInput(saved);
     }
   }, [activeConversationId, setChatInput]);
+
+  useEffect(() => {
+    const previous = previousInputRef.current;
+    previousInputRef.current = {
+      conversationId: activeConversationId,
+      text: chatInput,
+    };
+    const owner = draftOwnerRef.current;
+    if (
+      owner &&
+      owner.conversationId === activeConversationId &&
+      previous.conversationId === activeConversationId &&
+      previous.text !== chatInput &&
+      owner.text !== chatInput
+    ) {
+      // Revoke before the debounce, so editing away and back cannot reclaim an
+      // old receipt by text equality. Sending still snapshots its retry id first.
+      draftOwnerRef.current = null;
+      releasePendingChatTurnDraft(owner.conversationId, owner.clientMessageId);
+    }
+  }, [activeConversationId, chatInput]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -271,6 +315,7 @@ export function useChatComposerDraftPersistence({
         )
       )
         return;
+      draftOwnerRef.current = receipt;
       writeChatDraft(activeConversationId, receipt.text);
       setChatInput(receipt.text);
       // Keep the original id until canonical history settles this send. If the

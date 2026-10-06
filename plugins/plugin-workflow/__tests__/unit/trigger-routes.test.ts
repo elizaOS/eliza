@@ -37,6 +37,7 @@ function createHarness(
     res,
     runtime,
     ownerEntityId: 'owner-local',
+    resolvePromptDeliveryRoom: async () => 'owner-room',
     localOwnerEntityId: 'owner-local',
     readJsonBody: async () => {
       calls.push('readJsonBody');
@@ -150,42 +151,51 @@ describe('trigger route path decoding', () => {
 });
 
 describe('trigger route ownership', () => {
-  test('binds a new prompt to the trusted owner despite spoofed creator and owner fields', async () => {
-    const { context, response } = createHarness('POST', '/api/triggers');
-    let saved: Task | undefined;
-    context.readJsonBody = async () => ({
-      kind: 'prompt',
-      displayName: 'QA prompt',
-      instructions: 'Return a short answer',
-      triggerType: 'cron',
-      cronExpression: '0 12 28 9 *',
-      createdBy: 'owner-foreign',
-      ownerEntityId: 'owner-foreign',
-    });
-    context.normalizeTriggerDraft = ({ input }) => ({ draft: input as never });
-    context.buildTriggerConfig = ({ draft, triggerId }) =>
-      ({ ...draft, triggerId }) as TriggerConfig;
-    context.buildTriggerMetadata = ({ trigger }) => ({ trigger });
-    context.taskToTriggerSummary = (task) =>
-      ({ id: (task.metadata?.trigger as TriggerConfig | undefined)?.triggerId }) as never;
-    context.runtime = {
-      createTask: async (task: Task) => {
-        saved = { ...task, id: 'stored-task' };
-        return 'stored-task';
-      },
-      getTask: async () => saved,
-      getService: () => null,
-    } as unknown as IAgentRuntime;
+  test.each(['prompt', 'workflow'] as const)(
+    'binds a new %s to its trusted delivery room despite spoofed fields',
+    async (kind) => {
+      const { context, response } = createHarness('POST', '/api/triggers');
+      let saved: Task | undefined;
+      context.readJsonBody = async () => ({
+        kind,
+        roomId: 'spoofed-room',
+        workflowId: 'test-workflow',
+        displayName: 'QA prompt',
+        instructions: 'Return a short answer',
+        triggerType: 'cron',
+        cronExpression: '0 12 28 9 *',
+        createdBy: 'owner-foreign',
+        ownerEntityId: 'owner-foreign',
+      });
+      context.normalizeTriggerDraft = ({ input }) => ({ draft: input as never });
+      context.buildTriggerConfig = ({ draft, triggerId }) =>
+        ({ ...draft, triggerId }) as TriggerConfig;
+      context.buildTriggerMetadata = ({ trigger }) => ({ trigger });
+      context.taskToTriggerSummary = (task) =>
+        ({ id: (task.metadata?.trigger as TriggerConfig | undefined)?.triggerId }) as never;
+      context.runtime = {
+        createTask: async (task: Task) => {
+          saved = { ...task, id: 'stored-task' };
+          return 'stored-task';
+        },
+        getTask: async () => saved,
+        getRoom: async () => ({ source: 'client_chat' }),
+        getService: () => ({ getAutonomousRoomId: () => 'autonomy-room' }),
+      } as unknown as IAgentRuntime;
 
-    await handleTriggerRoutes(context);
-    expect(response.status).toBe(201);
-    if (!saved) throw new Error('Task was not saved');
-    expect(saved.entityId).toBe('owner-local');
-    expect((saved.metadata?.ownership as { ownerId: string } | undefined)?.ownerId).toBe(
-      'owner-local'
-    );
-    expect((saved.metadata?.trigger as TriggerConfig | undefined)?.createdBy).toBe('owner-foreign');
-  });
+      await handleTriggerRoutes(context);
+      expect(response.status).toBe(201);
+      if (!saved) throw new Error('Task was not saved');
+      expect(saved.entityId).toBe('owner-local');
+      expect(saved.roomId).toBe(kind === 'prompt' ? 'owner-room' : 'autonomy-room');
+      expect((saved.metadata?.ownership as { ownerId: string } | undefined)?.ownerId).toBe(
+        'owner-local'
+      );
+      expect((saved.metadata?.trigger as TriggerConfig | undefined)?.createdBy).toBe(
+        'owner-foreign'
+      );
+    }
+  );
 
   test('lists a legacy prompt for the canonical owner and hides an explicitly foreign task', async () => {
     const { context, response } = createHarness('GET', '/api/triggers');
