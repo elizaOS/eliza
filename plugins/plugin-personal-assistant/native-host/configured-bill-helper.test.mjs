@@ -246,3 +246,77 @@ test("readback stores only projected evidence after a conclusive result", async 
     await helper.close();
   }
 });
+
+test("registration wait rechecks account and profile before binding and is cancelled by close", async (t) => {
+  for (const scenario of ["ready", "account", "profile", "close"]) {
+    const f = await fixture(t);
+    let release,
+      entered,
+      owner = "owner",
+      profile = "profile",
+      binds = 0;
+    const waiting = new Promise((resolve) => {
+      entered = resolve;
+    });
+    class Target extends f.args.runtimeModule.NativeSocketBrowserTarget {
+      getProfileId() {
+        return profile;
+      }
+      async waitForProfile(expected, { signal }) {
+        assert.equal(expected, "profile");
+        entered();
+        await new Promise((resolve, reject) => {
+          release = resolve;
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      }
+      async bindTask() {
+        binds++;
+        return "bound";
+      }
+    }
+    f.args.runtimeModule = { NativeSocketBrowserTarget: Target };
+    f.args.credentialGate = async () => owner;
+    const helper = await createConfiguredBillHelper(f.args);
+    const pending = f.options.target.bindTask({ revoked: false });
+    const result = scenario === "ready" ? pending : assert.rejects(pending);
+    await waiting;
+    assert.equal(binds, 0);
+    if (scenario === "account") owner = "replacement";
+    if (scenario === "profile") profile = "different";
+    if (scenario === "close") await helper.close();
+    else release();
+    if (scenario === "ready") assert.equal(await result, "bound");
+    else await result;
+    assert.equal(binds, scenario === "ready" ? 1 : 0);
+    await helper.close();
+  }
+});
+
+test("revocation and ordinary commands never wait for registration or retry", async (t) => {
+  const f = await fixture(t);
+  let waits = 0,
+    binds = 0;
+  class Target extends f.args.runtimeModule.NativeSocketBrowserTarget {
+    async waitForProfile() {
+      waits++;
+      throw new Error("must not wait");
+    }
+    async bindTask() {
+      binds++;
+      return "revoked";
+    }
+  }
+  f.args.runtimeModule = { NativeSocketBrowserTarget: Target };
+  const helper = await createConfiguredBillHelper(f.args);
+  try {
+    assert.equal(await f.options.target.bindTask({ revoked: true }), "revoked");
+    assert.equal(await f.options.target.execute("once"), "once");
+    assert.equal(waits, 0);
+    assert.equal(binds, 1);
+  } finally {
+    await helper.close();
+  }
+});
