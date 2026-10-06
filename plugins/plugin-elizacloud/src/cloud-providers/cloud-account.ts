@@ -24,7 +24,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { resolveCloudBillingUrl } from "../cloud/base-url";
 import type { CloudAuthService } from "../services/cloud-auth";
 import { getBaseURL } from "../utils/config";
@@ -59,6 +59,7 @@ function cachedForCurrentOrganization(runtime: IAgentRuntime) {
     ? cached
     : undefined;
 }
+const accountGenerations = new WeakMap<object, number>();
 const accountRefreshInFlight = new WeakSet<IAgentRuntime>();
 
 /**
@@ -69,6 +70,7 @@ const accountRefreshInFlight = new WeakSet<IAgentRuntime>();
  */
 export function invalidateCloudAccountCache(runtime: object): void {
   accountCaches.delete(runtime);
+  accountGenerations.set(runtime, (accountGenerations.get(runtime) ?? 0) + 1);
 }
 
 /**
@@ -88,10 +90,18 @@ async function fetchAccountSnapshot(
 ): Promise<AccountSnapshot> {
   const sdk = createElizaCloudClient(runtime);
   const organizationId = currentOrganizationId(runtime);
+  const generation = accountGenerations.get(runtime) ?? 0;
   const [{ balance }, agentsResponse] = await Promise.all([
     sdk.getCreditsBalance(),
     sdk.listAgents(),
   ]);
+  const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
+  if (!auth?.isAuthenticated() || organizationId !== currentOrganizationId(runtime) ||
+      generation !== (accountGenerations.get(runtime) ?? 0)) {
+    throw new ElizaError("Cloud account changed while its snapshot was loading", {
+      code: "CLOUD_ACCOUNT_SNAPSHOT_INVALIDATED",
+    });
+  }
   const snapshot: AccountSnapshot = { balance, agents: agentsResponse.data };
   accountCaches.set(runtime, { value: snapshot, at: Date.now(), organizationId });
   return snapshot;
