@@ -3,7 +3,8 @@
  * real isolated PGlite/Postgres adapter: create/update/delete, partial and
  * nested-partial metadata updates, room/id-list/pagination reads, embedding
  * search, document+fragment cascade delete, and Memory<->MemoryModel field
- * mapping.
+ * mapping. Message-content replacement and atomic publication are checked for
+ * the same jsonb text rejection as create and update.
  */
 import {
   ChannelType,
@@ -322,6 +323,120 @@ describe("Memory Integration Tests", () => {
       });
     }
   );
+
+  const storedMemoryIds = async () =>
+    (
+      await (adapter.getDatabase() as DrizzleDatabase)
+        .select({ id: memoryTable.id })
+        .from(memoryTable)
+    )
+      .map((row) => row.id)
+      .sort();
+
+  it("rejects NUL and lone surrogates in a message content replacement without writing any row", async () => {
+    const id = await adapter.createMemory(createTestMemory({ text: "original" }), "messages");
+    const stored = await adapter.getMemoryById(id);
+    // Over the inline limit, so the replacement stages segment rows before the parent update.
+    const segmentedText = "segment source\n".repeat(5_000);
+    const invalidReplacements: Array<{ content: Content; code: string }> = [
+      { content: { text: "x \ud83d" }, code: "SQL_JSON_UNSUPPORTED_SURROGATE" },
+      { content: { text: "x \u0000" }, code: "SQL_JSON_UNSUPPORTED_NUL" },
+      {
+        content: { text: "x", metadata: { label: "cut \ud83d" } },
+        code: "SQL_JSON_UNSUPPORTED_SURROGATE",
+      },
+      { content: { text: "x", metadata: { label: "a\u0000b" } }, code: "SQL_JSON_UNSUPPORTED_NUL" },
+      {
+        content: { text: segmentedText, thought: "cut \ud83d" },
+        code: "SQL_JSON_UNSUPPORTED_SURROGATE",
+      },
+    ];
+    for (const { content, code } of invalidReplacements) {
+      await expect(runtime.replaceMessageMemoryContent(id, content)).rejects.toMatchObject({
+        code,
+      });
+      expect(await adapter.getMemoryById(id)).toEqual(stored);
+      expect(await storedMemoryIds()).toEqual([id]);
+    }
+
+    const emoji: Content = { text: "x 🙂", metadata: { label: "🙂" } };
+    await runtime.replaceMessageMemoryContent(id, emoji);
+    expect((await adapter.getMemoryById(id))?.content).toEqual(emoji);
+  });
+
+  it("rejects NUL and lone surrogates in an atomic publication head without writing any row", async () => {
+    // Each call stages a fresh immutable dependency before the head write.
+    const publish = (
+      headId: UUID,
+      content: Content,
+      metadata: MemoryMetadata,
+      expectedRevision: string | null
+    ) =>
+      adapter.compareAndSwapMemoryPublication({
+        head: {
+          memory: { ...createTestMemory(content), id: headId, metadata },
+          tableName: "publication_heads",
+        },
+        dependencies: [
+          {
+            memory: createTestMemory({ text: "immutable dependency" }),
+            tableName: "publication_shards",
+          },
+        ],
+        expectedRevision,
+      });
+    const headId = v4() as UUID;
+    await expect(
+      publish(headId, { text: "head" }, { type: MemoryType.CUSTOM, revision: "r1" }, null)
+    ).resolves.toMatchObject({ status: "published" });
+    const stored = await adapter.getMemoryById(headId);
+    const rowIds = await storedMemoryIds();
+    expect(rowIds).toHaveLength(2);
+
+    const invalidHeads: Array<{ content: Content; metadata: MemoryMetadata; code: string }> = [
+      {
+        content: { text: "x \ud83d" },
+        metadata: { type: MemoryType.CUSTOM, revision: "r2" },
+        code: "SQL_JSON_UNSUPPORTED_SURROGATE",
+      },
+      {
+        content: { text: "x \u0000" },
+        metadata: { type: MemoryType.CUSTOM, revision: "r2" },
+        code: "SQL_JSON_UNSUPPORTED_NUL",
+      },
+      {
+        content: { text: "x" },
+        metadata: { type: MemoryType.CUSTOM, revision: "r2", label: "cut \ud83d" },
+        code: "SQL_JSON_UNSUPPORTED_SURROGATE",
+      },
+      {
+        content: { text: "x" },
+        metadata: { type: MemoryType.CUSTOM, revision: "r2", label: "a\u0000b" },
+        code: "SQL_JSON_UNSUPPORTED_NUL",
+      },
+    ];
+    for (const { content, metadata, code } of invalidHeads) {
+      // A first publication inserts the head; a revision swap updates the stored one.
+      for (const [id, expectedRevision] of [
+        [v4() as UUID, null],
+        [headId, "r1"],
+      ] as const) {
+        await expect(publish(id, content, metadata, expectedRevision)).rejects.toMatchObject({
+          code,
+        });
+        expect(await adapter.getMemoryById(headId)).toEqual(stored);
+        expect(await storedMemoryIds()).toEqual(rowIds);
+      }
+    }
+
+    const emoji: Content = { text: "x 🙂" };
+    await expect(
+      publish(headId, emoji, { type: MemoryType.CUSTOM, revision: "r2", label: "🙂" }, "r1")
+    ).resolves.toMatchObject({ status: "published" });
+    const republished = await adapter.getMemoryById(headId);
+    expect(republished?.content).toEqual(emoji);
+    expect(republished?.metadata).toMatchObject({ revision: "r2", label: "🙂" });
+  });
 
   it("preserves repeated shared values in atomic memory batches", async () => {
     const shared = { text: "Release 3.5" };

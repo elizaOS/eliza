@@ -9,6 +9,12 @@ import { usageRecordsRepository } from "../../db/repositories/usage-records";
 import { cache as cacheClient } from "../cache/client";
 import { CacheKeys, CacheStaleTTL } from "../cache/keys";
 
+function capRows<T>(rows: T[], maxRows: number | undefined): T[] {
+  // An omitted cap returns every row. An explicit cap, including 0, is a page —
+  // `maxRows &&` treated 0 as "no cap" and returned the full series.
+  return maxRows === undefined ? rows : rows.slice(0, Math.max(0, maxRows));
+}
+
 // Re-export types
 export type {
   CostBreakdownItem,
@@ -80,11 +86,7 @@ export class AnalyticsService {
       point.timestamp instanceof Date ? point : { ...point, timestamp: new Date(point.timestamp) },
     );
 
-    if (options.maxRows && result.length > options.maxRows) {
-      return result.slice(0, options.maxRows);
-    }
-
-    return result;
+    return capRows(result, options.maxRows);
   }
 
   async getUsageByUser(
@@ -113,11 +115,7 @@ export class AnalyticsService {
         : { ...row, lastActive: new Date(row.lastActive) },
     );
 
-    if (options?.maxRows && result.length > options.maxRows) {
-      return result.slice(0, options.maxRows);
-    }
-
-    return result;
+    return capRows(result, options?.maxRows);
   }
 
   async getCostTrending(organizationId: string) {
@@ -141,11 +139,7 @@ export class AnalyticsService {
     const result =
       data || (await usageRecordsRepository.getProviderBreakdown(organizationId, options));
 
-    if (options?.maxRows && result.length > options.maxRows) {
-      return result.slice(0, options.maxRows);
-    }
-
-    return result;
+    return capRows(result, options?.maxRows);
   }
 
   async getModelBreakdown(
@@ -170,11 +164,7 @@ export class AnalyticsService {
     const result =
       data || (await usageRecordsRepository.getModelBreakdown(organizationId, options));
 
-    if (options?.maxRows && result.length > options.maxRows) {
-      return result.slice(0, options.maxRows);
-    }
-
-    return result;
+    return capRows(result, options?.maxRows);
   }
 
   async getTrendData(
