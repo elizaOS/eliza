@@ -7,7 +7,7 @@ assignees: ""
 ---
 
 > [!IMPORTANT]
-> **Required:** Follow the [contribution rules](https://github.com/elizaOS/eliza/blob/develop/README.md#contributing).
+> **Required:** Follow the [contribution rules](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md).
 > Report a real bug or missing approved MVP requirement. Do not add scope,
 > unnecessary tests, defensive code, validation, or truncation. Maintainers will
 > close unnecessary work and apply contributor penalties. Write in ASD-STE100

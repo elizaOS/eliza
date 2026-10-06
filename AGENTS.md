@@ -1,11 +1,13 @@
 # elizaOS
 
 Monorepo for the Eliza agent runtime, application, cloud services, native
-bridges, benchmarks, and first-party plugins. Read the nearest package
-`README.md` and `AGENTS.md` before editing; manifests and source are authoritative.
+bridges, benchmarks, and first-party plugins. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+and the owning package's `README.md` before editing; manifests and source are
+authoritative. This root file is the only repository agent guide. Do not add
+nested `AGENTS.md` files.
 
 > [!IMPORTANT]
-> **The [contribution rules](README.md#contributing) are required for all issues
+> **The [contribution rules](CONTRIBUTING.md) are required for all issues
 > and PRs.** Report real bugs or missing approved MVP requirements. Link the PRD
 > and MVP plan. Do not add features outside that scope. Human maintainers must
 > discuss and approve new features, then add them to the PRD and MVP plan before
