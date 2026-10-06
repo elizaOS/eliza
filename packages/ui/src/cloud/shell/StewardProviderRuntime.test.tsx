@@ -15,6 +15,7 @@ import {
   type StewardSessionChangeDetail,
   writeStoredStewardToken,
 } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { createMemoryStorage } from "@elizaos/testing/browser-mocks";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { type ReactNode, useContext } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,8 +45,10 @@ const stewardAuthState = vi.hoisted(() => ({
   user: null as { id: string } | null,
 }));
 
-vi.mock("../../login/index", () => ({
+vi.mock("../../login/provider", () => ({
   LoginProvider: ({ children }: { children: ReactNode }) => children,
+}));
+vi.mock("../../login/useAuth", () => ({
   useAuth: () => ({
     isAuthenticated: stewardAuthState.isAuthenticated,
     isLoading: false,
@@ -79,23 +82,6 @@ let calls: RecordedCall[] = [];
 // this vitest setup even window.localStorage resolves to it. The code under
 // test reads via both the bare global and window.localStorage, so install one
 // in-memory Storage on both access paths.
-function createMemoryStorage(): Storage {
-  const store = new Map<string, string>();
-  return {
-    get length() {
-      return store.size;
-    },
-    clear: () => store.clear(),
-    getItem: (key: string) => store.get(key) ?? null,
-    key: (index: number) => [...store.keys()][index] ?? null,
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-    setItem: (key: string, value: string) => {
-      store.set(key, String(value));
-    },
-  };
-}
 
 let storage: Storage = createMemoryStorage();
 

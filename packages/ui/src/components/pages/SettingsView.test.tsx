@@ -121,8 +121,8 @@ const stubSections = vi.hoisted(() => [
   },
 ]);
 
-vi.mock("../../state", () => ({
-  useApp: () => appMock.value,
+vi.mock("../../state/useApp", () => ({ useApp: () => appMock.value }));
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
@@ -225,7 +225,6 @@ vi.mock("../settings/settings-sections", async () => {
     },
     SETTINGS_GROUP_LABEL: groupLabels,
     SETTINGS_GROUP_ORDER: groupOrder,
-    SETTINGS_SECTIONS: sections,
     backFromConnectorDetail,
     getAllSettingsSections: () => sections,
     // Group the stub sections the way the real helper does (bucket by group,
@@ -334,6 +333,24 @@ describe("SettingsView", () => {
     });
     render(<SettingsView />);
     expect(screen.queryByTestId("settings-hub-group-cloud")).toBeNull();
+  });
+
+  it("keeps a hidden but eligible deep-linked section addressable and current", () => {
+    appMock.value = makeContext({
+      startupCoordinator: { target: "cloud-managed" },
+    });
+    const { container } = render(
+      <SettingsView initialSection="managed-hidden" />,
+    );
+    expect(screen.queryByTestId("settings-hub-row-managed-hidden")).toBeNull();
+    expect(
+      container
+        .querySelector('[data-agent-id="section-managed-hidden"]')
+        ?.getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      container.querySelector('[data-agent-id="section-desktop-only"]'),
+    ).toBeNull();
   });
 
   it("shows Cloud management for a managed Cloud runtime target", () => {

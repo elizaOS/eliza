@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseGrizzlyBuildFingerprint } from "../aosp/build-grizzly-bundle.ts";
+import { parseGrizzlyBuildFingerprint } from "../android/build-grizzly-bundle.ts";
 
 const prefix = "elizaOS/eliza_grizzly_phone/grizzly:";
 const fingerprint = `${prefix}Baklava/CP2A.260605.016/eng.shawwa:userdebug/test-keys`;

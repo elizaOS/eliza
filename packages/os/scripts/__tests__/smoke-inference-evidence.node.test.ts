@@ -4,7 +4,7 @@ import {
   inspectFreshLocalGeneration,
   inspectFreshNativeGeneration,
   inspectSmokeResponse,
-} from "../aosp/lib/smoke-inference-evidence.ts";
+} from "../android/smoke-inference-evidence.ts";
 
 test("historical generation and model-load lines cannot qualify a new chat", () => {
   const old = "[aosp-llama] Loaded model.gguf\n[aosp-llama] gen done\n";

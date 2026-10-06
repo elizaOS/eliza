@@ -8,20 +8,21 @@
  * Cloud state. Sits behind the authenticated dashboard gate; not public.
  */
 import path from "node:path";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth/account-storage";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/auth";
 import {
   type AgentRuntime,
-  getDefaultStylePreset,
   normalizeCharacterLanguage,
-  type RouteHelpers,
-  type RouteRequestMeta,
+  resolveUserPath,
   type UUID,
 } from "@elizaos/core";
-
+import {
+  getDefaultStylePreset,
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/host/protocol";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import { resolveUserPath } from "../config/paths.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
-import type { AutonomousConfigLike } from "../types/config-like.ts";
+import { removeResetCredentialsFromVault } from "../runtime/operations/vault-bridge.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
 import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
@@ -36,7 +37,7 @@ type AgentStateStatus =
   | "restarting"
   | "error";
 
-function resolveDefaultAgentName(config: AutonomousConfigLike): string {
+function resolveDefaultAgentName(config: Record<string, unknown>): string {
   const ui = config.ui as
     | { assistant?: { name?: string }; language?: string }
     | undefined;
@@ -54,7 +55,7 @@ function resolveDefaultAgentName(config: AutonomousConfigLike): string {
 
 export interface AgentAdminRouteState {
   runtime: AgentRuntime | null;
-  config: AutonomousConfigLike;
+  config: Record<string, unknown>;
   agentState: AgentStateStatus;
   agentName: string;
   model: string | undefined;
@@ -224,25 +225,7 @@ export async function handleAgentAdminRoutes(
       // ELIZAOS_CLOUD_API_KEY → vault-bootstrap rehydrates env on next start
       // → useCloudState reports cloud connected → user sees themselves still
       // logged in even though they just hit "Reset".
-      try {
-        const vault = getAgentHostBridge().sharedVault();
-        const cloudKeys = [
-          "ELIZAOS_CLOUD_API_KEY",
-          "ELIZAOS_CLOUD_BASE_URL",
-          "ELIZAOS_CLOUD_ENABLED",
-        ];
-        for (const key of cloudKeys) {
-          try {
-            await vault.remove(key);
-          } catch {
-            // Entry may not exist — fine.
-          }
-        }
-      } catch (vaultErr) {
-        logWarn(
-          `[eliza-api] Reset: failed to wipe cloud vault entries: ${vaultErr instanceof Error ? vaultErr.message : String(vaultErr)}`,
-        );
-      }
+      await removeResetCredentialsFromVault(getAgentHostBridge().sharedVault());
 
       state.agentState = "stopped";
       state.agentName = resolveDefaultAgentName(config);

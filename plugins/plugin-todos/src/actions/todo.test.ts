@@ -8,12 +8,12 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { validateToolArgs } from "@elizaos/core";
 import {
   TODO_LIST_LIMIT_ERROR_CODE,
   TodosService,
 } from "@elizaos/plugin-todos";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args.js";
 import { currentTodosProvider } from "../providers/current-todos.js";
 import type {
   TodoMutationExecution,

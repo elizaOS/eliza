@@ -1,20 +1,6 @@
-/**
- * Shared fixtures + a parameterized driver for the Voice Workbench scenario-player
- * e2e specs (#8785).
- *
- * Each `voice-workbench-*.spec.ts` declares a small WorkbenchScenario for one
- * browser wiring case and calls {@link runWorkbenchScenarioSpec}. The driver
- * mocks the ASR / agent / TTS backends (none are provisioned in CI), navigates
- * to the `?shellMode=voice-workbench` screen, drives the REAL client player via
- * `window.__voiceWorkbench(scenario)`, and asserts the per-turn DOM verdicts.
- *
- * The backends are mocked but every CLIENT step is real: corpus WAV load,
- * transcript propagation, streamed response/no-response handling, TTS decode,
- * and DOM mirroring. Model-quality scoring (ASR accuracy, diarization,
- * voice/entity recognition) belongs to the tier-2/tier-3 lanes with real signals.
- */
 import { expect, type Page, test } from "@playwright/test";
 import { installDefaultAppRoutes, seedAppStorage } from "./helpers";
+import { tinyWav } from "./helpers/wav-fixture";
 
 /** Structural mirror of the player's WorkbenchTurn (kept local to the spec). */
 export interface SpecTurn {
@@ -42,33 +28,6 @@ export interface SpecScenario {
   }>;
   agents?: string[];
   turns: SpecTurn[];
-}
-
-/** A valid, decodable 16 kHz mono PCM WAV so AudioContext.decodeAudioData works. */
-function tinyWav(seconds = 0.2, sampleRate = 16000): Buffer {
-  const n = Math.floor(sampleRate * seconds);
-  const pcm = Buffer.alloc(n * 2);
-  for (let i = 0; i < n; i += 1) {
-    pcm.writeInt16LE(
-      Math.round(8000 * Math.sin((2 * Math.PI * 220 * i) / sampleRate)),
-      i * 2,
-    );
-  }
-  const h = Buffer.alloc(44);
-  h.write("RIFF", 0);
-  h.writeUInt32LE(36 + pcm.length, 4);
-  h.write("WAVE", 8);
-  h.write("fmt ", 12);
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(sampleRate, 24);
-  h.writeUInt32LE(sampleRate * 2, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write("data", 36);
-  h.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([h, pcm]);
 }
 
 const CONVO_ID = "voice-workbench-convo";
@@ -205,15 +164,12 @@ interface WorkbenchReport {
  * PASS; skipped cases are failures in this keyless lane.
  */
 export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
-  test.beforeEach(async ({ page }) => {
-    await seedAppStorage(page);
-    await installDefaultAppRoutes(page);
-    await installScenarioMocks(page, scenario);
-  });
-
   test(`voice workbench browser wiring [${scenario.classes.join(",")}] case ${scenario.id} round-trips mocked backend turns`, async ({
     page,
   }) => {
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    await installScenarioMocks(page, scenario);
     await page.goto("/?shellMode=voice-workbench", {
       waitUntil: "domcontentloaded",
     });

@@ -6,7 +6,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { getBootConfig } from "../../config/boot-config-store";
 import { markStartup } from "../../state/startup-telemetry";
 import { STARTUP_TIMING_POLICY } from "../../state/startup-timing-policy";
-import { ElizaMark } from "../brand/eliza-mark";
+import { ElizaMark } from "../eliza-mark";
 import { BootstrapStep } from "../setup/BootstrapStep";
 import { PairingView } from "./PairingView";
 import { StartupFailureView } from "./StartupFailureView";

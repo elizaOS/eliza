@@ -30,6 +30,12 @@
       "types": "./dist/bridge.d.ts",
       "import": "./dist/bridge.js",
       "default": "./dist/bridge.js"
+    },
+    "./companion": {
+      "eliza-source": "./src/companion/index.ts",
+      "types": "./dist/companion/index.d.ts",
+      "import": "./dist/companion/index.js",
+      "default": "./dist/companion/index.js"
     }
   },
   "scripts": {
@@ -69,7 +75,10 @@
       "androidOnly": true,
       "heroImage": "assets/hero.png"
     },
-    "appRegister": "register"
+    "appRegister": {
+      "subpath": "register",
+      "export": "registerApp"
+    }
   },
   "publishConfig": {
     "access": "public"
@@ -103,13 +112,9 @@
   },
   "sideEffects": [
     "./src/register.ts",
-    "./src/register-phone-page.ts",
-    "./src/register-companion-page.ts",
     "./src/bridge.ts",
     "./src/companion/services/eliza-intent.ts",
     "./dist/register.js",
-    "./dist/register-phone-page.js",
-    "./dist/register-companion-page.js",
     "./dist/bridge.js",
     "./dist/companion/services/eliza-intent.js",
     "**/*.css"

@@ -13,8 +13,8 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../api";
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { client } from "../api/client";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import {
   markCloudLoginPending,
   readCloudLoginPending,

@@ -1,6 +1,7 @@
 /** Adapts LifeOps inbox cache persistence to canonical domain records. Preserves existing agent scoping, transaction handles, and conditional mutation contracts. */
+
+import type { LifeOpsInboxChannel } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsInboxChannel } from "../../contracts/index.js";
 import {
   deriveConnectorAccountId,
   grantScopedConnectorAccountId,

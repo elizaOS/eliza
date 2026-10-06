@@ -1,4 +1,3 @@
-/** Exercises lens connector live e2e behavior with deterministic app test fixtures. */
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

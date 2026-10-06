@@ -4,7 +4,7 @@
  */
 
 import { useAgentElement } from "../../agent-surface/useAgentElement";
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";
 import {

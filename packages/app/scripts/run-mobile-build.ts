@@ -169,6 +169,10 @@ export {
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.ts";
 export {
+  ANDROID_BUILD_TARGETS,
+  resolveAndroidBuildTarget,
+} from "./mobile/android/targets.ts";
+export {
   ANDROID_APP_ACTION_CAPABILITIES,
   ANDROID_APP_ACTION_FORBIDDEN_MARKERS,
   ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS,
@@ -209,10 +213,6 @@ export {
   MOBILE_CAPACITOR_PLUGIN_MANIFEST,
   resolveIosCustomPods,
 } from "./mobile/ios-pods.ts";
-export {
-  ANDROID_BUILD_TARGETS,
-  resolveAndroidBuildTarget,
-} from "./mobile/targets/android.ts";
 
 // ── Entry point ─────────────────────────────────────────────────────────
 

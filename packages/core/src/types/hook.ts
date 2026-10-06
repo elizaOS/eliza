@@ -8,9 +8,7 @@
 import type { EventPayload, EventType } from "./events";
 import type { Service } from "./service";
 
-// ============================================================================
 // Hook Source and Priority Types
-// ============================================================================
 
 /**
  * Identifies the origin of a hook registration.
@@ -33,9 +31,7 @@ export type HookPriority = number;
  */
 export const DEFAULT_HOOK_PRIORITY: HookPriority = 0;
 
-// ============================================================================
 // Hook Requirements (Eligibility)
-// ============================================================================
 
 /**
  * Specifies requirements that must be met for a hook to be eligible.
@@ -64,9 +60,7 @@ export interface HookEligibilityResult {
 	reasons?: string[];
 }
 
-// ============================================================================
 // Hook Metadata and Registration
-// ============================================================================
 
 /**
  * Metadata describing a registered hook.
@@ -134,9 +128,7 @@ export interface HookRegistrationOptions {
 	requires?: HookRequirements;
 }
 
-// ============================================================================
 // Hook Snapshot (Introspection)
-// ============================================================================
 
 /**
  * Summary of a registered hook for introspection.
@@ -168,9 +160,7 @@ export interface HookSnapshot {
 	timestamp: number;
 }
 
-// ============================================================================
 // Directory-based Hook Loading
-// ============================================================================
 
 /**
  * Parsed frontmatter from a HOOK.md file.
@@ -231,9 +221,7 @@ export interface HookLoadResult {
 	errors: Array<{ name: string; error: string }>;
 }
 
-// ============================================================================
 // Hook Service Interface
-// ============================================================================
 
 /**
  * The HookService provides a interface for registering, managing,
@@ -250,17 +238,17 @@ export interface HookLoadResult {
  *
  * // Register a hook programmatically
  * const hookId = hookService.register(
- *   [EventType.HOOK_COMMAND_NEW],
- *   async (payload) => {
- *     payload.messages.push("Session started!");
- *   },
- *   { name: "welcome-hook", description: "Welcomes users on new session" }
+ * [EventType.HOOK_COMMAND_NEW],
+ * async (payload) => {
+ * payload.messages.push("Session started!");
+ * },
+ * { name: "welcome-hook", description: "Welcomes users on new session" }
  * );
  *
  * // Load hooks from a directory
  * const result = await hookService.registerFromDirectory(
- *   "./hooks",
- *   "workspace"
+ * "./hooks",
+ * "workspace"
  * );
  *
  * // Introspect registered hooks
@@ -269,9 +257,7 @@ export interface HookLoadResult {
  * ```
  */
 export interface IHookService extends Service {
-	// ========================================================================
 	// Registration
-	// ========================================================================
 
 	/**
 	 * Register a hook handler for one or more event types.
@@ -312,9 +298,7 @@ export interface IHookService extends Service {
 		options?: { pluginId?: string },
 	): Promise<HookLoadResult>;
 
-	// ========================================================================
 	// Introspection
-	// ========================================================================
 
 	/**
 	 * Get a snapshot of all registered hooks.
@@ -346,9 +330,7 @@ export interface IHookService extends Service {
 	 */
 	getAllHooks(): HookRegistration[];
 
-	// ========================================================================
 	// Configuration
-	// ========================================================================
 
 	/**
 	 * Enable or disable a hook.
@@ -366,9 +348,7 @@ export interface IHookService extends Service {
 	 */
 	setPriority(hookId: string, priority: HookPriority): void;
 
-	// ========================================================================
 	// Eligibility
-	// ========================================================================
 
 	/**
 	 * Check if a hook is eligible to run based on its requirements.

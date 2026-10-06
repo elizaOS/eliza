@@ -16,7 +16,7 @@ import { normalizeCloudSiteUrl } from "./cloud/base-url.js";
 import { type CloudAgentCreateParams } from "./cloud/bridge-client.js";
 import { type CloudLoginResult } from "./cloud/auth.js";
 import { type CloudSetupObserver } from "./cloud/setup-observer.js";
-import { type StylePreset } from "@elizaos/core/contracts/first-run-options";
+import { type StylePreset } from "@elizaos/host/protocol";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

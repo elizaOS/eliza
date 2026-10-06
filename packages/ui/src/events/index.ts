@@ -2,58 +2,63 @@
  * Typed constants for eliza:* custom events dispatched across the app.
  *
  * The cross-platform event names and detail payloads live in
- * `@elizaos/core/events` (the single source of truth, also consumed by the
+ * `@elizaos/core/protocol` (the single source of truth, also consumed by the
  * server). This module owns DOM event dispatch and adds UI-only events with no
  * server producer (focus-connector, voice-control, tutorial chat-control, and
  * the shared→dedicated cloud-agent handoff phases). The `Eliza*EventName` unions
  * here widen the shared unions with those UI-only events, so the local
  * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
  */
+
+import type {
+  AppEmoteEventDetail,
+  ElizaCloudStatusUpdatedDetail,
+  NavigateViewDetail,
+  ElizaDocumentEventName as SharedDocumentEventName,
+  ElizaWindowEventName as SharedWindowEventName,
+} from "@elizaos/core/protocol";
 import {
   APP_EMOTE_EVENT,
-  type AppEmoteEventDetail,
   CONNECT_EVENT,
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
-  type ElizaCloudStatusUpdatedDetail,
   NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
-  type ElizaDocumentEventName as SharedDocumentEventName,
-  type ElizaWindowEventName as SharedWindowEventName,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 import { logger } from "../logger.ts";
 import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
+export type {
+  AppEmoteEventDetail,
+  ChatAvatarVoiceEventDetail,
+  ElizaCloudStatusUpdatedDetail,
+  NavigateViewDetail,
+  NavigateViewType,
+  NetworkStatusChangeDetail,
+  PushToTalkHoldDetail,
+} from "@elizaos/core/protocol";
 export {
   AGENT_READY_EVENT,
   APP_EMOTE_EVENT,
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
-  type AppEmoteEventDetail,
   BRIDGE_READY_EVENT,
   CHAT_AVATAR_VOICE_EVENT,
-  type ChatAvatarVoiceEventDetail,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
-  type ElizaCloudStatusUpdatedDetail,
   EMOTE_PICKER_EVENT,
   FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   NAVIGATE_VIEW_EVENT,
-  type NavigateViewDetail,
-  type NavigateViewType,
   NETWORK_STATUS_CHANGE_EVENT,
-  type NetworkStatusChangeDetail,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
-  type PushToTalkHoldDetail,
   SELF_STATUS_SYNC_EVENT,
   SHARE_TARGET_EVENT,
   STOP_EMOTE_EVENT,
   TRAY_ACTION_EVENT,
   VOICE_CONFIG_UPDATED_EVENT,
   VRM_TELEPORT_COMPLETE_EVENT,
-} from "@elizaos/core/events";
+} from "@elizaos/core/protocol";
 export type NavigateViewEvent = CustomEvent<NavigateViewDetail>;
 
 export function createNavigateViewEvent(
@@ -77,8 +82,7 @@ export function dispatchElizaCloudStatusUpdated(
 }
 
 export { useEmitViewEvent, useViewEvent } from "../hooks/useViewEvent";
-export * from "../views/view-event-bus";
-export * from "../views/view-event-types";
+export * from "./view-events";
 // ── UI-only events (no server producer) ──────────────────────────────────
 export const FOCUS_CONNECTOR_EVENT = "eliza:focus-connector" as const;
 const FOCUS_CONNECTOR_STORAGE_KEY = "elizaos:focus-connector";
@@ -106,9 +110,7 @@ export function dispatchVoiceControl(detail: VoiceControlEventDetail): void {
  * First-run provisions a personal cloud agent and lands the user in chat on the
  * shared REST adapter while the dedicated container boots; a background
  * supervisor then copies the conversation into the container and swaps the live
- * client over. That swap used to be silent (`.catch(() => {})`). This event is
- * the typed seam onto which the handoff's lifecycle is surfaced so chat-state /
- * a progress indicator can render it instead of the user seeing nothing.
+ * client over. This event exposes the handoff lifecycle to chat and progress UI.
  */
 export const CLOUD_HANDOFF_PHASE_EVENT = "eliza:cloud-handoff-phase" as const;
 /**
@@ -416,11 +418,13 @@ export function listenForConnectRequests(
 // being permanently consumed by whichever subscriber happened to mount first.
 type NavigateViewRequestListener = (
   event: NavigateViewEvent,
-) => boolean | undefined;
+) => boolean | undefined | Promise<boolean>;
 interface NavigateViewRequestClaim {
   claimed: boolean;
+  applying: boolean;
+  declined: Set<EventListener>;
   /** Durably consumes the request: unqueues it and resolves its dispatch promise `true`. */
-  commit: () => void;
+  commit: (applied?: boolean) => void;
 }
 const MAX_PENDING_NAVIGATE_VIEW_REQUESTS = 16;
 const navigateViewRequestClaims = new WeakMap<
@@ -433,6 +437,7 @@ const navigateViewRequestResolvers = new WeakMap<
 >();
 const pendingNavigateViewRequests: NavigateViewDetail[] = [];
 let drainingNavigateViewRequests = false;
+let navigateViewDispatchEpoch = 0;
 function emitNavigateViewRequest(detail: NavigateViewDetail): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(createNavigateViewEvent(detail));
@@ -456,9 +461,8 @@ function dropOldestPendingNavigateViewRequest(): void {
   const dropped = pendingNavigateViewRequests.shift();
   if (!dropped) return;
   // error-policy:J4 bounded FIFO — an OS can deliver intents faster than a
-  // listener claims them (or none ever mounts); silently dropping one here
-  // used to be indistinguishable from a healthy delivery. Surface it, and
-  // resolve the dispatcher's promise `false` so a caller gating a native ack
+  // listener claims them (or none ever mounts). Report the drop and resolve
+  // the dispatcher's promise `false` so a caller gating a native ack
   // on "applied" (mobile-lifecycle's Android intent buffer) never
   // acknowledges a request this store just discarded.
   logger.warn(
@@ -481,20 +485,27 @@ function dropOldestPendingNavigateViewRequest(): void {
  */
 export function dispatchNavigateViewRequest(
   detail: NavigateViewDetail,
+  options?: { onRejected: () => void },
 ): Promise<boolean> {
   if (typeof window === "undefined") return Promise.resolve(false);
+  navigateViewDispatchEpoch += 1;
+  for (const pending of pendingNavigateViewRequests)
+    navigateViewRequestClaims.get(pending)?.declined.clear();
   const request: NavigateViewDetail = { ...detail };
   const applied = new Promise<boolean>((resolve) => {
     navigateViewRequestResolvers.set(request, resolve);
   });
   const claim: NavigateViewRequestClaim = {
     claimed: false,
-    commit: () => {
+    applying: false,
+    declined: new Set(),
+    commit: (applied = true) => {
       claim.claimed = true;
       const pendingIndex = pendingNavigateViewRequests.indexOf(request);
       if (pendingIndex >= 0)
         pendingNavigateViewRequests.splice(pendingIndex, 1);
-      navigateViewRequestResolvers.get(request)?.(true);
+      if (!applied) options?.onRejected();
+      navigateViewRequestResolvers.get(request)?.(applied);
       navigateViewRequestResolvers.delete(request);
     },
   };
@@ -506,6 +517,24 @@ export function dispatchNavigateViewRequest(
   drainNavigateViewRequests();
   return applied;
 }
+/** Whether this retained request still owns a live, unconsumed queue claim. */
+export function isNavigateViewRequestPending(
+  event: NavigateViewEvent,
+): boolean {
+  const claim = event.detail && navigateViewRequestClaims.get(event.detail);
+  return Boolean(claim && !claim.claimed);
+}
+
+/** Reject only a current destination's authoritative invalid/missing target. */
+export function rejectNavigateViewRequest(event: NavigateViewEvent): boolean {
+  const detail = event.detail;
+  const claim = detail && navigateViewRequestClaims.get(detail);
+  if (!claim || claim.claimed || !claim.applying) return false;
+  claim.commit(false);
+  drainNavigateViewRequests();
+  return true;
+}
+
 /**
  * Subscribes to navigation events and synchronously replays unclaimed native
  * intents. A request is claimed — durably removed from the replay queue, with
@@ -522,14 +551,17 @@ export function listenForNavigateViewRequests(
   listener: NavigateViewRequestListener,
 ): () => void {
   if (typeof window === "undefined") return () => {};
+  let active = true;
   const handle = (event: Event): void => {
     const detail = (event as CustomEvent<unknown>).detail;
     if (!detail || typeof detail !== "object" || Array.isArray(detail)) return;
     const claim = navigateViewRequestClaims.get(detail);
-    if (claim?.claimed) return;
-    let applied: boolean;
+    if (claim?.claimed || claim?.applying || claim?.declined.has(handle))
+      return;
+    const attemptEpoch = navigateViewDispatchEpoch;
+    let result: ReturnType<NavigateViewRequestListener>;
     try {
-      applied = listener(event as NavigateViewEvent) !== false;
+      result = listener(event as NavigateViewEvent);
     } catch (error) {
       // error-policy:J4 one subscriber's failure must not steal the intent
       // from the next attached listener or a later mount's replay.
@@ -539,11 +571,44 @@ export function listenForNavigateViewRequests(
       );
       return;
     }
-    if (applied) claim?.commit();
+    if (
+      result &&
+      typeof result === "object" &&
+      typeof result.then === "function"
+    ) {
+      if (claim) claim.applying = true;
+      void result
+        .then((applied) => {
+          if (claim) claim.applying = false;
+          if (!active) {
+            drainNavigateViewRequests();
+            return;
+          }
+          if (applied === true) claim?.commit();
+          else if (attemptEpoch === navigateViewDispatchEpoch)
+            claim?.declined.add(handle);
+          drainNavigateViewRequests();
+        })
+        .catch((error: unknown) => {
+          if (claim) claim.applying = false;
+          if (active && attemptEpoch === navigateViewDispatchEpoch)
+            claim?.declined.add(handle);
+          drainNavigateViewRequests();
+          logger.warn(
+            { error },
+            "[navigate-view-request] asynchronous destination failed; request retained",
+          );
+        });
+      return;
+    }
+    if (result !== false) claim?.commit();
   };
   window.addEventListener(NAVIGATE_VIEW_EVENT, handle);
   drainNavigateViewRequests();
-  return () => window.removeEventListener(NAVIGATE_VIEW_EVENT, handle);
+  return () => {
+    active = false;
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, handle);
+  };
 }
 /** Dispatch a typed custom event on `window`. */
 export function dispatchWindowEvent(

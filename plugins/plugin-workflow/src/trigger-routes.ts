@@ -17,8 +17,28 @@ import {
   type TriggerWakeMode,
   type UUID,
 } from '@elizaos/core';
-import type { RouteHelpers, RouteRequestContext } from '@elizaos/core/api/route-helpers';
+import type { RouteHelpers, RouteRequestContext } from '@elizaos/host/protocol';
 import { isAgentOwnedHeartbeat, isTriggerTaskOwnedBy } from './lib/trigger-ownership';
+
+const PAST_ONCE_SCHEDULE_ERROR = 'Once trigger requires a future scheduledAtIso';
+
+/**
+ * A past one-time schedule clamps to an update interval of 0, which the task
+ * service treats as an invalid repeat task: it never fires and never expires.
+ * The chat action already rejects it; the HTTP routes must not report success.
+ */
+function isPastOnceSchedule(
+  draft: {
+    triggerType?: string;
+    scheduledAtIso?: string;
+    enabled?: boolean;
+  },
+  nowMs: number
+): boolean {
+  if (draft.triggerType !== 'once' || draft.enabled === false) return false;
+  const scheduledAt = draft.scheduledAtIso ? Date.parse(draft.scheduledAtIso) : Number.NaN;
+  return Number.isFinite(scheduledAt) && scheduledAt <= nowMs;
+}
 export type TriggerRouteHelpers = RouteHelpers;
 export interface TriggerTaskMetadata {
   updatedAt?: number;
@@ -388,6 +408,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       return true;
     }
     const nowMs = Date.now();
+    if (isPastOnceSchedule(normalized.draft, nowMs)) {
+      error(res, PAST_ONCE_SCHEDULE_ERROR, 400);
+      return true;
+    }
     const metadata = trigger.enabled
       ? buildTriggerMetadata({ trigger, nowMs })
       : ({
@@ -648,6 +672,15 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, normalized.error ?? 'Invalid update', 400);
       return true;
     }
+    const nowMs = Date.now();
+    const changesSchedule =
+      typeof body.scheduledAtIso === 'string' ||
+      normalized.draft.triggerType !== current.triggerType ||
+      (!current.enabled && normalized.draft.enabled);
+    if (changesSchedule && isPastOnceSchedule(normalized.draft, nowMs)) {
+      error(res, PAST_ONCE_SCHEDULE_ERROR, 400);
+      return true;
+    }
     const nextTrigger = buildTriggerConfig({
       draft: normalized.draft,
       triggerId: current.triggerId,
@@ -659,11 +692,11 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     if (!nextTrigger.enabled) {
       nextMeta = {
         ...existingMeta,
-        updatedAt: Date.now(),
+        updatedAt: nowMs,
         updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
         trigger: {
           ...nextTrigger,
-          nextRunAtMs: Date.now() + DISABLED_TRIGGER_INTERVAL_MS,
+          nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS,
         },
         triggerRuns: existingRuns,
       };
@@ -671,7 +704,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       const built = buildTriggerMetadata({
         existingMetadata: existingMeta,
         trigger: nextTrigger,
-        nowMs: Date.now(),
+        nowMs,
       });
       if (!built) {
         error(res, 'Unable to compute trigger schedule', 400);

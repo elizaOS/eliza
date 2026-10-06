@@ -1,7 +1,9 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
+import { ROLE_RANK } from "@elizaos/core/protocol";
+import type { PlatformSecureStore } from "@elizaos/plugin-browser/remote-control/secure-store-contract";
 import { describe, expect, it } from "vitest";
-import type { PlatformSecureStore } from "../../../src/security/platform-secure-store";
+import { readAuthMeViaHttp } from "./config-and-auth-rpc";
 import { createDatabaseSnapshot } from "./database";
 import {
 	LaunchOrchestrator,
@@ -13,10 +15,15 @@ import {
 } from "./runtime-credential-rpc";
 import { readSubscriptionStatusViaHttp } from "./subscription-rpc";
 
-async function readSubscriptions(provider: Record<string, unknown>) {
+async function readHttpSnapshot<T>(
+	body: Record<string, unknown>,
+	read: (port: number) => Promise<T>,
+	status = 200,
+) {
 	const server = createServer((_req, res) => {
 		res.setHeader("Content-Type", "application/json");
-		res.end(JSON.stringify({ providers: [provider] }));
+		res.statusCode = status;
+		res.end(JSON.stringify(body));
 	});
 	server.listen(0, "127.0.0.1");
 	await once(server, "listening");
@@ -24,7 +31,7 @@ async function readSubscriptions(provider: Record<string, unknown>) {
 		const address = server.address();
 		if (!address || typeof address === "string")
 			throw new Error("Missing TCP address");
-		return await readSubscriptionStatusViaHttp(address.port);
+		return await read(address.port);
 	} finally {
 		server.closeAllConnections();
 		await new Promise<void>((resolve, reject) =>
@@ -32,6 +39,60 @@ async function readSubscriptions(provider: Record<string, unknown>) {
 		);
 	}
 }
+function readSubscriptions(provider: Record<string, unknown>) {
+	return readHttpSnapshot(
+		{ providers: [provider] },
+		readSubscriptionStatusViaHttp,
+	);
+}
+
+describe("auth HTTP reader", () => {
+	const identity = { id: "agent", displayName: "Agent", kind: "machine" };
+	const session = { id: "session", kind: "machine", expiresAt: null };
+	const access = {
+		mode: "bearer",
+		passwordConfigured: false,
+		ownerConfigured: false,
+	};
+
+	it.each(Object.keys(ROLE_RANK))(
+		"preserves authoritative role %s",
+		async (role) => {
+			const body = { identity, session, access: { ...access, role } };
+			expect(await readHttpSnapshot(body, readAuthMeViaHttp)).toEqual(body);
+		},
+	);
+
+	it("preserves the unauthenticated role with the upstream challenge", async () => {
+		const body = {
+			reason: "remote_auth_required",
+			access: { ...access, role: "GUEST" },
+		};
+		expect(await readHttpSnapshot(body, readAuthMeViaHttp, 401)).toEqual({
+			unauthorized: body,
+		});
+	});
+
+	it.each([undefined, "owner", "UNKNOWN", null])(
+		"rejects missing or invalid role %s",
+		async (role) => {
+			expect(
+				await readHttpSnapshot(
+					{ identity, session, access: { ...access, role } },
+					readAuthMeViaHttp,
+				),
+			).toBeNull();
+			expect(
+				await readHttpSnapshot(
+					{ reason: "remote_auth_required", access: { ...access, role } },
+					readAuthMeViaHttp,
+					401,
+				),
+			).toBeNull();
+		},
+	);
+});
+
 const provider = {
 	provider: "anthropic",
 	accountId: "account",

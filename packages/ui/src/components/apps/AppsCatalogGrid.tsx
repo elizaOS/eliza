@@ -5,6 +5,7 @@
  * a per-card favorite toggle; launching a card is delegated to `onLaunch`.
  */
 
+import type { RegistryAppInfo } from "@elizaos/core/protocol";
 import { Star } from "lucide-react";
 import {
   type MouseEvent,
@@ -14,8 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { RegistryAppInfo } from "../../api";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { AppHero } from "./app-identity";

@@ -135,7 +135,37 @@ export interface NativePageRead {
   truncated: boolean;
 }
 
+export interface BrowserDockState {
+  supported: boolean;
+  embedded: boolean;
+  bounds: { x: number; y: number; width: number; height: number };
+}
+
 export interface ElizaSurfaceManagerPlugin {
+  getBrowserHelperEntryState(): Promise<{
+    permissionGranted: boolean;
+    visible: boolean;
+    fullScreen: boolean;
+  }>;
+  requestBrowserHelperEntryPermission(): Promise<{ status: "dispatched" }>;
+  hideBrowserDockWithEntry(options: {
+    label: string;
+    description: string;
+  }): Promise<{ status: "requested" }>;
+  restoreBrowserDockFromEntry(): Promise<{ status: "requested" }>;
+  /** Resize an existing host-owned Android split without navigation. Request receipt only. */
+  setBrowserDockVisible(options: {
+    visible: boolean;
+  }): Promise<{ status: "requested" }>;
+
+  /** Android: explicit navigation with a requested right helper pane. Dispatch is not proof of a split. */
+  openDockedBrowser(options: { url: string; panelWidthDp?: number }): Promise<{
+    packageName: "org.chromium.chrome" | "ai.elizaos.chromium";
+    status: "dispatched";
+  }>;
+  /** Actual host activity embedding/bounds. No browser tab or task authority is implied. */
+  getBrowserDockState(): Promise<BrowserDockState>;
+
   /** Android: present the build-pinned browser without a URL or new website tab.
    * Dispatch receipt only; callers must re-observe before any task action.
    * Requires an explicit user interaction. Other platforms reject as unavailable.
@@ -177,6 +207,21 @@ export interface ElizaSurfaceManagerPlugin {
   readPage(
     options: SurfaceIdOptions & { selector?: string },
   ): Promise<NativePageRead>;
+  addListener(
+    eventName: "browserHelperReturned",
+    listener: (event: { presentation: "full-screen" }) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "browserHelperReturnFailed",
+    listener: (event: { code: string }) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "browserHelperWindowClosed",
+    listener: (event: {
+      reason: "website-opened" | "permission-revoked";
+    }) => void,
+  ): Promise<PluginListenerHandle>;
   /** Signals a native page change; consumers read current state before applying it. */
   addListener(
     eventName: "navigationChanged",

@@ -25,7 +25,7 @@ import {
 import { type RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
 import { isValidStewardTelegramId } from "./auth/steward-client";
 import { apiKeysService } from "./services/api-keys";
-import { charactersService } from "./services/characters/characters";
+import { charactersService } from "./services/characters";
 import { discordService } from "./services/discord";
 import { invalidateBoundPersonalDeliveryProjection } from "./services/eliza-app/personal-delivery-projection-contract";
 import { emailService } from "./services/email";

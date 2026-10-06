@@ -4,7 +4,7 @@
  */
 import type React from "react";
 import type { ReactNode } from "react";
-import { useMediaQuery } from "../../hooks";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { Card } from "../ui/card";
 
 const WORKSPACE_MOBILE_MEDIA_QUERY = "(max-width: 819px)";

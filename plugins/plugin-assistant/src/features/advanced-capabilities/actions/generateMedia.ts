@@ -679,6 +679,11 @@ export const generateMediaAction = {
             prompt: request.prompt,
             audioKind: request.audioKind,
             imageUrl: request.imageUrl,
+            ...(request.instrumental !== undefined
+              ? { instrumental: request.instrumental }
+              : {}),
+            ...(request.genre !== undefined ? { genre: request.genre } : {}),
+            ...(request.voice !== undefined ? { voice: request.voice } : {}),
           });
         } catch (retryError) {
           return mediaGenerationFailure(runtime, request, retryError);
@@ -876,6 +881,25 @@ export const generateMediaAction = {
       name: "imageUrl",
       description:
         "Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "instrumental",
+      description: "For music, true to generate without vocals.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "genre",
+      description: "For music, the requested genre.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "voice",
+      description:
+        "For speech (audioKind tts), the TTS provider's voice ID; omit unless the user names one.",
       required: false,
       schema: { type: "string" as const },
     },

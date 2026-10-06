@@ -17,7 +17,6 @@ const EXCLUDED_PREFIXES = [
   "packages/app/",
   "packages/cloud/",
   "packages/training/",
-  "packages/ui/src/services/local-inference/",
   "packages/app/test/",
   // Task prompts contain literal code/regex examples, not documentation links.
   "packages/benchmarks/suites/nl2repo/test_files/",

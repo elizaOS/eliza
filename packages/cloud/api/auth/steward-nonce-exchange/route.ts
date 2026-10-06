@@ -1,3 +1,4 @@
+import { resolveStewardBaseUrl } from "@/api-app/steward/base-url";
 /**
  * POST /api/auth/steward-nonce-exchange
  *
@@ -22,26 +23,29 @@
  * first-party Eliza UI origins plus localhost in non-production.
  */
 
-import { type StewardSessionErrorCode } from "@elizaos/plugin-elizacloud/steward-session-client";
-import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
 import {
   browserOriginHost,
   checkElizaMutatingRequestOrigin,
   hasElizaNonSimpleRequestMarker,
   isPermittedElizaBrowserOrigin,
-} from "@/lib/auth/browser-origin-policy";
-import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
+} from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
+import { cookieDomainForHost } from "@elizaos/cloud-shared/lib/auth/cookie-domain";
 import {
   STEWARD_AUTH_UPSTREAM_TIMEOUT_MS,
   type StewardVerifyEnv,
   verifyStewardTokenCached,
-} from "@/lib/auth/steward-client";
-import { stewardCookieNames } from "@/lib/auth/steward-cookies";
-import { signStewardMutatingRequest } from "@/lib/steward/sign";
-import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
-import { logger } from "@/lib/utils/logger";
-import { type AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/auth/steward-client";
+import { stewardCookieNames } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
+import { signStewardMutatingRequest } from "@elizaos/cloud-shared/lib/steward/sign";
+import {
+  describeSyncError,
+  syncUserFromSteward,
+} from "@elizaos/cloud-shared/lib/steward-sync";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { StewardSessionErrorCode } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { Hono } from "hono";
+import { setCookie } from "hono/cookie";
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 function checkOrigin(
@@ -105,31 +109,7 @@ function logExchange(outcome: string): void {
     metric: stewardNonceMetricCounter,
   });
 }
-function resolveStewardBaseUrl(env: AppEnv["Bindings"]): string | null {
-  const candidates: Array<[string, string | undefined]> = [
-    ["STEWARD_API_URL", env.STEWARD_API_URL],
-    ["NEXT_PUBLIC_STEWARD_API_URL", env.NEXT_PUBLIC_STEWARD_API_URL],
-  ];
-  for (const [key, candidate] of candidates) {
-    if (typeof candidate !== "string") continue;
-    const trimmed = candidate.trim().replace(/\/+$/, "");
-    if (trimmed.length === 0) continue;
-    try {
-      const url = new URL(trimmed);
-      if (url.protocol !== "https:" && url.protocol !== "http:") continue;
-      return trimmed;
-    } catch (error) {
-      // A non-empty candidate that fails to parse is a misconfiguration, not a
-      // missing value. Name the env var so the resulting 503 is debuggable; never
-      // log the value itself (it may contain credentials).
-      logger.warn("[StewardAuth] Ignoring unparseable Steward base URL", {
-        envVar: key,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-  return null;
-}
+
 // ─── Steward exchange call ────────────────────────────────────────────────
 interface StewardExchangeOk {
   ok: true;

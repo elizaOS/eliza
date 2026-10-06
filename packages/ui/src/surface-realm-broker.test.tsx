@@ -10,7 +10,7 @@
 // `App.surface-mutation-fuzz.test.tsx`).
 
 import type { SurfaceCapability } from "@elizaos/core";
-import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
+import { resolveSurfaceManifest } from "@elizaos/core/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   brokerSurfaceNavigate,

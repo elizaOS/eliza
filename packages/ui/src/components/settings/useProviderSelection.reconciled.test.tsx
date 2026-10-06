@@ -1,34 +1,27 @@
 /** Verifies the reconciled Cloud selection flags through the package's configured test harness. */
 // @vitest-environment jsdom
-//
-// `isCloudSelected` and `cloudCallsDisabled` used to be derived from config
-// alone, so every consumer had to remember to re-qualify them with
-// `elizaCloudConnected`; forgetting once is how the Cloud tile came to be
-// marked current while local answered every turn (elizaOS/eliza#20045 U1/U2).
-// The hook now reconciles at source and exposes config intent separately.
-
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useProviderSelection } from "./useProviderSelection";
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
       setActionNotice: vi.fn(),
       handleCloudDisconnect: vi.fn(async () => undefined),
     }),
 }));
-vi.mock("../../config/branding", () => ({
+vi.mock("../../config/branding-react.hooks", () => ({
   useBranding: () => ({ cloudOnly: false }),
 }));
 vi.mock("../../first-run/mobile-runtime-mode", () => ({
   isElizaCloudRuntimeLocked: () => false,
 }));
-vi.mock("../../api", () => ({ client: {} }));
+vi.mock("../../api/client", () => ({ client: {} }));
 
 function run(elizaCloudConnected: boolean) {
   const { result } = renderHook(() =>
-    useProviderSelection(new Set<string>(), vi.fn(), elizaCloudConnected),
+    useProviderSelection(new Set(["openai"]), vi.fn(), elizaCloudConnected),
   );
   return result;
 }
@@ -57,6 +50,32 @@ describe("useProviderSelection — config intent vs serving capability", () => {
     expect(result.current.isCloudConfigured).toBe(true);
     expect(result.current.isCloudSelected).toBe(true);
     expect(result.current.cloudCallsDisabled).toBe(false);
+  });
+
+  it("reads local-only selection from canonical configuration and honors explicit routes", () => {
+    const result = run(true);
+    act(() =>
+      result.current.initializeFromConfig({
+        deploymentTarget: { runtime: "local" },
+        cloud: { enabled: false },
+        serviceRouting: {},
+      }),
+    );
+    expect(result.current.cloudCallsDisabled).toBe(true);
+    expect(result.current.visibleProviderPanelId).toBe("__local__");
+    act(() =>
+      result.current.initializeFromConfig({
+        deploymentTarget: { runtime: "local" },
+        cloud: {
+          enabled: false,
+          inferenceMode: "local",
+          services: { inference: false },
+        },
+        serviceRouting: { llmText: { backend: "openai", transport: "direct" } },
+      }),
+    );
+    expect(result.current.cloudCallsDisabled).toBe(false);
+    expect(result.current.resolvedSelectedId).toBe("openai");
   });
 
   it("opens the Local panel on first paint while Cloud is unusable", () => {

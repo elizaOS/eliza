@@ -1,3 +1,4 @@
+import type { TranscriptSegment } from "@elizaos/core/protocol";
 /**
  * The single stateful engine behind the shell's chat + voice surface, exposed as
  * the `ShellController` returned by `useShellController`. It drives the shell
@@ -14,16 +15,14 @@
  * and the overlay stay in lock-step without double-mounting this hook.
  */
 
+import type { ChatTurnStatus } from "@elizaos/contracts";
 import {
   VOICE_SETTINGS_APPLY_EVENT,
   type VoiceSettingsApplyPayload,
-} from "@elizaos/core/events";
-import type { TranscriptSegment } from "@elizaos/core/transcripts";
+} from "@elizaos/core/protocol";
+import { buildVoiceTurnSignal, shouldRespondToVoiceTurn } from "@elizaos/voice";
 import * as React from "react";
-import type {
-  ChatTurnStatus,
-  ImageAttachment,
-} from "../../api/client-types-chat";
+import type { ImageAttachment } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
 import { subscribeDesktopBridgeEvent } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
@@ -42,16 +41,12 @@ import {
   useRealtimeVoiceSession,
 } from "../../hooks/useRealtimeVoiceSession";
 import { useViewEvent } from "../../hooks/useViewEvent";
-import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
-import {
-  useChatComposer,
-  useChatTurnStatus,
-  useConversationMessages,
-} from "../../state";
 import { dispatchConversationResync } from "../../state/AppContext.hooks";
 import { useAppSelectorShallow } from "../../state/app-store";
+import { useChatComposer } from "../../state/ChatComposerContext.hooks";
+import { useChatTurnStatus } from "../../state/ChatTurnStatusContext.hooks";
+import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
-import type { AppContextValue } from "../../state/internal";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
@@ -59,7 +54,7 @@ import {
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { goHome } from "../../state/shell-surface-store";
-import { deriveAgentReady } from "../../state/types";
+import { type AppContextValue, deriveAgentReady } from "../../state/types";
 import { openDesktopSettingsWindow } from "../../utils/desktop-workspace";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { TurnAggregator } from "../../voice/end-of-turn";
@@ -68,7 +63,6 @@ import {
   queryMicrophonePermission,
   requestDesktopMicrophoneAccess,
 } from "../../voice/local-asr-capture";
-import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
 import {
   isTranscriptionExitPhrase,
@@ -90,8 +84,8 @@ import {
 } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import type { ServerControlFrame } from "../../voice/voice-session-protocol";
-import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
+import type { HomeModelStatus } from "../local-inference/home-model-status";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import {
   buildConversationNav,

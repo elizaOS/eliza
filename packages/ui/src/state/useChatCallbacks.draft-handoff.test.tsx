@@ -21,21 +21,23 @@ import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
-  CodingAgentSession,
   Conversation,
   ConversationMessage,
   ImageAttachment,
-} from "../api";
+} from "../api/client-types-chat";
+import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
 import {
   chatDraftStorageKey,
   readChatDraft,
 } from "./ChatComposerContext.hooks";
-import type { LifecycleAction } from "./internal";
+import type { LifecycleAction } from "./types";
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
 
 const mocks = vi.hoisted(() => ({
   client: {
+    // This fixture keeps one stable runtime authority throughout each scenario.
+    onAuthorityChange: vi.fn(() => () => {}),
     getConversationMessages: vi.fn(),
     listConversations: vi.fn(),
     createConversation: vi.fn(),
@@ -53,7 +55,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("../api/client", () => ({ client: mocks.client }));
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => false, getPlatform: () => "web" },
   CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },

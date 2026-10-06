@@ -223,6 +223,9 @@ jobs:
           ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
           ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
           ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          # #22552: this lane must prove the first Shared HTTP attempt itself
+          # succeeds. A recovered client retry is not first-turn evidence.
+          ELIZA_UI_SMOKE_REQUIRE_SHARED_FIRST_ATTEMPT: "1"
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
           PLAYWRIGHT_NO_COPY_PROMPT: "1"
         shell: bash

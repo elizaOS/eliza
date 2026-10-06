@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import net from "node:net";
-import { androidSocketFetch } from "../aosp/lib/android-socket-fetch.ts";
+import { androidSocketFetch } from "../android/android-socket-fetch.ts";
 
 async function withBridge(
   reply: (socket: net.Socket, frame: any) => void,

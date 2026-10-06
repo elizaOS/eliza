@@ -11,8 +11,10 @@ dependencies. Keep `packages/` on `PYTHONPATH` when running Python modules.
 ```bash
 # Build the benchmark action plugin
 bun run --cwd packages/benchmarks build:plugin
-# Test the shared Python benchmark infrastructure
+# Test shared infrastructure, registry, orchestrator and native harness contracts
 PYTHONPATH="$PWD/packages" bun run --cwd packages/benchmarks test:py
+# Test TypeScript infrastructure and offline content/planner suites
+bun run --cwd packages/benchmarks test
 # List available benchmarks
 PYTHONPATH=packages python3 -m benchmarks.orchestrator list-benchmarks
 # Run one benchmark with the selected provider/model
@@ -20,8 +22,7 @@ PYTHONPATH=packages python3 -m benchmarks.orchestrator run --benchmarks <id> --p
 ```
 
 Each suite's README documents its own tests and setup. Live runs require provider
-credentials and may incur costs. Generated results belong in ignored output
-directories; a mock run proves harness behavior, not model quality.
+credentials and may incur costs. Generated results belong under repository-root `test-results/<producer>/`; a mock run proves harness behavior, not model quality.
 
 The [benchmark workflow](../../.github/workflows/benchmarks.yml) validates the
 shared Python infrastructure, orchestrator, inventory, and runtime smoke checks.
@@ -37,3 +38,5 @@ through `OPENAI_IMAGE_DESCRIPTION_API_KEY`. Otherwise the orchestrator uses the
 configured image model or the selected primary model. Results record image-model
 usage, and comparison groups include the configured vision model and endpoint
 fingerprint. A successful transport test is not a live vision-quality score.
+
+The shared Eliza host is in `harnesses/eliza/runner`; LifeOps owns its simulated backend. Provider transports live in `harnesses/transports`, and meeting importers in `datasets`. Python suites use `benchmarks.suites.*`; installed standalone harness clients depend on `elizaos-benchmark-support`.

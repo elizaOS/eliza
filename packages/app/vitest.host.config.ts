@@ -3,9 +3,12 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases";
+import { compoundVitestEvidence } from "../scripts/lib/compound-test-evidence.ts";
+import { buildWorkspaceSourceAliases } from "../scripts/vitest/source-aliases.ts";
+import { discoverScriptTestLanes } from "./scripts/lib/script-test-lanes.ts";
 
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
+const scriptTestLanes = discoverScriptTestLanes(fileDir);
 const monorepoRoot = path.resolve(fileDir, "../..");
 // Resolve react/react-dom from the location of this config file so the alias
 // works whether react is hoisted to the monorepo root or installed locally.
@@ -15,7 +18,6 @@ const monorepoRoot = path.resolve(fileDir, "../..");
 const _require = createRequire(import.meta.url);
 const reactPkg = path.dirname(_require.resolve("react/package.json"));
 const reactDomPkg = path.dirname(_require.resolve("react-dom/package.json"));
-const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
 
 /**
  * Real `react` / `react-dom` packages (not .d.ts stubs from tsconfig paths)
@@ -24,6 +26,7 @@ const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
  */
 export default defineConfig({
   test: {
+    ...compoundVitestEvidence(),
     include: [
       "src/connectors/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/config/**/*.{test,spec}.?(c|m)[jt]s?(x)",
@@ -36,7 +39,6 @@ export default defineConfig({
       "src/styles/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/diagnostics/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/registry/**/*.{test,spec}.?(c|m)[jt]s?(x)",
-      "src/first-run/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/api/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "src/services/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       "test/stubs/**/*.{test,spec}.?(c|m)[jt]s?(x)",
@@ -63,75 +65,8 @@ export default defineConfig({
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
-      // Executed by test:script-suites with Node's test runner.
-      "scripts/remote-browser-host-entry.test.mjs",
-      "scripts/lib/assert-android-elf.test.mjs",
-      "scripts/lib/desktop-preflight.test.mjs",
-      "scripts/lib/desktop-renderer-build.test.mjs",
-      "scripts/lib/linux-cef-helper.test.mjs",
-      "scripts/lib/local-voice-startup.test.ts",
-      "scripts/copy-runtime-node-modules.test.ts",
-      "scripts/copy-runtime-node-modules-lock.test.ts",
-      "scripts/android-native-sms.test.ts",
-      "scripts/android-native-plugins.test.ts",
-      "scripts/native-plugin-build.test.ts",
-      "scripts/verify-android-native-plugins.test.ts",
-      "scripts/lib/electrobun-file-dialog.test.ts",
-      "scripts/android-assistant-ime-lane.test.ts",
-      "scripts/android-cloud-onboarding-command.test.ts",
-      "scripts/android-e2e-build.test.ts",
-      "scripts/android-e2e-port-contract.test.ts",
-      "scripts/android-renderer-stamp.test.ts",
-      "scripts/audit-views-soak-navigation.test.ts",
-      "scripts/audit-views-soak-timing.test.ts",
-      "scripts/build.test.ts",
-      "scripts/capture-duration-entrypoint.test.ts",
-      "scripts/desktop-voice-hardware-capture.test.ts",
-      "scripts/dev-server-registry.test.ts",
-      "scripts/device-e2e-bundle.test.ts",
-      "scripts/device-evidence-workflows.test.ts",
-      "scripts/devices-status.test.ts",
-      "scripts/forced-host-mode-guard.test.ts",
-      "scripts/ios-device-lib.test.ts",
-      "scripts/ios-device-provision.test.ts",
-      "scripts/ios-e2e-lib.test.ts",
-      "scripts/ios-store-engine-gate.test.ts",
-      "scripts/ios-voice-selftest-lib.test.ts",
-      "scripts/lib/android-assistant-verify-lib.test.ts",
-      "scripts/lib/android-capture.test.ts",
-      "scripts/lib/android-device-apk.test.ts",
-      "scripts/lib/android-e2e-evidence-policy.test.ts",
-      "scripts/lib/audit-output.test.ts",
-      "scripts/lib/capture-output-backend-log-port.test.ts",
-      "scripts/lib/capture-output.test.ts",
-      "scripts/lib/chat-failure-strings.test.ts",
-      "scripts/lib/chat-history-persistence.node.test.ts",
-      "scripts/lib/chat-history-persistence.test.ts",
-      "scripts/lib/dev-vite-command.test.ts",
-      "scripts/lib/ffmpeg.test.ts",
-      "scripts/lib/host-agent.test.ts",
-      "scripts/lib/ios-deploy-ledger.test.ts",
-      "scripts/lib/ios-device-e2e-lib.test.ts",
-      "scripts/lib/ios-full-bun-smoke-contract.test.ts",
-      "scripts/lib/ios-mixed-content-smoke-contract.test.ts",
-      "scripts/lib/ios-simulator-app-product.test.ts",
-      "scripts/lib/local-inference-readiness.test.ts",
-      "scripts/lib/playwright-port.test.ts",
-      "scripts/lib/playwright-shard.test.ts",
-      "scripts/lib/visual-qa.test.ts",
-      "scripts/macos-shortcuts/eliza-assistant-handoff.test.ts",
-      "scripts/mobile-local-chat-smoke-port-policy.test.ts",
-      "scripts/mobile-local-chat-smoke.test.ts",
-      "scripts/mvp-visual-verify.test.ts",
-      "scripts/ocr-real-engine.test.ts",
-      "scripts/playwright-audit-projects.test.ts",
-      "scripts/playwright-test-match.test.ts",
-      "scripts/run-ui-playwright-node-resolution.test.ts",
-      "scripts/verify-viewport-meta.test.ts",
-      "scripts/visual-qa-live.test.ts",
-      "scripts/voice-evidence-media.test.ts",
-      "scripts/walkthrough-device-matrix.test.ts",
-      "scripts/web-build-workspace-dependencies.test.ts",
+      ...scriptTestLanes["node:test"],
+      ...scriptTestLanes["bun:test"],
       "**/.git/**",
       "**/node_modules/**",
       "**/dist/**",
@@ -147,47 +82,8 @@ export default defineConfig({
       "**/*.live.e2e.test.{ts,tsx}",
       "**/*.real.test.{ts,tsx}",
       "**/*.real.e2e.test.{ts,tsx}",
-      "**/*.spec.{ts,tsx}",
+      "{src,test,__tests__}/**/*.spec.{ts,tsx}",
       "platforms/electrobun/**",
-      "scripts/run-mobile-build-policy.test.mjs",
-      "scripts/run-mobile-build-android-app-actions.test.ts",
-      "scripts/build-experimental-exact-window-helper.test.ts",
-      "scripts/aosp/compile-libllama-fused.test.mjs",
-      "scripts/mas-smoke.test.ts",
-      // The runner-based suites above are excluded from vitest because they use
-      // node:test/bun:test. They are executed by `bun run test:script-suites`
-      // (chained from `test`) so the exclusion no longer means "runs nowhere".
-      // Uses Node.js built-in test runner (node:test), not vitest.
-      "scripts/build-experimental-exact-window-helper.test.ts",
-      "scripts/ensure-fused-inference-install.test.ts",
-      "scripts/android-sms-gateway-template.test.mjs",
-      "scripts/stage-android-agent.test.ts",
-      "scripts/android-pglite-staging.test.ts",
-      "scripts/ensure-vision-deps-policy.test.ts",
-      "scripts/lib/dev-port-ownership.test.ts",
-      "scripts/lib/apk-runtime-provenance.test.ts",
-      "scripts/lib/android-runtime-packaging.test.ts",
-      "scripts/stage-desktop-fused-lib-staleness.test.ts",
-      "scripts/ensure-fused-inference-install.test.ts",
-      "scripts/build-helpers/arm64-simd.test.ts",
-      "scripts/lib/electrobun-loopback-hardening.test.ts",
-      "scripts/lib/electrobun-ffi-callback-strings.test.ts",
-      "scripts/lib/linux-artifact-permissions.test.ts",
-      "scripts/lib/fused-artifact-integrity.test.ts",
-      "scripts/lib/ios-fused-slice-cache.test.ts",
-      "scripts/mobile/ios/overlay.test.ts",
-      // Uses Node.js built-in test runner (node:test), not vitest; runs in
-      // `bun run test:script-suites` (node --test list).
-      "scripts/store-listing-urls.test.ts",
-      "scripts/native-plugin-build.test.ts",
-      "scripts/android-native-plugins.test.ts",
-      "scripts/verify-android-native-plugins.test.ts",
-      // Uses bun:test, not vitest; runs in `bun run test:script-suites`.
-      "scripts/voice/voice-models-publish-all.test.ts",
-      // Uses bun:test, not vitest.
-      "scripts/aosp/stage-default-models.test.ts",
-      // Uses bun:test, not vitest.
-      "scripts/aosp/compile-libllama-zig-pin.test.ts",
       ...(process.platform === "win32"
         ? [
             // These suites fail ONLY on the GitHub-hosted windows-ci runner with
@@ -215,12 +111,6 @@ export default defineConfig({
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
-      ...(includeLiveE2e
-        ? []
-        : [
-            "src/services/local-inference/engine.e2e.test.ts",
-            "test/live-agent/**/*.e2e.test.ts",
-          ]),
     ],
   },
   resolve: {

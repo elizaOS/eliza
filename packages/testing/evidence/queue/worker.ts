@@ -53,6 +53,12 @@ export type WorkerEvent =
   | { type: "claimed"; id: string; analyzerId: string }
   | { type: "processed"; id: string; action: WorkerAction; reason?: string }
   | { type: "idle" }
+  | {
+      type: "recovery";
+      requeued: number;
+      completed: number;
+      unverifiable: number;
+    }
   | { type: "draining"; sinceMs: number };
 
 export interface RunWorkerOptions {
@@ -137,16 +143,20 @@ export async function processJob(
     },
     absolutePath: job.imagePath,
   };
-  const ctx: AnalyzerContext = { tier };
+  const controller = new AbortController();
+  const ctx: AnalyzerContext = { tier, signal: controller.signal };
 
   const result = await withHardTimeout(
     runAnalyzerInline(analyzer, input, ctx),
     limits.jobTimeoutMs,
-    () => ({
-      status: "failed" as const,
-      reason: `analyzer '${job.analyzerId}' exceeded ${limits.jobTimeoutMs}ms hard timeout`,
-      durationMs: limits.jobTimeoutMs,
-    }),
+    () => {
+      controller.abort(new Error("Analyzer job deadline exceeded"));
+      return {
+        status: "failed" as const,
+        reason: `analyzer '${job.analyzerId}' exceeded ${limits.jobTimeoutMs}ms hard timeout`,
+        durationMs: limits.jobTimeoutMs,
+      };
+    },
   );
 
   if (isConnectivityFailure(result)) {
@@ -186,12 +196,13 @@ function finalize(
   // Every terminal action records the analyzer result into analysis.json —
   // including a skip/failure, so the document honestly shows the GPU analyzer
   // was attempted and why it produced no data.
-  mergeAnalyzerResult({
-    analysisPath: job.analysisPath,
-    artifact: job.artifact,
-    analyzerId: job.analyzerId,
-    result,
-  });
+  if (job.analysisPath !== null)
+    mergeAnalyzerResult({
+      analysisPath: job.analysisPath,
+      artifact: job.artifact,
+      analyzerId: job.analyzerId,
+      result,
+    });
   const status =
     action === "completed"
       ? "completed"
@@ -252,6 +263,9 @@ export async function runQueueWorker(
   let state = createWorkerState();
 
   while (!options.signal?.aborted) {
+    const recovered = deps.queue.recoverAbandoned();
+    if (recovered.requeued || recovered.completed || recovered.unverifiable)
+      emit({ type: "recovery", ...recovered });
     const claimed = deps.queue.claim((result) => {
       counts.failed += 1;
       emit({

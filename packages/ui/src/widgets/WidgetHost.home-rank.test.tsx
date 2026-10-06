@@ -22,16 +22,12 @@ const mockAppState = {
   t: (key: string) => key,
 };
 
-vi.mock("../state", () => ({
-  useApp: () => mockAppState,
+vi.mock("../state/useApp", () => ({ useApp: () => mockAppState }));
+vi.mock("../state/app-store", () => ({
   useAppSelector: <T,>(selector: (s: typeof mockAppState) => T): T =>
     selector(mockAppState),
   useAppSelectorShallow: <T,>(selector: (s: typeof mockAppState) => T): T =>
     selector(mockAppState),
-}));
-
-vi.mock("../state/useDeveloperMode", () => ({
-  useIsDeveloperMode: () => false,
 }));
 
 /** A minimal uiSpec home widget keyed by id + base `order`. */

@@ -20,21 +20,21 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import {
   invokeDesktopBridgeRequest,
-  isElectrobunRuntime,
   subscribeDesktopBridgeEvent,
-} from "../../bridge";
-import { useBranding } from "../../config/branding";
+} from "../../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { useBranding } from "../../config/branding-react.hooks";
 import {
   type ApplicationUpdateSnapshot,
   getApplicationUpdateSnapshot,
   mapAgentUpdateStatusToSnapshot,
-} from "../../services/app-updates/update-policy";
-import { useAppSelectorShallow } from "../../state";
-import { openExternalUrl } from "../../utils";
+} from "../../platform/app-update-policy";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { openDesktopSurfaceWindow } from "../../utils/desktop-workspace";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import {
   normalizeReleaseNotesUrl,
   summarizeError,

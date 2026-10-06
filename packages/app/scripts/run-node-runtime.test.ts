@@ -1,4 +1,3 @@
-/** Exercises run node runtime behavior with deterministic app test fixtures. */
 import { describe, expect, test } from "vitest";
 import {
   buildNodeProbeEnv,

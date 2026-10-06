@@ -24,19 +24,15 @@ a build input; physical installation still requires qualification and a signed c
 Alpha Phone (#31023) names Pixel 10, which has no lock here; see the grizzly
 `decisionNote` in `hardware-targets.json` before choosing a device.
 The `eliza_gsi_arm64` and `eliza_gsi_x86_64` lunch targets build system-only
-images from the separate `gsi-android15` (`bp1a`), `gsi-android16` (`bp4a`) and
-`gsi-android17` (`cp2a`) profiles in `aosp.lock.json`, not from the Cuttlefish
+images from the `gsi-android17` (`cp2a`) profile in `aosp.lock.json`, not from the Cuttlefish
 checkout; `make build` does not select them. They use system_ext SELinux policy,
 are userdebug-only, and `generic-mediatek-gsi` stays blocked in
-`hardware-targets.json`. Every product selects the Android 17-only
-`platform_app_36` policy (`sepolicy/api37`, `sepolicy/system_ext_api37`) from
-`PLATFORM_SDK_VERSION`, so the same vendor tree compiles on Android 15, 16 and 17.
+`hardware-targets.json`. Every product requires Android 17 (SDK 37).
 Builds leave existing Cuttlefish sessions running. Stop selected instances
 explicitly when reclaiming memory before a build.
 
 Application sources resolve to the enclosing Eliza checkout. Set
-`ELIZAOS_ELIZA_ROOT` to use another checkout; a standalone OS checkout instead
-looks under `.eliza-source`. Native scripts and APK assets live under
+`ELIZAOS_ELIZA_ROOT` to use another checkout. Native scripts and APK assets live under
 `packages/app`, not this vendor tree. Licensed device inputs and release-signing
 material must be supplied separately.
 
@@ -135,7 +131,7 @@ Stage an independently built HOME application without replacing the Eliza runtim
 or inheriting its privileged permission list:
 
 ```bash
-node packages/os/scripts/distro-android/stage-launcher-overlay.ts \
+node packages/os/scripts/android/stage-launcher-overlay.ts \
   --descriptor /absolute/launcher.json --apk /absolute/launcher.apk \
   --output /absolute/new-vendor-directory
 ```

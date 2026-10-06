@@ -6,7 +6,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RouteRequest, RouteResponse } from "@elizaos/core/api/http-plugin";
+import type { RouteRequest, RouteResponse } from "@elizaos/host/protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { solanaSignRoutes } from "./sign";
 
@@ -96,6 +96,9 @@ describe("Solana browser signing routes", () => {
     for (const request of [
       req({ authorization: "Basic 1234567890abcdef" }),
       req({ xToken: "wrong-token" }),
+      // Padding must not let a shorter or longer bearer pass the comparison.
+      req({ authorization: "Bearer 1234567890abcd" }),
+      req({ authorization: "Bearer 1234567890abcdef-extended" }),
     ]) {
       const response = res();
       await route("wallet-solana-pubkey").handler(request, response, runtime("1234567890abcdef"));

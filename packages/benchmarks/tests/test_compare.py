@@ -49,7 +49,7 @@ from benchmarks.compare import (  # noqa: E402
     run_compare,
 )
 from benchmarks.lib.results_store import ResultsStore  # noqa: E402
-from benchmarks.standard._base import BenchmarkResult, ENDPOINT_ENV_CHAIN  # noqa: E402
+from benchmarks.suites.standard._base import BenchmarkResult, ENDPOINT_ENV_CHAIN  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

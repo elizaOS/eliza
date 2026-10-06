@@ -5,8 +5,8 @@ Maintainer: elizaos <dev@app.elizaos.ai>
 Build-Depends: debhelper-compat (= 13), appstream, binutils, desktop-file-utils, systemd
 Standards-Version: 4.6.2
 Homepage: https://elizaos.ai/
-Vcs-Git: https://github.com/elizaOS/os.git
-Vcs-Browser: https://github.com/elizaOS/os
+Vcs-Git: https://github.com/elizaOS/eliza.git
+Vcs-Browser: https://github.com/elizaOS/eliza
 Rules-Requires-Root: no
 
 Package: elizaos-app

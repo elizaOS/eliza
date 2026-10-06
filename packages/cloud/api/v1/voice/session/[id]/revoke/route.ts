@@ -1,18 +1,18 @@
 // Handles v1 cloud API realtime voice-session revoke traffic (SEC-6).
-import { Hono } from "hono";
 
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { logger } from "@/lib/utils/logger";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
   isVoiceRealtimeWsEnabled,
   type VoiceRealtimeEnv,
-} from "@/lib/voice-session/config";
+} from "@elizaos/cloud-shared/lib/voice-session/config";
 import {
   lookupVoiceSessionJti,
   revokeVoiceSessionToken,
-} from "@/lib/voice-session/jwt";
-import { getVoiceSessionRegistry } from "@/lib/voice-session/session-registry";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/voice-session/jwt";
+import { getVoiceSessionRegistry } from "@elizaos/cloud-shared/lib/voice-session/session-registry";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
 
 /**
  * POST /api/v1/voice/session/:id/revoke (contract §7.1, SEC-6).

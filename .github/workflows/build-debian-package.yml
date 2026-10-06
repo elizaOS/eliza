@@ -111,8 +111,7 @@ jobs:
           test "$SOURCE_DATE_EPOCH" = "$(git show -s --format=%ct HEAD)"
           test -n "$ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256"
           test "$(dpkg --print-architecture)" = "${{ matrix.debian-architecture }}"
-          pinned_commit="$(node --input-type=module -e 'import { readElizaSourceLock } from "./scripts/read-eliza-source-lock.ts"; process.stdout.write(readElizaSourceLock().commit);')"
-          test "$DESKTOP_SOURCE_SHA" = "$pinned_commit"
+          test "$DESKTOP_SOURCE_SHA" = "$(git rev-parse HEAD)"
       - name: Install deterministic Debian packaging tools
         run: |
           sudo apt-get update -qq
@@ -167,7 +166,7 @@ jobs:
         run: |
           set -euo pipefail
           cp -a linux/packaging/debian "$WORK_ROOT/source/debian"
-          cp -- linux/elizaos/assets/logo_blue_nobg.svg "$WORK_ROOT/source/debian/elizaos-icon.svg"
+          cp -- linux/assets/logo_blue_nobg.svg "$WORK_ROOT/source/debian/elizaos-icon.svg"
           mkdir -p "$WORK_ROOT/source/upstream"
           cp -- "$WORK_ROOT/upstream/desktop-artifact-manifest.json" "$WORK_ROOT/source/upstream/desktop-artifact-manifest.json"
           cp -- "$WORK_ROOT/upstream/desktop-artifact-manifest.json.sig" "$WORK_ROOT/source/upstream/desktop-artifact-manifest.json.sig"
@@ -258,4 +257,4 @@ jobs:
           retention-days: 30
       - name: Remove package workspace
         if: always()
-        run: sudo node scripts/rm-path-recursive.ts "$WORK_ROOT"
+        run: sudo node ../scripts/rm-path-recursive.ts "$WORK_ROOT"

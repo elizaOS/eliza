@@ -18,18 +18,14 @@ import {
 } from "node:crypto";
 import {
   type ActionResult,
-  type AppPackageRouteContext,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
   type ElizaCapabilityRouter,
   getCapabilityRouter,
-  getHttpRuntime,
-  getPluginHttpRoutes,
   type IAgentRuntime,
   type JsonObject,
   type JsonValue,
   type ModelTypeName,
-  type HttpPlugin as Plugin,
   type PluginAppBridge,
   type PluginAppLaunchDiagnostic,
   type PluginAppLaunchPreparation,
@@ -46,13 +42,19 @@ import {
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEffect,
   type ResponseHandlerFieldEvaluator,
-  type Route,
-  type RouteHandlerContext,
   type RuntimeEventStorage,
   Service,
   type ServiceClass,
   type ViewDeclaration,
 } from "@elizaos/core";
+import {
+  type AppPackageRouteContext,
+  getHttpRuntime,
+  getPluginHttpRoutes,
+  type HttpPlugin as Plugin,
+  type Route,
+  type RouteHandlerContext,
+} from "@elizaos/host/protocol";
 
 import {
   type AppRouteModule,
@@ -286,10 +288,8 @@ export function createRemoteCapabilityPlugin(
     (view): ViewDeclaration => ({
       id: view.id,
       label: view.label,
-      viewType: view.viewType === "tui" ? "tui" : "gui",
-      ...(view.backgroundPolicy === undefined
-        ? {}
-        : { backgroundPolicy: view.backgroundPolicy }),
+      viewType: view.viewType ?? "gui",
+      ...(view.viewKind === undefined ? {} : { viewKind: view.viewKind }),
       ...(view.surface === undefined ? {} : { surface: view.surface }),
       ...(view.bundleUrl === undefined ? {} : { bundleUrl: view.bundleUrl }),
       ...(view.bundleUrl !== undefined || view.bundlePath === undefined
@@ -473,7 +473,7 @@ export function createRemoteCapabilityPlugin(
           ...endpointSelection(endpointId),
           moduleId: module.id,
           eventName: event.eventName,
-          payload: eventPayloadToJsonObject(payload),
+          payload: contextWithoutRuntimeToJsonObject(payload),
         });
       });
       accumulator[event.eventName] = handlers;
@@ -511,9 +511,7 @@ export function createRemoteCapabilityPlugin(
         ? {}
         : { defaultEnabled: widget.defaultEnabled }),
       ...(widget.navGroup === undefined ? {} : { navGroup: widget.navGroup }),
-      ...(widget.developerOnly === undefined
-        ? {}
-        : { developerOnly: widget.developerOnly }),
+      ...(widget.viewKind === undefined ? {} : { viewKind: widget.viewKind }),
       ...(widget.componentExport === undefined
         ? {}
         : { componentExport: widget.componentExport }),
@@ -689,7 +687,7 @@ function createRemoteAppBridge(
       ...endpointSelection(endpointId),
       moduleId,
       hook: hook as never,
-      context: appBridgeContextToJsonObject(ctx),
+      context: contextWithoutRuntimeToJsonObject(ctx),
     });
   if (hookSet.has("prepareLaunch")) {
     bridge.prepareLaunch = async (ctx) =>
@@ -2624,17 +2622,9 @@ function toJsonObject(value: unknown): JsonObject | undefined {
   }
   return undefined;
 }
-function eventPayloadToJsonObject(value: unknown): JsonObject | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const { runtime: _runtime, ...serializable } = value as Record<
-    string,
-    unknown
-  >;
-  return toJsonObject(serializable);
-}
-function appBridgeContextToJsonObject(value: unknown): JsonObject | undefined {
+function contextWithoutRuntimeToJsonObject(
+  value: unknown,
+): JsonObject | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }

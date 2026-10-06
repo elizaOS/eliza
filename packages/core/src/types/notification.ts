@@ -27,11 +27,11 @@ export type NotificationPriority = "low" | "normal" | "high" | "urgent";
  * behavior a `NotificationPriority` binds to. Producers still pass a priority;
  * the tier is what the priority *means*:
  *
- * | Tier        | Priority        | Behavior                                             |
+ * | Tier | Priority | Behavior |
  * |-------------|-----------------|------------------------------------------------------|
  * | `interrupt` | `urgent`,`high` | OS notification (even focused for `urgent`), toast, inbox, badge |
- * | `digest`    | `normal`        | inbox + unread badge, no OS interrupt while focused  |
- * | `silent`    | `low`           | inbox only, no badge weight, auto-expires            |
+ * | `digest` | `normal` | inbox + unread badge, no OS interrupt while focused |
+ * | `silent` | `low` | inbox only, no badge weight, auto-expires |
  *
  * The tier is never stored on the record — it is a pure function of priority so
  * the two can never drift. Use {@link tierForPriority} to name it.

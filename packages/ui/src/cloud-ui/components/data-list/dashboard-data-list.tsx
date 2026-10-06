@@ -3,7 +3,7 @@
  */
 import type { ReactNode } from "react";
 import { Card } from "../../../components/ui/card";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 
 interface DashboardDataListProps {
   children: ReactNode;

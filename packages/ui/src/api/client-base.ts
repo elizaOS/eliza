@@ -1,3 +1,4 @@
+import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
 /**
  * ElizaClient class — core infrastructure only.
  *
@@ -5,32 +6,39 @@
  * without circular dependency issues.
  */
 
-import { parseChatTerminalFailure } from "@elizaos/core/contracts/chat";
-import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/core/events";
-import { isInferenceTraceId } from "@elizaos/core/inference-trace";
 import {
+  type ChatFailureKind,
+  type ChatTerminalFailure,
+  type ChatToolCallEvent,
+  type ChatTurnStatus,
+  parseChatTerminalFailure,
+} from "@elizaos/contracts";
+import type { NetworkStatusChangeDetail } from "@elizaos/core/protocol";
+import {
+  DELTA_STREAM_PROTOCOL,
   extractAssistantReplyText,
+  isInferenceTraceId,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
-} from "@elizaos/core/utils/assistant-text";
+} from "@elizaos/core/protocol";
 import {
   clearElizaApiBase,
   getElizaApiBase,
   getElizaApiToken,
   setElizaApiBase,
-} from "@elizaos/core/utils/eliza-globals";
+} from "@elizaos/host/protocol";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
-import { getBootConfig, setBootConfig } from "../config/boot-config";
-import {
-  NETWORK_STATUS_CHANGE_EVENT,
-  type NetworkStatusChangeDetail,
-} from "../events";
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
+import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
 import { logger } from "../logger.ts";
 import { isAndroidLocalSideloadBuild } from "../platform/android-runtime";
+import { isCapacitorNativeRuntime } from "../platform/native-probe";
 import {
   loadAgentProfileRegistry,
   saveAgentProfileRegistry,
@@ -52,42 +60,35 @@ import {
   directCloudSharedAgentIdFromBase,
   isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
-import {
-  DELTA_STREAM_PROTOCOL,
-  mergeStreamingText,
-} from "../utils/streaming-text.js";
-import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
+import { mergeStreamingText } from "../utils/streaming-text.js";
 import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
-import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "./auth/sessions";
 import { lastActivityHeadersForUrl } from "./auth/user-activity";
+import type {
+  AccountConnectRequest,
+  ChatActionResultSummary,
+  ChatTokenUsage,
+  ConversationChannelType,
+  ImageAttachment,
+  LocalInferenceChatMetadata,
+} from "./client-types-chat";
+import type {
+  ConnectionStateInfo,
+  WebSocketConnectionState,
+  WsEventHandler,
+} from "./client-types-core";
+import { ApiError, isCloudAgentGoneError } from "./client-types-core";
+import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import {
-  type AccountConnectRequest,
-  ApiError,
-  type ChatActionResultSummary,
-  type ChatFailureKind,
-  type ChatTerminalFailure,
-  type ChatTokenUsage,
-  type ChatToolCallEvent,
-  type ChatTurnStatus,
-  type ConnectionStateInfo,
-  type ConversationChannelType,
-  type ImageAttachment,
-  isCloudAgentGoneError,
-  type LocalInferenceChatMetadata,
-  type WebSocketConnectionState,
-  type WsEventHandler,
-} from "./client-types";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
-import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
-import {
-  iosInProcessAgentTransportForUrl,
-  isIosInProcessLocalAgentBase,
-} from "./ios-local-agent-transport";
-import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
-import { remoteRelayTransportForUrl } from "./remote-relay-transport";
+  getHostRequestTransport,
+  isHostInProcessAgentBase,
+} from "./host-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
-import { sshRuntimeTransportForUrl } from "./ssh-runtime-transport";
-import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
+import {
+  type AgentRequestTransport,
+  fetchAgentTransport,
+  findSseEventBreak,
+} from "./transport";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -304,19 +305,7 @@ function requestHeadersToRecord(
   }
   return { ...(headers as Record<string, string>) };
 }
-function findSseEventBreak(chunkBuffer: string): {
-  index: number;
-  length: number;
-} | null {
-  const lfBreak = chunkBuffer.indexOf("\n\n");
-  const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
-  if (lfBreak === -1 && crlfBreak === -1) return null;
-  if (lfBreak === -1) return { index: crlfBreak, length: 4 };
-  if (crlfBreak === -1) return { index: lfBreak, length: 2 };
-  return lfBreak < crlfBreak
-    ? { index: lfBreak, length: 2 }
-    : { index: crlfBreak, length: 4 };
-}
+
 // Producers that predate the canonical JSON `type` (shared-runtime, sandbox,
 // bridge, and control-plane fallback chat) classify frames only through their
 // SSE event name. Map those names when `type` is absent so a terminal `done`
@@ -607,7 +596,7 @@ function shouldTreatAsConnectedWithoutWebSocket(
   value: string | null | undefined,
 ): boolean {
   return (
-    isIosInProcessLocalAgentBase(value) ||
+    isHostInProcessAgentBase(value) ||
     isLocalAgentIpcBase(value) ||
     isSharedRuntimeRestAdapterBase(value) ||
     isRemoteRelayRestAdapterBase(value) ||
@@ -689,20 +678,7 @@ function shouldUseRestOnlyForInsecureWebSocket(
  * no `Capacitor.isNativePlatform()` → false, so same-origin deployments keep
  * their realtime WebSocket.
  */
-function isCapacitorNativeRuntime(): boolean {
-  try {
-    const cap = (globalThis as Record<string, unknown>).Capacitor as
-      | {
-          isNativePlatform?: () => boolean;
-        }
-      | undefined;
-    return Boolean(cap?.isNativePlatform?.());
-  } catch {
-    // error-policy:J4 an unanswerable platform probe reads as "not native",
-    // preserving the browser's WebSocket path.
-    return false;
-  }
-}
+
 // ---------------------------------------------------------------------------
 // Network status — listens for the bridged Capacitor `networkStatusChange`
 // event so the WS reconnect scheduler can park itself during airplane mode
@@ -767,24 +743,7 @@ export function onNetworkStatusChange(
 export function generateChatClientMessageId(): string {
   return ElizaClient.generateMessageId();
 }
-/** Test-only: reset the cached network state. */
-export function __resetNetworkStatusForTests(): void {
-  lastKnownNetworkConnected = true;
-  networkStatusListeners.clear();
-}
-/** Test-only: read the last bridged network status. */
-export function __getLastKnownNetworkConnected(): boolean {
-  return lastKnownNetworkConnected;
-}
-/**
- * The last bridged connectivity state (`true` = the device reports a usable
- * network). Public counterpart to the test-only reader so the send path can
- * tell "we're offline" (worth waiting for reconnect to auto-retry) from "we're
- * online but the server 503'd / was slow" (surface the manual affordance now).
- */
-export function isNetworkCurrentlyConnected(): boolean {
-  return lastKnownNetworkConnected;
-}
+
 // ---------------------------------------------------------------------------
 // Dedicated-agent resume (HTTP 202) handling
 // ---------------------------------------------------------------------------
@@ -2032,13 +1991,7 @@ export class ElizaClient {
       return this.requestTransport;
     }
     return (
-      (await androidNativeAgentTransportForUrl(requestUrl)) ??
-      (await iosInProcessAgentTransportForUrl(requestUrl)) ??
-      (await desktopLocalAgentTransportForUrl(requestUrl)) ??
-      remoteRelayTransportForUrl(requestUrl) ??
-      sshRuntimeTransportForUrl(requestUrl) ??
-      desktopHttpTransportForUrl(requestUrl) ??
-      nativeCloudHttpTransportForUrl(requestUrl) ??
+      (await getHostRequestTransport(requestUrl, "agent")) ??
       this.requestTransport
     );
   }
@@ -3149,4 +3102,22 @@ export class ElizaClient {
         : {}),
     };
   }
+}
+
+export async function invokeLocalDesktopRpc<T>(
+  baseUrl: string,
+  options: {
+    rpcMethod: string;
+    ipcChannel: string;
+    params?: unknown;
+  },
+): Promise<T | null> {
+  if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
+    isDesktopExternalApiBaseUrl(baseUrl) ||
+    isRemoteRelayRestAdapterBase(baseUrl)
+  ) {
+    return null;
+  }
+  return invokeDesktopBridgeRequest<T>(options);
 }

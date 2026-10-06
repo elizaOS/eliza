@@ -10,7 +10,7 @@ import {
   type TargetSource,
   type TargetSourceRegistry,
 } from "@elizaos/core";
-import { initializeTestRuntime } from "@elizaos/testing";
+import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { describe, expect, it } from "vitest";
 import { basicServices } from "./index.ts";
 

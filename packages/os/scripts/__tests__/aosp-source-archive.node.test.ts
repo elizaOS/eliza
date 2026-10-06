@@ -11,7 +11,7 @@ import {
   verifyArchive,
   verifyCheckout,
   verifyExtractedVendor,
-} from "../aosp/verify-source-lock.ts";
+} from "../android/verify-source-lock.ts";
 
 test("AOSP archive verification binds streamed bytes and rejects symlink inputs", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "aosp-source-archive-"));
@@ -120,7 +120,7 @@ test("AOSP verification rejects incomplete CLI inputs and empty vendor contracts
       /AOSP lock|full Git object ID/,
     );
   }
-  for (const name of ["cuttlefish", "pixel9a", "pixel11pro"])
+  for (const name of ["cuttlefish", "pixel11pro"])
     assert.equal(typeof loadProfile(name).manifest.commit, "string");
 });
 
@@ -176,7 +176,7 @@ test("AOSP checkout verification requires real source files and reports profile-
   const output = execFileSync(
     process.execPath,
     [
-      new URL("../aosp/verify-source-lock.ts", import.meta.url).pathname,
+      new URL("../android/verify-source-lock.ts", import.meta.url).pathname,
       "--profile",
       "cuttlefish",
     ],

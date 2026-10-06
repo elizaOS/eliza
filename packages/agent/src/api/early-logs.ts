@@ -10,8 +10,6 @@ import {
   type LogEntry as StructuredLogEntry,
 } from "@elizaos/core";
 
-export type { LogEntry as EarlyLogEntry };
-
 const LEVEL_NAMES: Record<number, string> = {
   10: "trace",
   20: "debug",

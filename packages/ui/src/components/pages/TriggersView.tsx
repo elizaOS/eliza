@@ -18,20 +18,22 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAgentElement } from "../../agent-surface";
-import type { TriggerSummary } from "../../api/client";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useAppSelectorShallow } from "../../state";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+import type { TriggerSummary } from "../../api/client-types-core";
+import { PageLayout } from "../../layouts/page-layout";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import { confirmDesktopAction } from "../../utils";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { detectUiHostCapabilities } from "../../utils/host-capabilities";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import {
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "../composites/sidebar/sidebar-layout";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -822,7 +824,7 @@ function TriggersLayout() {
   );
 
   return (
-    <ShellViewAgentSurface viewId="triggers">
+    <ShellViewAgentSurface viewId="automations">
       <PageLayout
         className="h-full"
         data-testid="trigger-shell"

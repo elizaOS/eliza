@@ -36,6 +36,11 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, resolve, sep } from "node:path";
 import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+  isCodingAgentBackend,
+} from "@elizaos/contracts";
+import {
   ElizaError,
   type IAgentRuntime,
   Service,
@@ -44,16 +49,11 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import {
-  CODING_AGENT_BACKEND_PREFLIGHTS,
-  CODING_AGENT_BACKENDS,
-  isCodingAgentBackend,
-} from "@elizaos/core/contracts/coding-agent-capabilities";
-import {
   applyHostToolchainExecutionBaseline,
   getHostExecutionBaseline,
   HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
-} from "@elizaos/core/host-execution-env";
-import { isAndroidMobile } from "@elizaos/core/runtime-env";
+} from "@elizaos/host";
+import { isAndroidMobile } from "@elizaos/host/protocol";
 import { SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE } from "@elizaos/plugin-assistant";
 import {
   NativeAcpClient,
@@ -256,6 +256,7 @@ type RunResult = {
   terminalFailure?: AcpTerminalFailure;
   protocolError?: string;
   cancelled?: boolean;
+  killedByService?: boolean;
   durationMs: number;
 };
 
@@ -2719,6 +2720,7 @@ export class AcpService extends Service {
     }
 
     if (
+      !result.killedByService &&
       (result.code === 0 || result.code === null) &&
       (stopReason !== "error" || result.finalText.trim().length > 0)
     ) {
@@ -4487,6 +4489,7 @@ export class AcpService extends Service {
           // pipeline.
           const cleanCompletion =
             !record.cancelled &&
+            !record.killedByService &&
             (code === 0 || code === null) &&
             finalText.trim().length > 0 &&
             !isIncompletePromptStopReason(stopReason);
@@ -4549,6 +4552,7 @@ export class AcpService extends Service {
           ...(terminalFailure ? { terminalFailure } : {}),
           ...(protocolError ? { protocolError } : {}),
           cancelled: record.cancelled,
+          killedByService: record.killedByService,
           durationMs: Date.now() - startedAt,
         });
       });

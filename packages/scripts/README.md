@@ -25,6 +25,9 @@ tracks source changes without running builds. Typechecks that read generated
 declarations declare the producing build explicitly. Source imports outside
 Turbo's dependency graph, including peer-only packages, need an explicit
 `#typecheck:deps` edge so their changes invalidate cached checks.
+The local-inference dependency-hash task covers native inference, computer use,
+and UI sources together to break their protocol import cycle. It retains the
+group's external dependency hashes; do not restore cyclic `^typecheck:deps` edges.
 Typechecks use the `eliza-source` export condition from the root TypeScript config;
 package exports own workspace source entrypoints. Keep `paths` only for mappings
 that differ from those exports. Emit configs clear inherited source conditions
@@ -53,6 +56,14 @@ manual captures outside that leaf. Producer changes must update the named
 inventory in `packages/testing/evidence/ingest.ts` and CI artifact uploads.
 Unit tests use temporary directories and clean them up; durable screenshots
 and recordings belong to explicit capture runs.
+
+Compound package test scripts can opt their Vitest configs into
+`compoundVitestEvidence()` from `lib/compound-test-evidence.ts`. The root test
+runner supplies a fresh directory scoped to that package's working directory;
+each invocation writes a distinct JUnit fragment. The runner reconciles every
+fragment and preserves child failures, missing-evidence and all-skipped guards.
+Only instrumented Vitest runs contribute testcase counts; every other command's
+exit status still gates the package result. No counts are inferred from stdout.
 
 ## Release preparation
 

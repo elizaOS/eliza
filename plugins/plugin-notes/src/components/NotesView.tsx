@@ -2,10 +2,12 @@
  * Connects the production Notes transport to the reusable presentation surface.
  * Mutations stay in chat so the planner and visible collection share one path.
  */
+import {
+  consumeNavigateViewPayload,
+  NAVIGATE_VIEW_EVENT,
+  useActiveAgentAuthority,
+} from "@elizaos/ui";
 
-import { consumeNavigateViewPayload } from "@elizaos/ui/app-navigate-view";
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
-import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
 import { useEffect, useState } from "react";
 import { NotesSurface } from "./NotesSurface.js";
 import { useNotesState } from "./useNotesState.js";
@@ -13,12 +15,7 @@ import { useNotesState } from "./useNotesState.js";
 export type { NotesSurfaceProps } from "./NotesSurface.js";
 export { NotesSurface } from "./NotesSurface.js";
 
-export interface NotesViewProps {
-  /** Render the shared route header. Embedded projections turn this off. */
-  standalone?: boolean;
-}
-
-export function NotesView({ standalone = false }: NotesViewProps = {}) {
+export function NotesView() {
   const { snapshot, loading, error, refresh } = useNotesState();
   const authority = useActiveAgentAuthority();
   const [target, setTarget] = useState<{
@@ -90,7 +87,6 @@ export function NotesView({ standalone = false }: NotesViewProps = {}) {
       loading={loading}
       error={error}
       refresh={refresh}
-      standalone={standalone}
       sourceNoteTarget={target?.authority === authority ? target : null}
     />
   );

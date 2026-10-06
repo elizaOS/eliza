@@ -1,16 +1,18 @@
+import { executePlannedToolCall } from "@elizaos/core";
 /** Mounted Todos dispatch and PA owner-task receipts; deterministic model, real PGlite. */
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { ChannelType, type Memory, type UUID } from "@elizaos/core";
+import {
+  createDeterministicModelPlugin,
+  strictTerminalReplyFixture,
+} from "@elizaos/testing/models";
 import { act, cleanup, render } from "@testing-library/react";
 import { JSDOM } from "jsdom";
 import { expect, it, vi } from "vitest";
-import { executePlannedToolCall } from "../../../packages/core/src/runtime/execute-planned-tool-call.ts";
 import { testOutputPath } from "../../../packages/scripts/lib/test-output.ts";
-import { strictTerminalReplyFixture } from "../../../packages/testing/src/deterministic-action-fixtures.ts";
-import { createDeterministicModelPlugin } from "../../../packages/testing/src/deterministic-model-plugin.ts";
 import {
   handleLifeOpsRoutes,
   type LifeOpsRouteContext,
@@ -19,12 +21,12 @@ import {
 // PA aliases the UI root and API barrel to one stub. Keep the real mounted
 // renderer and client together so this override cannot erase spatial exports.
 vi.mock("@elizaos/ui", async () => {
-  const api = await import("../../../packages/ui/src/api/client.ts");
-  const spatial = await import(
-    "../../../packages/ui/src/spatial/primitives.tsx"
-  );
+  const api = await import("../../../packages/ui/src/api/client");
+  const spatial = await import("../../../packages/ui/src/spatial/primitives");
+  const events = await import("../../../packages/ui/src/events/index");
   return {
     ...api,
+    dispatchChatPrefill: events.dispatchChatPrefill,
     SpatialButton: spatial.Button,
     SpatialCard: spatial.Card,
     SpatialDivider: spatial.Divider,
@@ -35,7 +37,10 @@ vi.mock("@elizaos/ui", async () => {
   };
 });
 
-import { client } from "../../../packages/ui/src/api/client.ts";
+import {
+  CHAT_PREFILL_EVENT,
+  type ChatPrefillEventDetail,
+} from "../../../packages/ui/src/events/index";
 import { TodosView } from "../../plugin-todos/src/components/todos/TodosView.tsx";
 import { todosPlugin } from "../../plugin-todos/src/plugin.ts";
 import { ownerTodosAction } from "../src/actions/owner-surfaces.ts";
@@ -102,11 +107,9 @@ it("separates mounted Add dispatch from owner task creation and Retry readback",
   );
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const { DynamicViewLoader, __resetDynamicViewLoaderCacheForTests } =
-    await import(
-      "../../../packages/ui/src/components/views/DynamicViewLoader.tsx"
-    );
+    await import("../../../packages/ui/src/components/views/DynamicViewLoader");
   const { invokeViewInteract } = await import(
-    "../../../packages/ui/src/components/views/view-interact-registry.ts"
+    "../../../packages/ui/src/components/views/view-interact-registry"
   );
   Object.defineProperty(window, "CSS", {
     configurable: true,
@@ -125,25 +128,11 @@ it("separates mounted Add dispatch from owner task creation and Retry readback",
   };
   const service = new LifeOpsService(runtime, { ownerEntityId: owner });
   const requests: string[] = [];
-  let delivered!: Promise<unknown>;
   let reply = "";
-  const transport = vi
-    .spyOn(client, "sendChatRest")
-    .mockImplementation(async (text) => {
-      requests.push(text);
-      // Replace only the host transport: the actual message service and strict
-      // model fixture produce the clarification. No successful task is fabricated.
-      delivered = messageService.handleMessage(
-        runtime,
-        { ...message, content: { ...message.content, text } },
-        async (content) => {
-          reply += content.text ?? "";
-          return [];
-        },
-      );
-      await delivered;
-      return { text: reply } as Awaited<ReturnType<typeof client.sendChatRest>>;
-    });
+  const onPrefill = (event: Event) => {
+    requests.push((event as CustomEvent<ChatPrefillEventDetail>).detail.text);
+  };
+  window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
   try {
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", owner);
     await runtime.ensureConnection({
@@ -242,8 +231,26 @@ it("separates mounted Add dispatch from owner task creation and Retry readback",
     };
     await act(async () => {
       await dispatch("VIEW_TODOS_ADD");
-      await delivered;
     });
+    expect(requests).toEqual([ask]);
+    expect(reply).toBe("");
+    expect(
+      await service.repository.listDefinitions(runtime.agentId, {
+        domain: "user_lifeops",
+        subjectType: "owner",
+        subjectId: owner,
+      }),
+    ).toEqual(before);
+    // Add only prefills the composer. Explicitly submit that draft through the
+    // real message service to exercise clarification without inventing a task.
+    await messageService.handleMessage(
+      runtime,
+      { ...message, content: { ...message.content, text: requests[0] } },
+      async (content) => {
+        reply += content.text ?? "";
+        return [];
+      },
+    );
     const diagnosticOutput = testOutputPath("todos-mounted-operations");
     await mkdir(diagnosticOutput, { recursive: true });
     await writeFile(
@@ -335,7 +342,7 @@ it("separates mounted Add dispatch from owner task creation and Retry readback",
           modelDiagnostics: model.getFixtureDiagnostics(),
           limitations: [
             "DOM mounted in jsdom, not desktop/mobile visual certification",
-            "Add transport is an in-process adapter into the real message service",
+            "Add prefills the composer; explicit submission uses the real message service",
             "Authored follow-up uses canonical OWNER_TODOS dispatch, not model intent quality",
           ],
         },
@@ -356,7 +363,7 @@ it("separates mounted Add dispatch from owner task creation and Retry readback",
         cleanup();
         await new Promise<void>((resolve) => setImmediate(resolve));
       });
-      transport.mockRestore();
+      window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
       delete window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__;
       __resetDynamicViewLoaderCacheForTests();
     } finally {

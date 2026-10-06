@@ -71,6 +71,24 @@ export interface ProgressiveContentFaultExecutor {
   observeEffects?(): readonly string[] | Promise<readonly string[]>;
 }
 
+/** Shared fail-closed observer boundary for fault matrices and lifecycle soaks. */
+export async function observeProgressiveContentFaultEffects(
+  executor: ProgressiveContentFaultExecutor,
+): Promise<readonly string[]> {
+  try {
+    const effects = await executor.observeEffects?.();
+    return Array.isArray(effects) &&
+      effects.every((effect) => typeof effect === "string")
+      ? effects
+      : ["observer-invalid-or-missing"];
+  } catch (error) {
+    // error-policy:J1 An observer failure must fail evidence qualification.
+    return [
+      `observer-error:${error instanceof Error ? error.name : "unknown"}`,
+    ];
+  }
+}
+
 function faultCode(error: unknown): string {
   if (error && typeof error === "object") {
     const code = (error as { code?: unknown }).code;
@@ -99,13 +117,7 @@ export async function runProgressiveContentFaultRegistry(input: {
       } catch (error) {
         observedCode = faultCode(error);
       }
-      try {
-        observedEffects = (await executor.observeEffects?.()) ?? [];
-      } catch (error) {
-        observedEffects = [
-          `observer-error:${error instanceof Error ? error.name : "unknown"}`,
-        ];
-      }
+      observedEffects = await observeProgressiveContentFaultEffects(executor);
     }
     const forbiddenEffects = PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS;
     results.push({
@@ -114,11 +126,7 @@ export async function runProgressiveContentFaultRegistry(input: {
       expectedCode,
       forbiddenEffects,
       status:
-        observedCode === expectedCode &&
-        observedEffects.every(
-          (effect) =>
-            !forbiddenEffects.some((forbidden) => forbidden === effect),
-        )
+        observedCode === expectedCode && observedEffects.length === 0
           ? "passed"
           : "failed",
       ...(observedCode ? { observedCode } : {}),

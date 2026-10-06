@@ -1,14 +1,14 @@
 /** Handles character associations for an authenticated cloud application. */
 
+import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
+import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
+import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
-import { appsService } from "@/lib/services/apps";
-import { charactersService } from "@/lib/services/characters/characters";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 
 const LinkCharactersBody = z.object({
   character_ids: z.array(z.string()),

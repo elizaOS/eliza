@@ -2,7 +2,7 @@
 
 import { mkdirSync } from "node:fs";
 import path, { join } from "node:path";
-import { resolveStateDir } from "../config/paths.ts";
+import { resolveStateDir } from "@elizaos/core";
 import {
   createEngine,
   detectBestEngine,

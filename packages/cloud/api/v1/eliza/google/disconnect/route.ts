@@ -1,33 +1,46 @@
 /**
  * POST /api/v1/eliza/google/disconnect
  *
- * Removes a managed Google connection (or all connections on the given side
- * when `connectionId` is null).
+ * Removes the managed Google connection for the caller's side (preferring
+ * the active connection when `connectionId` is omitted or null).
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   AgentGoogleConnectorError,
   disconnectManagedGoogleConnection,
-} from "@/lib/services/agent-google-connector";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/agent-google-connector";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const app = new Hono<AppEnv>();
 
-const requestSchema = z.object({
-  side: z.enum(["owner", "agent"]).optional(),
-  connectionId: z.string().uuid().nullable().optional(),
-});
+const requestSchema = z
+  .object({
+    side: z.enum(["owner", "agent"]).optional(),
+    connectionId: z.string().uuid().nullable().optional(),
+  })
+  .strict();
 
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const parsed = requestSchema.safeParse(
-      await c.req.json().catch(() => ({})),
-    );
+    const rawBody = await c.req.text();
+    let bodyValue: unknown = {};
+    if (rawBody.trim().length > 0) {
+      try {
+        bodyValue = JSON.parse(rawBody);
+      } catch {
+        // error-policy:J3 malformed client JSON is an explicit invalid request.
+        return c.json(
+          { error: "Invalid disconnect request: body is not valid JSON." },
+          400,
+        );
+      }
+    }
+    const parsed = requestSchema.safeParse(bodyValue);
     if (!parsed.success) {
       return c.json(
         { error: "Invalid disconnect request.", details: parsed.error.issues },

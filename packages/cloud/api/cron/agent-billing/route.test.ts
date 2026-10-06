@@ -248,7 +248,7 @@ const completeBillingRun = mock(
   },
 );
 
-mock.module("@/db/repositories/agent-billing", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/agent-billing", () => ({
   agentBillingRepository: {
     suspendFailedSandboxBilling,
     listBillableSandboxes,
@@ -260,7 +260,7 @@ mock.module("@/db/repositories/agent-billing", () => ({
   },
 }));
 
-mock.module("@/db/repositories/agent-billing-runs", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/agent-billing-runs", () => ({
   agentBillingRunRepository: {
     startOrLoad: startOrLoadBillingRun,
     listItems: listBillingRunItems,
@@ -270,7 +270,7 @@ mock.module("@/db/repositories/agent-billing-runs", () => ({
   },
 }));
 
-mock.module("@/db/repositories/users", () => ({
+mock.module("@elizaos/cloud-shared/db/repositories/users", () => ({
   providerForPlatform: (platform: string | undefined) =>
     platform === "telegram" || platform === "discord" || platform === "whatsapp"
       ? platform
@@ -282,33 +282,33 @@ mock.module("@/db/repositories/users", () => ({
   },
 }));
 
-mock.module("@/lib/services/agent-unfunded-stop", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/agent-unfunded-stop", () => ({
   enqueueAgentUnfundedStopForRun,
 }));
 
-mock.module("@/lib/services/email", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/email", () => ({
   emailService: {
     sendContainerShutdownWarningEmail,
   },
 }));
 
-mock.module("@/lib/services/eliza-sandbox", () => ({
+mock.module("@elizaos/cloud-shared/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: {
     shutdown: shutdownSandbox,
   },
 }));
 
-mock.module("@/lib/services/provisioning-jobs", () => ({
+mock.module("@elizaos/cloud-shared/agents", () => ({
   listRecoverableAgentComputeStopIntents,
   rearmRecoverableAgentComputeStopIntentOnce,
   provisioningJobService: { enqueueAgentSuspendOnce, triggerImmediate },
 }));
 
-mock.module("@/lib/security/safe-fetch", () => ({
+mock.module("@elizaos/cloud-shared/lib/security/safe-fetch", () => ({
   safeFetch: webhookFetch,
 }));
 
-mock.module("@/lib/utils/logger", () => ({
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({
   logger: {
     info: loggerInfo,
     warn: loggerWarn,

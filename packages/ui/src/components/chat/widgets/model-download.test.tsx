@@ -4,7 +4,7 @@
 import type {
   LocalInferenceSlotReadiness,
   ModelHubSnapshot,
-} from "@elizaos/core/contracts/local-inference";
+} from "@elizaos/contracts";
 import {
   act,
   cleanup,
@@ -39,7 +39,7 @@ vi.mock("../../../hooks/useRuntimeMode", () => ({
   useRuntimeMode: () => runtimeModeMock,
 }));
 const mobileRuntimeModeMock = vi.hoisted(() => ({
-  value: null as "local" | "remote-mac" | "tunnel-to-mobile" | null,
+  value: null as "local" | "remote-mac" | null,
 }));
 vi.mock("../../../first-run/mobile-runtime-mode", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -61,7 +61,7 @@ const {
   getHubMock: vi.fn(),
   startDownloadMock: vi.fn(),
 }));
-vi.mock("../../../api", () => ({
+vi.mock("../../../api/client", () => ({
   client: {
     onReconnect: vi.fn(() => () => {}),
     getBaseUrl: getBaseUrlMock,
@@ -176,7 +176,7 @@ describe("ModelDownloadWidget", () => {
     startDownloadMock.mockResolvedValue({ job: {} });
   });
   afterEach(cleanup);
-  it.each(["remote-mac", "tunnel-to-mobile"] as const)(
+  it.each(["remote-mac"] as const)(
     "hides local-model routing errors for %s phone placement on a Mac host",
     async (mode) => {
       mobileRuntimeModeMock.value = mode;

@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "../api";
+import { client } from "../api/client";
 import type { AutomationListResponse } from "../api/client-types-config";
 import type { ScheduledTaskListResponse } from "../api/client-types-core";
 import { mergeUnifiedTasks } from "../utils/merge-unified-tasks";

@@ -6,16 +6,16 @@
 
 import { AlertTriangle, RefreshCw, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
-import { client } from "../../../api";
+import { client } from "../../../api/client";
 import "../../../api/client-orchestrator-widgets";
+import type { TranslateFn } from "@elizaos/contracts";
 import type {
   OrchestratorWidgetSnapshot,
   OrchestratorWidgetStatus,
   OrchestratorWidgetTask,
 } from "../../../api/client-orchestrator-widgets";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
-import { useAppSelectorShallow } from "../../../state";
-import type { TranslateFn } from "../../../types";
+import { useAppSelectorShallow } from "../../../state/app-store";
 import { Button } from "../../ui/button";
 import { fallbackTranslate } from "./agent-orchestrator-accounts-view";
 import { useWidgetNavigation } from "./home-widget-card";

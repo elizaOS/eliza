@@ -12,11 +12,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const registration = vi.hoisted(() => ({ register: vi.fn() }));
 
-vi.mock("@elizaos/ui/app-shell-registry", () => ({
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
   registerAppShellPage: registration.register,
-}));
-vi.mock("@elizaos/ui/platform/init", () => ({ isElizaOS: () => true }));
-vi.mock("@elizaos/ui/components", () => ({
+  isElizaOS: () => true,
   PluginPageFrame: ({
     children,
     title,
@@ -62,7 +61,9 @@ async function exercise(
 
 describe("Contacts host-view ABI", () => {
   it("keeps native entry points framed and the dynamic bundle embeddable", async () => {
-    await import("./register.ts");
+    const { registerApp } = await import("./register.ts");
+    expect(registration.register).not.toHaveBeenCalled();
+    registerApp();
     const registrationCall = registration.register.mock.calls[0]?.[0];
     expect(registrationCall).toBeDefined();
 

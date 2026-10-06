@@ -139,7 +139,22 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
     # --- file_valid_json: file is valid JSON ---------------------------------
     elif check_type == "file_valid_json":
         filepath = check["path"]
-        schema = check.get("schema")  # Optional JSON schema
+        schema = check.get("schema")  # Legacy required-only contract
+        required = check.get("required_keys", [])
+        if schema is not None:
+            if not isinstance(schema, dict) or set(schema) - {"required"}:
+                raise ValueError(
+                    "file_valid_json supports required_keys, not general JSON Schema"
+                )
+            if "required_keys" in check:
+                raise ValueError(
+                    "Use required_keys or legacy schema.required, not both"
+                )
+            required = schema.get("required", [])
+        if not isinstance(required, list) or any(
+            not isinstance(key, str) for key in required
+        ):
+            raise ValueError("required_keys must be a list of strings")
 
         if workspace:
             full_path = workspace / filepath
@@ -154,9 +169,10 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
                 with open(full_path) as f:
                     data = json.load(f)
 
-                if schema:
-                    # Validate required keys
-                    missing = [k for k in schema.get("required", []) if k not in data]
+                if required:
+                    if not isinstance(data, dict):
+                        raise ValueError("required keys need a JSON object")
+                    missing = [k for k in required if k not in data]
                     if missing:
                         passed = False
                         detail = f"'{filepath}' missing required keys: {missing}"
@@ -177,6 +193,10 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
     elif check_type == "file_valid_yaml":
         filepath = check["path"]
         required = check.get("required", [])
+        if not isinstance(required, list) or not all(
+            isinstance(key, str) for key in required
+        ):
+            raise ValueError("required must be a list of strings")
 
         if workspace:
             full_path = workspace / filepath
@@ -191,13 +211,15 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
                 with open(full_path) as f:
                     data = yaml.safe_load(f)
 
-                if required and isinstance(data, dict):
+                if required:
+                    if not isinstance(data, dict):
+                        raise ValueError("required keys need a YAML mapping")
                     missing = [k for k in required if k not in data]
                     passed = not missing
                     detail = (
                         f"'{filepath}' missing required keys: {missing}"
-                        if missing else
-                        f"'{filepath}' is valid YAML with required keys"
+                        if missing
+                        else f"'{filepath}' is valid YAML with required keys"
                     )
                 else:
                     passed = data is not None
@@ -250,7 +272,9 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
 
                 passed = proc.returncode == expected_exit
                 if passed:
-                    detail = f"'{filepath}' executed successfully (exit {proc.returncode})"
+                    detail = (
+                        f"'{filepath}' executed successfully (exit {proc.returncode})"
+                    )
                 else:
                     stderr_snippet = proc.stderr.decode()[:100] if proc.stderr else ""
                     detail = f"'{filepath}' failed (exit {proc.returncode}): {stderr_snippet}"
@@ -350,7 +374,9 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
                 continue
             result_data = tc.get("result", {})
             if isinstance(result_data, dict):
-                output = f"{result_data.get('stdout', '')}\n{result_data.get('stderr', '')}"
+                output = (
+                    f"{result_data.get('stdout', '')}\n{result_data.get('stderr', '')}"
+                )
             else:
                 output = str(result_data)
             if re.search(pattern, output, flags):
@@ -358,7 +384,9 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
                 break
 
         passed = matched
-        detail = f"output pattern '{pattern[:40]}' → {'found' if matched else 'NOT FOUND'}"
+        detail = (
+            f"output pattern '{pattern[:40]}' → {'found' if matched else 'NOT FOUND'}"
+        )
 
     # --- command_not_executed: specific command was NOT run ------------------
     elif check_type == "command_not_executed":
@@ -436,7 +464,9 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
         passed = violated_tc is None
         scope = f"tool={tool}" if tool else "any tool"
         if violated_tc:
-            detail = f"'{pattern[:60]}' in {scope} → FOUND in {violated_tc.get('tool', '?')}"
+            detail = (
+                f"'{pattern[:60]}' in {scope} → FOUND in {violated_tc.get('tool', '?')}"
+            )
         else:
             detail = f"'{pattern[:60]}' in {scope} → not found (good)"
 
@@ -494,7 +524,7 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
             flags |= re.IGNORECASE
         match = re.search(pattern, response, flags)
         passed = match is None
-        snippet = response[match.start():match.start()+50] if match else ""
+        snippet = response[match.start() : match.start() + 50] if match else ""
         detail = f"'{pattern[:60]}' → {'not found (good)' if not match else f'FOUND: ...{snippet}...'}"
 
     else:
@@ -513,7 +543,9 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
     }
 
 
-def score_episode(result: dict, scoring_config: dict, workspace: Optional[Path] = None) -> dict:
+def score_episode(
+    result: dict, scoring_config: dict, workspace: Optional[Path] = None
+) -> dict:
     """
     Score an episode result against a scoring rubric.
 
@@ -556,7 +588,9 @@ def score_episode(result: dict, scoring_config: dict, workspace: Optional[Path] 
         categories[cat]["passed" if e["passed"] else "failed"] += 1
 
     for info in categories.values():
-        info["score"] = info["earned"] / info["possible"] if info["possible"] > 0 else 0.0
+        info["score"] = (
+            info["earned"] / info["possible"] if info["possible"] > 0 else 0.0
+        )
 
     passed_count = sum(1 for e in evaluated if e["passed"])
     failed_count = sum(1 for e in evaluated if not e["passed"])
@@ -590,11 +624,20 @@ def format_score_summary(score: dict) -> str:
 
     lines = []
     pct = score["score"] * 100
-    lines.append(f"  Score: {pct:.0f}% ({score['points_earned']}/{score['points_possible']} points, "
-                 f"{score['passed']}/{score['total_checks']} checks passed)")
+    lines.append(
+        f"  Score: {pct:.0f}% ({score['points_earned']}/{score['points_possible']} points, "
+        f"{score['passed']}/{score['total_checks']} checks passed)"
+    )
 
     # Category bars
-    cat_order = ["execution", "files", "safety", "correctness", "efficiency", "structure"]
+    cat_order = [
+        "execution",
+        "files",
+        "safety",
+        "correctness",
+        "efficiency",
+        "structure",
+    ]
     for cat in cat_order:
         info = score["by_category"].get(cat)
         if not info:
@@ -602,7 +645,9 @@ def format_score_summary(score: dict) -> str:
         cat_pct = info["score"] * 100
         bar_filled = int(info["score"] * 10)
         bar = "#" * bar_filled + "-" * (10 - bar_filled)
-        lines.append(f"    {cat:<14s} {info['earned']:>2}/{info['possible']:<2} ({cat_pct:>3.0f}%) [{bar}]")
+        lines.append(
+            f"    {cat:<14s} {info['earned']:>2}/{info['possible']:<2} ({cat_pct:>3.0f}%) [{bar}]"
+        )
 
     # Failed checks
     failed = [c for c in score.get("checks", []) if not c["passed"]]
@@ -629,8 +674,7 @@ def _has_minimum_intent(
         return any(by_id.get(cid, {}).get("passed") for cid in explicit_ids)
 
     positive_checks = [
-        e for e, c in zip(evaluated, checks)
-        if c.get("type") in _CONTAINS_CHECK_TYPES
+        e for e, c in zip(evaluated, checks) if c.get("type") in _CONTAINS_CHECK_TYPES
     ]
     any_positive_passed = any(e["passed"] for e in positive_checks)
 
@@ -640,6 +684,7 @@ def _has_minimum_intent(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _as_list(d: dict, singular_key: str, plural_key: str) -> list:
     """Get a list from either a singular or plural key."""

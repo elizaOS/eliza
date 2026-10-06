@@ -12,51 +12,128 @@ export {
   LifeOpsWorkflowRunFailedUncompensatedError,
 } from "./service-types.js";
 
-import {
-  type CreateLifeOpsCalendarEventAttendee,
-  type CreateLifeOpsCalendarEventRequest,
-  type CreateLifeOpsCalendarEventResponse,
-  type GetLifeOpsCalendarFeedRequest,
-  type LifeOpsCalendarEvent,
-  type LifeOpsCalendarFeed,
-  type LifeOpsCalendarRecurrenceScope,
-  type LifeOpsCalendarSummary,
-  type LifeOpsNextCalendarEventContext,
-  type ListLifeOpsCalendarsRequest,
-  type SetLifeOpsCalendarIncludedRequest,
-  type SetLifeOpsCalendarIncludedResponse,
-} from "@elizaos/core/contracts/calendar";
-import {
-  type GetLifeOpsInboxRequest,
-  type LifeOpsCapabilitiesStatus,
-  type LifeOpsDiscordConnectorStatus,
-  type LifeOpsIMessageConnectorStatus,
-  type LifeOpsInbox,
-  type LifeOpsInboxMessage,
-  type LifeOpsMessageChannel,
-  type LifeOpsOwnerBrowserAccessSource,
-  type LifeOpsPersonalBaselineResponse,
-  type LifeOpsRelationship,
-  type LifeOpsRelationshipInteraction,
-  type LifeOpsSchedulingNegotiation,
-  type LifeOpsSchedulingProposal,
-  type LifeOpsScreenTimeDaily,
-  type LifeOpsScreenTimeHistoryResponse,
-  type LifeOpsScreenTimeRangeKey,
-  type LifeOpsScreenTimeSession,
-  type LifeOpsScreenTimeSource,
-  type LifeOpsScreenTimeSummary,
-  type LifeOpsSleepHistoryResponse,
-  type LifeOpsSleepRegularityResponse,
-  type LifeOpsTelegramConnectorStatus,
-  type LifeOpsWhatsAppConnectorStatus,
-  type LifeOpsXFeedItem,
-  type LifeOpsXFeedType,
-  type LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
-  type LifeOpsSocialHabitSummary as SocialHabitSummary,
-  type VerifyLifeOpsTelegramConnectorRequest,
-  type VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/core/contracts/personal-assistant";
+import type {
+  CompleteLifeOpsBrowserSessionRequest,
+  CompleteLifeOpsOccurrenceRequest,
+  ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserSessionRequest,
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsCalendarEventResponse,
+  CreateLifeOpsDefinitionRequest,
+  CreateLifeOpsGmailBatchReplyDraftsRequest,
+  CreateLifeOpsGmailReplyDraftRequest,
+  CreateLifeOpsGoalRequest,
+  CreateLifeOpsWorkflowRequest,
+  CreateLifeOpsXPostRequest,
+  DisconnectLifeOpsGoogleConnectorRequest,
+  DisconnectLifeOpsHealthConnectorRequest,
+  GetLifeOpsCalendarFeedRequest,
+  GetLifeOpsGmailRecommendationsRequest,
+  GetLifeOpsGmailSearchRequest,
+  GetLifeOpsGmailSpamReviewRequest,
+  GetLifeOpsGmailTriageRequest,
+  GetLifeOpsGmailUnrespondedRequest,
+  GetLifeOpsHealthSummaryRequest,
+  GetLifeOpsInboxRequest,
+  IngestLifeOpsGmailEventRequest,
+  LifeOpsBrowserSession,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
+  LifeOpsCalendarSummary,
+  LifeOpsCapabilitiesStatus,
+  LifeOpsChannelPolicy,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsDefinitionCreationResult,
+  LifeOpsDefinitionRecord,
+  LifeOpsDefinitionTransitionResult,
+  LifeOpsDiscordConnectorStatus,
+  LifeOpsGmailBatchReplyDraftsFeed,
+  LifeOpsGmailBatchReplySendResult,
+  LifeOpsGmailEventIngestResult,
+  LifeOpsGmailImportedDataPurgeReceipt,
+  LifeOpsGmailManageResult,
+  LifeOpsGmailMessageSummary,
+  LifeOpsGmailNeedsResponseFeed,
+  LifeOpsGmailRecommendationsFeed,
+  LifeOpsGmailReplyDraft,
+  LifeOpsGmailSearchFeed,
+  LifeOpsGmailSeedReceipt,
+  LifeOpsGmailSpamReviewFeed,
+  LifeOpsGmailSpamReviewItem,
+  LifeOpsGmailSyncHealth,
+  LifeOpsGmailTriageFeed,
+  LifeOpsGmailUnrespondedFeed,
+  LifeOpsGoalExperienceLoop,
+  LifeOpsGoalRecord,
+  LifeOpsGoalReview,
+  LifeOpsGoogleConnectorStatus,
+  LifeOpsHealthConnectorProvider,
+  LifeOpsHealthConnectorStatus,
+  LifeOpsHealthSummaryResponse,
+  LifeOpsIMessageConnectorStatus,
+  LifeOpsInbox,
+  LifeOpsInboxMessage,
+  LifeOpsMessageChannel,
+  LifeOpsNextCalendarEventContext,
+  LifeOpsOccurrenceExplanation,
+  LifeOpsOccurrenceView,
+  LifeOpsOverview,
+  LifeOpsOwnerBrowserAccessSource,
+  LifeOpsPersonalBaselineResponse,
+  LifeOpsRelationship,
+  LifeOpsRelationshipInteraction,
+  LifeOpsSchedulingNegotiation,
+  LifeOpsSchedulingProposal,
+  LifeOpsScreenTimeDaily,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeRangeKey,
+  LifeOpsScreenTimeSession,
+  LifeOpsScreenTimeSource,
+  LifeOpsScreenTimeSummary,
+  LifeOpsSleepHistoryResponse,
+  LifeOpsSleepRegularityResponse,
+  LifeOpsTelegramConnectorStatus,
+  LifeOpsTodoView,
+  LifeOpsWeeklyGoalReview,
+  LifeOpsWhatsAppConnectorStatus,
+  LifeOpsWorkflowRecord,
+  LifeOpsWorkflowRun,
+  LifeOpsXConnectorStatus,
+  LifeOpsXDm,
+  LifeOpsXFeedItem,
+  LifeOpsXFeedType,
+  LifeOpsXPostResponse,
+  ListLifeOpsCalendarsRequest,
+  ManageLifeOpsGmailMessagesRequest,
+  PurgeLifeOpsGmailImportedDataRequest,
+  RecordLifeOpsProgressRequest,
+  RecordLifeOpsProgressResult,
+  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  SeedLifeOpsGmailRequest,
+  SendLifeOpsGmailBatchReplyRequest,
+  SendLifeOpsGmailMessageRequest,
+  SendLifeOpsGmailReplyRequest,
+  SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
+  SnoozeLifeOpsOccurrenceRequest,
+  LifeOpsSocialHabitSummary as SocialHabitSummary,
+  StartLifeOpsGoogleConnectorRequest,
+  StartLifeOpsGoogleConnectorResponse,
+  StartLifeOpsHealthConnectorRequest,
+  StartLifeOpsHealthConnectorResponse,
+  SyncLifeOpsHealthConnectorRequest,
+  UpdateLifeOpsBrowserSessionProgressRequest,
+  UpdateLifeOpsDefinitionRequest,
+  UpdateLifeOpsGmailSpamReviewItemRequest,
+  UpdateLifeOpsGoalRequest,
+  UpdateLifeOpsWorkflowRequest,
+  VerifyLifeOpsTelegramConnectorRequest,
+  VerifyLifeOpsTelegramConnectorResponse,
+} from "@elizaos/contracts";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
@@ -88,89 +165,7 @@ import type {
   EmailUnsubscribeResult,
   EmailUnsubscribeScanRequest,
 } from "@elizaos/plugin-inbox";
-import type {
-  CompleteLifeOpsBrowserSessionRequest,
-  CompleteLifeOpsOccurrenceRequest,
-  ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserSessionRequest,
-  CreateLifeOpsDefinitionRequest,
-  CreateLifeOpsGmailBatchReplyDraftsRequest,
-  CreateLifeOpsGmailReplyDraftRequest,
-  CreateLifeOpsGoalRequest,
-  CreateLifeOpsWorkflowRequest,
-  CreateLifeOpsXPostRequest,
-  DisconnectLifeOpsGoogleConnectorRequest,
-  DisconnectLifeOpsHealthConnectorRequest,
-  GetLifeOpsGmailRecommendationsRequest,
-  GetLifeOpsGmailSearchRequest,
-  GetLifeOpsGmailSpamReviewRequest,
-  GetLifeOpsGmailTriageRequest,
-  GetLifeOpsGmailUnrespondedRequest,
-  GetLifeOpsHealthSummaryRequest,
-  IngestLifeOpsGmailEventRequest,
-  LifeOpsBrowserSession,
-  LifeOpsChannelPolicy,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsDefinitionCreationResult,
-  LifeOpsDefinitionRecord,
-  LifeOpsDefinitionTransitionResult,
-  LifeOpsGmailBatchReplyDraftsFeed,
-  LifeOpsGmailBatchReplySendResult,
-  LifeOpsGmailEventIngestResult,
-  LifeOpsGmailImportedDataPurgeReceipt,
-  LifeOpsGmailManageResult,
-  LifeOpsGmailMessageSummary,
-  LifeOpsGmailNeedsResponseFeed,
-  LifeOpsGmailRecommendationsFeed,
-  LifeOpsGmailReplyDraft,
-  LifeOpsGmailSearchFeed,
-  LifeOpsGmailSeedReceipt,
-  LifeOpsGmailSpamReviewFeed,
-  LifeOpsGmailSpamReviewItem,
-  LifeOpsGmailSyncHealth,
-  LifeOpsGmailTriageFeed,
-  LifeOpsGmailUnrespondedFeed,
-  LifeOpsGoalExperienceLoop,
-  LifeOpsGoalRecord,
-  LifeOpsGoalReview,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsHealthConnectorProvider,
-  LifeOpsHealthConnectorStatus,
-  LifeOpsHealthSummaryResponse,
-  LifeOpsOccurrenceExplanation,
-  LifeOpsOccurrenceView,
-  LifeOpsOverview,
-  LifeOpsTodoView,
-  LifeOpsWeeklyGoalReview,
-  LifeOpsWorkflowRecord,
-  LifeOpsWorkflowRun,
-  LifeOpsXConnectorStatus,
-  LifeOpsXDm,
-  LifeOpsXPostResponse,
-  ManageLifeOpsGmailMessagesRequest,
-  PurgeLifeOpsGmailImportedDataRequest,
-  RecordLifeOpsProgressRequest,
-  RecordLifeOpsProgressResult,
-  SeedLifeOpsGmailRequest,
-  SendLifeOpsGmailBatchReplyRequest,
-  SendLifeOpsGmailMessageRequest,
-  SendLifeOpsGmailReplyRequest,
-  SnoozeLifeOpsOccurrenceRequest,
-  StartLifeOpsGoogleConnectorRequest,
-  StartLifeOpsGoogleConnectorResponse,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsHealthConnectorResponse,
-  SyncLifeOpsHealthConnectorRequest,
-  UpdateLifeOpsBrowserSessionProgressRequest,
-  UpdateLifeOpsDefinitionRequest,
-  UpdateLifeOpsGmailSpamReviewItemRequest,
-  UpdateLifeOpsGoalRequest,
-  UpdateLifeOpsWorkflowRequest,
-} from "../contracts/index.js";
 import { loadLifeOpsAppState } from "./app-state.js";
-import { resolveDefaultTimeZone } from "./defaults.js";
 import type { DefinitionCreationContext } from "./definition-creation-identity.js";
 import { BrowserDomain } from "./domains/browser-service.js";
 import { CalendarDomain } from "./domains/calendar-service.js";
@@ -218,7 +213,10 @@ import {
 import { WorkflowsDomain } from "./domains/workflows-service.js";
 import { XReadDomain } from "./domains/x-read-service.js";
 import { XDomain } from "./domains/x-service.js";
-import { resolveOwnerFactStore } from "./owner/fact-store.js";
+import {
+  resolveOwnerFactStore,
+  resolveOwnerTimeZone,
+} from "./owner/fact-store.js";
 import type {
   LifeOpsScheduleInspection,
   LifeOpsScheduleSummary,
@@ -1654,8 +1652,14 @@ export class LifeOpsService extends LifeOpsServiceBase {
     occurrenceId: string,
     request: SnoozeLifeOpsOccurrenceRequest,
     now?: Date,
+    options?: { expectedDefinitionUpdatedAt: string },
   ): Promise<LifeOpsOccurrenceView> {
-    return this.definitionsDomain.snoozeOccurrence(occurrenceId, request, now);
+    return this.definitionsDomain.snoozeOccurrence(
+      occurrenceId,
+      request,
+      now,
+      options,
+    );
   }
 
   readonly goalsDomain = new GoalsDomain(this, {
@@ -1750,7 +1754,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
   async listOwnerOccurrencesCompletedToday(
     now = new Date(),
   ): Promise<LifeOpsOccurrenceView[]> {
-    const timeZone = resolveDefaultTimeZone();
+    const timeZone = await resolveOwnerTimeZone(this.runtime, now);
     const dayKey = (date: Date): string => {
       const parts = getZonedDateParts(date, timeZone);
       return `${parts.year}-${parts.month}-${parts.day}`;
@@ -1761,14 +1765,15 @@ export class LifeOpsService extends LifeOpsServiceBase {
     // applied AFTER it: with the filter in TypeScript, agent-subject
     // completions under multi-room load consumed the LIMIT window and
     // silently evicted owner wins from the recap (#16966 post-merge review).
-    // The scan limit is sized for the 36h window, newest-first — the local-day
-    // filter below only trims the older-than-today tail, so today's rows are
-    // never the ones cut. The final cap bounds the provider/brief block.
+    // Known completion timestamps are bounded through now before the scan
+    // limit, so future timestamps cannot evict real wins. The local-day filter
+    // then removes the lookback tail; the final cap bounds the provider block.
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
       {
         subjectType: "owner",
+        throughIso: now.toISOString(),
         definitionScopes: [
           {
             domain: "user_lifeops",
@@ -1780,9 +1785,17 @@ export class LifeOpsService extends LifeOpsServiceBase {
       },
     );
     return views
-      .filter(
-        (occurrence) => dayKey(new Date(occurrence.updatedAt)) === todayKey,
-      )
+      .filter((occurrence) => {
+        const completedAt = occurrence.completionPayload?.completedAt;
+        if (typeof completedAt !== "string") return false;
+        const completedMs = Date.parse(completedAt);
+        return (
+          Number.isFinite(completedMs) &&
+          new Date(completedMs).toISOString() === completedAt &&
+          completedMs <= now.getTime() &&
+          dayKey(new Date(completedMs)) === todayKey
+        );
+      })
       .slice(0, 24);
   }
 
@@ -2026,8 +2039,11 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.healthDomain.getHealthSummary(request);
   }
 
-  getHealthDailySummary(date: string): Promise<HealthDailySummary> {
-    return this.healthDomain.getHealthDailySummary(date);
+  getHealthDailySummary(
+    date: string,
+    window: { timeZone: string },
+  ): Promise<HealthDailySummary> {
+    return this.healthDomain.getHealthDailySummary(date, window);
   }
 
   getHealthTrend(
@@ -2037,12 +2053,15 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.healthDomain.getHealthTrend(days, window);
   }
 
-  getHealthDataPoints(opts: {
-    metric: HealthDataPoint["metric"];
-    startAt: string;
-    endAt: string;
-  }): Promise<HealthDataPoint[]> {
-    return this.healthDomain.getHealthDataPoints(opts);
+  getHealthDataPoints(
+    opts: {
+      metric: HealthDataPoint["metric"];
+      startAt: string;
+      endAt: string;
+    },
+    window: { timeZone: string },
+  ): Promise<HealthDataPoint[]> {
+    return this.healthDomain.getHealthDataPoints(opts, window);
   }
 
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.
@@ -2555,6 +2574,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   getScreenTimeDaily(opts: {
     date: string;
+    timeZone?: string;
     source?: LifeOpsScreenTimeSource;
     identifier?: string;
     limit?: number;

@@ -59,13 +59,15 @@ subprojects { subproject ->
 // Shared WebView contract tests are test-only sources. Production plugin AARs
 // never include this host, its assets, or its dependencies.
 subprojects { subproject ->
-    if (subproject.name in ['capacitor-android', 'native-block-target', 'native-gateway-host']) return
+    if (subproject.name in ['capacitor-android', 'capacitor-push-notifications', 'native-block-target', 'native-gateway-host', 'native-reminder-push-tests']) return
     subproject.afterEvaluate {
         def fixtures = new File(rootDir, 'bridge-tests')
         def descriptors = new groovy.json.JsonSlurper().parse(new File(fixtures, 'plugins.json'))
         def directory = subproject.projectDir.parentFile.name
         def descriptor = descriptors[directory]
         if (descriptor == null) throw new GradleException("Missing native bridge contract: ${directory}")
+        // These libraries require a consumer identity/secure-store adapter, not a default bridge.
+        if (descriptor.kind == "host-configured-library") return
         def generated = new File(subproject.layout.buildDirectory.get().asFile, 'generated/native-bridge-tests')
         def prepare = subproject.tasks.register('prepareNativeBridgeTests') {
             inputs.dir(fixtures)

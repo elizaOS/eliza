@@ -4,9 +4,11 @@
  * events, and schema. The top-level unit the agent's plugin loader resolves,
  * validates, and wires into the runtime.
  */
+
 import type { ConnectorSourceDefinition } from "../connectors";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
-import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
+import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-fields";
+import type { ViewKind, ViewModality, ViewType } from "../views/declarations";
 import type { Character } from "./agent";
 import type { ChatPreHandler } from "./chat-pre-handler";
 import type { Action, AgentContext, Provider } from "./components";
@@ -24,7 +26,6 @@ import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
 import type { SurfaceManifest } from "./surface-manifest";
 import type { TestSuite } from "./testing";
-import type { ViewKind } from "./view-kind";
 
 /**
  * Type for a service class constructor.
@@ -274,31 +275,26 @@ export interface PluginAppBridge {
  * How the app shell treats the screen background while a view is active.
  *
  * - `opaque` (default): the host paints a full-window theme background behind
- *   the view, covering status/home-indicator safe areas so the shared wallpaper
- *   cannot leak through.
+ * the view, covering status/home-indicator safe areas so the shared wallpaper
+ * cannot leak through.
  * - `shared`: the view intentionally sits on the same unified background used
- *   by Home/Launcher.
+ * by Home/Launcher.
  */
 export type {
 	AppShellBackgroundPolicy,
 	ViewHeaderPolicy,
 } from "./surface-manifest.js";
 
-import type {
-	AppShellBackgroundPolicy,
-	ViewHeaderPolicy,
-} from "./surface-manifest.js";
-
 /**
- * How the app shell frames a view's top bar (#13586).
+ * How the app shell frames a view's top bar.
  *
  * - `normal` (default): the shell requires the shared `ViewHeader` (icon-only
- *   back + centered title). The uniform-top-bar audit fails any `normal` view
- *   that does not render it.
+ * back + centered title). The uniform-top-bar audit fails any `normal` view
+ * that does not render it.
  * - `fullscreen`: the view owns its full window and supplies its own chrome
- *   (e.g. an immersive browser/workbench toolbar); no shared header enforced.
+ * (e.g. an immersive browser/workbench toolbar); no shared header enforced.
  * - `modal`: the view is presented as a modal/sheet with its own dismiss
- *   affordance; the shared header is not enforced.
+ * affordance; the shared header is not enforced.
  * - `immersive`: a chrome-free surface (e.g. launcher/background); no header.
  */
 
@@ -323,40 +319,17 @@ export interface PluginAppNavTab {
 	tabAffinity?: string;
 	/** Sort priority within the nav (lower = first). Default 100. */
 	order?: number;
-	/**
-	 * If true, this tab is only visible when Developer Mode is enabled
-	 * in Settings. Defaults to false. Equivalent to `viewKind: "developer"`.
-	 */
-	developerOnly?: boolean;
-	/**
-	 * Four-tier visibility category. When set it supersedes `developerOnly`:
-	 * `system`/`release` are always shown, `developer`/`preview` follow their
-	 * Settings toggles. Omit to fall back to `developerOnly` → `release`.
-	 */
+
+	/** Four-tier visibility category; absent values default to release. */
 	viewKind?: ViewKind;
 	/**
 	 * Optional named group the tab belongs to (used by the shell to render
 	 * grouped tab strips, e.g. workbench/dev/wallet groupings).
 	 */
 	group?: string;
-	/**
-	 * Declared surface contract for this tab (#13452) — mirrors
-	 * `ViewDeclaration.surface`. Preferred over the standalone `backgroundPolicy`
-	 * / `headerPolicy` below, which remain the legacy fallback.
-	 */
+	/** Declared surface policies and capability grants. */
 	surface?: SurfaceManifest;
-	/**
-	 * Screen background policy for this tab. Defaults to `"opaque"`. Superseded
-	 * by `surface.background` when a manifest is declared.
-	 */
-	backgroundPolicy?: AppShellBackgroundPolicy;
-	/**
-	 * Top-bar framing policy (#13586). Defaults to `"normal"`, which the shell
-	 * enforces with the shared `ViewHeader`. Set `fullscreen`/`modal`/`immersive`
-	 * for surfaces that own their own chrome. Superseded by `surface.header` when
-	 * a manifest is declared.
-	 */
-	headerPolicy?: ViewHeaderPolicy;
+
 	/**
 	 * Optional package export specifier the shell will dynamically import
 	 * when the tab is activated, e.g. "@elizaos/plugin-wallet/ui#InventoryView".
@@ -398,15 +371,8 @@ export interface PluginWidgetDeclaration {
 	defaultEnabled?: boolean;
 	/** For nav-page slot: which header TabGroup to join. */
 	navGroup?: string;
-	/**
-	 * If true, this widget is only visible when Developer Mode is enabled
-	 * in Settings. Defaults to false. Equivalent to `viewKind: "developer"`.
-	 */
-	developerOnly?: boolean;
-	/**
-	 * Four-tier visibility category. Supersedes `developerOnly` when set.
-	 * See {@link ViewKind}.
-	 */
+
+	/** Four-tier visibility category; absent values default to release. */
 	viewKind?: ViewKind;
 	/**
 	 * Optional package export specifier the shell will dynamically import
@@ -414,7 +380,7 @@ export interface PluginWidgetDeclaration {
 	 */
 	componentExport?: string;
 	/**
-	 * Home-slot attention signals this widget responds to (#9143 priority). When
+	 * Home-slot attention signals this widget responds to. When
 	 * the home surface receives a live activity/notification signal of one of
 	 * these kinds, this widget's importance is boosted (decayed by recency) so it
 	 * bubbles up — that is how "what needs attention shows first" works. Kinds are
@@ -426,20 +392,20 @@ export interface PluginWidgetDeclaration {
 	/** Home-grid footprint (4-col grid). Default 2x1. */
 	size?: { cols: number; rows: number };
 	/**
-	 * Visibility class for the built-in resolver (#12090 item 9). Drives
+	 * Visibility class for the built-in resolver. Drives
 	 * `resolveWidgetsForSlot` visibility from the declaration instead of
 	 * hardcoded plugin-id string sets, so a widget cannot drift out of the
 	 * allow set (e.g. `todo` vs `todos`) when its plugin id changes.
 	 *
 	 * - `"always"` — a core surface with NO loadable plugin package
-	 *   (notifications, welcome, needs-attention, feed, …). Renders regardless
-	 *   of the runtime plugin snapshot; still hidden if an explicit
-	 *   `present + disabled` snapshot entry exists for its plugin id.
+	 * (notifications, welcome, needs-attention, feed, …). Renders regardless
+	 * of the runtime plugin snapshot; still hidden if an explicit
+	 * `present + disabled` snapshot entry exists for its plugin id.
 	 * - `"fallback"` — backed by a store/compat data source, so it renders when
-	 *   the snapshot is missing OR omits the plugin, but a `present + disabled`
-	 *   entry hides it (agent-orchestrator, browser-workspace, todo).
+	 * the snapshot is missing OR omits the plugin, but a `present + disabled`
+	 * entry hides it (agent-orchestrator, browser-workspace, todo).
 	 * - `"snapshot"` / omitted — standard gate: visible only when the plugin is
-	 *   enabled+active in the snapshot.
+	 * enabled+active in the snapshot.
 	 *
 	 * Only honored for built-in declarations; server-provided declarations are
 	 * always snapshot-gated regardless of this field.
@@ -461,9 +427,7 @@ export type ViewPlatform =
 	| "quest"
 	| "xreal";
 
-export type { ViewModality, ViewType } from "./view-kind.js";
-
-import type { ViewModality, ViewType } from "./view-kind.js";
+export type { ViewModality, ViewType } from "../views/declarations.js";
 
 /** A logical view: one entry per `id`, with every surface it renders on. */
 export interface CollapsedView extends ViewDeclaration {
@@ -487,9 +451,9 @@ export interface XRViewOptions {
 	defaultHeightMeters?: number;
 	/**
 	 * How the panel follows the user's gaze / camera.
-	 *  - "billboard"  — always faces the camera, orbits at fixed distance (default).
-	 *  - "fixed"      — stays at its world-space transform once opened.
-	 *  - "follow"     — smoothly lag-follows the camera without rotating.
+	 * - "billboard" — always faces the camera, orbits at fixed distance (default).
+	 * - "fixed" — stays at its world-space transform once opened.
+	 * - "follow" — smoothly lag-follows the camera without rotating.
 	 */
 	followMode?: "billboard" | "fixed" | "follow";
 	/**
@@ -628,11 +592,11 @@ export interface ViewScopedAction {
  * Store, Google Play store builds), dynamic bundle/frame URLs are filtered out.
  *
  * The frontend shell:
- *   1. Fetches `GET /api/views` to discover all registered views.
- *   2. Calls `import(bundleUrl)` for host-realm views, or mounts `frameUrl` for
- *      sandboxed iframe views.
- *   3. Mounts `module[componentExport ?? "default"]` in an error boundary.
- *   4. Calls the view's `cleanup()` export on unmount.
+ * 1. Fetches `GET /api/views` to discover all registered views.
+ * 2. Calls `import(bundleUrl)` for host-realm views, or mounts `frameUrl` for
+ * sandboxed iframe views.
+ * 3. Mounts `module[componentExport ?? "default"]` in an error boundary.
+ * 4. Calls the view's `cleanup()` export on unmount.
  */
 export interface ViewDeclaration {
 	/**
@@ -713,28 +677,9 @@ export interface ViewDeclaration {
 	anticipatoryIntent?: string;
 	/** Relative path from the plugin's package root to its hero image. */
 	heroImagePath?: string;
-	/**
-	 * Declared surface contract — background/header/isolation/lifecycle policy and
-	 * the capability grants the shell allows this view to exercise (#13452). The
-	 * single source of truth the shell derives every surface decision from; the
-	 * standalone `backgroundPolicy` / `headerPolicy` below are the legacy fallback
-	 * used only when the matching manifest field is absent. `surface.background:
-	 * "shared"` only paints the wallpaper when `surface.capabilities` also grants
-	 * `wallpaper` — a view can never opt into the shared wallpaper by accident.
-	 */
+	/** Declared surface policies and capability grants. */
 	surface?: SurfaceManifest;
-	/**
-	 * Screen background policy for this view. Defaults to `"opaque"`. Superseded
-	 * by `surface.background` when a manifest is declared.
-	 */
-	backgroundPolicy?: AppShellBackgroundPolicy;
-	/**
-	 * Top-bar framing policy (#13586). Defaults to `"normal"`, which the shell
-	 * enforces with the shared `ViewHeader`. Set `fullscreen`/`modal`/`immersive`
-	 * for surfaces that own their own chrome (browser workbench, launcher, etc.).
-	 * Superseded by `surface.header` when a manifest is declared.
-	 */
-	headerPolicy?: ViewHeaderPolicy;
+
 	/**
 	 * Platforms this view supports. Omit to support all platforms.
 	 * Dynamic plugin install is disabled on restricted store builds (ios, android).
@@ -749,19 +694,8 @@ export interface ViewDeclaration {
 	 * false.
 	 */
 	nativeOs?: boolean;
-	/**
-	 * Hidden unless developer mode is enabled. Default false. Equivalent to
-	 * `viewKind: "developer"`.
-	 */
-	developerOnly?: boolean;
-	/**
-	 * Four-tier visibility category for this view. Supersedes `developerOnly`
-	 * when set:
-	 *  - `system`    — always shown (core shell views).
-	 *  - `release`   — always shown (public, production-ready). The default.
-	 *  - `developer` — shown when Developer views are enabled (dev builds on).
-	 *  - `preview`   — shown when Preview views are enabled (off by default).
-	 */
+
+	/** Four-tier visibility category; absent values default to release. */
 	viewKind?: ViewKind;
 	/**
 	 * Named export the shell mounts from the loaded bundle module.
@@ -839,17 +773,8 @@ export interface PluginApp {
 	session?: PluginAppSession;
 	bridgeExport?: string;
 	uiExtension?: PluginAppUiExtension;
-	/**
-	 * If true, the app is a developer-tooling surface (logs, trajectory
-	 * viewer, etc.) and is hidden from the main UI unless Developer Mode is
-	 * enabled in Settings. Defaults to false. Equivalent to
-	 * `viewKind: "developer"`.
-	 */
-	developerOnly?: boolean;
-	/**
-	 * Four-tier visibility category for this app. Supersedes `developerOnly`
-	 * when set. See {@link ViewKind}.
-	 */
+
+	/** Four-tier visibility category; absent values default to release. */
 	viewKind?: ViewKind;
 	/**
 	 * Controls whether the app appears in the user-facing app store/catalog.
@@ -899,6 +824,9 @@ export interface PluginOwnership {
 	services: PluginServiceRegistration[];
 	sendHandlerSources: string[];
 	hasAdapter: boolean;
+	chatPreHandlerIds: string[];
+	responseHandlerEvaluatorNames: string[];
+	responseHandlerFieldEvaluatorNames: string[];
 	registeredAt: number;
 }
 
@@ -906,15 +834,15 @@ export interface PluginOwnership {
  * Plugin execution mode.
  *
  * - `direct`: loaded in-process via `import` and registered with the runtime as
- *   a normal Plugin object. Trusted, full agent privilege, shared crash domain.
- *   This is the default for every existing plugin in the monorepo.
+ * a normal Plugin object. Trusted, full agent privilege, shared crash domain.
+ * This is the default for every existing plugin in the monorepo.
  * - `remote`: executed out-of-process behind the capability router; the agent
- *   registers a synthesized local `Plugin` whose invocations forward over the
- *   router's RPC surface (see `@elizaos/agent`'s `RemotePluginBridge` and
- *   remote-plugin adapter). Permissions are declared by the plugin and
- *   enforced by the host. Typically installed dynamically at runtime via
- *   `runtime.installRemotePlugin(...)` by an agent that has authored a plugin
- *   on the fly (e.g. a coding sub-agent).
+ * registers a synthesized local `Plugin` whose invocations forward over the
+ * router's RPC surface (see `@elizaos/agent`'s `RemotePluginBridge` and
+ * remote-plugin adapter). Permissions are declared by the plugin and
+ * enforced by the host. Typically installed dynamically at runtime via
+ * `runtime.installRemotePlugin(...)` by an agent that has authored a plugin
+ * on the fly (e.g. a coding sub-agent).
  */
 export type PluginMode = "direct" | "remote";
 
@@ -957,7 +885,7 @@ export interface RemotePluginPermissions {
 	host: {
 		/** `runtime.getService(serviceType)` allowlist. Empty array = none. */
 		services?: string[];
-		/** `runtime.useModel(modelType, ...)` allowlist. */
+		/** `runtime.useModel(modelType,...)` allowlist. */
 		models?: string[];
 		/** Event-name allowlist (both emit and listen). */
 		events?: string[];
@@ -970,11 +898,11 @@ export interface RemotePluginPermissions {
  * Isolation strategy for the remote plugin worker.
  *
  * - `shared-worker`: a Bun `Worker` sharing the host process. Cheap, but a
- *   panic crashes the host. Use for trusted first-party plugins that need
- *   shared-memory access (e.g. GPU-backed local-model plugins).
+ * panic crashes the host. Use for trusted first-party plugins that need
+ * shared-memory access (e.g. GPU-backed local-model plugins).
  * - `isolated-process`: a separate Bun subprocess (`Bun.spawn`). The worker
- *   crashing only affects itself. Required for `role: "sub-agent"` and for
- *   any agent-authored plugin with `source.kind === "inline"`.
+ * crashing only affects itself. Required for `role: "sub-agent"` and for
+ * any agent-authored plugin with `source.kind === "inline"`.
  */
 export type RemotePluginIsolation = "shared-worker" | "isolated-process";
 
@@ -1015,9 +943,9 @@ export interface RemotePluginConfig {
 	/**
 	 * Lifetime of the plugin installation.
 	 * - `"session"`: uninstalled on runtime shutdown. Default for
-	 *   `runtime.installRemotePlugin(...)`.
+	 * `runtime.installRemotePlugin(...)`.
 	 * - `"persistent"`: registration is written to the local plugin store and
-	 *   re-installed on next boot.
+	 * re-installed on next boot.
 	 */
 	lifetime?: "session" | "persistent";
 	/**
@@ -1042,20 +970,20 @@ export interface RemotePluginConfig {
  * via {@link IAgentRuntime.installRemotePlugin}.
  *
  * - `inline`: agent-authored. The plugin's source files (typically the
- *   worker entry + a manifest) are handed over as a string map. The host
- *   writes them to a tempdir under `<stateDir>/remote-plugins/<runtime>/
- *   <pluginName>-<instanceId>/`, then spawns the worker from there. The
- *   inline path is intentionally restricted: workers run as
- *   `isolated-process` always, network defaults to `loopback`, and FS
- *   scopes to the tempdir, regardless of what the manifest requests.
+ * worker entry + a manifest) are handed over as a string map. The host
+ * writes them to a tempdir under `<stateDir>/remote-plugins/<runtime>/
+ * <pluginName>-<instanceId>/`, then spawns the worker from there. The
+ * inline path is intentionally restricted: workers run as
+ * `isolated-process` always, network defaults to `loopback`, and FS
+ * scopes to the tempdir, regardless of what the manifest requests.
  *
  * - `tarball`: third-party. Downloaded + verified by `attestation`
- *   (required for tarball installs; SHA + signature). Extracted into the
- *   store and treated like a normal install thereafter.
+ * (required for tarball installs; SHA + signature). Extracted into the
+ * store and treated like a normal install thereafter.
  *
  * - `workspace`: bundled. Resolves to an existing workspace package
- *   (e.g. `@elizaos/plugin-sub-agent-claude-code`). The host trusts these
- *   the same way it trusts a direct-mode plugin shipped in node_modules.
+ * (e.g. `@elizaos/plugin-sub-agent-claude-code`). The host trusts these
+ * the same way it trusts a direct-mode plugin shipped in node_modules.
  */
 export type RemotePluginInstallSource =
 	| { kind: "inline"; files: Record<string, string> }
@@ -1224,7 +1152,7 @@ export interface Plugin {
 	/**
 	 * Field evaluators that contribute schema fragments and handlers to the
 	 * Stage-1 response handler's single LLM call. See
-	 * `runtime/response-handler-field-evaluator.ts`.
+	 * `runtime/response-handler-fields.ts`.
 	 */
 	responseHandlerFieldEvaluators?: ResponseHandlerFieldEvaluator[];
 
@@ -1268,22 +1196,10 @@ export interface Plugin {
 	app?: PluginApp;
 	appBridge?: PluginAppBridge;
 
-	/**
-	 * UI views this plugin contributes. Views are compiled to bundles, served
-	 * by the agent at an installation-bound catalog URL, and dynamically loaded by
-	 * the frontend shell. Replaces the static import pattern in `main.tsx`.
-	 *
-	 * The view registry scans loaded plugins for this field at startup and on
-	 * plugin hot-reload, resolving `bundlePath` entries to absolute serve URLs.
-	 */
+	/** Plugin views are compiled and served from installation-bound catalog URLs. Hosts discover declarations at startup and hot reload. */
 	views?: ViewDeclaration[];
 
-	/**
-	 * Widgets this plugin contributes. Replaces the hard-coded
-	 * `PLUGIN_WIDGET_MAP` in `@elizaos/agent` for plugins that adopt this
-	 * field. The shell merges plugin-declared widgets with any legacy map
-	 * entries at runtime.
-	 */
+	/** Widgets contributed by this plugin for host composition. */
 	widgets?: PluginWidgetDeclaration[];
 
 	/**
@@ -1301,7 +1217,7 @@ export interface Plugin {
 	 * The runtime evaluates these after initial plugin resolution:
 	 * - `envKeys`: enable when ANY of these env vars are set and non-empty.
 	 * - `connectorKeys`: enable when ANY of these connector names appear and
-	 *   are configured in `config.connectors`.
+	 * are configured in `config.connectors`.
 	 * - `shouldEnable`: custom predicate for complex enable logic.
 	 *
 	 * All three are OR'd — if any condition is met the plugin is auto-enabled.

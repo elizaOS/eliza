@@ -1,10 +1,4 @@
-/**
- * General-purpose helper functions extracted from server.ts.
- *
- * Utility functions for plugin services, UUID validation, state persistence,
- * config, and package root resolution. Blocked-object-key sanitization lives
- * in `blocked-object-keys.ts` and is re-exported here for existing callers.
- */
+/** Host service access, state persistence, configuration and media helpers. */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
@@ -13,11 +7,12 @@ import {
   type AgentRuntime,
   CHAT_UPLOAD_MIME_TYPES,
   type ChannelType,
+  type ChatImageAttachment,
   type Content,
   ContentType,
-  type ConversationMetadata,
   createMessageMemory,
   decodeUrlPathComponent,
+  ElizaError,
   logger,
   MAX_CHAT_UPLOAD_ATTACHMENTS as MAX_CHAT_IMAGES,
   MAX_CHAT_IMAGE_BASE64_BYTES as MAX_IMAGE_DATA_BYTES,
@@ -25,19 +20,20 @@ import {
   MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
+  resolveStateDir,
+  toWellFormedUnicode,
+  type UUID,
+  validateUuid,
+} from "@elizaos/core";
+import { sendJsonError } from "@elizaos/host";
+import {
+  type ElizaConfig,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
-  sendJsonError,
-  toWellFormedUnicode,
-  type UUID,
-  validateUuid,
-} from "@elizaos/core";
-
-import type { ElizaConfig } from "../config/config.ts";
-import { resolveStateDir } from "../config/paths.ts";
+} from "@elizaos/host/protocol";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
@@ -48,19 +44,13 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
+import { writeFileAtomically } from "../utils/atomic-file.ts";
 import { persistImageThumbnail, persistMediaBytes } from "./media-store.ts";
 import type {
   ChatAttachmentWithData,
-  ChatImageAttachment,
+  ConversationMeta,
 } from "./server-types.ts";
 
-export {
-  BLOCKED_OBJECT_GRAPH_UNBOUNDED,
-  cloneWithoutBlockedObjectKeys,
-  hasBlockedObjectKeyDeep,
-  MAX_BLOCKED_OBJECT_DEPTH,
-  MAX_BLOCKED_OBJECT_NODES,
-} from "./blocked-object-keys.ts";
 // ---------------------------------------------------------------------------
 // Service accessors
 // ---------------------------------------------------------------------------
@@ -100,7 +90,7 @@ export function isUuidLike(value: string): value is UUID {
 // ---------------------------------------------------------------------------
 const OG_FILENAME = ".og";
 const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
-const MAX_DELETED_CONVERSATION_IDS = 5000;
+export const MAX_DELETED_CONVERSATION_IDS = 5000;
 export interface DeletedConversationsStateFile {
   version: 1;
   updatedAt: string;
@@ -108,44 +98,54 @@ export interface DeletedConversationsStateFile {
 }
 export function readDeletedConversationIdsFromState(): Set<string> {
   const filePath = path.join(resolveStateDir(), DELETED_CONVERSATIONS_FILENAME);
-  if (!fs.existsSync(filePath)) return new Set();
   try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<DeletedConversationsStateFile>;
-    const ids = Array.isArray(parsed.ids) ? parsed.ids : [];
-    return new Set(
-      ids
-        .map((id) => (typeof id === "string" ? id.trim() : ""))
-        .filter((id) => id.length > 0),
-    );
-  } catch (err) {
-    logger.warn(
-      `[eliza-api] Failed to read deleted conversations state: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return new Set();
+    const parsed: unknown = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !("version" in parsed) ||
+      parsed.version !== 1 ||
+      !("ids" in parsed) ||
+      !Array.isArray(parsed.ids) ||
+      !parsed.ids.every(
+        (id: unknown) => typeof id === "string" && id.trim().length > 0,
+      )
+    ) {
+      throw new TypeError("Invalid deleted conversation state");
+    }
+    return new Set(parsed.ids.map((id: string) => id.trim()));
+  } catch (error) {
+    // error-policy:J4 Only a missing file is an empty deletion history.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Set();
+    throw new ElizaError("Failed to read deleted conversation tombstones", {
+      code: "DELETED_CONVERSATION_STATE_READ_FAILED",
+      cause: error,
+      context: { filePath },
+    });
   }
 }
 export function persistDeletedConversationIdsToState(ids: Set<string>): void {
   const dir = resolveStateDir();
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
   const normalized = Array.from(ids)
     .map((id) => id.trim())
     .filter((id) => id.length > 0)
     .slice(-MAX_DELETED_CONVERSATION_IDS);
   const filePath = path.join(dir, DELETED_CONVERSATIONS_FILENAME);
-  const tmpFilePath = `${filePath}.${process.pid}.tmp`;
   const payload: DeletedConversationsStateFile = {
     version: 1,
     updatedAt: new Date().toISOString(),
     ids: normalized,
   };
-  fs.writeFileSync(tmpFilePath, `${JSON.stringify(payload, null, 2)}\n`, {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-  fs.renameSync(tmpFilePath, filePath);
+  try {
+    writeFileAtomically(filePath, `${JSON.stringify(payload, null, 2)}\n`);
+  } catch (error) {
+    // error-policy:J2 A failed tombstone commit must remain retryable.
+    throw new ElizaError("Failed to persist deleted conversation tombstones", {
+      code: "DELETED_CONVERSATION_STATE_WRITE_FAILED",
+      cause: error,
+      context: { filePath },
+    });
+  }
 }
 // ---------------------------------------------------------------------------
 // OG code state management
@@ -170,17 +170,6 @@ export function initializeOGCodeInState(): void {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-// AgentStartupDiagnostics is canonical in @elizaos/core.
-export type { AgentStartupDiagnostics } from "@elizaos/core";
-/** Metadata for a web-chat conversation. */
-export interface ConversationMeta {
-  id: string;
-  title: string;
-  roomId: UUID;
-  metadata?: ConversationMetadata;
-  createdAt: string;
-  updatedAt: string;
-}
 // ---------------------------------------------------------------------------
 // First-run & config helpers
 // ---------------------------------------------------------------------------
@@ -368,7 +357,6 @@ function base64DecodesToZeroBytes(data: string): boolean {
 }
 
 // Re-exported for chat-routes and for parity tests against the client side.
-export { CHAT_UPLOAD_MIME_TYPES };
 
 const ALLOWED_CHAT_MEDIA_MIME_TYPES = new Set<string>(CHAT_UPLOAD_MIME_TYPES);
 export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =

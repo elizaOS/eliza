@@ -22,19 +22,17 @@ import {
   recordedStageToSemanticStage,
   Service,
   sanitizeTrajectoryJsonObject,
+  type TrajectoryDetailRecord as Trajectory,
+  type TrajectoryActionAttemptRecord as TrajectoryActionAttempt,
+  type TrajectoryExportResult,
+  type TrajectoryListOptions,
+  type TrajectoryListResult,
   type TrajectorySemanticStageRecord,
+  type TrajectorySkillInvocationRecord as TrajectorySkillInvocation,
+  type TrajectoryStatus,
+  type TrajectoryStepKind,
   timeInferenceSpan,
 } from "@elizaos/core";
-import type {
-  Trajectory,
-  TrajectoryActionAttempt,
-  TrajectoryExportResult,
-  TrajectoryListOptions,
-  TrajectoryListResult,
-  TrajectorySkillInvocation,
-  TrajectoryStatus,
-  TrajectoryStepKind,
-} from "../types/trajectory.ts";
 import { getDevTrajectoryExecutionOwnerId } from "./dev-trajectory-recovery.ts";
 import {
   exportPersistedTrajectories,

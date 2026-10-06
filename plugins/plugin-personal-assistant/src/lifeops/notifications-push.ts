@@ -5,8 +5,7 @@
  * rather than silently dropping the notification.
  */
 
-import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/core/integration-observability";
+import { createIntegrationTelemetrySpan, logger } from "@elizaos/core";
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------

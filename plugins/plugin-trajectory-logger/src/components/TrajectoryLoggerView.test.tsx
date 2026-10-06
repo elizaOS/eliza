@@ -6,8 +6,7 @@
  * @vitest-environment jsdom
  */
 
-import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
-import { SpatialSurface } from "@elizaos/ui/spatial";
+import { NAVIGATE_VIEW_EVENT, SpatialSurface } from "@elizaos/ui";
 import {
   cleanup,
   fireEvent,

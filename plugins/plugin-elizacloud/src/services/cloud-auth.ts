@@ -24,15 +24,15 @@ import { Service } from "@elizaos/core";
 import { createRemoteJWKSet } from "jose";
 import { jwtVerify } from "jose";
 import { logger } from "@elizaos/core";
-import { resolveApiSecurityConfig } from "@elizaos/core/runtime-env";
-import { resolveDesktopApiPort } from "@elizaos/core/runtime-env";
+import { resolveApiSecurityConfig } from "@elizaos/host/protocol";
+import { resolveDesktopApiPort } from "@elizaos/host/protocol";
 import { type CloudBootstrapService } from "./cloud-bootstrap";
 import { getSetting, isTruthyCloudFlag } from "../utils/config";
 import { type CloudCredentials } from "../types/cloud";
 import { type DeviceAuthResponse } from "../types/cloud";
 import { type DevicePlatform } from "../types/cloud";
 import { type IAgentRuntime } from "@elizaos/core";
-import { type RuntimeEnvRecord } from "@elizaos/core/runtime-env";
+import { type RuntimeEnvRecord } from "@elizaos/host/protocol";
 /** SHA-256 hash of hostname + platform + arch + cpu + memory. */
 async function deriveDeviceId(): Promise<string> {
     const os = await import("node:os");

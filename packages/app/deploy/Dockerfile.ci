@@ -59,7 +59,7 @@ ARG APP_CORE_DIR
 ARG AGENT_DIR
 ARG APP_DIR
 
-RUN node "${APP_CORE_DIR}/scripts/relink-workspace-packages-to-dist.ts" \
+RUN node packages/scripts/relink-workspace-packages-to-dist.ts \
   @elizaos/agent
 
 # Overlay the derived third-party runtime closure (prepared by the

@@ -10,7 +10,7 @@ import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import { chatSseFrame } from "../chat-sse-frames";
-import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
 import { applyCorsHeaders } from "../proxy/cors";
 import {
   coordinateSharedBridge,

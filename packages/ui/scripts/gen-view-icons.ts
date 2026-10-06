@@ -3,7 +3,17 @@
  * Build-time tooling, not shipped in the bundle.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 const KEY = process.env.FAL_KEY;
 if (!KEY) {
@@ -12,10 +22,21 @@ if (!KEY) {
   );
   process.exit(1);
 }
-const OUT = "/tmp/view-icons";
-const RAW = "/tmp/svg-raw";
-mkdirSync(OUT, { recursive: true });
-mkdirSync(RAW, { recursive: true });
+const args = process.argv.slice(2);
+if (args[0] !== "--out" || !args[1]) {
+  throw new Error(
+    "Usage: gen-view-icons.ts --out <new-directory> [icon-ids...]",
+  );
+}
+const destination = resolve(args[1]);
+if (existsSync(destination))
+  throw new Error(`Output already exists: ${destination}`);
+// Check the renderer before making billable API calls.
+execFileSync("rsvg-convert", ["--version"], { stdio: "ignore" });
+mkdirSync(dirname(destination), { recursive: true });
+const OUT = mkdtempSync(join(dirname(destination), ".view-icons-"));
+const RAW = join(OUT, "raw");
+mkdirSync(RAW);
 
 // id -> concrete subject. Style is appended uniformly for a cohesive launcher.
 const SUBJECTS = {
@@ -53,7 +74,6 @@ const SUBJECTS = {
   character: "a simple friendly smiling robot head, front view",
   "character-select": "two person head avatars side by side inside circles",
   automations: "a lightning bolt over gears",
-  triggers: "a lightning bolt",
   inventory: "stacked storage boxes",
   documents:
     "a single sheet of white paper with a folded corner and a few horizontal lines",
@@ -65,7 +85,6 @@ const SUBJECTS = {
   transcripts: "a document with an audio waveform",
   relationships: "connected people forming a network",
   memories: "a simple rounded cartoon brain",
-  rolodex: "a stack of contact cards",
   voice: "a handheld microphone",
   runtime: "a terminal command prompt",
   database: "a database cylinder stack",
@@ -95,9 +114,12 @@ function strip(file) {
   return { stripped: n - after, remain: after, out };
 }
 
-const ids = process.argv.slice(2).length
-  ? process.argv.slice(2)
-  : Object.keys(SUBJECTS);
+const ids = args.length > 2 ? args.slice(2) : Object.keys(SUBJECTS);
+const unknown = ids.filter((id) => !(id in SUBJECTS));
+if (unknown.length) {
+  rmSync(OUT, { recursive: true, force: true });
+  throw new Error(`Unknown icon ids: ${unknown.join(", ")}`);
+}
 const results = [];
 for (const id of ids) {
   const subject = SUBJECTS[id];
@@ -120,6 +142,7 @@ for (const id of ids) {
         }),
       },
     );
+    if (!res.ok) throw new Error(`FAL request failed: HTTP ${res.status}`);
     const j = await res.json();
     const url = j?.images?.[0]?.url;
     if (!url) {
@@ -127,7 +150,10 @@ for (const id of ids) {
       results.push([id, "FAIL"]);
       continue;
     }
-    const svgBuf = Buffer.from(await (await fetch(url)).arrayBuffer());
+    const image = await fetch(url);
+    if (!image.ok)
+      throw new Error(`Image download failed: HTTP ${image.status}`);
+    const svgBuf = Buffer.from(await image.arrayBuffer());
     const rawFile = `${RAW}/${id}.svg`;
     writeFileSync(rawFile, svgBuf);
     const { stripped, remain, out } = strip(rawFile);
@@ -142,6 +168,8 @@ for (const id of ids) {
       "-o",
       `${OUT}/${id}.png`,
     ]);
+    if (statSync(`${OUT}/${id}.png`).size === 0)
+      throw new Error(`Empty rendered icon: ${id}`);
     console.log(
       `OK ${id}: stripped ${stripped} bg, ${remain} paths -> ${id}.png`,
     );
@@ -159,4 +187,18 @@ console.log(
   "total",
 );
 const bad = results.filter((r) => r[1] !== "OK");
-if (bad.length) console.log("NOT OK:", bad.map((r) => r[0]).join(" "));
+if (bad.length) {
+  rmSync(OUT, { recursive: true, force: true });
+  console.error("NOT OK:", bad.map((r) => r[0]).join(" "));
+  process.exitCode = 1;
+} else {
+  writeFileSync(
+    join(OUT, "manifest.json"),
+    JSON.stringify({
+      expected: Object.keys(SUBJECTS),
+      generated: ids,
+    }),
+  );
+  renameSync(OUT, destination);
+  console.log(`Generated icons: ${destination}`);
+}

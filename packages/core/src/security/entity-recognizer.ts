@@ -1,7 +1,7 @@
 /**
- * Named-entity recognition for the PII pseudonymization layer (#10469 / #7007).
+ * Named-entity recognition for the PII pseudonymization layer.
  *
- * The {@link ./pii-pseudonymizer | PseudonymSession} owns the surrogate vault and
+ * The {@link./pii-pseudonymizer | PseudonymSession} owns the surrogate vault and
  * the (synchronous, value-based) substitution/restoration. It does *not* decide
  * what counts as a person / organization / location / address — that is this
  * module's job. A {@link PiiEntityRecognizer} takes text and returns typed
@@ -9,14 +9,14 @@
  *
  * Recognizers here:
  * - {@link RegexEntityRecognizer} — deterministic, dependency-free. Catches
- *   *structured* named PII that patterns handle reliably (street addresses, and —
- *   opt-in — emails/phones). Ships enabled by default so the layer is useful even
- *   with no ML model present.
+ * *structured* named PII that patterns handle reliably (street addresses, and —
+ * opt-in — emails/phones). Ships enabled by default so the layer is useful even
+ * with no ML model present.
  * - {@link GazetteerEntityRecognizer} — dictionary-driven. Used by the test suite
- *   to drive the full swap/restore pipeline deterministically without downloading
- *   a model, and usable in production to force-protect a known contact list.
+ * to drive the full swap/restore pipeline deterministically without downloading
+ * a model, and usable in production to force-protect a known contact list.
  * - {@link CompositeEntityRecognizer} — merges several recognizers, resolves
- *   overlaps (longest span wins), and applies the blocklist.
+ * overlaps (longest span wins), and applies the blocklist.
  *
  * The model-backed recognizer (an LLM extraction pass on the resident local
  * llama.cpp backend) lives behind this same interface in

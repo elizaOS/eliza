@@ -17,8 +17,8 @@
  * "friday"/"saturday" resolve deterministically.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
@@ -191,6 +191,7 @@ function fakeRuntime(service: StubService): IAgentRuntime {
       debug: () => undefined,
     },
     reportError: vi.fn(),
+    getSetting: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
 }

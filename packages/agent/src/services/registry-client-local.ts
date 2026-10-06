@@ -17,10 +17,9 @@ import {
   logger,
   packageNameToAppDisplayName,
   readJsonFile,
+  resolveStateDir,
 } from "@elizaos/core";
 
-import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
-import { resolveStateDir } from "../config/paths.ts";
 import {
   mergeAppMeta,
   resolveAppOverride,
@@ -53,7 +52,7 @@ interface LocalPackageAppMeta {
   uiExtension?: AppUiExtensionConfig;
   viewer?: RegistryAppViewerMeta;
   session?: RegistryAppSessionMeta;
-  developerOnly?: boolean;
+  viewKind?: import("@elizaos/core").ViewKind;
   visibleInAppStore?: boolean;
   /**
    * If true, this app declares itself as the default landing tab for the
@@ -72,8 +71,6 @@ interface LocalPackageAppMeta {
 interface LocalPackageElizaConfig {
   kind?: string;
   app?: LocalPackageAppMeta;
-  viewer?: RegistryAppViewerMeta;
-  session?: RegistryAppSessionMeta;
 }
 
 interface LocalPackageJson {
@@ -102,8 +99,6 @@ interface LocalPluginManifest {
   repository?: string | { type?: string; url?: string };
   kind?: string;
   app?: LocalPackageAppMeta;
-  viewer?: RegistryAppViewerMeta;
-  session?: RegistryAppSessionMeta;
 }
 
 const LOCAL_PLUGIN_TAG_STOPWORDS = new Set([
@@ -245,36 +240,30 @@ async function resolveLocalPackagePath(packageDir: string): Promise<string> {
 function toLocalAppMeta(
   app: LocalPackageAppMeta | undefined,
   fallbackDisplayName: string,
-  legacy?: {
-    viewer?: RegistryAppViewerMeta;
-    session?: RegistryAppSessionMeta;
-  },
 ): RegistryAppMeta | undefined {
-  if (!app && !legacy?.viewer && !legacy?.session) return undefined;
-  const launchType =
-    app?.launchType ?? (legacy?.viewer || legacy?.session ? "connect" : "url");
+  if (!app) return undefined;
   return {
-    displayName: app?.displayName ?? fallbackDisplayName,
-    category: app?.category ?? "game",
-    launchType,
-    launchUrl: app?.launchUrl ?? null,
-    icon: app?.icon ?? null,
-    heroImage: app?.heroImage ?? null,
-    capabilities: app?.capabilities ?? [],
-    minPlayers: app?.minPlayers ?? null,
-    maxPlayers: app?.maxPlayers ?? null,
-    runtimePlugin: app?.runtimePlugin,
-    bridgeExport: app?.bridgeExport,
-    uiExtension: app?.uiExtension,
-    viewer: app?.viewer ?? legacy?.viewer,
-    session: app?.session ?? legacy?.session,
-    developerOnly: app?.developerOnly,
-    visibleInAppStore: app?.visibleInAppStore,
-    mainTab: app?.mainTab,
-    catalogSection: app?.catalogSection,
-    featured: app?.featured,
-    defaultHidden: app?.defaultHidden,
-    scope: app?.scope,
+    displayName: app.displayName ?? fallbackDisplayName,
+    category: app.category ?? "game",
+    launchType: app.launchType ?? "url",
+    launchUrl: app.launchUrl ?? null,
+    icon: app.icon ?? null,
+    heroImage: app.heroImage ?? null,
+    capabilities: app.capabilities ?? [],
+    minPlayers: app.minPlayers ?? null,
+    maxPlayers: app.maxPlayers ?? null,
+    runtimePlugin: app.runtimePlugin,
+    bridgeExport: app.bridgeExport,
+    uiExtension: app.uiExtension,
+    viewer: app.viewer,
+    session: app.session,
+    viewKind: app.viewKind,
+    visibleInAppStore: app.visibleInAppStore,
+    mainTab: app.mainTab,
+    catalogSection: app.catalogSection,
+    featured: app.featured,
+    defaultHidden: app.defaultHidden,
+    scope: app.scope,
   };
 }
 
@@ -292,11 +281,7 @@ function isDiscoverableAppPackage(
     packageJson.elizaos?.kind === "app" ||
       manifest?.kind === "app" ||
       packageJson.elizaos?.app ||
-      packageJson.elizaos?.viewer ||
-      packageJson.elizaos?.session ||
       manifest?.app ||
-      manifest?.viewer ||
-      manifest?.session ||
       resolveAppOverride(packageJson.name, undefined),
   );
 }
@@ -370,18 +355,10 @@ function buildDiscoveredEntry(
   const packageAppMeta = toLocalAppMeta(
     packageJson.elizaos?.app,
     toDisplayNameFromDirName(dirName),
-    {
-      viewer: packageJson.elizaos?.viewer,
-      session: packageJson.elizaos?.session,
-    },
   );
   const manifestAppMeta = toLocalAppMeta(
     manifest?.app,
     toDisplayNameFromDirName(dirName),
-    {
-      viewer: manifest?.viewer,
-      session: manifest?.session,
-    },
   );
   const mergedMeta = mergeAppMeta(manifestAppMeta, packageAppMeta);
   const overriddenMeta = resolveAppOverride(packageJson.name, mergedMeta);
@@ -461,12 +438,6 @@ async function discoverLocalWorkspaceApps(): Promise<
     addDiscoveredRoot(path.join(workspaceRoot, "packages"), false);
     addDiscoveredRoot(path.join(workspaceRoot, "eliza", "packages"), false);
     addDiscoveredRoot(path.join(workspaceRoot, "eliza", "plugins"), true);
-    if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-      // Opt-in for older external workspaces that still keep app plugins
-      // under apps/app-*. The current repo discovers plugins/app-* by default.
-      addDiscoveredRoot(path.join(workspaceRoot, "apps"), false);
-      addDiscoveredRoot(path.join(workspaceRoot, "eliza", "apps"), false);
-    }
 
     const workspaceEntries = await readDirectoryEntries(
       workspaceRoot,
@@ -482,10 +453,6 @@ async function discoverLocalWorkspaceApps(): Promise<
       addDiscoveredRoot(path.join(repoRoot, "packages"), false);
       addDiscoveredRoot(path.join(repoRoot, "eliza", "packages"), false);
       addDiscoveredRoot(path.join(repoRoot, "eliza", "plugins"), true);
-      if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-        addDiscoveredRoot(path.join(repoRoot, "apps"), false);
-        addDiscoveredRoot(path.join(repoRoot, "eliza", "apps"), false);
-      }
     }
 
     for (const [root, includeTypescriptChild] of discoveredRoots) {

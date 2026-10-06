@@ -14,7 +14,7 @@
  * existing raw reads over time; this guard stops NEW ones from regrowing.
  *
  * The guarded key set is read from the single source of truth
- * (`packages/core/src/config/brand-env-aliases.ts`) — every `elizaKey` /
+ * (`packages/host/src/config/brand-env-aliases.ts`) — every `elizaKey` /
  * `syncElizaKey` in `BRAND_ENV_ALIAS_DEFINITIONS` — so the guard tracks the
  * table automatically as aliases are added or removed.
  *
@@ -52,7 +52,7 @@ const ts = require("typescript");
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 
-const ALIAS_TABLE_FILE = "packages/core/src/config/brand-env-aliases.ts";
+const ALIAS_TABLE_FILE = "packages/host/src/config/brand-env-aliases.ts";
 
 /**
  * Reader / alias-table / sync files that legitimately name the canonical
@@ -61,12 +61,12 @@ const ALIAS_TABLE_FILE = "packages/core/src/config/brand-env-aliases.ts";
  * reader implementation, not a bypass of it.
  */
 const ALLOWLIST = new Set([
-  "packages/core/src/config/brand-env-aliases.ts",
-  "packages/core/src/config/boot-config.ts",
-  "packages/core/src/config/boot-config-store.ts",
-  "packages/core/src/utils/env.ts",
-  "packages/core/src/runtime-env.ts",
-  "packages/core/src/boot-env.ts",
+  "packages/host/src/config/brand-env-aliases.ts",
+  "packages/host/src/config/boot-config.ts",
+  "packages/host/src/config/boot-config-store.ts",
+  "packages/host/src/utils/env.ts",
+  "packages/host/src/runtime-env.ts",
+  "packages/host/src/boot-env.ts",
 ]);
 
 const EXCLUDED_SEGMENTS = new Set([
@@ -489,8 +489,8 @@ function runSelfTest() {
     ["packages/x/src/__tests__/a.ts", false],
     ["packages/x/src/a.d.ts", false],
     ["packages/x/lib/a.ts", false],
-    ["packages/core/src/runtime-env.ts", false], // allowlisted reader
-    ["packages/core/src/boot-env.ts", false], // allowlisted reader
+    ["packages/host/src/runtime-env.ts", false], // allowlisted reader
+    ["packages/host/src/boot-env.ts", false], // allowlisted reader
     ["apps/app/src/a.ts", false], // outside packages/ + plugins/
     ["scripts/a.ts", false],
   ];

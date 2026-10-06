@@ -653,8 +653,7 @@ export interface ScheduledTaskRunnerDeps {
    * is rewritten to `notify-only` and a `"substituted"` state-log row is
    * recorded. Default (when not provided): all four profiles available —
    * appropriate for tests and Node desktop. Mobile / Capacitor callers
-   * inject a real probe from
-   * `@elizaos/app/services/local-inference/host-capabilities`.
+   * inject a host-owned capability probe.
    */
   hostCapabilities?: () => ReadonlySet<TaskExecutionProfile>;
   /** Override for tests. */

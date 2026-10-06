@@ -2,7 +2,7 @@
  * The single cloud-side delta on top of the shipped Eliza persona.
  *
  * The canonical persona is the first style preset in
- * `@elizaos/core/character-presets`. A cloud agent differs from it in exactly
+ * `@elizaos/host`. A cloud agent differs from it in exactly
  * one respect: it has persistent, cross-session memory, and a preset shipped to
  * any host cannot promise that. So the memory claim, the honesty rule that has
  * to travel with it, and one example modelling honest recall live here, and are
@@ -11,7 +11,7 @@
  * Keep this delta minimal. Anything not specifically about cloud-side
  * persistence belongs in the preset, where every host gets it.
  */
-import { getDefaultStylePreset } from "@elizaos/core/character-presets";
+import { getDefaultStylePreset } from "@elizaos/host/protocol";
 /** Leads the bio: it is the promise the rest of the persona is read against. */
 export const CLOUD_MEMORY_BIO =
   "Remembers what people care about, and months later she'll bring up the project, the worry, the trip.";

@@ -6,18 +6,18 @@
  * by TriggersView and its tests so neither duplicates the logic.
  */
 
-import { parsePositiveInteger } from "@elizaos/core/utils/number-parsing";
+import type { TranslateFn as AppTranslateFn } from "@elizaos/contracts";
+import type { TriggerType, TriggerWakeMode } from "@elizaos/core";
+import { parsePositiveInteger } from "@elizaos/core/protocol";
 import { CronExpressionParser } from "cron-parser";
 import type {
   CreateTriggerRequest,
   TriggerSummary,
-  TriggerType,
-  TriggerWakeMode,
   UpdateTriggerRequest,
-} from "../../api/client";
+} from "../../api/client-types-core";
 import { shellLocalStorage } from "../../surface-realm-channel";
-import type { TranslateFn as AppTranslateFn } from "../../types";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
+
 export type TriggerKind = "text" | "workflow";
 // ── Translation helper type ────────────────────────────────────────
 export type TranslateFn = AppTranslateFn;

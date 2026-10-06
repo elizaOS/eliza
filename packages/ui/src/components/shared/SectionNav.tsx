@@ -19,15 +19,15 @@
  */
 
 import { useSyncExternalStore } from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import {
   type AppShellPageRegistration,
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
   subscribeAppShellPages,
 } from "../../app-shell-registry";
-import { cn } from "../../lib/utils";
 import { shellHistory } from "../../surface-realm-channel";
+import { cn } from "../../utils/cn";
 import { Button } from "../ui/button";
 
 /** A single tab within a section strip. */

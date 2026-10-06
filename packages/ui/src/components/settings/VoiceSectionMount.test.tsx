@@ -45,9 +45,10 @@ vi.mock("./VoiceProfileSection", () => ({
   VoiceProfileSection: () => null,
 }));
 
-import { BrandingContext, DEFAULT_BRANDING } from "../../config/branding";
+import { DEFAULT_BRANDING } from "../../config/branding-base";
+import { BrandingContext } from "../../config/branding-react.hooks";
+import { emitViewEvent } from "../../events/view-events";
 import { loadOsIntentAutoStartConsent } from "../../state/persistence";
-import { emitViewEvent } from "../../views/view-event-bus";
 import {
   useVoiceSettingsApplyChannel,
   VOICE_SETTINGS_APPLY_EVENT,

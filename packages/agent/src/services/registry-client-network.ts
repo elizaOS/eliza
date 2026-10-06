@@ -127,7 +127,7 @@ async function fetchGeneratedRegistry(
             uiExtension: entry.app.uiExtension,
             viewer: entry.app.viewer,
             session: entry.app.session,
-            developerOnly: entry.app.developerOnly,
+            viewKind: entry.app.viewKind,
             visibleInAppStore: entry.app.visibleInAppStore,
             mainTab: entry.app.mainTab,
             catalogSection: entry.app.catalogSection,

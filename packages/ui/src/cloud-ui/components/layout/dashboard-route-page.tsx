@@ -9,7 +9,7 @@ import type {
   ReactNode,
 } from "react";
 import { Alert } from "../../../components/ui/alert";
-import { cn } from "../../lib/utils";
+import { cn } from "../../../utils/cn";
 import { DashboardPageContainer, DashboardPageStack } from "./dashboard-page";
 import { EnsurePageHeaderProvider } from "./page-header-context";
 import { useSetPageHeader } from "./page-header-context.hooks";

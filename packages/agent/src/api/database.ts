@@ -16,26 +16,30 @@ import dns from "node:dns";
 import type http from "node:http";
 import net from "node:net";
 import { promisify } from "node:util";
+import type { DatabaseProviderType } from "@elizaos/contracts";
 import {
   type AgentRuntime,
   type ColumnInfo,
   type ConnectionTestResult,
-  type DatabaseConfig,
-  type DatabaseProviderType,
   type DatabaseStatus,
   isLoopbackHost,
   logger,
   normalizeHostLike,
   normalizeIpForPolicy,
-  type PostgresCredentials,
   parseClampedInteger,
-  readJsonBody as parseJsonBody,
   type QueryResult,
-  resolveApiBindHost,
-  sendJson,
-  sendJsonError,
   type TableInfo,
 } from "@elizaos/core";
+import {
+  readJsonBody as parseJsonBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/host";
+import {
+  type DatabaseConfig,
+  type PostgresCredentials,
+  resolveApiBindHost,
+} from "@elizaos/host/protocol";
 
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { scanSqlForReadOnly } from "../shared/sql-sanitizers.ts";
@@ -854,10 +858,44 @@ async function handleGetRows(
   const total = Number(
     (countResult.rows[0] as Record<string, unknown>)?.total ?? 0,
   );
+  // OFFSET pages are separate queries, so the order must be total: a sort
+  // column with ties (or no ORDER BY at all) lets rows trade places between
+  // pages and be shown twice or never. The primary key breaks ties; a table
+  // without one falls back to its physical row id. ctid can move after an
+  // UPDATE or VACUUM FULL, so that fallback is stable only inside one query.
+  // The probe must use the same relation an unqualified FROM resolves: a
+  // same-named table in another schema would otherwise add columns the read
+  // does not have, and the page query would fail.
+  const pkResult = await executeRawSql(
+    runtime,
+    `SELECT kcu.column_name
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+      AND tc.table_name = kcu.table_name
+     WHERE tc.constraint_type = 'PRIMARY KEY'
+       AND tc.table_name = '${safeTableName}'
+       AND tc.table_schema = (
+         SELECT n.nspname
+         FROM pg_catalog.pg_class c
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relname = '${safeTableName}'
+           AND c.relkind IN ('r', 'p')
+           AND pg_catalog.pg_table_is_visible(c.oid)
+         LIMIT 1
+       )
+     ORDER BY kcu.ordinal_position`,
+  );
+  const tieBreak = pkResult.rows.length
+    ? pkResult.rows.map((r) => quoteIdent(String(r.column_name)))
+    : ["tableoid", "ctid"];
+  const orderTerms = [
+    ...(validSort ? [quoteIdent(validSort)] : []),
+    ...tieBreak.filter((term) => !validSort || term !== quoteIdent(validSort)),
+  ].map((term) => `${term} ${sortOrder}`);
   // Fetch rows
-  const orderClause = validSort
-    ? `ORDER BY ${quoteIdent(validSort)} ${sortOrder}`
-    : "";
+  const orderClause = `ORDER BY ${orderTerms.join(", ")}`;
   const query = `SELECT * FROM ${quoteIdent(tableName)} ${whereClause} ${orderClause} LIMIT ${limit} OFFSET ${offset}`;
   const result = await executeRawSql(runtime, query);
   sendJson(res, {

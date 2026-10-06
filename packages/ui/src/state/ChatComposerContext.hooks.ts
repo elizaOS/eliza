@@ -22,7 +22,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ImageAttachment } from "../api";
+import type { ImageAttachment } from "../api/client-types-chat";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   clearPendingChatTurn,

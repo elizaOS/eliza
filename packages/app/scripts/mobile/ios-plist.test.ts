@@ -1,4 +1,3 @@
-/** Exercises ios plist behavior with deterministic app test fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { escapeRegExp, escapeXmlText } from "./escape.ts";

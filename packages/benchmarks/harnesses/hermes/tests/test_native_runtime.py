@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from benchmarks.orchestrator_lifecycle.contract import LIFECYCLE_SYSTEM_HINT
+from benchmarks.suites.orchestrator_lifecycle.contract import LIFECYCLE_SYSTEM_HINT
 from hermes_adapter.native_runtime import (
     HEALTH_TOOL_NAME,
     NATIVE_RUNTIME_CLASS,

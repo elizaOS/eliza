@@ -13,7 +13,7 @@ import {
   AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS,
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagingSession,
-} from "@elizaos/core";
+} from "@elizaos/contracts";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   type AgentBackupRestoreV3CandidateFs,

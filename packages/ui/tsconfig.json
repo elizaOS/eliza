@@ -12,22 +12,19 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
-      "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
       "@elizaos/cloud-sdk/cloud-setup-session": [
         "../cloud/sdk/src/cloud-setup-session/index.ts"
       ],
       "@elizaos/cloud-sdk/cloud-setup-session/*": [
         "../cloud/sdk/src/cloud-setup-session/*"
       ],
-      "@elizaos/ui/navigation": ["./src/navigation/index.ts"],
-      "@elizaos/ui/*": ["./src/*"]
+      "@elizaos/core/protocol": ["../core/src/protocol"]
     }
   },
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],

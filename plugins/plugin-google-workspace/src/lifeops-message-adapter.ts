@@ -1,3 +1,4 @@
+import { gmailBriefSourceId } from "./gmail-message-id.js";
 /**
  * `GoogleGmailAdapter` — projects Gmail into the core message-triage adapter
  * shape consumed by assistant plugins such as LifeOps. Maps Gmail triage
@@ -34,6 +35,7 @@ import {
   type ReadMessageResult,
   type SearchMessagesFilters,
 } from "@elizaos/plugin-assistant";
+import { sortGmailMessages } from "./gmail.js";
 import {
   buildGmailContentPublication,
   gmailContentHeadId,
@@ -71,9 +73,10 @@ interface GmailDraftContext {
     accountId: string;
     to: string;
     subject: string;
-    inReplyTo: string | null;
-    references: string | null;
+    inReplyTo: string;
+    references: string;
     externalId: string;
+    threadId: string;
   };
 }
 
@@ -88,10 +91,6 @@ function readInteger(value: number | undefined, fallback: number, maximum: numbe
     });
   }
   return value;
-}
-
-function refId(messageId: string): string {
-  return `gmail:${messageId}`;
 }
 
 function gmailId(messageId: string): string {
@@ -117,10 +116,33 @@ function metadataString(metadata: Record<string, unknown>, key: string): string 
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
-function mapGmailMessage(accountId: string, message: GoogleGmailMessageSummary): MessageRef {
+function gmailReplyReferences(referencesHeader: string | null, messageIdHeader: string): string {
+  if (!referencesHeader) return messageIdHeader;
+  if (referencesHeader.includes(messageIdHeader)) return referencesHeader;
+  return `${referencesHeader} ${messageIdHeader}`;
+}
+
+// Mailbox labels in display priority. Gmail returns labelIds unordered and
+// mixes in state labels (UNREAD, IMPORTANT, STARRED, CATEGORY_*), so the first
+// label is not the message's channel.
+const GMAIL_MAILBOX_LABELS = ["INBOX", "SENT", "DRAFT", "SPAM", "TRASH"];
+
+function gmailChannelId(labels: readonly string[]): string | undefined {
+  return (
+    GMAIL_MAILBOX_LABELS.find((label) => labels.includes(label)) ??
+    labels.find((label) => label.startsWith("Label_")) ??
+    labels[0]
+  );
+}
+
+function mapGmailMessage(
+  agentId: string,
+  accountId: string,
+  message: GoogleGmailMessageSummary
+): MessageRef {
   const fromIdentifier = message.fromEmail?.trim() || message.from.trim();
   return {
-    id: refId(message.externalId),
+    id: gmailBriefSourceId({ agentId, accountId, externalId: message.externalId }),
     source: "gmail",
     externalId: message.externalId,
     threadId: message.threadId,
@@ -136,7 +158,7 @@ function mapGmailMessage(accountId: string, message: GoogleGmailMessageSummary):
     hasAttachments: Boolean(message.metadata.hasAttachments),
     isRead: !message.isUnread,
     worldId: accountId,
-    channelId: message.labels[0],
+    channelId: gmailChannelId(message.labels),
     tags: [...message.labels],
     metadata: {
       ...message.metadata,
@@ -163,7 +185,66 @@ function searchQuery(filters: SearchMessagesFilters): string {
   for (const tag of filters.tags ?? []) {
     tokens.push(`label:${tag}`);
   }
+  pushSinceToken(tokens, filters.sinceMs);
+  pushUntilToken(tokens, filters.untilMs);
   return tokens.join(" ");
+}
+
+function listQuery(opts: ListOptions): string {
+  const tokens = [opts.channelIds?.length ? "in:anywhere" : "in:inbox"];
+  pushSinceToken(tokens, opts.sinceMs);
+  return tokens.join(" ");
+}
+
+/**
+ * Gmail's labelIds filter matches messages carrying all listed labels, so a
+ * message in any requested channel needs one bounded query per label. The
+ * union keeps the newest maxResults, as a single provider query would.
+ */
+async function searchGmailChannels(
+  service: GoogleGmailAdapterService,
+  params: {
+    accountId: string;
+    query: string;
+    includeSpamTrash?: boolean;
+    maxResults?: number;
+  },
+  channelIds: readonly string[] | undefined
+): Promise<GoogleGmailMessageSummary[]> {
+  if (!channelIds?.length) {
+    return service.searchGmailMessages(params);
+  }
+  const byId = new Map<string, GoogleGmailMessageSummary>();
+  for (const labelId of new Set(channelIds)) {
+    for (const message of await service.searchGmailMessages({ ...params, labelIds: [labelId] })) {
+      byId.set(message.externalId, message);
+    }
+  }
+  const newest = [...byId.values()]
+    .sort((left, right) => asReceivedAtMs(right.receivedAt) - asReceivedAtMs(left.receivedAt))
+    .slice(0, params.maxResults ?? byId.size);
+  return sortGmailMessages(newest);
+}
+
+// Gmail's `after:` accepts epoch seconds and is exclusive. Step back one full
+// indexed second so the provider returns every message at sinceMs even if its
+// search index truncates message timestamps; cacheAndFilter still applies the
+// exact millisecond bound.
+function pushSinceToken(tokens: string[], sinceMs: number | undefined): void {
+  if (sinceMs !== undefined && sinceMs > 0) {
+    const afterSeconds = Math.floor(sinceMs / 1000) - 1;
+    if (afterSeconds >= 0) {
+      tokens.push(`after:${afterSeconds}`);
+    }
+  }
+}
+
+// Gmail's `before:` is exclusive in epoch seconds, so the second after untilMs
+// keeps every message through the inclusive bound for cacheAndFilter to trim.
+function pushUntilToken(tokens: string[], untilMs: number | undefined): void {
+  if (untilMs !== undefined && Number.isFinite(untilMs)) {
+    tokens.push(`before:${Math.max(0, Math.floor(untilMs / 1000) + 1)}`);
+  }
 }
 
 function toGmailOperation(op: ManageOperation): {
@@ -209,6 +290,7 @@ async function emitCommittedGmailMutation(
   runtime: IAgentRuntime,
   receipt: {
     messageId: string;
+    accountId: string;
     operation: "mark_read" | "replied";
     domainEventId: string;
   }
@@ -217,7 +299,11 @@ async function emitCommittedGmailMutation(
     await runtime.emitEvent(EventType.MESSAGE_MUTATED, {
       runtime,
       messageSource: "gmail",
-      messageId: refId(receipt.messageId),
+      messageId: gmailBriefSourceId({
+        agentId: runtime.agentId,
+        accountId: receipt.accountId,
+        externalId: receipt.messageId,
+      }),
       operation: receipt.operation,
       domainEventId: receipt.domainEventId,
       committedAt: new Date().toISOString(),
@@ -249,6 +335,19 @@ function newDraftRecipients(draft: DraftRequest): string[] {
     );
   }
   return identifiers;
+}
+
+/** Every requested Gmail account (`worldIds`), or the default account. */
+function requestedAccounts(worldIds: readonly string[] | undefined): string[] {
+  return worldIds?.length ? [...new Set(worldIds)] : [DEFAULT_GOOGLE_ACCOUNT_ID];
+}
+
+/** Merges per-account pages so the shared limit keeps the newest messages. */
+function newestFirst(refs: MessageRef[]): MessageRef[] {
+  return refs
+    .map((ref, index) => ({ ref, index }))
+    .sort((a, b) => b.ref.receivedAtMs - a.ref.receivedAtMs || a.index - b.index)
+    .map(({ ref }) => ref);
 }
 
 export class GoogleGmailAdapter extends BaseMessageAdapter {
@@ -284,22 +383,55 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     opts: ListOptions
   ): Promise<MessageRef[]> {
     const service = this.requireService(runtime);
-    const accountId = opts.worldIds?.[0] ?? DEFAULT_GOOGLE_ACCOUNT_ID;
-    const messages = await service.listGmailTriageMessages({
-      accountId,
-      maxResults: opts.limit,
-    });
-    return this.cacheAndFilter(
-      messages.map((message) => mapGmailMessage(accountId, message)),
-      opts
-    );
+    const refs: MessageRef[] = [];
+    for (const accountId of requestedAccounts(opts.worldIds)) {
+      // Channel and time filters must reach Gmail before maxResults applies, or
+      // the provider's newest page can hold no match while older ones exist.
+      const messages =
+        opts.channelIds?.length || opts.sinceMs !== undefined
+          ? await searchGmailChannels(
+              service,
+              {
+                accountId,
+                query: listQuery(opts),
+                maxResults: opts.limit,
+                includeSpamTrash: Boolean(opts.channelIds?.length),
+              },
+              opts.channelIds
+            )
+          : await service.listGmailTriageMessages({
+              accountId,
+              maxResults: opts.limit,
+            });
+      for (const message of messages) {
+        refs.push(mapGmailMessage(String(runtime.agentId), accountId, message));
+      }
+    }
+    return this.cacheAndFilter(newestFirst(refs), opts);
   }
 
   protected async getMessageImpl(runtime: IAgentRuntime, id: string): Promise<MessageRef | null> {
-    const cached = this.messageCache.get(id) ?? this.messageCache.get(refId(id));
-    if (cached) return cached;
-    const messages = await this.listMessages(runtime, {});
-    return messages.find((message) => message.id === id || message.id === refId(id)) ?? null;
+    const prefix = `${runtime.agentId}:`;
+    const cached = this.messageCache.get(id);
+    if (cached?.id.startsWith(prefix)) return cached;
+    const marker = id.lastIndexOf(":gmail:");
+    const scopedAccount = marker >= 0 ? id.slice(0, marker) : undefined;
+    if (scopedAccount && !scopedAccount.startsWith(prefix)) return null;
+    const accountId = scopedAccount?.slice(prefix.length);
+    const externalId = externalMessageId(id);
+    const matches = [...this.messageCache.values()].filter(
+      (message) =>
+        message.id.startsWith(prefix) &&
+        message.externalId === externalId &&
+        (!accountId || message.worldId === accountId)
+    );
+    if (matches.length > 1)
+      throw new ElizaError("Select the Gmail account for this message.", {
+        code: "GMAIL_MESSAGE_ACCOUNT_AMBIGUOUS",
+      });
+    if (matches[0]) return matches[0];
+    const messages = await this.listMessages(runtime, accountId ? { worldIds: [accountId] } : {});
+    return messages.find((message) => message.externalId === externalId) ?? null;
   }
 
   protected async readMessageImpl(
@@ -517,16 +649,27 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     filters: SearchMessagesFilters
   ): Promise<MessageRef[]> {
     const service = this.requireService(runtime);
-    const accountId = filters.worldIds?.[0] ?? DEFAULT_GOOGLE_ACCOUNT_ID;
-    const messages = await service.searchGmailMessages({
-      accountId,
-      query: searchQuery(filters),
-      includeSpamTrash: true,
-      maxResults: filters.limit,
-    });
-    const refs = messages.map((message) => mapGmailMessage(accountId, message));
-    return this.cacheAndFilter(refs, {
+    const refs: MessageRef[] = [];
+    for (const accountId of requestedAccounts(filters.worldIds)) {
+      const messages = await searchGmailChannels(
+        service,
+        {
+          accountId,
+          query: searchQuery(filters),
+          includeSpamTrash: true,
+          // Gmail rounds before: to seconds; apply the exact bound before
+          // consuming the result limit, including within its final second.
+          maxResults: filters.untilMs === undefined ? filters.limit : undefined,
+        },
+        filters.channelIds
+      );
+      for (const message of messages) {
+        refs.push(mapGmailMessage(String(runtime.agentId), accountId, message));
+      }
+    }
+    return this.cacheAndFilter(newestFirst(refs), {
       sinceMs: filters.sinceMs,
+      untilMs: filters.untilMs,
       limit: filters.limit,
       worldIds: filters.worldIds,
       channelIds: filters.channelIds,
@@ -550,17 +693,34 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       return { draftId, preview, snapshot: structuredClone(draft) };
     }
     const message = await this.ensureMessage(runtime, draft.inReplyToId);
+    const threadId = message.threadId?.trim();
+    if (!threadId) {
+      throw new ElizaError("Gmail reply requires the original thread id", {
+        code: "GMAIL_REPLY_THREAD_REQUIRED",
+      });
+    }
+    const inReplyTo = metadataString(message.metadata ?? {}, "messageIdHeader");
+    if (!inReplyTo) {
+      throw new ElizaError("Gmail reply requires the original Message-ID header", {
+        code: "GMAIL_REPLY_MESSAGE_ID_REQUIRED",
+      });
+    }
     const replyEnvelope = {
       accountId: messageAccountId(message),
       to: metadataString(message.metadata ?? {}, "replyTo") ?? message.from.identifier,
       subject: message.subject ?? "Re: your message",
-      inReplyTo: metadataString(message.metadata ?? {}, "messageIdHeader"),
-      references: metadataString(message.metadata ?? {}, "references"),
+      inReplyTo,
+      references: gmailReplyReferences(
+        metadataString(message.metadata ?? {}, "referencesHeader"),
+        inReplyTo
+      ),
       externalId: message.externalId,
+      threadId,
     };
     draft.to = [{ identifier: replyEnvelope.to }];
     draft.worldId = replyEnvelope.accountId;
     draft.subject = replyEnvelope.subject;
+    draft.threadId = replyEnvelope.threadId;
     this.draftCache.set(draftId, { request: draft, preview, replyEnvelope });
     return { draftId, preview, snapshot: structuredClone(draft) };
   }
@@ -596,10 +756,12 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       bodyText: request.body,
       inReplyTo: envelope.inReplyTo,
       references: envelope.references,
+      threadId: envelope.threadId,
     });
     if (sent.messageId) {
       await emitCommittedGmailMutation(runtime, {
         messageId: envelope.externalId,
+        accountId: envelope.accountId,
         operation: "replied",
         domainEventId: `gmail_reply:${envelope.accountId}:${sent.messageId}`,
       });
@@ -650,6 +812,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       const externalId = externalMessageId(messageId);
       await emitCommittedGmailMutation(runtime, {
         messageId: externalId,
+        accountId,
         operation: "mark_read",
         domainEventId: `gmail_mark_read:${accountId}:${externalId}`,
       });
@@ -673,7 +836,10 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     return message;
   }
 
-  private cacheAndFilter(messages: MessageRef[], opts: ListOptions): MessageRef[] {
+  private cacheAndFilter(
+    messages: MessageRef[],
+    opts: ListOptions & { untilMs?: number }
+  ): MessageRef[] {
     const worlds = opts.worldIds ? new Set(opts.worldIds) : null;
     const channels = opts.channelIds ? new Set(opts.channelIds) : null;
     const out: MessageRef[] = [];
@@ -681,14 +847,17 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       if (opts.sinceMs !== undefined && message.receivedAtMs < opts.sinceMs) {
         continue;
       }
+      if (opts.untilMs !== undefined && message.receivedAtMs > opts.untilMs) {
+        continue;
+      }
       if (worlds && (!message.worldId || !worlds.has(message.worldId))) {
         continue;
       }
-      if (channels && (!message.channelId || !channels.has(message.channelId))) {
+      // A Gmail message is in every label it carries, not only its first.
+      if (channels && !(message.tags ?? []).some((label) => channels.has(label))) {
         continue;
       }
       this.messageCache.set(message.id, message);
-      this.messageCache.set(gmailId(message.id), message);
       out.push(message);
     }
     return out.slice(0, opts.limit ?? out.length);

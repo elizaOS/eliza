@@ -35,7 +35,8 @@ vi.mock("bun:ffi", () => ({
   ptr: vi.fn(() => 1),
 }));
 
-vi.mock("@elizaos/core/platform/native-library-policy", () => ({
+vi.mock("@elizaos/host", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/host")>()),
   resolveNativeLibraryCandidate: vi.fn(
     () =>
       "/Applications/Eliza.app/Contents/Resources/libMacWindowEffects.dylib",

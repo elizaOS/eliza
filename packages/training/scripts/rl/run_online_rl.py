@@ -24,28 +24,26 @@ import argparse
 import asyncio
 import json
 import logging
-import sys
 from pathlib import Path
 
 # Ensure training package is importable
 SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
-sys.path.insert(0, str(PYTHON_ROOT))
 
-from src.training.continuous_rl import (
+from eliza_training.rl.continuous_rl import (
     ContinuousRLAgent,
     ContinuousRLConfig,
     run_online_training,
 )
-from src.training.multi_agent_orchestrator import (
+from eliza_training.rl.multi_agent_orchestrator import (
     MultiAgentOrchestrator,
     OrchestratorConfig,
 )
-from src.training.shared_model_rl import (
+from eliza_training.rl.shared_model_rl import (
     SharedModelConfig,
     run_shared_model_training,
 )
-from src.training.simulation_bridge import SimulationBridge
+from eliza_training.rl.simulation_bridge import SimulationBridge
 
 logging.basicConfig(
     level=logging.INFO,
@@ -176,7 +174,7 @@ async def run_shared_model(args: argparse.Namespace) -> None:
     )
 
     if hasattr(args, "mock") and args.mock:
-        from run_shared_model_rl import MockSharedBridge
+        from eliza_training.rl.run_shared_model_rl import MockSharedBridge
 
         bridge = MockSharedBridge(seed=args.seed)
     else:

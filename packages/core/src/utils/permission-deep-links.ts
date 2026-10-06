@@ -12,7 +12,7 @@
  * surface advertises the limitation up-front.
  */
 
-import type { PermissionId } from "../contracts/permissions.js";
+import type { PermissionId } from "../types/permissions.js";
 
 const ROOT_PRIVACY =
 	"x-apple.systempreferences:com.apple.preference.security?Privacy";
@@ -86,7 +86,7 @@ export interface OpenPermissionSettingsDeps {
 	/**
 	 * Optional opener. Injected for tests; defaults to `window.open` in the
 	 * browser/electron renderer. On Node-only contexts the caller must inject
-	 * something (e.g. `child_process.exec("open ...")`).
+	 * something (e.g. `child_process.exec("open...")`).
 	 */
 	open?: (url: string) => void | Promise<void>;
 	/** Override platform detection (tests). */

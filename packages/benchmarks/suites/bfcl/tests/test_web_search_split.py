@@ -6,6 +6,7 @@ Upstream BFCL packs both categories into the same source file
 that by partitioning the loaded entries into the two categories at the
 end of ``BFCLDataset.load()``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -14,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from suites.bfcl.dataset import BFCLDataset
-from suites.bfcl.types import BFCLCategory, BFCLConfig
+from benchmarks.suites.bfcl.dataset import BFCLDataset
+from benchmarks.suites.bfcl.types import BFCLCategory, BFCLConfig
 
 
 def _write_ndjson(path: Path, rows: list[dict]) -> None:
@@ -33,19 +34,25 @@ def web_search_fixture(tmp_path: Path) -> Path:
     rows = [
         {
             "id": "web_search_0",
-            "question": [[{"role": "user", "content": "Who won the World Cup in 2022?"}]],
+            "question": [
+                [{"role": "user", "content": "Who won the World Cup in 2022?"}]
+            ],
             "function": [],
             "involved_classes": ["WebSearchAPI"],
         },
         {
             "id": "web_search_1",
-            "question": [[{"role": "user", "content": "What is the capital of France?"}]],
+            "question": [
+                [{"role": "user", "content": "What is the capital of France?"}]
+            ],
             "function": [],
             "involved_classes": ["WebSearchAPI"],
         },
         {
             "id": "web_search_no_snippet_0",
-            "question": [[{"role": "user", "content": "Who is the president of Brazil?"}]],
+            "question": [
+                [{"role": "user", "content": "Who is the president of Brazil?"}]
+            ],
             "function": [],
             "involved_classes": ["WebSearchAPI"],
         },
@@ -80,9 +87,7 @@ class TestWebSearchSplit:
     def test_no_snippet_only_contains_no_snippet_entries(
         self, web_search_fixture: Path
     ) -> None:
-        ds = _load_dataset(
-            web_search_fixture, [BFCLCategory.WEB_SEARCH_NO_SNIPPET]
-        )
+        ds = _load_dataset(web_search_fixture, [BFCLCategory.WEB_SEARCH_NO_SNIPPET])
         cats = {tc.category for tc in ds}
         assert cats == {BFCLCategory.WEB_SEARCH_NO_SNIPPET}
         # Every entry must end up in the no_snippet bucket — either it
@@ -97,21 +102,15 @@ class TestWebSearchSplit:
                 or tc.category == BFCLCategory.WEB_SEARCH_NO_SNIPPET
             )
 
-    def test_both_categories_partition_cleanly(
-        self, web_search_fixture: Path
-    ) -> None:
+    def test_both_categories_partition_cleanly(self, web_search_fixture: Path) -> None:
         ds = _load_dataset(
             web_search_fixture,
             [BFCLCategory.WEB_SEARCH_BASE, BFCLCategory.WEB_SEARCH_NO_SNIPPET],
         )
 
-        base_ids = [
-            tc.id for tc in ds if tc.category == BFCLCategory.WEB_SEARCH_BASE
-        ]
+        base_ids = [tc.id for tc in ds if tc.category == BFCLCategory.WEB_SEARCH_BASE]
         ns_ids = [
-            tc.id
-            for tc in ds
-            if tc.category == BFCLCategory.WEB_SEARCH_NO_SNIPPET
+            tc.id for tc in ds if tc.category == BFCLCategory.WEB_SEARCH_NO_SNIPPET
         ]
 
         # Every id falls into exactly one bucket.

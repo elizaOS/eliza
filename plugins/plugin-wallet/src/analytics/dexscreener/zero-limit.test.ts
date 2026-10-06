@@ -1,9 +1,10 @@
 /**
- * An explicit DexScreener list limit of 0 is an empty page and must not
- * fall through to the default slice (`limit || 10` / `limit ? slice : 20`).
+ * An explicit DexScreener list limit of 0 is an empty page. `limit || 10`
+ * and `limit ? slice : slice(0, 20)` used to substitute the default page.
  */
+
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DexScreenerService } from "./service";
 
 function runtime(): IAgentRuntime {
@@ -16,34 +17,89 @@ function runtime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-const calls: string[] = [];
-const realFetch = globalThis.fetch;
+function json(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
 
-afterEach(() => {
-  globalThis.fetch = realFetch;
-  calls.length = 0;
-});
+describe("DexScreener explicit empty pages", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
-it("does not call DexScreener when a list limit is 0", async () => {
-  globalThis.fetch = async (input) => {
-    calls.push(String(input));
-    return new Response("[]", {
-      status: 200,
-      headers: { "content-type": "application/json" },
+  it("treats a trending limit of 0 as an empty page", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/token-boosts/")) {
+        return json([
+          { chainId: "solana", tokenAddress: "a" },
+          { chainId: "solana", tokenAddress: "b" },
+        ]);
+      }
+      return json([{ chainId: "solana", pairAddress: url }]);
     });
-  };
-  const service = await DexScreenerService.start(runtime());
+    vi.stubGlobal("fetch", fetchMock);
+    const service = await DexScreenerService.start(runtime());
 
-  await expect(service.getTrending({ limit: 0 })).resolves.toEqual({
-    success: true,
-    data: [],
+    const empty = await service.getTrending({ limit: 0 });
+    expect(empty).toMatchObject({ success: true, data: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+
+    fetchMock.mockClear();
+    const one = await service.getTrending({ limit: 1 });
+    expect(one.success && one.data).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
-  await expect(service.getNewPairs({ limit: 0 })).resolves.toEqual({
-    success: true,
-    data: [],
+
+  it("treats a chain-pair limit of 0 as an empty page", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        json({
+          pairs: [
+            { chainId: "solana", pairAddress: "a" },
+            { chainId: "solana", pairAddress: "b" },
+            { chainId: "ethereum", pairAddress: "c" },
+          ],
+        }),
+      ),
+    );
+    const service = await DexScreenerService.start(runtime());
+
+    const empty = await service.getPairsByChain({ chain: "solana", limit: 0 });
+    expect(empty).toMatchObject({ success: true, data: [] });
+    const one = await service.getPairsByChain({ chain: "solana", limit: 1 });
+    expect(one.success && one.data?.map((pair) => pair.pairAddress)).toEqual([
+      "a",
+    ]);
+    const all = await service.getPairsByChain({ chain: "solana" });
+    expect(all.success && all.data?.map((pair) => pair.pairAddress)).toEqual([
+      "a",
+      "b",
+    ]);
   });
-  await expect(
-    service.getPairsByChain({ chain: "solana", limit: 0 }),
-  ).resolves.toEqual({ success: true, data: [] });
-  expect(calls).toEqual([]);
+
+  it("treats a new-pair limit of 0 as an empty page", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/token-profiles/")) {
+        return json([
+          { chainId: "solana", tokenAddress: "a" },
+          { chainId: "solana", tokenAddress: "b" },
+        ]);
+      }
+      return json([{ chainId: "solana", pairAddress: "pair" }]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const service = await DexScreenerService.start(runtime());
+
+    const empty = await service.getNewPairs({ limit: 0 });
+    expect(empty).toMatchObject({ success: true, data: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+
+    fetchMock.mockClear();
+    const omitted = await service.getNewPairs();
+    expect(omitted.success && omitted.data).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });

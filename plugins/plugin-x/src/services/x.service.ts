@@ -161,6 +161,24 @@ function explicitConnectorLimit(value: number | undefined): number | undefined {
   return value;
 }
 
+/** Resolve only authenticated one-to-one conversations, never group membership. */
+function dmCounterpartId(message: {
+  senderId: string;
+  ownUserId?: string;
+  conversationId?: string;
+}): string | null {
+  const pair = message.conversationId?.match(/^(\d+)-(\d+)$/);
+  if (!pair || !message.ownUserId) return null;
+  const participants = new Set(pair.slice(1));
+  if (
+    participants.size !== 2 ||
+    !participants.has(message.ownUserId) ||
+    !participants.has(message.senderId)
+  )
+    return null;
+  return [...participants].find((id) => id !== message.ownUserId) ?? null;
+}
+
 function readContentString(
   content: Content,
   keys: string[],
@@ -1147,20 +1165,17 @@ export class XService extends Service {
       target?.channelId ??
       target?.threadId;
     const limit = explicitConnectorLimit(params.limit);
-    const messages = await this.listRecentDirectMessages(accountId).catch(
-      (error) => {
-        // error-policy:J7 a DM fetch failure (expired token, rate limit) must
-        // surface to the agent rather than reading as an empty inbox; degrade to
-        // no messages after reporting.
-        runtime.reportError("XService.fetchConnectorMessages", error, {
-          accountId,
-        });
-        return [];
-      },
-    );
+    // A DM fetch failure (expired token, rate limit) propagates: callers
+    // translate it at their boundary, and an empty list would read as an
+    // empty inbox.
+    const messages = await this.listRecentDirectMessages(accountId);
 
+    // A conversation with the target includes the account's own replies, so
+    // match on the authenticated conversation pair, not only the sender.
     const matches = messages
-      .filter((message) => !targetUserId || message.senderId === targetUserId)
+      .filter(
+        (message) => !targetUserId || dmCounterpartId(message) === targetUserId,
+      )
       .map((message) =>
         this.buildXDirectMessageMemory(
           runtime,
@@ -1210,28 +1225,26 @@ export class XService extends Service {
     _context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorTarget[]> {
     const accountId = this.resolveAccountId(_context.target, _context);
-    const messages = await this.listRecentDirectMessages(accountId).catch(
-      (error) => {
-        // error-policy:J7 a DM fetch failure must surface to the agent rather
-        // than reading as no recent targets; degrade to an empty list after
-        // reporting.
-        this.runtime.reportError("XService.listRecentConnectorTargets", error, {
-          accountId,
-        });
-        return [];
-      },
-    );
+    // Propagates like fetchConnectorMessages: an empty list would read as no
+    // recent DM partners.
+    const messages = await this.listRecentDirectMessages(accountId);
+    const usernames = new Map<string, string>();
+    for (const message of messages) {
+      if (message.senderId && message.senderUsername)
+        usernames.set(message.senderId, message.senderUsername);
+    }
     const seen = new Set<string>();
     const targets: MessageConnectorTarget[] = [];
     for (const message of messages) {
-      if (!message.senderId || seen.has(message.senderId)) {
+      const partnerId = dmCounterpartId(message);
+      if (!partnerId || seen.has(partnerId)) {
         continue;
       }
-      seen.add(message.senderId);
+      seen.add(partnerId);
       targets.push(
         this.buildUserTarget(
-          message.senderId,
-          message.senderUsername ?? undefined,
+          partnerId,
+          usernames.get(partnerId),
           0.8,
           accountId,
         ),
@@ -1378,6 +1391,7 @@ export class XService extends Service {
       id: string;
       conversationId: string;
       senderId: string;
+      ownUserId: string;
       senderUsername: string | null;
       text: string;
       createdAt: string | null;
@@ -1420,6 +1434,7 @@ export class XService extends Service {
         id: string;
         conversationId: string;
         senderId: string;
+        ownUserId: string;
         senderUsername: string | null;
         text: string;
         createdAt: string | null;
@@ -1434,6 +1449,7 @@ export class XService extends Service {
           id: event.id ?? "",
           conversationId: event.dm_conversation_id ?? event.id ?? "",
           senderId: event.sender_id ?? "",
+          ownUserId,
           senderUsername: event.sender_id
             ? (usernameMap.get(event.sender_id) ?? null)
             : null,
@@ -1542,6 +1558,7 @@ export class XService extends Service {
       id: string;
       conversationId?: string;
       senderId: string;
+      ownUserId: string;
       senderUsername: string | null;
       text: string;
       createdAt: string | null;
@@ -1556,13 +1573,21 @@ export class XService extends Service {
     const createdAt = message.createdAt
       ? Date.parse(message.createdAt)
       : Date.now();
+    const counterpartId = dmCounterpartId(message);
     const roomId =
       target?.roomId ??
-      createUniqueUuid(runtime, `x:${normalizedAccountId}:dm:${senderId}`);
-    const entityId =
-      senderId === runtime.agentId
-        ? runtime.agentId
-        : createUniqueUuid(runtime, `x:user:${senderId}`);
+      createUniqueUuid(
+        runtime,
+        counterpartId
+          ? `x:${normalizedAccountId}:dm:${counterpartId}`
+          : `x:${normalizedAccountId}:dm-conversation:${message.conversationId ?? message.id}`,
+      );
+    // `senderId` is an X user id, never the agent's UUID; the account's own
+    // DMs are the ones listRecentDirectMessages marked as not inbound.
+    const fromAccount = message.isInbound === false;
+    const entityId = fromAccount
+      ? runtime.agentId
+      : createUniqueUuid(runtime, `x:user:${senderId}`);
 
     return {
       id: createUniqueUuid(runtime, `x:dm:${message.id}`),
@@ -1581,7 +1606,7 @@ export class XService extends Service {
         accountId: normalizedAccountId,
         provider: "x",
         timestamp: createdAt,
-        fromBot: entityId === runtime.agentId,
+        fromBot: fromAccount,
         messageIdFull: message.id,
         chatType: ChannelType.DM,
         sender: {

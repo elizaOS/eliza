@@ -6,7 +6,7 @@
 import { X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
-import { cn } from "../../lib/utils";
+import { cn } from "../../utils/cn";
 import { Button } from "./button";
 import { Input } from "./input";
 import { Label } from "./label";

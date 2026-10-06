@@ -12,17 +12,17 @@ import type { SurfaceManifest, ViewCapability } from "@elizaos/core";
  * controls opt in with `useAgentElement`.
  */
 
-import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
+import { resolveSurfaceManifest } from "@elizaos/core/protocol";
 import { type ReactNode, useEffect, useRef } from "react";
+import { AgentElementOverlay } from "../../agent-surface/AgentElementOverlay";
+import { AgentSurfaceProvider } from "../../agent-surface/AgentSurfaceContext";
 import {
-  AgentElementOverlay,
-  AgentSurfaceElementReporter,
-  AgentSurfaceProvider,
-  type AgentViewType,
-  getViewRegistry,
   handleAgentSurfaceCapability,
   isAgentSurfaceCapability,
-} from "../../agent-surface";
+} from "../../agent-surface/capabilities";
+import { AgentSurfaceElementReporter } from "../../agent-surface/element-reporter";
+import { getViewRegistry } from "../../agent-surface/registry";
+import type { AgentViewType } from "../../agent-surface/types";
 import type { RegisteredAgentSurfaceKind } from "../../app-shell-registry";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { brokerViewInteract } from "./view-capability-broker";

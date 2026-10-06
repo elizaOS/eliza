@@ -18,13 +18,13 @@ import {
   Trash2,
 } from "lucide-react";
 import * as React from "react";
-import { useAgentElement } from "../../agent-surface";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import type {
   VoiceProfile,
   VoiceProfilesClient,
 } from "../../api/client-voice-profiles";
-import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { cn } from "../../utils/cn";
 import { isSafeNavigationUrl } from "../../utils/navigation-url";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";

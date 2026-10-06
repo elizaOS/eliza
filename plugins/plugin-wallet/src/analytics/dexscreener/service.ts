@@ -10,22 +10,22 @@
 
 import { cloudServiceApisBaseUrl } from "@elizaos/cloud-routing";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import { parseClampedInteger } from "@elizaos/core/utils/number-parsing";
+import { parseClampedInteger } from "@elizaos/core/protocol";
 import { toWalletCloudRoutingSettings } from "../cloud-routing-authority";
 import { dexScreenerErrorMessage } from "./errors";
-import {
-  type DexScreenerBoostedToken,
-  type DexScreenerChainParams,
-  type DexScreenerConfig,
-  type DexScreenerNewPairsParams,
-  type DexScreenerOrder,
-  type DexScreenerPair,
-  type DexScreenerPairParams,
-  type DexScreenerProfile,
-  type DexScreenerSearchParams,
-  type DexScreenerServiceResponse,
-  type DexScreenerTokenParams,
-  type DexScreenerTrendingParams,
+import type {
+  DexScreenerBoostedToken,
+  DexScreenerChainParams,
+  DexScreenerConfig,
+  DexScreenerNewPairsParams,
+  DexScreenerOrder,
+  DexScreenerPair,
+  DexScreenerPairParams,
+  DexScreenerProfile,
+  DexScreenerSearchParams,
+  DexScreenerServiceResponse,
+  DexScreenerTokenParams,
+  DexScreenerTrendingParams,
 } from "./types";
 
 type DexScreenerBoostedWire = DexScreenerBoostedToken & {

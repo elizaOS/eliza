@@ -18,7 +18,7 @@ import { describe, expect, it } from "vitest";
 
 describe("register-path LifeOps client extension (prototype race)", () => {
   it("importing the capture module alone installs captureLifeOpsActivitySignal on the shared client", async () => {
-    const { client } = await import("@elizaos/ui/api");
+    const { client } = await import("@elizaos/ui");
     // The capture module's own import graph — not this test, not the PA root
     // facade — must bring the prototype extension in.
     await import("./activity-signals-capture.js");

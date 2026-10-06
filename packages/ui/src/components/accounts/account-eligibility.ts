@@ -9,13 +9,13 @@
  * eligibility requires a canonical executable-backend mapping. No hardcoded
  * provider-name copy leaks into components.
  */
+
 import {
   codingAgentSpawnCapabilityForProvider,
   codingProviderDescriptorForProvider,
-} from "@elizaos/core/contracts/coding-agent-capabilities";
-import type { LinkedAccountProviderId } from "@elizaos/core/contracts/service-routing";
-import type { ProviderRuntimeEligibility } from "../../api/client-accounts";
-import type { AccountsListProvider } from "../../api/client-agent";
+  type ProviderRuntimeEligibility,
+} from "@elizaos/contracts";
+
 import type { AccountProviderOption } from "./account-provider-options";
 export interface ResolvedEligibility {
   chat: boolean;
@@ -84,12 +84,7 @@ export function eligibilityChips(
   }
   return chips;
 }
-/** Fast lookup of the runtime eligibility payload from a providers list. */
-export function runtimeEligibilityFor(
-  provider: AccountsListProvider | undefined,
-): ProviderRuntimeEligibility | undefined {
-  return provider?.runtimeEligibility;
-}
+
 export type ProviderConnectionState =
   | "connected-healthy"
   | "connected-attention"
@@ -113,7 +108,4 @@ export function providerConnectionState(
   );
   if (needsAttention) return "connected-attention";
   return "connected-healthy";
-}
-export function isProviderId(value: string): value is LinkedAccountProviderId {
-  return typeof value === "string" && value.length > 0;
 }

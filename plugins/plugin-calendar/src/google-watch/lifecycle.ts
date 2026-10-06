@@ -12,14 +12,16 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
+import type {
+  LifeOpsCalendarChangeDeliveryHealth,
+  LifeOpsConnectorSide,
+} from "@elizaos/contracts";
 import {
   ElizaError,
   type IAgentRuntime,
   isBlockedHostname,
   isPrivateIpAddress,
 } from "@elizaos/core";
-import { type LifeOpsCalendarChangeDeliveryHealth } from "@elizaos/core/contracts/calendar";
-import { type LifeOpsConnectorSide } from "@elizaos/core/contracts/personal-assistant";
 import type { GoogleCalendarWatchResponse } from "@elizaos/plugin-google-workspace";
 import {
   type DispatchResult,

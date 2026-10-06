@@ -28,9 +28,9 @@ import {
   formatError,
   logger,
   readJsonFile,
+  resolveStateDir,
   writeJsonAtomic,
 } from "@elizaos/core";
-import { resolveStateDir } from "../../config/paths.ts";
 import type {
   OperationPhase,
   RuntimeOperation,

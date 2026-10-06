@@ -11,7 +11,10 @@
  */
 
 import { LoginClient } from "@elizaos/auth";
-import { replaceStoredStewardTokenIfCurrent } from "@elizaos/plugin-elizacloud/steward-session-client";
+import {
+  dispatchStewardSessionChange,
+  replaceStoredStewardTokenIfCurrent,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
 import {
   type ComponentProps,
   type ReactNode,
@@ -19,8 +22,8 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { dispatchStewardSessionChange } from "../../events/steward-session-event";
-import { LoginProvider, useAuth as useStewardAuth } from "../../login/index";
+import { LoginProvider } from "../../login/provider";
+import { useAuth as useStewardAuth } from "../../login/useAuth";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";

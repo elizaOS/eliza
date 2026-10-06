@@ -18,17 +18,11 @@
  *   const client = sidecar.getClient();
  *   await sidecar.stop();
  */
-// Node builtins are imported statically: this file only runs in the bun
-// process (StewardSidecar manages a child Steward API process), never in
-// the renderer. Other steward modules (api/wallet, services/steward-*)
-// already use static node:* imports - keeping this file dynamic just
-// triggered the Vite "dynamically imported but also statically imported"
-// warning without preventing browser-bundling.
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/core/utils/env";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { waitForHealthy } from "./steward-sidecar/health-check";
 import {
   allocateFirstFreeLoopbackPort,
@@ -353,37 +347,39 @@ export class StewardSidecar {
   // Internal.
   private async ensureDataDir(): Promise<void> {
     const dir = this.config.dataDir;
-    const home = process.env.HOME || process.env.USERPROFILE || "";
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
+    }
+    // Only the original product owns the historical unnamespaced database.
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const namespace = readAliasedEnv("ELIZA_NAMESPACE") || "eliza";
+    const legacy = path.join(home, ".steward", "data");
+    const target = path.join(dir, "data");
+    if (
+      namespace === "eliza" &&
+      path.isAbsolute(home) &&
+      !this.config.databaseUrl &&
+      path.resolve(legacy) !== path.resolve(target) &&
+      fs.existsSync(legacy) &&
+      (!fs.existsSync(target) || fs.readdirSync(target).length === 0)
+    ) {
+      // Publish only a complete copy. A failed copy leaves the old database and
+      // target untouched, so retry cannot mistake partial data for current state.
+      const staging = fs.mkdtempSync(path.join(dir, ".steward-upgrade-"));
+      try {
+        const copy = path.join(staging, "data");
+        fs.cpSync(legacy, copy, { recursive: true, force: false });
+        if (fs.existsSync(target)) fs.rmdirSync(target); // Refuse a now nonempty target.
+        fs.renameSync(copy, target);
+      } finally {
+        fs.rmSync(staging, { recursive: true, force: true });
+      }
     }
     for (const sub of ["data", "logs"]) {
       const subDir = path.join(dir, sub);
       if (!fs.existsSync(subDir)) {
         fs.mkdirSync(subDir, { recursive: true });
       }
-    }
-    // Steward's embedded runtime historically defaulted to ~/.steward/data.
-    // Migrate that legacy PGLite directory into Eliza's state dir when the
-    // new target is still empty so upgrades keep the same wallet/agent data.
-    const legacyDataDir = path.join(home, ".steward", "data");
-    const targetDataDir = path.join(dir, "data");
-    const targetHasData =
-      fs.existsSync(path.join(targetDataDir, "PG_VERSION")) ||
-      (fs.existsSync(targetDataDir) &&
-        fs.readdirSync(targetDataDir).length > 0);
-    if (
-      legacyDataDir !== targetDataDir &&
-      fs.existsSync(legacyDataDir) &&
-      !targetHasData
-    ) {
-      logger.info(
-        `[StewardSidecar] Migrating legacy steward data from ${legacyDataDir} to ${targetDataDir}`,
-      );
-      fs.cpSync(legacyDataDir, targetDataDir, {
-        recursive: true,
-        force: false,
-      });
     }
   }
   private async loadOrCreateCredentials(): Promise<void> {
@@ -480,8 +476,17 @@ export class StewardSidecar {
       `[StewardSidecar] Spawning steward on port ${this.config.port} (entryPoint=${entryPoint}, dataDir=${this.config.dataDir})`,
     );
     const bun = getBunRuntime();
+    // A source checkout resolves the entry point to its `.ts` file, which
+    // needs the `eliza-source` condition so the child loads workspace sources
+    // instead of requiring built `dist` files. A packaged build resolves the
+    // bundled `.js` entry, which must resolve its external dependencies from
+    // their built `dist` files, so the condition is not passed there.
+    // (Matches packages/app/src/api/standalone-kokoro-service.ts.)
+    const sourceConditions = entryPoint.endsWith(".ts")
+      ? ["--conditions=eliza-source"]
+      : [];
     if (bun) {
-      const proc = bun.spawn(["bun", "run", entryPoint], {
+      const proc = bun.spawn(["bun", "run", ...sourceConditions, entryPoint], {
         env,
         cwd: path.dirname(entryPoint),
         stdout: "pipe",
@@ -495,7 +500,9 @@ export class StewardSidecar {
     } else {
       const child = childProcess.spawn(
         this.config.stewardEntryPoint ? "node" : "bun",
-        this.config.stewardEntryPoint ? [entryPoint] : ["run", entryPoint],
+        this.config.stewardEntryPoint
+          ? [...sourceConditions, entryPoint]
+          : ["run", ...sourceConditions, entryPoint],
         {
           env,
           cwd: path.dirname(entryPoint),

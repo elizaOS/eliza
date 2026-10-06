@@ -17,13 +17,12 @@
  * This middleware is mounted globally before the router in src/index.ts.
  */
 
+import { getCurrentUser } from "@elizaos/cloud-shared/auth";
+import { jsonError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { getRequestIp } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import type { MiddlewareHandler } from "hono";
-
-import { jsonError } from "@/lib/api/cloud-worker-errors";
-import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { getRequestIp } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
 import { parseRemoteHostCredential } from "../../v1/remote/host-auth";
 import { getAuditDispatcher } from "../services/audit-dispatcher-singleton";
 
@@ -224,6 +223,11 @@ function isPublicOutOfBandTokenPath(pathname: string, method = "GET"): boolean {
 }
 
 export function isPublicPath(pathname: string, method = "GET"): boolean {
+  // This leaf proves the exact presented secret against primary storage,
+  // including a tombstone after a lost response. Global active-key auth would
+  // prevent that retry. No neighboring method or key-management route bypasses it.
+  if (method === "DELETE" && /^\/api\/v1\/api-keys\/current\/?$/.test(pathname))
+    return true;
   // Local Docker's loopback browser relay is public because its one-time token
   // and loopback Origin are both checked by the route. Remote managed pairing
   // terminates on the agent-subdomain edge. Native pairing is a distinct
@@ -236,6 +240,14 @@ export function isPublicPath(pathname: string, method = "GET"): boolean {
     (method === "GET" || method === "HEAD") &&
     (pathname === "/api/v1/subscriptions/plans" ||
       pathname === "/api/v1/subscriptions/plans/")
+  ) {
+    return true;
+  }
+  // Fixed-copy return page for shared subscription checkout links; it reads no account state.
+  if (
+    (method === "GET" || method === "HEAD") &&
+    (pathname === "/api/v1/subscriptions/checkout/payer" ||
+      pathname === "/api/v1/subscriptions/checkout/payer/")
   ) {
     return true;
   }

@@ -1,6 +1,6 @@
 /** Validates persisted reschedules without treating model proposals or action text as receipts. */
 import { isDeepStrictEqual } from "node:util";
-import type { LifeOpsCalendarEvent } from "@elizaos/core/contracts/calendar";
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 
 const preservedFields = [
   "id",

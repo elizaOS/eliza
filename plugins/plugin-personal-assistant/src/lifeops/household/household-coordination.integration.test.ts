@@ -3,13 +3,13 @@
  * approval queue, audit log, commitment ledger, and versioned repositories.
  */
 import { randomUUID } from "node:crypto";
+import { SELF_ENTITY_ID } from "@elizaos/contracts";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   AgentEventService,
   createMessageMemory,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import { SELF_ENTITY_ID } from "@elizaos/core/knowledge-graph/entity-types";
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,

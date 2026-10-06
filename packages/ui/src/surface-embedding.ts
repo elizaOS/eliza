@@ -1,11 +1,8 @@
 /**
  * Turns a view's declared `native-webview` isolation level into the concrete
  * web-content embedding its page actually renders into, per host platform — the
- * enforcement half of the isolation catalogue (#14181, parent #13452). The
- * catalogue in `surface-isolation.ts` *documents* that `native-webview` views
- * embed a native child web-content surface with the strongest platform renderer
- * boundary; this
- * module is what makes that documentation authoritative: the Browser view's tab
+ * enforcement of the core surface manifest. A `native-webview` view embeds a
+ * native child web-content surface with a separate renderer boundary: the Browser view's tab
  * renderer reads the resolved manifest through {@link resolveBrowserTabRenderPath}
  * and hands out a native child surface ONLY when the manifest declares
  * `native-webview`, so no view that did not opt into that level can ever be

@@ -2,7 +2,7 @@ import json
 from copy import deepcopy
 from typing import Dict
 
-from suites.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
+from benchmarks.suites.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
     MemoryAPI,
 )
 
@@ -26,9 +26,9 @@ class MemoryAPI_rec_sum(MemoryAPI):
         # Populate in-memory structures if we have a previous snapshot
         if memory_data:
             self.memory = deepcopy(memory_data["memory"])
-            assert isinstance(
-                self.memory, str
-            ), f"Memory data should be a string, but got {type(self.memory)} instead."
+            assert isinstance(self.memory, str), (
+                f"Memory data should be a string, but got {type(self.memory)} instead."
+            )
 
     def _flush_memory_to_local_file(self):
         """

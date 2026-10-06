@@ -11,7 +11,7 @@
  *   - it does not clobber unrelated config keys.
  */
 
-import { isCloudInferenceSelectedInConfig } from "@elizaos/core/contracts/first-run-options";
+import { isCloudInferenceSelectedInConfig } from "@elizaos/host/protocol";
 import { describe, expect, test } from "vitest";
 import { applyCloudProxyTextRouting } from "../../src/routes/cloud-routes";
 

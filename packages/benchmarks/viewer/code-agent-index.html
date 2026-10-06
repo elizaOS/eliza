@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Code Agent Matrix Run Index</title>
+  <style>
+    :root { --bg:#f6f7f4; --panel:#fff; --ink:#182018; --muted:#5f685d; --line:#d9dfd2; --accent:#0e6b59; --bad:#a12222; --ok:#17633a; --warn:#8a5a00; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    header { padding:18px 22px 10px; border-bottom:1px solid var(--line); background:#fff; position:sticky; top:0; z-index:2; }
+    h1 { margin:0 0 6px; font-size:22px; letter-spacing:0; }
+    .muted { color:var(--muted); }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; padding:14px 22px; }
+    .card, .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+    .card { padding:10px; }
+    .card b { display:block; font-size:20px; margin-top:3px; }
+    main { padding:0 22px 24px; }
+    .panel { margin-bottom:12px; overflow:hidden; }
+    .panel h2 { margin:0; padding:10px 12px; font-size:14px; border-bottom:1px solid var(--line); background:#f1f4ed; }
+    .controls { display:grid; grid-template-columns:minmax(220px,1fr) 220px 220px; gap:8px; padding:10px; border-bottom:1px solid var(--line); }
+    input, select { width:100%; border:1px solid var(--line); border-radius:6px; padding:7px 8px; background:#fff; color:var(--ink); }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid var(--line); padding:7px; text-align:left; vertical-align:top; }
+    th { background:#f7faf4; position:sticky; top:64px; z-index:1; }
+    th button { appearance:none; border:0; background:transparent; color:inherit; padding:0; font:inherit; font-weight:600; cursor:pointer; text-align:left; }
+    th button:hover { color:var(--accent); }
+    a { color:var(--accent); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .status-inferior, .status-missing, .bad { color:var(--bad); font-weight:600; }
+    .status-superior, .status-comparable, .ok { color:var(--ok); font-weight:600; }
+    .status-weak, .warn { color:var(--warn); font-weight:600; }
+    .pill { display:inline-block; padding:1px 6px; border:1px solid var(--line); border-radius:999px; margin:1px 3px 1px 0; font-size:11px; color:var(--muted); }
+    details { border-top:1px solid var(--line); }
+    summary { cursor:pointer; padding:9px 12px; background:#fff; }
+    pre { margin:0; padding:10px 12px; overflow:auto; white-space:pre-wrap; word-break:break-word; background:#101510; color:#eef7ea; max-height:420px; }
+    @media (max-width: 900px) { .controls { grid-template-columns:1fr; } th { position:static; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Code Agent Matrix Run Index</h1>
+    <div id="meta" class="muted"></div>
+  </header>
+  <div class="cards" id="cards"></div>
+  <main>
+    <section class="panel">
+      <h2>Benchmark Comparisons Across Runs</h2>
+      <div class="controls">
+        <input id="search" type="search" placeholder="Search benchmark, run, status..." />
+        <select id="benchmark"><option value="">all benchmarks</option></select>
+        <select id="status"><option value="">all statuses</option></select>
+      </div>
+      <div id="comparisons"></div>
+    </section>
+    <section class="panel">
+      <h2>Runs</h2>
+      <div id="runs"></div>
+    </section>
+  </main>
+  <script src="./index-data.js"></script>
+  <script>
+    const data = window.BENCHMARK_RUN_INDEX || { runs: [], benchmark_rows: [] };
+    let comparisonSort = { key: "benchmark", dir: "asc" };
+    let runSort = { key: "generated_at", dir: "desc" };
+    const text = v => v === null || v === undefined ? "" : String(v);
+    const esc = v => text(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const pct = v => typeof v === "number" ? v.toFixed(2) + "%" : "";
+    const num = v => typeof v === "number" ? v.toLocaleString() : esc(v);
+    const json = v => esc(JSON.stringify(v, null, 2));
+    const sortValue = (row, key) => {
+      const value = key.split(".").reduce((acc, part) => acc && acc[part], row);
+      if (typeof value === "number") return value;
+      if (typeof value === "boolean") return value ? 1 : 0;
+      return text(value).toLowerCase();
+    };
+    const sorted = (rows, state) => [...rows].sort((a,b) => {
+      const av = sortValue(a, state.key), bv = sortValue(b, state.key);
+      if (av < bv) return state.dir === "asc" ? -1 : 1;
+      if (av > bv) return state.dir === "asc" ? 1 : -1;
+      return 0;
+    });
+    const th = (label, key, kind) => `<th><button data-sort-kind="${kind}" data-sort-key="${esc(key)}">${esc(label)}</button></th>`;
+    const gateHtml = gates => {
+      if (!gates || typeof gates !== "object") return "";
+      return Object.entries(gates).map(([key,value]) => `<span class="pill ${value === true ? "ok" : value === false ? "bad" : ""}">${esc(key)} ${value === true ? "ok" : value === false ? "blocked" : "n/a"}</span>`).join("");
+    };
+    function renderCards() {
+      const rows = data.benchmark_rows || [];
+      const runs = data.runs || [];
+      const latest = Object.keys(data.latest_by_benchmark || {}).length;
+      const items = [
+        ["Runs", runs.length],
+        ["Benchmark rows", rows.length],
+        ["Latest benchmarks", latest],
+        ["Inferior", rows.filter(r => r.status === "inferior").length],
+        ["Weak", rows.filter(r => r.status === "weak").length],
+        ["Comparable+", rows.filter(r => ["comparable", "superior"].includes(r.status)).length],
+      ];
+      document.getElementById("cards").innerHTML = items.map(([k,v]) => `<div class="card"><span class="muted">${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+      document.getElementById("meta").textContent = `${data.index_root || ""} · generated ${data.generated_at || ""}`;
+    }
+    function renderFilters() {
+      const benchmarks = [...new Set((data.benchmark_rows || []).map(r => r.benchmark).filter(Boolean))].sort();
+      const statuses = [...new Set((data.benchmark_rows || []).map(r => r.status).filter(Boolean))].sort();
+      document.getElementById("benchmark").innerHTML = `<option value="">all benchmarks</option>` + benchmarks.map(v => `<option>${esc(v)}</option>`).join("");
+      document.getElementById("status").innerHTML = `<option value="">all statuses</option>` + statuses.map(v => `<option>${esc(v)}</option>`).join("");
+    }
+    function filteredRows() {
+      const q = document.getElementById("search").value.toLowerCase();
+      const bench = document.getElementById("benchmark").value;
+      const status = document.getElementById("status").value;
+      return (data.benchmark_rows || []).filter(r => {
+        const hay = [r.benchmark, r.run_id, r.status, r.run_root].map(text).join(" ").toLowerCase();
+        return (!q || hay.includes(q)) && (!bench || r.benchmark === bench) && (!status || r.status === status);
+      });
+    }
+    function renderComparisons() {
+      const rows = sorted(filteredRows(), comparisonSort);
+      document.getElementById("comparisons").innerHTML = `<table><thead><tr>${[
+        th("benchmark", "benchmark", "comparison"),
+        th("run", "run_id", "comparison"),
+        th("mode", "run_mode", "comparison"),
+        th("status", "status", "comparison"),
+        th("target", "target_accuracy", "comparison"),
+        th("baseline", "baseline_accuracy", "comparison"),
+        th("delta", "accuracy_delta", "comparison"),
+        th("tokens", "total_token_delta", "comparison"),
+        th("cache", "cached_token_percent_delta", "comparison"),
+        th("calls", "llm_call_delta", "comparison"),
+        "<th>gates</th>",
+        "<th>viewer</th>",
+      ].join("")}</tr></thead><tbody>` +
+        rows.map(r => `<tr>
+          <td>${esc(r.benchmark)}</td>
+          <td><span class="muted">${esc(r.generated_at || "")}</span><br>${esc(r.run_id)}</td>
+          <td>${esc(r.run_mode || "")}</td>
+          <td class="status-${esc(r.status)}">${esc(r.status)}</td>
+          <td>${esc(r.target_adapter)}<br>${esc(r.target_right)}/${esc(r.target_total)} · ${esc(r.target_accuracy)}</td>
+          <td>${esc(r.baseline_adapter)}<br>${esc(r.baseline_right)}/${esc(r.baseline_total)} · ${esc(r.baseline_accuracy)}</td>
+          <td>accuracy ${esc(r.accuracy_delta)}<br>right ${esc(r.right_delta)}</td>
+          <td>target ${num(r.target_total_tokens)}<br>baseline ${num(r.baseline_total_tokens)}<br>delta ${num(r.total_token_delta)}</td>
+          <td>target ${pct(r.target_cached_token_percent)}<br>baseline ${pct(r.baseline_cached_token_percent)}<br>delta ${pct(r.cached_token_percent_delta)}</td>
+          <td>target ${esc(r.target_llm_call_count)}<br>baseline ${esc(r.baseline_llm_call_count)}<br>delta ${esc(r.llm_call_delta)}</td>
+          <td>${gateHtml(r.gates)}${r.release_readiness_blocking_requirements ? `<br><span class="bad">${esc(r.release_readiness_blocking_requirements)}</span>` : ""}</td>
+          <td><a href="${esc(r.viewer_href)}">open run</a></td>
+        </tr>`).join("") + `</tbody></table>`;
+    }
+    function renderRuns() {
+      const runs = sorted(data.runs || [], runSort);
+      document.getElementById("runs").innerHTML = `<table><thead><tr>${[
+        th("run", "run_id", "run"),
+        th("generated", "generated_at", "run"),
+        th("mode", "mode", "run"),
+        "<th>status</th>",
+        "<th>gates</th>",
+        "<th>provider/model</th>",
+        "<th>tokens</th>",
+        "<th>links</th>",
+      ].join("")}</tr></thead><tbody>` +
+        runs.map(r => {
+          const h = r.head_to_head || {};
+          const counts = h.status_counts || {};
+          const tok = r.token_by_adapter || {};
+          const release = r.gates?.release_readiness || {};
+          return `<tr>
+            <td>${esc(r.run_id)}<br><span class="muted">${esc(r.run_root)}</span></td>
+            <td>${esc(r.generated_at || "")}</td>
+            <td>${esc(r.mode || "")}</td>
+            <td>${Object.entries(counts).map(([k,v]) => `<span class="pill ${k === "inferior" || k === "missing" ? "bad" : k === "weak" ? "warn" : "ok"}">${esc(k)} ${esc(v)}</span>`).join("")}</td>
+            <td>${Object.entries(r.gates || {}).map(([k,v]) => `<span class="pill ${v.ok === true ? "ok" : v.ok === false ? "bad" : ""}">${esc(k)} ${v.ok === true ? "ok" : v.ok === false ? "blocked" : "n/a"}</span>`).join("")}${Array.isArray(release.blocking_requirements) && release.blocking_requirements.length ? `<br><span class="bad">${esc(release.blocking_requirements.join(", "))}</span>` : ""}</td>
+            <td>${esc(r.provider || "")}<br>${esc(r.model || "")}<br>${esc(r.mode || "")}</td>
+            <td>${Object.entries(tok).map(([k,v]) => `<span class="pill">${esc(k)} ${num(v.total_tokens)}</span>`).join("")}</td>
+            <td><a href="${esc(r.viewer_href)}">viewer</a><br><a href="${esc(r.summary_href)}">summary</a></td>
+          </tr>`;
+        }).join("") + `</tbody></table>`;
+    }
+    for (const id of ["search", "benchmark", "status"]) document.addEventListener("input", e => { if (e.target.id === id) renderComparisons(); });
+    document.addEventListener("change", e => { if (["benchmark", "status"].includes(e.target.id)) renderComparisons(); });
+    document.addEventListener("click", e => {
+      const button = e.target.closest("button[data-sort-key]");
+      if (!button) return;
+      const state = button.dataset.sortKind === "run" ? runSort : comparisonSort;
+      if (state.key === button.dataset.sortKey) state.dir = state.dir === "asc" ? "desc" : "asc";
+      else { state.key = button.dataset.sortKey; state.dir = "asc"; }
+      if (button.dataset.sortKind === "run") renderRuns();
+      else renderComparisons();
+    });
+    renderCards(); renderFilters(); renderComparisons(); renderRuns();
+  </script>
+</body>
+</html>

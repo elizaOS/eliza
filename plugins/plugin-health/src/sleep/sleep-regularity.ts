@@ -4,7 +4,7 @@
  * episodes (non-nap, sufficient duration, ended before now).
  */
 
-import { parseIsoMs } from "@elizaos/core/lifeops-normalize/time-util";
+import { parseIsoMs } from "@elizaos/contracts";
 import type {
   LifeOpsPersonalBaseline,
   LifeOpsScheduleRegularity,

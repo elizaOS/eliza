@@ -6,14 +6,14 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
-import { parseSubArgs as parseBuildArgs } from "../distro-android/build-aosp.ts";
+import { parseSubArgs as parseBuildArgs } from "../android/build-aosp.ts";
 import {
   assertBrowserAppsStaged,
   bindBrowserCertificate,
   readBrowserAppPins,
   stageBrowserApps,
-} from "../distro-android/stage-browser-apps.ts";
-import { syncToAosp } from "../distro-android/sync-to-aosp.ts";
+} from "../android/stage-browser-apps.ts";
+import { syncToAosp } from "../android/sync-to-aosp.ts";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const rootUrl = new URL("../../browser/", import.meta.url);
@@ -438,7 +438,7 @@ test("AOSP release cannot inherit development browser admission", (t) => {
 });
 test("preparation actual CLI rejects missing inputs instead of silently returning success", () => {
   const script = new URL(
-    "../distro-android/prepare-chromium-browser.ts",
+    "../android/prepare-chromium-browser.ts",
     import.meta.url,
   );
   const run = spawnSync(
@@ -459,7 +459,7 @@ test("preparation actual CLI rejects missing inputs instead of silently returnin
 test("preparation CLI reaches the reviewed component generator revision guard", (t) => {
   const f = fixture(t);
   const script = new URL(
-    "../distro-android/prepare-chromium-browser.ts",
+    "../android/prepare-chromium-browser.ts",
     import.meta.url,
   );
   const run = spawnSync(

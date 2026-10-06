@@ -1,17 +1,20 @@
 /** HTTP contract tests for Family Operations calendar conflict mutations. */
 
-import { client } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultFamilyOperationsAdapter } from "./adapter.js";
 
 // The package aliases UI imports to an empty client. Exercise the production
 // transport here so bearer, origin and binary-body regressions remain visible.
-vi.mock("@elizaos/ui/api", async () => {
-  const { ElizaClient } = await import(
-    "../../../../../packages/ui/src/api/client-base.ts"
-  );
-  return { client: new ElizaClient() };
-});
+vi.mock("@elizaos/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/ui")>()),
+  ...(await (async () => {
+    const { ElizaClient } = await import(
+      "../../../../../packages/ui/src/api/client-base"
+    );
+    return { client: new ElizaClient() };
+  })()),
+}));
 
 const testApiBase = "https://family-api.example";
 

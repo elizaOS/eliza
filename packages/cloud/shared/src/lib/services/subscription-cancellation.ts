@@ -1,28 +1,42 @@
 /** Executes manager-authorized organization period-end cancellation and retrieves uncertain outcomes through the same durable command owner. Recovery never invents session authority or sends a provider mutation. */
+
+import type { OrganizationSubscriptionCancellationDto } from "@elizaos/cloud-shared/types";
 import { ElizaError } from "@elizaos/core";
 import {
   assertCancellationClaimCurrent,
   type CancellationClaim,
   type CancellationIdentity,
   claimCancellation,
+  failReviewedCancellationBeforeDispatch,
   finalizeCancellation,
   listCancellationRecovery,
   type PrepareCancellationInput,
   prepareCancellation,
   readCancellation,
+  readCancellationRenewalReview,
+  readReviewedCancellationReplay,
   releaseCancellation,
   rotateCancellationRecovery,
 } from "../../db/repositories/subscription-cancellation";
 import type { BillingSubscriptionCommand } from "../../db/schemas/subscription-billing-operations";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
-import type { OrganizationSubscriptionCancellationDto } from "../types/cloud-api";
 import { logger } from "../utils/logger";
+import {
+  configuredCancellationRequest,
+  observeConfiguredCancellation,
+} from "./configured-schedule-cancellation";
 import {
   cancellationReobserve,
   validateCancellationCustomer,
   validatePeriodEndCancellationObservation,
 } from "./stripe-period-end-cancellation";
+import { retrieveSubscriptionLifecycleBinding } from "./subscription-lifecycle-provider-binding";
+
+import {
+  previewSubscriptionRenewalTerms,
+  readOrganizationSubscriptionRenewalReview,
+} from "./subscription-renewal-review";
+import type { SubscriptionRenewalReview } from "./subscription-renewal-review-contract";
 
 function toDto(command: BillingSubscriptionCommand): OrganizationSubscriptionCancellationDto {
   if (
@@ -53,6 +67,7 @@ async function executeClaim(
   const kind = claim.command.kind === "resume" ? "resume" : "cancel";
   const targetScheduled = kind === "cancel";
   let sessionFailure = false;
+  let renewalReview: SubscriptionRenewalReview | null = null;
   async function verifySession() {
     if (revalidateSession === null) return;
     try {
@@ -65,44 +80,101 @@ async function executeClaim(
   }
   try {
     await verifySession();
+    if (kind === "resume")
+      renewalReview = await readCancellationRenewalReview(input, claim.command.id);
     await assertCancellationClaimCurrent(input, claim);
+    if (renewalReview !== null && claim.canDispatch && revalidateSession === null)
+      cancellationReobserve("reviewed_undo_requires_fresh_interactive_dispatch");
     const stripe = requireStripe();
+    const { environment, providerAccountId } = await retrieveSubscriptionLifecycleBinding(
+      claim.source,
+      stripe,
+    );
     async function verifyCustomer() {
       const raw = await stripe.customers.retrieve(claim.source.stripe_customer_id);
       validateCancellationCustomer({
         raw,
         source: claim.source,
         organizationCustomerId: claim.organizationCustomerId,
-        environment: getCloudAwareEnv(),
+        environment,
       });
     }
     await verifyCustomer();
     let raw = await stripe.subscriptions.retrieve(claim.source.stripe_subscription_id);
-    const initial = validatePeriodEndCancellationObservation({
-      source: claim.source,
-      organizationCustomerId: claim.organizationCustomerId,
-      environment: getCloudAwareEnv(),
-      raw,
-      observedAt: new Date(),
-      requireScheduled: false,
-      allowRetainedCanceledAt: claim.source.canceled_at,
-    });
+    let rawSchedule = claim.configuredCancellation
+      ? await stripe.subscriptionSchedules.retrieve(claim.configuredCancellation.scheduleId)
+      : undefined;
+    const initial = claim.configuredCancellation
+      ? observeConfiguredCancellation({
+          authority: claim.configuredCancellation,
+          source: claim.source,
+          rawSubscription: raw,
+          rawSchedule,
+          observedAt: new Date(),
+        })
+      : validatePeriodEndCancellationObservation({
+          source: claim.source,
+          organizationCustomerId: claim.organizationCustomerId,
+          environment,
+          raw,
+          observedAt: new Date(),
+          requireScheduled: false,
+          allowRetainedCanceledAt: claim.source.canceled_at,
+        });
+    if (
+      renewalReview !== null &&
+      claim.canDispatch &&
+      (!initial.scheduled || revalidateSession === null)
+    )
+      cancellationReobserve("reviewed_undo_requires_fresh_interactive_dispatch");
     if (initial.scheduled !== targetScheduled && claim.canDispatch && revalidateSession !== null) {
+      if (
+        claim.configuredCancellation &&
+        "mode" in initial &&
+        initial.mode !==
+          (claim.configuredCancellation.originalPending
+            ? "pending"
+            : claim.source.cancel_at_period_end
+              ? "cancelled"
+              : "resumed")
+      )
+        cancellationReobserve("configured_schedule_preflight_mismatch");
       if (
         initial.scheduled !== claim.source.cancel_at_period_end ||
         initial.canceledAt?.getTime() !== claim.source.canceled_at?.getTime()
       )
         cancellationReobserve("owned_schedule_preflight_mismatch");
+      if (renewalReview !== null) {
+        const currentTerms = await previewSubscriptionRenewalTerms(claim);
+        if (
+          currentTerms.termsDigest !== renewalReview.termsDigest ||
+          Date.now() >= Date.parse(renewalReview.expiresAt)
+        )
+          cancellationReobserve("reviewed_renewal_terms_changed_before_dispatch");
+      }
       await verifyCustomer();
       await verifySession();
+      if (renewalReview !== null && Date.now() >= Date.parse(renewalReview.expiresAt))
+        cancellationReobserve("reviewed_renewal_terms_expired_before_dispatch");
       await assertCancellationClaimCurrent(input, claim, true);
       // Stripe has no local lifecycle-revision CAS. A concurrent remote period/plan change
       // is detected by the final retrieval and prevents local publication, even after an accepted mutation.
-      await stripe.subscriptions.update(
-        claim.source.stripe_subscription_id,
-        { cancel_at_period_end: targetScheduled },
-        { idempotencyKey: claim.command.provider_idempotency_key },
-      );
+      // Durable command recovery owns uncertainty; the SDK must not retry a write behind its lease.
+      if (claim.configuredCancellation) {
+        await stripe.subscriptionSchedules.update(
+          claim.configuredCancellation.scheduleId,
+          configuredCancellationRequest(claim.configuredCancellation, targetScheduled),
+          { idempotencyKey: claim.command.provider_idempotency_key, maxNetworkRetries: 0 },
+        );
+        rawSchedule = await stripe.subscriptionSchedules.retrieve(
+          claim.configuredCancellation.scheduleId,
+        );
+      } else
+        await stripe.subscriptions.update(
+          claim.source.stripe_subscription_id,
+          { cancel_at_period_end: targetScheduled },
+          { idempotencyKey: claim.command.provider_idempotency_key, maxNetworkRetries: 0 },
+        );
       raw = await stripe.subscriptions.retrieve(claim.source.stripe_subscription_id);
     } else if (initial.scheduled !== targetScheduled) {
       await releaseCancellation(input, claim);
@@ -110,8 +182,13 @@ async function executeClaim(
     }
     await verifyCustomer();
     await verifySession();
-    return toDto(await finalizeCancellation(input, claim, raw));
+    return toDto(await finalizeCancellation(input, claim, raw, providerAccountId, rawSchedule));
   } catch (error) {
+    // Only a still-ready lease can prove no provider dispatch began. Started attempts retain uncertainty.
+    if (renewalReview !== null && (await failReviewedCancellationBeforeDispatch(input, claim))) {
+      if (sessionFailure) throw error;
+      return toDto(await readCancellation({ ...input, commandId: claim.command.id }, kind));
+    }
     // error-policy:J1 the committed OUTCOME_UNKNOWN command is the visible result
     // of an unconfirmed provider attempt; no source or success is fabricated.
     logger.warn("[Subscription Cancellation] Provider attempt remains unconfirmed", {
@@ -139,10 +216,14 @@ export async function readOrganizationSubscriptionCancellation(
 ): Promise<OrganizationSubscriptionCancellationDto> {
   return toDto(await readCancellation(input));
 }
-export async function recoverOrganizationSubscriptionCancellations(
-  limit: number,
-): Promise<{ inspected: number; applied: number; pending: number; unavailable: number }> {
-  const result = { inspected: 0, applied: 0, pending: 0, unavailable: 0 };
+export async function recoverOrganizationSubscriptionCancellations(limit: number): Promise<{
+  inspected: number;
+  applied: number;
+  failed: number;
+  pending: number;
+  unavailable: number;
+}> {
+  const result = { inspected: 0, applied: 0, failed: 0, pending: 0, unavailable: 0 };
   for (const command of await listCancellationRecovery(limit)) {
     await rotateCancellationRecovery(command);
     result.inspected++;
@@ -156,11 +237,18 @@ export async function recoverOrganizationSubscriptionCancellations(
         command.kind === "resume" ? "resume" : "cancel",
       );
       if (!claim) {
-        result.pending++;
+        // A stale PREPARED command is superseded instead of claimed.
+        const current = await readCancellation(
+          { ...identity, commandId: command.id },
+          command.kind === "resume" ? "resume" : "cancel",
+        );
+        if (current.status === "SUPERSEDED") result.failed++;
+        else result.pending++;
         continue;
       }
       const dto = await executeClaim(identity, claim, null);
       if (dto.status === "APPLIED") result.applied++;
+      else if (dto.status === "FAILED") result.failed++;
       else result.pending++;
     } catch (error) {
       // error-policy:J4 unavailable actor/source authority retains explicit pending recovery,
@@ -190,4 +278,32 @@ export async function readOrganizationSubscriptionCancellationUndo(
   input: CancellationIdentity & { commandId: string },
 ): Promise<OrganizationSubscriptionCancellationDto> {
   return toDto(await readCancellation(input, "resume"));
+}
+
+/** Confirm an explicit renewal estimate. Duplicate intent reads its durable result, never dispatches again. */
+export async function submitReviewedOrganizationSubscriptionCancellationUndo(
+  input: Omit<PrepareCancellationInput, "renewalReview"> & { expectedRenewalTermsDigest: string },
+  revalidateSession: () => Promise<void>,
+): Promise<OrganizationSubscriptionCancellationDto> {
+  await revalidateSession();
+  if (!/^[a-f0-9]{64}$/.test(input.expectedRenewalTermsDigest))
+    throw new ElizaError("Renewal terms require a new review", {
+      code: "SUBSCRIPTION_RENEWAL_TERMS_CHANGED",
+    });
+  const replay = await readReviewedCancellationReplay(input);
+  if (replay) {
+    await revalidateSession();
+    return toDto(replay);
+  }
+  const renewalReview = await readOrganizationSubscriptionRenewalReview(input, revalidateSession);
+  if (renewalReview.termsDigest !== input.expectedRenewalTermsDigest)
+    throw new ElizaError("Renewal terms changed; review again before confirming", {
+      code: "SUBSCRIPTION_RENEWAL_TERMS_CHANGED",
+    });
+  await revalidateSession();
+  const command = await prepareCancellation({ ...input, renewalReview }, "resume");
+  if (command.status !== "PREPARED" && command.status !== "OUTCOME_UNKNOWN") return toDto(command);
+  const claim = await claimCancellation({ ...input, commandId: command.id }, "resume");
+  if (!claim) return toDto(await readCancellation({ ...input, commandId: command.id }, "resume"));
+  return executeClaim(input, claim, revalidateSession);
 }

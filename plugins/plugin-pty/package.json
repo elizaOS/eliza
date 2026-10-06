@@ -35,7 +35,8 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "^1.1.0"

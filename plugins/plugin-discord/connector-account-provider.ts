@@ -3,7 +3,7 @@
  *
  * Adapts the existing multi-account resolution in `accounts.ts` to the
  * `ConnectorAccountProvider` contract from
- * `@elizaos/core/connectors/account-manager`.
+ * `@elizaos/core`.
  *
  * Source of truth for accounts is character settings (`character.settings.discord`)
  * plus the legacy env-only DISCORD_API_TOKEN. The manager observes those via

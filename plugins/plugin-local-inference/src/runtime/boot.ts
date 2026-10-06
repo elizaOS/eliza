@@ -27,7 +27,7 @@
  */
 
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core/runtime-env";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
 import {
 	shouldEnableMobileLocalInference,

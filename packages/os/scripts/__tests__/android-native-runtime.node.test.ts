@@ -7,7 +7,7 @@ import test from "node:test";
 import {
   targetAbi,
   verifyNativeRuntimeTarget,
-} from "../aosp/verify-native-runtime.ts";
+} from "../android/verify-native-runtime.ts";
 
 const symbols = [
   "eliza_inference_abi_version",

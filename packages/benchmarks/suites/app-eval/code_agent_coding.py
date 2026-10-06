@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_command import run_sandboxed_command
-from suites.nl2repo.adapter_matrix import token_metrics_from_usage
+from benchmarks.suites.nl2repo.adapter_matrix import token_metrics_from_usage
 
 
 DATASET_VERSION = "app-eval-coding-v1"
@@ -73,7 +73,9 @@ def _adapter_command_env_name(task_agent: str) -> str:
     return f"APP_EVAL_CODING_AGENT_COMMAND_TEMPLATE_{normalized}"
 
 
-def _builtin_agent_command_template(task_agent: str, provider: str, model: str, timeout_seconds: int) -> str:
+def _builtin_agent_command_template(
+    task_agent: str, provider: str, model: str, timeout_seconds: int
+) -> str:
     helper = app_eval_root() / "agent_command.py"
     return " ".join(
         shlex.quote(part)
@@ -115,7 +117,9 @@ def agent_command_template(
     ).strip()
     if configured:
         return configured
-    if os.environ.get("APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
+    if os.environ.get(
+        "APP_EVAL_CODING_DISABLE_BUILTIN_AGENT_COMMAND", ""
+    ).strip().lower() in {
         "1",
         "true",
         "yes",
@@ -155,7 +159,9 @@ def validate_tasks(tasks: list[dict[str, Any]]) -> None:
         if not isinstance(context, dict):
             raise ValueError(f"{task_id}: context must be an object")
         workspace = context.get("workspace")
-        if not isinstance(workspace, dict) or not isinstance(workspace.get("files"), dict):
+        if not isinstance(workspace, dict) or not isinstance(
+            workspace.get("files"), dict
+        ):
             raise ValueError(f"{task_id}: context.workspace.files must be an object")
         evaluation = task.get("evaluation")
         if not isinstance(evaluation, dict):
@@ -173,7 +179,10 @@ def validate_tasks(tasks: list[dict[str, Any]]) -> None:
                 "test_passes",
             }:
                 raise ValueError(f"{task_id}: assertion {index} has unsupported type")
-            if not isinstance(assertion.get("target"), str) or not assertion["target"].strip():
+            if (
+                not isinstance(assertion.get("target"), str)
+                or not assertion["target"].strip()
+            ):
                 raise ValueError(f"{task_id}: assertion {index} has no target")
             if "expected" not in assertion:
                 raise ValueError(f"{task_id}: assertion {index} has no expected value")
@@ -204,7 +213,10 @@ def load_tasks(
 
 
 def _safe_task_id(task_id: str) -> str:
-    return "".join(char if char.isalnum() else "-" for char in task_id).strip("-") or "task"
+    return (
+        "".join(char if char.isalnum() else "-" for char in task_id).strip("-")
+        or "task"
+    )
 
 
 def _format_command(template: str, values: dict[str, str]) -> list[str]:
@@ -230,11 +242,7 @@ def _workspace_path(workspace: Path, relative: str) -> Path:
 
 def _write_task_workspace(task: dict[str, Any], workspace: Path) -> None:
     workspace.mkdir(parents=True, exist_ok=True)
-    files = (
-        task.get("context", {})
-        .get("workspace", {})
-        .get("files", {})
-    )
+    files = task.get("context", {}).get("workspace", {}).get("files", {})
     if not isinstance(files, dict):
         raise ValueError("task context.workspace.files must be an object")
     for relative, content in files.items():
@@ -253,7 +261,9 @@ def _write_prompt(task: dict[str, Any], prompt_path: Path) -> None:
         "prompt": task.get("prompt"),
         "context": task.get("context", {}),
     }
-    prompt_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    prompt_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
 
 
 def _command_output(
@@ -281,7 +291,9 @@ def _command_output(
     )
 
 
-def _evaluate_assertion(assertion: dict[str, Any], *, workspace: Path, timeout_seconds: int) -> dict[str, Any]:
+def _evaluate_assertion(
+    assertion: dict[str, Any], *, workspace: Path, timeout_seconds: int
+) -> dict[str, Any]:
     kind = str(assertion.get("type", ""))
     target = str(assertion.get("target", ""))
     expected = assertion.get("expected")
@@ -314,9 +326,7 @@ def _evaluate_assertion(assertion: dict[str, Any], *, workspace: Path, timeout_s
         )
         combined = stdout + stderr
         actual = combined.strip()
-        result.update(
-            {"exit_code": code, "actual": actual[-2000:], "sandbox": sandbox}
-        )
+        result.update({"exit_code": code, "actual": actual[-2000:], "sandbox": sandbox})
         expected_text = str(expected)
         if expected_text in actual:
             result["passed"] = True
@@ -345,12 +355,18 @@ def _evaluate_assertion(assertion: dict[str, Any], *, workspace: Path, timeout_s
     return result
 
 
-def evaluate_workspace(task: dict[str, Any], *, workspace: Path, timeout_seconds: int) -> dict[str, Any]:
-    evaluation = task.get("evaluation") if isinstance(task.get("evaluation"), dict) else {}
+def evaluate_workspace(
+    task: dict[str, Any], *, workspace: Path, timeout_seconds: int
+) -> dict[str, Any]:
+    evaluation = (
+        task.get("evaluation") if isinstance(task.get("evaluation"), dict) else {}
+    )
     assertions = evaluation.get("test_assertions", [])
     assertion_items = [item for item in assertions if isinstance(item, dict)]
     results = [
-        _evaluate_assertion(assertion, workspace=workspace, timeout_seconds=timeout_seconds)
+        _evaluate_assertion(
+            assertion, workspace=workspace, timeout_seconds=timeout_seconds
+        )
         for assertion in assertion_items
     ]
     passed = sum(1 for item in results if item.get("passed") is True)
@@ -446,8 +462,16 @@ def run_agent_app_eval_coding(
         except subprocess.TimeoutExpired as exc:
             # error-policy:J1 The task boundary records the timeout and the CLI
             # rejects the incomplete run after producing a complete report.
-            stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-            stderr = exc.stderr.decode() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            stdout = (
+                exc.stdout.decode()
+                if isinstance(exc.stdout, bytes)
+                else (exc.stdout or "")
+            )
+            stderr = (
+                exc.stderr.decode()
+                if isinstance(exc.stderr, bytes)
+                else (exc.stderr or "")
+            )
             command_error = f"agent command timed out after {timeout_seconds}s"
             completed = subprocess.CompletedProcess(
                 command,
@@ -458,7 +482,9 @@ def run_agent_app_eval_coding(
         except OSError as exc:
             # error-policy:J1 The task boundary records spawn failures and the
             # CLI rejects the incomplete run after producing a complete report.
-            command_error = f"agent command failed to start: {type(exc).__name__}: {exc}"
+            command_error = (
+                f"agent command failed to start: {type(exc).__name__}: {exc}"
+            )
             completed = subprocess.CompletedProcess(command, 127, "", command_error)
         stdout_path = logs_dir / f"{_safe_task_id(task_id)}.stdout.log"
         stderr_path = logs_dir / f"{_safe_task_id(task_id)}.stderr.log"
@@ -472,13 +498,15 @@ def run_agent_app_eval_coding(
             agent_result = {}
             command_error = command_error or f"{type(exc).__name__}: {exc}"
         usage = agent_result.get("usage") if isinstance(agent_result, dict) else None
-        token_metrics = token_metrics_from_usage(usage) if isinstance(usage, dict) else {}
-        workspace_eval = evaluate_workspace(task, workspace=workspace, timeout_seconds=eval_timeout_seconds)
+        token_metrics = (
+            token_metrics_from_usage(usage) if isinstance(usage, dict) else {}
+        )
+        workspace_eval = evaluate_workspace(
+            task, workspace=workspace, timeout_seconds=eval_timeout_seconds
+        )
         agent_completed = agent_result.get("status") == "completed"
         success = (
-            completed.returncode == 0
-            and agent_completed
-            and workspace_eval["success"]
+            completed.returncode == 0 and agent_completed and workspace_eval["success"]
         )
         trajectory_path = _write_trajectory(
             trajectory_dir=trajectory_dir,
@@ -530,13 +558,17 @@ def build_result(
         "model_provider": model_provider,
         "model": model,
         "mode": mode,
-        "dataset_version": EXPANDED_DATASET_VERSION if include_edge_scenarios else DATASET_VERSION,
+        "dataset_version": EXPANDED_DATASET_VERSION
+        if include_edge_scenarios
+        else DATASET_VERSION,
         "dataset_provenance": {
             "source": "suites/app-eval/tasks/coding-tasks.json",
             "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
             "expected_base_tasks": EXPECTED_CODING_TASKS,
             "selected_instances": total,
-            "edge_variants_per_base": len(EDGE_VARIANTS) if include_edge_scenarios else 0,
+            "edge_variants_per_base": len(EDGE_VARIANTS)
+            if include_edge_scenarios
+            else 0,
         },
         "summary": {
             "total_instances": total,
@@ -550,7 +582,9 @@ def build_result(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run App Eval coding tasks through a code-agent adapter.")
+    parser = argparse.ArgumentParser(
+        description="Run App Eval coding tasks through a code-agent adapter."
+    )
     parser.add_argument("--task-agent", default="elizaos")
     parser.add_argument("--model-provider", default="cerebras")
     parser.add_argument("--model", default="gemma-4-31b")
@@ -656,7 +690,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     result_path = output_dir / "app-eval-coding-results.json"
-    result_path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
+    result_path.write_text(
+        json.dumps(result, indent=2, sort_keys=True), encoding="utf-8"
+    )
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:

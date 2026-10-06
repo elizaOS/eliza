@@ -313,9 +313,9 @@ STARTUP_TRACE_ID=\${ELIZA_STARTUP_TRACE_ID:-}
 RUNTIME_LD_LIBRARY_PATH=\${LD_LIBRARY_PATH:-\${RUNTIME_DIR}}
 
 cd "$AGENT_ROOT" || exit 1
-pkill -f "\${BUN_PATH}" 2>/dev/null
-pkill -f "\${AGENT_BUNDLE_PATH}" 2>/dev/null
-sleep 1
+# Native IpcStartupRecovery authenticates resident absence and live worker
+# ownership before this launcher. Never signal processes by shared Bun path: a
+# surviving workflow deliberately uses the same packaged runtime.
 
 # The APK ships its dependency graph. Missing optional packages must fail
 # locally instead of triggering Bun auto-install and network retry delays.
@@ -903,18 +903,8 @@ function copyIfDifferent(source, target) {
 }
 
 function resolveNativeLlamaAssetDir(androidAbi) {
-  // Look up an env-var-supplied prebuilt native llama asset dir for this
-  // ABI. Each env var may be either:
-  //   - a single absolute dir (legacy arm64-only contract — the prebuilt
-  //     lives directly inside; only honoured when androidAbi is arm64-v8a),
-  //   - a per-ABI suffixed variant `<KEY>_<ABI>` where ABI is the upper-
-  //     snake-cased androidAbi (e.g. ELIZA_AOSP_LLAMA_ASSET_DIR_ARM64_V8A,
-  //     _X86_64, _RISCV64),
-  //   - or a base dir that contains per-ABI subdirectories named after the
-  //     androidAbi (e.g. `<dir>/arm64-v8a/`, `<dir>/x86_64/`, `<dir>/riscv64/`).
-  // The first env key that resolves to a real dir for this ABI wins. We
-  // never fall back across ABIs (an arm64 prebuilt is not valid for x86_64
-  // or riscv64).
+  // Prefer the ABI-suffixed variable, then an ABI subdirectory of the base.
+  // Never reuse another architecture's native artifacts.
   const abiSuffix = androidAbi.replace(/-/g, "_").toUpperCase();
   for (const key of NATIVE_LLAMA_ASSET_ENV_KEYS) {
     // 1. Per-ABI env var wins outright.
@@ -937,12 +927,6 @@ function resolveNativeLlamaAssetDir(androidAbi) {
       fs.statSync(perAbiSubdir).isDirectory()
     ) {
       return { dir: perAbiSubdir, key: `${key}/${androidAbi}` };
-    }
-    // 3. Legacy: the env var points directly at the prebuilt dir; honour
-    //    it only for arm64-v8a since that's the only ABI the legacy
-    //    contract ever shipped a prebuilt for.
-    if (androidAbi === "arm64-v8a") {
-      return { dir: baseResolved, key };
     }
   }
   return null;
@@ -1671,42 +1655,8 @@ export async function stageAndroidAgentRuntime({
   // under a consumer/white-label repo, because their `scripts/` and
   // `packages/` directories live one level OUT from the eliza checkout.
   //
-  // The legacy fallback to `<repoRoot>/packages/agent/dist-mobile/` is kept
-  // for the standalone-eliza-monorepo build path where this same script
-  // also runs and the bundle sits at the consumer-repo root.
-  const elizaPackagesAgentDistMobile = path.resolve(
-    __dirname,
-    "..", // scripts/
-    "..", // app/
-    "..", // packages/
-    "agent",
-    "dist-mobile",
-  );
-  const consumerPackagesAgentDistMobile = path.resolve(
-    path.dirname(spikeDir),
-    "..",
-    "packages",
-    "agent",
-    "dist-mobile",
-  );
-  const distMobileCandidates = [
-    elizaPackagesAgentDistMobile,
-    consumerPackagesAgentDistMobile,
-  ];
-  let distMobileDir = null;
-  let distBundle = null;
-  for (const candidate of distMobileCandidates) {
-    const bundle = path.join(candidate, "agent-bundle.js");
-    if (fs.existsSync(bundle)) {
-      distMobileDir = candidate;
-      distBundle = bundle;
-      break;
-    }
-  }
-  if (!distBundle) {
-    distMobileDir = elizaPackagesAgentDistMobile;
-    distBundle = path.join(distMobileDir, "agent-bundle.js");
-  }
+  const distMobileDir = path.resolve(__dirname, "../../../agent/dist-mobile");
+  const distBundle = path.join(distMobileDir, "agent-bundle.js");
   if (!fs.existsSync(distBundle)) {
     throw new Error(
       `No mobile agent bundle found at ${distBundle}. Run ` +

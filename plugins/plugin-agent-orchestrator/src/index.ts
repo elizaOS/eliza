@@ -23,8 +23,8 @@ import {
   toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
-import { isLocalCodeExecutionAllowed } from "@elizaos/core/platform/sandbox-policy";
+import { isLocalCodeExecutionAllowed } from "@elizaos/host";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   createTerminalUnsupportedTasksAction,
   tasksSandboxStubAction,
@@ -2320,7 +2320,7 @@ export type {
   WriteMemoryOptions,
 } from "coding-agent-adapters";
 // Action helper: resolve the runtime's registered ACP service singleton. Used by
-// out-of-tree live harnesses (e.g. packages/core/test/live/task-agent-live-smoke)
+// out-of-tree live harnesses (e.g. plugins/plugin-agent-orchestrator/test/live/task-agent-live-smoke)
 // so they read output from the same service instance the actions spawn into.
 export { getAcpService } from "./actions/common.js";
 // TASKS action surface.

@@ -8,6 +8,27 @@ may own a bot token. DMs default to pairing; configure `TELEGRAM_DM_POLICY` and
 `TELEGRAM_ALLOWED_CHATS` deliberately. Attachment references must never expose bot
 tokens.
 
+## Chat access
+
+`TELEGRAM_DM_POLICY` accepts `pairing` (the default), `open`, `allowlist`, or
+`disabled`. With no chat allowlist, pairing holds unknown DM senders for approval;
+`open` allows any sender to DM the bot. Choose it only when that access is intended.
+
+To restrict the bot, set `TELEGRAM_ALLOWED_CHATS` to a JSON array of chat ID
+strings:
+
+```sh
+TELEGRAM_ALLOWED_CHATS='["123456789", "-1001234567890"]'
+```
+
+In the full bot service, a non-empty per-account `allowedChats` list takes
+precedence over `TELEGRAM_ALLOWED_CHATS`. Otherwise, the global allowlist is
+authoritative for DMs, groups, channels, and topics.
+A malformed value blocks all chats until corrected. An unset or empty string
+leaves non-private chats open and applies `TELEGRAM_DM_POLICY` to private chats;
+the valid JSON value `[]` instead denies every chat. Set `TELEGRAM_DM_POLICY`
+to `allowlist` only when an allowlist is configured.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

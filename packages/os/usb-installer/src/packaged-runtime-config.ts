@@ -1,7 +1,7 @@
 // Resolves durable per-user state for the packaged installer's rollback guard.
 import { homedir } from "node:os";
 import path from "node:path";
-import { RELEASE_SEQUENCE_STATE_PATH_ENV } from "./backend/release-sequence-store";
+import { RELEASE_SEQUENCE_STATE_PATH_ENV } from "@elizaos/os/trust";
 
 export function configurePackagedReleaseSequenceState(
   env: NodeJS.ProcessEnv = process.env,

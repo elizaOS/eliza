@@ -1,6 +1,6 @@
 /** Audit sink contract and the optional structured-logger implementation. */
 
-import { logger } from "@/lib/utils/logger";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AuditEvent } from "./types.js";
 
 export interface AuditSink {

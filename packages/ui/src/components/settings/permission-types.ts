@@ -5,7 +5,7 @@
  * translate-with-fallback helper. Pure data; the section components render it.
  */
 
-import type { PermissionId, PermissionStatus } from "../../api";
+import type { PermissionId, PermissionStatus } from "@elizaos/core/protocol";
 import type { CapabilityTone } from "../capabilities/connected-capability-presentation";
 
 /** Permission definition for UI rendering. */
@@ -397,13 +397,6 @@ export const PERMISSION_BADGE_LABELS: Record<
     defaultLabel: "N/A",
   },
 };
-
-/** Reusable settings-panel Tailwind class names. */
-export const SETTINGS_PANEL_CLASSNAME =
-  "rounded border border-border/60 bg-bg/40 p-4 space-y-4";
-export const SETTINGS_PANEL_HEADER_CLASSNAME =
-  "flex flex-wrap items-start justify-between gap-3";
-export const SETTINGS_PANEL_ACTIONS_CLASSNAME = "flex items-center gap-2";
 
 export const SETTINGS_REFRESH_DELAYS_MS = [1500, 4000] as const;
 

@@ -49,7 +49,7 @@ import {
   type BackgroundConfig,
   DEFAULT_BACKGROUND_COLOR,
 } from "../state/ui-preferences";
-import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url.js";
+import { resolveWallpaperUrl } from "../utils/asset-url";
 
 /**
  * Resolve a wallpaper `imageUrl` into one reachable from the renderer in every
@@ -60,20 +60,7 @@ import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url.js";
  *  - `/wallpapers/<id>.webp` / `/bg-sunset.webp` — a public static asset, resolve
  *    against the SPA asset base (correct on packaged `file://` / `capacitor://`).
  */
-function resolveWallpaperUrl(url: string): string {
-  if (
-    url.startsWith("data:") ||
-    url.startsWith("blob:") ||
-    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
-    url.startsWith("//")
-  ) {
-    return url;
-  }
-  if (url.startsWith("/api/") || url.startsWith("api/")) {
-    return resolveApiUrl(url);
-  }
-  return resolveAppAssetUrl(url);
-}
+
 /** What to write onto the root element's background to drive the canvas paint. */
 export interface RootCanvasPaint {
   /** `background-image` value (a `url("…")`) when an image wallpaper is active. */

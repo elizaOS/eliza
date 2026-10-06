@@ -13,21 +13,26 @@
  * this package's standing @elizaos/ui test stub.
  */
 
-import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
-import { getRendererServiceStates } from "@elizaos/ui/platform/renderer-services";
 import { describe, expect, it, vi } from "vitest";
 import { cachedDynamicImport } from "../../../packages/app/src/app-module-cache";
+import { listAppShellPages } from "../../../packages/ui/src/app-shell-registry";
+import { getRendererServiceStates } from "../../../packages/ui/src/platform/renderer-services";
 
 // Production identities: main.tsx caches the root facade under the canonical
 // package name; the vite transform caches the register entry under the
 // role-qualified key (see packages/app/vite/app-side-effect-modules.ts).
 const FACADE_KEY = "@elizaos/plugin-personal-assistant";
-const REGISTER_KEY = "@elizaos/plugin-personal-assistant#register";
+const REGISTER_KEY =
+  "@elizaos/plugin-personal-assistant#leaf:register:registerApp";
 
 describe("personal-assistant production loader contract", () => {
   it("loads the root facade and register entry together, each exactly once, with the correct exports", async () => {
     const loadFacade = vi.fn(() => import("./ui.js"));
-    const loadRegister = vi.fn(() => import("./register.js"));
+    const loadRegister = vi.fn(async () => {
+      const module = await import("./register.js");
+      module.registerApp();
+      return module;
+    });
 
     // Both identities requested twice — the idle boot schedule and an
     // on-demand consumer racing, as in the production renderer.
@@ -56,11 +61,10 @@ describe("personal-assistant production loader contract", () => {
     expect("registerLifeOpsApp" in facadeA).toBe(false);
     // … and no longer the removed React capture effect.
     expect("LifeOpsActivitySignalsEffect" in facadeA).toBe(false);
-    // The register entry exports nothing; consumers that expected facade
-    // exports would fail loudly if the identities ever collapsed.
+    // The registration API remains distinct from the component facade.
     expect("AppBlockerSettingsCard" in registerA).toBe(false);
 
-    // Evaluating the register entry registered the lifecycle-scoped service
+    // Calling the registration export registered the lifecycle-scoped service
     // (main-shell only) in the real renderer-service registry — its work
     // starts only when a main-shell host starts it, never at import.
     const service = getRendererServiceStates().services.find(

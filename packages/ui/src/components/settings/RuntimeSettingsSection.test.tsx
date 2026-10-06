@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   loadPersistedActiveServer: vi.fn(),
 }));
 
-vi.mock("../../agent-surface", () => ({
+vi.mock("../../agent-surface/useAgentElement", () => ({
   useAgentElement: () => ({ ref: undefined, agentProps: {} }),
 }));
 
@@ -43,7 +43,7 @@ vi.mock("../../hooks/useRuntimeMode", () => ({
   }),
 }));
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (state: {
       t: (

@@ -8,7 +8,7 @@
  */
 import { Check, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { SettingsGroup, SettingsRow } from "../settings/settings-layout";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/status-badge";

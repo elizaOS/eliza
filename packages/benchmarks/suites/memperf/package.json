@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit -p tsconfig.check.json"
   },
   "devDependencies": {
-    "@elizaos/plugin-local-inference": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@types/bun": "1.4.2",
     "@types/node": "^24.0.0",
@@ -17,6 +16,7 @@
     "@elizaos/core": "workspace:*"
   },
   "dependencies": {
-    "@elizaos/plugin-local-inference": "workspace:*"
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
   }
 }

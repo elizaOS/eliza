@@ -848,4 +848,271 @@ describe("XService trusted account routing", () => {
 
     expect(messages.map((message) => message.isInbound)).toEqual([false, true]);
   });
+
+  it("rejects connector DM reads when the DM fetch fails instead of returning an empty inbox", async () => {
+    const runtime = Object.assign(runtimeWithSettings({}), {
+      reportError: vi.fn(),
+    });
+    const service = new XService(runtime);
+    const failure = new Error("Request failed with code 401");
+    const session = dmSession("current-user", {
+      listDmEvents: vi.fn(async () => {
+        throw failure;
+      }),
+    });
+    const base = {
+      profile: { id: "current-user", username: "current" },
+      twitterClient: {
+        withAuthenticatedSession: async <T>(
+          operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+        ) => operation(session),
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+    const context = { runtime, source: "x" } as Parameters<
+      XService["fetchConnectorMessages"]
+    >[0];
+
+    await expect(service.fetchConnectorMessages(context, {})).rejects.toBe(
+      failure,
+    );
+    await expect(service.listRecentConnectorTargets(context)).rejects.toBe(
+      failure,
+    );
+  });
+  it("attributes the account's own DMs to the agent in connector memories", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    async function* events() {
+      yield {
+        id: "1",
+        sender_id: "current-user",
+        participant_ids: ["current-user", "alice"],
+        text: "outbound",
+      };
+      yield {
+        id: "2",
+        sender_id: "alice",
+        participant_ids: ["current-user", "alice"],
+        text: "inbound",
+      };
+    }
+    const iterator = Object.assign(events(), {
+      includes: {
+        users: [
+          { id: "current-user", username: "current" },
+          { id: "alice", username: "alice" },
+        ],
+      },
+    });
+    const session = dmSession("current-user", {
+      listDmEvents: vi.fn(async () => iterator),
+    });
+    const base = {
+      profile: { id: "current-user", username: "current" },
+      twitterClient: {
+        withAuthenticatedSession: async <T>(
+          operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+        ) => operation(session),
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+
+    const memories = await service.fetchConnectorMessages(
+      { runtime, source: "x" } as Parameters<
+        XService["fetchConnectorMessages"]
+      >[0],
+      {},
+    );
+
+    const byText = new Map(
+      memories.map((memory) => [memory.content.text, memory]),
+    );
+    expect(byText.get("outbound")).toMatchObject({
+      entityId: runtime.agentId,
+      metadata: { fromBot: true },
+    });
+    expect(byText.get("inbound")?.entityId).not.toBe(runtime.agentId);
+    expect(byText.get("inbound")?.metadata).toMatchObject({ fromBot: false });
+  });
+
+  it("reads both sides of a DM conversation with one participant", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    async function* events() {
+      yield {
+        id: "1",
+        sender_id: "100",
+        dm_conversation_id: "100-200",
+        text: "my reply to alice",
+      };
+      yield {
+        id: "2",
+        sender_id: "200",
+        dm_conversation_id: "100-200",
+        text: "alice asks",
+      };
+      yield {
+        id: "3",
+        sender_id: "300",
+        dm_conversation_id: "100-300",
+        text: "bob unrelated",
+      };
+    }
+    const iterator = Object.assign(events(), {
+      includes: {
+        users: [
+          { id: "100", username: "current" },
+          { id: "200", username: "200" },
+          { id: "300", username: "300" },
+        ],
+      },
+    });
+    const session = dmSession("100", {
+      listDmEvents: vi.fn(async () => iterator),
+    });
+    const base = {
+      profile: { id: "100", username: "current" },
+      twitterClient: {
+        withAuthenticatedSession: async <T>(
+          operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+        ) => operation(session),
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+
+    const memories = await service.fetchDirectMessagesForAccount("account-a", {
+      participantId: "200",
+    });
+
+    expect(memories.map((memory) => memory.content.text)).toEqual([
+      "my reply to alice",
+      "alice asks",
+    ]);
+  });
+  it("keeps both directions of a DM conversation together", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    async function* events() {
+      yield {
+        id: "1",
+        dm_conversation_id: "100-200",
+        sender_id: "100",
+        text: "outbound",
+      };
+      yield {
+        id: "2",
+        dm_conversation_id: "100-200",
+        sender_id: "200",
+        text: "inbound",
+      };
+      yield {
+        id: "3",
+        dm_conversation_id: "100-300",
+        sender_id: "100",
+        text: "outbound to bob",
+      };
+      yield {
+        id: "4",
+        dm_conversation_id: "900",
+        sender_id: "100",
+        participant_ids: ["100", "200", "300"],
+        text: "group outbound",
+      };
+      yield {
+        id: "5",
+        dm_conversation_id: "900",
+        sender_id: "300",
+        participant_ids: ["100", "300", "200"],
+        text: "group inbound",
+      };
+      yield {
+        id: "6",
+        dm_conversation_id: "901",
+        sender_id: "200",
+        text: "missing participants",
+      };
+      yield {
+        id: "7",
+        dm_conversation_id: "200-300",
+        sender_id: "300",
+        participant_ids: ["200", "300"],
+        text: "foreign pair",
+      };
+    }
+    const session = dmSession("100", {
+      listDmEvents: vi.fn(async () =>
+        Object.assign(events(), {
+          includes: {
+            users: [
+              { id: "100", username: "current" },
+              { id: "200", username: "alice" },
+            ],
+          },
+        }),
+      ),
+    });
+    const base = {
+      profile: { id: "100", username: "current" },
+      twitterClient: {
+        withAuthenticatedSession: async <T>(
+          operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+        ) => operation(session),
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    } as unknown as ClientBase;
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: base });
+    const context = { runtime, source: "x" } as Parameters<
+      XService["fetchConnectorMessages"]
+    >[0];
+
+    const all = await service.fetchConnectorMessages(context, {});
+    const room = (text: string) =>
+      all.find((memory) => memory.content.text === text)?.roomId;
+    expect(room("outbound")).toBe(room("inbound"));
+    expect(room("outbound to bob")).not.toBe(room("inbound"));
+    expect(all).toHaveLength(7);
+    expect(room("group outbound")).toBe(room("group inbound"));
+    expect(room("group outbound")).not.toBe(room("inbound"));
+    expect(room("group inbound")).not.toBe(room("outbound to bob"));
+    expect(room("missing participants")).not.toBe(room("inbound"));
+    expect(room("foreign pair")).not.toBe(room("inbound"));
+
+    const withAlice = await service.fetchConnectorMessages(context, {
+      target: { source: "x", entityId: "200" } as TargetInfo,
+    });
+    expect(withAlice.map((memory) => memory.content.text).sort()).toEqual([
+      "inbound",
+      "outbound",
+    ]);
+
+    const targets = await service.listRecentConnectorTargets(context);
+    expect(targets.map((target) => target.label)).toEqual([
+      "@alice",
+      "X user 300",
+    ]);
+  });
 });

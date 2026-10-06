@@ -7,14 +7,14 @@
  * Run: bun run --cwd packages/ui test:home-screen-e2e
  */
 import { FRAME_SAMPLER_INIT } from "../../../hooks/frame-budget.ts";
-import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../../testing/layout-stability.ts";
+import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../../perf/layout-stability.ts";
 import { chromium } from "playwright";
-import { compileTailwindTheme } from "../../../testing/e2e-runner/index.ts";
-import { createAssertGate } from "../../../testing/e2e-runner/index.ts";
-import { createSnapper } from "../../../testing/e2e-runner/index.ts";
+import { compileTailwindTheme } from "../../../testing/e2e-runner/fixture-bundle";
+import { createAssertGate } from "../../../testing/e2e-runner/browser-harness";
+import { createSnapper } from "../../../testing/e2e-runner/browser-harness";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { finishRun } from "../../../testing/e2e-runner/index.ts";
+import { finishRun } from "../../../testing/e2e-runner/browser-harness";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -23,14 +23,14 @@ import { readdir } from "node:fs/promises";
 import { rename } from "node:fs/promises";
 import { resolve } from "node:path";
 import { rm } from "node:fs/promises";
-import { stubNodeBuiltins } from "../../../testing/e2e-runner/index.ts";
+import { stubNodeBuiltins } from "../../../testing/e2e-runner/esbuild-stubs";
 import { summarizeFrameSamples } from "../../../hooks/frame-budget.ts";
-import { summarizeStability } from "../../../testing/layout-stability.ts";
+import { summarizeStability } from "../../../perf/layout-stability.ts";
 import { touchDragHold } from "../../../testing/real-touch-gestures.ts";
 import { touchLongPress } from "../../../testing/real-touch-gestures.ts";
 import { touchSwipe } from "../../../testing/real-touch-gestures.ts";
 import { touchTap } from "../../../testing/real-touch-gestures.ts";
-import { writeFixturePage } from "../../../testing/e2e-runner/index.ts";
+import { writeFixturePage } from "../../../testing/e2e-runner/fixture-bundle";
 // Frame gate for the home↔launcher rail swipe - same factor-based thresholds as
 // the sibling real-overlay gates (run-perf-gate-e2e / run-chat-perf-gate): the
 // budget adapts to the runner's refresh rate instead of hard-coding a Hz.
@@ -930,7 +930,7 @@ try {
     assert((await mobile.getByTestId("launcher-tile-chat").count()) === 0, "Chat is not duplicated as a launcher tile (home rail is the chat surface)");
     // ── Removed / hidden surfaces never tile: removed apps, wallet sub-views,
     // and the deduped duplicate registrations.
-    for (const id of ["views", "wallet-trading", "inventory", "triggers"]) {
+    for (const id of ["views", "wallet-trading", "inventory"]) {
         assert((await mobile.getByTestId(`launcher-tile-${id}`).count()) === 0, `"${id}" is absent from the launcher (removed/hidden/deduped)`);
     }
     // A single Wallet tile survives the duplicate wallet + inventory registrations.

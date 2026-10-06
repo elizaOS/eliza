@@ -1,7 +1,7 @@
 """
-Benchmark trending results store (gap M2).
+Benchmark trending results store.
 
-Scaffold for the Eliza-1 pipeline benchmark trending DB. Stores
+Stores
 ``(model_id, benchmark, score, ts, dataset_version, code_commit, raw_json)``
 tuples in a small SQLite database so the trending dashboard and the
 promotion gate can query per-model history and pairwise comparisons
@@ -30,13 +30,8 @@ The database has a single table::
 with composite indexes on ``(model_id, benchmark, ts DESC)`` and
 ``(benchmark, ts DESC)`` to make the most common queries cheap.
 
-Wave 0 scope
-============
-
-This module is intentionally empty of writers in production code paths.
-Callers in W1-B* (benchmark adapters, promotion gate) will be the only
-producers. The schema is locked in here so those callers can be built
-in parallel.
+The comparison CLI writes this trending history. Campaign execution uses a
+separate archive schema; do not point the two stores at the same SQLite file.
 """
 
 from __future__ import annotations

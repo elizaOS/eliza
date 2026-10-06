@@ -19,7 +19,6 @@ import {
 	resolveOutboundAttachmentBytes,
 	summarizeOutboundAttachmentUrl,
 	toWellFormedUnicode,
-	trimTokens,
 	truncateWellFormed,
 } from "@elizaos/core";
 
@@ -337,14 +336,7 @@ export async function generateSummary(
 	runtime: IAgentRuntime,
 	text: string,
 ): Promise<{ title: string; description: string }> {
-	text = await trimTokens(text, 100000, runtime);
-
-	if (!text) {
-		return {
-			title: "",
-			description: "",
-		};
-	}
+	if (!text) throw new Error("Summary text is required");
 
 	if (text.length < 1000) {
 		return {

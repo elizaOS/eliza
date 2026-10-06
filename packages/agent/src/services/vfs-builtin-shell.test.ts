@@ -76,3 +76,37 @@ describe("runVfsBuiltinShell >> redirect", () => {
     expect(await vfs().readFile("log.txt")).toBe("keep me\n");
   });
 });
+
+describe("runVfsBuiltinShell quoted redirection", () => {
+  it.each([
+    ["echo 'alpha>beta'", "alpha>beta\n"],
+    ['echo "alpha>beta"', "alpha>beta\n"],
+    ["echo 'alpha>>beta'", "alpha>>beta\n"],
+    ['echo "alpha>>beta"', "alpha>>beta\n"],
+    ["echo 'alpha\" > beta'", 'alpha" > beta\n'],
+    ['echo "alpha\' > beta"', "alpha' > beta\n"],
+  ])(
+    "preserves literal output for %s without creating files",
+    async (script, stdout) => {
+      const result = await sh(script);
+
+      expect(result).toMatchObject({ exitCode: 0, stdout, stderr: "" });
+      expect(await vfs().list("/")).toEqual([]);
+    },
+  );
+
+  it("overwrites and appends quoted output through an unquoted redirect", async () => {
+    await vfs().writeFile("log.txt", "replace me\n");
+
+    const result = await sh(
+      "echo 'alpha>beta' > log.txt && echo \"gamma>>delta\" >> log.txt && cat log.txt",
+    );
+
+    expect(result).toMatchObject({
+      exitCode: 0,
+      stdout: "alpha>beta\ngamma>>delta\n",
+      stderr: "",
+    });
+    expect(await vfs().readFile("log.txt")).toBe("alpha>beta\ngamma>>delta\n");
+  });
+});

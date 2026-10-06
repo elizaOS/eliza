@@ -5,18 +5,21 @@
  */
 import {
   AgentEventService,
+  getSessionProviders,
   type IAgentRuntime,
   NotificationService,
   PairingService,
-  type HttpPlugin as Plugin,
   promoteSubactionsToActions,
   type ServiceClass,
 } from "@elizaos/core";
-
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   ApprovalService,
   GlobalPauseService,
   HandoffService,
+  knowledgeActions,
+  memoryAction,
+  notifyAction,
   PendingPromptsService,
 } from "@elizaos/plugin-assistant";
 import {
@@ -27,10 +30,7 @@ import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
 import { filesAction } from "../actions/files.ts";
-import { knowledgeActions } from "../actions/knowledge.ts";
 import { logsAction } from "../actions/logs.ts";
-import { memoryAction } from "../actions/memories.ts";
-import { notifyAction } from "../actions/notify.ts";
 import { pageDelegateAction } from "../actions/page-action-groups.ts";
 import { pairOwnerAccountAction } from "../actions/pair-owner-account.ts";
 import {
@@ -56,6 +56,7 @@ import {
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
 import { dstackOperatorAttestationRoute } from "../api/tee-attestation-routes.ts";
+import { resolveDefaultSessionStorePath } from "../config/paths.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -67,10 +68,6 @@ import { relevantConversationsProvider } from "../providers/relevant-conversatio
 import { roleBackfillProvider } from "../providers/role-backfill.ts";
 import { rolodexProvider } from "../providers/rolodex.ts";
 import { createSessionKeyProvider } from "../providers/session-bridge.ts";
-import {
-  getSessionProviders,
-  resolveDefaultSessionStorePath,
-} from "../providers/session-utils.ts";
 import { createOngoingTasksProvider } from "../providers/tasks.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
@@ -86,7 +83,6 @@ import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 import { setCustomActionsRuntime } from "./custom-actions.ts";
 import { preparePluginForSelectedDatabase } from "./database-selection.ts";
-import { elizaSchema } from "./eliza-schema.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
@@ -120,12 +116,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     name: "eliza",
     databaseBackends: ["postgres", "pglite", "sqlite"],
     description: "Eliza workspace context, session keys, and lifecycle actions",
-    // Runtime-owned app_lifeops tables. Registered here so the SQL plugin
-    // migrates the runtime data model whenever the agent runs.
-    schema: {
-      ...retainedPendantSchema,
-      ...knowledgeGraphSchema,
-    },
+    // Retired feature data remains part of the schema until an explicit retention migration.
+    schema: { ...retainedPendantSchema, ...knowledgeGraphSchema },
     services: [
       AgentEventService as ServiceClass,
       NotificationService as ServiceClass,

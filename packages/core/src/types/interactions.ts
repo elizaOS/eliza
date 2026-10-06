@@ -1,22 +1,7 @@
 /**
- * Interactive message blocks — the canonical, connector-agnostic vocabulary for
- * structured controls an agent can embed in a reply: forms, option pickers,
- * suggestion chips, live task cards, and sensitive (secret / OAuth) requests.
- *
- * These types are the single source of truth shared by every surface:
- *   - the runtime normalizes a reply's `Content.text` into `Content.interactions`
- *     (see `messaging/interactions`),
- *   - the dashboard renders them as inline widgets,
- *   - connectors (Telegram, Discord, …) render them as native components
- *     (inline keyboards, action rows, select menus) and route the user's answer
- *     back as an ordinary inbound message.
- *
- * The wire format is the bracket-marker text the dashboard already emits
- * (`[FORM]`, `[CHOICE:…]`, `[FOLLOWUPS]`, `[TASK:…]`) so existing agent output
- * keeps working unchanged; `messaging/interactions/parse` is a faithful superset
- * of the dashboard's per-feature parsers. Secret requests travel out-of-band via
- * the sensitive-request dispatch registry rather than as plaintext in the text,
- * but share this vocabulary so a connector has one place to render every control.
+ * Shared reply controls for dashboard widgets and native connector components.
+ * Text markers encode forms, choices, followups, and task cards. Secret requests
+ * travel through the sensitive-request dispatch registry, never plaintext reply text.
  */
 
 /** A selectable option in a choice picker or select field. */

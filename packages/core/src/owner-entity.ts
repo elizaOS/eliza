@@ -7,8 +7,13 @@
  * surfaces write under. Lookup failures reject instead of selecting another identity. Used to attribute owner-scoped trust and permissions.
  */
 import { ElizaError } from "./errors";
-import { deterministicOwnerEntityId, resolveCanonicalOwnerId } from "./roles";
+import {
+	deterministicOwnerEntityId,
+	hasConfiguredCanonicalOwner,
+	resolveOwnerEntityIdOrDefault,
+} from "./roles";
 import type { IAgentRuntime } from "./types/runtime.js";
+import { validateUuid } from "./utils/uuid.js";
 
 type WorldMetadataShape = {
 	ownership?: { ownerId?: string };
@@ -23,9 +28,10 @@ export function resolveFallbackOwnerEntityId(
 export async function resolveOwnerEntityId(
 	runtime: IAgentRuntime,
 ): Promise<string | null> {
-	const configuredOwnerId = resolveCanonicalOwnerId(runtime);
-	if (configuredOwnerId) {
-		return configuredOwnerId;
+	// Configured owners outrank world metadata, so a non-UUID configured id
+	// takes the deterministic fallback instead of the world scan.
+	if (hasConfiguredCanonicalOwner(runtime)) {
+		return resolveOwnerEntityIdOrDefault(runtime);
 	}
 
 	let phase = "rooms";
@@ -43,7 +49,9 @@ export async function resolveOwnerEntityId(
 			worldId = room.worldId;
 			const world = await runtime.getWorld(room.worldId);
 			const metadata = (world?.metadata ?? {}) as WorldMetadataShape;
-			if (metadata.ownership?.ownerId) return metadata.ownership.ownerId;
+			// Connector worlds may store a platform identifier rather than an entity UUID.
+			const candidateOwnerId = validateUuid(metadata.ownership?.ownerId);
+			if (candidateOwnerId) return candidateOwnerId;
 		}
 	} catch (cause) {
 		// error-policy:J2 an unreadable earlier world cannot establish owner precedence or absence.

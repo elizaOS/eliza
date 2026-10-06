@@ -27,19 +27,21 @@ import { Readable } from "node:stream";
 import {
   type AccessContext,
   type AgentRuntime,
-  assertPublicRouteIntent,
   ElizaError,
-  getHttpRuntime,
   type IAgentRuntime,
-  type LegacyRouteHandler,
   logger,
+} from "@elizaos/core";
+import {
+  assertPublicRouteIntent,
+  getHttpRuntime,
+  type LegacyRouteHandler,
   type PaymentEnabledRoute,
   type Route,
   type RouteHandlerContext,
   type RouteHandlerResult,
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
-} from "@elizaos/core";
+} from "@elizaos/host/protocol";
 
 import { matchPluginRoutePath } from "./plugin-route-path.ts";
 import type { X402PluginModule } from "./x402-contract.ts";
@@ -116,6 +118,7 @@ async function getX402Plugin(): Promise<X402PluginModule | null> {
 }
 
 export interface DispatchRouteArgs {
+  signal?: AbortSignal;
   runtime: IAgentRuntime | AgentRuntime | null | undefined;
   method: string;
   path: string;
@@ -201,6 +204,8 @@ interface CapturedResponse {
   headers: Record<string, string>;
   chunks: Buffer[];
   ended: boolean;
+  destroyed?: boolean;
+  failure?: Error;
 }
 
 /**
@@ -306,6 +311,7 @@ export function buildLegacyShim(args: {
     args.onHeaders?.(captured.statusCode, { ...captured.headers });
   };
   const writeChunk = (chunk: unknown): void => {
+    if (captured.destroyed) throw captured.failure;
     if (chunk == null) return;
     let buf: Buffer;
     if (typeof chunk === "string") {
@@ -329,13 +335,19 @@ export function buildLegacyShim(args: {
   // structural boundary is isolated in asCapturedServerResponse().
   const res = Object.assign(new EventEmitter(), {
     statusCode: 200,
-    get writableEnded() {
-      return captured.ended;
-    },
-    get destroyed() {
-      return false;
-    },
     flushHeaders,
+    destroy(error?: Error) {
+      if (!captured.destroyed) {
+        captured.destroyed = true;
+        captured.failure =
+          error ??
+          new ElizaError("Local response was destroyed", {
+            code: "LOCAL_RESPONSE_DESTROYED",
+          });
+        res.emit("close");
+      }
+      return asCapturedServerResponse(res);
+    },
     writeHead(
       code: number,
       headers?: Record<string, string | number | string[]>,
@@ -345,9 +357,6 @@ export function buildLegacyShim(args: {
         setHeader(name, value);
       flushHeaders();
       return asCapturedServerResponse(res);
-    },
-    get headersSent() {
-      return headersFlushed || captured.ended;
     },
     setHeader,
     getHeader: (name: string) => captured.headers[name.toLowerCase()],
@@ -416,6 +425,7 @@ export function buildLegacyShim(args: {
   Object.defineProperties(res, {
     headersSent: { get: () => headersFlushed || captured.ended },
     writableEnded: { get: () => captured.ended },
+    destroyed: { get: () => captured.destroyed === true },
   });
   // Mirror statusCode writes from the handler onto the captured value.
   Object.defineProperty(res, "statusCode", {
@@ -455,6 +465,7 @@ function mediaTypeEssence(contentType: string): string {
 export function capturedToResult(
   captured: CapturedResponse,
 ): RouteHandlerResult {
+  if (captured.failure) throw captured.failure;
   const buffer = Buffer.concat(captured.chunks);
   // Missing headers are meaningful here because undeclared bodies retain the
   // bridge's historical UTF-8 behavior.
@@ -538,6 +549,7 @@ export function capturedToResult(
 export async function dispatchRoute(
   args: DispatchRouteArgs,
 ): Promise<RouteHandlerResult | null> {
+  args.signal?.throwIfAborted();
   const runtime = args.runtime;
   if (!runtime || !getHttpRuntime(runtime).routes.length) return null;
 
@@ -570,6 +582,7 @@ export async function dispatchRoute(
       // New return-shape handler — preferred path.
       if (route.routeHandler) {
         const ctx: RouteHandlerContext = {
+          signal: args.signal ?? new AbortController().signal,
           body: parseBodyAsJson(args.body),
           rawBody: args.rawBody,
           params,

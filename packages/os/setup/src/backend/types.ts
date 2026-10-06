@@ -1,5 +1,3 @@
-import type { ReleaseFile } from "./signed-release";
-
 export interface ConnectedDevice {
   serial: string;
   model: string;
@@ -26,46 +24,13 @@ export interface AospBuild {
   artifactDir?: string;
   /** local validated manifest for pre-built artifacts */
   manifestPath?: string;
-  /** release manifest retained from authoritative discovery */
-  manifest?: AndroidReleaseManifest;
   /** Exact authenticated v2 envelope bytes; never reconstructed from a summary. */
   signedManifest?: string;
-  /** Complete signed installation and recovery file set. */
-  signedFiles?: ReleaseFile[];
   /** GitHub release asset URLs keyed by exact artifact filename */
   artifactUrls?: Record<string, string>;
   sizeBytes: number;
   /** When true, flash-partitions step appends --wipe-data (factory reset). */
   wipeData?: boolean;
-}
-
-export interface ManifestArtifact {
-  partition: string;
-  filename: string;
-  sha256: string;
-  sizeBytes: number;
-  required: boolean;
-  fastbootMode: "bootloader" | "fastbootd";
-}
-
-export interface AndroidReleaseManifest {
-  schemaVersion: 1;
-  releaseId: string;
-  generatedAt: string;
-  buildFingerprint: string;
-  buildType?: "user" | "userdebug" | "eng" | "unknown";
-  supportedDevices: Array<{
-    targetId: string;
-    codename: string;
-    marketingName?: string;
-    tier: "lab-validated" | "candidate" | "manual" | "blocked";
-    slots: Array<"a" | "b" | "none">;
-    dynamicPartitions: boolean;
-    rollbackSupported: boolean;
-  }>;
-  artifacts: ManifestArtifact[];
-  validation: Record<string, unknown>;
-  rollback: Record<string, unknown>;
 }
 
 export type FlashStepId =
@@ -147,4 +112,41 @@ export interface AospFlasherBackend {
       detail: string,
     ) => void,
   ): Promise<void>;
+}
+
+export type DependencyId =
+  | "adb"
+  | "fastboot"
+  | "libimobiledevice"
+  | "sideloader";
+
+export type DependencyStatus =
+  | "checking"
+  | "found"
+  | "found-but-misconfigured"
+  | "missing"
+  | "installing"
+  | "install-failed";
+
+export interface Dependency {
+  id: DependencyId;
+  name: string;
+  description: string;
+  commands: string[]; // binary names to check, e.g. ["adb"]
+  requiredFor: ("android" | "ios")[];
+}
+
+export interface DependencyCheckResult {
+  id: DependencyId;
+  status: DependencyStatus;
+  foundPath?: string;
+  version?: string;
+  errorMessage?: string;
+  manualInstructions?: ManualInstallInstructions;
+}
+
+export interface ManualInstallInstructions {
+  title: string;
+  steps: string[];
+  url: string;
 }

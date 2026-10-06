@@ -5,11 +5,13 @@
  * @vitest-environment jsdom
  */
 
+// Load the real view API during module setup, before timing asynchronous view behavior.
+import "./view-public-api";
+
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { ElizaError } from "@elizaos/core";
-import { resolveSurfaceManifest } from "@elizaos/core/views/surface-manifest";
+import { ElizaError, resolveSurfaceManifest } from "@elizaos/core/protocol";
 import {
   act,
   cleanup,
@@ -140,13 +142,11 @@ describe("host-external importer resolution (factory hostImport)", () => {
     expect(Object.isFrozen(core)).toBe(true);
   });
   it("provides the authenticated fetch helper to plugin view bundles", async () => {
-    const api = await resolveHostExternal("@elizaos/ui/api/csrf-client");
+    const api = await resolveHostExternal("@elizaos/ui");
     expect(typeof api.fetchWithCsrf).toBe("function");
   });
   it("resolves explicit time-zone helpers without exposing host mutation APIs", async () => {
-    const shared = await resolveHostExternal(
-      "@elizaos/core/lifeops-normalize/time-zone",
-    );
+    const shared = await resolveHostExternal("@elizaos/contracts");
     const normalize = shared.normalizeTimeZone;
     const isValid = shared.isValidTimeZone;
     if (typeof normalize !== "function" || typeof isValid !== "function") {
@@ -159,18 +159,12 @@ describe("host-external importer resolution (factory hostImport)", () => {
     expect(shared.loadElizaConfig).toBeUndefined();
   });
   it("provides the canonical view header to plugin view bundles", async () => {
-    const header = await resolveHostExternal(
-      "@elizaos/ui/components/shared/ViewHeader",
-    );
+    const header = await resolveHostExternal("@elizaos/ui");
     expect(typeof header.ViewHeader).toBe("function");
   });
   it("provides the scoped capability recovery hooks used by plugin views", async () => {
-    const recovery = await resolveHostExternal(
-      "@elizaos/ui/hooks/runtime-capability-retry",
-    );
-    const authority = await resolveHostExternal(
-      "@elizaos/ui/hooks/useActiveAgentAuthority",
-    );
+    const recovery = await resolveHostExternal("@elizaos/ui");
+    const authority = await resolveHostExternal("@elizaos/ui");
     expect(typeof recovery.loadAfterCapabilityWarmup).toBe("function");
     expect(typeof authority.useActiveAgentAuthority).toBe("function");
   });
@@ -184,10 +178,19 @@ const { activeApiBase, activeCredential, rawRequest, sendWsMessage } =
   vi.hoisted(() => ({
     activeApiBase: { value: "" },
     activeCredential: "credential-must-never-enter-a-url",
-    rawRequest: vi.fn(),
+    rawRequest: vi.fn(
+      (
+        _path: string,
+        _init: RequestInit,
+        _options: { allowNonOk?: boolean; timeoutMs?: number },
+      ) =>
+        Promise.reject<Response>(
+          new Error("Unexpected view test HTTP request"),
+        ),
+    ),
     sendWsMessage: vi.fn(),
   }));
-vi.mock("../../api", () => ({
+vi.mock("../../api/client", () => ({
   client: {
     get baseUrl() {
       return activeApiBase.value;
@@ -198,11 +201,6 @@ vi.mock("../../api", () => ({
     fetch: vi.fn(async () => ({ claimId: "execution-claim" })),
     clientId: "fixture-client",
   },
-}));
-// Host-external authority hooks use the same mocked transport as the loader.
-// Importing a second, real client here starts unrelated network/bootstrap work.
-vi.mock("../../api/client", async () => ({
-  client: (await import("../../api")).client,
 }));
 describe("authenticated protected view bundle loading", () => {
   const secret = activeCredential;
@@ -439,8 +437,8 @@ describe("DynamicViewLoader", () => {
   afterEach(() => {
     delete window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__;
     sendWsMessage.mockClear();
-    rawRequest.mockReset();
     cleanup();
+    rawRequest.mockReset();
     setActiveSurfaceRealmScope(null);
     __resetDynamicViewLoaderCacheForTests();
     vi.restoreAllMocks();
@@ -461,7 +459,7 @@ describe("DynamicViewLoader", () => {
     const handles: Record<string, (path: string) => void> = {};
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = async (url) => {
       loads[url] = (loads[url] ?? 0) + 1;
-      const external = await hostImport("@elizaos/ui/app-navigate-view");
+      const external = await hostImport("@elizaos/ui");
       const navigate = external.navigateBrowserPath as (path: string) => void;
       handles[url] = navigate;
       return {
@@ -515,7 +513,7 @@ describe("DynamicViewLoader", () => {
   it("loads both admitted split-layout members with default-deny handles", async () => {
     const navigations: Array<(path: string) => void> = [];
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = async (url) => {
-      const external = await hostImport("@elizaos/ui/app-navigate-view");
+      const external = await hostImport("@elizaos/ui");
       navigations.push(external.navigateBrowserPath as (path: string) => void);
       return { default: () => <div>{url}</div> };
     };
@@ -575,8 +573,8 @@ describe("DynamicViewLoader", () => {
       write: (key: string, value: string) => Promise<void>;
     }> = [];
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = async () => {
-      const navigation = await hostImport("@elizaos/ui/app-navigate-view");
-      const bridge = await hostImport("@elizaos/ui/bridge");
+      const navigation = await hostImport("@elizaos/ui");
+      const bridge = await hostImport("@elizaos/ui");
       if (
         typeof navigation.navigateBrowserPath !== "function" ||
         typeof bridge.setStorageValue !== "function"
@@ -669,9 +667,7 @@ describe("DynamicViewLoader", () => {
     const callbacks: Array<(path: string) => void> = [];
     const cleanups: Array<ReturnType<typeof vi.fn>> = [];
     const importBundle = vi.fn(async (_url, importHost) => {
-      const { navigateBrowserPath } = await importHost(
-        "@elizaos/ui/app-navigate-view",
-      );
+      const { navigateBrowserPath } = await importHost("@elizaos/ui");
       const navigate = navigateBrowserPath as (path: string) => void;
       callbacks.push(navigate);
       const generation = callbacks.length;
@@ -770,7 +766,7 @@ describe("DynamicViewLoader", () => {
           oldImport = importHost;
           await paused;
         }
-        const module = await importHost("@elizaos/ui/app-navigate-view");
+        const module = await importHost("@elizaos/ui");
         return {
           default: () => (
             <button
@@ -801,7 +797,7 @@ describe("DynamicViewLoader", () => {
       resume?.();
       await paused;
     });
-    await expect(oldImport?.("@elizaos/ui/app-navigate-view")).rejects.toThrow(
+    await expect(oldImport?.("@elizaos/ui")).rejects.toThrow(
       SurfaceRealmDeniedError,
     );
     expect(screen.queryByRole("button", { name: "Current 1" })).toBeNull();
@@ -819,7 +815,7 @@ describe("DynamicViewLoader", () => {
     setActiveSurfaceRealmScope(makeScope("cloud"));
     const callbacks: Array<(path: string) => void> = [];
     const importBundle = vi.fn(async (_url, importHost) => {
-      const module = await importHost("@elizaos/ui/app-navigate-view");
+      const module = await importHost("@elizaos/ui");
       const callback = module.navigateBrowserPath as (path: string) => void;
       callbacks.push(callback);
       return {
@@ -866,7 +862,7 @@ describe("DynamicViewLoader", () => {
     setActiveSurfaceRealmScope(firstScope);
     const callbacks: Array<(path: string) => void> = [];
     const importBundle = vi.fn(async (url, importHost) => {
-      const module = await importHost("@elizaos/ui/app-navigate-view");
+      const module = await importHost("@elizaos/ui");
       callbacks.push(module.navigateBrowserPath as (path: string) => void);
       const label = url.includes("calendar") ? "Calendar" : "Notes";
       return {
@@ -1702,14 +1698,8 @@ describe("DynamicViewLoader", () => {
       };
     });
     rawRequest
-      .mockResolvedValueOnce({
-        ok: true,
-        headers: { get: (name: string) => (name === "etag" ? "v1" : null) },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        headers: { get: (name: string) => (name === "etag" ? "v2" : null) },
-      });
+      .mockResolvedValueOnce(new Response(null, { headers: { etag: "v1" } }))
+      .mockResolvedValueOnce(new Response(null, { headers: { etag: "v2" } }));
     const rendered = render(
       <DynamicViewLoader
         installationId="fixture-installation"

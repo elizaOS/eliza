@@ -3,25 +3,25 @@
  * authenticated user. Enforces organization agent quotas and role.
  */
 
-import { Hono } from "hono";
-import { z } from "zod";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { userCharactersRepository } from "@/db/repositories/characters";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
 import {
   charactersService,
   type MeteredCharacterCreationReceipt,
-} from "@/lib/services/characters/characters";
-import { isUniqueConstraintError } from "@/lib/utils/db-errors";
-import { decodeRequestJson } from "@/lib/utils/json-parsing";
-import { logger } from "@/lib/utils/logger";
-import { normalizeTokenAddress } from "@/lib/utils/token-address";
-import type { AppEnv } from "@/types/cloud-worker-env";
+} from "@elizaos/cloud-shared/lib/services/characters";
+import { isUniqueConstraintError } from "@elizaos/cloud-shared/lib/utils/db-errors";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { normalizeTokenAddress } from "@elizaos/cloud-shared/lib/utils/token-address";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
 
 const DEFAULT_AGENT_BIO = "A helpful AI assistant";
 

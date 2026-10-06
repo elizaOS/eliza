@@ -143,7 +143,7 @@ describe("renderReminderBody — malformed / empty / throwing model", () => {
   };
 
   // Deterministic fallback produced by buildReminderBody for these args.
-  const deterministicFallback = "Reminder: Take medication";
+  const deterministicFallback = "Take medication";
 
   it("useModel throws → deterministic fallback body", async () => {
     const service = new ReminderService(

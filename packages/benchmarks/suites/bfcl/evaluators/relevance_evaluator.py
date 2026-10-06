@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from suites.bfcl.types import FunctionCall
+from benchmarks.suites.bfcl.types import FunctionCall
 
 logger = logging.getLogger(__name__)
 
@@ -131,9 +131,8 @@ class RelevanceEvaluator:
                 reasoning = f"Incorrectly made {len(predicted_calls)} function call(s) for irrelevant query"
             else:
                 # Check for explicit decline
-                has_decline = (
-                    response_text is not None and
-                    self._has_decline_indicator(response_text)
+                has_decline = response_text is not None and self._has_decline_indicator(
+                    response_text
                 )
                 if has_decline:
                     confidence = 1.0
@@ -159,9 +158,7 @@ class RelevanceEvaluator:
         """
         text_lower = response_text.lower()
         found_indicators = [
-            indicator
-            for indicator in self.decline_keywords
-            if indicator in text_lower
+            indicator for indicator in self.decline_keywords if indicator in text_lower
         ]
 
         return {

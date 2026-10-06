@@ -11,7 +11,7 @@ import {
   promoteSubactionsToActions,
   type ServiceClass,
 } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/core/api/http-plugin";
+import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { walletRouterAction } from "../wallet-action";
 import { tokenBalanceProvider } from "./providers/get-balance";
 import { evmWalletProvider } from "./providers/wallet";

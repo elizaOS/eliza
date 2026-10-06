@@ -20,8 +20,13 @@ import type {
   ServiceClass,
 } from "@elizaos/core";
 import { createService, promoteSubactionsToActions } from "@elizaos/core";
-// Direct leaf-file imports — see comment lower in this file for the
-// Bun.build mis-rewrite that requires bypassing barrels.
+import { messageAction } from "./actions/message.ts";
+import { postAction } from "./actions/post.ts";
+import { updateRoleAction } from "./actions/role.ts";
+import { roomOpAction } from "./actions/room.ts";
+import { preferenceItems } from "./evaluators/preference-items.ts";
+import { reflectionItems } from "./evaluators/reflection-items.ts";
+import { skillItems } from "./evaluators/skill-items.ts";
 import { manageExperienceAction } from "./experience/actions/manage-experience.ts";
 import { searchExperiencesAction } from "./experience/actions/search-experiences.ts";
 import { experiencePatternEvaluator } from "./experience/evaluators/experience-items.ts";
@@ -30,39 +35,6 @@ import { characterAction } from "./personality/actions/character.ts";
 import { personalityAction } from "./personality/actions/personality.ts";
 import { characterGateNoticeProvider } from "./personality/providers/character-gate-notice.ts";
 import { userPersonalityProvider } from "./personality/providers/user-personality.ts";
-
-// Re-export action, provider, and post-message-action modules
-export * from "./actions/index.ts";
-// Explicit named re-exports for symbols that are also referenced from
-// runtime capability lists below — this defeats Bun.build's tree-shaking
-// of the underlying module so the symbols stay defined when external
-// consumers import them via `@elizaos/core`.
-export { roleAction } from "./actions/role.ts";
-export * from "./evaluators/index.ts";
-export * from "./experience/index.ts";
-export type * from "./form/index.ts";
-export * from "./personality/index.ts";
-export * from "./providers/index.ts";
-
-// Import for local use.
-//
-// We deliberately bypass the local barrels (`./actions/index.ts`,
-// `./evaluators/index.ts`, `./providers/index.ts`) and reach for each
-// concrete file. Bun.build (1.3.13) collapses re-export-only barrels to
-// empty `init_xxx = () => {}` shims AND simultaneously drops the underlying
-// `var advancedContactsProvider = ...` declarations from the bundle when
-// the only references to those symbols arrive through a `export * from` /
-// `export { x }` chain. The runtime then throws
-// `ReferenceError: advancedContactsProvider is not defined` the first time
-// `advancedProviders` is touched. Importing directly from the leaf file
-// gives Bun a real per-file consumer it cannot prune.
-import { messageAction } from "./actions/message.ts";
-import { postAction } from "./actions/post.ts";
-import { updateRoleAction } from "./actions/role.ts";
-import { roomOpAction } from "./actions/room.ts";
-import { preferenceItems } from "./evaluators/preference-items.ts";
-import { reflectionItems } from "./evaluators/reflection-items.ts";
-import { skillItems } from "./evaluators/skill-items.ts";
 import { advancedContactsProvider } from "./providers/contacts.ts";
 import { factsProvider } from "./providers/facts.ts";
 import { followUpsProvider } from "./providers/followUps.ts";

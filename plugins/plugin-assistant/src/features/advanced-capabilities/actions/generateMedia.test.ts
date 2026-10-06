@@ -5,7 +5,12 @@
  * against a deterministic mock runtime (vi.fn media service, no live model).
  */
 
-import { actionToTool, ModelType, ServiceType } from "@elizaos/core";
+import {
+  actionToTool,
+  ModelType,
+  ServiceType,
+  validateToolArgs,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { generateMediaAction } from "./generateMedia.ts";
 
@@ -50,6 +55,100 @@ describe("generateMediaAction availability", () => {
         imageUrl: { type: "string" },
       },
     });
+  });
+
+  it.each([
+    {
+      mediaType: "audio",
+      audioKind: "music",
+      prompt: "rainy night beat",
+      instrumental: true,
+      genre: "lofi hip hop",
+    },
+    {
+      mediaType: "audio",
+      audioKind: "tts",
+      prompt: "Good morning",
+      voice: "21m00Tcm4TlvDq8ikWAM",
+    },
+  ])(
+    "admits the music and speech controls every media path forwards: %j",
+    async (parameters) => {
+      expect(validateToolArgs(generateMediaAction, parameters)).toMatchObject({
+        valid: true,
+        errors: [],
+      });
+
+      const generateMedia = vi.fn(async () => ({
+        mediaType: parameters.mediaType,
+        url: "https://cdn.example.com/generated/out",
+        imageUrl: "https://cdn.example.com/generated/out.png",
+        audioUrl: "https://cdn.example.com/generated/out.mp3",
+      }));
+      await generateMediaAction.handler?.(
+        runtimeWithMediaService(true, generateMedia),
+        message,
+        undefined,
+        { parameters },
+        vi.fn(),
+      );
+      const { prompt: _prompt, ...controls } = parameters;
+      expect(generateMedia).toHaveBeenCalledWith(
+        expect.objectContaining(controls),
+      );
+    },
+  );
+
+  it("keeps music controls when retrying without shaping hints", async () => {
+    const parameters = {
+      mediaType: "audio",
+      audioKind: "music",
+      prompt: "rainy night beat",
+      duration: 30,
+      instrumental: true,
+      genre: "lofi hip hop",
+    };
+    const generateMedia = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("duration is not supported"))
+      .mockResolvedValueOnce({
+        mediaType: "audio",
+        url: "https://cdn.example.com/generated/out",
+        audioUrl: "https://cdn.example.com/generated/out.mp3",
+      });
+
+    const result = await generateMediaAction.handler?.(
+      runtimeWithMediaService(true, generateMedia),
+      message,
+      undefined,
+      { parameters },
+      vi.fn(),
+    );
+
+    expect(result).toMatchObject({ success: true });
+    expect(generateMedia).toHaveBeenCalledTimes(2);
+    const retry = generateMedia.mock.calls[1]?.[0];
+    expect(retry).toMatchObject({ instrumental: true, genre: "lofi hip hop" });
+    expect(retry).not.toHaveProperty("duration");
+  });
+
+  it("keeps image controls undeclared while the cloud and fallback image paths drop them", () => {
+    // ImageGenerationParams has no quality/style/negativePrompt, so only the
+    // own-key provider branch could honor them; admitting them would report
+    // success for a request whose controls were ignored.
+    for (const control of [
+      { quality: "hd" },
+      { style: "natural" },
+      { negativePrompt: "blurry" },
+    ]) {
+      expect(
+        validateToolArgs(generateMediaAction, {
+          mediaType: "image",
+          prompt: "a glass lighthouse",
+          ...control,
+        }).valid,
+      ).toBe(false);
+    }
   });
 
   it("is hidden when the media service reports no configured provider", async () => {

@@ -22,7 +22,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Protocol
 
-log = logging.getLogger("benchmarks.standard")
+log = logging.getLogger("benchmarks.suites.standard")
 
 # Map common provider names to OpenAI-compatible base URLs. Adapters
 # accept ``--model-endpoint`` directly, but ``--provider`` can pick from
@@ -58,8 +58,8 @@ class GenerationConfig:
 @dataclass(frozen=True)
 class GenerationResult:
     text: str
-    prompt_tokens: int
-    completion_tokens: int
+    prompt_tokens: int | None
+    completion_tokens: int | None
     raw: dict[str, object]
 
 
@@ -120,6 +120,11 @@ class HTTPOpenAICompatibleClient:
             self._client_obj = OpenAI(base_url=self._endpoint, api_key=self._api_key)
         return self._client_obj
 
+    def close(self) -> None:
+        if self._client_obj is not None:
+            self._client_obj.close()
+            self._client_obj = None
+
     def generate(
         self,
         messages: Sequence[ChatMessage],
@@ -146,8 +151,8 @@ class HTTPOpenAICompatibleClient:
         resp = completions.create(**kwargs)
         text = resp.choices[0].message.content or ""
         usage = getattr(resp, "usage", None)
-        prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
-        completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        prompt_tokens = getattr(usage, "prompt_tokens", None)
+        completion_tokens = getattr(usage, "completion_tokens", None)
         raw_dump: dict[str, object]
         if hasattr(resp, "model_dump"):
             raw_dump = resp.model_dump()
@@ -176,6 +181,11 @@ class TrajectoryRecordingClient:
         self._output_path = output_path
         self._benchmark_id = benchmark_id
         self._model = model
+
+    def close(self) -> None:
+        close = getattr(self._inner, "close", None)
+        if close is not None:
+            close()
 
     def generate(
         self,
@@ -253,70 +263,87 @@ class MockClient:
 class HarnessClient:
     """Adapter from the tri-agent benchmark harnesses to standard chat calls."""
 
-    def __init__(self, *, harness: str, endpoint: str, api_key: str) -> None:
-        del endpoint, api_key
+    def __init__(self, *, harness: str, endpoint: str, api_key: str, model: str) -> None:
+        self._model = model
         self._harness = harness
         self._turn_index = 0
         self._server_manager: object | None = None
-        if harness == "hermes":
-            from hermes_adapter.client import HermesClient  # noqa: WPS433
+        self._client = None
+        try:
+            if harness == "hermes":
+                from hermes_adapter.client import HermesClient  # noqa: WPS433
 
-            self._client = HermesClient(
-                provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
-                model=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"),
-                base_url=os.environ.get("BENCHMARK_BASE_URL")
-                or os.environ.get("OPENAI_BASE_URL")
-                or os.environ.get("CEREBRAS_BASE_URL")
-                or None,
-                timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "120")),
-                reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
-                or os.environ.get("CEREBRAS_REASONING_EFFORT")
-                or None,
-            )
-        elif harness == "openclaw":
-            from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
+                self._client = HermesClient(
+                    provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
+                    model=model,
+                    api_key=api_key,
+                    base_url=endpoint,
+                    timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "120")),
+                    reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
+                    or os.environ.get("CEREBRAS_REASONING_EFFORT")
+                    or None,
+                )
+            elif harness == "openclaw":
+                from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
 
-            self._client = OpenClawClient(
-                provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
-                model=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"),
-                base_url=os.environ.get("BENCHMARK_BASE_URL")
-                or os.environ.get("OPENAI_BASE_URL")
-                or os.environ.get("CEREBRAS_BASE_URL")
-                or None,
-                timeout_s=float(os.environ.get("OPENCLAW_TIMEOUT_S", "120")),
-                reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
-                or os.environ.get("CEREBRAS_REASONING_EFFORT")
-                or None,
-            )
-
-        elif harness == "eliza":
-            from eliza_adapter.client import ElizaClient  # noqa: WPS433
-
-            if not os.environ.get("ELIZA_BENCH_URL"):
-                from eliza_adapter.server_manager import (
-                    ElizaServerManager,  # noqa: WPS433
+                self._client = OpenClawClient(
+                    provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
+                    model=model,
+                    api_key=api_key,
+                    base_url=endpoint,
+                    timeout_s=float(os.environ.get("OPENCLAW_TIMEOUT_S", "120")),
+                    reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
+                    or os.environ.get("CEREBRAS_REASONING_EFFORT")
+                    or None,
                 )
 
-                self._server_manager = ElizaServerManager()
-                self._server_manager.start()  # type: ignore[attr-defined]
-            self._client = ElizaClient()
-        else:
-            raise ValueError(f"Unsupported benchmark harness: {harness}")
-        self._client.wait_until_ready(timeout=120)
+            elif harness == "eliza":
+                from eliza_adapter.client import ElizaClient  # noqa: WPS433
 
-    def __del__(self) -> None:
-        manager = getattr(self, "_server_manager", None)
-        if manager is not None and hasattr(manager, "stop"):
-            try:
-                manager.stop()
-            except Exception:
-                log.exception("Failed to stop benchmark server")
+                if not os.environ.get("ELIZA_BENCH_URL"):
+                    from eliza_adapter.server_manager import (
+                        ElizaServerManager,  # noqa: WPS433
+                    )
+
+                    self._server_manager = ElizaServerManager(env_overrides={
+                        "BENCHMARK_MODEL_NAME": model, "MODEL_NAME": model,
+                        "OPENAI_SMALL_MODEL": model, "OPENAI_LARGE_MODEL": model,
+                        "OPENAI_MEDIUM_MODEL": model, "OPENAI_RESPONSE_HANDLER_MODEL": model,
+                        "OPENAI_ACTION_PLANNER_MODEL": model, "CEREBRAS_MODEL": model,
+                        "BENCHMARK_BASE_URL": endpoint, "OPENAI_BASE_URL": endpoint,
+                        "CEREBRAS_BASE_URL": endpoint, "OPENAI_API_KEY": api_key,
+                        "CEREBRAS_API_KEY": api_key,
+                    })
+                    self._server_manager.start()  # type: ignore[attr-defined]
+                self._client = ElizaClient()
+            else:
+                raise ValueError(f"Unsupported benchmark harness: {harness}")
+            self._client.wait_until_ready(timeout=120)
+            if harness == "eliza":
+                health = self._client.health()
+                if health.get("benchmark_model") != model:
+                    raise ValueError("Eliza server model does not match the requested benchmark model")
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        try:
+            close = getattr(self._client, "close", None)
+            if close is not None:
+                close()
+        finally:
+            if self._server_manager is not None:
+                self._server_manager.stop()
+                self._server_manager = None
 
     def generate(
         self,
         messages: Sequence[ChatMessage],
         config: GenerationConfig,
     ) -> GenerationResult:
+        if config.model != self._model:
+            raise ValueError("Generation model differs from the configured benchmark harness")
         serialized = [{"role": m.role, "content": m.content} for m in messages]
         self._turn_index += 1
         task_hash = sha256(
@@ -350,18 +377,16 @@ class HarnessClient:
         )
         usage = response.params.get("usage")
         usage_obj = usage if isinstance(usage, dict) else {}
-        prompt_tokens = int(
-            usage_obj.get("prompt_tokens") or usage_obj.get("promptTokens") or 0
-        )
-        completion_tokens = int(
-            usage_obj.get("completion_tokens") or usage_obj.get("completionTokens") or 0
-        )
+        prompt_tokens = usage_obj.get("prompt_tokens", usage_obj.get("promptTokens"))
+        completion_tokens = usage_obj.get("completion_tokens", usage_obj.get("completionTokens"))
         return GenerationResult(
             text=response.text,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             raw={
                 "harness": self._harness,
+                "requested_model": config.model,
+                "configured_model": self._model,
                 "actions": response.actions,
                 "params": response.params,
             },
@@ -442,6 +467,7 @@ def make_client(
     endpoint: str,
     api_key: str,
     mock_responses: Sequence[str] | None = None,
+    model: str | None = None,
 ) -> OpenAICompatibleClient:
     if mock_responses is not None:
         return MockClient(mock_responses)
@@ -455,7 +481,9 @@ def make_client(
         .lower()
     )
     if harness in {"eliza", "hermes", "openclaw"}:
-        return HarnessClient(harness=harness, endpoint=endpoint, api_key=api_key)
+        if not model:
+            raise ValueError("A model is required for benchmark harness clients")
+        return HarnessClient(harness=harness, endpoint=endpoint, api_key=api_key, model=model)
     if harness:
         raise ValueError(f"Unsupported benchmark harness: {harness}")
     return HTTPOpenAICompatibleClient(endpoint=endpoint, api_key=api_key)

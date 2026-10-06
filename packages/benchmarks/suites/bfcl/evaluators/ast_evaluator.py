@@ -13,7 +13,7 @@ import logging
 import math
 from typing import Optional
 
-from suites.bfcl.types import ArgumentValue, FunctionCall, ResultDetails
+from benchmarks.suites.bfcl.types import ArgumentValue, FunctionCall, ResultDetails
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +231,11 @@ class ASTEvaluator:
         if self._schema_is_array_like(schema):
             return self._values_match(predicted, expected)
 
-        if self._schema_type(schema) == "object" and isinstance(predicted, dict) and isinstance(expected, dict):
+        if (
+            self._schema_type(schema) == "object"
+            and isinstance(predicted, dict)
+            and isinstance(expected, dict)
+        ):
             return self._arguments_match(
                 predicted,
                 expected,
@@ -239,7 +243,9 @@ class ASTEvaluator:
             )
 
         if isinstance(expected, list) and not isinstance(predicted, list):
-            return any(self._values_match(predicted, candidate) for candidate in expected)
+            return any(
+                self._values_match(predicted, candidate) for candidate in expected
+            )
 
         if isinstance(predicted, list) and not isinstance(expected, list):
             if len(predicted) == 1 and self._values_match(predicted[0], expected):
@@ -263,7 +269,11 @@ class ASTEvaluator:
             if schema.get("items") is not None:
                 return True
             return self._schema_type(schema) in {"array", "list", "tuple"}
-        return bool(getattr(schema, "items", None)) or self._schema_type(schema) in {"array", "list", "tuple"}
+        return bool(getattr(schema, "items", None)) or self._schema_type(schema) in {
+            "array",
+            "list",
+            "tuple",
+        }
 
     def _schema_default(self, schema: object | None) -> object:
         if schema is None:
@@ -337,7 +347,9 @@ class ASTEvaluator:
                 if pred_norm == exp_norm:
                     return True
                 # SQL-condition quote tolerance: "Col = 'value'" vs "Col = value"
-                if self._normalize_sql_condition(predicted) == self._normalize_sql_condition(expected):
+                if self._normalize_sql_condition(
+                    predicted
+                ) == self._normalize_sql_condition(expected):
                     return True
 
         # List comparison
@@ -504,7 +516,9 @@ class ASTEvaluator:
                     )
                 else:
                     fdef = defs_by_name.get(pred.name) or defs_by_name.get(exp.name)
-                    param_defs = getattr(fdef, "parameters", None) if fdef is not None else None
+                    param_defs = (
+                        getattr(fdef, "parameters", None) if fdef is not None else None
+                    )
                     exp_args = exp.arguments
                     if fdef is not None:
                         exp_args = self._prune_default_optionals(
@@ -515,11 +529,16 @@ class ASTEvaluator:
                     for key in set(pred.arguments.keys()) | set(exp_args.keys()):
                         pred_val = pred.arguments.get(key)
                         exp_val = exp_args.get(key)
-                        schema = param_defs.get(key) if isinstance(param_defs, dict) else None
-                        if not self._value_matches_with_schema(pred_val, exp_val, schema):
+                        schema = (
+                            param_defs.get(key)
+                            if isinstance(param_defs, dict)
+                            else None
+                        )
+                        if not self._value_matches_with_schema(
+                            pred_val, exp_val, schema
+                        ):
                             mismatches.append(
-                                f"Call {i}, arg '{key}': "
-                                f"'{pred_val}' vs '{exp_val}'"
+                                f"Call {i}, arg '{key}': '{pred_val}' vs '{exp_val}'"
                             )
 
         details["mismatches"] = mismatches

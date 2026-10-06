@@ -6,15 +6,15 @@
 
 import type { CallLogEntry } from "@elizaos/plugin-native-phone/bridge";
 import {
-  Button,
-  Card,
-  Divider,
-  HStack,
-  List,
+  SpatialButton as Button,
+  SpatialCard as Card,
+  SpatialDivider as Divider,
+  SpatialHStack as HStack,
+  SpatialList as List,
   type SpatialTone,
-  Text,
-  VStack,
-} from "@elizaos/ui/spatial";
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
 
 import { normalizeNumber } from "./phone-view-helpers.ts";
 

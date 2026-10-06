@@ -19,13 +19,12 @@ import { parseFocusedAppShellMode } from "../platform/app-shell-mode";
 import { shellHistory } from "../surface-realm-channel";
 import {
   loadLastNativeTab,
-  type SetTabOptions,
-  type ShellView,
   saveLastNativeTab,
   saveUiShellMode,
-  type UiShellMode,
-} from "./internal";
+} from "./persistence";
 import { getTabForShellView } from "./shell-routing";
+import type { SetTabOptions, ShellView } from "./types";
+import type { UiShellMode } from "./ui-preferences";
 
 function pathWithCurrentShellMode(path: string): string {
   if (typeof window === "undefined") return path;

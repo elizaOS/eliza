@@ -7,7 +7,7 @@ vm_type="${ELIZAOS_LIMA_VM_TYPE:-vz}"
 guest_out="${ELIZAOS_LIMA_GUEST_OUT:-/var/tmp/elizaos-mkosi-arm64}"
 guest_evidence="${ELIZAOS_LIMA_GUEST_EVIDENCE:-/var/tmp/elizaos-evidence}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-variant_dir="$(cd "${script_dir}/../../linux/elizaos" && pwd)"
+variant_dir="$(cd "${script_dir}/../../linux" && pwd)"
 repo_root="$(git -C "$variant_dir" rev-parse --show-toplevel)"
 guest_builder="${script_dir}/mkosi-linux-build.py"
 

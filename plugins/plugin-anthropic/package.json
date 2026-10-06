@@ -16,7 +16,13 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./direct-media": {
+      "eliza-source": "./direct-media.ts",
+      "types": "./dist/direct-media.d.ts",
+      "import": "./dist/direct-media.js",
+      "default": "./dist/direct-media.js"
+    }
   },
   "files": [
     "registry-entry.json",
@@ -39,7 +45,9 @@
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.9",
-    "ai": "^6.0.23"
+    "ai": "^6.0.23",
+    "@elizaos/contracts": "workspace:*",
+    "@elizaos/host": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

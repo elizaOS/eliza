@@ -3,7 +3,7 @@
  * controls. The console presents plain per-user accounts.
  */
 
-import { DashboardPageContainer } from "../../../cloud-ui";
+import { DashboardPageContainer } from "../../../cloud-ui/components/layout/dashboard-page";
 import type { UserProfile } from "../data/user";
 import { AccountDetails } from "./account-details";
 import { PrivacyPanel } from "./privacy-panel";

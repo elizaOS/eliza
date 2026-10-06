@@ -23,7 +23,6 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type IFileStorageService,
-  lifeOpsPassiveConnectorsEnabled,
   logger,
   type Media,
   type Memory,
@@ -44,6 +43,7 @@ import {
   trustedLocalMediaUrl,
   type UUID,
 } from "@elizaos/core";
+import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/host/protocol";
 import {
   DEFAULT_ACCOUNT_ID as IMESSAGE_LOCAL_ACCOUNT_ID,
   normalizeAccountId as normalizeIMessageAccountId,
@@ -979,8 +979,11 @@ export class IMessageService extends Service implements IIMessageService {
           readTargetAccountId(target) ?? readContextAccountId(context)
         );
         const chatId = target ? await resolveIMessageChatId(context.runtime, target) : null;
+        // Search the whole chat, then keep `limit` matches (as the Slack,
+        // Discord and Google Chat connectors do): limiting the read first
+        // searched only the newest `limit` messages.
         const platformMessages = await service
-          .getMessages({ ...(chatId ? { chatId } : {}), limit })
+          .getMessages({ ...(chatId ? { chatId } : {}) })
           .catch(() => []);
         const roomId =
           target?.roomId ??
@@ -994,7 +997,6 @@ export class IMessageService extends Service implements IIMessageService {
               ? await context.runtime.getMemories({
                   tableName: "messages",
                   roomId: target.roomId,
-                  limit,
                   orderBy: "createdAt",
                   orderDirection: "desc",
                 })
