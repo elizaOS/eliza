@@ -2,9 +2,16 @@
 
 import { BlooioApiResponseError, blooioAdapter } from "./adapters/blooio";
 import { TelegramApiResponseError, telegramAdapter } from "./adapters/telegram";
-import type { ChatEvent } from "./adapters/types";
+import { twilioAdapter } from "./adapters/twilio";
+import { type ChatEvent, PlatformDeliveryError } from "./adapters/types";
 import { resolveConnectorAccountId } from "./connector-account";
 import { logger } from "./logger";
+import {
+  isNetworkAddressOptedOut,
+  isNetworkProject,
+  type NetworkConsentLedger,
+  redisNetworkConsentLedger,
+} from "./network-compliance";
 import type { GatewayRedis } from "./redis";
 import {
   isCanonicalTelegramProject,
@@ -15,6 +22,8 @@ import { resolveSharedWebhookConfig } from "./webhook-config";
 
 interface InternalDeliveryDependencies {
   redis: GatewayRedis;
+  /** Network consent ledger; defaults to the Redis ledger on `redis`. */
+  networkConsentLedger?: NetworkConsentLedger;
 }
 
 type InternalWebhookDelivery =
@@ -39,6 +48,14 @@ type InternalWebhookDelivery =
       project: string;
       connectorAccountId: string;
       chatId: string;
+      text: string;
+      idempotencyKey: string;
+    }
+  | {
+      // Proactive SMS for The Network only (risk 5 in the Network fit spike).
+      platform: "twilio";
+      project: string;
+      phoneNumber: string;
       text: string;
       idempotencyKey: string;
     };
@@ -147,6 +164,24 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
       idempotencyKey: input.idempotencyKey,
     };
   }
+  // Twilio proactive delivery is enabled only for The Network's project, so
+  // every existing project keeps rejecting a Twilio payload exactly as before.
+  if (
+    input.platform === "twilio" &&
+    isNetworkProject(input.project) &&
+    input.providerThreadId === undefined &&
+    input.chatId === undefined &&
+    typeof input.phoneNumber === "string" &&
+    /^\+[1-9]\d{6,14}$/.test(input.phoneNumber)
+  ) {
+    return {
+      platform: "twilio",
+      project: input.project,
+      phoneNumber: input.phoneNumber,
+      text: input.text.trim(),
+      idempotencyKey: input.idempotencyKey,
+    };
+  }
   // A `chat_*` id addresses a provider-owned Blooio group thread; the adapter
   // sends it through `/v4/chats/{id}/messages` with no `to`/`from` pair.
   if (
@@ -226,6 +261,43 @@ export async function deliverInternalMessage(
       },
       { status: 422 },
     );
+  }
+
+  // The Network's consent ledger wins over every proactive send: an address
+  // that replied STOP is refused before any claim or provider work.
+  if (isNetworkProject(delivery.project) && "phoneNumber" in delivery) {
+    let optedOut: boolean;
+    try {
+      optedOut = await isNetworkAddressOptedOut(
+        dependencies.networkConsentLedger ??
+          redisNetworkConsentLedger(dependencies.redis),
+        delivery.project,
+        delivery.phoneNumber,
+      );
+    } catch {
+      // error-policy:J1 no provider call occurs when consent is unknown.
+      return Response.json(
+        {
+          success: false,
+          error: "consent ledger unavailable",
+          retryable: true,
+          acceptance: "not_accepted",
+        },
+        { status: 503, headers: { "Retry-After": "1" } },
+      );
+    }
+    if (optedOut) {
+      return Response.json(
+        {
+          success: false,
+          error: "recipient opted out",
+          code: "recipient_opted_out",
+          retryable: false,
+          acceptance: "not_accepted",
+        },
+        { status: 422 },
+      );
+    }
   }
 
   // Keep the pre-account key as the monotonic replay fence. Changing this key
@@ -326,7 +398,11 @@ export async function deliverInternalMessage(
       rawPayload: { source: "shared-reminder" },
     };
     const adapter =
-      delivery.platform === "telegram" ? telegramAdapter : blooioAdapter;
+      delivery.platform === "telegram"
+        ? telegramAdapter
+        : delivery.platform === "twilio"
+          ? twilioAdapter
+          : blooioAdapter;
     if (!adapter.sendReplyWithReceipt) {
       throw new Error(`${delivery.platform} receipt delivery is unavailable`);
     }
@@ -368,10 +444,15 @@ export async function deliverInternalMessage(
       providerMessageIds: receipt.providerMessageIds,
     });
   } catch (error) {
+    const twilioRejected =
+      delivery.platform === "twilio" &&
+      error instanceof PlatformDeliveryError &&
+      error.deliveryStatus === "failed";
     if (
       error instanceof TelegramApiResponseError ||
       (error instanceof BlooioApiResponseError &&
-        error.deliveryStatus === "failed")
+        error.deliveryStatus === "failed") ||
+      twilioRejected
     ) {
       let claimReleased = true;
       try {
@@ -383,7 +464,9 @@ export async function deliverInternalMessage(
       const providerStatus =
         error instanceof TelegramApiResponseError
           ? error.errorCode
-          : error.status;
+          : error instanceof BlooioApiResponseError
+            ? error.status
+            : (error as PlatformDeliveryError).providerStatus;
       const status =
         providerStatus === 401 ||
         providerStatus === 403 ||

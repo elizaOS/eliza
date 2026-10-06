@@ -32,6 +32,15 @@ import { reacquireAuthHeader } from "./auth";
 import { resolveConnectorAccountId } from "./connector-account";
 import { tryConfirmIdentityLink } from "./identity-link";
 import { logger } from "./logger";
+import {
+  handleNetworkInboundCompliance,
+  isNetworkAddressOptedOut,
+  isNetworkProject,
+  type NetworkConsentLedger,
+  type NetworkInboundCompliance,
+  redisNetworkConsentLedger,
+  sendWithTwilioReplyFence,
+} from "./network-compliance";
 import type { GatewayRedis } from "./redis";
 import {
   forwardToServer,
@@ -122,6 +131,12 @@ interface HandlerDeps {
   deliveryAuthoritySecret?: string;
   getAuthHeader: () => { Authorization: string };
   reacquireAuthHeader?: () => Promise<Record<string, string>>;
+  /** Network consent ledger; defaults to the Redis ledger on `redis`. */
+  networkConsentLedger?: NetworkConsentLedger;
+}
+
+function networkConsentLedger(deps: HandlerDeps): NetworkConsentLedger {
+  return deps.networkConsentLedger ?? redisNetworkConsentLedger(deps.redis);
 }
 
 interface PersonalSharedDeliveryTiming {
@@ -215,7 +230,7 @@ async function sendReplyWithRequiredReceipt(
   text: string,
   deliveryHooks?: TelegramDeliveryHooks,
   mediaUrls?: readonly string[],
-): Promise<void> {
+): Promise<string[]> {
   if (!adapter.sendReplyWithReceipt) {
     throw new PlatformDeliveryError(
       `${adapter.platform} adapter does not expose provider receipts`,
@@ -242,6 +257,59 @@ async function sendReplyWithRequiredReceipt(
       false,
     );
   }
+  return providerMessageIds;
+}
+
+/**
+ * Direct (non-group) reply egress. A Network Twilio reply goes through the
+ * Redis tombstone fence so a reopened webhook cannot send it twice; every
+ * other project and platform keeps the unfenced path unchanged.
+ */
+async function sendDirectReply(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  deps: HandlerDeps,
+  project: string,
+  text: string,
+  deliveryHooks?: TelegramDeliveryHooks,
+  mediaUrls?: readonly string[],
+): Promise<void> {
+  if (adapter.platform === "twilio" && isNetworkProject(project)) {
+    const outcome = await sendWithTwilioReplyFence(
+      deps.redis,
+      project,
+      event.messageId,
+      () =>
+        sendReplyWithRequiredReceipt(
+          adapter,
+          config,
+          event,
+          text,
+          deliveryHooks,
+          mediaUrls,
+        ),
+      (error) =>
+        error instanceof PlatformDeliveryError &&
+        error.deliveryStatus === "failed",
+    );
+    if (outcome === "replayed") {
+      logger.warn("Network Twilio reply already claimed; not resending", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+      });
+    }
+    return;
+  }
+  await sendReplyWithRequiredReceipt(
+    adapter,
+    config,
+    event,
+    text,
+    deliveryHooks,
+    mediaUrls,
+  );
 }
 
 async function reconcileLegacyTelegramDelivery(
@@ -819,6 +887,53 @@ async function processMessage(
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
+
+  // The Network: carrier keywords (STOP/HELP/START) and the consent ledger
+  // run before any identity, account, or agent work. Other projects skip this.
+  if (isNetworkProject(project)) {
+    let compliance: NetworkInboundCompliance;
+    try {
+      compliance = await handleNetworkInboundCompliance(
+        networkConsentLedger(deps),
+        project,
+        event,
+      );
+    } catch (error) {
+      // error-policy:J2 a ledger outage reopens the webhook for a provider
+      // retry instead of guessing consent; nothing has been sent yet.
+      throw new PersonalSharedPreEgressError(
+        "network consent ledger unavailable",
+        { cause: error },
+      );
+    }
+    if (compliance.kind === "reply") {
+      await sendDirectReply(
+        adapter,
+        config,
+        event,
+        deps,
+        project,
+        compliance.text,
+        deliveryHooks,
+      );
+      logger.info("Network keyword handled", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        action: compliance.action,
+      });
+      return;
+    }
+    if (compliance.kind === "suppress") {
+      logger.info("Network message suppressed by consent", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        reason: compliance.reason,
+      });
+      return;
+    }
+  }
 
   // Link challenges are proof-bearing control messages, including when the
   // handle currently resolves to a provisional onboarding account. Inspect
@@ -1492,6 +1607,36 @@ async function sendPersonalSharedReply(
       cloudServerTiming,
     };
   }
+  // A STOP that landed while this Network turn was running wins: re-read the
+  // ledger immediately before egress so no reply follows the confirmation.
+  if (isNetworkProject(project) && !isGroup) {
+    let optedOut: boolean;
+    try {
+      optedOut = await isNetworkAddressOptedOut(
+        networkConsentLedger(deps),
+        project,
+        event.senderId,
+      );
+    } catch (error) {
+      throw new PersonalSharedPreEgressError(
+        "network consent ledger unavailable",
+        { cause: error },
+      );
+    }
+    if (optedOut) {
+      logger.info("Network reply suppressed: recipient opted out mid-turn", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+      });
+      return {
+        cloudMs,
+        cloudAttempts: attemptResult.attempts,
+        egressMs: 0,
+        cloudServerTiming,
+      };
+    }
+  }
   const groupDelivery = parseGroupDeliveryDirective(data?.groupDelivery);
   const egressStartedAt = Date.now();
   if (isGroup) {
@@ -1754,10 +1899,12 @@ async function sendPersonalSharedReply(
       );
     }
   } else {
-    await sendReplyWithRequiredReceipt(
+    await sendDirectReply(
       adapter,
       config,
       event,
+      deps,
+      project,
       replyText,
       deliveryHooks,
       replyMediaUrls,
