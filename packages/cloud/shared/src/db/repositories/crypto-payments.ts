@@ -166,11 +166,7 @@ export class CryptoPaymentsRepository {
         updated_at: new Date(),
       })
       .where(
-        and(
-          eq(cryptoPayments.id, id),
-          eq(cryptoPayments.status, "pending"),
-          settleClaimInactive(),
-        ),
+        and(eq(cryptoPayments.id, id), eq(cryptoPayments.status, "pending"), settleClaimInactive()),
       )
       .returning();
     return payment;
@@ -188,11 +184,7 @@ export class CryptoPaymentsRepository {
         updated_at: new Date(),
       })
       .where(
-        and(
-          eq(cryptoPayments.id, id),
-          eq(cryptoPayments.status, "pending"),
-          settleClaimInactive(),
-        ),
+        and(eq(cryptoPayments.id, id), eq(cryptoPayments.status, "pending"), settleClaimInactive()),
       )
       .returning();
     return payment;

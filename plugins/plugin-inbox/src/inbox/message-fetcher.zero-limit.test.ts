@@ -3,8 +3,8 @@
  * ignored the limit after filtering, and the merged pull treated 0 as no page.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import type { LifeOpsXDm } from "@elizaos/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   fetchAllMessages,

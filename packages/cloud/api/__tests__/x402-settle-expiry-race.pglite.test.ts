@@ -516,22 +516,33 @@ test("a redeemable write that fails after the on-chain transfer is credited by t
   expect(paidCallbacks(fetches)).toBe(1);
 });
 
-
 test("a rejected earnings result retains pending settlement for repair", async () => {
   const { payment, txHash, app, creator } = await seedAppRequest();
-  const facilitator = spyOn(x402FacilitatorService, "settle").mockResolvedValue(settledWith(txHash));
-  const fetches = spyOn(safeFetchModule, "safeFetch").mockResolvedValue(new Response("ok"));
+  const facilitator = spyOn(x402FacilitatorService, "settle").mockResolvedValue(
+    settledWith(txHash),
+  );
+  const fetches = spyOn(safeFetchModule, "safeFetch").mockResolvedValue(
+    new Response("ok"),
+  );
   spyOn(redeemableEarningsService, "addEarnings").mockResolvedValueOnce({
-    success: false, newBalance: 0, ledgerEntryId: "", error: "ledger unavailable",
+    success: false,
+    newBalance: 0,
+    ledgerEntryId: "",
+    error: "ledger unavailable",
   });
-  await expect(x402PaymentRequestsService.settle(payment, paymentPayload("0x01")))
-    .rejects.toMatchObject({ code: "earnings_pending" });
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x01")),
+  ).rejects.toMatchObject({ code: "earnings_pending" });
   expect(await statusOf(payment)).toBe("confirmed");
   expect(await settlementPending(payment)).toBe("true");
   expect(paidCallbacks(fetches)).toBe(0);
   await x402PaymentRequestsService.settle(payment, {});
   expect(await creatorBooks(app, creator)).toEqual({
-    redeemable: 5, ledger: 1, withdrawable: 5, shadow: 1, appTotal: 5,
+    redeemable: 5,
+    ledger: 1,
+    withdrawable: 5,
+    shadow: 1,
+    appTotal: 5,
   });
   expect(facilitator).toHaveBeenCalledTimes(1);
   expect(paidCallbacks(fetches)).toBe(1);

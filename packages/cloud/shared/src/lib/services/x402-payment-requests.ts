@@ -531,9 +531,7 @@ async function recordAppScopedPaymentEarnings(
       amountUsd,
       error: result.error,
     });
-    throw new X402PaymentRequestError(
-      "Creator earnings remain pending", 503, "earnings_pending",
-    );
+    throw new X402PaymentRequestError("Creator earnings remain pending", 503, "earnings_pending");
   }
 
   // Projects the redeemable entry into app_earnings, its transaction row and
@@ -808,15 +806,16 @@ class X402PaymentRequestsService {
       );
     }
 
-    const settledPayment =
-      (await cryptoPaymentsRepository.confirmSettlement(payment.id, {
-        txHash: settlement.transaction,
-        receivedAmount: payment.expected_amount,
-        metadataPatch: { payer: settlement.payer, settlement },
-      }));
+    const settledPayment = await cryptoPaymentsRepository.confirmSettlement(payment.id, {
+      txHash: settlement.transaction,
+      receivedAmount: payment.expected_amount,
+      metadataPatch: { payer: settlement.payer, settlement },
+    });
     if (!settledPayment) {
       throw new X402PaymentRequestError(
-        "Payment confirmation was not persisted", 503, "confirmation_pending",
+        "Payment confirmation was not persisted",
+        503,
+        "confirmation_pending",
       );
     }
     await this.completeSettlement(settledPayment, amountUsd, settlement);
@@ -869,7 +868,9 @@ class X402PaymentRequestsService {
           error: result.error,
         });
         throw new X402PaymentRequestError(
-          "Creator earnings remain pending", 503, "earnings_pending",
+          "Creator earnings remain pending",
+          503,
+          "earnings_pending",
         );
       }
     }
