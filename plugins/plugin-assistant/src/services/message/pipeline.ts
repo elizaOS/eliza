@@ -9,6 +9,7 @@ import type {
   MessageHandlerResult,
   MessageReplyRecoveryContext,
   PlannerTrajectory,
+  ResponseHandlerEvaluationRunResult,
 } from "@elizaos/core";
 import {
   appendContextEvent,
@@ -630,15 +631,8 @@ export async function runV5MessageRuntimeStage1(
       messageHandler.plan.replyEffectStatus;
     const prePatchStageOneReplyIsUngroundedAppliedClaim =
       prePatchStageOneReplyEffectStatus === "applied";
-    const responseHandlerEvaluation = args.codingMode
-      ? {
-          activeEvaluators: [],
-          appliedPatches: [],
-          candidateActionsAddedByEvaluators: [],
-          candidateActionsClearedByEvaluators: false,
-          errors: [],
-        }
-      : fieldRunResult?.preempt
+    const responseHandlerEvaluation: ResponseHandlerEvaluationRunResult =
+      args.codingMode
         ? {
             activeEvaluators: [],
             appliedPatches: [],
@@ -646,17 +640,25 @@ export async function runV5MessageRuntimeStage1(
             candidateActionsClearedByEvaluators: false,
             errors: [],
           }
-        : await timeInferenceSpan("evaluators:response-handler", () =>
-            runResponseHandlerEvaluators({
-              runtime: args.runtime,
-              message: args.message,
-              state: args.state,
-              messageHandler,
-              availableContexts,
-              userRoles: [senderRole],
-              evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
-            }),
-          );
+        : fieldRunResult?.preempt
+          ? {
+              activeEvaluators: [],
+              appliedPatches: [],
+              candidateActionsAddedByEvaluators: [],
+              candidateActionsClearedByEvaluators: false,
+              errors: [],
+            }
+          : await timeInferenceSpan("evaluators:response-handler", () =>
+              runResponseHandlerEvaluators({
+                runtime: args.runtime,
+                message: args.message,
+                state: args.state,
+                messageHandler,
+                availableContexts,
+                userRoles: [senderRole],
+                evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+              }),
+            );
     const prepareReplyRecovery = async () => {
       const complete = await createV5MessageContextObject({
         ...args,
@@ -676,15 +678,18 @@ export async function runV5MessageRuntimeStage1(
             (event) =>
               event.type === "provider" && event.source === "composeState",
           ),
+          ...(responseHandlerEvaluation.contextSources ?? []),
         ],
       };
+      const { contextSources: _contextSources, ...evaluationTrace } =
+        responseHandlerEvaluation;
       return captureMessageReplyRecovery(
         args.runtime,
         args.message,
         recoveryContext,
         [
           {
-            ...responseHandlerEvaluation,
+            ...evaluationTrace,
             appliedPatches: responseHandlerEvaluation.appliedPatches.map(
               (patch) => ({ ...patch }),
             ),
@@ -1120,17 +1125,19 @@ export async function runV5MessageRuntimeStage1(
     // per-turn profile. Generic coding mode keeps the complete authorized surface.
     const useFullSurface = args.codingMode === true;
     const authorizedCodingActions = useFullSurface
-      ? (args.runtime.actions ?? []).filter((action) =>
-          // The execution gates are the authority for a focused coding turn.
-          // Absent an explicit profile, names cannot form a second fixed allowlist
-          // that silently hides newly registered coding capabilities.
-          canActionRun(action, {
-            activeContexts: CODING_SUB_AGENT_CONTEXTS,
-            userRoles: [senderRole],
-            // There is no concrete turn message in this static surface build;
-            // execution still enforces the private gate.
-            skipPrivateGate: true,
-          }),
+      ? (args.runtime.actions ?? []).filter(
+          (action) =>
+            // The execution gates are the authority for a focused coding turn.
+            // Absent an explicit profile, names cannot form a second fixed allowlist
+            // that silently hides newly registered coding capabilities.
+            (action.mode ?? "PLANNER") === "PLANNER" &&
+            canActionRun(action, {
+              activeContexts: CODING_SUB_AGENT_CONTEXTS,
+              userRoles: [senderRole],
+              // There is no concrete turn message in this static surface build;
+              // execution still enforces the private gate.
+              skipPrivateGate: true,
+            }),
         )
       : undefined;
     const plannerCandidateActions = authorizedCodingActions
@@ -1579,10 +1586,16 @@ export async function runV5MessageRuntimeStage1(
         thought: messageHandler.thought,
       },
     };
-    const plannerContextWithDecision = appendContextEvent(
+    let plannerContextWithDecision = appendContextEvent(
       plannerContext,
       plannerDecisionEvent,
     );
+    for (const source of responseHandlerEvaluation.contextSources ?? []) {
+      plannerContextWithDecision = appendContextEvent(
+        plannerContextWithDecision,
+        source,
+      );
+    }
     const runtimeWithOptionalServices = args.runtime as typeof args.runtime & {
       getService?: (service: string) => unknown;
       supportsModelAttemptPreparation?: boolean;

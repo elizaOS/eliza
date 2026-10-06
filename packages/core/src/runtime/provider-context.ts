@@ -5,6 +5,7 @@
 import type { JSONSchema } from "../types/model";
 import { hashStableJson } from "./context-hash";
 import type { ContextObject, ContextProviderEvent } from "./context-object";
+import { OWNED_CONTEXT_SOURCE_SCOPE } from "./context-object";
 
 /** Bind source selection to exact authorized bodies, authors, rooms and turn.
  * Discovery-only bodies have not been reviewed and cannot participate. */
@@ -118,6 +119,17 @@ export function projectDeferredProviders(context: ContextObject): {
 			? new Set(selection.keep as string[])
 			: undefined;
 	const events = context.events.map((event) => {
+		const source = event as ContextProviderEvent;
+		const scope = source[OWNED_CONTEXT_SOURCE_SCOPE];
+		if (
+			("discoveryRequiresRuntimeBinding" in event ||
+				OWNED_CONTEXT_SOURCE_SCOPE in event ||
+				event.source?.startsWith("host:")) &&
+			(source.discoveryRequiresRuntimeBinding !== true ||
+				typeof scope?.canDefer !== "function" ||
+				!scope.canDefer(context, source))
+		)
+			return event;
 		if (keep && review?.providers.includes(event as ContextProviderEvent)) {
 			const provider = event as ContextProviderEvent;
 			const sources = provider.reviewableSources;

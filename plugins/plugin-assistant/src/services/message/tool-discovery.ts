@@ -57,6 +57,8 @@ export function collectDiscoveryCatalogActions(args: {
 }): Action[] {
   return args.actions.filter(
     (action) =>
+      // Non-PLANNER modes belong to fixed lifecycle hooks, not model tools.
+      (action.mode ?? "PLANNER") === "PLANNER" &&
       actionGateRejection(action, {
         message: args.message,
         userRoles: args.userRoles,
