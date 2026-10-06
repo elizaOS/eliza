@@ -43,9 +43,19 @@ function ClockControls() {
   const [proposals, setProposals] = useState<ClockProposal[]>([]);
   const [scope, setScope] = useState<string | null>(null);
   const [nativeError, setNativeError] = useState<string | null>(null);
-  const [refresh, setRefresh] = useState(0);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<{
+    scope: string;
+    text: string;
+    pending: ClockProposal | null;
+  } | null>(null);
+  const reloadRequests = useRef<(() => Promise<void>) | null>(null);
+  const readRevision = useRef(0);
+  const settled = useRef<{ scope: string | null; ids: Set<string> }>({
+    scope: null,
+    ids: new Set(),
+  });
   const activeReview = useRef<AbortController | null>(null);
   const owner = useRef<{ host: ClockHost | null; scope: string | null }>({
     host: null,
@@ -53,17 +63,22 @@ function ClockControls() {
   });
   useEffect(() => {
     let live = true;
-    let revision = refresh;
+    ++readRevision.current;
+    settled.current = { scope: null, ids: new Set() };
     owner.current = { host, scope: null };
     setNative(null);
     setScope(null);
     setProposals([]);
     setOutcome(null);
     setNativeError(null);
+    setRefreshError(null);
     setReviewing(null);
     const load = async () => {
-      const current = ++revision;
-      if (!host) return;
+      // Android Clock pauses this view after dispatch. Reads resume on return;
+      // no paused read can invalidate an already recorded handoff.
+      if (!live || !host || document.hidden) return;
+      const current = ++readRevision.current;
+      let verifiedStatus: ClockStatus | null = null;
       if (live) {
         setNative(null);
         setScope(null);
@@ -71,22 +86,32 @@ function ClockControls() {
       }
       try {
         const status = await host.status();
-        if (!live || current !== revision) return;
+        if (!live || current !== readRevision.current) return;
+        verifiedStatus = status;
+        if (settled.current.scope !== status.scope)
+          settled.current = { scope: status.scope, ids: new Set() };
         if (owner.current.scope !== status.scope) {
           activeReview.current?.abort();
           setReviewing(null);
-          setOutcome(null);
           owner.current = { host, scope: status.scope };
         }
+        setOutcome((recorded) =>
+          recorded?.scope === status.scope ? recorded : null,
+        );
         setNative(status);
-        setNativeError(null);
+        setRefreshError(null);
         if (status.supported) {
           const list = await host.proposals();
-          if (live && current === revision) {
+          if (live && current === readRevision.current) {
             if (list.scope !== status.scope)
               throw new Error("Clock owner changed during refresh");
-            setProposals(list.proposals);
+            setProposals(
+              list.proposals.filter(
+                (entry) => !settled.current.ids.has(entry.id),
+              ),
+            );
             setScope(list.scope);
+            setNativeError(null);
           }
         } else {
           setProposals([]);
@@ -94,15 +119,17 @@ function ClockControls() {
         }
       } catch (error) {
         // error-policy:J4 failed reads remain errors, never a healthy-empty alarm inventory.
-        if (live && current === revision) {
+        if (live && current === readRevision.current) {
           activeReview.current?.abort();
-          owner.current = { host, scope: null };
-          setNative(null);
-          setScope(null);
+          // A failed list read retires fresh proposals. A saved receipt remains
+          // visible, but reconciliation needs a freshly verified owner.
+          const owned = verifiedStatus?.supported ? verifiedStatus : null;
+          owner.current = { host, scope: owned?.scope ?? null };
+          setNative(owned);
+          setScope(owned?.scope ?? null);
           setProposals([]);
-          setOutcome(null);
           setReviewing(null);
-          setNativeError(
+          setRefreshError(
             error instanceof Error
               ? error.message
               : "Clock support could not be checked",
@@ -110,16 +137,23 @@ function ClockControls() {
         }
       }
     };
+    reloadRequests.current = load;
     void load();
     const unsubscribe = host?.subscribe(() => {
       void load();
     });
+    const resume = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", resume);
     return () => {
       live = false;
+      if (reloadRequests.current === load) reloadRequests.current = null;
       unsubscribe?.();
+      document.removeEventListener("visibilitychange", resume);
       activeReview.current?.abort();
     };
-  }, [host, refresh]);
+  }, [host]);
   const review = async (proposal: ClockProposal) => {
     if (!host || !scope || reviewing) return;
     const reviewedOwner = owner.current;
@@ -127,30 +161,44 @@ function ClockControls() {
     const abort = new AbortController();
     activeReview.current = abort;
     setReviewing(proposal.id);
-    setOutcome(null);
+    setOutcome((recorded) =>
+      recorded?.scope === scope && recorded.pending?.id === proposal.id
+        ? recorded
+        : null,
+    );
     setNativeError(null);
+    setRefreshError(null);
     try {
       const result = await host.review(proposal, scope, abort.signal);
       if (abort.signal.aborted || owner.current !== reviewedOwner) return;
-      setOutcome(
-        result.receiptPending
+      ++readRevision.current;
+      if (!result.receiptPending) {
+        if (settled.current.scope !== scope)
+          settled.current = { scope, ids: new Set() };
+        settled.current.ids.add(proposal.id);
+      }
+      setOutcome({
+        scope,
+        pending: result.receiptPending
+          ? { ...proposal, state: "reconciliation_required" }
+          : null,
+        text: result.receiptPending
           ? `Clock result: ${result.handoff.status}; server receipt remains pending. Check the saved receipt again to retry settlement without another dispatch. No installed or ringing alarm is confirmed.`
           : result.handoff.status === "opened"
             ? "Android Clock opened. Check the installed alarm there; ringing is not confirmed."
             : `Clock result: ${result.handoff.status}. No installed or ringing alarm is confirmed.`,
+      });
+      // Keep a lost acknowledgement reachable without re-offering dispatch.
+      // Settled requests leave the actionable list until a foreground refresh.
+      setProposals((current) =>
+        result.receiptPending
+          ? current.map((entry) =>
+              entry.id === proposal.id
+                ? { ...entry, state: "reconciliation_required" }
+                : entry,
+            )
+          : current.filter((entry) => entry.id !== proposal.id),
       );
-      const list = await host.proposals();
-      if (!abort.signal.aborted && owner.current === reviewedOwner) {
-        if (list.scope !== scope) {
-          setOutcome(null);
-          setNative(null);
-          setScope(null);
-          setProposals([]);
-          throw new Error("Clock owner changed during receipt refresh");
-        }
-        setProposals(list.proposals);
-        setScope(list.scope);
-      }
     } catch (error) {
       // error-policy:J1 the review boundary reports failure without replaying the native effect.
       if (!abort.signal.aborted && owner.current === reviewedOwner)
@@ -229,6 +277,8 @@ function ClockControls() {
       "reconciliation_required",
     ].includes(p.state),
   );
+  if (outcome?.pending && !reviewable.some((p) => p.id === outcome.pending?.id))
+    reviewable.push(outcome.pending);
   return (
     <FramedPage
       gutterOwner="framed-page"
@@ -284,9 +334,9 @@ function ClockControls() {
             <p className="text-sm font-medium">
               {native?.supported
                 ? "Native Clock requests are available. Every request needs approval on this phone."
-                : host && !native && !nativeError
+                : host && !native && !nativeError && !refreshError
                   ? "Checking native Clock support…"
-                  : nativeError
+                  : nativeError || refreshError
                     ? "Clock support could not be checked."
                     : `Alarm delivery is unavailable here${native?.reason ? `: ${native.reason}` : "."} Preparing a request does not install an alarm.`}
             </p>
@@ -422,21 +472,51 @@ function ClockControls() {
             {host && (
               <Button
                 variant="outline"
-                onClick={() => setRefresh((value) => value + 1)}
+                onClick={() => {
+                  void reloadRequests.current?.();
+                }}
               >
                 Retry Clock support
               </Button>
             )}
           </div>
         )}
+        {refreshError && (
+          <div className="space-y-2">
+            <p role="alert" className="text-sm text-destructive">
+              Clock requests could not be refreshed. {refreshError}
+            </p>
+            {host && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  void reloadRequests.current?.();
+                }}
+              >
+                Refresh Clock requests
+              </Button>
+            )}
+          </div>
+        )}
         {outcome && (
           <p role="status" className="text-sm">
-            {outcome}
+            {outcome.text}
           </p>
         )}
-        {native?.supported && (
+        {(native?.supported || outcome?.pending) && (
           <section aria-label="Clock proposals" className="max-w-lg space-y-3">
             <h2 className="text-base font-medium">Clock requests</h2>
+            {!refreshError && (
+              <Button
+                variant="outline"
+                disabled={reviewing !== null}
+                onClick={() => {
+                  void reloadRequests.current?.();
+                }}
+              >
+                Refresh Clock requests
+              </Button>
+            )}
             {reviewable.map((proposal) => {
               const freshReview = ["pending", "approved"].includes(
                 proposal.state,
@@ -446,7 +526,7 @@ function ClockControls() {
                 Date.parse(proposal.expiresAt) <= (now || Date.now());
               const supported = clockCapabilityAvailable(
                 proposal.operation,
-                native.capabilities,
+                native?.capabilities,
               );
               return (
                 <div key={proposal.id} className="border-b border-border py-3">
@@ -462,12 +542,19 @@ function ClockControls() {
                   )}
                   {!supported && (
                     <p className="text-sm text-muted-foreground">
-                      This request requires newer Clock support on this phone.
+                      {native?.supported
+                        ? "This request requires newer Clock support on this phone."
+                        : "Refresh Clock support before checking this saved receipt."}
                     </p>
                   )}
                   <Button
                     variant="outline"
-                    disabled={reviewing !== null || expired || !supported}
+                    disabled={
+                      reviewing !== null ||
+                      expired ||
+                      !supported ||
+                      scope === null
+                    }
                     onClick={() => {
                       void review(proposal);
                     }}
