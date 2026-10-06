@@ -1,8 +1,9 @@
 /**
  * Drives x402 payment-request settlement against a PGlite database built from
- * the Drizzle schema. A settle that reads a pending request just before another
- * settle confirms it must not flip the confirmed row back to expired or emit an
- * "expired" failure callback after the "paid" one.
+ * the Drizzle schema. Concurrent settles of one request must reach the
+ * facilitator at most once, and a settle that reads a pending request just
+ * before another settle confirms it must not flip the confirmed row back to
+ * expired or emit an "expired" failure callback after the "paid" one.
  */
 import {
   afterAll,
@@ -37,8 +38,16 @@ const { cryptoPaymentsRepository } = await import(
 const { x402PaymentRequestsService } = await import(
   "@elizaos/cloud-shared/lib/services/x402-payment-requests"
 );
+const { x402FacilitatorService } = await import(
+  "@elizaos/cloud-shared/lib/services/x402-facilitator"
+);
+const { redeemableEarningsService } = await import(
+  "@elizaos/cloud-shared/lib/services/redeemable-earnings"
+);
 
 const pg = () => getPgliteClientForTests();
+
+type Settlement = Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
 
 beforeAll(async () => {
   await dbWrite.execute("SELECT 1");
@@ -58,7 +67,7 @@ afterAll(async () => {
   await closeDatabaseConnectionsForTests();
 });
 
-async function lapsedRequest(status: "pending" | "confirmed") {
+async function seedRequest(status: "pending" | "confirmed", expiresAt: string) {
   const org = randomUUID();
   const user = randomUUID();
   const payment = randomUUID();
@@ -76,7 +85,7 @@ async function lapsedRequest(status: "pending" | "confirmed") {
       id,organization_id,user_id,payment_address,token,network,expected_amount,
       credits_to_add,status,expires_at,transaction_hash,confirmed_at,metadata
     ) VALUES ($1,$2,$3,'0x00000000000000000000000000000000000000aa','USDC','base','5','5',$4,
-      now() - interval '1 second',$5,$6,$7)`,
+      ${expiresAt},$5,$6,$7)`,
     [
       payment,
       org,
@@ -84,11 +93,24 @@ async function lapsedRequest(status: "pending" | "confirmed") {
       status,
       status === "confirmed" ? txHash : null,
       status === "confirmed" ? new Date() : null,
-      JSON.stringify({ kind: "x402_payment_request", amountUsd: 5 }),
+      JSON.stringify({
+        kind: "x402_payment_request",
+        amountUsd: 5,
+        requirements: {
+          scheme: "exact",
+          network: "base",
+          maxTimeoutSeconds: 300,
+        },
+      }),
     ],
   );
   return { payment, txHash };
 }
+
+const lapsedRequest = (status: "pending" | "confirmed") =>
+  seedRequest(status, "now() - interval '1 second'");
+const openRequest = () =>
+  seedRequest("pending", "now() + interval '5 minutes'");
 
 async function statusOf(payment: string) {
   const row = await pg().query<{ status: string }>(
@@ -98,6 +120,14 @@ async function statusOf(payment: string) {
   return row.rows[0]?.status;
 }
 
+async function settleClaim(payment: string) {
+  const row = await pg().query<{ claim: string | null }>(
+    "SELECT metadata->>'settleClaimedUntil' AS claim FROM crypto_payments WHERE id=$1",
+    [payment],
+  );
+  return row.rows[0]?.claim ?? null;
+}
+
 function failureCallbackSpy() {
   return spyOn(
     x402PaymentRequestsService as unknown as {
@@ -105,6 +135,42 @@ function failureCallbackSpy() {
     },
     "triggerFailureCallback",
   );
+}
+
+function paymentPayload(signature: string) {
+  return {
+    x402Version: 2,
+    accepted: {
+      scheme: "exact",
+      network: "base",
+      asset: "0x00000000000000000000000000000000000000bb",
+      amount: "5000000",
+      payTo: "0x00000000000000000000000000000000000000aa",
+    },
+    payload: { signature },
+  };
+}
+
+function settledWith(transaction: string): Settlement {
+  return {
+    success: true,
+    transaction,
+    network: "base",
+    payer: "0x00000000000000000000000000000000000000cc",
+  } as Settlement;
+}
+
+const rejected = {
+  success: false,
+  errorReason: "invalid_signature",
+  transaction: "",
+  network: "base",
+} as Settlement;
+
+function stubEarnings() {
+  spyOn(redeemableEarningsService, "addEarnings").mockResolvedValue({
+    success: true,
+  } as Awaited<ReturnType<typeof redeemableEarningsService.addEarnings>>);
 }
 
 test("a settle that read a stale pending row keeps a concurrently confirmed request paid", async () => {
@@ -148,4 +214,96 @@ test("markAsExpired leaves non-pending rows untouched", async () => {
 
   expect(await cryptoPaymentsRepository.markAsExpired(payment)).toBeUndefined();
   expect(await statusOf(payment)).toBe("confirmed");
+});
+
+test("a second authorization submitted while the first is settling never reaches the facilitator", async () => {
+  const { payment, txHash } = await openRequest();
+  let finish: (value: Settlement) => void = () => {};
+  const facilitator = spyOn(x402FacilitatorService, "settle")
+    .mockImplementationOnce(
+      () =>
+        new Promise<Settlement>((resolve) => {
+          finish = resolve;
+        }),
+    )
+    .mockResolvedValue(rejected);
+  stubEarnings();
+
+  const first = x402PaymentRequestsService.settle(
+    payment,
+    paymentPayload("0x01"),
+  );
+  while (facilitator.mock.calls.length === 0) await Bun.sleep(1);
+
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x02")),
+  ).rejects.toMatchObject({ status: 409, code: "settlement_in_progress" });
+  expect(await statusOf(payment)).toBe("pending");
+
+  finish(settledWith(txHash));
+  const result = await first;
+
+  expect(facilitator).toHaveBeenCalledTimes(1);
+  expect(result.paymentRequest.paid).toBe(true);
+  expect(await statusOf(payment)).toBe("confirmed");
+  expect(await settleClaim(payment)).toBeNull();
+});
+
+test("a request that lapses mid-settlement is not expired under the in-flight settle", async () => {
+  const { payment } = await openRequest();
+  const failures = failureCallbackSpy();
+  expect(
+    await cryptoPaymentsRepository.claimSettlement(
+      payment,
+      new Date(Date.now() + 60_000),
+    ),
+  ).toBeDefined();
+  await pg().query(
+    "UPDATE crypto_payments SET expires_at = now() - interval '1 second' WHERE id=$1",
+    [payment],
+  );
+
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x02")),
+  ).rejects.toMatchObject({ status: 409, code: "settlement_in_progress" });
+
+  expect(await statusOf(payment)).toBe("pending");
+  expect(failures).not.toHaveBeenCalled();
+});
+
+test("a facilitator rejection releases the claim so the payer can retry", async () => {
+  const { payment, txHash } = await openRequest();
+  const facilitator = spyOn(x402FacilitatorService, "settle")
+    .mockResolvedValueOnce(rejected)
+    .mockResolvedValueOnce(settledWith(txHash));
+  stubEarnings();
+
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x01")),
+  ).rejects.toMatchObject({ status: 402 });
+  expect(await settleClaim(payment)).toBeNull();
+
+  const result = await x402PaymentRequestsService.settle(
+    payment,
+    paymentPayload("0x02"),
+  );
+  expect(result.paymentRequest.paid).toBe(true);
+  expect(facilitator).toHaveBeenCalledTimes(2);
+});
+
+test("a facilitator error with an unknown outcome keeps the claim so a retry cannot pay twice", async () => {
+  const { payment } = await openRequest();
+  const facilitator = spyOn(x402FacilitatorService, "settle").mockRejectedValue(
+    new Error("receipt timeout"),
+  );
+
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x01")),
+  ).rejects.toMatchObject({ status: 402 });
+  await expect(
+    x402PaymentRequestsService.settle(payment, paymentPayload("0x02")),
+  ).rejects.toMatchObject({ status: 409, code: "settlement_in_progress" });
+
+  expect(facilitator).toHaveBeenCalledTimes(1);
+  expect(await settleClaim(payment)).not.toBeNull();
 });

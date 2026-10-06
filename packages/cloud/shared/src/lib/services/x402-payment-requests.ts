@@ -29,6 +29,7 @@ import { x402FacilitatorService } from "./x402-facilitator";
 import { buildX402PaymentRequired } from "./x402-payment-required";
 
 const KIND = "x402_payment_request";
+const SETTLE_CLAIM_MARGIN_SECONDS = 60;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 type NetworkConfig = {
@@ -181,6 +182,14 @@ export class X402PaymentRequestError extends Error {
     super(message);
     this.name = "X402PaymentRequestError";
   }
+}
+
+function settlementInProgress(): X402PaymentRequestError {
+  return new X402PaymentRequestError(
+    "Payment request settlement is already in progress",
+    409,
+    "settlement_in_progress",
+  );
 }
 
 function parseStoredPaymentAmount(params: {
@@ -707,6 +716,7 @@ class X402PaymentRequestsService {
       const current = expired ?? (await this.get(id)) ?? payment;
       // A concurrent settle confirmed this request after it was read above.
       if (current.status === "confirmed") return this.alreadySettled(current);
+      if (current.status === "pending") throw settlementInProgress();
       await this.triggerFailureCallback(current, "expired", {
         expiredAt: payment.expires_at.toISOString(),
       });
@@ -760,16 +770,36 @@ class X402PaymentRequestsService {
       );
     }
 
+    // One facilitator call per request: a second authorization submitted while
+    // the first is settling would otherwise charge the payer twice.
+    const claimSeconds = (requirements.maxTimeoutSeconds ?? 300) + SETTLE_CLAIM_MARGIN_SECONDS;
+    const claimed = await cryptoPaymentsRepository.claimSettlement(
+      payment.id,
+      new Date(Date.now() + claimSeconds * 1000),
+    );
+    if (!claimed) {
+      const current = (await this.get(id)) ?? payment;
+      if (current.status === "confirmed") return this.alreadySettled(current);
+      if (current.status === "pending") throw settlementInProgress();
+      throw new X402PaymentRequestError(
+        `Payment request is ${current.status}`,
+        410,
+        current.status === "expired" ? "expired" : "not_payable",
+      );
+    }
+
     let settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
     try {
       settlement = await x402FacilitatorService.settle(paymentPayload, requirements);
     } catch (error) {
+      // The transfer may have been broadcast, so the claim stays until it lapses.
       await this.triggerFailureCallback(payment, "settlement_error", {
         error: error instanceof Error ? error.message : String(error),
       });
       throw new X402PaymentRequestError("x402 settlement failed", 402, "settlement_failed");
     }
     if (!settlement.success) {
+      await cryptoPaymentsRepository.releaseSettlementClaim(payment.id);
       await this.triggerFailureCallback(payment, settlement.errorReason ?? "settlement_failed", {
         settlement,
       });

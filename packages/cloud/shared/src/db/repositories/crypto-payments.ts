@@ -13,6 +13,12 @@ import {
 
 export type { CryptoPayment, NewCryptoPayment };
 
+const SETTLE_CLAIM_KEY = "settleClaimedUntil";
+
+function settleClaimInactive(now: Date) {
+  return sql`(${cryptoPayments.metadata}->>${SETTLE_CLAIM_KEY}::text IS NULL OR (${cryptoPayments.metadata}->>${SETTLE_CLAIM_KEY}::text)::timestamptz <= ${now.toISOString()}::timestamptz)`;
+}
+
 /**
  * Repository for crypto payment database operations.
  *
@@ -145,7 +151,10 @@ export class CryptoPaymentsRepository {
     return payment;
   }
 
-  /** Expires a still-pending payment; returns undefined when it is no longer pending. */
+  /**
+   * Expires a still-pending payment that no settlement currently holds; returns
+   * undefined when it is no longer pending or a settle claim is active.
+   */
   async markAsExpired(id: string): Promise<CryptoPayment | undefined> {
     const [payment] = await dbWrite
       .update(cryptoPayments)
@@ -153,9 +162,47 @@ export class CryptoPaymentsRepository {
         status: "expired",
         updated_at: new Date(),
       })
-      .where(and(eq(cryptoPayments.id, id), eq(cryptoPayments.status, "pending")))
+      .where(
+        and(
+          eq(cryptoPayments.id, id),
+          eq(cryptoPayments.status, "pending"),
+          settleClaimInactive(new Date()),
+        ),
+      )
       .returning();
     return payment;
+  }
+
+  /**
+   * Atomically claims a pending payment for one settlement attempt until
+   * `claimedUntil`; returns undefined when it is not pending or already claimed.
+   */
+  async claimSettlement(id: string, claimedUntil: Date): Promise<CryptoPayment | undefined> {
+    const [payment] = await dbWrite
+      .update(cryptoPayments)
+      .set({
+        metadata: sql`coalesce(${cryptoPayments.metadata}, '{}'::jsonb) || jsonb_build_object(${SETTLE_CLAIM_KEY}::text, ${claimedUntil.toISOString()}::text)`,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(cryptoPayments.id, id),
+          eq(cryptoPayments.status, "pending"),
+          settleClaimInactive(new Date()),
+        ),
+      )
+      .returning();
+    return payment;
+  }
+
+  async releaseSettlementClaim(id: string): Promise<void> {
+    await dbWrite
+      .update(cryptoPayments)
+      .set({
+        metadata: sql`${cryptoPayments.metadata} - ${SETTLE_CLAIM_KEY}::text`,
+        updated_at: new Date(),
+      })
+      .where(and(eq(cryptoPayments.id, id), eq(cryptoPayments.status, "pending")));
   }
 
   async markAsFailed(id: string, reason?: string): Promise<CryptoPayment | undefined> {
