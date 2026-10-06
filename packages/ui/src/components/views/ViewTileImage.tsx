@@ -75,6 +75,7 @@ export function ViewTileImage({
   imageTestId?: string;
 }) {
   const [failure, setFailure] = useState<"none" | "primary" | "all">("none");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: New image URLs must reset the previous image's failure state.
   useEffect(() => {
     setFailure("none");
   }, [entry.imageUrl, entry.fallbackImageUrl]);

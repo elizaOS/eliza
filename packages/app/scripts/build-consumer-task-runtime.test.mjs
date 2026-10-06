@@ -101,6 +101,25 @@ test("a committed task bundle runs on SQLite and records the consumer's exact so
     fs.statSync(path.join(temporary, "browser/messaging/task-events.ts")).size >
       0,
   );
+  // Loading the staged public error module must resolve its real transitive
+  // dependency, not merely prove the entry file exists.
+  const { ElizaError } = await import(
+    pathToFileURL(path.join(temporary, "browser/errors.ts")).href
+  );
+  const browserError = new ElizaError("synthetic consumer error", {
+    code: "SYNTHETIC_CONSUMER_FAILURE",
+  });
+  assert.equal(browserError.code, "SYNTHETIC_CONSUMER_FAILURE");
+  assert.ok(browserError instanceof ElizaError);
+  const browserProvenance = JSON.parse(
+    fs.readFileSync(path.join(temporary, "browser/provenance.json"), "utf8"),
+  );
+  assert.equal(
+    browserProvenance.files["utils/errors.ts"],
+    createHash("sha256")
+      .update(fs.readFileSync(path.join(temporary, "browser/utils/errors.ts")))
+      .digest("hex"),
+  );
   const commandBytes = fs.readFileSync(
     path.join(commandDirectory, "command-handler.mjs"),
   );

@@ -353,7 +353,9 @@ describe("listInboxAction", () => {
     ]);
     await registerAdapter(adapter);
     const result = await listInboxAction.handler(
-      createFakeRuntime(), messageRef({ id: "turn" }) as never, undefined,
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
+      undefined,
       { parameters: { sinceMs: 5_000 } } as never,
     );
     expect(adapter.seenOptions).toHaveLength(1);
@@ -367,7 +369,8 @@ describe("listInboxAction", () => {
     ]);
     await registerAdapter(adapter);
     const result = await listInboxAction.handler(
-      createFakeRuntime(), messageRef({ id: "turn" }) as never,
+      createFakeRuntime(),
+      messageRef({ id: "turn" }) as never,
     );
     expect(adapter.seenOptions).toHaveLength(1);
     expect(result.data).toMatchObject({ total: 0, returned: 0, messages: [] });

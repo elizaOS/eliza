@@ -17,10 +17,18 @@ describe("isHomeWidgetSunset", () => {
     __resetHomeDismissalsForTests();
     const key = "home/nudge";
     recordHomeWidgetSeen(key);
-    const currentSession = { [key]: { seen: 1, acted: false, dismissed: false } };
-    expect(isHomeWidgetSunset(key, { afterSeen: 1 }, currentSession)).toBe(false);
+    const currentSession = {
+      [key]: { seen: 1, acted: false, dismissed: false },
+    };
+    expect(isHomeWidgetSunset(key, { afterSeen: 1 }, currentSession)).toBe(
+      false,
+    );
     __resetHomeDismissalsForTests();
-    expect(isHomeWidgetSunset(key, { afterSeen: 1 }, currentSession)).toBe(true);
-    expect(isHomeWidgetSunset(key, { afterSeen: 2 }, currentSession)).toBe(false);
+    expect(isHomeWidgetSunset(key, { afterSeen: 1 }, currentSession)).toBe(
+      true,
+    );
+    expect(isHomeWidgetSunset(key, { afterSeen: 2 }, currentSession)).toBe(
+      false,
+    );
   });
 });
