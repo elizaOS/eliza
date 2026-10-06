@@ -6,7 +6,7 @@
 import type { ComponentType, HTMLAttributes, ReactNode } from "react";
 import { cn } from "../../../utils/cn";
 import { Card } from "../../ui/card";
-import { PagePanelRoot } from "./page-panel-root";
+import { PagePanelRoot } from "./page-panel-layout";
 import type { PagePanelVariant } from "./page-panel-types";
 
 export interface PagePanelFeatureEmptyItem {

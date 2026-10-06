@@ -22,8 +22,8 @@ import type {
   Conversation,
   ConversationMessageSearchResult,
 } from "../../api/client-types-chat";
+import { onViewEvent } from "../../events/view-events";
 import { CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT } from "../../hooks/useConversationRenderWindow";
-import { onViewEvent } from "../../views/view-event-bus";
 import { getChatMessageAnchorId } from "../composites/chat/chat-message";
 
 type AppState = Record<string, unknown>;

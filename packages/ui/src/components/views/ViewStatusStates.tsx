@@ -14,7 +14,7 @@ import { AlertTriangle, ArrowLeft, Ban, RotateCw } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { shellHistory } from "../../surface-realm-channel";
-import { PageLoadingState } from "../composites/page-panel/page-panel-loading";
+import { PageLoadingState } from "../composites/page-panel/content-state";
 import { Alert } from "../ui/alert.tsx";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";

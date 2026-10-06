@@ -158,7 +158,10 @@ const RUNTIME_STUBS = {
             async cancel() {
               options.historyStore.stagePending(agent.id, roomId, interrupted);
               options.executionCtx.waitUntil((async () => {
-                await fetch("https://finalization-gate.test/wait");
+                const response = await fetch("https://finalization-gate.test/wait");
+                // Drain the outbound body so the fixture does not retain a
+                // Workerd reference while the test evicts the Durable Object.
+                await response.text();
                 throw new Error("simulated off-queue finalization failure");
               })());
             },

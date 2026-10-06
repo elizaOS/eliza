@@ -3,8 +3,8 @@ import { renderToString } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 import { createLoginAuthContext as ctx } from "../../test/login-auth-context.js";
 
-const { LoginAuthGuard } = await import("../index.ts");
-const { LoginAuthContext } = await import("./provider.js");
+import { LoginAuthGuard } from "../index.ts";
+import { LoginAuthContext } from "./provider.js";
 
 function wrap(value: ReturnType<typeof ctx>, node: React.ReactNode) {
   return React.createElement(LoginAuthContext.Provider, { value: value }, node);

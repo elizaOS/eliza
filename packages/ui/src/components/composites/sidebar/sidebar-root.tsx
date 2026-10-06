@@ -21,7 +21,7 @@ import {
   buildSidebarAutoRailItemsFromDom,
   type SidebarAutoRailItem,
 } from "./sidebar-auto-rail";
-import { SidebarBody } from "./sidebar-body";
+import { SidebarBody } from "./sidebar-layout";
 import type { SidebarProps, SidebarVariant } from "./sidebar-types";
 
 const sidebarRootVariants = cva(

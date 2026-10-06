@@ -55,7 +55,7 @@ import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/o
 import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
 import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import type { DrainResult } from "@elizaos/cloud-shared/lib/queue/redis-queue";
+import type { DrainResult } from "@elizaos/cloud-shared/lib/redis-queue";
 import { safeFetch } from "@elizaos/cloud-shared/lib/security/safe-fetch";
 import { autoTopUpService } from "@elizaos/cloud-shared/lib/services/auto-top-up";
 import { autoTopUpChargeBreakdownFromMetadata } from "@elizaos/cloud-shared/lib/services/auto-top-up-charge-breakdown";
