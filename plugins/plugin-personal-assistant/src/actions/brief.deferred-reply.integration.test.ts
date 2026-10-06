@@ -15,6 +15,10 @@ import {
   withRoomDeliverySettlement,
 } from "@elizaos/core";
 import {
+  __resetDefaultTriageServiceForTests,
+  getDefaultTriageService,
+} from "@elizaos/plugin-assistant";
+import {
   afterAll,
   afterEach,
   beforeAll,
@@ -31,6 +35,7 @@ import {
 import { projectToolResultForModel } from "../../../plugin-assistant/src/runtime/planner-rendering.ts";
 import { collectPreviousActionResults } from "../../../plugin-assistant/src/services/message/planned-tool.ts";
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.ts";
+import { resolveOwnerFactStore } from "../lifeops/owner/fact-store.ts";
 import { LifeOpsRepository } from "../lifeops/repository.ts";
 import { LifeOpsService } from "../lifeops/service.ts";
 import { executeRawSql } from "../lifeops/sql.ts";
@@ -92,6 +97,10 @@ beforeEach(async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-06T01:30:00.000Z"));
   __resetBriefComposersForTests();
+  __resetDefaultTriageServiceForTests();
+  vi.spyOn(resolveOwnerFactStore(fixture.runtime), "read").mockResolvedValue(
+    {},
+  );
   registerCalendarTimeZoneResolver(
     fixture.runtime,
     async () => "America/Los_Angeles",
@@ -141,6 +150,11 @@ afterAll(async () => {
 async function invoke(
   replyOwner: "planner" | "action" = "planner",
   format?: "json",
+  options: {
+    text?: string;
+    parameters?: Record<string, unknown>;
+    toolName?: string;
+  } = {},
 ) {
   const message: Memory = {
     id: crypto.randomUUID() as UUID,
@@ -148,7 +162,7 @@ async function invoke(
     entityId: ownerId,
     roomId,
     content: {
-      text: "Give me my daily dossier using the connected sources available now.",
+      text: options.text ?? "Give me my evening dossier including my inbox.",
       source: "client_chat",
       channelType: ChannelType.DM,
     },
@@ -164,7 +178,14 @@ async function invoke(
       activeContexts: ["productivity"],
       callback,
     },
-    { name: "BRIEF", params: { ...params, ...(format ? { format } : {}) } },
+    {
+      name: options.toolName ?? "BRIEF",
+      params: {
+        ...params,
+        ...options.parameters,
+        ...(format ? { format } : {}),
+      },
+    },
   );
   return { message, callback, result };
 }
@@ -190,7 +211,7 @@ async function deliver(
       archivedSteps: [],
       steps: [
         {
-          toolCall: { name: "BRIEF" },
+          toolCall: { name: String(result.data?.actionName ?? "BRIEF") },
           result: actionResultToPlannerToolResult(result),
         },
       ],
@@ -228,6 +249,289 @@ async function deliver(
 }
 
 describe("planner-owned BRIEF", () => {
+  it.each([
+    ["2026-10-06T01:48:00.000Z", "America/Los_Angeles", undefined, "evening"],
+    ["2026-10-05T23:59:59.000Z", "America/Los_Angeles", undefined, "morning"],
+    ["2026-10-06T00:00:00.000Z", "America/Los_Angeles", undefined, "evening"],
+    ["2026-10-06T01:48:00.000Z", "Asia/Tokyo", undefined, "morning"],
+    ["2026-10-06T01:48:00.000Z", "America/Los_Angeles", "19:15", "morning"],
+    ["2026-10-06T02:15:00.000Z", "America/Los_Angeles", "19:15", "evening"],
+  ])(
+    "uses the owner-local daily default at %s in %s with evening start %s",
+    async (instant, timeZone, eveningStart, kind) => {
+      vi.setSystemTime(new Date(instant));
+      registerCalendarTimeZoneResolver(fixture.runtime, async () => timeZone);
+      if (eveningStart)
+        vi.mocked(
+          resolveOwnerFactStore(fixture.runtime).read,
+        ).mockResolvedValue({
+          eveningWindow: {
+            value: { startLocal: eveningStart, endLocal: "23:00" },
+            provenance: { source: "first_run", recordedAt: instant },
+          },
+        });
+      const completed = vi.fn(async () => [
+        {
+          id: "completed-daily",
+          title: "Sort receipts",
+          kind: "todo" as const,
+          dueAt: instant,
+          completedAt: instant,
+          state: "completed" as const,
+        },
+      ]);
+      const inbox = vi.fn(async ({ explicit }: { explicit?: boolean }) =>
+        explicit
+          ? { items: [], coverage: "not_connected" as const }
+          : undefined,
+      );
+      setBriefComposers({ loadCompletedToday: completed, loadInbox: inbox });
+      const { result } = await invoke("planner", undefined, {
+        text: "Give me my daily dossier using the connected sources available now.",
+        parameters: { action: "compose_morning", period: "this_week" },
+      });
+      expect(result).toMatchObject({
+        success: true,
+        data: {
+          subaction: `compose_${kind}`,
+          briefing: { kind, period: "today", generatedAt: instant },
+        },
+      });
+      expect(inbox).toHaveBeenCalledWith(
+        expect.objectContaining({ explicit: false }),
+      );
+      expect(completed).toHaveBeenCalledTimes(kind === "evening" ? 1 : 0);
+      const briefing = result.data?.briefing as {
+        sections: object;
+        sourceErrors?: object;
+      };
+      expect(briefing.sections).not.toHaveProperty("inbox");
+      expect(briefing.sourceErrors).toBeUndefined();
+      const grounding = JSON.parse(String(result.data?.replyGrounding))
+        .prompt as string;
+      expect(grounding).toContain(`owner's ${kind} briefing for today`);
+      expect(grounding).toContain(timeZone);
+      if (kind === "evening") expect(grounding).toContain('"completedToday"');
+      expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not let invented exclusions remove ordinary briefing sources", async () => {
+    const calendar = vi.fn(async () => []);
+    const life = vi.fn(async () => []);
+    const commitments = vi.fn(async () => []);
+    const inbox = vi.fn(async () => ({
+      items: [],
+      coverage: "complete" as const,
+    }));
+    setBriefComposers({
+      loadCalendar: calendar,
+      loadLife: life,
+      loadCommitments: commitments,
+      loadInbox: inbox,
+    });
+    const { result } = await invoke("planner", undefined, {
+      text: "Give me my daily dossier using the connected sources available now.",
+      parameters: {
+        include: {
+          calendar: false,
+          inbox: false,
+          life: false,
+          commitments: false,
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+    for (const load of [calendar, life, commitments, inbox])
+      expect(load).toHaveBeenCalledTimes(1);
+    expect(inbox).toHaveBeenCalledWith(
+      expect.objectContaining({ explicit: false }),
+    );
+    expect(result.data?.briefing).toMatchObject({
+      sections: { calendar: [], inbox: [], life: [], commitments: [] },
+    });
+    expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Give me my morning briefing.", "compose_morning", "morning", "today"],
+    ["Give me my evening briefing.", "compose_evening", "evening", "today"],
+    ["Give me my weekly briefing.", "compose_weekly", "weekly", "this_week"],
+    [
+      "Give me my morning briefing for tomorrow.",
+      "compose_morning",
+      "morning",
+      "tomorrow",
+    ],
+  ])(
+    "retains an explicitly named kind/period at night: %s",
+    async (text, action, kind, period) => {
+      vi.setSystemTime(new Date("2026-10-06T05:48:00.000Z"));
+      const { result } = await invoke("planner", undefined, {
+        text,
+        parameters: { action, period },
+      });
+      expect(result.data?.briefing).toMatchObject({ kind, period });
+      expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "disconnected",
+    "named-morning",
+    "named-evening",
+    "explicit",
+    "failed",
+  ])("retains actual registered inbox coverage for %s", async (mode) => {
+    // Restore the real adapter-selection loader, keeping the other sources local.
+    __resetBriefComposersForTests();
+    setBriefComposers({
+      loadCalendar: async () => [],
+      loadLife: async () => [],
+      loadCompletedToday: async () => [],
+      loadCommitments: async () => [],
+      loadEngagementSummaries: async () => [],
+    });
+    const failedRead = vi.fn(async () => {
+      throw new Error("Configured inbox failed");
+    });
+    if (mode === "failed")
+      getDefaultTriageService().register({
+        source: "slack",
+        isAvailable: () => true,
+        capabilities: () => ({
+          list: true,
+          search: false,
+          manage: {},
+          send: { reply: false, new: false, schedule: false },
+          worlds: "single",
+          channels: "none",
+        }),
+        listMessages: failedRead,
+      } as never);
+    const text =
+      mode === "explicit"
+        ? "Give me my daily dossier including my inbox."
+        : mode === "named-morning"
+          ? "Give me my morning briefing."
+          : mode === "named-evening"
+            ? "Give me my evening briefing."
+            : "Give me my daily dossier using the connected sources available now.";
+    const { result } = await invoke("planner", undefined, { text });
+    const briefing = result.data?.briefing as {
+      sections: object;
+      sourceErrors?: object;
+    };
+    if (mode === "disconnected" || mode.startsWith("named-")) {
+      expect(briefing.sections).not.toHaveProperty("inbox");
+      expect(briefing.sourceErrors).toBeUndefined();
+    } else {
+      expect(briefing.sourceErrors).toEqual({
+        inbox: mode === "failed" ? "unavailable" : "not_connected",
+      });
+    }
+    if (mode === "failed") expect(failedRead).toHaveBeenCalledTimes(1);
+    expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("ignores invented JSON format for an ordinary brief but preserves explicit JSON requests", async () => {
+    const ordinary = await invoke("planner", "json", {
+      text: "Give me my daily dossier using the connected sources available now.",
+    });
+    expect(ordinary.result).toMatchObject({
+      success: true,
+      modelReplyRequired: true,
+      turnComplete: false,
+    });
+    expect(ordinary.result.verifiedUserFacing).toBeUndefined();
+    expect(ordinary.callback).not.toHaveBeenCalled();
+    const explicit = await invoke("planner", "json", {
+      text: "Give me my daily dossier as JSON.",
+    });
+    expect(explicit.result).toMatchObject({
+      success: true,
+      verifiedUserFacing: true,
+      turnComplete: true,
+    });
+    expect(explicit.result.modelReplyRequired).toBeUndefined();
+    expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("retains standalone parameters for a generic request and explicit source exclusion", async () => {
+    const result = await invoke("action", "json", {
+      text: "Give me my daily dossier using the connected sources available now.",
+      parameters: { action: "compose_morning", period: "this_week" },
+    });
+    expect(result.result.data?.briefing).toMatchObject({
+      kind: "morning",
+      period: "this_week",
+      sourceErrors: { inbox: "not_connected" },
+    });
+    const excluded = await invoke("planner", undefined, {
+      text: "Give me my daily dossier without the inbox.",
+      parameters: { include: { inbox: false } },
+    });
+    expect(excluded.result.data?.briefing).toMatchObject({ sections: {} });
+    expect(excluded.result.data?.briefing).not.toHaveProperty("sections.inbox");
+    expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Give me my morning briefing.", "compose_evening", "compose_morning"],
+    ["Give me my evening briefing.", "compose_morning", "compose_evening"],
+    ["Give me my daily dossier.", "recalibrate", "compose_evening"],
+    ["Give me my daily dossier.", "reset_recalibration", "compose_evening"],
+  ])(
+    "honors the whole request before contradictory control/kind parameters: %s / %s",
+    async (text, action, expected) => {
+      const controlRead = vi.spyOn(
+        LifeOpsRepository.prototype,
+        "summarizeBriefItemEngagements",
+      );
+      const preferenceWrite = vi.spyOn(
+        LifeOpsRepository.prototype,
+        "recordBriefItemEngagement",
+      );
+      const { result } = await invoke("planner", undefined, {
+        text,
+        parameters: { action },
+      });
+      expect(result).toMatchObject({
+        success: true,
+        data: { subaction: expected },
+        modelReplyRequired: true,
+        turnComplete: false,
+      });
+      expect(controlRead).not.toHaveBeenCalled();
+      expect(preferenceWrite).not.toHaveBeenCalled();
+      expect(fixture.runtime.useModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "BRIEF_COMPOSE_MORNING",
+    "BRIEF_RECALIBRATE",
+    "BRIEF_RESET_RECALIBRATION",
+  ])(
+    "records delivery for %s normalized to an evening generic dossier",
+    async (toolName) => {
+      vi.setSystemTime(new Date("2026-10-06T01:48:00.000Z"));
+      const { message, result } = await invoke("planner", undefined, {
+        text: "Give me my daily dossier using the connected sources available now.",
+        parameters: { action: toolName.slice("BRIEF_".length).toLowerCase() },
+        toolName,
+      });
+      expect(result.data).toMatchObject({
+        actionName: toolName,
+        subaction: "compose_evening",
+      });
+      await deliver(message, result);
+      expect(
+        await repository.listBriefItemEngagements(fixture.runtime.agentId),
+      ).toHaveLength(1);
+    },
+  );
+
   it("defers complete local-time grounding once and leaves standalone JSON semantics intact", async () => {
     const { result, callback } = await invoke();
     expect(result).toMatchObject({

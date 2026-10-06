@@ -40,12 +40,14 @@ import {
   applyGroundedActionReply,
   createUnavailableGroundedActionReply,
   ElizaError,
+  extractUserText,
   getActionReplyOwner,
   getTrajectoryContext,
   logger,
   ModelType,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 import type { MessageRef, TriageOptions } from "@elizaos/plugin-assistant";
 import { getDefaultTriageService, rankScored } from "@elizaos/plugin-assistant";
@@ -54,6 +56,7 @@ import {
   resolveNextCalendarEventWindow,
 } from "@elizaos/plugin-calendar";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { isWholeGenericBriefRequest } from "../lifeops/briefing/direct-routing.js";
 import {
   buildBriefEditorialContract,
   type LifeOpsBriefItemEngagementSummary,
@@ -65,12 +68,14 @@ import {
   buildCommitmentRegretAudit,
   type CommitmentRegretAuditItem,
 } from "../lifeops/commitments/index.js";
+import { DEFAULT_TIME_WINDOWS } from "../lifeops/defaults.js";
 import { resolveOwnerDefinitionSurface } from "../lifeops/definition-owner-surface.js";
 import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
 import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
   MEETING_PREP_INSTRUCTIONS,
 } from "../lifeops/optimized-prompt-instructions.js";
+import { resolveOwnerFactStore } from "../lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import type {
   LifeOpsBriefing,
@@ -745,6 +750,40 @@ function resolveIncludeFlags(input: BriefIncludeFlags | undefined): {
   };
 }
 
+/** Generic daily dossiers use morning before the owner's evening start and
+ * evening from that start, in the authoritative owner zone. Explicitly named
+ * kinds and standalone calls never use this default policy. */
+async function resolveGenericDailySubaction(
+  runtime: IAgentRuntime,
+  now: Date,
+): Promise<ComposeSubaction> {
+  const [{ timeZone }, facts] = await Promise.all([
+    resolveCalendarTimeZone(runtime, now),
+    resolveOwnerFactStore(runtime).read(),
+  ]);
+  const evening = DEFAULT_TIME_WINDOWS.find(
+    (window) => window.name === "evening",
+  );
+  if (!evening)
+    throw new ElizaError("Default evening window is unavailable", {
+      code: "BRIEF_EVENING_WINDOW_UNAVAILABLE",
+    });
+  const configured = facts.eveningWindow?.value.startLocal;
+  const eveningStart = configured
+    ? Number(configured.slice(0, 2)) * 60 + Number(configured.slice(3, 5))
+    : evening.startMinute;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(now);
+  const localMinute =
+    Number(parts.find((part) => part.type === "hour")?.value) * 60 +
+    Number(parts.find((part) => part.type === "minute")?.value);
+  return localMinute >= eveningStart ? "compose_evening" : "compose_morning";
+}
+
 function resolvePeriod(
   params: BriefActionParameters,
   subaction: ComposeSubaction,
@@ -1029,8 +1068,9 @@ async function assembleBriefing(args: {
   include: ReturnType<typeof resolveIncludeFlags>;
   format: "narrative" | "json";
   optimizationTask: BriefOptimizationTask;
+  asOf: string;
 }): Promise<LifeOpsBriefing> {
-  const asOf = new Date().toISOString();
+  const { asOf } = args;
   const composers = activeComposers;
   const sourceErrors: NonNullable<LifeOpsBriefing["sourceErrors"]> = {};
   const collectSource = async <T>(
@@ -1355,7 +1395,7 @@ export const briefAction: Action & {
     {
       name: "action",
       description:
-        "Brief op: compose_morning | compose_evening | compose_weekly | recalibrate | reset_recalibration.",
+        "Brief op: compose_morning | compose_evening | compose_weekly | recalibrate | reset_recalibration. Unnamed daily dossiers use morning before the owner-local evening-window start, then evening; explicitly named kinds are retained.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
@@ -1401,7 +1441,21 @@ export const briefAction: Action & {
     }
 
     const params = getParams(options);
-    const subaction = resolveSubaction(params);
+    const requestText = extractUserText(unwrapUserMessageText(message));
+    const plannerOwned = getActionReplyOwner(message.id) === "planner";
+    const genericRequest =
+      plannerOwned && isWholeGenericBriefRequest(requestText);
+    const asOf = new Date().toISOString();
+    let subaction = resolveSubaction(params);
+    // Resolve the actual whole request before any control operation can run.
+    // A planner-selected recalibration is not authority to mutate preferences.
+    if (genericRequest) {
+      subaction = /\bmorning\b/iu.test(requestText)
+        ? "compose_morning"
+        : /\bevening\b/iu.test(requestText)
+          ? "compose_evening"
+          : await resolveGenericDailySubaction(runtime, new Date(asOf));
+    }
     if (!subaction) {
       return {
         success: false,
@@ -1431,13 +1485,17 @@ export const briefAction: Action & {
       };
     }
 
-    const include = resolveIncludeFlags(params.include);
-    const period = resolvePeriod(params, subaction);
+    // Whole ordinary briefs use existing connected-source defaults. Model flags
+    // cannot invent required sources or exclude them; explicit user selections
+    // stay outside this contract. The loader retains genuine source failures.
+    const include = resolveIncludeFlags(
+      genericRequest ? undefined : params.include,
+    );
+    const period = genericRequest ? "today" : resolvePeriod(params, subaction);
     const format: "narrative" | "json" =
-      params.format === "json" ? "json" : "narrative";
+      !genericRequest && params.format === "json" ? "json" : "narrative";
     const optimizationTask = resolveBriefOptimizationTask({ params, message });
-    const deferReply =
-      format === "narrative" && getActionReplyOwner(message.id) === "planner";
+    const deferReply = format === "narrative" && plannerOwned;
 
     const briefing = await assembleBriefing({
       runtime,
@@ -1446,6 +1504,7 @@ export const briefAction: Action & {
       include,
       format: deferReply ? "json" : format,
       optimizationTask,
+      asOf,
     });
 
     const result: ActionResult = {
@@ -1578,7 +1637,12 @@ function deferredBriefings(state: State | undefined): LifeOpsBriefing[] {
       typeof subaction === "string" &&
       COMPOSE_SUBACTIONS.some((value) => value === subaction) &&
       (data.actionName === ACTION_NAME ||
-        data.actionName === `${ACTION_NAME}_${subaction.toUpperCase()}`) &&
+        // Whole-request reconciliation may convert a wrongly selected control
+        // child into compose; only the successful deferred compose above qualifies.
+        SUBACTIONS.some(
+          (value) =>
+            data.actionName === `${ACTION_NAME}_${value.toUpperCase()}`,
+        )) &&
       briefing &&
       briefing.id === data.briefingId
       ? [briefing]
