@@ -641,7 +641,10 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
         accountId,
         query: searchQuery(filters),
         includeSpamTrash: true,
-        maxResults: filters.limit,
+        // The provider rounds before: to whole seconds. Read its complete
+        // candidate set so later rows in the boundary second cannot consume
+        // the public limit before the exact millisecond filter below.
+        maxResults: filters.untilMs === undefined ? filters.limit : undefined,
       },
       filters.channelIds
     );

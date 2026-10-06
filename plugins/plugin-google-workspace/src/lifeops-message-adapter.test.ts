@@ -261,6 +261,9 @@ describe("GoogleGmailAdapter", () => {
     expect(older.map((message) => message.externalId).sort()).toEqual(["sent_1", "sent_mid"]);
     expect(listCalls.at(-1)?.q).toBe("in:anywhere before:8");
 
+    const boundary = await adapter.searchMessages(runtime, { untilMs: 7_499, limit: 2 });
+    expect(boundary.map((message) => message.externalId)).toEqual(["sent_1", "inbox_2"]);
+
     const window = await adapter.searchMessages(runtime, {
       sinceMs: 5_000,
       untilMs: 7_499,
