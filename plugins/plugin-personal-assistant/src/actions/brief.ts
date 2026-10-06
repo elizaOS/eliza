@@ -18,7 +18,6 @@
  */
 
 import type {
-  LifeOpsDefinitionRecord,
   LifeOpsGoogleConnectorStatus,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
@@ -190,7 +189,9 @@ interface BriefLifeOpsService {
   listOwnerOccurrencesCompletedToday(): Promise<
     readonly LifeOpsOccurrenceView[]
   >;
-  listDefinitions(): Promise<readonly LifeOpsDefinitionRecord[]>;
+  definitions: {
+    listDefinitionRows(): Promise<readonly LifeOpsTaskDefinition[]>;
+  };
   getGoogleConnectorAccounts(
     requestUrl: URL,
     side?: "owner" | "agent",
@@ -410,10 +411,7 @@ async function loadInboxFromTriage(args: {
   };
 }
 
-type BriefDefinitions = ReadonlyMap<
-  string,
-  LifeOpsDefinitionRecord["definition"]
->;
+type BriefDefinitions = ReadonlyMap<string, LifeOpsTaskDefinition>;
 
 async function loadLifeFromOverview(args: {
   runtime: IAgentRuntime;
@@ -1109,10 +1107,10 @@ async function assembleBriefing(args: {
   let definitions: Promise<BriefDefinitions> | undefined;
   const loadDefinitions = () =>
     (definitions ??= getBriefLifeOpsService(args.runtime)
-      .then((service) => service.listDefinitions())
+      .then((service) => service.definitions.listDefinitionRows())
       .then(
         (records) =>
-          new Map(records.map(({ definition }) => [definition.id, definition])),
+          new Map(records.map((definition) => [definition.id, definition])),
       ));
   const sourceErrors: NonNullable<LifeOpsBriefing["sourceErrors"]> = {};
   const collectSource = async <T>(
