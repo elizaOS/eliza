@@ -29,14 +29,19 @@ function fenceBlocks(chunk: string): string[][] {
 }
 
 describe("chunkMarkdownText fence splitting", () => {
-	it.each(["```", "``` ", "```\t", "````", "  ```", "``````   "])(
-		"never emits an empty code block when the closing line is %j",
-		(closer) => {
+	it.each(
+		["```", "``` ", "```\t", "````", "  ```", "``````   "].flatMap((closer) => [
+			[closer, "\n"],
+			[closer, "\n\n"],
+		]),
+	)(
+		"never emits an empty code block when the closing line is %j after %j",
+		(closer, beforeCloser) => {
 			const body = Array.from(
 				{ length: 10 },
 				(_, i) => `line ${i} value${"x".repeat(i % 4)}`,
 			);
-			const text = `Intro.\n\n\`\`\`ts\n${body.join("\n")}\n${closer}\n\nOutro paragraph.`;
+			const text = `Intro.\n\n\`\`\`ts\n${body.join("\n")}${beforeCloser}${closer}\n\nOutro paragraph.`;
 			for (let limit = 16; limit <= 110; limit++) {
 				const chunks = chunkMarkdownText(text, limit);
 				const codeLines: string[] = [];
@@ -44,7 +49,7 @@ describe("chunkMarkdownText fence splitting", () => {
 					expect(chunk.length).toBeLessThanOrEqual(limit);
 					for (const block of fenceBlocks(chunk)) {
 						expect(
-							block.join(""),
+							block.join("").trim(),
 							`limit ${limit}: ${JSON.stringify(chunk)}`,
 						).not.toBe("");
 						codeLines.push(...block);

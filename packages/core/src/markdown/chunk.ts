@@ -273,15 +273,25 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 		const closer = fenceToSplit
 			? findClosingFenceLine(remaining, fenceToSplit)
 			: undefined;
-		if (fenceToSplit && closer && breakIdx >= closer.start - 1) {
-			// Only the original closing line remains, and it is longer than the
-			// synthetic one (trailing whitespace or a longer marker). Reopening
-			// would emit an empty block, so close here and drop that line.
-			chunks.push(
-				`${remaining.slice(0, closer.start)}${fenceToSplit.indent}${fenceToSplit.marker}`,
-			);
-			remaining = stripLeadingNewlines(remaining.slice(closer.end));
-			continue;
+		if (
+			fenceToSplit &&
+			closer &&
+			/^\s*$/.test(remaining.slice(breakIdx, closer.start))
+		) {
+			// Only whitespace and the original closing line remain, and that line
+			// is longer than the synthetic one (trailing whitespace or a longer
+			// marker). Reopening would emit an empty block, so close here and
+			// drop that line.
+			const body = remaining.slice(0, Math.min(breakIdx, closer.start));
+			const closeLine = `${fenceToSplit.indent}${fenceToSplit.marker}`;
+			const closed = body.endsWith("\n")
+				? `${body}${closeLine}`
+				: `${body}\n${closeLine}`;
+			if (closed.length <= limit) {
+				chunks.push(closed);
+				remaining = stripLeadingNewlines(remaining.slice(closer.end));
+				continue;
+			}
 		}
 
 		let rawChunk = remaining.slice(0, breakIdx);
