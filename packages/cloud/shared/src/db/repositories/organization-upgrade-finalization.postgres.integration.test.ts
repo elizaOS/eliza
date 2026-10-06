@@ -292,6 +292,63 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
       originalFixture.event.created = originalLine.period.start + 1;
       originalFixture.invoice.status_transitions.paid_at = originalLine.period.start + 1;
       if (purchased) {
+        const { findOriginalInvoiceCommercialOrigin } = await import(
+          "./subscription-invoice-commercial-origin"
+        );
+        const futureOriginal = (pro: boolean) => {
+          const future = structuredClone(originalFixture.event);
+          const futureLine = future.data.object.lines.data[0]!;
+          futureLine.period = {
+            start: originalLine.period.end,
+            end: originalLine.period.end + 30 * 86400,
+          };
+          future.created = futureLine.period.start + 1;
+          future.data.object.status_transitions.paid_at = future.created;
+          if (pro) {
+            futureLine.amount = 10000;
+            futureLine.price = {
+              id: f.providerBinding.targetPriceId,
+              product: f.providerBinding.targetProductId,
+            };
+            Object.assign(future.data.object, {
+              total: 10000,
+              subtotal: 10000,
+              ending_balance: 10000,
+            });
+          }
+          return createSubscriptionInvoiceEventEvidence(future, originalScope);
+        };
+        const beforeOrigin = await state(f);
+        const purchasedOrigin = await findOriginalInvoiceCommercialOrigin(
+          futureOriginal(false),
+          source.id,
+        );
+        expect(purchasedOrigin.planKey).toBe("plus_monthly");
+        expect(purchasedOrigin.periodStart).toBe(originalLine.period.end);
+        const upgradedOrigin = await findOriginalInvoiceCommercialOrigin(
+          futureOriginal(true),
+          applied.command.id,
+        );
+        expect(upgradedOrigin.planKey).toBe("pro_monthly");
+        expect(upgradedOrigin.allowanceAmountUsd).toBe("90.000000");
+        expect(await state(f)).toEqual(beforeOrigin);
+        expect(
+          (
+            await db.query(
+              "SELECT count(*)::int n FROM billing_subscription_revisions WHERE subscription_id=$1 AND current_period_start=$2",
+              [source.id, new Date(originalLine.period.end * 1000)],
+            )
+          ).rows,
+        ).toEqual([{ n: 0 }]);
+        await expect(
+          findOriginalInvoiceCommercialOrigin(futureOriginal(true), source.id),
+        ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
+        await expect(
+          findOriginalInvoiceCommercialOrigin(original(), source.id),
+        ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
+        await expect(
+          findOriginalInvoiceCommercialOrigin(futureOriginal(true), randomUUID()),
+        ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
         const terms = await findOriginalInvoiceCommercialTerms(original(), 1);
         expect(terms.planKey).toBe("plus_monthly");
         expect(terms.baseAmountCents).toBe(3000);
@@ -352,6 +409,12 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
         expect(upgradedTerms.allowanceAmountUsd).toBe("90.000000");
         expect(await state(f)).toEqual(before);
       } else {
+        const { findOriginalInvoiceCommercialOrigin } = await import(
+          "./subscription-invoice-commercial-origin"
+        );
+        await expect(
+          findOriginalInvoiceCommercialOrigin(original(), applied.command.id),
+        ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
         await expect(findOriginalInvoiceCommercialTerms(original(), 1)).rejects.toMatchObject({
           code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE",
         });
@@ -492,6 +555,20 @@ async function reserve(f: Awaited<ReturnType<typeof seed>>, micros: bigint) {
           const terminal = await authority.findById(renewed.organization_id, renewed.id);
           expect(terminal?.status).toBe("canceled");
           expect(await findOriginalInvoiceCommercialTerms(original(), 2)).toEqual(historicalTerms);
+          const { findOriginalInvoiceCommercialOrigin } = await import(
+            "./subscription-invoice-commercial-origin"
+          );
+          const deferredEvent = structuredClone(originalFixture.event);
+          deferredEvent.data.object.lines.data[0]!.period = {
+            start: boundary,
+            end: boundary + 30 * 86400,
+          };
+          deferredEvent.created = boundary + 1;
+          deferredEvent.data.object.status_transitions.paid_at = boundary + 1;
+          const deferred = createSubscriptionInvoiceEventEvidence(deferredEvent, originalScope);
+          expect(
+            (await findOriginalInvoiceCommercialOrigin(deferred, applied.command.id)).planKey,
+          ).toBe("pro_monthly");
           expect(await authority.findById(renewed.organization_id, renewed.id)).toEqual(terminal);
         } finally {
           for (const [key, value] of [
