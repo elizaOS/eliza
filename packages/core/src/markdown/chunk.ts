@@ -1,7 +1,12 @@
 /** Splits Markdown text at fence, paragraph, and word-safe boundaries. */
 
 import { ElizaError } from "../errors.js";
-import { findFenceSpanAt, isSafeFenceBreak, parseFenceSpans } from "./code.js";
+import {
+	type FenceSpan,
+	findFenceSpanAt,
+	isSafeFenceBreak,
+	parseFenceSpans,
+} from "./code.js";
 
 /** Stable classification for invalid public Markdown chunk limits. */
 export const MARKDOWN_CHUNK_LIMIT_INVALID = "MARKDOWN_CHUNK_LIMIT_INVALID";
@@ -265,6 +270,20 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 			breakIdx = avoidSurrogateSplit(remaining, limit);
 		}
 
+		const closer = fenceToSplit
+			? findClosingFenceLine(remaining, fenceToSplit)
+			: undefined;
+		if (fenceToSplit && closer && breakIdx >= closer.start - 1) {
+			// Only the original closing line remains, and it is longer than the
+			// synthetic one (trailing whitespace or a longer marker). Reopening
+			// would emit an empty block, so close here and drop that line.
+			chunks.push(
+				`${remaining.slice(0, closer.start)}${fenceToSplit.indent}${fenceToSplit.marker}`,
+			);
+			remaining = stripLeadingNewlines(remaining.slice(closer.end));
+			continue;
+		}
+
 		let rawChunk = remaining.slice(0, breakIdx);
 		if (!rawChunk) {
 			break;
@@ -319,6 +338,27 @@ function avoidSurrogateSplit(text: string, index: number): number {
 		return index > 1 ? index - 1 : index + 1;
 	}
 	return index;
+}
+
+/** Locate the line that closed `span`; undefined when the fence runs to EOF. */
+function findClosingFenceLine(
+	text: string,
+	span: FenceSpan,
+): { start: number; end: number } | undefined {
+	const start = text.lastIndexOf("\n", span.end - 1) + 1;
+	if (start <= span.start) {
+		return undefined;
+	}
+	const line = text.slice(start, span.end).replace(/\r$/, "");
+	const match = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
+	if (
+		!match ||
+		match[1][0] !== span.marker[0] ||
+		match[1].length < span.marker.length
+	) {
+		return undefined;
+	}
+	return { start, end: span.end };
 }
 
 function stripLeadingNewlines(value: string): string {
