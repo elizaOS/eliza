@@ -42,7 +42,9 @@ export function parseFenceSpans(buffer: string): FenceSpan[] {
 	while (offset <= buffer.length) {
 		const nextNewline = buffer.indexOf("\n", offset);
 		const lineEnd = nextNewline === -1 ? buffer.length : nextNewline;
-		const rawLine = buffer.slice(offset, lineEnd);`n`t`t// Treat the carriage return in CRLF input as a line ending, not fence info.`n`t`tconst line = rawLine.endsWith("`r") ? rawLine.slice(0, -1) : rawLine;
+		const rawLine = buffer.slice(offset, lineEnd);
+		// Treat the carriage return in CRLF input as a line ending, not fence info.
+		const line = rawLine.endsWith("") ? rawLine.slice(0, -1) : rawLine;
 
 		const match = line.match(/^( {0,3})(`{3,}|~{3,})(.*)$/);
 		if (match) {
