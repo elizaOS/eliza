@@ -12,6 +12,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { fileAction } from "../../../../plugin-coding-tools/src/actions/file.ts";
 import { notesPlugin } from "../../../../plugin-notes/src/plugin";
+import { briefAction } from "../../../../plugin-personal-assistant/src/actions/brief.ts";
 import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task.ts";
 import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action.ts";
 import { createResourceCapacityAction } from "../../../../plugin-personal-assistant/src/lifeops/resource-capacity/action.ts";
@@ -42,6 +43,40 @@ const sharedCalendarActions = [
 ];
 
 describe("contextual native discovery", () => {
+  it.each(["briefing", "dossier"])(
+    "discovers the existing BRIEF composer through the registered %s domain",
+    async (domain) => {
+      const contexts = new ContextRegistry();
+      contexts.registerMany([...DEFAULT_CONTEXT_DEFINITIONS]);
+      const currentRuntime = { ...runtime, contexts } as IAgentRuntime;
+      const actions: Action[] = [
+        briefAction,
+        {
+          name: "CONNECTOR_LIST",
+          contexts: ["connectors"],
+          description: "List configured connector accounts",
+        },
+      ];
+      const discovery = createPlannerToolDiscoveryAction(
+        actions,
+        () => {},
+        async () => actions,
+      );
+      const result = await discovery.handler?.(
+        currentRuntime,
+        message,
+        undefined,
+        {
+          parameters: {
+            query: `compose my daily ${domain}`,
+            contexts: [domain],
+          },
+        },
+      );
+      expect(result?.data?.loadedTools).toEqual(["BRIEF"]);
+    },
+  );
+
   it.each([
     ["workflow create", "OWNER", "automation", true],
     [
