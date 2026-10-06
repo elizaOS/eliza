@@ -179,7 +179,7 @@ function buildInboxRows(
         typeof chat.lastMessageAt === "number" &&
         Number.isFinite(chat.lastMessageAt)
           ? chat.lastMessageAt
-          : Date.now();
+          : 0;
       const isoDate = new Date(sortKey).toISOString();
       const normalizedSource = normalizeConnectorSource(chat.source);
       const normalizedWorldLabel = normalizeWorldLabel(chat, t);
