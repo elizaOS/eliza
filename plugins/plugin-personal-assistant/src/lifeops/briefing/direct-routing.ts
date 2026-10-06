@@ -70,7 +70,7 @@ export function createTrackedWorkRecapDirectRoutingRule(): DirectActionRoutingRu
     contexts: ["productivity", "tasks"],
     wholeRequest: {
       matches: isWholeGenericBriefRequest,
-      invalidateBindings: ["calendarReadBindings"],
+      invalidateFields: ["calendarReadBindings", "visualContinuation"],
     },
     matches: looksLikeTrackedWorkRecapRequest,
   };

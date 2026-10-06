@@ -12,6 +12,7 @@ import {
   ModelType,
   promoteSubactionsToActions,
   ResponseHandlerFieldRegistry,
+  registerDirectActionRoutingRule,
   runResponseHandlerEvaluators,
   runWithStreamingContext,
   type ToolDefinition,
@@ -33,10 +34,14 @@ import {
 } from "../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import { runV5MessageRuntimeStage1 } from "../../../plugins/plugin-assistant/src/services/message/pipeline.ts";
 import { collectBudgetedStageOneCandidateActions } from "../../../plugins/plugin-assistant/src/services/message/planned-tool.ts";
+import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../../../plugins/plugin-assistant/src/services/message/stage1-evaluators.ts";
 import { renderMessageHandlerModelInput } from "../../../plugins/plugin-assistant/src/services/message/stage1-input.ts";
 import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
 import { calendarAction } from "../../../plugins/plugin-calendar/src/actions/calendar.ts";
+import { calendarReadBindingEvaluator } from "../../../plugins/plugin-calendar/src/read-binding.ts";
 import { notesPlugin } from "../../../plugins/plugin-notes/src/plugin.ts";
+import { briefAction } from "../../../plugins/plugin-personal-assistant/src/actions/brief.ts";
+import { createTrackedWorkRecapDirectRoutingRule } from "../../../plugins/plugin-personal-assistant/src/lifeops/briefing/direct-routing.ts";
 import { viewsAction } from "../src/actions/views.ts";
 import {
   closeRuntimeViewRegistry,
@@ -1525,4 +1530,207 @@ describe("model-selected host navigation", () => {
       expect(useModel).toHaveBeenCalledTimes(1);
     }
   });
+});
+
+describe("inferred visual scope invalidation", () => {
+  const briefRequest =
+    "Give me my daily dossier using the connected sources available now.";
+  const visual480 = {
+    disposition: "planning",
+    viewId: "Home",
+    reason:
+      "Requests a composite daily dossier; needs multiple source reads before composing, so navigation is part of the planning scope rather than a satisfying direct view.",
+  };
+  async function staged(
+    text = briefRequest,
+    value = visual480,
+    registerOwner = true,
+  ) {
+    const f = await fixture();
+    const input = clientMessage();
+    input.createdAt = 1000;
+    input.content.text = text;
+    input.content.metadata = {
+      uiTab: "chat",
+      uiBrowserSurface: "native",
+      uiTimeZone: "America/Los_Angeles",
+      viewClientId: "origin-client",
+    };
+    f.runtime.actions.push({ ...briefAction, validate: async () => true });
+    if (registerOwner)
+      registerDirectActionRoutingRule(
+        f.runtime,
+        createTrackedWorkRecapDirectRoutingRule(),
+      );
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(viewNavigationField);
+    const state = { values: {}, data: {}, text: "" };
+    await fields.dispatch({
+      runtime: f.runtime,
+      message: input,
+      state,
+      senderRole: "OWNER",
+      turnSignal: new AbortController().signal,
+      rawParsed: {
+        visualContinuation: value,
+        invalidatedScopeFields: ["visualContinuation"],
+      },
+    });
+    const handler: MessageHandlerResult = {
+      processMessage: "RESPOND",
+      thought: "",
+      plan: {
+        contexts: [
+          "productivity",
+          "calendar",
+          "tasks",
+          "todos",
+          "health",
+          "screen_time",
+          "connectors",
+          "notes",
+          "lifeops",
+        ],
+        intents: [
+          "Compile the daily dossier using the connected sources available now",
+        ],
+        replyEffectStatus: "pending",
+        requiresTool: true,
+        calendarReadBindings: [
+          {
+            intentId: "intent:1",
+            operation: "feed",
+            execution: "required",
+            sourceMessageId: input.id ?? "",
+            roomId: input.roomId,
+            actorId: input.entityId,
+            requestedAt: 1000,
+          },
+        ],
+        contextSlices: ["Existing authorized source context"],
+      },
+    };
+    const direct = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+      (evaluator) =>
+        evaluator.name === "core.direct_registered_capability_request",
+    );
+    if (!direct) throw new Error("Missing direct-route evaluator");
+    return { f, input, state, handler, direct };
+  }
+  it("replays capture480 through the actual staged host field and all three evaluators", async () => {
+    const x = await staged();
+    const original = structuredClone(x.input);
+    const run = await runResponseHandlerEvaluators({
+      runtime: x.f.runtime,
+      message: x.input,
+      state: x.state,
+      messageHandler: x.handler,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+      evaluators: [x.direct, calendarReadBindingEvaluator],
+    });
+    expect(run.errors).toEqual([]);
+    expect(x.handler.plan.intents).toEqual([briefRequest]);
+    expect(x.handler.plan.contexts).toEqual(["productivity", "tasks"]);
+    expect(x.handler.plan.candidateActions).toEqual(["BRIEF"]);
+    expect(x.handler.plan.calendarReadBindings).toBeUndefined();
+    expect(x.handler.plan.contextSlices).toEqual([
+      "Existing authorized source context",
+    ]);
+    expect(x.handler.plan).not.toHaveProperty("invalidatedScopeFields");
+    expect(x.input).toEqual(original);
+    expect(x.f.requests()).toBe(0);
+    expect(x.f.frames).toHaveLength(0);
+  });
+  it.each(["; open Notes", "\nOpen Notes", " and open Notes"])(
+    "preserves explicit compound navigation: %s",
+    async (tail) => {
+      const x = await staged(`Give me my daily dossier${tail}`, {
+        disposition: "planning",
+        viewId: "notes",
+        reason: "Explicit independent navigation",
+      });
+      x.handler.plan.intents = ["Give me my daily dossier", "Open Notes"];
+      delete x.handler.plan.calendarReadBindings;
+      await runResponseHandlerEvaluators({
+        runtime: x.f.runtime,
+        message: x.input,
+        state: x.state,
+        messageHandler: x.handler,
+        availableContexts: [],
+        userRoles: ["OWNER"],
+        evaluators: [x.direct],
+      });
+      expect(x.handler.plan.intents).toEqual([
+        "Give me my daily dossier",
+        "Open Notes",
+      ]);
+      expect(x.handler.plan.candidateActions).toContain("VIEWS");
+      expect(
+        x.handler.plan.contextSlices?.some((slice) =>
+          slice.includes("Current-request navigation judgment"),
+        ),
+      ).toBe(true);
+      expect(await show(x.f.runtime, "Notes", x.input)).toMatchObject({
+        success: true,
+      });
+      expect(x.f.frames).toHaveLength(1);
+    },
+  );
+  it("does not accept a forged model or plan invalidation marker", async () => {
+    const x = await staged(
+      "Open Notes",
+      {
+        disposition: "planning",
+        viewId: "notes",
+        reason: "Explicit navigation",
+      },
+      false,
+    );
+    x.handler.plan.invalidatedScopeFields = ["visualContinuation"];
+    x.handler.plan.intents = ["Open Notes"];
+    delete x.handler.plan.calendarReadBindings;
+    await runResponseHandlerEvaluators({
+      runtime: x.f.runtime,
+      message: x.input,
+      state: x.state,
+      messageHandler: x.handler,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+    });
+    expect(x.handler.plan.candidateActions).toContain("VIEWS");
+    expect(await show(x.f.runtime, "Notes", x.input)).toMatchObject({
+      success: true,
+    });
+    expect(x.f.frames).toHaveLength(1);
+  });
+  it.each(["none", "forbidden"])(
+    "preserves the staged %s navigation denial after scope replacement",
+    async (disposition) => {
+      const x = await staged(briefRequest, {
+        disposition,
+        viewId: "Home",
+        reason: "No navigation permitted",
+      });
+      await runWithStreamingContext(
+        { messageId: String(x.input.id), onStreamChunk: () => {} },
+        async () => {
+          await runResponseHandlerEvaluators({
+            runtime: x.f.runtime,
+            message: x.input,
+            state: x.state,
+            messageHandler: x.handler,
+            availableContexts: [],
+            userRoles: ["OWNER"],
+            evaluators: [x.direct],
+          });
+          expect(x.handler.plan.candidateActions).toEqual(["BRIEF"]);
+          expect(await show(x.f.runtime, "Notes", x.input)).toMatchObject({
+            success: false,
+          });
+          expect(x.f.frames).toHaveLength(0);
+        },
+      );
+    },
+  );
 });

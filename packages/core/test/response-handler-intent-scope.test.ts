@@ -1,4 +1,4 @@
-/** Typed intent-scope replacement invalidates only declared derived bindings. */
+/** Typed intent-scope replacement invalidates only declared inferred operation fields. */
 import { describe, expect, it, vi } from "vitest";
 import {
 	type ResponseHandlerPatch,
@@ -16,6 +16,7 @@ function fixture() {
 			contexts: ["calendar"],
 			intents: ["Invented subrequest"],
 			calendarReadBindings: [{ intentId: "intent:1" }],
+			visualContinuation: { disposition: "planning" },
 			otherBindings: [{ keep: true }],
 			completionContext: {
 				mode: "full",
@@ -48,6 +49,7 @@ describe("response-handler intent scope replacement", () => {
 	it("replaces derived intents and bindings while preserving unrelated source evidence", async () => {
 		const args = fixture();
 		const before = structuredClone(args.messageHandler);
+		let observed: string[] = [];
 		const result = await runResponseHandlerEvaluators({
 			...args,
 			evaluators: [
@@ -57,12 +59,26 @@ describe("response-handler intent scope replacement", () => {
 					evaluate: () => ({
 						replaceIntentScope: {
 							intents: ["Original request"],
-							invalidateBindings: ["calendarReadBindings"],
+							invalidateFields: ["calendarReadBindings", "visualContinuation"],
 						},
 					}),
 				},
+				{
+					name: "test.observe",
+					priority: 200,
+					shouldRun: () => true,
+					evaluate: ({ invalidatedScopeFields }) => {
+						observed = [...(invalidatedScopeFields ?? [])];
+						return undefined;
+					},
+				},
 			],
 		});
+		expect(observed).toEqual(["calendarReadBindings", "visualContinuation"]);
+		expect(args.messageHandler.plan.visualContinuation).toBeUndefined();
+		expect(args.messageHandler.plan).not.toHaveProperty(
+			"invalidatedScopeFields",
+		);
 		expect(result.errors).toEqual([]);
 		expect(args.messageHandler.plan.intents).toEqual(["Original request"]);
 		expect(args.messageHandler.plan.calendarReadBindings).toBeUndefined();
@@ -77,11 +93,31 @@ describe("response-handler intent scope replacement", () => {
 			before.plan.completionContext,
 		);
 		expect(result.appliedPatches[0]?.changed).toContain(
-			"intentBinding:clear:calendarReadBindings",
+			"intentField:invalidate:calendarReadBindings",
 		);
 	});
-	it.each(["contexts", "completionContext", "__proto__", "reply"])(
-		"rejects non-binding field %s before any patch mutation",
+	it.each([
+		"contexts",
+		"completionContext",
+		"contextSlices",
+		"intents",
+		"__proto__",
+		"constructor",
+		"reply",
+		"sourceSetId",
+		"currentSourceRevisions",
+		"effectReceipts",
+		"messages",
+		"originalMessages",
+		"history",
+		"metadata",
+		"invalidatedScopeFields",
+		"plan.visualContinuation",
+		"visual-continuation",
+		"",
+		"visualContinuation\0",
+	])(
+		"rejects protected or malformed field %s before any patch mutation",
 		async (field) => {
 			const args = fixture();
 			const before = structuredClone(args.messageHandler);
@@ -90,7 +126,7 @@ describe("response-handler intent scope replacement", () => {
 				clearCandidateActions: true,
 				replaceIntentScope: {
 					intents: ["Original request"],
-					invalidateBindings: [field],
+					invalidateFields: [field],
 				},
 			} as ResponseHandlerPatch;
 			const result = await runResponseHandlerEvaluators({
@@ -121,7 +157,7 @@ describe("response-handler intent scope replacement", () => {
 						processMessage: "IGNORE",
 						replaceIntentScope: {
 							intents: [],
-							invalidateBindings: ["calendarReadBindings"],
+							invalidateFields: ["calendarReadBindings"],
 						},
 					}),
 				},
@@ -130,5 +166,41 @@ describe("response-handler intent scope replacement", () => {
 		expect(result.errors).toHaveLength(1);
 		expect(result.candidateActionsClearedByEvaluators).toBe(false);
 		expect(args.messageHandler).toEqual(before);
+	});
+	it("does not carry invalidations across runs or read forged plan fields", async () => {
+		const args = fixture();
+		args.messageHandler.plan.invalidatedScopeFields = ["visualContinuation"];
+		const observations: string[][] = [];
+		const observe = {
+			name: "test.observe",
+			priority: 200,
+			shouldRun: () => true,
+			evaluate: ({
+				invalidatedScopeFields,
+			}: {
+				invalidatedScopeFields?: ReadonlySet<string>;
+			}) => {
+				observations.push([...(invalidatedScopeFields ?? [])]);
+				return undefined;
+			},
+		};
+		await runResponseHandlerEvaluators({
+			...args,
+			evaluators: [
+				{
+					name: "test.invalidate",
+					shouldRun: () => true,
+					evaluate: () => ({
+						replaceIntentScope: {
+							intents: ["Original request"],
+							invalidateFields: ["visualContinuation"],
+						},
+					}),
+				},
+				observe,
+			],
+		});
+		await runResponseHandlerEvaluators({ ...args, evaluators: [observe] });
+		expect(observations).toEqual([["visualContinuation"], []]);
 	});
 });

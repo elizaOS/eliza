@@ -26,10 +26,10 @@ export interface ResponseHandlerPatch {
 	/** Mark a terminal refusal without granting a completed-effect claim. */
 	replyEffectStatus?: "non_applied";
 	setContexts?: readonly AgentContext[];
-	/** Atomically replace derived intents and invalidate their declared bindings. */
+	/** Atomically replace derived intents and invalidate declared inferred-scope fields. */
 	replaceIntentScope?: {
 		intents: readonly string[];
-		invalidateBindings: readonly `${string}Bindings`[];
+		invalidateFields: readonly string[];
 	};
 	addContexts?: readonly AgentContext[];
 	addCandidateActions?: readonly string[];
@@ -46,6 +46,9 @@ export interface ResponseHandlerPatch {
 type ResponseHandlerEvaluatorResult = ResponseHandlerPatch | undefined;
 
 export interface ResponseHandlerEvaluatorContext {
+	/** Runtime-only invalidations from earlier applied patches in this run.
+	 * Never populated from model output, plan extensions, or stored history. */
+	invalidatedScopeFields?: ReadonlySet<string>;
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
@@ -83,6 +86,7 @@ export interface ResponseHandlerEvaluationRunResult {
 }
 
 type AppliedResponseHandlerPatch = {
+	invalidatedScopeFields: readonly string[];
 	trace: ResponseHandlerPatchTrace;
 	candidateActionsAdded: string[];
 };
@@ -180,6 +184,45 @@ function filterAvailableContexts(
 	return result;
 }
 
+// Core routing and source evidence have dedicated contracts; they are not
+// inferred operation-scope extensions a plugin may invalidate by name.
+const PROTECTED_SCOPE_FIELDS = new Set(
+	[
+		"contexts",
+		"reply",
+		"replyeffectstatus",
+		"requirestool",
+		"contextSlices",
+		"completioncontext",
+		"candidateactions",
+		"intents",
+		"parentactionhints",
+		"requiredtoolmissbudget",
+		"requiredtoolevidence",
+		"deterministictoolcall",
+		"simple",
+		"metadata",
+		"data",
+		"state",
+		"messages",
+		"originalmessages",
+		"originalrequest",
+		"history",
+		"receipts",
+		"effectreceipts",
+		"source",
+		"sources",
+		"sourcecontext",
+		"sourcesetid",
+		"sourceselection",
+		"currentsourcerevisions",
+		"invalidatedscopefields",
+		"constructor",
+		"prototype",
+		"__proto__",
+	].map((field) => field.toLowerCase()),
+);
+
 function applyResponseHandlerPatch(
 	messageHandler: MessageHandlerResult,
 	patch: ResponseHandlerPatch,
@@ -187,7 +230,7 @@ function applyResponseHandlerPatch(
 ): AppliedResponseHandlerPatch | null {
 	const scope = patch.replaceIntentScope;
 	// Validate the whole replacement before applying any other patch field.
-	// Extension bindings cannot name core routing, context or source fields.
+	// Extension fields cannot name core routing, context or source fields.
 	if (
 		scope &&
 		(!Array.isArray(scope.intents) ||
@@ -195,11 +238,12 @@ function applyResponseHandlerPatch(
 			scope.intents.some(
 				(intent) => typeof intent !== "string" || !intent.trim(),
 			) ||
-			!Array.isArray(scope.invalidateBindings) ||
-			scope.invalidateBindings.some(
+			!Array.isArray(scope.invalidateFields) ||
+			scope.invalidateFields.some(
 				(field) =>
 					typeof field !== "string" ||
-					!/^[A-Za-z][A-Za-z0-9_]*Bindings$/u.test(field),
+					!/^[A-Za-z][A-Za-z0-9_]*$/u.test(field) ||
+					PROTECTED_SCOPE_FIELDS.has(field.toLowerCase()),
 			))
 	) {
 		throw new ElizaError("Invalid response-handler intent scope replacement", {
@@ -213,11 +257,10 @@ function applyResponseHandlerPatch(
 	if (scope) {
 		messageHandler.plan.intents = [...scope.intents];
 		changed.push("intents:replace");
-		for (const field of new Set(scope.invalidateBindings)) {
-			if (Object.hasOwn(messageHandler.plan, field)) {
-				delete messageHandler.plan[field];
-				changed.push(`intentBinding:clear:${field}`);
-			}
+		for (const field of new Set(scope.invalidateFields)) {
+			delete messageHandler.plan[field];
+			// Record even staged fields stored by their owner outside the plan.
+			changed.push(`intentField:invalidate:${field}`);
 		}
 		// Execution choices and relaxation budgets derived from the old intent
 		// cannot survive replacement. Source context and prior receipts do.
@@ -314,6 +357,7 @@ function applyResponseHandlerPatch(
 			changed,
 		},
 		candidateActionsAdded: candidateActionsAdded ?? [],
+		invalidatedScopeFields: [...new Set(scope?.invalidateFields ?? [])],
 	};
 }
 
@@ -345,8 +389,10 @@ export async function runResponseHandlerEvaluators(args: {
 		return result;
 	}
 
+	const invalidatedScopeFields = new Set<string>();
 	for (const evaluator of candidates) {
 		const context: ResponseHandlerEvaluatorContext = {
+			invalidatedScopeFields,
 			runtime: args.runtime,
 			message: args.message,
 			state: args.state,
@@ -371,6 +417,8 @@ export async function runResponseHandlerEvaluators(args: {
 				args.availableContexts,
 			);
 			if (applied) {
+				for (const field of applied.invalidatedScopeFields)
+					invalidatedScopeFields.add(field);
 				if (patch.clearCandidateActions === true) {
 					result.candidateActionsClearedByEvaluators = true;
 				}
