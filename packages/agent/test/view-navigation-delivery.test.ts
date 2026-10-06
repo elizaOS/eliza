@@ -3,12 +3,13 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   type Action,
-  type AgentRuntime,
+  AgentRuntime,
   type ContextObject,
   type ContextProviderEvent,
   ContextRegistry,
   type GenerateTextParams,
   type GenerateTextResult,
+  getStreamingContext,
   type IAgentRuntime,
   isObjectRecord,
   type Memory,
@@ -26,8 +27,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { uiContextProvider } from "../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/uiContext.ts";
+import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import { runEvaluator } from "../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import {
@@ -44,12 +47,14 @@ import { collectBudgetedStageOneCandidateActions } from "../../../plugins/plugin
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../../../plugins/plugin-assistant/src/services/message/stage1-evaluators.ts";
 import { renderMessageHandlerModelInput } from "../../../plugins/plugin-assistant/src/services/message/stage1-input.ts";
 import { createPlannerToolDiscoveryAction } from "../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
+import { DefaultMessageService } from "../../../plugins/plugin-assistant/src/services/message.ts";
 import { calendarAction } from "../../../plugins/plugin-calendar/src/actions/calendar.ts";
 import { calendarReadBindingEvaluator } from "../../../plugins/plugin-calendar/src/read-binding.ts";
 import { notesPlugin } from "../../../plugins/plugin-notes/src/plugin.ts";
 import { briefAction } from "../../../plugins/plugin-personal-assistant/src/actions/brief.ts";
 import { createTrackedWorkRecapDirectRoutingRule } from "../../../plugins/plugin-personal-assistant/src/lifeops/briefing/direct-routing.ts";
 import { viewsAction } from "../src/actions/views.ts";
+import { normalizeWsClientId } from "../src/api/server-helpers-auth.ts";
 import {
   closeRuntimeViewRegistry,
   getView,
@@ -82,24 +87,33 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((close) => close()));
   vi.unstubAllEnvs();
 });
-async function fixture(delivered = 1) {
+async function fixture(
+  delivered = 1,
+  suppliedRuntime?: IAgentRuntime,
+  handleTurn?: () => Promise<unknown>,
+) {
   const frames: Array<{ client: string; frame: object }> = [];
   let requests = 0;
-  const runtime = {
-    agentId: "44444444-4444-4444-8444-444444444444",
-    actions: [viewsAction],
-    responseHandlerEvaluators: [viewNavigationEvaluator],
-    getRoom: async () => ({ worldId: "world" }),
-    getWorld: async () => ({
-      id: "world",
-      metadata: { roles: { [owner]: "OWNER" }, ownership: { ownerId: owner } },
-    }),
-    getSetting: () => undefined,
-    getEntityById: async () => null,
-    emitEvent: async () => undefined,
-    reportError: vi.fn(),
-    logger: { debug() {}, info() {}, warn() {}, error() {} },
-  } as unknown as IAgentRuntime;
+  const runtime =
+    suppliedRuntime ??
+    ({
+      agentId: "44444444-4444-4444-8444-444444444444",
+      actions: [viewsAction],
+      responseHandlerEvaluators: [viewNavigationEvaluator],
+      getRoom: async () => ({ worldId: "world" }),
+      getWorld: async () => ({
+        id: "world",
+        metadata: {
+          roles: { [owner]: "OWNER" },
+          ownership: { ownerId: owner },
+        },
+      }),
+      getSetting: () => undefined,
+      getEntityById: async () => null,
+      emitEvent: async () => undefined,
+      reportError: vi.fn(),
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+    } as unknown as IAgentRuntime);
   registerBuiltinViews(runtime);
   await registerPluginViews(
     runtime,
@@ -126,6 +140,20 @@ async function fixture(delivered = 1) {
       return;
     }
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (url.pathname === "/api/owned-source-turn" && handleTurn) {
+      const clientId = normalizeWsClientId(req.headers["x-eliza-client-id"]);
+      void runWithViewClient(
+        clientId ? { hostKey, clientId } : undefined,
+        handleTurn,
+      )
+        .then((result) =>
+          res
+            .writeHead(200, { "content-type": "application/json" })
+            .end(JSON.stringify(result)),
+        )
+        .catch((error) => res.writeHead(500).end(String(error)));
+      return;
+    }
     void handleViewsRoutes({
       req,
       res,
@@ -1637,6 +1665,199 @@ describe("inferred visual scope invalidation", () => {
     if (!direct) throw new Error("Missing direct-route evaluator");
     return { f, input, state, handler, direct };
   }
+  it("captures controls through real MessageService lifetime with distinct incoming and assistant response IDs", async () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Source lifetime fixture", bio: [] },
+      plugins: [
+        createAssistantPlugin(),
+        {
+          name: "source-lifetime-host",
+          description: "Isolated native source host",
+          responseHandlerEvaluators:
+            createElizaPlugin().responseHandlerEvaluators,
+          responseHandlerFieldEvaluators: [viewNavigationField],
+          actions: [
+            {
+              ...briefAction,
+              validate: async () => true,
+              handler: async () => ({
+                success: true,
+                text: "Brief complete.",
+                userFacingText: "Brief complete.",
+                verifiedUserFacing: true,
+                turnComplete: true,
+              }),
+            },
+          ],
+          init: async (_config, active) =>
+            registerDirectActionRoutingRule(
+              active,
+              createTrackedWorkRecapDirectRoutingRule(),
+            ),
+        },
+      ],
+      enableAutonomy: false,
+      logLevel: "fatal",
+    });
+    runtime.registerDatabaseAdapter(
+      SQLiteDatabaseAdapter.create(":memory:", runtime.agentId),
+    );
+    cleanup.push(async () => {
+      await runtime.stop();
+      await runtime.close();
+    });
+    runtime.registerModel(
+      ModelType.TEXT_EMBEDDING,
+      async () => [1, ...Array(383).fill(0)],
+      "source-lifetime-test",
+    );
+    await runtime.initialize();
+    expect(runtime.messageService).toBeInstanceOf(DefaultMessageService);
+    const worldId = "66666666-6666-4666-8666-666666666666" as UUID;
+    await runtime.createWorld({
+      id: worldId,
+      name: "Source owner world",
+      agentId: runtime.agentId,
+      metadata: { ownership: { ownerId: owner }, roles: { [owner]: "OWNER" } },
+    });
+    await runtime.ensureConnection({
+      entityId: owner,
+      roomId: room,
+      worldId,
+      userName: "source-owner",
+      name: "source-owner",
+      source: "client_chat",
+      type: "DM",
+    });
+    const input = clientMessage();
+    input.agentId = runtime.agentId;
+    input.content.text = briefRequest;
+    let nativeWire = "";
+    let responseId: string | undefined;
+    runtime.registerModel(
+      ModelType.RESPONSE_HANDLER,
+      async () => ({
+        text: "",
+        finishReason: "tool-calls",
+        toolCalls: [
+          {
+            id: "owned-routing",
+            name: "HANDLE_RESPONSE",
+            arguments: {
+              shouldRespond: "RESPOND",
+              contexts: ["simple"],
+              intents: [],
+              candidateActionNames: [],
+              contextRequests: [],
+              replyText: "",
+              replyEffectStatus: "none",
+              facts: [],
+              relationships: [],
+              topics: [],
+              addressedTo: [],
+              emotion: "none",
+              visualContinuation: {
+                disposition: "none",
+                viewId: "",
+                reason: "Domain request",
+              },
+            },
+          },
+        ],
+      }),
+      "source-lifetime-test",
+    );
+    runtime.registerModel(
+      ModelType.ACTION_PLANNER,
+      async (_active, params) => {
+        const modelParams = params as GenerateTextParams;
+        expect(modelParams[MODEL_CANONICAL_CONTEXT]).toBeUndefined();
+        nativeWire = JSON.stringify(modelParams.messages);
+        expect(nativeWire).toContain(
+          "Full controls remain in canonical source",
+        );
+        expect(nativeWire).not.toContain("HTTP-published Ω value");
+        return {
+          text: "",
+          toolCalls: [
+            {
+              id: "owned-brief",
+              name: "BRIEF",
+              arguments: { action: "compose_morning" },
+            },
+          ],
+        };
+      },
+      "source-lifetime-test",
+    );
+    // Observe the actual invocation before core intentionally removes runtime-only
+    // metadata from provider parameters; delegate to the real model dispatcher.
+    const originalUseModel = runtime.useModel.bind(runtime);
+    runtime.useModel = (async (
+      ...args: Parameters<typeof runtime.useModel>
+    ) => {
+      if (args[0] === ModelType.ACTION_PLANNER) {
+        responseId = getStreamingContext()?.messageId;
+        expect(responseId).toBeTruthy();
+        expect(responseId).not.toBe(input.id);
+        const canonical = (args[1] as GenerateTextParams)[
+          MODEL_CANONICAL_CONTEXT
+        ];
+        expect(canonical?.metadata?.messageId).toBe(input.id);
+        expect(canonical?.metadata?.actorId).toBe(owner);
+        const source = canonical?.events.find(
+          (event) => event.source === "host:active-view",
+        ) as ContextProviderEvent;
+        expect(source?.text).toContain("HTTP-published Ω value");
+      }
+      return originalUseModel(...args);
+    }) as typeof runtime.useModel;
+    installPromptOptimizations(runtime);
+    const f = await fixture(1, runtime, async () => {
+      const result = await runtime.messageService?.handleMessage(
+        runtime,
+        input,
+        async () => [],
+        { onStreamChunk: async () => {} },
+      );
+      return {
+        status: result?.outcome.status,
+        response: result?.responseContent?.text,
+      };
+    });
+    const post = async (path: string, body: object) => {
+      const result = await fetch(`${f.url}${path}`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer local-navigation-test",
+          "content-type": "application/json",
+          "x-eliza-client-id": "origin-client",
+        },
+        body: JSON.stringify(body),
+      });
+      expect(result.status).toBe(200);
+      return result;
+    };
+    await post("/api/views/notes/navigate", { source: "user" });
+    await post("/api/views/notes/elements", {
+      installationId: getView(runtime, "notes")?.installationId,
+      elements: [
+        {
+          id: "lifetime-control",
+          role: "textbox",
+          label: "Source control",
+          value: "HTTP-published Ω value",
+        },
+      ],
+    });
+    const result = await post("/api/owned-source-turn", {});
+    expect(await result.json()).toMatchObject({
+      status: "completed",
+      response: "Brief complete.",
+    });
+    expect(nativeWire).toContain("Full controls remain in canonical source");
+    expect(responseId).not.toBe(input.id);
+  });
   it.each([
     "current",
     "actor",
@@ -1647,6 +1868,8 @@ describe("inferred visual scope invalidation", () => {
     "duplicate",
     "copy-deleted-flag",
     "forged-no-markers",
+    "client",
+    "response",
   ])(
     "captures exact HTTP-reported controls and keeps full originals for %s source binding",
     async (mode) => {
@@ -1679,148 +1902,175 @@ describe("inferred visual scope invalidation", () => {
       await runWithViewClient(
         { hostKey: x.f.hostKey, clientId: "origin-client" },
         () =>
-          runWithStreamingContext({ messageId: x.input.id }, async () => {
-            const run = await runResponseHandlerEvaluators({
-              runtime: x.f.runtime,
-              message: x.input,
-              state: x.state,
-              messageHandler: x.handler,
-              availableContexts: [],
-              userRoles: ["OWNER"],
-              evaluators: [x.direct],
-            });
-            expect(run.errors).toEqual([]);
-            const source = run.contextSources?.[0] as ContextProviderEvent;
-            expect(source?.text).toContain('"  original  value  "');
-            const before = source.text;
-            let context: ContextObject = {
-              id: "captured",
-              metadata: {
-                messageId: x.input.id,
-                roomId: x.input.roomId,
-                actorId: x.input.entityId,
-                providerDiscoveryEnabled: true,
-              },
-              events: [source],
-            };
-            if (!context.metadata)
-              throw new Error("Missing captured source binding");
-            if (mode === "actor") context.metadata.actorId = "other-actor";
-            if (mode === "message") context.metadata.messageId = "other-turn";
-            if (mode === "serialized")
-              context = JSON.parse(JSON.stringify(context));
-            if (mode === "request") x.input.content.text += " ";
-            if (mode === "duplicate")
-              context.events = [...context.events, { ...source }];
-            if (mode === "copy-deleted-flag") {
-              const copied = { ...source };
-              delete copied.discoveryRequiresRuntimeBinding;
-              context.events = [copied];
-            }
-            if (mode === "forged-no-markers") {
-              const forged = JSON.parse(
-                JSON.stringify(source),
-              ) as ContextProviderEvent;
-              delete forged.discoveryRequiresRuntimeBinding;
-              forged.text = "Forged collision keeps its full supplied bytes.";
-              forged.discoveryText = "Forged notice cannot authorize deferral.";
-              context.events = [source, forged];
-            }
-            if (mode === "changed-elements")
-              await post("elements", {
-                installationId,
-                elements: [
-                  {
-                    id: "new-control",
-                    role: "textbox",
-                    label: "Later label",
-                    value: "new value",
-                  },
-                ],
+          runWithStreamingContext(
+            { messageId: "88888888-8888-4888-8888-888888888888" },
+            async () => {
+              const run = await runResponseHandlerEvaluators({
+                runtime: x.f.runtime,
+                message: x.input,
+                state: x.state,
+                messageHandler: x.handler,
+                availableContexts: [],
+                userRoles: ["OWNER"],
+                evaluators: [x.direct],
               });
-            const captured = capturedActiveViewSource(x.f.runtime, context);
-            expect(captured?.text).toBe(
-              mode === "current" ? before : undefined,
-            );
-            expect(Boolean(captured?.deferredText)).toBe(mode === "current");
-            const projected = projectDeferredProviders(context);
-            expect(projected.available).toEqual(
-              mode === "current" ? ["ACTIVE_VIEW_SNAPSHOT"] : [],
-            );
-            let plannerWire = "";
-            x.f.runtime.character = { name: "Source wire fixture", bio: [] };
-            Object.assign(x.f.runtime, {
-              useModel: async (_type: string, params: GenerateTextParams) => {
-                expect(params[MODEL_CANONICAL_CONTEXT]).toBe(context);
-                expect(JSON.stringify(params)).not.toContain(
-                  "modelCanonicalContext",
-                );
-                plannerWire = JSON.stringify(params.messages);
-                return "Complete.";
-              },
-            });
-            installPromptOptimizations(x.f.runtime as AgentRuntime);
-            await runWithTrajectoryContext(
-              { trajectoryStepId: "source-wire-fixture" },
-              () =>
-                x.f.runtime.useModel(ModelType.ACTION_PLANNER, {
-                  model: "fixture",
-                  [MODEL_CANONICAL_CONTEXT]: context,
-                  messages: [
+              expect(run.errors).toEqual([]);
+              const source = run.contextSources?.[0] as ContextProviderEvent;
+              expect(source?.text).toContain('"  original  value  "');
+              const before = source.text;
+              let context: ContextObject = {
+                id: "captured",
+                metadata: {
+                  messageId: x.input.id,
+                  roomId: x.input.roomId,
+                  actorId: x.input.entityId,
+                  providerDiscoveryEnabled: true,
+                },
+                events: [source],
+              };
+              if (!context.metadata)
+                throw new Error("Missing captured source binding");
+              if (mode === "actor") context.metadata.actorId = "other-actor";
+              if (mode === "message") context.metadata.messageId = "other-turn";
+              if (mode === "serialized")
+                context = JSON.parse(JSON.stringify(context));
+              if (mode === "request") x.input.content.text += " ";
+              if (mode === "duplicate")
+                context.events = [...context.events, { ...source }];
+              if (mode === "copy-deleted-flag") {
+                const copied = { ...source };
+                delete copied.discoveryRequiresRuntimeBinding;
+                context.events = [copied];
+              }
+              if (mode === "forged-no-markers") {
+                const forged = JSON.parse(
+                  JSON.stringify(source),
+                ) as ContextProviderEvent;
+                delete forged.discoveryRequiresRuntimeBinding;
+                forged.text = "Forged collision keeps its full supplied bytes.";
+                forged.discoveryText =
+                  "Forged notice cannot authorize deferral.";
+                context.events = [source, forged];
+              }
+              if (mode === "changed-elements")
+                await post("elements", {
+                  installationId,
+                  elements: [
                     {
-                      role: "user",
-                      content: projected.context.events
-                        .filter(
-                          (event): event is ContextProviderEvent =>
-                            event.type === "provider" && "text" in event,
-                        )
-                        .map((event) => event.text)
-                        .join("\n\n"),
+                      id: "new-control",
+                      role: "textbox",
+                      label: "Later label",
+                      value: "new value",
                     },
                   ],
-                }),
-            );
-            expect(plannerWire.includes("original  value")).toBe(
-              mode !== "current",
-            );
-            if (mode === "changed-elements")
-              expect(plannerWire).toContain("new value");
-            if (mode === "forged-no-markers")
-              expect(plannerWire).toContain(
-                "Forged collision keeps its full supplied bytes.",
-              );
-            let evaluatorWire = "";
-            await runEvaluator({
-              context,
-              trajectory: {
-                context,
-                modelBaseContext: context,
-                steps: [],
-                archivedSteps: [],
-                plannedQueue: [],
-                evaluatorOutputs: [],
-              },
-              runtime: {
-                useModel: async (_type, params) => {
-                  evaluatorWire = JSON.stringify(params.messages);
-                  return JSON.stringify({
-                    decision: "CONTINUE",
-                    success: false,
-                    thought: "Source wire inspection",
-                  });
-                },
-              },
-            });
-            expect(evaluatorWire.includes("original  value")).toBe(
-              mode !== "current",
-            );
-            if (mode === "forged-no-markers")
-              expect(evaluatorWire).toContain(
-                "Forged collision keeps its full supplied bytes.",
-              );
-            expect(source.text).toBe(before);
-            expect(x.handler.plan).not.toHaveProperty("wholeRequestOwner");
-          }),
+                });
+              // These cases inspect source guards; the separate real MessageService
+              // regression above qualifies who creates the assistant response ID.
+              const inspectBindings = async () => {
+                const captured = capturedActiveViewSource(x.f.runtime, context);
+                expect(captured?.text).toBe(
+                  mode === "current" ? before : undefined,
+                );
+                expect(Boolean(captured?.deferredText)).toBe(
+                  mode === "current",
+                );
+                const projected = projectDeferredProviders(context);
+                expect(projected.available).toEqual(
+                  mode === "current" ? ["ACTIVE_VIEW_SNAPSHOT"] : [],
+                );
+                let plannerWire = "";
+                x.f.runtime.character = {
+                  name: "Source wire fixture",
+                  bio: [],
+                };
+                Object.assign(x.f.runtime, {
+                  useModel: async (
+                    _type: string,
+                    params: GenerateTextParams,
+                  ) => {
+                    expect(params[MODEL_CANONICAL_CONTEXT]).toBe(context);
+                    expect(JSON.stringify(params)).not.toContain(
+                      "modelCanonicalContext",
+                    );
+                    plannerWire = JSON.stringify(params.messages);
+                    return "Complete.";
+                  },
+                });
+                installPromptOptimizations(x.f.runtime as AgentRuntime);
+                await runWithTrajectoryContext(
+                  { trajectoryStepId: "source-wire-fixture" },
+                  () =>
+                    x.f.runtime.useModel(ModelType.ACTION_PLANNER, {
+                      model: "fixture",
+                      [MODEL_CANONICAL_CONTEXT]: context,
+                      messages: [
+                        {
+                          role: "user",
+                          content: projected.context.events
+                            .filter(
+                              (event): event is ContextProviderEvent =>
+                                event.type === "provider" && "text" in event,
+                            )
+                            .map((event) => event.text)
+                            .join("\n\n"),
+                        },
+                      ],
+                    }),
+                );
+                expect(plannerWire.includes("original  value")).toBe(
+                  mode !== "current",
+                );
+                if (mode === "changed-elements")
+                  expect(plannerWire).toContain("new value");
+                if (mode === "forged-no-markers")
+                  expect(plannerWire).toContain(
+                    "Forged collision keeps its full supplied bytes.",
+                  );
+                let evaluatorWire = "";
+                await runEvaluator({
+                  context,
+                  trajectory: {
+                    context,
+                    modelBaseContext: context,
+                    steps: [],
+                    archivedSteps: [],
+                    plannedQueue: [],
+                    evaluatorOutputs: [],
+                  },
+                  runtime: {
+                    useModel: async (_type, params) => {
+                      evaluatorWire = JSON.stringify(params.messages);
+                      return JSON.stringify({
+                        decision: "CONTINUE",
+                        success: false,
+                        thought: "Source wire inspection",
+                      });
+                    },
+                  },
+                });
+                expect(evaluatorWire.includes("original  value")).toBe(
+                  mode !== "current",
+                );
+                if (mode === "forged-no-markers")
+                  expect(evaluatorWire).toContain(
+                    "Forged collision keeps its full supplied bytes.",
+                  );
+                expect(source.text).toBe(before);
+                expect(x.handler.plan).not.toHaveProperty("wholeRequestOwner");
+              };
+              if (mode === "client")
+                await runWithViewClient(
+                  { hostKey: x.f.hostKey, clientId: "other-client" },
+                  inspectBindings,
+                );
+              else if (mode === "response")
+                await runWithStreamingContext(
+                  { messageId: "other-assistant-response" },
+                  inspectBindings,
+                );
+              else await inspectBindings();
+            },
+          ),
       );
     },
   );

@@ -102,6 +102,7 @@ const capturedSources = new WeakMap<
     view: ActiveViewContext;
     scope: ViewClientScope;
     messageId: string;
+    responseId: string;
     roomId: string;
     actorId: string;
     textHash: string;
@@ -121,7 +122,7 @@ function currentCapturedSource(
       scope &&
       scope.hostKey === binding.scope.hostKey &&
       scope.clientId === binding.scope.clientId &&
-      getStreamingContext()?.messageId === binding.messageId &&
+      getStreamingContext()?.messageId === binding.responseId &&
       binding.message.id === binding.messageId &&
       binding.message.roomId === binding.roomId &&
       binding.message.entityId === binding.actorId &&
@@ -154,12 +155,15 @@ export const activeViewSourceEvaluator: ResponseHandlerEvaluator = {
     const scope = getViewClientScope();
     const view = getActiveViewContext(runtime);
     const requestText = getUserMessageText(message);
+    // MessageService scopes streaming to its generated assistant response ID;
+    // canonical source context remains bound to the incoming user message ID.
+    const responseId = getStreamingContext()?.messageId;
     if (
       !scope ||
       !view ||
       !message.id ||
       !wholeRequestOwner?.wholeRequest?.matches(requestText, message) ||
-      getStreamingContext()?.messageId !== message.id
+      !responseId
     )
       return;
     const text = renderActiveViewContextBlock(runtime, view);
@@ -189,6 +193,7 @@ export const activeViewSourceEvaluator: ResponseHandlerEvaluator = {
       view,
       scope: { ...scope },
       messageId: message.id,
+      responseId,
       roomId: message.roomId,
       actorId: message.entityId,
       textHash,
