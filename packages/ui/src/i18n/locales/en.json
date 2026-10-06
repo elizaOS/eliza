@@ -2718,6 +2718,7 @@
   "conversations.bucketLastWeek": "Last week",
   "conversations.bucketLastYear": "Over a year ago",
   "conversations.bucketMonthsAgo": "{{count}} months ago",
+  "conversations.bucketUndated": "No date",
   "conversations.bucketWeeksAgo": "{{count}} weeks ago",
   "conversations.bucketYearsAgo": "{{count}} years ago",
   "conversations.bucketYesterday": "Yesterday",
