@@ -53,15 +53,24 @@ type DeliveryReceipt =
       providerMessageIds: string[];
     };
 
-function parseReceipt(value: string | null): DeliveryReceipt | undefined {
+function parseReceipt(value: unknown): DeliveryReceipt | undefined {
   if (value === "complete")
     return { state: "complete", providerMessageIds: [] };
   if (value === "dispatching" || value === "indeterminate") {
     return { state: "indeterminate" };
   }
-  if (!value?.startsWith("{")) return undefined;
+  // Both GatewayRedis adapters (and Upstash's default deserialization) hand
+  // back an already-parsed object for a JSON receipt; a raw string is parsed.
+  if (
+    !(value && typeof value === "object") &&
+    !(typeof value === "string" && value.startsWith("{"))
+  ) {
+    return undefined;
+  }
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const parsed = (
+      typeof value === "string" ? JSON.parse(value) : value
+    ) as Record<string, unknown>;
     if (parsed.state === "dispatching" || parsed.state === "indeterminate") {
       return { state: "indeterminate" };
     }
@@ -223,9 +232,9 @@ export async function deliverInternalMessage(
   // during rollout would strand complete/indeterminate receipts and could
   // resend a reminder that the provider already accepted.
   const dedupeKey = `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`;
-  let existingValue: string | null;
+  let existingValue: unknown;
   try {
-    existingValue = await dependencies.redis.get<string>(dedupeKey);
+    existingValue = await dependencies.redis.get<unknown>(dedupeKey);
   } catch {
     // error-policy:J1 no provider call occurs when durable replay state is unavailable.
     return Response.json(
