@@ -178,44 +178,58 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
   });
 });
 
-it("keeps real Home notifications and base surfaces without restoring retired Today declarations", () => {
-  const stale = {
-    id: "todo.items",
-    pluginId: "todo",
-    slot: "home" as const,
-    label: "Today",
-    defaultEnabled: true,
-  };
-  const plugins = [{ id: "todo", enabled: true, isActive: true }];
-  const home = resolveWidgetsForSlot("home", plugins, [stale]);
-  expect(home.some(({ declaration }) => declaration.id === "todo.items")).toBe(
-    false,
-  );
-  expect(
-    home.some(({ declaration }) => declaration.id === "calendar.upcoming"),
-  ).toBe(true);
-  expect(
-    resolveWidgetsForSlot("chat-sidebar", plugins, [
-      { ...stale, slot: "chat-sidebar" },
-    ]).some(({ declaration }) => declaration.id === "todo.items"),
-  ).toBe(true);
-  mockState.plugins = [{ ...plugins[0], widgets: [stale] }];
-  __setHydratedForTests(true);
-  __ingestNotificationForTests(
-    {
-      ...notification(
-        "11111111-1111-4111-8111-111111111111",
-        "Keep this reminder",
-      ),
-      priority: "high",
-      createdAt: Date.now(),
-    },
-    1,
-  );
-  render(<HomeScreen onOpenTile={() => {}} />);
-  expect(screen.getByText("Keep this reminder")).toBeTruthy();
-  expect(screen.getByText("Mostly clear")).toBeTruthy();
-  expect(screen.getByTestId("home-time-widget")).toBeTruthy();
-  expect(screen.queryByTestId("today-todo-row")).toBeNull();
-  expect(screen.queryByTestId("todo-goal-attention-row")).toBeNull();
-});
+it.each(["todo", "todos"])(
+  "keeps real Home notifications without restoring retired Today declarations from %s",
+  (pluginId) => {
+    const stale: PluginWidgetDeclaration = {
+      id: "todo.items",
+      pluginId,
+      slot: "home" as const,
+      label: "Today",
+      defaultEnabled: true,
+      uiSpec: {
+        root: "root",
+        state: {},
+        elements: {
+          root: {
+            type: "Text",
+            props: { text: "Retired Today" },
+            children: [],
+          },
+        },
+      },
+    };
+    const plugins = [{ id: pluginId, enabled: true, isActive: true }];
+    const home = resolveWidgetsForSlot("home", plugins, [stale]);
+    expect(
+      home.some(({ declaration }) => declaration.id === "todo.items"),
+    ).toBe(false);
+    expect(
+      home.some(({ declaration }) => declaration.id === "calendar.upcoming"),
+    ).toBe(true);
+    expect(
+      resolveWidgetsForSlot("chat-sidebar", plugins, [
+        { ...stale, slot: "chat-sidebar" },
+      ]).some(({ declaration }) => declaration.id === "todo.items"),
+    ).toBe(true);
+    mockState.plugins = [{ ...plugins[0], widgets: [stale] }];
+    __setHydratedForTests(true);
+    __ingestNotificationForTests(
+      {
+        ...notification(
+          "11111111-1111-4111-8111-111111111111",
+          "Keep this reminder",
+        ),
+        priority: "high",
+        createdAt: Date.now(),
+      },
+      1,
+    );
+    render(<HomeScreen onOpenTile={() => {}} />);
+    expect(screen.getByText("Keep this reminder")).toBeTruthy();
+    expect(screen.getByText("Mostly clear")).toBeTruthy();
+    expect(screen.getByTestId("home-time-widget")).toBeTruthy();
+    expect(screen.queryByTestId("today-todo-row")).toBeNull();
+    expect(screen.queryByTestId("todo-goal-attention-row")).toBeNull();
+  },
+);
