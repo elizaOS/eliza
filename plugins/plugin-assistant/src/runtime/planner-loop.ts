@@ -3292,10 +3292,6 @@ function renderPlannerModelInput(params: {
     trajectoryStepsToMessages(params.trajectory.steps, {
       redactText: composeToolDiagnosticRedactor(params.runtime),
     });
-  // Preserve append-only originals; the deterministic wire copy removes only
-  // canonical JSON indentation, keeping earlier tool messages byte-stable.
-  const stepMessages =
-    compactCanonicalToolMessagesForModel(completeStepMessages);
   // Action names + parameter schemas now ride directly on the tools array
   // (each Action is exposed as its own native tool), so there is no separate
   // available_actions block rendered into the prompt. A routing hint already
@@ -3350,13 +3346,15 @@ function renderPlannerModelInput(params: {
   // through stepMessages (proper assistant/tool pairs). Including it as a
   // dynamic block would re-introduce the JSON-dump anti-pattern in the user
   // message and invalidate the cache prefix on every iteration.
-  const messages = buildStageChatMessages({
-    contextSegments,
-    stageLabel: "planner_stage",
-    instructions,
-    dynamicBlocks: [],
-    stepMessages,
-  });
+  const messages = compactCanonicalToolMessagesForModel(
+    buildStageChatMessages({
+      contextSegments,
+      stageLabel: "planner_stage",
+      instructions,
+      dynamicBlocks: [],
+      stepMessages: completeStepMessages,
+    }),
+  );
   return {
     messages,
     promptSegments,

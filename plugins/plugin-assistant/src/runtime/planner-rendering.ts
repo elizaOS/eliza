@@ -7,6 +7,7 @@
 
 import type {
   ActionResult,
+  Character,
   ChatMessage,
   ChatMessageContentPart,
   JsonValue,
@@ -14,8 +15,11 @@ import type {
   PlannerToolResult,
 } from "@elizaos/core";
 import {
+  buildCanonicalSystemPrompt,
+  buildCharacterStyleDirections,
   composeToolDiagnosticRedactor,
   getActionResultActionName,
+  isObjectRecord,
   isReadView,
   projectCompleteToolArgsForModel,
   projectCompleteToolValueForModel,
@@ -228,13 +232,18 @@ export function toolMessageContent(result: PlannerToolResult): string {
 }
 
 /**
- * Remove only canonical JSON indentation from a model-facing history copy.
- * Original messages and every result field/string remain unchanged; custom
- * text and JSON that cannot roundtrip byte-for-byte keep their original form.
+ * Compact a stage's canonical tool-message copies. A deferred LifeOps reply
+ * may inherit only the character fields proved present in this same stage's
+ * leading system message. Other fields and the canonical history stay intact.
  */
 export function compactCanonicalToolMessagesForModel(
   messages: readonly ChatMessage[],
 ): ChatMessage[] {
+  const first = messages[0];
+  const system =
+    first?.role === "system" && typeof first.content === "string"
+      ? first.content
+      : "";
   return messages.map((message): ChatMessage => {
     if (message.role !== "tool" || !Array.isArray(message.content)) {
       return message;
@@ -261,10 +270,19 @@ export function compactCanonicalToolMessagesForModel(
           // Only change the canonical serialization emitted by the planner.
           // This rejects lossy parse roundtrips (duplicate object keys, large
           // integers, etc.) and retains legacy/custom tool text verbatim.
-          if (JSON.stringify(result, null, 2) !== output.value) return part;
+          if (
+            JSON.stringify(result, null, 2) !== output.value &&
+            JSON.stringify(result) !== output.value
+          )
+            return part;
           return {
             ...part,
-            output: { ...output, value: JSON.stringify(result) },
+            output: {
+              ...output,
+              value: JSON.stringify(
+                inheritDeferredReplyCharacter(result, system),
+              ),
+            },
           };
         } catch {
           // error-policy:J3 Non-JSON tool text is valid evidence. Preserve it
@@ -274,6 +292,82 @@ export function compactCanonicalToolMessagesForModel(
       }),
     };
   });
+}
+
+/** A wire-only omission requires the complete canonical character blocks, not
+ * a name match or a substring in user/tool content. Non-chat style fields stay
+ * with their owner because the stage does not inherit them. */
+function inheritDeferredReplyCharacter(
+  result: unknown,
+  system: string,
+): unknown {
+  if (
+    !system ||
+    !isObjectRecord(result) ||
+    result.modelReplyRequired !== true ||
+    result.transcriptVisibility !== "internal" ||
+    !isObjectRecord(result.data) ||
+    typeof result.data.replyGrounding !== "string"
+  )
+    return result;
+  const grounding = JSON.parse(result.data.replyGrounding) as unknown;
+  if (
+    !isObjectRecord(grounding) ||
+    grounding.domain !== "lifeops" ||
+    JSON.stringify(grounding) !== result.data.replyGrounding ||
+    typeof grounding.characterVoice !== "string"
+  )
+    return result;
+  const voice = JSON.parse(grounding.characterVoice) as unknown;
+  if (
+    !isObjectRecord(voice) ||
+    JSON.stringify(voice) !== grounding.characterVoice ||
+    typeof voice.system !== "string" ||
+    !(
+      typeof voice.bio === "string" ||
+      (Array.isArray(voice.bio) &&
+        voice.bio.every((entry) => typeof entry === "string"))
+    ) ||
+    !isObjectRecord(voice.style) ||
+    ![voice.style.all, voice.style.chat].every(
+      (rules) =>
+        rules === undefined ||
+        (Array.isArray(rules) &&
+          rules.every((rule) => typeof rule === "string")),
+    )
+  )
+    return result;
+  const name = /^# Message Directions for ([^\r\n]+)$/m.exec(system)?.[1];
+  if (!name) return result;
+  const character = { ...voice, name } as unknown as Character;
+  const canonical = buildCanonicalSystemPrompt({ character });
+  const directions = buildCharacterStyleDirections({ character });
+  if (
+    !canonical ||
+    !directions ||
+    !system.startsWith(`${canonical}\n\n`) ||
+    !system.includes(`\n\n${directions}\n\n`)
+  )
+    return result;
+  const inheritedVoice = { ...voice };
+  delete inheritedVoice.system;
+  delete inheritedVoice.bio;
+  const remainingStyle = { ...voice.style };
+  delete remainingStyle.all;
+  delete remainingStyle.chat;
+  if (Object.keys(remainingStyle).length) inheritedVoice.style = remainingStyle;
+  else delete inheritedVoice.style;
+  const projectedGrounding = { ...grounding };
+  if (Object.keys(inheritedVoice).length)
+    projectedGrounding.characterVoice = JSON.stringify(inheritedVoice);
+  else delete projectedGrounding.characterVoice;
+  return {
+    ...result,
+    data: {
+      ...result.data,
+      replyGrounding: JSON.stringify(projectedGrounding),
+    },
+  };
 }
 
 function hasRecoverableContentLocator(value: unknown): boolean {
