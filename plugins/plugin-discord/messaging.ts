@@ -110,6 +110,27 @@ function closeFenceLine(openFence: OpenFence): string {
 	return `${openFence.indent}${openFence.markerChar.repeat(openFence.markerLen)}`;
 }
 
+/**
+ * A fence opened on the buffer's last line has no content in it; closing it
+ * there would send an empty code block. Returns the buffer without that
+ * opener, or undefined when the buffer does not end with one.
+ */
+function withoutTrailingOpener(
+	text: string,
+	openFence: OpenFence | null,
+): string | undefined {
+	if (!openFence || !text.endsWith(openFence.openLine)) {
+		return undefined;
+	}
+	const contentEnd = text.length - openFence.openLine.length;
+	if (contentEnd === 0) {
+		return "";
+	}
+	return text[contentEnd - 1] === "\n"
+		? text.slice(0, contentEnd - 1)
+		: undefined;
+}
+
 function closeFenceIfNeeded(text: string, openFence: OpenFence | null): string {
 	if (!openFence) {
 		return text;
@@ -306,21 +327,10 @@ export function chunkDiscordText(
 		if (!current) {
 			return;
 		}
-		// A fence opened on the buffer's last line has no content in this
-		// chunk; closing it here would send an empty code block. The opener is
-		// re-emitted at the start of the next chunk below.
-		const contentEnd =
-			openFence && current.endsWith(openFence.openLine)
-				? current.length - openFence.openLine.length
-				: -1;
-		const unopened =
-			contentEnd === 0 || (contentEnd > 0 && current[contentEnd - 1] === "\n")
-				? current.slice(0, Math.max(0, contentEnd - 1))
-				: undefined;
+		// The opener is re-emitted at the start of the next chunk below.
 		const payload =
-			unopened !== undefined
-				? unopened
-				: closeFenceIfNeeded(current, openFence);
+			withoutTrailingOpener(current, openFence) ??
+			closeFenceIfNeeded(current, openFence);
 		if (payload.trim().length) {
 			chunks.push(payload);
 		}
@@ -434,7 +444,7 @@ export function chunkDiscordText(
 				// The flushed chunk already ends with the synthetic closer, so the
 				// original closing line is redundant; appending it would reopen an
 				// empty code block.
-				if (wasInsideFence && nextOpenFence === null && reopenedFence) {
+				if (wasInsideFence && nextOpenFence === null) {
 					current = "";
 					currentLines = 0;
 					reopenedFence = false;
@@ -476,7 +486,9 @@ export function chunkDiscordText(
 		reopenedFence &&
 		current.slice(openFence.openLine.length).trim() === "";
 	if (current.length && !onlyReopenedFence) {
-		const payload = closeFenceIfNeeded(current, openFence);
+		const payload =
+			withoutTrailingOpener(current, openFence) ??
+			closeFenceIfNeeded(current, openFence);
 		if (payload.trim().length) {
 			chunks.push(payload);
 		}

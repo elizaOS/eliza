@@ -309,4 +309,23 @@ describe("chunkDiscordText surrogate-pair safety", () => {
 			}
 		},
 	);
+
+	it("keeps an authored empty code block that fits inside one chunk", () => {
+		const authored = "```\n   \n```";
+		const text = `Intro.\n${authored}\n${"tail words here\n".repeat(6)}`;
+		const chunks = chunkDiscordText(text, { maxChars: 40, maxLines: 999 });
+
+		expect(chunks.length).toBeGreaterThan(1);
+		expect(chunks[0].startsWith(`Intro.\n${authored}\n`)).toBe(true);
+	});
+
+	it("does not send an empty code block for an unterminated trailing opener", () => {
+		const text = `${"x".repeat(50)}\n\n\`\`\`ts`;
+		const chunks = chunkDiscordText(text, { maxChars: 20, maxLines: 999 });
+
+		expect(chunks.join("").trim()).toBe("x".repeat(50));
+		for (const chunk of chunks) {
+			expect(chunk).not.toContain("```");
+		}
+	});
 });
