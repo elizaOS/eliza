@@ -19,6 +19,8 @@ import type {
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import type { ContextProviderEvent } from "./context-object";
+import type { DirectActionRoutingRule } from "./direct-action-routing";
 
 export interface ResponseHandlerPatch {
 	processMessage?: MessageHandlerAction;
@@ -30,7 +32,11 @@ export interface ResponseHandlerPatch {
 	replaceIntentScope?: {
 		intents: readonly string[];
 		invalidateFields: readonly string[];
+		/** Registered, admitted owner; retained only during this evaluator run. */
+		owner?: DirectActionRoutingRule;
 	};
+	/** Complete canonical sources authored by trusted evaluators, outside model plans. */
+	contextSources?: readonly ContextProviderEvent[];
 	addContexts?: readonly AgentContext[];
 	addCandidateActions?: readonly string[];
 	addParentActionHints?: readonly string[];
@@ -49,6 +55,7 @@ export interface ResponseHandlerEvaluatorContext {
 	/** Runtime-only invalidations from earlier applied patches in this run.
 	 * Never populated from model output, plan extensions, or stored history. */
 	invalidatedScopeFields?: ReadonlySet<string>;
+	wholeRequestOwner?: DirectActionRoutingRule;
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
@@ -78,6 +85,7 @@ export interface ResponseHandlerPatchTrace {
 }
 
 export interface ResponseHandlerEvaluationRunResult {
+	contextSources?: ContextProviderEvent[];
 	activeEvaluators: string[];
 	appliedPatches: ResponseHandlerPatchTrace[];
 	candidateActionsAddedByEvaluators: string[];
@@ -390,9 +398,11 @@ export async function runResponseHandlerEvaluators(args: {
 	}
 
 	const invalidatedScopeFields = new Set<string>();
+	let wholeRequestOwner: DirectActionRoutingRule | undefined;
 	for (const evaluator of candidates) {
 		const context: ResponseHandlerEvaluatorContext = {
 			invalidatedScopeFields,
+			wholeRequestOwner,
 			runtime: args.runtime,
 			message: args.message,
 			state: args.state,
@@ -417,6 +427,8 @@ export async function runResponseHandlerEvaluators(args: {
 				args.availableContexts,
 			);
 			if (applied) {
+				if (patch.replaceIntentScope)
+					wholeRequestOwner = patch.replaceIntentScope.owner;
 				for (const field of applied.invalidatedScopeFields)
 					invalidatedScopeFields.add(field);
 				if (patch.clearCandidateActions === true) {
@@ -429,6 +441,10 @@ export async function runResponseHandlerEvaluators(args: {
 					result.candidateActionsAddedByEvaluators,
 					applied.candidateActionsAdded,
 				);
+			}
+			if (patch.contextSources?.length) {
+				result.contextSources ??= [];
+				result.contextSources.push(...patch.contextSources);
 			}
 		} catch (error) {
 			// error-policy:J7 Evaluators are independent Stage-1 enrichers; collect and

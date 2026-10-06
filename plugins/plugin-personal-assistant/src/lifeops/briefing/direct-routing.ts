@@ -71,6 +71,7 @@ export function createTrackedWorkRecapDirectRoutingRule(): DirectActionRoutingRu
     wholeRequest: {
       matches: isWholeGenericBriefRequest,
       invalidateFields: ["calendarReadBindings", "visualContinuation"],
+      inputScope: "domain-only",
     },
     matches: looksLikeTrackedWorkRecapRequest,
   };

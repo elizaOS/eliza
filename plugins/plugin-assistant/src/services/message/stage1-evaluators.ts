@@ -344,6 +344,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
             replaceIntentScope: {
               intents: [text],
               invalidateFields: wholeOwner.wholeRequest.invalidateFields,
+              owner: wholeOwner,
             },
             setContexts: mergeAgentContexts(wholeOwner.contexts),
             clearCandidateActions: true,

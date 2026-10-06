@@ -87,6 +87,7 @@ import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
 import { retainedPendantSchema } from "./retained-pendant-schema.ts";
+import { activeViewSourceEvaluator } from "./view-action-affinity.ts";
 import {
   viewNavigationEvaluator,
   viewNavigationField,
@@ -192,7 +193,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       dstackOperatorAttestationRoute,
     ],
     responseHandlerFieldEvaluators: [viewNavigationField],
-    responseHandlerEvaluators: [viewNavigationEvaluator],
+    responseHandlerEvaluators: [
+      viewNavigationEvaluator,
+      activeViewSourceEvaluator,
+    ],
     actions: [
       ...promoteSubactionsToActions(viewsAction),
       terminalAction,

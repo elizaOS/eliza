@@ -71,6 +71,14 @@ export interface ContextMemoryEvent extends ContextEventBase {
 }
 
 export interface ContextProviderEvent extends ContextEventBase {
+	/** Runtime-only dependency scope: other operations must restore this source first. */
+	[OWNED_CONTEXT_SOURCE_SCOPE]?: {
+		readonly actionNames: readonly string[];
+		/** Checks current runtime provenance against this exact canonical turn. */
+		canDefer(context: ContextObject, source: ContextProviderEvent): boolean;
+	};
+	/** Serialized originals require fresh runtime provenance before deferral. */
+	discoveryRequiresRuntimeBinding?: true;
 	reviewableSources?: ProviderResult["reviewableSources"];
 	type: "provider";
 	name: string;
@@ -88,6 +96,10 @@ export interface ContextProviderEvent extends ContextEventBase {
 	 */
 	cacheStable?: boolean;
 }
+
+export const OWNED_CONTEXT_SOURCE_SCOPE: unique symbol = Symbol.for(
+	"elizaos.ownedContextSourceScope",
+);
 
 export interface ContextToolEvent extends ContextEventBase {
 	type: "tool";
