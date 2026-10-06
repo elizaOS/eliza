@@ -106,6 +106,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CredentialManagerPlugin.class);
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);
+        registerPlugin(SlotClockPlugin.class);
         // BridgeActivity appends these after discovery, before the first JS export.
         initialPlugins.add(SafePushNotificationsPlugin.class);
         super.onCreate(savedInstanceState);

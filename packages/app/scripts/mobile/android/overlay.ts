@@ -19,6 +19,7 @@ import {
   ANDROID_PERMISSIONS,
   androidAospRoleLauncherIntentFilter,
   ensureElizaBootReceiverManifest,
+  ensureElizaClockActivityManifest,
 } from "./manifest-policy.ts";
 import {
   assertSharedTreeOnlyForEliza,
@@ -429,7 +430,6 @@ export function overlayAndroid({
       "ElizaBrowserActivity",
       "ElizaContactsActivity",
       "ElizaCameraActivity",
-      "ElizaClockActivity",
       "ElizaCalendarActivity",
     ]) {
       const nextXml = removeApplicationComponentBlock(
@@ -460,7 +460,6 @@ export function overlayAndroid({
       "ElizaBrowserActivity",
       "ElizaContactsActivity",
       "ElizaCameraActivity",
-      "ElizaClockActivity",
       "ElizaCalendarActivity",
       "ElizaDialActivity",
       "ElizaAssistActivity",
@@ -784,42 +783,23 @@ export function overlayAndroid({
             </intent-filter>
         </activity>`,
     );
-    // Clock: replaces stripped DeskClock. SET_ALARM is critical.
-    xml = appendMissingApplicationBlock(
-      xml,
-      `${androidPackage}.ElizaClockActivity`,
-      `
-        <activity
-            android:name="${androidPackage}.ElizaClockActivity"
-            android:exported="true"
-            android:label="Clock"
-            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter(
-              {
-                enabled: includeAospRoleLaunchers,
-              },
-            )}
-            <intent-filter>
-                <action android:name="android.intent.action.SET_ALARM" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SHOW_ALARMS" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SET_TIMER" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SHOW_TIMERS" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.DISMISS_ALARM" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>`,
+    // The source template owns Clock's app entry. It does not replace DeskClock.
+    const clockTemplatePath = path.join(
+      platformsDir,
+      "android",
+      "app",
+      "src",
+      "main",
+      "AndroidManifest.xml",
     );
+    xml = ensureElizaClockActivityManifest(xml, androidPackage, {
+      templateXml: fs.existsSync(clockTemplatePath)
+        ? fs.readFileSync(clockTemplatePath, "utf8")
+        : undefined,
+      javaAvailable: fs.existsSync(
+        path.join(dstJava, "ElizaClockActivity.java"),
+      ),
+    });
     // Calendar: replaces stripped Calendar.
     xml = appendMissingApplicationBlock(
       xml,
