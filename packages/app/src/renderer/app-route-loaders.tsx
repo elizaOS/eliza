@@ -6,6 +6,7 @@ import {
   loadCharacterEditor,
   loadCharacterExperienceView,
   loadCharacterSkillsView,
+  loadClockView,
   loadDatabasePageView,
   loadDesktopWorkspaceSection,
   loadFilesView,
@@ -67,6 +68,7 @@ export const LazyCharacterEditor = lazyNamedView(
   loadCharacterEditor,
   "CharacterEditor",
 );
+export const LazyClockView = lazyNamedView(loadClockView, "ClockView");
 export const LazyAutomationsFeed = lazyNamedView(
   loadAutomationsFeed,
   "AutomationsFeed",

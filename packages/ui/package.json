@@ -209,7 +209,8 @@
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/host": "workspace:*",
     "@elizaos/contracts": "workspace:*",
-    "@elizaos/voice": "workspace:*"
+    "@elizaos/voice": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/haptics": "8.0.2",

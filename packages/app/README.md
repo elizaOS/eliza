@@ -14,6 +14,38 @@ Concurrent worktrees should use `bun run --cwd packages/app dev:shared`. UI chan
 require `bun run --cwd packages/app audit:app` and inspection of affected desktop/mobile
 captures.
 
+## Clock requests and reviewed Android handoffs
+
+`/clock` displays this device's time and prepares an alarm request in the existing
+chat composer. It performs no native effect. Android Clock owns alarms; server
+reminders and FCM notifications remain separate. Timers and stopwatch are not
+implemented by this surface.
+
+`ClockReviewDialog`, `ClockConsentCoordinator`, and `ClockHandoff` provide the
+native review, durable one-use consent/receipt, and external-Clock dispatch
+components. The host must bind the existing authenticated device execution claim,
+its exact operation/digest/attempt, and the current native owner before registering
+`reviewClock`/`confirmClock`/`cancelClock` for the existing
+`@elizaos/plugin-assistant/device-clock-review` coordinator. Renderer arguments
+cannot mint approvals. Do not advertise `clock.handoff.v1` until that wiring is
+qualified. Await native retirement before replacing the owner. An `opened` receipt
+proves activity dispatch only; unknown dispatch is never automatically replayed.
+
+Direct Android chat uses Clock's private enrollment only when the request has no
+existing device-binding headers or `metadata.clientDevice`. Bound requests retain
+their established transport, capabilities and selected context, including revoked
+bindings; Clock cannot replace them with a new enrollment. Such clients need Clock
+support in their own authoritative executor before their chat can propose Clock
+actions. Native Clock listing/review remains independently available. Optional
+caller Authorization, Cookie and CSRF headers must match the native stored session;
+native credentials are always the authority and never replaced by caller values.
+
+Android requires `com.android.alarm.permission.SET_ALARM` for mutating Clock
+intents, plus a compatible external handler. The app excludes its own launcher
+from resolution and does not receive alarm/timer intents. No app-owned alarm
+scheduler or exact-alarm permission is added. Native JVM tests qualify validation,
+consent and durability; Android dialog/launch/ringing need separate device tests.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

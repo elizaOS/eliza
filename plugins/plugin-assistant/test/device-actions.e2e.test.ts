@@ -212,6 +212,25 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     expect(
       (await request("/register", { label: "Fixture phone" })).status,
     ).toBe(200);
+    const context = await request("/context");
+    expect(context.status).toBe(200);
+    expect(context.body).toMatchObject({
+      agentId: runtimeState.runtime.agentId,
+      subjectUserId: ownerA,
+      installationId: device,
+      enrollmentId: expect.any(String),
+      scope: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect((await request("/context")).body).toEqual(context.body);
+    expect(
+      (await request("/context", undefined, "a", "c".repeat(64))).status,
+    ).toBe(409);
+    expect((await request("/context", undefined, "b", deviceKey)).status).toBe(
+      409,
+    );
+    expect(
+      (await request("/context", undefined, "invalid", deviceKey)).status,
+    ).toBe(401);
     expect(
       (await request("/register", { label: "Fixture phone" })).status,
     ).toBe(200);
@@ -246,6 +265,11 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     expect(
       (await request("/register", { label: "Other owner phone" }, "b")).status,
     ).toBe(200);
+    const otherContext = await request("/context", undefined, "b");
+    expect(otherContext.status).toBe(200);
+    expect(otherContext.body.subjectUserId).toBe(ownerB);
+    expect(otherContext.body.scope).not.toBe(context.body.scope);
+    expect(otherContext.body.enrollmentId).not.toBe(context.body.enrollmentId);
     expect(
       (await request("/proposals", undefined, "b")).body.proposals,
     ).toEqual([]);
@@ -410,6 +434,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       removePgliteDirOnCleanup: false,
     });
     origin = await start();
+    expect((await request("/context")).body).toEqual(context.body);
     proposals = (await request("/proposals")).body.proposals;
     expect(proposals[0].state).toBe("approved");
     const claims = await Promise.all([
@@ -977,6 +1002,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           ...allCapabilities.split(","),
           "reminders.local-record.v2",
           "reminders.create.v1",
+          "clock.handoff.v2",
         ].sort(),
       );
       expect(enrolled.body.capabilities).toContain("clock.handoff.v1");
@@ -1020,7 +1046,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       const clockSchemas = operationSchema.anyOf!.filter((p) =>
         p.properties?.type.enum?.includes("clock_handoff"),
       );
-      expect(clockSchemas).toHaveLength(4);
+      expect(clockSchemas).toHaveLength(5);
       expect(clockSchemas.every((p) => p.additionalProperties === false)).toBe(
         true,
       );
@@ -1050,6 +1076,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         operation: unknown,
         context: unknown,
         operationKey = randomUUID(),
+        capabilities = capability,
       ) => {
         mapsActionParameters = {
           operation,
@@ -1062,7 +1089,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
             authorization: `Bearer ${sessions.a}`,
             "x-eliza-device-id": device,
             "x-eliza-device-key": deviceKey,
-            "x-eliza-device-capabilities": capability,
+            "x-eliza-device-capabilities": capabilities,
             "content-type": "application/json",
           },
           body: JSON.stringify({
@@ -1095,6 +1122,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         { type: "clock_handoff", action: "dismiss", alarmId: "other" },
         { type: "clock_handoff", action: "snooze", snoozeMinutes: 0 },
         { type: "clock_handoff", action: "snooze", snoozeMinutes: 61 },
+        { ...set, days: [] },
+        { ...set, days: [1, 2, 3, 4, 5, 6, 7] },
       ])
         expect((await proposeOverHttp(operation, observation)).status).toBe(
           409,
@@ -1237,8 +1266,131 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           expect(historical.body.action.data.executed).toBe(false);
         }
       }
+      const repeatCapability = "clock.handoff.v2";
+      const repeatRequest = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, repeatCapability);
+      for (const days of [
+        null,
+        "weekdays",
+        ["2", "3"],
+        [0],
+        [8],
+        [2.5],
+        [2, 2],
+        [1, 2, 3, 4, 5, 6, 7, 1],
+      ]) {
+        expect(
+          (
+            await proposeOverHttp(
+              { ...set, days },
+              observation,
+              randomUUID(),
+              repeatCapability,
+            )
+          ).status,
+        ).toBe(409);
+      }
+      const repeatSetSchema = clockSchemas.find((schema) =>
+        schema.required?.includes("days"),
+      );
+      expect(repeatSetSchema?.properties?.days.items?.enum).toEqual([
+        1, 2, 3, 4, 5, 6, 7,
+      ]);
+      const repeatDigests = new Set<string>();
+      for (const days of [[], [1, 2, 3, 4, 5, 6, 7], [2, 3, 4, 5, 6]]) {
+        const operation = { ...set, hour: 9, minute: 0, days };
+        const key = randomUUID();
+        const proposed = await proposeOverHttp(
+          operation,
+          observation,
+          key,
+          repeatCapability,
+        );
+        expect(proposed.status).toBe(200);
+        const id = proposed.body.action.data.proposalId;
+        const pending = (await repeatRequest("/proposals")).body.proposals.find(
+          (proposal: any) => proposal.id === id,
+        );
+        expect(pending.payload.operation).toEqual(operation);
+        repeatDigests.add(pending.digest);
+        expect(
+          (
+            await repeatRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(409);
+        expect(
+          (
+            await repeatRequest(`/proposals/${id}/decision`, {
+              digest: pending.digest,
+              decision: "approve",
+            })
+          ).status,
+        ).toBe(200);
+        expect(
+          (
+            await clockRequest(`/proposals/${id}/claim`, {
+              digest: pending.digest,
+            })
+          ).status,
+        ).toBe(409);
+        const claimed = await repeatRequest(`/proposals/${id}/claim`, {
+          digest: pending.digest,
+        });
+        expect(claimed.status).toBe(200);
+        expect(claimed.body.proposal.payload.operation.days).toEqual(days);
+        const body = {
+          digest: pending.digest,
+          attemptId: claimed.body.proposal.execution.attemptId,
+          receipt: {
+            outcome: "applied",
+            operationId: randomUUID(),
+            result: { kind: "clock-handoff", action: "set", status: "opened" },
+          },
+        };
+        expect(
+          (await clockRequest(`/proposals/${id}/receipt`, body)).status,
+        ).toBe(409);
+        const recorded = await repeatRequest(`/proposals/${id}/receipt`, body);
+        expect(recorded.status).toBe(200);
+        expect(recorded.body.proposal.payload.operation.days).toEqual(days);
+        expect(
+          (await repeatRequest(`/proposals/${id}/receipt`, body)).status,
+        ).toBe(200);
+        const historical = await proposeOverHttp(
+          operation,
+          undefined,
+          key,
+          repeatCapability,
+        );
+        expect(historical.status).toBe(200);
+        expect(historical.body.action.data.executed).toBe(false);
+        expect(historical.body.action.text).toContain(
+          "not proof of its final alarm state",
+        );
+        expect(
+          (
+            await proposeOverHttp(
+              { ...operation, days: days.length ? [] : [2] },
+              observation,
+              key,
+              repeatCapability,
+            )
+          ).status,
+        ).toBe(409);
+      }
+      expect(repeatDigests.size).toBe(3);
       console.info(
-        "Clock HTTP/PGlite: 5 outcome lifecycles, capability/schema/timezone rejection, duplicate claims and historical opened-only receipt PASS",
+        "Clock HTTP/PGlite: v1 and explicit one-off/daily/weekdays v2 lifecycles; capability loss, malformed days, immutable replay, opened-only receipts PASS",
       );
     }
     {
@@ -2484,6 +2636,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       );
     }
     expect((await request("/revoke", {})).status).toBe(200);
+    expect((await request("/context")).status).toBe(409);
     expect((await request("/proposals")).status).toBe(409);
     expect(
       (await request("/register", { label: "Reused revoked installation" }))
