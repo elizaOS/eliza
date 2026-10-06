@@ -407,6 +407,20 @@ describe("coding-tools WEB_FETCH", () => {
     ).toBe("— © ’ € … ™");
   });
 
+  it("decodes the numeric nbsp spellings to the same readable space as &nbsp;", () => {
+    // &#160; and &#xA0; are the same character as &nbsp;; the readable-text
+    // contract (#33991) requires all three spellings to collapse equally.
+    expect(htmlToReadableText("<p>a&#160;b</p>")).toBe("a b");
+    expect(htmlToReadableText("<p>a&#xA0;b</p>")).toBe("a b");
+    expect(htmlToReadableText("<td>Price&#160;&#160;:$5</td>")).toBe(
+      "Price:$5",
+    );
+    // The named spelling stays readable too (regression pin).
+    expect(htmlToReadableText("<td>Price&nbsp;&nbsp;:$5</td>")).toBe(
+      "Price:$5",
+    );
+  });
+
   it("removes browser-tokenized and unclosed script/style blocks", () => {
     expect(
       htmlToReadableText(

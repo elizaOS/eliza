@@ -33,6 +33,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
   const mutations = new Map<string, (body: URLSearchParams) => object>();
   let writes = 0;
   let legacyObservation: Record<string, unknown>;
+  let legacyCapture: Record<string, unknown>;
   let beforeChargeResponse: (() => Promise<void>) | null = null;
   let beforeInvoiceResponse: (() => Promise<void>) | null = null;
   const server = createServer((request, response) => {
@@ -144,6 +145,37 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       "utf8",
     );
     for (const statement of captureMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await database.exec(statement);
+    const oldCapture = await prepareInvoiceObservation(undefined, true);
+    const originalRow = (
+      await database.query<{
+        evidence: import("../../../lib/services/subscription-invoice-event-evidence").SubscriptionInvoiceEventEvidence;
+      }>("SELECT evidence FROM subscription_invoice_event_evidence WHERE receipt_id=$1", [
+        oldCapture.owner.receiptId,
+      ])
+    ).rows[0]!;
+    const { observeRetainedCollectingInvoiceCapture } = await import(
+      "../../../lib/services/retained-collecting-invoice-capture"
+    );
+    const oldEvidence = await observeRetainedCollectingInvoiceCapture(
+      originalRow.evidence,
+      oldCapture.stripe,
+    );
+    await database.query(
+      "INSERT INTO subscription_invoice_observations(organization_id,receipt_id,request_id,version,observation,observed_at) VALUES($1,$2,$3,1,$4,clock_timestamp())",
+      [
+        oldCapture.owner.organizationId,
+        oldCapture.owner.receiptId,
+        oldCapture.input.leaseToken,
+        JSON.stringify(oldEvidence),
+      ],
+    );
+    legacyCapture = (await oldCapture.rows())[0]!;
+    const debtMigration = await readFile(
+      new URL("../../migrations/0533_subscription_invoice_debt_observations.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of debtMigration.split("--> statement-breakpoint"))
       if (statement.trim()) await database.exec(statement);
     service = await import("../../../lib/services/subscription-reconciliation");
   });
@@ -1407,7 +1439,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       );
     });
 
-  async function retainUnfunded(originalDebit = true, collecting = false) {
+  async function retainUnfunded(originalDebit = true, collecting = false, retainPrior = true) {
     const f = await seed();
     Object.assign(
       f.invoice,
@@ -1461,6 +1493,82 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
         receivedAt: Date.now(),
       }),
     ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
+    const priorInvoiceId = collecting ? `in_prior${randomUUID().replaceAll("-", "")}` : undefined;
+    const priorSourceId = collecting ? randomUUID() : undefined;
+    if (priorInvoiceId && priorSourceId) {
+      const priorSubscriptionId = `sub_${priorSourceId.replaceAll("-", "")}`;
+      await database.query(
+        `INSERT INTO billing_subscriptions SELECT (jsonb_populate_record(NULL::billing_subscriptions,
+        to_jsonb(s) || jsonb_build_object('id',$2::text,'status','canceled','stripe_subscription_id',$3::text,
+          'stripe_subscription_item_id',$4::text))).* FROM billing_subscriptions s WHERE id=$1`,
+        [
+          f.source.id,
+          priorSourceId,
+          priorSubscriptionId,
+          `si_${priorSourceId.replaceAll("-", "")}`,
+        ],
+      );
+      const repository = (await import("../subscription-billing-operations"))
+        .subscriptionBillingOperationsRepository;
+      await repository.createFence({
+        organizationId: f.source.organization_id,
+        subscriptionId: priorSourceId,
+        providerEventId: null,
+        providerEventCreatedAt: null,
+        providerObjectDigest: "f".repeat(64),
+        nextReconcileAt: null,
+        now: new Date(),
+      });
+      const prior = {
+        ...f.invoice,
+        id: priorInvoiceId,
+        subscription: priorSubscriptionId,
+        total: 20,
+        subtotal: 20,
+        starting_balance: 0,
+        ending_balance: 20,
+        amount_due: 0,
+        amount_paid: 0,
+        payment_intent: null,
+        charge: null,
+        status_transitions: { paid_at: f.invoice.status_transitions.paid_at - 1 },
+        lines: {
+          ...f.invoice.lines,
+          data: [
+            {
+              ...f.invoice.lines.data[0]!,
+              id: `il_${priorSourceId.replaceAll("-", "")}`,
+              subscription: priorSubscriptionId,
+              subscription_item: `si_${priorSourceId.replaceAll("-", "")}`,
+              amount: 20,
+              period: {
+                start: f.invoice.lines.data[0]!.period.start - 100,
+                end: f.invoice.lines.data[0]!.period.end - 100,
+              },
+            },
+          ],
+        },
+      };
+      objects.set(`/v1/invoices/${priorInvoiceId}`, prior);
+      const priorEvent = JSON.parse(
+        JSON.stringify({
+          ...event,
+          id: `evt_${randomUUID().replaceAll("-", "")}`,
+          created: event.created - 1,
+          data: { object: prior },
+        }),
+      );
+      if (retainPrior)
+        await expect(
+          reconcileStripePaidRenewal({
+            kind: "stripe.event",
+            eventId: priorEvent.id,
+            eventType: priorEvent.type,
+            event: priorEvent,
+            receivedAt: Date.now(),
+          }),
+        ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
+    }
     const receipt = (
       await database.query<{ id: string }>(
         "SELECT id FROM billing_subscription_event_receipts WHERE provider_event_id=$1",
@@ -1472,13 +1580,19 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       .subscriptionBillingOperationsRepository;
     return {
       f,
+      priorInvoiceId,
+      priorSourceId,
       owner: { organizationId: f.source.organization_id, receiptId: receipt.id },
       recovery,
       operations,
     };
   }
-  async function prepareInvoiceObservation(beforeRead?: () => Promise<void>, collecting = false) {
-    const original = await retainUnfunded(true, collecting);
+  async function prepareInvoiceObservation(
+    beforeRead?: () => Promise<void>,
+    collecting = false,
+    retainPrior = true,
+  ) {
+    const original = await retainUnfunded(true, collecting, retainPrior);
     const { f, owner, recovery } = original;
     const claim = (await recovery.claimOriginalInvoiceEvent(owner))!;
     const posting = {
@@ -1506,7 +1620,7 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
                     {
                       ...posting,
                       id: "cbtxn_prior",
-                      invoice: "in_prior",
+                      invoice: original.priorInvoiceId!,
                       type: "invoice_too_small",
                       amount: 20,
                       ending_balance: 20,
@@ -1770,8 +1884,8 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     );
     expect(await x.rows()).toHaveLength(1);
   });
-  async function prepareInvoiceMaintenance(collecting = false) {
-    const x = await prepareInvoiceObservation(undefined, collecting);
+  async function prepareInvoiceMaintenance(collecting = false, retainPrior = true) {
+    const x = await prepareInvoiceObservation(undefined, collecting, retainPrior);
     await x.operations.releaseEventForRetry(x.input);
     await database.query(
       "UPDATE billing_subscription_event_receipts SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
@@ -1825,6 +1939,25 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       ]),
     ).rejects.toThrow("immutable");
   });
+  test("debt migration preserves earlier capture evidence and immutable versions", async () => {
+    expect(
+      (
+        await database.query("SELECT * FROM subscription_invoice_observations WHERE id=$1", [
+          legacyCapture.id,
+        ])
+      ).rows,
+    ).toEqual([legacyCapture]);
+    await expect(
+      database.query("UPDATE subscription_invoice_observations SET version=version WHERE id=$1", [
+        legacyCapture.id,
+      ]),
+    ).rejects.toThrow("immutable");
+    await expect(
+      database.query("DELETE FROM subscription_invoice_observations WHERE id=$1", [
+        legacyCapture.id,
+      ]),
+    ).rejects.toThrow("immutable");
+  });
   for (const fault of ["refund", "missing_payment"] as const)
     test(`collecting maintenance preserves unavailable ${fault} without a balance fallback`, async () => {
       const x = await prepareInvoiceMaintenance(true);
@@ -1833,7 +1966,9 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
       else objects.delete(`/v1/payment_intents/${x.f.paymentIntent.id}`);
       expect(await x.recover()).toMatchObject({
         status: "degraded",
-        attempts: [{ receiptId: x.owner.receiptId, disposition: "unavailable" }],
+        attempts: expect.arrayContaining([
+          { receiptId: x.owner.receiptId, disposition: "unavailable" },
+        ]),
       });
       expect(await x.rows()).toHaveLength(0);
       expect(
@@ -1881,11 +2016,10 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     const x = await prepareInvoiceObservation(undefined, true);
     const result = await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
     const evidence = result.observation.observation;
-    expect(evidence.kind).toBe("retained_collecting_invoice_capture");
-    if (evidence.kind !== "retained_collecting_invoice_capture")
-      throw new Error("Expected capture");
-    expect(evidence.payment.id).toBe(x.f.paymentIntent.id);
-    expect(evidence.charge.amount_captured).toBe(x.f.invoice.amount_due);
+    expect(evidence.kind).toBe("observed_original_invoice_debt");
+    if (evidence.kind !== "observed_original_invoice_debt") throw new Error("Expected capture");
+    expect(evidence.capture.payment.id).toBe(x.f.paymentIntent.id);
+    expect(evidence.capture.charge.amount_captured).toBe(x.f.invoice.amount_due);
     const count = requests.length;
     expect((await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe)).replayed).toBe(
       true,
@@ -1899,19 +2033,73 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     const x = await prepareInvoiceObservation(undefined, true);
     const first = await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
     const evidence = first.observation.observation;
-    if (evidence.kind !== "retained_collecting_invoice_capture")
-      throw new Error("Expected capture");
+    if (evidence.kind !== "observed_original_invoice_debt") throw new Error("Expected capture");
     await database.query(
       "UPDATE billing_subscription_event_receipts SET updated_at=clock_timestamp()-interval '2 hours' WHERE id=$1",
       [x.owner.receiptId],
     );
     const next = (await x.recovery.claimOriginalInvoiceEvent(x.owner))!;
     for (const payload of [
-      { ...evidence, balance: { ...evidence.balance, organizationId: randomUUID() } },
-      { ...evidence, payment: { ...evidence.payment, id: "pi_replacement" } },
+      { ...evidence, capture: { ...evidence.capture, organizationId: randomUUID() } },
+      { ...evidence, trace: { ...evidence.trace, version: 2 } },
       {
         ...evidence,
-        charge: { ...evidence.charge, amount_captured: evidence.charge.amount_captured + 1 },
+        capture: {
+          ...evidence.capture,
+          balance: { ...evidence.capture.balance, organizationId: randomUUID() },
+        },
+      },
+      {
+        ...evidence,
+        trace: {
+          ...evidence.trace,
+          components: evidence.trace.components.map((c) => ({ ...c, amount: c.amount + 1 })),
+        },
+      },
+      {
+        ...evidence,
+        trace: {
+          ...evidence.trace,
+          components: evidence.trace.components.map((c) => ({
+            ...c,
+            subscriptionId: randomUUID(),
+          })),
+        },
+      },
+      {
+        ...evidence,
+        trace: {
+          ...evidence.trace,
+          components: evidence.trace.components.map((c) => ({
+            ...c,
+            period: { ...c.period, end: c.period.end + 1 },
+          })),
+        },
+      },
+      {
+        ...evidence,
+        originals: evidence.originals.map((c) => ({
+          ...c,
+          originalEvidenceDigests: ["0".repeat(64)],
+        })),
+      },
+
+      {
+        ...evidence,
+        capture: {
+          ...evidence.capture,
+          payment: { ...evidence.capture.payment, id: "pi_replacement" },
+        },
+      },
+      {
+        ...evidence,
+        capture: {
+          ...evidence.capture,
+          charge: {
+            ...evidence.capture.charge,
+            amount_captured: evidence.capture.charge.amount_captured + 1,
+          },
+        },
       },
     ])
       await expect(
@@ -1937,14 +2125,155 @@ export function definePaidRenewalRecoveryContract(database: RecoveryContractData
     ).toBe(2);
     expect(await allowanceCount(x.owner.organizationId)).toBe(0);
   });
+  for (const state of ["quarantined", "open"] as const)
+    test(`contributor ${state} fence revision changes during provider reads prevent attribution`, async () => {
+      const x = await prepareInvoiceObservation(undefined, true);
+      beforeChargeResponse = async () => {
+        await database.query(
+          "UPDATE subscription_billing_fences SET state=$2,fence_revision=fence_revision+1 WHERE subscription_id=$1",
+          [x.priorSourceId, state],
+        );
+      };
+      await expect(
+        x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe),
+      ).rejects.toMatchObject({
+        code:
+          state === "open"
+            ? "SUBSCRIPTION_INVOICE_OBSERVATION_UNAVAILABLE"
+            : "SUBSCRIPTION_INVOICE_DEBT_SOURCES_UNAVAILABLE",
+      });
+      expect(await x.rows()).toHaveLength(0);
+      expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+    });
+  test("missing retained contributing history cannot be replaced by a current provider invoice", async () => {
+    const x = await prepareInvoiceObservation(undefined, true, false);
+    await expect(
+      x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_INVOICE_DEBT_TRACE_UNAVAILABLE" });
+    expect(await x.rows()).toHaveLength(0);
+    expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+  });
+  test("maintenance retains a missing-debt incident without falling back to capture-only success", async () => {
+    const x = await prepareInvoiceMaintenance(true, false);
+    expect(await x.recover()).toMatchObject({
+      status: "degraded",
+      attempts: [{ receiptId: x.owner.receiptId, disposition: "unavailable" }],
+    });
+    expect(await x.rows()).toHaveLength(0);
+    expect(
+      (
+        await database.query(
+          "SELECT id FROM billing_subscription_incidents WHERE event_receipt_id=$1",
+          [x.owner.receiptId],
+        )
+      ).rows,
+    ).toHaveLength(1);
+    expect(
+      (
+        await database.query(
+          "SELECT status,processed_at FROM billing_subscription_event_receipts WHERE id=$1",
+          [x.owner.receiptId],
+        )
+      ).rows,
+    ).toEqual([{ status: "received", processed_at: null }]);
+    expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+    expect((await x.recover()).attempts).toEqual([]);
+  });
+  test("unrelated retained invoice with a closed source fence does not block traced contributors", async () => {
+    const x = await prepareInvoiceObservation(undefined, true);
+    const id = randomUUID(),
+      providerId = `sub_${id.replaceAll("-", "")}`,
+      invoiceId = `in_${id.replaceAll("-", "")}`;
+    await database.query(
+      `INSERT INTO billing_subscriptions SELECT (jsonb_populate_record(NULL::billing_subscriptions,
+      to_jsonb(s) || jsonb_build_object('id',$2::text,'status','canceled','stripe_subscription_id',$3::text,
+        'stripe_subscription_item_id',$4::text))).* FROM billing_subscriptions s WHERE id=$1`,
+      [x.f.source.id, id, providerId, `si_${id.replaceAll("-", "")}`],
+    );
+    const prior = objects.get(`/v1/invoices/${x.priorInvoiceId}`)! as typeof x.f.invoice;
+    const invoice = {
+      ...prior,
+      id: invoiceId,
+      subscription: providerId,
+      lines: {
+        ...prior.lines,
+        data: [
+          {
+            ...prior.lines.data[0]!,
+            subscription: providerId,
+            subscription_item: `si_${id.replaceAll("-", "")}`,
+          },
+        ],
+      },
+    };
+    objects.set(`/v1/invoices/${invoiceId}`, invoice);
+    const event = JSON.parse(
+      JSON.stringify({
+        id: `evt_${id.replaceAll("-", "")}`,
+        object: "event",
+        type: "invoice.paid",
+        api_version: "2024-11-20.acacia",
+        created: Math.floor(Date.now() / 1000),
+        livemode: false,
+        data: { object: invoice },
+      }),
+    );
+    const { reconcileStripePaidRenewal } = await import(
+      "../../../lib/services/stripe-paid-renewal"
+    );
+    await expect(
+      reconcileStripePaidRenewal({
+        kind: "stripe.event",
+        eventId: event.id,
+        eventType: event.type,
+        event,
+        receivedAt: Date.now(),
+      }),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_RENEWAL_UNAVAILABLE" });
+    await x.operations.createFence({
+      organizationId: x.owner.organizationId,
+      subscriptionId: id,
+      providerEventId: null,
+      providerEventCreatedAt: null,
+      providerObjectDigest: "f".repeat(64),
+      nextReconcileAt: null,
+      now: new Date(),
+    });
+    await database.query(
+      "UPDATE subscription_billing_fences SET state='quarantined',fence_revision=fence_revision+1 WHERE subscription_id=$1",
+      [id],
+    );
+    const result = await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
+    expect(result.observation.observation.kind).toBe("observed_original_invoice_debt");
+    if (result.observation.observation.kind !== "observed_original_invoice_debt")
+      throw new Error("Expected debt attribution");
+    expect(result.observation.observation.originals.map((row) => row.invoiceId)).toEqual([
+      x.priorInvoiceId!,
+    ]);
+    expect(await allowanceCount(x.owner.organizationId)).toBe(0);
+  });
+  test("saved attribution replay rechecks its contributing subscription fence without provider reads", async () => {
+    const x = await prepareInvoiceObservation(undefined, true);
+    await x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe);
+    const count = requests.length;
+    await database.query(
+      "UPDATE subscription_billing_fences SET state='quarantined',fence_revision=fence_revision+1 WHERE subscription_id=$1",
+      [x.priorSourceId],
+    );
+    await expect(
+      x.journal.observeAndRecordOriginalInvoice(x.input, x.stripe),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_INVOICE_DEBT_SOURCES_UNAVAILABLE" });
+    expect(requests).toHaveLength(count);
+    expect(await x.rows()).toHaveLength(1);
+  });
   test("maintenance records collecting capture through the original receipt lane", async () => {
     const x = await prepareInvoiceMaintenance(true);
     expect(await x.recover()).toMatchObject({
       status: "ok",
-      attempts: [{ receiptId: x.owner.receiptId, disposition: "recorded" }],
+      attempts: expect.arrayContaining([{ receiptId: x.owner.receiptId, disposition: "recorded" }]),
     });
     expect((await x.rows())[0]!.observation).toMatchObject({
-      kind: "retained_collecting_invoice_capture",
+      kind: "observed_original_invoice_debt",
     });
     expect(await allowanceCount(x.owner.organizationId)).toBe(0);
     expect(writes).toBe(0);
