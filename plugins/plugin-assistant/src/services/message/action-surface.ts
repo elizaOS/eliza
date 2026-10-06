@@ -4,6 +4,7 @@ import type {
   Action,
   AgentContext,
   CodingActionProfile,
+  DirectActionRoutingRule,
   IAgentRuntime,
   Memory,
   MessageHandlerResult,
@@ -44,7 +45,10 @@ import {
   getRecentConversationSearchText,
   isTaskCompleteRelayTurn,
 } from "./dialogue-context.ts";
-import { normalizeActionIdentifier } from "./direct-action-heuristics.ts";
+import {
+  intentClauses,
+  normalizeActionIdentifier,
+} from "./direct-action-heuristics.ts";
 import {
   hasUiViewPlannerScope,
   uiViewActionNames,
@@ -238,6 +242,9 @@ function operationWords(
   );
 }
 
+const COMPOUND_INTENT_BOUNDARY =
+  /\b(?:and|or|also|plus|then|if|when|unless|before|after|while)\b|[;,]/iu;
+
 function positiveIntentText(intent: string): string {
   const unquoted = intent.replace(
     /"[^"]*"|(?<![\p{L}\p{N}])'[^']*'(?![\p{L}\p{N}])|“[^”]*”|‘[^’]*’|`[^`]*`/gu,
@@ -263,6 +270,11 @@ export function retrieveContextualPlannerActions(args: {
   /** Preserve exact hints while filling only domains they do not own. */
   selectedActions?: readonly Action[];
   contextAliases?: (context: string) => readonly string[] | undefined;
+  /** Current-request contracts are used only after their owner passed admission. */
+  directRouting?: {
+    rules: readonly DirectActionRoutingRule[];
+    message: Memory;
+  };
   /** Initial routing may defer ambiguous domains; explicit discovery stays global. */
   deferUnscopedBootstrap?: boolean;
 }): {
@@ -365,6 +377,55 @@ export function retrieveContextualPlannerActions(args: {
     };
   };
   if (args.selectedActions) {
+    // Matching both the current request and its sole intent may narrow initial
+    // preload in the route's declared contexts; this is not completion evidence.
+    // Multiple clauses or extra candidates retain the existing bootstrap, and
+    // all unselected operations remain available through ordinary discovery.
+    const direct = args.directRouting;
+    const intents = args.intents?.filter((intent) => intent.trim()) ?? [];
+    const request = direct ? getActionInferenceMessageText(direct.message) : "";
+    const singleOutcome =
+      intents.length === 1 &&
+      [request, intents[0]].every((text) => {
+        const positive = positiveIntentText(text);
+        return (
+          positive.length > 0 &&
+          !COMPOUND_INTENT_BOUNDARY.test(positive) &&
+          intentClauses(positive)
+            .flatMap((clause) => clause.split(/[.!?\r\n:&]/u))
+            .filter((clause) => clause.trim()).length === 1
+        );
+      });
+    if (direct && singleOutcome && args.selectedActions.length > 0) {
+      for (const rule of direct.rules) {
+        if (!rule.matches(request, direct.message) || !rule.matches(intents[0]))
+          continue;
+        const owners = new Set(rule.actionNames.map(normalizeActionIdentifier));
+        if (
+          !args.selectedActions.every(
+            (action) =>
+              args.actions.includes(action) &&
+              owners.has(normalizeActionIdentifier(action.name)) &&
+              rule.requiredActionTags.every((tag) =>
+                (action.tags ?? []).some(
+                  (actual) =>
+                    actual.trim().toLowerCase() === tag.trim().toLowerCase(),
+                ),
+              ),
+          )
+        )
+          continue;
+        const covered = new Set(rule.contexts.map(normalizeContextId));
+        for (const domain of domains) {
+          if (
+            [domain, ...(args.contextAliases?.(domain) ?? [])].some((context) =>
+              covered.has(normalizeContextId(context)),
+            )
+          )
+            domains.delete(domain);
+        }
+      }
+    }
     for (const domain of domains) {
       const strongest = Math.max(
         0,
@@ -511,9 +572,7 @@ export function retrieveContextualPlannerActions(args: {
       tokenizeActionSearchText(resourceQuery).filter((word) =>
         GENERIC_OPERATION_WORDS.has(word),
       ).length === 1 &&
-      !/\b(?:and|or|also|plus|then|if|when|unless|before|after|while)\b|[;,]/iu.test(
-        resourceQuery,
-      )
+      !COMPOUND_INTENT_BOUNDARY.test(resourceQuery)
     ) {
       const resourceNames = owners
         .filter(
