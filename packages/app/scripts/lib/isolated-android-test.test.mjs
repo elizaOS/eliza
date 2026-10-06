@@ -60,6 +60,24 @@ if(args[0]==='pull'){const id=args[1].slice('/data/'.length,-4);fs.copyFileSync(
 
 if(args.includes('force-stop')&&((mode==='companion-stop-failure'&&args.at(-1)==='org.example.companion')||(mode.endsWith('stop-failure-test')&&args.at(-1).endsWith('.test'))||(mode.endsWith('stop-failure-app')&&!args.at(-1).endsWith('.test'))))process.exit(1);
 if(args[0]==='uninstall'){if(mode==='cleanup-failure')process.exit(1);state.packages=state.packages.filter(p=>p!==args[1]);fs.writeFileSync(file,JSON.stringify(state));}
+if(mode.startsWith('interruption')) {
+ if(args.includes('force-stop')){state.stopped=true;fs.writeFileSync(file,JSON.stringify(state));}
+ if(args.includes('ps'))console.log('UID PID NAME'+String.fromCharCode(10)+(state.armed&&!state.stopped?'u0_a123 312 org.example.consumer'+String.fromCharCode(10)+'u0_a123 313 bun':''));
+ if(args.includes('run-as')){
+  if(args.at(-1)==='-u')console.log('10123');
+  else if(args.at(-1)==='files/evidence/armed.json'){
+   if(!state.armed){console.error('No such file or directory');process.exit(1);}
+   console.log(JSON.stringify({runId:mode==='interruption-stale'?'b'.repeat(32):state.interruptionRunId,pid:312,startTimeTicks:'45678'}));
+  } else if(args.at(-1)==='/proc/312/stat')console.log('312 (helper) S '+Array(18).fill('0').join(' ')+' 45678 0');
+  else if(args.at(-1)==='/proc/312/status')console.log('Uid: 10123 10123 10123 10123');
+  else if(args.at(-1)==='/proc/312/cmdline')process.stdout.write('org.example.consumer'+String.fromCharCode(0));
+ }
+ if(args.includes('instrument')&&args.includes('interrupt')){
+  state.armed=true;state.stopped=false;state.interruptionRunId=args[args.indexOf('interruptionRunId')+1];fs.writeFileSync(file,JSON.stringify(state));
+  console.log(['INSTRUMENTATION_STATUS: class=org.example.consumer.Probe','INSTRUMENTATION_STATUS: test=probe','INSTRUMENTATION_STATUS: numtests=1','INSTRUMENTATION_STATUS_CODE: 1'].join(String.fromCharCode(10)));
+  const timer=setInterval(()=>{if(JSON.parse(fs.readFileSync(file)).stopped){clearInterval(timer);console.log('INSTRUMENTATION_RESULT: shortMsg=Process crashed.'+String.fromCharCode(10)+'INSTRUMENTATION_CODE: 0');}},10);return;
+ }
+}
 if(args.includes('instrument')){
  if(mode==='hanging'){fs.writeFileSync(${JSON.stringify(path.join(root, "instrumentation-started"))},'started');setInterval(()=>{},1000);return;}
 
@@ -1289,4 +1307,118 @@ test("composed user test cleans packages and restores owner after cancellation",
   assert.equal(report.userLifecycle.removed, true);
   assert.equal(report.userLifecycle.ownerRestored, true);
   assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+});
+
+test("owned interrupted phase retains death evidence separately and requires a successful recovery phase", async (t) => {
+  const f = fixture(t, "interruption");
+  f.options.variants = f.options.variants.slice(0, 1);
+  let late;
+  const report = await runIsolatedAndroidTest({
+    ...f.options,
+    testMethod: "probe",
+    collectVariant: async ({ interruptPhase, instrumentPhase }) => {
+      late = interruptPhase;
+      const pending = interruptPhase("death", {
+        args: ["-e", "phase", "interrupt"],
+        markerPath: "files/evidence/armed.json",
+        timeoutMs: 20000,
+      });
+      await assert.rejects(
+        instrumentPhase("overlap"),
+        /Another instrumentation phase/,
+      );
+      const result = await pending;
+      assert.equal(result.instrumentation.completed, 0);
+      assert.deepEqual(result.interruption.terminatedPids, [312, 313]);
+      await instrumentPhase("recovery");
+    },
+  });
+  assert.equal(report.variants[0].passed, true);
+  assert.equal(report.variants[0].phases[0].kind, "interruption");
+  assert.equal(report.variants[0].phases[1].recoversInterruption, "death");
+  assert.match(
+    report.variants[0].phases[0].interruption.runId,
+    /^[a-f0-9]{32}$/,
+  );
+  assert.equal(report.variants[0].phases[1].instrumentation.totalTests, 1);
+  await assert.rejects(
+    late("late", {
+      markerPath: "files/evidence/armed.json",
+    }),
+    /active owned variant/,
+  );
+});
+
+test("stale armed marker aborts instrumentation and cleans owned packages without qualifying death", async (t) => {
+  const f = fixture(t, "interruption-stale");
+  f.options.variants = f.options.variants.slice(0, 1);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      testMethod: "probe",
+      collectVariant: ({ interruptPhase }) =>
+        interruptPhase("death", {
+          args: ["-e", "phase", "interrupt"],
+          markerPath: "files/evidence/armed.json",
+          timeoutMs: 20000,
+        }),
+    }),
+    /Stale interruption marker/,
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.cleaned, true);
+  assert.equal(report.variants[0].phases[0].passed, false);
+  assert.equal(report.variants[0].phases[0].interruption, undefined);
+});
+
+test("a proven process death without an explicit successful recovery cannot pass the variant", async (t) => {
+  const f = fixture(t, "interruption");
+  f.options.variants = f.options.variants.slice(0, 1);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...f.options,
+      testMethod: "probe",
+      collectVariant: ({ interruptPhase }) =>
+        interruptPhase("death", {
+          args: ["-e", "phase", "interrupt"],
+          markerPath: "files/evidence/armed.json",
+          timeoutMs: 20000,
+        }),
+    }),
+    /Recovery phase required/,
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.variants[0].passed, undefined);
+  assert.equal(report.variants[0].phases[0].interruption.interrupted, true);
+  assert.equal(report.cleaned, true);
+});
+
+test("the harness owns interruption nonce and rejects malformed controls before dispatch", async (t) => {
+  const f = fixture(t, "interruption");
+  f.options.variants = f.options.variants.slice(0, 1);
+  await runIsolatedAndroidTest({
+    ...f.options,
+    testMethod: "probe",
+    collectVariant: async ({ interruptPhase }) => {
+      for (const options of [
+        { args: ["-e", "interruptionRunId", "a".repeat(32)] },
+        { markerPath: "files/../bad.json" },
+        { timeoutMs: 0 },
+      ])
+        await assert.rejects(
+          interruptPhase("invalid", {
+            markerPath: "files/evidence/armed.json",
+            ...options,
+          }),
+        );
+    },
+  });
+  assert.equal(
+    f.commands().filter((args) => args.includes("instrument")).length,
+    1,
+  );
 });
