@@ -1,0 +1,44 @@
+{
+  "name": "@elizaos/plugin-network",
+  "version": "0.0.0-spike",
+  "private": true,
+  "description": "SPIKE: The Network edge plugin (MEMBER_CONTEXT provider, SET_STATE action, NETWORK_SIGNALS evaluator) bound to an injected NetworkStore.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@elizaos/plugin-sqlite": "workspace:*",
+    "@elizaos/testing": "workspace:*",
+    "@types/node": "^25.0.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1"
+  },
+  "scripts": {
+    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "eliza": {
+    "platforms": ["edge"],
+    "platformDetails": {
+      "edge": "createNetworkEdgePlugin factory with injected NetworkStore; no plugin-owned state"
+    }
+  }
+}

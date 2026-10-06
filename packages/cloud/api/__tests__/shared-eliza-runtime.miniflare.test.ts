@@ -32,6 +32,8 @@ describe("Shared Eliza runtime in Workerd", () => {
   const outboundRequests: string[] = [];
   let searchPlannerRequests = 0;
   let todoPlannerRequests = 0;
+  let networkPlannerRequests = 0;
+  const networkRequestBodies: string[] = [];
   let reminderPlannerRequests = 0;
   let authenticatedImagePlannerRequests = 0;
   let untrustedImagePlannerRequests = 0;
@@ -49,6 +51,90 @@ describe("Shared Eliza runtime in Workerd", () => {
       async fetch(request) {
         const body = (await request.json()) as Record<string, unknown>;
         modelRequests.push(body);
+        // SPIKE (The Network): deterministic SET_STATE turn.
+        const networkSerialized = JSON.stringify(body);
+        if (networkSerialized.includes("pause my network intros")) {
+          networkPlannerRequests += 1;
+          networkRequestBodies.push(networkSerialized);
+          const completion = (message: Record<string, unknown>, finish: string) =>
+            Response.json({
+              id: `chatcmpl-network-${networkPlannerRequests}`,
+              object: "chat.completion",
+              created: 0,
+              model: "shared-runtime-probe",
+              choices: [{ index: 0, message: { role: "assistant", ...message }, finish_reason: finish }],
+              usage: { prompt_tokens: 40, completion_tokens: 10, total_tokens: 50 },
+            });
+          const toolCall = (name: string, args: Record<string, unknown>) =>
+            completion(
+              {
+                content: null,
+                tool_calls: [
+                  {
+                    id: `network-${name}-${networkPlannerRequests}`,
+                    type: "function",
+                    function: { name, arguments: JSON.stringify(args) },
+                  },
+                ],
+              },
+              "tool_calls",
+            );
+          if (networkSerialized.includes("Review recovered reply grounding.")) {
+            return completion(
+              {
+                content: JSON.stringify({
+                  grounded: true,
+                  completedChangeClaim: true,
+                  reason: "The network.set_state receipt is applied in this turn.",
+                }),
+              },
+              "stop",
+            );
+          }
+          if (networkPlannerRequests === 1) {
+            return toolCall("HANDLE_RESPONSE", {
+              shouldRespond: "RESPOND",
+              thought: "Member wants to pause introductions.",
+              contexts: ["network"],
+              intents: [],
+              candidateActionNames: ["SET_STATE"],
+              requiresTool: true,
+              replyText: "",
+              replyEffectStatus: "none",
+              facts: [],
+              relationships: [],
+              addressedTo: [],
+            });
+          }
+          const receiptIds = [
+            ...new Set(networkSerialized.match(/network:state:evt-[0-9]+/g) ?? []),
+          ];
+          if (receiptIds.length === 0) {
+            return toolCall("SET_STATE", {
+              state: "paused",
+              until: "2026-10-20",
+              note: "swamped at work",
+            });
+          }
+          const reply = "Done, intros are paused until Oct 20. Good luck with the crunch.";
+          return completion(
+            {
+              content: JSON.stringify(
+                networkSerialized.includes(
+                  "Compose a user-facing response in the assistant character",
+                )
+                  ? { response: reply, effectReceiptIds: receiptIds }
+                  : {
+                      success: true,
+                      decision: "FINISH",
+                      thought: "State saved.",
+                      messageToUser: reply,
+                    },
+              ),
+            },
+            "stop",
+          );
+        }
         const reviewPrompt = z
           .array(
             z
@@ -944,6 +1030,51 @@ describe("Shared Eliza runtime in Workerd", () => {
     ).toBe(true);
   }, 120_000);
 
+  test("SPIKE: runs the Network plugin SET_STATE action through the shared runtime inside Workerd", async () => {
+    const t0 = performance.now();
+    const response = await miniflare.dispatchFetch("https://runtime.test/network-turn");
+    const roundTripMs = performance.now() - t0;
+    const body = await response.text();
+    expect(response.status, body).toBe(200);
+    const payload = JSON.parse(body) as {
+      result: {
+        reply: string;
+        degraded: boolean;
+        usage?: Record<string, number>;
+        actionResults?: Array<Record<string, unknown>>;
+        timing?: unknown;
+      };
+      wallMs: number;
+      member: { state: string; stateUntil: string | null };
+      events: Array<{ type: string }>;
+      signals: unknown[];
+    };
+    console.info(
+      `NETWORK_WORKERD_TURN ${JSON.stringify({
+        roundTripMs: Math.round(roundTripMs),
+        workerWallMs: payload.wallMs,
+        modelCalls: networkPlannerRequests,
+        reply: payload.result.reply,
+        degraded: payload.result.degraded,
+        usage: payload.result.usage,
+        member: payload.member,
+        events: payload.events.length,
+        signals: payload.signals,
+        memberContextInPrompt: networkRequestBodies.some((b) =>
+          b.includes("Name: Ada (San Francisco)"),
+        ),
+        setStateToolOffered: networkRequestBodies.some((b) =>
+          b.includes('"name":"SET_STATE"'),
+        ),
+      })}`,
+    );
+    expect(payload.member.state).toBe("paused");
+    expect(payload.member.stateUntil).toBe("2026-10-20T00:00:00.000Z");
+    expect(payload.events).toHaveLength(1);
+    expect(payload.result.degraded).toBe(false);
+    expect(payload.result.reply).toContain("paused until Oct 20");
+  }, 120_000);
+
   test("runs the genuine TODO action and returns its applied mutation inside Workerd", async () => {
     const requestsBefore = modelRequests.length;
     const response = await miniflare.dispatchFetch(
@@ -1317,4 +1448,32 @@ describe("Shared Eliza runtime in Workerd", () => {
     },
     120_000,
   );
+
+  test("SPIKE: Workerd hello-turn round trip with and without the Network plugin", async () => {
+    const samples: Record<"0" | "1", number[]> = { "0": [], "1": [] };
+    const inits: Record<"0" | "1", Array<number | null>> = { "0": [], "1": [] };
+    for (let i = 0; i < 12; i++) {
+      for (const flag of ["0", "1"] as const) {
+        const t0 = performance.now();
+        const response = await miniflare.dispatchFetch(
+          `https://runtime.test/hello-bench?network=${flag}&i=${i}`,
+        );
+        const body = (await response.json()) as { reply: string; initMs: number | null };
+        samples[flag].push(performance.now() - t0);
+        inits[flag].push(body.initMs);
+        expect(response.status).toBe(200);
+        expect(body.reply).toBe("hello through the production Workerd adapter");
+      }
+    }
+    const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+    console.info(
+      `NETWORK_WORKERD_BENCH ${JSON.stringify({
+        n: 12,
+        withoutMedianMs: Math.round(med(samples["0"].slice(2)) * 10) / 10,
+        withMedianMs: Math.round(med(samples["1"].slice(2)) * 10) / 10,
+        withoutInitMs: inits["0"],
+        withInitMs: inits["1"],
+      })}`,
+    );
+  }, 300_000);
 });

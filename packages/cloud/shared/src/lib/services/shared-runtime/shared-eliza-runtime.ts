@@ -39,6 +39,7 @@ import { type AgentCapabilityTransport } from "@elizaos/core/capability-catalog"
 import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite/portable";
+import { createNetworkEdgePlugin } from "@elizaos/plugin-network";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos";
 import {
   createWebSearchEdgePlugin,
@@ -267,6 +268,7 @@ function createRuntime(options: {
   mediaPlugin?: Plugin;
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
+  networkPlugin?: Plugin;
 }): AgentRuntime {
   const capabilityPlugin = createSharedRuntimeCapabilitiesPlugin({
     agentId: options.agentKey,
@@ -305,6 +307,9 @@ function createRuntime(options: {
       ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
       ...(options.actionsEnabled && options.reminderPlugin ? [options.reminderPlugin] : []),
       ...(options.actionsEnabled && options.todoPlugin ? [options.todoPlugin] : []),
+      // SPIKE (The Network): host-injected store + member authority. Providers
+      // and evaluators stay on lifecycle turns; actions only when enabled.
+      ...(options.networkPlugin ? [options.networkPlugin] : []),
     ],
     logLevel: "error",
   });
@@ -784,6 +789,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       : undefined;
   const mediaPlugin =
     actionsEnabled && input.execution?.media ? sharedMediaPlugin(input.execution.media) : undefined;
+  const networkPlugin = input.execution?.network
+    ? createNetworkEdgePlugin({
+        store: input.execution.network.store,
+        authority: { memberId: input.execution.network.memberId },
+        actionsEnabled,
+      })
+    : undefined;
   const userEntityId =
     input.execution?.todos?.scope.entityId ?? stringToUuid(`${input.agentKey}:owner`);
   const lifecycleEntityId = stringToUuid(`${input.agentKey}:system-lifecycle`);
@@ -822,6 +834,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     mediaPlugin,
     reminderPlugin,
     todoPlugin,
+    networkPlugin,
   });
   exposeRuntime(runtime);
   try {
@@ -888,6 +901,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       }
       if (input.execution?.todos && !runtime.actions.some((action) => action.name === "TODO")) {
         throw new Error("Eliza Shared runtime initialized without its TODO action");
+      }
+      if (
+        input.execution?.network &&
+        !runtime.actions.some((action) => action.name === "SET_STATE")
+      ) {
+        throw new Error("Eliza Shared runtime initialized without its Network SET_STATE action");
       }
       if (
         input.execution?.media &&

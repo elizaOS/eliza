@@ -34,6 +34,7 @@ import {
   type ScheduledTaskRunner,
   type SharedReminderDelivery,
 } from "@elizaos/plugin-scheduling";
+import type { NetworkStore } from "@elizaos/plugin-network";
 import type { TodoStore } from "@elizaos/plugin-todos";
 import { runWebSearchEdge } from "@elizaos/plugin-web-search";
 import type {
@@ -197,6 +198,14 @@ export interface RunSharedAgentTurnInput {
     };
     /** Present only when the server has a configured, billable Cloud image authority. */
     media?: SharedMediaGenerationPort;
+    /**
+     * SPIKE (The Network): server-resolved Network member authority and store.
+     * Present only for turns the host resolved to project "network".
+     */
+    network?: {
+      memberId: string;
+      store: NetworkStore;
+    };
   };
 }
 

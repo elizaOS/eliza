@@ -16,6 +16,7 @@ import type {
   TodoMutationRecord,
   TodoStore,
 } from "@elizaos/plugin-todos";
+import { InMemoryNetworkStore } from "../../../../../plugins/plugin-network/src/memory-store";
 import { searchKeylessWeb } from "@elizaos/plugin-web-search";
 import { runWithCloudBindingsAsync } from "../../../shared/src/lib/runtime/cloud-bindings";
 import { chatSseFrame } from "../../../shared/src/lib/services/chat-sse-frames";
@@ -375,6 +376,87 @@ const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     return await runWithCloudBindingsAsync(env, async () => {
       const url = new URL(request.url);
+      if (url.pathname === "/hello-bench") {
+        const withNetwork = url.searchParams.get("network") === "1";
+        const i = url.searchParams.get("i") ?? "0";
+        const store = new InMemoryNetworkStore([
+          {
+            memberId: "mem_ada",
+            firstName: "Ada",
+            city: "San Francisco",
+            state: "open",
+            stateUntil: null,
+            facets: [],
+            activeItems: [],
+          },
+        ]);
+        let initMs: number | null = null;
+        const result = await runSharedAgentTurn({
+          character: {
+            name: "Shared Eliza Workerd Probe",
+            system: "You are Eliza.",
+            model: "local/shared-runtime-probe",
+          },
+          history: [],
+          message: "say hello",
+          messageIds: {
+            user: crypto.randomUUID(),
+            assistant: crypto.randomUUID(),
+          },
+          onRuntimeTiming: (receipt) => {
+            initMs = receipt.phases.runtimeInitializeDurationMs;
+          },
+          execution: {
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
+            agentKey: `personal:70000000-0000-5000-8000-0000000001${i.padStart(2, "0")}`,
+            roomKey: `personal:70000000-0000-5000-8000-0000000001${i.padStart(2, "0")}`,
+            ...(withNetwork ? { network: { memberId: "mem_ada", store } } : {}),
+          },
+        });
+        return Response.json({ reply: result.reply, initMs });
+      }
+      if (url.pathname === "/network-turn") {
+        const store = new InMemoryNetworkStore([
+          {
+            memberId: "mem_ada",
+            firstName: "Ada",
+            city: "San Francisco",
+            state: "open",
+            stateUntil: null,
+            facets: ["climbs at Mission Cliffs"],
+            activeItems: [
+              { kind: "invitation", summary: "Intro to Grace awaiting reply" },
+            ],
+          },
+        ]);
+        const started = Date.now();
+        const result = await runSharedAgentTurn({
+          character: {
+            name: "The Network",
+            system: "You are The Network, a warm, brief connector.",
+            model: "local/shared-runtime-probe",
+          },
+          history: [],
+          message: "swamped at work and I will be in Austin next week, pause my network intros until oct 20",
+          messageIds: {
+            user: "70000000-0000-5000-8000-000000000093",
+            assistant: "70000000-0000-5000-8000-000000000094",
+          },
+          execution: {
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
+            agentKey: "personal:70000000-0000-5000-8000-000000000095",
+            roomKey: "personal:70000000-0000-5000-8000-000000000095",
+            network: { memberId: "mem_ada", store },
+          },
+        });
+        return Response.json({
+          result,
+          wallMs: Date.now() - started,
+          member: await store.getMemberContext("mem_ada"),
+          events: store.events,
+          signals: store.signals,
+        });
+      }
       if (url.pathname === "/todo-turn") {
         const storedTodos: Todo[] = [];
         const scope = {
