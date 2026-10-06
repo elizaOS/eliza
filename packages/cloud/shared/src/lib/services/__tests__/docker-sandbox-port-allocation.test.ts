@@ -12,7 +12,7 @@
  * database, or network access.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   allocatePort,
   BRIDGE_PORT_MAX,
@@ -57,6 +57,24 @@ describe("allocatePort range exhaustion", () => {
 
   test("mixed in-range and out-of-range exclusions allocate the free port", () => {
     expect(allocatePort(10, 13, new Set([10, 11, 99]))).toBe(12);
+  });
+
+  test("finds the remaining port even when random picks an occupied port", () => {
+    const random = spyOn(Math, "random").mockReturnValue(0);
+    try {
+      expect(allocatePort(10, 13, new Set([10, 11, 99]))).toBe(12);
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  test("wraps around the range to find a free port", () => {
+    const random = spyOn(Math, "random").mockReturnValue(0.99);
+    try {
+      expect(allocatePort(10, 13, new Set([11, 12]))).toBe(10);
+    } finally {
+      random.mockRestore();
+    }
   });
 
   test("a genuinely full range still throws instead of looping", () => {
