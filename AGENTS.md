@@ -4,6 +4,28 @@ Monorepo for the Eliza agent runtime, application, cloud services, native
 bridges, benchmarks, and first-party plugins. Read the nearest package
 `README.md` and `AGENTS.md` before editing; manifests and source are authoritative.
 
+> [!IMPORTANT]
+> **The [contribution rules](README.md#contributing) are required for all issues
+> and PRs.** Report real bugs or missing approved MVP requirements. Link the PRD
+> and MVP plan. Do not add features outside that scope. Human maintainers must
+> discuss and approve new features, then add them to the PRD and MVP plan before
+> implementation issues or PRs are opened. Maintainers will close unnecessary
+> work and apply contributor penalties.
+
+- Prove a useful improvement with before-and-after behavior or relevant scores.
+  Prefer cleanup, removal, and reuse. Combine duplicate types and functions.
+  Add new types or code only when necessary. Explain the research, alternatives,
+  and reason for the chosen implementation.
+- Do not create work for minor points with no useful effect, unnecessary tests,
+  defensive code, validation, or truncation. Preserve required safety boundaries.
+- Validate real behavior end to end and attach results for the reviewed commit.
+  Use existing tests. Avoid new unit tests, mock-only proof, and tests that repeat
+  the implementation. For documentation-only work, check the text and links.
+- Every UI PR must include an uploaded MP4 explainer and walkthrough with video
+  evidence of the complete user flow, plus detailed steps to test the change.
+- Write all issues and PRs in ASD-STE100 Simplified Technical English. Use short,
+  direct sentences, explain technical terms, and write for a non-technical reader.
+
 - Preserve unrelated changes in this shared working tree.
 - Use pinned Bun 1.4.2 and Node 24.15.0, ESM, and the repository's Biome config.
 - Keep core independent of hosts; hosts compose assistant behavior, storage,
