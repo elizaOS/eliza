@@ -316,3 +316,14 @@ maintenance lane records unsupported traces and missing originals as incidents.
 Earlier balance/capture versions remain immutable and replayable. This does not
 grant allowance; repeated reads are not an atomic provider snapshot. Deploy
 migration 0533 before the updated maintenance handler.
+
+The private original-invoice commercial resolver binds an explicitly selected immutable
+source revision to the retained invoice item and interval, original purchased merchant,
+and purchased or reviewed paid-plan price/product. It never falls back to deployment
+prices or today's plan. The complementary commercial-origin resolver uses a named completed checkout, paid
+upgrade or originally configured downgrade when the invoice interval has no paid
+revision. It validates the actual command revisions and retained review/snapshot,
+preserves the signed invoice interval, and never synthesizes a paid source. Missing
+purchase/review authority remains unavailable. These digests record nominal terms only: receipt ownership,
+current collection evidence, policy decisions, fences and atomic financial publication
+remain separate requirements. Reading terms never changes lifecycle or allowance.
