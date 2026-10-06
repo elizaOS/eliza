@@ -608,7 +608,7 @@ export class CartesiaSonicTtsStream {
       flush: phrase.flush,
       duration: phrase.duration,
     };
-    this.sendOrQueue(JSON.stringify(removeUndefinedFields(payload)));
+    this.sendOrQueue(JSON.stringify(payload));
   }
 
   finish(): void {
@@ -998,12 +998,4 @@ function decodeBase64(value: string): Uint8Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
-}
-
-function removeUndefinedFields<T extends object>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).filter(
-      ([, entry]) => entry !== undefined,
-    ),
-  ) as T;
 }
