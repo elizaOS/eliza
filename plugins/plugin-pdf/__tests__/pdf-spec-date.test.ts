@@ -66,3 +66,25 @@ describe("parsePdfSpecDate years 0-99", () => {
     expect(parsePdfSpecDate("D:abcd")).toBeUndefined();
   });
 });
+
+describe("parsePdfSpecDate rejects impossible calendar dates", () => {
+  it("drops February 30 instead of overflowing into March", () => {
+    // Per-field clamp allows day 30 (1–31), but February has no 30th.
+    // Date.setUTCFullYear overflows to March 1; metadata must not invent that.
+    expect(parsePdfSpecDate("D:20240230120000Z")).toBeUndefined();
+    expect(parsePdfSpecDate("D:20240230120000+05'00'")).toBeUndefined();
+    expect(parsePdfSpecDate("D:20240230120000")).toBeUndefined();
+  });
+
+  it("drops April 31 instead of overflowing into May", () => {
+    expect(parsePdfSpecDate("D:20240431120000Z")).toBeUndefined();
+  });
+
+  it("drops February 29 in a non-leap year instead of overflowing into March", () => {
+    expect(parsePdfSpecDate("D:20230229120000Z")).toBeUndefined();
+    // Leap day in a leap year remains valid (year 0 and 2024 covered above).
+    expect(parsePdfSpecDate("D:20240229120000Z")?.toISOString()).toBe(
+      "2024-02-29T12:00:00.000Z",
+    );
+  });
+});
