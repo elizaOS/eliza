@@ -586,6 +586,87 @@ describe("BRIEF umbrella action — Daily Operations", () => {
 
     it.each([
       [
+        "2026-10-06T05:00:00.000Z",
+        "America/Los_Angeles",
+        "2026-10-06T01:01:00.000Z",
+        "2026-10-05",
+        "same_local_date",
+      ],
+      [
+        "2026-10-06T07:00:00.000Z",
+        "America/Los_Angeles",
+        "2026-10-06T06:59:00.000Z",
+        "2026-10-06",
+        "earlier_local_date",
+      ],
+      [
+        "2026-10-06T06:59:00.000Z",
+        "America/Los_Angeles",
+        "2026-10-06T18:00:00.000Z",
+        "2026-10-05",
+        "later_local_date",
+      ],
+      [
+        "2026-10-06T05:00:00.000Z",
+        "Asia/Tokyo",
+        "2026-10-06T01:01:00.000Z",
+        "2026-10-06",
+        "same_local_date",
+      ],
+      [
+        "2026-11-01T09:30:00.000Z",
+        "America/Los_Angeles",
+        "2026-11-01T08:30:00.000Z",
+        "2026-11-01",
+        "same_local_date",
+      ],
+    ])(
+      "anchors the requested morning preview to its actual local date: %s / %s",
+      (asOf, timeZone, dueAt, localAsOfDate, dateRelationToAsOf) => {
+        const sections = {
+          calendar: [],
+          life: [
+            {
+              id: "preview-reminder",
+              kind: "reminder" as const,
+              title: "Check delivery",
+              dueAt,
+              state: "visible" as const,
+            },
+          ],
+        };
+        const original = structuredClone(sections);
+        const prompt = buildNarrativePrompt({
+          kind: "morning",
+          period: "today",
+          asOf,
+          timeZone,
+          sections,
+        });
+        const payload = JSON.parse(prompt.split("Data:\n")[1]);
+        expect(payload).toMatchObject({
+          kind: "morning",
+          period: "today",
+          asOf,
+          localAsOfDate,
+          sections: {
+            calendar: [],
+            life: [{ dueAt, timeContext: { dueAt: { dateRelationToAsOf } } }],
+          },
+        });
+        expect(prompt).toContain(
+          "The requested briefing kind does not change the current date, daypart or selected period",
+        );
+        expect(prompt).toContain("identify it as a preview as of localAsOf");
+        expect(prompt).toContain(
+          "An empty today-only calendar does not establish tomorrow's or the next morning's availability",
+        );
+        expect(sections).toEqual(original);
+      },
+    );
+
+    it.each([
+      [
         "2026-10-03T01:00:00.000Z",
         "America/Los_Angeles",
         "2026-10-03T00:23:25.528Z",
