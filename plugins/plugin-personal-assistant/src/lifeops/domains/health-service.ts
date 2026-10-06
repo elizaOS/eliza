@@ -44,6 +44,7 @@ import {
   syncHealthConnectorData,
 } from "@elizaos/plugin-health";
 import type { LifeOpsContext } from "../lifeops-context.js";
+import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsHealthSyncState,
@@ -58,7 +59,11 @@ import {
   normalizeOptionalConnectorSide,
 } from "../service-normalize-connector.js";
 import { LifeOpsServiceError } from "../service-types.js";
-import { parseLocalDateKey } from "../time.js";
+import {
+  getLocalDateKey,
+  getZonedDateParts,
+  parseLocalDateKey,
+} from "../time.js";
 import {
   getHealthDataConnectorStatus,
   getHealthDataConnectorStatuses,
@@ -167,14 +172,21 @@ function dateOnlyFromMs(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-function resolveHealthWindow(request: {
-  startDate?: string | null;
-  endDate?: string | null;
-  days?: number;
-}): { startDate: string; endDate: string; days: number } {
+/**
+ * The requested health window. `ownerToday` is the owner's local date: health
+ * rows are keyed by the provider's local day, so a UTC "today" ends the
+ * default window a day early or late for owners away from UTC.
+ */
+function resolveHealthWindow(
+  request: {
+    startDate?: string | null;
+    endDate?: string | null;
+    days?: number;
+  },
+  ownerToday: string,
+): { startDate: string; endDate: string; days: number } {
   const days = normalizeDays(request.days);
-  const endDate =
-    normalizeDateOnly(request.endDate, "endDate") ?? dateOnlyFromMs(Date.now());
+  const endDate = normalizeDateOnly(request.endDate, "endDate") ?? ownerToday;
   const startDate =
     normalizeDateOnly(request.startDate, "startDate") ??
     dateOnlyFromMs(
@@ -546,7 +558,10 @@ export class HealthDomain {
     const side =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-    const { startDate, endDate } = resolveHealthWindow(request);
+    const { startDate, endDate } = resolveHealthWindow(
+      request,
+      await this.ownerToday(),
+    );
     const requestUrl = new URL("http://127.0.0.1/");
     const statuses = provider
       ? [
@@ -668,6 +683,12 @@ export class HealthDomain {
     });
   }
 
+  private async ownerToday(): Promise<string> {
+    const now = new Date();
+    const timeZone = await resolveOwnerTimeZone(this.ctx.runtime, now);
+    return getLocalDateKey(getZonedDateParts(now, timeZone));
+  }
+
   async getHealthSummary(
     request: GetLifeOpsHealthSummaryRequest = {},
   ): Promise<LifeOpsHealthSummaryResponse> {
@@ -675,7 +696,10 @@ export class HealthDomain {
     const side =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-    const { startDate, endDate } = resolveHealthWindow(request);
+    const { startDate, endDate } = resolveHealthWindow(
+      request,
+      await this.ownerToday(),
+    );
     if (request.forceSync) {
       return this.syncHealthConnectors({
         provider,
