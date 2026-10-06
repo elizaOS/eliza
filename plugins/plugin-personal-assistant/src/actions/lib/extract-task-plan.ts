@@ -546,6 +546,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
   if (managed !== undefined) {
     const first = await runExtractorPipeline({
       runtime,
+      responseFormat: { type: "json_object" },
       ...(managed.system !== undefined ? { system: managed.system } : {}),
       prompt: `${prompt}\n\nTask-create context is bound to this request. Selected history and provider-owned reference notices preserve standing constraints; current receipts stay complete. If any provider detail, constraint, correction, referent or historical dependency is missing or uncertain, return exactly {"restoreContext":true} before proposing any effect. Never infer omitted source contents.`,
       parser: parsePlan,
@@ -561,6 +562,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
       // restore or malformed full response fails without effects or a loop.
       const restored = await runExtractorPipeline({
         runtime,
+        responseFormat: { type: "json_object" },
         ...(managed.system !== undefined ? { system: managed.system } : {}),
         prompt: buildExtractionPrompt(
           intent,
@@ -583,6 +585,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
       );
     const repaired = await runExtractorPipeline({
       runtime,
+      responseFormat: { type: "json_object" },
       ...(managed.system !== undefined ? { system: managed.system } : {}),
       prompt: buildRepairPrompt({
         intent,
@@ -599,6 +602,7 @@ export async function extractTaskCreatePlanWithLlm(args: {
   }
   const { parsed } = await runExtractorPipeline({
     runtime,
+    responseFormat: { type: "json_object" },
     prompt,
     parser: (raw) => {
       const object = parseStructuredRecord(raw);

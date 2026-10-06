@@ -152,6 +152,11 @@ async function run(mode: string, outputs: string[]) {
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     useModel: vi.fn(
       async (_type: unknown, params: { prompt: string; system?: string }) => {
+        expect(_type).toBe("TEXT_LARGE");
+        expect(params).toHaveProperty("responseFormat", {
+          type: "json_object",
+        });
+        expect(params).not.toHaveProperty("responseSchema");
         prompts.push(params.prompt);
         systems.push(params.system);
         expect(effects).toBe(0);
