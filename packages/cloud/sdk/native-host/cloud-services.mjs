@@ -28,6 +28,16 @@ function invoiceProjection(value, id) {
     currency,
   }).resolvedOptions().maximumFractionDigits;
   const amount = (input) => {
+    // Legacy APIs return binary floating-point values. Above this conservative
+    // ceiling adjacent decimal minor units may round to the same number before
+    // this projection receives them. Decimal strings retain the full safe-unit
+    // range checked below; do not present a guessed cent from a large number.
+    if (
+      typeof input === "number" &&
+      digits > 0 &&
+      input > Number.MAX_SAFE_INTEGER / (2 * 10 ** digits)
+    )
+      throw fail("Invoice numeric amount exceeds exact precision.", 502);
     const source =
       typeof input === "number" && Number.isFinite(input)
         ? String(input)
