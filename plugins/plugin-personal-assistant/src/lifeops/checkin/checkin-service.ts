@@ -38,7 +38,7 @@ import {
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { computeOverdueFollowups } from "../../followup/followup-tracker.js";
 import { resolveOwnerDefinitionSurface } from "../definition-owner-surface.js";
-import { formatCalendarEventDateTime } from "../google/format-helpers.js";
+import { formatCalendarEventTimeRange } from "../google/format-helpers.js";
 import {
   computeMissedOccurrenceStreak,
   computeOccurrenceStreaks,
@@ -324,22 +324,6 @@ function morningBriefExcerpt(text: string): string {
     : characters.join("");
 }
 
-function renderMorningCalendarTimes(
-  event: Pick<MeetingEntry, "startAt" | "endAt">,
-  timezone?: string,
-): string {
-  return [event.startAt, event.endAt]
-    .map((startAt) =>
-      parseMs(startAt) === null
-        ? "time unavailable"
-        : formatCalendarEventDateTime(
-            { startAt, timezone: timezone ?? "UTC" },
-            { includeYear: true, includeTimeZoneName: true },
-          ),
-    )
-    .join(" – ");
-}
-
 /** Render morning facts from the existing report; retain every raw record in storage. */
 export function renderMorningCheckinReport(
   report: Omit<CheckinReport, "summaryText">,
@@ -416,10 +400,13 @@ export function renderMorningCheckinReport(
         );
       });
       if (calendarItem) combinedCalendarItems.add(calendarItem);
-      const facts = [row.status, calendarItem?.reason]
+      const facts = [
+        row.status?.toLowerCase() === "confirmed" ? null : row.status,
+        calendarItem?.reason === "on schedule" ? null : calendarItem?.reason,
+      ]
         .filter(Boolean)
         .join("; ");
-      return `- ${renderMorningCalendarTimes(row, report.timezone)}: ${morningBriefExcerpt(row.title)}${facts ? ` (${facts})` : ""}`;
+      return `- ${formatCalendarEventTimeRange({ ...row, timezone: report.timezone })}: ${morningBriefExcerpt(row.title)}${facts ? ` (${facts})` : ""}`;
     });
     const extra = list.rows.length - highlights.length;
     paragraphs.push(
@@ -480,7 +467,7 @@ export function renderMorningCheckinReport(
     );
     const highlights = items.slice(0, 3).map((item) => {
       const detail = item.calendarEvent
-        ? `${renderMorningCalendarTimes(item.calendarEvent, report.timezone)}${item.calendarEvent.status ? ` (${item.calendarEvent.status})` : ""}${item.reason ? `; ${item.reason}` : ""}`
+        ? `${formatCalendarEventTimeRange({ ...item.calendarEvent, timezone: report.timezone })}${item.calendarEvent.status && item.calendarEvent.status.toLowerCase() !== "confirmed" ? ` (${item.calendarEvent.status})` : ""}${item.reason && item.reason !== "on schedule" ? `; ${item.reason}` : ""}`
         : item.detail;
       return `- ${morningBriefExcerpt(item.title)}${detail ? `: ${morningBriefExcerpt(detail)}` : ""}`;
     });

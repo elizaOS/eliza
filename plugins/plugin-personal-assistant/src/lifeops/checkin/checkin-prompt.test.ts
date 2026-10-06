@@ -59,14 +59,13 @@ describe("morning Calendar presentation", () => {
   };
 
   it.each([
-    ["America/Los_Angeles", "Oct 6, 2026, 11:00 AM PDT", "11:15 AM PDT"],
-    ["Asia/Tokyo", "Oct 7, 2026, 3:00 AM GMT+9", "3:15 AM GMT+9"],
+    ["America/Los_Angeles", "Oct 6, 2026, 11:00 AM – 11:15 AM PDT"],
+    ["Asia/Tokyo", "Oct 7, 2026, 3:00 AM – 3:15 AM GMT+9"],
     [
       "Asia/Kathmandu",
-      "Oct 6, 2026, 11:45 PM GMT+5:45",
-      "Oct 7, 2026, 12:00 AM GMT+5:45",
+      "Oct 6, 2026, 11:45 PM – Oct 7, 2026, 12:00 AM GMT+5:45",
     ],
-  ])("renders the captured event once in %s", (timezone, start, end) => {
+  ])("renders the captured event once in %s", (timezone, range) => {
     const report = baseReport({
       generatedAt: "2026-10-06T15:00:32.103Z",
       timezone,
@@ -76,9 +75,9 @@ describe("morning Calendar presentation", () => {
     const original = structuredClone(report);
     const text = renderMorningCheckinReport(report);
     expect(text.match(/QA walkthrough/g)).toHaveLength(1);
-    expect(text).toContain(start);
-    expect(text).toContain(end);
-    expect(text).toContain("confirmed; added or updated");
+    expect(text).toContain(range);
+    expect(text).toContain("added or updated");
+    expect(text).not.toContain("confirmed");
     expect(text).toContain(section.summary);
     expect(text).not.toContain("2026-10-06T18:");
     expect(report).toEqual(original);
@@ -96,7 +95,11 @@ describe("morning Calendar presentation", () => {
       startAt: "2026-11-01T06:30:00.000Z",
       endAt: "2026-11-01T06:45:00.000Z",
     };
-    const rescheduled = { ...first, startAt: "2026-11-01T07:30:00.000Z" };
+    const rescheduled = {
+      ...first,
+      startAt: "2026-11-01T07:30:00.000Z",
+      endAt: "2026-11-01T07:45:00.000Z",
+    };
     const cancelled = { ...first, status: "cancelled" };
     const text = renderMorningCheckinReport(
       baseReport({
@@ -117,9 +120,9 @@ describe("morning Calendar presentation", () => {
       }),
     );
     expect(text.match(/QA walkthrough/g)).toHaveLength(4);
-    expect(text).toContain("1:30 AM EDT");
-    expect(text).toContain("1:30 AM EST");
-    expect(text).toContain("2:30 AM EST");
+    expect(text).toContain("1:30 AM – 1:45 AM EDT");
+    expect(text).toContain("1:30 AM – 1:45 AM EST");
+    expect(text).toContain("2:30 AM – 2:45 AM EST");
     expect(text).toContain("cancelled");
     expect(text).toContain("removed/cancelled");
   });
@@ -143,6 +146,25 @@ describe("morning Calendar presentation", () => {
       expect(text.split(meeting.title)).toHaveLength(2);
   });
 
+  it("omits routine status labels while retaining tentative status and raw Calendar facts", () => {
+    const tentative = { ...event, status: "tentative" };
+    const report = baseReport({
+      timezone: "America/Los_Angeles",
+      todaysMeetings: [tentative],
+      briefingSections: [
+        {
+          ...section,
+          items: [{ ...calendarItem(tentative), reason: "on schedule" }],
+        },
+      ],
+    });
+    const original = structuredClone(report);
+    const text = renderMorningCheckinReport(report);
+    expect(text).toContain("(tentative)");
+    expect(text).not.toContain("on schedule");
+    expect(report).toEqual(original);
+  });
+
   it("keeps future changes when today's Calendar is empty and discloses source failures", () => {
     const future = {
       ...event,
@@ -158,7 +180,7 @@ describe("morning Calendar presentation", () => {
       "Tomorrow's appointment",
     );
     expect(renderMorningCheckinReport(report)).toContain(
-      "Oct 7, 2026, 11:00 AM PDT",
+      "Oct 7, 2026, 11:00 AM – 11:15 AM PDT",
     );
     const failed = renderMorningCheckinReport({
       ...report,
@@ -199,9 +221,7 @@ describe("morning Calendar presentation", () => {
       todaysMeetings: [invalid],
       briefingSections: [{ ...section, items: [calendarItem(invalid)] }],
     });
-    expect(renderMorningCheckinReport(report)).toContain(
-      "time unavailable – time unavailable",
-    );
+    expect(renderMorningCheckinReport(report)).toContain("time unavailable");
     const { calendarEvent: _binding, ...legacy } = calendarItem();
     const legacyReport = baseReport({
       todaysMeetings: [event],

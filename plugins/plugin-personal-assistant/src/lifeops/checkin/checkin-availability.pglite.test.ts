@@ -101,9 +101,12 @@ describe("check-in source availability and generation failures", () => {
       "2026-10-06T18:00:00.000Z - 2026-10-06T18:15:00.000Z (confirmed)",
     );
     expect(report.summaryText.match(/QA walkthrough/g)).toHaveLength(1);
-    expect(report.summaryText).toContain("Oct 6, 2026, 11:00 AM PDT");
+    expect(report.summaryText).toContain(
+      "Oct 6, 2026, 11:00 AM – 11:15 AM PDT",
+    );
     expect(report.summaryText).toContain("11:15 AM PDT");
-    expect(report.summaryText).toContain("confirmed; added or updated");
+    expect(report.summaryText).toContain("added or updated");
+    expect(report.summaryText).not.toContain("confirmed");
     expect(prompts).toHaveLength(0);
     const stored = (
       await db.query<{ payload_json: CheckinReport }>(
