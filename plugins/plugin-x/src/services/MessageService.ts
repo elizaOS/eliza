@@ -28,9 +28,13 @@ export class TwitterMessageService implements IMessageService {
       return await this.client.withAuthenticatedSession(async ({ profile }) => {
         // Twitter doesn't have a direct way to get messages by room ID
         // We'll need to use search to find related tweets/DMs
+        // An omitted limit is the default page of 20. An explicit limit,
+        // including 0, is a page — `limit || 20` treated 0 as missing.
+        const limit = options.limit ?? 20;
+        if (limit === 0) return [];
         const searchResult = await this.client.fetchSearchTweets(
           `@${profile.username}`,
-          options.limit || 20,
+          limit,
           SearchMode.Latest,
         );
 
