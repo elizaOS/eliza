@@ -6,15 +6,19 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+
+const PRIVATE_PROVIDER_SENTINEL = "shared-private-provider-sentinel";
 
 describe("Shared Eliza runtime in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
   let modelServer: ReturnType<typeof Bun.serve>;
   const modelRequests: Array<Record<string, unknown>> = [];
+  const modelRequestKinds: Array<"primary-generation" | "core-failure-reply"> =
+    [];
   const outboundRequests: string[] = [];
   let searchPlannerRequests = 0;
   let todoPlannerRequests = 0;
@@ -35,6 +39,97 @@ describe("Shared Eliza runtime in Workerd", () => {
       async fetch(request) {
         const body = (await request.json()) as Record<string, unknown>;
         modelRequests.push(body);
+        // Exact 557 failure-reply prompt rule; retain only a fixed label, never content.
+        modelRequestKinds.push(
+          JSON.stringify(body.messages).includes(
+            "Clearly say you could not complete this request. Do not imply the requested action happened or is still running.",
+          )
+            ? "core-failure-reply"
+            : "primary-generation",
+        );
+        if (JSON.stringify(body).includes("shared empty output fixture")) {
+          const base = {
+            id: "chatcmpl-empty-fixture",
+            created: 0,
+            model: "shared-runtime-probe",
+          };
+          const usage = {
+            prompt_tokens: 7,
+            completion_tokens: 0,
+            total_tokens: 7,
+          };
+          if (body.stream === true) {
+            const chunks = [
+              {
+                ...base,
+                object: "chat.completion.chunk",
+                choices: [
+                  {
+                    index: 0,
+                    delta: { role: "assistant", content: "" },
+                    finish_reason: null,
+                  },
+                ],
+              },
+              {
+                ...base,
+                object: "chat.completion.chunk",
+                choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+                usage,
+              },
+            ];
+            return new Response(
+              chunks
+                .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+                .join("") + "data: [DONE]\n\n",
+              {
+                headers: { "Content-Type": "text/event-stream" },
+              },
+            );
+          }
+          return Response.json({
+            ...base,
+            object: "chat.completion",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "" },
+                finish_reason: "stop",
+              },
+            ],
+            usage,
+          });
+        }
+
+        if (
+          JSON.stringify(body).includes(
+            "shared synthetic terminal failure fixture",
+          )
+        ) {
+          return Response.json(
+            {
+              error: { message: "The fixture provider rejected authorization" },
+              privateProviderDetail: PRIVATE_PROVIDER_SENTINEL,
+            },
+            {
+              status: 401,
+              headers: { "X-Private-Provider": PRIVATE_PROVIDER_SENTINEL },
+            },
+          );
+        }
+        if (JSON.stringify(body).includes("shared synthetic failure fixture")) {
+          return Response.json(
+            {
+              error: { message: "The fixture model is unavailable" },
+              privateProviderDetail: PRIVATE_PROVIDER_SENTINEL,
+            },
+            {
+              status: 503,
+              headers: { "X-Private-Provider": PRIVATE_PROVIDER_SENTINEL },
+            },
+          );
+        }
+
         if (JSON.stringify(body).includes("add buy milk to my todo list")) {
           todoPlannerRequests += 1;
           if (todoPlannerRequests === 1) {
@@ -673,66 +768,72 @@ describe("Shared Eliza runtime in Workerd", () => {
         import.meta.url,
       ),
     );
-    const outputPath = join(buildDirectory, "worker.mjs");
-    const repositoryDirectory = fileURLToPath(
-      new URL("../../../../", import.meta.url),
+    const apiDirectory = fileURLToPath(new URL("../", import.meta.url));
+    const workerConfig = Bun.TOML.parse(
+      await readFile(join(apiDirectory, "wrangler.toml"), "utf8"),
+    ) as {
+      compatibility_date: string;
+      compatibility_flags: string[];
+      define: Record<string, string>;
+      alias: Record<string, string>;
+    };
+    const compatibilityAlias = workerConfig.alias?.["@elizaos/core"];
+    const errorsAlias = workerConfig.alias?.["@elizaos/core/errors"];
+    if (
+      compatibilityAlias !== "./src/stubs/elizaos-core.ts" ||
+      errorsAlias !== "../../core/src/errors.ts"
+    ) {
+      throw new Error("Shared fixture requires the production core aliases");
+    }
+    const configPath = join(buildDirectory, "wrangler.json");
+    await Bun.write(
+      configPath,
+      JSON.stringify({
+        name: "shared-eliza-runtime-test",
+        main: entrypoint,
+        tsconfig: relative(buildDirectory, join(apiDirectory, "tsconfig.json")),
+        compatibility_date: workerConfig.compatibility_date,
+        compatibility_flags: workerConfig.compatibility_flags,
+        define: workerConfig.define,
+        alias: Object.fromEntries(
+          Object.entries(workerConfig.alias).map(([name, target]) => [
+            name,
+            target.startsWith(".") ? resolve(apiDirectory, target) : target,
+          ]),
+        ),
+      }),
     );
-    const coreEdgeArtifact = join(coreDirectory, "dist/edge/index.edge.js");
-    const todosEdgeSource = fileURLToPath(
-      new URL("../../../../plugins/plugin-todos/src/edge.ts", import.meta.url),
-    );
+    const outputPath = join(buildDirectory, "shared-eliza-runtime-worker.js");
     const bundle = Bun.spawn({
       cmd: [
         process.execPath,
-        "-e",
-        `const result = await Bun.build({
-          entrypoints: [process.env.SHARED_ELIZA_ENTRY],
-          target: "browser",
-          format: "esm",
-          conditions: ["worker"],
-          external: ["node:*"],
-          plugins: [{
-            name: "eliza-core-edge-boundary",
-            setup(build) {
-              build.onResolve({ filter: /^@elizaos\\/core\\/edge$/ }, () => ({
-                path: process.env.ELIZA_CORE_EDGE_ARTIFACT,
-              }));
-              build.onResolve({ filter: /^@elizaos\\/plugin-todos\\/edge$/ }, () => ({
-                path: process.env.ELIZA_TODOS_EDGE_SOURCE,
-              }));
-            },
-          }],
-        });
-        if (!result.success) {
-          for (const log of result.logs) console.error(log);
-          process.exit(1);
-        }
-        const output = result.outputs[0];
-        if (!output) throw new Error("Shared Eliza runtime bundle was not emitted");
-        await Bun.write(process.env.SHARED_ELIZA_OUTPUT, output);`,
+        "x",
+        "--no-install",
+        "wrangler",
+        "deploy",
+        entrypoint,
+        "--dry-run",
+        "--config",
+        configPath,
+        "--outdir",
+        buildDirectory,
       ],
-      cwd: repositoryDirectory,
-      env: {
-        ...process.env,
-        ELIZA_CORE_EDGE_ARTIFACT: coreEdgeArtifact,
-        ELIZA_TODOS_EDGE_SOURCE: todosEdgeSource,
-        SHARED_ELIZA_ENTRY: entrypoint,
-        SHARED_ELIZA_OUTPUT: outputPath,
-      },
+      cwd: apiDirectory,
       stderr: "pipe",
       stdout: "pipe",
     });
     const [bundleExitCode, bundleStderr] = await Promise.all([
       bundle.exited,
       new Response(bundle.stderr).text(),
+      new Response(bundle.stdout).text(),
     ]);
     if (bundleExitCode !== 0) {
       throw new Error(`Failed to bundle Shared Eliza runtime: ${bundleStderr}`);
     }
 
     miniflare = new Miniflare({
-      compatibilityDate: "2026-04-01",
-      compatibilityFlags: ["nodejs_compat"],
+      compatibilityDate: workerConfig.compatibility_date,
+      compatibilityFlags: workerConfig.compatibility_flags,
       outboundService: async (request: Request) => {
         outboundRequests.push(request.url);
         return await fetch(request.url, {
@@ -869,6 +970,157 @@ describe("Shared Eliza runtime in Workerd", () => {
       true,
     );
   }, 120_000);
+
+  test("retains canonical edge failure brands across the existing compatibility wrapper", async () => {
+    const response = await miniflare.dispatchFetch(
+      "https://runtime.test/error-brand-consistency",
+    );
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      runtimeIsCompatibility: false,
+      wrapperIsCompatibility: true,
+      runtime: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+      compatibility: {
+        failureName: "SharedRuntimeUnknownError",
+        retryable: false,
+      },
+      wrapped: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+      transported: {
+        failureName: "SharedRuntimeProviderUnavailableError",
+        retryable: true,
+      },
+    });
+  });
+
+  test.each([
+    [
+      "buffered transient",
+      "/synthetic-failure-turn",
+      "SHARED_RUNTIME_TURN_FAILED",
+      "transient_failure",
+      true,
+    ],
+    [
+      "streamed transient",
+      "/synthetic-failure-stream",
+      "SHARED_RUNTIME_MESSAGE_FAILED",
+      "transient_failure",
+      true,
+    ],
+    [
+      "buffered terminal",
+      "/synthetic-terminal-failure-turn",
+      "SHARED_RUNTIME_TURN_FAILED",
+      "provider_issue",
+      false,
+    ],
+    [
+      "streamed terminal",
+      "/synthetic-terminal-failure-stream",
+      "SHARED_RUNTIME_MESSAGE_FAILED",
+      "provider_issue",
+      false,
+    ],
+  ])(
+    "rejects a %s synthetic failure without committing it as Shared history or durable memory",
+    async (_mode, path, code, failureKind, retryable) => {
+      const requestsBefore = modelRequests.length;
+      const response = await miniflare.dispatchFetch(
+        `https://runtime.test${path}`,
+      );
+      const body = await response.text();
+      expect(response.status, body).toBe(retryable ? 503 : 500);
+      expect(body).not.toContain(PRIVATE_PROVIDER_SENTINEL);
+      const payload = JSON.parse(body) as {
+        success: boolean;
+        name?: string;
+        code?: string;
+        failureKind?: string;
+        failureName?: string;
+        retryable?: boolean;
+        history: Array<{ role: string; content: string }>;
+        persistedPairs: unknown[];
+        parts: Array<{ type: string; text: string }>;
+      };
+      expect(payload).toMatchObject({
+        success: false,
+        code,
+        failureKind,
+        failureName: retryable
+          ? "SharedRuntimeProviderUnavailableError"
+          : "SharedRuntimeProviderRejectedError",
+        retryable,
+        history: [
+          { role: "assistant", content: "A retained successful reply" },
+        ],
+        persistedPairs: [],
+      });
+      expect(payload.parts.some((part) => part.type === "finish")).toBe(false);
+      expect(payload.parts.map((part) => part.text).join("")).not.toContain(
+        "Something went wrong on my end. Please try again.",
+      );
+      if (retryable) {
+        expect(modelRequests.length - requestsBefore).toBeGreaterThan(1);
+      } else {
+        // 557 preserves four plain-text failure-reply slots after the single
+        // terminal primary invocation. Those recovery calls are not turn retries.
+        expect(modelRequestKinds.slice(requestsBefore)).toEqual([
+          "primary-generation",
+          "core-failure-reply",
+          "core-failure-reply",
+          "core-failure-reply",
+          "core-failure-reply",
+        ]);
+      }
+    },
+    120_000,
+  );
+
+  test.each([
+    ["buffered", "/synthetic-empty-turn", "SHARED_RUNTIME_TURN_FAILED"],
+    ["streamed", "/synthetic-empty-stream", "REPLY_GROUNDING_FAILED"],
+  ])(
+    "rejects %s HTTP200 empty output as a failure without successful history or finish",
+    async (_mode, path, code) => {
+      const requestsBefore = modelRequests.length;
+      const response = await miniflare.dispatchFetch(
+        `https://runtime.test${path}`,
+      );
+      const body = await response.text();
+      expect(response.status, body).toBeGreaterThanOrEqual(500);
+      expect(body).not.toContain(PRIVATE_PROVIDER_SENTINEL);
+      const payload = JSON.parse(body) as {
+        success: boolean;
+        code: string;
+        rootFailureCode: string;
+        history: unknown[];
+        persistedPairs: unknown[];
+        parts: Array<{ type: string; text?: string }>;
+      };
+      expect(payload).toMatchObject({
+        success: false,
+        code,
+        history: [
+          { role: "assistant", content: "A retained successful reply" },
+        ],
+        persistedPairs: [],
+        rootFailureCode: "REPLY_GROUNDING_FAILED",
+      });
+      expect(payload.parts.some((part) => part.type === "finish")).toBe(false);
+      expect(
+        payload.parts.map((part) => part.text ?? "").join(""),
+      ).not.toContain("Something went wrong on my end. Please try again.");
+      expect(modelRequests.length - requestsBefore).toBeGreaterThan(0);
+    },
+    120_000,
+  );
 
   test("runs the genuine REMINDERS action with a trusted Discord DM inside Workerd", async () => {
     const requestsBefore = modelRequests.length;

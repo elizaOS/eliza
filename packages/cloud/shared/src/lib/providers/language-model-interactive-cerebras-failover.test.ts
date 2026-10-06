@@ -25,8 +25,10 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-const { generateText, streamText } = await import("ai");
-const { getInteractiveCerebrasLanguageModel } = await import("./language-model");
+const { APICallError, generateText, streamText } = await import("ai");
+const { getInteractiveCerebrasLanguageModel, ProviderConfigurationError } = await import(
+  "./language-model"
+);
 
 function hostOf(url: RequestInfo | URL): "openrouter" | "cerebras" | "other" {
   const u = String(url);
@@ -98,6 +100,115 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
 
   beforeEach(() => {
     hosts = [];
+  });
+
+  test.each(["qwen-3.8-27b", "cerebras/qwen-3.8-27b", "cerebras:qwen-3.8-27b"])(
+    "%s calls its healthy native primary with both provider keys configured",
+    async (model) => {
+      const selections: unknown[] = [];
+      const models: string[] = [];
+      globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+        hosts.push(hostOf(url));
+        const requested = requestedModel(init);
+        if (requested) models.push(requested);
+        return completion("qwen-3.8-27b", "native-qwen-reply");
+      }) as typeof fetch;
+
+      const result = await generateText({
+        model: getInteractiveCerebrasLanguageModel(model, (selection) =>
+          selections.push(selection),
+        ),
+        prompt: "hi",
+        maxRetries: 0,
+      });
+
+      expect(result.text).toBe("native-qwen-reply");
+      expect(hosts).toEqual(["cerebras"]);
+      expect(models).toEqual(["qwen-3.8-27b"]);
+      expect(selections).toEqual([{ provider: "cerebras", fallback: false }]);
+    },
+  );
+
+  test("streams a healthy native Qwen primary without resolving an unmapped fallback", async () => {
+    const selections: unknown[] = [];
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      hosts.push(hostOf(url));
+      return streamedCompletion("qwen-3.8-27b", "native-qwen-stream");
+    }) as typeof fetch;
+
+    const result = streamText({
+      model: getInteractiveCerebrasLanguageModel("qwen-3.8-27b", (selection) =>
+        selections.push(selection),
+      ),
+      prompt: "hi",
+      maxRetries: 0,
+    });
+
+    expect(await result.text).toBe("native-qwen-stream");
+    expect(hosts).toEqual(["cerebras"]);
+    expect(selections).toEqual([{ provider: "cerebras", fallback: false }]);
+  });
+
+  test.each([400, 401])(
+    "Qwen HTTP %s remains the original non-retryable primary failure",
+    async (status) => {
+      globalThis.fetch = (async (url: RequestInfo | URL) => {
+        hosts.push(hostOf(url));
+        return new Response(JSON.stringify({ error: { message: "rejected fixture request" } }), {
+          status,
+        });
+      }) as typeof fetch;
+
+      let caught: unknown;
+      try {
+        await generateText({
+          model: getInteractiveCerebrasLanguageModel("qwen-3.8-27b"),
+          prompt: "hi",
+          maxRetries: 0,
+        });
+      } catch (error) {
+        caught = error;
+      }
+      expect(APICallError.isInstance(caught)).toBe(true);
+      expect((caught as InstanceType<typeof APICallError>).statusCode).toBe(status);
+      expect(hosts).toEqual(["cerebras"]);
+    },
+  );
+
+  test("an unmapped Qwen fallback fails explicitly only after its primary returns a retryable status", async () => {
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      hosts.push(hostOf(url));
+      return serverError();
+    }) as typeof fetch;
+
+    await expect(
+      generateText({
+        model: getInteractiveCerebrasLanguageModel("qwen-3.8-27b"),
+        prompt: "hi",
+        maxRetries: 0,
+      }),
+    ).rejects.toBeInstanceOf(ProviderConfigurationError);
+    expect(hosts).toEqual(["cerebras"]);
+  });
+
+  test("a streamed unmapped Qwen fallback retains the real configuration failure after primary dispatch", async () => {
+    const errors: unknown[] = [];
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      hosts.push(hostOf(url));
+      return serverError();
+    }) as typeof fetch;
+
+    const result = streamText({
+      model: getInteractiveCerebrasLanguageModel("qwen-3.8-27b"),
+      prompt: "hi",
+      maxRetries: 0,
+      onError: ({ error }) => {
+        errors.push(error);
+      },
+    });
+    await expect(result.text).rejects.toBeDefined();
+    expect(errors.some((error) => error instanceof ProviderConfigurationError)).toBe(true);
+    expect(hosts).toEqual(["cerebras"]);
   });
 
   test("happy path serves directly via cerebras (no failover)", async () => {

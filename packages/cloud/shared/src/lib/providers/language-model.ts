@@ -667,7 +667,6 @@ function withCerebrasInteractiveFailover(
       onProviderSelected,
     );
   }
-  const fallbackModel = getOpenRouterLanguageModel(resolveCerebrasOpenRouterFallbackModel(model));
   const middleware: LanguageModelMiddleware = {
     specificationVersion: "v3",
     wrapGenerate: async ({ doGenerate, params }) => {
@@ -677,6 +676,10 @@ function withCerebrasInteractiveFailover(
         return result;
       } catch (error) {
         if (!isRetryableAiSdkError(error)) throw error;
+        // A native primary does not need a fallback mapping until it fails.
+        const fallbackModel = getOpenRouterLanguageModel(
+          resolveCerebrasOpenRouterFallbackModel(model),
+        );
         logger.warn(
           "[Cerebras] Interactive turn failed for %s (%d); failing over to OpenRouter (no backoff)",
           model,
@@ -696,6 +699,10 @@ function withCerebrasInteractiveFailover(
         return result;
       } catch (error) {
         if (!isRetryableAiSdkError(error)) throw error;
+        // A native primary does not need a fallback mapping until it fails.
+        const fallbackModel = getOpenRouterLanguageModel(
+          resolveCerebrasOpenRouterFallbackModel(model),
+        );
         logger.warn(
           "[Cerebras] Interactive stream failed for %s (%d); failing over to OpenRouter (no backoff)",
           model,
