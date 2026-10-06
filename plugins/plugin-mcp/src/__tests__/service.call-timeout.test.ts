@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { McpService } from "./service";
-import type { McpConnection, McpServerConfig } from "./types";
+import { McpService } from "../service";
+import type { McpConnection, McpServerConfig } from "../types";
 
 function serviceFor(config: McpServerConfig) {
   const callTool = vi.fn().mockResolvedValue({ content: [] });
