@@ -20,6 +20,7 @@ import { extractTaskCreatePlanWithLlm } from "./extract-task-plan";
 const create = JSON.stringify({
   mode: "create",
   requestKind: "reminder",
+  nativeProjection: "in_app_only",
   title: "saved title",
   cadenceKind: "once",
   dueInMinutes: 2,
@@ -295,6 +296,23 @@ describe("task extractor reviewed action handoff", () => {
     expect(r.prompts[1]).toContain("Standing constraint: no native grants");
     expect(r.effects).toBe(1);
     expect(r.systems).toEqual([r.expectedSystem, r.expectedSystem]);
+  });
+  it("repairs an omitted destination before a planned create effect", async () => {
+    const { nativeProjection: _projection, ...omitted } = JSON.parse(create);
+    const r = await run("selected", [JSON.stringify(omitted), create]);
+    expect(r.prompts).toHaveLength(2);
+    expect(r.effects).toBe(1);
+    expect(r.systems).toEqual([r.expectedSystem, r.expectedSystem]);
+  });
+  it("does not execute an unresolved destination after context restoration", async () => {
+    const { nativeProjection: _projection, ...omitted } = JSON.parse(create);
+    const r = await run("selected", [
+      '{"restoreContext":true}',
+      JSON.stringify(omitted),
+    ]);
+    expect(r.prompts).toHaveLength(2);
+    expect(r.effects).toBe(0);
+    expect(r.result.success).toBe(false);
   });
 });
 
