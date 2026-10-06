@@ -2074,7 +2074,8 @@ function calendarCoverageSourceFacts(
           typeof note.title === "string" &&
           typeof note.body === "string"
         )
-          facts.push(`${note.title}\n${note.body}`);
+          // The stored body is the verbatim remainder, including its separator.
+          facts.push(note.title + note.body);
       }
       continue;
     }
