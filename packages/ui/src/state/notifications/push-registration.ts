@@ -26,6 +26,7 @@
  * does not double-register.
  */
 
+import type { NotificationCategory } from "@elizaos/core";
 import { client, ElizaClient } from "../../api/client";
 import {
   getPushNotificationsPlugin,
@@ -113,6 +114,7 @@ interface RegisteredPushToken {
   value: string;
   platform?: "ios" | "android";
   deliveryEnabled?: boolean;
+  reminderDataNotifications?: boolean;
   epoch?: number;
   captureAuthority?: PushRegistrationDeps["captureAuthority"];
   authorityKey: string;
@@ -266,6 +268,7 @@ async function onRegistration(
     registeredToken = {
       value,
       platform,
+      reminderDataNotifications,
       deliveryEnabled:
         typeof registration === "object" &&
         registration !== null &&
@@ -422,8 +425,10 @@ async function addPushListeners(
   );
 }
 
-/** The current Android backend owns OS delivery; WS still owns inbox ingress. */
-export async function hasAndroidPushDelivery(): Promise<boolean> {
+/** Whether the current Android push path owns this category's OS presentation. */
+export async function hasAndroidPushDelivery(
+  category: NotificationCategory,
+): Promise<boolean> {
   try {
     await initPushRegistration();
     await registrationOutcome;
@@ -435,6 +440,12 @@ export async function hasAndroidPushDelivery(): Promise<boolean> {
   return (
     registeredToken?.platform === "android" &&
     registeredToken.deliveryEnabled === true &&
+    // Stock FCM notification payloads display in the background. Foreground
+    // presentation is owned only by our negotiated native reminder receiver.
+    ((typeof document !== "undefined" &&
+      document.visibilityState === "hidden") ||
+      (category === "reminder" &&
+        registeredToken.reminderDataNotifications === true)) &&
     registeredToken.epoch === authorityEpoch &&
     registeredToken.authorityKey === activeAuthorityKey &&
     registeredToken.authorityKey ===
