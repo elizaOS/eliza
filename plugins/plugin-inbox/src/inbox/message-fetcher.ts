@@ -715,13 +715,17 @@ export async function fetchXDmMessages(
   }
 
   const limit = opts.limit;
+  const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
   let dms: LifeOpsXDm[];
   try {
     // Sync the complete available mixed-direction history before applying the
     // inbound-only result limit; owner replies must not hide candidates.
+    // A capped read can drop valid in-window rows before sinceIso is applied,
+    // so fetch uncapped when filtering by time, then filter first and slice
+    // to limit (mirrors the Gmail triage repair).
     await source.syncXDms();
     dms = await source.getXDms({
-      ...(limit === undefined ? {} : { limit }),
+      ...(limit === undefined || sinceMs > 0 ? {} : { limit }),
       inbound: true,
     });
   } catch (error) {
@@ -730,7 +734,6 @@ export async function fetchXDmMessages(
     );
     return { messages: [], status: fetchFailedStatus("x_dm", error) };
   }
-  const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
   const results: InboundMessage[] = [];
 
   for (const dm of dms) {
@@ -773,7 +776,10 @@ export async function fetchXDmMessages(
     });
   }
 
-  return { messages: results, status: sourceStatus };
+  return {
+    messages: limit === undefined ? results : results.slice(0, limit),
+    status: sourceStatus,
+  };
 }
 
 /** The merged cross-source pull plus per-source health for that pull. */
