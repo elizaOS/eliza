@@ -9,7 +9,7 @@
 
 import { ElizaError } from "../errors";
 import { runWithTrajectoryPurpose } from "../trajectory-context";
-import { ModelType } from "../types/model.js";
+import { type GenerateTextParams, ModelType } from "../types/model.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 
 type ModelTypeValue = (typeof ModelType)[keyof typeof ModelType];
@@ -31,6 +31,8 @@ export interface RunExtractorPipelineArgs<TParsed> {
 	prompt: string;
 	/** Request-bound canonical system context, when already supplied by the caller. */
 	system?: string;
+	/** Opt in to a provider text response format for both first and repair calls. */
+	responseFormat?: GenerateTextParams["responseFormat"];
 	/**
 	 * Convert the raw model text into a typed value. Return `null` when the
 	 * output is unparseable or fails validation; that triggers the repair pass.
@@ -76,6 +78,9 @@ export async function runExtractorPipeline<TParsed>(
 				runtime.useModel(modelType, {
 					prompt,
 					...(args.system !== undefined ? { system: args.system } : {}),
+					...(args.responseFormat !== undefined
+						? { responseFormat: args.responseFormat }
+						: {}),
 				}),
 		);
 		const firstRaw = asString(firstResult);
@@ -94,6 +99,9 @@ export async function runExtractorPipeline<TParsed>(
 				runtime.useModel(modelType, {
 					prompt: buildRepairPrompt(firstRaw),
 					...(args.system !== undefined ? { system: args.system } : {}),
+					...(args.responseFormat !== undefined
+						? { responseFormat: args.responseFormat }
+						: {}),
 				}),
 		);
 		const repairRaw = asString(repairResult);

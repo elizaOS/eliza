@@ -266,6 +266,59 @@ describe("VideoService deterministic behavior", () => {
     expect(parsed).toBe("Hello world! This is a test. Line 2 text.");
   });
 
+  it("keeps the first text line of WebVTT cues that have no identifier", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const vttContent = [
+      "WEBVTT",
+      "",
+      "NOTE produced by a caption editor",
+      "",
+      "00:00:01.000 --> 00:00:04.000",
+      "Hello world!",
+      "",
+      "intro",
+      "00:00:04.500 --> 00:00:07.000 align:start",
+      "This is a test.",
+      "Line 2 text.",
+    ].join("\n");
+
+    expect(service.parseSRT(vttContent)).toBe(
+      "Hello world! This is a test. Line 2 text.",
+    );
+  });
+
+  it("splits SRT cues on whitespace-only or bare-CR separators without leaking timings", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const spaced = [
+      "1",
+      "00:00:01,000 --> 00:00:04,000",
+      "Hello world!",
+      "  ",
+      "2",
+      "00:00:04,500 --> 00:00:07,000",
+      "This is a test.",
+    ].join("\n");
+    const bareCr = spaced.replace(/\n/g, "\r");
+
+    expect(service.parseSRT(spaced)).toBe("Hello world! This is a test.");
+    expect(service.parseSRT(bareCr)).toBe("Hello world! This is a test.");
+  });
+
+  it("ignores WebVTT metadata even when it contains cue-like timestamps", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const metadata = [
+      "NOTE",
+      "NOTE editor comment",
+      "NOTE\teditor comment",
+      "STYLE",
+      "REGION",
+    ]
+      .map((header) => `${header}\n00:00:01.000 --> 00:00:04.000\nnot spoken`)
+      .join("\n\n");
+    const content = `WEBVTT\n\n${metadata}\n\nNOTES\n00:00:04.000 --> 00:00:06.000\nActual speech`;
+    expect(service.parseSRT(content)).toBe("Actual speech");
+  });
+
   it("handles empty or non-string SRT input", () => {
     const { service } = createServiceWithYtDlp([]);
     expect(service.parseSRT("")).toBe("");
