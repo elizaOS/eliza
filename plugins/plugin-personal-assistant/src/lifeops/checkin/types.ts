@@ -21,6 +21,7 @@ export interface MeetingEntry {
   readonly title: string;
   readonly startAt: string;
   readonly endAt: string;
+  readonly status?: string;
 }
 
 export interface RecentWin {
@@ -65,6 +66,11 @@ export interface CheckinBriefingItem {
   readonly occurredAt: string | null;
   readonly href: string | null;
   readonly reason: string | null;
+  /** Calendar source binding; older saved reports retain their text detail. */
+  readonly calendarEvent?: Pick<
+    import("@elizaos/contracts").LifeOpsCalendarEvent,
+    "id" | "startAt" | "endAt" | "status"
+  >;
   readonly signals?: {
     readonly inbound?: boolean;
     readonly unread?: boolean;

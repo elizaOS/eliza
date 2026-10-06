@@ -38,6 +38,7 @@ import {
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { computeOverdueFollowups } from "../../followup/followup-tracker.js";
 import { resolveOwnerDefinitionSurface } from "../definition-owner-surface.js";
+import { formatCalendarEventDateTime } from "../google/format-helpers.js";
 import {
   computeMissedOccurrenceStreak,
   computeOccurrenceStreaks,
@@ -55,6 +56,7 @@ import {
   toFiniteNonNegativeNumber,
 } from "./checkin-briefing-ranking.js";
 import type {
+  CheckinBriefingItem,
   CheckinBriefingSection,
   CheckinKind,
   CheckinReport,
@@ -322,6 +324,22 @@ function morningBriefExcerpt(text: string): string {
     : characters.join("");
 }
 
+function renderMorningCalendarTimes(
+  event: Pick<MeetingEntry, "startAt" | "endAt">,
+  timezone?: string,
+): string {
+  return [event.startAt, event.endAt]
+    .map((startAt) =>
+      parseMs(startAt) === null
+        ? "time unavailable"
+        : formatCalendarEventDateTime(
+            { startAt, timezone: timezone ?? "UTC" },
+            { includeYear: true, includeTimeZoneName: true },
+          ),
+    )
+    .join(" – ");
+}
+
 /** Render morning facts from the existing report; retain every raw record in storage. */
 export function renderMorningCheckinReport(
   report: Omit<CheckinReport, "summaryText">,
@@ -340,6 +358,12 @@ export function renderMorningCheckinReport(
   const paragraphs = ["Good morning."];
   const unavailable: string[] = [];
   const emptySummaries: string[] = [];
+  const calendarSection = report.briefingSections.find(
+    (section) =>
+      section.key === "calendar_changes" &&
+      (!section.error || section.coverage === "partial"),
+  );
+  const combinedCalendarItems = new Set<CheckinBriefingItem>();
   const clearDay =
     !report.collectorErrors.todaysMeetings &&
     !report.collectorErrors.overdueTodos &&
@@ -376,16 +400,26 @@ export function renderMorningCheckinReport(
       continue;
     }
     const highlights = list.rows.slice(0, 3).map((row) => {
-      const time =
-        "startAt" in row
-          ? report.timezone
-            ? new Intl.DateTimeFormat("en-US", {
-                timeZone: report.timezone,
-                timeStyle: "short",
-              }).format(new Date(row.startAt))
-            : row.startAt
-          : null;
-      return `- ${time ? `${time}: ` : ""}${morningBriefExcerpt(row.title)}`;
+      if (!("startAt" in row)) return `- ${morningBriefExcerpt(row.title)}`;
+      const calendarItem = calendarSection?.items.find((item) => {
+        const event = item.calendarEvent;
+        return (
+          Boolean(event?.id) &&
+          event?.id === row.id &&
+          item.title === row.title &&
+          parseMs(event.startAt) !== null &&
+          parseMs(event.startAt) === parseMs(row.startAt) &&
+          parseMs(event.endAt) !== null &&
+          parseMs(event.endAt) === parseMs(row.endAt) &&
+          row.status !== undefined &&
+          event.status === row.status
+        );
+      });
+      if (calendarItem) combinedCalendarItems.add(calendarItem);
+      const facts = [row.status, calendarItem?.reason]
+        .filter(Boolean)
+        .join("; ");
+      return `- ${renderMorningCalendarTimes(row, report.timezone)}: ${morningBriefExcerpt(row.title)}${facts ? ` (${facts})` : ""}`;
     });
     const extra = list.rows.length - highlights.length;
     paragraphs.push(
@@ -400,6 +434,12 @@ export function renderMorningCheckinReport(
   const xUnavailable: { label: string; setupUnavailable: boolean }[] = [];
   let gmailDisconnected = false;
   for (const section of report.briefingSections) {
+    if (
+      section.key === "calendar_changes" &&
+      section.error &&
+      section.coverage === "partial"
+    )
+      unavailable.push("Some Calendar information");
     if (section.error && section.coverage !== "partial") {
       if (section.key === "x") {
         unavailable.push("X");
@@ -435,19 +475,28 @@ export function renderMorningCheckinReport(
       }
       continue;
     }
-    const highlights = section.items
-      .slice(0, 3)
-      .map(
-        (item) =>
-          `- ${morningBriefExcerpt(item.title)}${item.detail ? `: ${morningBriefExcerpt(item.detail)}` : ""}`,
-      );
-    const extra = section.items.length - highlights.length;
-    if (section.coverage === "partial" && highlights.length === 0)
+    const items = section.items.filter(
+      (item) => !combinedCalendarItems.has(item),
+    );
+    const highlights = items.slice(0, 3).map((item) => {
+      const detail = item.calendarEvent
+        ? `${renderMorningCalendarTimes(item.calendarEvent, report.timezone)}${item.calendarEvent.status ? ` (${item.calendarEvent.status})` : ""}${item.reason ? `; ${item.reason}` : ""}`
+        : item.detail;
+      return `- ${morningBriefExcerpt(item.title)}${detail ? `: ${morningBriefExcerpt(detail)}` : ""}`;
+    });
+    const extra = items.length - highlights.length;
+    if (
+      section.key === "gmail" &&
+      section.coverage === "partial" &&
+      highlights.length === 0
+    )
       paragraphs.push("Some Gmail inboxes couldn't be checked.");
     if (highlights.length > 0) {
       paragraphs.push(
         `${section.summary}\n${highlights.join("\n")}${extra ? `\n${extra} more items.` : ""}`,
       );
+    } else if (section.key === "calendar_changes" && section.items.length > 0) {
+      paragraphs.push(section.summary);
     }
   }
   if (report.collectorErrors.habitSummaries) {
@@ -849,7 +898,7 @@ async function collectTodaysMeetings(
   try {
     const rows = await executeRawSql(
       runtime,
-      `SELECT id, title, start_at, end_at
+      `SELECT id, title, start_at, end_at, status
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND start_at >= ${sqlQuote(day.start.toISOString())}
@@ -863,6 +912,7 @@ async function collectTodaysMeetings(
         title: toText(row.title) || "(untitled)",
         startAt: toText(row.start_at),
         endAt: toText(row.end_at),
+        status: toText(row.status),
       })),
       error: null,
     };
@@ -1243,7 +1293,7 @@ async function collectCalendarChangeSection(
   try {
     const rows = await executeRawSql(
       runtime,
-      `SELECT title, start_at, end_at, status, html_link, updated_at
+      `SELECT id, title, start_at, end_at, status, html_link, updated_at
          FROM app_calendar.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND side = 'owner'
@@ -1287,6 +1337,12 @@ async function collectCalendarChangeSection(
         return {
           title,
           detail: `${toText(row.start_at)} - ${toText(row.end_at)}${status ? ` (${status})` : ""}`,
+          calendarEvent: {
+            id: toText(row.id),
+            startAt: toText(row.start_at),
+            endAt: toText(row.end_at),
+            status,
+          },
           occurredAt: updatedAt ?? toText(row.start_at),
           href: toText(row.html_link) || null,
           reason,
