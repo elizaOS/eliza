@@ -105,14 +105,19 @@ export async function startCloudServer(): Promise<CloudServer> {
   };
 }
 
-export function makeRuntime(options: { baseUrl: string; authenticated?: boolean }): IAgentRuntime {
+export function makeRuntime(options: {
+  baseUrl: string;
+  authenticated?: boolean;
+  /** Read on every call, so a test can switch the signed-in organization. */
+  organizationId?: () => string;
+}): IAgentRuntime {
   const settings: Record<string, string | undefined> = {
     ELIZAOS_CLOUD_BASE_URL: `${options.baseUrl}/api/v1`,
     ELIZAOS_CLOUD_API_KEY: "eliza_test_key",
   };
   const auth = {
     isAuthenticated: () => options.authenticated !== false,
-    getOrganizationId: () => "org-test",
+    getOrganizationId: () => options.organizationId?.() ?? "org-test",
     getUserId: () => "user-test",
   };
   return {

@@ -37,10 +37,28 @@ interface AccountSnapshot {
   agents: AgentListItemDto[];
 }
 
+/**
+ * Each snapshot records the organization it was fetched for: a sign-out and
+ * sign-in to another org reuses the same runtime, so the runtime alone does
+ * not identify whose balance and agents the entry describes.
+ */
 const accountCaches = new WeakMap<
-  IAgentRuntime,
-  { value: AccountSnapshot; at: number }
+  object,
+  { value: AccountSnapshot; at: number; organizationId: string | undefined }
 >();
+
+function currentOrganizationId(runtime: IAgentRuntime): string | undefined {
+  const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
+  return auth?.getOrganizationId();
+}
+
+/** The cached entry when it belongs to the signed-in organization. */
+function cachedForCurrentOrganization(runtime: IAgentRuntime) {
+  const cached = accountCaches.get(runtime);
+  return cached && cached.organizationId === currentOrganizationId(runtime)
+    ? cached
+    : undefined;
+}
 const accountRefreshInFlight = new WeakSet<IAgentRuntime>();
 
 /**
@@ -49,7 +67,7 @@ const accountRefreshInFlight = new WeakSet<IAgentRuntime>();
  * create) — otherwise the provider keeps narrating pre-mutation state for up
  * to 60s inside the same conversation.
  */
-export function invalidateCloudAccountCache(runtime: IAgentRuntime): void {
+export function invalidateCloudAccountCache(runtime: object): void {
   accountCaches.delete(runtime);
 }
 
@@ -61,19 +79,21 @@ export function invalidateCloudAccountCache(runtime: IAgentRuntime): void {
 export function getCachedAccountSnapshot(
   runtime: IAgentRuntime,
 ): AccountSnapshot | null {
-  return accountCaches.get(runtime)?.value ?? null;
+  const cached = cachedForCurrentOrganization(runtime);
+  return cached && Date.now() - cached.at < TTL ? cached.value : null;
 }
 
 async function fetchAccountSnapshot(
   runtime: IAgentRuntime,
 ): Promise<AccountSnapshot> {
   const sdk = createElizaCloudClient(runtime);
+  const organizationId = currentOrganizationId(runtime);
   const [{ balance }, agentsResponse] = await Promise.all([
     sdk.getCreditsBalance(),
     sdk.listAgents(),
   ]);
   const snapshot: AccountSnapshot = { balance, agents: agentsResponse.data };
-  accountCaches.set(runtime, { value: snapshot, at: Date.now() });
+  accountCaches.set(runtime, { value: snapshot, at: Date.now(), organizationId });
   return snapshot;
 }
 
@@ -166,7 +186,7 @@ export const cloudAccountProvider: Provider = {
     // Stale-while-revalidate: any snapshot renders immediately; expiry only
     // schedules a background refresh instead of blocking the turn on two WAN
     // round trips. Only the very first turn after boot blocks.
-    const cached = accountCaches.get(runtime);
+    const cached = cachedForCurrentOrganization(runtime);
     if (cached) {
       if (Date.now() - cached.at >= TTL) {
         scheduleAccountSnapshotRefresh(runtime);
