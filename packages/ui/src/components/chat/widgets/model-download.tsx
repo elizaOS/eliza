@@ -19,8 +19,10 @@ import {
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import { client } from "../../../api/client";
 import { isDesktopExternalApiBaseUrl } from "../../../api/desktop-external-api-base";
-import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../../events";
-import { readPersistedMobileRuntimeMode } from "../../../first-run/mobile-runtime-mode";
+import {
+  readPersistedMobileRuntimeMode,
+  subscribeToMobileRuntimeMode,
+} from "../../../first-run/mobile-runtime-mode";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useRuntimeMode } from "../../../hooks/useRuntimeMode";
 import { resolveApiUrl } from "../../../utils/asset-url.js";
@@ -45,15 +47,6 @@ const HUB_TIMEOUT_MS = 6000;
 // useHomeModelStatus cadence (the stream carries deltas, not recomputed
 // readiness, so we refetch the authoritative `textReadiness`).
 const STREAM_REFETCH_DEBOUNCE_MS = 400;
-function subscribeToMobileRuntimeMode(onStoreChange: () => void): () => void {
-  if (typeof document === "undefined") return () => {};
-  document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, onStoreChange);
-  return () =>
-    document.removeEventListener(
-      MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-      onStoreChange,
-    );
-}
 // Local-inference settings surface — the AI-model settings section hosts the
 // LocalInferencePanel (model catalog / downloads / active). Selected via the
 // settings hash (`#ai-model`), which SettingsView reads on mount + hashchange.

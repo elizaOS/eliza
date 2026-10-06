@@ -39,6 +39,9 @@ function registration(deliveryEnabled = true) {
     getPlatform: () => "android",
     isRemotePushEnabled: () => true,
     getPlugin: () => ({
+      getReminderDataCapabilities: async () => ({
+        reminderDataNotifications: true,
+      }),
       checkPermissions: async () => ({ receive: "granted" }),
       register: async () => {
         events.get("registration")?.({ value: "native-device-token" });
@@ -66,11 +69,14 @@ function registration(deliveryEnabled = true) {
     },
   };
 }
-function ingest(id: string) {
+function ingest(
+  id: string,
+  category: AgentNotification["category"] = "reminder",
+) {
   __ingestNotificationForTests({
     id,
     title: "Same title",
-    category: "reminder",
+    category,
     priority: "normal",
     createdAt: Date.now(),
   } as AgentNotification);
@@ -80,7 +86,56 @@ afterEach(() => {
   __resetPushRegistrationForTests();
   delivery.show.mockClear();
   delivery.platform = "android";
+  vi.restoreAllMocks();
 });
+
+it.each([false, undefined])(
+  "keeps foreground reminder presentation without native capability %j",
+  async (capability) => {
+    const r = registration();
+    const plugin = r.deps.getPlugin();
+    r.deps.getPlugin = () => ({
+      ...plugin,
+      getReminderDataCapabilities:
+        capability === undefined
+          ? undefined
+          : async () => ({ reminderDataNotifications: capability }),
+    });
+    await initPushRegistration(r.deps);
+    await vi.waitFor(() => expect(r.registerToken).toHaveBeenCalledOnce());
+    ingest("81dcd247-fae7-4cf8-95f0-63c85f410851");
+    await vi.waitFor(() => expect(delivery.show).toHaveBeenCalledOnce());
+    expect(__getStateForTests().notifications).toHaveLength(1);
+  },
+);
+
+it("keeps foreground non-reminder presentation with native reminder capability", async () => {
+  const r = registration();
+  await initPushRegistration(r.deps);
+  await vi.waitFor(() => expect(r.registerToken).toHaveBeenCalledOnce());
+  ingest("9499a986-550d-4ecb-9fa3-7d2de1f7ba28", "system");
+  await vi.waitFor(() => expect(delivery.show).toHaveBeenCalledOnce());
+  expect(__getStateForTests().notifications).toHaveLength(1);
+});
+
+it.each(["reminder", "system"] as const)(
+  "keeps background %s presentation with configured FCM",
+  async (category) => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const r = registration();
+    const plugin = r.deps.getPlugin();
+    r.deps.getPlugin = () => ({
+      ...plugin,
+      getReminderDataCapabilities: undefined,
+    });
+    await initPushRegistration(r.deps);
+    await vi.waitFor(() => expect(r.registerToken).toHaveBeenCalledOnce());
+    ingest("d20d7c43-ef30-47f4-b35e-47ac993b2b80", category);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(delivery.show).not.toHaveBeenCalled();
+    expect(__getStateForTests().notifications).toHaveLength(1);
+  },
+);
 
 it("keeps the canonical Android inbox arrival without a second local OS projection after FCM ownership is confirmed", async () => {
   const r = registration();
@@ -250,4 +305,6 @@ it("keeps older native plugin registration on legacy payloads", async () => {
       "native-device-token",
     ),
   );
+  ingest("566e13eb-0359-4548-b489-5a5a969bc7b1");
+  await vi.waitFor(() => expect(delivery.show).toHaveBeenCalledOnce());
 });

@@ -29,6 +29,8 @@ const SECOND_AGENT_BASE =
   "https://api.elizacloud.ai/api/v1/eliza/agents/9b0deccb-a884-4149-b91d-328004ac108d";
 
 const clientMock = vi.hoisted(() => ({
+  getAuthorityRevision: () => 0,
+  onAuthorityChange: () => () => {},
   getBaseUrl() {
     return this.baseUrl;
   },
@@ -40,6 +42,7 @@ const clientMock = vi.hoisted(() => ({
   listScheduledTasks: vi.fn(),
   applyScheduledTask: vi.fn(),
   getTriggers: vi.fn(),
+  updateTrigger: vi.fn(),
   getWorkflowExecutions: vi.fn(),
   getWorkflowRevisions: vi.fn(),
   runWorkflowDefinition: vi.fn(),
@@ -1028,4 +1031,136 @@ it("refreshes reminder counts while workflows are selected without exposing hidd
     ).toContain("1"),
   );
   expect(screen.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+});
+
+it("round trips a paused Once prompt from the feed without changing its schedule or policy", async () => {
+  const response = responseFixture();
+  response.automations = [
+    automationItem({
+      id: "trigger:once",
+      type: "coordinator_text",
+      source: "trigger",
+      title: "One future prompt",
+      status: "paused",
+      enabled: false,
+      hasBackingWorkflow: false,
+      workflowId: undefined,
+      triggerId: "once",
+      lastExecution: undefined,
+      schedules: [],
+      trigger: {
+        id: "once",
+        taskId: "task-once",
+        displayName: "One future prompt",
+        instructions: "Reply QA only",
+        triggerType: "once",
+        scheduledAtIso: "2035-10-06T18:00:42.123Z",
+        timezone: "America/Los_Angeles",
+        enabled: false,
+        wakeMode: "next_autonomy_cycle",
+        createdBy: "api",
+        kind: "prompt",
+        runCount: 0,
+      },
+    }),
+  ];
+  clientMock.listAutomations.mockResolvedValue(response);
+  clientMock.updateTrigger.mockResolvedValue({ ok: true });
+  render(<AutomationsFeed />);
+  const button = (await screen.findByText("One future prompt")).closest(
+    "button",
+  );
+  if (!button) throw new Error("Missing prompt editor button");
+  fireEvent.click(button);
+  expect(await screen.findByTestId("task-editor-scheduled-at")).toHaveProperty(
+    "value",
+    "2035-10-06T18:00:42.123",
+  );
+  expect(screen.queryByTestId("task-editor-cron")).toBeNull();
+  fireEvent.change(screen.getByTestId("task-editor-name"), {
+    target: { value: "Edited Once" },
+  });
+  fireEvent.click(screen.getByTestId("task-editor-save"));
+  await waitFor(() => expect(clientMock.updateTrigger).toHaveBeenCalledOnce());
+  const [id, patch] = clientMock.updateTrigger.mock.calls[0];
+  expect(id).toBe("once");
+  expect(patch).toMatchObject({
+    triggerType: "once",
+    scheduledAtIso: "2035-10-06T18:00:42.123Z",
+    timezone: "America/Los_Angeles",
+    displayName: "Edited Once",
+  });
+  expect(patch).not.toHaveProperty("enabled");
+  expect(patch).not.toHaveProperty("wakeMode");
+});
+
+it("shows a Once due time in its stored timezone instead of repeating the title", async () => {
+  const response = responseFixture();
+  response.automations = [
+    automationItem({
+      id: "trigger:timed",
+      type: "coordinator_text",
+      source: "trigger",
+      title: "QA timed prompt",
+      hasBackingWorkflow: false,
+      workflowId: undefined,
+      schedules: [
+        {
+          id: "timed",
+          taskId: "timed-task",
+          displayName: "QA timed prompt",
+          instructions: "Reply QA",
+          triggerType: "once",
+          scheduledAtIso: "2026-10-06T05:44:00.000Z",
+          timezone: "America/Los_Angeles",
+          enabled: true,
+          wakeMode: "inject_now",
+          createdBy: "api",
+          kind: "prompt",
+          runCount: 0,
+        },
+      ],
+    }),
+  ];
+  clientMock.listAutomations.mockResolvedValue(response);
+  render(<AutomationsFeed />);
+  expect(
+    await screen.findByText("Once at 10/5/2026, 10:44:00 PM PDT"),
+  ).toBeTruthy();
+  expect(screen.getAllByText("QA timed prompt")).toHaveLength(1);
+});
+
+it.each([
+  [
+    { triggerType: "cron" as const, cronExpression: "0 9 * * *" },
+    "Every day at 9am",
+  ],
+  [
+    { triggerType: "event" as const, eventKind: "message.received" },
+    "On message.received",
+  ],
+  [{ triggerType: "interval" as const, intervalMs: 3600000 }, "Every hour"],
+])("retains the existing schedule label %s", async (schedule, label) => {
+  const response = responseFixture();
+  response.automations = [
+    automationItem({
+      schedules: [
+        {
+          id: "existing",
+          taskId: "task-existing",
+          displayName: "Existing schedule",
+          instructions: "Reply QA",
+          enabled: true,
+          wakeMode: "inject_now",
+          createdBy: "api",
+          kind: "prompt",
+          runCount: 0,
+          ...schedule,
+        },
+      ],
+    }),
+  ];
+  clientMock.listAutomations.mockResolvedValue(response);
+  render(<AutomationsFeed />);
+  expect(await screen.findByText(label)).toBeTruthy();
 });

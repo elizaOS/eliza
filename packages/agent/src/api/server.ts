@@ -162,6 +162,7 @@ import { replaceConfigInPlace } from "./config-state.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
 import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
 import { restoreConversationsFromDb as restoreConversationsFromDbImpl } from "./conversation-restore.ts";
+import { resolvePromptDeliveryRoom } from "./conversation-routes.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import {
   handleDeviceActionRoutes,
@@ -1961,6 +1962,8 @@ async function handleRequestForViewClient(
       pathname,
       runtime: state.runtime,
       ownerEntityId: automationOwnerEntityId,
+      resolvePromptDeliveryRoom: (runtime: IAgentRuntime) =>
+        resolvePromptDeliveryRoom(state, runtime),
       localOwnerEntityId: state.runtime
         ? resolveOwnerEntityIdOrDefault(state.runtime)
         : undefined,

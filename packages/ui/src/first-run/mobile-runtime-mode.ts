@@ -169,6 +169,19 @@ export function mobileRuntimeModeForServerTarget(
       return null;
   }
 }
+/** Subscribe to the same document event emitted by runtime-mode persistence. */
+export function subscribeToMobileRuntimeMode(
+  onStoreChange: () => void,
+): () => void {
+  if (typeof document === "undefined") return () => {};
+  document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, onStoreChange);
+  return () =>
+    document.removeEventListener(
+      MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+      onStoreChange,
+    );
+}
+
 export function readPersistedMobileRuntimeMode(): MobileRuntimeMode | null {
   if (typeof window === "undefined") return null;
   try {

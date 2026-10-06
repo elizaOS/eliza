@@ -107,6 +107,25 @@ export function markPendingChatTurnRestored(
   }
 }
 
+/** Editing releases draft ownership without losing the uncertain send receipt. */
+export function releasePendingChatTurnDraft(
+  conversationId: string,
+  clientMessageId: string,
+): void {
+  const receipt = listPendingChatTurns(conversationId).find(
+    (pending) => pending.clientMessageId === clientMessageId,
+  );
+  if (!receipt?.restoredToDraft) return;
+  try {
+    shellLocalStorage.setItem(
+      keyFor(conversationId, clientMessageId),
+      JSON.stringify({ ...receipt, restoredToDraft: false }),
+    );
+  } catch {
+    // error-policy:J3 Storage may be unavailable; the mounted composer also releases its owner.
+  }
+}
+
 export function clearPendingChatTurn(
   conversationId: string,
   clientMessageId: string,
@@ -154,10 +173,14 @@ export function clearSettledPendingChatTurns(
     );
     if (settled) {
       clearPendingChatTurn(conversationId, receipt.clientMessageId);
-      if (typeof window !== "undefined") {
+      if (receipt.restoredToDraft === true && typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent(PENDING_CHAT_TURN_SETTLED_EVENT, {
-            detail: { conversationId, text: receipt.text },
+            detail: {
+              conversationId,
+              clientMessageId: receipt.clientMessageId,
+              text: receipt.text,
+            },
           }),
         );
       }

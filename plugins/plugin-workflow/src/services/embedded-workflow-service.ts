@@ -1171,7 +1171,7 @@ export class EmbeddedWorkflowService extends Service {
         })
       );
     return {
-      data: params?.limit ? workflows.slice(0, params.limit) : workflows,
+      data: params?.limit === undefined ? workflows : workflows.slice(0, Math.max(0, params.limit)),
     };
   }
 
@@ -2242,7 +2242,9 @@ export class EmbeddedWorkflowService extends Service {
     const data = rows
       .filter((row) => !params.workflowId || row.workflowId === params.workflowId)
       .map((row) => cloneJson(row.execution));
-    return { data: params.limit ? data.slice(0, params.limit) : data };
+    return {
+      data: params.limit === undefined ? data : data.slice(0, Math.max(0, params.limit)),
+    };
   }
 
   async getExecution(id: string): Promise<WorkflowExecution> {

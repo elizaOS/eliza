@@ -16,6 +16,7 @@ import type {
   ContextEvent,
   ContextObject,
   ContextObjectTool,
+  ContextProviderEvent,
   EffectReceipt,
   EvaluatorOutput,
   ModelInputBudget,
@@ -74,10 +75,12 @@ import {
   isProviderContextOverflowError,
   isProviderContextOverflowFailure,
   type JSONSchema,
+  MODEL_CANONICAL_CONTEXT,
   ModelType,
   mergeChainingLoopConfig,
   modelProviderErrorDetail,
   normalizePromptSegments,
+  OWNED_CONTEXT_SOURCE_SCOPE,
   PROVIDER_CONTEXT_OVERFLOW,
   type PromptSegment,
   parseCompletionContextSelection,
@@ -3292,10 +3295,6 @@ function renderPlannerModelInput(params: {
     trajectoryStepsToMessages(params.trajectory.steps, {
       redactText: composeToolDiagnosticRedactor(params.runtime),
     });
-  // Preserve append-only originals; the deterministic wire copy removes only
-  // canonical JSON indentation, keeping earlier tool messages byte-stable.
-  const stepMessages =
-    compactCanonicalToolMessagesForModel(completeStepMessages);
   // Action names + parameter schemas now ride directly on the tools array
   // (each Action is exposed as its own native tool), so there is no separate
   // available_actions block rendered into the prompt. A routing hint already
@@ -3350,13 +3349,15 @@ function renderPlannerModelInput(params: {
   // through stepMessages (proper assistant/tool pairs). Including it as a
   // dynamic block would re-introduce the JSON-dump anti-pattern in the user
   // message and invalidate the cache prefix on every iteration.
-  const messages = buildStageChatMessages({
-    contextSegments,
-    stageLabel: "planner_stage",
-    instructions,
-    dynamicBlocks: [],
-    stepMessages,
-  });
+  const messages = compactCanonicalToolMessagesForModel(
+    buildStageChatMessages({
+      contextSegments,
+      stageLabel: "planner_stage",
+      instructions,
+      dynamicBlocks: [],
+      stepMessages: completeStepMessages,
+    }),
+  );
   return {
     messages,
     promptSegments,
@@ -4145,6 +4146,7 @@ async function dispatchPlannerModelCall(params: {
     "no-context-segments";
   const hasTools = Array.isArray(params.tools) && params.tools.length > 0;
   const modelParams: {
+    [MODEL_CANONICAL_CONTEXT]?: ContextObject;
     messages: ChatMessage[];
     responseSchema?: unknown;
     promptSegments: PromptSegment[];
@@ -4158,6 +4160,8 @@ async function dispatchPlannerModelCall(params: {
     stream?: boolean;
     signal?: AbortSignal;
   } = {
+    [MODEL_CANONICAL_CONTEXT]:
+      params.trajectory.modelBaseContext ?? params.context,
     messages: renderedInput.messages,
     ...(params.trajectory.codingMode === true ? { stream: false } : {}),
     promptSegments: renderedInput.promptSegments,
@@ -4711,12 +4715,51 @@ async function callPlanner(
   params: Parameters<typeof dispatchPlannerModelCall>[0],
 ): ReturnType<typeof dispatchPlannerModelCall> {
   try {
-    const output = await dispatchPlannerModelCall(params);
+    let output = await dispatchPlannerModelCall(params);
+    const original = params.trajectory.modelBaseContext ?? params.context;
+    const ownedSources = original.events.filter(
+      (event): event is ContextProviderEvent =>
+        event.type === "provider" && OWNED_CONTEXT_SOURCE_SCOPE in event,
+    );
+    const loaded = original.metadata?.loadedContextProviders;
+    const ownedSourcesRestorable =
+      original.metadata?.providerDiscoveryEnabled === true &&
+      ownedSources.some(
+        (source) => !Array.isArray(loaded) || !loaded.includes(source.name),
+      );
+    const requiresSource =
+      ownedSourcesRestorable &&
+      ownedSources.some((event) => {
+        const scope = event[OWNED_CONTEXT_SOURCE_SCOPE];
+        return output.toolCalls.some(
+          (call) =>
+            !["REPLY", "IGNORE", "STOP", "RESTORE_CONTEXT"].includes(
+              call.name,
+            ) &&
+            (!scope ||
+              !Array.isArray(scope.actionNames) ||
+              !scope.actionNames.includes(call.name)),
+        );
+      });
+    if (requiresSource) {
+      output = {
+        ...output,
+        toolCalls: [
+          {
+            name: "RESTORE_CONTEXT",
+            params: {
+              scope: "providers",
+              reason:
+                "The proposed operation is outside the admitted source-independent request scope",
+            },
+          },
+        ],
+      };
+    }
     if (
       !output.toolCalls.some((call) => call.name === RESTORE_CONTEXT_TOOL.name)
     )
       return output;
-    const original = params.trajectory.modelBaseContext ?? params.context;
     const reads = output.toolCalls.filter(
       (call) => call.name === RESTORE_CONTEXT_TOOL.name,
     );
@@ -4753,7 +4796,11 @@ async function callPlanner(
           projectBackgroundHistory(original).applied ||
           referencePlannerQueryTokens(original).applied)
       ) &&
-        !(readProviders && projectDeferredProviders(original).available.length))
+        !(
+          readProviders &&
+          (projectDeferredProviders(original).available.length ||
+            ownedSourcesRestorable)
+        ))
     ) {
       throw new ElizaError(
         "Original planner context is already complete; repeated restoration is invalid",
