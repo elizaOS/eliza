@@ -190,11 +190,18 @@ export function planOriginalInvoiceFunding(input: {
         )
           unavailable("commercial_origins_disagree");
       }
-      const ownerKey = `${scope.providerSubscriptionId}:${terms.subscriptionItemId}`;
-      if (owners.has(scope.subscriptionId) && owners.get(scope.subscriptionId) !== ownerKey)
+      // Local subscription ids are not unique for one Stripe subscription item.
+      // Key both maps on that provider identity so a second local id cannot
+      // fund the same item or the same billing interval.
+      const providerIdentity = `${scope.providerSubscriptionId}:${terms.subscriptionItemId}`;
+      if (
+        (owners.get(scope.subscriptionId) ?? providerIdentity) !== providerIdentity ||
+        (owners.get(providerIdentity) ?? scope.subscriptionId) !== scope.subscriptionId
+      )
         unavailable("subscription_identity_conflict");
-      owners.set(scope.subscriptionId, ownerKey);
-      const periodKey = `${scope.subscriptionId}:${terms.periodStart}:${terms.periodEnd}`;
+      owners.set(scope.subscriptionId, providerIdentity);
+      owners.set(providerIdentity, scope.subscriptionId);
+      const periodKey = `${providerIdentity}:${terms.periodStart}:${terms.periodEnd}`;
       if (periods.has(periodKey)) unavailable("duplicate_original_period");
       periods.add(periodKey);
       return {
