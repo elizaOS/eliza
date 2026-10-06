@@ -38,7 +38,9 @@ describe("morning Calendar presentation", () => {
     endAt: "2026-10-06T18:15:00.000Z",
     status: "confirmed",
   };
-  const calendarItem = (calendarEvent = event) => ({
+  const calendarItem = (
+    calendarEvent: typeof event & { isAllDay?: boolean } = event,
+  ) => ({
     title: calendarEvent.title,
     detail: `${calendarEvent.startAt} - ${calendarEvent.endAt} (${calendarEvent.status})`,
     calendarEvent,
@@ -81,6 +83,23 @@ describe("morning Calendar presentation", () => {
     expect(text).toContain(section.summary);
     expect(text).not.toContain("2026-10-06T18:");
     expect(report).toEqual(original);
+  });
+
+  it("does not combine a changed all-day classification with a timed agenda row", () => {
+    const timed = { ...event, isAllDay: false };
+    const allDay = { ...event, isAllDay: true };
+    const report = baseReport({
+      timezone: "America/Los_Angeles",
+      todaysMeetings: [timed],
+      briefingSections: [{ ...section, items: [calendarItem(allDay)] }],
+    });
+    const before = structuredClone(report);
+    const text = renderMorningCheckinReport(report);
+    expect(text.match(/QA walkthrough/g)).toHaveLength(2);
+    expect(text).toContain("11:00 AM – 11:15 AM PDT");
+    expect(text).toContain("all day");
+    expect(text).toContain("added or updated");
+    expect(report).toEqual(before);
   });
 
   it("keeps same-title events and changed times/statuses distinct across DST", () => {
@@ -193,7 +212,7 @@ describe("morning Calendar presentation", () => {
       ],
     });
     expect(failed).toContain(
-      "Meetings today, Calendar and schedule changes unavailable",
+      "Calendar today, Calendar and schedule changes unavailable",
     );
     expect(failed).not.toContain("No Calendar events");
     const partial = renderMorningCheckinReport(

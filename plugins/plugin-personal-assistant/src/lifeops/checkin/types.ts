@@ -22,6 +22,7 @@ export interface MeetingEntry {
   readonly startAt: string;
   readonly endAt: string;
   readonly status?: string;
+  readonly isAllDay?: boolean;
 }
 
 export interface RecentWin {
@@ -70,7 +71,10 @@ export interface CheckinBriefingItem {
   readonly calendarEvent?: Pick<
     import("@elizaos/contracts").LifeOpsCalendarEvent,
     "id" | "startAt" | "endAt" | "status"
-  >;
+  > &
+    Partial<
+      Pick<import("@elizaos/contracts").LifeOpsCalendarEvent, "isAllDay">
+    >;
   readonly signals?: {
     readonly inbound?: boolean;
     readonly unread?: boolean;
