@@ -1,6 +1,7 @@
 /** Exercises receipt ownership and rejection against actual completed commercial commands. */
 import { expect } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
 import {
   createSubscriptionInvoiceEventEvidence,
   type SubscriptionInvoiceEventEvidence,
@@ -38,6 +39,21 @@ export async function assertReceiptCommercialSelection(input: {
   );
   const request = { organizationId: scope.organizationId, receiptId: retained.value.id };
   const selected = await read(request);
+  const { agreeOriginalInvoiceCommercialTerms: agree } = await import(
+    "../subscription-invoice-commercial-selection"
+  );
+  const proven = selected.origins[0]!;
+  expect(agree([proven, { ...proven, commandId: randomUUID() }])).toEqual(selected.terms);
+  expect(() => agree([])).toThrow();
+  for (const change of [
+    { allowanceAmountUsd: "0.000001" },
+    { catalogVersion: "different" },
+    { periodEnd: proven.periodEnd + 1 },
+    { productId: "prod_other" },
+    { subscriptionItemId: "si_other" },
+    { baseAmountCents: proven.baseAmountCents + 1 },
+  ])
+    expect(() => agree([proven, { ...proven, ...change } as typeof proven])).toThrow();
   expect(selected.origins.map((row) => row.commandId)).toEqual([input.commandId]);
   expect(selected.originalEvidenceDigest).toBe(original.digest);
   expect(selected.terms.periodStart).toBe(original.event.data.object.lines.data[0]!.period.start);
@@ -59,22 +75,26 @@ export async function assertReceiptCommercialSelection(input: {
   });
   await input.query("UPDATE organizations SET is_active=true WHERE id=$1", [scope.organizationId]);
   expect(await read(request)).toEqual(selected);
-  await input.query(
-    `INSERT INTO subscription_billing_fences(organization_id,subscription_id,state,provider_object_digest)
-    VALUES($1,$2,'quarantined',$3) ON CONFLICT(subscription_id) DO UPDATE SET state='quarantined',fence_revision=subscription_billing_fences.fence_revision+1`,
-    [scope.organizationId, scope.subscriptionId, "c".repeat(64)],
-  );
-  await expect(read(request)).rejects.toMatchObject({
-    code: "SUBSCRIPTION_INVOICE_DEBT_SOURCES_UNAVAILABLE",
-  });
-  await input.query(
-    "UPDATE subscription_billing_fences SET state='open',fence_revision=fence_revision+1 WHERE subscription_id=$1",
-    [scope.subscriptionId],
-  );
-  const reopened = await read(request);
-  expect(reopened.fence?.state).toBe("open");
-  expect(reopened.terms).toEqual(selected.terms);
-  expect(reopened.digest).not.toBe(selected.digest);
+  const rollback = new Error("rollback test restriction");
+  await expect(
+    writeTransaction(async (tx) => {
+      await tx.execute(sql`INSERT INTO subscription_billing_fences(organization_id,subscription_id,state,provider_object_digest)
+      VALUES(${scope.organizationId},${scope.subscriptionId},'open',${"c".repeat(64)})
+      ON CONFLICT(subscription_id) DO UPDATE SET fence_revision=subscription_billing_fences.fence_revision+1`);
+      const advanced = await read(request, tx);
+      expect(advanced.fence?.state).toBe("open");
+      expect(advanced.terms).toEqual(selected.terms);
+      expect(advanced.digest).not.toBe(selected.digest);
+      await tx.execute(
+        sql`UPDATE subscription_billing_fences SET state='quarantined',fence_revision=fence_revision+1 WHERE subscription_id=${scope.subscriptionId}`,
+      );
+      await expect(read(request, tx)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_INVOICE_DEBT_SOURCES_UNAVAILABLE",
+      });
+      throw rollback;
+    }),
+  ).rejects.toBe(rollback);
+  expect(await read(request)).toEqual(selected);
   // A canonical, retained but unknown price is unavailable; selection cannot use today's plan.
   const unknown = structuredClone(original.event),
     unknownId = `evt_${randomUUID().replaceAll("-", "")}`;

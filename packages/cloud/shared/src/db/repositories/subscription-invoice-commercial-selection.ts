@@ -31,6 +31,29 @@ function unavailable(reason: string): never {
   });
 }
 
+/** Compare only already-proven origins; agreement does not validate an origin. */
+export function agreeOriginalInvoiceCommercialTerms(
+  matches: readonly Awaited<ReturnType<typeof findOriginalInvoiceCommercialOrigin>>[],
+) {
+  if (!matches.length) unavailable("matching_origin_missing");
+  const nominal = (row: Awaited<ReturnType<typeof findOriginalInvoiceCommercialOrigin>>) => ({
+    planKey: row.planKey,
+    catalogVersion: row.catalogVersion,
+    priceId: row.priceId,
+    productId: row.productId,
+    currency: row.currency,
+    baseAmountCents: row.baseAmountCents,
+    allowanceAmountUsd: row.allowanceAmountUsd,
+    subscriptionItemId: row.subscriptionItemId,
+    periodStart: row.periodStart,
+    periodEnd: row.periodEnd,
+  });
+  const terms = nominal(matches[0]!);
+  if (matches.some((row) => settlementDigest(nominal(row)) !== settlementDigest(terms)))
+    unavailable("matching_terms_conflict");
+  return terms;
+}
+
 /** Internal caller owns authentication. The stored receipt supplies all provider identity.
  * Result is a point-in-time nominal-term observation, not a durable authorization token.
  * Financial publication must reselect under its transaction and recheck the associated
@@ -154,22 +177,7 @@ export async function readOriginalInvoiceCommercialSelection(
       if (priceId !== line.price.id) continue;
       matches.push(await findOriginalInvoiceCommercialOrigin(original, command.id, tx));
     }
-    if (!matches.length) unavailable("matching_origin_missing");
-    const nominal = (row: (typeof matches)[number]) => ({
-      planKey: row.planKey,
-      catalogVersion: row.catalogVersion,
-      priceId: row.priceId,
-      productId: row.productId,
-      currency: row.currency,
-      baseAmountCents: row.baseAmountCents,
-      allowanceAmountUsd: row.allowanceAmountUsd,
-      subscriptionItemId: row.subscriptionItemId,
-      periodStart: row.periodStart,
-      periodEnd: row.periodEnd,
-    });
-    const terms = nominal(matches[0]!);
-    if (matches.some((row) => settlementDigest(nominal(row)) !== settlementDigest(terms)))
-      unavailable("matching_terms_conflict");
+    const terms = agreeOriginalInvoiceCommercialTerms(matches);
     const body = {
       kind: "original_invoice_commercial_selection" as const,
       version: 1 as const,
