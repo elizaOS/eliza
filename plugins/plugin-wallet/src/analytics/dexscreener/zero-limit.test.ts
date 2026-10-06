@@ -44,7 +44,7 @@ describe("DexScreener explicit empty pages", () => {
 
     const empty = await service.getTrending({ limit: 0 });
     expect(empty).toMatchObject({ success: true, data: [] });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
 
     fetchMock.mockClear();
     const one = await service.getTrending({ limit: 1 });
@@ -95,7 +95,7 @@ describe("DexScreener explicit empty pages", () => {
 
     const empty = await service.getNewPairs({ limit: 0 });
     expect(empty).toMatchObject({ success: true, data: [] });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
 
     fetchMock.mockClear();
     const omitted = await service.getNewPairs();

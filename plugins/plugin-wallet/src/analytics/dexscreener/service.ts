@@ -32,6 +32,15 @@ type DexScreenerBoostedWire = DexScreenerBoostedToken & {
   labels?: string[];
 };
 type TokensV1Wire = DexScreenerPair | DexScreenerPair[];
+
+/** Omitted or non-finite means the method default. Explicit 0 is an empty page. */
+function explicitListLimit(
+  limit: number | undefined,
+  fallback: number,
+): number {
+  if (typeof limit !== "number" || !Number.isFinite(limit)) return fallback;
+  return Math.max(0, Math.floor(limit));
+}
 export class DexScreenerService extends Service {
   static serviceType = "dexscreener" as const;
   private baseUrl!: string;
@@ -184,6 +193,10 @@ export class DexScreenerService extends Service {
     params: DexScreenerTrendingParams = {},
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
+      const limit = explicitListLimit(params.limit, 10);
+      if (limit === 0) {
+        return { success: true, data: [] };
+      }
       await this.rateLimit();
       // DexScreener has no direct trending endpoint; use top boosted tokens
       // as a proxy signal.
@@ -193,22 +206,20 @@ export class DexScreenerService extends Service {
       const boostedTokens = Array.isArray(responseData)
         ? responseData
         : [responseData];
-      const pairPromises = boostedTokens
-        .slice(0, params.limit === undefined ? 10 : Math.max(0, params.limit))
-        .map(async (token) => {
-          try {
-            const pairData = await this.get<TokensV1Wire>(
-              `/tokens/v1/${token.chainId}/${token.tokenAddress}`,
-            );
-            return Array.isArray(pairData) ? pairData[0] : null;
-          } catch (error) {
-            console.error(
-              `Failed to get pair data for ${token.tokenAddress}:`,
-              error,
-            );
-            return null;
-          }
-        });
+      const pairPromises = boostedTokens.slice(0, limit).map(async (token) => {
+        try {
+          const pairData = await this.get<TokensV1Wire>(
+            `/tokens/v1/${token.chainId}/${token.tokenAddress}`,
+          );
+          return Array.isArray(pairData) ? pairData[0] : null;
+        } catch (error) {
+          console.error(
+            `Failed to get pair data for ${token.tokenAddress}:`,
+            error,
+          );
+          return null;
+        }
+      });
       const pairs = (await Promise.all(pairPromises)).filter(
         (pair) => pair !== null,
       );
@@ -229,6 +240,10 @@ export class DexScreenerService extends Service {
     params: DexScreenerChainParams,
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
+      const limit = explicitListLimit(params.limit, 20);
+      if (limit === 0) {
+        return { success: true, data: [] };
+      }
       await this.rateLimit();
       // DexScreener has no chain-scoped listing endpoint, so search by chain
       // name and filter the results down to that chain.
@@ -258,10 +273,7 @@ export class DexScreenerService extends Service {
           }
         });
       }
-      const limitedPairs = pairs.slice(
-        0,
-        params.limit === undefined ? 20 : Math.max(0, params.limit),
-      );
+      const limitedPairs = pairs.slice(0, limit);
       return {
         success: true,
         data: limitedPairs,
@@ -279,6 +291,10 @@ export class DexScreenerService extends Service {
     params: DexScreenerNewPairsParams = {},
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
+      const limit = explicitListLimit(params.limit, 10);
+      if (limit === 0) {
+        return { success: true, data: [] };
+      }
       await this.rateLimit();
       // DexScreener has no direct new-pairs endpoint; use the latest token
       // profiles as a proxy for newly listed tokens.
@@ -294,7 +310,7 @@ export class DexScreenerService extends Service {
           )
         : profiles;
       const pairPromises = filteredProfiles
-        .slice(0, params.limit === undefined ? 10 : Math.max(0, params.limit))
+        .slice(0, limit)
         .map(async (profile) => {
           try {
             const pairData = await this.get<TokensV1Wire>(
