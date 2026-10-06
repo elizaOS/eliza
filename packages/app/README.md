@@ -345,3 +345,24 @@ normalized values instead of the default raw strings and hexadecimal integers.
 verified emulator reboot under the caller’s live device lease. It checks the
 changed kernel boot ID and unlocked user without launching the target app or
 instrumentation; callers retain external alarm observation and cleanup.
+
+## Self-hosted realtime voice
+
+Enable `ELIZA_SELF_HOSTED_VOICE_ENABLED=1` and supply `CARTESIA_API_KEY_FILE`
+(an owner-private file, mode `0600`) or `CARTESIA_API_KEY` in the API host process.
+`VOICE_REALTIME_CARTESIA_VOICE_ID` optionally overrides the Skylar voice. Provider
+keys stay on the host. No renderer key or separate voice gateway is required.
+The host connects to its own bound socket address and API port for conversation
+streaming; a LAN-only listener does not need an additional loopback listener.
+
+The `/api/v1/voice/session` health, consent, mint and WebSocket routes require a
+live owner session, including an operator-paired device session; static API keys,
+user-role devices and unauthenticated loopback requests cannot mint voice access.
+Consent and single-use voice tickets expire after 120 seconds and are invalidated
+by a process restart. Auth-session revocation closes admitted sockets. The
+selected conversation is checked through the canonical runtime catalog, and
+voice turns retain that session's owner authority and the existing text stream,
+UI context and cancellation. The process-local usage ceiling is 60 input-audio
+minutes per UTC day per host/owner; restarting resets that local counter.
+Hosts configured with mandatory `hostAdmission` currently refuse this optional
+protocol until continuous protected-host admission is implemented.
