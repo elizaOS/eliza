@@ -51,10 +51,8 @@ export { CockpitTierToggle } from "../../components/cockpit/CockpitTierToggle.js
 export { CockpitView } from "../../components/cockpit/CockpitView.js";
 export { ELIZA_CLOUD_TIER_MODEL } from "../../components/cockpit/cockpit-modes.js";
 export { PagePanel } from "../../components/composites/page-panel/index.js";
-export { PageLoadingState } from "../../components/composites/page-panel/page-panel-loading.js";
 export { CustomActionEditor } from "../../components/custom-actions/CustomActionEditor.js";
 export { CustomActionsPanel } from "../../components/custom-actions/CustomActionsPanel.js";
-export { TaskChoice } from "../../components/interactive-task/TaskChoice.js";
 export { AppsPageView } from "../../components/pages/AppsPageView.js";
 export { LauncherSurface } from "../../components/pages/LauncherSurface.js";
 export { PluginPageFrame } from "../../components/pages/PluginPageFrame.js";
@@ -500,5 +498,7 @@ export {
   SurfaceGrid,
   SurfaceSection,
 } from "../apps/surface.js";
+export { TaskChoice } from "../chat/TaskChoice.js";
 export { DiffReviewPanel } from "../composites/DiffReviewPanel.js";
+export { PageLoadingState } from "../composites/page-panel/content-state.js";
 export { DesktopTabBar } from "../DesktopTabBar.js";

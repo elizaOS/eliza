@@ -52,13 +52,13 @@ vi.mock("../../../ui/src/utils/with-timeout", () => ({
 
 import { getShaderPreset } from "../../../ui/src/backgrounds/shader-presets";
 import { BACKGROUND_APPLY_EVENT } from "../../../ui/src/backgrounds/useBackgroundApplyChannel";
+import { emitViewEvent } from "../../../ui/src/events/view-events";
 import {
   BUILTIN_ROUTE_DESCRIPTORS,
   type BuiltinTab,
 } from "../../../ui/src/navigation/builtin-route-descriptors";
 import type { BackgroundConfig } from "../../../ui/src/state/ui-preferences";
 import { makeGlslConfig } from "../../../ui/src/state/ui-preferences";
-import { emitViewEvent } from "../../../ui/src/views/view-event-bus";
 
 // ── Live mutable state read by the mocks (mirrors App.navigate-view-wiring) ──
 const appState = vi.hoisted(() => ({

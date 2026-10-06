@@ -15,7 +15,7 @@ const SOURCE_PATHS = [
   "plugins/plugin-browser/src",
   "plugins/plugin-google-workspace/src",
   "packages/ui/src/voice",
-  "packages/ui/src/components/interactive-task",
+  "packages/ui/src/components/chat/TaskChoice.tsx",
   "packages/os/browser/src",
 ];
 
@@ -133,7 +133,7 @@ export function buildTaskRuntime(
           name === "voice/speech-segments.ts"
             ? "packages/ui/src/voice/speech-segments.ts"
             : name === "ui/TaskChoice.tsx"
-              ? "packages/ui/src/components/interactive-task/TaskChoice.tsx"
+              ? "packages/ui/src/components/chat/TaskChoice.tsx"
               : path.join("packages/core/src", name);
         const bytes = fs.readFileSync(path.join(temporary, source));
         const destination = path.join(browserSource, name);

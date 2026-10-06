@@ -1,17 +1,45 @@
-/**
- * Full-height flex frame for a page and its scrollable content column:
- * `PagePanelFrame` is the outer full-bleed container, `PagePanelContentArea`
- * the scrolling main column inside it.
- */
 import * as React from "react";
-
 import { cn } from "../../../utils/cn";
 import { Card } from "../../ui/card";
 import type {
   PagePanelContentAreaProps,
   PagePanelContentRailProps,
   PagePanelFrameProps,
+  PagePanelProps,
+  PagePanelToolbarProps,
 } from "./page-panel-types";
+
+export const PagePanelRoot = React.forwardRef<HTMLDivElement, PagePanelProps>(
+  function PagePanelRoot(
+    { as, className, variant = "surface", ...props },
+    ref,
+  ) {
+    const Component = as ?? "div";
+
+    return (
+      <Card
+        asChild
+        variant="transparent"
+        className={cn(
+          variant === "surface"
+            ? "w-full"
+            : variant === "workspace"
+              ? "flex min-h-[58vh] flex-col overflow-hidden"
+              : variant === "section"
+                ? "w-full overflow-visible"
+                : variant === "padded"
+                  ? "px-4 py-3 sm:px-5 sm:py-4"
+                  : variant === "shell"
+                    ? "relative flex min-h-0 flex-1 overflow-hidden"
+                    : undefined,
+          className,
+        )}
+      >
+        <Component ref={ref as never} {...props} />
+      </Card>
+    );
+  },
+);
 
 export const PagePanelFrame = React.forwardRef<
   HTMLDivElement,
@@ -75,6 +103,19 @@ export const PagePanelContentRail = React.forwardRef<
             : "max-w-[820px]",
         className,
       )}
+      {...props}
+    />
+  );
+});
+
+export const PagePanelToolbar = React.forwardRef<
+  HTMLDivElement,
+  PagePanelToolbarProps
+>(function PagePanelToolbar({ className, ...props }, ref) {
+  return (
+    <div
+      ref={ref}
+      className={cn("mb-4 flex flex-wrap items-center gap-3", className)}
       {...props}
     />
   );

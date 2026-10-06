@@ -18,7 +18,7 @@ import { useAgentElement } from "../../agent-surface/useAgentElement";
 import { client } from "../../api/client";
 import type { InstalledAppInfo } from "../../api/client-types-cloud";
 import { useAppSelector } from "../../state/app-store";
-import { PageLoadingState } from "../composites/page-panel/page-panel-loading";
+import { PageLoadingState } from "../composites/page-panel/content-state";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,

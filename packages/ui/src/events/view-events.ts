@@ -1,18 +1,3 @@
-/**
- * view-event-bus.ts
- *
- * Cross-view pub-sub bus. Lets mounted views signal state changes to each
- * other and lets the agent push updates into views.
- *
- * Transport stack (both fire on every emit):
- *  1. BroadcastChannel("elizaos-views") — reaches other tabs / windows on
- *     the same origin when the API is available.
- *  2. window.dispatchEvent(CustomEvent) — reaches same-window listeners
- *     synchronously.
- *
- * No React, no heavy libraries. Tree-shakeable by design.
- */
-
 export type ViewEventPayload = Record<string, unknown>;
 
 export interface ViewEvent {
@@ -121,3 +106,22 @@ export function onAnyViewEvent(
     }
   };
 }
+
+export const VIEW_EVENTS = {
+  /** A wallet balance or token list changed. */
+  WALLET_BALANCE_UPDATED: "wallet:balance:updated",
+  /** Agent requests the shell to navigate to a view. */
+  AGENT_NAVIGATE: "agent:navigate:view",
+  /** Ask a specific (or all) view(s) to reload their data. */
+  VIEW_REFRESH: "view:refresh",
+  /** A view gained focus / became visible. */
+  VIEW_FOCUSED: "view:focused",
+  /** A view lost focus / became hidden. */
+  VIEW_BLURRED: "view:blurred",
+  /** A blockchain / payment transaction completed successfully. */
+  TRANSACTION_COMPLETE: "transaction:complete",
+  /** A user-facing setting was changed and persisted. */
+  SETTINGS_CHANGED: "settings:changed",
+  /** A plugin was hot-reloaded into the running runtime. */
+  PLUGIN_RELOADED: "plugin_reloaded",
+} as const;

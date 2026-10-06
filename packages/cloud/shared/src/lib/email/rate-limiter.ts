@@ -2,8 +2,8 @@
  * Email rate limiting utilities to prevent spam.
  */
 
-import { cache } from "../../cache/client";
-import { logger } from "../../utils/logger";
+import { cache } from "../cache/client";
+import { logger } from "../utils/logger";
 
 /**
  * Checks if a low credits email can be sent (not sent in last 24 hours).

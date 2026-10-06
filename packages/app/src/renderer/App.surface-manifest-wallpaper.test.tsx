@@ -14,9 +14,9 @@ vi.mock("../../../ui/src/utils/with-timeout", () => ({
 }));
 
 import { BACKGROUND_APPLY_EVENT } from "../../../ui/src/backgrounds/useBackgroundApplyChannel";
+import { emitViewEvent } from "../../../ui/src/events/view-events";
 import type { BuiltinTab } from "../../../ui/src/navigation/builtin-route-descriptors";
 import type { BackgroundConfig } from "../../../ui/src/state/ui-preferences";
-import { emitViewEvent } from "../../../ui/src/views/view-event-bus";
 
 const appState = vi.hoisted(() => ({
   setTab: vi.fn(),
