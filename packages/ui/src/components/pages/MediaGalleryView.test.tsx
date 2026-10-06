@@ -66,6 +66,30 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("MediaGalleryView", () => {
+  it("includes media from candidate tables after the first batch", async () => {
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: Array.from({ length: 11 }, (_, index) => ({
+        name: `media_${index}`,
+      })),
+    });
+    clientMock.executeDatabaseQuery.mockImplementation(async (sql: string) => {
+      const tableName = /FROM "([^"]+)"/.exec(sql)?.[1] ?? "unknown";
+      return {
+        rows: [
+          {
+            content: `https://example.test/${tableName}.png`,
+            createdAt: "2026-10-06",
+          },
+        ],
+      };
+    });
+
+    render(<MediaGalleryView />);
+
+    expect(await screen.findByText("media_10.png")).toBeTruthy();
+    expect(screen.getByText("11 items")).toBeTruthy();
+  });
+
   it("announces a download failure and clears it on a successful retry", async () => {
     transferMock.downloadAttachment
       .mockRejectedValueOnce(new Error("Transport unavailable"))
