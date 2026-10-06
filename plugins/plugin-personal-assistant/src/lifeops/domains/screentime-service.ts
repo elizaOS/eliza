@@ -46,6 +46,7 @@ import {
 import { getActivityReportBetween } from "../../activity-profile/activity-tracker-reporting.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { fail } from "../service-normalize.js";
+import { addDaysToLocalDate, buildUtcDateFromLocalParts } from "../time.js";
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -111,6 +112,34 @@ function resolveUtcDateWindow(date: string): {
     fail(400, "date must be a valid YYYY-MM-DD string");
   }
   return { startIso, endIso, startMs, endMs };
+}
+
+/**
+ * The window of one civil date. With a time zone it is that zone's local day
+ * (DST-length days included); without one it is the UTC day.
+ */
+function resolveDateWindow(
+  date: string,
+  timeZone: string | undefined,
+): { startIso: string; endIso: string } {
+  if (!timeZone) return resolveUtcDateWindow(date);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) fail(400, "date must be a valid YYYY-MM-DD string");
+  const day = {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  };
+  const midnight = { hour: 0, minute: 0, second: 0 };
+  const start = buildUtcDateFromLocalParts(timeZone, { ...day, ...midnight });
+  const next = buildUtcDateFromLocalParts(timeZone, {
+    ...addDaysToLocalDate(day, 1),
+    ...midnight,
+  });
+  return {
+    startIso: start.toISOString(),
+    endIso: new Date(next.getTime() - 1).toISOString(),
+  };
 }
 
 function buildWindowBounds(
@@ -424,11 +453,13 @@ export class ScreenTimeDomain {
 
   async getScreenTimeDaily(opts: {
     date: string;
+    /** The owner's zone; `date` is then that zone's civil day, not the UTC day. */
+    timeZone?: string;
     source?: LifeOpsScreenTimeSource;
     identifier?: string;
     limit?: number;
   }): Promise<LifeOpsScreenTimeDaily[]> {
-    const { startIso, endIso } = resolveUtcDateWindow(opts.date);
+    const { startIso, endIso } = resolveDateWindow(opts.date, opts.timeZone);
     const rows = await this.collectScreenTimeRows({
       since: startIso,
       until: endIso,
