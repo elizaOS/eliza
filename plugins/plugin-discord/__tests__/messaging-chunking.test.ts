@@ -231,4 +231,82 @@ describe("chunkDiscordText surrogate-pair safety", () => {
 			expect(chunk.length).toBeLessThanOrEqual(maxChars);
 		}
 	});
+
+	it("never sends an empty code block when a fence opens on a chunk's last line", () => {
+		const code = (count: number) =>
+			Array.from(
+				{ length: count },
+				(_, i) => `  const value${i} = compute(${i});`,
+			);
+		for (let introLines = 1; introLines <= 30; introLines++) {
+			for (let codeLines = 3; codeLines <= 25; codeLines++) {
+				const intro = Array.from(
+					{ length: introLines },
+					(_, i) => `Sentence number ${i} explains a step.`,
+				);
+				const body = code(codeLines);
+				const text = `${intro.join("\n")}\n\n\`\`\`ts\n${body.join("\n")}\n\`\`\`\n\nThat is the whole change.`;
+				const chunks = chunkDiscordText(text);
+
+				const sentCode: string[] = [];
+				for (const chunk of chunks) {
+					expect(chunk.length).toBeLessThanOrEqual(2000);
+					expect(chunk).not.toMatch(/(^|\n)```[^\n]*\n```(\n|$)/);
+					let inFence = false;
+					for (const line of chunk.split("\n")) {
+						if (line.startsWith("```")) {
+							inFence = !inFence;
+						} else if (inFence) {
+							sentCode.push(line);
+						}
+					}
+					expect(inFence).toBe(false);
+				}
+				expect(sentCode).toEqual(body);
+				expect(chunks.join("\n")).toContain(intro.at(-1));
+				expect(chunks.at(-1)).toContain("That is the whole change.");
+			}
+		}
+	});
+
+	it.each([
+		["```", "```", "\n\n"],
+		["```ts", "``` ", "\n"],
+		["~~~", "~~~  ", "\n"],
+		["````md", "`````", "\n"],
+		["```", "```\t", "\n \n"],
+	])(
+		"never sends an empty code block for %j closed by %j after %j",
+		(opener, closer, gap) => {
+			const body = ["r0=abab", "r1=abababab", "r2=ab", "r3=abababab"];
+			const text = `Lead paragraph text.\n\n${opener}\n${body.join("\n")}${gap}${closer}\n\nTail.`;
+			const markerChar = opener[0];
+			for (let maxChars = 20; maxChars <= 80; maxChars++) {
+				const chunks = chunkDiscordText(text, { maxChars, maxLines: 999 });
+				let code = "";
+				for (const chunk of chunks) {
+					expect(chunk.length).toBeLessThanOrEqual(maxChars);
+					let block: string[] | undefined;
+					for (const line of chunk.split("\n")) {
+						if (line.startsWith(markerChar.repeat(3))) {
+							if (block) {
+								expect(block.join("").trim(), JSON.stringify(chunk)).not.toBe(
+									"",
+								);
+								code += block.join("");
+								block = undefined;
+							} else {
+								block = [];
+							}
+						} else {
+							block?.push(line);
+						}
+					}
+					expect(block, JSON.stringify(chunk)).toBeUndefined();
+				}
+				expect(code.replace(/\s+/g, "")).toBe(body.join(""));
+				expect(chunks.at(-1)).toContain("Tail.");
+			}
+		},
+	);
 });

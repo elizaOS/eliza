@@ -300,17 +300,33 @@ export function chunkDiscordText(
 	let current = "";
 	let currentLines = 0;
 	let openFence: OpenFence | null = null;
+	let reopenedFence = false;
 
 	const flush = () => {
 		if (!current) {
 			return;
 		}
-		const payload = closeFenceIfNeeded(current, openFence);
+		// A fence opened on the buffer's last line has no content in this
+		// chunk; closing it here would send an empty code block. The opener is
+		// re-emitted at the start of the next chunk below.
+		const contentEnd =
+			openFence && current.endsWith(openFence.openLine)
+				? current.length - openFence.openLine.length
+				: -1;
+		const unopened =
+			contentEnd === 0 || (contentEnd > 0 && current[contentEnd - 1] === "\n")
+				? current.slice(0, Math.max(0, contentEnd - 1))
+				: undefined;
+		const payload =
+			unopened !== undefined
+				? unopened
+				: closeFenceIfNeeded(current, openFence);
 		if (payload.trim().length) {
 			chunks.push(payload);
 		}
 		current = "";
 		currentLines = 0;
+		reopenedFence = openFence !== null;
 		if (openFence) {
 			current = openFence.openLine;
 			currentLines = 1;
@@ -331,6 +347,21 @@ export function chunkDiscordText(
 			) {
 				nextOpenFence = null;
 			}
+		}
+
+		// Only whitespace follows the reopened opener; sending it with the
+		// original closer would be an empty code block, so drop both.
+		if (
+			openFence &&
+			nextOpenFence === null &&
+			reopenedFence &&
+			current.slice(openFence.openLine.length).trim() === ""
+		) {
+			current = "";
+			currentLines = 0;
+			reopenedFence = false;
+			openFence = null;
+			continue;
 		}
 
 		const reserveChars = nextOpenFence
@@ -400,6 +431,15 @@ export function chunkDiscordText(
 			if ((wouldExceedChars || wouldExceedLines) && current.length > 0) {
 				flush();
 				flushedForThisSegment = true;
+				// The flushed chunk already ends with the synthetic closer, so the
+				// original closing line is redundant; appending it would reopen an
+				// empty code block.
+				if (wasInsideFence && nextOpenFence === null && reopenedFence) {
+					current = "";
+					currentLines = 0;
+					reopenedFence = false;
+					break;
+				}
 			}
 
 			// A flush can repopulate `current` with a reopened fence's opening
@@ -426,9 +466,16 @@ export function chunkDiscordText(
 		}
 
 		openFence = nextOpenFence;
+		if (!openFence) {
+			reopenedFence = false;
+		}
 	}
 
-	if (current.length) {
+	const onlyReopenedFence =
+		openFence !== null &&
+		reopenedFence &&
+		current.slice(openFence.openLine.length).trim() === "";
+	if (current.length && !onlyReopenedFence) {
 		const payload = closeFenceIfNeeded(current, openFence);
 		if (payload.trim().length) {
 			chunks.push(payload);
