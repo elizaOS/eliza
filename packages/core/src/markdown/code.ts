@@ -298,26 +298,43 @@ export function unwrapWholeCodeFence(
 	value: string,
 	languages: readonly string[],
 ): string | null {
-	if (!value.startsWith("```") || !value.endsWith("```") || value.length < 6) {
+	let fenceLength = 0;
+	while (value[fenceLength] === "`") fenceLength += 1;
+	// The closer is the same run at the end of the value. Slicing a fixed width
+	// without that check turns a reply that only starts with a fence into
+	// truncated JSON.
+	if (
+		fenceLength < 3 ||
+		value.length < fenceLength * 2 ||
+		value.slice(value.length - fenceLength) !== "`".repeat(fenceLength)
+	) {
 		return null;
 	}
 	const lowerValue = value.toLowerCase();
 	const acceptedLanguage = [...languages]
 		.sort((left, right) => right.length - left.length)
-		.find((language) => lowerValue.startsWith(language.toLowerCase(), 3));
-	let cursor = acceptedLanguage ? 3 + acceptedLanguage.length : 3;
+		.find((language) =>
+			lowerValue.startsWith(language.toLowerCase(), fenceLength),
+		);
+	let cursor = acceptedLanguage
+		? fenceLength + acceptedLanguage.length
+		: fenceLength;
 	if (!acceptedLanguage) {
-		while (cursor < value.length && /[A-Za-z0-9]/.test(value[cursor]))
+		while (
+			cursor < value.length - fenceLength &&
+			/[A-Za-z0-9]/.test(value[cursor])
+		)
 			cursor += 1;
-		const language = value.slice(3, cursor);
+		const language = value.slice(fenceLength, cursor);
 		// A whitespace-delimited token is an explicit (unsupported) language
 		// label. Otherwise it is compact unlabeled content such as ```true``` or
 		// ```name: value```, which the previous whole-fence parsers accepted.
 		if (language && /\s/u.test(value[cursor] ?? "")) return null;
-		cursor = 3;
+		cursor = fenceLength;
 	}
-	while (cursor < value.length - 3 && /\s/u.test(value[cursor])) cursor += 1;
-	let end = value.length - 3;
+	while (cursor < value.length - fenceLength && /\s/u.test(value[cursor]))
+		cursor += 1;
+	let end = value.length - fenceLength;
 	while (end > cursor && /\s/u.test(value[end - 1])) end -= 1;
 	return value.slice(cursor, end);
 }
