@@ -184,6 +184,44 @@ describe("morning Calendar presentation", () => {
     expect(report).toEqual(original);
   });
 
+  it.each(["America/Los_Angeles", "Asia/Kolkata"])(
+    "dates future single-day and multiday all-day changes in %s",
+    (timezone) => {
+      const single = {
+        ...event,
+        id: "future-day",
+        title: "Museum visit",
+        startAt: "2026-10-09T00:00:00.000Z",
+        endAt: "2026-10-10T00:00:00.000Z",
+        isAllDay: true,
+      };
+      const multi = {
+        ...single,
+        id: "future-trip",
+        title: "Trip",
+        startAt: "2026-10-12T00:00:00.000Z",
+        endAt: "2026-10-15T00:00:00.000Z",
+      };
+      const report = baseReport({
+        generatedAt: "2026-10-06T14:00:00.000Z",
+        timezone,
+        todaysMeetings: [],
+        briefingSections: [
+          { ...section, items: [calendarItem(single), calendarItem(multi)] },
+        ],
+      });
+      const text = renderMorningCheckinReport(report);
+      expect(text).toContain(
+        "Museum visit: Oct 9, 2026, all day; added or updated",
+      );
+      expect(text).toContain(
+        "Trip: Oct 12, 2026 – Oct 14, 2026, all day; added or updated",
+      );
+      expect(text).not.toContain("Oct 15, 2026");
+      expect(report.briefingSections[0].items[1].calendarEvent).toEqual(multi);
+    },
+  );
+
   it("keeps future changes when today's Calendar is empty and discloses source failures", () => {
     const future = {
       ...event,
