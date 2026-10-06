@@ -569,6 +569,7 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 import { documentsFromDb } from "./agent-mapping";
+import { agentRecordedTime } from "./agent-recorded-time";
 import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
 import { agentTable } from "./schema/agent";
@@ -1326,16 +1327,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           const persistedAgent = transformAgentSettings(agent, encryptedCharacter);
           const agentData = {
             ...persistedAgent,
-            createdAt: new Date(
-              typeof agent.createdAt === "bigint"
-                ? Number(agent.createdAt)
-                : agent.createdAt || Date.now()
-            ),
-            updatedAt: new Date(
-              typeof agent.updatedAt === "bigint"
-                ? Number(agent.updatedAt)
-                : agent.updatedAt || Date.now()
-            ),
+            createdAt: new Date(agentRecordedTime(agent.createdAt, Date.now())),
+            updatedAt: new Date(agentRecordedTime(agent.updatedAt, Date.now())),
           };
           const sanitizedAgentData = Object.fromEntries(
             Object.entries(agentData).filter(([, value]) => value !== undefined)
