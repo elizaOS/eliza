@@ -145,6 +145,7 @@ export class CryptoPaymentsRepository {
     return payment;
   }
 
+  /** Expires a still-pending payment; returns undefined when it is no longer pending. */
   async markAsExpired(id: string): Promise<CryptoPayment | undefined> {
     const [payment] = await dbWrite
       .update(cryptoPayments)
@@ -152,7 +153,7 @@ export class CryptoPaymentsRepository {
         status: "expired",
         updated_at: new Date(),
       })
-      .where(eq(cryptoPayments.id, id))
+      .where(and(eq(cryptoPayments.id, id), eq(cryptoPayments.status, "pending")))
       .returning();
     return payment;
   }

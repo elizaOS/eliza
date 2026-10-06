@@ -701,20 +701,13 @@ class X402PaymentRequestsService {
     if (!payment) {
       throw new X402PaymentRequestError("Payment request not found", 404, "not_found");
     }
-    if (payment.status === "confirmed") {
-      const paymentResponse = Buffer.from(
-        JSON.stringify({
-          success: true,
-          transaction: payment.transaction_hash,
-          network: payment.network,
-          alreadySettled: true,
-        }),
-      ).toString("base64");
-      return { paymentRequest: this.toPublicView(payment), paymentResponse };
-    }
+    if (payment.status === "confirmed") return this.alreadySettled(payment);
     if (payment.expires_at.getTime() < Date.now()) {
-      const expired = (await cryptoPaymentsRepository.markAsExpired(payment.id)) ?? payment;
-      await this.triggerFailureCallback(expired, "expired", {
+      const expired = await cryptoPaymentsRepository.markAsExpired(payment.id);
+      const current = expired ?? (await this.get(id)) ?? payment;
+      // A concurrent settle confirmed this request after it was read above.
+      if (current.status === "confirmed") return this.alreadySettled(current);
+      await this.triggerFailureCallback(current, "expired", {
         expiredAt: payment.expires_at.toISOString(),
       });
       throw new X402PaymentRequestError(
@@ -838,6 +831,21 @@ class X402PaymentRequestsService {
       paymentRequest: this.toPublicView(settledPayment),
       paymentResponse: Buffer.from(JSON.stringify(settlement)).toString("base64"),
     };
+  }
+
+  private alreadySettled(payment: CryptoPayment): {
+    paymentRequest: X402PaymentRequestView;
+    paymentResponse: string;
+  } {
+    const paymentResponse = Buffer.from(
+      JSON.stringify({
+        success: true,
+        transaction: payment.transaction_hash,
+        network: payment.network,
+        alreadySettled: true,
+      }),
+    ).toString("base64");
+    return { paymentRequest: this.toPublicView(payment), paymentResponse };
   }
 
   private async triggerFailureCallback(
