@@ -25,6 +25,7 @@ import {
   extractReplyTextFromTranscript,
   finalizeTrajectoryRecording,
   getContextRoutingFromState,
+  getDirectActionRoutingRules,
   getLocalizedExamplesProvider,
   getStreamingContext,
   getTrajectoryContext,
@@ -1318,6 +1319,10 @@ export async function runV5MessageRuntimeStage1(
         intents: messageHandler.plan.intents,
         contexts: selectedContexts,
         selectedActions: selectedActionFamilies,
+        directRouting: {
+          rules: getDirectActionRoutingRules(args.runtime),
+          message: args.message,
+        },
         contextAliases: (context) =>
           args.runtime.contexts?.get(context)?.aliases,
       }).actions;

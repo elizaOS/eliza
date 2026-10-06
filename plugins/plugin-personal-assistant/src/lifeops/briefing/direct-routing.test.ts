@@ -21,6 +21,8 @@ describe("looksLikeTrackedWorkRecapRequest", () => {
     "Please show me my daily brief.",
     "Can you compose a morning briefing?",
     "Generate my daily dossier.",
+    "Compile the daily dossier using connected sources available now",
+    "Compile my morning briefing.",
   ])("routes tracked-work recap variant: %s", (text) => {
     expect(looksLikeTrackedWorkRecapRequest(text)).toBe(true);
   });
@@ -41,6 +43,8 @@ describe("looksLikeTrackedWorkRecapRequest", () => {
     "What is left recursion?",
     "What is a morning brief?",
     "Do not give me a morning brief.",
+    "Do not compile my morning briefing.",
+    "Snooze the reminder.",
     "Give me no daily brief.",
     'Someone said "give me my morning brief".',
     'Give me "my morning brief" as a title.',
