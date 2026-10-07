@@ -182,11 +182,19 @@ export function cleanUrl(url: string): string {
 	let prev = "";
 	while (prev !== clean) {
 		prev = clean;
-		clean = clean.replace(/[)\]>.,;!*_]+$/, "");
+		clean = clean.replace(/[\]>.,;!*_]+$/, "");
 		clean = clean.replace(
 			/[（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]+$/,
 			"",
 		);
+		// A trailing ")" is wrapping syntax only when it has no "(" to close:
+		// Wikipedia-style paths such as /wiki/Mercury_(planet) end in one.
+		if (
+			clean.endsWith(")") &&
+			clean.split(")").length > clean.split("(").length
+		) {
+			clean = clean.slice(0, -1);
+		}
 	}
 
 	return clean;
