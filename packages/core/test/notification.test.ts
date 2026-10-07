@@ -107,6 +107,54 @@ describe("NotificationService", () => {
 		expect(service.getUnreadCount()).toBe(1);
 	});
 
+	it("preserves exact lifeops reminder bodies in storage and events while generic bodies normalize", async () => {
+		const body = "\n  Exact alert body.  \n";
+		const inputs = [
+			{
+				title: "Reminder",
+				body,
+				category: "reminder" as const,
+				source: "lifeops",
+			},
+			{
+				title: "Other reminder",
+				body,
+				category: "reminder" as const,
+				source: "agent",
+			},
+			{
+				title: "Other lifeops",
+				body,
+				category: "workflow" as const,
+				source: "lifeops",
+			},
+		];
+		for (const input of inputs) await service.notify(input);
+		const expected = [body, body.trim(), body.trim()];
+		expect(service.list().map((notification) => notification.body)).toEqual(
+			[...expected].reverse(),
+		);
+		expect(
+			emitted.map(
+				(event) => (event.data.notification as AgentNotification).body,
+			),
+		).toEqual(expected);
+		const restarted = (await NotificationService.start(
+			runtime,
+		)) as NotificationService;
+		expect(restarted.list().map((notification) => notification.body)).toEqual(
+			[...expected].reverse(),
+		);
+		await expect(
+			service.notify({
+				title: "Blank",
+				body: " \n\t ",
+				category: "reminder",
+				source: "lifeops",
+			}),
+		).resolves.toMatchObject({ body: undefined });
+	});
+
 	it("rejects an empty title", async () => {
 		await expect(service.notify({ title: "   " })).rejects.toThrow(/title/);
 	});

@@ -16,6 +16,7 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   character: "/character",
   relationships: "/apps/relationships",
   "character-select": "/character/select",
+  clock: "/clock",
   automations: "/automations",
   inventory: "/wallet",
   documents: "/character/documents",

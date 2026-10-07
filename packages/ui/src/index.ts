@@ -158,6 +158,15 @@ export { AppBackground } from "./backgrounds/AppBackground.js";
 export { BRAND_PATHS, LOGO_FILES } from "./brand/index.js";
 export { initializeCapacitorBridge } from "./bridge/capacitor-bridge.js";
 export {
+  type ClockAlarmStatus,
+  type ClockHost,
+  type ClockProposal,
+  type ClockStatus,
+  configureClockHost,
+  getClockHost,
+  subscribeClockHost,
+} from "./bridge/clock-host.js";
+export {
   type DesktopBottomBarSurfaceState,
   getDesktopRuntimeMode,
   getElectrobunRendererRpc,
@@ -1342,6 +1351,7 @@ export {
   loadCharacterExperienceView,
   loadCharacterSkillsView,
   loadChatView,
+  loadClockView,
   loadCloudRouterShell,
   loadContextInspectorView,
   loadConversationsSidebar,

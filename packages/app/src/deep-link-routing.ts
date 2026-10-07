@@ -103,6 +103,9 @@ export function resolveDeepLinkNavigationIntent(
   }
 
   switch (path) {
+    case "clock":
+      // OS intent extras are untrusted; opening the view never approves an alarm.
+      return { viewId: "clock", viewPath: "/clock" };
     case "apps/deploy":
     case "cloud-apps":
       // eliza://apps/deploy (and https://eliza.app/apps/deploy) → the Eliza

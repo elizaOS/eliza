@@ -4,6 +4,27 @@ import {
   validateClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
+
+export type {
+  ClockAlarmContext,
+  ClockAlarmOperation,
+  ClockAlarmRecord,
+  ClockAlarmResult,
+  ClockOperation,
+  ClockResult,
+} from "./clock-contract.ts";
+export {
+  assertClockObservation,
+  CLOCK_ALARM_SCHEDULE_STATES,
+  CLOCK_ALARMS_CAPABILITY,
+  CLOCK_CAPABILITY,
+  CLOCK_REPEAT_CAPABILITY,
+  clockCapabilityAvailable,
+  clockTimeZone,
+  validateClockAlarmContext,
+  validateClockOperation,
+  validateClockResult,
+} from "./clock-contract.ts";
 export interface ClockJournalIdentity {
   scope: string;
   proposalId: string;
@@ -30,15 +51,17 @@ export interface ClockReviewBridge {
 function validateResult(
   operation: ClockOperation,
   result: ClockResult,
+  operationId: string,
 ): ClockResult {
   return validateClockResult(
     operation,
     result,
-    result.status === "opened"
+    !["unavailable", "denied", "failed", "unknown"].includes(result.status)
       ? "applied"
       : result.status === "unknown"
         ? "unknown"
         : "failed",
+    operationId,
   );
 }
 /** Create once per mobile host/session owner, and await retire before changing owners.
@@ -108,7 +131,8 @@ export function createClockReviewExecutor(bridge: ClockReviewBridge) {
         operation: approved,
       });
       current();
-      if (reviewed.result) return validateResult(approved, reviewed.result);
+      if (reviewed.result)
+        return validateResult(approved, reviewed.result, operationId);
       if (
         typeof reviewed.reviewToken !== "string" ||
         !reviewed.reviewToken ||
@@ -121,8 +145,8 @@ export function createClockReviewExecutor(bridge: ClockReviewBridge) {
         ...input,
         reviewToken: reviewed.reviewToken,
       });
-      if (!confirmed.result) throw Error("Clock handoff outcome unavailable");
-      return validateResult(approved, confirmed.result);
+      if (!confirmed.result) throw Error("Clock outcome unavailable");
+      return validateResult(approved, confirmed.result, operationId);
     } finally {
       signal.removeEventListener("abort", onAbort);
       // A failed acknowledgement remains registered. Only explicit retirement can

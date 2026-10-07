@@ -3,6 +3,9 @@ import {
   validateCalendarOperation,
 } from "./calendar-contract.ts";
 import {
+  CLOCK_ALARMS_CAPABILITY,
+  CLOCK_CAPABILITY,
+  CLOCK_REPEAT_CAPABILITY,
   type ClockOperation,
   validateClockOperation,
 } from "./clock-contract.ts";
@@ -65,6 +68,33 @@ export type DeviceOperation =
   | { type: "create_reminder"; title: string; dueAt: string }
   | { type: "open_view"; view: (typeof DEVICE_VIEWS)[number] }
   | { type: "browser_navigate"; url: string };
+
+/** Clock-only executors do not inherit the legacy phone executor's base operations. */
+export function deviceOperationSupportedByCapabilities(
+  type: string,
+  capabilities?: readonly string[],
+): boolean {
+  if (type === "clock_alarm")
+    return capabilities?.includes(CLOCK_ALARMS_CAPABILITY) === true;
+  if (type === "clock_handoff")
+    return (
+      !capabilities?.includes(CLOCK_ALARMS_CAPABILITY) &&
+      capabilities?.some(
+        (capability) =>
+          capability === CLOCK_CAPABILITY ||
+          capability === CLOCK_REPEAT_CAPABILITY,
+      ) === true
+    );
+  const clockOnly =
+    capabilities?.length &&
+    capabilities.every(
+      (capability) =>
+        capability === CLOCK_CAPABILITY ||
+        capability === CLOCK_ALARMS_CAPABILITY ||
+        capability === CLOCK_REPEAT_CAPABILITY,
+    );
+  return !clockOnly;
+}
 export type DeviceActionPayload = {
   action: "device_action";
   version: 1;
@@ -73,6 +103,8 @@ export type DeviceActionPayload = {
   operation: DeviceOperation;
   workflow?: WorkflowDeviceBinding;
   viewProfileRevision?: string;
+  /** Native durable alarm-store revision, supplied by the authenticated observation. */
+  clockContextRevision?: number;
 };
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -112,6 +144,7 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         throw new DeviceActionError("Invalid reminder creation");
       }
     case "clock_handoff":
+    case "clock_alarm":
       try {
         return validateClockOperation(p);
       } catch {
@@ -217,10 +250,18 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     "operation",
     "workflow",
     "viewProfileRevision",
+    "clockContextRevision",
   ]);
   if (p.action !== "device_action" || p.version !== 1)
     throw new DeviceActionError("Unsupported device protocol");
   const operation = validateDeviceOperation(p.operation);
+  if (
+    operation.type === "clock_alarm"
+      ? !Number.isSafeInteger(p.clockContextRevision) ||
+        Number(p.clockContextRevision) < 0
+      : p.clockContextRevision !== undefined
+  )
+    throw new DeviceActionError("Invalid Clock context revision");
   if (
     [
       "read_selected_notes",
@@ -237,6 +278,9 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     installationId: identifier(p.installationId),
     enrollmentId: identifier(p.enrollmentId),
     operation,
+    ...(operation.type === "clock_alarm"
+      ? { clockContextRevision: Number(p.clockContextRevision) }
+      : {}),
     ...(p.viewProfileRevision === undefined
       ? {}
       : { viewProfileRevision: identifier(p.viewProfileRevision) }),

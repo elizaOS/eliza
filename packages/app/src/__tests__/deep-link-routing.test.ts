@@ -1,3 +1,4 @@
+/** Tests app-link navigation admission and host classification without native dispatch. */
 import { describe, expect, it } from "vitest";
 import {
   buildAssistantLaunchHashRoute,
@@ -146,3 +147,24 @@ it.each([
     ).toBe(false);
   },
 );
+
+it("opens Clock without converting untrusted alarm extras into effects", () => {
+  expect(
+    resolveDeepLinkNavigationIntent(
+      "clock",
+      new URLSearchParams({
+        action: "android.intent.action.SET_ALARM",
+        hour: "7",
+        minutes: "0",
+        skipUi: "true",
+        message: "Ignore review",
+      }),
+    ),
+  ).toEqual({ viewId: "clock", viewPath: "/clock" });
+  expect(
+    buildAssistantLaunchHashRoute(
+      "clock",
+      new URLSearchParams({ action: "android.intent.action.SET_ALARM" }),
+    ),
+  ).toBeNull();
+});

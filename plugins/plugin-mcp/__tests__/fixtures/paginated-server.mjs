@@ -8,15 +8,29 @@ import {
   ListResourceTemplatesRequestSchema,
   ListToolsRequestSchema,
   McpError,
+  PingRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
 const [mode, failingList] = process.argv.slice(2);
 const requests = [];
+const capabilityMode = ["resources-only", "tools-only", "no-capabilities"].includes(mode);
+const capabilities = capabilityMode
+  ? {
+      ...(mode === "tools-only" ? { tools: {} } : {}),
+      ...(mode === "resources-only" ? { resources: {} } : {}),
+    }
+  : { tools: {}, resources: {} };
 const server = new Server(
   { name: "paginated-discovery-fixture", version: "1.0.0" },
-  { capabilities: { tools: {}, resources: {} } }
+  { capabilities }
 );
+server.setRequestHandler(PingRequestSchema, async () => {
+  requests.push({ list: "ping", cursor: null });
+  if (failingList === "ping-error") throw new McpError(ErrorCode.InternalError, "ping unavailable");
+  if (failingList === "ping-timeout") return new Promise(() => {});
+  return {};
+});
 
 for (const [schema, key, item] of [
   [
@@ -38,6 +52,7 @@ for (const [schema, key, item] of [
     }),
   ],
 ]) {
+  if (key === "tools" ? !capabilities.tools : !capabilities.resources) continue;
   server.setRequestHandler(schema, async (request) => {
     const cursor = request.params?.cursor;
     requests.push({ list: key, cursor: cursor ?? null });
@@ -59,10 +74,21 @@ for (const [schema, key, item] of [
   });
 }
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => ({
-  content: [{ type: "text", text: JSON.stringify({ tool: request.params.name, requests }) }],
-}));
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => ({
-  contents: [{ uri: request.params.uri, text: "last-page resource" }],
-}));
+if (capabilities.tools) {
+  server.setRequestHandler(CallToolRequestSchema, async (request) => ({
+    content: [{ type: "text", text: JSON.stringify({ tool: request.params.name, requests }) }],
+  }));
+}
+if (capabilities.resources) {
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => ({
+    contents: [
+      {
+        uri: request.params.uri,
+        text: capabilityMode
+          ? JSON.stringify({ resource: request.params.uri, requests })
+          : "last-page resource",
+      },
+    ],
+  }));
+}
 await server.connect(new StdioServerTransport());

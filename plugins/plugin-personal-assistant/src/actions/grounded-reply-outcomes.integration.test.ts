@@ -4,7 +4,14 @@
  * generation is a deterministic collaborator, so this is not live-model proof.
  */
 
-import type { ActionResult, AgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  type ActionResult,
+  type AgentRuntime,
+  type Memory,
+  ModelType,
+  runWithActionRoutingContext,
+  type UUID,
+} from "@elizaos/core";
 import * as assistant from "@elizaos/plugin-assistant";
 import {
   afterAll,
@@ -15,6 +22,14 @@ import {
   it,
   vi,
 } from "vitest";
+import { renderGroundedActionReply } from "../../../plugin-assistant/src/actions/grounded-action-reply.ts";
+import { runEvaluator } from "../../../plugin-assistant/src/runtime/evaluator.ts";
+import { actionResultToPlannerToolResult } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
+import {
+  DeviceActionService,
+  withDeviceActionTurn,
+} from "../../../plugin-assistant/src/services/device-actions/service.ts";
+import { createV5MessageContextObject } from "../../../plugin-assistant/src/services/message/context-assembly.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -161,6 +176,7 @@ describe("grounded reply outcomes — real PGlite", () => {
             requestKind: "reminder",
             nativeProjection: "in_app_only",
             title: "Drink water",
+            description: null,
             cadenceKind: "once",
             dueInMinutes: 2,
             timeZone: "Asia/Tokyo",
@@ -192,6 +208,284 @@ describe("grounded reply outcomes — real PGlite", () => {
     });
     expect(callback).not.toHaveBeenCalled();
     expect(result.userFacingText).toBeUndefined();
+  });
+
+  it("carries app notification semantics into actual create and update completion inputs without claiming push readiness", async () => {
+    // The package setup stubs rendering; this case exercises its real deferred path.
+    vi.spyOn(assistant, "renderGroundedActionReply").mockImplementation(
+      renderGroundedActionReply,
+    );
+    const useModel = vi.spyOn(runtime, "useModel");
+    const createMessage = message(
+      "Remind me once in two minutes in Eliza, using my in-app and Android notifications.",
+    );
+    const created = await runWithActionRoutingContext(
+      {
+        actionName: "OWNER_REMINDERS_CREATE",
+        modelClass: undefined,
+        messageId: createMessage.id,
+        replyOwner: "planner",
+      },
+      () =>
+        runLifeOperationHandler(runtime, createMessage, undefined, {
+          parameters: {
+            action: "create",
+            ownerSurface: "OWNER_REMINDERS",
+            createPlan: {
+              mode: "create",
+              requestKind: "reminder",
+              nativeProjection: "in_app_only",
+              title: "Notification grounding fixture",
+              description: "\n  The exact saved alert body.  \n",
+              cadenceKind: "once",
+              dueInMinutes: 2,
+              timeZone: "UTC",
+              multiStep: false,
+            },
+          },
+        }),
+    );
+    expect(created.success).toBe(true);
+    expect(useModel).not.toHaveBeenCalled();
+    const definitionId = created.effectReceipts?.[0]?.resource.id;
+    if (!definitionId) throw new Error("Missing real create receipt");
+    const saved = await service.getDefinition(definitionId);
+    expect(saved.definition.description).toBe(
+      "\n  The exact saved alert body.  \n",
+    );
+    const updateMessage = message(
+      "In two minutes, remind me here with the exact requested alert body.",
+    );
+    const updated = await runWithActionRoutingContext(
+      {
+        actionName: "OWNER_REMINDERS_UPDATE",
+        modelClass: undefined,
+        messageId: updateMessage.id,
+        replyOwner: "planner",
+      },
+      () =>
+        runLifeOperationHandler(runtime, updateMessage, undefined, {
+          parameters: {
+            action: "update",
+            target: definitionId,
+            details: {
+              description: "\n  Updated fixture note  \n",
+            },
+          },
+        }),
+    );
+    expect(updated.success).toBe(true);
+    expect(useModel).not.toHaveBeenCalled();
+    const afterUpdate = await service.getDefinition(definitionId);
+    expect(afterUpdate.definition.description).toBe(
+      "\n  Updated fixture note  \n",
+    );
+    expect(afterUpdate.definition.cadence).toEqual(saved.definition.cadence);
+    expect(afterUpdate.definition.title).toBe(saved.definition.title);
+    const recurring = await service.createDefinition({
+      title: "Recurring reminder conversion",
+      description: "Recurring context",
+      kind: "habit",
+      cadence: { kind: "daily", windows: ["morning"] },
+      timezone: "UTC",
+      metadata: { ownerSurface: "OWNER_REMINDERS" },
+      reminderPlan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+      },
+    });
+    const convertedBody = "\n  Exact converted one-off body  \n";
+    const convertedCadence = {
+      kind: "once" as const,
+      dueAt: new Date(Date.now() + 120_000).toISOString(),
+    };
+    const convertMessage = message(
+      "Make this reminder once with the exact body.",
+    );
+    const converted = await runWithActionRoutingContext(
+      {
+        actionName: "OWNER_REMINDERS_UPDATE",
+        modelClass: undefined,
+        messageId: convertMessage.id,
+        replyOwner: "planner",
+      },
+      () =>
+        runLifeOperationHandler(runtime, convertMessage, undefined, {
+          parameters: {
+            action: "update",
+            target: recurring.definition.id,
+            details: {
+              description: convertedBody,
+              cadence: convertedCadence,
+            },
+          },
+        }),
+    );
+    expect(converted.success).toBe(true);
+    const convertedRecord = await service.getDefinition(
+      recurring.definition.id,
+    );
+    expect(convertedRecord.definition.description).toBe(convertedBody);
+    expect(convertedRecord.definition.cadence).toEqual(convertedCadence);
+    expect(convertedRecord.definition.title).toBe(recurring.definition.title);
+    const recurringMessage = message("Make this reminder recurring again.");
+    const recurringAgain = await runWithActionRoutingContext(
+      {
+        actionName: "OWNER_REMINDERS_UPDATE",
+        modelClass: undefined,
+        messageId: recurringMessage.id,
+        replyOwner: "planner",
+      },
+      () =>
+        runLifeOperationHandler(runtime, recurringMessage, undefined, {
+          parameters: {
+            action: "update",
+            target: recurring.definition.id,
+            details: {
+              description: convertedBody,
+              cadence: { kind: "daily", windows: ["morning"] },
+            },
+          },
+        }),
+    );
+    expect(recurringAgain.success).toBe(true);
+    const recurringRecord = await service.getDefinition(
+      recurring.definition.id,
+    );
+    expect(recurringRecord.definition.description).toBe(convertedBody.trim());
+    expect(recurringRecord.definition.cadence.kind).toBe("daily");
+    expect(useModel).not.toHaveBeenCalled();
+    for (const [result, recordKey] of [
+      [created, "created"],
+      [updated, "updated"],
+    ] as const) {
+      expect(result.transcriptVisibility).toBe("internal");
+      expect(result.userFacingText).toBeUndefined();
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "applied",
+        commit: { kind: "durable" },
+      });
+      const receipt = result.effectReceipts?.[0];
+      if (!receipt) throw new Error("Missing committed action receipt");
+      useModel.mockResolvedValueOnce(
+        JSON.stringify({
+          thought:
+            "The record is saved; no OS delivery result has been observed.",
+          decision: "FINISH",
+          success: true,
+          messageToUser: "The reminder schedule is saved.",
+          replyEffectStatus: "applied",
+          effectReceiptIds: [receipt.receiptId],
+        }),
+      );
+      const context = { id: `notification-grounding-${recordKey}`, events: [] };
+      await runEvaluator({
+        runtime,
+        context,
+        trajectory: {
+          context,
+          steps: [
+            {
+              iteration: 1,
+              toolCall: {
+                id: `reminder-${recordKey}`,
+                name: "OWNER_REMINDERS",
+              },
+              result: actionResultToPlannerToolResult(result),
+            },
+          ],
+          archivedSteps: [],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+        },
+      });
+      const call = useModel.mock.calls.at(-1);
+      if (!call) throw new Error("Missing completion input");
+      const [type, parameters] = call;
+      expect(type).toBe(ModelType.RESPONSE_HANDLER);
+      const tool = parameters.messages?.find((entry) => entry.role === "tool");
+      expect(tool, JSON.stringify(parameters.messages)).toBeDefined();
+      const content = tool?.content;
+      const encoded =
+        typeof content === "string"
+          ? content
+          : content?.find((part) => part.type === "tool-result")?.output;
+      const wireResult = JSON.parse(
+        typeof encoded === "string" ? encoded : (encoded?.value ?? "{}"),
+      );
+      const grounding = JSON.parse(wireResult.data.replyGrounding);
+      expect(grounding.context[recordKey]).toMatchObject({
+        description:
+          recordKey === "created"
+            ? "\n  The exact saved alert body.  \n"
+            : "\n  Updated fixture note  \n",
+        notificationChannels: ["in_app"],
+        nativeProjection: "in_app_only",
+        nativeAppleReminderId: null,
+      });
+      expect(grounding.context[recordKey]).not.toHaveProperty(
+        "deliveryEnabled",
+      );
+      expect(grounding.instructions.join("\n")).toContain(
+        "excludes Apple Reminders record projection, not this app's Android or iOS notifications",
+      );
+      expect(grounding.instructions.join("\n")).toContain(
+        "only from explicit platform delivery status or error evidence",
+      );
+      expect(grounding.instructions.join("\n")).toContain(
+        "unassessed readiness is unknown, not unavailable",
+      );
+      expect(grounding.instructions.join("\n")).toContain(
+        "not attempted tool arguments",
+      );
+    }
+    expect(useModel).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the same native capability scope distinct from app records, push and recall in response and planning contexts", async () => {
+    const credential = {
+      subjectUserId: runtime.agentId,
+      installationId: crypto.randomUUID(),
+      deviceKey: "c".repeat(64),
+      capabilities: ["clock.handoff.v1", "clock.handoff.v2"],
+    };
+    await new DeviceActionService(runtime).register(
+      credential,
+      "Scope fixture",
+    );
+    const instructions: string[] = [];
+    for (const phase of ["response", "planning"] as const) {
+      const context = await withDeviceActionTurn(runtime, credential, () =>
+        createV5MessageContextObject({
+          runtime,
+          message: message(
+            "Read current app records and recall the requested past note.",
+          ),
+          state: { values: {}, data: {}, text: "" },
+          providerPhase: phase,
+          includeTools: phase === "planning",
+          selectedContexts: ["general"],
+          preselectedActions: [],
+          userRoles: ["OWNER"],
+        }),
+      );
+      const event = context.events.find(
+        (entry) => entry.id === "authenticated-phone-capability",
+      );
+      if (event?.type !== "instruction")
+        throw new Error("Missing native capability instruction");
+      instructions.push(event.content);
+      const serialized = JSON.stringify(context);
+      expect(serialized).toContain(
+        "Separately registered app-domain tools and this app's OS notification delivery retain their own availability and authorization gates",
+      );
+      expect(serialized).toContain(
+        "use authorized current app record sources rather than historical dialogue as a proxy",
+      );
+      expect(serialized).toContain(
+        "Use authorized targeted or full historical recall when requested or needed to resolve references and constraints",
+      );
+    }
+    expect(instructions[0]).toBe(instructions[1]);
   });
 
   it("keeps one persisted entity contact and its applied receipt after reply failure", async () => {

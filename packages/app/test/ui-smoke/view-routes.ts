@@ -27,6 +27,7 @@ export const VIEW_ROUTES: readonly ViewRoute[] = [
   { id: "views", path: "/views" },
   { id: "character", path: "/character" },
   { id: "character-select", path: "/character/select" },
+  { id: "clock", path: "/clock" },
   { id: "automations", path: "/automations" },
   { id: "inventory", path: "/wallet" },
   { id: "documents", path: "/character/documents" },

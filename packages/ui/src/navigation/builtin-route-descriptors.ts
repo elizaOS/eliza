@@ -120,6 +120,7 @@ export const BUILTIN_ROUTE_DESCRIPTORS = {
     path: "/character/select",
     layout: FRAMED_PAGE_LAYOUT,
   },
+  clock: { path: "/clock", layout: FRAMED_PAGE_LAYOUT },
   automations: { path: "/automations", layout: FRAMED_PAGE_LAYOUT },
   inventory: { path: "/wallet", layout: SHELL_WIDE_CONTENT_LAYOUT },
   documents: {

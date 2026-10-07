@@ -5,7 +5,7 @@ import {
 } from "@elizaos/core";
 import { expect, test } from "vitest";
 import { createAssistantBehavior } from "../../features/basic-capabilities/index.ts";
-import { proposeDeviceAction } from "./action.ts";
+import { deviceActionForCapabilities, proposeDeviceAction } from "./action.ts";
 
 const target = {
   sourceId: "selected",
@@ -97,4 +97,52 @@ test("actual reminder action reaches inference schema and preserves explicit no-
   const nonNullable = args(null);
   (nonNullable.operation.fields as { title: unknown }).title = null;
   expect(validateToolArgs(proposeDeviceAction, nonNullable).valid).toBe(false);
+  const ownedAction = deviceActionForCapabilities(proposeDeviceAction, [
+    "clock.alarms.v1",
+    "clock.handoff.v2",
+  ]);
+  expect(
+    JSON.stringify(deviceActionForCapabilities(proposeDeviceAction).parameters),
+  ).not.toContain('"clock_alarm"');
+  const alarmId = "12345678-1234-1234-1234-123456789abc";
+  const alarmFields = {
+    hour: 9,
+    minute: 0,
+    label: "Morning",
+    timeZone: "UTC",
+    days: [2, 3, 4, 5, 6],
+  };
+  for (const operation of [
+    { type: "clock_alarm", action: "set", ...alarmFields },
+    { type: "clock_alarm", action: "update", alarmId, ...alarmFields },
+    { type: "clock_alarm", action: "delete", alarmId },
+    { type: "clock_alarm", action: "enable", alarmId, enabled: false },
+    { type: "clock_alarm", action: "dismiss", alarmId },
+    { type: "clock_alarm", action: "snooze", alarmId, minutes: 10 },
+    { type: "clock_alarm", action: "show" },
+  ]) {
+    const input = {
+      operationKey: "synthetic-alarm-op",
+      reason: "Owner requested alarm",
+      operation,
+    };
+    const admitted = validateToolArgs(ownedAction, input);
+    expect(admitted.valid).toBe(true);
+    expect(admitted.args).toEqual(input);
+  }
+  for (const operation of [
+    { type: "clock_handoff", action: "show" },
+    { type: "clock_alarm", action: "set", ...alarmFields, days: undefined },
+    { type: "clock_alarm", action: "snooze", alarmId, minutes: 61 },
+    { type: "clock_alarm", action: "enable", alarmId, enabled: "false" },
+    { type: "clock_alarm", action: "dismiss" },
+    { type: "create_note", title: "No broadened capability", body: "" },
+  ])
+    expect(
+      validateToolArgs(ownedAction, {
+        operationKey: "synthetic-alarm-op",
+        reason: "Owner requested alarm",
+        operation,
+      }).valid,
+    ).toBe(false);
 });

@@ -120,6 +120,7 @@ import { characterProvider } from "./providers/character.ts";
 import { choiceProvider } from "./providers/choice.ts";
 import { currentTimeProvider } from "./providers/currentTime.ts";
 import { entitiesProvider } from "./providers/entities.ts";
+import { nativeAlarmContextProvider } from "./providers/native-alarm-context.ts";
 import {
   platformChatContextProvider,
   platformUserContextProvider,
@@ -1252,6 +1253,7 @@ export const basicProviders = [
   platformChatContextProvider,
   platformUserContextProvider,
   providersProvider,
+  nativeAlarmContextProvider,
   recentErrorsProvider,
   recentMessagesProvider,
   replyContextProvider,
