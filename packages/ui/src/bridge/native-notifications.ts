@@ -506,7 +506,8 @@ export async function showNativeNotification(
           typeof req.expectedBase !== "string" ||
           typeof req.nativeEpoch !== "string" ||
           typeof req.nativeSequence !== "number" ||
-          !Number.isSafeInteger(req.nativeSequence) || req.nativeSequence <= 0 ||
+          !Number.isSafeInteger(req.nativeSequence) ||
+          req.nativeSequence <= 0 ||
           typeof plugin.presentNativeNotification !== "function"
         )
           return "none";
