@@ -135,11 +135,12 @@ export class X402BudgetTracker {
 
     if (log.success) {
       const service = log.service;
+      const chargedAmount = log.amount + (log.protocolFee ?? 0n);
       this.dailySpend.set(
         service,
-        (this.dailySpend.get(service) ?? 0n) + log.amount,
+        (this.dailySpend.get(service) ?? 0n) + chargedAmount,
       );
-      this.globalDailySpend += log.amount;
+      this.globalDailySpend += chargedAmount;
     }
   }
 
