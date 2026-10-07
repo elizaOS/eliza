@@ -429,10 +429,8 @@ export class McpService extends Service {
         clearInterval(state.pingInterval);
         state.pingInterval = undefined;
       }
-      if (state?.reconnectTimeout) {
-        clearTimeout(state.reconnectTimeout);
-        state.reconnectTimeout = undefined;
-      }
+      // Preserve retries scheduled by a real transport failure during discovery.
+      // Explicit deletion cancels them in deleteConnection before closing.
     }
     const closeResults = await Promise.allSettled([
       connection.transport.close(),

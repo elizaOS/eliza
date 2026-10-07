@@ -88,7 +88,7 @@ describe("McpService resource read timeout", () => {
     expect(service.getServers()[0]?.error).toMatch(/timed out/i);
   });
 
-  it("reconnects when a stdio server exits during tool discovery", async () => {
+  it("retries when a stdio server exits during tool discovery", async () => {
     const starts: number[] = [];
     const originalStart = StdioClientTransport.prototype.start;
     vi.spyOn(StdioClientTransport.prototype, "start").mockImplementation(async function (
