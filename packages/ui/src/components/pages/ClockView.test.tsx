@@ -180,6 +180,32 @@ it("keeps a future request unreviewable until the shared clock leaves epoch", as
   ).toBeNull();
 });
 
+it("does not review a past request while the shared clock is 1ms", async () => {
+  sharedNow.read = () => 1;
+  configureClockHost(proposalHost("2020-01-01T00:00:00.000Z"));
+  render(<ClockView />);
+  const review = await screen.findByRole("button", {
+    name: "Review on this phone",
+  });
+  expect(review.hasAttribute("disabled")).toBe(true);
+  expect(
+    screen.queryByText("Request expired. Send a new request in chat."),
+  ).toBeNull();
+});
+
+it("does not mark a future request expired while the shared clock is 1ms", async () => {
+  sharedNow.read = () => 1;
+  configureClockHost(proposalHost("2026-12-01T00:00:00.000Z"));
+  render(<ClockView />);
+  const review = await screen.findByRole("button", {
+    name: "Review on this phone",
+  });
+  expect(review.hasAttribute("disabled")).toBe(true);
+  expect(
+    screen.queryByText("Request expired. Send a new request in chat."),
+  ).toBeNull();
+});
+
 it("expires a past request once the shared clock is known", async () => {
   sharedNow.read = () => Date.parse("2026-10-07T12:00:00.000Z");
   configureClockHost(proposalHost("2020-01-01T00:00:00.000Z"));
