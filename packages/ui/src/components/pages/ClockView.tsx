@@ -55,6 +55,7 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
   const [receipt, setReceipt] = useState<{
     owner: string;
     text: string;
+    unsuccessful: boolean;
   } | null>(null);
   const [editing, setEditing] = useState<ClockAlarmRecord | null>(null);
   const [time, setTime] = useState("09:00");
@@ -158,6 +159,7 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
       ].includes(result.status);
       setReceipt({
         owner: expected,
+        unsuccessful: !successful,
         text: successful
           ? `Alarm ${result.status}${result.nextAt ? `. Next: ${new Intl.DateTimeFormat(undefined, { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: status.timeZone }).format(result.nextAt)}` : ""}.`
           : result.status === "denied"
@@ -308,6 +310,17 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
         <p role="status">Loading this phone’s alarms…</p>
       </section>
     );
+  const receiptFeedback =
+    receipt && receipt.owner === status?.owner ? (
+      <p
+        role="status"
+        className={
+          receipt.unsuccessful ? "text-sm text-destructive" : "sr-only"
+        }
+      >
+        {receipt.text}
+      </p>
+    ) : null;
   return (
     <section aria-label="Eliza alarms" className="mx-auto max-w-xl">
       <div className="mb-8 flex items-center justify-between">
@@ -348,11 +361,7 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
           </Button>
         </div>
       )}
-      {receipt && receipt.owner === status?.owner && (
-        <p role="status" className="sr-only">
-          {receipt.text}
-        </p>
-      )}
+      {!editorOpen && receiptFeedback}
       {status?.available && (
         <>
           {(!status.exactAlarmsAllowed ||
@@ -603,6 +612,12 @@ function OwnedAlarms({ host }: { host: ClockHost }) {
                 onChange={(event) => setLabel(event.target.value)}
               />
             </label>
+            {receiptFeedback}
+            {actionError && (
+              <p role="alert" className="text-sm text-destructive">
+                {actionError}
+              </p>
+            )}
             <div className="flex justify-between gap-3">
               <Button
                 type="button"
@@ -857,7 +872,7 @@ function ClockControls() {
             </p>
           </div>
         )}
-        {nativeError && (reviewable.length > 0 || outcome?.pending) && (
+        {nativeError && (
           <div className="space-y-2">
             <p role="alert" className="text-sm text-destructive">
               {nativeError}
@@ -874,7 +889,7 @@ function ClockControls() {
             )}
           </div>
         )}
-        {refreshError && (reviewable.length > 0 || outcome?.pending) && (
+        {refreshError && (
           <div className="space-y-2">
             <p role="alert" className="text-sm text-destructive">
               {ownedMode
@@ -897,13 +912,26 @@ function ClockControls() {
           </div>
         )}
         {outcome && (
-          <p role="status" className="sr-only">
+          <p role="status" className="text-sm">
             {outcome.text}
           </p>
         )}
-        {reviewable.length > 0 && (
+        {(reviewable.length > 0 || outcome) && (
           <section aria-label="Clock proposals" className="max-w-lg space-y-3">
             <h2 className="text-base font-medium">Clock requests</h2>
+            {!refreshError && host && (
+              <Button
+                variant="outline"
+                disabled={reviewing !== null}
+                onClick={() => {
+                  void reloadRequests.current?.();
+                }}
+              >
+                {ownedMode
+                  ? "Refresh agent requests"
+                  : "Refresh Clock requests"}
+              </Button>
+            )}
             {reviewable.map((proposal) => {
               const freshReview = ["pending", "approved"].includes(
                 proposal.state,

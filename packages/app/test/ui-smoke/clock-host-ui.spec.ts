@@ -169,7 +169,7 @@ async function openControlledClock(page: Page, scenario: Scenario) {
   });
   await openAppPath(page, "/clock");
   await expect(
-    page.getByRole("heading", { name: "Android alarm", exact: true }),
+    page.getByRole("heading", { name: "Alarms", exact: true }),
   ).toBeVisible();
   // Load the same real bridge module used by ClockView. The controlled host is
   // configured solely from this browser test, without a production test hook.
@@ -902,9 +902,13 @@ test("Clock unmount aborts an active controlled native review", async ({
     }),
   ).toBeDisabled();
   await capture(page, "unmount-review-waiting");
-  await page
-    .getByRole("button", { name: "Manage reminders", exact: true })
-    .click();
+  await page.evaluate(
+    async (url) => {
+      const { navigateBrowserPath } = await import(url);
+      navigateBrowserPath("/automations");
+    },
+    `/@fs${path.join(repoRoot, "packages/ui/src/app-navigate-view.ts")}`,
+  );
   await expect(page).toHaveURL(/\/automations/);
   await expect.poll(async () => (await diagnostics(page)).aborted).toBe(1);
   expect((await diagnostics(page)).dispatchCount).toBe(0);
