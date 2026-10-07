@@ -936,9 +936,16 @@ function ClockControls() {
               const freshReview = ["pending", "approved"].includes(
                 proposal.state,
               );
+              // `useSharedNow` is 0 until tick() stores Date.now(). A value of 1
+              // is still not that clock: a 2020 deadline is not <= 1, so Review
+              // would stay enabled for a request that has already expired.
+              const clockReady = now >= 1_000_000_000_000;
+              const deadlineMs = Date.parse(proposal.expiresAt);
               const expired =
                 freshReview &&
-                Date.parse(proposal.expiresAt) <= (now || Date.now());
+                clockReady &&
+                Number.isFinite(deadlineMs) &&
+                deadlineMs <= now;
               const supported = clockCapabilityAvailable(
                 proposal.operation,
                 native?.capabilities,
@@ -966,6 +973,7 @@ function ClockControls() {
                     variant="outline"
                     disabled={
                       reviewing !== null ||
+                      !clockReady ||
                       expired ||
                       !supported ||
                       scope === null
