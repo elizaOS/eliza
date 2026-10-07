@@ -1909,6 +1909,35 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         expect(proposed.body.metadata.clientDevice.context).toEqual(
           currentContext,
         );
+        if (operation.action === "dismiss" || operation.action === "snooze") {
+          expect(proposed.body.action.data).toMatchObject({
+            state: "pending",
+            executed: false,
+            awaitingDeviceExecution: true,
+          });
+          expect(proposed.body.action.data).not.toHaveProperty(
+            "approvalRequired",
+          );
+          expect(proposed.body.action.data).not.toHaveProperty(
+            "awaitingUserInput",
+          );
+          expect(proposed.body.action.text).toContain(
+            "request sent to the phone",
+          );
+          expect(proposed.body.action.text).toContain(
+            "Await the applied native receipt",
+          );
+          expect(proposed.body.action.text).toContain(
+            "unless the phone actually requests it",
+          );
+        } else {
+          expect(proposed.body.action.data).toMatchObject({
+            state: "pending",
+            executed: false,
+            approvalRequired: true,
+            awaitingUserInput: true,
+          });
+        }
         const id = proposed.body.action.data.proposalId;
         const pending = (await ownedRequest("/proposals")).body.proposals.find(
           (item: any) => item.id === id,

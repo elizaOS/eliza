@@ -286,7 +286,10 @@ export function makeRuntime(
   } as IAgentRuntime;
 }
 
-export async function reviewedHistoryFixture(initialRole?: "ADMIN" | "GUEST") {
+export async function reviewedHistoryFixture(
+  initialRole?: "ADMIN" | "GUEST",
+  originals?: Memory[],
+) {
   const runtime = makeRuntime([]);
   const message = makeMessage({ channelType: ChannelType.DM, text: "hi" });
   message.createdAt = 20;
@@ -305,25 +308,31 @@ export async function reviewedHistoryFixture(initialRole?: "ADMIN" | "GUEST") {
     });
     runtime.getWorld = async () => world;
   }
-  const rows: Memory[] = [
-    "Never change my records without my explicit request.",
-    "The old literal label was blueberry  :  first.\n",
-    "Acknowledged the old literal label.",
-    "hello from the previous exchange",
-    "Hey from the previous exchange.",
-    // Keep the deferred originals older than the ten-message continuity
-    // window so these tests still exercise authorized historical reads.
-    ...Array.from({ length: 8 }, (_, i) => `Ordinary recent exchange ${i}.`),
-  ].map((text, i) => ({
-    ...message,
-    id: `00000000-0000-0000-0000-${String(10 + i).padStart(12, "0")}` as UUID,
-    createdAt: i + 1,
-    entityId:
-      i === 2 || i === 4 || (i > 4 && i % 2 === 0)
-        ? runtime.agentId
-        : message.entityId,
-    content: { text },
-  }));
+  const rows: Memory[] =
+    originals ??
+    [
+      "Never change my records without my explicit request.",
+      "The old literal label was blueberry  :  first.\n",
+      "Acknowledged the old literal label.",
+      "hello from the previous exchange",
+      "Hey from the previous exchange.",
+      // Keep the deferred originals older than the ten-message continuity
+      // window so these tests still exercise authorized historical reads.
+      ...Array.from({ length: 8 }, (_, i) => `Ordinary recent exchange ${i}.`),
+    ].map((text, i) => ({
+      ...message,
+      id: `00000000-0000-0000-0000-${String(10 + i).padStart(12, "0")}` as UUID,
+      createdAt: i + 1,
+      entityId:
+        i === 2 || i === 4 || (i > 4 && i % 2 === 0)
+          ? runtime.agentId
+          : message.entityId,
+      content: { text },
+    }));
+  message.createdAt = Math.max(
+    20,
+    ...rows.map((row) => Number(row.createdAt ?? 0) + 1),
+  );
   const cache = new Map<string, unknown>();
   runtime.getCache = async <T>(key: string) =>
     structuredClone(cache.get(key)) as T | undefined;
@@ -354,10 +363,12 @@ export async function reviewedHistoryFixture(initialRole?: "ADMIN" | "GUEST") {
     uncertainSourceIds: [],
     dependencyGroups: [],
   });
+  const trigger = rows.find((row) => row.entityId === message.entityId);
+  if (!trigger) throw new Error("Missing fixture owner message");
   const progress = (
     await prepareEvaluatorProgress(
       runtime,
-      rows[3],
+      trigger,
       [historyRetentionEvaluator.name],
       rows,
     )

@@ -126,8 +126,11 @@ The same validated view reaches action field extraction through the existing
 request-bound dialogue handoff. Explicit full or invalid foreground selections
 retain full-context fallback. Canonical events and historical effect outcomes
 are unchanged. Explicit history
-reads and restoration recover complete originals before dependent work. Plain
+reads and restoration recover complete originals before dependent work. Initial
 replies do not acquire a source-classification field or an extra review call.
+After a successful native full-history read, the existing foreground selector
+and exact source labels are offered together. A complete valid selection can
+guide later stages; missing, stale or incomplete selections keep all originals.
 
 Historical observations qualify only through exact operation declarations on the
 registered action and canonical successful, non-replayed noop receipts. They
