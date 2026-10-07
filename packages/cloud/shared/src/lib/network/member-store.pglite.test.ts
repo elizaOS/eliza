@@ -184,6 +184,24 @@ describe("Postgres NetworkStore", () => {
     ).rejects.toThrow("Network member is not available");
   });
 
+  test("SET_STATE to the current state and end date writes no event (unchanged)", async () => {
+    await seedMember();
+    const store = createPostgresNetworkStore(db);
+    const noop = await store.setState({
+      memberId: USER, state: "open", until: null, note: null, idempotencyKey: "noop-1",
+    });
+    expect(noop).toMatchObject({ eventId: null, previous: "open", current: "open", unchanged: true, replayed: false });
+    expect((await database.query(`SELECT 1 FROM network.member_events`)).rows).toHaveLength(0);
+    // Same state with a different end date is a real change.
+    const paused = { memberId: USER, state: "paused" as const, note: null };
+    await store.setState({ ...paused, until: "2026-10-20T00:00:00.000Z", idempotencyKey: "p1" });
+    const extended = await store.setState({ ...paused, until: "2026-10-27T00:00:00.000Z", idempotencyKey: "p2" });
+    expect(extended).toMatchObject({ unchanged: false, current: "paused", until: "2026-10-27T00:00:00.000Z" });
+    const same = await store.setState({ ...paused, until: "2026-10-27T00:00:00.000Z", idempotencyKey: "p3" });
+    expect(same).toMatchObject({ unchanged: true, eventId: null });
+    expect((await database.query(`SELECT 1 FROM network.member_events`)).rows).toHaveLength(2);
+  });
+
   test("signals are recorded once per (message, kind)", async () => {
     await seedMember();
     const store = createPostgresNetworkStore(db);

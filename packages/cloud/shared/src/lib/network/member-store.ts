@@ -18,7 +18,7 @@ import type {
   NetworkStore,
   SetStateExecution,
   SetStateInput,
-} from "@elizaos/plugin-network";
+} from "@thenetwork/plugin-network";
 import { type SQL, sql } from "drizzle-orm";
 import { personalSharedProjectScope } from "../services/shared-runtime/personal-shared-identity";
 import type { SharedRuntimeAgent } from "../services/shared-runtime/shared-runtime-agent";
@@ -92,11 +92,13 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
       const until = input.until ? new Date(input.until).toISOString() : null;
       // One statement: lock the member, insert the idempotent event, and apply
       // the state only when the event was new. A replayed key inserts nothing,
-      // updates nothing, and falls through to the stored event below.
+      // updates nothing, and falls through to the stored event below. A request
+      // matching the current state and end date writes no event (plugin
+      // contract: SetStateExecution.unchanged).
       const applied = rowsOf(
         await (await db()).execute(sql`
           WITH "member" AS (
-            SELECT "id", "state" FROM "network"."members"
+            SELECT "id", "state", "paused_until" FROM "network"."members"
              WHERE "cloud_user_id" = ${input.memberId}::uuid AND "state" <> 'removed'
              FOR UPDATE
           ), "event" AS (
@@ -109,6 +111,8 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
                      'note', ${input.note}::text
                    )
               FROM "member"
+             WHERE NOT ("member"."state" = ${input.state}::text
+                        AND "member"."paused_until" IS NOT DISTINCT FROM ${until}::timestamptz)
             ON CONFLICT ("idempotency_key") DO NOTHING
             RETURNING "id", "member_id", "payload", "created_at"
           ), "updated" AS (
@@ -120,10 +124,12 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
           )
           SELECT "event"."id", "event"."payload", "event"."created_at",
                  (SELECT count(*) FROM "updated") AS "updated",
-                 (SELECT count(*) FROM "member") AS "members"
+                 (SELECT count(*) FROM "member") AS "members",
+                 NULL::text AS "member_state", NULL::timestamptz AS "member_until"
             FROM "event"
           UNION ALL
-          SELECT NULL, NULL, NULL, 0, (SELECT count(*) FROM "member")
+          SELECT NULL, NULL, NULL, 0, (SELECT count(*) FROM "member"),
+                 (SELECT "state" FROM "member"), (SELECT "paused_until" FROM "member")
            WHERE NOT EXISTS (SELECT 1 FROM "event")
         `),
       );
@@ -140,7 +146,20 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
              WHERE "idempotency_key" = ${input.idempotencyKey}
           `),
         );
-        if (!stored) throw new Error("Network state change was neither applied nor recorded");
+        if (!stored) {
+          const unchanged =
+            first.member_state === input.state && (iso(first.member_until) ?? null) === until;
+          if (!unchanged) throw new Error("Network state change was neither applied nor recorded");
+          return {
+            eventId: null,
+            previous: memberState(first.member_state),
+            current: memberState(first.member_state),
+            until,
+            committedAt: new Date(),
+            replayed: false,
+            unchanged: true,
+          };
+        }
         event = stored;
         replayed = true;
       }
@@ -154,6 +173,7 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
         until: iso(payload.until),
         committedAt: new Date(iso(event.created_at) ?? Date.now()),
         replayed,
+        unchanged: false,
       };
     },
 

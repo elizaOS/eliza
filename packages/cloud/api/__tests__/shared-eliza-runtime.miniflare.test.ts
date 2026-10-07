@@ -1404,8 +1404,10 @@ describe("Shared Eliza runtime in Workerd", () => {
       "- network: Network availability",
     );
     expect(structuredProbeBodies).toHaveLength(1);
+    // The member sees the confirmation built from what executed (busy until the
+    // proposed 2099-01-02), never the model's own replyText.
     expect(payload.result.reply).toBe(
-      "Got it, holding new intros until Friday.",
+      "Done: you're marked busy until Jan 2. I'll only send standout intros.",
     );
     const member = await networkDb.query<{ state: string }>(
       `SELECT state FROM network.members`,

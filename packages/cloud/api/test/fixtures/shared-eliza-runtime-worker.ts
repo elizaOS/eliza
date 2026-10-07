@@ -18,7 +18,7 @@ import type {
 } from "@elizaos/plugin-todos";
 import { searchKeylessWeb } from "@elizaos/plugin-web-search";
 import { drizzle as drizzlePgProxy } from "drizzle-orm/pg-proxy";
-import { InMemoryNetworkStore } from "../../../../../plugins/plugin-network/src/memory-store";
+import { InMemoryNetworkStore } from "@thenetwork/plugin-network";
 import {
   createPostgresNetworkStore,
   sharedNetworkExecution,
