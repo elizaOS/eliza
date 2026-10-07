@@ -936,9 +936,15 @@ function ClockControls() {
               const freshReview = ["pending", "approved"].includes(
                 proposal.state,
               );
+              // `useSharedNow` is 0 until the store ticks. `now || Date.now()`
+              // reads the wall clock during that render and enables Review.
+              const clockReady = now > 0;
+              const deadlineMs = Date.parse(proposal.expiresAt);
               const expired =
                 freshReview &&
-                Date.parse(proposal.expiresAt) <= (now || Date.now());
+                clockReady &&
+                Number.isFinite(deadlineMs) &&
+                deadlineMs <= now;
               const supported = clockCapabilityAvailable(
                 proposal.operation,
                 native?.capabilities,
@@ -966,6 +972,7 @@ function ClockControls() {
                     variant="outline"
                     disabled={
                       reviewing !== null ||
+                      !clockReady ||
                       expired ||
                       !supported ||
                       scope === null
