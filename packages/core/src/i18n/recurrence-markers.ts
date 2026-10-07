@@ -12,13 +12,24 @@
  * quantifier uses ("invite every member") stay out; CJK matches by substring.
  */
 
+// Spelled-out counts accepted wherever a digit count is ("every two weeks",
+// "three times a day" read the same as "every 2 weeks", "3 times a day").
+const ENGLISH_COUNT_WORD =
+	"(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty)";
+
 const ASCII_RECURRENCE_PATTERNS: readonly RegExp[] = [
 	// en: every/each anchored to a schedule noun within the phrase
-	/\b(?:every|each)\s+(?:(?:other|\d+)\s+)?(?:second|minute|hour|day|week|month|year|morning|afternoon|evening|night|weekday|weekend|mon(?:day)?|tues?(?:day)?|wed(?:nesday)?|thur?s?(?:day)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)s?\b/i,
+	new RegExp(
+		String.raw`\b(?:every|each)\s+(?:(?:other|\d+|${ENGLISH_COUNT_WORD})\s+)?(?:second|minute|hour|day|week|month|year|morning|afternoon|evening|night|weekday|weekend|mon(?:day)?|tues?(?:day)?|wed(?:nesday)?|thur?s?(?:day)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)s?\b`,
+		"i",
+	),
 	/\bdaily\b/i,
 	/\b(?:weekly|monthly|nightly|hourly|yearly|annually|quarterly|biweekly|fortnightly)\b/i,
 	/\brepeat(?:s|ing)\b|\brecurring\b|\brecurs?\b/i,
-	/\b(?:once|twice|thrice|\d+\s*times)\s+(?:a|per|each|every)\s+(?:day|week|month|year)\b/i,
+	new RegExp(
+		String.raw`\b(?:once|twice|thrice|(?:\d+\s*|${ENGLISH_COUNT_WORD}\s+)times)\s+(?:a|per|each|every)\s+(?:day|week|month|year)\b`,
+		"i",
+	),
 	/\bper\s+(?:day|week|month|year)\b/i,
 	/\b(?:on\s+)?(?:mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|sundays)\b/i,
 	/\b(?:weekdays|weekends)\b/i,
@@ -28,8 +39,9 @@ const ASCII_RECURRENCE_PATTERNS: readonly RegExp[] = [
 	/\b(?:diaria(?:mente)?|semanal(?:mente)?|mensual(?:mente)?|anual(?:mente)?)\b/i,
 	/\blos\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados|domingos)\b/i,
 	/\buna\s+vez\s+(?:a\s+la|por)\s+semana\b/i,
-	// pt: cada / todos os / todas as + schedule noun; adjective forms
-	/\b(?:cada|todos\s+os|todas\s+as)\s+(?:dias?|semanas?|m[eê]s(?:es)?|anos?|manh[aã]s?|noites?|tardes?|segundas?|ter[cç]as?|quartas?|quintas?|sextas?|s[aá]bados?|domingos?)\b/i,
+	// pt: cada / todos os / todas as + schedule noun; adjective forms. The
+	// closing boundary is Unicode-aware: an ASCII \b never follows "manhã".
+	/\b(?:cada|todos\s+os|todas\s+as)\s+(?:dias?|semanas?|m[eê]s(?:es)?|anos?|manh[aã]s?|noites?|tardes?|segundas?|ter[cç]as?|quartas?|quintas?|sextas?|s[aá]bados?|domingos?)(?![\p{L}\p{N}_])/iu,
 	/\b(?:diariamente|semanal(?:mente)?|mensal(?:mente)?|anual(?:mente)?)\b/i,
 	/\b(?:toda|todo)\s+(?:semana|m[eê]s|ano|segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)\b/i,
 	/\buma\s+vez\s+por\s+(?:semana|m[eê]s)\b/i,
