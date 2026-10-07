@@ -80,6 +80,7 @@ export class McpService extends Service {
   capabilityDescription = "Enables the agent to interact with MCP (Model Context Protocol) servers";
   private connections: Map<string, McpConnection> = new Map();
   private connectionStates: Map<string, ConnectionState> = new Map();
+  private closingConnections = new WeakSet<McpConnection>();
   private pingConfig: PingConfig = DEFAULT_PING_CONFIG;
   private toolCompatibility: McpToolCompatibility | null = null;
   private compatibilityInitialized = false;
@@ -216,6 +217,15 @@ export class McpService extends Service {
         // failed server surfaces as a visibly distinct disconnected entry (or
         // is absent when it never got a transport), and the failure lands in
         // RECENT_ERRORS via reportError.
+        const partial = this.connections.get(name);
+        if (
+          partial &&
+          partial.server.status !== "connected" &&
+          partial.server.status !== "disconnected"
+        ) {
+          partial.server.status = "disconnected";
+          this.appendErrorMessage(partial, error instanceof Error ? error.message : String(error));
+        }
         this.runtime.reportError("mcp.connect", error, { serverName: name });
       }
     });
@@ -296,9 +306,6 @@ export class McpService extends Service {
       state.status = "disconnected";
       state.lastError = error instanceof Error ? error : new Error(String(error));
       connection.server.error = state.lastError.message;
-      if (this.connectionStates.get(name) === state && !this.connections.has(name)) {
-        this.connections.set(name, connection);
-      }
       throw error;
     }
   }
@@ -310,6 +317,7 @@ export class McpService extends Service {
     const config = JSON.parse(connection.server.config) as McpServerConfig;
     const isHttpTransport = config.type !== "stdio";
     connection.transport.onerror = async (error): Promise<void> => {
+      if (this.closingConnections.has(connection)) return;
       if (this.connections.get(name) !== connection) return;
       const errorMessage = error?.message ?? String(error);
       const lower = errorMessage.toLowerCase();
@@ -337,6 +345,7 @@ export class McpService extends Service {
       }
     };
     connection.transport.onclose = async (): Promise<void> => {
+      if (this.closingConnections.has(connection)) return;
       if (this.connections.get(name) !== connection) return;
       if (!isHttpTransport) {
         connection.server.status = "disconnected";
@@ -419,10 +428,16 @@ export class McpService extends Service {
       }
     }, delay);
   }
-  private async closeConnectionResources(name: string, connection: McpConnection): Promise<void> {
-    // Detach before closing so our callbacks ignore intentional shutdown while
-    // the SDK's own callbacks still settle outstanding requests normally.
-    if (this.connections.get(name) === connection) {
+  private async closeConnectionResources(
+    name: string,
+    connection: McpConnection,
+    options: { readonly removeFromMap?: boolean } = {}
+  ): Promise<void> {
+    // Mark the close before awaiting it. onclose would otherwise start a
+    // reconnect, and deleting the map entry moves a failed server to the end
+    // of getServers() when it is put back.
+    this.closingConnections.add(connection);
+    if (options.removeFromMap && this.connections.get(name) === connection) {
       this.connections.delete(name);
       const state = this.connectionStates.get(name);
       if (state?.pingInterval) {
@@ -455,7 +470,9 @@ export class McpService extends Service {
       if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
       this.connectionStates.delete(name);
     }
-    if (connection) await this.closeConnectionResources(name, connection);
+    if (connection) {
+      await this.closeConnectionResources(name, connection, { removeFromMap: true });
+    }
   }
   private getServerConnection(serverName: string): McpConnection | undefined {
     return this.connections.get(serverName);
