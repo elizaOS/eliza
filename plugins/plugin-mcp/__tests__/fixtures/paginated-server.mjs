@@ -75,9 +75,23 @@ for (const [schema, key, item] of [
 }
 
 if (capabilities.tools) {
-  server.setRequestHandler(CallToolRequestSchema, async (request) => ({
-    content: [{ type: "text", text: JSON.stringify({ tool: request.params.name, requests }) }],
-  }));
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    if (mode.startsWith("result-")) {
+      const content = [];
+      if (mode === "result-mixed" || mode === "result-text")
+        content.push({ type: "text", text: "Text summary from the tool" });
+      if (mode === "result-mixed")
+        content.push({ type: "image", mimeType: "image/png", data: "AAAA" });
+      return {
+        content,
+        ...(mode === "result-text" ? {} : { structuredContent: request.params.arguments }),
+        ...(mode === "result-error" ? { isError: true } : {}),
+      };
+    }
+    return {
+      content: [{ type: "text", text: JSON.stringify({ tool: request.params.name, requests }) }],
+    };
+  });
 }
 if (capabilities.resources) {
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => ({

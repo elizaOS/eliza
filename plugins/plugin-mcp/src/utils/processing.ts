@@ -16,6 +16,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { resourceAnalysisTemplate, toolReasoningTemplate } from "../protocol-utils/prompts.js";
 import type { McpProviderData, McpResourceContent } from "../types";
 import { createMcpMemory } from "./mcp";
@@ -53,23 +54,8 @@ export function processResourceResult(
   }
   return { resourceContent, resourceMeta };
 }
-interface ToolContentItem {
-  readonly type: string;
-  readonly text?: string;
-  readonly mimeType?: string;
-  readonly data?: string;
-  readonly resource?: {
-    readonly uri: string;
-    readonly text?: string;
-    readonly blob?: string;
-  };
-}
-interface ToolResult {
-  readonly content: readonly ToolContentItem[];
-  readonly isError?: boolean;
-}
 export function processToolResult(
-  result: ToolResult,
+  result: Pick<CallToolResult, "content" | "structuredContent" | "isError">,
   serverName: string,
   toolName: string,
   runtime: IAgentRuntime,
@@ -116,6 +102,9 @@ export function processToolResult(
         toolOutput += `\n\nResource (${resource.uri}): [Binary data]`;
       }
     }
+  }
+  if (result.structuredContent !== undefined) {
+    toolOutput += `${toolOutput ? "\n\n" : ""}Structured result:\n${JSON.stringify(result.structuredContent)}`;
   }
   return { toolOutput, hasAttachments, attachments, isError: result.isError === true };
 }
