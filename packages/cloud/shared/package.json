@@ -738,7 +738,7 @@
     "expletives": "^0.1.5",
     "hono": "4.13.8",
     "jose": "^6.0.0",
-    "libphonenumber-js": "^1.12.42",
+    "libphonenumber-js": "^1.13.14",
     "nanoid": "^6.0.0",
     "nodemailer": "^10.0.12",
     "pg": "^8.23.0",
