@@ -58,7 +58,7 @@ final class NativeNotificationInbox {
     }
 
     void restartEpoch() throws Exception {
-        locked(state -> { state.put("resetEpoch", true).put("page", JSONObject.NULL); save(state); return null; });
+        locked(state -> { state.put("resetEpoch", true).put("page", JSONObject.NULL).put("bufferedMatches", new JSONObject()); save(state); return null; });
     }
 
     JSONObject acceptLive(JSONObject notification) throws Exception {
@@ -110,6 +110,11 @@ final class NativeNotificationInbox {
             }
             state.put("resetEpoch", false);
             JSONObject seen = state.getJSONObject("seen"), buffered = state.getJSONObject("buffered");
+            // Presence is journal metadata, never a producer-supplied record field.
+            // A new crawl must not reuse overlap evidence from an older fence.
+            if (!requestedCursor.has("throughSequence")) state.put("bufferedMatches", new JSONObject());
+            JSONObject matches = state.getJSONObject("bufferedMatches");
+            long through = page.getLong("throughSequence");
             boolean initial = !state.getBoolean("initialized");
             JSONArray records = page.getJSONArray("notifications");
             // Commit the fixed fence before any effect. If a candidate fails,
@@ -121,13 +126,20 @@ final class NativeNotificationInbox {
             for (int i = 0; i < records.length(); i++) {
                 JSONObject item = records.getJSONObject(i);
                 String id = item.getString("id");
+                boolean matched = false;
                 if (buffered.has(id)) {
                     JSONObject arrival = buffered.getJSONObject(id);
-                    arrival.put("readAt", item.get("readAt")).put("expiresAt", item.get("expiresAt"));
-                    // Migrated v1 arrivals obtain the authoritative coordinates.
-                    arrival.put("nativeEpoch", epoch).put("nativeSequence", item.getLong("nativeSequence"));
-                    save(state);
-                } else if (!seen.has(id) && !state.getJSONObject("legacySeen").has(id)) {
+                    if (!arrival.has("nativeEpoch") || epoch.equals(arrival.optString("nativeEpoch"))) {
+                        arrival.put("readAt", item.get("readAt")).put("expiresAt", item.get("expiresAt"));
+                        // Migrated v1 arrivals obtain authoritative coordinates;
+                        // a different epoch's retained arrival stays unresolved.
+                        arrival.put("nativeEpoch", epoch).put("nativeSequence", item.getLong("nativeSequence"));
+                        matches.put(id, new JSONObject().put("nativeEpoch", epoch).put("throughSequence", through)
+                            .put("nativeSequence", item.getLong("nativeSequence")));
+                        save(state); matched = true;
+                    }
+                }
+                if (!matched && !seen.has(id) && !state.getJSONObject("legacySeen").has(id)) {
                     if (initial) remember(state, item, "baseline");
                     else project(state, item);
                 }
@@ -141,8 +153,18 @@ final class NativeNotificationInbox {
                 }
                 arrivals.sort(Comparator.comparingLong(item -> item.optLong("nativeSequence")));
                 for (JSONObject item : arrivals) {
-                    project(state, item);
-                    buffered.remove(item.getString("id")); save(state);
+                    String id = item.getString("id");
+                    long sequence = item.getLong("nativeSequence");
+                    JSONObject match = matches.optJSONObject(id);
+                    boolean present = match != null && epoch.equals(match.optString("nativeEpoch"))
+                        && match.optLong("throughSequence", -1) == through
+                        && match.optLong("nativeSequence", -1) == sequence;
+                    // Explicit exhaustion proves that an unobserved in-fence
+                    // arrival was deleted. It cannot authorize a stale OS post.
+                    // Above-fence arrivals remain new live delivery and retain
+                    // their receipts beyond this crawl's compaction boundary.
+                    if (sequence > through || present) project(state, item);
+                    buffered.remove(id); matches.remove(id); save(state);
                 }
                 state.put("initialized", true).put("baselineReady", true).put("page", JSONObject.NULL);
             } else {
@@ -261,7 +283,7 @@ final class NativeNotificationInbox {
     private JSONObject load() throws Exception {
         if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return new JSONObject().put("version", 2).put("owner", owner)
                 .put("initialized", false).put("baselineReady", false).put("seen", new JSONObject()).put("legacySeen", new JSONObject())
-                .put("nativeEpoch", JSONObject.NULL).put("closedThroughSequence", 0).put("page", JSONObject.NULL).put("buffered", new JSONObject());
+                .put("nativeEpoch", JSONObject.NULL).put("closedThroughSequence", 0).put("page", JSONObject.NULL).put("buffered", new JSONObject()).put("bufferedMatches", new JSONObject());
         if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > MAX_BYTES) throw new IOException("Invalid inbox journal");
         JSONObject state = new JSONObject(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
         int version = state.getInt("version");
@@ -271,6 +293,7 @@ final class NativeNotificationInbox {
             state.put("legacySeen", state.getJSONObject("seen")).put("seen", new JSONObject()).put("version", 2)
                 .put("nativeEpoch", JSONObject.NULL).put("closedThroughSequence", 0).put("page", JSONObject.NULL);
         }
+        if (!state.has("bufferedMatches")) state.put("bufferedMatches", new JSONObject());
         NativeNotificationWire.sequence(state, "closedThroughSequence", true);
         for (String field : new String[]{"seen", "legacySeen"}) {
             JSONObject receipts = state.getJSONObject(field);

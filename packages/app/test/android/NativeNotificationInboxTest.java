@@ -37,6 +37,15 @@ public final class NativeNotificationInboxTest {
     private static Path journal(Path root) { return root.resolve("native-notification-inbox").resolve(OWNER + ".json"); }
 
     public static void main(String[] args) throws Exception {
+        if (args.length > 1 && "buffer-page".equals(args[1])) {
+            var bufferedCrash = inbox(Path.of(args[0]), OWNER, new AtomicInteger());
+            bufferedCrash.acceptLive(record(1).put("title", "Original buffered arrival"));
+            bufferedCrash.acceptLive(record(2));
+            bufferedCrash.acceptLive(record(4));
+            bufferedCrash.acceptLive(record(5).put("nativeEpoch", "40000000-0000-0000-0000-000000000001"));
+            bufferedCrash.acceptPage(page(3, 1, false, new JSONArray().put(record(1).put("title", "Snapshot title"))), bufferedCrash.pageCursor());
+            Runtime.getRuntime().halt(23); throw new AssertionError();
+        }
         if (args.length > 0) {
             var box = new NativeNotificationInbox(Path.of(args[0]), OWNER, item -> { Runtime.getRuntime().halt(19); return false; }, NativeNotificationInboxTest::sync);
             finish(box, 0, new JSONArray());
@@ -66,6 +75,40 @@ public final class NativeNotificationInboxTest {
         restored.acceptLive(record(7)); check(effects.get() == 4);
         var other = inbox(root, OTHER, effects); finish(other, 0, new JSONArray()); other.acceptLive(record(7)); check(effects.get() == 5);
 
+        // A deleted pre-activation arrival is not authorized by an empty completed range.
+        Path deletedRoot = root(); AtomicInteger deletedEffects = new AtomicInteger(); var deleted = inbox(deletedRoot, OWNER, deletedEffects);
+        deleted.acceptLive(record(1)); finish(deleted, 1, new JSONArray());
+        check(deletedEffects.get() == 0); check(deleted.status().getInt("pendingBuffered") == 0);
+        deleted.acceptLive(record(1)); check(deletedEffects.get() == 0);
+        // Matching evidence spans pages and survives actual process death; deleted in-fence rows do not present.
+        Path bufferCrashRoot = root();
+        Process bufferCrash = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-cp", System.getProperty("java.class.path"), NativeNotificationInboxTest.class.getName(), bufferCrashRoot.toString(), "buffer-page").inheritIO().start();
+        check(bufferCrash.waitFor() == 23);
+        AtomicInteger preservedEffects = new AtomicInteger();
+        var preserved = new NativeNotificationInbox(bufferCrashRoot, OWNER, item -> {
+            if (item.getLong("nativeSequence") == 1) check(item.getString("title").equals("Original buffered arrival"));
+            preservedEffects.incrementAndGet(); return true;
+        }, NativeNotificationInboxTest::sync);
+        check(preserved.pageCursor().getLong("afterSequence") == 1);
+        finish(preserved, 3, new JSONArray());
+        check(preservedEffects.get() == 2); check(preserved.status().getInt("pendingBuffered") == 1);
+        check(preserved.status().getInt("seenCount") == 1); check(preserved.status().getLong("closedThroughSequence") == 3);
+        preserved.acceptLive(record(2)); check(preservedEffects.get() == 2);
+        // A matching UUID from another epoch does not rewrite the retained arrival.
+        finish(preserved, 5, new JSONArray().put(record(5)));
+        check(preserved.status().getInt("pendingBuffered") == 1);
+        check(new JSONObject(Files.readString(journal(bufferCrashRoot))).getJSONObject("buffered").getJSONObject(id(5))
+            .getString("nativeEpoch").equals("40000000-0000-0000-0000-000000000001"));
+        // Starting another crawl cannot reuse presence evidence from a retired traversal.
+        Path resetRoot = root(); AtomicInteger resetEffects = new AtomicInteger(); var reset = inbox(resetRoot, OWNER, resetEffects);
+        reset.acceptLive(record(1)); check(!reset.acceptPage(page(2, 1, false, new JSONArray().put(record(1))), reset.pageCursor()));
+        reset.restartEpoch(); finish(reset, 2, new JSONArray()); check(resetEffects.get() == 0);
+        // Legacy arrivals without authoritative coordinates remain unresolved when absent.
+        Path missingLegacyRoot = root(); var missingLegacy = inbox(missingLegacyRoot, OWNER, resetEffects); missingLegacy.status();
+        JSONObject missingArrival = record(1); missingArrival.remove("nativeEpoch"); missingArrival.remove("nativeSequence");
+        Files.writeString(journal(missingLegacyRoot), new JSONObject().put("version", 1).put("owner", OWNER).put("initialized", false)
+            .put("baselineReady", false).put("seen", new JSONObject()).put("buffered", new JSONObject().put(id(1), missingArrival)).toString());
+        finish(missingLegacy, 1, new JSONArray()); check(resetEffects.get() == 0); check(missingLegacy.status().getInt("pendingBuffered") == 1);
         // Partial/ambiguous effect leaves the range open and cannot replay across retry or restart.
         Path failedRoot = root(); AtomicInteger attempted = new AtomicInteger();
         var failed = new NativeNotificationInbox(failedRoot, OWNER, item -> { attempted.incrementAndGet(); throw new java.io.IOException("Ambiguous post"); }, NativeNotificationInboxTest::sync);
