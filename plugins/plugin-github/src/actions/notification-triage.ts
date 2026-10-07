@@ -142,6 +142,40 @@ function formatTriageSummary(
     : `Triaged ${triagedCount} unread notification(s)`;
 }
 
+function notificationSubjectUrl(
+  notification: GitHubNotificationSummary,
+): string | null {
+  const apiUrl = notification.subject?.url;
+  if (typeof apiUrl !== "string") return null;
+
+  const subjectType = notification.subject?.type;
+  if (subjectType !== "Issue" && subjectType !== "PullRequest") return apiUrl;
+
+  const repository = notification.repository?.full_name;
+  if (typeof repository !== "string") return apiUrl;
+
+  try {
+    const parsed = new URL(apiUrl);
+    if (parsed.origin !== "https://api.github.com") return apiUrl;
+    const match =
+      /^\/repos\/([^/]+)\/([^/]+)\/(?:issues|pulls)\/(\d+)(?:\/|$)/.exec(
+        parsed.pathname,
+      );
+    if (
+      !match ||
+      `${match[1]}/${match[2]}`.toLowerCase() !== repository.toLowerCase()
+    ) {
+      return apiUrl;
+    }
+
+    const route = subjectType === "PullRequest" ? "pull" : "issues";
+    return `https://github.com/${match[1]}/${match[2]}/${route}/${match[3]}`;
+  } catch {
+    // error-policy:J3 malformed API URLs remain visible as received data.
+    return apiUrl;
+  }
+}
+
 export { formatTriageSummary, scoreNotification };
 
 export const notificationTriageAction: Action = {
@@ -216,7 +250,7 @@ export const notificationTriageAction: Action = {
           repo: n.repository?.full_name ?? "unknown",
           title: n.subject?.title ?? "(untitled)",
           subjectType,
-          url: n.subject?.url ?? null,
+          url: notificationSubjectUrl(n),
           updatedAt: n.updated_at,
           score: scoreNotification({
             reason,
