@@ -38,6 +38,38 @@ import java.util.Map;
     )
 )
 public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
+    private static final java.util.concurrent.ThreadPoolExecutor nativePresentation = new java.util.concurrent.ThreadPoolExecutor(
+        1, 1, 30, java.util.concurrent.TimeUnit.SECONDS,
+        new java.util.concurrent.ArrayBlockingQueue<>(128), new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
+
+    @PluginMethod
+    public void presentNativeNotification(PluginCall call) {
+        try {
+            nativePresentation.execute(() -> {
+                try {
+                    if (getActivity() == null || !getActivity().hasWindowFocus() || getActivity().isFinishing())
+                        throw new SecurityException("Foreground notification presentation unavailable");
+                    org.json.JSONObject notification = call.getData().getJSONObject("notification");
+                    call.resolve(JSObject.fromJSONObject(NativeNotificationConnectionService.present(getContext(),
+                        call.getString("expectedOwner"), call.getString("expectedBase"), notification)));
+                } catch (Exception denied) {
+                    call.reject("Native notification was not presented");
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException full) {
+            call.reject("Native notification presentation queue is full");
+        }
+    }
+
+    /** No invented FCM token: non-GMS delivery stays a native connection. */
+    @PluginMethod
+    public void getNativeNotificationDeliveryStatus(PluginCall call) {
+        try {
+            call.resolve(JSObject.fromJSONObject(NativeNotificationConnectionService.status(getContext())));
+        } catch (Exception unavailable) {
+            call.reject("Native notification delivery status unavailable");
+        }
+    }
 
     private boolean firebaseAvailable() {
         try {
@@ -107,6 +139,17 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
     @Override
     @PluginMethod
     public void register(PluginCall call) {
+        if (NativeNotificationConnectionService.requiresNative(getContext())) {
+            try {
+                if (getActivity() == null || getActivity().isFinishing() || getActivity().isDestroyed() || !getActivity().hasWindowFocus())
+                    throw new IllegalStateException("Open Eliza to enable native notification delivery");
+                NativeNotificationConnectionService.start(getContext());
+                call.resolve();
+            } catch (Exception denied) {
+                call.reject("Native notification connection could not start");
+            }
+            return;
+        }
         if (!firebaseAvailable()) {
             call.reject(
                 "push-unavailable: this build has no Firebase configuration (google-services.json absent)"
@@ -119,6 +162,11 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
     @Override
     @PluginMethod
     public void unregister(PluginCall call) {
+        if (NativeNotificationConnectionService.requiresNative(getContext())) {
+            try { NativeNotificationConnectionService.stop(getContext()); call.resolve(); }
+            catch (RuntimeException unavailable) { call.reject("Native notification retirement unavailable"); }
+            return;
+        }
         if (!firebaseAvailable()) {
             call.reject(
                 "push-unavailable: this build has no Firebase configuration (google-services.json absent)"

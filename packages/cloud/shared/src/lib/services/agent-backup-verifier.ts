@@ -50,6 +50,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { orgKey } from "@elizaos/auth/kms";
 import type {
   AgentBackupFileEntry,
   AgentBackupFileSet,
@@ -61,13 +62,16 @@ import {
   CANONICAL_JSON_UNBOUNDED,
   canonicalJsonString,
 } from "@elizaos/core/protocol";
-import { and, desc, eq, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import {
   decryptAgentBackupStateData,
   isEncryptedAgentBackupStateData,
 } from "../../db/crypto/agent-backups";
-import { dbRead, dbWrite } from "../../db/helpers";
-import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import { dbRead } from "../../db/helpers";
+import {
+  agentSandboxesRepository,
+  type LegacyBackupVerificationSource,
+} from "../../db/repositories/agent-sandboxes";
 import {
   type AgentBackupPlainStateData,
   type AgentBackupStateData,
@@ -256,6 +260,10 @@ export interface BackupVerificationFailure {
 
 export interface BackupVerificationResult {
   ok: boolean;
+  /** Digest of the persisted stored payload that the verifier actually read. */
+  storedPayloadSha256?: string;
+  /** A failed recheck cannot rewrite the retained legacy recovery identity. */
+  historicalProofPreserved?: true;
   failure?: BackupVerificationFailure;
   /**
    * Set when the row was not verified because the cycle's decrypt byte budget
@@ -303,7 +311,7 @@ export function classifyCryptoError(error: unknown): BackupVerificationFailure |
 
 /**
  * Map the canonical-JSON budget rejection (#23817) to a verification failure,
- * or null for anything else. `stableJsonString` throws `ElizaError` /
+ * or null for anything else. `canonicalJsonString` throws `ElizaError` /
  * `CANONICAL_JSON_UNBOUNDED` for a payload that is over-depth, over the node
  * budget, or cyclic — a deterministic defect of the stored backup, not
  * verifier infrastructure, so it must stamp `failed: invalid-payload` rather
@@ -562,12 +570,15 @@ export interface BackupVerificationSkip {
 async function resolveStoredPayload(
   row: StoredAgentSandboxBackup,
 ): Promise<
-  { payload: AgentBackupStoredStateData; bytes: number } | { failure: BackupVerificationFailure }
+  | { payload: AgentBackupStoredStateData; bytes: number; sha256: string }
+  | { failure: BackupVerificationFailure }
 > {
   if (row.state_data_storage !== "r2") {
+    const raw = JSON.stringify(row.state_data);
     return {
       payload: row.state_data,
-      bytes: Buffer.byteLength(JSON.stringify(row.state_data), "utf8"),
+      bytes: Buffer.byteLength(raw, "utf8"),
+      sha256: createHash("sha256").update(raw).digest("hex"),
     };
   }
   if (!row.state_data_key) {
@@ -609,6 +620,7 @@ async function resolveStoredPayload(
     return {
       payload: JSON.parse(raw) as AgentBackupStoredStateData,
       bytes: Buffer.byteLength(raw, "utf8"),
+      sha256: createHash("sha256").update(raw).digest("hex"),
     };
   } catch (error) {
     return {
@@ -736,13 +748,15 @@ async function reconstructIncrementalStateSequential(
  */
 export async function verifyBackupRestorability(
   row: StoredAgentSandboxBackup,
-  opts: { budget?: DecryptBudget } = {},
+  opts: { budget?: DecryptBudget; expectedOrganizationId?: string } = {},
 ): Promise<BackupVerificationResult> {
   const checks = { decrypted: false, contentHashChecked: false, manifestChecked: false };
+  let storedPayloadSha256: string | undefined;
   const fail = (failure: BackupVerificationFailure): BackupVerificationResult => ({
     ok: false,
     failure,
     checks,
+    storedPayloadSha256,
   });
   if (!backupUsesLegacyVerificationContract(row)) {
     return fail({
@@ -755,6 +769,7 @@ export async function verifyBackupRestorability(
 
   const resolved = await resolveStoredPayload(row);
   if ("failure" in resolved) return fail(resolved.failure);
+  storedPayloadSha256 = resolved.sha256;
   const charge = chargeBudget(budget, resolved.bytes);
   if (charge !== "ok") {
     return {
@@ -770,6 +785,15 @@ export async function verifyBackupRestorability(
   // hash-verified below.
   let plain: Awaited<ReturnType<typeof decryptAgentBackupStateData>>;
   if (isEncryptedAgentBackupStateData(resolved.payload)) {
+    if (
+      opts.expectedOrganizationId &&
+      resolved.payload.kms_key_id !== orgKey(opts.expectedOrganizationId, "dek")
+    ) {
+      return fail({
+        kind: "invalid-payload",
+        message: "stored backup key does not belong to its proven organization",
+      });
+    }
     try {
       plain = await decryptAgentBackupStateData(row.id, resolved.payload);
     } catch (error) {
@@ -844,7 +868,136 @@ export async function verifyBackupRestorability(
     checks.manifestChecked = true;
   }
 
-  return { ok: true, checks };
+  return { ok: true, checks, storedPayloadSha256 };
+}
+
+export interface PreDeleteBackupVerificationAuthority {
+  agentId: string;
+  organizationId: string;
+  deletionAttemptId: string;
+  deletionStartedAt: Date;
+  lifecycleRevision: number;
+  environmentRevision: number;
+  sandboxId: string | null;
+  nodeId: string | null;
+}
+
+function verificationAuthorityChanged(): ElizaError {
+  return new ElizaError("Backup verification lost its persisted artifact or source authority", {
+    code: "AGENT_BACKUP_VERIFICATION_AUTHORITY_CHANGED",
+    severity: "ephemeral",
+  });
+}
+
+export function assertPreDeleteBackupVerificationAuthority(
+  row: StoredAgentSandboxBackup,
+  source: LegacyBackupVerificationSource,
+  expected: PreDeleteBackupVerificationAuthority,
+): void {
+  const agent = source.attached;
+  if (
+    !agent ||
+    source.agentId !== expected.agentId ||
+    source.organizationId !== expected.organizationId ||
+    row.sandbox_record_id !== expected.agentId ||
+    row.snapshot_type !== "pre-delete" ||
+    row.backup_kind !== "full" ||
+    row.parent_backup_id !== null ||
+    row.recovery_agent_id !== null ||
+    row.recovery_organization_id !== null ||
+    row.recovery_deletion_attempt_id !== null ||
+    row.recovery_expires_at !== null ||
+    agent.pool_status !== null ||
+    agent.deleted_at !== null ||
+    agent.status !== "deletion_pending" ||
+    agent.deletion_attempt_id !== expected.deletionAttemptId ||
+    agent.deletion_started_at?.getTime() !== expected.deletionStartedAt.getTime() ||
+    row.created_at < expected.deletionStartedAt ||
+    source.backupWithinDeletionIntent !== true ||
+    agent.lifecycle_revision !== expected.lifecycleRevision ||
+    agent.environment_revision !== expected.environmentRevision ||
+    agent.sandbox_id !== expected.sandboxId ||
+    agent.node_id !== expected.nodeId
+  ) {
+    throw verificationAuthorityChanged();
+  }
+}
+
+function isRetainedLegacyRecovery(row: StoredAgentSandboxBackup): boolean {
+  return (
+    row.sandbox_record_id === null &&
+    row.catalog_version === null &&
+    row.recovery_agent_id !== null &&
+    row.recovery_organization_id !== null
+  );
+}
+
+/** One owner for actual persisted-artifact verification and its truthful CAS stamp. */
+export async function verifyAndStampBackupRestorability(
+  row: StoredAgentSandboxBackup,
+  opts: {
+    budget?: DecryptBudget;
+    now?: Date;
+    preDelete?: PreDeleteBackupVerificationAuthority;
+    expectedSource?: LegacyBackupVerificationSource;
+  } = {},
+): Promise<BackupVerificationResult> {
+  if (!backupUsesLegacyVerificationContract(row)) throw verificationAuthorityChanged();
+  const source = await agentSandboxesRepository.getLegacyBackupVerificationSource(row);
+  if (
+    !source ||
+    (opts.expectedSource && JSON.stringify(source) !== JSON.stringify(opts.expectedSource))
+  ) {
+    throw verificationAuthorityChanged();
+  }
+  if (opts.preDelete) assertPreDeleteBackupVerificationAuthority(row, source, opts.preDelete);
+  let result = await verifyBackupRestorability(row, {
+    budget: opts.budget,
+    expectedOrganizationId: source.organizationId,
+  });
+  if (result.skipped) return result;
+  if (opts.preDelete && result.ok && !result.checks.manifestChecked) {
+    result = {
+      ...result,
+      ok: false,
+      failure: {
+        kind: "invalid-payload",
+        message: "pre-delete backup has no verified full-agent manifest",
+      },
+    };
+  }
+  if (!result.ok && isRetainedLegacyRecovery(row)) {
+    // Recovery identity 0222 requires its historical successful proof. Report
+    // the actual failed recheck without forging a new verified stamp or
+    // attempting an illegal failed/errored downgrade of the retained row.
+    const current = await agentSandboxesRepository.getLegacyBackupVerificationSource(row);
+    if (!current || JSON.stringify(current) !== JSON.stringify(source)) {
+      throw verificationAuthorityChanged();
+    }
+    return {
+      ...result,
+      historicalProofPreserved: true,
+      failure: {
+        kind: result.failure?.kind ?? "invalid-payload",
+        message: "Retained legacy recovery backup failed its current recheck",
+      },
+    };
+  }
+  if (result.ok) {
+    // An object key is a locator, not immutable proof: bind the stamp to the
+    // stored bytes actually decrypted. This second read performs no decrypt.
+    const current = await resolveStoredPayload(row);
+    if ("failure" in current || current.sha256 !== result.storedPayloadSha256) {
+      throw verificationAuthorityChanged();
+    }
+  }
+  const published = await agentSandboxesRepository.stampBackupVerificationIfCurrent(row, source, {
+    status: result.ok ? "verified" : "failed",
+    verifiedAt: opts.now ?? new Date(),
+    error: result.ok ? null : `${result.failure?.kind}: ${result.failure?.message}`,
+  });
+  if (!published) throw verificationAuthorityChanged();
+  return result;
 }
 
 // =============================================================================
@@ -905,6 +1058,14 @@ function formatInfraError(streak: number, message: string): string {
   return `infra-error[${streak}]: ${message}`;
 }
 
+/** One process-local keyset cursor; restart begins a new sweep without changing recovery proof. */
+let lastSampledBackupId: string | null = null;
+
+/** Reset only the sampler position when synthetic tests replace their isolated database rows. */
+export function resetBackupVerificationSamplerForTests(): void {
+  lastSampledBackupId = null;
+}
+
 /**
  * Sample the newest backup per agent that has not been verified within the
  * re-verify interval, verify each, stamp the outcome on the row, and alert on
@@ -959,32 +1120,55 @@ export async function runBackupVerificationCycle(
     .orderBy(verificationAgentId, desc(agentSandboxBackups.created_at))
     .as("latest_backup_per_agent");
 
-  const candidates = await dbRead
-    .select()
-    .from(latest)
-    .where(or(isNull(latest.verified_at), lt(latest.verified_at, cutoff)))
-    // Never-verified rows first, then the longest-stale, so the whole fleet
-    // converges to coverage instead of re-polishing recently-checked agents.
-    .orderBy(sql`${latest.verified_at} asc nulls first`, latest.created_at)
-    .limit(config.batchSize);
+  const sampleAfter = (backupId: string | null) =>
+    dbRead
+      .select()
+      .from(latest)
+      .where(
+        and(
+          or(isNull(latest.verified_at), lt(latest.verified_at, cutoff)),
+          backupId === null ? undefined : gt(latest.id, backupId),
+        ),
+      )
+      // Rotation is independent of proof timestamps: a retained failed recheck
+      // cannot monopolize a bounded batch. The cursor holds only one UUID.
+      .orderBy(latest.id)
+      .limit(config.batchSize);
+  let candidates = await sampleAfter(lastSampledBackupId);
+  if (candidates.length === 0 && lastSampledBackupId !== null) {
+    lastSampledBackupId = null;
+    candidates = await sampleAfter(null);
+  }
+  const lastCandidate = candidates.at(-1);
+  if (lastCandidate) lastSampledBackupId = lastCandidate.id;
 
   const budget = createDecryptBudget(config.maxDecryptBytesPerCycle);
+  let retainedProofPreserved = 0;
 
   // Stamp an infra-error attempt: status `errored` (never `failed` — the
   // backup itself may be healthy), attempt timestamp so the nulls-first
   // sampler moves on, and a persisted consecutive-attempt streak that raises
   // a per-row alert once it crosses the configured threshold (the cycle-level
   // infra alert at the end of the sweep covers the immediate signal).
-  const stampInfraError = async (row: StoredAgentSandboxBackup, message: string) => {
+  const stampInfraError = async (
+    row: StoredAgentSandboxBackup,
+    message: string,
+    source: LegacyBackupVerificationSource | undefined,
+  ) => {
+    if (!source) return null;
+    if (isRetainedLegacyRecovery(row)) {
+      // Keep the artifact and original successful verification timestamp;
+      // infrastructure/budget outcomes do not certify a fresh recovery point.
+      retainedProofPreserved += 1;
+      return null;
+    }
     const streak = consecutiveInfraErrorStreak(row) + 1;
-    await dbWrite
-      .update(agentSandboxBackups)
-      .set({
-        verification_status: "errored",
-        verified_at: now,
-        verification_error: formatInfraError(streak, message),
-      })
-      .where(and(eq(agentSandboxBackups.id, row.id), legacyBackupVerificationPredicate()));
+    const published = await agentSandboxesRepository.stampBackupVerificationIfCurrent(row, source, {
+      status: "errored",
+      verifiedAt: now,
+      error: formatInfraError(streak, message),
+    });
+    if (!published) return null;
     if (streak >= config.erroredAlertStreak) {
       await alert({
         title: `agent backup verification has errored ${streak} consecutive attempts`,
@@ -1008,8 +1192,15 @@ export async function runBackupVerificationCycle(
   for (const row of candidates) {
     const sandboxRecordId = requireVerificationAgentId(row);
     let result: BackupVerificationResult;
+    let source: LegacyBackupVerificationSource | undefined;
     try {
-      result = await verifyBackupRestorability(row, { budget });
+      source = await agentSandboxesRepository.getLegacyBackupVerificationSource(row);
+      if (!source) throw verificationAuthorityChanged();
+      result = await verifyAndStampBackupRestorability(row, {
+        budget,
+        now,
+        expectedSource: source,
+      });
     } catch (error) {
       // error-policy:J7 diagnostics-must-not-kill-the-loop — verifier infra
       // breakage (DB/object-storage unreachable) is logged loudly and stamped
@@ -1017,8 +1208,21 @@ export async function runBackupVerificationCycle(
       // stamp a healthy backup as failed nor abort the rest of the batch.
       summary.sampled += 1;
       summary.errored += 1;
-      const message = error instanceof Error ? error.message : String(error);
-      const streak = await stampInfraError(row, message);
+      const message = isRetainedLegacyRecovery(row)
+        ? "Retained legacy recovery backup recheck encountered an infrastructure error"
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      if (
+        error instanceof ElizaError &&
+        error.code === "AGENT_BACKUP_VERIFICATION_AUTHORITY_CHANGED"
+      ) {
+        // A newer lifecycle/artifact owns the row. Do not overwrite its stamp
+        // with an infrastructure outcome from this obsolete sample.
+        logger.warn("[AgentBackupVerifier] verification authority changed", { backupId: row.id });
+        continue;
+      }
+      const streak = await stampInfraError(row, message, source);
       logger.error("[AgentBackupVerifier] verification errored (infrastructure)", {
         backupId: row.id,
         sandboxRecordId,
@@ -1053,7 +1257,7 @@ export async function runBackupVerificationCycle(
       const message =
         `stored payload of ${result.skipped.requiredBytes} bytes exceeds ` +
         `BACKUP_VERIFICATION_MAX_DECRYPT_BYTES=${result.skipped.budgetBytes}`;
-      const streak = await stampInfraError(row, message);
+      const streak = await stampInfraError(row, message, source);
       logger.error("[AgentBackupVerifier] backup payload exceeds the cycle decrypt budget", {
         backupId: row.id,
         sandboxRecordId,
@@ -1065,16 +1269,6 @@ export async function runBackupVerificationCycle(
     }
 
     summary.sampled += 1;
-    await dbWrite
-      .update(agentSandboxBackups)
-      .set({
-        verification_status: result.ok ? "verified" : "failed",
-        verified_at: now,
-        verification_error: result.ok
-          ? null
-          : `${result.failure?.kind}: ${result.failure?.message}`,
-      })
-      .where(and(eq(agentSandboxBackups.id, row.id), legacyBackupVerificationPredicate()));
 
     if (result.ok) {
       summary.verified += 1;
@@ -1082,6 +1276,7 @@ export async function runBackupVerificationCycle(
     }
 
     summary.failed += 1;
+    if (result.historicalProofPreserved) retainedProofPreserved += 1;
     const failure = result.failure ?? { kind: "invalid-payload" as const, message: "unknown" };
     summary.failures.push({
       backupId: row.id,
@@ -1106,11 +1301,12 @@ export async function runBackupVerificationCycle(
       message:
         "Restorability verification decrypts stored agent backups with the current KMS keys " +
         "and validates content hashes; these backups would fail a real restore. " +
-        "Failed rows are stamped in agent_sandbox_backups (verification_error).",
+        "Current failures are reported here; retained legacy recovery identity keeps its historical proof.",
       details: {
         failures: summary.failures,
         sampled: summary.sampled,
         failed: summary.failed,
+        retainedProofPreserved,
       },
       dedupKey: FAILURE_ALERT_DEDUP_KEY,
     });
@@ -1149,9 +1345,9 @@ export async function runBackupVerificationCycle(
     await alert({
       title: `${summary.errored}/${summary.sampled} sampled agent backups could not be verified`,
       message:
-        "Backup verification hit infrastructure errors. Rows were stamped with " +
-        "verified_at so they do not permanently wedge the sampler head; inspect " +
-        "verification_error for the exact infra failure and fix the verifier host.",
+        "Backup verification hit infrastructure errors. Attached rows record the attempt " +
+        "in verification_error; retained legacy recovery rows preserve their historical proof. " +
+        "Inspect verifier logs for the current failure and fix the verifier host.",
       details: {
         sampled: summary.sampled,
         errored: summary.errored,

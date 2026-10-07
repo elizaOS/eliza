@@ -168,45 +168,74 @@ final class ClockConsentCoordinator {
             long current = now.getAsLong();
             if (entry.phase != Phase.CONSENT || current < entry.issued || current >= entry.expires)
                 throw new SecurityException("Clock native consent expired or unavailable");
-            ClockHandoff.ApprovedConsent consume = request -> {
-                if (entry.phase != Phase.CONSENT || !sameRequest(request, entry.approved.request))
-                    throw new SecurityException("Clock dispatch consent changed");
-                try {
-                    requireBinding(entry, approved(identity, request));
+            return dispatch(identity, entry, Phase.CONSENT, dispatcher);
+        });
+    }
+
+    /** Authenticated active ringing control is an explicit native policy, not a manufactured gesture.
+     * The host must fence current owner, revision and active occurrence inside dispatch before consume.
+     * A pre-existing review, cancellation or consumed entry cannot gain fresh authority here. */
+    Result controlActiveAlarm(Identity identity, ClockHandoff.Request request, Dispatcher dispatcher) throws IOException {
+        Objects.requireNonNull(dispatcher);
+        if (!request.owned || (request.action != ClockHandoff.Action.DISMISS && request.action != ClockHandoff.Action.SNOOZE))
+            throw new SecurityException("Immediate policy only controls a ringing owned alarm");
+        return locked(() -> {
+            ApprovedEntry admitted = approved(identity, request);
+            Entry entry = read(identity);
+            if (entry != null) {
+                requireBinding(entry, admitted);
+                Result previous = outcome(entry);
+                if (previous != null) return previous;
+                throw new SecurityException("Existing Clock review cannot gain immediate authority");
+            }
+            entry = new Entry(); entry.magic = MAGIC_V3; entry.approved = admitted; entry.phase = Phase.REVIEW;
+            write(entry);
+            return dispatch(identity, entry, Phase.REVIEW, dispatcher);
+        });
+    }
+
+    private Result dispatch(Identity identity, Entry entry, Phase authorization, Dispatcher dispatcher) throws IOException {
+        ClockHandoff.ApprovedConsent consume = request -> {
+            if (entry.phase != authorization || !sameRequest(request, entry.approved.request))
+                throw new SecurityException("Clock dispatch consent changed");
+            try {
+                requireBinding(entry, approved(identity, request));
+                if (authorization == Phase.CONSENT) {
                     long instant = now.getAsLong();
                     if (instant < entry.issued || instant >= entry.expires)
                         throw new SecurityException("Clock native consent expired");
-                    entry.phase = Phase.DISPATCHED;
-                    write(entry);
-                } catch (IOException error) {
-                    // error-policy:J2 the synchronous dispatcher cannot proceed without durable consent.
-                    throw new java.io.UncheckedIOException("Clock consent durability failed", error);
                 }
-            };
-            try {
-                ClockHandoff.Outcome dispatched = Objects.requireNonNull(dispatcher.dispatch(entry.approved.request, consume));
-                if (dispatched != ClockHandoff.Outcome.UNAVAILABLE && entry.phase != Phase.DISPATCHED)
-                    throw new IllegalStateException("Clock dispatcher did not consume native consent");
-                if (dispatched == ClockHandoff.Outcome.UNAVAILABLE && entry.phase == Phase.DISPATCHED)
-                    throw new IllegalStateException("Consumed Clock dispatch cannot establish unavailable");
-                if (dispatched == ClockHandoff.Outcome.APPLIED) {
-                    if (!entry.approved.request.owned) throw new IllegalStateException("Legacy handoff cannot prove an owned alarm effect");
-                    entry.effectReceipt = Objects.requireNonNull(dispatcher.receipt());
-                    if (entry.effectReceipt.isEmpty()) throw new IllegalStateException("Owned alarm effect receipt missing");
-                }
-                entry.result = dispatched == ClockHandoff.Outcome.APPLIED ? Result.APPLIED
-                        : dispatched == ClockHandoff.Outcome.OPENED ? Result.OPENED : Result.UNAVAILABLE;
-                entry.phase = Phase.COMPLETE;
+                entry.phase = Phase.DISPATCHED;
                 write(entry);
-                return entry.result;
-            } catch (RuntimeException error) {
-                // error-policy:J1 dispatch boundary: a persisted marker cannot establish launch or permit replay.
-                if (entry.phase != Phase.DISPATCHED) throw error;
-                entry.effectReceipt = ""; entry.result = Result.UNKNOWN; entry.phase = Phase.COMPLETE;
-                write(entry);
-                return Result.UNKNOWN;
+            } catch (IOException error) {
+                // error-policy:J2 the synchronous dispatcher cannot proceed without durable consent.
+                throw new java.io.UncheckedIOException("Clock consent durability failed", error);
             }
-        });
+        };
+        try {
+            ClockHandoff.Outcome dispatched = Objects.requireNonNull(dispatcher.dispatch(entry.approved.request, consume));
+            if (dispatched != ClockHandoff.Outcome.UNAVAILABLE && entry.phase != Phase.DISPATCHED)
+                throw new IllegalStateException("Clock dispatcher did not consume native consent");
+            if (dispatched == ClockHandoff.Outcome.UNAVAILABLE && entry.phase == Phase.DISPATCHED)
+                throw new IllegalStateException("Consumed Clock dispatch cannot establish unavailable");
+            if (dispatched == ClockHandoff.Outcome.APPLIED) {
+                if (!entry.approved.request.owned) throw new IllegalStateException("Legacy handoff cannot prove an owned alarm effect");
+                entry.effectReceipt = Objects.requireNonNull(dispatcher.receipt());
+                if (entry.effectReceipt.isEmpty()) throw new IllegalStateException("Owned alarm effect receipt missing");
+            }
+            entry.result = dispatched == ClockHandoff.Outcome.APPLIED ? Result.APPLIED
+                    : dispatched == ClockHandoff.Outcome.OPENED ? Result.OPENED : Result.UNAVAILABLE;
+            entry.phase = Phase.COMPLETE;
+            write(entry);
+            return entry.result;
+        } catch (RuntimeException error) {
+            // error-policy:J1 dispatch boundary: a persisted marker cannot establish launch or permit replay.
+            if (entry.phase != Phase.DISPATCHED) throw error;
+            entry.effectReceipt = ""; entry.result = Result.UNKNOWN; entry.phase = Phase.COMPLETE;
+            write(entry);
+            return Result.UNKNOWN;
+        }
+
     }
 
     /** Read the already committed native effect receipt; never re-run scheduling to reconstruct it. */

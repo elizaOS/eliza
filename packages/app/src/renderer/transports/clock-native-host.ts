@@ -30,6 +30,7 @@ import {
   reportRendererDiagnostic,
   requireTextRequestBody,
 } from "@elizaos/ui";
+import { createClockActiveControls } from "./clock-active-controls";
 
 interface AgentChunk {
   requestId: string;
@@ -389,7 +390,9 @@ if (bridge) {
     currentScope = value.scope;
     return value;
   };
-  configureClockHost({
+  let activeControls: ReturnType<typeof createClockActiveControls>;
+  let controlsListener: Promise<PluginListenerHandle>;
+  const host: ClockHost = {
     alarmStatus,
     async manageAlarm(operation, alarmsRevision, expectedOwner) {
       const validated = validateClockOperation(operation);
@@ -492,11 +495,35 @@ if (bridge) {
       };
     },
     async retire() {
+      activeControls.stop();
       ++alarmRead;
       alarmOwner = null;
       await executor.retire();
+      await (await controlsListener).remove();
     },
-  });
+  };
+  activeControls = createClockActiveControls(host, (error) =>
+    reportRendererDiagnostic({ scope: "clock-active-control", error }),
+  );
+  const refreshActiveControls = () => {
+    void activeControls.refresh().catch((error) =>
+      reportRendererDiagnostic({
+        scope: "clock-active-control-refresh",
+        error,
+      }),
+    );
+  };
+  configureClockHost(host);
+  controlsListener = bridge.addListener(
+    "proposalsChanged",
+    refreshActiveControls,
+  );
+  void controlsListener.then(refreshActiveControls).catch((error) =>
+    reportRendererDiagnostic({
+      scope: "clock-active-control-listener",
+      error,
+    }),
+  );
 }
 
 const transport: AgentRequestTransport = {

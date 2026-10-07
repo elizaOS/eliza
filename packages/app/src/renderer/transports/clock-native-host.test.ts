@@ -30,10 +30,12 @@ const fixture = vi.hoisted(() => {
     list: vi.fn(
       async (): Promise<unknown> => ({ scope: status.scope, proposals: [] }),
     ),
-    review: vi.fn(async () => ({
-      result: { kind: "clock-handoff", action: "set", status: "opened" },
-      receiptPending: false,
-    })),
+    review: vi.fn(
+      async (): Promise<unknown> => ({
+        result: { kind: "clock-handoff", action: "set", status: "opened" },
+        receiptPending: false,
+      }),
+    ),
     cancelClock: vi.fn(async () => ({ cancelled: true })),
   };
 });
@@ -105,6 +107,55 @@ describe("native Clock renderer boundary", () => {
     fixture.review.mockClear();
     fixture.cancelClock.mockClear();
     fixture.request.mockClear();
+  });
+  it("handles a native proposal change outside ClockView through the global active-control lifecycle", async () => {
+    const alarmId = "387f40dd-93a9-4bdd-95ee-da48c3a1b188";
+    fixture.getStatus.mockResolvedValue({
+      ...fixture.status,
+      capabilities: ["clock.alarms.v1"],
+      context: {
+        sensitive: false,
+        revision: 1,
+        timeZone: "UTC",
+        alarmsStatus: "available",
+        alarmsObservedAt: Date.now(),
+        alarmsRevision: 1,
+        alarms: [],
+      },
+    });
+    const active = {
+      ...proposal(),
+      id: "global-snooze",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      operation: { type: "clock_alarm", action: "snooze", alarmId, minutes: 5 },
+    };
+    fixture.list.mockResolvedValue({
+      scope: fixture.status.scope,
+      proposals: [active],
+    });
+    fixture.review.mockResolvedValueOnce({
+      result: {
+        kind: "clock-alarm",
+        action: "snooze",
+        status: "snoozed",
+        alarmId,
+        nextAt: Date.now() + 300_000,
+      },
+      receiptPending: false,
+    });
+    const changed = fixture.callbacks.get("proposalsChanged");
+    if (!changed) throw new Error("Missing app-global Clock listener");
+    changed({ requestId: "" });
+    await vi.waitFor(() => expect(fixture.review).toHaveBeenCalledOnce());
+    expect(fixture.review).toHaveBeenCalledWith({
+      scope: fixture.status.scope,
+      proposalId: active.id,
+      operationId: active.id,
+      operation: active.operation,
+    });
+    changed({ requestId: "" });
+    await vi.waitFor(() => expect(fixture.list).toHaveBeenCalledTimes(2));
+    expect(fixture.review).toHaveBeenCalledOnce();
   });
   it("rejects malformed host status and leaves transport selection on its existing path", async () => {
     const { context: _context, ...missingContext } = fixture.status;

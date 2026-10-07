@@ -26,10 +26,111 @@ import {
 } from "./notification-store";
 import {
   __resetPushRegistrationForTests,
+  captureNativeNotificationOwner,
+  hasAndroidPushDelivery,
   initPushRegistration,
   refreshPushRegistrationAuthority,
   unregisterPushToken,
 } from "./push-registration";
+
+it("uses non-GMS native delivery without inventing or registering an FCM token", async () => {
+  let owner = "native-owner-one";
+  const status = vi.fn(async () => ({
+    transport: "native" as const,
+    owner: "a".repeat(64),
+    activated: true,
+    enabled: true,
+    connected: true,
+    state: "connected",
+    batteryExempt: true,
+    backgroundReliable: true,
+    notificationsAllowed: true,
+    inbox: null,
+  }));
+  const register = vi.fn(async () => {});
+  const unregister = vi.fn(async () => {});
+  const registerToken = vi.fn(async () => ({ ok: true }));
+  const deps: PushRegistrationDeps = {
+    getPlatform: () => "android",
+    isRemotePushEnabled: () => true,
+    getPlugin: () => ({
+      getNativeNotificationDeliveryStatus: status,
+      checkPermissions: async () => ({ receive: "granted" }),
+      register,
+      unregister,
+      addListener: async () => ({ remove: async () => {} }),
+    }),
+    registerToken,
+    unregisterToken: vi.fn(async () => ({ ok: true })),
+    navigate: vi.fn(),
+    captureAuthority: () => ({
+      key: owner,
+      registerToken,
+      unregisterToken: vi.fn(async () => ({ ok: true })),
+    }),
+  };
+  await initPushRegistration(deps);
+  expect(register).toHaveBeenCalledOnce();
+  expect(registerToken).not.toHaveBeenCalled();
+  expect(await hasAndroidPushDelivery("message")).toBe(true);
+  const capturedOwner = captureNativeNotificationOwner();
+  expect(capturedOwner).toBe("a".repeat(64));
+  status.mockResolvedValueOnce({
+    transport: "native",
+    owner: "b".repeat(64),
+    activated: true,
+    enabled: true,
+    connected: true,
+    state: "connected",
+    batteryExempt: true,
+    backgroundReliable: true,
+    notificationsAllowed: true,
+    inbox: null,
+  });
+  // A native account/cookie switch at the same URL cannot upgrade an earlier
+  // record's captured ownership to the freshly looked-up owner.
+  expect(await hasAndroidPushDelivery("message")).toBe(false);
+  expect(capturedOwner).toBe("a".repeat(64));
+  status.mockResolvedValueOnce({
+    transport: "native",
+    owner: "a".repeat(64),
+    activated: true,
+    enabled: false,
+    connected: false,
+    state: "authorization_rejected",
+    batteryExempt: true,
+    backgroundReliable: false,
+    notificationsAllowed: true,
+    inbox: null,
+  });
+  expect(await hasAndroidPushDelivery("message")).toBe(false);
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  status.mockResolvedValueOnce({
+    transport: "native",
+    owner: "a".repeat(64),
+    activated: true,
+    enabled: true,
+    connected: true,
+    state: "connected",
+    batteryExempt: false,
+    backgroundReliable: false,
+    notificationsAllowed: true,
+    inbox: null,
+  });
+  expect(await hasAndroidPushDelivery("message")).toBe(false);
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  ingest("native-notification");
+  await vi.waitFor(() =>
+    expect(__getStateForTests().notifications).toHaveLength(1),
+  );
+  expect(delivery.show).not.toHaveBeenCalled();
+  owner = "native-owner-two";
+  expect(captureNativeNotificationOwner()).toBeNull();
+  expect(await hasAndroidPushDelivery("message")).toBe(false);
+  await unregisterPushToken(deps);
+  expect(unregister).toHaveBeenCalledOnce();
+  expect(registerToken).not.toHaveBeenCalled();
+});
 
 function registration(deliveryEnabled = true) {
   let authority = "owner-at-backend-one";

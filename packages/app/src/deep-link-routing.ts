@@ -103,6 +103,15 @@ export function resolveDeepLinkNavigationIntent(
   }
 
   switch (path) {
+    case "automations":
+    case "notes":
+    case "calendar":
+    case "reminders":
+      return { viewId: path, viewPath: `/${path}` };
+    case "apps/tasks":
+      // The bare tasks namespace retains its existing assistant-launch
+      // contract. Native notification taps use the registered app route.
+      return { viewId: "tasks", viewPath: "/apps/tasks" };
     case "clock":
       // OS intent extras are untrusted; opening the view never approves an alarm.
       return { viewId: "clock", viewPath: "/clock" };

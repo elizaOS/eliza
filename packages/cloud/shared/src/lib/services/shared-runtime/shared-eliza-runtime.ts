@@ -14,6 +14,7 @@ import {
   assertModelOutputComplete,
   ChannelType,
   CONTEXT_ROUTING_METADATA_KEY,
+  type Content,
   createMessageMemory,
   ElizaError,
   type GenerateTextParams,
@@ -79,6 +80,12 @@ import {
   REQUEST_DEDICATED_UPGRADE_ACTION,
   SHARED_RUNTIME_CAPABILITIES_PROVIDER,
 } from "./shared-runtime-capabilities";
+import {
+  classifySharedRuntimeTurnFailure,
+  projectQualifiedSharedProviderFailure,
+  type SharedModelCompletionDiagnostic,
+  sharedModelCompletionDiagnostic,
+} from "./shared-runtime-errors";
 import {
   insertSharedRuntimeGroundingMessages,
   sharedPublicWebGrounding,
@@ -598,6 +605,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const agentId = input.execution?.todos?.scope.agentId ?? stringToUuid(input.agentKey);
   const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
   let providerDispatched = false;
+  let modelInvocationStarted = false;
+  let lastModelCompletion: SharedModelCompletionDiagnostic | null = null;
   const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
   const groundingObservedAt = Date.now();
@@ -616,7 +625,61 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     params: GenerateTextParams,
   ): Promise<string | NativeTextModelResult | TextStreamResult> => {
     const modelCall = timing.prepareModelCall();
-    const model = getInteractiveCerebrasLanguageModel(input.model, modelCall.select);
+    let failureReported = false;
+    const reportModelFailure = (error: unknown, operation: "resolve" | "generate" | "stream") => {
+      if (failureReported) return;
+      failureReported = true;
+      // error-policy:J7 content-free diagnostics must not replace the original
+      // provider failure. Neither messages, stacks, headers, request values nor
+      // response bodies cross this logging boundary.
+      try {
+        const name = error instanceof Error ? error.name : "UnknownError";
+        const knownNames = new Set([
+          "Error",
+          "TypeError",
+          "ElizaError",
+          "ProviderConfigurationError",
+          "AbortError",
+          "TimeoutError",
+          "AI_APICallError",
+          "AI_RetryError",
+          "AI_TypeValidationError",
+          "AI_NoSuchToolError",
+          "AI_InvalidToolInputError",
+          "AI_InvalidPromptError",
+          "AI_InvalidResponseDataError",
+          "AI_NoOutputGeneratedError",
+          "AI_UnsupportedFunctionalityError",
+          "AI_UnsupportedModelVersionError",
+        ]);
+        const knownCodes = new Set([
+          "MODEL_OUTPUT_INCOMPLETE",
+          "PROVIDER_FALLBACK_REFUSED",
+          "OPENROUTER_FALLBACK_UNAVAILABLE",
+        ]);
+        const diagnosticCode =
+          error instanceof ElizaError && knownCodes.has(error.code) ? error.code : undefined;
+        logger.error("[shared-eliza-runtime] model call failed", {
+          traceId: input.traceId ?? null,
+          operation,
+          errorName: knownNames.has(name) ? name : "UnknownError",
+          ...(diagnosticCode ? { diagnosticCode } : {}),
+          ...classifySharedRuntimeTurnFailure(error),
+        });
+      } catch {
+        // The same original error remains the runtime outcome even if a
+        // diagnostic sink or an exception's metadata getter fails.
+      }
+    };
+    let model: ReturnType<typeof getInteractiveCerebrasLanguageModel>;
+    try {
+      model = getInteractiveCerebrasLanguageModel(input.model, modelCall.select);
+    } catch (error) {
+      // error-policy:J2 preserve the original model-resolution failure.
+      reportModelFailure(error, "resolve");
+      modelCall.finish();
+      throw error;
+    }
     if (!providerDispatched) {
       providerDispatched = true;
       await input.onProviderDispatch?.();
@@ -645,19 +708,38 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     };
     if (onStreamChunk && params.stream === true) {
       let result: ReturnType<typeof streamText>;
+      let providerStreamFailure: { error: unknown } | undefined;
+      const preserveProviderFailure = <T>(promise: Promise<T>): Promise<T> =>
+        // error-policy:J2 retain the qualified provider failure at the model boundary.
+        promise.catch((error) => {
+          throw providerStreamFailure ? providerStreamFailure.error : error;
+        });
       try {
+        modelInvocationStarted = true;
         modelCall.begin();
-        result = streamText(generation);
+        result = streamText({
+          ...generation,
+          // Observe the upstream error before aggregate result promises can
+          // replace it with NoOutputGeneratedError; the original stream still
+          // fails normally and only bounded classification reaches the logger.
+          onError: ({ error }) => {
+            const projected = projectQualifiedSharedProviderFailure(error);
+            if (projected) providerStreamFailure ??= { error: projected };
+            reportModelFailure(error, "stream");
+          },
+        });
       } catch (error) {
         // error-policy:J6 best-effort teardown — close the timing span so a
         // synchronous streamText failure cannot leave the call recorded as
         // still running, then let the original error propagate untouched.
+        reportModelFailure(error, "stream");
         modelCall.finish();
         throw error;
       }
-      const rawText = Promise.resolve(result.text);
-      const toolCalls = Promise.resolve(result.toolCalls);
-      const finishReason = Promise.resolve(result.finishReason).then((reason) => {
+      const rawText = preserveProviderFailure(Promise.resolve(result.text));
+      const toolCalls = preserveProviderFailure(Promise.resolve(result.toolCalls));
+      const rawFinishReason = preserveProviderFailure(Promise.resolve(result.finishReason));
+      const finishReason = rawFinishReason.then((reason) => {
         assertModelOutputComplete({
           finishReason: reason,
           provider: "cerebras",
@@ -666,39 +748,56 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         return reason;
       });
       const text = Promise.all([rawText, finishReason]).then(([completeText]) => completeText);
-      const totalUsage = Promise.resolve(result.totalUsage);
+      const totalUsage = preserveProviderFailure(Promise.resolve(result.totalUsage));
+      // error-policy:J5 runtime observes these same rejected SDK promises; this
+      // completion-shape observer neither changes nor logs the failure payload.
+      void Promise.all([rawText, toolCalls, rawFinishReason])
+        .then(([text, calls, reason]) => {
+          lastModelCompletion = sharedModelCompletionDiagnostic(
+            "stream",
+            text,
+            calls.length,
+            reason,
+          );
+        })
+        .catch(() => {});
       // error-policy:J5 aborting the provider stream rejects every pending AI
       // SDK result promise. AgentRuntime observes the textStream rejection as
       // the turn failure; these handlers prevent the sibling promises from
       // surfacing the same cancellation reason as unhandled rejections.
-      void text.catch(() => {});
-      void toolCalls.catch(() => {});
-      void finishReason.catch(() => {});
-      void totalUsage.catch(() => {});
+      void text.catch((error) => reportModelFailure(error, "stream"));
+      void toolCalls.catch((error) => reportModelFailure(error, "stream"));
+      void finishReason.catch((error) => reportModelFailure(error, "stream"));
+      void totalUsage.catch((error) => reportModelFailure(error, "stream"));
       const textStream = (async function* (): AsyncIterable<string> {
-        if (params.streamStructured === true) {
-          for await (const part of result.fullStream) {
-            const record = part as {
-              type: string;
-              delta?: string;
-              inputTextDelta?: string;
-            };
-            const chunk =
-              record.type === "tool-input-delta"
-                ? (record.inputTextDelta ?? record.delta)
-                : undefined;
-            if (chunk) {
-              yield chunk;
+        try {
+          if (params.streamStructured === true) {
+            for await (const part of result.fullStream) {
+              const record = part as {
+                type: string;
+                delta?: string;
+                inputTextDelta?: string;
+              };
+              const chunk =
+                record.type === "tool-input-delta"
+                  ? (record.inputTextDelta ?? record.delta)
+                  : undefined;
+              if (chunk) {
+                yield chunk;
+              }
             }
+            await finishReason;
+            return;
+          }
+          for await (const chunk of result.textStream) {
+            if (chunk) timing.markProviderFirstText();
+            yield chunk;
           }
           await finishReason;
-          return;
+        } catch (error) {
+          // error-policy:J2 keep qualified status without forwarding provider payloads.
+          throw providerStreamFailure ? providerStreamFailure.error : error;
         }
-        for await (const chunk of result.textStream) {
-          if (chunk) timing.markProviderFirstText();
-          yield chunk;
-        }
-        await finishReason;
       })();
       const streamUsage = totalUsage
         .then((value) => {
@@ -729,16 +828,33 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     }
     let result: Awaited<ReturnType<typeof generateText>>;
     try {
+      modelInvocationStarted = true;
       modelCall.begin();
       result = await generateText({ ...generation });
+    } catch (error) {
+      // error-policy:J2 qualified HTTP failures retain only their safe runtime projection.
+      reportModelFailure(error, "generate");
+      throw projectQualifiedSharedProviderFailure(error) ?? error;
     } finally {
       modelCall.finish();
     }
-    assertModelOutputComplete({
-      finishReason: result.finishReason,
-      provider: "cerebras",
-      model: input.model,
-    });
+    lastModelCompletion = sharedModelCompletionDiagnostic(
+      "generate",
+      result.text,
+      result.toolCalls.length,
+      result.finishReason,
+    );
+    try {
+      assertModelOutputComplete({
+        finishReason: result.finishReason,
+        provider: "cerebras",
+        model: input.model,
+      });
+    } catch (error) {
+      // error-policy:J2 preserve incomplete model-output failures after safe diagnostics.
+      reportModelFailure(error, "generate");
+      throw error;
+    }
     if (result.text.trim()) timing.markProviderFirstText();
     usage = addUsage(usage, normalizeUsage(result.usage));
     if (result.toolCalls.length === 0) {
@@ -955,6 +1071,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     timing.markHistoryReady();
 
     const delivered: string[] = [];
+    let lastDeliveredContent: Content | undefined;
     const messageService = runtime.messageService;
     if (!messageService) {
       throw new Error("Eliza Shared runtime initialized without a message service");
@@ -985,6 +1102,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       runtime,
       incomingMessage,
       async (content) => {
+        lastDeliveredContent = content;
         const text = content.text?.trim();
         const attachmentUrls = (content.attachments ?? []).flatMap((attachment) =>
           typeof attachment.url === "string" && attachment.url.trim()
@@ -1025,6 +1143,62 @@ async function executeMeasuredSharedElizaRuntimeTurn(
               : String(pushResult.reason),
         });
       }
+    }
+    const failureContent = [result.responseContent, lastDeliveredContent].find(
+      (content) =>
+        content?.elizaSyntheticFailure === true ||
+        (content?.doNotPersist === true && typeof content.failureKind === "string"),
+    );
+    const terminalFailure = result.outcome.status === "failed" ? result.outcome.error : undefined;
+    if (terminalFailure || failureContent) {
+      const failure = terminalFailure
+        ? terminalFailure
+        : {
+            kind:
+              typeof failureContent?.failureKind === "string"
+                ? failureContent.failureKind
+                : "message_failed",
+            transient: failureContent?.transient === true,
+            message: "The message pipeline returned a synthetic failure.",
+          };
+      try {
+        const knownKinds = new Set([
+          "transient_failure",
+          "rate_limited",
+          "provider_issue",
+          "insufficient_credits",
+          "no_provider",
+          "missing_capability",
+          "handler_error",
+          "persistence_error",
+          "planner_exhaustion",
+          "context_overflow",
+        ]);
+        logger.error("[shared-eliza-runtime] message processing failed", {
+          traceId: input.traceId ?? null,
+          failureKind: knownKinds.has(failure.kind) ? failure.kind : "unknown",
+          transient: failure.transient === true,
+          modelInvocationStarted,
+          terminalFailurePresent: Boolean(terminalFailure),
+          terminalMode:
+            result.mode === "simple" ||
+            result.mode === "actions" ||
+            result.mode === "blocked" ||
+            result.mode === "none"
+              ? result.mode
+              : "unknown",
+          lastModelCompletion,
+        });
+      } catch {
+        // error-policy:J7 even failed content-free diagnostics preserve the
+        // original terminal failure and never permit a successful commit.
+      }
+      throw new ElizaError("Eliza Shared runtime message processing failed.", {
+        code: "SHARED_RUNTIME_MESSAGE_FAILED",
+        context: { failureKind: failure.kind, transient: failure.transient },
+        cause: failure,
+        severity: failure.transient ? "ephemeral" : "fatal",
+      });
     }
     const reply = delivered.at(-1)?.trim() || result?.responseContent?.text?.trim() || "";
     // A verified action may own the response and deliver it through the
