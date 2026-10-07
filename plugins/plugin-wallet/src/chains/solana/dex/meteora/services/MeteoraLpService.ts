@@ -11,8 +11,8 @@
 import * as anchor from "@coral-xyz/anchor";
 import {
   type IAgentRuntime,
-  logger,
   type LpPositionDetails,
+  logger,
   type PoolInfo,
   Service,
   type TokenBalance,

@@ -141,9 +141,7 @@ function buildWhatsAppLink(room: Record<string, unknown>): string | null {
   if (jid?.includes("@") && !/^[0-9]+@s\.whatsapp\.net$/i.test(jid)) {
     return null;
   }
-  const jidPhone = jid?.includes("@")
-    ? jid.slice(0, jid.indexOf("@"))
-    : jid;
+  const jidPhone = jid?.includes("@") ? jid.slice(0, jid.indexOf("@")) : jid;
   const raw = str(room.phoneNumber) || jidPhone;
   if (raw) {
     const digits = raw.replace(/\D/g, "");

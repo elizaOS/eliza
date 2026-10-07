@@ -39,8 +39,8 @@ vi.mock("./components/InventoryAppView.tsx", () => ({
 }));
 
 import { InventoryView } from "./InventoryView";
-import { TokenLogo } from "./inventory/TokenLogo";
 import { getNativeLogoUrl } from "./inventory/chainConfig";
+import { TokenLogo } from "./inventory/TokenLogo";
 
 const EVM_ADDRESS = "0x1111111111111111111111111111111111111111";
 const SOL_ADDRESS = "So1ana1111111111111111111111111111111111111";
@@ -177,9 +177,11 @@ describe("TokenLogo real Avatar image loading", () => {
         this.dispatchEvent(new window.Event("load"));
       }
     }
-    const imageSpy = vi.spyOn(window, "Image").mockImplementation(function () {
-      return new ProbeImage() as unknown as HTMLImageElement;
-    });
+    const imageSpy = vi
+      .spyOn(window, "Image")
+      .mockImplementation(
+        () => new ProbeImage() as unknown as HTMLImageElement,
+      );
     const preferred = "https://example.com/preferred.png";
     const changed = "https://example.com/changed.png";
     const fallback = getNativeLogoUrl("ethereum");

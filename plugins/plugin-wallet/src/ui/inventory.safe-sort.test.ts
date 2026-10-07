@@ -83,3 +83,54 @@ describe("wallet inventory safe sort", () => {
     expect(safeDiff).toBe(500);
   });
 });
+
+it("projects only whole finite provider amounts into wallet totals and ordering", () => {
+  const cases: Array<[string, number]> = [
+    ["12junk", 0],
+    ["0x10", 0],
+    ["Infinity", 0],
+    [" 12.50 ", 12.5],
+    ["1.25e2", 125],
+    ["", 0],
+    ["1e999", 0],
+  ];
+  const tokens = cases.map(([valueUsd], index) => ({
+    symbol: `CASE${index}`,
+    name: `Case ${index}`,
+    contractAddress: `0x${index}`,
+    balance: "1",
+    valueUsd,
+  }));
+  const balances = {
+    evm: {
+      chains: [
+        {
+          chain: "Ethereum",
+          nativeSymbol: "ETH",
+          nativeBalance: "0",
+          nativeValueUsd: "0",
+          tokens,
+        },
+      ],
+    },
+    solana: null,
+  } as unknown as WalletBalancesResponse;
+  for (const [value, expected] of cases) expect(parseUsd(value)).toBe(expected);
+  const summary = summarizeWalletBalances(balances);
+  expect(summary.totalUsd).toBe(137.5);
+  expect(summary.tokens.slice(0, 2).map((token) => token.symbol)).toEqual([
+    "CASE4",
+    "CASE3",
+  ]);
+  expect(
+    Object.fromEntries(
+      summary.tokens
+        .filter((token) => !token.isNative)
+        .map((token) => [token.symbol, token.valueUsd]),
+    ),
+  ).toEqual(
+    Object.fromEntries(
+      cases.map(([, expected], index) => [`CASE${index}`, expected]),
+    ),
+  );
+});

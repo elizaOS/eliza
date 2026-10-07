@@ -8,6 +8,7 @@ import {
   extractTokenSymbol,
   formatCurrency,
   formatNumber,
+  formatOHLCV,
   formatPercentage,
   getSentimentEmoji,
   isValidTokenAddress,
@@ -15,7 +16,6 @@ import {
 } from "./formatters.js";
 
 describe("formatCurrency", () => {
-
   it.each([
     [999.994, "$999.99"],
     [999.999, "$1.00K"],
@@ -27,9 +27,12 @@ describe("formatCurrency", () => {
     [-999_999_999, "$-1.00B"],
     [2.675, "$2.67"],
     [-2.675, "$-2.67"],
-  ])("preserves toFixed rounding and promotes signed tiers for %s", (value, expected) => {
-    expect(formatCurrency(value)).toBe(expected);
-  });
+  ])(
+    "preserves toFixed rounding and promotes signed tiers for %s",
+    (value, expected) => {
+      expect(formatCurrency(value)).toBe(expected);
+    },
+  );
 
   it("keeps zero and honors precision at the base and trillion boundaries", () => {
     expect(formatCurrency(0)).toBe("$0.00");
@@ -78,4 +81,22 @@ describe("isValidTokenAddress", () => {
     expect(isValidTokenAddress(`0x${"g".repeat(40)}`)).toBe(false); // non-hex
     expect(isValidTokenAddress("not an address")).toBe(false);
   });
+});
+
+it("renders promoted currency tiers in the complete OHLCV report", () => {
+  const report = formatOHLCV({
+    timestamp: Date.UTC(2026, 9, 7),
+    open: 999_999,
+    high: 999_999_999,
+    low: -2_500_000,
+    close: 999.999,
+    volume: 999_999_999_999,
+  });
+  expect(report.split("\n").slice(1)).toEqual([
+    "   Open: $1.00M",
+    "   High: $1.00B",
+    "   Low: $-2.50M",
+    "   Close: $1.00K",
+    "   Volume: $1.00T",
+  ]);
 });

@@ -836,22 +836,28 @@ test("settled Clock outcome survives explicit refresh retry but is retired with 
   await capture(page, "opened-owner-retired");
 });
 
-test("expired pending Clock proposal cannot begin a native review", async ({
-  page,
-}) => {
-  const effects = await openControlledClock(page, "expired");
-  await expect(
-    page.getByText("Request expired. Send a new request in chat.", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Review on this phone", exact: true }),
-  ).toBeDisabled();
-  expect((await diagnostics(page)).reviewCalls).toEqual([]);
-  expect(effects).toEqual([]);
-  await capture(page, "expired-pending");
-});
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
+  { name: "mobile", width: 393, height: 852 },
+]) {
+  test(`expired pending Clock proposal cannot begin a native review ${viewport.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    const effects = await openControlledClock(page, "expired");
+    await expect(
+      page.getByText("Request expired. Send a new request in chat.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Review on this phone", exact: true }),
+    ).toBeDisabled();
+    expect((await diagnostics(page)).reviewCalls).toEqual([]);
+    expect(effects).toEqual([]);
+    await capture(page, `expired-pending-${viewport.name}`);
+  });
+}
 
 test("Clock host read failure remains a visible error", async ({ page }) => {
   const effects = await openControlledClock(page, "read-failure");
