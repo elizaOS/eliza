@@ -100,6 +100,14 @@ describe("MediaGalleryView", () => {
   });
 
   it("includes media stored after the first 500 rows", async () => {
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: [
+        {
+          name: "memories",
+          columns: [{ name: "id", isPrimaryKey: true }],
+        },
+      ],
+    });
     clientMock.getDatabaseRows
       .mockResolvedValueOnce({
         table: "memories",
@@ -128,6 +136,49 @@ describe("MediaGalleryView", () => {
     render(<MediaGalleryView />);
 
     await screen.findByRole("heading", { name: "after-first-page.png" });
+    expect(clientMock.getDatabaseRows).toHaveBeenNthCalledWith(1, "memories", {
+      offset: 0,
+      limit: 500,
+      sort: "id",
+      order: "asc",
+    });
+    expect(clientMock.getDatabaseRows).toHaveBeenNthCalledWith(2, "memories", {
+      offset: 500,
+      limit: 500,
+      sort: "id",
+      order: "asc",
+    });
+  });
+
+  it("keeps media from readable tables when another table scan fails", async () => {
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: [{ name: "memories" }, { name: "attachments" }],
+    });
+    clientMock.getDatabaseRows.mockImplementation(async (tableName: string) => {
+      if (tableName === "attachments") {
+        throw new Error("attachments unavailable");
+      }
+      return {
+        table: tableName,
+        rows: [
+          {
+            content: "https://example.test/kept.png",
+            createdAt: "2026-10-06",
+          },
+        ],
+        columns: ["content", "createdAt"],
+        total: 1,
+        offset: 0,
+        limit: 500,
+      };
+    });
+
+    render(<MediaGalleryView />);
+
+    expect(
+      await screen.findByRole("heading", { name: "kept.png" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("announces a download failure and clears it on a successful retry", async () => {

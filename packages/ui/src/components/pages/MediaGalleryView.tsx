@@ -69,6 +69,12 @@ const MEDIA_URL_PREFIX =
   /^(https?:|data:|blob:|file:|capacitor:|electrobun:|app:|\/|\.\/|\.\.\/)/i;
 const MEDIA_SCAN_PAGE_SIZE = 500;
 
+function mediaScanSortColumn(table: {
+  columns?: ReadonlyArray<{ name: string; isPrimaryKey?: boolean }>;
+}): string | undefined {
+  return table.columns?.find((column) => column.isPrimaryKey)?.name;
+}
+
 function classifyUrl(url: string): "image" | "video" | "audio" | null {
   if (IMAGE_EXTS.test(url) || DATA_URI_IMG.test(url)) return "image";
   if (VIDEO_EXTS.test(url) || DATA_URI_VID.test(url)) return "video";
@@ -303,26 +309,21 @@ export function MediaGalleryView({
       const allMedia: MediaItem[] = [];
 
       // Scan tables likely to contain media: memories, messages, media, attachments, files
-      const mediaTableNames = tables
-        .map((t) => t.name)
-        .filter((name) => {
-          const n = name.toLowerCase();
-          return (
-            n.includes("memor") ||
-            n.includes("message") ||
-            n.includes("media") ||
-            n.includes("attach") ||
-            n.includes("file") ||
-            n.includes("asset") ||
-            n.includes("document")
-          );
-        });
+      const mediaTables = tables.filter((table) => {
+        const n = table.name.toLowerCase();
+        return (
+          n.includes("memor") ||
+          n.includes("message") ||
+          n.includes("media") ||
+          n.includes("attach") ||
+          n.includes("file") ||
+          n.includes("asset") ||
+          n.includes("document")
+        );
+      });
 
       // If no likely tables are found, scan every table for media values.
-      const tablesToScan =
-        mediaTableNames.length > 0
-          ? mediaTableNames
-          : tables.map((t) => t.name);
+      const tablesToScan = mediaTables.length > 0 ? mediaTables : tables;
 
       // Scan the candidate tables concurrently — they are independent queries,
       // and the sequential loop made the gallery wait on up to 10 round-trips.
@@ -330,26 +331,30 @@ export function MediaGalleryView({
       // fixed first-ten slice silently hid media in later plugin tables.
       for (let offset = 0; offset < tablesToScan.length; offset += 10) {
         const scanResults = await Promise.all(
-          tablesToScan.slice(offset, offset + 10).map(async (tableName) => {
+          tablesToScan.slice(offset, offset + 10).map(async (table) => {
+            const tableName = table.name;
+            const sort = mediaScanSortColumn(table);
             const items: MediaItem[] = [];
             const seen = new Set<string>();
             let rowOffset = 0;
 
-            while (true) {
-              const result = await client.getDatabaseRows(tableName, {
-                offset: rowOffset,
-                limit: MEDIA_SCAN_PAGE_SIZE,
-              });
-              const rows = result.rows;
-              items.push(...extractMediaFromRows(rows, tableName, seen));
-              rowOffset += rows.length;
+            try {
+              while (true) {
+                const result = await client.getDatabaseRows(tableName, {
+                  offset: rowOffset,
+                  limit: MEDIA_SCAN_PAGE_SIZE,
+                  ...(sort ? { sort, order: "asc" as const } : {}),
+                });
+                const rows = Array.isArray(result.rows) ? result.rows : [];
+                items.push(...extractMediaFromRows(rows, tableName, seen));
+                rowOffset += rows.length;
 
-              if (rows.length === 0 && rowOffset < result.total) {
-                throw new Error(
-                  `Media scan for "${tableName}" stopped at row ${rowOffset} of ${result.total}`,
-                );
+                // An empty page cannot advance. Stop this table and keep the
+                // rows already read so the gallery does not spin.
+                if (rows.length === 0 || rowOffset >= result.total) break;
               }
-              if (rowOffset >= result.total) break;
+            } catch {
+              // One unreadable table must not hide media from the others.
             }
 
             return items;
