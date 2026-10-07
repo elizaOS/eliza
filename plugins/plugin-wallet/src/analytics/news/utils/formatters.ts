@@ -12,6 +12,7 @@ export function formatCurrency(value: number, decimals: number = 2): string {
     [1e9, "B"],
     [1e6, "M"],
     [1e3, "K"],
+    [1, ""],
   ];
   for (let i = 0; i < tiers.length; i++) {
     const [threshold, suffix] = tiers[i];

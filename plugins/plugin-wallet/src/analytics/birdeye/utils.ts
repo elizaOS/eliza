@@ -327,6 +327,7 @@ export const formatValue = (value?: number): string => {
     [1_000_000_000, "B"],
     [1_000_000, "M"],
     [1_000, "K"],
+    [1, ""],
   ];
   for (let i = 0; i < tiers.length; i++) {
     const [threshold, suffix] = tiers[i];

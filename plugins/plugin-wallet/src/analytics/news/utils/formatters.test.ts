@@ -15,6 +15,31 @@ import {
 } from "./formatters.js";
 
 describe("formatCurrency", () => {
+
+  it.each([
+    [999.994, "$999.99"],
+    [999.999, "$1.00K"],
+    [999_999, "$1.00M"],
+    [999_999_999, "$1.00B"],
+    [-999.994, "$-999.99"],
+    [-999.999, "$-1.00K"],
+    [-999_999, "$-1.00M"],
+    [-999_999_999, "$-1.00B"],
+    [2.675, "$2.67"],
+    [-2.675, "$-2.67"],
+  ])("preserves toFixed rounding and promotes signed tiers for %s", (value, expected) => {
+    expect(formatCurrency(value)).toBe(expected);
+  });
+
+  it("keeps zero and honors precision at the base and trillion boundaries", () => {
+    expect(formatCurrency(0)).toBe("$0.00");
+    expect(formatCurrency(999.6, 0)).toBe("$1K");
+    expect(formatCurrency(-999.6, 0)).toBe("$-1K");
+    expect(formatCurrency(999.9994, 3)).toBe("$999.999");
+    expect(formatCurrency(999.9996, 3)).toBe("$1.000K");
+    expect(formatCurrency(999_999_999_999)).toBe("$1.00T");
+    expect(formatCurrency(-999_999_999_999)).toBe("$-1.00T");
+  });
   it("scales with T/B/M/K suffixes", () => {
     expect(formatCurrency(1.5e12)).toBe("$1.50T");
     expect(formatCurrency(2.5e9)).toBe("$2.50B");
