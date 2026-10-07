@@ -3959,6 +3959,7 @@
   "mediagalleryview.ItemCountMany": "{{count}} items",
   "mediagalleryview.ItemCountOne": "{{count}} item",
   "mediagalleryview.LoadFailed": "Failed to load media: {{message}}",
+  "mediagalleryview.PartialLoadFailed": "Some media could not be loaded from {{message}}. Retry the scan.",
   "mediagalleryview.Media": "Media",
   "mediagalleryview.MediaDetails": "Media Details",
   "mediagalleryview.MediaItem": "Media item",

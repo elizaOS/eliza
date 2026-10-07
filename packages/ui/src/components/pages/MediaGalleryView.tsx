@@ -633,7 +633,7 @@ export function MediaGalleryView({
               className="ml-3 underline"
               onClick={() => void loadMedia()}
             >
-              {t("common.Retry", { defaultValue: "Retry" })}
+              {t("common.retry", { defaultValue: "Retry" })}
             </button>
           </div>
         ) : null}
