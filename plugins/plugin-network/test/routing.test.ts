@@ -153,7 +153,7 @@ describe("networkAction field evaluator", () => {
     expect(parseNetworkActionProposal({})).toBeNull();
   });
 
-  it("is registered only for structured routing, with the network context", async () => {
+  it("is registered only for structured routing; both designs register the network context", async () => {
     const store = member();
     const planner = createNetworkEdgePlugin({ store, authority: { memberId: "mem_ada" } });
     const structured = createNetworkEdgePlugin({
@@ -169,8 +169,7 @@ describe("networkAction field evaluator", () => {
     const runtime = {
       contexts: { tryRegister: (definition: unknown) => registered.push(definition) },
     } as unknown as IAgentRuntime;
-    expect(planner.init).toBeUndefined();
-    await structured.init?.({}, runtime);
+    await planner.init?.({}, runtime);
     expect(registered).toEqual([NETWORK_CONTEXT_DEFINITION]);
   });
 });

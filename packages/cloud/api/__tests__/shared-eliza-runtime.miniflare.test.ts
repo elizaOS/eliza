@@ -1328,6 +1328,12 @@ describe("Shared Eliza runtime in Workerd", () => {
     expect(
       networkRequestBodies.some((b) => b.includes("Name: Ada (San Francisco)")),
     ).toBe(true);
+    // Design A: Stage 1 can route to the registered `network` context, and a
+    // detected availability change makes SET_STATE a must-call.
+    expect(networkRequestBodies[0]).toContain("- network: Network availability");
+    expect(networkRequestBodies[0]).toContain(
+      "Call SET_STATE before any terminal answer.",
+    );
     // ... and SET_STATE committed there, once, with its signals.
     const member = await networkDb.query<{ state: string; paused_until: Date }>(
       `SELECT state, paused_until FROM network.members`,

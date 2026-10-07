@@ -44,6 +44,7 @@ import type {
 import { getDefaultModels } from "../../eliza/config";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
+import { isNetworkStateIntent } from "../../network/state-intent";
 import { hasLanguageModelProviderConfigured } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
 import {
@@ -207,7 +208,7 @@ export interface RunSharedAgentTurnInput {
     network?: {
       memberId: string;
       store: NetworkStore;
-      /** "planner" or "structured" (design B); see plugin-network edge.ts. */
+      /** "planner" (design A) or "structured" (design B); see plugin-network edge.ts. */
       routing?: NetworkRouting;
     };
   };
@@ -354,7 +355,7 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * from `@elizaos/core`'s prompt builder; the Shared runtime receives the
  * already-projected edge character, so this is the renderer on this side.
  */
-type RequiredSharedAction = "REMINDERS" | "TODO" | "GENERATE_MEDIA";
+type RequiredSharedAction = "REMINDERS" | "TODO" | "GENERATE_MEDIA" | "SET_STATE";
 
 function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
@@ -391,7 +392,9 @@ function buildSharedRuntimeSystem(
         ? "reminder"
         : requiredAction === "TODO"
           ? "todo"
-          : "image or video generation";
+          : requiredAction === "SET_STATE"
+            ? "Network availability (pause, busy, traveling, or resume intros)"
+            : "image or video generation";
     const ungroundedClaim =
       requiredAction === "GENERATE_MEDIA"
         ? "A plain-text claim that generation was attempted, unavailable, or failed is not an execution result."
@@ -444,6 +447,16 @@ function requiredActionForTurn(
   const capabilityAction = requiredActionForResolution(resolution);
   if (capabilityAction) return capabilityAction;
   const intentText = input.capabilityText ?? input.message;
+  // Design A (The Network): a detected availability change must be executed
+  // by SET_STATE, exactly like an executable reminder or todo request.
+  if (
+    actionsEnabled &&
+    input.execution?.network &&
+    (input.execution.network.routing ?? "planner") === "planner" &&
+    isNetworkStateIntent(intentText)
+  ) {
+    return "SET_STATE";
+  }
   if (
     actionsEnabled &&
     input.execution?.authenticatedPersonalSharedUser === true &&

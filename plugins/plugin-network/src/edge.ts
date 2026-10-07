@@ -24,13 +24,15 @@ export interface NetworkEdgePluginOptions {
   /** Default true. Set false for system/lifecycle turns (zero actions). */
   actionsEnabled?: boolean;
   /**
-   * How availability changes are routed:
-   * - "planner": the default Eliza routing (Stage 1, then the planner may
-   *   discover and call SET_STATE).
-   * - "structured" (design B): the `network` context is registered and a
-   *   `networkAction` field on the same Stage-1 call proposes the change;
-   *   deterministic code authorizes and executes it through the store and
-   *   preempts the planner with a direct reply.
+   * How availability changes are routed. Both designs register the `network`
+   * context so Stage 1 can route to it (Stage 1 only offers registered
+   * contexts backed by an action or provider).
+   * - "planner" (design A): Stage 1 routes to `network` and the planner calls
+   *   SET_STATE; the host adds a must-call-SET_STATE requirement for detected
+   *   availability intents, like REMINDERS and TODO.
+   * - "structured" (design B): a `networkAction` field on the same Stage-1
+   *   call proposes the change; deterministic code authorizes and executes it
+   *   through the store and preempts the planner with a direct reply.
    */
   routing?: NetworkRouting;
 }
@@ -41,14 +43,10 @@ export function createNetworkEdgePlugin(options: NetworkEdgePluginOptions): Plug
   return {
     name: "network-edge",
     description: "The Network: member context, availability state and post-turn signals.",
-    ...(routing === "structured"
-      ? {
-          contexts: ["network"],
-          init: async (_config, runtime) => {
-            runtime.contexts.tryRegister(NETWORK_CONTEXT_DEFINITION);
-          },
-        }
-      : {}),
+    contexts: ["network"],
+    init: async (_config, runtime) => {
+      runtime.contexts.tryRegister(NETWORK_CONTEXT_DEFINITION);
+    },
     ...(actionsEnabled && routing === "structured"
       ? {
           responseHandlerFieldEvaluators: [
