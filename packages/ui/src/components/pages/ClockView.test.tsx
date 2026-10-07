@@ -114,9 +114,7 @@ it.each(["denied", "failed", "unknown"] as const)(
     );
     fireEvent.click(screen.getByRole("button", { name: "Add alarm" }));
     const dialog = screen.getByRole("dialog");
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: /^Save$/ }),
-    );
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Save$/ }));
     const feedback = await within(dialog).findByRole("status");
     expect(feedback.classList.contains("sr-only")).toBe(false);
     expect(feedback.textContent).toContain(

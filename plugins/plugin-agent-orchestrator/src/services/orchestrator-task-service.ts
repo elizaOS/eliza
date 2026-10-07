@@ -671,31 +671,19 @@ function readLastChangeSet(
 
 const EVIDENCE_URL_RE = /https?:\/\/[^\s<>"'`\]]+/g;
 
-function trailingParenIsWrapping(url: string): boolean {
+function trimMentionedUrl(url: string): string {
   let depth = 0;
-  for (let i = url.length - 1; i >= 0; i--) {
+  let end = 0;
+  for (let i = 0; i < url.length; i++) {
     const char = url[i];
-    if (char === ")") {
-      depth++;
-    } else if (char === "(") {
+    if (char === "(") depth++;
+    else if (char === ")") {
+      if (depth === 0) continue;
       depth--;
-      if (depth === 0) return false;
-    }
+    } else if (/[.,;:\]]/.test(char)) continue;
+    end = i + 1;
   }
-  return depth > 0;
-}
-
-function trimMentionedUrl(raw: string): string {
-  let url = raw;
-  let prev = "";
-  while (prev !== url) {
-    prev = url;
-    url = url.replace(/[.,;:\]]+$/, "");
-    if (url.endsWith(")") && trailingParenIsWrapping(url)) {
-      url = url.slice(0, -1);
-    }
-  }
-  return url;
+  return url.slice(0, end);
 }
 
 /** Collect distinct http(s) URLs from a set of text bodies, for the mentioned-
