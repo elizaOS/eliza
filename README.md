@@ -152,12 +152,35 @@ patches/         dependency patches applied during installation
 ```
 
 Every maintained package or plugin should explain its public surface, scripts,
-configuration, and local constraints in its own `README.md` and paired
-`CLAUDE.md` / `AGENTS.md`. Read the nearest package guide before making changes.
+configuration, and local constraints in its own `README.md`. Read it before
+making changes. Keep only the root `AGENTS.md`; do not add nested copies.
 
 ## Contributing
 
-Open an issue before a non-trivial change and submit work through a pull request
+> [!IMPORTANT]
+> **The [contribution rules](CONTRIBUTING.md) are required for all issues and PRs.**
+> Stay within the approved minimum viable product (MVP) and product requirements
+> document (PRD). Maintainers will close unnecessary work and apply contributor
+> penalties.
+
+- Contributors must write and submit issues by hand on GitHub. Agents must not
+  draft or create issues. See [the human-only issue rule](CONTRIBUTING.md#human-only-issue-creation).
+- Report real bugs or missing approved MVP requirements. Link the PRD and MVP
+  plan. New features need human maintainer discussion and approval, then updates
+  to both plans before implementation issues or PRs are opened.
+- Prove a useful improvement with before-and-after behavior or relevant scores.
+  Prefer cleanup, removal, reuse, and combined types and functions. Add new types
+  or code only when necessary. Explain the research, alternatives, and choice.
+- Do not add unnecessary tests, defensive code, validation, or truncation.
+  Provide real end-to-end test results. Use existing tests first. Avoid new unit
+  tests, mock-only proof, and tests that repeat the implementation.
+- Every UI PR needs an uploaded MP4 explainer and walkthrough, video evidence of
+  the changed flow, desktop and mobile screenshots, the app visual audit, and
+  detailed steps to test the change.
+- Write issues and PRs in ASD-STE100 Simplified Technical English. Use short,
+  direct sentences and explain technical terms for a non-technical reader.
+
+Write and submit an issue by hand on GitHub before a non-trivial change and submit work through a pull request
 against `develop`. [CONTRIBUTING.md](CONTRIBUTING.md) defines the coordination,
 testing, synchronization, and human-verifiable evidence requirements.
 

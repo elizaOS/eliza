@@ -111,4 +111,4 @@ bun run --cwd plugins/plugin-google-genai test
 bun run --cwd plugins/plugin-google-genai typecheck
 ```
 
-See [AGENTS.md](AGENTS.md) for the agent-facing layout reference and extension guide.
+See [CLAUDE.md](CLAUDE.md) for the agent-facing layout reference and extension guide.

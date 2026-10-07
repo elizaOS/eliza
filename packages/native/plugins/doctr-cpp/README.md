@@ -14,7 +14,7 @@ that asserts the ABI still links and reports expected error contracts.
 
 The full port plan — upstream pin, GGUF conversion approach, fork
 integration steps, replacement path for the TS adapter — lives in
-[`AGENTS.md`](AGENTS.md). Read that before changing anything in this
+[`CLAUDE.md`](CLAUDE.md). Read that before changing anything in this
 directory.
 
 ## Build
