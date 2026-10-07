@@ -754,6 +754,7 @@ function taskPlanJson(overrides: Record<string, unknown>): string {
     mode: "create",
     response: null,
     requestKind: null,
+    nativeProjection: null,
     title: null,
     description: null,
     cadenceKind: null,
@@ -791,6 +792,7 @@ describe("runLifeOperationHandler definition update targeting", () => {
       serviceState.extraDefinitions.push({
         definition: {
           id: "def-reply",
+          metadata: {},
           title: "Reply target",
           cadence: { kind: "daily", windows: ["morning"] },
           windowPolicy: { timezone: "UTC", windows: [] },
@@ -850,6 +852,7 @@ describe("runLifeOperationHandler definition update targeting", () => {
     serviceState.extraDefinitions.push({
       definition: {
         id: "def-arrival",
+        metadata: {},
         title: "Call Elena after landing",
         domain: "user_lifeops",
         timezone: "UTC",
@@ -2855,6 +2858,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
         const completePlan = {
           requestKind: "unspecified",
           nativeProjection: null,
+          description: null,
           mode: "create",
           multiStep: false,
           title: "Call Mom",
@@ -3043,6 +3047,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
           requestKind: "reminder",
           nativeProjection,
           title: "Stretch your shoulders",
+          description: null,
           cadenceKind: "once",
           dueDate: null,
           dueInDays: null,
@@ -3098,6 +3103,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
         requestKind: "reminder",
         nativeProjection: "in_app_only",
         title: "Check travel pouch",
+        description: null,
         cadenceKind: "once",
         dueInMinutes: 2,
         multiStep: false,
@@ -3244,6 +3250,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
           mode: "create",
           requestKind: "reminder",
           title: "Check native projection",
+          description: null,
           cadenceKind: "once",
           dueInMinutes: 2,
           multiStep: false,
@@ -3328,6 +3335,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
             title: "Call Mom",
             cadenceKind: "once",
             dueDate: "2026-09-26",
+            description: null,
             timeOfDay: "12:00",
             timeZone: "America/New_York",
           },

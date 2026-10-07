@@ -1,4 +1,8 @@
 /** Reminder prompts retain owner timezone; delivery copy preserves saved text. */
+import {
+  AUTONOMY_NOTIFICATION_DELIVERY,
+  type AutonomyNotificationDelivery,
+} from "@elizaos/agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildReminderBody,
@@ -102,6 +106,34 @@ describe("dispatchReminderAttempt saved message", () => {
   it("delivers the exact saved message with separate timing metadata", async () => {
     process.env.TZ = "UTC";
     const createReminderAttempt = vi.fn(async () => undefined);
+    const committedMessages: Array<{
+      conversationId: string;
+      messageId: string;
+      text: string;
+    }> = [];
+    const updateReminderAttemptOutcome = vi.fn(async () => {
+      expect(committedMessages).toHaveLength(1);
+    });
+    const emitAssistantEvent = vi.fn(
+      (
+        text: string,
+        _kind: string,
+        metadata: Record<string | symbol, unknown>,
+      ) => {
+        const handoff = metadata[
+          AUTONOMY_NOTIFICATION_DELIVERY
+        ] as AutonomyNotificationDelivery;
+        handoff.routed = Promise.resolve().then(async () => {
+          const committed = {
+            conversationId: "conversation-test",
+            messageId: "message-test",
+            text,
+          };
+          committedMessages.push(committed);
+          await handoff.publish(committed);
+        });
+      },
+    );
     const domain = new RemindersDomain(
       {
         agentId: () => "agent-test",
@@ -112,8 +144,9 @@ describe("dispatchReminderAttempt saved message", () => {
         repository: {
           createAuditEvent: vi.fn(async () => undefined),
           createReminderAttempt,
+          updateReminderAttemptOutcome,
         },
-        emitAssistantEvent: vi.fn(),
+        emitAssistantEvent,
       } as never,
       {
         runDueWorkflows: vi.fn(),
@@ -144,6 +177,18 @@ describe("dispatchReminderAttempt saved message", () => {
     });
 
     expect(attempt.outcome).toBe("delivered");
+    expect(committedMessages).toEqual([
+      {
+        conversationId: "conversation-test",
+        messageId: "message-test",
+        text: "Call dentist",
+      },
+    ]);
+    expect(updateReminderAttemptOutcome).toHaveBeenCalledExactlyOnceWith(
+      attempt.id,
+      "delivered",
+      expect.objectContaining({ reason: null, error: null }),
+    );
     expect(createReminderAttempt).toHaveBeenCalledTimes(1);
     const delivered = createReminderAttempt.mock.calls[0]?.[0] as {
       scheduledFor: string;
