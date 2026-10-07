@@ -32,8 +32,22 @@ import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";
 const MEMORY_TABLE = "links";
-const URL_REGEX = /https?:\/\/[^\s<>"'`)]+/gi;
+const URL_REGEX = /https?:\/\/[^\s<>"'`\]]+/gi;
 const SUMMARY_FETCH_TIMEOUT_MS = 5_000;
+
+function trailingParenIsWrapping(url: string): boolean {
+  let depth = 0;
+  for (let i = url.length - 1; i >= 0; i--) {
+    const char = url[i];
+    if (char === ")") {
+      depth++;
+    } else if (char === "(") {
+      depth--;
+      if (depth === 0) return false;
+    }
+  }
+  return depth > 0;
+}
 
 interface LinkRecord {
   url: string;
@@ -95,8 +109,15 @@ function extractUrls(text: string): string[] {
 
 function stripTrailingPunctuation(url: string): string {
   let result = url;
-  while (result.length > 0 && /[.,;:!?\])}>]/.test(result.slice(-1))) {
-    result = result.slice(0, -1);
+  let prev = "";
+  while (prev !== result) {
+    prev = result;
+    result = result.replace(/[.,;:!?\]}>*_]+$/u, "");
+    // A trailing ")" is wrapping syntax only when it does not close an
+    // earlier "(". Wikipedia paths and queries keep that closer.
+    if (result.endsWith(")") && trailingParenIsWrapping(result)) {
+      result = result.slice(0, -1);
+    }
   }
   return result;
 }
