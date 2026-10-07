@@ -43,7 +43,7 @@ it.each([ChannelType.DM, ChannelType.VOICE_DM])(
 );
 
 it.each(["history:all", "history:h2", "history:search-user:blueberry"])(
-  "restores background-reviewed originals through native reads without a completion field: %s",
+  "offers foreground selection only after full native restoration: %s",
   async (reference) => {
     const { runtime, message, rows, state } = await reviewedHistoryFixture();
     const before = structuredClone(rows);
@@ -65,6 +65,19 @@ it.each(["history:all", "history:h2", "history:search-user:blueberry"])(
         };
       }
       expect(wire).toContain("blueberry");
+      const tools = params.tools as Array<{
+        name: string;
+        parameters: { properties?: Record<string, unknown> };
+      }>;
+      expect(
+        Boolean(
+          tools.find((tool) => tool.name === "HANDLE_RESPONSE")?.parameters
+            .properties?.completionContext,
+        ),
+      ).toBe(reference === "history:all");
+      expect(wire.includes("History selection:")).toBe(
+        reference === "history:all",
+      );
       return stage1Response({
         contexts: ["simple"],
         replyParts: true,

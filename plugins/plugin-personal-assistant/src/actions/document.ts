@@ -430,6 +430,16 @@ interface SignatureRequestInput {
 }
 
 /**
+ * Approval expiry for a signature request. A deadline at the Unix epoch is a
+ * real instant. `Date.parse(...) || now + 24h` turned it into a day-long window.
+ */
+function signatureApprovalExpiresAt(deadline: string, now = Date.now()): Date {
+  const parsed = Date.parse(deadline);
+  if (Number.isFinite(parsed)) return new Date(parsed);
+  return new Date(now + 24 * 60 * 60 * 1000);
+}
+
+/**
  * Create the signature DocumentRequest, queue its owner approval, and schedule
  * its deadline watcher. RESOLVE_REQUEST dispatches an approved `sign_document`
  * row by flipping this DocumentRequest, so every enqueue path must create it.
@@ -470,9 +480,7 @@ async function createSignatureRequest(
     },
     channel: "internal",
     reason: input.reason,
-    expiresAt: new Date(
-      Date.parse(input.deadline) || Date.now() + 24 * 60 * 60 * 1000,
-    ),
+    expiresAt: signatureApprovalExpiresAt(input.deadline),
   });
 
   // Schedule the deadline watcher up front so a SCHEDULED_TASK exists even

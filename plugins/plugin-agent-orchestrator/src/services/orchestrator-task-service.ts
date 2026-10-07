@@ -669,18 +669,35 @@ function readLastChangeSet(
   return candidate as WorkspaceChangeSet;
 }
 
-const EVIDENCE_URL_RE = /https?:\/\/[^\s<>"'`)\]]+/g;
+const EVIDENCE_URL_RE = /https?:\/\/[^\s<>"'`\]]+/g;
 
-/** Collect distinct http(s) URLs from a set of text bodies, for the verified-
- *  URLs evidence section. Order-stable, deduped, trailing punctuation stripped. */
-function collectUrls(texts: readonly string[]): string[] {
+function trimMentionedUrl(url: string): string {
+  let depth = 0;
+  let end = 0;
+  for (let i = 0; i < url.length; i++) {
+    const char = url[i];
+    if (char === "(") depth++;
+    else if (char === ")") {
+      if (depth === 0) continue;
+      depth--;
+    } else if (/[\].,;:!?*_'"—–>]/u.test(char)) continue;
+    end = i + 1;
+  }
+  return url.slice(0, end);
+}
+
+/** Collect distinct http(s) URLs from a set of text bodies, for the mentioned-
+ *  URLs evidence section. Order-stable, deduped. A trailing ")" stays when it
+ *  closes an earlier "(" so Wikipedia paths and queries are not truncated.
+ *  Exported for the mention-trim contract. */
+export function collectUrls(texts: readonly string[]): string[] {
   const urls: string[] = [];
   const seen = new Set<string>();
   for (const text of texts) {
     if (!text) continue;
     EVIDENCE_URL_RE.lastIndex = 0;
     for (const match of text.matchAll(EVIDENCE_URL_RE)) {
-      const url = match[0].replace(/[.,;:)\]]+$/, "");
+      const url = trimMentionedUrl(match[0]);
       if (url.length === 0 || seen.has(url)) continue;
       seen.add(url);
       urls.push(url);

@@ -4,6 +4,7 @@
  * the model to synthesize a user-facing reply, persists the exchange as memory,
  * and invokes the callback. Also sends the initial acknowledgement.
  */
+import { isDeepStrictEqual } from "node:util";
 import {
   type Content,
   ContentType,
@@ -16,6 +17,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { resourceAnalysisTemplate, toolReasoningTemplate } from "../protocol-utils/prompts.js";
 import type { McpProviderData, McpResourceContent } from "../types";
 import { createMcpMemory } from "./mcp";
@@ -53,23 +55,8 @@ export function processResourceResult(
   }
   return { resourceContent, resourceMeta };
 }
-interface ToolContentItem {
-  readonly type: string;
-  readonly text?: string;
-  readonly mimeType?: string;
-  readonly data?: string;
-  readonly resource?: {
-    readonly uri: string;
-    readonly text?: string;
-    readonly blob?: string;
-  };
-}
-interface ToolResult {
-  readonly content: readonly ToolContentItem[];
-  readonly isError?: boolean;
-}
 export function processToolResult(
-  result: ToolResult,
+  result: Pick<CallToolResult, "content" | "structuredContent" | "isError">,
   serverName: string,
   toolName: string,
   runtime: IAgentRuntime,
@@ -115,6 +102,21 @@ export function processToolResult(
       } else if ("blob" in resource) {
         toolOutput += `\n\nResource (${resource.uri}): [Binary data]`;
       }
+    }
+  }
+  if (result.structuredContent !== undefined) {
+    const serialized = JSON.stringify(result.structuredContent);
+    const hasTextCopy = result.content.some((content) => {
+      if (content.type !== "text") return false;
+      try {
+        return isDeepStrictEqual(JSON.parse(content.text), result.structuredContent);
+      } catch {
+        // error-policy:J3 text blocks need not be JSON; keep their text and add the result.
+        return false;
+      }
+    });
+    if (!hasTextCopy) {
+      toolOutput += `${toolOutput ? "\n\n" : ""}Structured result:\n${serialized}`;
     }
   }
   return { toolOutput, hasAttachments, attachments, isError: result.isError === true };

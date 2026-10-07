@@ -1771,6 +1771,7 @@ export class RemindersDomain {
           },
           roomIds,
         });
+        const respondedAt = new Date(response.createdAt).toISOString();
         const classification: Awaited<
           ReturnType<typeof classifyReminderOwnerResponse>
         > = skipReason
@@ -1787,7 +1788,7 @@ export class RemindersDomain {
               context: {
                 title,
                 attemptedAt,
-                respondedAt: response.createdAt,
+                respondedAt,
                 channel: args.attempt.channel,
                 allowStandaloneResolution:
                   responseClaim.allowStandaloneResolution,
@@ -1807,7 +1808,7 @@ export class RemindersDomain {
             decision: "explicit_resolution",
             resolution: classification.resolution,
             snoozeRequest: classification.snoozeRequest,
-            respondedAt: new Date(response.createdAt).toISOString(),
+            respondedAt,
             responseText: response.text,
             confidence: classification.confidence,
             reason: classification.reason,
@@ -1823,7 +1824,7 @@ export class RemindersDomain {
               : "unrelated",
           resolution: null,
           snoozeRequest: null,
-          respondedAt: new Date(response.createdAt).toISOString(),
+          respondedAt,
           responseText: response.text,
           confidence: classification.confidence,
           reason: classification.reason,
