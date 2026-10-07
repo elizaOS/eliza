@@ -1149,9 +1149,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         content?.elizaSyntheticFailure === true ||
         (content?.doNotPersist === true && typeof content.failureKind === "string"),
     );
-    if (result.terminalFailure || failureContent) {
-      const failure = result.terminalFailure
-        ? result.terminalFailure
+    const terminalFailure = result.outcome.status === "failed" ? result.outcome.error : undefined;
+    if (terminalFailure || failureContent) {
+      const failure = terminalFailure
+        ? terminalFailure
         : {
             kind:
               typeof failureContent?.failureKind === "string"
@@ -1178,7 +1179,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           failureKind: knownKinds.has(failure.kind) ? failure.kind : "unknown",
           transient: failure.transient === true,
           modelInvocationStarted,
-          terminalFailurePresent: Boolean(result.terminalFailure),
+          terminalFailurePresent: Boolean(terminalFailure),
           terminalMode:
             result.mode === "simple" ||
             result.mode === "actions" ||
