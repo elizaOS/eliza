@@ -150,6 +150,41 @@ describe("MediaGalleryView", () => {
     });
   });
 
+  it("does not sort a composite primary key by its first column only", async () => {
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: [
+        {
+          name: "memories",
+          columns: [
+            { name: "room_id", isPrimaryKey: true },
+            { name: "id", isPrimaryKey: true },
+          ],
+        },
+      ],
+    });
+    clientMock.getDatabaseRows.mockResolvedValue({
+      table: "memories",
+      rows: [
+        {
+          content: "https://example.test/composite.png",
+          createdAt: "2026-10-06",
+        },
+      ],
+      columns: ["content", "createdAt"],
+      total: 1,
+      offset: 0,
+      limit: 500,
+    });
+
+    render(<MediaGalleryView />);
+
+    await screen.findByRole("heading", { name: "composite.png" });
+    expect(clientMock.getDatabaseRows).toHaveBeenCalledWith("memories", {
+      offset: 0,
+      limit: 500,
+    });
+  });
+
   it("keeps media from readable tables when another table scan fails", async () => {
     clientMock.getDatabaseTables.mockResolvedValue({
       tables: [{ name: "memories" }, { name: "attachments" }],

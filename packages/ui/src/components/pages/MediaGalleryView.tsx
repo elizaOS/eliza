@@ -72,7 +72,11 @@ const MEDIA_SCAN_PAGE_SIZE = 500;
 function mediaScanSortColumn(table: {
   columns?: ReadonlyArray<{ name: string; isPrimaryKey?: boolean }>;
 }): string | undefined {
-  return table.columns?.find((column) => column.isPrimaryKey)?.name;
+  const primary = (table.columns ?? []).filter((column) => column.isPrimaryKey);
+  // The rows API accepts one sort column and then orders by the whole primary
+  // key. Sending only the first column of a composite key is not that order.
+  if (primary.length !== 1) return undefined;
+  return primary[0]?.name;
 }
 
 function classifyUrl(url: string): "image" | "video" | "audio" | null {
