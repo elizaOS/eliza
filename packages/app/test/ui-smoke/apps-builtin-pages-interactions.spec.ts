@@ -119,6 +119,7 @@ test("media gallery includes media after the first database page", async ({
   page,
 }, testInfo) => {
   const requestedOffsets: number[] = [];
+  let failLaterPage = true;
   await page.unroute("**/api/database/tables");
   await page.route("**/api/database/tables", async (route) => {
     await route.fulfill({
@@ -134,6 +135,14 @@ test("media gallery includes media after the first database page", async ({
     const offset = Number(url.searchParams.get("offset") ?? "0");
     const limit = Number(url.searchParams.get("limit") ?? "50");
     requestedOffsets.push(offset);
+    if (offset > 0 && failLaterPage) {
+      failLaterPage = false;
+      await route.fulfill({
+        status: 503,
+        json: { error: "Later media page unavailable" },
+      });
+      return;
+    }
     const rows =
       offset === 0
         ? Array.from({ length: 500 }, (_, index) => ({
@@ -175,10 +184,15 @@ test("media gallery includes media after the first database page", async ({
   await openAppPath(page, "/apps/database");
   await page.getByRole("tab", { name: "Media" }).click();
 
+  await expect(page.getByRole("alert")).toContainText(
+    "Some media could not be loaded",
+  );
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "after-first-page.png" }),
   ).toBeVisible({ timeout: 15_000 });
-  expect(requestedOffsets).toEqual([0, 500]);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(requestedOffsets).toEqual([0, 500, 0, 500]);
   await testInfo.attach("media-pagination-desktop", {
     body: await page.screenshot({ fullPage: false }),
     contentType: "image/png",

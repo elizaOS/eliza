@@ -2,6 +2,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -23,6 +24,8 @@ const appMock = vi.hoisted(() => ({
   },
 }));
 const clientMock = vi.hoisted(() => ({
+  onAuthorityChange: vi.fn((_listener: () => void) => () => {}),
+  getAuthorityRevision: vi.fn(() => 0),
   getDatabaseTables: vi.fn(),
   getDatabaseRows: vi.fn(),
 }));
@@ -50,6 +53,7 @@ import { MediaGalleryView } from "./MediaGalleryView";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clientMock.getAuthorityRevision.mockReturnValue(0);
   transferMock.canShareFiles.mockReturnValue(false);
   transferMock.downloadAttachment.mockResolvedValue(undefined);
   transferMock.shareAttachment.mockResolvedValue(false);
@@ -178,7 +182,98 @@ describe("MediaGalleryView", () => {
     expect(
       await screen.findByRole("heading", { name: "kept.png" }),
     ).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("attachments");
+  });
+
+  it("keeps earlier pages visible and retries a failed later page", async () => {
+    const first = {
+      table: "memories",
+      rows: [{ content: "https://example.test/kept.png" }],
+      columns: ["content"],
+      total: 2,
+      offset: 0,
+      limit: 500,
+    };
+    const second = {
+      ...first,
+      rows: [{ content: "https://example.test/later.png" }],
+      offset: 1,
+    };
+    clientMock.getDatabaseRows
+      .mockResolvedValueOnce(first)
+      .mockRejectedValueOnce(new Error("page unavailable"))
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(second);
+    render(<MediaGalleryView />);
+    await screen.findByRole("heading", { name: "kept.png" });
+    expect(screen.getByRole("alert").textContent).toContain("Retry the scan");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByText("later.png");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it.each(["empty", "invalid-offset"])(
+    "announces an incomplete %s page",
+    async (kind) => {
+      clientMock.getDatabaseRows.mockResolvedValue({
+        rows: [],
+        total: 1,
+        offset: kind === "empty" ? 0 : 5,
+      });
+      render(<MediaGalleryView />);
+      expect((await screen.findByRole("alert")).textContent).toMatch(
+        /Retry the scan/,
+      );
+    },
+  );
+
+  it("stops dispatching pages after unmount", async () => {
+    let resolvePage!: (value: unknown) => void;
+    clientMock.getDatabaseRows.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePage = resolve;
+      }),
+    );
+    const mounted = render(<MediaGalleryView />);
+    await waitFor(() =>
+      expect(clientMock.getDatabaseRows).toHaveBeenCalledOnce(),
+    );
+    mounted.unmount();
+    await act(async () =>
+      resolvePage({
+        rows: [{ content: "https://example.test/stale.png" }],
+        offset: 0,
+        total: 2,
+      }),
+    );
+    expect(clientMock.getDatabaseRows).toHaveBeenCalledOnce();
+  });
+
+  it("fences an old page when same-host account authority changes", async () => {
+    let resolveOld!: (value: unknown) => void;
+    clientMock.getDatabaseRows.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    render(<MediaGalleryView />);
+    await waitFor(() =>
+      expect(clientMock.getDatabaseRows).toHaveBeenCalledOnce(),
+    );
+    const refresh = clientMock.onAuthorityChange.mock
+      .calls[0]?.[0] as unknown as () => void;
+    clientMock.getAuthorityRevision.mockReturnValue(1);
+    await act(async () => refresh());
+    await screen.findByRole("heading", { name: "photo.png" });
+    await act(async () =>
+      resolveOld({
+        rows: [{ content: "https://example.test/stale.png" }],
+        offset: 0,
+        total: 2,
+      }),
+    );
+    expect(clientMock.getDatabaseRows).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("stale.png")).toBeNull();
   });
 
   it("announces a download failure and clears it on a successful retry", async () => {

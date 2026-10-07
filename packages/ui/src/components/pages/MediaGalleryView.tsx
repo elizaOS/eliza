@@ -13,6 +13,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -269,11 +270,14 @@ export function MediaGalleryView({
   contentHeader?: ReactNode;
 }) {
   const t = useAppSelector((s) => s.t);
+  const profileId = useAppSelector((s) => s.activeAgentProfile?.id);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
-  const mountedRef = useRef(true);
+  const loadGeneration = useRef(0);
+  const currentProfile = useRef(profileId);
+  currentProfile.current = profileId;
   const [filter, setFilter] = useState<MediaType>("all");
   const [search, setSearch] = useState("");
   const [selectedMediaUrl, setSelectedMediaUrl] = useState<string | null>(null);
@@ -300,11 +304,19 @@ export function MediaGalleryView({
   useRegisterViewChatBinding(chatBinding);
 
   const loadMedia = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    const authority = client.getAuthorityRevision();
+    const isCurrent = () =>
+      loadGeneration.current === generation &&
+      client.getAuthorityRevision() === authority &&
+      currentProfile.current === profileId;
     setLoading(true);
     setError("");
     try {
       // Discover tables
       const { tables: rawTables } = await client.getDatabaseTables();
+      if (!isCurrent()) return;
+      const failures: string[] = [];
       const tables = Array.isArray(rawTables) ? rawTables : [];
       const allMedia: MediaItem[] = [];
 
@@ -330,6 +342,7 @@ export function MediaGalleryView({
       // Keep concurrency bounded while covering every candidate table. A
       // fixed first-ten slice silently hid media in later plugin tables.
       for (let offset = 0; offset < tablesToScan.length; offset += 10) {
+        if (!isCurrent()) return;
         const scanResults = await Promise.all(
           tablesToScan.slice(offset, offset + 10).map(async (table) => {
             const tableName = table.name;
@@ -339,22 +352,38 @@ export function MediaGalleryView({
             let rowOffset = 0;
 
             try {
-              while (true) {
+              while (isCurrent()) {
                 const result = await client.getDatabaseRows(tableName, {
                   offset: rowOffset,
                   limit: MEDIA_SCAN_PAGE_SIZE,
                   ...(sort ? { sort, order: "asc" as const } : {}),
                 });
-                const rows = Array.isArray(result.rows) ? result.rows : [];
+                if (!isCurrent()) return items;
+                if (
+                  !Array.isArray(result.rows) ||
+                  !Number.isSafeInteger(result.total) ||
+                  result.total < 0 ||
+                  result.offset !== rowOffset
+                ) {
+                  throw new Error("Invalid database page. Retry the scan.");
+                }
+                const rows = result.rows;
                 items.push(...extractMediaFromRows(rows, tableName, seen));
                 rowOffset += rows.length;
 
                 // An empty page cannot advance. Stop this table and keep the
                 // rows already read so the gallery does not spin.
+                if (rows.length === 0 && rowOffset < result.total) {
+                  throw new Error(
+                    "The table changed or returned an incomplete page. Retry the scan.",
+                  );
+                }
                 if (rows.length === 0 || rowOffset >= result.total) break;
               }
             } catch {
-              // One unreadable table must not hide media from the others.
+              // Retain readable media and announce the incomplete scan without
+              // exposing SQL or transport diagnostics from the failed request.
+              failures.push(tableName);
             }
 
             return items;
@@ -371,10 +400,19 @@ export function MediaGalleryView({
         return b.createdAt.localeCompare(a.createdAt);
       });
 
-      if (!mountedRef.current) return;
+      if (!isCurrent()) return;
       setMedia(allMedia);
+      if (failures.length > 0) {
+        setError(
+          t("mediagalleryview.PartialLoadFailed", {
+            defaultValue:
+              "Some media could not be loaded from {{message}}. Retry the scan.",
+            message: failures.join("; "),
+          }),
+        );
+      }
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!isCurrent()) return;
       setError(
         t("mediagalleryview.LoadFailed", {
           message: err instanceof Error ? err.message : "error",
@@ -382,16 +420,23 @@ export function MediaGalleryView({
         }),
       );
     }
-    if (mountedRef.current) {
+    if (isCurrent()) {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, profileId]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    void loadMedia();
+  useLayoutEffect(() => {
+    const refresh = () => {
+      setMedia([]);
+      setSelectedMediaUrl(null);
+      setActionError("");
+      void loadMedia();
+    };
+    const unsubscribe = client.onAuthorityChange(refresh);
+    refresh();
     return () => {
-      mountedRef.current = false;
+      loadGeneration.current += 1;
+      unsubscribe();
     };
   }, [loadMedia]);
 
@@ -539,7 +584,7 @@ export function MediaGalleryView({
             <SidebarContent.EmptyState>
               {t("mediagalleryview.ScanningForMedia")}
             </SidebarContent.EmptyState>
-          ) : filtered.length === 0 ? (
+          ) : filtered.length === 0 && error ? null : filtered.length === 0 ? (
             <SidebarContent.EmptyState>
               {t("mediagalleryview.NoMediaFound")}
             </SidebarContent.EmptyState>
@@ -583,13 +628,21 @@ export function MediaGalleryView({
             className="mb-4 rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger"
           >
             {error}
+            <button
+              type="button"
+              className="ml-3 underline"
+              onClick={() => void loadMedia()}
+            >
+              {t("common.Retry", { defaultValue: "Retry" })}
+            </button>
           </div>
-        ) : loading ? (
+        ) : null}
+        {loading ? (
           <PagePanel.Loading
             heading={t("mediagalleryview.ScanningForMedia")}
             className="flex-1"
           />
-        ) : !selectedItem ? (
+        ) : !selectedItem && error ? null : !selectedItem ? (
           <PagePanel.Empty
             variant="surface"
             className="min-h-[18rem] px-5 py-10"

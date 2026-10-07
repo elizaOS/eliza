@@ -408,6 +408,7 @@ const definition = scenario({
                   requestKind: "reminder",
                   nativeProjection: "in_app_only",
                   title: reminderArgs.title,
+                  description: null,
                   cadenceKind: "once",
                   dueDate: "2099-01-02",
                   dueInDays: null,
