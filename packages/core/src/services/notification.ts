@@ -467,7 +467,11 @@ export class NotificationService extends Service {
 		const notification: AgentNotification = {
 			id: newNotificationId(),
 			title,
-			body: input.body?.trim() || undefined,
+			body: input.body?.trim()
+				? category === "reminder" && input.source === "lifeops"
+					? input.body
+					: input.body.trim()
+				: undefined,
 			category,
 			priority,
 			source: input.source ?? DEFAULT_NOTIFICATION_SOURCE,

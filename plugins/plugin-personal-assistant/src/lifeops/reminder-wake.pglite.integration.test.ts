@@ -1,6 +1,7 @@
 /** Same durable scheduler row and real reminder processing, driven by a virtual
  * core clock. Notification sink records deliveries; no network/model inference. */
 import {
+  AgentEventService,
   attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
   executePlannedToolCall,
@@ -9,6 +10,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { maybeRouteAutonomyEventToConversation } from "../../../../packages/agent/src/api/server-autonomy-helpers.js";
 import {
   createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
   getRecordedTestNotifications,
@@ -30,6 +32,197 @@ beforeEach(() => {
   vi.setSystemTime(daytime);
 });
 afterEach(() => vi.useRealTimers());
+
+it.each([
+  "accepted",
+  "rejected",
+  "receipt_persistence_unknown",
+  "notification_only",
+  "no_surfaces",
+])(
+  "settles the durable in-app attempt after event acceptance (%s)",
+  async (mode) => {
+    const f = await createLifeOpsTestRuntime();
+    const runtime = f.runtime;
+    const model = vi
+      .spyOn(runtime, "useModel")
+      .mockRejectedValue(Error("No inference"));
+    const service = new LifeOpsService(runtime);
+    const notify = runtime.getService("notification") as {
+      notify: (input: Record<string, unknown>) => Promise<unknown>;
+    };
+    const originalNotify = notify.notify.bind(notify);
+    let pending: Awaited<
+      ReturnType<typeof service.repository.listReminderAttempts>
+    > = [];
+    const notifySpy = vi
+      .spyOn(notify, "notify")
+      .mockImplementation(async (input) => {
+        pending = await service.repository.listReminderAttempts(
+          runtime.agentId,
+        );
+        if (mode === "rejected") throw Error("Notification acceptance unknown");
+        return originalNotify(input);
+      });
+    const owner = service.ownerEntityId() as UUID;
+    if (!(await runtime.getEntityById(owner)))
+      await runtime.createEntity({
+        id: owner,
+        agentId: runtime.agentId,
+        names: ["Acceptance owner"],
+        metadata: {},
+      });
+    const worldId = crypto.randomUUID() as UUID;
+    await runtime.ensureWorldExists({
+      id: worldId,
+      agentId: runtime.agentId,
+      name: "Acceptance world",
+      metadata: { ownership: { ownerId: owner }, roles: { [owner]: "OWNER" } },
+    });
+    const roomId = await runtime.createRoom({
+      id: crypto.randomUUID() as UUID,
+      worldId,
+      source: "client_chat",
+      type: ChannelType.DM,
+      name: "Actual event acceptance fixture",
+    });
+    await runtime.createRoomParticipants([owner, runtime.agentId], roomId);
+    const conversationId = crypto.randomUUID();
+    const state = {
+      runtime,
+      activeConversationId: conversationId,
+      conversations: new Map([
+        [conversationId, { id: conversationId, roomId }],
+      ]),
+      broadcastWs: vi.fn(),
+    };
+    let unsubscribe: (() => void) | undefined;
+    if (mode !== "notification_only" && mode !== "no_surfaces") {
+      if (!runtime.getService("agent_event"))
+        await runtime.registerService(AgentEventService);
+      runtime.getService("agent_event");
+      const events = (await runtime.getServiceLoadPromise(
+        "agent_event",
+      )) as AgentEventService;
+      unsubscribe = events.subscribe((event) => {
+        void maybeRouteAutonomyEventToConversation(state as never, event).catch(
+          () => {},
+        );
+      });
+    } else {
+      (
+        runtime as unknown as { services: Map<string, unknown> }
+      ).services.delete("agent_event");
+      if (mode === "no_surfaces")
+        (
+          runtime as unknown as { services: Map<string, unknown> }
+        ).services.delete("notification");
+    }
+    const updateOutcome = service.repository.updateReminderAttemptOutcome.bind(
+      service.repository,
+    );
+    if (mode === "receipt_persistence_unknown")
+      vi.spyOn(
+        service.repository,
+        "updateReminderAttemptOutcome",
+      ).mockImplementation(async (...args) => {
+        if (args[1] === "delivered")
+          throw Error("Receipt persistence unavailable");
+        return updateOutcome(...args);
+      });
+    try {
+      const due = new Date(Date.now() + 60_000).toISOString();
+      const record = await service.createDefinition({
+        title: `Acceptance ${mode}`,
+        description: "Exact acceptance fixture body.",
+        kind: "habit",
+        cadence: { kind: "once", dueAt: due },
+        timezone: "UTC",
+        metadata: {
+          ownerSurface: "OWNER_REMINDERS",
+          nativeProjection: "in_app_only",
+        },
+        reminderPlan: {
+          steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
+        },
+      });
+      vi.setSystemTime(new Date(due));
+      const processing = service.processReminders({
+        now: due,
+        scope: "definitions",
+      });
+      if (
+        ["rejected", "receipt_persistence_unknown", "no_surfaces"].includes(
+          mode,
+        )
+      )
+        await expect(processing).rejects.toThrow();
+      else await processing;
+      const attempts = await service.repository.listReminderAttempts(
+        runtime.agentId,
+      );
+      expect(attempts).toHaveLength(1);
+      const failed = [
+        "rejected",
+        "receipt_persistence_unknown",
+        "no_surfaces",
+      ].includes(mode);
+      expect(attempts[0].outcome).toBe(
+        failed ? "blocked_connector" : "delivered",
+      );
+      if (mode !== "no_surfaces") {
+        expect(pending).toHaveLength(1);
+        expect(pending[0].outcome).toBe("blocked_connector");
+        expect(pending[0].id).toBe(attempts[0].id);
+      }
+      if (failed)
+        expect(attempts[0].deliveryMetadata.reason).toBe(
+          "runtime_send_acceptance_unknown",
+        );
+      const audit = await service.repository.listAuditEvents(
+        runtime.agentId,
+        attempts[0].ownerType,
+        attempts[0].ownerId,
+      );
+      expect(
+        audit.filter(
+          (event) =>
+            event.ownerId === attempts[0].ownerId &&
+            event.eventType === "reminder_delivered",
+        ),
+      ).toHaveLength(failed ? 0 : 1);
+      const messages = await runtime.getMemoriesByRoomIds({
+        roomIds: [roomId],
+        tableName: "messages",
+      });
+      expect(
+        messages.filter((message) => message.content.source === "reminder"),
+      ).toHaveLength(
+        mode === "notification_only" || mode === "no_surfaces" ? 0 : 1,
+      );
+      expect(notifySpy).toHaveBeenCalledTimes(mode === "no_surfaces" ? 0 : 1);
+      const restart = new LifeOpsService(runtime);
+      const later = new Date(Date.parse(due) + 30 * 60_000).toISOString();
+      vi.setSystemTime(new Date(later));
+      await restart.processReminders({ now: later, scope: "definitions" });
+      expect(
+        await restart.repository.listReminderAttempts(runtime.agentId),
+      ).toHaveLength(1);
+      expect(notifySpy).toHaveBeenCalledTimes(mode === "no_surfaces" ? 0 : 1);
+      expect(model).not.toHaveBeenCalled();
+      expect(
+        (await service.getDefinition(record.definition.id)).definition.cadence,
+      ).toEqual(record.definition.cadence);
+      expect(attempts[0].ownerType).toBe("occurrence");
+      expect(owner).not.toBe(runtime.agentId);
+    } finally {
+      unsubscribe?.();
+      vi.restoreAllMocks();
+      await f.cleanup();
+    }
+  },
+  120_000,
+);
 
 async function createLifeOpsTestRuntime() {
   const fixture = await createBaseLifeOpsTestRuntime();
