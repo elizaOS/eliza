@@ -143,3 +143,39 @@ describe("POST /api/bug-report remote intake acceptance", () => {
     expect(ctx.json).not.toHaveBeenCalled();
   });
 });
+
+describe("POST /api/bug-report GitHub URL authority", () => {
+  it.each([
+    ["https://github.com/elizaOS/Eliza/issues/123", true],
+    ["https://github.com/other/eliza/issues/123", false],
+    ["https://github.com/elizaOS/another/issues/123", false],
+    ["https://github.com.evil.invalid/elizaOS/eliza/issues/123", false],
+  ])("validates returned URL %s", async (url, accepted) => {
+    vi.stubEnv("ELIZA_BUG_REPORT_API_URL", "");
+    vi.stubEnv("GITHUB_TOKEN", "fixture-github-token");
+    vi.stubEnv("ELIZA_BUG_REPORT_REPO", "ElizaOS/eliza");
+    try {
+      const ctx = bugReportCtx();
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(JSON.stringify({ html_url: url }), { status: 201 }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(handleBugReportRoutes(ctx)).resolves.toBe(true);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      if (accepted) {
+        expect(ctx.json).toHaveBeenCalledWith(ctx.res, { url });
+        expect(ctx.error).not.toHaveBeenCalled();
+      } else {
+        expect(ctx.error).toHaveBeenCalledWith(
+          ctx.res,
+          "Unexpected response from GitHub API",
+          502,
+        );
+        expect(ctx.json).not.toHaveBeenCalled();
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

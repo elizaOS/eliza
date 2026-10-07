@@ -95,3 +95,49 @@ describe("WebsiteBlockerWeb fallback", () => {
     });
   });
 });
+
+describe("WebsiteBlockerWeb minute boundary", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+  it.each([0.5, "0.9"])(
+    "rejects sub-minute %s before HTTP dispatch",
+    async (durationMinutes) => {
+      setWindow();
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(
+        new WebsiteBlockerWeb().startBlock({
+          websites: ["example.com"],
+          durationMinutes,
+        }),
+      ).rejects.toThrow("at least 1 minute");
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+  it.each([1, null, undefined])(
+    "preserves accepted duration %s at the HTTP boundary",
+    async (durationMinutes) => {
+      setWindow();
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(JSON.stringify({ success: true }), { status: 200 }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      await new WebsiteBlockerWeb().startBlock({
+        websites: ["example.com"],
+        durationMinutes,
+      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/website-blocker",
+        expect.objectContaining({
+          body: JSON.stringify({
+            websites: ["example.com"],
+            durationMinutes: durationMinutes ?? null,
+          }),
+        }),
+      );
+    },
+  );
+});
