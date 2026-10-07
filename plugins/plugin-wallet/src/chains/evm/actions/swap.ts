@@ -927,21 +927,10 @@ function resolveRelativeAmount(
     );
   }
   const raw = nativeBalanceToWei(balance);
-  if (mode === "half") {
-    return formatUnits(raw / 2n, NATIVE_BALANCE_DECIMALS);
-  }
   if (mode === "max") {
     return formatUnits((raw * 9n) / 10n, NATIVE_BALANCE_DECIMALS);
   }
-  const percent = Number(rawPercent);
-  if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
-    throw new EVMError(
-      EVMErrorCode.INVALID_PARAMS,
-      `Swap percentage must be between 1 and 100, received: ${String(rawPercent)}`
-    );
-  }
-  const scaledPercent = BigInt(Math.round(percent * 1_000_000));
-  return formatUnits((raw * scaledPercent) / 100_000_000n, NATIVE_BALANCE_DECIMALS);
+  return resolveRelativeTokenAmount(mode, rawPercent, raw, NATIVE_BALANCE_DECIMALS);
 }
 export const swapAction = {
   name: spec.name,

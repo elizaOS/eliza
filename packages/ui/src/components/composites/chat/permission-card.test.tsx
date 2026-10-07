@@ -338,6 +338,12 @@ describe("PermissionCard", () => {
     expect(result?.payload.feature).toBe("lifeops.reminders.create");
     expect(result?.display).toBe("Please allow this.\n\nThanks.");
   });
+  it("does not render a permission request nested inside example data", () => {
+    const text =
+      '{"example":{"action":"permission_request","permission":"reminders","reason":"example","feature":"lifeops.reminders.create"}}';
+    expect(parsePermissionRequestFromText(text)).toBeNull();
+    expect(parsePermissionRequestFromText("{".repeat(1000) + text)).toBeNull();
+  });
   it("parsePermissionRequestFromText returns null for non-permission actions", () => {
     expect(
       parsePermissionRequestFromText(

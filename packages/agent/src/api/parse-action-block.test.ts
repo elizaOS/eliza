@@ -64,6 +64,23 @@ describe("parseActionBlock", () => {
     expect(parseActionBlock(keys)?.keys).toEqual(["a}b"]);
   });
 
+  it("does not promote a nested action from a rejected outer envelope", () => {
+    for (const text of [
+      '{"example":{"action":"respond","response":"nested","reasoning":"ok"}}',
+      '{"action":"respond","response":"outer","extra":{"action":"ignore","reasoning":"nested"}}',
+      '{"example":{"action":"permission_request","permission":"reminders","reason":"example","feature":"lifeops.reminders.create"}}',
+    ]) {
+      expect(parseActionBlock(text)).toBeNull();
+      expect(stripActionBlockFromDisplay(text)).toBe(text);
+    }
+  });
+
+  it("does not recover inner actions from an unfinished outer object", () => {
+    const text = "{".repeat(1000) + '{"action":"respond","response":"nested"}';
+    expect(parseActionBlock(text)).toBeNull();
+    expect(stripActionBlockFromDisplay(text)).toBe(text);
+  });
+
   it("leaves prose and non-action JSON in place", () => {
     expect(parseActionBlock("")).toBeNull();
     expect(parseActionBlock("hello {not json}")).toBeNull();

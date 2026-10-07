@@ -1,3 +1,4 @@
+import { extractJsonObjects } from "@elizaos/core/protocol";
 /**
  * Local compatibility type for CoordinationLLMResponse — removed from
  * @elizaos/plugin-agent-orchestrator 2.x.
@@ -152,109 +153,45 @@ function isValidActionEnvelope(
   return true;
 }
 
-/**
- * End index (exclusive) of the JSON object that starts at `open`, or null
- * when that `{` does not begin a parseable object. Braces inside strings,
- * including escaped quotes, do not close the object. A regex that stops at
- * the first `}` drops `{"response":"use } here"}` and never runs the action.
- */
-function readJsonObject(
-  text: string,
-  open: number,
-): { end: number; value: unknown } | null {
-  if (text[open] !== "{") return null;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = open; i < text.length; i++) {
-    const char = text[i];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === '"') inString = false;
-      continue;
-    }
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-    if (char === "{") depth++;
-    else if (char === "}") {
-      depth--;
-      if (depth === 0) {
-        try {
-          return { end: i + 1, value: JSON.parse(text.slice(open, i + 1)) };
-        } catch {
-          return null;
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function skipFenceWhitespace(text: string, index: number): number {
-  let cursor = index;
-  let count = 0;
-  while (cursor < text.length && count < 33 && /\s/.test(text[cursor] ?? "")) {
-    cursor++;
-    count++;
-  }
-  return cursor;
-}
-
+/** Complete top-level JSON action and its optional Markdown fence. */
 interface ActionSpan {
   start: number;
   end: number;
+  fenced: boolean;
   value: Record<string, unknown> & { action: string };
 }
 
-function findFencedActionSpans(text: string): ActionSpan[] {
+function findActionSpans(text: string): ActionSpan[] {
   const spans: ActionSpan[] = [];
   let cursor = 0;
-  while (cursor < text.length) {
-    const open = text.indexOf("```", cursor);
-    if (open < 0) break;
-    let body = open + 3;
-    if (text.startsWith("json", body)) body += 4;
-    body = skipFenceWhitespace(text, body);
-    const object = text[body] === "{" ? readJsonObject(text, body) : null;
-    if (!object || !isValidActionEnvelope(object.value)) {
-      cursor = open + 3;
+  let coveredEnd = 0;
+  // Core owns quote/escape-aware top-level object boundaries. Never rescan
+  // inside a rejected object or reinterpret its nested data as an action.
+  for (const json of extractJsonObjects(text)) {
+    const start = text.indexOf(json, cursor);
+    const end = start + json.length;
+    cursor = end;
+    let value: unknown;
+    try {
+      value = JSON.parse(json);
+    } catch {
+      // error-policy:J3 malformed model JSON remains ordinary display text.
       continue;
     }
-    const close = skipFenceWhitespace(text, object.end);
-    if (!text.startsWith("```", close)) {
-      cursor = open + 3;
-      continue;
-    }
-    spans.push({
-      start: open,
-      end: close + 3,
-      value: object.value,
-    });
-    cursor = close + 3;
-  }
-  return spans;
-}
-
-function findBareActionSpans(
-  text: string,
-  covered: ActionSpan[],
-): ActionSpan[] {
-  const spans: ActionSpan[] = [];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] !== "{") continue;
-    if (
-      covered.some((span) => i >= span.start && i < span.end) ||
-      spans.some((span) => i >= span.start && i < span.end)
-    ) {
-      continue;
-    }
-    const object = readJsonObject(text, i);
-    if (!object || !isValidActionEnvelope(object.value)) continue;
-    spans.push({ start: i, end: object.end, value: object.value });
-    i = object.end - 1;
+    if (!isValidActionEnvelope(value)) continue;
+    const prefix = text.slice(Math.max(0, start - 40), start);
+    const opening = /```(?:json)?\s{0,33}$/.exec(prefix);
+    const closing = /^\s{0,33}```/.exec(text.slice(end, end + 36));
+    const fenceStart = start - (opening?.[0].length ?? 0);
+    const fenced = Boolean(opening && closing && fenceStart >= coveredEnd);
+    const span = {
+      start: fenced ? fenceStart : start,
+      end: fenced ? end + (closing?.[0].length ?? 0) : end,
+      fenced,
+      value: value as Record<string, unknown> & { action: string },
+    };
+    spans.push(span);
+    coveredEnd = span.end;
   }
   return spans;
 }
@@ -300,14 +237,14 @@ function toCoordinationResponse(
  */
 export function stripActionBlockFromDisplay(text: string): string {
   const safeText = toWellFormedUnicode(text);
-  const fenced = findFencedActionSpans(safeText);
-  const spans = [...fenced, ...findBareActionSpans(safeText, fenced)].sort(
-    (left, right) => right.start - left.start,
-  );
-  let cleaned = safeText;
-  for (const span of spans) {
-    cleaned = cleaned.slice(0, span.start) + cleaned.slice(span.end);
+  const chunks: string[] = [];
+  let cursor = 0;
+  for (const span of findActionSpans(safeText)) {
+    chunks.push(safeText.slice(cursor, span.start));
+    cursor = span.end;
   }
+  chunks.push(safeText.slice(cursor));
+  const cleaned = chunks.join("");
   return cleaned.trim();
 }
 
@@ -319,8 +256,8 @@ export function stripActionBlockFromDisplay(text: string): string {
 export function parseActionBlock(text: string): CoordinationLLMResponse | null {
   if (!text) return null;
   const safeText = toWellFormedUnicode(text);
-  const fenced = findFencedActionSpans(safeText);
-  const span = fenced[0] ?? findBareActionSpans(safeText, fenced)[0];
+  const spans = findActionSpans(safeText);
+  const span = spans.find((candidate) => candidate.fenced) ?? spans[0];
   if (!span) return null;
   return toCoordinationResponse(span.value);
 }

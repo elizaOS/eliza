@@ -175,15 +175,16 @@ function convertCodeBlocks(text: string, codeSink: string[]): string {
     if (opener < 0) break;
     const afterOpener = opener + 3;
     const closerAt = text.indexOf("```", afterOpener);
-    const newlineAt = text.indexOf("\n", afterOpener);
+    // Limit the search to this fence so repeated one-line blocks are linear.
+    const newlineAt = text
+      .slice(afterOpener, closerAt < 0 ? undefined : closerAt)
+      .indexOf("\n");
     // The info string is the whole opening line when a newline arrives before
     // the closer. Scanning only [A-Za-z0-9_] left the rest of `c++`, `c#`,
     // and `objective-c` in the body, and a one-line ```x``` was eaten as a
     // language tag so the copied fence was empty.
     const bodyStart =
-      newlineAt >= 0 && (closerAt < 0 || newlineAt < closerAt)
-        ? newlineAt + 1
-        : afterOpener;
+      newlineAt >= 0 ? afterOpener + newlineAt + 1 : afterOpener;
     const closer = text.indexOf("```", bodyStart);
     if (closer < 0) {
       // An unmatched opener is what a truncated or streamed message produces,

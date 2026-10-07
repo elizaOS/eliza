@@ -35,20 +35,6 @@ const MEMORY_TABLE = "links";
 const URL_REGEX = /https?:\/\/[^\s<>"'`\]]+/gi;
 const SUMMARY_FETCH_TIMEOUT_MS = 5_000;
 
-function trailingParenIsWrapping(url: string): boolean {
-  let depth = 0;
-  for (let i = url.length - 1; i >= 0; i--) {
-    const char = url[i];
-    if (char === ")") {
-      depth++;
-    } else if (char === "(") {
-      depth--;
-      if (depth === 0) return false;
-    }
-  }
-  return depth > 0;
-}
-
 interface LinkRecord {
   url: string;
   title: string;
@@ -108,18 +94,18 @@ function extractUrls(text: string): string[] {
 }
 
 function stripTrailingPunctuation(url: string): string {
-  let result = url;
-  let prev = "";
-  while (prev !== result) {
-    prev = result;
-    result = result.replace(/[.,;:!?\]}>*_]+$/u, "");
-    // A trailing ")" is wrapping syntax only when it does not close an
-    // earlier "(". Wikipedia paths and queries keep that closer.
-    if (result.endsWith(")") && trailingParenIsWrapping(result)) {
-      result = result.slice(0, -1);
-    }
+  let depth = 0;
+  let end = 0;
+  for (let i = 0; i < url.length; i++) {
+    const char = url[i];
+    if (char === "(") depth++;
+    else if (char === ")") {
+      if (depth === 0) continue;
+      depth--;
+    } else if (/[.,;:!?\]}>*_]/u.test(char)) continue;
+    end = i + 1;
   }
-  return result;
+  return url.slice(0, end);
 }
 
 function hasUrl(message: Memory): boolean {
