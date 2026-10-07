@@ -20,6 +20,11 @@ import org.json.JSONTokener;
 final class ClockHostClient {
     interface Cookies { String get(String url); }
     static final String CAPABILITIES = "clock.handoff.v1,clock.handoff.v2";
+    static final String OWNED_CAPABILITIES = "clock.alarms.v1";
+    interface AlarmMetadata {
+        JSONObject context(ClockHostClient client) throws Exception;
+        default void rejected(ClockHostClient client) throws Exception { }
+    }
     static final class Response {
         final int status;
         final String data, contentType;
@@ -66,9 +71,15 @@ final class ClockHostClient {
     private final String cookie, bearer, profileId;
     private volatile boolean authorizationRejected;
     final String timeZone;
+    private final AlarmMetadata alarmMetadata;
 
     ClockHostClient(NativeSecureStore store, NativeSecureStore.Snapshot snapshot, Cookies cookies, String timeZone) throws Exception {
+        this(store, snapshot, cookies, timeZone, null);
+    }
+    ClockHostClient(NativeSecureStore store, NativeSecureStore.Snapshot snapshot, Cookies cookies, String timeZone,
+                    AlarmMetadata alarmMetadata) throws Exception {
         this.store = store; this.snapshot = snapshot; this.cookies = cookies; this.timeZone = timeZone;
+        this.alarmMetadata = alarmMetadata;
         device = snapshot.requireClockDevice();
         JSONObject profile = object(snapshot.require("runtime.active_server"));
         profileId = text(profile, "id");
@@ -88,7 +99,7 @@ final class ClockHostClient {
         if (!timeZone.equals(java.time.ZoneId.systemDefault().getId())) throw new SecurityException("Native phone timezone changed");
     }
     JSONObject context(boolean enroll) throws Exception {
-        if (enroll) request("POST", "/api/client-devices/register", new JSONObject().put("label", "Android Clock").put("workflowProtocol", 1).toString(), null).json();
+        if (enroll) request("POST", "/api/client-devices/register", new JSONObject().put("label", alarmMetadata == null ? "Android Clock" : "Eliza Clock").put("workflowProtocol", 1).toString(), null).json();
         JSONObject context = request("GET", "/api/client-devices/context", null, null).json();
         exact(context, "agentId", "subjectUserId", "installationId", "enrollmentId", "scope");
         identifier(text(context, "agentId")); identifier(text(context, "enrollmentId")); digest(text(context, "scope"));
@@ -105,13 +116,22 @@ final class ClockHostClient {
         return ClockHostPolicy.hash(profileId + "\n" + base + "\n" + text(context, "scope") + "\n"
                 + ClockHostPolicy.hash((bearer == null ? "" : bearer) + "\n" + cookie));
     }
+    String alarmOwner(JSONObject context) throws Exception {
+        return ClockHostPolicy.hash(profileId + "\n" + base + "\n" + text(context, "subjectUserId")
+                + "\n" + text(context, "agentId") + "\n" + device.getInstallationId());
+    }
+    String localFingerprint() {
+        return ClockHostPolicy.hash(profileId + "\n" + base + "\n" + device.getInstallationId() + "\n"
+                + ClockHostPolicy.hash((bearer == null ? "" : bearer) + "\n" + cookie));
+    }
+    String capabilities() { return alarmMetadata == null ? CAPABILITIES : OWNED_CAPABILITIES; }
     List<Proposal> proposals(JSONObject context) throws Exception {
         JSONArray rows = request("GET", "/api/client-devices/proposals", null, null).json().getJSONArray("proposals");
         List<Proposal> result = new ArrayList<>();
         for (int i = 0; i < rows.length(); i++) {
             JSONObject row = rows.getJSONObject(i);
             JSONObject operation = row.getJSONObject("payload").getJSONObject("operation");
-            if ("clock_handoff".equals(operation.opt("type"))) result.add(new Proposal(row, context));
+            if ((alarmMetadata == null ? "clock_handoff" : "clock_alarm").equals(operation.opt("type"))) result.add(new Proposal(row, context));
         }
         return result;
     }
@@ -132,7 +152,8 @@ final class ClockHostClient {
     }
     static boolean sameRequest(ClockHandoff.Request a, ClockHandoff.Request b) {
         return a.action == b.action && a.hour == b.hour && a.minute == b.minute && a.snoozeMinutes == b.snoozeMinutes
-                && Objects.equals(a.label, b.label) && Objects.equals(a.timeZone, b.timeZone) && Objects.equals(a.days, b.days);
+                && Objects.equals(a.label, b.label) && Objects.equals(a.timeZone, b.timeZone) && Objects.equals(a.days, b.days)
+                && a.owned == b.owned && Objects.equals(a.alarmId, b.alarmId) && a.enabled == b.enabled;
     }
     /** Preparation is available only before any execution attempt and still requires a new native gesture. */
     static boolean requiresDecision(JSONObject context, Proposal proposal) throws Exception {
@@ -158,6 +179,7 @@ final class ClockHostClient {
                 proposal.request, owner, ClockHostPolicy.hash(proposal.digest + "\n" + proposal.attemptId + "\n" + text(context, "scope")));
     }
     JSONObject metadataContext() throws Exception {
+        if (alarmMetadata != null) return alarmMetadata.context(this);
         return new JSONObject().put("sensitive", false).put("revision", snapshot.getGeneration()).put("timeZone", timeZone);
     }
     String agentBody(String raw) throws Exception {
@@ -173,7 +195,10 @@ final class ClockHostClient {
                      java.util.function.Consumer<Runnable> connected) throws Exception {
         ClockHostHttp.Response response = ClockHostHttp.request(ClockHostPolicy.endpoint(base, path), method, body, headers(callerHeaders),
                 () -> { current(); requestFence.current(); }, null, connection -> connected.accept(connection::disconnect));
-        if (response.status == 401) authorizationRejected = true;
+        if (response.status == 401) {
+            authorizationRejected = true;
+            if (alarmMetadata != null) alarmMetadata.rejected(this);
+        }
         secretFree(response.data);
         return new Response(response.status, response.data, response.contentType);
     }
@@ -186,7 +211,10 @@ final class ClockHostClient {
             @Override public void connected(HttpURLConnection connection) { observer.connected(connection); }
             @Override public void head(ClockHostHttp.Response response) throws Exception {
                 observer.head(response);
-                if (response.status == 401) authorizationRejected = true;
+                if (response.status == 401) {
+                    authorizationRejected = true;
+                    if (alarmMetadata != null) alarmMetadata.rejected(ClockHostClient.this);
+                }
             }
             @Override public boolean cancelled() { return observer.cancelled(); }
             @Override public void chunk(String data) throws Exception {
@@ -209,7 +237,7 @@ final class ClockHostClient {
         headers.put("Accept", "application/json"); headers.put("Content-Type", "application/json");
         headers.putAll(ClockHostPolicy.headers(callerHeaders, bearer, cookie));
         headers.put("x-eliza-device-id", device.getInstallationId()); headers.put("x-eliza-device-key", device.getDeviceKey());
-        headers.put("x-eliza-device-capabilities", CAPABILITIES);
+        headers.put("x-eliza-device-capabilities", capabilities());
         if (bearer != null) headers.put("Authorization", "Bearer " + bearer);
         if (!cookie.isEmpty()) headers.put("Cookie", cookie);
         String csrf = ClockHostPolicy.csrf(cookie);
@@ -262,6 +290,7 @@ final class ClockHostClient {
         while (iterator.hasNext()) if (!keys.contains(iterator.next())) throw new IllegalArgumentException("Unexpected native fields");
     }
     static ClockHandoff.Request decode(JSONObject op) throws Exception {
+        if ("clock_alarm".equals(text(op, "type"))) return decodeOwned(op);
         if (!"clock_handoff".equals(text(op, "type"))) throw new IllegalArgumentException("Unsupported native operation");
         switch (text(op, "action")) {
             case "set":
@@ -281,6 +310,40 @@ final class ClockHostClient {
             case "dismiss": exact(op, "type", "action"); return ClockHandoff.Request.dismiss();
             case "snooze": exact(op, "type", "action", "snoozeMinutes"); return ClockHandoff.Request.snooze(integer(op, "snoozeMinutes"));
             default: throw new IllegalArgumentException("Unsupported native Clock action");
+        }
+    }
+    private static ClockHandoff.Request decodeOwned(JSONObject op) throws Exception {
+        String action = text(op, "action");
+        switch (action) {
+            case "set":
+            case "update":
+                if ("set".equals(action)) exact(op, "type", "action", "hour", "minute", "label", "timeZone", "days");
+                else exact(op, "type", "action", "alarmId", "hour", "minute", "label", "timeZone", "days");
+                Object label = op.get("label"); if (!(label instanceof String)) throw new IllegalArgumentException("Invalid alarm label");
+                JSONArray days = op.getJSONArray("days");
+                if (days.length() > 7) throw new IllegalArgumentException("Invalid alarm repeat days");
+                List<Integer> repeat = new ArrayList<>();
+                for (int i = 0; i < days.length(); i++) {
+                    Object day = days.get(i); if (!(day instanceof Integer)) throw new IllegalArgumentException("Invalid alarm repeat day");
+                    repeat.add((Integer) day);
+                }
+                if ("update".equals(action)) return ClockHandoff.Request.update(integer(op, "hour"), integer(op, "minute"),
+                        (String) label, text(op, "timeZone"), repeat, text(op, "alarmId"));
+                return ClockHandoff.Request.owned(ClockHandoff.Request.set(integer(op, "hour"), integer(op, "minute"),
+                        (String) label, text(op, "timeZone"), repeat), null, false);
+            case "show": exact(op, "type", "action"); return ClockHandoff.Request.owned(ClockHandoff.Request.show(), null, false);
+            case "delete": exact(op, "type", "action", "alarmId"); return ClockHandoff.Request.delete(text(op, "alarmId"));
+            case "enable":
+                exact(op, "type", "action", "alarmId", "enabled");
+                if (!(op.get("enabled") instanceof Boolean)) throw new IllegalArgumentException("Invalid alarm enabled state");
+                return ClockHandoff.Request.enable(text(op, "alarmId"), op.getBoolean("enabled"));
+            case "dismiss":
+                exact(op, "type", "action", "alarmId");
+                return ClockHandoff.Request.owned(ClockHandoff.Request.dismiss(), text(op, "alarmId"), false);
+            case "snooze":
+                exact(op, "type", "action", "alarmId", "minutes");
+                return ClockHandoff.Request.owned(ClockHandoff.Request.snooze(integer(op, "minutes")), text(op, "alarmId"), false);
+            default: throw new IllegalArgumentException("Unsupported owned alarm action");
         }
     }
     private static String cleanCookie(String cookie) {

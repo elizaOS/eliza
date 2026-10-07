@@ -2,6 +2,10 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type {
+  ClockAlarmOperation,
+  ClockAlarmRecord,
+} from "@elizaos/plugin-assistant/device-clock-review";
 import {
   test as base,
   expect,
@@ -9,8 +13,10 @@ import {
   type Page,
 } from "@playwright/test";
 import { createServer } from "vite";
+
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import type {
+  ClockAlarmStatus,
   ClockHost,
   ClockProposal,
 } from "../../../ui/src/bridge/clock-host";
@@ -51,12 +57,17 @@ const test = base.extend<object, { clockRendererUrl: string }>({
     await use(clockRendererUrl);
   },
 });
+test.use({ timezoneId: "America/Los_Angeles" });
 type Scenario =
   | "owned"
   | "receipt"
   | "expired"
   | "unsupported"
   | "read-failure"
+  | "opened-refresh-failure"
+  | "receipt-refresh-failure"
+  | "receipt-owner-refresh-failure"
+  | "receipt-reconcile-failure"
   | "deferred";
 interface Diagnostics {
   reviewCalls: {
@@ -73,11 +84,14 @@ interface Diagnostics {
 interface ControlledBoundary {
   diagnostics(): Diagnostics;
   changeOwner(): void;
+  loseOwner(): void;
+  notifyForeground(): void;
+  recoverForeground(notify: boolean): void;
 }
 
 async function capture(page: Page, state: string, receiptButton?: Locator) {
   const directory = testOutputPath(
-    "clock-completion",
+    "clock-settled-refresh",
     "controlled-native-boundary",
   );
   await mkdir(directory, { recursive: true });
@@ -165,6 +179,7 @@ async function openControlledClock(page: Page, scenario: Scenario) {
       if (bridge.getClockHost() !== null)
         throw new Error("Expected an isolated web Clock host");
       let scope = "a".repeat(64);
+      let ownerUnavailable = false;
       let proposal: ClockProposal | null = {
         id: "controlled-owned-clock",
         digest: "d".repeat(64),
@@ -183,6 +198,7 @@ async function openControlledClock(page: Page, scenario: Scenario) {
         },
       };
       const expectedOperation = JSON.stringify(proposal.operation);
+      let foregroundReadRejected = false;
       const listeners = new Set<() => void>();
       const counts: Diagnostics = {
         reviewCalls: [],
@@ -196,6 +212,21 @@ async function openControlledClock(page: Page, scenario: Scenario) {
           counts.statusCalls++;
           if (scenario === "read-failure")
             throw new Error("Controlled native boundary read failed");
+          if (
+            scenario === "receipt-owner-refresh-failure" &&
+            foregroundReadRejected
+          )
+            throw new Error("Controlled native owner status unavailable");
+          if (ownerUnavailable)
+            return {
+              supported: false,
+              agentBase: null,
+              reason: "Controlled native owner is unavailable",
+              capabilities: [],
+              scope: null,
+              installationId: null,
+              context: null,
+            };
           return {
             supported: true,
             agentBase: "http://127.0.0.1:31467",
@@ -216,6 +247,10 @@ async function openControlledClock(page: Page, scenario: Scenario) {
         },
         async proposals() {
           counts.proposalCalls++;
+          if (foregroundReadRejected)
+            throw new Error(
+              "Controlled native foreground paused during refresh",
+            );
           return {
             scope,
             proposals: proposal ? [structuredClone(proposal)] : [],
@@ -235,6 +270,11 @@ async function openControlledClock(page: Page, scenario: Scenario) {
             state: request.state,
             operation: structuredClone(request.operation),
           });
+          if (
+            scenario === "receipt-reconcile-failure" &&
+            counts.reviewCalls.length === 2
+          )
+            throw new Error("Controlled saved receipt reconciliation failed");
           if (scenario === "deferred") {
             return new Promise((_, reject) => {
               const abort = () => {
@@ -250,14 +290,31 @@ async function openControlledClock(page: Page, scenario: Scenario) {
           if (["pending", "approved"].includes(request.state))
             counts.dispatchCount++;
           proposal = { ...request, state: "done" };
+          foregroundReadRejected = [
+            "opened-refresh-failure",
+            "receipt-refresh-failure",
+            "receipt-owner-refresh-failure",
+          ].includes(scenario);
           return {
             handoff: {
               kind: "clock-handoff",
               action: "set",
-              status: scenario === "receipt" ? "unknown" : "opened",
+              status: [
+                "receipt",
+                "receipt-refresh-failure",
+                "receipt-owner-refresh-failure",
+                "receipt-reconcile-failure",
+              ].includes(scenario)
+                ? "unknown"
+                : "opened",
             },
             receiptPending:
-              scenario === "receipt" && counts.reviewCalls.length === 1,
+              [
+                "receipt",
+                "receipt-refresh-failure",
+                "receipt-owner-refresh-failure",
+                "receipt-reconcile-failure",
+              ].includes(scenario) && counts.reviewCalls.length === 1,
           };
         },
         subscribe(listener) {
@@ -273,8 +330,21 @@ async function openControlledClock(page: Page, scenario: Scenario) {
       ).__clockHostUiBoundary = {
         diagnostics: () => structuredClone(counts),
         changeOwner: () => {
+          ownerUnavailable = false;
+          foregroundReadRejected = false;
           scope = "b".repeat(64);
           proposal = null;
+          for (const listener of listeners) listener();
+        },
+        loseOwner: () => {
+          ownerUnavailable = true;
+          for (const listener of listeners) listener();
+        },
+        recoverForeground: (notify) => {
+          foregroundReadRejected = false;
+          if (notify) for (const listener of listeners) listener();
+        },
+        notifyForeground: () => {
           for (const listener of listeners) listener();
         },
       };
@@ -330,6 +400,112 @@ for (const viewport of [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 },
 ]) {
+  test(`settled OPENED Clock handoff survives failed proposal refresh and foreground resume on ${viewport.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+    const effects = await openControlledClock(page, "opened-refresh-failure");
+    await expect(
+      page.getByRole("button", { name: "Review on this phone", exact: true }),
+    ).toBeEnabled();
+    const before = await diagnostics(page);
+    await page
+      .getByRole("button", { name: "Review on this phone", exact: true })
+      .click();
+    const savedOutcome =
+      "Android Clock opened. Check the installed alarm there; ringing is not confirmed.";
+    await expect(page.getByRole("status")).toHaveText(savedOutcome);
+    const settled = await diagnostics(page);
+    expect(settled.statusCalls).toBe(before.statusCalls);
+    expect(settled.proposalCalls).toBe(before.proposalCalls);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    // The actual visibility boundary suppresses reads while the phone is away
+    // in external Clock; its return requests an owned read, never a dispatch.
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "hidden",
+      });
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        value: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      (
+        window as typeof window & { __clockHostUiBoundary: ControlledBoundary }
+      ).__clockHostUiBoundary.notifyForeground();
+    });
+    expect((await diagnostics(page)).statusCalls).toBe(settled.statusCalls);
+    expect((await diagnostics(page)).proposalCalls).toBe(settled.proposalCalls);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "visible",
+      });
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        value: false,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect(page.getByRole("alert")).toHaveText(
+      "Clock requests could not be refreshed. Controlled native foreground paused during refresh",
+    );
+    await expect(
+      page.getByRole("button", { name: "Review on this phone", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Check saved receipt", exact: true }),
+    ).toHaveCount(0);
+    const paused = await diagnostics(page);
+    expect(paused.dispatchCount).toBe(1);
+    expect(paused.reviewCalls.map((call) => call.state)).toEqual(["pending"]);
+    expect(effects).toEqual([]);
+    await capture(page, `opened-refresh-failed-${viewport.name}`);
+
+    await page.evaluate(() => {
+      (
+        window as typeof window & { __clockHostUiBoundary: ControlledBoundary }
+      ).__clockHostUiBoundary.recoverForeground(false);
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "hidden",
+      });
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        value: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "visible",
+      });
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        value: false,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("status")).toHaveText(savedOutcome);
+    await expect(
+      page.getByRole("button", { name: "Review on this phone", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Check saved receipt", exact: true }),
+    ).toHaveCount(0);
+    const resumed = await diagnostics(page);
+    expect(resumed.statusCalls).toBeGreaterThan(paused.statusCalls);
+    expect(resumed.proposalCalls).toBeGreaterThan(paused.proposalCalls);
+    expect(resumed.reviewCalls).toEqual(paused.reviewCalls);
+    expect(resumed.dispatchCount).toBe(1);
+    expect(effects).toEqual([]);
+    await capture(page, `opened-foreground-resumed-${viewport.name}`);
+  });
+
   test(`UNKNOWN Clock receipt remains retryable after done on ${viewport.name}`, async ({
     page,
   }) => {
@@ -360,7 +536,7 @@ for (const viewport of [
     const actual = await diagnostics(page);
     expect(actual.reviewCalls.map((call) => call.state)).toEqual([
       "pending",
-      "done",
+      "reconciliation_required",
     ]);
     expect(actual.reviewCalls.map((call) => call.id)).toEqual([
       "controlled-owned-clock",
@@ -368,9 +544,297 @@ for (const viewport of [
     ]);
     expect(actual.dispatchCount).toBe(1);
     expect(effects).toEqual([]);
-    await capture(page, `unknown-receipt-settled-${viewport.name}`, retry);
+    await expect(retry).toHaveCount(0);
+    await capture(page, `unknown-receipt-settled-${viewport.name}`);
   });
 }
+
+test("pending UNKNOWN receipt remains reconcilable after proposal refresh rejection", async ({
+  page,
+}) => {
+  const effects = await openControlledClock(page, "receipt-refresh-failure");
+  await expect(
+    page.getByRole("button", { name: "Review on this phone", exact: true }),
+  ).toBeEnabled();
+  const before = await diagnostics(page);
+  await page
+    .getByRole("button", { name: "Review on this phone", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Clock result: unknown; server receipt remains pending. Check the saved receipt again to retry settlement without another dispatch. No installed or ringing alarm is confirmed.",
+  );
+  const settled = await diagnostics(page);
+  expect(settled.statusCalls).toBe(before.statusCalls);
+  expect(settled.proposalCalls).toBe(before.proposalCalls);
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __clockHostUiBoundary: ControlledBoundary }
+    ).__clockHostUiBoundary.notifyForeground();
+  });
+  await expect(page.getByRole("alert")).toHaveText(
+    "Clock requests could not be refreshed. Controlled native foreground paused during refresh",
+  );
+  await expect(
+    page.getByRole("button", { name: "Review on this phone", exact: true }),
+  ).toHaveCount(0);
+  const receipt = page.getByRole("button", {
+    name: "Check saved receipt",
+    exact: true,
+  });
+  await expect(receipt).toBeEnabled();
+  await capture(page, "unknown-refresh-failed", receipt);
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __clockHostUiBoundary: ControlledBoundary }
+    ).__clockHostUiBoundary.recoverForeground(true);
+  });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(receipt).toBeEnabled();
+  expect((await diagnostics(page)).dispatchCount).toBe(1);
+  await receipt.click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Clock result: unknown. No installed or ringing alarm is confirmed.",
+  );
+  const actual = await diagnostics(page);
+  expect(actual.reviewCalls.map((call) => call.state)).toEqual([
+    "pending",
+    "done",
+  ]);
+  expect(actual.reviewCalls.map((call) => call.id)).toEqual([
+    "controlled-owned-clock",
+    "controlled-owned-clock",
+  ]);
+  expect(actual.dispatchCount).toBe(1);
+  expect(effects).toEqual([]);
+  await expect(receipt).toHaveCount(0);
+  await capture(page, "unknown-refresh-reconciled");
+});
+
+test("saved UNKNOWN receipt waits for verified owner after status read rejection", async ({
+  page,
+}) => {
+  const effects = await openControlledClock(
+    page,
+    "receipt-owner-refresh-failure",
+  );
+  await page
+    .getByRole("button", { name: "Review on this phone", exact: true })
+    .click();
+  const pendingOutcome =
+    "Clock result: unknown; server receipt remains pending. Check the saved receipt again to retry settlement without another dispatch. No installed or ringing alarm is confirmed.";
+  await expect(page.getByRole("status")).toHaveText(pendingOutcome);
+  const before = await diagnostics(page);
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __clockHostUiBoundary: ControlledBoundary }
+    ).__clockHostUiBoundary.notifyForeground();
+  });
+  await expect(page.getByRole("alert")).toHaveText(
+    "Clock requests could not be refreshed. Controlled native owner status unavailable",
+  );
+  await expect(page.getByRole("status")).toHaveText(pendingOutcome);
+  const receipt = page.getByRole("button", {
+    name: "Check saved receipt",
+    exact: true,
+  });
+  await expect(receipt).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Review on this phone", exact: true }),
+  ).toHaveCount(0);
+  const failed = await diagnostics(page);
+  expect(failed.proposalCalls).toBe(before.proposalCalls);
+  expect(failed.reviewCalls).toEqual(before.reviewCalls);
+  expect(failed.dispatchCount).toBe(1);
+  await capture(page, "unknown-owner-unverified", receipt);
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __clockHostUiBoundary: ControlledBoundary }
+    ).__clockHostUiBoundary.recoverForeground(true);
+  });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(receipt).toBeEnabled();
+  await expect(page.getByRole("status")).toHaveText(pendingOutcome);
+  expect((await diagnostics(page)).reviewCalls).toEqual(before.reviewCalls);
+  await receipt.click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Clock result: unknown. No installed or ringing alarm is confirmed.",
+  );
+  await expect(receipt).toHaveCount(0);
+  const actual = await diagnostics(page);
+  expect(actual.reviewCalls.map((call) => call.state)).toEqual([
+    "pending",
+    "done",
+  ]);
+  expect(actual.dispatchCount).toBe(1);
+  expect(effects).toEqual([]);
+  await capture(page, "unknown-owner-restored-reconciled");
+});
+
+test("validated unavailable Clock owner clears saved receipt and outcome before a new scope", async ({
+  page,
+}) => {
+  const effects = await openControlledClock(page, "receipt");
+  await page
+    .getByRole("button", { name: "Review on this phone", exact: true })
+    .click();
+  const pendingOutcome =
+    "Clock result: unknown; server receipt remains pending. Check the saved receipt again to retry settlement without another dispatch. No installed or ringing alarm is confirmed.";
+  await expect(page.getByRole("status")).toHaveText(pendingOutcome);
+  await expect(
+    page.getByRole("button", { name: "Check saved receipt", exact: true }),
+  ).toBeEnabled();
+  const before = await diagnostics(page);
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __clockHostUiBoundary: ControlledBoundary }
+    ).__clockHostUiBoundary.loseOwner();
+  });
+  await expect(page.getByText(pendingOutcome, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Check saved receipt", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Review on this phone", exact: true }),
+  ).toHaveCount(0);
+  const unavailable = await diagnostics(page);
+  expect(unavailable.statusCalls).toBeGreaterThan(before.statusCalls);
+  expect(unavailable.proposalCalls).toBe(before.proposalCalls);
+  expect(unavailable.reviewCalls).toEqual(before.reviewCalls);
+  expect(unavailable.dispatchCount).toBe(1);
+  await capture(page, "pending-owner-unavailable-cleared");
+
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __clockHostUiBoundary: ControlledBoundary }
+    ).__clockHostUiBoundary.changeOwner();
+  });
+  await expect(
+    page.getByText(
+      "No pending Clock requests. Send your request in chat to create one.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(pendingOutcome, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Check saved receipt", exact: true }),
+  ).toHaveCount(0);
+  const changed = await diagnostics(page);
+  expect(changed.reviewCalls).toEqual(before.reviewCalls);
+  expect(changed.dispatchCount).toBe(1);
+  expect(effects).toEqual([]);
+  await capture(page, "new-owner-after-unavailable");
+});
+
+test("failed saved receipt reconciliation remains reachable through owned refresh without redispatch", async ({
+  page,
+}) => {
+  const effects = await openControlledClock(page, "receipt-reconcile-failure");
+  await page
+    .getByRole("button", { name: "Review on this phone", exact: true })
+    .click();
+  const pendingOutcome =
+    "Clock result: unknown; server receipt remains pending. Check the saved receipt again to retry settlement without another dispatch. No installed or ringing alarm is confirmed.";
+  await expect(page.getByRole("status")).toHaveText(pendingOutcome);
+  const receipt = page.getByRole("button", {
+    name: "Check saved receipt",
+    exact: true,
+  });
+  await expect(receipt).toBeEnabled();
+  await receipt.click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Controlled saved receipt reconciliation failed",
+  );
+  await expect(page.getByRole("status")).toHaveText(pendingOutcome);
+  await expect(receipt).toBeEnabled();
+  const failed = await diagnostics(page);
+  expect(failed.reviewCalls.map((call) => call.state)).toEqual([
+    "pending",
+    "reconciliation_required",
+  ]);
+  expect(failed.dispatchCount).toBe(1);
+  await capture(page, "saved-reconciliation-failed", receipt);
+
+  await page
+    .getByRole("button", { name: "Refresh Clock requests", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toHaveText(pendingOutcome);
+  await expect(receipt).toBeEnabled();
+  const refreshed = await diagnostics(page);
+  expect(refreshed.proposalCalls).toBeGreaterThan(failed.proposalCalls);
+  expect(refreshed.reviewCalls).toEqual(failed.reviewCalls);
+  expect(refreshed.dispatchCount).toBe(1);
+  await receipt.click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Clock result: unknown. No installed or ringing alarm is confirmed.",
+  );
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(receipt).toHaveCount(0);
+  const actual = await diagnostics(page);
+  expect(actual.reviewCalls.map((call) => call.state)).toEqual([
+    "pending",
+    "reconciliation_required",
+    "done",
+  ]);
+  expect(actual.dispatchCount).toBe(1);
+  expect(effects).toEqual([]);
+  await capture(page, "saved-reconciliation-recovered");
+});
+
+test("settled Clock outcome survives explicit refresh retry but is retired with its owner", async ({
+  page,
+}) => {
+  const effects = await openControlledClock(page, "opened-refresh-failure");
+  await expect(
+    page.getByRole("button", { name: "Review on this phone", exact: true }),
+  ).toBeEnabled();
+  const before = await diagnostics(page);
+  await page
+    .getByRole("button", { name: "Review on this phone", exact: true })
+    .click();
+  const savedOutcome =
+    "Android Clock opened. Check the installed alarm there; ringing is not confirmed.";
+  await expect(page.getByRole("status")).toHaveText(savedOutcome);
+  const settled = await diagnostics(page);
+  expect(settled.statusCalls).toBe(before.statusCalls);
+  expect(settled.proposalCalls).toBe(before.proposalCalls);
+  await page
+    .getByRole("button", { name: "Refresh Clock requests", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __clockHostUiBoundary: ControlledBoundary }
+    ).__clockHostUiBoundary.recoverForeground(false);
+  });
+  await page
+    .getByRole("button", { name: "Refresh Clock requests", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("status")).toHaveText(savedOutcome);
+  await expect(
+    page.getByRole("button", { name: "Review on this phone", exact: true }),
+  ).toHaveCount(0);
+  expect((await diagnostics(page)).dispatchCount).toBe(1);
+  expect((await diagnostics(page)).reviewCalls).toHaveLength(1);
+  await capture(page, "opened-explicit-refresh-retry");
+
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __clockHostUiBoundary: ControlledBoundary }
+    ).__clockHostUiBoundary.changeOwner();
+  });
+  await expect(page.getByText(savedOutcome, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Check saved receipt", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Review on this phone", exact: true }),
+  ).toHaveCount(0);
+  expect((await diagnostics(page)).dispatchCount).toBe(1);
+  expect((await diagnostics(page)).reviewCalls).toHaveLength(1);
+  expect(effects).toEqual([]);
+  await capture(page, "opened-owner-retired");
+});
 
 test("expired pending Clock proposal cannot begin a native review", async ({
   page,
@@ -392,7 +856,7 @@ test("expired pending Clock proposal cannot begin a native review", async ({
 test("Clock host read failure remains a visible error", async ({ page }) => {
   const effects = await openControlledClock(page, "read-failure");
   await expect(page.getByRole("alert")).toHaveText(
-    "Controlled native boundary read failed",
+    "Clock requests could not be refreshed. Controlled native boundary read failed",
   );
   await expect(
     page.getByRole("region", { name: "Clock proposals", exact: true }),
@@ -485,4 +949,431 @@ test("Clock owner scope change aborts an active controlled native review", async
   expect((await diagnostics(page)).dispatchCount).toBe(0);
   expect(effects).toEqual([]);
   await capture(page, "owner-change-review-cancelled");
+});
+
+interface OwnedBoundary {
+  calls(): { operation: ClockAlarmOperation; revision: number }[];
+  failInventory(): void;
+  recoverInventory(): void;
+  replaceOwner(): void;
+  deferRead(): void;
+  resolveRead(): void;
+}
+async function openOwnedClock(page: Page, permissions = true) {
+  await seedAppStorage(page);
+  await installDefaultAppRoutes(page);
+  await openAppPath(page, "/clock");
+  await expect(
+    page.getByRole("heading", { name: "Android alarm", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(
+    async ({ url, permissions }) => {
+      const module = await import(url);
+      const listeners = new Set<() => void>();
+      let owner = "a".repeat(64);
+      let revision = 3;
+      const grants = {
+        exact: permissions,
+        notifications: permissions,
+        fullScreen: permissions,
+      };
+      let fail = false;
+      let deferred = false;
+      let resolveDeferred: ((value: ClockAlarmStatus) => void) | null = null;
+      const calls: { operation: ClockAlarmOperation; revision: number }[] = [];
+      const nextOccurrence = (
+        hour: number,
+        minute: number,
+        days: readonly number[],
+      ) => {
+        const next = new Date();
+        next.setHours(hour, minute, 0, 0);
+        for (let offset = 0; offset <= 7; offset++) {
+          if (
+            next.getTime() > Date.now() &&
+            (days.length === 0 || days.includes(next.getDay() + 1))
+          )
+            return next.getTime();
+          next.setDate(next.getDate() + 1);
+        }
+        throw new Error("Controlled recurrence fixture has no next date");
+      };
+      let alarms: ClockAlarmRecord[] = [
+        {
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          hour: 9,
+          minute: 0,
+          label: "Morning routine",
+          timeZone: "America/Los_Angeles",
+          days: [2, 3, 4, 5, 6],
+          enabled: true,
+          nextAt: nextOccurrence(9, 0, [2, 3, 4, 5, 6]),
+          scheduleState: "scheduled",
+          generation: 1,
+          lastOutcome: "",
+        },
+      ];
+      const snapshot = (): ClockAlarmStatus => ({
+        available: true,
+        reason: null,
+        owner,
+        alarmsRevision: revision,
+        alarmsObservedAt: Date.now(),
+        timeZone: "America/Los_Angeles",
+        alarms: structuredClone(alarms),
+        exactAlarmsAllowed: grants.exact,
+        notificationsAllowed: grants.notifications,
+        fullScreenAllowed: grants.fullScreen,
+        alarmSoundMuted: false,
+        defaultToneAvailable: true,
+      });
+      const notify = () => {
+        for (const listener of listeners) listener();
+      };
+      const host: ClockHost = {
+        // An unavailable agent never hides the independent native alarm inventory.
+        status: async () => {
+          throw new Error("Controlled agent offline");
+        },
+        proposals: async () => {
+          throw new Error("Controlled agent offline");
+        },
+        review: async () => {
+          throw new Error("No proposal in owned alarm fixture");
+        },
+        retire: async () => {},
+        subscribe(listener) {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+        async alarmStatus() {
+          if (fail) throw new Error("Controlled native inventory read failed");
+          const observed = snapshot();
+          if (deferred) {
+            deferred = false;
+            return new Promise((resolve) => {
+              resolveDeferred = resolve;
+            }).then(() => observed);
+          }
+          return observed;
+        },
+        async manageAlarm(operation, alarmsRevision) {
+          calls.push({
+            operation: structuredClone(operation),
+            revision: alarmsRevision,
+          });
+          if (alarmsRevision !== revision)
+            throw new Error("Stale controlled alarm revision");
+          revision++;
+          const id =
+            "alarmId" in operation
+              ? operation.alarmId
+              : "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+          const selected = alarms.find((alarm) => alarm.id === id);
+          let nextAt =
+            operation.action === "set" || operation.action === "update"
+              ? nextOccurrence(operation.hour, operation.minute, operation.days)
+              : selected
+                ? nextOccurrence(selected.hour, selected.minute, selected.days)
+                : null;
+          if (operation.action === "set" || operation.action === "update") {
+            const enabled =
+              operation.action === "set" || selected?.enabled === true;
+            if (!enabled) nextAt = null;
+            const record: ClockAlarmRecord = {
+              hour: operation.hour,
+              minute: operation.minute,
+              label: operation.label,
+              timeZone: operation.timeZone,
+              days: operation.days,
+              id,
+              enabled,
+              nextAt,
+              scheduleState: enabled ? "scheduled" : "disabled",
+              generation: 2,
+              lastOutcome: "",
+            };
+            alarms =
+              operation.action === "set"
+                ? [...alarms, record]
+                : alarms.map((alarm) => (alarm.id === id ? record : alarm));
+            return {
+              result: {
+                kind: "clock-alarm",
+                action: operation.action,
+                status: operation.action === "set" ? "scheduled" : "updated",
+                alarmId: id,
+                nextAt,
+              },
+              alarmsRevision: revision,
+            };
+          }
+          if (operation.action === "enable") {
+            alarms = alarms.map((alarm) =>
+              alarm.id === id
+                ? {
+                    ...alarm,
+                    enabled: operation.enabled,
+                    nextAt: operation.enabled ? nextAt : null,
+                    scheduleState: operation.enabled ? "scheduled" : "disabled",
+                  }
+                : alarm,
+            );
+            return {
+              result: {
+                kind: "clock-alarm",
+                action: "enable",
+                status: operation.enabled ? "enabled" : "disabled",
+                alarmId: id,
+                nextAt: operation.enabled ? nextAt : null,
+              },
+              alarmsRevision: revision,
+            };
+          }
+          if (operation.action === "delete") {
+            alarms = alarms.filter((alarm) => alarm.id !== id);
+            return {
+              result: {
+                kind: "clock-alarm",
+                action: "delete",
+                status: "deleted",
+                alarmId: id,
+              },
+              alarmsRevision: revision,
+            };
+          }
+          throw new Error("Unexpected controlled alarm operation");
+        },
+        async requestAlarmPermission(permission) {
+          grants[permission] = true;
+        },
+      };
+      module.configureClockHost(host);
+      (
+        window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+      ).__ownedClockBoundary = {
+        calls: () => structuredClone(calls),
+        failInventory() {
+          fail = true;
+          notify();
+        },
+        recoverInventory() {
+          fail = false;
+          notify();
+        },
+        deferRead() {
+          deferred = true;
+          notify();
+        },
+        resolveRead() {
+          resolveDeferred?.(snapshot());
+        },
+        replaceOwner() {
+          owner = "b".repeat(64);
+          alarms = [
+            {
+              ...alarms[0],
+              id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+              label: "New owner alarm",
+            },
+          ];
+          notify();
+        },
+      };
+    },
+    { url: bridgeUrl, permissions },
+  );
+  await expect(
+    page
+      .getByRole("region", { name: "Saved alarms", exact: true })
+      .getByText("Morning routine", { exact: true }),
+  ).toBeVisible();
+}
+async function ownedCalls(page: Page) {
+  return page.evaluate(() =>
+    (
+      window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+    ).__ownedClockBoundary.calls(),
+  );
+}
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
+  { name: "mobile", width: 393, height: 852 },
+]) {
+  test(`owned alarms local controls and overview ${viewport.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await openOwnedClock(page);
+    await expect(page.getByText(/Android Clock owns/)).toHaveCount(0);
+    await page
+      .getByLabel("Alarm label", { exact: false })
+      .fill("朝の目覚まし — Work days");
+    await page.getByLabel("Repeat", { exact: true }).selectOption("daily");
+    await page
+      .getByRole("button", { name: "Create alarm", exact: true })
+      .click();
+    await expect(
+      page.getByRole("article", {
+        name: "朝の目覚まし — Work days",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect((await ownedCalls(page))[0]).toMatchObject({
+      revision: 3,
+      operation: {
+        type: "clock_alarm",
+        action: "set",
+        hour: 9,
+        minute: 0,
+        days: [1, 2, 3, 4, 5, 6, 7],
+      },
+    });
+    const row = page.getByRole("article", {
+      name: "朝の目覚まし — Work days",
+      exact: true,
+    });
+    await row.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByLabel("Alarm time", { exact: true }).fill("09:30");
+    await page.getByLabel("Repeat", { exact: true }).selectOption("custom");
+    for (const day of ["Monday", "Wednesday", "Friday"])
+      await page.getByRole("checkbox", { name: day, exact: true }).check();
+    // Daily editing retained all seven days; explicitly remove the remaining days.
+    for (const day of ["Sunday", "Tuesday", "Thursday", "Saturday"])
+      await page.getByRole("checkbox", { name: day, exact: true }).uncheck();
+    await page
+      .getByRole("button", { name: "Save alarm changes", exact: true })
+      .click();
+    await expect(row.getByText("09:30", { exact: true })).toBeVisible();
+    expect((await ownedCalls(page))[1]).toMatchObject({
+      revision: 4,
+      operation: {
+        action: "update",
+        alarmId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        days: [2, 4, 6],
+      },
+    });
+    const directory = testOutputPath("owned-native-alarms", "renderer");
+    await mkdir(directory, { recursive: true });
+    await page
+      .getByRole("heading", { name: "Clock", exact: true })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: `${directory}/${viewport.name}-overview.png`,
+      fullPage: true,
+    });
+    await page
+      .getByRole("heading", { name: "Create an alarm", exact: true })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: `${directory}/${viewport.name}-form.png`,
+      fullPage: true,
+    });
+    await row.getByRole("switch").click();
+    await expect(row.getByRole("switch")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await row.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(row).toHaveCount(0);
+    expect(
+      (await ownedCalls(page)).map((call) => call.operation.action),
+    ).toEqual(["set", "update", "enable", "delete"]);
+    expect((await ownedCalls(page)).map((call) => call.revision)).toEqual([
+      3, 4, 5, 6,
+    ]);
+  });
+}
+test("owned alarms permissions, failed inventory and old owner reads are explicit", async ({
+  page,
+}) => {
+  await openOwnedClock(page, false);
+  await expect(
+    page.getByRole("button", { name: "Create alarm", exact: true }),
+  ).toBeDisabled();
+  const disabled = page.getByRole("article", {
+    name: "Morning routine",
+    exact: true,
+  });
+  await disabled.getByRole("switch").click();
+  await expect(disabled.getByRole("switch")).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await disabled.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Save alarm changes", exact: true }),
+  ).toBeEnabled();
+  await expect(disabled.getByRole("switch")).toBeDisabled();
+  await page.getByLabel("Alarm time", { exact: true }).fill("09:05");
+  await page
+    .getByRole("button", { name: "Save alarm changes", exact: true })
+    .click();
+  await expect(disabled.getByText("09:05", { exact: true })).toBeVisible();
+  await expect(disabled.getByRole("switch")).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await page
+    .getByRole("button", { name: "Allow exact alarms", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Create alarm", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Allow alarm notifications", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Create alarm", exact: true }),
+  ).toBeEnabled();
+  await page.evaluate(() =>
+    (
+      window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+    ).__ownedClockBoundary.failInventory(),
+  );
+  await expect(
+    page.getByText("Controlled native inventory read failed", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/No Eliza alarms yet/)).toHaveCount(0);
+  await expect(page.getByText("Morning routine", { exact: true })).toHaveCount(
+    0,
+  );
+  await page.evaluate(() =>
+    (
+      window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+    ).__ownedClockBoundary.recoverInventory(),
+  );
+  await expect(
+    page.getByText("Morning routine", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("article", { name: "Morning routine", exact: true })
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  await page.evaluate(() => {
+    const boundary = (
+      window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+    ).__ownedClockBoundary;
+    boundary.deferRead();
+    boundary.replaceOwner();
+  });
+  await expect(
+    page.getByText("New owner alarm", { exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    (
+      window as typeof window & { __ownedClockBoundary: OwnedBoundary }
+    ).__ownedClockBoundary.resolveRead(),
+  );
+  await expect(page.getByText("Morning routine", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByLabel("Alarm label", { exact: false })).toHaveValue(
+    "",
+  );
+  expect((await ownedCalls(page)).map((call) => call.operation.action)).toEqual(
+    ["enable", "update"],
+  );
 });

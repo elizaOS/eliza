@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import org.json.JSONObject;
 
 public final class ClockConsentCoordinatorTest {
     private interface Checked { void run() throws Exception; }
@@ -213,12 +214,98 @@ public final class ClockConsentCoordinatorTest {
                 && effects.get() == 6, "Recurring process death must never replay");
     }
 
+    private static ClockHandoff.Request ownedSet() {
+        return ClockHandoff.Request.owned(ClockHandoff.Request.set(9, 0, "Owned weekdays", "UTC", List.of(2, 3, 4, 5, 6)), null, false);
+    }
+    private static ClockConsentCoordinator.Identity ownedCrashIdentity() {
+        String id = "12345678-1234-1234-1234-123456789abc";
+        return new ClockConsentCoordinator.Identity(SCOPE, id, id);
+    }
+    /** The production V3 file codec and receipt latch are real; no Android schedule is simulated. */
+    private static void ownedContracts(Path root) throws Exception {
+        AtomicLong clock = new AtomicLong(1000);
+        AtomicInteger effects = new AtomicInteger();
+        String target = "87654321-1234-1234-1234-123456789abc";
+        List<ClockHandoff.Request> operations = List.of(ownedSet(),
+                ClockHandoff.Request.update(10, 15, "Keep disabled", "UTC", List.of(), target),
+                ClockHandoff.Request.delete(target), ClockHandoff.Request.enable(target, true),
+                ClockHandoff.Request.enable(target, false), ClockHandoff.Request.owned(ClockHandoff.Request.dismiss(), target, false),
+                ClockHandoff.Request.owned(ClockHandoff.Request.snooze(10), target, false),
+                ClockHandoff.Request.owned(ClockHandoff.Request.show(), null, false));
+        for (ClockHandoff.Request request : operations) {
+            String id = java.util.UUID.randomUUID().toString();
+            ClockConsentCoordinator.Identity identity = new ClockConsentCoordinator.Identity(SCOPE, id, id);
+            AtomicReference<ClockConsentCoordinator.ApprovedEntry> authority = new AtomicReference<>(approved(identity, request, "owner"));
+            Path directory = journal(root, "owned-" + id);
+            ClockConsentCoordinator first = coordinator(directory, "owner", authority, clock);
+            String token = consent(first, identity, request);
+            JSONObject receipt = new JSONObject().put("kind", "clock-alarm").put("action", request.action.name().toLowerCase(java.util.Locale.ROOT));
+            String status = request.action == ClockHandoff.Action.SET ? "scheduled" : request.action == ClockHandoff.Action.UPDATE ? "updated"
+                    : request.action == ClockHandoff.Action.DELETE ? "deleted" : request.action == ClockHandoff.Action.ENABLE ? (request.enabled ? "enabled" : "disabled")
+                    : request.action == ClockHandoff.Action.DISMISS ? "dismissed" : request.action == ClockHandoff.Action.SNOOZE ? "snoozed" : "shown";
+            receipt.put("status", status);
+            if (request.action != ClockHandoff.Action.SHOW) receipt.put("alarmId", request.action == ClockHandoff.Action.SET ? id : target);
+            if (request.action != ClockHandoff.Action.SHOW && request.action != ClockHandoff.Action.DELETE)
+                receipt.put("nextAt", request.action == ClockHandoff.Action.UPDATE || (request.action == ClockHandoff.Action.ENABLE && !request.enabled)
+                        ? JSONObject.NULL : 1791378000000L);
+            String exactReceipt = receipt.toString();
+            int before = effects.get();
+            check(first.confirmClock(identity, token, new ClockConsentCoordinator.Dispatcher() {
+                @Override public ClockHandoff.Outcome dispatch(ClockHandoff.Request selected, ClockHandoff.ApprovedConsent consume) {
+                    consume.consume(selected); effects.incrementAndGet(); return ClockHandoff.Outcome.APPLIED;
+                }
+                @Override public String receipt() { return exactReceipt; }
+            }) == ClockConsentCoordinator.Result.APPLIED, "Owned receipt must settle after durable consume");
+            byte[] bytes = Files.readAllBytes(stored(directory));
+            try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes))) {
+                check(input.readInt() == 0x434c4b33, "Owned claims must use the additive V3 journal format");
+            }
+            ClockConsentCoordinator restarted = coordinator(directory, "owner", authority, clock);
+            check(restarted.reconcileClock(identity, request).result == ClockConsentCoordinator.Result.APPLIED, "V3 applied outcome must survive restart");
+            check(exactReceipt.equals(restarted.effectReceipt(identity)), "V3 must preserve the exact typed receipt without reconstruction");
+            check(ClockHostReceipts.result(request, ClockConsentCoordinator.Result.APPLIED, exactReceipt, id).toString().equals(exactReceipt),
+                    "Restored V3 receipt must validate against the selected action and target");
+            check(restarted.confirmClock(identity, token, dispatch(effects)) == ClockConsentCoordinator.Result.APPLIED && effects.get() == before + 1,
+                    "V3 receipt recovery must never repeat an effect");
+            check(Arrays.equals(bytes, Files.readAllBytes(stored(directory))), "V3 read/replay must not rewrite the immutable receipt");
+            rejects(() -> coordinator(directory, "other-owner", authority, clock).effectReceipt(identity));
+            authority.set(new ClockConsentCoordinator.ApprovedEntry(identity, request, "owner", "c".repeat(64)));
+            rejects(() -> restarted.effectReceipt(identity));
+        }
+        ClockConsentCoordinator.Identity identity = ownedCrashIdentity();
+        ClockHandoff.Request request = ownedSet();
+        AtomicReference<ClockConsentCoordinator.ApprovedEntry> authority = new AtomicReference<>(approved(identity, request, "owner"));
+        Path missing = journal(root, "owned-missing-receipt");
+        ClockConsentCoordinator first = coordinator(missing, "owner", authority, clock);
+        String token = consent(first, identity, request);
+        check(first.confirmClock(identity, token, (selected, consume) -> { consume.consume(selected); return ClockHandoff.Outcome.APPLIED; })
+                == ClockConsentCoordinator.Result.UNKNOWN, "Consumed effect without typed evidence must remain unknown");
+        ClockConsentCoordinator restarted = coordinator(missing, "owner", authority, clock);
+        check(restarted.effectReceipt(identity) == null, "Unknown V3 must not invent an applied receipt");
+        int before = effects.get();
+        check(restarted.confirmClock(identity, token, dispatch(effects)) == ClockConsentCoordinator.Result.UNKNOWN && effects.get() == before,
+                "Unknown V3 must never redispatch");
+        Path crashDirectory = journal(root, "owned-crash");
+        ClockConsentCoordinator crash = coordinator(crashDirectory, "owner", authority, clock);
+        String crashToken = consent(crash, identity, request);
+        Process child = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-cp", System.getProperty("java.class.path"), ClockConsentCoordinatorTest.class.getName(),
+                "crash-owned", crashDirectory.toString(), crashToken).inheritIO().start();
+        check(child.waitFor() == 19, "V3 process must die after durable consume and before receipt");
+        ClockConsentCoordinator afterCrash = coordinator(crashDirectory, "owner", authority, clock);
+        check(afterCrash.reconcileClock(identity, request).result == ClockConsentCoordinator.Result.UNKNOWN,
+                "V3 interrupted dispatch must survive restart as unknown");
+        check(afterCrash.confirmClock(identity, crashToken, dispatch(effects)) == ClockConsentCoordinator.Result.UNKNOWN && effects.get() == before,
+                "V3 process death must never replay an effect");
+    }
+
     public static void main(String[] args) throws Exception {
-        if (args.length > 0 && (args[0].equals("crash") || args[0].equals("crash-repeat"))) {
+        if (args.length > 0 && (args[0].equals("crash") || args[0].equals("crash-repeat") || args[0].equals("crash-owned"))) {
             Path directory = Path.of(args[1]);
             boolean repeat = args[0].equals("crash-repeat");
-            ClockConsentCoordinator.Identity id = identity(repeat ? "repeat-crash" : "crash");
-            ClockHandoff.Request request = repeat ? ClockHandoff.Request.set(9, 0, "Daily", "UTC", List.of(1, 2, 3, 4, 5, 6, 7))
+            boolean owned = args[0].equals("crash-owned");
+            ClockConsentCoordinator.Identity id = owned ? ownedCrashIdentity() : identity(repeat ? "repeat-crash" : "crash");
+            ClockHandoff.Request request = owned ? ownedSet() : repeat ? ClockHandoff.Request.set(9, 0, "Daily", "UTC", List.of(1, 2, 3, 4, 5, 6, 7))
                     : ClockHandoff.Request.show();
             AtomicReference<ClockConsentCoordinator.ApprovedEntry> authority = new AtomicReference<>(approved(id, request, "owner"));
             ClockConsentCoordinator coordinator = coordinator(directory, "owner", authority, new AtomicLong(1000));
@@ -232,6 +319,7 @@ public final class ClockConsentCoordinatorTest {
         Path root = Files.createTempDirectory("eliza-clock-consent-contract-").toRealPath();
         try {
             repeatContracts(root);
+            ownedContracts(root);
             AtomicLong clock = new AtomicLong(1000);
             ClockHandoff.Request request = ClockHandoff.Request.set(7, 30, "Wake up", "America/Los_Angeles");
             ClockConsentCoordinator.Identity id = identity("one");

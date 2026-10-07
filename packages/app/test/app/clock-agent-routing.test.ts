@@ -51,6 +51,9 @@ const native = vi.hoisted(() => ({
   http: vi.fn(),
   cancel: vi.fn(async () => ({ cancelled: true })),
   list: vi.fn(),
+  alarms: vi.fn(),
+  manage: vi.fn(),
+  permission: vi.fn(),
   review: vi.fn(async () => ({
     result: { kind: "clock-handoff", action: "set", status: "opened" },
     receiptPending: false,
@@ -66,6 +69,9 @@ vi.mock("@capacitor/core", async (original) => ({
   CapacitorHttp: { request: native.http },
   registerPlugin: () => ({
     getStatus: native.status,
+    getAlarmStatus: native.alarms,
+    manageAlarm: native.manage,
+    requestAlarmPermission: native.permission,
     requestAgent: native.request,
     cancelAgentRequest: native.cancel,
     listProposals: native.list,
@@ -701,5 +707,97 @@ describe("Clock preserves existing agent device routing", () => {
     await rejected;
     expect(native.http).not.toHaveBeenCalled();
     expect(requests).toHaveLength(0);
+  });
+  it("reads owned alarms independently and rejects false empty or malformed snapshots", async () => {
+    const status = {
+      available: true,
+      reason: null,
+      owner: "e".repeat(64),
+      alarmsRevision: 4,
+      alarmsObservedAt: Date.now(),
+      timeZone: "UTC",
+      alarms: [],
+      exactAlarmsAllowed: true,
+      notificationsAllowed: true,
+      fullScreenAllowed: false,
+      alarmSoundMuted: false,
+      defaultToneAvailable: true,
+    };
+    native.status.mockRejectedValueOnce(new Error("Agent offline"));
+    native.alarms.mockResolvedValue(status);
+    const host = getClockHost();
+    expect(await host?.alarmStatus?.()).toEqual(status);
+    native.alarms.mockResolvedValueOnce({
+      ...status,
+      available: false,
+      reason: "Owner unavailable",
+      owner: null,
+      alarmsRevision: null,
+    });
+    await expect(host?.alarmStatus?.()).rejects.toThrow(
+      "Invalid unavailable native alarm inventory",
+    );
+    native.alarms.mockResolvedValueOnce({ ...status, alarmsRevision: -1 });
+    await expect(host?.alarmStatus?.()).rejects.toThrow("Invalid Clock number");
+  });
+  it("binds local alarm review to the explicit owner and revision and validates its actual receipt", async () => {
+    const owner = "e".repeat(64);
+    const status = {
+      available: true,
+      reason: null,
+      owner,
+      alarmsRevision: 4,
+      alarmsObservedAt: Date.now(),
+      timeZone: "UTC",
+      alarms: [],
+      exactAlarmsAllowed: true,
+      notificationsAllowed: true,
+      fullScreenAllowed: true,
+      alarmSoundMuted: false,
+      defaultToneAvailable: true,
+    };
+    native.alarms.mockResolvedValue(status);
+    native.manage.mockReset();
+    const host = getClockHost();
+    await host?.alarmStatus?.();
+    const operation = {
+      type: "clock_alarm" as const,
+      action: "set" as const,
+      hour: 9,
+      minute: 0,
+      label: "Morning",
+      timeZone: "UTC",
+      days: [2, 3, 4, 5, 6] as (1 | 2 | 3 | 4 | 5 | 6 | 7)[],
+    };
+    const result = {
+      kind: "clock-alarm",
+      action: "set",
+      status: "scheduled",
+      alarmId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      nextAt: Date.now() + 3_600_000,
+    };
+    native.manage.mockResolvedValue({ result, alarmsRevision: 5 });
+    expect(await host?.manageAlarm?.(operation, 4, owner)).toEqual({
+      result,
+      alarmsRevision: 5,
+    });
+    expect(native.manage).toHaveBeenCalledWith({
+      operation,
+      alarmsRevision: 4,
+      expectedOwner: owner,
+    });
+    native.manage.mockClear();
+    native.alarms.mockResolvedValue({ ...status, owner: "f".repeat(64) });
+    await host?.alarmStatus?.();
+    await expect(host?.manageAlarm?.(operation, 4, owner)).rejects.toThrow(
+      "Refresh the alarm list",
+    );
+    expect(native.manage).not.toHaveBeenCalled();
+    native.alarms.mockResolvedValue(status);
+    await host?.alarmStatus?.();
+    await expect(host?.manageAlarm?.(operation, 3, owner)).rejects.toThrow(
+      "Alarm list changed",
+    );
+    expect(native.manage).not.toHaveBeenCalled();
   });
 });

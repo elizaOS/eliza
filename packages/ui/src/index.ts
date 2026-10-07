@@ -158,6 +158,7 @@ export { AppBackground } from "./backgrounds/AppBackground.js";
 export { BRAND_PATHS, LOGO_FILES } from "./brand/index.js";
 export { initializeCapacitorBridge } from "./bridge/capacitor-bridge.js";
 export {
+  type ClockAlarmStatus,
   type ClockHost,
   type ClockProposal,
   type ClockStatus,
