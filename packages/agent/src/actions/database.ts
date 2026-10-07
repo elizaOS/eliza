@@ -365,6 +365,7 @@ async function opGetTable(
     `SELECT 1 FROM information_schema.tables
      WHERE table_name = '${safe}'
        AND table_schema = ${visibleSchema}
+       AND table_schema NOT IN ('pg_catalog', 'information_schema')
        AND table_type = 'BASE TABLE'
      LIMIT 1`,
   );

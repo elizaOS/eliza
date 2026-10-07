@@ -116,6 +116,15 @@ it("returns every tied row once and ignores another schema's primary key", async
     );
     expect(hidden.success).toBe(false);
     expect(hidden.text).toBe('Table "only_here" not found.');
+    const systemTable = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      { parameters: { action: "get_table", tableName: "pg_class" } },
+      undefined,
+    );
+    expect(systemTable.success).toBe(false);
+    expect(systemTable.text).toBe('Table "pg_class" not found.');
   } finally {
     await cleanup();
   }
