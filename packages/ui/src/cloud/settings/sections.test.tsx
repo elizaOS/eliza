@@ -4,6 +4,7 @@
  */
 // @vitest-environment jsdom
 
+import { resolveSurfaceManifest } from "@elizaos/core/protocol";
 import {
   cleanup,
   fireEvent,
@@ -12,8 +13,13 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  SurfaceRealmDeniedError,
+  SurfaceRealmScope,
+  setActiveSurfaceRealmScope,
+} from "../../surface-realm-broker";
 
 const appState = vi.hoisted(() => ({
   handleInteractiveCloudLogin: vi.fn(() => Promise.resolve()),
@@ -65,6 +71,8 @@ function StandaloneAccountDestination(): React.JSX.Element {
 describe("CloudAccountSection", () => {
   afterEach(() => {
     cleanup();
+    setActiveSurfaceRealmScope(null);
+    window.history.replaceState(null, "", "/");
     appState.handleInteractiveCloudLogin.mockReset();
     appState.handleInteractiveCloudLogin.mockResolvedValue(undefined);
     appState.setActionNotice.mockReset();
@@ -72,8 +80,21 @@ describe("CloudAccountSection", () => {
   });
 
   it("leaves the hosted agent shell for the standalone account route", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?from=launcher#cloud-account",
+    );
+    setActiveSurfaceRealmScope(
+      new SurfaceRealmScope(
+        resolveSurfaceManifest({ surface: { capabilities: [] } }),
+        "settings",
+        window.localStorage,
+        () => undefined,
+      ),
+    );
     render(
-      <MemoryRouter initialEntries={["/settings?from=launcher"]}>
+      <BrowserRouter>
         <Routes>
           <Route
             path="/settings"
@@ -89,13 +110,19 @@ describe("CloudAccountSection", () => {
             element={<StandaloneAccountDestination />}
           />
         </Routes>
-      </MemoryRouter>,
+      </BrowserRouter>,
     );
 
     expect(
       await screen.findByText("Standalone account?from=launcher"),
     ).toBeTruthy();
     expect(screen.queryByText("Message Eliza")).toBeNull();
+    expect(window.location.pathname).toBe("/cloud/account");
+    expect(window.location.search).toBe("?from=launcher");
+    expect(window.location.hash).toBe("");
+    expect(() =>
+      window.history.replaceState(null, "", "/ungranted-view-route"),
+    ).toThrow(SurfaceRealmDeniedError);
     expect(
       screen.queryByRole("button", { name: "Sign in through adapter" }),
     ).toBeNull();

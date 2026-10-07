@@ -25,10 +25,11 @@
  *  - {@link CloudPluginGrantsSection}  → cloud/account-security (PermissionsSurface: plugin grants)
  */
 
-import { type ReactNode, useCallback } from "react";
-import { Navigate, useInRouterContext, useLocation } from "react-router-dom";
+import { type ReactNode, useCallback, useEffect } from "react";
+import { useInRouterContext, useLocation, useNavigate } from "react-router-dom";
 import { useAppSelectorShallow } from "../../state/app-store";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
+import { runAsPrivilegedShell } from "../../surface-realm-channel";
 import { AccountSurface } from "../account-security/AccountSurface";
 import { PermissionsSurface } from "../account-security/PermissionsSurface";
 import { SecuritySurface } from "../account-security/SecuritySurface";
@@ -39,9 +40,23 @@ import { OrganizationSection } from "../organization/OrganizationSection";
 import { ApplicationsEntry } from "./applications-entry";
 import { CloudSettingsSectionShell } from "./CloudSettingsSectionShell";
 
-function HostedCloudSectionNavigate({ to }: { to: string }): React.JSX.Element {
+type HostedCloudSectionPath = "/cloud/account" | "/cloud/billing";
+
+function HostedCloudSectionNavigate({
+  to,
+}: {
+  to: HostedCloudSectionPath;
+}): null {
   const location = useLocation();
-  return <Navigate to={`${to}${location.search}`} replace />;
+  const navigate = useNavigate();
+  useEffect(() => {
+    // This fixed host-shell transition leaves the settings view. Keep view
+    // navigation gated while giving the shell router its existing identity.
+    runAsPrivilegedShell(() =>
+      navigate(`${to}${location.search}`, { replace: true }),
+    );
+  }, [navigate, to, location.search]);
+  return null;
 }
 
 /** Hosted web settings sit inside CloudRouterShell. Native settings do not. */
@@ -49,7 +64,7 @@ function HostedCloudSectionRedirect({
   to,
   children,
 }: {
-  to: string;
+  to: HostedCloudSectionPath;
   children: ReactNode;
 }): React.JSX.Element {
   if (!useInRouterContext()) return <>{children}</>;
