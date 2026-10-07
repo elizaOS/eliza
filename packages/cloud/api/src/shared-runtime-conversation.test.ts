@@ -45,6 +45,7 @@ let bridgeFunding: unknown;
 let recoveredCutoverTargetId: string | null = null;
 let cutoverRecoveryOverride: "conflict" | "absent" | null = null;
 let lastBridgeAgent: unknown;
+let lastBridgeAbortSignal: AbortSignal | undefined;
 let lastStreamOptions: Record<string, unknown> | undefined;
 let apnsOutcome: { outcome: string; reason?: string; status?: number } = {
   outcome: "accepted",
@@ -156,6 +157,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       },
       options: {
         funding?: unknown;
+        abortSignal?: AbortSignal;
         mobilePushDispatch?: (message: {
           title: string;
           body?: string;
@@ -180,6 +182,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       },
     ) => {
       bridgeFunding = options.funding;
+      lastBridgeAbortSignal = options.abortSignal;
       lastBridgeAgent = agent;
       if (rpc.id === "push-event") {
         await options.mobilePushDispatch?.({
@@ -345,6 +348,7 @@ beforeEach(() => {
   markRuntimePrewarmEntered = () => {};
   rehydrateCalls = 0;
   bridgeFunding = undefined;
+  lastBridgeAbortSignal = undefined;
   recoveredCutoverTargetId = null;
   cutoverRecoveryOverride = null;
   lastBridgeAgent = undefined;
@@ -451,6 +455,35 @@ function makeInvoke(object: { fetch(request: Request): Promise<Response> }) {
     return await response.json();
   };
 }
+
+test("nonstream bridge forwards the exact request cancellation signal", async () => {
+  const object = new SharedRuntimeConversation(
+    makeState(new Map<string, unknown>(), []) as never,
+    {} as never,
+  );
+  const controller = new AbortController();
+  const request = new Request("https://shared-runtime.internal/bridge", {
+    method: "POST",
+    signal: controller.signal,
+    body: JSON.stringify({
+      operation: "bridge",
+      agent: AGENT_FIXTURE,
+      rpc: {
+        jsonrpc: "2.0",
+        id: "signal-forwarding",
+        method: "message.send",
+        params: { text: "hi", roomId: "room-1" },
+      },
+    }),
+  });
+  const response = await object.fetch(request);
+  expect(lastBridgeAbortSignal).toBe(request.signal);
+  const reason = new DOMException("owned test cancellation", "AbortError");
+  controller.abort(reason);
+  expect(lastBridgeAbortSignal?.aborted).toBe(true);
+  expect(lastBridgeAbortSignal?.reason).toBe(reason);
+  await response.arrayBuffer();
+});
 
 test("buffered bridge releases the room before its response body is consumed", async () => {
   repositoryReads = 0;

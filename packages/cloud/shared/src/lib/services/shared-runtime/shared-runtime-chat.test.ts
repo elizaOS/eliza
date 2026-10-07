@@ -17,6 +17,12 @@ let streamTurn: Record<string, unknown>;
 let turnError: Error | null;
 let streamTurnError: Error | null;
 let streamTurnSetupGate: Promise<void> | null;
+type TurnProviderOperationInput = {
+  abortSignal?: AbortSignal;
+  onProviderDispatch?: () => void | Promise<void>;
+  [key: string]: unknown;
+};
+let turnProviderOperation: ((input: TurnProviderOperationInput) => Promise<void>) | null = null;
 let turnCalls = 0;
 let lastTurnInput: Record<string, unknown> | undefined;
 const turnInputs: Record<string, unknown>[] = [];
@@ -225,6 +231,8 @@ mock.module("../../../db/repositories/characters", () => ({
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
   runSharedAgentTurn: async (input: {
+    abortSignal?: AbortSignal;
+    onProviderDispatch?: () => void | Promise<void>;
     memory?: { recordTurnPair(pair: TestMemoryPair): Promise<void> };
     message?: string;
     messageIds?: { user: string; assistant: string };
@@ -237,6 +245,7 @@ mock.module("./run-shared-agent-turn", () => ({
     lastTurnRole = input.messageRole;
     lastTurnInput = input;
     turnInputs.push(input);
+    await turnProviderOperation?.(input);
     onTurnDispatch?.();
     if (turnTimingOutcome) input.onRuntimeTiming?.(timingReceipt(turnTimingOutcome, null));
     if (turnError) throw turnError;
@@ -511,6 +520,7 @@ beforeEach(() => {
   streamTurnError = null;
   streamTurnSetupGate = null;
   turnCalls = 0;
+  turnProviderOperation = null;
   lastTurnInput = undefined;
   turnInputs.length = 0;
   lastStreamTurnInput = undefined;
@@ -2064,6 +2074,105 @@ describe("SharedRuntimeChatService", () => {
     method: "message.send",
     params: { text: "hello", roomId: "room-1", clientMessageId: "client-key-1" },
   };
+
+  test("pre-aborted bridge forwards cancellation without dispatching the provider seam", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("owned pre-dispatch cancellation", "AbortError");
+    controller.abort(reason);
+    let providerCalls = 0;
+    turnProviderOperation = async (input) => {
+      expect(input.abortSignal).toBe(controller.signal);
+      input.abortSignal?.throwIfAborted();
+      providerCalls++;
+      await input.onProviderDispatch?.();
+    };
+    const h = harness([]);
+    const claims = memoryTurnClaims();
+    await expect(new SharedRuntimeChatService().bridge(agent, keyedRpc, {
+      ...h, turnClaims: claims.store, abortSignal: controller.signal,
+    })).rejects.toBe(reason);
+    await Promise.all(h.background);
+    expect(providerCalls).toBe(0);
+    expect(h.history()).toEqual([]);
+    expect(claims.claims.get("client-key-1")?.result).toBeUndefined();
+    expect(billCalls).toEqual([]);
+    // Abort alone does not prove upstream non-acceptance to the settlement
+    // boundary. Retain its existing conservative unknown-usage policy.
+    expect(settleCalls).toEqual([]);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("during-provider bridge abort preserves history and pending claim for a later retry", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("owned during-provider cancellation", "AbortError");
+    let providerCalls = 0;
+    let markProviderStarted = () => {};
+    const providerStarted = new Promise<void>((resolve) => { markProviderStarted = resolve; });
+    turnProviderOperation = async (input) => {
+      expect(input.abortSignal).toBe(controller.signal);
+      input.abortSignal?.throwIfAborted();
+      providerCalls++;
+      await input.onProviderDispatch?.();
+      markProviderStarted();
+      await new Promise<void>((_resolve, reject) => {
+        const abort = () => reject(input.abortSignal?.reason);
+        if (input.abortSignal?.aborted) abort();
+        else input.abortSignal?.addEventListener("abort", abort, { once: true });
+      });
+    };
+    const service = new SharedRuntimeChatService();
+    const h = harness([]);
+    const claims = memoryTurnClaims();
+    const pending = service.bridge(agent, keyedRpc, {
+      ...h, turnClaims: claims.store, abortSignal: controller.signal,
+    });
+    await providerStarted;
+    controller.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+    await Promise.all(h.background);
+    expect(providerCalls).toBe(1);
+    expect(h.history()).toEqual([]);
+    expect(claims.claims.get("client-key-1")?.result).toBeUndefined();
+    expect(billCalls).toEqual([]);
+    expect(settleCalls).toEqual([]);
+    expect(settleUnknownCalls).toBe(1);
+
+    turnProviderOperation = null;
+    const retried = await service.bridge(agent, keyedRpc, {
+      ...h, turnClaims: claims.store, abortSignal: new AbortController().signal,
+    });
+    await Promise.all(h.background);
+    expect(retried.result?.text).toBe("hello back");
+    expect(claims.claims.get("client-key-1")?.result).toEqual(retried.result);
+    expect(h.history()).toHaveLength(2);
+    expect(turnCalls).toBe(2);
+    expect(billCalls).toHaveLength(1);
+    expect(settleCalls).toEqual([0.004]);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("late abort preserves completed history, settlement, and keyed replay", async () => {
+    const controller = new AbortController();
+    const service = new SharedRuntimeChatService();
+    const h = harness([]);
+    const claims = memoryTurnClaims();
+    const options = { ...h, turnClaims: claims.store, abortSignal: controller.signal };
+    const first = await service.bridge(agent, keyedRpc, options);
+    await Promise.all(h.background);
+    expect(lastTurnInput?.abortSignal).toBe(controller.signal);
+    const committedHistory = [...h.history()];
+    controller.abort(new DOMException("owned late cancellation", "AbortError"));
+    const replay = await service.bridge(agent, keyedRpc, options);
+    await Promise.all(h.background);
+    expect(replay.result).toEqual({ ...first.result, timing: expect.objectContaining({ replayed: true, callCount: 0 }) });
+    expect(h.history()).toEqual(committedHistory);
+    expect(claims.claims.get("client-key-1")?.result).toEqual(first.result);
+    expect(turnCalls).toBe(1);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    expect(billCalls).toHaveLength(1);
+    expect(settleCalls).toEqual([0.004]);
+    expect(settleUnknownCalls).toBe(0);
+  });
 
   test("keeps a keyed claim pending when claim completion exceeds the terminal deadline", async () => {
     const claims = memoryTurnClaims();

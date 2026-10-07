@@ -1905,6 +1905,7 @@ export class SharedRuntimeConversation {
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
+        abortSignal: request.signal,
         traceId: payload.traceId,
         executionCtx,
         historyStore,

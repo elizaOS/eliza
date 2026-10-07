@@ -1422,6 +1422,7 @@ export class SharedRuntimeChatService {
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
+        abortSignal: options.abortSignal,
         character,
         history,
         message: text,
