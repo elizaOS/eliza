@@ -306,7 +306,7 @@
     "handlebars": "^4.7.9",
     "jose": "^6.2.2",
     "json5": "^2.2.3",
-    "libphonenumber-js": "^1.12.35",
+    "libphonenumber-js": "^1.13.14",
     "llama-cpp-capacitor": "^0.1.5",
     "lucide-react": "^1.0.0",
     "nprogress": "^0.2.0",
