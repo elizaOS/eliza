@@ -6,6 +6,22 @@
 > requirements document (PRD). Maintainers will close unnecessary work. Contributors
 > who submit unnecessary work will be subject to penalties set by maintainers.
 
+## Human-only issue creation
+
+> [!IMPORTANT]
+> **Agents are banned from writing or creating contributor issues.** Outside
+> contributors must personally write the title and body and submit the issue
+> by hand on the GitHub website.
+
+Do not use an agent to draft or submit the issue. Do not create issues through
+an API, command-line tool, browser automation, or another agent. A human review
+or approval of an agent-written issue does not satisfy this rule. If an agent
+finds a problem, it must report the finding privately to the human in the
+current work session. The human must decide whether to write and submit an
+issue. This rule applies to every issue template, including bugs, MVP gaps,
+agent work items, and tracking issues. It does not ban agent work on an
+existing issue or an authorized pull request.
+
 ## Issue scope
 
 Report a real bug or a missing requirement in the approved MVP. Link the relevant

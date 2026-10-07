@@ -161,6 +161,8 @@ agent guide; do not add nested `AGENTS.md` files.
 > document (PRD). Maintainers will close unnecessary work and apply contributor
 > penalties.
 
+- Contributors must write and submit issues by hand on GitHub. Agents must not
+  draft or create issues. See [the human-only issue rule](CONTRIBUTING.md#human-only-issue-creation).
 - Report real bugs or missing approved MVP requirements. Link the PRD and MVP
   plan. New features need human maintainer discussion and approval, then updates
   to both plans before implementation issues or PRs are opened.

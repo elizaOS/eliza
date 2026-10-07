@@ -14,6 +14,13 @@ nested `AGENTS.md` files.
 > implementation issues or PRs are opened. Maintainers will close unnecessary
 > work and apply contributor penalties.
 
+- **Human-only issue creation:** Outside contributors must personally write the
+  issue title and body and submit the issue by hand on the GitHub website.
+  Agents must not write or create issues for contributors. Do not use an API,
+  CLI, browser automation, or another agent to submit an issue. Human approval
+  of an agent-written issue does not meet this rule. An agent that finds a
+  problem must report it privately to the human in the current work session;
+  the human decides whether to write and submit an issue.
 - Prove a useful improvement with before-and-after behavior or relevant scores.
   Prefer cleanup, removal, and reuse. Combine duplicate types and functions.
   Add new types or code only when necessary. Explain the research, alternatives,
