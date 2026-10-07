@@ -33,6 +33,20 @@ export function calculatePrioritizationFee(
   return sorted[Math.max(0, index)] ?? 0;
 }
 
+const COMPUTE_BUDGET_PROGRAM_ID = ComputeBudgetProgram.programId;
+
+/**
+ * Meteora SDK methods already prepend `SetComputeUnitLimit`. A second limit
+ * in the same message is rejected as `DuplicateInstruction`.
+ */
+export function withoutComputeBudget(
+  instructions: readonly TransactionInstruction[]
+): TransactionInstruction[] {
+  return instructions.filter(
+    (instruction) => !instruction.programId.equals(COMPUTE_BUDGET_PROGRAM_ID)
+  );
+}
+
 /** Fee payer first, then any other required signers, without duplicates. */
 export function collectSigners(
   feePayer: Keypair,
@@ -56,11 +70,12 @@ export async function sendTransaction(
   extraSigners: readonly Keypair[] = []
 ): Promise<string> {
   const latestBlockhash = await connection.getLatestBlockhash();
+  const workInstructions = withoutComputeBudget(instructions);
 
   const messageV0 = new TransactionMessage({
     payerKey: wallet.publicKey,
     recentBlockhash: latestBlockhash.blockhash,
-    instructions,
+    instructions: workInstructions,
   }).compileToV0Message();
 
   const signers = collectSigners(wallet, extraSigners);
@@ -83,7 +98,7 @@ export async function sendTransaction(
   const finalMessage = new TransactionMessage({
     payerKey: wallet.publicKey,
     recentBlockhash: latestBlockhash.blockhash,
-    instructions: [...computeBudgetInstructions, ...instructions],
+    instructions: [...computeBudgetInstructions, ...workInstructions],
   }).compileToV0Message();
 
   const transaction = new VersionedTransaction(finalMessage);
