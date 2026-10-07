@@ -135,6 +135,39 @@ it("keeps generic chat on its existing launch path", () => {
     resolveDeepLinkNavigationIntent("chat", new URLSearchParams("text=Hello")),
   ).toBeNull();
 });
+
+it.each(["automations", "notes", "calendar", "reminders"])(
+  "routes a verified native %s view URI through the normal navigation intent",
+  (view) => {
+    const url = new URL(`elizaos://${view}`);
+    expect(resolveDeepLinkNavigationIntent(url.host, url.searchParams)).toEqual(
+      {
+        viewId: view,
+        viewPath: `/${view}`,
+      },
+    );
+  },
+);
+it("opens the canonical Tasks view without taking over the bare assistant-launch namespace", () => {
+  const url = new URL("elizaos://apps/tasks");
+  expect(
+    resolveDeepLinkNavigationIntent(url.host + url.pathname, url.searchParams),
+  ).toEqual({
+    viewId: "tasks",
+    viewPath: "/apps/tasks",
+  });
+  expect(resolveDeepLinkNavigationIntent("tasks")).toBeNull();
+});
+it.each([
+  "automations/run",
+  "notes/delete",
+  "calendar/share",
+  "reminders/complete",
+  "apps/tasks/execute",
+])(
+  "does not infer privileged actions from a notification view prefix (%s)",
+  (path) => expect(resolveDeepLinkNavigationIntent(path)).toBeNull(),
+);
 it.each([
   "notificationId=invalid",
   "notificationId=630784a5-5f4e-47e7-88e9-162ac5bb7425&messageId=missing",

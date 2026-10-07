@@ -55,8 +55,9 @@ final class NativeNotificationProjector {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(OWNER, owner).putExtra(TOKEN, token).putExtra("notificationId", id)
                 .putExtra("category", item.getString("category"));
-        if ("/chat".equals(item.optString("deepLink", ""))) {
-            tap.putExtra("deepLink", "/chat");
+        String deepLink = item.optString("deepLink", "");
+        if (NativeNotificationRoute.view(deepLink) != null) tap.putExtra("deepLink", deepLink);
+        if ("/chat".equals(deepLink)) {
             for (String field : new String[]{"conversationId", "messageId"}) {
                 String value = data == null ? null : data.optString(field, null);
                 if (validId(value)) tap.putExtra(field, value.toLowerCase(java.util.Locale.ROOT));
@@ -111,15 +112,11 @@ final class NativeNotificationProjector {
         }
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         if (manager != null) manager.cancel(TAG + owner + ":" + id, 0);
-        if ("/chat".equals(intent.getStringExtra("deepLink"))) {
-            int resource = context.getResources().getIdentifier("custom_url_scheme", "string", context.getPackageName());
-            String scheme = resource == 0 ? "" : context.getString(resource);
-            if (scheme.matches("[A-Za-z][A-Za-z0-9+.-]*") && !"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
-                Uri.Builder route = new Uri.Builder().scheme(scheme).authority("chat").appendQueryParameter("notificationId", id);
-                for (String field : new String[]{"conversationId", "messageId"}) if (validId(intent.getStringExtra(field))) route.appendQueryParameter(field, intent.getStringExtra(field));
-                intent.setAction(Intent.ACTION_VIEW).setData(route.build());
-            }
-        }
+        int resource = context.getResources().getIdentifier("custom_url_scheme", "string", context.getPackageName());
+        String scheme = resource == 0 ? null : context.getString(resource);
+        String route = NativeNotificationRoute.uri(scheme, intent.getStringExtra("deepLink"), id,
+                intent.getStringExtra("conversationId"), intent.getStringExtra("messageId"));
+        if (route != null) intent.setAction(Intent.ACTION_VIEW).setData(Uri.parse(route));
         return true;
     }
     /** Retire only this transport's exact owner scope, including NMS posts still pending visibility. */

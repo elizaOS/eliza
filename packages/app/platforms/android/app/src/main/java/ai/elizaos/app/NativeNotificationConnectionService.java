@@ -225,6 +225,7 @@ public final class NativeNotificationConnectionService extends Service {
                 reconnectPending = false;
             }
             if (socket == null && !reconnectPending) connect();
+            else updateNotice();
             } catch (RuntimeException unavailable) { state = "startup_unavailable"; stopSelf(); }
         });
         return START_STICKY;
