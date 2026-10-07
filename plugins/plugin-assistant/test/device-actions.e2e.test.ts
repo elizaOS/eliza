@@ -1909,8 +1909,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         expect(proposed.body.metadata.clientDevice.context).toEqual(
           currentContext,
         );
-        // Assistant proposals still enter the native review dialog, including
-        // ringing controls. Durable enqueue is not a device-delivery receipt.
+        // Pending proposals still require the authenticated device decision and
+        // claim. These pause flags attest neither a visible dialog nor delivery.
         expect(proposed.body.action.data).toMatchObject({
           state: "pending",
           executed: false,
@@ -1923,6 +1923,27 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         expect(proposed.body.action.text).toContain(
           "This tool has performed no device operation.",
         );
+        expect(proposed.body.action.data).not.toHaveProperty(
+          "requiresConfirmation",
+        );
+        if (operation.action === "dismiss" || operation.action === "snooze") {
+          expect(proposed.body.action.text).toContain(
+            "recorded and pending for the phone",
+          );
+          expect(proposed.body.action.text).toContain(
+            "may request manual review",
+          );
+          expect(proposed.body.action.text).toContain(
+            "do not prove a visible approval dialog",
+          );
+          expect(proposed.body.action.text).toContain(
+            "Await an applied native receipt before claiming completion",
+          );
+        } else {
+          expect(proposed.body.action.text).toBe(
+            "Durable device proposal state: pending. This tool has performed no device operation.",
+          );
+        }
         const id = proposed.body.action.data.proposalId;
         const pending = (await ownedRequest("/proposals")).body.proposals.find(
           (item: any) => item.id === id,
