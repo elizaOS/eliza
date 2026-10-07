@@ -852,7 +852,6 @@ async function runPlannerLoopIterations(
       // Preserve an explicit typed partial reply; otherwise use the producer's
       // separate, authoritative pending projection, never its internal text.
       let partialReply =
-        evaluator.success === false &&
         evaluator.requestFullyCovered === false &&
         evaluator.replyEffectStatus === "non_applied"
           ? userSafeRescueReply(evaluator.messageToUser, trajectory)
@@ -1765,7 +1764,7 @@ async function runPlannerLoopIterations(
           iteration,
           message: finalMessage,
         });
-        const gated: EvaluatorOutput = {
+        let gated: EvaluatorOutput = {
           success: true,
           decision: "FINISH",
           thought: MODEL_REPLY_GATED_EVALUATOR_THOUGHT,
@@ -1777,6 +1776,28 @@ async function runPlannerLoopIterations(
               }
             : {}),
         };
+        if (
+          hasAwaitingDeviceExecutionMarker(
+            [...trajectory.archivedSteps, ...trajectory.steps]
+              .reverse()
+              .find((step) => step.toolCall && step.result)?.result,
+          )
+        ) {
+          gated =
+            correctPendingSuccessfulFinish(
+              {
+                ...gated,
+                ...(plannerOutput.completed === false
+                  ? {
+                      requestFullyCovered: false,
+                      replyEffectStatus: "non_applied" as const,
+                    }
+                  : {}),
+              },
+              iteration,
+              "terminal",
+            ) ?? gated;
+        }
         trajectory.evaluatorOutputs.push(
           projectToolDiagnosticValue(
             gated,
@@ -1806,7 +1827,7 @@ async function runPlannerLoopIterations(
           status: "finished",
           trajectory,
           evaluator: gated,
-          finalMessage,
+          finalMessage: gated.messageToUser,
         };
       }
 

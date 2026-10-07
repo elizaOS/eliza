@@ -520,3 +520,115 @@ describe("pending device reply authority", () => {
     },
   );
 });
+
+describe("pending device seeded and mixed reply closure", () => {
+  it("keeps pending seeded synthesis partial with one model call and no tool replay", async () => {
+    const reply =
+      "Your stop request is queued for your phone. It isn’t confirmed yet.";
+    const model = vi.fn(async () =>
+      JSON.stringify({ completed: false, toolCalls: [], messageToUser: reply }),
+    );
+    const execute = vi.fn();
+    const evaluate = vi.fn();
+    const result = await runPlannerLoop({
+      context,
+      postToolReplySeed: {
+        toolCall: { id: "seed", name: "DEVICE_CONTROL", params: {} },
+        result: {
+          success: true,
+          modelReplyRequired: true,
+          transcriptVisibility: "internal",
+          text: "Opaque pending device diagnostics.",
+          userFacingText: reply,
+          data: {
+            awaitingDeviceExecution: true,
+            approvalRequired: true,
+            executed: false,
+          },
+        },
+      },
+      runtime: { useModel: model },
+      executeToolCall: execute,
+      evaluate,
+    });
+    expect(model).toHaveBeenCalledTimes(1);
+    expect(execute).not.toHaveBeenCalled();
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(result.evaluator).toMatchObject({
+      success: false,
+      decision: "FINISH",
+      requestFullyCovered: false,
+      replyEffectStatus: "non_applied",
+    });
+    expect(result.finalMessage).toBe(reply);
+  });
+  it("preserves the read answer in an explicit mixed partial evaluator reply", async () => {
+    const reply =
+      "Your note says to take the keys. Your snooze request is queued for your phone.";
+    const model = vi.fn(async () => ({
+      text: "",
+      toolCalls: [
+        {
+          id: "read",
+          name: "READ_NOTE",
+          arguments: { eliza_turn_scope: "more_work_pending" },
+        },
+        {
+          id: "device",
+          name: "DEVICE_CONTROL",
+          arguments: { eliza_turn_scope: "final" },
+        },
+      ],
+    }));
+    const execute = vi.fn(async (call: { name: string }) =>
+      call.name === "READ_NOTE"
+        ? {
+            success: true,
+            text: "Take the keys.",
+            data: { readOnlyOperation: true },
+          }
+        : {
+            success: true,
+            transcriptVisibility: "internal" as const,
+            text: "Opaque pending device diagnostics.",
+            userFacingText: "Your snooze request is queued for your phone.",
+            data: {
+              awaitingDeviceExecution: true,
+              approvalRequired: true,
+              executed: false,
+            },
+          },
+    );
+    let evaluations = 0;
+    const evaluate = vi.fn(async () =>
+      ++evaluations === 1
+        ? {
+            success: false,
+            decision: "NEXT_RECOMMENDED" as const,
+            recommendedToolCallId: "device",
+          }
+        : {
+            success: true,
+            decision: "FINISH" as const,
+            requestFullyCovered: false,
+            replyEffectStatus: "non_applied" as const,
+            messageToUser: reply,
+          },
+    );
+    const result = await runPlannerLoop({
+      context,
+      tools: [{ name: "READ_NOTE" }, { name: "DEVICE_CONTROL" }],
+      runtime: { useModel: model },
+      executeToolCall: execute,
+      evaluate,
+    });
+    expect(model).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(result.evaluator).toMatchObject({
+      success: false,
+      requestFullyCovered: false,
+    });
+    expect(result.finalMessage).toBe(reply);
+  });
+});

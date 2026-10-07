@@ -607,11 +607,11 @@ export const proposeDeviceAction: Action = {
         },
       };
     }
+    const operation = payload.operation;
     const pendingRingingControl =
       request.state === "pending" &&
-      payload.operation.type === "clock_alarm" &&
-      (payload.operation.action === "dismiss" ||
-        payload.operation.action === "snooze");
+      operation.type === "clock_alarm" &&
+      (operation.action === "dismiss" || operation.action === "snooze");
     return {
       success: true,
       transcriptVisibility: "internal",
@@ -620,7 +620,7 @@ export const proposeDeviceAction: Action = {
       ...(pendingRingingControl
         ? {
             userFacingText:
-              payload.operation.action === "snooze"
+              operation.type === "clock_alarm" && operation.action === "snooze"
                 ? "Your snooze request is queued for your phone. It isn’t confirmed yet."
                 : "Your stop request is queued for your phone. It isn’t confirmed yet.",
           }
