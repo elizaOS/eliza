@@ -21,6 +21,7 @@
  * `./time.js` (the same care as the scheduled-task cron DST fix).
  */
 
+import { isValidTimeZone } from "./constants.js";
 import { CalendarServiceError } from "./errors.js";
 import {
   addDaysToLocalDate,
@@ -719,9 +720,11 @@ export function buildRecurrenceSplitPlan(args: {
   };
 }
 
-function formatUntilLabel(untilMs: number): string {
+const DATE_ONLY_UNTIL = /(?:^|[;:])\s*UNTIL\s*=\s*\d{8}\s*(?:;|$)/i;
+
+function formatUntilLabel(untilMs: number, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: "UTC",
+    timeZone,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -732,10 +735,13 @@ function formatUntilLabel(untilMs: number): string {
  * Human-readable summary of a recurrence line set for action replies, e.g.
  * "weekly on Monday", "every 2 weeks on Monday and Wednesday, 10 times".
  * Falls back to the raw first rule body for provider-valid rules outside the
- * describable subset.
+ * describable subset. `timeZone` is the event's IANA zone: a date-time UNTIL
+ * is a UTC instant (Google stores "ends Jun 16" in Los Angeles as
+ * `20110617T065959Z`), so its date is read in that zone.
  */
 export function describeRecurrence(
   recurrence: readonly string[] | null | undefined,
+  timeZone?: string | null,
 ): string | null {
   if (!recurrence || recurrence.length === 0) return null;
   const firstLine = recurrence.find(
@@ -789,7 +795,12 @@ export function describeRecurrence(
   if (rule.count !== undefined) {
     base += `, ${rule.count} times`;
   } else if (rule.untilMs !== undefined) {
-    base += ` until ${formatUntilLabel(rule.untilMs)}`;
+    // A date-only UNTIL already names a calendar date (parsed as 23:59:59Z).
+    const untilZone =
+      !DATE_ONLY_UNTIL.test(firstLine) && timeZone && isValidTimeZone(timeZone)
+        ? timeZone
+        : "UTC";
+    base += ` until ${formatUntilLabel(rule.untilMs, untilZone)}`;
   }
   return base;
 }
