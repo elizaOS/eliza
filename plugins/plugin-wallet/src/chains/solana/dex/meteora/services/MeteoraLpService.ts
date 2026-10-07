@@ -20,6 +20,7 @@ import {
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { autoFillYByStrategy, DLMM, type LbPosition, StrategyType } from "../utils/dlmm.ts";
 import { sendTransaction } from "../utils/sendTransaction.ts";
+import { sumParsedTokenAccountBaseUnits } from "./token-account-base-units.ts";
 
 const { BN } = anchor;
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
@@ -407,13 +408,7 @@ export class MeteoraLpService extends Service {
       const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(walletAddress, {
         mint: mintAddress,
       });
-      if (tokenAccounts.value.length > 0) {
-        const balance = tokenAccounts.value[0].account.data.parsed.info.uiAmount;
-        const decimals = tokenAccounts.value[0].account.data.parsed.info.decimals;
-        // Convert UI amount to lamports
-        return new BN(balance * 10 ** decimals);
-      }
-      return new BN(0);
+      return new BN(sumParsedTokenAccountBaseUnits(tokenAccounts.value).toString());
     } catch (_e) {
       // This can happen if the token account doesn't exist.
       return new BN(0);
