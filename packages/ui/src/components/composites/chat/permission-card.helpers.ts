@@ -194,31 +194,114 @@ export interface PermissionCardPayload {
  * Returns `null` for any other action block (`respond`, `escalate`,
  * `ignore`, `complete`) so the caller can fall back to plain text rendering.
  */
+function readJsonObject(
+  text: string,
+  open: number,
+): { end: number; value: unknown } | null {
+  if (text[open] !== "{") return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = open; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{") depth++;
+    else if (char === "}") {
+      depth--;
+      if (depth === 0) {
+        try {
+          return { end: i + 1, value: JSON.parse(text.slice(open, i + 1)) };
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function skipFenceWhitespace(text: string, index: number): number {
+  let cursor = index;
+  let count = 0;
+  while (cursor < text.length && count < 33 && /\s/.test(text[cursor] ?? "")) {
+    cursor++;
+    count++;
+  }
+  return cursor;
+}
+
+function findPermissionRequestSpan(text: string): {
+  start: number;
+  end: number;
+  value: Record<string, unknown>;
+} | null {
+  let cursor = 0;
+  while (cursor < text.length) {
+    const open = text.indexOf("```", cursor);
+    if (open < 0) break;
+    let body = open + 3;
+    if (text.startsWith("json", body)) body += 4;
+    body = skipFenceWhitespace(text, body);
+    const object = text[body] === "{" ? readJsonObject(text, body) : null;
+    const value = object?.value;
+    if (
+      object &&
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      (value as { action?: unknown }).action === "permission_request"
+    ) {
+      const close = skipFenceWhitespace(text, object.end);
+      if (text.startsWith("```", close)) {
+        return {
+          start: open,
+          end: close + 3,
+          value: value as Record<string, unknown>,
+        };
+      }
+    }
+    cursor = open + 3;
+  }
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+    const object = readJsonObject(text, i);
+    const value = object?.value;
+    if (
+      !object ||
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      (value as { action?: unknown }).action !== "permission_request"
+    ) {
+      continue;
+    }
+    return {
+      start: i,
+      end: object.end,
+      value: value as Record<string, unknown>,
+    };
+  }
+  return null;
+}
+
 export function parsePermissionRequestFromText(text: string): {
   display: string;
   payload: PermissionCardPayload;
 } | null {
   if (!text) return null;
-  const fenced = text.match(
-    /```(?:json)?\s{0,32}\n?(\{[\s\S]*?\})\s{0,32}\n?```/,
-  );
-  let jsonStr: string | undefined = fenced?.[1];
-  let display = text;
-  if (fenced) {
-    display = text.replace(fenced[0], "").trim();
-  } else {
-    const lastBrace = text.lastIndexOf("{");
-    if (lastBrace < 0) return null;
-    jsonStr = text.slice(lastBrace);
-    display = text.slice(0, lastBrace).trim();
-  }
-  if (!jsonStr) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch {
-    return null;
-  }
+  const span = findPermissionRequestSpan(text);
+  if (!span) return null;
+  const display = (text.slice(0, span.start) + text.slice(span.end)).trim();
+  const parsed = span.value;
   if (
     !parsed ||
     typeof parsed !== "object" ||

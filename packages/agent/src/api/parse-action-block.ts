@@ -153,43 +153,161 @@ function isValidActionEnvelope(
 }
 
 /**
+ * End index (exclusive) of the JSON object that starts at `open`, or null
+ * when that `{` does not begin a parseable object. Braces inside strings,
+ * including escaped quotes, do not close the object. A regex that stops at
+ * the first `}` drops `{"response":"use } here"}` and never runs the action.
+ */
+function readJsonObject(
+  text: string,
+  open: number,
+): { end: number; value: unknown } | null {
+  if (text[open] !== "{") return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = open; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{") depth++;
+    else if (char === "}") {
+      depth--;
+      if (depth === 0) {
+        try {
+          return { end: i + 1, value: JSON.parse(text.slice(open, i + 1)) };
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function skipFenceWhitespace(text: string, index: number): number {
+  let cursor = index;
+  let count = 0;
+  while (cursor < text.length && count < 33 && /\s/.test(text[cursor] ?? "")) {
+    cursor++;
+    count++;
+  }
+  return cursor;
+}
+
+interface ActionSpan {
+  start: number;
+  end: number;
+  value: Record<string, unknown> & { action: string };
+}
+
+function findFencedActionSpans(text: string): ActionSpan[] {
+  const spans: ActionSpan[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const open = text.indexOf("```", cursor);
+    if (open < 0) break;
+    let body = open + 3;
+    if (text.startsWith("json", body)) body += 4;
+    body = skipFenceWhitespace(text, body);
+    const object = text[body] === "{" ? readJsonObject(text, body) : null;
+    if (!object || !isValidActionEnvelope(object.value)) {
+      cursor = open + 3;
+      continue;
+    }
+    const close = skipFenceWhitespace(text, object.end);
+    if (!text.startsWith("```", close)) {
+      cursor = open + 3;
+      continue;
+    }
+    spans.push({
+      start: open,
+      end: close + 3,
+      value: object.value,
+    });
+    cursor = close + 3;
+  }
+  return spans;
+}
+
+function findBareActionSpans(
+  text: string,
+  covered: ActionSpan[],
+): ActionSpan[] {
+  const spans: ActionSpan[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+    if (
+      covered.some((span) => i >= span.start && i < span.end) ||
+      spans.some((span) => i >= span.start && i < span.end)
+    ) {
+      continue;
+    }
+    const object = readJsonObject(text, i);
+    if (!object || !isValidActionEnvelope(object.value)) continue;
+    spans.push({ start: i, end: object.end, value: object.value });
+    i = object.end - 1;
+  }
+  return spans;
+}
+
+function toCoordinationResponse(
+  parsed: Record<string, unknown> & { action: string },
+): CoordinationLLMResponse | null {
+  const result: CoordinationLLMResponse = {
+    action: parsed.action,
+    reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
+  };
+  if (parsed.action === "respond") {
+    if (parsed.useKeys && Array.isArray(parsed.keys)) {
+      result.useKeys = true;
+      result.keys = parsed.keys.map(String);
+    } else if (typeof parsed.response === "string") {
+      result.response = parsed.response;
+    } else return null;
+  }
+  if (parsed.action === "permission_request") {
+    const permission = parsed.permission;
+    if (!isPermissionId(permission)) return null;
+    const reason = String(parsed.reason ?? "");
+    const feature = String(parsed.feature ?? "");
+    const fallbackOffered = parsed.fallback_offered === true;
+    const rawLabel = parsed.fallback_label;
+    result.permissionRequest = {
+      permission,
+      reason,
+      feature,
+      fallbackOffered,
+      ...(typeof rawLabel === "string" && rawLabel.length > 0
+        ? { fallbackLabel: rawLabel }
+        : {}),
+    };
+  }
+  return result;
+}
+
+/**
  * Strip JSON action blocks from text before displaying in chat.
  * Handles both fenced (```json ... ```) and bare JSON formats.
  */
 export function stripActionBlockFromDisplay(text: string): string {
   const safeText = toWellFormedUnicode(text);
-  // First: fenced ```json action blocks — only strip if the action value is
-  // one of our known orchestrator actions to avoid false-positive stripping.
-  let cleaned = safeText.replace(
-    /```(?:json)?\s{0,32}\n?(\{[\s\S]{0,50000}?"action"[\s\S]{0,50000}?\})\s{0,32}\n?```/g,
-    (_match, json: string) => {
-      try {
-        const parsed = JSON.parse(json);
-        if (isValidActionEnvelope(parsed)) return "";
-      } catch {
-        // malformed JSON — leave as-is
-      }
-      return _match;
-    },
+  const fenced = findFencedActionSpans(safeText);
+  const spans = [...fenced, ...findBareActionSpans(safeText, fenced)].sort(
+    (left, right) => right.start - left.start,
   );
-
-  // Second: bare JSON action blocks. Walk backwards from end of string to find
-  // the last '{' that starts a valid JSON object containing an "action" key.
-  // Note: this won't match nested objects (e.g. {"action":"respond","ctx":{"k":"v"}})
-  // because JSON.parse would fail on the truncated slice. Safe given our flat action schema.
-  const lastBrace = cleaned.lastIndexOf("{");
-  if (lastBrace >= 0) {
-    const candidate = cleaned.slice(lastBrace);
-    try {
-      const parsed = JSON.parse(candidate);
-      if (isValidActionEnvelope(parsed)) {
-        cleaned = cleaned.slice(0, lastBrace);
-      }
-    } catch {
-      // Not valid JSON — leave text as-is
-    }
+  let cleaned = safeText;
+  for (const span of spans) {
+    cleaned = cleaned.slice(0, span.start) + cleaned.slice(span.end);
   }
-
   return cleaned.trim();
 }
 
@@ -201,49 +319,8 @@ export function stripActionBlockFromDisplay(text: string): string {
 export function parseActionBlock(text: string): CoordinationLLMResponse | null {
   if (!text) return null;
   const safeText = toWellFormedUnicode(text);
-  // Try fenced ```json block first
-  const fenced = safeText.match(
-    /```(?:json)?\s{0,32}\n?(\{[\s\S]{0,50000}?\})\s{0,32}\n?```/,
-  );
-  // Bare JSON fallback: non-greedy match from first { containing "action" to next }
-  const jsonStr =
-    fenced?.[1] ??
-    safeText.match(/\{[^}]{0,50000}"action"[^}]{0,50000}\}/)?.[0];
-  if (!jsonStr) return null;
-  try {
-    const parsed = JSON.parse(jsonStr);
-    if (!isValidActionEnvelope(parsed)) return null;
-    const result: CoordinationLLMResponse = {
-      action: parsed.action,
-      reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
-    };
-    if (parsed.action === "respond") {
-      if (parsed.useKeys && Array.isArray(parsed.keys)) {
-        result.useKeys = true;
-        result.keys = parsed.keys.map(String);
-      } else if (typeof parsed.response === "string") {
-        result.response = parsed.response;
-      } else return null;
-    }
-    if (parsed.action === "permission_request") {
-      const permission = parsed.permission;
-      if (!isPermissionId(permission)) return null;
-      const reason = String(parsed.reason ?? "");
-      const feature = String(parsed.feature ?? "");
-      const fallbackOffered = parsed.fallback_offered === true;
-      const rawLabel = parsed.fallback_label;
-      result.permissionRequest = {
-        permission,
-        reason,
-        feature,
-        fallbackOffered,
-        ...(typeof rawLabel === "string" && rawLabel.length > 0
-          ? { fallbackLabel: rawLabel }
-          : {}),
-      };
-    }
-    return result;
-  } catch {
-    return null;
-  }
+  const fenced = findFencedActionSpans(safeText);
+  const span = fenced[0] ?? findBareActionSpans(safeText, fenced)[0];
+  if (!span) return null;
+  return toCoordinationResponse(span.value);
 }
