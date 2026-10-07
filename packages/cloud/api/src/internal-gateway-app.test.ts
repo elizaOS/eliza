@@ -58,7 +58,8 @@ for (const [name, createApp, route, emptyKey] of [
         { ...executionCtx, waitUntil: (task) => deferred.push(task) },
       );
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ ip: "192.0.2.1", key: emptyKey });
+      const payload: { ip: string; key: string } = await response.json();
+      expect(payload).toEqual({ ip: "192.0.2.1", key: emptyKey });
       expect(response.headers.get("Cache-Control")).toBe("no-store");
       expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
       expect(response.headers.get("Server-Timing")).toContain("cloud_worker");
