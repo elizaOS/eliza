@@ -4,7 +4,7 @@
  * OpenRouter model, while healthy, non-retryable, and unconfigured paths retain
  * their original provider behavior.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -103,6 +103,10 @@ function streamedCompletion(model: string, content: string): Response {
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
+});
+
+afterAll(() => {
+  mock.module("../models", () => actualModels);
 });
 
 describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
