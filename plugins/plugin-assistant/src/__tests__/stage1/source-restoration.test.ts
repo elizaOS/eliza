@@ -1,8 +1,13 @@
-import { runWithTrajectoryContext } from "@elizaos/core";
+import {
+  completionContextSources,
+  runWithTrajectoryContext,
+  selectCompletionContext,
+} from "@elizaos/core";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core/protocol";
 import {
   ChannelType,
   ContextRegistry,
+  type JSONSchema,
   ModelType,
   type UUID,
 } from "@elizaos/core/protocol";
@@ -1616,4 +1621,154 @@ describe("Stage 1 source restoration", () => {
       "# Current message\nuser: whats the compatibility between her and botdick",
     );
   });
+});
+
+describe("foreground selection after a full authorized history read", () => {
+  it.each(["selected", "absent", "incomplete", "stale", "invalid", "full"])(
+    "keeps exact required sources and complete fallback for %s over 354 originals",
+    async (mode) => {
+      const template = makeMessage();
+      const originals: Memory[] = Array.from({ length: 354 }, (_, index) => ({
+        ...template,
+        entityId: index % 2 ? template.agentId : template.entityId,
+        id: `00000000-0000-0000-0001-${String(index).padStart(12, "0")}` as UUID,
+        createdAt: index + 1,
+        content: {
+          text:
+            index === 0
+              ? "Never send my notes to another person."
+              : index === 170
+                ? "The named note contains the exact  original\nbody."
+                : `Completed unrelated original ${index}.`,
+        },
+      }));
+      const { runtime, message, state } = await reviewedHistoryFixture(
+        undefined,
+        originals,
+      );
+      message.content.text = "Read the named note. Do not change any records.";
+      const selection = {
+        mode:
+          mode === "full" ? "all_prior_dialogue" : "relevant_prior_dialogue",
+        complete: mode !== "incomplete",
+        sourceSetId: mode === "stale" ? "stale" : "current_request",
+        relevantSourceIds: mode === "invalid" ? ["h355"] : [],
+        constraintSourceIds: ["h1"],
+        referentSourceIds: ["h171"],
+        pendingIntentSourceIds: [],
+      };
+      vi.mocked(runtime.useModel)
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            {
+              id: "full-read",
+              name: "READ_CONTEXT",
+              arguments: { contextRequests: ["history:all"] },
+            },
+          ],
+        })
+        .mockResolvedValueOnce(
+          stage1Response({
+            contexts: ["general"],
+            intents: ["Read the named note without changing records."],
+            extra: {
+              replyEffectStatus: "pending",
+              ...(mode === "absent" ? {} : { completionContext: selection }),
+            },
+          }),
+        );
+      const result = await runStage1({
+        runtime,
+        message,
+        state,
+        stage1DecisionOnly: true,
+      });
+      if (result.kind !== "decision") throw Error("Expected read routing");
+      expect(runtime.useModel).toHaveBeenCalledTimes(2);
+      const [initial, restored] = useModelCalls(runtime).map(
+        ([, params]) =>
+          params as {
+            messages: unknown[];
+            tools: Array<{ name: string; parameters: JSONSchema }>;
+          },
+      );
+      expect(
+        initial.tools.find((tool) => tool.name === "HANDLE_RESPONSE")
+          ?.parameters.properties?.completionContext,
+      ).toBeUndefined();
+      expect(JSON.stringify(initial.messages)).not.toContain(
+        "History selection:",
+      );
+      const field = restored.tools.find(
+        (tool) => tool.name === "HANDLE_RESPONSE",
+      )?.parameters.properties?.completionContext;
+      expect(field?.properties?.sourceSetId?.enum).toEqual(["current_request"]);
+      const wire = JSON.stringify(restored.messages);
+      expect(wire).toContain("History selection:");
+      expect(wire).toContain("[h1]");
+      expect(wire).toContain("[h354]");
+      const context = await createV5MessageContextObject({
+        runtime,
+        message,
+        state,
+      });
+      const historicalEffect = {
+        id: "historical-effects:exact-original",
+        type: "segment" as const,
+        source: "message-service",
+        segment: {
+          id: "historical-effects:exact-original",
+          label: "runtime:historical_effects",
+          content: JSON.stringify({
+            requestSourceEventId: `history:${originals[200].id}`,
+            scope: "Past committed outcome; do not repeat it.",
+            outcomes: [
+              {
+                actionName: "NOTES_CREATE",
+                success: true,
+                receipt: {
+                  receiptId: "committed-note",
+                  operation: "notes.note.create",
+                  resource: { kind: "notes.note", id: "created-note" },
+                  artifacts: [],
+                  idempotency: { key: null, replayed: false },
+                  observedAt: "2026-10-06T12:00:00Z",
+                  outcome: "applied",
+                  commit: {
+                    kind: "durable",
+                    id: "created-note",
+                    committedAt: "2026-10-06T12:00:00Z",
+                  },
+                },
+              },
+            ],
+          }),
+          stable: false,
+        },
+      };
+      context.events.push(historicalEffect);
+      context.metadata = {
+        ...context.metadata,
+        completionContext: result.messageHandler.plan.completionContext,
+      };
+      const before = structuredClone(context);
+      const projected = selectCompletionContext(context);
+      expect(projected.applied).toBe(mode === "selected");
+      expect(completionContextSources(projected.context).sources).toHaveLength(
+        mode === "selected" ? 2 : 354,
+      );
+      expect(projected.context.events).toContain(historicalEffect);
+      expect(context).toEqual(before);
+      if (mode === "selected") {
+        expect(projected.context.events).toContainEqual(
+          completionContextSources(context).sources[170].event,
+        );
+        const changed = structuredClone(context);
+        const original = completionContextSources(changed).sources[0].event;
+        original.segment.content += " Changed after dispatch.";
+        expect(selectCompletionContext(changed).applied).toBe(false);
+      }
+    },
+  );
 });
