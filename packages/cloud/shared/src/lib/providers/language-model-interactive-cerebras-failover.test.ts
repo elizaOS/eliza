@@ -446,11 +446,11 @@ describe("native primary before alternate catalog resolution", () => {
       };
       if (stream) {
         const result = streamText({
-        ...params,
-        onError: ({ error }) => {
-          errors.push(error);
-        },
-      });
+          ...params,
+          onError: ({ error }) => {
+            errors.push(error);
+          },
+        });
         await expect(result.text).rejects.toBeDefined();
         expect(errors.some((error) => error instanceof ProviderConfigurationError)).toBe(true);
       } else {
