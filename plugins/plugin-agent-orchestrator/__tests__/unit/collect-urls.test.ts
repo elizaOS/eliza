@@ -16,6 +16,24 @@ describe("collectUrls", () => {
     ]);
   });
 
+  it("strips markdown and sentence punctuation after a wrapping parenthesis", () => {
+    expect(
+      collectUrls([
+        "**[docs](https://example.com/docs)**",
+        "Did you check (https://example.com/a)?",
+        "Done (https://example.com/b)!",
+        "see (https://example.com/c)— next",
+        "**[Mercury](https://en.wikipedia.org/wiki/Mercury_(planet))**",
+      ]),
+    ).toEqual([
+      "https://example.com/docs",
+      "https://example.com/a",
+      "https://example.com/b",
+      "https://example.com/c",
+      "https://en.wikipedia.org/wiki/Mercury_(planet)",
+    ]);
+  });
+
   it("still strips a wrapping parenthesis and trailing punctuation", () => {
     expect(
       collectUrls([

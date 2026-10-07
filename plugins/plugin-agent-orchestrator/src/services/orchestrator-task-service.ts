@@ -680,7 +680,7 @@ function trimMentionedUrl(url: string): string {
     else if (char === ")") {
       if (depth === 0) continue;
       depth--;
-    } else if (/[.,;:\]]/.test(char)) continue;
+    } else if (/[\].,;:!?*_'"—–>]/u.test(char)) continue;
     end = i + 1;
   }
   return url.slice(0, end);
