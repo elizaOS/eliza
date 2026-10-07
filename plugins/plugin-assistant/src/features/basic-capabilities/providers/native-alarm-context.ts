@@ -19,7 +19,11 @@ export const nativeAlarmContextProvider: Provider = {
       !turn.credential.capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
     )
       return { text: "" };
-    const client = message.content.metadata?.clientDevice;
+    const metadata = message.content.metadata;
+    const client =
+      metadata && typeof metadata === "object" && !Array.isArray(metadata)
+        ? (metadata as Record<string, unknown>).clientDevice
+        : undefined;
     const observation =
       client && typeof client === "object" && !Array.isArray(client)
         ? (client as Record<string, unknown>).context

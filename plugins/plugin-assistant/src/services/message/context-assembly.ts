@@ -348,9 +348,17 @@ export async function createV5MessageContextObject(args: {
   }
 
   let currentContent = currentMessageContentForContext(args.message);
-  const currentClient = currentContent.metadata?.clientDevice;
+  const rawMetadata = currentContent.metadata;
+  const currentMetadata =
+    rawMetadata &&
+    typeof rawMetadata === "object" &&
+    !Array.isArray(rawMetadata)
+      ? (rawMetadata as Record<string, unknown>)
+      : undefined;
+  const currentClient = currentMetadata?.clientDevice;
   const alarmProvider =
     args.state.data.providers?.CurrentElizaOwnedAlarmSnapshot;
+  const alarmText = alarmProvider?.text;
   if (
     authenticatedDeviceTurn?.runtime === args.runtime &&
     authenticatedDeviceTurn.credential.capabilities?.includes(
@@ -362,15 +370,17 @@ export async function createV5MessageContextObject(args: {
     typeof alarmProvider?.data?.original === "string" &&
     JSON.stringify((currentClient as Record<string, unknown>).context) ===
       alarmProvider.data.original &&
-    typeof alarmProvider.text === "string" &&
-    alarmProvider.text.endsWith(
+    typeof alarmText === "string" &&
+    alarmText.endsWith(
       `CurrentElizaOwnedAlarmSnapshot: ${alarmProvider.data.original}`,
     ) &&
     events.some(
       (event) =>
         event.type === "provider" &&
+        "name" in event &&
         event.name === "CurrentElizaOwnedAlarmSnapshot" &&
-        event.text === alarmProvider.text.trim(),
+        "text" in event &&
+        event.text === alarmText.trim(),
     )
   ) {
     // The complete authenticated observation remains in the restorable provider.
@@ -378,7 +388,7 @@ export async function createV5MessageContextObject(args: {
     currentContent = {
       ...currentContent,
       metadata: {
-        ...currentContent.metadata,
+        ...currentMetadata,
         clientDevice: {
           ...currentClient,
           context: { providerReference: "CurrentElizaOwnedAlarmSnapshot" },
