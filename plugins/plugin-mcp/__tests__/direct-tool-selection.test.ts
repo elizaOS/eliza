@@ -15,11 +15,13 @@ import {
   type Memory,
   ModelType,
 } from "@elizaos/core";
+import {
+  actionStateProvider,
+  recentMessagesProvider,
+  renderActionResultsForModel,
+} from "@elizaos/plugin-assistant";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { actionStateProvider } from "../../plugin-assistant/src/features/basic-capabilities/providers/actionState";
-import { recentMessagesProvider } from "../../plugin-assistant/src/features/basic-capabilities/providers/recentMessages";
-import { renderActionResultsForModel } from "../../plugin-assistant/src/runtime/planner-rendering";
 import { getDirectToolSelection, mcpAction } from "../src/actions/mcp";
 import mcpPlugin from "../src/index";
 import type { McpService } from "../src/service";
@@ -92,7 +94,9 @@ describe("read_resource result through real stdio, SQLite and planner context", 
     async (mode) => {
       const prompts: string[] = [];
       const callbacks: Parameters<HandlerCallback>[0][] = [];
-      const fixture = fileURLToPath(new URL("./fixtures/paginated-server.mjs", import.meta.url));
+      const fixture = fileURLToPath(
+        new URL("./fixtures/resource-result-server.mjs", import.meta.url)
+      );
       const runtime = createSQLiteTestRuntime({
         character: {
           name: "resource-result-delivery",
@@ -100,7 +104,7 @@ describe("read_resource result through real stdio, SQLite and planner context", 
           settings: {
             mcp: {
               servers: {
-                context: { type: "stdio", command: "node", args: [fixture, `resource-${mode}`] },
+                context: { type: "stdio", command: "node", args: [fixture, mode] },
               },
             },
           },
