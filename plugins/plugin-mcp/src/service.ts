@@ -216,16 +216,6 @@ export class McpService extends Service {
         // failed server surfaces as a visibly distinct disconnected entry (or
         // is absent when it never got a transport), and the failure lands in
         // RECENT_ERRORS via reportError.
-        const partial = this.connections.get(name);
-        if (partial && partial.server.status !== "connected") {
-          partial.server.status = "disconnected";
-          this.appendErrorMessage(partial, error instanceof Error ? error.message : String(error));
-          // The disconnected entry stays so the operator can see the error.
-          // Close the client and transport here: onclose would otherwise start
-          // the reconnect ladder, and leaving a timed-out stdio child running
-          // keeps that process alive until the whole service stops.
-          await this.releaseFailedConnection(name, partial);
-        }
         this.runtime.reportError("mcp.connect", error, { serverName: name });
       }
     });
@@ -276,27 +266,41 @@ export class McpService extends Service {
     };
     this.connections.set(name, connection);
     this.setupTransportHandlers(name, connection, state);
-    await client.connect(transport);
-    const capabilities = client.getServerCapabilities();
-    const tools = capabilities?.tools ? await this.fetchToolsList(name) : [];
-    const resources = capabilities?.resources ? await this.fetchResourcesList(name) : [];
-    const resourceTemplates = capabilities?.resources
-      ? await this.fetchResourceTemplatesList(name)
-      : [];
-    connection.server = {
-      status: "connected",
-      name,
-      config: JSON.stringify(config),
-      error: "",
-      tools,
-      resources,
-      resourceTemplates,
-    };
-    state.status = "connected";
-    state.lastConnected = new Date();
-    state.reconnectAttempts = 0;
-    state.consecutivePingFailures = 0;
-    this.startPingMonitoring(name);
+    try {
+      await client.connect(transport);
+      const capabilities = client.getServerCapabilities();
+      const tools = capabilities?.tools ? await this.fetchToolsList(name) : [];
+      const resources = capabilities?.resources ? await this.fetchResourcesList(name) : [];
+      const resourceTemplates = capabilities?.resources
+        ? await this.fetchResourceTemplatesList(name)
+        : [];
+      connection.server = {
+        status: "connected",
+        name,
+        config: JSON.stringify(config),
+        error: "",
+        tools,
+        resources,
+        resourceTemplates,
+      };
+      state.status = "connected";
+      state.lastConnected = new Date();
+      state.reconnectAttempts = 0;
+      state.consecutivePingFailures = 0;
+      this.startPingMonitoring(name);
+    } catch (error) {
+      // Keep discovery failures visible and restartable, but release their child
+      // before either the caller or the existing reconnect ladder handles them.
+      await this.closeConnectionResources(name, connection);
+      connection.server.status = "disconnected";
+      state.status = "disconnected";
+      state.lastError = error instanceof Error ? error : new Error(String(error));
+      connection.server.error = state.lastError.message;
+      if (this.connectionStates.get(name) === state && !this.connections.has(name)) {
+        this.connections.set(name, connection);
+      }
+      throw error;
+    }
   }
   private setupTransportHandlers(
     name: string,
@@ -306,6 +310,7 @@ export class McpService extends Service {
     const config = JSON.parse(connection.server.config) as McpServerConfig;
     const isHttpTransport = config.type !== "stdio";
     connection.transport.onerror = async (error): Promise<void> => {
+      if (this.connections.get(name) !== connection) return;
       const errorMessage = error?.message ?? String(error);
       const lower = errorMessage.toLowerCase();
       // For HTTP transports the optional server→client stream (the long-lived
@@ -332,6 +337,7 @@ export class McpService extends Service {
       }
     };
     connection.transport.onclose = async (): Promise<void> => {
+      if (this.connections.get(name) !== connection) return;
       if (!isHttpTransport) {
         connection.server.status = "disconnected";
         this.handleDisconnection(name, new Error("Transport closed"));
@@ -413,23 +419,25 @@ export class McpService extends Service {
       }
     }, delay);
   }
-  private async releaseFailedConnection(name: string, connection: McpConnection): Promise<void> {
-    const state = this.connectionStates.get(name);
-    if (state?.pingInterval) clearInterval(state.pingInterval);
-    if (state?.reconnectTimeout) {
-      clearTimeout(state.reconnectTimeout);
-      state.reconnectTimeout = undefined;
+  private async closeConnectionResources(name: string, connection: McpConnection): Promise<void> {
+    // Detach before closing so our callbacks ignore intentional shutdown while
+    // the SDK's own callbacks still settle outstanding requests normally.
+    if (this.connections.get(name) === connection) {
+      this.connections.delete(name);
+      const state = this.connectionStates.get(name);
+      if (state?.pingInterval) {
+        clearInterval(state.pingInterval);
+        state.pingInterval = undefined;
+      }
+      if (state?.reconnectTimeout) {
+        clearTimeout(state.reconnectTimeout);
+        state.reconnectTimeout = undefined;
+      }
     }
-    connection.transport.onerror = async () => {};
-    connection.transport.onclose = async () => {};
     const closeResults = await Promise.allSettled([
       connection.transport.close(),
       connection.client.close(),
     ]);
-    if (state?.reconnectTimeout) {
-      clearTimeout(state.reconnectTimeout);
-      state.reconnectTimeout = undefined;
-    }
     for (const result of closeResults) {
       if (result.status === "rejected") {
         logger.warn(
@@ -441,27 +449,13 @@ export class McpService extends Service {
   }
   async deleteConnection(name: string): Promise<void> {
     const connection = this.connections.get(name);
-    if (connection) {
-      const closeResults = await Promise.allSettled([
-        connection.transport.close(),
-        connection.client.close(),
-      ]);
-      this.connections.delete(name);
-      for (const result of closeResults) {
-        if (result.status === "rejected") {
-          logger.warn(
-            { error: result.reason, serverName: name },
-            `Failed to close MCP connection resource for "${name}"`
-          );
-        }
-      }
-    }
     const state = this.connectionStates.get(name);
     if (state) {
       if (state.pingInterval) clearInterval(state.pingInterval);
       if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
       this.connectionStates.delete(name);
     }
+    if (connection) await this.closeConnectionResources(name, connection);
   }
   private getServerConnection(serverName: string): McpConnection | undefined {
     return this.connections.get(serverName);
