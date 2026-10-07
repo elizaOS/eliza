@@ -38,6 +38,8 @@ it.each([
   "rejected",
   "receipt_persistence_unknown",
   "notification_only",
+  "chat_only",
+  "chat_only_no_conversation",
   "no_surfaces",
 ])(
   "settles the durable in-app attempt after event acceptance (%s)",
@@ -96,6 +98,13 @@ it.each([
       ]),
       broadcastWs: vi.fn(),
     };
+    const chatOnly = mode.startsWith("chat_only");
+    const lacksNotification = chatOnly || mode === "no_surfaces";
+    if (lacksNotification)
+      (
+        runtime as unknown as { services: Map<string, unknown> }
+      ).services.delete("notification");
+    if (mode === "chat_only_no_conversation") state.conversations.clear();
     let unsubscribe: (() => void) | undefined;
     if (mode !== "notification_only" && mode !== "no_surfaces") {
       if (!runtime.getService("agent_event"))
@@ -152,9 +161,12 @@ it.each([
         scope: "definitions",
       });
       if (
-        ["rejected", "receipt_persistence_unknown", "no_surfaces"].includes(
-          mode,
-        )
+        [
+          "rejected",
+          "receipt_persistence_unknown",
+          "no_surfaces",
+          "chat_only_no_conversation",
+        ].includes(mode)
       )
         await expect(processing).rejects.toThrow();
       else await processing;
@@ -166,11 +178,12 @@ it.each([
         "rejected",
         "receipt_persistence_unknown",
         "no_surfaces",
+        "chat_only_no_conversation",
       ].includes(mode);
       expect(attempts[0].outcome).toBe(
         failed ? "blocked_connector" : "delivered",
       );
-      if (mode !== "no_surfaces") {
+      if (!lacksNotification) {
         expect(pending).toHaveLength(1);
         expect(pending[0].outcome).toBe("blocked_connector");
         expect(pending[0].id).toBe(attempts[0].id);
@@ -198,9 +211,13 @@ it.each([
       expect(
         messages.filter((message) => message.content.source === "reminder"),
       ).toHaveLength(
-        mode === "notification_only" || mode === "no_surfaces" ? 0 : 1,
+        mode === "notification_only" ||
+          mode === "no_surfaces" ||
+          mode === "chat_only_no_conversation"
+          ? 0
+          : 1,
       );
-      expect(notifySpy).toHaveBeenCalledTimes(mode === "no_surfaces" ? 0 : 1);
+      expect(notifySpy).toHaveBeenCalledTimes(lacksNotification ? 0 : 1);
       const restart = new LifeOpsService(runtime);
       const later = new Date(Date.parse(due) + 30 * 60_000).toISOString();
       vi.setSystemTime(new Date(later));
@@ -208,7 +225,7 @@ it.each([
       expect(
         await restart.repository.listReminderAttempts(runtime.agentId),
       ).toHaveLength(1);
-      expect(notifySpy).toHaveBeenCalledTimes(mode === "no_surfaces" ? 0 : 1);
+      expect(notifySpy).toHaveBeenCalledTimes(lacksNotification ? 0 : 1);
       expect(model).not.toHaveBeenCalled();
       expect(
         (await service.getDefinition(record.definition.id)).definition.cadence,

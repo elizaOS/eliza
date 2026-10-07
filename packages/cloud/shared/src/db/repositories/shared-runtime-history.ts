@@ -1,5 +1,5 @@
 // Persists shared runtime history records for cloud services through the shared DB boundary.
-import { and, asc, desc, eq, gt, max } from "drizzle-orm";
+import { and, asc, desc, eq, gt, max, sql } from "drizzle-orm";
 import { mergeSharedRuntimeHistoryMessages } from "../../lib/services/shared-runtime/shared-runtime-history-policy";
 import { dbRead, dbWrite } from "../client";
 import {
@@ -50,12 +50,12 @@ export class SharedRuntimeHistoryRepository {
   }
 
   /**
-   * Recently active `(agentId, channelId)` rooms since `since`, most recent
+   * Recently active Personal Shared `(agentId, channelId)` rooms since `since`, most recent
    * first, capped. Rowless Personal Shared identities are warmed per room: the
    * conversation Durable Object is addressed by agent AND room, and those ids
    * have no agent_sandboxes row to derive a canonical room from.
    */
-  async listRecentlyActiveRooms(
+  async listRecentlyActivePersonalRooms(
     since: Date,
     limit: number,
   ): Promise<Array<{ agentId: string; channelId: string }>> {
@@ -65,7 +65,14 @@ export class SharedRuntimeHistoryRepository {
         channelId: sharedRuntimeHistory.channel_id,
       })
       .from(sharedRuntimeHistory)
-      .where(gt(sharedRuntimeHistory.updated_at, since))
+      .where(
+        and(
+          gt(sharedRuntimeHistory.updated_at, since),
+          // Match isPersonalSharedAgentId before LIMIT: other rooms must not
+          // consume the Personal Shared sweep's independent admission budget.
+          sql`${sharedRuntimeHistory.agent_id} ~* ${"^personal:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"}`,
+        ),
+      )
       .orderBy(
         desc(sharedRuntimeHistory.updated_at),
         asc(sharedRuntimeHistory.agent_id),
