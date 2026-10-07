@@ -383,9 +383,35 @@ async function opGetTable(
       validSort = params.sortBy;
     }
   }
-  const orderClause = validSort
-    ? `ORDER BY ${quoteIdent(validSort)} ${sortDir}`
-    : "";
+  // OFFSET pages are separate queries. A sort column with ties, or no sort,
+  // lets rows trade places between pages. The primary key makes the order
+  // total. A table with no primary key falls back to its physical row id.
+  const pkResult = await executeRawSql(
+    runtime,
+    `SELECT kcu.column_name
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+      AND tc.table_name = kcu.table_name
+     WHERE tc.constraint_type = 'PRIMARY KEY'
+       AND tc.table_name = '${safe}'
+       AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+     ORDER BY kcu.ordinal_position`,
+  );
+  const primaryKey: string[] = [];
+  for (const row of pkResult.rows) {
+    const name = String(row.column_name ?? "");
+    if (name.length > 0 && !primaryKey.includes(name)) primaryKey.push(name);
+  }
+  const tieBreak = primaryKey.length
+    ? primaryKey.map((column) => quoteIdent(column))
+    : ["tableoid", "ctid"];
+  const orderTerms = [
+    ...(validSort ? [quoteIdent(validSort)] : []),
+    ...tieBreak.filter((term) => !validSort || term !== quoteIdent(validSort)),
+  ].map((term) => `${term} ${sortDir}`);
+  const orderClause = `ORDER BY ${orderTerms.join(", ")}`;
 
   const countResult = await executeRawSql(
     runtime,
