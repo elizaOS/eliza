@@ -1382,7 +1382,7 @@ describe("Shared Eliza runtime in Workerd", () => {
   test("design B: one Stage-1 call proposes SET_STATE, code executes it, and the planner is skipped", async () => {
     structuredProbeBodies.length = 0;
     await networkDb.query(
-      `UPDATE network.members SET state = 'open', paused_until = NULL`,
+      `UPDATE network.members SET state = 'open', state_from = NULL, paused_until = NULL`,
     );
     const eventsBefore = (
       await networkDb.query(`SELECT 1 FROM network.member_events`)
@@ -2002,7 +2002,7 @@ describe("Shared Eliza runtime in Workerd", () => {
           }> = [];
           for (const testCase of cases.slice(skipCases)) {
             await networkDb.query(
-              `UPDATE network.members SET state = $1, paused_until = NULL`,
+              `UPDATE network.members SET state = $1, state_from = NULL, paused_until = NULL`,
               [testCase.expect === "open" ? "paused" : "open"],
             );
             networkLiveCalls.length = 0;

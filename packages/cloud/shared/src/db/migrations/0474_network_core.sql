@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS "network"."members" (
   "first_name" text,
   "city" text,
   "state" text DEFAULT 'open' NOT NULL,
+  -- Start of a scheduled state window (future travel); NULL = effective now.
+  "state_from" timestamp with time zone,
   "paused_until" timestamp with time zone,
   -- Shareable profile facets only; private facets never live in this column.
   "facets" text[] DEFAULT '{}'::text[] NOT NULL,

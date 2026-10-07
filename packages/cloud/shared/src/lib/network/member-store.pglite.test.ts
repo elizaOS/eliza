@@ -202,6 +202,22 @@ describe("Postgres NetworkStore", () => {
     expect((await database.query(`SELECT 1 FROM network.member_events`)).rows).toHaveLength(2);
   });
 
+  test("SET_STATE stores a future presence window and reads it back", async () => {
+    await seedMember();
+    const store = createPostgresNetworkStore(db);
+    const trip = {
+      memberId: USER, state: "traveling" as const, from: "2026-10-12T00:00:00.000Z",
+      until: "2026-10-15T00:00:00.000Z", note: null,
+    };
+    const applied = await store.setState({ ...trip, idempotencyKey: "w1" });
+    expect(applied).toMatchObject({ current: "traveling", from: trip.from, until: trip.until, unchanged: false });
+    expect(await store.getMemberContext(USER)).toMatchObject({ state: "traveling", stateFrom: trip.from, stateUntil: trip.until });
+    // Same window again: no event. A different start date: a real change.
+    expect(await store.setState({ ...trip, idempotencyKey: "w2" })).toMatchObject({ unchanged: true, eventId: null });
+    expect(await store.setState({ ...trip, from: "2026-10-13T00:00:00.000Z", idempotencyKey: "w3" })).toMatchObject({ unchanged: false });
+    expect((await database.query(`SELECT 1 FROM network.member_events`)).rows).toHaveLength(2);
+  });
+
   test("signals are recorded once per (message, kind)", async () => {
     await seedMember();
     const store = createPostgresNetworkStore(db);

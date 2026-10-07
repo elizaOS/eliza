@@ -18,6 +18,7 @@ export const networkMembers = networkSchema.table("members", {
   firstName: text("first_name"),
   city: text("city"),
   state: text("state").default("open").notNull(),
+  stateFrom: timestamp("state_from", { withTimezone: true }),
   pausedUntil: timestamp("paused_until", { withTimezone: true }),
   facets: text("facets").array().default(sql`'{}'::text[]`).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),

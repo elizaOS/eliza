@@ -68,7 +68,7 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
     async getMemberContext(cloudUserId: string): Promise<NetworkMemberContext | null> {
       const [row] = rowsOf(
         await (await db()).execute(sql`
-          SELECT "id", "first_name", "city", "state", "paused_until", "facets"
+          SELECT "id", "first_name", "city", "state", "state_from", "paused_until", "facets"
             FROM "network"."members"
            WHERE "cloud_user_id" = ${cloudUserId}::uuid AND "state" <> 'removed'
            LIMIT 1
@@ -80,6 +80,7 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
         firstName: typeof row.first_name === "string" && row.first_name ? row.first_name : "there",
         city: typeof row.city === "string" ? row.city : "",
         state: memberState(row.state),
+        stateFrom: iso(row.state_from),
         stateUntil: iso(row.paused_until),
         facets: facetsOf(row.facets),
         // Active items (open invitations, threads) arrive with the
@@ -90,6 +91,7 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
 
     async setState(input: SetStateInput): Promise<SetStateExecution> {
       const until = input.until ? new Date(input.until).toISOString() : null;
+      const from = input.from ? new Date(input.from).toISOString() : null;
       // One statement: lock the member, insert the idempotent event, and apply
       // the state only when the event was new. A replayed key inserts nothing,
       // updates nothing, and falls through to the stored event below. A request
@@ -98,7 +100,7 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
       const applied = rowsOf(
         await (await db()).execute(sql`
           WITH "member" AS (
-            SELECT "id", "state", "paused_until" FROM "network"."members"
+            SELECT "id", "state", "state_from", "paused_until" FROM "network"."members"
              WHERE "cloud_user_id" = ${input.memberId}::uuid AND "state" <> 'removed'
              FOR UPDATE
           ), "event" AS (
@@ -107,17 +109,20 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
                    jsonb_build_object(
                      'previous', "member"."state",
                      'current', ${input.state}::text,
+                     'from', ${from}::text,
                      'until', ${until}::text,
                      'note', ${input.note}::text
                    )
               FROM "member"
              WHERE NOT ("member"."state" = ${input.state}::text
+                        AND "member"."state_from" IS NOT DISTINCT FROM ${from}::timestamptz
                         AND "member"."paused_until" IS NOT DISTINCT FROM ${until}::timestamptz)
             ON CONFLICT ("idempotency_key") DO NOTHING
             RETURNING "id", "member_id", "payload", "created_at"
           ), "updated" AS (
             UPDATE "network"."members" AS m
-               SET "state" = ${input.state}, "paused_until" = ${until}::timestamptz, "updated_at" = now()
+               SET "state" = ${input.state}, "state_from" = ${from}::timestamptz,
+                   "paused_until" = ${until}::timestamptz, "updated_at" = now()
               FROM "event"
              WHERE m."id" = "event"."member_id"
             RETURNING m."id"
@@ -125,11 +130,13 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
           SELECT "event"."id", "event"."payload", "event"."created_at",
                  (SELECT count(*) FROM "updated") AS "updated",
                  (SELECT count(*) FROM "member") AS "members",
-                 NULL::text AS "member_state", NULL::timestamptz AS "member_until"
+                 NULL::text AS "member_state", NULL::timestamptz AS "member_from",
+                 NULL::timestamptz AS "member_until"
             FROM "event"
           UNION ALL
           SELECT NULL, NULL, NULL, 0, (SELECT count(*) FROM "member"),
-                 (SELECT "state" FROM "member"), (SELECT "paused_until" FROM "member")
+                 (SELECT "state" FROM "member"), (SELECT "state_from" FROM "member"),
+                 (SELECT "paused_until" FROM "member")
            WHERE NOT EXISTS (SELECT 1 FROM "event")
         `),
       );
@@ -148,12 +155,15 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
         );
         if (!stored) {
           const unchanged =
-            first.member_state === input.state && (iso(first.member_until) ?? null) === until;
+            first.member_state === input.state &&
+            (iso(first.member_from) ?? null) === from &&
+            (iso(first.member_until) ?? null) === until;
           if (!unchanged) throw new Error("Network state change was neither applied nor recorded");
           return {
             eventId: null,
             previous: memberState(first.member_state),
             current: memberState(first.member_state),
+            from,
             until,
             committedAt: new Date(),
             replayed: false,
@@ -170,6 +180,7 @@ export function createPostgresNetworkStore(executor: Executor): NetworkStore {
         eventId: `evt-${String(event.id)}`,
         previous: memberState(payload.previous),
         current: memberState(payload.current),
+        from: iso(payload.from),
         until: iso(payload.until),
         committedAt: new Date(iso(event.created_at) ?? Date.now()),
         replayed,
