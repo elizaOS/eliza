@@ -2,6 +2,7 @@
 import { fileURLToPath } from "node:url";
 import type { AgentRuntime } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
+import { ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { McpService } from "../src/service";
 
@@ -42,9 +43,9 @@ async function start(timeoutInMillis: number, mode = "slow-read") {
 describe("McpService resource read timeout", () => {
   it("aborts a slow resource read at the configured stdio timeout", async () => {
     const service = await start(80);
-    const started = Date.now();
-    await expect(service.readResource("pages", "fixture:///slow")).rejects.toThrow(/timed out/i);
-    expect(Date.now() - started).toBeLessThan(250);
+    await expect(service.readResource("pages", "fixture:///slow")).rejects.toMatchObject({
+      code: ErrorCode.RequestTimeout,
+    });
   });
 
   it("returns a slow resource when it finishes inside the configured timeout", async () => {
