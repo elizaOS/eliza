@@ -5,7 +5,7 @@
 // dashboard. This file asserts that wrapper contract; the rich dashboard's own
 // behaviour is covered by InventoryAppView.gui.test.tsx.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,6 +39,8 @@ vi.mock("./components/InventoryAppView.tsx", () => ({
 }));
 
 import { InventoryView } from "./InventoryView";
+import { TokenLogo } from "./inventory/TokenLogo";
+import { getNativeLogoUrl } from "./inventory/chainConfig";
 
 const EVM_ADDRESS = "0x1111111111111111111111111111111111111111";
 const SOL_ADDRESS = "So1ana1111111111111111111111111111111111111";
@@ -144,5 +146,87 @@ describe("InventoryView — GUI Escape wrapper", () => {
     // dashboard — the wrapper's snapshot path tolerates every store shape.
     render(React.createElement(InventoryView));
     expect(screen.getByTestId("wallet-rich-dashboard")).toBeTruthy();
+  });
+});
+
+describe("TokenLogo real Avatar image loading", () => {
+  it("tries the default after a preferred failure, stops after both fail, and retries changed props", async () => {
+    // Radix preloads with window.Image before rendering an img. Exercise that
+    // boundary rather than firing a DOM error on an image it never mounted.
+    const images: ProbeImage[] = [];
+    class ProbeImage extends window.EventTarget {
+      complete = false;
+      naturalWidth = 0;
+      crossOrigin: string | null = null;
+      referrerPolicy = "";
+      private source = "";
+      set src(value: string) {
+        this.source = value;
+        images.push(this);
+      }
+      get src() {
+        return this.source;
+      }
+      fail() {
+        this.complete = true;
+        this.dispatchEvent(new window.Event("error"));
+      }
+      succeed() {
+        this.complete = true;
+        this.naturalWidth = 16;
+        this.dispatchEvent(new window.Event("load"));
+      }
+    }
+    const imageSpy = vi.spyOn(window, "Image").mockImplementation(function () {
+      return new ProbeImage() as unknown as HTMLImageElement;
+    });
+    const preferred = "https://example.com/preferred.png";
+    const changed = "https://example.com/changed.png";
+    const fallback = getNativeLogoUrl("ethereum");
+    try {
+      const view = render(
+        <TokenLogo
+          symbol="ETH"
+          chain="ethereum"
+          contractAddress={null}
+          preferredLogoUrl={preferred}
+        />,
+      );
+      await waitFor(() =>
+        expect(images.map((image) => image.src)).toEqual([preferred]),
+      );
+      expect(screen.queryByRole("img", { name: "ETH" })).toBeNull();
+      await act(async () => images[0].fail());
+      await waitFor(() =>
+        expect(images.map((image) => image.src)).toEqual([preferred, fallback]),
+      );
+      await act(async () => images[1].fail());
+      expect(screen.getByRole("img", { name: "ETH token" })).toBeTruthy();
+      expect(images).toHaveLength(2);
+
+      view.rerender(
+        <TokenLogo
+          symbol="ETH"
+          chain="ethereum"
+          contractAddress={null}
+          preferredLogoUrl={changed}
+        />,
+      );
+      await waitFor(() =>
+        expect(images.map((image) => image.src)).toEqual([
+          preferred,
+          fallback,
+          changed,
+        ]),
+      );
+      await act(async () => images[2].succeed());
+      expect(screen.getByRole("img", { name: "ETH" }).getAttribute("src")).toBe(
+        changed,
+      );
+      expect(images).toHaveLength(3);
+    } finally {
+      cleanup();
+      imageSpy.mockRestore();
+    }
   });
 });

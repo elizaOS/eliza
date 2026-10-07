@@ -38,24 +38,58 @@ export function TokenLogo({
   preferredLogoUrl?: string | null;
   size?: number;
 }) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const preferredResolved = normalizeInventoryImageUrl(preferredLogoUrl);
   const defaultResolved = normalizeInventoryImageUrl(
     tokenLogoUrl(chain, contractAddress),
   );
-  const url =
-    preferredResolved && preferredResolved !== failedUrl
-      ? preferredResolved
-      : defaultResolved && defaultResolved !== failedUrl
-        ? defaultResolved
-        : null;
+  return (
+    <TokenLogoImage
+      key={JSON.stringify([preferredResolved, defaultResolved])}
+      symbol={symbol}
+      chain={chain}
+      size={size}
+      preferredResolved={preferredResolved}
+      defaultResolved={defaultResolved}
+    />
+  );
+}
+
+/** URL changes start a new attempt; each candidate fails at most once. */
+function TokenLogoImage({
+  symbol,
+  chain,
+  size,
+  preferredResolved,
+  defaultResolved,
+}: {
+  symbol: string;
+  chain: string;
+  size: number;
+  preferredResolved: string | null;
+  defaultResolved: string | null;
+}) {
+  const [failedUrls, setFailedUrls] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const url = [preferredResolved, defaultResolved].find(
+    (candidate): candidate is string =>
+      candidate !== null && !failedUrls.has(candidate),
+  );
   const icon = chainIcon(chain);
   const monogram = symbol.trim().slice(0, 2).toUpperCase() || icon.code;
 
   if (url) {
     return (
       <Avatar presentation="walletLogo" size={size}>
-        <AvatarImage src={url} alt={symbol} onError={() => setFailedUrl(url)} />
+        <AvatarImage
+          src={url}
+          alt={symbol}
+          onLoadingStatusChange={(status) => {
+            if (status === "error") {
+              setFailedUrls((previous) => new Set([...previous, url]));
+            }
+          }}
+        />
         <AvatarFallback tone={icon.tone} style={{ fontSize: size * 0.38 }}>
           {monogram}
         </AvatarFallback>
