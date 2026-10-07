@@ -519,22 +519,33 @@ export function sharedRuntimeModelHistoryMessages(
   return messages;
 }
 
-/** Inserts historical evidence without splitting a live tool call/result pair. */
+/** Merge server-owned policy into the leading system while preserving untrusted evidence roles. */
 export function insertSharedRuntimeGroundingMessages(
   messages: ModelMessage[],
   groundingMessages: ModelMessage[],
 ): ModelMessage[] {
   if (groundingMessages.length === 0) return messages;
   // Later planner iterations end in a live tool result, not the user's turn.
-  // Anchor evidence before the last user message so the current tool pair
-  // remains adjacent for providers that enforce message ordering.
+  // Anchor evidence before the last user so live tool call/result pairs stay adjacent.
   const currentUserIndex = messages.findLastIndex((message) => message.role === "user");
   if (currentUserIndex < 0) return messages;
-  return [
+  // These system messages are emitted only by the server's grounding projection
+  // helpers above. Public search text stays in its original user/tool messages.
+  // Qwen-compatible requests have one leading system message, not a later system.
+  const policy = groundingMessages
+    .filter((message) => message.role === "system")
+    .map((message) => message.content)
+    .join("\n\n");
+  const grounded = [
     ...messages.slice(0, currentUserIndex),
-    ...groundingMessages,
+    ...groundingMessages.filter((message) => message.role !== "system"),
     ...messages.slice(currentUserIndex),
   ];
+  if (!policy) return grounded;
+  const first = grounded[0];
+  return first?.role === "system"
+    ? [{ ...first, content: `${first.content}\n\n${policy}` }, ...grounded.slice(1)]
+    : [{ role: "system", content: policy }, ...grounded];
 }
 
 function isPersistedMessage(value: unknown): value is SharedRuntimeHistoryMessageLike {

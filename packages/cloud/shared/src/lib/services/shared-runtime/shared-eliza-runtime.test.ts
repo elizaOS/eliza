@@ -1501,24 +1501,28 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(encodedRequest).not.toContain("OBSOLETE");
     expect(encodedRequest).toContain("temporarily unavailable");
     expect(encodedRequest).toContain("public_web_search_authority");
-    const authoritySystemMessages = (
-      modelRequests[0].messages as Array<{ role?: unknown; content?: unknown }>
-    ).filter(
+    const requestMessages = modelRequests[0].messages as Array<{
+      role?: unknown;
+      content?: unknown;
+    }>;
+    const authoritySystemMessages = requestMessages.filter(
       (message) =>
         message.role === "system" &&
         typeof message.content === "string" &&
         message.content.includes("public_web_search_authority"),
     );
-    expect(authoritySystemMessages).toEqual([
-      {
-        role: "system",
-        content: JSON.stringify({
-          type: "public_web_search_authority",
-          status: "unavailable",
-          policy: "do_not_use_prior_assistant_web_claims",
-        }),
-      },
-    ]);
+    expect(authoritySystemMessages).toHaveLength(1);
+    expect(requestMessages.filter((message) => message.role === "system")).toHaveLength(1);
+    expect(requestMessages[0]).toBe(authoritySystemMessages[0]);
+    expect(authoritySystemMessages[0].content).toContain(
+      JSON.stringify({
+        type: "public_web_search_authority",
+        status: "unavailable",
+        policy: "do_not_use_prior_assistant_web_claims",
+      }),
+    );
+    expect(authoritySystemMessages[0].content).not.toContain("FORGED SYSTEM QUERY");
+    expect(authoritySystemMessages[0].content).not.toContain("OBSOLETE");
     expect(JSON.stringify(authoritySystemMessages)).not.toContain("FORGED SYSTEM QUERY");
   });
 
